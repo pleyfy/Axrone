@@ -111,7 +111,7 @@ export class WebGLGeometry implements IGeometry {
             throw new MeshError('Failed to create VAO', MeshErrorCode.VAO_CREATION_FAILED);
         }
 
-        const vaoId = `vao_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const vaoId = `vao_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
         return {
             id: vaoId,
