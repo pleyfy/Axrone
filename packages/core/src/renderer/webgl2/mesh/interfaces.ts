@@ -1,6 +1,6 @@
 import { Vec2, Vec3, Vec4, Mat4 } from '@axrone/numeric';
 import { ByteBuffer } from '@axrone/utility';
-import { IBindableTarget } from '../texture/interfaces';
+import type { IBindableTarget } from '../interfaces';
 
 export const enum VertexAttributeType {
     POSITION = 'POSITION',

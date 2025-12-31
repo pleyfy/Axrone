@@ -1,10 +1,11 @@
 import { IDisposable } from '../../types';
-import { ITexture, IBindableTarget } from './texture/interfaces';
+import type { IBindableTarget } from './interfaces';
 
 type Nominal<T, K extends string> = T & { readonly __brand: K };
 
 export type FramebufferId = Nominal<WebGLFramebuffer, 'FramebufferId'>;
 export type RenderbufferId = Nominal<WebGLRenderbuffer, 'RenderbufferId'>;
+export type TextureId = Nominal<WebGLTexture, 'TextureId'>;
 
 export type GLTextureTarget =
     | WebGL2RenderingContext['TEXTURE_2D']
@@ -134,11 +135,6 @@ export interface FramebufferOptions {
     readonly stencilAttachment?: AttachmentConfig;
     readonly depthStencilAttachment?: AttachmentConfig;
     readonly label?: string;
-}
-
-export interface IBindableTarget<T> {
-    readonly bind: () => T;
-    readonly unbind: () => T;
 }
 
 export interface ITexture extends IDisposable, IBindableTarget<ITexture> {

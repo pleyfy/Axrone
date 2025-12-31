@@ -1,4 +1,5 @@
 import { IDisposable } from '../../types';
+import type { IBindableTarget } from './interfaces';
 
 type Nominal<T, K extends string> = T & { readonly __brand: K };
 
@@ -24,11 +25,6 @@ export type GLBufferUsage =
     | WebGL2RenderingContext['STREAM_COPY'];
 
 export type BufferId = Nominal<WebGLBuffer, 'BufferId'>;
-
-export interface IBindableTarget<T> {
-    readonly bind: () => T;
-    readonly unbind: () => T;
-}
 
 export interface BufferOptions {
     readonly initialData?: BufferSource | null;

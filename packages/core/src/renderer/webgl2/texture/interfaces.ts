@@ -1,5 +1,6 @@
 import { Vec2, Vec3, Vec4 } from '@axrone/numeric';
 import { ByteBuffer } from '@axrone/utility';
+import type { IBindableTarget } from '../interfaces';
 
 export const enum TextureDimension {
     TEXTURE_1D = '1D',
@@ -172,11 +173,6 @@ export interface ITextureSubresource {
     readonly depth?: number;
 }
 
-export interface IBindableTarget {
-    bind(unit?: number): void;
-    unbind(): void;
-}
-
 export interface ITexture extends IBindableTarget {
     readonly id: string;
     readonly nativeHandle: WebGLTexture;
@@ -205,9 +201,6 @@ export interface ITexture extends IBindableTarget {
 
     resize(width: number, height: number, depth?: number): void;
     clone(): ITexture;
-
-    bind(unit?: number): void;
-    unbind(): void;
 
     dispose(): void;
 }
