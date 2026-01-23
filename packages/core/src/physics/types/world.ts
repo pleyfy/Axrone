@@ -100,15 +100,15 @@ export interface IPhysicsWorldStatistics {
 }
 
 export interface IPhysicsProfiler {
-    readonly stepTime: number;
-    readonly collisionTime: number;
-    readonly solveTime: number;
-    readonly broadphaseTime: number;
-    readonly narrowphaseTime: number;
-    readonly solveInitTime: number;
-    readonly solveVelocityTime: number;
-    readonly solvePositionTime: number;
-    readonly sleepTime: number;
+    stepTime: number;
+    collisionTime: number;
+    solveTime: number;
+    broadphaseTime: number;
+    narrowphaseTime: number;
+    solveInitTime: number;
+    solveVelocityTime: number;
+    solvePositionTime: number;
+    sleepTime: number;
 }
 
 export interface IIsland2D {
