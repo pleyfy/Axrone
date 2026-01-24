@@ -39,72 +39,6 @@ interface WritableManifold {
     }>;
 }
 
-const COLLISION_MATRIX: ReadonlyArray<ReadonlyArray<CollisionFn | null>> = [
-    [collideCircleCircle, collideCircleCapsule, collideCirclePolygon, collideCircleBox, null],
-    [collideCapsuleCircle, collideCapsuleCapsule, collideCapsulePolygon, collideCapsuleBox, null],
-    [collidePolygonCircle, collidePolygonCapsule, collidePolygonPolygon, collidePolygonBox, null],
-    [collideBoxCircle, collideBoxCapsule, collideBoxPolygon, collideBoxBox, null],
-    [null, null, null, null, null],
-] as const;
-
-export class Narrowphase2D {
-    private readonly _tempVec: Vec2;
-    private readonly _manifoldPool: WritableManifold[];
-    private _poolIndex: number = 0;
-
-    constructor() {
-        this._tempVec = Vec2.ZERO.clone();
-        this._manifoldPool = Array.from({ length: 64 }, () => ({
-            pointCount: 0,
-            normal: { x: 0, y: 0 },
-            points: Array.from({ length: CollisionConfig.MAX_MANIFOLD_POINTS }, (_, i) => ({
-                id: i as ContactId,
-                localPointA: { x: 0, y: 0 },
-                localPointB: { x: 0, y: 0 },
-                normalImpulse: 0,
-                tangentImpulse: 0,
-                separation: 0,
-            })),
-        }));
-    }
-
-    collide(
-        shapeIdA: ShapeId,
-        shapeIdB: ShapeId,
-        typeA: ShapeType,
-        typeB: ShapeType,
-        shapeManager: ShapeManager2D,
-        ctx: CollisionContext,
-        manifold: IContactManifold2D
-    ): void {
-        const collisionFn = COLLISION_MATRIX[typeA]?.[typeB];
-        if (!collisionFn) {
-            (manifold as WritableManifold).pointCount = 0;
-            return;
-        }
-
-        const shapeA = this.getShapeData(shapeIdA, typeA, shapeManager);
-        const shapeB = this.getShapeData(shapeIdB, typeB, shapeManager);
-
-        collisionFn(shapeA, shapeB, ctx, manifold as WritableManifold);
-    }
-
-    private getShapeData(shapeId: ShapeId, type: ShapeType, manager: ShapeManager2D): any {
-        switch (type) {
-            case ShapeType.Circle:
-                return manager.getCircleData(shapeId);
-            case ShapeType.Box:
-                return manager.getBoxData(shapeId);
-            case ShapeType.Polygon:
-                return manager.getPolygonData(shapeId);
-            case ShapeType.Capsule:
-                return manager.getCapsuleData(shapeId);
-            default:
-                return null;
-        }
-    }
-}
-
 function collideCircleCircle(
     circleA: { center: IVec2Like; radius: number },
     circleB: { center: IVec2Like; radius: number },
@@ -364,18 +298,103 @@ function collideBoxCapsule(
 }
 
 const collideCapsuleCircle = (a: any, b: any, ctx: CollisionContext, m: WritableManifold) =>
-    collideCircleCapsule(b, a, { ...ctx, transformA: ctx.transformB, transformB: ctx.transformA }, m);
+    collideCircleCapsule(
+        b,
+        a,
+        { ...ctx, transformA: ctx.transformB, transformB: ctx.transformA },
+        m
+    );
 const collidePolygonCircle = (a: any, b: any, ctx: CollisionContext, m: WritableManifold) =>
-    collideCirclePolygon(b, a, { ...ctx, transformA: ctx.transformB, transformB: ctx.transformA }, m);
+    collideCirclePolygon(
+        b,
+        a,
+        { ...ctx, transformA: ctx.transformB, transformB: ctx.transformA },
+        m
+    );
 const collideBoxCircle = (a: any, b: any, ctx: CollisionContext, m: WritableManifold) =>
     collideCircleBox(b, a, { ...ctx, transformA: ctx.transformB, transformB: ctx.transformA }, m);
 const collidePolygonCapsule = (a: any, b: any, ctx: CollisionContext, m: WritableManifold) =>
-    collideCapsulePolygon(b, a, { ...ctx, transformA: ctx.transformB, transformB: ctx.transformA }, m);
+    collideCapsulePolygon(
+        b,
+        a,
+        { ...ctx, transformA: ctx.transformB, transformB: ctx.transformA },
+        m
+    );
 const collideBoxPolygon = collidePolygonPolygon;
+const collidePolygonBox = collideBoxPolygon;
 const collideCapsuleBox = (a: any, b: any, ctx: CollisionContext, m: WritableManifold) =>
     collideBoxCapsule(b, a, { ...ctx, transformA: ctx.transformB, transformB: ctx.transformA }, m);
 
-function transformPoint(point: IVec2Like, transform: { position: IVec2Like; rotation: number }): IVec2Like {
+const COLLISION_MATRIX: ReadonlyArray<ReadonlyArray<CollisionFn | null>> = [
+    [collideCircleCircle, collideCircleCapsule, collideCirclePolygon, collideCircleBox, null],
+    [collideCapsuleCircle, collideCapsuleCapsule, collideCapsulePolygon, collideCapsuleBox, null],
+    [collidePolygonCircle, collidePolygonCapsule, collidePolygonPolygon, collidePolygonBox, null],
+    [collideBoxCircle, collideBoxCapsule, collideBoxPolygon, collideBoxBox, null],
+    [null, null, null, null, null],
+] as const;
+
+export class Narrowphase2D {
+    private readonly _tempVec: Vec2;
+    private readonly _manifoldPool: WritableManifold[];
+    private _poolIndex: number = 0;
+
+    constructor() {
+        this._tempVec = Vec2.ZERO.clone();
+        this._manifoldPool = Array.from({ length: 64 }, () => ({
+            pointCount: 0,
+            normal: { x: 0, y: 0 },
+            points: Array.from({ length: CollisionConfig.MAX_MANIFOLD_POINTS }, (_, i) => ({
+                id: i as ContactId,
+                localPointA: { x: 0, y: 0 },
+                localPointB: { x: 0, y: 0 },
+                normalImpulse: 0,
+                tangentImpulse: 0,
+                separation: 0,
+            })),
+        }));
+    }
+
+    collide(
+        shapeIdA: ShapeId,
+        shapeIdB: ShapeId,
+        typeA: ShapeType,
+        typeB: ShapeType,
+        shapeManager: ShapeManager2D,
+        ctx: CollisionContext,
+        manifold: IContactManifold2D
+    ): void {
+        const collisionFn = COLLISION_MATRIX[typeA]?.[typeB];
+        if (!collisionFn) {
+            (manifold as any).pointCount = 0;
+            return;
+        }
+
+        const shapeA = this.getShapeData(shapeIdA, typeA, shapeManager);
+        const shapeB = this.getShapeData(shapeIdB, typeB, shapeManager);
+
+        collisionFn(shapeA, shapeB, ctx, manifold as any);
+    }
+
+    private getShapeData(shapeId: ShapeId, type: ShapeType, manager: ShapeManager2D): any {
+        switch (type) {
+            case ShapeType.Circle:
+                return manager.getCircleData(shapeId);
+            case ShapeType.Box:
+                return manager.getBoxData(shapeId);
+            case ShapeType.Polygon:
+                return manager.getPolygonData(shapeId);
+            case ShapeType.Capsule:
+                return manager.getCapsuleData(shapeId);
+            default:
+                return null;
+        }
+    }
+}
+
+function transformPoint(
+    point: IVec2Like,
+    transform: { position: IVec2Like; rotation: number }
+): IVec2Like {
     const cos = Math.cos(transform.rotation);
     const sin = Math.sin(transform.rotation);
     return {
