@@ -218,7 +218,10 @@ export class ContactManager2D implements Disposable {
         }
     }
 
-    getWarmStartImpulse(contactId: ContactId, pointIndex: number): { normalImpulse: number; tangentImpulse: number } {
+    getWarmStartImpulse(
+        contactId: ContactId,
+        pointIndex: number
+    ): { normalImpulse: number; tangentImpulse: number } {
         const index = this._contactIdToIndex.get(contactId);
         if (index === undefined) return { normalImpulse: 0, tangentImpulse: 0 };
 
@@ -229,7 +232,12 @@ export class ContactManager2D implements Disposable {
         };
     }
 
-    setWarmStartImpulse(contactId: ContactId, pointIndex: number, normalImpulse: number, tangentImpulse: number): void {
+    setWarmStartImpulse(
+        contactId: ContactId,
+        pointIndex: number,
+        normalImpulse: number,
+        tangentImpulse: number
+    ): void {
         const index = this._contactIdToIndex.get(contactId);
         if (index === undefined) return;
 
@@ -264,11 +272,20 @@ export class ContactManager2D implements Disposable {
                 localB: { x: this._contactData[offset + 7], y: this._contactData[offset + 8] },
                 separation: this._contactData[offset + 9],
             },
-            point1: pointCount > 1 ? {
-                localA: { x: this._contactData[offset + 10], y: this._contactData[offset + 11] },
-                localB: { x: this._contactData[offset + 12], y: this._contactData[offset + 13] },
-                separation: this._contactData[offset + 14],
-            } : undefined,
+            point1:
+                pointCount > 1
+                    ? {
+                          localA: {
+                              x: this._contactData[offset + 10],
+                              y: this._contactData[offset + 11],
+                          },
+                          localB: {
+                              x: this._contactData[offset + 12],
+                              y: this._contactData[offset + 13],
+                          },
+                          separation: this._contactData[offset + 14],
+                      }
+                    : undefined,
         };
     }
 

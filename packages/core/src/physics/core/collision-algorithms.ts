@@ -63,11 +63,10 @@ export class GJK2D {
         direction: IVec2Like
     ): SupportPoint {
         const supportA = this.getFarthestPointInDirection(verticesA, transformA, direction);
-        const supportB = this.getFarthestPointInDirection(
-            verticesB,
-            transformB,
-            { x: -direction.x, y: -direction.y }
-        );
+        const supportB = this.getFarthestPointInDirection(verticesB, transformB, {
+            x: -direction.x,
+            y: -direction.y,
+        });
 
         return {
             point: {

@@ -92,7 +92,10 @@ export class BodyManager2D implements Disposable {
         this._assertActive();
 
         if (this._bodyCount >= this._maxBodies) {
-            throw new PhysicsBodyError('Body capacity exceeded', BodyManagerError.CAPACITY_EXCEEDED);
+            throw new PhysicsBodyError(
+                'Body capacity exceeded',
+                BodyManagerError.CAPACITY_EXCEEDED
+            );
         }
 
         const index = this._allocateIndex();
@@ -167,13 +170,13 @@ export class BodyManager2D implements Disposable {
     getPosition(bodyId: BodyId, out?: IVec2Like): IVec2Like {
         const index = this._getIndex(bodyId);
         const offset = index * BODY_SOA_STRIDE + POSITION_OFFSET;
-        
+
         if (out) {
             out.x = this._bodyData[offset];
             out.y = this._bodyData[offset + 1];
             return out;
         }
-        
+
         return { x: this._bodyData[offset], y: this._bodyData[offset + 1] };
     }
 
@@ -197,13 +200,13 @@ export class BodyManager2D implements Disposable {
     getLinearVelocity(bodyId: BodyId, out?: IVec2Like): IVec2Like {
         const index = this._getIndex(bodyId);
         const offset = index * BODY_SOA_STRIDE + LINEAR_VELOCITY_OFFSET;
-        
+
         if (out) {
             out.x = this._bodyData[offset];
             out.y = this._bodyData[offset + 1];
             return out;
         }
-        
+
         return { x: this._bodyData[offset], y: this._bodyData[offset + 1] };
     }
 
@@ -227,13 +230,16 @@ export class BodyManager2D implements Disposable {
     applyForce(bodyId: BodyId, force: Readonly<IVec2Like>, point?: Readonly<IVec2Like>): void {
         const index = this._getIndex(bodyId);
         const offset = index * BODY_SOA_STRIDE;
-        
+
         this._bodyData[offset + FORCE_OFFSET] += force.x;
         this._bodyData[offset + FORCE_OFFSET + 1] += force.y;
-        
+
         if (point) {
-            const cx = this._bodyData[offset + POSITION_OFFSET] + this._bodyData[offset + CENTER_OFFSET];
-            const cy = this._bodyData[offset + POSITION_OFFSET + 1] + this._bodyData[offset + CENTER_OFFSET + 1];
+            const cx =
+                this._bodyData[offset + POSITION_OFFSET] + this._bodyData[offset + CENTER_OFFSET];
+            const cy =
+                this._bodyData[offset + POSITION_OFFSET + 1] +
+                this._bodyData[offset + CENTER_OFFSET + 1];
             const rx = point.x - cx;
             const ry = point.y - cy;
             this._bodyData[offset + TORQUE_OFFSET] += rx * force.y - ry * force.x;
@@ -244,17 +250,21 @@ export class BodyManager2D implements Disposable {
         const index = this._getIndex(bodyId);
         const offset = index * BODY_SOA_STRIDE;
         const invMass = this._bodyData[offset + INV_MASS_OFFSET];
-        
+
         this._bodyData[offset + LINEAR_VELOCITY_OFFSET] += impulse.x * invMass;
         this._bodyData[offset + LINEAR_VELOCITY_OFFSET + 1] += impulse.y * invMass;
-        
+
         if (point) {
             const invI = this._bodyData[offset + INV_INERTIA_OFFSET];
-            const cx = this._bodyData[offset + POSITION_OFFSET] + this._bodyData[offset + CENTER_OFFSET];
-            const cy = this._bodyData[offset + POSITION_OFFSET + 1] + this._bodyData[offset + CENTER_OFFSET + 1];
+            const cx =
+                this._bodyData[offset + POSITION_OFFSET] + this._bodyData[offset + CENTER_OFFSET];
+            const cy =
+                this._bodyData[offset + POSITION_OFFSET + 1] +
+                this._bodyData[offset + CENTER_OFFSET + 1];
             const rx = point.x - cx;
             const ry = point.y - cy;
-            this._bodyData[offset + ANGULAR_VELOCITY_OFFSET] += invI * (rx * impulse.y - ry * impulse.x);
+            this._bodyData[offset + ANGULAR_VELOCITY_OFFSET] +=
+                invI * (rx * impulse.y - ry * impulse.x);
         }
     }
 
@@ -271,7 +281,7 @@ export class BodyManager2D implements Disposable {
     setMassData(bodyId: BodyId, mass: number, inertia: number, center: Readonly<IVec2Like>): void {
         const index = this._getIndex(bodyId);
         const offset = index * BODY_SOA_STRIDE;
-        
+
         this._bodyData[offset + MASS_OFFSET] = mass;
         this._bodyData[offset + INV_MASS_OFFSET] = mass > EPSILON ? 1 / mass : 0;
         this._bodyData[offset + INERTIA_OFFSET] = inertia;

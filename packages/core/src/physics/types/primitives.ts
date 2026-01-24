@@ -63,7 +63,7 @@ export const enum CollisionFilter {
     Dynamic = 4,
     Kinematic = 8,
     Trigger = 16,
-    All = 0xFFFF,
+    All = 0xffff,
 }
 
 export const enum SolverFlags {

@@ -1,10 +1,5 @@
 import type { IVec2Like } from '@axrone/numeric';
-import type {
-    ConstraintId,
-    BodyId,
-    Force,
-    Torque,
-} from '../types';
+import type { ConstraintId, BodyId, Force, Torque } from '../types';
 import { ConstraintType } from '../types';
 import type {
     IDistanceConstraintDef2D,
@@ -253,7 +248,10 @@ export class ConstraintManager2D implements Disposable {
 
         const metadata = this._metadata.get(constraintId);
         if (!metadata) {
-            throw new ConstraintError(`Constraint ${constraintId} not found`, ConstraintManagerError.CONSTRAINT_NOT_FOUND);
+            throw new ConstraintError(
+                `Constraint ${constraintId} not found`,
+                ConstraintManagerError.CONSTRAINT_NOT_FOUND
+            );
         }
 
         this._removeFromBody(metadata.bodyIdA, constraintId);
@@ -272,7 +270,10 @@ export class ConstraintManager2D implements Disposable {
     getConstraintType(constraintId: ConstraintId): ConstraintType {
         const metadata = this._metadata.get(constraintId);
         if (!metadata) {
-            throw new ConstraintError(`Constraint ${constraintId} not found`, ConstraintManagerError.CONSTRAINT_NOT_FOUND);
+            throw new ConstraintError(
+                `Constraint ${constraintId} not found`,
+                ConstraintManagerError.CONSTRAINT_NOT_FOUND
+            );
         }
         return metadata.type;
     }
@@ -280,7 +281,10 @@ export class ConstraintManager2D implements Disposable {
     isEnabled(constraintId: ConstraintId): boolean {
         const metadata = this._metadata.get(constraintId);
         if (!metadata) {
-            throw new ConstraintError(`Constraint ${constraintId} not found`, ConstraintManagerError.CONSTRAINT_NOT_FOUND);
+            throw new ConstraintError(
+                `Constraint ${constraintId} not found`,
+                ConstraintManagerError.CONSTRAINT_NOT_FOUND
+            );
         }
         return metadata.enabled;
     }
@@ -288,7 +292,10 @@ export class ConstraintManager2D implements Disposable {
     setEnabled(constraintId: ConstraintId, enabled: boolean): void {
         const metadata = this._metadata.get(constraintId);
         if (!metadata) {
-            throw new ConstraintError(`Constraint ${constraintId} not found`, ConstraintManagerError.CONSTRAINT_NOT_FOUND);
+            throw new ConstraintError(
+                `Constraint ${constraintId} not found`,
+                ConstraintManagerError.CONSTRAINT_NOT_FOUND
+            );
         }
         metadata.enabled = enabled;
     }
@@ -348,7 +355,10 @@ export class ConstraintManager2D implements Disposable {
 
     private _assertCapacity(): void {
         if (this._constraintCount >= this._maxConstraints) {
-            throw new ConstraintError('Constraint capacity exceeded', ConstraintManagerError.CAPACITY_EXCEEDED);
+            throw new ConstraintError(
+                'Constraint capacity exceeded',
+                ConstraintManagerError.CAPACITY_EXCEEDED
+            );
         }
     }
 

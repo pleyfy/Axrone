@@ -198,7 +198,11 @@ export interface IPhysicsWorld2D extends Disposable {
         max: Readonly<IVec2Like>,
         callback: IAABBQueryCallback
     ): void;
-    queryAABBAll(min: Readonly<IVec2Like>, max: Readonly<IVec2Like>, filter?: IQueryFilter): readonly ShapeId[];
+    queryAABBAll(
+        min: Readonly<IVec2Like>,
+        max: Readonly<IVec2Like>,
+        filter?: IQueryFilter
+    ): readonly ShapeId[];
 
     queryPoint(point: Readonly<IVec2Like>, callback: IAABBQueryCallback): void;
     queryPointAll(point: Readonly<IVec2Like>, filter?: IQueryFilter): readonly ShapeId[];
@@ -281,7 +285,11 @@ export interface IPhysicsWorld3D extends Disposable {
         max: Readonly<IVec3Like>,
         callback: IAABBQueryCallback
     ): void;
-    queryAABBAll(min: Readonly<IVec3Like>, max: Readonly<IVec3Like>, filter?: IQueryFilter): readonly ShapeId[];
+    queryAABBAll(
+        min: Readonly<IVec3Like>,
+        max: Readonly<IVec3Like>,
+        filter?: IQueryFilter
+    ): readonly ShapeId[];
 
     queryPoint(point: Readonly<IVec3Like>, callback: IAABBQueryCallback): void;
     queryPointAll(point: Readonly<IVec3Like>, filter?: IQueryFilter): readonly ShapeId[];

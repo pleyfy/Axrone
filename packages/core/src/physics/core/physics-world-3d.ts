@@ -545,61 +545,116 @@ export class ShapeManager3D implements Disposable {
         return this._shapeCount;
     }
 
-    createSphere(bodyId: BodyId3D, def: ISphereShapeDef3D, material?: Partial<IMaterial>, filter?: ICollisionFilter3D): ShapeId3D {
-        return this._createShape(bodyId, 5, (offset) => {
-            this._shapeData[offset] = def.center.x;
-            this._shapeData[offset + 1] = def.center.y;
-            this._shapeData[offset + 2] = def.center.z;
-            this._shapeData[offset + 3] = def.radius;
-        }, material, filter);
+    createSphere(
+        bodyId: BodyId3D,
+        def: ISphereShapeDef3D,
+        material?: Partial<IMaterial>,
+        filter?: ICollisionFilter3D
+    ): ShapeId3D {
+        return this._createShape(
+            bodyId,
+            5,
+            (offset) => {
+                this._shapeData[offset] = def.center.x;
+                this._shapeData[offset + 1] = def.center.y;
+                this._shapeData[offset + 2] = def.center.z;
+                this._shapeData[offset + 3] = def.radius;
+            },
+            material,
+            filter
+        );
     }
 
-    createBox(bodyId: BodyId3D, def: IBoxShapeDef3D, material?: Partial<IMaterial>, filter?: ICollisionFilter3D): ShapeId3D {
-        return this._createShape(bodyId, 3, (offset) => {
-            this._shapeData[offset] = def.center.x;
-            this._shapeData[offset + 1] = def.center.y;
-            this._shapeData[offset + 2] = def.center.z;
-            this._shapeData[offset + 3] = def.halfExtents.x;
-            this._shapeData[offset + 4] = def.halfExtents.y;
-            this._shapeData[offset + 5] = def.halfExtents.z;
-            if (def.rotation) {
-                this._shapeData[offset + 6] = def.rotation.x;
-                this._shapeData[offset + 7] = def.rotation.y;
-                this._shapeData[offset + 8] = def.rotation.z;
-                this._shapeData[offset + 9] = def.rotation.w;
-            } else {
-                this._shapeData[offset + 9] = 1;
-            }
-        }, material, filter);
+    createBox(
+        bodyId: BodyId3D,
+        def: IBoxShapeDef3D,
+        material?: Partial<IMaterial>,
+        filter?: ICollisionFilter3D
+    ): ShapeId3D {
+        return this._createShape(
+            bodyId,
+            3,
+            (offset) => {
+                this._shapeData[offset] = def.center.x;
+                this._shapeData[offset + 1] = def.center.y;
+                this._shapeData[offset + 2] = def.center.z;
+                this._shapeData[offset + 3] = def.halfExtents.x;
+                this._shapeData[offset + 4] = def.halfExtents.y;
+                this._shapeData[offset + 5] = def.halfExtents.z;
+                if (def.rotation) {
+                    this._shapeData[offset + 6] = def.rotation.x;
+                    this._shapeData[offset + 7] = def.rotation.y;
+                    this._shapeData[offset + 8] = def.rotation.z;
+                    this._shapeData[offset + 9] = def.rotation.w;
+                } else {
+                    this._shapeData[offset + 9] = 1;
+                }
+            },
+            material,
+            filter
+        );
     }
 
-    createCapsule(bodyId: BodyId3D, def: ICapsuleShapeDef3D, material?: Partial<IMaterial>, filter?: ICollisionFilter3D): ShapeId3D {
-        return this._createShape(bodyId, 1, (offset) => {
-            this._shapeData[offset] = def.p1.x;
-            this._shapeData[offset + 1] = def.p1.y;
-            this._shapeData[offset + 2] = def.p1.z;
-            this._shapeData[offset + 3] = def.p2.x;
-            this._shapeData[offset + 4] = def.p2.y;
-            this._shapeData[offset + 5] = def.p2.z;
-            this._shapeData[offset + 6] = def.radius;
-        }, material, filter);
+    createCapsule(
+        bodyId: BodyId3D,
+        def: ICapsuleShapeDef3D,
+        material?: Partial<IMaterial>,
+        filter?: ICollisionFilter3D
+    ): ShapeId3D {
+        return this._createShape(
+            bodyId,
+            1,
+            (offset) => {
+                this._shapeData[offset] = def.p1.x;
+                this._shapeData[offset + 1] = def.p1.y;
+                this._shapeData[offset + 2] = def.p1.z;
+                this._shapeData[offset + 3] = def.p2.x;
+                this._shapeData[offset + 4] = def.p2.y;
+                this._shapeData[offset + 5] = def.p2.z;
+                this._shapeData[offset + 6] = def.radius;
+            },
+            material,
+            filter
+        );
     }
 
-    createCylinder(bodyId: BodyId3D, def: ICylinderShapeDef3D, material?: Partial<IMaterial>, filter?: ICollisionFilter3D): ShapeId3D {
-        return this._createShape(bodyId, 6, (offset) => {
-            this._shapeData[offset] = def.center.x;
-            this._shapeData[offset + 1] = def.center.y;
-            this._shapeData[offset + 2] = def.center.z;
-            this._shapeData[offset + 3] = def.radius;
-            this._shapeData[offset + 4] = def.height;
-            this._shapeData[offset + 5] = def.axis ?? 1;
-        }, material, filter);
+    createCylinder(
+        bodyId: BodyId3D,
+        def: ICylinderShapeDef3D,
+        material?: Partial<IMaterial>,
+        filter?: ICollisionFilter3D
+    ): ShapeId3D {
+        return this._createShape(
+            bodyId,
+            6,
+            (offset) => {
+                this._shapeData[offset] = def.center.x;
+                this._shapeData[offset + 1] = def.center.y;
+                this._shapeData[offset + 2] = def.center.z;
+                this._shapeData[offset + 3] = def.radius;
+                this._shapeData[offset + 4] = def.height;
+                this._shapeData[offset + 5] = def.axis ?? 1;
+            },
+            material,
+            filter
+        );
     }
 
-    createConvexHull(bodyId: BodyId3D, def: IConvexHullShapeDef3D, material?: Partial<IMaterial>, filter?: ICollisionFilter3D): ShapeId3D {
-        return this._createShape(bodyId, 8, (offset) => {
-            this._shapeData[offset] = def.vertices.length;
-        }, material, filter);
+    createConvexHull(
+        bodyId: BodyId3D,
+        def: IConvexHullShapeDef3D,
+        material?: Partial<IMaterial>,
+        filter?: ICollisionFilter3D
+    ): ShapeId3D {
+        return this._createShape(
+            bodyId,
+            8,
+            (offset) => {
+                this._shapeData[offset] = def.vertices.length;
+            },
+            material,
+            filter
+        );
     }
 
     destroyShape(shapeId: ShapeId3D): void {
@@ -682,7 +737,7 @@ export class ShapeManager3D implements Disposable {
 
         const filterOffset = index * 3;
         this._filters[filterOffset] = filter?.categoryBits ?? 1;
-        this._filters[filterOffset + 1] = filter?.maskBits ?? 0xFFFF;
+        this._filters[filterOffset + 1] = filter?.maskBits ?? 0xffff;
         this._filters[filterOffset + 2] = filter?.groupIndex ?? 0;
 
         this._shapeCount++;
@@ -833,12 +888,24 @@ export class ConstraintManager3D implements Disposable {
         });
     }
 
-    createFixed(def: IFixedConstraintDef3D): ConstraintId3D { return this.createFixedConstraint(def); }
-    createHinge(def: IHingeConstraintDef3D): ConstraintId3D { return this.createHingeConstraint(def); }
-    createSlider(def: ISliderConstraintDef3D): ConstraintId3D { return this.createSliderConstraint(def); }
-    createSpring(def: ISpringConstraintDef3D): ConstraintId3D { return this.createSpringConstraint(def); }
-    createConeTwist(def: IConeTwistConstraintDef3D): ConstraintId3D { return this.createConeTwistConstraint(def); }
-    createGeneric(def: IGenericConstraintDef3D): ConstraintId3D { return this.createGenericConstraint(def); }
+    createFixed(def: IFixedConstraintDef3D): ConstraintId3D {
+        return this.createFixedConstraint(def);
+    }
+    createHinge(def: IHingeConstraintDef3D): ConstraintId3D {
+        return this.createHingeConstraint(def);
+    }
+    createSlider(def: ISliderConstraintDef3D): ConstraintId3D {
+        return this.createSliderConstraint(def);
+    }
+    createSpring(def: ISpringConstraintDef3D): ConstraintId3D {
+        return this.createSpringConstraint(def);
+    }
+    createConeTwist(def: IConeTwistConstraintDef3D): ConstraintId3D {
+        return this.createConeTwistConstraint(def);
+    }
+    createGeneric(def: IGenericConstraintDef3D): ConstraintId3D {
+        return this.createGenericConstraint(def);
+    }
 
     destroyConstraint(constraintId: ConstraintId3D): void {
         const index = this._constraintIdToIndex.get(constraintId);
@@ -886,7 +953,8 @@ export class ConstraintManager3D implements Disposable {
         }
 
         const constraintId = this._nextConstraintId++ as ConstraintId3D;
-        const index = this._freeIndices.length > 0 ? this._freeIndices.pop()! : this._constraintCount;
+        const index =
+            this._freeIndices.length > 0 ? this._freeIndices.pop()! : this._constraintCount;
 
         this._constraintIdToIndex.set(constraintId, index);
         this._constraintTypes[index] = type;
@@ -931,9 +999,7 @@ export class PhysicsWorld3D implements Disposable {
 
     constructor(config: IPhysicsWorld3DConfig = {}) {
         this.config = config;
-        this._gravity = config.gravity
-            ? Vec3.from(config.gravity)
-            : new Vec3(0, -9.81, 0);
+        this._gravity = config.gravity ? Vec3.from(config.gravity) : new Vec3(0, -9.81, 0);
 
         const maxBodies = config.maxBodies ?? 4096;
         const maxShapes = config.maxShapes ?? 8192;
@@ -998,8 +1064,7 @@ export class PhysicsWorld3D implements Disposable {
         maxDistance: number,
         callback: RaycastCallback3D,
         filter?: IQueryFilter3D
-    ): void {
-    }
+    ): void {}
 
     private _integrateVelocities(dt: number): void {
         const bodyIds = this._bodyManager.getBodyIds();
@@ -1022,8 +1087,7 @@ export class PhysicsWorld3D implements Disposable {
         }
     }
 
-    private _solveConstraints(iterations: number): void {
-    }
+    private _solveConstraints(iterations: number): void {}
 
     private _integratePositions(dt: number): void {
         const bodyIds = this._bodyManager.getBodyIds();
@@ -1043,7 +1107,9 @@ export class PhysicsWorld3D implements Disposable {
                 z: pos.z + vel.z * dt,
             });
 
-            const angSpeed = Math.sqrt(angVel.x * angVel.x + angVel.y * angVel.y + angVel.z * angVel.z);
+            const angSpeed = Math.sqrt(
+                angVel.x * angVel.x + angVel.y * angVel.y + angVel.z * angVel.z
+            );
             if (angSpeed > 1e-10) {
                 const halfAngle = angSpeed * dt * 0.5;
                 const s = Math.sin(halfAngle) / angSpeed;

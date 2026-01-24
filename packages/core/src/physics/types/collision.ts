@@ -11,7 +11,12 @@ import type {
     IContactPoint3D,
 } from './primitives';
 
-export type { IContactManifold2D, IContactManifold3D, IContactPoint2D, IContactPoint3D } from './primitives';
+export type {
+    IContactManifold2D,
+    IContactManifold3D,
+    IContactPoint2D,
+    IContactPoint3D,
+} from './primitives';
 
 export const enum CollisionEventType {
     Begin = 0,

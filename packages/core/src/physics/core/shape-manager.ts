@@ -81,7 +81,7 @@ export class ShapeManager2D implements Disposable {
     constructor(maxShapes: number = 2048) {
         this._maxShapes = maxShapes;
         const quarterMax = Math.ceil(maxShapes / 4);
-        
+
         this._shapeMetadata = new Map();
         this._circleData = new Float64Array(quarterMax * CIRCLE_SHAPE_SIZE);
         this._boxData = new Float64Array(quarterMax * BOX_SHAPE_SIZE);
@@ -89,7 +89,7 @@ export class ShapeManager2D implements Disposable {
         this._polygonVertexCounts = new Uint8Array(quarterMax);
         this._segmentData = new Float64Array(quarterMax * 4);
         this._capsuleData = new Float64Array(quarterMax * 4);
-        
+
         this._shapeToCircleIndex = new Map();
         this._shapeToBoxIndex = new Map();
         this._shapeToPolygonIndex = new Map();
@@ -206,7 +206,7 @@ export class ShapeManager2D implements Disposable {
 
     destroyShape(shapeId: ShapeId): void {
         this._assertNotDisposed();
-        
+
         const metadata = this._shapeMetadata.get(shapeId);
         if (!metadata) {
             throw new ShapeError(`Shape ${shapeId} not found`, ShapeManagerError.SHAPE_NOT_FOUND);
@@ -257,7 +257,12 @@ export class ShapeManager2D implements Disposable {
         };
     }
 
-    getBoxData(shapeId: ShapeId): { center: IVec2Like; halfWidth: number; halfHeight: number; rotation: number } {
+    getBoxData(shapeId: ShapeId): {
+        center: IVec2Like;
+        halfWidth: number;
+        halfHeight: number;
+        rotation: number;
+    } {
         const index = this._shapeToBoxIndex.get(shapeId);
         if (index === undefined) {
             throw new ShapeError(`Box ${shapeId} not found`, ShapeManagerError.SHAPE_NOT_FOUND);
@@ -311,7 +316,7 @@ export class ShapeManager2D implements Disposable {
         const r = data.radius;
         const mass = density * Math.PI * r * r;
         const inertia = mass * r * r * 0.5;
-        
+
         return {
             mass: mass as Mass,
             inverseMass: mass > 0 ? 1 / mass : 0,
@@ -327,7 +332,7 @@ export class ShapeManager2D implements Disposable {
         const h = data.halfHeight * 2;
         const mass = density * w * h;
         const inertia = (mass / 12) * (w * w + h * h);
-        
+
         return {
             mass: mass as Mass,
             inverseMass: mass > 0 ? 1 / mass : 0,
@@ -350,7 +355,15 @@ export class ShapeManager2D implements Disposable {
         shapeId: ShapeId,
         bodyId: BodyId,
         type: ShapeType,
-        def: { material?: IMaterial; friction?: Friction; restitution?: Restitution; density?: Density; isSensor?: boolean; filter?: any; userData?: unknown }
+        def: {
+            material?: IMaterial;
+            friction?: Friction;
+            restitution?: Restitution;
+            density?: Density;
+            isSensor?: boolean;
+            filter?: any;
+            userData?: unknown;
+        }
     ): void {
         const material: IMaterial = def.material ?? {
             friction: (def.friction ?? 0.2) as Friction,
