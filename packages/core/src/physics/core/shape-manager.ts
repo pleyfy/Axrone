@@ -271,6 +271,41 @@ export class ShapeManager2D implements Disposable {
         };
     }
 
+    getPolygonData(shapeId: ShapeId): { vertices: IVec2Like[] } {
+        const index = this._shapeToPolygonIndex.get(shapeId);
+        if (index === undefined) {
+            throw new ShapeError(`Polygon ${shapeId} not found`, ShapeManagerError.SHAPE_NOT_FOUND);
+        }
+        const vertexCount = this._polygonVertexCounts[index];
+        const offset = index * POLYGON_MAX_VERTICES * 2;
+        const vertices: IVec2Like[] = [];
+        for (let i = 0; i < vertexCount; i++) {
+            vertices.push({
+                x: this._polygonData[offset + i * 2],
+                y: this._polygonData[offset + i * 2 + 1],
+            });
+        }
+        return { vertices };
+    }
+
+    getCapsuleData(shapeId: ShapeId): { p1: IVec2Like; p2: IVec2Like; radius: number } {
+        const index = this._shapeToCapsuleIndex.get(shapeId);
+        if (index === undefined) {
+            throw new ShapeError(`Capsule ${shapeId} not found`, ShapeManagerError.SHAPE_NOT_FOUND);
+        }
+        const offset = index * 4;
+        const centerX = this._capsuleData[offset];
+        const centerY = this._capsuleData[offset + 1];
+        const radius = this._capsuleData[offset + 2];
+        const length = this._capsuleData[offset + 3];
+        const halfLength = length * 0.5;
+        return {
+            p1: { x: centerX - halfLength, y: centerY },
+            p2: { x: centerX + halfLength, y: centerY },
+            radius,
+        };
+    }
+
     computeCircleMassData(shapeId: ShapeId, density: Density): IMassData2D {
         const data = this.getCircleData(shapeId);
         const r = data.radius;
