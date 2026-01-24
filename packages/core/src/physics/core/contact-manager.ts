@@ -29,7 +29,6 @@ class ContactError extends Error {
 }
 
 const CONTACT_STRIDE = 16;
-// SOA Layout: [friction, restitution, tangentSpeed, isEnabled, isTouching, childIndexA, childIndexB, manifoldPointCount, normalX, normalY, tangentX, tangentY, point1X, point1Y, point2X, point2Y]
 
 export class ContactManager2D implements Disposable {
     private _nextContactId: number = 1;
@@ -84,11 +83,7 @@ export class ContactManager2D implements Disposable {
     ): ContactId {
         this._assertNotDisposed();
 
-        // Check filtering
         if (this._collisionFilter && !this._collisionFilter.shouldCollide(shapeIdA, shapeIdB)) {
-            // In a real broadphase, we might skip creating this contact entirely,
-            // but here we might create it but disabled.
-            // For now, let's assume broadphase handles broad filtering, and this is for narrowphase candidates.
         }
 
         if (this._contactCount >= this._maxContacts && this._freeIndices.length === 0) {

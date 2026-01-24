@@ -1,13 +1,4 @@
-/**
- * @module physics
- * @description High-performance 2D/3D physics engine with broadphase collision detection,
- * constraint solving, and island-based simulation
- */
-
-// Export types
 export * from './types';
-
-// Export core systems
 export { PhysicsWorld2D } from './core/physics-world';
 export { DynamicAABBTree2D } from './core/broadphase';
 export { BodyManager2D } from './core/body-manager';

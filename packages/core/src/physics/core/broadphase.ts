@@ -286,8 +286,6 @@ export class DynamicAABBTree2D {
             
             walkIndex = walkNode.parent;
         }
-        
-        // TODO: Validate tree balance if needed
     }
 
     private _removeLeaf(leaf: number): void {
