@@ -10,3 +10,5 @@ export { Narrowphase2D } from './core/narrowphase';
 export { GJK2D, SAT2D, EPA2D } from './core/collision-algorithms';
 export { ContinuousCollisionDetection, Raycaster2D } from './core/continuous-collision';
 export { ConstraintSolver2D } from './core/constraint-solver';
+
+export { PhysicsWorld3D, BodyManager3D, ShapeManager3D, ConstraintManager3D } from './core/physics-world-3d';
