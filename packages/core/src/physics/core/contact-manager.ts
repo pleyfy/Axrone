@@ -47,8 +47,9 @@ export class ContactManager2D implements Disposable {
     >;
 
     private readonly _contactData: Float64Array;
-    private readonly _contactFlags: Uint8Array; // [isEnabled, isTouching] packed
-    private readonly _contactIndices: Int32Array; // [childIndexA, childIndexB]
+    private readonly _contactFlags: Uint8Array;
+    private readonly _contactIndices: Int32Array;
+    private readonly _warmStartData: Float64Array;
 
     private readonly _contactIdToIndex: Map<ContactId, number>;
     private readonly _bodyToContacts: Map<BodyId, Set<ContactId>>;
@@ -63,9 +64,10 @@ export class ContactManager2D implements Disposable {
 
         this._contactMetadata = new Map();
 
-        this._contactData = new Float64Array(maxContacts * 12); // friction, rest, tanSpeed, normal(2), tan(2), points(4), impulses(2) ... optimized layout
+        this._contactData = new Float64Array(maxContacts * 16);
         this._contactFlags = new Uint8Array(maxContacts);
         this._contactIndices = new Int32Array(maxContacts * 2);
+        this._warmStartData = new Float64Array(maxContacts * 8);
 
         this._contactIdToIndex = new Map();
         this._bodyToContacts = new Map();
@@ -103,13 +105,36 @@ export class ContactManager2D implements Disposable {
             bodyIdB,
             shapeIdA,
             shapeIdB,
-            manifoldId: contactId as unknown as ManifoldId, // Simple mapping for now
+            manifoldId: contactId as unknown as ManifoldId,
         });
 
-        const dataOffset = index * 12;
+        const dataOffset = index * 16;
         this._contactData[dataOffset] = 0.2;
         this._contactData[dataOffset + 1] = 0.0;
         this._contactData[dataOffset + 2] = 0.0;
+        this._contactData[dataOffset + 3] = 0;
+        this._contactData[dataOffset + 4] = 0;
+        this._contactData[dataOffset + 5] = 0;
+        this._contactData[dataOffset + 6] = 0;
+        this._contactData[dataOffset + 7] = 0;
+        this._contactData[dataOffset + 8] = 0;
+        this._contactData[dataOffset + 9] = 0;
+        this._contactData[dataOffset + 10] = 0;
+        this._contactData[dataOffset + 11] = 0;
+        this._contactData[dataOffset + 12] = 0;
+        this._contactData[dataOffset + 13] = 0;
+        this._contactData[dataOffset + 14] = 0;
+        this._contactData[dataOffset + 15] = 0;
+
+        const warmOffset = index * 8;
+        this._warmStartData[warmOffset] = 0;
+        this._warmStartData[warmOffset + 1] = 0;
+        this._warmStartData[warmOffset + 2] = 0;
+        this._warmStartData[warmOffset + 3] = 0;
+        this._warmStartData[warmOffset + 4] = 0;
+        this._warmStartData[warmOffset + 5] = 0;
+        this._warmStartData[warmOffset + 6] = 0;
+        this._warmStartData[warmOffset + 7] = 0;
 
         this._contactFlags[index] = 1;
         this._contactIndices[index * 2] = 0;
@@ -161,13 +186,24 @@ export class ContactManager2D implements Disposable {
         else flags &= ~2;
         this._contactFlags[index] = flags;
 
-        const offset = index * 12;
+        const offset = index * 16;
         this._contactData[offset + 3] = manifold.normal.x;
         this._contactData[offset + 4] = manifold.normal.y;
 
         if (manifold.pointCount > 0) {
             this._contactData[offset + 5] = manifold.points[0].localPointA.x;
             this._contactData[offset + 6] = manifold.points[0].localPointA.y;
+            this._contactData[offset + 7] = manifold.points[0].localPointB.x;
+            this._contactData[offset + 8] = manifold.points[0].localPointB.y;
+            this._contactData[offset + 9] = manifold.points[0].separation;
+        }
+
+        if (manifold.pointCount > 1) {
+            this._contactData[offset + 10] = manifold.points[1].localPointA.x;
+            this._contactData[offset + 11] = manifold.points[1].localPointA.y;
+            this._contactData[offset + 12] = manifold.points[1].localPointB.x;
+            this._contactData[offset + 13] = manifold.points[1].localPointB.y;
+            this._contactData[offset + 14] = manifold.points[1].separation;
         }
 
         if (isTouching && !wasTouching) {
@@ -180,6 +216,60 @@ export class ContactManager2D implements Disposable {
             if (this._contactListener?.onCollisionStay) {
             }
         }
+    }
+
+    getWarmStartImpulse(contactId: ContactId, pointIndex: number): { normalImpulse: number; tangentImpulse: number } {
+        const index = this._contactIdToIndex.get(contactId);
+        if (index === undefined) return { normalImpulse: 0, tangentImpulse: 0 };
+
+        const offset = index * 8 + pointIndex * 4;
+        return {
+            normalImpulse: this._warmStartData[offset],
+            tangentImpulse: this._warmStartData[offset + 1],
+        };
+    }
+
+    setWarmStartImpulse(contactId: ContactId, pointIndex: number, normalImpulse: number, tangentImpulse: number): void {
+        const index = this._contactIdToIndex.get(contactId);
+        if (index === undefined) return;
+
+        const offset = index * 8 + pointIndex * 4;
+        this._warmStartData[offset] = normalImpulse;
+        this._warmStartData[offset + 1] = tangentImpulse;
+        this._warmStartData[offset + 2] = 0;
+        this._warmStartData[offset + 3] = 0;
+    }
+
+    getContactData(contactId: ContactId): {
+        friction: number;
+        restitution: number;
+        normal: IVec2Like;
+        pointCount: number;
+        point0: { localA: IVec2Like; localB: IVec2Like; separation: number };
+        point1?: { localA: IVec2Like; localB: IVec2Like; separation: number };
+    } | null {
+        const index = this._contactIdToIndex.get(contactId);
+        if (index === undefined) return null;
+
+        const offset = index * 16;
+        const pointCount = this._contactData[offset + 15];
+
+        return {
+            friction: this._contactData[offset],
+            restitution: this._contactData[offset + 1],
+            normal: { x: this._contactData[offset + 3], y: this._contactData[offset + 4] },
+            pointCount: pointCount,
+            point0: {
+                localA: { x: this._contactData[offset + 5], y: this._contactData[offset + 6] },
+                localB: { x: this._contactData[offset + 7], y: this._contactData[offset + 8] },
+                separation: this._contactData[offset + 9],
+            },
+            point1: pointCount > 1 ? {
+                localA: { x: this._contactData[offset + 10], y: this._contactData[offset + 11] },
+                localB: { x: this._contactData[offset + 12], y: this._contactData[offset + 13] },
+                separation: this._contactData[offset + 14],
+            } : undefined,
+        };
     }
 
     setContactListener(listener: IContactListener2D | null): void {
