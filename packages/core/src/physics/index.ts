@@ -9,3 +9,4 @@ export { IslandSolver2D } from './core/island-solver';
 export { Narrowphase2D } from './core/narrowphase';
 export { GJK2D, SAT2D, EPA2D } from './core/collision-algorithms';
 export { ContinuousCollisionDetection, Raycaster2D } from './core/continuous-collision';
+export { ConstraintSolver2D } from './core/constraint-solver';
