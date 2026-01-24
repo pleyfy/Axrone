@@ -212,18 +212,20 @@ export class DistanceJoint2D extends Joint2D {
             this._distance = posA.distance(posB);
         }
 
-        this._constraintId = (this._physicsWorld as any).getConstraintManager().createDistanceConstraint({
-            bodyIdA: this._rigidbodyA.bodyId,
-            bodyIdB: this._connectedBody.bodyId,
-            localAnchorA: { x: this._anchorA.x, y: this._anchorA.y },
-            localAnchorB: { x: this._anchorB.x, y: this._anchorB.y },
-            length: this._distance,
-            minLength: this._minDistance,
-            maxLength: this._maxDistance,
-            stiffness: this._stiffness,
-            damping: this._damping,
-            collideConnected: this._enableCollision,
-        });
+        this._constraintId = (this._physicsWorld as any)
+            .getConstraintManager()
+            .createDistanceConstraint({
+                bodyIdA: this._rigidbodyA.bodyId,
+                bodyIdB: this._connectedBody.bodyId,
+                localAnchorA: { x: this._anchorA.x, y: this._anchorA.y },
+                localAnchorB: { x: this._anchorB.x, y: this._anchorB.y },
+                length: this._distance,
+                minLength: this._minDistance,
+                maxLength: this._maxDistance,
+                stiffness: this._stiffness,
+                damping: this._damping,
+                collideConnected: this._enableCollision,
+            });
     }
 
     protected destroyConstraint(): void {
@@ -343,20 +345,22 @@ export class HingeJoint2D extends Joint2D {
         this._physicsWorld = this.getPhysicsWorld();
         if (!this._physicsWorld) return;
 
-        this._constraintId = (this._physicsWorld as any).getConstraintManager().createRevoluteConstraint({
-            bodyIdA: this._rigidbodyA.bodyId,
-            bodyIdB: this._connectedBody.bodyId,
-            localAnchorA: { x: this._anchor.x, y: this._anchor.y },
-            localAnchorB: { x: 0, y: 0 },
-            referenceAngle: 0,
-            enableLimit: this._useLimits,
-            lowerAngle: this._limits.min * (Math.PI / 180),
-            upperAngle: this._limits.max * (Math.PI / 180),
-            enableMotor: this._useMotor,
-            motorSpeed: this._motor.speed,
-            maxMotorTorque: this._motor.maxTorque as any,
-            collideConnected: this._enableCollision,
-        });
+        this._constraintId = (this._physicsWorld as any)
+            .getConstraintManager()
+            .createRevoluteConstraint({
+                bodyIdA: this._rigidbodyA.bodyId,
+                bodyIdB: this._connectedBody.bodyId,
+                localAnchorA: { x: this._anchor.x, y: this._anchor.y },
+                localAnchorB: { x: 0, y: 0 },
+                referenceAngle: 0,
+                enableLimit: this._useLimits,
+                lowerAngle: this._limits.min * (Math.PI / 180),
+                upperAngle: this._limits.max * (Math.PI / 180),
+                enableMotor: this._useMotor,
+                motorSpeed: this._motor.speed,
+                maxMotorTorque: this._motor.maxTorque as any,
+                collideConnected: this._enableCollision,
+            });
     }
 
     protected destroyConstraint(): void {
@@ -496,21 +500,23 @@ export class SliderJoint2D extends Joint2D {
         this._physicsWorld = this.getPhysicsWorld();
         if (!this._physicsWorld) return;
 
-        this._constraintId = (this._physicsWorld as any).getConstraintManager().createPrismaticConstraint({
-            bodyIdA: this._rigidbodyA.bodyId,
-            bodyIdB: this._connectedBody.bodyId,
-            localAnchorA: { x: this._anchor.x, y: this._anchor.y },
-            localAnchorB: { x: 0, y: 0 },
-            localAxisA: { x: this._axis.x, y: this._axis.y },
-            referenceAngle: 0,
-            enableLimit: this._useLimits,
-            lowerTranslation: this._limits.min,
-            upperTranslation: this._limits.max,
-            enableMotor: this._useMotor,
-            motorSpeed: this._motor.speed,
-            maxMotorForce: this._motor.maxForce as any,
-            collideConnected: this._enableCollision,
-        });
+        this._constraintId = (this._physicsWorld as any)
+            .getConstraintManager()
+            .createPrismaticConstraint({
+                bodyIdA: this._rigidbodyA.bodyId,
+                bodyIdB: this._connectedBody.bodyId,
+                localAnchorA: { x: this._anchor.x, y: this._anchor.y },
+                localAnchorB: { x: 0, y: 0 },
+                localAxisA: { x: this._axis.x, y: this._axis.y },
+                referenceAngle: 0,
+                enableLimit: this._useLimits,
+                lowerTranslation: this._limits.min,
+                upperTranslation: this._limits.max,
+                enableMotor: this._useMotor,
+                motorSpeed: this._motor.speed,
+                maxMotorForce: this._motor.maxForce as any,
+                collideConnected: this._enableCollision,
+            });
     }
 
     protected destroyConstraint(): void {
@@ -611,16 +617,18 @@ export class SpringJoint2D extends Joint2D {
             this._distance = posA.distance(posB);
         }
 
-        this._constraintId = (this._physicsWorld as any).getConstraintManager().createDistanceConstraint({
-            bodyIdA: this._rigidbodyA.bodyId,
-            bodyIdB: this._connectedBody.bodyId,
-            localAnchorA: { x: this._anchorA.x, y: this._anchorA.y },
-            localAnchorB: { x: this._anchorB.x, y: this._anchorB.y },
-            length: this._distance,
-            stiffness: this._stiffness,
-            damping: this._damping,
-            collideConnected: this._enableCollision,
-        });
+        this._constraintId = (this._physicsWorld as any)
+            .getConstraintManager()
+            .createDistanceConstraint({
+                bodyIdA: this._rigidbodyA.bodyId,
+                bodyIdB: this._connectedBody.bodyId,
+                localAnchorA: { x: this._anchorA.x, y: this._anchorA.y },
+                localAnchorB: { x: this._anchorB.x, y: this._anchorB.y },
+                length: this._distance,
+                stiffness: this._stiffness,
+                damping: this._damping,
+                collideConnected: this._enableCollision,
+            });
     }
 
     protected destroyConstraint(): void {
@@ -710,16 +718,18 @@ export class FixedJoint2D extends Joint2D {
         const stiffness = this._frequency > 0 ? this._frequency * this._frequency : 0;
         const damping = 2 * this._dampingRatio * Math.sqrt(stiffness);
 
-        this._constraintId = (this._physicsWorld as any).getConstraintManager().createWeldConstraint({
-            bodyIdA: this._rigidbodyA.bodyId,
-            bodyIdB: this._connectedBody.bodyId,
-            localAnchorA: { x: this._anchor.x, y: this._anchor.y },
-            localAnchorB: { x: 0, y: 0 },
-            referenceAngle: 0,
-            stiffness,
-            damping,
-            collideConnected: this._enableCollision,
-        });
+        this._constraintId = (this._physicsWorld as any)
+            .getConstraintManager()
+            .createWeldConstraint({
+                bodyIdA: this._rigidbodyA.bodyId,
+                bodyIdB: this._connectedBody.bodyId,
+                localAnchorA: { x: this._anchor.x, y: this._anchor.y },
+                localAnchorB: { x: 0, y: 0 },
+                referenceAngle: 0,
+                stiffness,
+                damping,
+                collideConnected: this._enableCollision,
+            });
     }
 
     protected destroyConstraint(): void {

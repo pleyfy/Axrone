@@ -1,10 +1,7 @@
 import { Vec3, Quat, type IVec3Like, type IQuatLike } from '@axrone/numeric';
 import { script } from '../../decorators';
 import { Component } from '../../core/component';
-import type {
-    BodyId3D,
-    IPhysicsBodyDef3D,
-} from '../../../physics/types/physics-3d';
+import type { BodyId3D, IPhysicsBodyDef3D } from '../../../physics/types/physics-3d';
 import type { PhysicsWorld3D, BodyManager3D } from '../../../physics/core/physics-world-3d';
 import type { BodyType } from '../../../physics/types';
 
@@ -29,9 +26,9 @@ const enum RigidbodyConstraints3D {
     FreezeRotationX = 1 << 3,
     FreezeRotationY = 1 << 4,
     FreezeRotationZ = 1 << 5,
-    FreezePosition = 1 << 0 | 1 << 1 | 1 << 2,
-    FreezeRotation = 1 << 3 | 1 << 4 | 1 << 5,
-    FreezeAll = 0x3F,
+    FreezePosition = (1 << 0) | (1 << 1) | (1 << 2),
+    FreezeRotation = (1 << 3) | (1 << 4) | (1 << 5),
+    FreezeAll = 0x3f,
 }
 
 const enum CollisionDetectionMode3D {
@@ -247,7 +244,8 @@ export class Rigidbody3D extends Component {
     }
 
     set velocity(value: IVec3Like) {
-        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic) return;
+        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic)
+            return;
         this._bodyManager.setLinearVelocity(this._bodyId, this._applyVelocityConstraints(value));
         this.wakeUp();
     }
@@ -258,7 +256,8 @@ export class Rigidbody3D extends Component {
     }
 
     set angularVelocity(value: IVec3Like) {
-        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic) return;
+        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic)
+            return;
         const clamped = this._clampAngularVelocity(this._applyAngularConstraints(value));
         this._bodyManager.setAngularVelocity(this._bodyId, clamped);
         this.wakeUp();
@@ -345,9 +344,21 @@ export class Rigidbody3D extends Component {
         const yz = rot.y * rz;
         const zz = rot.z * rz;
         return {
-            x: pos.x + (1 - (yy + zz)) * localCom.x + (xy - wz) * localCom.y + (xz + wy) * localCom.z,
-            y: pos.y + (xy + wz) * localCom.x + (1 - (xx + zz)) * localCom.y + (yz - wx) * localCom.z,
-            z: pos.z + (xz - wy) * localCom.x + (yz + wx) * localCom.y + (1 - (xx + yy)) * localCom.z,
+            x:
+                pos.x +
+                (1 - (yy + zz)) * localCom.x +
+                (xy - wz) * localCom.y +
+                (xz + wy) * localCom.z,
+            y:
+                pos.y +
+                (xy + wz) * localCom.x +
+                (1 - (xx + zz)) * localCom.y +
+                (yz - wx) * localCom.z,
+            z:
+                pos.z +
+                (xz - wy) * localCom.x +
+                (yz + wx) * localCom.y +
+                (1 - (xx + yy)) * localCom.z,
         };
     }
 
@@ -359,7 +370,8 @@ export class Rigidbody3D extends Component {
     }
 
     addForce(force: IVec3Like, mode: ForceMode3D = ForceMode3D.Force): void {
-        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic) return;
+        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic)
+            return;
         const constrainedForce = this._applyVelocityConstraints(force);
         switch (mode) {
             case ForceMode3D.Force:
@@ -378,18 +390,27 @@ export class Rigidbody3D extends Component {
                 break;
             }
             case ForceMode3D.Acceleration:
-                Vec3.add(this._accumulatedForce, {
-                    x: constrainedForce.x * this._mass,
-                    y: constrainedForce.y * this._mass,
-                    z: constrainedForce.z * this._mass,
-                }, this._accumulatedForce);
+                Vec3.add(
+                    this._accumulatedForce,
+                    {
+                        x: constrainedForce.x * this._mass,
+                        y: constrainedForce.y * this._mass,
+                        z: constrainedForce.z * this._mass,
+                    },
+                    this._accumulatedForce
+                );
                 break;
         }
         this.wakeUp();
     }
 
-    addForceAtPosition(force: IVec3Like, position: IVec3Like, mode: ForceMode3D = ForceMode3D.Force): void {
-        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic) return;
+    addForceAtPosition(
+        force: IVec3Like,
+        position: IVec3Like,
+        mode: ForceMode3D = ForceMode3D.Force
+    ): void {
+        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic)
+            return;
         const constrainedForce = this._applyVelocityConstraints(force);
         switch (mode) {
             case ForceMode3D.Force:
@@ -414,7 +435,8 @@ export class Rigidbody3D extends Component {
     }
 
     addTorque(torque: IVec3Like, mode: ForceMode3D = ForceMode3D.Force): void {
-        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic) return;
+        if (!this._bodyManager || this._bodyId === -1 || this._type !== Rigidbody3DType.Dynamic)
+            return;
         const constrainedTorque = this._applyAngularConstraints(torque);
         switch (mode) {
             case ForceMode3D.Force:
@@ -440,11 +462,15 @@ export class Rigidbody3D extends Component {
                 break;
             }
             case ForceMode3D.Acceleration:
-                Vec3.add(this._accumulatedTorque, {
-                    x: constrainedTorque.x * this._inertiaTensor.x,
-                    y: constrainedTorque.y * this._inertiaTensor.y,
-                    z: constrainedTorque.z * this._inertiaTensor.z,
-                }, this._accumulatedTorque);
+                Vec3.add(
+                    this._accumulatedTorque,
+                    {
+                        x: constrainedTorque.x * this._inertiaTensor.x,
+                        y: constrainedTorque.y * this._inertiaTensor.y,
+                        z: constrainedTorque.z * this._inertiaTensor.z,
+                    },
+                    this._accumulatedTorque
+                );
                 break;
         }
         this.wakeUp();
@@ -455,7 +481,13 @@ export class Rigidbody3D extends Component {
         this.addTorque(worldTorque, mode);
     }
 
-    addExplosionForce(force: number, explosionPosition: IVec3Like, explosionRadius: number, upwardsModifier: number = 0, mode: ForceMode3D = ForceMode3D.Force): void {
+    addExplosionForce(
+        force: number,
+        explosionPosition: IVec3Like,
+        explosionRadius: number,
+        upwardsModifier: number = 0,
+        mode: ForceMode3D = ForceMode3D.Force
+    ): void {
         const wcom = this.worldCenterOfMass;
         const dir = {
             x: wcom.x - explosionPosition.x,
@@ -466,9 +498,16 @@ export class Rigidbody3D extends Component {
         if (dist > explosionRadius || dist < 1e-6) return;
         const invDist = 1 / dist;
         const normalizedDir = { x: dir.x * invDist, y: dir.y * invDist, z: dir.z * invDist };
-        const effectiveFactor = 1 - (dist / explosionRadius);
+        const effectiveFactor = 1 - dist / explosionRadius;
         const scaledForce = force * effectiveFactor;
-        this.addForce({ x: normalizedDir.x * scaledForce, y: normalizedDir.y * scaledForce, z: normalizedDir.z * scaledForce }, mode);
+        this.addForce(
+            {
+                x: normalizedDir.x * scaledForce,
+                y: normalizedDir.y * scaledForce,
+                z: normalizedDir.z * scaledForce,
+            },
+            mode
+        );
     }
 
     getPointVelocity(worldPoint: IVec3Like): IVec3Like {
@@ -478,7 +517,11 @@ export class Rigidbody3D extends Component {
         const rx = worldPoint.x - com.x;
         const ry = worldPoint.y - com.y;
         const rz = worldPoint.z - com.z;
-        return { x: vel.x + angVel.y * rz - angVel.z * ry, y: vel.y + angVel.z * rx - angVel.x * rz, z: vel.z + angVel.x * ry - angVel.y * rx };
+        return {
+            x: vel.x + angVel.y * rz - angVel.z * ry,
+            y: vel.y + angVel.z * rx - angVel.x * rz,
+            z: vel.z + angVel.x * ry - angVel.y * rx,
+        };
     }
 
     getRelativePointVelocity(relativePoint: IVec3Like): IVec3Like {
@@ -560,8 +603,10 @@ export class Rigidbody3D extends Component {
     private _applyConfig(config: IRigidbody3DConfig): void {
         if (config.type !== undefined) this._type = config.type;
         if (config.mass !== undefined) this._mass = Math.max(0.0001, config.mass);
-        if (config.linearDamping !== undefined) this._linearDamping = Math.max(0, config.linearDamping);
-        if (config.angularDamping !== undefined) this._angularDamping = Math.max(0, config.angularDamping);
+        if (config.linearDamping !== undefined)
+            this._linearDamping = Math.max(0, config.linearDamping);
+        if (config.angularDamping !== undefined)
+            this._angularDamping = Math.max(0, config.angularDamping);
         if (config.gravityScale !== undefined) this._gravityScale = config.gravityScale;
         if (config.useGravity !== undefined) this._useGravity = config.useGravity;
         if (config.isKinematic !== undefined) {
@@ -570,14 +615,31 @@ export class Rigidbody3D extends Component {
         }
         if (config.constraints !== undefined) this._constraints = config.constraints;
         if (config.interpolation !== undefined) this._interpolation = config.interpolation;
-        if (config.collisionDetection !== undefined) this._collisionDetection = config.collisionDetection;
-        if (config.centerOfMass) { this._centerOfMass.x = config.centerOfMass.x; this._centerOfMass.y = config.centerOfMass.y; this._centerOfMass.z = config.centerOfMass.z; }
-        if (config.inertiaTensor) { this._inertiaTensor.x = config.inertiaTensor.x; this._inertiaTensor.y = config.inertiaTensor.y; this._inertiaTensor.z = config.inertiaTensor.z; }
-        if (config.inertiaTensorRotation) { this._inertiaTensorRotation.x = config.inertiaTensorRotation.x; this._inertiaTensorRotation.y = config.inertiaTensorRotation.y; this._inertiaTensorRotation.z = config.inertiaTensorRotation.z; this._inertiaTensorRotation.w = config.inertiaTensorRotation.w; }
+        if (config.collisionDetection !== undefined)
+            this._collisionDetection = config.collisionDetection;
+        if (config.centerOfMass) {
+            this._centerOfMass.x = config.centerOfMass.x;
+            this._centerOfMass.y = config.centerOfMass.y;
+            this._centerOfMass.z = config.centerOfMass.z;
+        }
+        if (config.inertiaTensor) {
+            this._inertiaTensor.x = config.inertiaTensor.x;
+            this._inertiaTensor.y = config.inertiaTensor.y;
+            this._inertiaTensor.z = config.inertiaTensor.z;
+        }
+        if (config.inertiaTensorRotation) {
+            this._inertiaTensorRotation.x = config.inertiaTensorRotation.x;
+            this._inertiaTensorRotation.y = config.inertiaTensorRotation.y;
+            this._inertiaTensorRotation.z = config.inertiaTensorRotation.z;
+            this._inertiaTensorRotation.w = config.inertiaTensorRotation.w;
+        }
         if (config.detectCollisions !== undefined) this._detectCollisions = config.detectCollisions;
-        if (config.maxAngularVelocity !== undefined) this._maxAngularVelocity = Math.max(0, config.maxAngularVelocity);
-        if (config.maxDepenetrationVelocity !== undefined) this._maxDepenetrationVelocity = Math.max(0, config.maxDepenetrationVelocity);
-        if (config.sleepThreshold !== undefined) this._sleepThreshold = Math.max(0, config.sleepThreshold);
+        if (config.maxAngularVelocity !== undefined)
+            this._maxAngularVelocity = Math.max(0, config.maxAngularVelocity);
+        if (config.maxDepenetrationVelocity !== undefined)
+            this._maxDepenetrationVelocity = Math.max(0, config.maxDepenetrationVelocity);
+        if (config.sleepThreshold !== undefined)
+            this._sleepThreshold = Math.max(0, config.sleepThreshold);
     }
 
     private _createBody(): void {
@@ -591,7 +653,9 @@ export class Rigidbody3D extends Component {
             linearDamping: this._linearDamping,
             angularDamping: this._angularDamping,
             gravityScale: this._useGravity ? this._gravityScale : 0,
-            fixedRotation: this._constraints === RigidbodyConstraints3D.FreezeRotation || this._constraints === RigidbodyConstraints3D.FreezeAll,
+            fixedRotation:
+                this._constraints === RigidbodyConstraints3D.FreezeRotation ||
+                this._constraints === RigidbodyConstraints3D.FreezeAll,
             bullet: this._collisionDetection !== CollisionDetectionMode3D.Discrete,
             allowSleep: this.isSleepingAllowed(),
             awake: true,
@@ -628,19 +692,44 @@ export class Rigidbody3D extends Component {
         if (!this._bodyManager || this._bodyId === -1) return;
         const pos = this._bodyManager.getPosition(this._bodyId);
         const rot = this._bodyManager.getRotation(this._bodyId);
-        this._previousPosition.x = pos.x; this._previousPosition.y = pos.y; this._previousPosition.z = pos.z;
-        this._previousRotation.x = rot.x; this._previousRotation.y = rot.y; this._previousRotation.z = rot.z; this._previousRotation.w = rot.w;
+        this._previousPosition.x = pos.x;
+        this._previousPosition.y = pos.y;
+        this._previousPosition.z = pos.z;
+        this._previousRotation.x = rot.x;
+        this._previousRotation.y = rot.y;
+        this._previousRotation.z = rot.z;
+        this._previousRotation.w = rot.w;
     }
 
     private _applyAccumulatedForces(dt: number): void {
         if (!this._bodyManager || this._bodyId === -1) return;
-        if (this._accumulatedForce.x !== 0 || this._accumulatedForce.y !== 0 || this._accumulatedForce.z !== 0) {
-            this._bodyManager.applyForceToCenter(this._bodyId, { x: this._accumulatedForce.x * dt, y: this._accumulatedForce.y * dt, z: this._accumulatedForce.z * dt });
-            this._accumulatedForce.x = 0; this._accumulatedForce.y = 0; this._accumulatedForce.z = 0;
+        if (
+            this._accumulatedForce.x !== 0 ||
+            this._accumulatedForce.y !== 0 ||
+            this._accumulatedForce.z !== 0
+        ) {
+            this._bodyManager.applyForceToCenter(this._bodyId, {
+                x: this._accumulatedForce.x * dt,
+                y: this._accumulatedForce.y * dt,
+                z: this._accumulatedForce.z * dt,
+            });
+            this._accumulatedForce.x = 0;
+            this._accumulatedForce.y = 0;
+            this._accumulatedForce.z = 0;
         }
-        if (this._accumulatedTorque.x !== 0 || this._accumulatedTorque.y !== 0 || this._accumulatedTorque.z !== 0) {
-            this._bodyManager.applyTorque(this._bodyId, { x: this._accumulatedTorque.x * dt, y: this._accumulatedTorque.y * dt, z: this._accumulatedTorque.z * dt });
-            this._accumulatedTorque.x = 0; this._accumulatedTorque.y = 0; this._accumulatedTorque.z = 0;
+        if (
+            this._accumulatedTorque.x !== 0 ||
+            this._accumulatedTorque.y !== 0 ||
+            this._accumulatedTorque.z !== 0
+        ) {
+            this._bodyManager.applyTorque(this._bodyId, {
+                x: this._accumulatedTorque.x * dt,
+                y: this._accumulatedTorque.y * dt,
+                z: this._accumulatedTorque.z * dt,
+            });
+            this._accumulatedTorque.x = 0;
+            this._accumulatedTorque.y = 0;
+            this._accumulatedTorque.z = 0;
         }
     }
 
@@ -648,7 +737,13 @@ export class Rigidbody3D extends Component {
         if (!this.isSleepingAllowed()) return;
         const vel = this.velocity;
         const angVel = this.angularVelocity;
-        const kineticEnergy = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z + angVel.x * angVel.x + angVel.y * angVel.y + angVel.z * angVel.z;
+        const kineticEnergy =
+            vel.x * vel.x +
+            vel.y * vel.y +
+            vel.z * vel.z +
+            angVel.x * angVel.x +
+            angVel.y * angVel.y +
+            angVel.z * angVel.z;
         if (kineticEnergy < this._sleepThreshold * this._sleepThreshold) {
             this._sleepTime += dt;
             if (this._sleepTime > TIME_TO_SLEEP) this.sleep();
@@ -659,11 +754,19 @@ export class Rigidbody3D extends Component {
     }
 
     private _applyVelocityConstraints(velocity: IVec3Like): IVec3Like {
-        return { x: (this._constraints & RigidbodyConstraints3D.FreezePositionX) ? 0 : velocity.x, y: (this._constraints & RigidbodyConstraints3D.FreezePositionY) ? 0 : velocity.y, z: (this._constraints & RigidbodyConstraints3D.FreezePositionZ) ? 0 : velocity.z };
+        return {
+            x: this._constraints & RigidbodyConstraints3D.FreezePositionX ? 0 : velocity.x,
+            y: this._constraints & RigidbodyConstraints3D.FreezePositionY ? 0 : velocity.y,
+            z: this._constraints & RigidbodyConstraints3D.FreezePositionZ ? 0 : velocity.z,
+        };
     }
 
     private _applyAngularConstraints(angularVelocity: IVec3Like): IVec3Like {
-        return { x: (this._constraints & RigidbodyConstraints3D.FreezeRotationX) ? 0 : angularVelocity.x, y: (this._constraints & RigidbodyConstraints3D.FreezeRotationY) ? 0 : angularVelocity.y, z: (this._constraints & RigidbodyConstraints3D.FreezeRotationZ) ? 0 : angularVelocity.z };
+        return {
+            x: this._constraints & RigidbodyConstraints3D.FreezeRotationX ? 0 : angularVelocity.x,
+            y: this._constraints & RigidbodyConstraints3D.FreezeRotationY ? 0 : angularVelocity.y,
+            z: this._constraints & RigidbodyConstraints3D.FreezeRotationZ ? 0 : angularVelocity.z,
+        };
     }
 
     private _clampAngularVelocity(velocity: IVec3Like): IVec3Like {
@@ -677,11 +780,23 @@ export class Rigidbody3D extends Component {
 
     private _transformDirection(localDir: IVec3Like): IVec3Like {
         const rot = this.rotation;
-        const rx = rot.x * 2; const ry = rot.y * 2; const rz = rot.z * 2;
-        const wx = rot.w * rx; const wy = rot.w * ry; const wz = rot.w * rz;
-        const xx = rot.x * rx; const xy = rot.x * ry; const xz = rot.x * rz;
-        const yy = rot.y * ry; const yz = rot.y * rz; const zz = rot.z * rz;
-        return { x: (1 - (yy + zz)) * localDir.x + (xy - wz) * localDir.y + (xz + wy) * localDir.z, y: (xy + wz) * localDir.x + (1 - (xx + zz)) * localDir.y + (yz - wx) * localDir.z, z: (xz - wy) * localDir.x + (yz + wx) * localDir.y + (1 - (xx + yy)) * localDir.z };
+        const rx = rot.x * 2;
+        const ry = rot.y * 2;
+        const rz = rot.z * 2;
+        const wx = rot.w * rx;
+        const wy = rot.w * ry;
+        const wz = rot.w * rz;
+        const xx = rot.x * rx;
+        const xy = rot.x * ry;
+        const xz = rot.x * rz;
+        const yy = rot.y * ry;
+        const yz = rot.y * rz;
+        const zz = rot.z * rz;
+        return {
+            x: (1 - (yy + zz)) * localDir.x + (xy - wz) * localDir.y + (xz + wy) * localDir.z,
+            y: (xy + wz) * localDir.x + (1 - (xx + zz)) * localDir.y + (yz - wx) * localDir.z,
+            z: (xz - wy) * localDir.x + (yz + wx) * localDir.y + (1 - (xx + yy)) * localDir.z,
+        };
     }
 
     private _transformPoint(localPoint: IVec3Like): IVec3Like {
@@ -692,15 +807,31 @@ export class Rigidbody3D extends Component {
 
     private _addTorqueFromForceAtPosition(force: IVec3Like, position: IVec3Like): void {
         const com = this.worldCenterOfMass;
-        const rx = position.x - com.x; const ry = position.y - com.y; const rz = position.z - com.z;
-        const torque = { x: ry * force.z - rz * force.y, y: rz * force.x - rx * force.z, z: rx * force.y - ry * force.x };
+        const rx = position.x - com.x;
+        const ry = position.y - com.y;
+        const rz = position.z - com.z;
+        const torque = {
+            x: ry * force.z - rz * force.y,
+            y: rz * force.x - rx * force.z,
+            z: rx * force.y - ry * force.x,
+        };
         Vec3.add(this._accumulatedTorque, torque, this._accumulatedTorque);
     }
 
     private _getInverseInertiaTensor(): IVec3Like {
-        return { x: this._inertiaTensor.x > 0 ? 1 / this._inertiaTensor.x : 0, y: this._inertiaTensor.y > 0 ? 1 / this._inertiaTensor.y : 0, z: this._inertiaTensor.z > 0 ? 1 / this._inertiaTensor.z : 0 };
+        return {
+            x: this._inertiaTensor.x > 0 ? 1 / this._inertiaTensor.x : 0,
+            y: this._inertiaTensor.y > 0 ? 1 / this._inertiaTensor.y : 0,
+            z: this._inertiaTensor.z > 0 ? 1 / this._inertiaTensor.z : 0,
+        };
     }
 }
 
-export { Rigidbody3DType, ForceMode3D, RigidbodyConstraints3D, CollisionDetectionMode3D, RigidbodyInterpolation3D };
+export {
+    Rigidbody3DType,
+    ForceMode3D,
+    RigidbodyConstraints3D,
+    CollisionDetectionMode3D,
+    RigidbodyInterpolation3D,
+};
 export type { IRigidbody3DConfig };

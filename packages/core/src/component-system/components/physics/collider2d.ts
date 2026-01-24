@@ -27,7 +27,7 @@ export abstract class Collider2D extends Component {
 
     protected _collisionFilter: any = {
         categoryBits: 0x0001,
-        maskBits: 0xFFFF,
+        maskBits: 0xffff,
         groupIndex: 0,
     };
 
@@ -141,7 +141,7 @@ export abstract class Collider2D extends Component {
         this._colliderEnabled = data.enabled ?? true;
         this._collisionFilter = data.collisionFilter ?? {
             categoryBits: 0x0001,
-            maskBits: 0xFFFF,
+            maskBits: 0xffff,
             groupIndex: 0,
         };
     }
@@ -341,7 +341,7 @@ export class PolygonCollider2D extends Collider2D {
             console.warn('Polygon collider requires at least 3 vertices');
             return;
         }
-        this._vertices = value.map(v => new Vec2(v.x, v.y));
+        this._vertices = value.map((v) => new Vec2(v.x, v.y));
         this.recreateShape();
     }
 
@@ -367,7 +367,10 @@ export class PolygonCollider2D extends Collider2D {
         this._shapeId = (this._physicsWorld as any).getShapeManager().createPolygon(
             this._rigidbody.bodyId,
             {
-                vertices: this._vertices.map(v => ({ x: v.x + this._offset.x, y: v.y + this._offset.y })),
+                vertices: this._vertices.map((v) => ({
+                    x: v.x + this._offset.x,
+                    y: v.y + this._offset.y,
+                })),
             },
             {
                 friction: this._material.friction as any,
@@ -399,7 +402,7 @@ export class PolygonCollider2D extends Collider2D {
     serialize(): Record<string, any> {
         return {
             ...super.serialize(),
-            vertices: this._vertices.map(v => ({ x: v.x, y: v.y })),
+            vertices: this._vertices.map((v) => ({ x: v.x, y: v.y })),
         };
     }
 
@@ -465,12 +468,14 @@ export class CapsuleCollider2D extends Collider2D {
         if (!this._physicsWorld) return;
 
         const halfLength = this._length * 0.5;
-        const p1 = this._direction === 'vertical'
-            ? { x: this._offset.x, y: this._offset.y - halfLength }
-            : { x: this._offset.x - halfLength, y: this._offset.y };
-        const p2 = this._direction === 'vertical'
-            ? { x: this._offset.x, y: this._offset.y + halfLength }
-            : { x: this._offset.x + halfLength, y: this._offset.y };
+        const p1 =
+            this._direction === 'vertical'
+                ? { x: this._offset.x, y: this._offset.y - halfLength }
+                : { x: this._offset.x - halfLength, y: this._offset.y };
+        const p2 =
+            this._direction === 'vertical'
+                ? { x: this._offset.x, y: this._offset.y + halfLength }
+                : { x: this._offset.x + halfLength, y: this._offset.y };
 
         this._shapeId = (this._physicsWorld as any).getShapeManager().createCapsule(
             this._rigidbody.bodyId,

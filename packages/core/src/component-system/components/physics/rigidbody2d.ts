@@ -145,7 +145,9 @@ export class Rigidbody2D extends Component {
 
     get linearVelocity(): Vec2 {
         if (this._bodyId && this._physicsWorld) {
-            const vel = (this._physicsWorld as any).getBodyManager().getLinearVelocity(this._bodyId);
+            const vel = (this._physicsWorld as any)
+                .getBodyManager()
+                .getLinearVelocity(this._bodyId);
             this._linearVelocity.x = vel.x;
             this._linearVelocity.y = vel.y;
         }
@@ -162,7 +164,9 @@ export class Rigidbody2D extends Component {
 
     get angularVelocity(): number {
         if (this._bodyId && this._physicsWorld) {
-            this._angularVelocity = (this._physicsWorld as any).getBodyManager().getAngularVelocity(this._bodyId);
+            this._angularVelocity = (this._physicsWorld as any)
+                .getBodyManager()
+                .getAngularVelocity(this._bodyId);
         }
         return this._angularVelocity;
     }
@@ -203,7 +207,9 @@ export class Rigidbody2D extends Component {
 
     applyForce(force: Vec2, worldPoint?: Vec2): void {
         if (!this._bodyId || !this._physicsWorld) return;
-        (this._physicsWorld as any).getBodyManager().applyForce(this._bodyId, force as any, worldPoint as any);
+        (this._physicsWorld as any)
+            .getBodyManager()
+            .applyForce(this._bodyId, force as any, worldPoint as any);
     }
 
     applyForceToCenter(force: Vec2): void {
@@ -218,14 +224,20 @@ export class Rigidbody2D extends Component {
 
     applyLinearImpulse(impulse: Vec2, worldPoint?: Vec2): void {
         if (!this._bodyId || !this._physicsWorld) return;
-        (this._physicsWorld as any).getBodyManager().applyImpulse(this._bodyId, impulse as any, worldPoint as any);
+        (this._physicsWorld as any)
+            .getBodyManager()
+            .applyImpulse(this._bodyId, impulse as any, worldPoint as any);
     }
 
     applyAngularImpulse(impulse: number): void {
         if (!this._bodyId || !this._physicsWorld) return;
-        const currentVel = (this._physicsWorld as any).getBodyManager().getAngularVelocity(this._bodyId);
+        const currentVel = (this._physicsWorld as any)
+            .getBodyManager()
+            .getAngularVelocity(this._bodyId);
         const invI = (this._physicsWorld as any).getBodyManager().getInverseInertia(this._bodyId);
-        (this._physicsWorld as any).getBodyManager().setAngularVelocity(this._bodyId, currentVel + impulse * invI);
+        (this._physicsWorld as any)
+            .getBodyManager()
+            .setAngularVelocity(this._bodyId, currentVel + impulse * invI);
     }
 
     setPosition(position: Vec2): void {
@@ -322,12 +334,16 @@ export class Rigidbody2D extends Component {
         if (!this._bodyId || !this._physicsWorld || !this._transform) return;
 
         const pos = this._transform.position;
-        (this._physicsWorld as any).getBodyManager().setPosition(this._bodyId, { x: pos.x, y: pos.y });
+        (this._physicsWorld as any)
+            .getBodyManager()
+            .setPosition(this._bodyId, { x: pos.x, y: pos.y });
     }
 
     private updateBodyType(): void {
         if (!this._bodyId || !this._physicsWorld) return;
-        (this._physicsWorld as any).getBodyManager().setBodyType(this._bodyId, this._bodyType as unknown as BodyType);
+        (this._physicsWorld as any)
+            .getBodyManager()
+            .setBodyType(this._bodyId, this._bodyType as unknown as BodyType);
     }
 
     private updateMass(): void {
