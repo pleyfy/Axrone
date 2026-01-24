@@ -97,6 +97,26 @@ export class PhysicsWorld2D implements IPhysicsWorld2D {
         return this._gravity;
     }
 
+    getBodyManager(): BodyManager2D {
+        return this._bodyManager;
+    }
+
+    getShapeManager(): ShapeManager2D {
+        return this._shapeManager;
+    }
+
+    getConstraintManager(): ConstraintManager2D {
+        return this._constraintManager;
+    }
+
+    getContactManager(): ContactManager2D {
+        return this._contactManager;
+    }
+
+    getSolver(): IslandSolver2D {
+        return this._solver;
+    }
+
     step(deltaTime: number, velocityIterations: number = 8, positionIterations: number = 3): void {
         if (this._disposed) return;
 
