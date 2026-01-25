@@ -41,7 +41,7 @@ describe('IslandSolver2D', () => {
                 rotation: 0,
             });
 
-            bodyManager.setMassData(bodyA, 1, 0.1);
+            bodyManager.setMassData(bodyA, 1, 0.1, { x: 0, y: 0 });
 
             expect(() =>
                 islandSolver.solveIslands(1 / 60, 8, 3, true, 0)
@@ -61,8 +61,8 @@ describe('IslandSolver2D', () => {
                 rotation: 0,
             });
 
-            bodyManager.setMassData(bodyA, 1, 0.1);
-            bodyManager.setMassData(bodyB, 1, 0.1);
+            bodyManager.setMassData(bodyA, 1, 0.1, { x: 0, y: 0 });
+            bodyManager.setMassData(bodyB, 1, 0.1, { x: 0, y: 0 });
 
             expect(() =>
                 islandSolver.solveIslands(1 / 60, 8, 3, true, 0)
@@ -76,7 +76,7 @@ describe('IslandSolver2D', () => {
                 rotation: 0,
             });
 
-            bodyManager.setMassData(bodyA, 1, 0.1);
+            bodyManager.setMassData(bodyA, 1, 0.1, { x: 0, y: 0 });
 
             expect(() =>
                 islandSolver.solveIslands(1 / 60, 8, 3, false, 0)
@@ -90,7 +90,7 @@ describe('IslandSolver2D', () => {
                 rotation: 0,
             });
 
-            bodyManager.setMassData(bodyA, 1, 0.1);
+            bodyManager.setMassData(bodyA, 1, 0.1, { x: 0, y: 0 });
 
             expect(() =>
                 islandSolver.solveIslands(1 / 60, 4, 2, true, 0)
