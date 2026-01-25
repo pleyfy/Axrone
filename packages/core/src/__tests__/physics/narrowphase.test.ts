@@ -29,7 +29,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(circleA, circleB, ShapeType.Circle, ShapeType.Circle, shapeManager, ctx, manifold);
@@ -51,7 +51,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(circleA, circleB, ShapeType.Circle, ShapeType.Circle, shapeManager, ctx, manifold);
@@ -73,7 +73,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(circleA, circleB, ShapeType.Circle, ShapeType.Circle, shapeManager, ctx, manifold);
@@ -99,7 +99,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(boxA, boxB, ShapeType.Box, ShapeType.Box, shapeManager, ctx, manifold);
@@ -121,7 +121,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(boxA, boxB, ShapeType.Box, ShapeType.Box, shapeManager, ctx, manifold);
@@ -145,7 +145,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(circle, box, ShapeType.Circle, ShapeType.Box, shapeManager, ctx, manifold);
@@ -167,7 +167,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(circle, box, ShapeType.Circle, ShapeType.Box, shapeManager, ctx, manifold);
@@ -195,7 +195,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(triA, triB, ShapeType.Polygon, ShapeType.Polygon, shapeManager, ctx, manifold);
@@ -221,7 +221,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(polyA, polyB, ShapeType.Polygon, ShapeType.Polygon, shapeManager, ctx, manifold);
@@ -247,7 +247,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(circle, poly, ShapeType.Circle, ShapeType.Polygon, shapeManager, ctx, manifold);
@@ -271,7 +271,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(capA, capB, ShapeType.Capsule, ShapeType.Capsule, shapeManager, ctx, manifold);
@@ -293,7 +293,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(capA, capB, ShapeType.Capsule, ShapeType.Capsule, shapeManager, ctx, manifold);
@@ -317,7 +317,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(circle, capsule, ShapeType.Circle, ShapeType.Capsule, shapeManager, ctx, manifold);
@@ -341,7 +341,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(circle, box, ShapeType.Segment, ShapeType.Segment, shapeManager, ctx, manifold);
@@ -365,7 +365,7 @@ describe('Narrowphase2D', () => {
             const manifold = {
                 pointCount: 0,
                 normal: { x: 0, y: 0 },
-                points: [],
+                points: [{ id: 0, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }, { id: 1, localPointA: { x: 0, y: 0 }, localPointB: { x: 0, y: 0 }, normalImpulse: 0, tangentImpulse: 0, separation: 0 }],
             } as any;
 
             narrowphase.collide(boxA, boxB, ShapeType.Box, ShapeType.Box, shapeManager, ctx, manifold);

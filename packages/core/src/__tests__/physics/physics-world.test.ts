@@ -252,6 +252,8 @@ describe('PhysicsWorld2D Integration', () => {
                 offset: { x: 0, y: 0 },
             });
 
+            world.getBodyManager().setMassData(bodyId, 1, 0.1);
+
             const initialPos = world.getBodyManager().getPosition(bodyId);
 
             for (let i = 0; i < 60; i++) {
