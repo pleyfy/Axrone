@@ -102,7 +102,8 @@ export abstract class Collider2D extends Component {
     }
 
     awake(): void {
-        this._rigidbody = this.getComponent(Rigidbody2D as any) ?? null;
+        const comp = this.getComponent(Rigidbody2D as any);
+        this._rigidbody = comp instanceof Rigidbody2D ? comp : null;
     }
 
     start(): void {
