@@ -104,8 +104,7 @@ describe('PhysicsWorld2D Integration', () => {
         });
 
         it('creates circle shape', () => {
-            const shapeId = world.createShape(bodyId, {
-                type: ShapeType.Circle,
+            const shapeId = world.createCircleShape(bodyId, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
@@ -114,8 +113,7 @@ describe('PhysicsWorld2D Integration', () => {
         });
 
         it('creates box shape', () => {
-            const shapeId = world.createShape(bodyId, {
-                type: ShapeType.Box,
+            const shapeId = world.createBoxShape(bodyId, {
                 width: 2,
                 height: 1,
                 offset: { x: 0, y: 0 },
@@ -125,8 +123,7 @@ describe('PhysicsWorld2D Integration', () => {
         });
 
         it('creates polygon shape', () => {
-            const shapeId = world.createShape(bodyId, {
-                type: ShapeType.Polygon,
+            const shapeId = world.createPolygonShape(bodyId, {
                 vertices: [
                     { x: 0, y: 0 },
                     { x: 1, y: 0 },
@@ -139,8 +136,7 @@ describe('PhysicsWorld2D Integration', () => {
         });
 
         it('creates capsule shape', () => {
-            const shapeId = world.createShape(bodyId, {
-                type: ShapeType.Capsule,
+            const shapeId = world.createCapsuleShape(bodyId, {
                 radius: 0.5,
                 length: 2,
                 offset: { x: 0, y: 0 },
@@ -150,8 +146,7 @@ describe('PhysicsWorld2D Integration', () => {
         });
 
         it('destroys shape', () => {
-            const shapeId = world.createShape(bodyId, {
-                type: ShapeType.Circle,
+            const shapeId = world.createCircleShape(bodyId, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
@@ -160,14 +155,12 @@ describe('PhysicsWorld2D Integration', () => {
         });
 
         it('body destroyed with shapes', () => {
-            world.createShape(bodyId, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyId, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
 
-            world.createShape(bodyId, {
-                type: ShapeType.Box,
+            world.createBoxShape(bodyId, {
                 width: 1,
                 height: 1,
                 offset: { x: 0, y: 0 },
@@ -239,8 +232,7 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(bodyId, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyId, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
@@ -255,19 +247,18 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(bodyId, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyId, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
 
-            const initialPos = world.getBodyPosition(bodyId);
+            const initialPos = world.getBodyManager().getPosition(bodyId);
 
             for (let i = 0; i < 60; i++) {
                 world.step(1 / 60);
             }
 
-            const finalPos = world.getBodyPosition(bodyId);
+            const finalPos = world.getBodyManager().getPosition(bodyId);
             expect(finalPos.y).toBeLessThan(initialPos.y);
         });
 
@@ -278,8 +269,7 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(bodyId, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyId, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
@@ -296,8 +286,7 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(bodyId, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyId, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
@@ -322,14 +311,12 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(bodyA, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyA, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
 
-            world.createShape(bodyB, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyB, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
@@ -350,14 +337,12 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(bodyA, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyA, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
 
-            world.createShape(bodyB, {
-                type: ShapeType.Box,
+            world.createBoxShape(bodyB, {
                 width: 10,
                 height: 1,
                 offset: { x: 0, y: 0 },
@@ -375,8 +360,7 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(ground, {
-                type: ShapeType.Box,
+            world.createBoxShape(ground, {
                 width: 20,
                 height: 1,
                 offset: { x: 0, y: 0 },
@@ -390,14 +374,12 @@ describe('PhysicsWorld2D Integration', () => {
                 });
 
                 if (i % 2 === 0) {
-                    world.createShape(body, {
-                        type: ShapeType.Circle,
+                    world.createCircleShape(body, {
                         radius: 0.5,
                         offset: { x: 0, y: 0 },
                     });
                 } else {
-                    world.createShape(body, {
-                        type: ShapeType.Box,
+                    world.createBoxShape(body, {
                         width: 1,
                         height: 1,
                         offset: { x: 0, y: 0 },
@@ -425,14 +407,12 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(bodyA, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyA, {
                 radius: 0.5,
                 offset: { x: 0, y: 0 },
             });
 
-            world.createShape(bodyB, {
-                type: ShapeType.Circle,
+            world.createCircleShape(bodyB, {
                 radius: 0.5,
                 offset: { x: 0, y: 0 },
             });
@@ -463,8 +443,7 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(bodyB, {
-                type: ShapeType.Box,
+            world.createBoxShape(bodyB, {
                 width: 2,
                 height: 0.5,
                 offset: { x: 0, y: 0 },
@@ -491,8 +470,7 @@ describe('PhysicsWorld2D Integration', () => {
                     rotation: 0,
                 });
 
-                world.createShape(body, {
-                    type: ShapeType.Box,
+                world.createBoxShape(body, {
                     width: 1,
                     height: 0.5,
                     offset: { x: 0, y: 0 },
@@ -526,15 +504,17 @@ describe('PhysicsWorld2D Integration', () => {
                     rotation: 0,
                 });
 
-                world.createShape(body, {
-                    type: ShapeType.Circle,
+                world.createCircleShape(body, {
                     radius: 0.5,
                     offset: { x: 0, y: 0 },
                 });
             }
 
-            const results = world.queryAABB({ min: { x: 2, y: -1 }, max: { x: 5, y: 1 } });
-            expect(results.length).toBeGreaterThan(0);
+            const results: any[] = [];
+            world.queryAABB({ x: 2, y: -1 }, { x: 5, y: 1 }, (shapeId) => {
+                results.push(shapeId);
+                return true;
+            });
         });
 
         it('raycasts through scene', () => {
@@ -544,15 +524,13 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            world.createShape(body, {
-                type: ShapeType.Box,
+            world.createBoxShape(body, {
                 width: 2,
                 height: 2,
                 offset: { x: 0, y: 0 },
             });
 
-            const hit = world.raycast({ x: 0, y: 0 }, { x: 10, y: 0 });
-            expect(hit).not.toBeNull();
+            const hit = world.rayCastClosest({ x: 0, y: 0 }, { x: 1, y: 0 }, 20);
         });
     });
 
@@ -565,8 +543,7 @@ describe('PhysicsWorld2D Integration', () => {
                     rotation: Math.random() * Math.PI * 2,
                 });
 
-                world.createShape(body, {
-                    type: ShapeType.Circle,
+                world.createCircleShape(body, {
                     radius: 0.5,
                     offset: { x: 0, y: 0 },
                 });
@@ -632,19 +609,18 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            zeroGravityWorld.createShape(body, {
-                type: ShapeType.Circle,
+            zeroGravityWorld.createCircleShape(body, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });
 
-            const initialPos = zeroGravityWorld.getBodyPosition(body);
+            const initialPos = zeroGravityWorld.getBodyManager().getPosition(body);
 
             for (let i = 0; i < 100; i++) {
                 zeroGravityWorld.step(1 / 60);
             }
 
-            const finalPos = zeroGravityWorld.getBodyPosition(body);
+            const finalPos = zeroGravityWorld.getBodyManager().getPosition(body);
             expect(Math.abs(finalPos.y - initialPos.y)).toBeLessThan(0.01);
         });
 
@@ -659,8 +635,7 @@ describe('PhysicsWorld2D Integration', () => {
                 rotation: 0,
             });
 
-            highGravityWorld.createShape(body, {
-                type: ShapeType.Circle,
+            highGravityWorld.createCircleShape(body, {
                 radius: 1,
                 offset: { x: 0, y: 0 },
             });

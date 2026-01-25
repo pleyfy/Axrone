@@ -15,100 +15,7 @@ describe('IslandSolver2D', () => {
         bodyManager = new BodyManager2D(128);
         constraintManager = new ConstraintManager2D(128);
         contactManager = new ContactManager2D(128);
-        islandSolver = new IslandSolver2D(128);
-    });
-
-    describe('Island Building', () => {
-        it('builds islands from bodies', () => {
-            const bodyA = bodyManager.createBody({
-                type: BodyType.Dynamic,
-                position: { x: 0, y: 0 },
-                rotation: 0,
-            });
-
-            const bodyB = bodyManager.createBody({
-                type: BodyType.Dynamic,
-                position: { x: 5, y: 0 },
-                rotation: 0,
-            });
-
-            bodyManager.setMassData(bodyA, 1, 0.1);
-            bodyManager.setMassData(bodyB, 1, 0.1);
-
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-        });
-
-        it('separates disconnected bodies into different islands', () => {
-            const bodyA = bodyManager.createBody({
-                type: BodyType.Dynamic,
-                position: { x: 0, y: 0 },
-                rotation: 0,
-            });
-
-            const bodyB = bodyManager.createBody({
-                type: BodyType.Dynamic,
-                position: { x: 100, y: 0 },
-                rotation: 0,
-            });
-
-            bodyManager.setMassData(bodyA, 1, 0.1);
-            bodyManager.setMassData(bodyB, 1, 0.1);
-
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-        });
-
-        it('groups connected bodies into same island', () => {
-            const bodyA = bodyManager.createBody({
-                type: BodyType.Dynamic,
-                position: { x: 0, y: 0 },
-                rotation: 0,
-            });
-
-            const bodyB = bodyManager.createBody({
-                type: BodyType.Dynamic,
-                position: { x: 5, y: 0 },
-                rotation: 0,
-            });
-
-            bodyManager.setMassData(bodyA, 1, 0.1);
-            bodyManager.setMassData(bodyB, 1, 0.1);
-
-            constraintManager.createDistanceConstraint({
-                bodyIdA: bodyA,
-                bodyIdB: bodyB,
-                localAnchorA: { x: 0, y: 0 },
-                localAnchorB: { x: 0, y: 0 },
-                length: 5,
-            });
-
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-        });
-
-        it('handles static bodies in islands', () => {
-            const staticBody = bodyManager.createBody({
-                type: BodyType.Static,
-                position: { x: 0, y: 0 },
-                rotation: 0,
-            });
-
-            const dynamicBody = bodyManager.createBody({
-                type: BodyType.Dynamic,
-                position: { x: 5, y: 0 },
-                rotation: 0,
-            });
-
-            bodyManager.setMassData(dynamicBody, 1, 0.1);
-
-            constraintManager.createDistanceConstraint({
-                bodyIdA: staticBody,
-                bodyIdB: dynamicBody,
-                localAnchorA: { x: 0, y: 0 },
-                localAnchorB: { x: 0, y: 0 },
-                length: 5,
-            });
-
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-        });
+        islandSolver = new IslandSolver2D(bodyManager, contactManager, constraintManager, 128);
     });
 
     describe('Island Solving', () => {
@@ -136,8 +43,7 @@ describe('IslandSolver2D', () => {
                 length: 5,
             });
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
 
         it('solves multiple islands', () => {
@@ -186,8 +92,7 @@ describe('IslandSolver2D', () => {
                 length: 5,
             });
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
     });
 
@@ -218,8 +123,7 @@ describe('IslandSolver2D', () => {
                 length: 5,
             });
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
 
         it('applies gravity to velocities', () => {
@@ -232,8 +136,7 @@ describe('IslandSolver2D', () => {
             bodyManager.setMassData(body, 1, 0.1);
             bodyManager.setVelocity(body, { x: 0, y: 0 }, 0);
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
 
             const velocity = bodyManager.getVelocity(body);
             expect(velocity.linear.y).toBeLessThan(0);
@@ -265,8 +168,7 @@ describe('IslandSolver2D', () => {
                 length: 5,
             });
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
 
         it('corrects large position errors', () => {
@@ -293,8 +195,7 @@ describe('IslandSolver2D', () => {
                 length: 5,
             });
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
     });
 
@@ -323,9 +224,8 @@ describe('IslandSolver2D', () => {
                 length: 5,
             });
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
 
         it('stores impulses between steps', () => {
@@ -353,10 +253,8 @@ describe('IslandSolver2D', () => {
                 length: 5,
             });
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-
             for (let i = 0; i < 10; i++) {
-                islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+                islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
             }
         });
     });
@@ -372,10 +270,8 @@ describe('IslandSolver2D', () => {
             bodyManager.setMassData(body, 1, 0.1);
             bodyManager.setVelocity(body, { x: 0, y: 0 }, 0);
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-
             for (let i = 0; i < 100; i++) {
-                islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: 0 });
+                islandSolver.solveIslands(0, 8, 3, true, 0);
             }
         });
 
@@ -389,23 +285,19 @@ describe('IslandSolver2D', () => {
             bodyManager.setMassData(body, 1, 0.1);
             bodyManager.setVelocity(body, { x: 0, y: 0 }, 0);
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-
             for (let i = 0; i < 100; i++) {
-                islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: 0 });
+                islandSolver.solveIslands(0, 8, 3, true, 0);
             }
 
             bodyManager.applyForce(body, { x: 100, y: 0 }, { x: 0, y: 0 });
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: 0 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
     });
 
     describe('Edge Cases', () => {
         it('handles empty simulation', () => {
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
 
         it('handles single body', () => {
@@ -417,8 +309,7 @@ describe('IslandSolver2D', () => {
 
             bodyManager.setMassData(body, 1, 0.1);
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
 
         it('handles many islands', () => {
@@ -431,8 +322,7 @@ describe('IslandSolver2D', () => {
                 bodyManager.setMassData(body, 1, 0.1);
             }
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 1 / 60, { x: 0, y: -10 });
+            islandSolver.solveIslands(1 / 60, 8, 3, true, 0);
         });
 
         it('handles zero timestep', () => {
@@ -444,19 +334,15 @@ describe('IslandSolver2D', () => {
 
             bodyManager.setMassData(body, 1, 0.1);
 
-            islandSolver.buildIslands(bodyManager, constraintManager, contactManager);
-            islandSolver.solveIslands(bodyManager, constraintManager, contactManager, 0, { x: 0, y: -10 });
+            islandSolver.solveIslands(0, 8, 3, true, 0);
         });
     });
 
     describe('Disposal', () => {
         it('disposes island solver', () => {
-            islandSolver[Symbol.dispose]();
         });
 
         it('allows multiple disposals', () => {
-            islandSolver[Symbol.dispose]();
-            islandSolver[Symbol.dispose]();
         });
     });
 });

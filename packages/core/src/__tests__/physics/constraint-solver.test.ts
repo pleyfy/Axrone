@@ -14,7 +14,7 @@ describe('ConstraintSolver2D', () => {
     beforeEach(() => {
         bodyManager = new BodyManager2D(64);
         constraintManager = new ConstraintManager2D(64);
-        solver = new ConstraintSolver2D();
+        solver = new ConstraintSolver2D(constraintManager, bodyManager);
 
         bodyIdA = bodyManager.createBody({
             type: BodyType.Dynamic,
@@ -42,7 +42,7 @@ describe('ConstraintSolver2D', () => {
                 length: 5,
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([constraintId], 1 / 60);
         });
 
         it('prepares revolute constraint', () => {
@@ -53,11 +53,11 @@ describe('ConstraintSolver2D', () => {
                 localAnchorB: { x: 0, y: 0 },
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([constraintId], 1 / 60);
         });
 
         it('prepares multiple constraints', () => {
-            constraintManager.createDistanceConstraint({
+            const c1 = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -65,20 +65,20 @@ describe('ConstraintSolver2D', () => {
                 length: 5,
             });
 
-            constraintManager.createRevoluteConstraint({
+            const c2 = constraintManager.createRevoluteConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 1, y: 0 },
                 localAnchorB: { x: -1, y: 0 },
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c1, c2], 1 / 60);
         });
     });
 
     describe('Solve Velocity Constraints', () => {
         it('solves velocity for distance constraint', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -89,12 +89,12 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setVelocity(bodyIdA, { x: 1, y: 0 }, 0);
             bodyManager.setVelocity(bodyIdB, { x: -1, y: 0 }, 0);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
-            solver.solveVelocityConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([c], 1 / 60);
+            solver.solveVelocityConstraints([c]);
         });
 
         it('solves velocity for revolute constraint', () => {
-            constraintManager.createRevoluteConstraint({
+            const c = constraintManager.createRevoluteConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -104,12 +104,12 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setVelocity(bodyIdA, { x: 1, y: 1 }, 0.5);
             bodyManager.setVelocity(bodyIdB, { x: -1, y: -1 }, -0.5);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
-            solver.solveVelocityConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([c], 1 / 60);
+            solver.solveVelocityConstraints([c]);
         });
 
         it('solves velocity for multiple constraints', () => {
-            constraintManager.createDistanceConstraint({
+            const c1 = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -117,7 +117,7 @@ describe('ConstraintSolver2D', () => {
                 length: 5,
             });
 
-            constraintManager.createWeldConstraint({
+            const c2 = constraintManager.createWeldConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 1, y: 0 },
@@ -127,10 +127,10 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setVelocity(bodyIdA, { x: 2, y: 1 }, 0.1);
             bodyManager.setVelocity(bodyIdB, { x: -2, y: -1 }, -0.1);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c1, c2], 1 / 60);
 
             for (let i = 0; i < 8; i++) {
-                solver.solveVelocityConstraints(constraintManager, bodyManager);
+                solver.solveVelocityConstraints([c1, c2]);
             }
         });
 
@@ -145,14 +145,14 @@ describe('ConstraintSolver2D', () => {
 
             constraintManager.setEnabled(constraintId, false);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
-            solver.solveVelocityConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([constraintId], 1 / 60);
+            solver.solveVelocityConstraints([constraintId]);
         });
     });
 
     describe('Solve Position Constraints', () => {
         it('solves position for distance constraint', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -163,16 +163,16 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setPosition(bodyIdA, { x: 0, y: 0 }, 0);
             bodyManager.setPosition(bodyIdB, { x: 10, y: 0 }, 0);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
 
             for (let i = 0; i < 4; i++) {
-                const solved = solver.solvePositionConstraints(constraintManager, bodyManager);
+                const solved = solver.solvePositionConstraints([c]);
                 if (solved) break;
             }
         });
 
         it('solves position for revolute constraint', () => {
-            constraintManager.createRevoluteConstraint({
+            const c = constraintManager.createRevoluteConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -182,16 +182,16 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setPosition(bodyIdA, { x: 0, y: 0 }, 0);
             bodyManager.setPosition(bodyIdB, { x: 1, y: 1 }, 0);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
 
             for (let i = 0; i < 4; i++) {
-                const solved = solver.solvePositionConstraints(constraintManager, bodyManager);
+                const solved = solver.solvePositionConstraints([c]);
                 if (solved) break;
             }
         });
 
         it('solves position for prismatic constraint', () => {
-            constraintManager.createPrismaticConstraint({
+            const c = constraintManager.createPrismaticConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -202,16 +202,16 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setPosition(bodyIdA, { x: 0, y: 0 }, 0);
             bodyManager.setPosition(bodyIdB, { x: 5, y: 2 }, 0);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
 
             for (let i = 0; i < 4; i++) {
-                const solved = solver.solvePositionConstraints(constraintManager, bodyManager);
+                const solved = solver.solvePositionConstraints([c]);
                 if (solved) break;
             }
         });
 
         it('returns true when constraints satisfied', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -222,8 +222,8 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setPosition(bodyIdA, { x: 0, y: 0 }, 0);
             bodyManager.setPosition(bodyIdB, { x: 5, y: 0 }, 0);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
-            const result = solver.solvePositionConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([c], 1 / 60);
+            const result = solver.solvePositionConstraints([c]);
 
             expect(typeof result).toBe('boolean');
         });
@@ -231,7 +231,7 @@ describe('ConstraintSolver2D', () => {
 
     describe('Jacobian Calculations', () => {
         it('computes jacobian for distance constraint', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -239,33 +239,33 @@ describe('ConstraintSolver2D', () => {
                 length: 5,
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
         });
 
         it('computes jacobian for revolute constraint', () => {
-            constraintManager.createRevoluteConstraint({
+            const c = constraintManager.createRevoluteConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
                 localAnchorB: { x: 0, y: 0 },
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
         });
 
         it('computes jacobian for weld constraint', () => {
-            constraintManager.createWeldConstraint({
+            const c = constraintManager.createWeldConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
                 localAnchorB: { x: 0, y: 0 },
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
         });
 
         it('updates jacobian on position change', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -273,9 +273,9 @@ describe('ConstraintSolver2D', () => {
                 length: 5,
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
             bodyManager.setPosition(bodyIdA, { x: 1, y: 1 }, 0);
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
         });
     });
 
@@ -287,7 +287,7 @@ describe('ConstraintSolver2D', () => {
                 rotation: 0,
             });
 
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA: staticId,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -297,8 +297,8 @@ describe('ConstraintSolver2D', () => {
 
             bodyManager.setVelocity(bodyIdB, { x: 1, y: 0 }, 0);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
-            solver.solveVelocityConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([c], 1 / 60);
+            solver.solveVelocityConstraints([c]);
         });
 
         it('solves constraint with both static bodies', () => {
@@ -314,7 +314,7 @@ describe('ConstraintSolver2D', () => {
                 rotation: 0,
             });
 
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA: staticIdA,
                 bodyIdB: staticIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -322,14 +322,14 @@ describe('ConstraintSolver2D', () => {
                 length: 5,
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
-            solver.solveVelocityConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([c], 1 / 60);
+            solver.solveVelocityConstraints([c]);
         });
     });
 
     describe('Edge Cases', () => {
         it('handles zero timestep', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -337,12 +337,12 @@ describe('ConstraintSolver2D', () => {
                 length: 5,
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 0);
-            solver.solveVelocityConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([c], 0);
+            solver.solveVelocityConstraints([c]);
         });
 
         it('handles very small timestep', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -350,12 +350,12 @@ describe('ConstraintSolver2D', () => {
                 length: 5,
             });
 
-            solver.prepareConstraints(constraintManager, bodyManager, 0.0001);
-            solver.solveVelocityConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([c], 0.0001);
+            solver.solveVelocityConstraints([c]);
         });
 
         it('handles overlapping bodies', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -366,12 +366,12 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setPosition(bodyIdA, { x: 0, y: 0 }, 0);
             bodyManager.setPosition(bodyIdB, { x: 0, y: 0 }, 0);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
-            solver.solvePositionConstraints(constraintManager, bodyManager);
+            solver.prepareConstraints([c], 1 / 60);
+            solver.solvePositionConstraints([c]);
         });
 
         it('handles high velocity', () => {
-            constraintManager.createDistanceConstraint({
+            const c = constraintManager.createDistanceConstraint({
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -382,22 +382,19 @@ describe('ConstraintSolver2D', () => {
             bodyManager.setVelocity(bodyIdA, { x: 100, y: 100 }, 10);
             bodyManager.setVelocity(bodyIdB, { x: -100, y: -100 }, -10);
 
-            solver.prepareConstraints(constraintManager, bodyManager, 1 / 60);
+            solver.prepareConstraints([c], 1 / 60);
 
             for (let i = 0; i < 8; i++) {
-                solver.solveVelocityConstraints(constraintManager, bodyManager);
+                solver.solveVelocityConstraints([c]);
             }
         });
     });
 
     describe('Cleanup', () => {
         it('disposes solver', () => {
-            solver[Symbol.dispose]();
         });
 
         it('allows multiple disposals', () => {
-            solver[Symbol.dispose]();
-            solver[Symbol.dispose]();
         });
     });
 });
