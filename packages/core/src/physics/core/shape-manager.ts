@@ -110,7 +110,7 @@ export class ShapeManager2D implements Disposable {
         const index = this._circleCount++;
         const offset = index * CIRCLE_SHAPE_SIZE;
 
-        const center = def.center ?? { x: 0, y: 0 };
+        const center = def.center ?? def.offset ?? { x: 0, y: 0 };
         this._circleData[offset] = center.x;
         this._circleData[offset + 1] = center.y;
         this._circleData[offset + 2] = def.radius;
@@ -128,11 +128,16 @@ export class ShapeManager2D implements Disposable {
         const index = this._boxCount++;
         const offset = index * BOX_SHAPE_SIZE;
 
-        const center = def.center ?? { x: 0, y: 0 };
+        const center = def.center ?? def.offset ?? { x: 0, y: 0 };
+        const halfWidth = def.halfWidth ?? (def.width !== undefined ? def.width / 2 : undefined);
+        const halfHeight = def.halfHeight ?? (def.height !== undefined ? def.height / 2 : undefined);
+        if (halfWidth === undefined || halfHeight === undefined) {
+            throw new ShapeError('Box must have halfWidth/halfHeight or width/height', ShapeManagerError.INVALID_SHAPE);
+        }
         this._boxData[offset] = center.x;
         this._boxData[offset + 1] = center.y;
-        this._boxData[offset + 2] = def.halfWidth;
-        this._boxData[offset + 3] = def.halfHeight;
+        this._boxData[offset + 2] = halfWidth;
+        this._boxData[offset + 3] = halfHeight;
         this._boxData[offset + 4] = def.rotation ?? 0;
 
         this._shapeToBoxIndex.set(shapeId, index);
@@ -193,7 +198,7 @@ export class ShapeManager2D implements Disposable {
         const index = this._capsuleCount++;
         const offset = index * 4;
 
-        const center = def.center ?? { x: 0, y: 0 };
+        const center = def.center ?? def.offset ?? { x: 0, y: 0 };
         this._capsuleData[offset] = center.x;
         this._capsuleData[offset + 1] = center.y;
         this._capsuleData[offset + 2] = def.radius;

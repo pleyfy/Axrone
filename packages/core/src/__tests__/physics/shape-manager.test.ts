@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ShapeManager2D } from '../../physics/core/shape-manager';
 import { ShapeType } from '../../physics/types';
+import type { IVec2Like } from '@axrone/numeric';
 
 describe('ShapeManager2D', () => {
     let manager: ShapeManager2D;
@@ -214,7 +215,7 @@ describe('ShapeManager2D', () => {
         });
 
         it('throws on too many vertices', () => {
-            const vertices = [];
+            const vertices: Readonly<IVec2Like>[] = [];
             for (let i = 0; i < 10; i++) {
                 vertices.push({ x: i, y: i });
             }

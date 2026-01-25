@@ -9,7 +9,7 @@ export const enum JointLimitState {
 }
 
 export interface IConstraintDef {
-    readonly type: ConstraintType;
+    readonly type?: ConstraintType;
     readonly bodyIdA: BodyId;
     readonly bodyIdB: BodyId;
     readonly collideConnected?: boolean;

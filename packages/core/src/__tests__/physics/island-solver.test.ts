@@ -13,7 +13,7 @@ describe('IslandSolver2D', () => {
 
     beforeEach(() => {
         bodyManager = new BodyManager2D(64);
-        contactManager = new ContactManager2D(128, 8);
+        contactManager = new ContactManager2D(128);
         constraintManager = new ConstraintManager2D(64);
         islandSolver = new IslandSolver2D(
             bodyManager,

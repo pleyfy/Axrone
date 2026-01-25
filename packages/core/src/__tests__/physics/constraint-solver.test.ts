@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { ConstraintSolver2D } from '../../physics/core/constraint-solver';
 import { ConstraintManager2D } from '../../physics/core/constraint-manager';
 import { BodyManager2D } from '../../physics/core/body-manager';
-import { BodyType } from '../../physics/types';
+import { BodyType, ConstraintType } from '../../physics/types';
 
 describe('ConstraintSolver2D', () => {
     let solver: ConstraintSolver2D;
@@ -39,6 +39,7 @@ describe('ConstraintSolver2D', () => {
 
         it('prepares constraints', () => {
             const c = constraintManager.createDistanceConstraint({
+                type: ConstraintType.Distance,
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -51,6 +52,7 @@ describe('ConstraintSolver2D', () => {
 
         it('solves velocity constraints', () => {
             const c = constraintManager.createDistanceConstraint({
+                type: ConstraintType.Distance,
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -64,6 +66,7 @@ describe('ConstraintSolver2D', () => {
 
         it('solves position constraints', () => {
             const c = constraintManager.createDistanceConstraint({
+                type: ConstraintType.Distance,
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -78,6 +81,7 @@ describe('ConstraintSolver2D', () => {
 
         it('handles multiple constraint types', () => {
             const c1 = constraintManager.createDistanceConstraint({
+                type: ConstraintType.Distance,
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 0, y: 0 },
@@ -86,6 +90,7 @@ describe('ConstraintSolver2D', () => {
             });
 
             const c2 = constraintManager.createRevoluteConstraint({
+                type: ConstraintType.Revolute,
                 bodyIdA,
                 bodyIdB,
                 localAnchorA: { x: 1, y: 0 },

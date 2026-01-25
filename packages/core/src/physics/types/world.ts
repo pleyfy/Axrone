@@ -69,6 +69,14 @@ export interface IPhysicsWorldConfig {
     readonly maxShapes?: number;
     readonly maxConstraints?: number;
     readonly maxContacts?: number;
+    /** Legacy alias for `maxBodies` used in tests */
+    readonly bodyCapacity?: number;
+    /** Legacy alias for `maxShapes` used in tests */
+    readonly shapeCapacity?: number;
+    /** Legacy alias for `maxContacts` used in tests */
+    readonly contactCapacity?: number;
+    /** Legacy alias for `maxConstraints` used in tests */
+    readonly constraintCapacity?: number;
     readonly broadphaseType?: BroadphaseType;
     readonly enableProfiler?: boolean;
 }

@@ -176,7 +176,7 @@ export interface IPhysicsBody3D {
 }
 
 export interface IShapeDef {
-    readonly type: number;
+    readonly type?: number;
     readonly material?: IMaterial;
     readonly friction?: Friction;
     readonly restitution?: Restitution;
@@ -193,6 +193,8 @@ export interface IShapeDef {
 export interface ICircleShapeDef extends IShapeDef {
     readonly radius: number;
     readonly center?: Readonly<IVec2Like>;
+    /** Legacy alias used in tests: same as `center` */
+    readonly offset?: Readonly<IVec2Like>;
 }
 
 export interface ISphereShapeDef extends IShapeDef {
@@ -201,9 +203,14 @@ export interface ISphereShapeDef extends IShapeDef {
 }
 
 export interface IBoxShapeDef2D extends IShapeDef {
-    readonly halfWidth: number;
-    readonly halfHeight: number;
+    /** Either provide halfWidth/halfHeight or width/height */
+    readonly halfWidth?: number;
+    readonly halfHeight?: number;
+    readonly width?: number;
+    readonly height?: number;
     readonly center?: Readonly<IVec2Like>;
+    /** Legacy alias used in tests: same as `center` */
+    readonly offset?: Readonly<IVec2Like>;
     readonly rotation?: number;
 }
 
@@ -217,6 +224,8 @@ export interface ICapsuleShapeDef2D extends IShapeDef {
     readonly radius: number;
     readonly length: number;
     readonly center?: Readonly<IVec2Like>;
+    /** Legacy alias used in tests: same as `center` */
+    readonly offset?: Readonly<IVec2Like>;
     readonly rotation?: number;
 }
 
