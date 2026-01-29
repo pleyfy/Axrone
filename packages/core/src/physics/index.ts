@@ -18,11 +18,25 @@ export {
     ConstraintManager3D,
 } from './core/physics-world-3d';
 
-export * from './types/raycast-types';
+export type {
+    RaycastId,
+    LayerMask,
+    RaycastFlags,
+    RaycastLayer,
+    IRay2D,
+    IRay3D,
+    IRaycastHit2D,
+    IRaycastHit3D,
+    IRaycastQuery2D,
+    IRaycastQuery3D,
+    RaycastPredicate2D,
+    RaycastPredicate3D,
+    IBarycentricCoords
+} from './types/raycast-types';
 export { RayPrimitiveIntersector2D, RayPrimitiveIntersector3D } from './core/raycast-primitives';
 export { Raycaster2D as RaycastEngine2D, Raycaster3D as RaycastEngine3D, RaycastResult2D, RaycastResult3D } from './core/raycast-engine';
 export { BoundingVolumeHierarchy } from './core/raycast-bvh';
-export { SpatialHashGrid3D, Octree, OctreeNode } from './core/raycast-spatial';
+export { SpatialHashGrid3D, SpatialOctree } from './core/raycast-spatial';
 export { RaycastCache2D, RaycastCache3D, RaycastBatcher2D, RaycastBatcher3D, RaycastStatistics } from './core/raycast-optimization';
 export { RaycastSystem2D, RaycastSystem3D, createRaycastSystem2D, createRaycastSystem3D } from './core/raycast-system';
 export * from './core/raycast-errors';

@@ -19,7 +19,7 @@ import {
     RaycastLayer,
 } from '../types/raycast-types';
 import { RaycastCache2D, RaycastCache3D, RaycastBatcher2D, RaycastBatcher3D, RaycastStatistics } from './raycast-optimization';
-import { SpatialHashGrid3D, Octree } from './raycast-spatial';
+import { SpatialHashGrid3D, SpatialOctree } from './raycast-spatial';
 import { InvalidRayError, RaycastQueryError } from './raycast-errors';
 import type { BodyId, ShapeId } from '../types/primitives';
 
@@ -202,7 +202,7 @@ export class RaycastSystem3D {
     private readonly _batcher: RaycastBatcher3D;
     private readonly _statistics: RaycastStatistics;
     private readonly _spatialGrid: SpatialHashGrid3D<ShapeId> | null = null;
-    private readonly _octree: Octree<ShapeId> | null = null;
+    private readonly _octree: SpatialOctree<ShapeId> | null = null;
     private _enableCache: boolean = true;
     private _enableBatching: boolean = false;
     private _spatialAcceleration: 'none' | 'grid' | 'octree' | 'bvh' = 'none';
