@@ -4,8 +4,6 @@ import type { BodyId, ShapeId } from './primitives';
 export type RaycastId = number & { readonly __raycastIdBrand: unique symbol };
 export type LayerMask = number & { readonly __layerMaskBrand: unique symbol };
 
-export { IBarycentricCoords };
-
 export const enum RaycastFlags {
     None = 0,
     ClosestOnly = 1 << 0,
