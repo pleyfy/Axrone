@@ -14,6 +14,7 @@ export class Archetype<R extends ComponentRegistry> implements IArchetype<R> {
     readonly id: ArchetypeId;
     readonly signature: ArchetypeSignature;
     readonly mask: BitMask;
+    readonly componentMask: ComponentMask;
     readonly entities: Entity[] = [];
     readonly components = new Map<string, IComponentPool<any>>();
     readonly edges = new Map<string, ArchetypeId>();
@@ -30,6 +31,7 @@ export class Archetype<R extends ComponentRegistry> implements IArchetype<R> {
     ) {
         this.signature = signature;
         this.mask = mask;
+        this.componentMask = componentMask;
         this.id = (signature.length === 0 ? 'EMPTY' : signature.join('|')) as ArchetypeId;
 
         for (const componentName of signature) {
