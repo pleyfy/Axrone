@@ -78,6 +78,7 @@ interface ShaderResource {
     readonly id: string;
     readonly program: WebGLProgram;
     readonly uniformLocations: ReadonlyMap<string, WebGLUniformLocation>;
+    readonly uniformTypes: ReadonlyMap<string, number>;
     readonly uniformNames: readonly string[];
     readonly attributeNames: Readonly<Record<SceneMeshSemantic, string>>;
     readonly depthTest: boolean;
@@ -167,6 +168,8 @@ const DEFAULT_ATTRIBUTE_NAMES: Readonly<Record<SceneMeshSemantic, string>> = Obj
     uv0: 'a_UV0',
     color0: 'a_Color0',
 });
+
+const normalizeUniformName = (name: string): string => name.replace(/\[0\]$/, '');
 
 const ATTRIBUTE_LOCATIONS: Readonly<Record<SceneMeshSemantic, number>> = Object.freeze({
     position: 0,
@@ -1312,6 +1315,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             );
 
             const uniformLocations = new Map<string, WebGLUniformLocation>();
+            const uniformTypes = new Map<string, number>();
             for (const uniformName of uniformNames) {
                 const location = this.gl.getUniformLocation(program, uniformName);
                 if (location !== null) {
@@ -1319,10 +1323,23 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 }
             }
 
+            const activeUniformCount = this.gl.getProgramParameter(program, this.gl.ACTIVE_UNIFORMS);
+            for (let index = 0; index < activeUniformCount; index += 1) {
+                const info = this.gl.getActiveUniform(program, index);
+                if (!info) {
+                    continue;
+                }
+
+                const normalizedName = normalizeUniformName(info.name);
+                uniformTypes.set(info.name, info.type);
+                uniformTypes.set(normalizedName, info.type);
+            }
+
             return {
                 id: definition.id,
                 program,
                 uniformLocations,
+                uniformTypes,
                 uniformNames,
                 attributeNames,
                 depthTest: definition.depthTest ?? true,
@@ -1564,17 +1581,31 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             })
             .filter((attribute): attribute is NonNullable<typeof attribute> => attribute !== null);
 
-        const rawVertexBytes = geometryBuffers.vertices.toUint8Array();
-        const vertexBytes = Uint8Array.from(rawVertexBytes);
-        const indexBytes = geometryBuffers.indices.toUint8Array();
+        const vertexReader = geometryBuffers.vertices.duplicate().rewind();
+        const vertexFloatCount = vertexReader.remaining / 4;
+        const vertexBytes = new Float32Array(vertexFloatCount);
+        for (let index = 0; index < vertexFloatCount; index += 1) {
+            vertexBytes[index] = vertexReader.getFloat32();
+        }
+
+        const indexReader = geometryBuffers.indices.duplicate().rewind();
+        const bytesPerIndex =
+            geometryBuffers.layout.indexCount > 0
+                ? indexReader.remaining / geometryBuffers.layout.indexCount
+                : 0;
         const indexArray =
             geometryBuffers.layout.indexCount > 0
-                ? new Uint16Array(
-                      indexBytes.buffer.slice(
-                          indexBytes.byteOffset,
-                          indexBytes.byteOffset + indexBytes.byteLength
+                ? bytesPerIndex === 4
+                    ? new Uint32Array(
+                          Array.from({ length: geometryBuffers.layout.indexCount }, () =>
+                              indexReader.getUint32()
+                          )
                       )
-                  )
+                    : new Uint16Array(
+                          Array.from({ length: geometryBuffers.layout.indexCount }, () =>
+                              indexReader.getUint16()
+                          )
+                      )
                 : undefined;
 
         return this.registerMesh({
@@ -1835,6 +1866,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         if (cull) {
             this.gl.enable(this.gl.CULL_FACE);
+            this.gl.frontFace(this.gl.CW);
             this.gl.cullFace(this.gl.BACK);
         } else {
             this.gl.disable(this.gl.CULL_FACE);
@@ -1916,6 +1948,47 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
     }
 
+    private _toWebGLMatrixData(value: Mat4): Float32Array {
+        return new Float32Array(Mat4.transpose(value).data);
+    }
+
+    private _setNumericUniform(
+        shader: ShaderResource,
+        location: WebGLUniformLocation,
+        name: string,
+        value: number
+    ): void {
+        const uniformType = shader.uniformTypes.get(name);
+
+        switch (uniformType) {
+            case this.gl.BOOL:
+            case this.gl.INT:
+            case this.gl.SAMPLER_2D:
+            case this.gl.SAMPLER_CUBE:
+            case this.gl.SAMPLER_2D_SHADOW:
+            case this.gl.SAMPLER_2D_ARRAY:
+            case this.gl.SAMPLER_2D_ARRAY_SHADOW:
+            case this.gl.SAMPLER_CUBE_SHADOW:
+            case this.gl.INT_SAMPLER_2D:
+            case this.gl.INT_SAMPLER_3D:
+            case this.gl.INT_SAMPLER_CUBE:
+            case this.gl.INT_SAMPLER_2D_ARRAY:
+            case this.gl.UNSIGNED_INT_SAMPLER_2D:
+            case this.gl.UNSIGNED_INT_SAMPLER_3D:
+            case this.gl.UNSIGNED_INT_SAMPLER_CUBE:
+            case this.gl.UNSIGNED_INT_SAMPLER_2D_ARRAY:
+                this.gl.uniform1i(location, Math.trunc(value));
+                return;
+            case this.gl.UNSIGNED_INT:
+                this.gl.uniform1ui(location, Math.max(0, Math.trunc(value)));
+                return;
+            case this.gl.FLOAT:
+            default:
+                this.gl.uniform1f(location, value);
+                return;
+        }
+    }
+
     private _resolveSampler(id: string | null): ITextureSampler {
         if (!id) {
             return this._defaultSampler;
@@ -1939,7 +2012,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (value instanceof Mat4) {
-            this.gl.uniformMatrix4fv(location, false, new Float32Array(value.data));
+            this.gl.uniformMatrix4fv(location, false, this._toWebGLMatrixData(value));
             return;
         }
 
@@ -1966,7 +2039,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         if (value instanceof Float32Array) {
             switch (value.length) {
                 case 16:
-                    this.gl.uniformMatrix4fv(location, false, value);
+                    this.gl.uniformMatrix4fv(
+                        location,
+                        false,
+                        this._toWebGLMatrixData(new Mat4(value))
+                    );
                     return;
                 case 4:
                     this.gl.uniform4fv(location, value);
@@ -2020,7 +2097,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         if (Array.isArray(value)) {
             switch (value.length) {
                 case 16:
-                    this.gl.uniformMatrix4fv(location, false, new Float32Array(value));
+                    this.gl.uniformMatrix4fv(
+                        location,
+                        false,
+                        this._toWebGLMatrixData(new Mat4(value))
+                    );
                     return;
                 case 4:
                     this.gl.uniform4f(location, value[0], value[1], value[2], value[3]);
@@ -2046,12 +2127,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (typeof value === 'number') {
-            if (Number.isInteger(value)) {
-                this.gl.uniform1i(location, value);
-                return;
-            }
-
-            this.gl.uniform1f(location, value);
+            this._setNumericUniform(shader, location, name, value);
         }
     }
 

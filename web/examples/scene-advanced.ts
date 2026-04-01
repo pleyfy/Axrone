@@ -1,7 +1,6 @@
 import {
     DirectionalLight,
     FilterMode,
-    OrbitCameraController,
     Scene,
     TextureFormat,
     Transform,
@@ -165,13 +164,15 @@ void main() {
             { name: 'Camera' },
             { primary: true, fieldOfView: 55 }
         );
-        cameraActor.addComponent(OrbitCameraController, {
-            distance: 6,
-            azimuth: 0.9,
-            elevation: 0.35,
-            target: [0, 0.4, -3],
-            autoRotateSpeed: 0.2,
-        });
+        const cameraTransform = cameraActor.requireComponent(Transform);
+        const cameraTarget = new Vec3(0, -0.15, -3);
+        cameraTransform.position = new Vec3(2.1, 1.4, 1.8);
+        cameraTransform.rotation = Quat.fromLookAt(
+            cameraTransform.position,
+            cameraTarget,
+            Vec3.UP,
+            new Quat()
+        );
 
         const sun = scene.createActor({ name: 'Sun' });
         sun.addComponent(DirectionalLight, {
