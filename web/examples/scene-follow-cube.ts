@@ -8,8 +8,8 @@ import type { ExampleContext, SceneExample } from './example-types';
  */
 @script({ scriptName: 'PlayerController' })
 class PlayerController extends Component {
-    private readonly _speed = 5;
-    private readonly _rotationSpeed = 10;
+    public speed = 5;
+    public rotationSpeed = 10;
     private readonly _pressedKeys = new Set<string>();
 
     awake(): void {
@@ -40,7 +40,7 @@ class PlayerController extends Component {
         if (moveX !== 0 || moveZ !== 0) {
             const deltaSeconds = deltaTime / 1000;
             const direction = new Vec3(moveX, 0, moveZ).normalize();
-            const speed = this._speed * deltaSeconds;
+            const speed = this.speed * deltaSeconds;
             const movement = new Vec3(
                 direction.x * speed,
                 direction.y * speed,
@@ -60,7 +60,7 @@ class PlayerController extends Component {
                 Math.cos(targetYaw - currentRotation.y)
             );
             const newYaw =
-                currentRotation.y + deltaYaw * Math.min(1, this._rotationSpeed * deltaSeconds);
+                currentRotation.y + deltaYaw * Math.min(1, this.rotationSpeed * deltaSeconds);
             transform.rotation = Quat.fromEuler(0, newYaw, 0);
         }
     }
@@ -78,7 +78,7 @@ class CameraFollow extends Component {
     private _target?: Transform;
     public offset: Vec3;
     public lookAtOffset: Vec3 = new Vec3(0, 0.5, 0);
-    private readonly _damping: number;
+    public damping: number;
     private _distanceMultiplier: number = 1.0;
 
     // Zoom limits
@@ -88,7 +88,7 @@ class CameraFollow extends Component {
     constructor(offset: Vec3 = new Vec3(0, 6, 10), damping: number = 8) {
         super();
         this.offset = offset;
-        this._damping = damping;
+        this.damping = damping;
     }
 
     awake(): void {
@@ -130,7 +130,7 @@ class CameraFollow extends Component {
 
         // Professional frame-independent smooth damping
         const deltaSeconds = deltaTime / 1000;
-        const t = 1.0 - Math.exp(-this._damping * deltaSeconds);
+        const t = 1.0 - Math.exp(-this.damping * deltaSeconds);
 
         const currentPos = cameraTransform.position;
         const newPos = Vec3.lerp(currentPos, targetPosition, t) as Vec3;
@@ -335,59 +335,127 @@ void main() {
         cameraFollow.setTarget(playerTransform);
         cameraFollow.lookAtOffset = new Vec3(0, 0.5, 0);
 
-        // Create UI panel for live camera tweaking
+        // Create professional GUI panel
         const uiPanel = document.createElement('div');
         Object.assign(uiPanel.style, {
             position: 'absolute',
-            top: '20px',
-            right: '20px',
-            backgroundColor: 'rgba(20, 25, 30, 0.85)',
-            backdropFilter: 'blur(5px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            padding: '15px',
-            borderRadius: '10px',
-            color: '#fff',
-            fontFamily: 'Inter, system-ui, sans-serif',
-            fontSize: '13px',
+            top: '15px',
+            right: '15px',
+            backgroundColor: 'rgba(15, 15, 20, 0.9)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            padding: '0',
+            borderRadius: '8px',
+            color: '#e0e0e0',
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontSize: '12px',
             zIndex: '1000',
-            width: '240px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+            width: '280px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
         });
 
-        uiPanel.innerHTML = `
-            <div style="font-weight: 600; margin-bottom: 12px; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">🎥 Camera Controls</div>
-            
-            <div style="margin-bottom: 5px; color: #aaa;">Offset X: <span id="val-ox">0</span></div>
-            <input type="range" id="cam-ox" min="-20" max="20" step="0.5" value="0" style="width: 100%; margin-bottom: 10px;">
-            
-            <div style="margin-bottom: 5px; color: #aaa;">Offset Y: <span id="val-oy">6</span></div>
-            <input type="range" id="cam-oy" min="-20" max="20" step="0.5" value="6" style="width: 100%; margin-bottom: 10px;">
-            
-            <div style="margin-bottom: 5px; color: #aaa;">Offset Z: <span id="val-oz">10</span></div>
-            <input type="range" id="cam-oz" min="-20" max="20" step="0.5" value="10" style="width: 100%; margin-bottom: 20px;">
-            
-            <div style="margin-bottom: 5px; color: #aaa;">LookAt Offset Y: <span id="val-ly">0.5</span></div>
-            <input type="range" id="cam-ly" min="-5" max="5" step="0.1" value="0.5" style="width: 100%;">
-        `;
-        container.appendChild(uiPanel);
+        const header = document.createElement('div');
+        Object.assign(header.style, {
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            padding: '12px 16px',
+            fontWeight: '600',
+            fontSize: '13px',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+        });
+        header.innerHTML = '⚙️ Scene Controls <span style="color:#4CAF50; font-size:10px; font-weight:800; letter-spacing:1px;">PRO</span>';
+        uiPanel.appendChild(header);
 
-        // Bind UI to cameraFollow component
-        const bindSlider = (id: string, valId: string, onChange: (val: number) => void) => {
-            const slider = uiPanel.querySelector(id) as HTMLInputElement;
-            const valLabel = uiPanel.querySelector(valId) as HTMLSpanElement;
-            if (slider && valLabel) {
-                slider.addEventListener('input', (e) => {
-                    const val = parseFloat((e.target as HTMLInputElement).value);
-                    valLabel.textContent = val.toFixed(1);
-                    onChange(val);
-                });
-            }
+        const content = document.createElement('div');
+        Object.assign(content.style, {
+            padding: '16px',
+            maxHeight: 'calc(100vh - 100px)',
+            overflowY: 'auto'
+        });
+        uiPanel.appendChild(content);
+
+        // Helper to create sections
+        const addSection = (title: string) => {
+            const h = document.createElement('div');
+            Object.assign(h.style, {
+                fontWeight: '600',
+                color: '#fff',
+                marginBottom: '12px',
+                marginTop: content.children.length > 0 ? '16px' : '0',
+                fontSize: '11px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                paddingBottom: '4px'
+            });
+            h.innerText = title;
+            content.appendChild(h);
         };
 
-        bindSlider('#cam-ox', '#val-ox', (v) => cameraFollow.offset.x = v);
-        bindSlider('#cam-oy', '#val-oy', (v) => cameraFollow.offset.y = v);
-        bindSlider('#cam-oz', '#val-oz', (v) => cameraFollow.offset.z = v);
-        bindSlider('#cam-ly', '#val-ly', (v) => cameraFollow.lookAtOffset.y = v);
+        // Helper to create sliders
+        const addSlider = (label: string, min: number, max: number, step: number, val: number, onChange: (v: number) => void) => {
+            const row = document.createElement('div');
+            Object.assign(row.style, { marginBottom: '10px' });
+            
+            const info = document.createElement('div');
+            Object.assign(info.style, { display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#aaa' });
+            
+            const title = document.createElement('span');
+            title.innerText = label;
+            
+            const valueLabel = document.createElement('span');
+            valueLabel.innerText = val.toFixed(step >= 1 ? 0 : 1);
+            valueLabel.style.color = '#fff';
+            valueLabel.style.fontFamily = 'SFMono-Regular, "Liberation Mono", Menlo, monospace';
+            
+            info.appendChild(title);
+            info.appendChild(valueLabel);
+            row.appendChild(info);
+            
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.min = min.toString();
+            slider.max = max.toString();
+            slider.step = step.toString();
+            slider.value = val.toString();
+            Object.assign(slider.style, { width: '100%', cursor: 'pointer', margin: 0 });
+            
+            slider.addEventListener('input', (e) => {
+                const num = parseFloat((e.target as HTMLInputElement).value);
+                valueLabel.innerText = num.toFixed(step >= 1 ? 0 : 1);
+                onChange(num);
+            });
+            
+            row.appendChild(slider);
+            content.appendChild(row);
+        };
+
+        addSection('🎥 Camera Position');
+        addSlider('Offset X', -30, 30, 0.5, cameraFollow.offset.x, v => cameraFollow.offset.x = v);
+        addSlider('Offset Y', -30, 30, 0.5, cameraFollow.offset.y, v => cameraFollow.offset.y = v);
+        addSlider('Offset Z', -30, 30, 0.5, cameraFollow.offset.z, v => cameraFollow.offset.z = v);
+        
+        addSection('🎯 Camera Look-At');
+        addSlider('Look Target X', -10, 10, 0.1, cameraFollow.lookAtOffset.x, v => cameraFollow.lookAtOffset.x = v);
+        addSlider('Look Target Y', -10, 10, 0.1, cameraFollow.lookAtOffset.y, v => cameraFollow.lookAtOffset.y = v);
+        addSlider('Look Target Z', -10, 10, 0.1, cameraFollow.lookAtOffset.z, v => cameraFollow.lookAtOffset.z = v);
+
+        addSection('🚀 Camera Dynamics');
+        addSlider('Smooth Damping', 1, 30, 0.5, cameraFollow.damping, v => cameraFollow.damping = v);
+
+        const playerController = player.getComponent(PlayerController);
+        if (playerController) {
+            addSection('🎮 Player Settings');
+            addSlider('Movement Speed', 1, 20, 0.5, playerController.speed, v => playerController.speed = v);
+            addSlider('Rotation Speed', 1, 30, 0.5, playerController.rotationSpeed, v => playerController.rotationSpeed = v);
+        }
+
+        container.appendChild(uiPanel);
 
         // Setup resize handler
         const cleanupResize = bindSceneToContainer(scene, container, 1280, 720);
