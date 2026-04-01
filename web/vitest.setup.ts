@@ -16,6 +16,14 @@ if (!(global as any).WebGL2RenderingContext) {
     });
 }
 
+if (!(global as any).ImageBitmap) {
+    (global as any).ImageBitmap = class ImageBitmap {};
+}
+
+if (!(global as any).ImageData) {
+    (global as any).ImageData = class ImageData {};
+}
+
 Object.assign(global, {
     performance: {
         now: () => Date.now(),
