@@ -19,6 +19,7 @@ export default defineConfig({
         alias: {
             '@axrone/core': './packages/core/src',
             '@axrone/numeric': './packages/numeric/src',
+            '@axrone/random': './packages/random/src',
             '@axrone/utility': './packages/utility/src',
         },
     },

@@ -1,6 +1,6 @@
 {
-    "name": "@axrone/core",
-    "version": "0.1.0",
+    "name": "@axrone/random",
+    "version": "0.0.1",
     "main": "./dist/index.js",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.ts",
@@ -19,9 +19,5 @@
         "clean": "rimraf dist",
         "test": "vitest run"
     },
-    "dependencies": {
-        "@axrone/random": "^0.0.1",
-        "@axrone/numeric": "^0.0.1",
-        "@axrone/utility": "^0.0.1"
-    }
+    "license": "ISC"
 }

@@ -20,6 +20,7 @@ export default defineConfig({
         alias: {
             '@axrone/core': path.resolve(__dirname, 'packages/core/src'),
             '@axrone/numeric': path.resolve(__dirname, 'packages/numeric/src'),
+            '@axrone/random': path.resolve(__dirname, 'packages/random/src'),
             '@axrone/utility': path.resolve(__dirname, 'packages/utility/src'),
         },
     },

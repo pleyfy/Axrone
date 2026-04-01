@@ -1,6 +1,6 @@
-import { rand, Random } from '@axrone/core';
 import { IVec2Like, Vec2 } from '../vec2';
 import { IVec3Like, Vec3 } from '../vec3';
+import { Random } from '@axrone/random';
 
 export type NoiseFunction1D = (x: number) => number;
 export type NoiseFunction2D = (x: number, y: number) => number;
@@ -99,6 +99,11 @@ const fade = (t: number): number => t * t * t * (t * (t * 6 - 15) + 10);
 const lerp = (a: number, b: number, t: number): number => a + t * (b - a);
 const fastFloor = (x: number): number => (x > 0 ? Math.floor(x) : Math.floor(x) - 1);
 
+const shufflePermutation = (values: readonly number[], seed: number): PermutationTable => {
+    const random = new Random(seed);
+    return Object.freeze(random.shuffle(values));
+};
+
 class PermutationGenerator {
     private readonly permutation: PermutationTable;
     private readonly doublePermutation: PermutationTable;
@@ -108,8 +113,7 @@ class PermutationGenerator {
             if (!Number.isFinite(seed)) {
                 throw new InvalidSeedError(seed);
             }
-            const random = new Random(seed);
-            this.permutation = random.shuffle(DEFAULT_PERMUTATION);
+            this.permutation = shufflePermutation(DEFAULT_PERMUTATION, seed);
         } else {
             this.permutation = DEFAULT_PERMUTATION;
         }
