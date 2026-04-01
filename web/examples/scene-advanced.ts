@@ -11,12 +11,16 @@ import { Quat, Vec3 } from '@axrone/numeric';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';
 
+/**
+ * Example: Advanced Scene
+ * Demonstrates texture pipeline, multipass rendering, lighting, and scene serialization
+ */
 const advancedSceneExample: SceneExample = {
     id: 'scene-advanced',
     title: 'Advanced Scene',
     description:
-        'Texture pipeline, multipass render, orbit camera, directional light ve prefab snapshot akislarini birlikte gosterir.',
-    tags: ['texture', 'multipass', 'prefab', 'lighting'],
+        'Complete scene with textures, multipass rendering, directional lighting, and prefab/snaphot serialization.',
+    tags: ['texture', 'multipass', 'prefab', 'lighting', 'advanced'],
     order: 2,
     async mount({ container }: ExampleContext) {
         container.replaceChildren();
@@ -29,6 +33,7 @@ const advancedSceneExample: SceneExample = {
             appendToDom: true,
             createCanvas: () => document.createElement('canvas'),
             ambientLight: [0.1, 0.12, 0.16],
+            // Define multiple render passes for layered rendering
             renderPasses: [
                 {
                     id: 'main',
@@ -49,6 +54,7 @@ const advancedSceneExample: SceneExample = {
             ],
         });
 
+        // Shader for lit textured objects
         scene.registerShader({
             id: 'examples/lit-textured',
             vertexSource: `#version 300 es
@@ -96,8 +102,10 @@ void main() {
             ],
         });
 
+        // Simple unlit color shader for overlay
         scene.registerShader(createUnlitColorShaderDefinition('examples/overlay'));
 
+        // Texture sampler with linear filtering and repeat wrapping
         scene.registerSampler({
             id: 'linear-repeat',
             minFilter: FilterMode.LINEAR,
@@ -106,6 +114,7 @@ void main() {
             wrapT: WrapMode.REPEAT,
         });
 
+        // Generate checkerboard texture for floor
         await scene.registerTexture({
             id: 'floor-checker',
             format: TextureFormat.RGBA8,
@@ -118,6 +127,7 @@ void main() {
             },
         });
 
+        // Solid color texture for accent box
         await scene.registerTexture({
             id: 'accent',
             format: TextureFormat.RGBA8,
@@ -129,6 +139,7 @@ void main() {
             },
         });
 
+        // Create materials
         scene.createMaterial({
             id: 'lit-floor',
             shaderId: 'examples/lit-textured',
@@ -156,14 +167,17 @@ void main() {
             },
         });
 
+        // Create meshes
         scene.createPlaneMesh('floor', 8, 8);
         scene.createBoxMesh('box', 1.1, 1.1, 1.1);
         scene.createPlaneMesh('overlay-quad', 1.75, 0.2);
 
+        // Create camera with orbit target
         const cameraActor = scene.createCameraActor(
             { name: 'Camera' },
             { primary: true, fieldOfView: 55 }
         );
+
         const cameraTransform = cameraActor.requireComponent(Transform);
         const cameraTarget = new Vec3(0, -0.15, -3);
         cameraTransform.position = new Vec3(2.1, 1.4, 1.8);
@@ -174,6 +188,7 @@ void main() {
             new Quat()
         );
 
+        // Create directional light (sun)
         const sun = scene.createActor({ name: 'Sun' });
         sun.addComponent(DirectionalLight, {
             color: [1, 0.96, 0.9],
@@ -182,6 +197,7 @@ void main() {
         });
         sun.requireComponent(Transform).rotation = Quat.fromEuler(-0.65, 0.85, 0);
 
+        // Create floor with checkerboard texture
         const floor = scene.createRenderableActor(
             { name: 'Floor' },
             { meshId: 'floor', materialId: 'lit-floor', passId: 'main' }
@@ -189,12 +205,14 @@ void main() {
         floor.requireComponent(Transform).position = new Vec3(0, -1, -3);
         floor.requireComponent(Transform).rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
 
+        // Create accent box
         const cube = scene.createRenderableActor(
             { name: 'AccentBox' },
             { meshId: 'box', materialId: 'lit-accent', passId: 'main' }
         );
         cube.requireComponent(Transform).position = new Vec3(0, 0.3, -3);
 
+        // Create overlay ribbon (rendered in overlay pass without depth test)
         const overlay = scene.createRenderableActor(
             { name: 'OverlayRibbon' },
             {
@@ -206,10 +224,14 @@ void main() {
         );
         overlay.requireComponent(Transform).position = new Vec3(0, -1.15, -1.5);
 
+        // Create prefab and serialize scene for demonstration
         const prefab = scene.createPrefab('examples/advanced-scene');
         const snapshot = scene.serializeScene();
+
+        // Setup resize handler
         const cleanupResize = bindSceneToContainer(scene, container, 1280, 720);
 
+        // Expose scene and serialization APIs globally for debugging
         const root = globalThis as {
             scene?: Scene;
             scenePrefab?: typeof prefab;

@@ -1,8 +1,12 @@
-import { Component, Scene, Transform, Vec3 } from '@axrone/core';
+import { Component, Scene, Transform, Vec3, script } from '@axrone/core';
 import { Quat } from '@axrone/numeric';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';
 
+/**
+ * Simple cube rotation component
+ */
+@script({ scriptName: 'CubeSpin' })
 class CubeSpin extends Component {
     private _elapsed = 0;
 
@@ -10,9 +14,7 @@ class CubeSpin extends Component {
         this._elapsed += deltaTime;
 
         const transform = this.transform as Transform | undefined;
-        if (!transform) {
-            return;
-        }
+        if (!transform) return;
 
         transform.rotation = Quat.fromEuler(
             this._elapsed * 0.00045,
@@ -22,11 +24,15 @@ class CubeSpin extends Component {
     }
 }
 
+/**
+ * Example: Color Cube Spin
+ * Demonstrates a multi-colored spinning cube with fixed camera view
+ */
 const colorCubeSceneExample: SceneExample = {
     id: 'scene-color-cube',
     title: 'Color Cube Spin',
     description:
-        'Tek box mesh uzerinde alti yuzu farkli renge boyayip sabit kamera ile temiz bir sekilde gosterir.',
+        'Spinning cube with each face having a unique color using normal-based shading.',
     tags: ['camera', 'mesh', 'shader', 'rotation'],
     order: 3,
     mount({ container }: ExampleContext) {
@@ -42,8 +48,10 @@ const colorCubeSceneExample: SceneExample = {
             clearColor: [0.02, 0.03, 0.05, 1],
         });
 
+        // Register custom component
         scene.registerComponent(CubeSpin);
 
+        // Shader with face-based coloring (each normal direction = different color)
         scene.registerShader({
             id: 'examples/color-cube',
             vertexSource: `#version 300 es
@@ -71,14 +79,17 @@ vec3 faceColor(vec3 normal) {
     vec3 n = normalize(normal);
     vec3 absN = abs(n);
 
+    // X-axis faces (orange / green)
     if (absN.x > absN.y && absN.x > absN.z) {
         return n.x > 0.0 ? vec3(0.99, 0.76, 0.19) : vec3(0.17, 0.82, 0.47);
     }
 
+    // Y-axis faces (purple / pink)
     if (absN.y > absN.x && absN.y > absN.z) {
         return n.y > 0.0 ? vec3(0.72, 0.34, 0.95) : vec3(0.98, 0.48, 0.78);
     }
 
+    // Z-axis faces (red / blue)
     return n.z > 0.0 ? vec3(0.93, 0.23, 0.23) : vec3(0.14, 0.72, 0.98);
 }
 
@@ -98,6 +109,7 @@ void main() {
             ],
         });
 
+        // Create mesh and material
         scene.createBoxMesh('color-cube-mesh', 1.8, 1.8, 1.8);
         scene.createMaterial({
             id: 'color-cube-material',
@@ -108,18 +120,22 @@ void main() {
             },
         });
 
+        // Create cube actor
         const cube = scene.createRenderableActor(
             { name: 'ColorCube' },
             { meshId: 'color-cube-mesh', materialId: 'color-cube-material' }
         );
+
         const cubeTransform = cube.requireComponent(Transform);
         cubeTransform.position = new Vec3(0, 0, -4);
         cube.addComponent(CubeSpin);
 
+        // Create camera with fixed position
         const camera = scene.createCameraActor(
             { name: 'MainCamera' },
             { primary: true, fieldOfView: 50 }
         );
+
         const cameraTransform = camera.requireComponent(Transform);
         cameraTransform.position = new Vec3(0, 0.8, 1.8);
         cameraTransform.rotation = Quat.fromLookAt(
@@ -129,7 +145,10 @@ void main() {
             new Quat()
         );
 
+        // Setup resize handler
         const cleanupResize = bindSceneToContainer(scene, container, 1280, 720);
+
+        // Expose scene globally for debugging
         const root = globalThis as { scene?: Scene };
         root.scene = scene;
 

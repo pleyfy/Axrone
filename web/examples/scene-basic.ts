@@ -1,36 +1,46 @@
-import { Component, Scene, Transform, Vec3 } from '@axrone/core';
+import { Component, Scene, Transform, Vec3, script } from '@axrone/core';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';
 
+/**
+ * Simple orbital motion component - rotates around center
+ */
+@script({ scriptName: 'OrbitMotion' })
 class OrbitMotion extends Component {
     private _elapsed = 0;
-    private readonly _radius: number;
-    private readonly _speed: number;
 
-    constructor(radius: number = 0.75, speed: number = 0.0012) {
+    constructor(
+        private readonly _radius = 0.75,
+        private readonly _speed = 0.0012
+    ) {
         super();
-        this._radius = radius;
-        this._speed = speed;
     }
 
     update(deltaTime: number): void {
         this._elapsed += deltaTime;
+
         const transform = this.transform as Transform | undefined;
-        if (!transform) {
-            return;
-        }
+        if (!transform) return;
 
         const t = this._elapsed * this._speed;
-        transform.position = new Vec3(Math.cos(t) * this._radius, Math.sin(t * 1.5) * 0.35, -4);
+        transform.position = new Vec3(
+            Math.cos(t) * this._radius,
+            Math.sin(t * 1.5) * 0.35,
+            -4
+        );
     }
 }
 
+/**
+ * Example: Basic Scene
+ * Minimal scene setup with single shader, mesh, and custom component
+ */
 const basicSceneExample: SceneExample = {
     id: 'scene-basic',
     title: 'Basic Scene',
     description:
-        'Tek shader, tek mesh ve custom component update akisi ile minimum scene kurulumu.',
-    tags: ['scene', 'component', 'shader'],
+        'Minimal scene demonstrating custom component with update lifecycle, single shader and mesh.',
+    tags: ['scene', 'component', 'shader', 'basic'],
     order: 1,
     mount({ container }: ExampleContext) {
         container.replaceChildren();
@@ -44,8 +54,10 @@ const basicSceneExample: SceneExample = {
             createCanvas: () => document.createElement('canvas'),
         });
 
+        // Register custom component
         scene.registerComponent(OrbitMotion);
 
+        // Register shader with time-based pulsing color
         scene.registerShader({
             id: 'examples/time-color',
             vertexSource: `#version 300 es
@@ -72,6 +84,7 @@ void main() {
             uniforms: ['u_Model', 'u_View', 'u_Projection', 'u_Color', 'u_Time'],
         });
 
+        // Create mesh and material
         scene.createBoxMesh('box');
         scene.createMaterial({
             id: 'box-material',
@@ -81,8 +94,10 @@ void main() {
             },
         });
 
+        // Create camera
         scene.createCameraActor({ name: 'MainCamera' }, { primary: true, fieldOfView: 60 });
 
+        // Create box actor with orbit motion
         const box = scene.createRenderableActor(
             { name: 'Box' },
             { meshId: 'box', materialId: 'box-material' }
@@ -91,7 +106,10 @@ void main() {
         box.addComponent(OrbitMotion);
         box.requireComponent(Transform).position = new Vec3(0, 0, -4);
 
+        // Setup resize handler
         const cleanupResize = bindSceneToContainer(scene, container, 960, 540);
+
+        // Expose scene globally for debugging
         const root = globalThis as { scene?: Scene };
         root.scene = scene;
 
