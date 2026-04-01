@@ -1,15 +1,29 @@
-import { Mat4, Vec2, Vec3, Vec4 } from '@axrone/numeric';
+import { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 import { createBox, createPlane, createSphere } from '../geometry/primitives';
 import type { IGeometryBuffers } from '../geometry/primitives/types';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
 import { Transform } from '../component-system/components/transform';
+import { Component } from '../component-system/core/component';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { World } from '../component-system/core/world';
 import { SystemManager, SystemPhase } from '../component-system/systems/system-manager';
 import type { ComponentConstructor, ComponentRegistry } from '../component-system/types/core';
 import type { System, SystemQuery } from '../component-system/types/system';
+import {
+    FilterMode,
+    TextureDimension,
+    TextureFormat,
+    TextureUsage,
+    WrapMode,
+    type ITexture,
+    type ITextureSampler,
+} from '../renderer/webgl2/texture/interfaces';
+import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
 import { Camera, type CameraConfig } from './components/camera';
+import { DirectionalLight } from './components/directional-light';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
+import { OrbitCameraController } from './components/orbit-camera-controller';
+import { PointLight } from './components/point-light';
 import {
     SceneCanvasError,
     SceneLifecycleError,
@@ -17,8 +31,11 @@ import {
     SceneMeshError,
     SceneShaderError,
 } from './errors';
+import { cloneMeshDefinition, cloneTextureBinding, decodeSceneValue, encodeSceneValue } from './serialization';
 import type {
-    SceneBuiltInRegistry,
+    SceneActorSnapshot,
+    SceneClearFlag,
+    SceneComponentSnapshot,
     SceneLoopState,
     SceneMaterialDefinition,
     SceneMaterialHandle,
@@ -27,9 +44,20 @@ import type {
     SceneMeshSemantic,
     SceneMeshTopology,
     SceneOptions,
+    ScenePrefabDefinition,
+    ScenePrefabInstantiateOptions,
     SceneRegistry,
+    SceneRenderPassDefinition,
+    SceneRenderPassHandle,
+    SceneSamplerDefinition,
+    SceneSamplerHandle,
     SceneShaderDefinition,
     SceneShaderHandle,
+    SceneSnapshot,
+    SceneSnapshotLoadOptions,
+    SceneTextureBindingDefinition,
+    SceneTextureDefinition,
+    SceneTextureHandle,
     SceneUniformValue,
 } from './types';
 
@@ -64,15 +92,68 @@ interface MeshResource {
     readonly mode: number;
 }
 
+interface MaterialTextureBinding {
+    readonly textureId: string;
+    readonly samplerId: string | null;
+    readonly unit?: number;
+}
+
 interface MaterialResource {
     readonly id: string;
     readonly shaderId: string;
     readonly uniforms: Map<string, SceneUniformValue>;
+    readonly textureBindings: Map<string, MaterialTextureBinding>;
+}
+
+interface TextureResource {
+    readonly id: string;
+    readonly texture: ITexture;
+    readonly width: number;
+    readonly height: number;
+    readonly samplerId: string | null;
+}
+
+interface SamplerResource {
+    readonly id: string;
+    readonly sampler: ITextureSampler;
+}
+
+interface RenderPassResource {
+    readonly id: string;
+    readonly order: number;
+    readonly rendererPassId: string;
+    readonly enabled: boolean;
+    readonly clearFlags: readonly SceneClearFlag[];
+    readonly clearColor: Vec4 | null;
+    readonly clearDepth: number | null;
+    readonly depthTest?: boolean;
+    readonly cull?: boolean;
+    readonly blend?: boolean;
 }
 
 interface RenderItem {
     readonly transform: Transform;
     readonly renderer: MeshRenderer;
+}
+
+interface DirectionalLightState {
+    readonly direction: Vec3;
+    readonly color: Vec3;
+    readonly intensity: number;
+}
+
+interface PointLightState {
+    readonly position: Vec3;
+    readonly color: Vec3;
+    readonly intensity: number;
+    readonly range: number;
+}
+
+interface LightingState {
+    readonly ambient: Vec3;
+    readonly directional: DirectionalLightState | null;
+    readonly point: PointLightState | null;
+    readonly pointCount: number;
 }
 
 const DEFAULT_ATTRIBUTE_NAMES: Readonly<Record<SceneMeshSemantic, string>> = Object.freeze({
@@ -90,13 +171,18 @@ const ATTRIBUTE_LOCATIONS: Readonly<Record<SceneMeshSemantic, number>> = Object.
 });
 
 const DEFAULT_CLEAR_COLOR = new Vec4(0.08, 0.09, 0.11, 1);
+const DEFAULT_AMBIENT_LIGHT = new Vec3(0.08, 0.08, 0.1);
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
+const DEFAULT_RENDER_PASS_ID = 'main';
 
 const createId = (prefix: string): string =>
     `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-const toVec4 = (value?: Vec4 | readonly [number, number, number, number]): Vec4 => {
+const toVec4 = (
+    value?: Vec4 | readonly [number, number, number, number] | null,
+    fallback: Vec4 = DEFAULT_CLEAR_COLOR
+): Vec4 => {
     if (value instanceof Vec4) {
         return new Vec4(value.x, value.y, value.z, value.w);
     }
@@ -105,13 +191,105 @@ const toVec4 = (value?: Vec4 | readonly [number, number, number, number]): Vec4 
         return new Vec4(value[0], value[1], value[2], value[3]);
     }
 
-    return new Vec4(
-        DEFAULT_CLEAR_COLOR.x,
-        DEFAULT_CLEAR_COLOR.y,
-        DEFAULT_CLEAR_COLOR.z,
-        DEFAULT_CLEAR_COLOR.w
-    );
+    return new Vec4(fallback.x, fallback.y, fallback.z, fallback.w);
 };
+
+const toVec3 = (
+    value?: Vec3 | readonly [number, number, number] | null,
+    fallback: Vec3 = DEFAULT_AMBIENT_LIGHT
+): Vec3 => {
+    if (value instanceof Vec3) {
+        return new Vec3(value.x, value.y, value.z);
+    }
+
+    if (Array.isArray(value) && value.length === 3) {
+        return new Vec3(value[0], value[1], value[2]);
+    }
+
+    return new Vec3(fallback.x, fallback.y, fallback.z);
+};
+
+const cloneSceneValue = <T>(value: T): T => decodeSceneValue(encodeSceneValue(value)) as T;
+
+const cloneShaderDefinition = (definition: SceneShaderDefinition): SceneShaderDefinition => ({
+    ...definition,
+    uniforms: definition.uniforms ? [...definition.uniforms] : undefined,
+    attributes: definition.attributes ? { ...definition.attributes } : undefined,
+});
+
+const cloneMaterialDefinition = (definition: SceneMaterialDefinition): SceneMaterialDefinition => ({
+    id: definition.id,
+    shaderId: definition.shaderId,
+    uniforms: definition.uniforms
+        ? Object.fromEntries(
+              Object.entries(definition.uniforms).map(([name, value]) => [name, cloneSceneValue(value)])
+          )
+        : undefined,
+    textures: definition.textures
+        ? Object.fromEntries(
+              Object.entries(definition.textures).map(([name, binding]) => [name, cloneTextureBinding(binding)])
+          )
+        : undefined,
+});
+
+const cloneSamplerDefinition = (definition: SceneSamplerDefinition): SceneSamplerDefinition => ({
+    ...definition,
+});
+
+const cloneTextureDefinition = (definition: SceneTextureDefinition): SceneTextureDefinition => {
+    const source = definition.source;
+
+    if (source.kind === 'color') {
+        return {
+            ...definition,
+            source: {
+                ...source,
+                color: [...source.color] as readonly [number, number, number, number],
+            },
+        };
+    }
+
+    if (source.kind === 'checker') {
+        return {
+            ...definition,
+            source: {
+                ...source,
+                colorA: source.colorA
+                    ? ([...source.colorA] as readonly [number, number, number, number])
+                    : undefined,
+                colorB: source.colorB
+                    ? ([...source.colorB] as readonly [number, number, number, number])
+                    : undefined,
+            },
+        };
+    }
+
+    if (source.kind === 'data') {
+        return {
+            ...definition,
+            source: {
+                ...source,
+                data: [...source.data],
+            },
+        };
+    }
+
+    return {
+        ...definition,
+        source: { ...source },
+    };
+};
+
+const cloneRenderPassDefinition = (definition: SceneRenderPassDefinition): SceneRenderPassDefinition => ({
+    ...definition,
+    clearFlags: definition.clearFlags ? [...definition.clearFlags] : undefined,
+    clearColor:
+        definition.clearColor === null
+            ? null
+            : definition.clearColor
+              ? toVec4(definition.clearColor)
+              : undefined,
+});
 
 const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {
     switch (name) {
@@ -160,7 +338,123 @@ const extractUniformNames = (...sources: string[]): string[] => {
     return [...names];
 };
 
-export const createUnlitColorShaderDefinition = (id: string = 'Scene/UnlitColor'): SceneShaderDefinition => ({
+const normalizeTextureBinding = (
+    binding: SceneTextureBindingDefinition
+): MaterialTextureBinding => {
+    if (typeof binding === 'string') {
+        return {
+            textureId: binding,
+            samplerId: null,
+        };
+    }
+
+    return {
+        textureId: binding.textureId,
+        samplerId: binding.samplerId ?? null,
+        unit: binding.unit,
+    };
+};
+
+const clampByte = (value: number): number => {
+    const normalized = value <= 1 && value >= 0 ? value * 255 : value;
+    return Math.max(0, Math.min(255, Math.round(normalized)));
+};
+
+const calculateMipLevels = (width: number, height: number): number =>
+    Math.max(1, Math.floor(Math.log2(Math.max(width, height))) + 1);
+
+const inferTextureChannels = (format: TextureFormat): 1 | 2 | 3 | 4 => {
+    const value = String(format);
+
+    if (value.includes('RGBA')) {
+        return 4;
+    }
+
+    if (value.includes('RGB')) {
+        return 3;
+    }
+
+    if (value.includes('RG')) {
+        return 2;
+    }
+
+    return 1;
+};
+
+const isFloatTextureFormat = (format: TextureFormat): boolean => {
+    const value = String(format);
+    return value.includes('16F') || value.includes('32F');
+};
+
+const createSolidTextureData = (
+    color: readonly [number, number, number, number],
+    width: number,
+    height: number
+): Uint8Array => {
+    const data = new Uint8Array(width * height * 4);
+    const red = clampByte(color[0]);
+    const green = clampByte(color[1]);
+    const blue = clampByte(color[2]);
+    const alpha = clampByte(color[3]);
+
+    for (let index = 0; index < data.length; index += 4) {
+        data[index] = red;
+        data[index + 1] = green;
+        data[index + 2] = blue;
+        data[index + 3] = alpha;
+    }
+
+    return data;
+};
+
+const createCheckerTextureData = (
+    size: number,
+    colorA: readonly [number, number, number, number],
+    colorB: readonly [number, number, number, number]
+): Uint8Array => {
+    const data = new Uint8Array(size * size * 4);
+    const a = colorA.map((value) => clampByte(value)) as number[];
+    const b = colorB.map((value) => clampByte(value)) as number[];
+
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const offset = (y * size + x) * 4;
+            const source = (x + y) % 2 === 0 ? a : b;
+
+            data[offset] = source[0];
+            data[offset + 1] = source[1];
+            data[offset + 2] = source[2];
+            data[offset + 3] = source[3];
+        }
+    }
+
+    return data;
+};
+
+const createRawTextureData = (
+    format: TextureFormat,
+    width: number,
+    height: number,
+    sourceData: readonly number[],
+    channels?: 1 | 2 | 3 | 4
+): ArrayBufferView => {
+    const channelCount = channels ?? inferTextureChannels(format);
+    const expectedLength = width * height * channelCount;
+    const values =
+        sourceData.length >= expectedLength
+            ? sourceData.slice(0, expectedLength)
+            : [...sourceData, ...new Array(expectedLength - sourceData.length).fill(0)];
+
+    if (isFloatTextureFormat(format)) {
+        return new Float32Array(values);
+    }
+
+    return new Uint8Array(values.map((entry) => clampByte(entry)));
+};
+
+export const createUnlitColorShaderDefinition = (
+    id: string = 'Scene/UnlitColor'
+): SceneShaderDefinition => ({
     id,
     vertexSource: `#version 300 es
 layout(location = 0) in vec3 a_Position;
@@ -196,11 +490,24 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     readonly loop: GameLoop<SceneLoopState>;
 
     private readonly _registry: RuntimeRegistry<R>;
+    private readonly _componentTypes = new Map<string, ComponentConstructor>();
     private readonly _shaders = new Map<string, ShaderResource>();
+    private readonly _shaderDefinitions = new Map<string, SceneShaderDefinition>();
     private readonly _materials = new Map<string, MaterialResource>();
+    private readonly _materialDefinitions = new Map<string, SceneMaterialDefinition>();
     private readonly _meshes = new Map<string, MeshResource>();
+    private readonly _meshDefinitions = new Map<string, SceneMeshDefinition>();
+    private readonly _samplers = new Map<string, SamplerResource>();
+    private readonly _samplerDefinitions = new Map<string, SceneSamplerDefinition>();
+    private readonly _textures = new Map<string, TextureResource>();
+    private readonly _textureDefinitions = new Map<string, SceneTextureDefinition>();
+    private readonly _renderPasses = new Map<string, RenderPassResource>();
+    private readonly _renderPassDefinitions = new Map<string, SceneRenderPassDefinition>();
+    private readonly _textureManager: WebGLTextureManager;
+    private readonly _defaultSampler: ITextureSampler;
     private readonly _autoCreatedCanvas: boolean;
     private readonly _defaultClearColor: Vec4;
+    private readonly _ambientLight: Vec3;
     private _pixelRatio: number;
     private _disposed = false;
 
@@ -212,17 +519,46 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._autoCreatedCanvas = surface.autoCreated;
         this._pixelRatio = options.pixelRatio ?? globalThis.devicePixelRatio ?? 1;
         this._defaultClearColor = toVec4(options.clearColor);
+        this._ambientLight = toVec3(options.ambientLight);
+        this._textureManager = new WebGLTextureManager(this.gl);
+        this._defaultSampler = this._textureManager.getDefaultSampler(
+            FilterMode.LINEAR,
+            WrapMode.REPEAT
+        );
 
         this._registry = {
             Transform,
             Camera,
             MeshRenderer,
+            DirectionalLight,
+            PointLight,
+            OrbitCameraController,
             ...(options.registry ?? ({} as R)),
         } as RuntimeRegistry<R>;
+
+        for (const componentType of Object.values(this._registry)) {
+            this._componentTypes.set(componentType.name, componentType);
+        }
 
         this.world = new World(this._registry);
         this.systems = new SystemManager(this.world);
         this.resize(options.width, options.height, this._pixelRatio);
+
+        const initialRenderPasses = options.renderPasses?.length
+            ? options.renderPasses
+            : [
+                  {
+                      id: DEFAULT_RENDER_PASS_ID,
+                      order: 0,
+                      rendererPassId: DEFAULT_RENDER_PASS_ID,
+                      clearFlags: ['color', 'depth'],
+                      clearColor: this._defaultClearColor,
+                  } satisfies SceneRenderPassDefinition,
+              ];
+
+        for (const renderPass of initialRenderPasses) {
+            this.registerRenderPass(renderPass);
+        }
 
         const loopSystems: readonly GameLoopSystem<SceneLoopState>[] = [
             {
@@ -281,6 +617,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
         this._assertNotDisposed();
+        this._componentTypes.set(componentType.name, componentType);
         this.world.registerComponentType(componentType);
         return this;
     }
@@ -342,6 +679,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         const resource = this._createShaderResource(definition);
         this._shaders.set(resource.id, resource);
+        this._shaderDefinitions.set(resource.id, cloneShaderDefinition(definition));
 
         return {
             id: resource.id,
@@ -373,13 +711,21 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             id: definition.id,
             shaderId: definition.shaderId,
             uniforms: new Map(Object.entries(definition.uniforms ?? {})),
+            textureBindings: new Map(
+                Object.entries(definition.textures ?? {}).map(([name, binding]) => [
+                    name,
+                    normalizeTextureBinding(binding),
+                ])
+            ),
         };
 
         this._materials.set(resource.id, resource);
+        this._materialDefinitions.set(resource.id, cloneMaterialDefinition(definition));
 
         return {
             id: resource.id,
             shaderId: resource.shaderId,
+            textureBindings: [...resource.textureBindings.keys()],
         };
     }
 
@@ -391,6 +737,42 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         material.uniforms.set(name, value);
+        const definition = this._materialDefinitions.get(materialId);
+        if (definition) {
+            const uniforms = { ...(definition.uniforms ?? {}) };
+            uniforms[name] = cloneSceneValue(value);
+            this._materialDefinitions.set(materialId, {
+                ...definition,
+                uniforms,
+            });
+        }
+
+        return this;
+    }
+
+    setMaterialTexture(
+        materialId: string,
+        name: string,
+        binding: SceneTextureBindingDefinition
+    ): this {
+        this._assertNotDisposed();
+        const material = this._materials.get(materialId);
+        if (!material) {
+            throw new SceneMaterialError(`Material '${materialId}' is not registered`);
+        }
+
+        material.textureBindings.set(name, normalizeTextureBinding(binding));
+        const definition = this._materialDefinitions.get(materialId);
+        if (definition) {
+            this._materialDefinitions.set(materialId, {
+                ...definition,
+                textures: {
+                    ...(definition.textures ?? {}),
+                    [name]: cloneTextureBinding(binding),
+                },
+            });
+        }
+
         return this;
     }
 
@@ -403,6 +785,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         return {
             id: material.id,
             shaderId: material.shaderId,
+            textureBindings: [...material.textureBindings.keys()],
         };
     }
 
@@ -416,6 +799,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         const resource = this._createMeshResource(definition);
         this._meshes.set(resource.id, resource);
+        this._meshDefinitions.set(resource.id, cloneMeshDefinition(definition));
 
         return {
             id: resource.id,
@@ -439,7 +823,147 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         };
     }
 
-    createBoxMesh(id: string, width: number = 1, height: number = 1, depth: number = 1): SceneMeshHandle {
+    registerSampler(definition: SceneSamplerDefinition): SceneSamplerHandle {
+        this._assertNotDisposed();
+        const existing = this._samplers.get(definition.id);
+        if (existing && !existing.sampler.isDisposed) {
+            existing.sampler.dispose();
+            this._samplers.delete(definition.id);
+        }
+
+        const sampler = this._textureManager.createSampler({
+            minFilter: definition.minFilter ?? FilterMode.LINEAR,
+            magFilter: definition.magFilter ?? FilterMode.LINEAR,
+            wrapS: definition.wrapS ?? WrapMode.REPEAT,
+            wrapT: definition.wrapT ?? WrapMode.REPEAT,
+            wrapR: definition.wrapR,
+            maxAnisotropy: definition.maxAnisotropy,
+        });
+
+        this._samplers.set(definition.id, {
+            id: definition.id,
+            sampler,
+        });
+        this._samplerDefinitions.set(definition.id, cloneSamplerDefinition(definition));
+
+        return {
+            id: definition.id,
+        };
+    }
+
+    getSampler(id: string): SceneSamplerHandle | null {
+        const sampler = this._samplers.get(id);
+        if (!sampler) {
+            return null;
+        }
+
+        return {
+            id: sampler.id,
+        };
+    }
+
+    async registerTexture(definition: SceneTextureDefinition): Promise<SceneTextureHandle> {
+        this._assertNotDisposed();
+        const existing = this._textures.get(definition.id);
+        if (existing && !existing.texture.isDisposed) {
+            existing.texture.dispose();
+            this._textures.delete(definition.id);
+        }
+
+        const resource = await this._createTextureResource(definition);
+        this._textures.set(resource.id, resource);
+        this._textureDefinitions.set(resource.id, cloneTextureDefinition(definition));
+
+        return {
+            id: resource.id,
+            width: resource.width,
+            height: resource.height,
+            samplerId: resource.samplerId,
+        };
+    }
+
+    getTexture(id: string): SceneTextureHandle | null {
+        const texture = this._textures.get(id);
+        if (!texture) {
+            return null;
+        }
+
+        return {
+            id: texture.id,
+            width: texture.width,
+            height: texture.height,
+            samplerId: texture.samplerId,
+        };
+    }
+
+    registerRenderPass(definition: SceneRenderPassDefinition): SceneRenderPassHandle {
+        this._assertNotDisposed();
+        const resource: RenderPassResource = {
+            id: definition.id,
+            order: definition.order ?? this._renderPasses.size,
+            rendererPassId: definition.rendererPassId ?? definition.id,
+            enabled: definition.enabled ?? true,
+            clearFlags:
+                definition.clearFlags ??
+                (this._renderPasses.size === 0 || definition.id === DEFAULT_RENDER_PASS_ID
+                    ? ['color', 'depth']
+                    : []),
+            clearColor:
+                definition.clearColor === null
+                    ? null
+                    : definition.clearColor
+                      ? toVec4(definition.clearColor)
+                      : definition.id === DEFAULT_RENDER_PASS_ID
+                        ? toVec4(this._defaultClearColor)
+                        : null,
+            clearDepth: definition.clearDepth ?? null,
+            depthTest: definition.depthTest,
+            cull: definition.cull,
+            blend: definition.blend,
+        };
+
+        this._renderPasses.set(definition.id, resource);
+        this._renderPassDefinitions.set(definition.id, cloneRenderPassDefinition(definition));
+
+        return {
+            id: resource.id,
+            order: resource.order,
+            rendererPassId: resource.rendererPassId,
+            enabled: resource.enabled,
+        };
+    }
+
+    getRenderPass(id: string): SceneRenderPassHandle | null {
+        const renderPass = this._renderPasses.get(id);
+        if (!renderPass) {
+            return null;
+        }
+
+        return {
+            id: renderPass.id,
+            order: renderPass.order,
+            rendererPassId: renderPass.rendererPassId,
+            enabled: renderPass.enabled,
+        };
+    }
+
+    getRenderPasses(): readonly SceneRenderPassHandle[] {
+        return [...this._renderPasses.values()]
+            .sort((left, right) => left.order - right.order)
+            .map((renderPass) => ({
+                id: renderPass.id,
+                order: renderPass.order,
+                rendererPassId: renderPass.rendererPassId,
+                enabled: renderPass.enabled,
+            }));
+    }
+
+    createBoxMesh(
+        id: string,
+        width: number = 1,
+        height: number = 1,
+        depth: number = 1
+    ): SceneMeshHandle {
         return this._registerGeometryBuffers(
             id,
             createBox({
@@ -478,6 +1002,121 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 generateTangents: false,
             })
         );
+    }
+
+    createPrefab(id: string, actors: readonly Actor[] = this.world.getAllActors()): ScenePrefabDefinition {
+        this._assertNotDisposed();
+
+        return {
+            id,
+            actors: actors.map((actor) => this._createActorSnapshot(actor)),
+        };
+    }
+
+    instantiatePrefab(
+        prefab: ScenePrefabDefinition,
+        options: ScenePrefabInstantiateOptions = {}
+    ): readonly Actor[] {
+        this._assertNotDisposed();
+        const createdActors: Actor[] = [];
+
+        for (const actorSnapshot of prefab.actors) {
+            const actor = this.createActor({
+                name: `${options.namePrefix ?? ''}${actorSnapshot.name}`,
+                layer: actorSnapshot.layer as any,
+                tag: actorSnapshot.tag as any,
+                active: false,
+                persistent: actorSnapshot.persistent,
+                pooled: actorSnapshot.pooled,
+                autoStart: false,
+            });
+
+            for (const componentSnapshot of actorSnapshot.components) {
+                this._hydrateComponent(actor, componentSnapshot, options);
+            }
+
+            actor.start();
+            actor.active = actorSnapshot.active;
+            createdActors.push(actor);
+        }
+
+        return createdActors;
+    }
+
+    serializeScene(): SceneSnapshot {
+        this._assertNotDisposed();
+
+        return {
+            version: 1,
+            prefab: this.createPrefab(`${this.id}:prefab`),
+            shaders: [...this._shaderDefinitions.values()].map((definition) => cloneShaderDefinition(definition)),
+            meshes: [...this._meshDefinitions.values()].map((definition) => cloneMeshDefinition(definition)),
+            materials: [...this._materialDefinitions.values()].map((definition) => cloneMaterialDefinition(definition)),
+            textures: [...this._textureDefinitions.values()].map((definition) => cloneTextureDefinition(definition)),
+            samplers: [...this._samplerDefinitions.values()].map((definition) => cloneSamplerDefinition(definition)),
+            renderPasses: [...this._renderPassDefinitions.values()]
+                .map((definition) => cloneRenderPassDefinition(definition))
+                .sort((left, right) => (left.order ?? 0) - (right.order ?? 0)),
+        };
+    }
+
+    async loadScene(
+        snapshot: SceneSnapshot,
+        options: SceneSnapshotLoadOptions = {}
+    ): Promise<readonly Actor[]> {
+        this._assertNotDisposed();
+
+        if (snapshot.version !== 1) {
+            throw new SceneLifecycleError(`Unsupported scene snapshot version '${snapshot.version}'`);
+        }
+
+        if (options.clearExisting !== false) {
+            this.world.clear();
+            this._clearSceneAssets();
+        }
+
+        for (const shader of snapshot.shaders) {
+            this.registerShader(shader);
+        }
+
+        for (const mesh of snapshot.meshes) {
+            this.registerMesh(mesh);
+        }
+
+        for (const sampler of snapshot.samplers) {
+            this.registerSampler(sampler);
+        }
+
+        for (const texture of snapshot.textures) {
+            await this.registerTexture(texture);
+        }
+
+        if (options.clearExisting !== false) {
+            this._renderPasses.clear();
+            this._renderPassDefinitions.clear();
+        }
+
+        const renderPasses = snapshot.renderPasses.length > 0
+            ? snapshot.renderPasses
+            : [
+                  {
+                      id: DEFAULT_RENDER_PASS_ID,
+                      order: 0,
+                      rendererPassId: DEFAULT_RENDER_PASS_ID,
+                      clearFlags: ['color', 'depth'],
+                      clearColor: this._defaultClearColor,
+                  } satisfies SceneRenderPassDefinition,
+              ];
+
+        for (const renderPass of renderPasses) {
+            this.registerRenderPass(renderPass);
+        }
+
+        for (const material of snapshot.materials) {
+            this.createMaterial(material);
+        }
+
+        return this.instantiatePrefab(snapshot.prefab, options);
     }
 
     start(now?: number): this {
@@ -539,17 +1178,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         } catch (error) {
             throw new SceneLifecycleError('Failed to dispose scene loop', error);
         } finally {
-            for (const shader of this._shaders.values()) {
-                this.gl.deleteProgram(shader.program);
-            }
-
-            for (const mesh of this._meshes.values()) {
-                this._disposeMesh(mesh);
-            }
-
-            this._shaders.clear();
-            this._materials.clear();
-            this._meshes.clear();
+            this._clearSceneAssets();
+            this._textureManager.dispose();
 
             if (!this.world.isDisposed) {
                 this.world.clear();
@@ -593,11 +1223,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             canvas.className = options.className;
         }
 
-        if (
-            autoCreated &&
-            options.appendToDom !== false &&
-            typeof document !== 'undefined'
-        ) {
+        if (autoCreated && options.appendToDom !== false && typeof document !== 'undefined') {
             const parent = options.parent ?? document.body;
             parent?.appendChild(canvas);
         }
@@ -643,9 +1269,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
             if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
                 const info = this.gl.getProgramInfoLog(program) ?? 'Unknown link failure';
-                throw new SceneShaderError(
-                    `Failed to link shader '${definition.id}': ${info}`
-                );
+                throw new SceneShaderError(`Failed to link shader '${definition.id}': ${info}`);
             }
 
             const uniformNames = Array.from(
@@ -753,7 +1377,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, null);
 
         const stride = definition.attributes[0].stride;
-        const byteLength = (definition.vertices as ArrayBufferView).byteLength;
+        const byteLength = definition.vertices.byteLength;
         const vertexCount = definition.vertexCount ?? Math.floor(byteLength / stride);
 
         return {
@@ -767,6 +1391,119 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             topology: definition.topology ?? 'triangles',
             mode: mapTopologyToMode(this.gl, definition.topology ?? 'triangles'),
         };
+    }
+
+    private async _createTextureResource(definition: SceneTextureDefinition): Promise<TextureResource> {
+        const format = definition.format ?? TextureFormat.RGBA8;
+        const generateMipmaps = definition.generateMipmaps ?? true;
+        const mipLevelsFor = (width: number, height: number): number =>
+            generateMipmaps ? calculateMipLevels(width, height) : 1;
+
+        let texture: ITexture;
+
+        switch (definition.source.kind) {
+            case 'color': {
+                const width = definition.source.width ?? 1;
+                const height = definition.source.height ?? 1;
+                texture = this._textureManager.createTexture(
+                    {
+                        width,
+                        height,
+                        format,
+                        dimension: TextureDimension.TEXTURE_2D,
+                        usage: TextureUsage.STATIC,
+                        mipLevels: mipLevelsFor(width, height),
+                    },
+                    createSolidTextureData(definition.source.color, width, height)
+                );
+                break;
+            }
+            case 'checker': {
+                const size = definition.source.size ?? 8;
+                texture = this._textureManager.createTexture(
+                    {
+                        width: size,
+                        height: size,
+                        format,
+                        dimension: TextureDimension.TEXTURE_2D,
+                        usage: TextureUsage.STATIC,
+                        mipLevels: mipLevelsFor(size, size),
+                    },
+                    createCheckerTextureData(
+                        size,
+                        definition.source.colorA ?? [0.08, 0.1, 0.12, 1],
+                        definition.source.colorB ?? [0.88, 0.92, 0.96, 1]
+                    )
+                );
+                break;
+            }
+            case 'data': {
+                texture = this._textureManager.createTexture(
+                    {
+                        width: definition.source.width,
+                        height: definition.source.height,
+                        format,
+                        dimension: TextureDimension.TEXTURE_2D,
+                        usage: TextureUsage.STATIC,
+                        mipLevels: mipLevelsFor(definition.source.width, definition.source.height),
+                    },
+                    createRawTextureData(
+                        format,
+                        definition.source.width,
+                        definition.source.height,
+                        definition.source.data,
+                        definition.source.channels
+                    )
+                );
+                break;
+            }
+            case 'url': {
+                const image = await this._loadImage(
+                    definition.source.url,
+                    definition.source.crossOrigin
+                );
+                texture = this._textureManager.createTexture(
+                    {
+                        width: image.width,
+                        height: image.height,
+                        format,
+                        dimension: TextureDimension.TEXTURE_2D,
+                        usage: TextureUsage.STATIC,
+                        mipLevels: mipLevelsFor(image.width, image.height),
+                    },
+                    image
+                );
+                break;
+            }
+        }
+
+        if (generateMipmaps && texture.mipLevels > 1) {
+            texture.generateMipmaps();
+        }
+
+        return {
+            id: definition.id,
+            texture,
+            width: texture.width,
+            height: texture.height,
+            samplerId: definition.samplerId ?? null,
+        };
+    }
+
+    private async _loadImage(url: string, crossOrigin?: string | null): Promise<HTMLImageElement> {
+        return await new Promise((resolve, reject) => {
+            const image = new Image();
+
+            if (crossOrigin !== undefined) {
+                image.crossOrigin = crossOrigin ?? '';
+            } else if (url.startsWith('http')) {
+                image.crossOrigin = 'anonymous';
+            }
+
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new SceneMaterialError(`Failed to load texture '${url}'`));
+            image.src = url;
+        });
     }
 
     private _registerGeometryBuffers(id: string, geometryBuffers: IGeometryBuffers): SceneMeshHandle {
@@ -788,7 +1525,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             })
             .filter((attribute): attribute is NonNullable<typeof attribute> => attribute !== null);
 
-        const vertexBytes = geometryBuffers.vertices.toUint8Array();
+        const rawVertexBytes = geometryBuffers.vertices.toUint8Array();
+        const vertexBytes = Uint8Array.from(rawVertexBytes);
         const indexBytes = geometryBuffers.indices.toUint8Array();
         const indexArray =
             geometryBuffers.layout.indexCount > 0
@@ -830,77 +1568,111 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _render(deltaTime: number): void {
         const camera = this._selectCamera();
-        const clearColor = camera?.clearColor ?? this._defaultClearColor;
+        const lighting = this._collectLighting();
+        const renderPasses = [...this._renderPasses.values()]
+            .filter((renderPass) => renderPass.enabled)
+            .sort((left, right) => left.order - right.order);
 
-        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-        this.gl.clearColor(clearColor.x, clearColor.y, clearColor.z, clearColor.w);
-        this.gl.clearDepth(camera?.clearDepth ?? 1);
-        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-
-        if (!camera) {
+        if (renderPasses.length === 0) {
             return;
         }
 
         const aspectRatio = this.canvas.width / Math.max(1, this.canvas.height);
-        const viewMatrix = camera.getViewMatrix();
-        const projectionMatrix = camera.getProjectionMatrix(aspectRatio);
-        const cameraPosition = camera.getWorldPosition();
-        const renderItems = this._collectRenderItems();
+        const viewMatrix = camera?.getViewMatrix();
+        const projectionMatrix = camera?.getProjectionMatrix(aspectRatio);
+        const cameraPosition = camera?.getWorldPosition();
 
-        for (const item of renderItems) {
-            if (item.renderer.meshId === null || item.renderer.materialId === null) {
+        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+
+        for (const renderPass of renderPasses) {
+            this._prepareRenderPass(renderPass, camera);
+
+            if (!camera || !viewMatrix || !projectionMatrix || !cameraPosition) {
                 continue;
             }
 
-            const mesh = this._meshes.get(item.renderer.meshId);
-            const material = this._materials.get(item.renderer.materialId);
+            const renderItems = this._collectRenderItems(renderPass.rendererPassId);
+            for (const item of renderItems) {
+                if (item.renderer.meshId === null || item.renderer.materialId === null) {
+                    continue;
+                }
 
-            if (!mesh || !material) {
-                continue;
-            }
+                const mesh = this._meshes.get(item.renderer.meshId);
+                const material = this._materials.get(item.renderer.materialId);
 
-            const shader = this._shaders.get(material.shaderId);
-            if (!shader) {
-                continue;
-            }
+                if (!mesh || !material) {
+                    continue;
+                }
 
-            const modelMatrix = item.transform.worldMatrix;
-            const viewProjectionMatrix = Mat4.multiply(projectionMatrix, viewMatrix);
-            const mvpMatrix = Mat4.multiply(viewProjectionMatrix, modelMatrix);
+                const shader = this._shaders.get(material.shaderId);
+                if (!shader) {
+                    continue;
+                }
 
-            this._applyShaderState(shader);
-            this.gl.useProgram(shader.program);
-            this.gl.bindVertexArray(mesh.vertexArray);
+                const modelMatrix = item.transform.worldMatrix;
+                const viewProjectionMatrix = Mat4.multiply(projectionMatrix, viewMatrix);
+                const mvpMatrix = Mat4.multiply(viewProjectionMatrix, modelMatrix);
 
-            this._setUniform(shader, 'u_Model', modelMatrix);
-            this._setUniform(shader, 'u_View', viewMatrix);
-            this._setUniform(shader, 'u_Projection', projectionMatrix);
-            this._setUniform(shader, 'u_MVP', mvpMatrix);
-            this._setUniform(shader, 'u_Time', this.loop.elapsed / 1000);
-            this._setUniform(shader, 'u_DeltaTime', deltaTime / 1000);
-            this._setUniform(shader, 'u_Frame', this.loop.frame);
-            this._setUniform(shader, 'u_Resolution', new Vec2(this.canvas.width, this.canvas.height));
-            this._setUniform(shader, 'u_CameraPosition', cameraPosition);
+                this._applyRenderState(shader, renderPass);
+                this.gl.useProgram(shader.program);
+                this.gl.bindVertexArray(mesh.vertexArray);
 
-            for (const [name, value] of material.uniforms) {
-                this._setUniform(shader, name, value);
-            }
+                this._setUniform(shader, 'u_Model', modelMatrix);
+                this._setUniform(shader, 'u_View', viewMatrix);
+                this._setUniform(shader, 'u_Projection', projectionMatrix);
+                this._setUniform(shader, 'u_ViewProjection', viewProjectionMatrix);
+                this._setUniform(shader, 'u_MVP', mvpMatrix);
+                this._setUniform(shader, 'u_Time', this.loop.elapsed / 1000);
+                this._setUniform(shader, 'u_DeltaTime', deltaTime / 1000);
+                this._setUniform(shader, 'u_Frame', this.loop.frame);
+                this._setUniform(shader, 'u_Resolution', new Vec2(this.canvas.width, this.canvas.height));
+                this._setUniform(shader, 'u_CameraPosition', cameraPosition);
+                this._applyLightingUniforms(shader, item.renderer, lighting);
 
-            for (const [name, value] of item.renderer.getUniformEntries()) {
-                this._setUniform(shader, name, value);
-            }
+                const boundUnits = this._bindMaterialTextures(shader, material);
 
-            if (mesh.indexBuffer && mesh.indexType !== null && mesh.indexCount > 0) {
-                this.gl.drawElements(mesh.mode, mesh.indexCount, mesh.indexType, 0);
-            } else {
-                this.gl.drawArrays(mesh.mode, 0, mesh.vertexCount);
+                for (const [name, value] of material.uniforms) {
+                    this._setUniform(shader, name, value);
+                }
+
+                for (const [name, value] of item.renderer.getUniformEntries()) {
+                    this._setUniform(shader, name, value);
+                }
+
+                if (mesh.indexBuffer && mesh.indexType !== null && mesh.indexCount > 0) {
+                    this.gl.drawElements(mesh.mode, mesh.indexCount, mesh.indexType, 0);
+                } else {
+                    this.gl.drawArrays(mesh.mode, 0, mesh.vertexCount);
+                }
+
+                this._unbindTextureUnits(boundUnits);
             }
         }
 
         this.gl.bindVertexArray(null);
     }
 
-    private _collectRenderItems(): RenderItem[] {
+    private _prepareRenderPass(renderPass: RenderPassResource, camera?: Camera): void {
+        const clearFlags = renderPass.clearFlags;
+        let mask = 0;
+
+        if (clearFlags.includes('color')) {
+            const clearColor = renderPass.clearColor ?? camera?.clearColor ?? this._defaultClearColor;
+            this.gl.clearColor(clearColor.x, clearColor.y, clearColor.z, clearColor.w);
+            mask |= this.gl.COLOR_BUFFER_BIT;
+        }
+
+        if (clearFlags.includes('depth')) {
+            this.gl.clearDepth(renderPass.clearDepth ?? camera?.clearDepth ?? 1);
+            mask |= this.gl.DEPTH_BUFFER_BIT;
+        }
+
+        if (mask !== 0) {
+            this.gl.clear(mask);
+        }
+    }
+
+    private _collectRenderItems(passId: string): RenderItem[] {
         const items: RenderItem[] = [];
 
         for (const actor of this.world.getAllActors()) {
@@ -911,7 +1683,13 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             const transform = actor.getComponent(Transform);
             const renderer = actor.getComponent(MeshRenderer);
 
-            if (!transform || !renderer || !renderer.enabled || !renderer.visible) {
+            if (
+                !transform ||
+                !renderer ||
+                !renderer.enabled ||
+                !renderer.visible ||
+                renderer.passId !== passId
+            ) {
                 continue;
             }
 
@@ -947,21 +1725,78 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         return fallback;
     }
 
-    private _applyShaderState(shader: ShaderResource): void {
-        if (shader.depthTest) {
+    private _collectLighting(): LightingState {
+        let primaryDirectional: DirectionalLightState | null = null;
+        let fallbackDirectional: DirectionalLightState | null = null;
+        let pointLight: PointLightState | null = null;
+        let pointCount = 0;
+        const ambient = new Vec3(this._ambientLight.x, this._ambientLight.y, this._ambientLight.z);
+
+        for (const actor of this.world.getAllActors()) {
+            if (!actor.active) {
+                continue;
+            }
+
+            const directional = actor.getComponent(DirectionalLight);
+            if (directional && directional.enabled) {
+                const state: DirectionalLightState = {
+                    direction: directional.getDirection(),
+                    color: directional.color.clone(),
+                    intensity: directional.intensity,
+                };
+
+                ambient.x += directional.ambientColor.x;
+                ambient.y += directional.ambientColor.y;
+                ambient.z += directional.ambientColor.z;
+
+                if (directional.primary) {
+                    primaryDirectional = state;
+                } else if (!fallbackDirectional) {
+                    fallbackDirectional = state;
+                }
+            }
+
+            const point = actor.getComponent(PointLight);
+            if (point && point.enabled) {
+                pointCount += 1;
+                if (!pointLight) {
+                    pointLight = {
+                        position: point.getWorldPosition(),
+                        color: point.color.clone(),
+                        intensity: point.intensity,
+                        range: point.range,
+                    };
+                }
+            }
+        }
+
+        return {
+            ambient,
+            directional: primaryDirectional ?? fallbackDirectional,
+            point: pointLight,
+            pointCount,
+        };
+    }
+
+    private _applyRenderState(shader: ShaderResource, renderPass: RenderPassResource): void {
+        const depthTest = renderPass.depthTest ?? shader.depthTest;
+        const cull = renderPass.cull ?? shader.cull;
+        const blend = renderPass.blend ?? shader.blend;
+
+        if (depthTest) {
             this.gl.enable(this.gl.DEPTH_TEST);
         } else {
             this.gl.disable(this.gl.DEPTH_TEST);
         }
 
-        if (shader.cull) {
+        if (cull) {
             this.gl.enable(this.gl.CULL_FACE);
             this.gl.cullFace(this.gl.BACK);
         } else {
             this.gl.disable(this.gl.CULL_FACE);
         }
 
-        if (shader.blend) {
+        if (blend) {
             this.gl.enable(this.gl.BLEND);
             this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
         } else {
@@ -969,6 +1804,80 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         this.gl.depthMask(true);
+    }
+
+    private _applyLightingUniforms(
+        shader: ShaderResource,
+        renderer: MeshRenderer,
+        lighting: LightingState
+    ): void {
+        const receiveLighting = renderer.receiveLighting;
+        const directional = receiveLighting ? lighting.directional : null;
+        const point = receiveLighting ? lighting.point : null;
+
+        this._setUniform(shader, 'u_ReceiveLighting', receiveLighting);
+        this._setUniform(shader, 'u_AmbientLight', receiveLighting ? lighting.ambient : Vec3.ZERO);
+        this._setUniform(shader, 'u_LightDirection', directional?.direction ?? new Vec3(0, -1, 0));
+        this._setUniform(shader, 'u_LightColor', directional?.color ?? Vec3.ZERO);
+        this._setUniform(shader, 'u_LightIntensity', directional?.intensity ?? 0);
+        this._setUniform(shader, 'u_PointLightCount', receiveLighting ? lighting.pointCount : 0);
+        this._setUniform(shader, 'u_PointLightPosition', point?.position ?? Vec3.ZERO);
+        this._setUniform(shader, 'u_PointLightColor', point?.color ?? Vec3.ZERO);
+        this._setUniform(shader, 'u_PointLightIntensity', point?.intensity ?? 0);
+        this._setUniform(shader, 'u_PointLightRange', point?.range ?? 0);
+    }
+
+    private _bindMaterialTextures(shader: ShaderResource, material: MaterialResource): number[] {
+        const assignments = [...material.textureBindings.entries()].sort((left, right) => {
+            const leftUnit = left[1].unit ?? Number.MAX_SAFE_INTEGER;
+            const rightUnit = right[1].unit ?? Number.MAX_SAFE_INTEGER;
+            return leftUnit - rightUnit;
+        });
+
+        const usedUnits = new Set<number>();
+        const boundUnits: number[] = [];
+        let nextUnit = 0;
+
+        for (const [uniformName, binding] of assignments) {
+            const texture = this._textures.get(binding.textureId);
+            if (!texture) {
+                continue;
+            }
+
+            let unit = binding.unit;
+            if (unit === undefined) {
+                while (usedUnits.has(nextUnit)) {
+                    nextUnit += 1;
+                }
+                unit = nextUnit;
+            }
+
+            usedUnits.add(unit);
+            boundUnits.push(unit);
+
+            texture.texture.bind(unit);
+            const sampler = this._resolveSampler(binding.samplerId ?? texture.samplerId);
+            sampler.bind(unit);
+            this._setUniform(shader, uniformName, unit);
+        }
+
+        return boundUnits;
+    }
+
+    private _unbindTextureUnits(units: readonly number[]): void {
+        for (const unit of units) {
+            this.gl.bindSampler(unit, null);
+            this.gl.activeTexture(this.gl.TEXTURE0 + unit);
+            this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+        }
+    }
+
+    private _resolveSampler(id: string | null): ITextureSampler {
+        if (!id) {
+            return this._defaultSampler;
+        }
+
+        return this._samplers.get(id)?.sampler ?? this._defaultSampler;
     }
 
     private _setUniform(
@@ -987,6 +1896,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         if (value instanceof Mat4) {
             this.gl.uniformMatrix4fv(location, false, new Float32Array(value.data));
+            return;
+        }
+
+        if (value instanceof Quat) {
+            this.gl.uniform4f(location, value.x, value.y, value.z, value.w);
             return;
         }
 
@@ -1088,8 +2002,109 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (typeof value === 'number') {
+            if (Number.isInteger(value)) {
+                this.gl.uniform1i(location, value);
+                return;
+            }
+
             this.gl.uniform1f(location, value);
         }
+    }
+
+    private _createActorSnapshot(actor: Actor): SceneActorSnapshot {
+        const components = actor.getAllComponents().map((component) => this._createComponentSnapshot(component));
+
+        return {
+            name: actor.name,
+            layer: actor.layer,
+            tag: actor.tag,
+            active: actor.active,
+            persistent: actor.persistent,
+            pooled: actor.pooled,
+            components,
+        };
+    }
+
+    private _createComponentSnapshot(component: Component): SceneComponentSnapshot {
+        const serialize = (component as { serialize?: () => Record<string, any> }).serialize;
+        const data = typeof serialize === 'function' ? serialize.call(component) ?? {} : {};
+
+        return {
+            type: component.constructor.name,
+            data: encodeSceneValue(data),
+        };
+    }
+
+    private _hydrateComponent(
+        actor: Actor,
+        snapshot: SceneComponentSnapshot,
+        options: ScenePrefabInstantiateOptions
+    ): void {
+        const componentType = this._componentTypes.get(snapshot.type);
+        if (!componentType) {
+            throw new SceneLifecycleError(
+                `Cannot instantiate prefab because component '${snapshot.type}' is not registered`
+            );
+        }
+
+        const existingComponent = actor.getAllComponents().find(
+            (component) => component.constructor === componentType
+        );
+        const component =
+            existingComponent ??
+            actor.addComponent(
+                componentType as new (...args: any[]) => Component,
+                ...(options.componentArgsResolver?.(snapshot.type, snapshot.data) ?? [])
+            );
+
+        const decoded = decodeSceneValue(snapshot.data);
+        if (typeof (component as { deserialize?: (data: Record<string, any>) => void }).deserialize === 'function') {
+            (component as { deserialize(data: Record<string, any>): void }).deserialize(
+                (decoded && typeof decoded === 'object' && !Array.isArray(decoded)
+                    ? decoded
+                    : {}) as Record<string, any>
+            );
+            return;
+        }
+
+        if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) {
+            Object.assign(component as object, decoded);
+        }
+    }
+
+    private _clearSceneAssets(): void {
+        for (const shader of this._shaders.values()) {
+            this.gl.deleteProgram(shader.program);
+        }
+
+        for (const mesh of this._meshes.values()) {
+            this._disposeMesh(mesh);
+        }
+
+        for (const sampler of this._samplers.values()) {
+            if (!sampler.sampler.isDisposed) {
+                sampler.sampler.dispose();
+            }
+        }
+
+        for (const texture of this._textures.values()) {
+            if (!texture.texture.isDisposed) {
+                texture.texture.dispose();
+            }
+        }
+
+        this._shaders.clear();
+        this._shaderDefinitions.clear();
+        this._materials.clear();
+        this._materialDefinitions.clear();
+        this._meshes.clear();
+        this._meshDefinitions.clear();
+        this._samplers.clear();
+        this._samplerDefinitions.clear();
+        this._textures.clear();
+        this._textureDefinitions.clear();
+        this._renderPasses.clear();
+        this._renderPassDefinitions.clear();
     }
 
     private _disposeMesh(mesh: MeshResource): void {
