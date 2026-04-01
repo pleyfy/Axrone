@@ -1866,7 +1866,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         if (cull) {
             this.gl.enable(this.gl.CULL_FACE);
-            this.gl.frontFace(this.gl.CW);
+            this.gl.frontFace(this.gl.CCW);
             this.gl.cullFace(this.gl.BACK);
         } else {
             this.gl.disable(this.gl.CULL_FACE);
