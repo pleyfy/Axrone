@@ -76,45 +76,18 @@ class PlayerController extends Component {
 }
 
 /**
- * Smooth camera follow controller
+ * Smooth camera follow controller - fixed offset, no rotation
  */
 @script({ scriptName: 'CameraFollow' })
 class CameraFollow extends Component {
     private _target?: Transform;
     public offset: Vec3;
-    public lookAtOffset: Vec3 = new Vec3(0, -0.9, 0.35);
     public damping: number;
-    public lookDamping: number;
-    private _distanceMultiplier: number = 1.0;
-    private readonly _minLookDistance: number = 1.25;
-    private _lastLookDirection: Vec3 = new Vec3(0, -0.35, 1).normalize();
 
-    // Zoom limits
-    public minZoom: number = 0.35;
-    public maxZoom: number = 4.0;
-
-    constructor(offset: Vec3 = new Vec3(0, 6, -10), damping: number = 8, lookDamping: number = 10) {
+    constructor(offset: Vec3 = new Vec3(0, 5, -10), damping: number = 5) {
         super();
         this.offset = offset;
         this.damping = damping;
-        this.lookDamping = lookDamping;
-    }
-
-    awake(): void {
-        const onWheel = (e: WheelEvent) => {
-            // Adjust zoom based on scroll
-            const zoomAmount = e.deltaY * 0.001;
-            this._distanceMultiplier += zoomAmount;
-            
-            // Clamp zoom to prevent going too close or too far
-            this._distanceMultiplier = Math.max(this.minZoom, Math.min(this.maxZoom, this._distanceMultiplier));
-        };
-        
-        globalThis.addEventListener('wheel', onWheel, { passive: false });
-        
-        (this as any)._cleanupInput = () => {
-            globalThis.removeEventListener('wheel', onWheel);
-        };
     }
 
     setTarget(target: Transform): void {
@@ -127,67 +100,25 @@ class CameraFollow extends Component {
         const cameraTransform = this.transform as Transform | undefined;
         if (!cameraTransform) return;
 
-        // Apply scale to offset for zoom effect
-        const scaledOffset = new Vec3(
-            this.offset.x * this._distanceMultiplier,
-            this.offset.y * this._distanceMultiplier,
-            this.offset.z * this._distanceMultiplier
-        );
+        // Calculate desired camera position - fixed offset, doesn't rotate with target
+        const desiredPosition = this._target.position.clone().add(this.offset);
 
-        // Derive horizontal heading from the target's forward vector to avoid Euler angle flips.
-        const targetForward = Quat.rotateVector(this._target.rotation, Vec3.FORWARD, new Vec3()) as Vec3;
-        const flatForward = new Vec3(targetForward.x, 0, targetForward.z);
-        const targetYaw =
-            flatForward.x * flatForward.x + flatForward.z * flatForward.z > 1e-6
-                ? Math.atan2(flatForward.x, flatForward.z)
-                : 0;
-        const yawRotation = Quat.fromEuler(0, targetYaw, 0, new Quat());
-        const rotatedOffset = Quat.rotateVector(yawRotation, scaledOffset, new Vec3()) as Vec3;
-        const targetPosition = this._target.position.clone().add(rotatedOffset);
-
-        // Professional frame-independent smooth damping
+        // Smooth follow using lerp
         const deltaSeconds = deltaTime / 1000;
-        const followT = 1.0 - Math.exp(-this.damping * deltaSeconds);
-        const lookT = 1.0 - Math.exp(-this.lookDamping * deltaSeconds);
+        const t = Math.min(1, this.damping * deltaSeconds);
 
         const currentPos = cameraTransform.position;
-        const newPos = Vec3.lerp(currentPos, targetPosition, followT) as Vec3;
+        const newPos = Vec3.lerp(currentPos, desiredPosition, t);
         cameraTransform.position = newPos;
 
-        // Focus near the contact point, with only horizontal lead rotated by yaw.
-        const horizontalLookOffset = new Vec3(this.lookAtOffset.x, 0, this.lookAtOffset.z);
-        const rotatedLookOffset = Quat.rotateVector(yawRotation, horizontalLookOffset, new Vec3()) as Vec3;
-        rotatedLookOffset.y = this.lookAtOffset.y;
-        const lookAt = this._target.position.clone().add(rotatedLookOffset);
-
-        let lookDirection = Vec3.subtract(lookAt, newPos, new Vec3()) as Vec3;
-        const lookDistanceSq =
-            lookDirection.x * lookDirection.x +
-            lookDirection.y * lookDirection.y +
-            lookDirection.z * lookDirection.z;
-
-        if (lookDistanceSq < this._minLookDistance * this._minLookDistance) {
-            const fallbackDirection = this._lastLookDirection.clone().normalize();
-            lookDirection = fallbackDirection;
-        } else {
-            lookDirection = lookDirection.normalize();
-            this._lastLookDirection = lookDirection.clone();
-        }
-
-        const stabilizedLookAt = newPos.clone().add(
-            lookDirection.clone().multiplyScalar(this._minLookDistance)
-        );
-        const desiredRotation = Quat.fromLookAt(newPos, stabilizedLookAt, Vec3.UP, new Quat());
-        cameraTransform.rotation = Quat.slerp(
-            cameraTransform.rotation,
-            desiredRotation,
-            lookT,
+        // Always look at the cube center
+        const lookAt = this._target.position.clone();
+        cameraTransform.rotation = Quat.fromLookAt(
+            newPos,
+            lookAt,
+            Vec3.UP,
             new Quat()
         );
-    }
-    
-    onDestroy(): void {
-        (this as any)._cleanupInput?.();
     }
 }
 
@@ -362,18 +293,18 @@ void main() {
         playerTransform.position = new Vec3(0, 0, 0);
         player.addComponent(PlayerController);
 
-        // Create follow camera
+        // Create follow camera - isometric-style view from corner
         const camera = scene.createCameraActor(
             { name: 'FollowCamera' },
-            { primary: true, fieldOfView: 60 }
+            { primary: true, fieldOfView: 50 }
         );
         const cameraTransform = camera.requireComponent(Transform);
-        cameraTransform.position = new Vec3(0, 8, 12);
+        // Initial camera position - diagonal isometric view
+        cameraTransform.position = new Vec3(10, 8, 10);
 
-        // Add camera follow component with default offset that can be tweaked via UI
-        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(0, 6, -10), 4, 10);
+        // Add camera follow component - fixed offset, no rotation
+        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(10, 6, 10), 4);
         cameraFollow.setTarget(playerTransform);
-        cameraFollow.lookAtOffset = new Vec3(0, -0.9, 0.35);
 
         // Create professional GUI panel
         const uiPanel = document.createElement('div');
@@ -441,22 +372,22 @@ void main() {
         const addSlider = (label: string, min: number, max: number, step: number, val: number, onChange: (v: number) => void) => {
             const row = document.createElement('div');
             Object.assign(row.style, { marginBottom: '10px' });
-            
+
             const info = document.createElement('div');
             Object.assign(info.style, { display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#aaa' });
-            
+
             const title = document.createElement('span');
             title.innerText = label;
-            
+
             const valueLabel = document.createElement('span');
             valueLabel.innerText = val.toFixed(step >= 1 ? 0 : 1);
             valueLabel.style.color = '#fff';
             valueLabel.style.fontFamily = 'SFMono-Regular, "Liberation Mono", Menlo, monospace';
-            
+
             info.appendChild(title);
             info.appendChild(valueLabel);
             row.appendChild(info);
-            
+
             const slider = document.createElement('input');
             slider.type = 'range';
             slider.min = min.toString();
@@ -464,13 +395,13 @@ void main() {
             slider.step = step.toString();
             slider.value = val.toString();
             Object.assign(slider.style, { width: '100%', cursor: 'pointer', margin: 0 });
-            
+
             slider.addEventListener('input', (e) => {
                 const num = parseFloat((e.target as HTMLInputElement).value);
                 valueLabel.innerText = num.toFixed(step >= 1 ? 0 : 1);
                 onChange(num);
             });
-            
+
             row.appendChild(slider);
             content.appendChild(row);
         };
@@ -479,11 +410,6 @@ void main() {
         addSlider('Offset X', -30, 30, 0.5, cameraFollow.offset.x, v => cameraFollow.offset.x = v);
         addSlider('Offset Y', -30, 30, 0.5, cameraFollow.offset.y, v => cameraFollow.offset.y = v);
         addSlider('Offset Z', -30, 30, 0.5, cameraFollow.offset.z, v => cameraFollow.offset.z = v);
-        
-        addSection('🎯 Camera Look-At');
-        addSlider('Look Target X', -10, 10, 0.1, cameraFollow.lookAtOffset.x, v => cameraFollow.lookAtOffset.x = v);
-        addSlider('Look Target Y', -10, 10, 0.1, cameraFollow.lookAtOffset.y, v => cameraFollow.lookAtOffset.y = v);
-        addSlider('Look Target Z', -10, 10, 0.1, cameraFollow.lookAtOffset.z, v => cameraFollow.lookAtOffset.z = v);
 
         addSection('🚀 Camera Dynamics');
         addSlider('Smooth Damping', 1, 30, 0.5, cameraFollow.damping, v => cameraFollow.damping = v);
