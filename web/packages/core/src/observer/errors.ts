@@ -10,9 +10,9 @@ export class BaseObserverError extends Error {
         this.code = code;
         this.timestamp = Date.now();
 
-        if (Error.captureStackTrace) {
-            Error.captureStackTrace(this, this.constructor);
-        }
+        (
+            Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void }
+        ).captureStackTrace?.(this, this.constructor);
     }
 }
 

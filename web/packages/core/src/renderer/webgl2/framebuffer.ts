@@ -92,7 +92,9 @@ export class FramebufferError extends Error {
     ) {
         super(`[WebGL2 Framebuffer] ${code}: ${message}`);
         Object.setPrototypeOf(this, new.target.prototype);
-        Error.captureStackTrace?.(this, this.constructor);
+        (
+            Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void }
+        ).captureStackTrace?.(this, this.constructor);
     }
 }
 

@@ -126,7 +126,9 @@ export class GLError extends Error {
     ) {
         super(`[WebGL2] ${code}: ${message}`);
         Object.setPrototypeOf(this, new.target.prototype);
-        Error.captureStackTrace?.(this, this.constructor);
+        (
+            Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void }
+        ).captureStackTrace?.(this, this.constructor);
     }
 }
 

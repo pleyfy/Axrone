@@ -1,10 +1,12 @@
 import { DeepPartial, TypedArray } from '@axrone/utility';
-import { IMat3Like } from '@axrone/numeric/src/mat3';
-import { IMat4Like } from '@axrone/numeric/src/mat4';
-import { IVec2Like } from '@axrone/numeric/src/vec2';
-import { IVec3Like } from '@axrone/numeric/src/vec3';
-import { IVec4Like } from '@axrone/numeric/src/vec4';
-import { IMat2Like } from '@axrone/numeric/src/mat2';
+import type {
+    IMat2Like,
+    IMat3Like,
+    IMat4Like,
+    IVec2Like,
+    IVec3Like,
+    IVec4Like,
+} from '@axrone/numeric';
 import { ReadonlyRecord } from '../types';
 import { EasingFunction } from './easing-functions';
 
