@@ -3,28 +3,8 @@ import { Quat } from '@axrone/numeric';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';
 
-class StableOrbitCamera extends Component {
+class CubeSpin extends Component {
     private _elapsed = 0;
-    private readonly _target: Vec3;
-    private readonly _radius: number;
-    private readonly _height: number;
-    private readonly _speed: number;
-    private readonly _startAngle: number;
-
-    constructor(
-        target: Vec3 = new Vec3(0, 0, -4),
-        radius: number = 7.2,
-        height: number = 2.4,
-        speed: number = 0.00035,
-        startAngle: number = 0.35
-    ) {
-        super();
-        this._target = target.clone();
-        this._radius = radius;
-        this._height = height;
-        this._speed = speed;
-        this._startAngle = startAngle;
-    }
 
     update(deltaTime: number): void {
         this._elapsed += deltaTime;
@@ -34,24 +14,20 @@ class StableOrbitCamera extends Component {
             return;
         }
 
-        const angle = this._startAngle + this._elapsed * this._speed;
-        const position = new Vec3(
-            this._target.x + Math.cos(angle) * this._radius,
-            this._target.y + this._height,
-            this._target.z + Math.sin(angle) * this._radius
+        transform.rotation = Quat.fromEuler(
+            this._elapsed * 0.00045,
+            this._elapsed * 0.0008,
+            0
         );
-
-        transform.position = position;
-        transform.rotation = Quat.fromLookAt(position, this._target, Vec3.UP, new Quat());
     }
 }
 
 const colorCubeSceneExample: SceneExample = {
     id: 'scene-color-cube',
-    title: 'Color Cube Orbit',
+    title: 'Color Cube Spin',
     description:
-        'Tek box mesh uzerinde alti yuzu farkli renge boyayip kamerayi etrafinda dondurerek render hattini net sekilde gosterir.',
-    tags: ['camera', 'mesh', 'shader', 'orbit'],
+        'Tek box mesh uzerinde alti yuzu farkli renge boyayip sabit kamera ile temiz bir sekilde gosterir.',
+    tags: ['camera', 'mesh', 'shader', 'rotation'],
     order: 3,
     mount({ container }: ExampleContext) {
         container.replaceChildren();
@@ -66,7 +42,8 @@ const colorCubeSceneExample: SceneExample = {
             clearColor: [0.02, 0.03, 0.05, 1],
         });
 
-        scene.registerComponent(StableOrbitCamera);
+        scene.registerComponent(CubeSpin);
+
         scene.registerShader({
             id: 'examples/color-cube',
             vertexSource: `#version 300 es
@@ -118,13 +95,22 @@ void main() {
             { name: 'ColorCube' },
             { meshId: 'color-cube-mesh', materialId: 'color-cube-material' }
         );
-        cube.requireComponent(Transform).position = new Vec3(0, 0, -4);
+        const cubeTransform = cube.requireComponent(Transform);
+        cubeTransform.position = new Vec3(0, 0, -4);
+        cube.addComponent(CubeSpin);
 
         const camera = scene.createCameraActor(
-            { name: 'OrbitCamera' },
+            { name: 'MainCamera' },
             { primary: true, fieldOfView: 50 }
         );
-        camera.addComponent(StableOrbitCamera);
+        const cameraTransform = camera.requireComponent(Transform);
+        cameraTransform.position = new Vec3(0, 0.8, 1.8);
+        cameraTransform.rotation = Quat.fromLookAt(
+            cameraTransform.position,
+            cubeTransform.position,
+            Vec3.UP,
+            new Quat()
+        );
 
         const cleanupResize = bindSceneToContainer(scene, container, 1280, 720);
         const root = globalThis as { scene?: Scene };
