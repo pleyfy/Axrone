@@ -1071,7 +1071,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (options.clearExisting !== false) {
-            this.world.clear();
+            this._destroyAllActors();
             this._clearSceneAssets();
         }
 
@@ -2105,6 +2105,13 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._textureDefinitions.clear();
         this._renderPasses.clear();
         this._renderPassDefinitions.clear();
+    }
+
+    private _destroyAllActors(): void {
+        const actors = [...this.world.getAllActors()];
+        for (const actor of actors) {
+            actor.destroy(true);
+        }
     }
 
     private _disposeMesh(mesh: MeshResource): void {

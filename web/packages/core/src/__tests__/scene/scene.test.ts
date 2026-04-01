@@ -529,7 +529,7 @@ void main() {
         expect(restoredPlane).toBeDefined();
         expect(restoredPlane?.getComponent(MeshRenderer)?.materialId).toBe('plane-material');
         expect(scene.getTexture('solid')?.width).toBe(2);
-        expect(gl.drawArrays).toHaveBeenCalled();
+        expect(gl.drawElements).toHaveBeenCalled();
 
         scene.dispose();
     });
