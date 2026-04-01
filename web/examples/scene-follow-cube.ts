@@ -200,7 +200,7 @@ void main() {
             ],
         });
 
-        // Shader for grid plane
+        // Shader for grid plane with light color
         scene.registerShader({
             id: 'examples/ground-grid',
             vertexSource: `#version 300 es
@@ -227,12 +227,12 @@ in vec3 v_WorldNormal;
 out vec4 o_Color;
 
 void main() {
-    vec2 gridUv = v_UV0 * 18.0;
+    vec2 gridUv = v_UV0 * 10.0;
     vec2 cell = abs(fract(gridUv - 0.5) - 0.5) / fwidth(gridUv);
     float line = 1.0 - min(min(cell.x, cell.y), 1.0);
     float diffuse = max(dot(normalize(v_WorldNormal), normalize(-u_LightDirection)), 0.0);
-    vec3 base = mix(u_BaseColor, u_LineColor, line * 0.55);
-    vec3 lit = base * (0.42 + diffuse * 0.58);
+    vec3 base = mix(u_BaseColor, u_LineColor, line * 0.6);
+    vec3 lit = base * (0.5 + diffuse * 0.5);
     o_Color = vec4(lit, 1.0);
 }`,
             uniforms: [
@@ -247,7 +247,7 @@ void main() {
 
         // Create meshes
         scene.createBoxMesh('controller-cube', 1.8, 1.8, 1.8);
-        scene.createPlaneMesh('ground-plane', 28, 28);
+        scene.createPlaneMesh('ground-plane', 100, 100);
 
         // Create materials
         scene.createMaterial({
@@ -259,22 +259,25 @@ void main() {
             },
         });
 
+        // Light gray/white ground with subtle grid lines
         scene.createMaterial({
             id: 'ground-grid-material',
             shaderId: 'examples/ground-grid',
             uniforms: {
                 u_LightDirection: [-0.55, -0.75, -0.35],
-                u_BaseColor: [0.1, 0.14, 0.18],
-                u_LineColor: [0.28, 0.35, 0.42],
+                u_BaseColor: [0.85, 0.85, 0.85],
+                u_LineColor: [0.65, 0.65, 0.65],
             },
         });
 
-        // Create ground plane
+        // Create ground plane - rotated to be flat
         const ground = scene.createRenderableActor(
             { name: 'Ground' },
             { meshId: 'ground-plane', materialId: 'ground-grid-material' }
         );
-        ground.requireComponent(Transform).position = new Vec3(0, -0.9, 0);
+        const groundTransform = ground.requireComponent(Transform);
+        groundTransform.position = new Vec3(0, -0.9, 0);
+        groundTransform.rotation = Quat.fromEuler(-Math.PI / 2, 0, 0);
 
         // Create player cube with controller
         const player = scene.createRenderableActor(
@@ -288,13 +291,13 @@ void main() {
         // Create follow camera
         const camera = scene.createCameraActor(
             { name: 'FollowCamera' },
-            { primary: true, fieldOfView: 52 }
+            { primary: true, fieldOfView: 60 }
         );
         const cameraTransform = camera.requireComponent(Transform);
-        cameraTransform.position = new Vec3(0, 3, 6);
+        cameraTransform.position = new Vec3(0, 8, 12);
 
         // Add camera follow component and set target
-        const cameraFollow = camera.addComponent(CameraFollow);
+        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(0, 6, 10), 5);
         cameraFollow.setTarget(playerTransform);
 
         // Setup resize handler
