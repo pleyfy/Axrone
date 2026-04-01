@@ -9,6 +9,7 @@ import { createAnimationFrameScheduler, isGameLoopScheduler } from './scheduler'
 import type {
     AfterFrameContext,
     BeforeUpdateContext,
+    DeepReadonly,
     FixedUpdateContext,
     GameLoopContextBase,
     GameLoopController,
@@ -582,7 +583,7 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         serializer: GameLoopStateSerializer<TState, TSerialized>
     ): GameLoopSnapshot<TSerialized> {
         this._assertNotDisposed();
-        return this._createSnapshot(serializer.serialize(this._state));
+        return this._createSnapshot(serializer.serialize(this._state as DeepReadonly<TState>));
     }
 
     restore(snapshot: GameLoopSnapshot<TState>): this {
@@ -776,7 +777,12 @@ export class GameLoop<TState> implements GameLoopController<TState> {
                 continue;
             }
 
-            this._invokeSystem(registered.system, phase, context, hook);
+            this._invokeSystem(
+                registered.system,
+                phase,
+                context,
+                hook as GameLoopPhaseHandler<TState, TPhase>
+            );
         }
     }
 
