@@ -4,10 +4,11 @@ import {
     OrbitCameraController,
     Scene,
     TextureFormat,
+    Transform,
     WrapMode,
     createUnlitColorShaderDefinition,
-    Vec3,
 } from '@axrone/core';
+import { Quat, Vec3 } from '@axrone/numeric';
 
 const scene = new Scene({
     width: 1280,
@@ -160,4 +161,45 @@ sun.addComponent(DirectionalLight, {
     intensity: 1.2,
     primary: true,
 });
-sun.requireComponent(scene.world.getRegisteredComponents().Transform ?? undefined as never);
+sun.requireComponent(Transform).rotation = Quat.fromEuler(-0.65, 0.85, 0);
+
+const floor = scene.createRenderableActor(
+    { name: 'Floor' },
+    { meshId: 'floor', materialId: 'lit-floor', passId: 'main' }
+);
+floor.requireComponent(Transform).position = new Vec3(0, -1, -3);
+floor.requireComponent(Transform).rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
+
+const cube = scene.createRenderableActor(
+    { name: 'AccentBox' },
+    { meshId: 'box', materialId: 'lit-accent', passId: 'main' }
+);
+cube.requireComponent(Transform).position = new Vec3(0, 0.3, -3);
+
+const overlay = scene.createRenderableActor(
+    { name: 'OverlayRibbon' },
+    {
+        meshId: 'overlay-quad',
+        materialId: 'overlay-ribbon',
+        passId: 'overlay',
+        receiveLighting: false,
+    }
+);
+overlay.requireComponent(Transform).position = new Vec3(0, -1.15, -1.5);
+
+const prefab = scene.createPrefab('examples/advanced-scene');
+const snapshot = scene.serializeScene();
+
+const root = globalThis as {
+    scene?: Scene;
+    scenePrefab?: typeof prefab;
+    sceneSnapshot?: typeof snapshot;
+    spawnPrefab?: () => readonly unknown[];
+    reloadScene?: () => Promise<readonly unknown[]>;
+};
+
+root.scene = scene;
+root.scenePrefab = prefab;
+root.sceneSnapshot = snapshot;
+root.spawnPrefab = () => scene.instantiatePrefab(prefab, { namePrefix: 'Clone:' });
+root.reloadScene = () => scene.loadScene(snapshot);
