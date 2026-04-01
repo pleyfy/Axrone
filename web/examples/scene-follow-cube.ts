@@ -77,18 +77,22 @@ class PlayerController extends Component {
 class CameraFollow extends Component {
     private _target?: Transform;
     public offset: Vec3;
-    public lookAtOffset: Vec3 = new Vec3(0, 0.5, 0);
+    public lookAtOffset: Vec3 = new Vec3(0, -0.9, 0.35);
     public damping: number;
+    public lookDamping: number;
     private _distanceMultiplier: number = 1.0;
+    private readonly _minLookDistance: number = 1.25;
+    private _lastLookDirection: Vec3 = new Vec3(0, -0.35, 1).normalize();
 
     // Zoom limits
-    private readonly _minZoom: number = 0.2;
-    private readonly _maxZoom: number = 4.0;
+    public minZoom: number = 0.35;
+    public maxZoom: number = 4.0;
 
-    constructor(offset: Vec3 = new Vec3(0, 6, 10), damping: number = 8) {
+    constructor(offset: Vec3 = new Vec3(0, 6, -10), damping: number = 8, lookDamping: number = 10) {
         super();
         this.offset = offset;
         this.damping = damping;
+        this.lookDamping = lookDamping;
     }
 
     awake(): void {
@@ -98,7 +102,7 @@ class CameraFollow extends Component {
             this._distanceMultiplier += zoomAmount;
             
             // Clamp zoom to prevent going too close or too far
-            this._distanceMultiplier = Math.max(this._minZoom, Math.min(this._maxZoom, this._distanceMultiplier));
+            this._distanceMultiplier = Math.max(this.minZoom, Math.min(this.maxZoom, this._distanceMultiplier));
         };
         
         globalThis.addEventListener('wheel', onWheel, { passive: false });
@@ -125,23 +129,49 @@ class CameraFollow extends Component {
             this.offset.z * this._distanceMultiplier
         );
 
-        // Calculate target camera position
-        const targetPosition = this._target.position.clone().add(scaledOffset);
+        // Orbit only around target yaw to avoid full 3D flips while tweaking offsets.
+        const targetYaw = this._target.rotation.toEuler().y;
+        const yawRotation = Quat.fromEuler(0, targetYaw, 0, new Quat());
+        const rotatedOffset = Quat.rotateVector(yawRotation, scaledOffset, new Vec3()) as Vec3;
+        const targetPosition = this._target.position.clone().add(rotatedOffset);
 
         // Professional frame-independent smooth damping
         const deltaSeconds = deltaTime / 1000;
-        const t = 1.0 - Math.exp(-this.damping * deltaSeconds);
+        const followT = 1.0 - Math.exp(-this.damping * deltaSeconds);
+        const lookT = 1.0 - Math.exp(-this.lookDamping * deltaSeconds);
 
         const currentPos = cameraTransform.position;
-        const newPos = Vec3.lerp(currentPos, targetPosition, t) as Vec3;
+        const newPos = Vec3.lerp(currentPos, targetPosition, followT) as Vec3;
         cameraTransform.position = newPos;
 
-        // Look at the target with lookAtOffset
-        const lookAt = this._target.position.clone().add(this.lookAtOffset);
-        cameraTransform.rotation = Quat.fromLookAt(
-            newPos,
-            lookAt,
-            Vec3.UP,
+        // Focus near the contact point, with only horizontal lead rotated by yaw.
+        const horizontalLookOffset = new Vec3(this.lookAtOffset.x, 0, this.lookAtOffset.z);
+        const rotatedLookOffset = Quat.rotateVector(yawRotation, horizontalLookOffset, new Vec3()) as Vec3;
+        rotatedLookOffset.y = this.lookAtOffset.y;
+        const lookAt = this._target.position.clone().add(rotatedLookOffset);
+
+        let lookDirection = Vec3.subtract(lookAt, newPos, new Vec3()) as Vec3;
+        const lookDistanceSq =
+            lookDirection.x * lookDirection.x +
+            lookDirection.y * lookDirection.y +
+            lookDirection.z * lookDirection.z;
+
+        if (lookDistanceSq < this._minLookDistance * this._minLookDistance) {
+            const fallbackDirection = this._lastLookDirection.clone().normalize();
+            lookDirection = fallbackDirection;
+        } else {
+            lookDirection = lookDirection.normalize();
+            this._lastLookDirection = lookDirection.clone();
+        }
+
+        const stabilizedLookAt = newPos.clone().add(
+            lookDirection.clone().multiplyScalar(this._minLookDistance)
+        );
+        const desiredRotation = Quat.fromLookAt(newPos, stabilizedLookAt, Vec3.UP, new Quat());
+        cameraTransform.rotation = Quat.slerp(
+            cameraTransform.rotation,
+            desiredRotation,
+            lookT,
             new Quat()
         );
     }
@@ -237,6 +267,7 @@ void main() {
         // Shader for grid plane with light color
         scene.registerShader({
             id: 'examples/ground-grid',
+            cull: false,
             vertexSource: `#version 300 es
 layout(location = 0) in vec3 a_Position;
 layout(location = 1) in vec3 a_Normal;
@@ -330,9 +361,9 @@ void main() {
         cameraTransform.position = new Vec3(0, 8, 12);
 
         // Add camera follow component with default offset that can be tweaked via UI
-        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(0, 6, 10), 4);
+        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(0, 6, -10), 4, 10);
         cameraFollow.setTarget(playerTransform);
-        cameraFollow.lookAtOffset = new Vec3(0, 0.5, 0);
+        cameraFollow.lookAtOffset = new Vec3(0, -0.9, 0.35);
 
         // Create professional GUI panel
         const uiPanel = document.createElement('div');
