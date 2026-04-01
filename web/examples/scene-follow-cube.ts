@@ -76,13 +76,36 @@ class PlayerController extends Component {
 @script({ scriptName: 'CameraFollow' })
 class CameraFollow extends Component {
     private _target?: Transform;
-    private readonly _offset: Vec3;
+    public offset: Vec3;
+    public lookAtOffset: Vec3 = new Vec3(0, 0.5, 0);
     private readonly _damping: number;
+    private _distanceMultiplier: number = 1.0;
 
-    constructor(offset: Vec3 = new Vec3(0, 3, 6), damping: number = 8) {
+    // Zoom limits
+    private readonly _minZoom: number = 0.2;
+    private readonly _maxZoom: number = 4.0;
+
+    constructor(offset: Vec3 = new Vec3(0, 6, 10), damping: number = 8) {
         super();
-        this._offset = offset;
+        this.offset = offset;
         this._damping = damping;
+    }
+
+    awake(): void {
+        const onWheel = (e: WheelEvent) => {
+            // Adjust zoom based on scroll
+            const zoomAmount = e.deltaY * 0.001;
+            this._distanceMultiplier += zoomAmount;
+            
+            // Clamp zoom to prevent going too close or too far
+            this._distanceMultiplier = Math.max(this._minZoom, Math.min(this._maxZoom, this._distanceMultiplier));
+        };
+        
+        globalThis.addEventListener('wheel', onWheel, { passive: false });
+        
+        (this as any)._cleanupInput = () => {
+            globalThis.removeEventListener('wheel', onWheel);
+        };
     }
 
     setTarget(target: Transform): void {
@@ -95,25 +118,36 @@ class CameraFollow extends Component {
         const cameraTransform = this.transform as Transform | undefined;
         if (!cameraTransform) return;
 
-        // Calculate target position
-        const targetPosition = this._target.position.clone().add(this._offset);
+        // Apply scale to offset for zoom effect
+        const scaledOffset = new Vec3(
+            this.offset.x * this._distanceMultiplier,
+            this.offset.y * this._distanceMultiplier,
+            this.offset.z * this._distanceMultiplier
+        );
 
-        // Smooth follow using lerp
+        // Calculate target camera position
+        const targetPosition = this._target.position.clone().add(scaledOffset);
+
+        // Professional frame-independent smooth damping
         const deltaSeconds = deltaTime / 1000;
-        const t = Math.min(1, this._damping * deltaSeconds);
+        const t = 1.0 - Math.exp(-this._damping * deltaSeconds);
 
         const currentPos = cameraTransform.position;
-        const newPos = Vec3.lerp(currentPos, targetPosition, t);
+        const newPos = Vec3.lerp(currentPos, targetPosition, t) as Vec3;
         cameraTransform.position = newPos;
 
-        // Always look at the target
-        const lookAt = this._target.position.clone().add(new Vec3(0, 0.5, 0));
+        // Look at the target with lookAtOffset
+        const lookAt = this._target.position.clone().add(this.lookAtOffset);
         cameraTransform.rotation = Quat.fromLookAt(
             newPos,
             lookAt,
             Vec3.UP,
             new Quat()
         );
+    }
+    
+    onDestroy(): void {
+        (this as any)._cleanupInput?.();
     }
 }
 
@@ -296,9 +330,64 @@ void main() {
         const cameraTransform = camera.requireComponent(Transform);
         cameraTransform.position = new Vec3(0, 8, 12);
 
-        // Add camera follow component and set target
-        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(0, 6, 10), 5);
+        // Add camera follow component with default offset that can be tweaked via UI
+        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(0, 6, 10), 4);
         cameraFollow.setTarget(playerTransform);
+        cameraFollow.lookAtOffset = new Vec3(0, 0.5, 0);
+
+        // Create UI panel for live camera tweaking
+        const uiPanel = document.createElement('div');
+        Object.assign(uiPanel.style, {
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            backgroundColor: 'rgba(20, 25, 30, 0.85)',
+            backdropFilter: 'blur(5px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            padding: '15px',
+            borderRadius: '10px',
+            color: '#fff',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            fontSize: '13px',
+            zIndex: '1000',
+            width: '240px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+        });
+
+        uiPanel.innerHTML = `
+            <div style="font-weight: 600; margin-bottom: 12px; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">🎥 Camera Controls</div>
+            
+            <div style="margin-bottom: 5px; color: #aaa;">Offset X: <span id="val-ox">0</span></div>
+            <input type="range" id="cam-ox" min="-20" max="20" step="0.5" value="0" style="width: 100%; margin-bottom: 10px;">
+            
+            <div style="margin-bottom: 5px; color: #aaa;">Offset Y: <span id="val-oy">6</span></div>
+            <input type="range" id="cam-oy" min="-20" max="20" step="0.5" value="6" style="width: 100%; margin-bottom: 10px;">
+            
+            <div style="margin-bottom: 5px; color: #aaa;">Offset Z: <span id="val-oz">10</span></div>
+            <input type="range" id="cam-oz" min="-20" max="20" step="0.5" value="10" style="width: 100%; margin-bottom: 20px;">
+            
+            <div style="margin-bottom: 5px; color: #aaa;">LookAt Offset Y: <span id="val-ly">0.5</span></div>
+            <input type="range" id="cam-ly" min="-5" max="5" step="0.1" value="0.5" style="width: 100%;">
+        `;
+        container.appendChild(uiPanel);
+
+        // Bind UI to cameraFollow component
+        const bindSlider = (id: string, valId: string, onChange: (val: number) => void) => {
+            const slider = uiPanel.querySelector(id) as HTMLInputElement;
+            const valLabel = uiPanel.querySelector(valId) as HTMLSpanElement;
+            if (slider && valLabel) {
+                slider.addEventListener('input', (e) => {
+                    const val = parseFloat((e.target as HTMLInputElement).value);
+                    valLabel.textContent = val.toFixed(1);
+                    onChange(val);
+                });
+            }
+        };
+
+        bindSlider('#cam-ox', '#val-ox', (v) => cameraFollow.offset.x = v);
+        bindSlider('#cam-oy', '#val-oy', (v) => cameraFollow.offset.y = v);
+        bindSlider('#cam-oz', '#val-oz', (v) => cameraFollow.offset.z = v);
+        bindSlider('#cam-ly', '#val-ly', (v) => cameraFollow.lookAtOffset.y = v);
 
         // Setup resize handler
         const cleanupResize = bindSceneToContainer(scene, container, 1280, 720);
