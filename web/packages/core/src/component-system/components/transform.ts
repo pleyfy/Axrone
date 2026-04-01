@@ -473,6 +473,39 @@ export class Transform extends Component {
         return depth;
     }
 
+    override serialize(): Record<string, any> {
+        return {
+            position: [this._position.x, this._position.y, this._position.z],
+            rotation: [this._rotation.x, this._rotation.y, this._rotation.z, this._rotation.w],
+            scale: [this._scale.x, this._scale.y, this._scale.z],
+        };
+    }
+
+    override deserialize(data: Record<string, any>): void {
+        if (Array.isArray(data.position) && data.position.length === 3) {
+            this._position.x = Number(data.position[0]);
+            this._position.y = Number(data.position[1]);
+            this._position.z = Number(data.position[2]);
+        }
+
+        if (Array.isArray(data.rotation) && data.rotation.length === 4) {
+            this._rotation.x = Number(data.rotation[0]);
+            this._rotation.y = Number(data.rotation[1]);
+            this._rotation.z = Number(data.rotation[2]);
+            this._rotation.w = Number(data.rotation[3]);
+        }
+
+        if (Array.isArray(data.scale) && data.scale.length === 3) {
+            this._scale.x = Number(data.scale[0]);
+            this._scale.y = Number(data.scale[1]);
+            this._scale.z = Number(data.scale[2]);
+        }
+
+        this._localDirty = true;
+        this._worldDirty = true;
+        this.markWorldDirty();
+    }
+
     onDestroy(): void {
         if (this._parent) {
             this.parent = undefined;

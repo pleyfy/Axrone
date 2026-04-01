@@ -169,4 +169,54 @@ export class Camera extends Component {
 
         return transform.worldPosition.clone();
     }
+
+    override serialize(): Record<string, unknown> {
+        return {
+            primary: this._primary,
+            near: this._near,
+            far: this._far,
+            fieldOfView: this._fieldOfView,
+            orthographic: this._orthographic,
+            orthographicSize: this._orthographicSize,
+            clearDepth: this._clearDepth,
+            clearColor: [
+                this._clearColor.x,
+                this._clearColor.y,
+                this._clearColor.z,
+                this._clearColor.w,
+            ],
+        };
+    }
+
+    override deserialize(data: Record<string, any>): void {
+        if (typeof data.primary === 'boolean') {
+            this._primary = data.primary;
+        }
+        if (typeof data.near === 'number') {
+            this._near = data.near;
+        }
+        if (typeof data.far === 'number') {
+            this._far = data.far;
+        }
+        if (typeof data.fieldOfView === 'number') {
+            this._fieldOfView = data.fieldOfView;
+        }
+        if (typeof data.orthographic === 'boolean') {
+            this._orthographic = data.orthographic;
+        }
+        if (typeof data.orthographicSize === 'number') {
+            this._orthographicSize = data.orthographicSize;
+        }
+        if (typeof data.clearDepth === 'number') {
+            this._clearDepth = data.clearDepth;
+        }
+        if (Array.isArray(data.clearColor) && data.clearColor.length === 4) {
+            this._clearColor = new Vec4(
+                Number(data.clearColor[0]),
+                Number(data.clearColor[1]),
+                Number(data.clearColor[2]),
+                Number(data.clearColor[3])
+            );
+        }
+    }
 }

@@ -262,6 +262,18 @@ export class Actor<
         return this._components.size;
     }
 
+    get persistent(): boolean {
+        return this._persistent;
+    }
+
+    get pooled(): boolean {
+        return this._pooled;
+    }
+
+    get started(): boolean {
+        return this._started;
+    }
+
     addComponent<T extends Component>(componentType: ComponentType<T>, ...args: any[]): T {
         this._validateNotDestroyed('addComponent');
 
