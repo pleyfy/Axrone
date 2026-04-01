@@ -1,0 +1,26 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "composite": false,
+        "types": [],
+        "declaration": true,
+        "declarationMap": false,
+        "sourceMap": true
+    },
+    "include": [
+        "packages/*/src/**/*.ts",
+        "types/**/*.d.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "build",
+        "coverage",
+        "examples",
+        "packages/**/__tests__/**",
+        "packages/**/*.test.ts",
+        "packages/**/*.spec.ts",
+        "packages/**/*.browser.test.ts",
+        "packages/**/*.browser.spec.ts"
+    ]
+}

@@ -1,9 +1,23 @@
 {
     "name": "@axrone/numeric",
     "version": "0.0.1",
-    "main": "index.js",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        }
+    },
     "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
     },
     "keywords": [],
     "author": "",
