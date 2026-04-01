@@ -11,6 +11,7 @@ class PlayerController extends Component {
     public speed = 5;
     public rotationSpeed = 10;
     private readonly _pressedKeys = new Set<string>();
+    private _yaw = 0;
 
     awake(): void {
         const onKeyDown = (event: KeyboardEvent) => this._pressedKeys.add(event.code);
@@ -24,6 +25,12 @@ class PlayerController extends Component {
             globalThis.removeEventListener('keydown', onKeyDown);
             globalThis.removeEventListener('keyup', onKeyUp);
         };
+
+        const transform = this.transform as Transform | undefined;
+        if (transform) {
+            const forward = Quat.rotateVector(transform.rotation, Vec3.FORWARD, new Vec3()) as Vec3;
+            this._yaw = Math.atan2(forward.x, forward.z);
+        }
     }
 
     update(deltaTime: number): void {
@@ -54,14 +61,12 @@ class PlayerController extends Component {
 
             // Rotate to face movement direction
             const targetYaw = Math.atan2(direction.x, direction.z);
-            const currentRotation = transform.rotation.toEuler();
             const deltaYaw = Math.atan2(
-                Math.sin(targetYaw - currentRotation.y),
-                Math.cos(targetYaw - currentRotation.y)
+                Math.sin(targetYaw - this._yaw),
+                Math.cos(targetYaw - this._yaw)
             );
-            const newYaw =
-                currentRotation.y + deltaYaw * Math.min(1, this.rotationSpeed * deltaSeconds);
-            transform.rotation = Quat.fromEuler(0, newYaw, 0);
+            this._yaw += deltaYaw * Math.min(1, this.rotationSpeed * deltaSeconds);
+            transform.rotation = Quat.fromEuler(0, this._yaw, 0);
         }
     }
 
@@ -129,8 +134,13 @@ class CameraFollow extends Component {
             this.offset.z * this._distanceMultiplier
         );
 
-        // Orbit only around target yaw to avoid full 3D flips while tweaking offsets.
-        const targetYaw = this._target.rotation.toEuler().y;
+        // Derive horizontal heading from the target's forward vector to avoid Euler angle flips.
+        const targetForward = Quat.rotateVector(this._target.rotation, Vec3.FORWARD, new Vec3()) as Vec3;
+        const flatForward = new Vec3(targetForward.x, 0, targetForward.z);
+        const targetYaw =
+            flatForward.x * flatForward.x + flatForward.z * flatForward.z > 1e-6
+                ? Math.atan2(flatForward.x, flatForward.z)
+                : 0;
         const yawRotation = Quat.fromEuler(0, targetYaw, 0, new Quat());
         const rotatedOffset = Quat.rotateVector(yawRotation, scaledOffset, new Vec3()) as Vec3;
         const targetPosition = this._target.position.clone().add(rotatedOffset);
