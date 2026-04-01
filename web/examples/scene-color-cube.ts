@@ -52,14 +52,19 @@ layout(location = 1) in vec3 a_Normal;
 uniform mat4 u_Model;
 uniform mat4 u_View;
 uniform mat4 u_Projection;
-out vec3 v_Normal;
+out vec3 v_LocalNormal;
+out vec3 v_WorldNormal;
 void main() {
-    v_Normal = normalize(a_Normal);
+    v_LocalNormal = normalize(a_Normal);
+    v_WorldNormal = normalize(mat3(u_Model) * a_Normal);
     gl_Position = u_Projection * u_View * u_Model * vec4(a_Position, 1.0);
 }`,
             fragmentSource: `#version 300 es
 precision highp float;
-in vec3 v_Normal;
+uniform vec3 u_LightDirection;
+uniform float u_AmbientStrength;
+in vec3 v_LocalNormal;
+in vec3 v_WorldNormal;
 out vec4 o_Color;
 
 vec3 faceColor(vec3 normal) {
@@ -78,17 +83,29 @@ vec3 faceColor(vec3 normal) {
 }
 
 void main() {
-    vec3 base = faceColor(v_Normal);
-    float rim = 0.78 + 0.22 * max(v_Normal.z, 0.0);
-    o_Color = vec4(base * rim, 1.0);
+    vec3 base = faceColor(v_LocalNormal);
+    vec3 normal = normalize(v_WorldNormal);
+    float diffuse = max(dot(normal, normalize(-u_LightDirection)), 0.0);
+    float lighting = u_AmbientStrength + diffuse * 0.7;
+    o_Color = vec4(base * lighting, 1.0);
 }`,
-            uniforms: ['u_Model', 'u_View', 'u_Projection'],
+            uniforms: [
+                'u_Model',
+                'u_View',
+                'u_Projection',
+                'u_LightDirection',
+                'u_AmbientStrength',
+            ],
         });
 
         scene.createBoxMesh('color-cube-mesh', 1.8, 1.8, 1.8);
         scene.createMaterial({
             id: 'color-cube-material',
             shaderId: 'examples/color-cube',
+            uniforms: {
+                u_LightDirection: [-0.45, -0.7, -0.35],
+                u_AmbientStrength: 0.42,
+            },
         });
 
         const cube = scene.createRenderableActor(
