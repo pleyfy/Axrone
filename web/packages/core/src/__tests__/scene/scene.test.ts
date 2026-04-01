@@ -29,9 +29,6 @@ let Scene: typeof import('../../scene').Scene;
 let MeshRenderer: typeof import('../../scene').MeshRenderer;
 let DirectionalLight: typeof import('../../scene').DirectionalLight;
 let OrbitCameraController: typeof import('../../scene').OrbitCameraController;
-let FilterMode: typeof import('../../scene').FilterMode;
-let TextureFormat: typeof import('../../scene').TextureFormat;
-let WrapMode: typeof import('../../scene').WrapMode;
 
 class ManualScheduler {
     readonly kind = 'manual';
@@ -291,9 +288,6 @@ describe('Scene', () => {
         MeshRenderer = sceneModule.MeshRenderer;
         DirectionalLight = sceneModule.DirectionalLight;
         OrbitCameraController = sceneModule.OrbitCameraController;
-        FilterMode = sceneModule.FilterMode;
-        TextureFormat = sceneModule.TextureFormat;
-        WrapMode = sceneModule.WrapMode;
     });
 
     beforeEach(() => {
@@ -388,15 +382,15 @@ void main() {
 
         scene.registerSampler({
             id: 'linear-repeat',
-            minFilter: FilterMode.LINEAR,
-            magFilter: FilterMode.LINEAR,
-            wrapS: WrapMode.REPEAT,
-            wrapT: WrapMode.REPEAT,
+            minFilter: 'LINEAR' as any,
+            magFilter: 'LINEAR' as any,
+            wrapS: 'REPEAT' as any,
+            wrapT: 'REPEAT' as any,
         });
 
         await scene.registerTexture({
             id: 'checker',
-            format: TextureFormat.RGBA8,
+            format: 'RGBA8' as any,
             samplerId: 'linear-repeat',
             source: {
                 kind: 'checker',
@@ -451,8 +445,12 @@ void main() {
         expect(gl.bindSampler).toHaveBeenCalled();
         expect(gl.bindTexture).toHaveBeenCalled();
 
-        const lightColorCalls = gl.uniform3f.mock.calls.filter(
-            ([location]) => (location as { name: string }).name === 'u_LightColor'
+        const uniform3fMock = gl.uniform3f as unknown as {
+            mock: { calls: readonly [WebGLUniformLocation | null, number, number, number][] };
+        };
+        const lightColorCalls = uniform3fMock.mock.calls.filter(
+            ([location]: readonly [WebGLUniformLocation | null, number, number, number]) =>
+                (location as { name: string }).name === 'u_LightColor'
         );
         expect(lightColorCalls.length).toBeGreaterThan(0);
         expect(lightColorCalls[0].slice(1)).toEqual([1, 0.9, 0.8]);
@@ -490,7 +488,7 @@ void main() {
         scene.createPlaneMesh('plane', 1, 1);
         await scene.registerTexture({
             id: 'solid',
-            format: TextureFormat.RGBA8,
+            format: 'RGBA8' as any,
             source: {
                 kind: 'color',
                 color: [0.2, 0.6, 1, 1],
@@ -527,7 +525,7 @@ void main() {
 
         const restoredPlane = scene.world
             .getAllActors()
-            .find((actor) => actor.name === 'Plane');
+            .find((actor: { name: string }) => actor.name === 'Plane');
         expect(restoredPlane).toBeDefined();
         expect(restoredPlane?.getComponent(MeshRenderer)?.materialId).toBe('plane-material');
         expect(scene.getTexture('solid')?.width).toBe(2);
