@@ -340,7 +340,6 @@ export class Actor<
             }
 
             this._emitEvent('actor:componentAdded', {
-                componentType: componentType.name,
                 componentType: getComponentTypeName(componentType),
                 component,
             });
@@ -380,7 +379,6 @@ export class Actor<
             this.world.removeComponent(this.entity, getComponentTypeName(componentType) as any);
 
             this._emitEvent('actor:componentRemoved', {
-                componentType: componentType.name,
                 componentType: getComponentTypeName(componentType),
                 component,
             });
@@ -403,7 +401,11 @@ export class Actor<
     requireComponent<T extends Component>(componentType: ComponentType<T>): T {
         const component = this.getComponent(componentType);
         if (!component) {
-            throw new ComponentError('Required component not found', this.id, componentType.name);
+            throw new ComponentError(
+                'Required component not found',
+                this.id,
+                getComponentTypeName(componentType)
+            );
         }
         return component;
     }

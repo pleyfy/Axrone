@@ -3,6 +3,9 @@ import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
 import type { Actor } from './actor';
 
+const getComponentTypeName = (componentType: ComponentType): string =>
+    getComponentMetadata(componentType)?.scriptName ?? componentType.name;
+
 export type ComponentState =
     | 'uninitialized'
     | 'awake'
@@ -738,12 +741,12 @@ export abstract class Component<
         }
 
         try {
-            const queryResults = this.world.query(componentType.name as any);
+            const queryResults = this.world.query(getComponentTypeName(componentType) as any);
             if (queryResults.length > 0) {
                 return this.world.getActor(queryResults[0].entity);
             }
         } catch (error) {
-            console.warn(`Failed to query for component ${componentType.name}:`, error);
+            console.warn(`Failed to query for component ${getComponentTypeName(componentType)}:`, error);
         }
 
         return undefined;
@@ -758,7 +761,7 @@ export abstract class Component<
 
         try {
             const results: Actor[] = [];
-            const queryResults = this.world.query(componentType.name as any);
+            const queryResults = this.world.query(getComponentTypeName(componentType) as any);
 
             for (const result of queryResults) {
                 const actor = this.world.getActor(result.entity);
@@ -769,7 +772,7 @@ export abstract class Component<
 
             return results;
         } catch (error) {
-            console.warn(`Failed to query for components ${componentType.name}:`, error);
+            console.warn(`Failed to query for components ${getComponentTypeName(componentType)}:`, error);
             return [];
         }
     }
