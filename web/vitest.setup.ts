@@ -3,6 +3,19 @@ import { vi, expect } from 'vitest';
 (global as any).expect = expect;
 (global as any).vi = vi;
 
+if (!(global as any).WebGL2RenderingContext) {
+    let nextWebGL2Constant = 0x2000;
+    (global as any).WebGL2RenderingContext = new Proxy(class WebGL2RenderingContext {}, {
+        get(target, property, receiver) {
+            if (typeof property === 'string' && !(property in target)) {
+                Reflect.set(target, property, nextWebGL2Constant++);
+            }
+
+            return Reflect.get(target, property, receiver);
+        },
+    });
+}
+
 Object.assign(global, {
     performance: {
         now: () => Date.now(),
