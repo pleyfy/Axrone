@@ -54,7 +54,7 @@ uniform mat4 u_View;
 uniform mat4 u_Projection;
 out vec3 v_Normal;
 void main() {
-    v_Normal = normalize(mat3(u_Model) * a_Normal);
+    v_Normal = normalize(a_Normal);
     gl_Position = u_Projection * u_View * u_Model * vec4(a_Position, 1.0);
 }`,
             fragmentSource: `#version 300 es
