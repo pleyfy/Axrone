@@ -2,6 +2,8 @@ export * from './types';
 export * from './event';
 export * from './random';
 export * from './geometry';
+export * from './component-system';
 export * from './game-loop';
+export * from './scene';
 export * from './renderer/webgl2/buffer';
 export * from './tween';

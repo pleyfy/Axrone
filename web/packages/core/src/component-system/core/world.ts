@@ -5,6 +5,7 @@ import type {
     ArchetypeId,
     BitMask,
     ComponentInstance,
+    ComponentConstructor,
 } from '../types/core';
 import type { QueryResult } from '../types/system';
 import type { EventKey } from '../../event';
@@ -654,6 +655,50 @@ export class World<R extends ComponentRegistry> {
         return this._archetypes.size;
     }
 
+    registerComponentType<T extends ComponentConstructor>(componentType: T): void {
+        this._validateWorldState('registerComponentType');
+
+        if (typeof componentType !== 'function' || componentType.name.trim().length === 0) {
+            throw new WorldError(
+                'Component type must be a named constructor',
+                'registerComponentType'
+            );
+        }
+
+        const componentName = componentType.name;
+        const registry = this._registry as Record<string, ComponentConstructor>;
+        const existing = registry[componentName];
+
+        if (existing !== undefined) {
+            if (existing !== componentType) {
+                throw new WorldError(
+                    `Component '${componentName}' is already registered with a different constructor`,
+                    'registerComponentType'
+                );
+            }
+
+            return;
+        }
+
+        registry[componentName] = componentType;
+        this._componentMask.set(componentName, this._componentMask.size);
+        this._registerComponentEventBridge(componentName);
+        this._queryCache.invalidate();
+    }
+
+    isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean {
+        const componentName =
+            typeof componentTypeOrName === 'string'
+                ? componentTypeOrName
+                : componentTypeOrName.name;
+
+        return componentName in this._registry;
+    }
+
+    getRegisteredComponentNames(): readonly string[] {
+        return Object.keys(this._registry);
+    }
+
     on<T extends EventKey<ECSEventMap<R>>>(
         event: T,
         handler: (data: ECSEventMap<R>[T]) => void
@@ -973,27 +1018,7 @@ export class World<R extends ComponentRegistry> {
             });
 
             for (const componentName of Object.keys(this._registry)) {
-                this._eventBus.on(`${componentName}Added` as any, (data) => {
-                    try {
-                        const observables = this._observables.getComponentObservables(
-                            componentName as keyof R
-                        );
-                        observables.added.notify(data);
-                    } catch (error) {
-                        console.error(`Failed to notify ${componentName} added:`, error);
-                    }
-                });
-
-                this._eventBus.on(`${componentName}Removed` as any, (data) => {
-                    try {
-                        const observables = this._observables.getComponentObservables(
-                            componentName as keyof R
-                        );
-                        observables.removed.notify(data);
-                    } catch (error) {
-                        console.error(`Failed to notify ${componentName} removed:`, error);
-                    }
-                });
+                this._registerComponentEventBridge(componentName);
             }
         } catch (error) {
             throw new WorldError(
@@ -1004,6 +1029,30 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
+
+    private _registerComponentEventBridge(componentName: string): void {
+        this._eventBus.on(`${componentName}Added` as any, (data) => {
+            try {
+                const observables = this._observables.getComponentObservables(
+                    componentName as keyof R
+                );
+                observables.added.notify(data);
+            } catch (error) {
+                console.error(`Failed to notify ${componentName} added:`, error);
+            }
+        });
+
+        this._eventBus.on(`${componentName}Removed` as any, (data) => {
+            try {
+                const observables = this._observables.getComponentObservables(
+                    componentName as keyof R
+                );
+                observables.removed.notify(data);
+            } catch (error) {
+                console.error(`Failed to notify ${componentName} removed:`, error);
+            }
+        });
+    }
     private _getOrCreateArchetype(signature: readonly string[]): Archetype<R> {
         try {
             const sortedSignature = signature.slice().sort();

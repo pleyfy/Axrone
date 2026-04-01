@@ -443,20 +443,7 @@ export class Actor<
             const sortedComponents = this._getSortedComponents();
 
             for (const [componentType, component] of sortedComponents) {
-                try {
-                    if (component.update) {
-                        component.update(deltaTime);
-                    }
-                } catch (error) {
-                    console.error(
-                        new ComponentError(
-                            'Component update failed',
-                            this.id,
-                            componentType.name,
-                            error instanceof Error ? error : new Error(String(error))
-                        )
-                    );
-                }
+                this._executeComponentPhase(componentType, component, 'update', deltaTime);
             }
         } catch (error) {
             console.error(
@@ -464,6 +451,52 @@ export class Actor<
                     'Actor update failed',
                     this.id,
                     'update',
+                    error instanceof Error ? error : new Error(String(error))
+                )
+            );
+        }
+    }
+
+    fixedUpdate(fixedDeltaTime: number): void {
+        if (!this._active || this._destroyed || this._state !== 'active') {
+            return;
+        }
+
+        try {
+            const sortedComponents = this._getSortedComponents();
+
+            for (const [componentType, component] of sortedComponents) {
+                this._executeComponentPhase(componentType, component, 'fixedUpdate', fixedDeltaTime);
+            }
+        } catch (error) {
+            console.error(
+                new ActorError(
+                    'Actor fixed update failed',
+                    this.id,
+                    'fixedUpdate',
+                    error instanceof Error ? error : new Error(String(error))
+                )
+            );
+        }
+    }
+
+    lateUpdate(deltaTime: number): void {
+        if (!this._active || this._destroyed || this._state !== 'active') {
+            return;
+        }
+
+        try {
+            const sortedComponents = this._getSortedComponents();
+
+            for (const [componentType, component] of sortedComponents) {
+                this._executeComponentPhase(componentType, component, 'lateUpdate', deltaTime);
+            }
+        } catch (error) {
+            console.error(
+                new ActorError(
+                    'Actor late update failed',
+                    this.id,
+                    'lateUpdate',
                     error instanceof Error ? error : new Error(String(error))
                 )
             );
@@ -658,6 +691,33 @@ export class Actor<
                 this.id,
                 component.constructor.name,
                 error instanceof Error ? error : new Error(String(error))
+            );
+        }
+    }
+
+    private _executeComponentPhase(
+        componentType: ComponentType,
+        component: Component,
+        phase: 'update' | 'fixedUpdate' | 'lateUpdate',
+        deltaTime: number
+    ): void {
+        if (!component.enabled) {
+            return;
+        }
+
+        try {
+            const lifecycleMethod = component[phase];
+            if (typeof lifecycleMethod === 'function') {
+                (lifecycleMethod as (deltaTime: number) => void).call(component, deltaTime);
+            }
+        } catch (error) {
+            console.error(
+                new ComponentError(
+                    `Component ${phase} failed`,
+                    this.id,
+                    componentType.name,
+                    error instanceof Error ? error : new Error(String(error))
+                )
             );
         }
     }
