@@ -3,6 +3,9 @@ import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
 import { Component, getComponentMetadata } from './component';
 
+const getComponentTypeName = (componentType: ComponentType): string =>
+    getComponentMetadata(componentType)?.scriptName ?? componentType.name;
+
 export interface EventBus {
     emit(eventType: string, data: any): void;
     on(eventType: string, handler: (data: any) => void): () => void;
@@ -281,7 +284,7 @@ export class Actor<
             throw new ComponentError(
                 'Invalid component type provided',
                 this.id,
-                (componentType as any)?.name ?? 'unknown'
+                getComponentTypeName((componentType as any) ?? { name: 'unknown' })
             );
         }
 
@@ -289,7 +292,7 @@ export class Actor<
             throw new ComponentError(
                 `Maximum component limit (${this._maxComponents}) reached`,
                 this.id,
-                componentType.name
+                getComponentTypeName(componentType)
             );
         }
 
@@ -301,7 +304,7 @@ export class Actor<
             throw new ComponentError(
                 'Component already exists and is not singleton',
                 this.id,
-                componentType.name
+                getComponentTypeName(componentType)
             );
         }
 
@@ -320,7 +323,11 @@ export class Actor<
             this._components.set(componentType, component);
             this._componentPriorities.set(componentType, metadata?.priority ?? 0);
 
-            this.world.addComponent(this.entity, componentType.name as any, component);
+            this.world.addComponent(
+                this.entity,
+                getComponentTypeName(componentType) as any,
+                component
+            );
 
             this._executeComponentLifecycle(component, 'awake');
 
@@ -334,6 +341,7 @@ export class Actor<
 
             this._emitEvent('actor:componentAdded', {
                 componentType: componentType.name,
+                componentType: getComponentTypeName(componentType),
                 component,
             });
 
@@ -342,7 +350,7 @@ export class Actor<
             throw new ComponentError(
                 'Failed to add component',
                 this.id,
-                componentType.name,
+                getComponentTypeName(componentType),
                 error instanceof Error ? error : new Error(String(error))
             );
         }
@@ -369,10 +377,11 @@ export class Actor<
             this._componentPriorities.delete(componentType);
             this._componentDependencies.delete(componentType);
 
-            this.world.removeComponent(this.entity, componentType.name as any);
+            this.world.removeComponent(this.entity, getComponentTypeName(componentType) as any);
 
             this._emitEvent('actor:componentRemoved', {
                 componentType: componentType.name,
+                componentType: getComponentTypeName(componentType),
                 component,
             });
 
@@ -381,7 +390,7 @@ export class Actor<
             throw new ComponentError(
                 'Failed to remove component',
                 this.id,
-                componentType.name,
+                getComponentTypeName(componentType),
                 error instanceof Error ? error : new Error(String(error))
             );
         }
@@ -690,7 +699,7 @@ export class Actor<
                 throw new ComponentError(
                     `Cannot remove component: ${type.name} depends on it`,
                     this.id,
-                    componentType.name
+                    getComponentTypeName(componentType)
                 );
             }
         }
