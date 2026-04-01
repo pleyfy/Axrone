@@ -22,7 +22,7 @@ export {
     SHADER_KEYWORDS,
     MAX_VERTEX_ATTRIBUTES,
     MAX_TEXTURE_UNITS,
-    SHADER_CACHE_LIMITS
+    SHADER_CACHE_LIMITS,
 } from './utils';
 
 export {
@@ -31,5 +31,5 @@ export {
     ShaderStage,
     BlendMode,
     CullMode,
-    DepthFunc
+    DepthFunc,
 } from './interfaces';

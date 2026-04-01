@@ -1,8 +1,4 @@
-import type {
-    ISingletonScope,
-    SingletonKey,
-    ScopeDisposer,
-} from './singleton-core';
+import type { ISingletonScope, SingletonKey, ScopeDisposer } from './singleton-core';
 import { SingletonError } from './singleton-errors';
 
 let scopeIdCounter = 0;
@@ -121,8 +117,8 @@ export class SingletonScopeImpl implements ISingletonScope {
 
         const errors: Error[] = [];
 
-        const childDisposePromises = Array.from(this.children).map(child =>
-            child.disposeAsync().catch(e => errors.push(e))
+        const childDisposePromises = Array.from(this.children).map((child) =>
+            child.disposeAsync().catch((e) => errors.push(e))
         );
         await Promise.all(childDisposePromises);
         this.children.clear();
@@ -132,9 +128,7 @@ export class SingletonScopeImpl implements ISingletonScope {
             try {
                 await disposer();
             } catch (error) {
-                errors.push(
-                    error instanceof Error ? error : new Error(String(error))
-                );
+                errors.push(error instanceof Error ? error : new Error(String(error)));
             }
         }
 

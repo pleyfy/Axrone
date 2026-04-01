@@ -1,10 +1,5 @@
 import { Vec2, Vec3, IVec2Like, IVec3Like } from '@axrone/numeric';
-import {
-    IRaycastHit2D,
-    IRaycastHit3D,
-    LayerMask,
-    RaycastFlags,
-} from '../types/raycast-types';
+import { IRaycastHit2D, IRaycastHit3D, LayerMask, RaycastFlags } from '../types/raycast-types';
 
 export class RaycastHitComparator {
     public static sortByDistance2D(a: IRaycastHit2D, b: IRaycastHit2D): number {
@@ -23,17 +18,23 @@ export class RaycastHitComparator {
         return a.fraction - b.fraction;
     }
 
-    public static filterByLayer2D(hits: readonly IRaycastHit2D[], layerMask: LayerMask): IRaycastHit2D[] {
-        return hits.filter(hit => (hit.layer & layerMask) !== 0);
+    public static filterByLayer2D(
+        hits: readonly IRaycastHit2D[],
+        layerMask: LayerMask
+    ): IRaycastHit2D[] {
+        return hits.filter((hit) => (hit.layer & layerMask) !== 0);
     }
 
-    public static filterByLayer3D(hits: readonly IRaycastHit3D[], layerMask: LayerMask): IRaycastHit3D[] {
-        return hits.filter(hit => (hit.layer & layerMask) !== 0);
+    public static filterByLayer3D(
+        hits: readonly IRaycastHit3D[],
+        layerMask: LayerMask
+    ): IRaycastHit3D[] {
+        return hits.filter((hit) => (hit.layer & layerMask) !== 0);
     }
 
     public static findClosest2D(hits: readonly IRaycastHit2D[]): IRaycastHit2D | null {
         if (hits.length === 0) return null;
-        
+
         let closest = hits[0];
         for (let i = 1; i < hits.length; i++) {
             if (hits[i].distance < closest.distance) {
@@ -45,7 +46,7 @@ export class RaycastHitComparator {
 
     public static findClosest3D(hits: readonly IRaycastHit3D[]): IRaycastHit3D | null {
         if (hits.length === 0) return null;
-        
+
         let closest = hits[0];
         for (let i = 1; i < hits.length; i++) {
             if (hits[i].distance < closest.distance) {
@@ -57,7 +58,7 @@ export class RaycastHitComparator {
 
     public static findFurthest2D(hits: readonly IRaycastHit2D[]): IRaycastHit2D | null {
         if (hits.length === 0) return null;
-        
+
         let furthest = hits[0];
         for (let i = 1; i < hits.length; i++) {
             if (hits[i].distance > furthest.distance) {
@@ -69,7 +70,7 @@ export class RaycastHitComparator {
 
     public static findFurthest3D(hits: readonly IRaycastHit3D[]): IRaycastHit3D | null {
         if (hits.length === 0) return null;
-        
+
         let furthest = hits[0];
         for (let i = 1; i < hits.length; i++) {
             if (hits[i].distance > furthest.distance) {
@@ -292,7 +293,7 @@ export class LayerMaskBuilder {
 
     public static intersect(...masks: LayerMask[]): LayerMask {
         if (masks.length === 0) return 0 as LayerMask;
-        
+
         let result = masks[0] as number;
         for (let i = 1; i < masks.length; i++) {
             result &= masks[i] as number;
@@ -345,7 +346,9 @@ export class RaycastFlagsBuilder {
     }
 
     public static precise(): RaycastFlags {
-        return RaycastFlags.ClosestOnly | RaycastFlags.PreciseHitNormal | RaycastFlags.StopAtFirstHit;
+        return (
+            RaycastFlags.ClosestOnly | RaycastFlags.PreciseHitNormal | RaycastFlags.StopAtFirstHit
+        );
     }
 }
 
@@ -355,7 +358,7 @@ export function interpolateHit2D(
     t: number
 ): Partial<IRaycastHit2D> {
     const invT = 1 - t;
-    
+
     return {
         point: Vec2.create(
             hit1.point.x * invT + hit2.point.x * t,
@@ -366,7 +369,7 @@ export function interpolateHit2D(
             hit1.normal.y * invT + hit2.normal.y * t
         ),
         distance: hit1.distance * invT + hit2.distance * t,
-        fraction: hit1.fraction * invT + hit2.fraction * t
+        fraction: hit1.fraction * invT + hit2.fraction * t,
     };
 }
 
@@ -376,7 +379,7 @@ export function interpolateHit3D(
     t: number
 ): Partial<IRaycastHit3D> {
     const invT = 1 - t;
-    
+
     return {
         point: Vec3.create(
             hit1.point.x * invT + hit2.point.x * t,
@@ -389,7 +392,7 @@ export function interpolateHit3D(
             hit1.normal.z * invT + hit2.normal.z * t
         ),
         distance: hit1.distance * invT + hit2.distance * t,
-        fraction: hit1.fraction * invT + hit2.fraction * t
+        fraction: hit1.fraction * invT + hit2.fraction * t,
     };
 }
 
@@ -429,17 +432,13 @@ export function createBoxCastOrigins3D(
     extents: Readonly<IVec3Like>
 ): Vec3[] {
     const origins: Vec3[] = [];
-    
+
     for (let x = -1; x <= 1; x++) {
         for (let y = -1; y <= 1; y++) {
             for (let z = -1; z <= 1; z++) {
                 if (x === 0 && y === 0 && z === 0) continue;
 
-                const offset = Vec3.create(
-                    x * extents.x,
-                    y * extents.y,
-                    z * extents.z
-                );
+                const offset = Vec3.create(x * extents.x, y * extents.y, z * extents.z);
 
                 origins.push(Vec3.add(origin, offset));
             }

@@ -199,7 +199,6 @@ export class VertexAttributeInfo {
 }
 
 export class MeshUtils {
-
     public static calculateLayoutStride(attributes: readonly IVertexAttributeDescriptor[]): number {
         let maxEnd = 0;
         for (const attr of attributes) {
@@ -339,7 +338,6 @@ export class MeshUtils {
 }
 
 export class BoundingVolumeUtils {
-
     public static computeBoundingBox(positions: Float32Array): IBoundingBox {
         if (positions.length === 0) {
             const zero = new Vec3(0, 0, 0);
@@ -396,7 +394,6 @@ export class BoundingVolumeUtils {
     }
 
     public static transformBoundingBox(boundingBox: IBoundingBox, transform: Mat4): IBoundingBox {
-
         const corners = [
             new Vec3(boundingBox.min.x, boundingBox.min.y, boundingBox.min.z),
             new Vec3(boundingBox.max.x, boundingBox.min.y, boundingBox.min.z),
@@ -504,7 +501,6 @@ export class BoundingVolumeUtils {
 }
 
 export class MeshGenerationUtils {
-
     public static generateSmoothNormals(
         positions: Float32Array,
         indices: Uint16Array | Uint32Array
@@ -555,7 +551,7 @@ export class MeshGenerationUtils {
         indices: Uint16Array | Uint32Array
     ): Float32Array {
         const vertexCount = positions.length / 3;
-        const tangents = new Float32Array(vertexCount * 4); 
+        const tangents = new Float32Array(vertexCount * 4);
 
         const tan1 = new Float32Array(vertexCount * 3);
         const tan2 = new Float32Array(vertexCount * 3);

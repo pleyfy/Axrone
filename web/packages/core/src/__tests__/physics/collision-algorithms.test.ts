@@ -234,7 +234,9 @@ describe('Collision Algorithms', () => {
 
             const result = SAT2D.testPolygonPolygon(squareA, squareB, transformA, transformB);
             expect(result.colliding).toBe(true);
-            expect(result.normal.x * result.normal.x + result.normal.y * result.normal.y).toBeCloseTo(1);
+            expect(
+                result.normal.x * result.normal.x + result.normal.y * result.normal.y
+            ).toBeCloseTo(1);
         });
 
         it('handles triangle-square collision', () => {
@@ -344,7 +346,8 @@ describe('Collision Algorithms', () => {
             );
 
             expect(result.depth).toBeGreaterThanOrEqual(0);
-            const normalLength = result.normal.x * result.normal.x + result.normal.y * result.normal.y;
+            const normalLength =
+                result.normal.x * result.normal.x + result.normal.y * result.normal.y;
             if (normalLength > 0) {
                 expect(normalLength).toBeCloseTo(1, 1);
             }

@@ -64,11 +64,7 @@ export class SingletonError extends Error {
     }
 
     static disposed(key: SingletonKey): SingletonError {
-        return new SingletonError(
-            'Instance has been disposed',
-            SingletonErrorCode.DISPOSED,
-            key
-        );
+        return new SingletonError('Instance has been disposed', SingletonErrorCode.DISPOSED, key);
     }
 
     static alreadyRegistered(key: SingletonKey): SingletonError {
@@ -80,11 +76,7 @@ export class SingletonError extends Error {
     }
 
     static notFound(key: SingletonKey): SingletonError {
-        return new SingletonError(
-            'Key not found in registry',
-            SingletonErrorCode.NOT_FOUND,
-            key
-        );
+        return new SingletonError('Key not found in registry', SingletonErrorCode.NOT_FOUND, key);
     }
 
     static circularDependency(cycle: readonly SingletonKey[]): SingletonError {
@@ -114,7 +106,11 @@ export class SingletonError extends Error {
         );
     }
 
-    static maxRetriesExceeded(key: SingletonKey, retryCount: number, lastError?: Error): SingletonError {
+    static maxRetriesExceeded(
+        key: SingletonKey,
+        retryCount: number,
+        lastError?: Error
+    ): SingletonError {
         return new SingletonError(
             `Max retries (${retryCount}) exceeded${lastError ? `: ${lastError.message}` : ''}`,
             SingletonErrorCode.MAX_RETRIES_EXCEEDED,
@@ -123,7 +119,11 @@ export class SingletonError extends Error {
         );
     }
 
-    static invalidState(key: SingletonKey, currentState: SingletonState, expectedStates: SingletonState[]): SingletonError {
+    static invalidState(
+        key: SingletonKey,
+        currentState: SingletonState,
+        expectedStates: SingletonState[]
+    ): SingletonError {
         return new SingletonError(
             `Invalid state: expected [${expectedStates.join(', ')}], got '${currentState}'`,
             SingletonErrorCode.INVALID_STATE,
@@ -142,10 +142,6 @@ export class SingletonError extends Error {
     }
 
     static invalidOperation(message: string, key?: SingletonKey): SingletonError {
-        return new SingletonError(
-            message,
-            SingletonErrorCode.INVALID_OPERATION,
-            key
-        );
+        return new SingletonError(message, SingletonErrorCode.INVALID_OPERATION, key);
     }
 }

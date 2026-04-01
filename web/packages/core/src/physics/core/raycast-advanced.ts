@@ -87,9 +87,15 @@ export class ShapeCaster3D {
         let closestDistance = Number.MAX_VALUE;
 
         const offsets = [
-            [-1, -1, -1], [1, -1, -1], [-1, 1, -1], [1, 1, -1],
-            [-1, -1, 1], [1, -1, 1], [-1, 1, 1], [1, 1, 1],
-            [0, 0, 0]
+            [-1, -1, -1],
+            [1, -1, -1],
+            [-1, 1, -1],
+            [1, 1, -1],
+            [-1, -1, 1],
+            [1, -1, 1],
+            [-1, 1, 1],
+            [1, 1, 1],
+            [0, 0, 0],
         ];
 
         for (const [x, y, z] of offsets) {
@@ -136,7 +142,7 @@ export class ShapeCaster3D {
                 direction: query.direction,
                 maxDistance: query.maxDistance,
                 layerMask: query.layerMask,
-                radius: query.radius
+                radius: query.radius,
             };
 
             const hit = this.sphereCast(sphereQuery);
@@ -173,9 +179,14 @@ export class MultiRaycaster3D {
         rayCount: number
     ): IRaycastHit3D[] {
         const hits: IRaycastHit3D[] = [];
-        
+
         if (rayCount === 1) {
-            const hit = this._raycastSystem.raycast(origin, centerDirection, maxDistance, layerMask);
+            const hit = this._raycastSystem.raycast(
+                origin,
+                centerDirection,
+                maxDistance,
+                layerMask
+            );
             if (hit) hits.push(hit);
             return hits;
         }
@@ -187,7 +198,7 @@ export class MultiRaycaster3D {
         Vec3.normalize(actualUp, actualUp);
 
         for (let i = 0; i < rayCount; i++) {
-            const angle = ((i / (rayCount - 1)) - 0.5) * spreadAngle;
+            const angle = (i / (rayCount - 1) - 0.5) * spreadAngle;
             const cos = Math.cos(angle);
             const sin = Math.sin(angle);
 
@@ -266,7 +277,7 @@ export class MultiRaycaster3D {
 
         for (let i = 0; i < thetaSamples; i++) {
             const theta = (Math.PI * i) / (thetaSamples - 1);
-            
+
             for (let j = 0; j < phiSamples; j++) {
                 const phi = (Math.PI * 2 * j) / phiSamples;
 
@@ -318,7 +329,12 @@ export class MultiRaycaster3D {
                     origin.z + right.z * offsetX + actualUp.z * offsetY
                 );
 
-                const hit = this._raycastSystem.raycast(rayOrigin, direction, maxDistance, layerMask);
+                const hit = this._raycastSystem.raycast(
+                    rayOrigin,
+                    direction,
+                    maxDistance,
+                    layerMask
+                );
                 if (hit) grid[row].push(hit);
             }
         }

@@ -5,7 +5,13 @@ export const __singleton_state_brand: unique symbol = Symbol('__singleton_state_
 
 export type Nominal<T, K> = T & { readonly [__singleton_state_brand]: K };
 
-export type SingletonState = 'uninitialized' | 'initializing' | 'resolved' | 'disposing' | 'disposed' | 'faulted';
+export type SingletonState =
+    | 'uninitialized'
+    | 'initializing'
+    | 'resolved'
+    | 'disposing'
+    | 'disposed'
+    | 'faulted';
 
 export type SingletonLifecycle = 'application' | 'scoped' | 'transient';
 
@@ -146,13 +152,14 @@ export interface AsyncSingletonOptions<T> extends SingletonOptions<T> {
     readonly retryDelay?: number;
 }
 
-export type ExtractSingletonType<T> = T extends ISingleton<infer U>
-    ? U
-    : T extends IAsyncSingleton<infer V>
-      ? V
-      : T extends IScopedSingleton<infer W>
-        ? W
-        : never;
+export type ExtractSingletonType<T> =
+    T extends ISingleton<infer U>
+        ? U
+        : T extends IAsyncSingleton<infer V>
+          ? V
+          : T extends IScopedSingleton<infer W>
+            ? W
+            : never;
 
 export type IsSingletonType<T> = T extends ISingleton<unknown> ? true : false;
 export type IsAsyncSingletonType<T> = T extends IAsyncSingleton<unknown> ? true : false;

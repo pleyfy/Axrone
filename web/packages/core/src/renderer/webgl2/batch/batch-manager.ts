@@ -19,7 +19,7 @@ export class BatchManager implements IBatchManager {
             enableDynamicBatching: config.enableDynamicBatching ?? true,
             enableInstancing: config.enableInstancing ?? true,
             sortByMaterial: config.sortByMaterial ?? true,
-            sortByDepth: config.sortByDepth ?? false
+            sortByDepth: config.sortByDepth ?? false,
         };
     }
 
@@ -35,7 +35,7 @@ export class BatchManager implements IBatchManager {
         const rendererId = `renderer_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
         const renderer = new BatchRenderer(this.gl, {
             ...this.config,
-            maxBatchSize: maxBatchSize ?? this.config.maxBatchSize
+            maxBatchSize: maxBatchSize ?? this.config.maxBatchSize,
         });
 
         this.renderers.set(rendererId, renderer);
@@ -102,7 +102,7 @@ export class BatchManager implements IBatchManager {
                 totalInstances: 0,
                 drawCalls: 0,
                 instancesPerBatch: 0,
-                memoryUsage: 0
+                memoryUsage: 0,
             };
         }
 
@@ -124,7 +124,7 @@ export class BatchManager implements IBatchManager {
             totalInstances,
             drawCalls: totalDrawCalls,
             instancesPerBatch: totalBatches > 0 ? totalInstances / totalBatches : 0,
-            memoryUsage: this.calculateMemoryUsage()
+            memoryUsage: this.calculateMemoryUsage(),
         };
     }
 
@@ -141,7 +141,6 @@ export class BatchManager implements IBatchManager {
     }
 
     private performOptimization(): void {
-
         const emptyRenderers: string[] = [];
 
         for (const [id, renderer] of this.renderers) {
@@ -168,39 +167,37 @@ export class BatchManager implements IBatchManager {
     }
 
     private rebalanceRenderers(): void {
-
         const rendererLoads = new Map<string, number>();
 
         for (const [id, renderer] of this.renderers) {
             rendererLoads.set(id, this.calculateRendererLoad(renderer));
         }
 
-        const avgLoad = Array.from(rendererLoads.values()).reduce((a, b) => a + b, 0) / rendererLoads.size;
+        const avgLoad =
+            Array.from(rendererLoads.values()).reduce((a, b) => a + b, 0) / rendererLoads.size;
         const threshold = avgLoad * 1.5;
 
         for (const [id, load] of rendererLoads) {
             if (load > threshold) {
-
-                console.debug(`Renderer ${id} is overloaded (load: ${load}, threshold: ${threshold})`);
+                console.debug(
+                    `Renderer ${id} is overloaded (load: ${load}, threshold: ${threshold})`
+                );
             }
         }
     }
 
     private calculateRendererLoad(renderer: BatchRenderer): number {
-
         const groupWeight = 0.3;
         const instanceWeight = 0.7;
 
-        return (renderer.activeGroups * groupWeight) + (renderer.totalInstances * instanceWeight);
+        return renderer.activeGroups * groupWeight + renderer.totalInstances * instanceWeight;
     }
 
     private calculateMemoryUsage(): number {
-
         let totalMemory = 0;
 
         for (const renderer of this.renderers.values()) {
-
-            const estimatedMemoryPerGroup = this.config.maxBatchSize * (16 + 4 + 4) * 4; 
+            const estimatedMemoryPerGroup = this.config.maxBatchSize * (16 + 4 + 4) * 4;
             totalMemory += renderer.activeGroups * estimatedMemoryPerGroup;
         }
 
@@ -209,8 +206,8 @@ export class BatchManager implements IBatchManager {
 
     private getMaterialKey(material: IMaterialInstance): string {
         const shader = material.shader.shader.name;
-        const blendMode = material.getProperty('blendMode') as string || 'opaque';
-        const cullMode = material.getProperty('cullMode') as string || 'back';
+        const blendMode = (material.getProperty('blendMode') as string) || 'opaque';
+        const cullMode = (material.getProperty('cullMode') as string) || 'back';
 
         return `${shader}_${blendMode}_${cullMode}`;
     }

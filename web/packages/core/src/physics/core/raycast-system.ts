@@ -1,10 +1,5 @@
 import { Vec2, Vec3, IVec2Like, IVec3Like, EPSILON } from '@axrone/numeric';
-import {
-    Raycaster2D,
-    Raycaster3D,
-    RaycastResult2D,
-    RaycastResult3D,
-} from './raycast-engine';
+import { Raycaster2D, Raycaster3D, RaycastResult2D, RaycastResult3D } from './raycast-engine';
 import {
     IRay2D,
     IRay3D,
@@ -18,7 +13,13 @@ import {
     RaycastPredicate3D,
     RaycastLayer,
 } from '../types/raycast-types';
-import { RaycastCache2D, RaycastCache3D, RaycastBatcher2D, RaycastBatcher3D, RaycastStatistics } from './raycast-optimization';
+import {
+    RaycastCache2D,
+    RaycastCache3D,
+    RaycastBatcher2D,
+    RaycastBatcher3D,
+    RaycastStatistics,
+} from './raycast-optimization';
 import { SpatialHashGrid3D, SpatialOctree } from './raycast-spatial';
 import { InvalidRayError, RaycastQueryError } from './raycast-errors';
 import type { BodyId, ShapeId } from '../types/primitives';
@@ -63,7 +64,7 @@ export class RaycastSystem2D {
             ray: this._createRay2D(origin, direction, maxDistance),
             layerMask,
             flags: flags | RaycastFlags.ClosestOnly | RaycastFlags.StopAtFirstHit,
-            maxHits: 1
+            maxHits: 1,
         };
 
         const result = this._raycaster.raycast(query, predicate);
@@ -92,7 +93,7 @@ export class RaycastSystem2D {
             ray: this._createRay2D(origin, direction, maxDistance),
             layerMask,
             flags: RaycastFlags.AllHits | RaycastFlags.SortByDistance,
-            maxHits
+            maxHits,
         };
 
         const result = this._raycaster.raycast(query, predicate);
@@ -165,7 +166,11 @@ export class RaycastSystem2D {
         return this._statistics;
     }
 
-    private _validateRay(origin: Readonly<IVec2Like>, direction: Readonly<IVec2Like>, maxDistance: number): void {
+    private _validateRay(
+        origin: Readonly<IVec2Like>,
+        direction: Readonly<IVec2Like>,
+        maxDistance: number
+    ): void {
         if (!isFinite(origin.x) || !isFinite(origin.y)) {
             throw new InvalidRayError('Ray origin contains invalid values');
         }
@@ -184,14 +189,18 @@ export class RaycastSystem2D {
         }
     }
 
-    private _createRay2D(origin: Readonly<IVec2Like>, direction: Readonly<IVec2Like>, maxDistance: number): IRay2D {
+    private _createRay2D(
+        origin: Readonly<IVec2Like>,
+        direction: Readonly<IVec2Like>,
+        maxDistance: number
+    ): IRay2D {
         const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
         const normalizedDir = Vec2.create(direction.x / length, direction.y / length);
 
         return {
             origin: Vec2.from(origin),
             direction: normalizedDir,
-            length: maxDistance
+            length: maxDistance,
         };
     }
 }
@@ -236,7 +245,7 @@ export class RaycastSystem3D {
             ray: this._createRay3D(origin, direction, maxDistance),
             layerMask,
             flags: flags | RaycastFlags.ClosestOnly | RaycastFlags.StopAtFirstHit,
-            maxHits: 1
+            maxHits: 1,
         };
 
         const result = this._raycaster.raycast(query, predicate);
@@ -265,7 +274,7 @@ export class RaycastSystem3D {
             ray: this._createRay3D(origin, direction, maxDistance),
             layerMask,
             flags: RaycastFlags.AllHits | RaycastFlags.SortByDistance,
-            maxHits
+            maxHits,
         };
 
         const result = this._raycaster.raycast(query, predicate);
@@ -346,7 +355,11 @@ export class RaycastSystem3D {
         return this._statistics;
     }
 
-    private _validateRay(origin: Readonly<IVec3Like>, direction: Readonly<IVec3Like>, maxDistance: number): void {
+    private _validateRay(
+        origin: Readonly<IVec3Like>,
+        direction: Readonly<IVec3Like>,
+        maxDistance: number
+    ): void {
         if (!isFinite(origin.x) || !isFinite(origin.y) || !isFinite(origin.z)) {
             throw new InvalidRayError('Ray origin contains invalid values');
         }
@@ -355,7 +368,9 @@ export class RaycastSystem3D {
             throw new InvalidRayError('Ray direction contains invalid values');
         }
 
-        const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+        const length = Math.sqrt(
+            direction.x * direction.x + direction.y * direction.y + direction.z * direction.z
+        );
         if (length < EPSILON) {
             throw new InvalidRayError('Ray direction must have non-zero length');
         }
@@ -365,14 +380,24 @@ export class RaycastSystem3D {
         }
     }
 
-    private _createRay3D(origin: Readonly<IVec3Like>, direction: Readonly<IVec3Like>, maxDistance: number): IRay3D {
-        const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
-        const normalizedDir = Vec3.create(direction.x / length, direction.y / length, direction.z / length);
+    private _createRay3D(
+        origin: Readonly<IVec3Like>,
+        direction: Readonly<IVec3Like>,
+        maxDistance: number
+    ): IRay3D {
+        const length = Math.sqrt(
+            direction.x * direction.x + direction.y * direction.y + direction.z * direction.z
+        );
+        const normalizedDir = Vec3.create(
+            direction.x / length,
+            direction.y / length,
+            direction.z / length
+        );
 
         return {
             origin: Vec3.from(origin),
             direction: normalizedDir,
-            length: maxDistance
+            length: maxDistance,
         };
     }
 }

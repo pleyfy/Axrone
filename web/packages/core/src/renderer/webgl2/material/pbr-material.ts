@@ -1,7 +1,7 @@
-import { 
-    BaseMaterialComponent, 
-    MaterialType, 
-    MaterialProperty, 
+import {
+    BaseMaterialComponent,
+    MaterialType,
+    MaterialProperty,
     MaterialKeyword,
     PBRMaterialConfig,
     Vec2,
@@ -9,18 +9,17 @@ import {
     Vec4,
     BlendMode,
     CullMode,
-    ShadowCasting
+    ShadowCasting,
 } from './base-material';
 
 const PBR_PROPERTIES: MaterialProperty[] = [
-
     {
         name: '_BaseColorFactor',
         displayName: 'Base Color',
         type: 'color',
         defaultValue: { x: 1, y: 1, z: 1, w: 1 },
         category: 'PBR',
-        tooltip: 'Base color of the material'
+        tooltip: 'Base color of the material',
     },
     {
         name: '_BaseColorTexture',
@@ -28,7 +27,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'PBR',
-        tooltip: 'Base color texture (sRGB)'
+        tooltip: 'Base color texture (sRGB)',
     },
 
     {
@@ -38,7 +37,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 1 },
         category: 'PBR',
-        tooltip: 'Metallic factor'
+        tooltip: 'Metallic factor',
     },
     {
         name: '_RoughnessFactor',
@@ -47,7 +46,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 1 },
         category: 'PBR',
-        tooltip: 'Roughness factor'
+        tooltip: 'Roughness factor',
     },
     {
         name: '_MetallicRoughnessTexture',
@@ -55,7 +54,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'PBR',
-        tooltip: 'Metallic (B) and Roughness (G) texture'
+        tooltip: 'Metallic (B) and Roughness (G) texture',
     },
 
     {
@@ -64,7 +63,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Normal',
-        tooltip: 'Normal map texture'
+        tooltip: 'Normal map texture',
     },
     {
         name: '_NormalScale',
@@ -73,7 +72,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 2 },
         category: 'Normal',
-        tooltip: 'Normal map scale factor'
+        tooltip: 'Normal map scale factor',
     },
 
     {
@@ -82,7 +81,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Occlusion',
-        tooltip: 'Ambient occlusion texture (R)'
+        tooltip: 'Ambient occlusion texture (R)',
     },
     {
         name: '_OcclusionStrength',
@@ -91,7 +90,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 1 },
         category: 'Occlusion',
-        tooltip: 'Occlusion effect strength'
+        tooltip: 'Occlusion effect strength',
     },
 
     {
@@ -100,7 +99,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Emission',
-        tooltip: 'Emissive texture (sRGB)'
+        tooltip: 'Emissive texture (sRGB)',
     },
     {
         name: '_EmissiveFactor',
@@ -108,16 +107,16 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'color',
         defaultValue: { x: 0, y: 0, z: 0, w: 1 },
         category: 'Emission',
-        tooltip: 'Emissive color factor'
+        tooltip: 'Emissive color factor',
     },
 
     {
         name: '_AlphaMode',
         displayName: 'Alpha Mode',
         type: 'int',
-        defaultValue: 0, 
+        defaultValue: 0,
         category: 'Alpha',
-        tooltip: 'Alpha rendering mode: 0=OPAQUE, 1=MASK, 2=BLEND'
+        tooltip: 'Alpha rendering mode: 0=OPAQUE, 1=MASK, 2=BLEND',
     },
     {
         name: '_AlphaCutoff',
@@ -126,7 +125,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         defaultValue: 0.5,
         range: { min: 0, max: 1 },
         category: 'Alpha',
-        tooltip: 'Alpha cutoff threshold for MASK mode'
+        tooltip: 'Alpha cutoff threshold for MASK mode',
     },
 
     {
@@ -135,7 +134,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'bool',
         defaultValue: false,
         category: 'Rendering',
-        tooltip: 'Enable double-sided rendering'
+        tooltip: 'Enable double-sided rendering',
     },
 
     {
@@ -144,7 +143,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'vec4',
         defaultValue: { x: 1, y: 1, z: 0, w: 0 },
         category: 'Texture Transforms',
-        tooltip: 'Base color texture transform'
+        tooltip: 'Base color texture transform',
     },
     {
         name: '_MetallicRoughnessTexture_ST',
@@ -152,7 +151,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'vec4',
         defaultValue: { x: 1, y: 1, z: 0, w: 0 },
         category: 'Texture Transforms',
-        tooltip: 'Metallic-roughness texture transform'
+        tooltip: 'Metallic-roughness texture transform',
     },
     {
         name: '_NormalTexture_ST',
@@ -160,7 +159,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'vec4',
         defaultValue: { x: 1, y: 1, z: 0, w: 0 },
         category: 'Texture Transforms',
-        tooltip: 'Normal texture transform'
+        tooltip: 'Normal texture transform',
     },
     {
         name: '_OcclusionTexture_ST',
@@ -168,7 +167,7 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'vec4',
         defaultValue: { x: 1, y: 1, z: 0, w: 0 },
         category: 'Texture Transforms',
-        tooltip: 'Occlusion texture transform'
+        tooltip: 'Occlusion texture transform',
     },
     {
         name: '_EmissiveTexture_ST',
@@ -176,41 +175,40 @@ const PBR_PROPERTIES: MaterialProperty[] = [
         type: 'vec4',
         defaultValue: { x: 1, y: 1, z: 0, w: 0 },
         category: 'Texture Transforms',
-        tooltip: 'Emissive texture transform'
-    }
+        tooltip: 'Emissive texture transform',
+    },
 ];
 
 const PBR_KEYWORDS: MaterialKeyword[] = [
-
     {
         name: '_BASECOLORTEXTURE',
         displayName: 'Base Color Texture',
         description: 'Enable base color texture',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_METALLICROUGHNESSTEXTURE',
         displayName: 'Metallic-Roughness Texture',
         description: 'Enable metallic-roughness texture',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_NORMALTEXTURE',
         displayName: 'Normal Texture',
         description: 'Enable normal mapping',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_OCCLUSIONTEXTURE',
         displayName: 'Occlusion Texture',
         description: 'Enable occlusion mapping',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_EMISSIVETEXTURE',
         displayName: 'Emissive Texture',
         description: 'Enable emissive texture',
-        category: 'Textures'
+        category: 'Textures',
     },
 
     {
@@ -218,29 +216,29 @@ const PBR_KEYWORDS: MaterialKeyword[] = [
         displayName: 'Alpha Mode Opaque',
         description: 'Opaque alpha mode',
         category: 'Alpha',
-        mutuallyExclusive: ['_ALPHAMODE_MASK', '_ALPHAMODE_BLEND']
+        mutuallyExclusive: ['_ALPHAMODE_MASK', '_ALPHAMODE_BLEND'],
     },
     {
         name: '_ALPHAMODE_MASK',
         displayName: 'Alpha Mode Mask',
         description: 'Alpha mask mode',
         category: 'Alpha',
-        mutuallyExclusive: ['_ALPHAMODE_OPAQUE', '_ALPHAMODE_BLEND']
+        mutuallyExclusive: ['_ALPHAMODE_OPAQUE', '_ALPHAMODE_BLEND'],
     },
     {
         name: '_ALPHAMODE_BLEND',
         displayName: 'Alpha Mode Blend',
         description: 'Alpha blend mode',
         category: 'Alpha',
-        mutuallyExclusive: ['_ALPHAMODE_OPAQUE', '_ALPHAMODE_MASK']
+        mutuallyExclusive: ['_ALPHAMODE_OPAQUE', '_ALPHAMODE_MASK'],
     },
 
     {
         name: '_DOUBLESIDED',
         displayName: 'Double Sided',
         description: 'Enable double-sided rendering',
-        category: 'Rendering'
-    }
+        category: 'Rendering',
+    },
 ];
 
 export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfig> {
@@ -252,7 +250,7 @@ export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfi
             cullMode: CullMode.BACK,
             shadowCasting: ShadowCasting.ON,
             receiveShadows: true,
-            ...config
+            ...config,
         });
     }
 
@@ -374,9 +372,12 @@ export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfi
     get alphaMode(): 'OPAQUE' | 'MASK' | 'BLEND' {
         const mode = this.getProperty<number>('_AlphaMode') || 0;
         switch (mode) {
-            case 1: return 'MASK';
-            case 2: return 'BLEND';
-            default: return 'OPAQUE';
+            case 1:
+                return 'MASK';
+            case 2:
+                return 'BLEND';
+            default:
+                return 'OPAQUE';
         }
     }
 
@@ -400,7 +401,7 @@ export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfi
                 this.enableKeyword('_ALPHAMODE_BLEND');
                 this.renderQueue = 3000;
                 break;
-            default: 
+            default:
                 mode = 0;
                 this.blendMode = BlendMode.OPAQUE;
                 this.enableKeyword('_ALPHAMODE_OPAQUE');
@@ -457,7 +458,6 @@ export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfi
     }
 
     protected _setupDefaultKeywords(): void {
-
         this.enableKeyword('_ALPHAMODE_OPAQUE');
 
         if (this.baseColorTexture) this.enableKeyword('_BASECOLORTEXTURE');
@@ -483,7 +483,6 @@ export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfi
             case '_EmissiveFactor':
                 const color = value as Vec4;
                 if (color && (color.x > 0 || color.y > 0 || color.z > 0)) {
-
                 }
                 break;
             case '_DoubleSided':
@@ -509,7 +508,7 @@ export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfi
                     x: pbr.baseColorFactor[0] || 1,
                     y: pbr.baseColorFactor[1] || 1,
                     z: pbr.baseColorFactor[2] || 1,
-                    w: pbr.baseColorFactor[3] || 1
+                    w: pbr.baseColorFactor[3] || 1,
                 };
             }
 
@@ -538,7 +537,7 @@ export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfi
             this.emissiveFactor = {
                 x: gltfMaterial.emissiveFactor[0] || 0,
                 y: gltfMaterial.emissiveFactor[1] || 0,
-                z: gltfMaterial.emissiveFactor[2] || 0
+                z: gltfMaterial.emissiveFactor[2] || 0,
             };
         }
 
@@ -559,21 +558,30 @@ export class PBRMaterialComponent extends BaseMaterialComponent<PBRMaterialConfi
         return {
             name: this.constructor.name,
             pbrMetallicRoughness: {
-                baseColorFactor: [this.baseColor.x, this.baseColor.y, this.baseColor.z, this.baseColor.w],
+                baseColorFactor: [
+                    this.baseColor.x,
+                    this.baseColor.y,
+                    this.baseColor.z,
+                    this.baseColor.w,
+                ],
                 metallicFactor: this.metallicFactor,
-                roughnessFactor: this.roughnessFactor
+                roughnessFactor: this.roughnessFactor,
             },
-            normalTexture: this.normalTexture ? {
-                scale: this.normalScale
-            } : undefined,
-            occlusionTexture: this.occlusionTexture ? {
-                strength: this.occlusionStrength
-            } : undefined,
+            normalTexture: this.normalTexture
+                ? {
+                      scale: this.normalScale,
+                  }
+                : undefined,
+            occlusionTexture: this.occlusionTexture
+                ? {
+                      strength: this.occlusionStrength,
+                  }
+                : undefined,
             emissiveTexture: this.emissiveTexture ? {} : undefined,
             emissiveFactor: [this.emissiveFactor.x, this.emissiveFactor.y, this.emissiveFactor.z],
             alphaMode: this.alphaMode,
             alphaCutoff: this.alphaMode === 'MASK' ? this.alphaCutoff : undefined,
-            doubleSided: this.doubleSided || undefined
+            doubleSided: this.doubleSided || undefined,
         };
     }
 }

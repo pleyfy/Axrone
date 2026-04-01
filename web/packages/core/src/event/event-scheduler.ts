@@ -72,8 +72,6 @@ interface ITask<T = unknown> {
     promise?: Promise<T>;
 }
 
-
-
 export class EventScheduler {
     private readonly id: SchedulerId;
     private readonly concurrencyLimit: number;

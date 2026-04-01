@@ -1,8 +1,8 @@
-import { 
-    IShaderConfiguration, 
-    ICompiledShader, 
-    IShaderVariant, 
-    IShaderCompiler, 
+import {
+    IShaderConfiguration,
+    ICompiledShader,
+    IShaderVariant,
+    IShaderCompiler,
     IShaderCompilerOptions,
     ValidationResult,
     ShaderDataType,
@@ -10,7 +10,7 @@ import {
     IVertexAttribute,
     IUniformVariable,
     IUniformBlock,
-    ITextureProperty
+    ITextureProperty,
 } from './interfaces';
 
 import {
@@ -27,7 +27,7 @@ import {
     getShaderDataTypeSize,
     VERTEX_SEMANTICS,
     UNIFORM_SEMANTICS,
-    SHADER_KEYWORDS
+    SHADER_KEYWORDS,
 } from './utils';
 
 import { ByteBuffer } from '@axrone/utility';
@@ -52,7 +52,7 @@ class ShaderSourceGenerator {
         const allDefines = { ...config.defines, ...defines };
         source.push(generateDefines(allDefines));
 
-        keywords.forEach(keyword => {
+        keywords.forEach((keyword) => {
             source.push(`#define ${keyword}\n`);
         });
 
@@ -75,37 +75,43 @@ class ShaderSourceGenerator {
         const declarations: string[] = [];
 
         if (stage === ShaderStage.VERTEX) {
-            config.attributes.forEach(attr => {
+            config.attributes.forEach((attr) => {
                 const precision = attr.precision ? `${attr.precision} ` : '';
-                declarations.push(`layout(location = ${attr.binding}) in ${precision}${attr.type} ${attr.name};\n`);
+                declarations.push(
+                    `layout(location = ${attr.binding}) in ${precision}${attr.type} ${attr.name};\n`
+                );
             });
         }
 
-        config.uniforms.forEach(uniform => {
+        config.uniforms.forEach((uniform) => {
             const precision = uniform.precision ? `${uniform.precision} ` : '';
             const arraySpec = uniform.arraySize ? `[${uniform.arraySize}]` : '';
             declarations.push(`uniform ${precision}${uniform.type} ${uniform.name}${arraySpec};\n`);
         });
 
         if (config.uniformBlocks) {
-            config.uniformBlocks.forEach(block => {
+            config.uniformBlocks.forEach((block) => {
                 declarations.push(this.generateUniformBlock(block));
             });
         }
 
-        config.textures.forEach(texture => {
+        config.textures.forEach((texture) => {
             declarations.push(`uniform ${texture.type} ${texture.name};\n`);
         });
 
         if (config.varyings) {
-            config.varyings.forEach(varying => {
+            config.varyings.forEach((varying) => {
                 const precision = varying.precision ? `${varying.precision} ` : '';
                 const interpolation = varying.interpolation ? `${varying.interpolation} ` : '';
 
                 if (stage === ShaderStage.VERTEX) {
-                    declarations.push(`${interpolation}out ${precision}${varying.type} ${varying.name};\n`);
+                    declarations.push(
+                        `${interpolation}out ${precision}${varying.type} ${varying.name};\n`
+                    );
                 } else if (stage === ShaderStage.FRAGMENT) {
-                    declarations.push(`${interpolation}in ${precision}${varying.type} ${varying.name};\n`);
+                    declarations.push(
+                        `${interpolation}in ${precision}${varying.type} ${varying.name};\n`
+                    );
                 }
             });
         }
@@ -115,17 +121,19 @@ class ShaderSourceGenerator {
 
     private generateUniformBlock(block: IUniformBlock): string {
         const layout = `layout(std140, binding = ${block.binding})`;
-        const variables = block.variables.map(variable => {
-            const precision = variable.precision ? `${variable.precision} ` : '';
-            const arraySpec = variable.arraySize ? `[${variable.arraySize}]` : '';
-            return `    ${precision}${variable.type} ${variable.name}${arraySpec};`;
-        }).join('\n');
+        const variables = block.variables
+            .map((variable) => {
+                const precision = variable.precision ? `${variable.precision} ` : '';
+                const arraySpec = variable.arraySize ? `[${variable.arraySize}]` : '';
+                return `    ${precision}${variable.type} ${variable.name}${arraySpec};`;
+            })
+            .join('\n');
 
         return `${layout} uniform ${block.name} {\n${variables}\n};\n`;
     }
 
     private getStageSource(config: IShaderConfiguration, stage: ShaderStage): string {
-        const pass = config.passes[0]; 
+        const pass = config.passes[0];
 
         switch (stage) {
             case ShaderStage.VERTEX:
@@ -189,7 +197,7 @@ export class WebGLShaderCompiler implements IShaderCompiler {
             textureSlots: reflection.textureSlots,
             renderState: configuration.passes[0].renderState,
             bytecodeSize: this.calculateBytecodeSize(program),
-            compilationTime: performance.now() - startTime
+            compilationTime: performance.now() - startTime,
         };
 
         this.compilationCache.set(cacheKey, compiledShader);
@@ -226,7 +234,7 @@ export class WebGLShaderCompiler implements IShaderCompiler {
             keywords: Object.freeze([...keywords]),
             defines: Object.freeze({ ...defines }),
             hash: variantKey,
-            shader: variantShader
+            shader: variantShader,
         };
 
         this.variantCache.set(variantKey, variant);
@@ -301,7 +309,7 @@ export class WebGLShaderCompiler implements IShaderCompiler {
         return {
             isValid: errors.length === 0,
             errors,
-            warnings
+            warnings,
         };
     }
 
@@ -310,7 +318,7 @@ export class WebGLShaderCompiler implements IShaderCompiler {
         keywords: string[],
         defines: Record<string, any>
     ): Promise<WebGLProgram> {
-        const pass = configuration.passes[0]; 
+        const pass = configuration.passes[0];
         const program = this.gl.createProgram();
 
         if (!program) {
@@ -318,12 +326,11 @@ export class WebGLShaderCompiler implements IShaderCompiler {
         }
 
         try {
-
             if (pass.stage.includes(ShaderStage.VERTEX)) {
                 const vertexSource = this.sourceGenerator.generateShaderSource(
-                    configuration, 
-                    ShaderStage.VERTEX, 
-                    keywords, 
+                    configuration,
+                    ShaderStage.VERTEX,
+                    keywords,
                     defines
                 );
                 const vertexShader = this.compileShader(this.gl.VERTEX_SHADER, vertexSource);
@@ -332,9 +339,9 @@ export class WebGLShaderCompiler implements IShaderCompiler {
 
             if (pass.stage.includes(ShaderStage.FRAGMENT)) {
                 const fragmentSource = this.sourceGenerator.generateShaderSource(
-                    configuration, 
-                    ShaderStage.FRAGMENT, 
-                    keywords, 
+                    configuration,
+                    ShaderStage.FRAGMENT,
+                    keywords,
                     defines
                 );
                 const fragmentShader = this.compileShader(this.gl.FRAGMENT_SHADER, fragmentSource);
@@ -379,14 +386,14 @@ export class WebGLShaderCompiler implements IShaderCompiler {
         const uniformBlocks = new Map<string, IUniformBlock>();
         const textureSlots = new Map<string, number>();
 
-        configuration.uniforms.forEach(uniform => {
+        configuration.uniforms.forEach((uniform) => {
             const location = this.gl.getUniformLocation(program, uniform.name);
             if (location) {
                 uniformLocations.set(uniform.name, location);
             }
         });
 
-        configuration.attributes.forEach(attribute => {
+        configuration.attributes.forEach((attribute) => {
             const location = this.gl.getAttribLocation(program, attribute.name);
             if (location !== -1) {
                 attributeLocations.set(attribute.name, location);
@@ -394,15 +401,14 @@ export class WebGLShaderCompiler implements IShaderCompiler {
         });
 
         if (configuration.uniformBlocks) {
-            configuration.uniformBlocks.forEach(block => {
+            configuration.uniformBlocks.forEach((block) => {
                 const index = this.gl.getUniformBlockIndex(program, block.name);
                 if (index !== this.gl.INVALID_INDEX) {
-
                     const layout = calculateUniformBufferLayout(
-                        block.variables.map(v => ({ 
-                            name: v.name, 
-                            type: v.type, 
-                            arraySize: v.arraySize 
+                        block.variables.map((v) => ({
+                            name: v.name,
+                            type: v.type,
+                            arraySize: v.arraySize,
                         }))
                     );
 
@@ -411,13 +417,13 @@ export class WebGLShaderCompiler implements IShaderCompiler {
                     uniformBlocks.set(block.name, {
                         ...block,
                         size: layout.totalSize,
-                        buffer
+                        buffer,
                     });
                 }
             });
         }
 
-        configuration.textures.forEach(texture => {
+        configuration.textures.forEach((texture) => {
             textureSlots.set(texture.name, texture.slot);
         });
 
@@ -425,12 +431,11 @@ export class WebGLShaderCompiler implements IShaderCompiler {
             uniformLocations,
             attributeLocations,
             uniformBlocks,
-            textureSlots
+            textureSlots,
         };
     }
 
     private calculateBytecodeSize(program: WebGLProgram): number {
-
         const attachedShaders = this.gl.getAttachedShaders(program) || [];
         return attachedShaders.reduce((size: number, shader: WebGLShader) => {
             const source = this.gl.getShaderSource(shader) || '';
@@ -442,22 +447,21 @@ export class WebGLShaderCompiler implements IShaderCompiler {
         const configString = JSON.stringify({
             name: configuration.name,
             version: configuration.version,
-            passes: configuration.passes.map(pass => ({
+            passes: configuration.passes.map((pass) => ({
                 stage: pass.stage,
                 vertexShader: hashShaderSource(pass.vertexShader),
                 fragmentShader: pass.fragmentShader ? hashShaderSource(pass.fragmentShader) : null,
-                renderState: pass.renderState
+                renderState: pass.renderState,
             })),
             attributes: configuration.attributes,
             uniforms: configuration.uniforms,
-            textures: configuration.textures
+            textures: configuration.textures,
         });
 
         return hashShaderSource(configString);
     }
 
     clearCache(): void {
-
         for (const shader of this.compilationCache.values()) {
             this.gl.deleteProgram(shader.program);
         }
@@ -474,7 +478,7 @@ export class WebGLShaderCompiler implements IShaderCompiler {
         return {
             compiledShaders: this.compilationCache.size,
             variants: this.variantCache.size,
-            memoryUsage: this.calculateCacheMemoryUsage()
+            memoryUsage: this.calculateCacheMemoryUsage(),
         };
     }
 

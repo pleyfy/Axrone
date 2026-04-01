@@ -1,12 +1,12 @@
 import { IBuffer, IBufferFactory, createBufferFactory } from '../buffer';
 import { IGeometryBuffers } from '../../../geometry/primitives/types';
-import { 
-    createSphere, 
-    createBox, 
-    createPlane, 
+import {
+    createSphere,
+    createBox,
+    createPlane,
     createCylinder,
     createCapsule,
-    createTorus 
+    createTorus,
 } from '../../../geometry/primitives';
 
 export interface IMeshData {
@@ -29,7 +29,6 @@ export class MeshManager {
     }
 
     public createMeshFromGeometry(id: string, geometryBuffers: IGeometryBuffers): IMeshData {
-
         if (this.meshCache.has(id)) {
             return this.meshCache.get(id)!;
         }
@@ -55,7 +54,7 @@ export class MeshManager {
             indexBuffer,
             vertexCount: geometryBuffers.layout.vertexCount,
             indexCount: geometryBuffers.layout.indexCount,
-            topology: geometryBuffers.layout.primitiveType as any
+            topology: geometryBuffers.layout.primitiveType as any,
         };
 
         this.meshCache.set(id, mesh);
@@ -69,19 +68,24 @@ export class MeshManager {
             heightSegments: segments,
             generateNormals: true,
             generateTexCoords: true,
-            generateTangents: false
+            generateTangents: false,
         });
         return this.createMeshFromGeometry(id, geometryBuffers);
     }
 
-    public createBoxMesh(id: string, width: number = 1, height: number = 1, depth: number = 1): IMeshData {
+    public createBoxMesh(
+        id: string,
+        width: number = 1,
+        height: number = 1,
+        depth: number = 1
+    ): IMeshData {
         const geometryBuffers = createBox({
             width,
             height,
             depth,
             generateNormals: true,
             generateTexCoords: true,
-            generateTangents: false
+            generateTangents: false,
         });
         return this.createMeshFromGeometry(id, geometryBuffers);
     }
@@ -92,7 +96,7 @@ export class MeshManager {
             height,
             generateNormals: true,
             generateTexCoords: true,
-            generateTangents: false
+            generateTangents: false,
         });
         return this.createMeshFromGeometry(id, geometryBuffers);
     }
@@ -102,20 +106,17 @@ export class MeshManager {
     }
 
     public renderMesh(mesh: IMeshData): void {
-
         mesh.vertexBuffer.bind();
 
         if (mesh.indexBuffer) {
-
             mesh.indexBuffer.bind();
 
             const mode = this.getGLTopology(mesh.topology);
-            const indexType = this.gl.UNSIGNED_SHORT; 
+            const indexType = this.gl.UNSIGNED_SHORT;
             this.gl.drawElements(mode, mesh.indexCount, indexType, 0);
 
             mesh.indexBuffer.unbind();
         } else {
-
             const mode = this.getGLTopology(mesh.topology);
             this.gl.drawArrays(mode, 0, mesh.vertexCount);
         }
@@ -125,17 +126,21 @@ export class MeshManager {
 
     private getGLTopology(topology: string): number {
         switch (topology) {
-            case 'triangles': return this.gl.TRIANGLES;
-            case 'lines': return this.gl.LINES;
-            case 'points': return this.gl.POINTS;
-            default: return this.gl.TRIANGLES;
+            case 'triangles':
+                return this.gl.TRIANGLES;
+            case 'lines':
+                return this.gl.LINES;
+            case 'points':
+                return this.gl.POINTS;
+            default:
+                return this.gl.TRIANGLES;
         }
     }
 
     public getStats() {
         return {
             totalMeshes: this.meshCache.size,
-            cachedMeshes: Array.from(this.meshCache.keys())
+            cachedMeshes: Array.from(this.meshCache.keys()),
         };
     }
 

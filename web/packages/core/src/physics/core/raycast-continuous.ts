@@ -1,9 +1,5 @@
 import { Vec3, IVec3Like, EPSILON } from '@axrone/numeric';
-import type {
-    IRaycastHit3D,
-    LayerMask,
-    RaycastFlags,
-} from '../types/raycast-types';
+import type { IRaycastHit3D, LayerMask, RaycastFlags } from '../types/raycast-types';
 import type { RaycastSystem3D } from './raycast-system';
 import type { BodyId } from '../types/primitives';
 
@@ -47,7 +43,7 @@ export class ContinuousRaycast3D {
         let t1 = 1;
         let iteration = 0;
 
-        while (iteration < query.maxIterations && (t1 - t0) > query.tolerance) {
+        while (iteration < query.maxIterations && t1 - t0 > query.tolerance) {
             const midT = (t0 + t1) * 0.5;
             const testPosition = Vec3.create(
                 query.startPosition.x + displacement.x * midT,
@@ -93,7 +89,7 @@ export class ContinuousRaycast3D {
                     fraction: t1,
                     normal: finalHit.normal,
                     witness1: hitPosition,
-                    witness2: finalHit.point
+                    witness2: finalHit.point,
                 };
             }
         }
@@ -167,12 +163,7 @@ export class ContinuousRaycast3D {
 
             Vec3.normalize(direction, direction);
 
-            const hit = this._raycastSystem.raycast(
-                currentOrigin,
-                direction,
-                distance,
-                layerMask
-            );
+            const hit = this._raycastSystem.raycast(currentOrigin, direction, distance, layerMask);
 
             if (hit) {
                 return hit;
@@ -230,7 +221,7 @@ export class ContinuousRaycast3D {
             fraction: 0,
             normal: Vec3.ZERO,
             witness1: Vec3.ZERO,
-            witness2: Vec3.ZERO
+            witness2: Vec3.ZERO,
         };
     }
 }
@@ -314,7 +305,8 @@ export class AdaptiveRaycaster3D {
         if (this._performanceHistory.length < 10) return;
 
         const recentPerformance = this._performanceHistory.slice(-10);
-        const avgPerformance = recentPerformance.reduce((a, b) => a + b, 0) / recentPerformance.length;
+        const avgPerformance =
+            recentPerformance.reduce((a, b) => a + b, 0) / recentPerformance.length;
 
         if (avgPerformance > this._performanceThreshold * 1.2) {
             this._currentQuality = Math.max(this._minQuality, this._currentQuality * 0.9);
@@ -322,7 +314,10 @@ export class AdaptiveRaycaster3D {
             this._currentQuality = Math.min(this._maxQuality, this._currentQuality * 1.1);
         }
 
-        this._currentQuality = Math.max(this._minQuality, Math.min(this._maxQuality, this._currentQuality));
+        this._currentQuality = Math.max(
+            this._minQuality,
+            Math.min(this._maxQuality, this._currentQuality)
+        );
     }
 }
 
@@ -357,7 +352,7 @@ export class PriorityRaycaster3D {
             direction,
             maxDistance,
             layerMask,
-            callback
+            callback,
         });
 
         this._queue.sort((a, b) => b.priority - a.priority);

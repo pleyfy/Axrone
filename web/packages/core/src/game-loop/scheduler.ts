@@ -13,7 +13,10 @@ const resolveNow = (options: AnimationFrameSchedulerOptions): (() => number) => 
         return options.now;
     }
 
-    if (typeof globalThis.performance !== 'undefined' && typeof globalThis.performance.now === 'function') {
+    if (
+        typeof globalThis.performance !== 'undefined' &&
+        typeof globalThis.performance.now === 'function'
+    ) {
         return () => globalThis.performance.now();
     }
 
@@ -59,7 +62,8 @@ export const createAnimationFrameScheduler = (
     return {
         kind: 'timeout',
         now,
-        request: (callback) => globalThis.setTimeout(() => callback(now()), fallbackFrameDuration),
+        request: (callback) =>
+            Number(globalThis.setTimeout(() => callback(now()), fallbackFrameDuration)),
         cancel: (handle) => globalThis.clearTimeout(handle),
     };
 };

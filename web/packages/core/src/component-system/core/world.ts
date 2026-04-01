@@ -279,9 +279,10 @@ export class World<R extends ComponentRegistry> {
 
         try {
             const componentConstructor = this._registry[componentName];
-            const metadata = typeof componentConstructor === 'function' 
-                ? getComponentMetadata(componentConstructor as any)
-                : undefined;
+            const metadata =
+                typeof componentConstructor === 'function'
+                    ? getComponentMetadata(componentConstructor as any)
+                    : undefined;
 
             if (metadata?.singleton) {
                 const existingSingleton = this._singletonComponents.get(componentName as string);
@@ -353,7 +354,7 @@ export class World<R extends ComponentRegistry> {
             if (metadata?.singleton) {
                 this._singletonComponents.set(componentName as string, {
                     entity,
-                    instance: finalComponent
+                    instance: finalComponent,
                 });
             }
 
@@ -416,10 +417,11 @@ export class World<R extends ComponentRegistry> {
 
             // Clear singleton cache if this was a singleton component
             const componentConstructor = this._registry[componentName];
-            const metadata = typeof componentConstructor === 'function'
-                ? getComponentMetadata(componentConstructor as any)
-                : undefined;
-                
+            const metadata =
+                typeof componentConstructor === 'function'
+                    ? getComponentMetadata(componentConstructor as any)
+                    : undefined;
+
             if (metadata?.singleton) {
                 const cached = this._singletonComponents.get(componentName as string);
                 if (cached && cached.entity === entity) {
@@ -500,7 +502,9 @@ export class World<R extends ComponentRegistry> {
      * Gets a singleton component instance regardless of which entity owns it.
      * Returns undefined if the component is not a singleton or not registered.
      */
-    getSingletonComponent<K extends keyof R>(componentName: K): ComponentInstance<R[K]> | undefined {
+    getSingletonComponent<K extends keyof R>(
+        componentName: K
+    ): ComponentInstance<R[K]> | undefined {
         this._validateWorldState('getSingletonComponent');
         this._validateComponentName(componentName, 'getSingletonComponent');
 

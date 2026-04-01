@@ -37,7 +37,10 @@ export function createScoped<T>(
     return new ScopedSingletonImpl(factory, key, lifecycle);
 }
 
-export function createLazy<T>(factory: () => T, options?: Omit<SingletonOptions<T>, 'lazy'>): ISingleton<T> {
+export function createLazy<T>(
+    factory: () => T,
+    options?: Omit<SingletonOptions<T>, 'lazy'>
+): ISingleton<T> {
     return new SingletonImpl(factory, { ...options, lazy: true });
 }
 
@@ -155,10 +158,9 @@ export function mapAsync<T, U>(
 export function combine<T extends readonly unknown[]>(
     ...singletons: { [K in keyof T]: ISingleton<T[K]> }
 ): ISingleton<T> {
-    return new SingletonImpl(
-        () => singletons.map(s => s.getInstance()) as unknown as T,
-        { lazy: true }
-    );
+    return new SingletonImpl(() => singletons.map((s) => s.getInstance()) as unknown as T, {
+        lazy: true,
+    });
 }
 
 export function combineAsync<T extends readonly unknown[]>(
@@ -166,7 +168,7 @@ export function combineAsync<T extends readonly unknown[]>(
 ): IAsyncSingleton<T> {
     return new AsyncSingletonImpl(
         async () => {
-            const results = await Promise.all(singletons.map(s => s.getInstance()));
+            const results = await Promise.all(singletons.map((s) => s.getInstance()));
             return results as unknown as T;
         },
         { lazy: true }

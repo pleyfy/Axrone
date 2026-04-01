@@ -1,6 +1,19 @@
 import { Vec3 } from '@axrone/numeric';
 import { IBuffer, IBufferFactory, createBufferFactory } from '../buffer';
-import { IGeometry, IVertexBuffer, IIndexBuffer, IVertexArrayObject, PrimitiveTopology, MeshError, MeshErrorCode, IBoundingBox, IBoundingSphere, VertexAttributeType, BufferUsage, IndexType } from './interfaces';
+import {
+    IGeometry,
+    IVertexBuffer,
+    IIndexBuffer,
+    IVertexArrayObject,
+    PrimitiveTopology,
+    MeshError,
+    MeshErrorCode,
+    IBoundingBox,
+    IBoundingSphere,
+    VertexAttributeType,
+    BufferUsage,
+    IndexType,
+} from './interfaces';
 import { IGeometryBuffers, IGeometryLayout } from '../../../geometry/primitives/types';
 import { WebGLVertexBuffer } from './vertex-buffer';
 import { WebGLIndexBuffer } from './index-buffer';
@@ -40,14 +53,11 @@ export class WebGLGeometry implements IGeometry {
 
         if (geometryData.layout.indexCount > 0) {
             const indexData = geometryData.indices.toUint8Array();
-            this.indexBuffer = new WebGLIndexBuffer(
-                gl,
-                {
-                    data: new Uint16Array(indexData.buffer),
-                    usage: BufferUsage.STATIC_DRAW,
-                    indexType: IndexType.UNSIGNED_SHORT
-                }
-            );
+            this.indexBuffer = new WebGLIndexBuffer(gl, {
+                data: new Uint16Array(indexData.buffer),
+                usage: BufferUsage.STATIC_DRAW,
+                indexType: IndexType.UNSIGNED_SHORT,
+            });
         } else {
             this.indexBuffer = null;
         }
@@ -61,7 +71,6 @@ export class WebGLGeometry implements IGeometry {
     }
 
     private computeInitialBounds(geometryData: IGeometryBuffers): IBoundingBox {
-
         const min = new Vec3(-1, -1, -1);
         const max = new Vec3(1, 1, 1);
         const center = Vec3.lerp(min, max, 0.5);
@@ -73,39 +82,37 @@ export class WebGLGeometry implements IGeometry {
             max: new Vec3(max.x, max.y, max.z),
             center: new Vec3(center.x, center.y, center.z),
             size: new Vec3(size.x, size.y, size.z),
-            radius
+            radius,
         };
     }
 
     private computeInitialBoundingSphere(geometryData: IGeometryBuffers): IBoundingSphere {
         const center = new Vec3(0, 0, 0);
-        const radius = 1.0; 
+        const radius = 1.0;
 
         return {
             center: new Vec3(center.x, center.y, center.z),
-            radius
+            radius,
         };
     }
 
     private createVertexLayout(layout: IGeometryLayout): any {
-
         return {
-            attributes: layout.attributes.map(attr => ({
+            attributes: layout.attributes.map((attr) => ({
                 type: attr.name as any,
                 dataType: attr.type as any,
                 componentCount: attr.size,
                 normalized: attr.normalized,
                 offset: attr.offset,
                 stride: layout.stride,
-                divisor: 0
+                divisor: 0,
             })),
             stride: layout.stride,
-            vertexCount: layout.vertexCount
+            vertexCount: layout.vertexCount,
         };
     }
 
     private createVAO(gl: WebGL2RenderingContext): IVertexArrayObject {
-
         const vao = gl.createVertexArray();
         if (!vao) {
             throw new MeshError('Failed to create VAO', MeshErrorCode.VAO_CREATION_FAILED);
@@ -128,11 +135,9 @@ export class WebGLGeometry implements IGeometry {
                 return this;
             },
             addVertexBuffer: (buffer: IVertexBuffer) => {
-
                 console.warn('addVertexBuffer not fully implemented');
             },
             setIndexBuffer: (buffer: IIndexBuffer) => {
-
                 console.warn('setIndexBuffer not fully implemented');
             },
             removeVertexBuffer: (buffer: IVertexBuffer): boolean => {
@@ -144,7 +149,7 @@ export class WebGLGeometry implements IGeometry {
             },
             dispose: () => {
                 gl.deleteVertexArray(vao);
-            }
+            },
         } as IVertexArrayObject;
     }
 
@@ -153,23 +158,19 @@ export class WebGLGeometry implements IGeometry {
     }
 
     public hasAttribute(type: VertexAttributeType): boolean {
-
-        return this.vertexBuffer.layout.attributes.some(attr => attr.type === type);
+        return this.vertexBuffer.layout.attributes.some((attr) => attr.type === type);
     }
 
     public getAttribute(type: VertexAttributeType): IVertexBuffer | null {
-
         return this.hasAttribute(type) ? this.vertexBuffer : null;
     }
 
     public getAttributeData(type: VertexAttributeType): Float32Array | null {
-
         console.warn('getAttributeData not implemented');
         return null;
     }
 
     public computeBounds(): void {
-
         console.warn('computeBounds not fully implemented');
     }
 
@@ -183,7 +184,10 @@ export class WebGLGeometry implements IGeometry {
 
     public bind(): this {
         if (this.isDisposed) {
-            throw new MeshError('Cannot bind disposed geometry', MeshErrorCode.DISPOSED_RESOURCE_ACCESS);
+            throw new MeshError(
+                'Cannot bind disposed geometry',
+                MeshErrorCode.DISPOSED_RESOURCE_ACCESS
+            );
         }
         this.vertexArrayObject.bind();
         return this;

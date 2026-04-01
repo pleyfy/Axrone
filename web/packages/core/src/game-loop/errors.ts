@@ -13,8 +13,9 @@ export class GameLoopError extends Error {
         this.name = name;
         this.code = code;
         Object.setPrototypeOf(this, new.target.prototype);
-        (Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void })
-            .captureStackTrace?.(this, this.constructor);
+        (
+            Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void }
+        ).captureStackTrace?.(this, this.constructor);
     }
 }
 
@@ -31,7 +32,11 @@ export class GameLoopDisposedError extends GameLoopError {
 }
 
 export class GameLoopSchedulerError extends GameLoopError {
-    constructor(code: 'loop.scheduler.request-failed' | 'loop.scheduler.cancel-failed', message: string, options?: ErrorOptions) {
+    constructor(
+        code: 'loop.scheduler.request-failed' | 'loop.scheduler.cancel-failed',
+        message: string,
+        options?: ErrorOptions
+    ) {
         super('GameLoopSchedulerError', code, message, options);
     }
 }

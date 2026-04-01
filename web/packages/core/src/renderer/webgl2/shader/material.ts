@@ -2,7 +2,7 @@ import {
     IMaterialInstance,
     IShaderInstance,
     ShaderUniformValue,
-    IShaderConfiguration
+    IShaderConfiguration,
 } from './interfaces';
 
 import { generateVariantKey } from './utils';
@@ -35,7 +35,6 @@ export class MaterialInstance implements IMaterialInstance {
     }
 
     setProperty(name: string, value: ShaderUniformValue): void {
-
         const actualName = this.propertyAliases.get(name) || name;
 
         if (!this.shader.hasUniform(actualName)) {
@@ -52,7 +51,7 @@ export class MaterialInstance implements IMaterialInstance {
         this._materialProperties.set(actualName, {
             value,
             lastModified: now,
-            isDirty: true
+            isDirty: true,
         });
 
         this.properties.set(actualName, value);
@@ -73,12 +72,12 @@ export class MaterialInstance implements IMaterialInstance {
     enableKeyword(keyword: string): void {
         const currentKeyword = this._keywords.get(keyword);
         if (currentKeyword?.enabled) {
-            return; 
+            return;
         }
 
         this._keywords.set(keyword, {
             enabled: true,
-            lastModified: performance.now()
+            lastModified: performance.now(),
         });
 
         this.variantDirty = true;
@@ -87,12 +86,12 @@ export class MaterialInstance implements IMaterialInstance {
     disableKeyword(keyword: string): void {
         const currentKeyword = this._keywords.get(keyword);
         if (!currentKeyword?.enabled) {
-            return; 
+            return;
         }
 
         this._keywords.set(keyword, {
             enabled: false,
-            lastModified: performance.now()
+            lastModified: performance.now(),
         });
 
         this.variantDirty = true;
@@ -128,7 +127,7 @@ export class MaterialInstance implements IMaterialInstance {
             cloned._materialProperties.set(name, {
                 value: this.deepCloneValue(property.value),
                 lastModified: property.lastModified,
-                isDirty: property.isDirty
+                isDirty: property.isDirty,
             });
             cloned.properties.set(name, property.value);
         }
@@ -193,7 +192,7 @@ export class MaterialInstance implements IMaterialInstance {
             enabledKeywords: this.getEnabledKeywords().length,
             totalKeywords: this._keywords.size,
             lastModified,
-            variantDirty: this.variantDirty
+            variantDirty: this.variantDirty,
         };
     }
 
@@ -224,7 +223,7 @@ export class MaterialInstance implements IMaterialInstance {
         return {
             valid: errors.length === 0,
             errors,
-            warnings
+            warnings,
         };
     }
 
@@ -237,7 +236,6 @@ export class MaterialInstance implements IMaterialInstance {
     }
 
     apply(): void {
-
         for (const [name, property] of this._materialProperties) {
             if (property.isDirty) {
                 this.shader.setUniform(name, property.value);
@@ -257,7 +255,7 @@ export class MaterialInstance implements IMaterialInstance {
                 this._materialProperties.set(uniform.name, {
                     value: uniform.defaultValue,
                     lastModified: 0,
-                    isDirty: false
+                    isDirty: false,
                 });
                 this.properties.set(uniform.name, uniform.defaultValue);
             }
@@ -267,14 +265,13 @@ export class MaterialInstance implements IMaterialInstance {
             for (const keyword of config.keywords) {
                 this._keywords.set(keyword, {
                     enabled: false,
-                    lastModified: 0
+                    lastModified: 0,
                 });
             }
         }
     }
 
     private setupPropertyAliases(): void {
-
         this.propertyAliases.set('mainTexture', 'u_MainTexture');
         this.propertyAliases.set('color', 'u_Color');
         this.propertyAliases.set('tint', 'u_Color');

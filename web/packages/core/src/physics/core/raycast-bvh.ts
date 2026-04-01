@@ -81,17 +81,15 @@ export class BoundingVolumeHierarchy {
         let currentNodeIndex = 0;
         let foundHit = false;
 
-        const dirIsNeg = [
-            invDirection.x < 0,
-            invDirection.y < 0,
-            invDirection.z < 0
-        ];
+        const dirIsNeg = [invDirection.x < 0, invDirection.y < 0, invDirection.z < 0];
 
         while (true) {
             const node = this._nodes[currentNodeIndex];
 
             const aabbHitResult = { tMin: 0, tMax: 0 };
-            if (this._intersectAABB(origin, invDirection, node.bounds, maxDistance, aabbHitResult)) {
+            if (
+                this._intersectAABB(origin, invDirection, node.bounds, maxDistance, aabbHitResult)
+            ) {
                 if (node.primCount > 0) {
                     for (let i = 0; i < node.primCount; i++) {
                         const primIndex = this._orderedPrimitives[node.firstPrimIndex + i].index;
@@ -108,10 +106,10 @@ export class BoundingVolumeHierarchy {
                     const firstChild = dirIsNeg[axis] ? node.right : node.left;
                     const secondChild = dirIsNeg[axis] ? node.left : node.right;
 
-                    nodesToVisit[toVisitOffset++] = { 
-                        nodeIndex: secondChild, 
-                        tMin: aabbHitResult.tMin, 
-                        tMax: aabbHitResult.tMax 
+                    nodesToVisit[toVisitOffset++] = {
+                        nodeIndex: secondChild,
+                        tMin: aabbHitResult.tMin,
+                        tMax: aabbHitResult.tMax,
                     };
                     currentNodeIndex = firstChild;
                 }
@@ -137,12 +135,7 @@ export class BoundingVolumeHierarchy {
         return this._buildInfo.leafCount;
     }
 
-    private _recursiveBuild(
-        indices: number[],
-        start: number,
-        end: number,
-        depth: number
-    ): number {
+    private _recursiveBuild(indices: number[], start: number, end: number, depth: number): number {
         this._buildInfo.maxDepth = Math.max(this._buildInfo.maxDepth, depth);
 
         const nodeIndex = this._nodes.length;
@@ -154,7 +147,7 @@ export class BoundingVolumeHierarchy {
             right: -1,
             splitAxis: 0,
             firstPrimIndex: 0,
-            primCount: 0
+            primCount: 0,
         };
 
         this._nodes.push(node);
@@ -213,8 +206,12 @@ export class BoundingVolumeHierarchy {
 
     private _computeBounds(indices: number[], start: number, end: number): IAABB<IVec3Like> {
         const first = this._primitives[indices[start]];
-        let minX = first.bounds.min.x, minY = first.bounds.min.y, minZ = first.bounds.min.z;
-        let maxX = first.bounds.max.x, maxY = first.bounds.max.y, maxZ = first.bounds.max.z;
+        let minX = first.bounds.min.x,
+            minY = first.bounds.min.y,
+            minZ = first.bounds.min.z;
+        let maxX = first.bounds.max.x,
+            maxY = first.bounds.max.y,
+            maxZ = first.bounds.max.z;
 
         for (let i = start + 1; i < end; i++) {
             const prim = this._primitives[indices[i]];
@@ -228,14 +225,22 @@ export class BoundingVolumeHierarchy {
 
         return {
             min: { x: minX, y: minY, z: minZ },
-            max: { x: maxX, y: maxY, z: maxZ }
+            max: { x: maxX, y: maxY, z: maxZ },
         } as IAABB<IVec3Like>;
     }
 
-    private _computeCentroidBounds(indices: number[], start: number, end: number): IAABB<IVec3Like> {
+    private _computeCentroidBounds(
+        indices: number[],
+        start: number,
+        end: number
+    ): IAABB<IVec3Like> {
         const first = this._primitives[indices[start]].centroid;
-        let minX = first.x, minY = first.y, minZ = first.z;
-        let maxX = first.x, maxY = first.y, maxZ = first.z;
+        let minX = first.x,
+            minY = first.y,
+            minZ = first.z;
+        let maxX = first.x,
+            maxY = first.y,
+            maxZ = first.z;
 
         for (let i = start + 1; i < end; i++) {
             const centroid = this._primitives[indices[i]].centroid;
@@ -249,7 +254,7 @@ export class BoundingVolumeHierarchy {
 
         return {
             min: { x: minX, y: minY, z: minZ },
-            max: { x: maxX, y: maxY, z: maxZ }
+            max: { x: maxX, y: maxY, z: maxZ },
         } as IAABB<IVec3Like>;
     }
 
@@ -264,11 +269,12 @@ export class BoundingVolumeHierarchy {
     }
 
     private _isDegenerate(bounds: IAABB<IVec3Like>, dim: number): boolean {
-        const extent = dim === 0 
-            ? bounds.max.x - bounds.min.x
-            : dim === 1
-            ? bounds.max.y - bounds.min.y
-            : bounds.max.z - bounds.min.z;
+        const extent =
+            dim === 0
+                ? bounds.max.x - bounds.min.x
+                : dim === 1
+                  ? bounds.max.y - bounds.min.y
+                  : bounds.max.z - bounds.min.z;
         return extent < EPSILON;
     }
 
@@ -279,17 +285,18 @@ export class BoundingVolumeHierarchy {
         dim: number,
         centroidBounds: IAABB<IVec3Like>
     ): number {
-        const pmid = dim === 0
-            ? (centroidBounds.min.x + centroidBounds.max.x) * 0.5
-            : dim === 1
-            ? (centroidBounds.min.y + centroidBounds.max.y) * 0.5
-            : (centroidBounds.min.z + centroidBounds.max.z) * 0.5;
+        const pmid =
+            dim === 0
+                ? (centroidBounds.min.x + centroidBounds.max.x) * 0.5
+                : dim === 1
+                  ? (centroidBounds.min.y + centroidBounds.max.y) * 0.5
+                  : (centroidBounds.min.z + centroidBounds.max.z) * 0.5;
 
         let mid = start;
         for (let i = start; i < end; i++) {
             const centroid = this._primitives[indices[i]].centroid;
             const value = dim === 0 ? centroid.x : dim === 1 ? centroid.y : centroid.z;
-            
+
             if (value < pmid) {
                 const temp = indices[i];
                 indices[i] = indices[mid];
@@ -317,11 +324,12 @@ export class BoundingVolumeHierarchy {
         const buckets: BVHBucket[] = Array.from({ length: nBuckets }, () => new BVHBucket());
 
         const centroidBounds = this._computeCentroidBounds(indices, start, end);
-        const extent = dim === 0
-            ? centroidBounds.max.x - centroidBounds.min.x
-            : dim === 1
-            ? centroidBounds.max.y - centroidBounds.min.y
-            : centroidBounds.max.z - centroidBounds.min.z;
+        const extent =
+            dim === 0
+                ? centroidBounds.max.x - centroidBounds.min.x
+                : dim === 1
+                  ? centroidBounds.max.y - centroidBounds.min.y
+                  : centroidBounds.max.z - centroidBounds.min.z;
 
         if (extent < EPSILON) {
             return Math.floor((start + end) / 2);
@@ -331,7 +339,12 @@ export class BoundingVolumeHierarchy {
             const prim = this._primitives[indices[i]];
             const centroid = prim.centroid;
             const value = dim === 0 ? centroid.x : dim === 1 ? centroid.y : centroid.z;
-            const minValue = dim === 0 ? centroidBounds.min.x : dim === 1 ? centroidBounds.min.y : centroidBounds.min.z;
+            const minValue =
+                dim === 0
+                    ? centroidBounds.min.x
+                    : dim === 1
+                      ? centroidBounds.min.y
+                      : centroidBounds.min.z;
 
             let b = Math.floor(nBuckets * ((value - minValue) / extent));
             if (b === nBuckets) b = nBuckets - 1;
@@ -369,8 +382,9 @@ export class BoundingVolumeHierarchy {
             const sa0 = b0 ? this._surfaceArea(b0) : 0;
             const sa1 = b1 ? this._surfaceArea(b1) : 0;
 
-            cost[i] = TRAVERSAL_COST + 
-                INTERSECTION_COST * (count0 * sa0 + count1 * sa1) / this._surfaceArea(nodeBounds);
+            cost[i] =
+                TRAVERSAL_COST +
+                (INTERSECTION_COST * (count0 * sa0 + count1 * sa1)) / this._surfaceArea(nodeBounds);
         }
 
         let minCostSplitBucket = 0;
@@ -390,7 +404,12 @@ export class BoundingVolumeHierarchy {
                 const prim = this._primitives[indices[i]];
                 const centroid = prim.centroid;
                 const value = dim === 0 ? centroid.x : dim === 1 ? centroid.y : centroid.z;
-                const minValue = dim === 0 ? centroidBounds.min.x : dim === 1 ? centroidBounds.min.y : centroidBounds.min.z;
+                const minValue =
+                    dim === 0
+                        ? centroidBounds.min.x
+                        : dim === 1
+                          ? centroidBounds.min.y
+                          : centroidBounds.min.z;
 
                 let b = Math.floor(nBuckets * ((value - minValue) / extent));
                 if (b === nBuckets) b = nBuckets - 1;
@@ -413,7 +432,13 @@ export class BoundingVolumeHierarchy {
         return Math.floor((start + end) / 2);
     }
 
-    private _partitionByMedian(indices: number[], start: number, end: number, mid: number, dim: number): void {
+    private _partitionByMedian(
+        indices: number[],
+        start: number,
+        end: number,
+        mid: number,
+        dim: number
+    ): void {
         const getValue = (index: number) => {
             const centroid = this._primitives[indices[index]].centroid;
             return dim === 0 ? centroid.x : dim === 1 ? centroid.y : centroid.z;
@@ -455,13 +480,13 @@ export class BoundingVolumeHierarchy {
             min: {
                 x: Math.min(a.min.x, b.min.x),
                 y: Math.min(a.min.y, b.min.y),
-                z: Math.min(a.min.z, b.min.z)
+                z: Math.min(a.min.z, b.min.z),
             },
             max: {
                 x: Math.max(a.max.x, b.max.x),
                 y: Math.max(a.max.y, b.max.y),
-                z: Math.max(a.max.z, b.max.z)
-            }
+                z: Math.max(a.max.z, b.max.z),
+            },
         } as IAABB<IVec3Like>;
     }
 

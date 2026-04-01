@@ -7,7 +7,10 @@ import type {
 import { SingletonError } from './singleton-errors';
 
 export class SingletonRegistryImpl implements ISingletonRegistry {
-    private readonly singletons = new Map<SingletonKey, ISingleton<unknown> | IAsyncSingleton<unknown>>();
+    private readonly singletons = new Map<
+        SingletonKey,
+        ISingleton<unknown> | IAsyncSingleton<unknown>
+    >();
     private readonly registrationOrder: SingletonKey[] = [];
 
     get size(): number {

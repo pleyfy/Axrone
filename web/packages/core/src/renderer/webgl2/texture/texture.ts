@@ -10,17 +10,11 @@ import {
     ColorSpace,
     TextureDataSource,
     TextureError,
-    TextureErrorCode
+    TextureErrorCode,
 } from './interfaces';
-import { 
-    TextureFormatInfo, 
-    TextureUtils, 
-    TextureWebGLConstants,
-    TextureValidation 
-} from './utils';
+import { TextureFormatInfo, TextureUtils, TextureWebGLConstants, TextureValidation } from './utils';
 
 export class WebGLTexture implements ITexture {
-
     public readonly id: string;
     public readonly nativeHandle: globalThis.WebGLTexture;
     public readonly dimension: TextureDimension;
@@ -46,7 +40,11 @@ export class WebGLTexture implements ITexture {
     private readonly _gl: WebGL2RenderingContext;
     private readonly _target: number;
 
-    constructor(gl: WebGL2RenderingContext, options: ITextureCreateOptions, data?: TextureDataSource) {
+    constructor(
+        gl: WebGL2RenderingContext,
+        options: ITextureCreateOptions,
+        data?: TextureDataSource
+    ) {
         this._gl = gl;
 
         TextureValidation.validateCreateOptions(options);
@@ -68,10 +66,10 @@ export class WebGLTexture implements ITexture {
         this.isCompressed = formatInfo.compressed;
         this.bytesPerPixel = formatInfo.bytesPerPixel;
         this.totalMemoryUsage = TextureUtils.calculateMemoryUsage(
-            this.width, 
-            this.height, 
-            this.depth, 
-            this.format, 
+            this.width,
+            this.height,
+            this.depth,
+            this.format,
             this.mipLevels
         );
 
@@ -110,7 +108,12 @@ export class WebGLTexture implements ITexture {
         const mipLevel = subresource?.mipLevel || 0;
         const arrayLayer = subresource?.arrayLayer || 0;
 
-        const mipDims = TextureUtils.getMipDimensions(this.width, this.height, this.depth, mipLevel);
+        const mipDims = TextureUtils.getMipDimensions(
+            this.width,
+            this.height,
+            this.depth,
+            mipLevel
+        );
         const x = subresource?.x || 0;
         const y = subresource?.y || 0;
         const z = subresource?.z || 0;
@@ -138,7 +141,11 @@ export class WebGLTexture implements ITexture {
         );
     }
 
-    public copyTo(destination: ITexture, sourceRegion?: ITextureSubresource, destRegion?: ITextureSubresource): void {
+    public copyTo(
+        destination: ITexture,
+        sourceRegion?: ITextureSubresource,
+        destRegion?: ITextureSubresource
+    ): void {
         this._validateNotDisposed();
 
         if (destination.isDisposed) {
@@ -160,7 +167,7 @@ export class WebGLTexture implements ITexture {
         this._validateNotDisposed();
 
         if (this.mipLevels <= 1) {
-            return; 
+            return;
         }
 
         if (this.isCompressed) {
@@ -200,7 +207,7 @@ export class WebGLTexture implements ITexture {
             samples: this.samples,
             usage: this.usage,
             colorSpace: this.colorSpace,
-            label: this.label || undefined
+            label: this.label || undefined,
         };
 
         this._initializeStorageWithOptions(newOptions);
@@ -221,7 +228,7 @@ export class WebGLTexture implements ITexture {
             samples: this.samples,
             usage: this.usage,
             colorSpace: this.colorSpace,
-            label: this.label ? `${this.label}_clone` : undefined
+            label: this.label ? `${this.label}_clone` : undefined,
         };
 
         const clone = new WebGLTexture(this._gl, cloneOptions);
@@ -279,7 +286,7 @@ export class WebGLTexture implements ITexture {
             arrayLayers: this.arrayLayers,
             samples: this.samples,
             usage: this.usage,
-            colorSpace: this.colorSpace
+            colorSpace: this.colorSpace,
         };
 
         this._initializeStorageWithOptions(options);
@@ -340,7 +347,12 @@ export class WebGLTexture implements ITexture {
 
     private _initializeTexture3D(options: ITextureCreateOptions, formatInfo: any): void {
         for (let mip = 0; mip < options.mipLevels!; mip++) {
-            const mipDims = TextureUtils.getMipDimensions(options.width, options.height, options.depth!, mip);
+            const mipDims = TextureUtils.getMipDimensions(
+                options.width,
+                options.height,
+                options.depth!,
+                mip
+            );
 
             this._gl.texImage3D(
                 this._target,
@@ -364,12 +376,17 @@ export class WebGLTexture implements ITexture {
             this._gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
             this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
             this._gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
-            this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Z
+            this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
         ];
 
         for (let face = 0; face < 6; face++) {
             for (let mip = 0; mip < options.mipLevels!; mip++) {
-                const mipDims = TextureUtils.getMipDimensions(options.width, options.height, 1, mip);
+                const mipDims = TextureUtils.getMipDimensions(
+                    options.width,
+                    options.height,
+                    1,
+                    mip
+                );
 
                 this._gl.texImage2D(
                     faces[face],
@@ -419,20 +436,44 @@ export class WebGLTexture implements ITexture {
         const formatInfo = TextureFormatInfo.getFormatInfo(this.format);
 
         if (data === null) {
-            return; 
+            return;
         }
 
         if (data instanceof ByteBuffer) {
-            this._uploadBufferData(data, formatInfo, mipLevel, arrayLayer, x, y, z, width, height, depth);
-        } else if (data instanceof HTMLImageElement || 
-                   data instanceof HTMLCanvasElement || 
-                   data instanceof HTMLVideoElement ||
-                   data instanceof ImageBitmap) {
+            this._uploadBufferData(
+                data,
+                formatInfo,
+                mipLevel,
+                arrayLayer,
+                x,
+                y,
+                z,
+                width,
+                height,
+                depth
+            );
+        } else if (
+            data instanceof HTMLImageElement ||
+            data instanceof HTMLCanvasElement ||
+            data instanceof HTMLVideoElement ||
+            data instanceof ImageBitmap
+        ) {
             this._uploadImageData(data, formatInfo, mipLevel, arrayLayer, x, y);
         } else if (data instanceof ImageData) {
             this._uploadImageData(data, formatInfo, mipLevel, arrayLayer, x, y);
         } else if (ArrayBuffer.isView(data)) {
-            this._uploadTypedArrayData(data, formatInfo, mipLevel, arrayLayer, x, y, z, width, height, depth);
+            this._uploadTypedArrayData(
+                data,
+                formatInfo,
+                mipLevel,
+                arrayLayer,
+                x,
+                y,
+                z,
+                width,
+                height,
+                depth
+            );
         } else {
             throw new TextureError(
                 'Unsupported data source type',
@@ -454,11 +495,21 @@ export class WebGLTexture implements ITexture {
         height: number,
         depth: number
     ): void {
-
         const typedView = buffer.asTypedView('uint8');
         const values = typedView.getValues(0, typedView.capacity);
         const data = new Uint8Array(values);
-        this._uploadTypedArrayData(data, formatInfo, mipLevel, arrayLayer, x, y, z, width, height, depth);
+        this._uploadTypedArrayData(
+            data,
+            formatInfo,
+            mipLevel,
+            arrayLayer,
+            x,
+            y,
+            z,
+            width,
+            height,
+            depth
+        );
     }
 
     private _uploadImageData(
@@ -489,7 +540,7 @@ export class WebGLTexture implements ITexture {
                     this._gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
                     this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
                     this._gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
-                    this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Z
+                    this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
                 ];
 
                 this._gl.texSubImage2D(
@@ -578,7 +629,7 @@ export class WebGLTexture implements ITexture {
                     this._gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
                     this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
                     this._gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
-                    this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Z
+                    this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
                 ];
 
                 this._gl.texSubImage2D(

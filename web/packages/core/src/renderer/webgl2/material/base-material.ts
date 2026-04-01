@@ -1,10 +1,26 @@
 import { Component, ComponentConfig } from '../../../component-system/core/component';
 
-export interface Vec2 { x: number; y: number; }
-export interface Vec3 { x: number; y: number; z: number; }
-export interface Vec4 { x: number; y: number; z: number; w: number; }
-export interface Mat3 { elements: Float32Array; }
-export interface Mat4 { elements: Float32Array; }
+export interface Vec2 {
+    x: number;
+    y: number;
+}
+export interface Vec3 {
+    x: number;
+    y: number;
+    z: number;
+}
+export interface Vec4 {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
+}
+export interface Mat3 {
+    elements: Float32Array;
+}
+export interface Mat4 {
+    elements: Float32Array;
+}
 
 export const enum MaterialType {
     STANDARD = 'Standard',
@@ -17,25 +33,25 @@ export const enum MaterialType {
     SKIN = 'Skin',
     VEGETATION = 'Vegetation',
     WATER = 'Water',
-    CUSTOM = 'Custom'
+    CUSTOM = 'Custom',
 }
 
 export const enum BlendMode {
     OPAQUE = 'Opaque',
-    ALPHA_BLEND = 'AlphaBlend', 
+    ALPHA_BLEND = 'AlphaBlend',
     ALPHA_TEST = 'AlphaTest',
     ADDITIVE = 'Additive',
     MULTIPLY = 'Multiply',
     SCREEN = 'Screen',
     OVERLAY = 'Overlay',
     SOFT_ADDITIVE = 'SoftAdditive',
-    PREMULTIPLIED = 'Premultiplied'
+    PREMULTIPLIED = 'Premultiplied',
 }
 
 export const enum CullMode {
     NONE = 'None',
-    FRONT = 'Front', 
-    BACK = 'Back'
+    FRONT = 'Front',
+    BACK = 'Back',
 }
 
 export const enum DepthTest {
@@ -47,14 +63,14 @@ export const enum DepthTest {
     GREATER = 'Greater',
     NOTEQUAL = 'NotEqual',
     GEQUAL = 'GEqual',
-    ALWAYS = 'Always'
+    ALWAYS = 'Always',
 }
 
 export const enum ShadowCasting {
     OFF = 'Off',
     ON = 'On',
     TWO_SIDED = 'TwoSided',
-    SHADOWS_ONLY = 'ShadowsOnly'
+    SHADOWS_ONLY = 'ShadowsOnly',
 }
 
 export const enum LightMode {
@@ -63,34 +79,43 @@ export const enum LightMode {
     DEFERRED = 'Deferred',
     SHADOW_CASTER = 'ShadowCaster',
     DEPTH_ONLY = 'DepthOnly',
-    META = 'Meta'
+    META = 'Meta',
 }
 
-export type MaterialPropertyValue = 
-    | number 
+export type MaterialPropertyValue =
+    | number
     | boolean
-    | Vec2 
-    | Vec3 
-    | Vec4 
-    | Mat3 
+    | Vec2
+    | Vec3
+    | Vec4
+    | Mat3
     | Mat4
     | WebGLTexture
     | string
     | Float32Array
     | Int32Array
     | Uint32Array
-    | null; 
+    | null;
 
 export interface MaterialProperty {
     readonly name: string;
     readonly displayName: string;
-    readonly type: 'float' | 'int' | 'bool' | 'vec2' | 'vec3' | 'vec4' | 'color' | 'texture' | 'matrix';
+    readonly type:
+        | 'float'
+        | 'int'
+        | 'bool'
+        | 'vec2'
+        | 'vec3'
+        | 'vec4'
+        | 'color'
+        | 'texture'
+        | 'matrix';
     readonly defaultValue: MaterialPropertyValue;
     readonly range?: { min: number; max: number };
     readonly category?: string;
     readonly tooltip?: string;
     readonly hidden?: boolean;
-    readonly system?: boolean; 
+    readonly system?: boolean;
 }
 
 export interface MaterialKeyword {
@@ -98,8 +123,8 @@ export interface MaterialKeyword {
     readonly displayName: string;
     readonly description?: string;
     readonly category?: string;
-    readonly mutuallyExclusive?: string[]; 
-    readonly dependencies?: string[]; 
+    readonly mutuallyExclusive?: string[];
+    readonly dependencies?: string[];
 }
 
 export interface MaterialConfig extends ComponentConfig {
@@ -162,7 +187,9 @@ export interface UnlitMaterialConfig extends MaterialConfig {
     cutoff?: number;
 }
 
-export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialConfig> extends Component<T> {
+export abstract class BaseMaterialComponent<
+    T extends MaterialConfig = MaterialConfig,
+> extends Component<T> {
     protected _properties = new Map<string, MaterialPropertyValue>();
     protected _keywords = new Set<string>();
     protected _renderQueue: number = 2000;
@@ -230,7 +257,9 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         return Array.from(this._keywords);
     }
 
-    public get blendMode(): BlendMode { return this._blendMode; }
+    public get blendMode(): BlendMode {
+        return this._blendMode;
+    }
     public set blendMode(value: BlendMode) {
         if (this._blendMode !== value) {
             this._blendMode = value;
@@ -239,7 +268,9 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         }
     }
 
-    public get cullMode(): CullMode { return this._cullMode; }
+    public get cullMode(): CullMode {
+        return this._cullMode;
+    }
     public set cullMode(value: CullMode) {
         if (this._cullMode !== value) {
             this._cullMode = value;
@@ -247,7 +278,9 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         }
     }
 
-    public get depthTest(): DepthTest { return this._depthTest; }
+    public get depthTest(): DepthTest {
+        return this._depthTest;
+    }
     public set depthTest(value: DepthTest) {
         if (this._depthTest !== value) {
             this._depthTest = value;
@@ -255,7 +288,9 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         }
     }
 
-    public get depthWrite(): boolean { return this._depthWrite; }
+    public get depthWrite(): boolean {
+        return this._depthWrite;
+    }
     public set depthWrite(value: boolean) {
         if (this._depthWrite !== value) {
             this._depthWrite = value;
@@ -263,7 +298,9 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         }
     }
 
-    public get renderQueue(): number { return this._renderQueue; }
+    public get renderQueue(): number {
+        return this._renderQueue;
+    }
     public set renderQueue(value: number) {
         if (this._renderQueue !== value) {
             this._renderQueue = Math.max(0, Math.min(5000, value));
@@ -271,7 +308,9 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         }
     }
 
-    public get shadowCasting(): ShadowCasting { return this._shadowCasting; }
+    public get shadowCasting(): ShadowCasting {
+        return this._shadowCasting;
+    }
     public set shadowCasting(value: ShadowCasting) {
         if (this._shadowCasting !== value) {
             this._shadowCasting = value;
@@ -279,7 +318,9 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         }
     }
 
-    public get receiveShadows(): boolean { return this._receiveShadows; }
+    public get receiveShadows(): boolean {
+        return this._receiveShadows;
+    }
     public set receiveShadows(value: boolean) {
         if (this._receiveShadows !== value) {
             this._receiveShadows = value;
@@ -287,10 +328,18 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         }
     }
 
-    public get materialType(): MaterialType { return this._materialType; }
-    public get shaderName(): string { return this._shaderName; }
-    public get isDirty(): boolean { return this._isDirty; }
-    public get lastModified(): number { return this._lastModified; }
+    public get materialType(): MaterialType {
+        return this._materialType;
+    }
+    public get shaderName(): string {
+        return this._shaderName;
+    }
+    public get isDirty(): boolean {
+        return this._isDirty;
+    }
+    public get lastModified(): number {
+        return this._lastModified;
+    }
 
     public setRenderTag(key: string, value: string): void {
         this._renderTags.set(key, value);
@@ -352,14 +401,19 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
     }
 
     protected _setupDefaultRenderTags(): void {
-        this._renderTags.set('RenderType', this._blendMode === BlendMode.OPAQUE ? 'Opaque' : 'Transparent');
+        this._renderTags.set(
+            'RenderType',
+            this._blendMode === BlendMode.OPAQUE ? 'Opaque' : 'Transparent'
+        );
         this._renderTags.set('Queue', this._getRenderQueueName());
         this._renderTags.set('IgnoreProjector', 'True');
-        this._renderTags.set('ForceNoShadowCasting', this._shadowCasting === ShadowCasting.OFF ? 'True' : 'False');
+        this._renderTags.set(
+            'ForceNoShadowCasting',
+            this._shadowCasting === ShadowCasting.OFF ? 'True' : 'False'
+        );
     }
 
     protected _updateRenderQueue(): void {
-
         switch (this._blendMode) {
             case BlendMode.OPAQUE:
                 if (this._renderQueue >= 2500) this._renderQueue = 2000;
@@ -393,13 +447,9 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         this._lastModified = performance.now();
     }
 
-    protected _onPropertyChanged(name: string, value: MaterialPropertyValue): void {
+    protected _onPropertyChanged(name: string, value: MaterialPropertyValue): void {}
 
-    }
-
-    protected _onKeywordChanged(keyword: string, enabled: boolean): void {
-
-    }
+    protected _onKeywordChanged(keyword: string, enabled: boolean): void {}
 
     public setColor(propertyName: string, color: Vec3 | Vec4): void {
         this.setProperty(propertyName, color);
@@ -409,7 +459,13 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
         const value = this.getProperty<Vec4>(propertyName);
         if (!value) return null;
 
-        if (typeof value === 'object' && 'x' in value && 'y' in value && 'z' in value && 'w' in value) {
+        if (
+            typeof value === 'object' &&
+            'x' in value &&
+            'y' in value &&
+            'z' in value &&
+            'w' in value
+        ) {
             return value as Vec4;
         }
 
@@ -473,7 +529,7 @@ export abstract class BaseMaterialComponent<T extends MaterialConfig = MaterialC
             receiveShadows: this._receiveShadows,
             properties: Object.fromEntries(this._properties),
             keywords: Array.from(this._keywords),
-            renderTags: Object.fromEntries(this._renderTags)
+            renderTags: Object.fromEntries(this._renderTags),
         };
     }
 

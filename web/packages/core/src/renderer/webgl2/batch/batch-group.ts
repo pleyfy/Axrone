@@ -43,30 +43,30 @@ export class BatchGroup implements IBatchGroup {
             factory: () => ({
                 worldMatrix: new Float32Array(16),
                 color: new Float32Array(4),
-                customData: new Float32Array(4)
+                customData: new Float32Array(4),
             }),
             resetHandler: (data) => {
                 data.worldMatrix.fill(0);
                 data.color.fill(0);
                 data.customData.fill(0);
-            }
+            },
         });
 
         const bufferFactory = createBufferFactory(gl);
 
         this.matrixBuffer = bufferFactory.createBuffer(gl.ARRAY_BUFFER, {
             initialData: new Float32Array(maxInstances * 16),
-            usage: isDynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW
+            usage: isDynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW,
         });
 
         this.colorBuffer = bufferFactory.createBuffer(gl.ARRAY_BUFFER, {
             initialData: new Float32Array(maxInstances * 4),
-            usage: isDynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW
+            usage: isDynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW,
         });
 
         this.customBuffer = bufferFactory.createBuffer(gl.ARRAY_BUFFER, {
             initialData: new Float32Array(maxInstances * 4),
-            usage: isDynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW
+            usage: isDynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW,
         });
     }
 
@@ -137,10 +137,14 @@ export class BatchGroup implements IBatchGroup {
 
             matrixData.set(instance.worldMatrix.data, index * 16);
 
-            const color = instance.material.getProperty('baseColor') as Float32Array || new Float32Array([1, 1, 1, 1]);
+            const color =
+                (instance.material.getProperty('baseColor') as Float32Array) ||
+                new Float32Array([1, 1, 1, 1]);
             colorData.set(color, index * 4);
 
-            const custom = instance.material.getProperty('customData') as Float32Array || new Float32Array([0, 0, 0, 0]);
+            const custom =
+                (instance.material.getProperty('customData') as Float32Array) ||
+                new Float32Array([0, 0, 0, 0]);
             customData.set(custom, index * 4);
 
             index++;
@@ -172,12 +176,7 @@ export class BatchGroup implements IBatchGroup {
 
         this.setupInstanceAttributes();
 
-        this.gl.drawArraysInstanced(
-            this.gl.TRIANGLES,
-            0,
-            6, 
-            this.instanceCount
-        );
+        this.gl.drawArraysInstanced(this.gl.TRIANGLES, 0, 6, this.instanceCount);
     }
 
     dispose(): void {
@@ -192,7 +191,6 @@ export class BatchGroup implements IBatchGroup {
     }
 
     private isMaterialCompatible(material: IMaterialInstance): boolean {
-
         return this.material.shader === material.shader;
     }
 

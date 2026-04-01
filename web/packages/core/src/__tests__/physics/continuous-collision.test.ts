@@ -55,7 +55,9 @@ describe('ContinuousCollisionDetection', () => {
             );
 
             if (result.hit) {
-                expect(result.normal.x * result.normal.x + result.normal.y * result.normal.y).toBeCloseTo(1);
+                expect(
+                    result.normal.x * result.normal.x + result.normal.y * result.normal.y
+                ).toBeCloseTo(1);
             }
         });
 
@@ -268,7 +270,9 @@ describe('Raycaster2D', () => {
             const result = Raycaster2D.raycastAABB(origin, direction, aabb);
 
             if (result.hit) {
-                expect(result.normal.x * result.normal.x + result.normal.y * result.normal.y).toBeCloseTo(1);
+                expect(
+                    result.normal.x * result.normal.x + result.normal.y * result.normal.y
+                ).toBeCloseTo(1);
             }
         });
 
@@ -483,7 +487,9 @@ describe('Raycaster2D', () => {
             const result = Raycaster2D.raycastPolygon(origin, direction, vertices, transform);
 
             if (result.hit) {
-                expect(result.normal.x * result.normal.x + result.normal.y * result.normal.y).toBeCloseTo(1);
+                expect(
+                    result.normal.x * result.normal.x + result.normal.y * result.normal.y
+                ).toBeCloseTo(1);
             }
         });
 

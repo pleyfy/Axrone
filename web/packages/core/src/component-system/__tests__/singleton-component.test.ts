@@ -98,7 +98,7 @@ describe('Singleton Component Support', () => {
             const entity = world.createEntity();
 
             world.addComponent(entity, 'GameManager', new GameManager());
-            
+
             // Adding again to same entity should be allowed (overwrites)
             expect(() => {
                 world.addComponent(entity, 'GameManager', new GameManager());

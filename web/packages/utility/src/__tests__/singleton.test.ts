@@ -55,9 +55,12 @@ describe('SingletonImpl', () => {
 
         it('should handle factory errors', () => {
             const error = new Error('Factory failed');
-            const s = new SingletonImpl(() => {
-                throw error;
-            }, { lazy: true });
+            const s = new SingletonImpl(
+                () => {
+                    throw error;
+                },
+                { lazy: true }
+            );
 
             expect(() => s.getInstance()).toThrow(SingletonError);
             expect(s.isFaulted).toBe(true);
@@ -104,9 +107,12 @@ describe('SingletonImpl', () => {
         });
 
         it('should return null when faulted', () => {
-            const s = new SingletonImpl(() => {
-                throw new Error('fail');
-            }, { lazy: true });
+            const s = new SingletonImpl(
+                () => {
+                    throw new Error('fail');
+                },
+                { lazy: true }
+            );
 
             expect(s.tryGetInstance()).toBeNull();
             expect(s.isFaulted).toBe(true);
@@ -214,20 +220,19 @@ describe('AsyncSingletonImpl', () => {
             const factory = vi.fn().mockResolvedValue('value');
             const s = new AsyncSingletonImpl(factory, { lazy: true });
 
-            await Promise.all([
-                s.getInstance(),
-                s.getInstance(),
-                s.getInstance(),
-            ]);
+            await Promise.all([s.getInstance(), s.getInstance(), s.getInstance()]);
 
             expect(factory).toHaveBeenCalledTimes(1);
             await s.disposeAsync();
         });
 
         it('should handle factory errors', async () => {
-            const s = new AsyncSingletonImpl(async () => {
-                throw new Error('Async failure');
-            }, { lazy: true });
+            const s = new AsyncSingletonImpl(
+                async () => {
+                    throw new Error('Async failure');
+                },
+                { lazy: true }
+            );
 
             await expect(s.getInstance()).rejects.toThrow(SingletonError);
             expect(s.isFaulted).toBe(true);
@@ -237,7 +242,7 @@ describe('AsyncSingletonImpl', () => {
     describe('timeout', () => {
         it('should timeout long running factory', async () => {
             const s = new AsyncSingletonImpl(
-                () => new Promise(resolve => setTimeout(() => resolve('late'), 1000)),
+                () => new Promise((resolve) => setTimeout(() => resolve('late'), 1000)),
                 { lazy: true, timeout: 50 }
             );
 
@@ -379,9 +384,15 @@ describe('SingletonScopeImpl', () => {
             const child1 = scope.createChild('child1');
             const child2 = scope.createChild('child2');
 
-            scope.set('key1', 'value1', () => { order.push('parent'); });
-            child1.set('key2', 'value2', () => { order.push('child1'); });
-            child2.set('key3', 'value3', () => { order.push('child2'); });
+            scope.set('key1', 'value1', () => {
+                order.push('parent');
+            });
+            child1.set('key2', 'value2', () => {
+                order.push('child1');
+            });
+            child2.set('key3', 'value3', () => {
+                order.push('child2');
+            });
 
             await scope.disposeAsync();
 
@@ -442,15 +453,21 @@ describe('SingletonRegistryImpl', () => {
 
         const s1 = new SingletonImpl(() => 1, {
             key: 's1',
-            disposer: () => { order.push(1); }
+            disposer: () => {
+                order.push(1);
+            },
         });
         const s2 = new SingletonImpl(() => 2, {
             key: 's2',
-            disposer: () => { order.push(2); }
+            disposer: () => {
+                order.push(2);
+            },
         });
         const s3 = new SingletonImpl(() => 3, {
             key: 's3',
-            disposer: () => { order.push(3); }
+            disposer: () => {
+                order.push(3);
+            },
         });
 
         registry.register('s1', s1);

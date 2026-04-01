@@ -2,11 +2,7 @@
     "compilerOptions": {
         "target": "ES2020",
         "module": "ESNext",
-        "lib": [
-            "DOM",
-            "DOM.Iterable",
-            "ESNext"
-        ],
+        "lib": ["DOM", "DOM.Iterable", "ESNext"],
         "declaration": true,
         "sourceMap": true,
         "strict": true,
@@ -19,18 +15,11 @@
         "forceConsistentCasingInFileNames": true,
         "baseUrl": ".",
         "paths": {
-            "@axrone/*": [
-                "packages/*/src"
-            ]
+            "@axrone/*": ["packages/*/src"]
         },
-    "types": ["vitest/globals"],
+        "types": ["vitest/globals"],
         "composite": true,
         "declarationMap": true
     },
-    "exclude": [
-        "node_modules",
-        "dist",
-        "build",
-        "coverage"
-    ]
+    "exclude": ["node_modules", "dist", "build", "coverage"]
 }

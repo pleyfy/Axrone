@@ -36,7 +36,7 @@ export const getShaderDataTypeSize = (type: ShaderDataType): number => {
         case ShaderDataType.SAMPLER_2D:
         case ShaderDataType.SAMPLER_CUBE:
         case ShaderDataType.SAMPLER_2D_ARRAY:
-            return 4; 
+            return 4;
 
         default:
             throw new Error(`Unknown shader data type: ${type}`);
@@ -133,19 +133,19 @@ export const MAX_TEXTURE_UNITS = 32;
 
 export const MAX_UNIFORM_BLOCKS = 16;
 
-export const MAX_UNIFORM_BUFFER_SIZE = 64 * 1024; 
+export const MAX_UNIFORM_BUFFER_SIZE = 64 * 1024;
 
 export const SHADER_CACHE_LIMITS = {
     MAX_COMPILED_SHADERS: 256,
     MAX_VARIANTS_PER_SHADER: 64,
     MAX_CONFIGURATIONS: 128,
     MAX_TOTAL_VARIANTS: 1024,
-    MAX_CACHE_SIZE_BYTES: 16 * 1024 * 1024, 
+    MAX_CACHE_SIZE_BYTES: 16 * 1024 * 1024,
 } as const;
 
 export const VERTEX_SEMANTICS = {
     POSITION: 'POSITION',
-    NORMAL: 'NORMAL', 
+    NORMAL: 'NORMAL',
     TANGENT: 'TANGENT',
     BITANGENT: 'BITANGENT',
     COLOR: 'COLOR',
@@ -157,7 +157,6 @@ export const VERTEX_SEMANTICS = {
 } as const;
 
 export const UNIFORM_SEMANTICS = {
-
     MODEL_MATRIX: 'u_ModelMatrix',
     VIEW_MATRIX: 'u_ViewMatrix',
     PROJECTION_MATRIX: 'u_ProjectionMatrix',
@@ -183,11 +182,9 @@ export const UNIFORM_SEMANTICS = {
 
     LIGHT_COUNT: 'u_LightCount',
     AMBIENT_COLOR: 'u_AmbientColor',
-
 } as const;
 
 export const SHADER_KEYWORDS = {
-
     DIRECTIONAL_LIGHT: 'DIRECTIONAL_LIGHT',
     POINT_LIGHT: 'POINT_LIGHT',
     SPOT_LIGHT: 'SPOT_LIGHT',
@@ -207,14 +204,15 @@ export const SHADER_KEYWORDS = {
     WEBGL2: 'WEBGL2',
     MOBILE: 'MOBILE',
     DESKTOP: 'DESKTOP',
-
 } as const;
 
 export const generateVersionDirective = (version: string = '300 es'): string => {
     return `#version ${version}\n`;
 };
 
-export const generatePrecisionDirective = (precision: 'lowp' | 'mediump' | 'highp' = 'mediump'): string => {
+export const generatePrecisionDirective = (
+    precision: 'lowp' | 'mediump' | 'highp' = 'mediump'
+): string => {
     return `precision ${precision} float;\n`;
 };
 
@@ -230,15 +228,15 @@ export const generateDefines = (defines: Record<string, string | number | boolea
 };
 
 export const generateIncludes = (includes: string[]): string => {
-    return includes.map(include => `#include "${include}"\n`).join('');
+    return includes.map((include) => `#include "${include}"\n`).join('');
 };
 
 export const hashShaderSource = (source: string): string => {
     let hash = 0;
     for (let i = 0; i < source.length; i++) {
         const char = source.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; 
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash;
     }
     return Math.abs(hash).toString(36);
 };
@@ -258,7 +256,6 @@ export const generateVariantKey = (
 };
 
 export const isValidShaderVariableName = (name: string): boolean => {
-
     return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
 };
 
@@ -266,11 +263,11 @@ export const isValidStageCombo = (stages: ShaderStage[]): boolean => {
     const stageSet = new Set(stages);
 
     if (stageSet.has(ShaderStage.COMPUTE)) {
-        return stages.length === 1; 
+        return stages.length === 1;
     }
 
     if (!stageSet.has(ShaderStage.VERTEX)) {
-        return false; 
+        return false;
     }
 
     const hasTessControl = stageSet.has(ShaderStage.TESSELLATION_CONTROL);
@@ -331,14 +328,16 @@ export const getShaderDataTypeAlignment = (type: ShaderDataType): number => {
 
         case ShaderDataType.MAT3:
         case ShaderDataType.MAT4:
-            return 16; 
+            return 16;
 
         default:
             return 4;
     }
 };
 
-export const calculateUniformBufferLayout = (variables: Array<{ name: string; type: ShaderDataType; arraySize?: number }>): {
+export const calculateUniformBufferLayout = (
+    variables: Array<{ name: string; type: ShaderDataType; arraySize?: number }>
+): {
     layout: Array<{ name: string; offset: number; size: number }>;
     totalSize: number;
 } => {
@@ -357,7 +356,7 @@ export const calculateUniformBufferLayout = (variables: Array<{ name: string; ty
         layout.push({
             name: variable.name,
             offset: currentOffset,
-            size: totalSize
+            size: totalSize,
         });
 
         currentOffset += totalSize;

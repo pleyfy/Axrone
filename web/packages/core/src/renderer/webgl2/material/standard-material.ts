@@ -1,7 +1,7 @@
-import { 
-    BaseMaterialComponent, 
-    MaterialType, 
-    MaterialProperty, 
+import {
+    BaseMaterialComponent,
+    MaterialType,
+    MaterialProperty,
     MaterialKeyword,
     StandardMaterialConfig,
     Vec2,
@@ -9,18 +9,17 @@ import {
     Vec4,
     BlendMode,
     CullMode,
-    ShadowCasting
+    ShadowCasting,
 } from './base-material';
 
 const STANDARD_PROPERTIES: MaterialProperty[] = [
-
     {
         name: '_MainTex',
         displayName: 'Albedo',
         type: 'texture',
         defaultValue: null,
         category: 'Main Maps',
-        tooltip: 'Albedo (RGB) and Transparency (A)'
+        tooltip: 'Albedo (RGB) and Transparency (A)',
     },
     {
         name: '_Color',
@@ -28,7 +27,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'color',
         defaultValue: { x: 1, y: 1, z: 1, w: 1 },
         category: 'Main Maps',
-        tooltip: 'Main color tint'
+        tooltip: 'Main color tint',
     },
 
     {
@@ -37,7 +36,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Main Maps',
-        tooltip: 'Metallic (R) and Smoothness (A)'
+        tooltip: 'Metallic (R) and Smoothness (A)',
     },
     {
         name: '_Metallic',
@@ -46,7 +45,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 0.0,
         range: { min: 0, max: 1 },
         category: 'Main Maps',
-        tooltip: 'How metallic the surface is'
+        tooltip: 'How metallic the surface is',
     },
     {
         name: '_Glossiness',
@@ -55,7 +54,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 0.5,
         range: { min: 0, max: 1 },
         category: 'Main Maps',
-        tooltip: 'How smooth the surface is'
+        tooltip: 'How smooth the surface is',
     },
     {
         name: '_GlossMapScale',
@@ -64,7 +63,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 1 },
         category: 'Main Maps',
-        tooltip: 'Scale for smoothness from texture'
+        tooltip: 'Scale for smoothness from texture',
     },
     {
         name: '_SmoothnessTextureChannel',
@@ -72,7 +71,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'int',
         defaultValue: 0,
         category: 'Main Maps',
-        tooltip: 'Smoothness texture channel'
+        tooltip: 'Smoothness texture channel',
     },
 
     {
@@ -81,7 +80,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Secondary Maps',
-        tooltip: 'Normal Map'
+        tooltip: 'Normal Map',
     },
     {
         name: '_BumpScale',
@@ -90,7 +89,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 2 },
         category: 'Secondary Maps',
-        tooltip: 'Strength of normal map effect'
+        tooltip: 'Strength of normal map effect',
     },
 
     {
@@ -99,7 +98,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Secondary Maps',
-        tooltip: 'Height Map (G)'
+        tooltip: 'Height Map (G)',
     },
     {
         name: '_Parallax',
@@ -108,7 +107,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 0.02,
         range: { min: 0.005, max: 0.08 },
         category: 'Secondary Maps',
-        tooltip: 'Height map parallax depth'
+        tooltip: 'Height map parallax depth',
     },
 
     {
@@ -117,7 +116,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Secondary Maps',
-        tooltip: 'Occlusion (G)'
+        tooltip: 'Occlusion (G)',
     },
     {
         name: '_OcclusionStrength',
@@ -126,7 +125,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 1 },
         category: 'Secondary Maps',
-        tooltip: 'Occlusion effect strength'
+        tooltip: 'Occlusion effect strength',
     },
 
     {
@@ -135,7 +134,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Emission',
-        tooltip: 'Emission (RGB)'
+        tooltip: 'Emission (RGB)',
     },
     {
         name: '_EmissionColor',
@@ -143,7 +142,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'color',
         defaultValue: { x: 0, y: 0, z: 0, w: 1 },
         category: 'Emission',
-        tooltip: 'Emission color'
+        tooltip: 'Emission color',
     },
     {
         name: '_EmissionIntensity',
@@ -152,7 +151,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 10 },
         category: 'Emission',
-        tooltip: 'Emission intensity multiplier'
+        tooltip: 'Emission intensity multiplier',
     },
 
     {
@@ -161,7 +160,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Detail Maps',
-        tooltip: 'Detail Mask (A)'
+        tooltip: 'Detail Mask (A)',
     },
     {
         name: '_DetailAlbedoMap',
@@ -169,7 +168,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Detail Maps',
-        tooltip: 'Detail Albedo x2'
+        tooltip: 'Detail Albedo x2',
     },
     {
         name: '_DetailNormalMap',
@@ -177,7 +176,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'texture',
         defaultValue: null,
         category: 'Detail Maps',
-        tooltip: 'Detail Normal Map'
+        tooltip: 'Detail Normal Map',
     },
     {
         name: '_DetailNormalMapScale',
@@ -186,7 +185,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 1.0,
         range: { min: 0, max: 2 },
         category: 'Detail Maps',
-        tooltip: 'Detail normal map scale'
+        tooltip: 'Detail normal map scale',
     },
 
     {
@@ -195,7 +194,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'vec4',
         defaultValue: { x: 1, y: 1, z: 0, w: 0 },
         category: 'Tiling & Offset',
-        tooltip: 'Texture tiling (XY) and offset (ZW)'
+        tooltip: 'Texture tiling (XY) and offset (ZW)',
     },
     {
         name: '_DetailAlbedoMap_ST',
@@ -203,7 +202,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'vec4',
         defaultValue: { x: 1, y: 1, z: 0, w: 0 },
         category: 'Tiling & Offset',
-        tooltip: 'Detail texture tiling and offset'
+        tooltip: 'Detail texture tiling and offset',
     },
 
     {
@@ -212,7 +211,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'int',
         defaultValue: 0,
         category: 'Advanced Options',
-        tooltip: 'UV channel for detail maps'
+        tooltip: 'UV channel for detail maps',
     },
     {
         name: '_Mode',
@@ -220,7 +219,7 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         type: 'int',
         defaultValue: 0,
         category: 'Advanced Options',
-        tooltip: 'Rendering mode'
+        tooltip: 'Rendering mode',
     },
     {
         name: '_Cutoff',
@@ -229,67 +228,66 @@ const STANDARD_PROPERTIES: MaterialProperty[] = [
         defaultValue: 0.5,
         range: { min: 0, max: 1 },
         category: 'Advanced Options',
-        tooltip: 'Alpha cutoff threshold'
-    }
+        tooltip: 'Alpha cutoff threshold',
+    },
 ];
 
 const STANDARD_KEYWORDS: MaterialKeyword[] = [
-
     {
         name: '_NORMALMAP',
         displayName: 'Normal Map',
         description: 'Enable normal mapping',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_METALLICGLOSSMAP',
         displayName: 'Metallic Gloss Map',
         description: 'Use metallic gloss map',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_SPECGLOSSMAP',
         displayName: 'Specular Gloss Map',
         description: 'Use specular gloss map',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_PARALLAXMAP',
         displayName: 'Parallax Map',
         description: 'Enable parallax mapping',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_OCCLUSIONMAP',
         displayName: 'Occlusion Map',
         description: 'Enable occlusion mapping',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_EMISSION',
         displayName: 'Emission',
         description: 'Enable emission',
-        category: 'Textures'
+        category: 'Textures',
     },
     {
         name: '_DETAIL_MULX2',
         displayName: 'Detail Multiply',
         description: 'Enable detail multiply',
-        category: 'Detail'
+        category: 'Detail',
     },
     {
         name: '_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A',
         displayName: 'Smoothness Source Albedo',
         description: 'Smoothness from albedo alpha',
         category: 'Advanced',
-        mutuallyExclusive: ['_SMOOTHNESS_TEXTURE_METALLIC_CHANNEL_A']
+        mutuallyExclusive: ['_SMOOTHNESS_TEXTURE_METALLIC_CHANNEL_A'],
     },
     {
         name: '_SMOOTHNESS_TEXTURE_METALLIC_CHANNEL_A',
         displayName: 'Smoothness Source Metallic',
         description: 'Smoothness from metallic alpha',
         category: 'Advanced',
-        mutuallyExclusive: ['_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A']
+        mutuallyExclusive: ['_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A'],
     },
 
     {
@@ -297,22 +295,22 @@ const STANDARD_KEYWORDS: MaterialKeyword[] = [
         displayName: 'Alpha Test',
         description: 'Enable alpha testing',
         category: 'Rendering',
-        mutuallyExclusive: ['_ALPHABLEND_ON', '_ALPHAPREMULTIPLY_ON']
+        mutuallyExclusive: ['_ALPHABLEND_ON', '_ALPHAPREMULTIPLY_ON'],
     },
     {
         name: '_ALPHABLEND_ON',
         displayName: 'Alpha Blend',
         description: 'Enable alpha blending',
         category: 'Rendering',
-        mutuallyExclusive: ['_ALPHATEST_ON', '_ALPHAPREMULTIPLY_ON']
+        mutuallyExclusive: ['_ALPHATEST_ON', '_ALPHAPREMULTIPLY_ON'],
     },
     {
         name: '_ALPHAPREMULTIPLY_ON',
         displayName: 'Alpha Premultiply',
         description: 'Enable premultiplied alpha',
         category: 'Rendering',
-        mutuallyExclusive: ['_ALPHATEST_ON', '_ALPHABLEND_ON']
-    }
+        mutuallyExclusive: ['_ALPHATEST_ON', '_ALPHABLEND_ON'],
+    },
 ];
 
 export class StandardMaterialComponent extends BaseMaterialComponent<StandardMaterialConfig> {
@@ -324,7 +322,7 @@ export class StandardMaterialComponent extends BaseMaterialComponent<StandardMat
             cullMode: CullMode.BACK,
             shadowCasting: ShadowCasting.ON,
             receiveShadows: true,
-            ...config
+            ...config,
         });
     }
 
@@ -444,11 +442,11 @@ export class StandardMaterialComponent extends BaseMaterialComponent<StandardMat
 
     set emission(value: Vec3) {
         const intensity = this.getProperty<number>('_EmissionIntensity') || 1;
-        this.setProperty('_EmissionColor', { 
-            x: value.x * intensity, 
-            y: value.y * intensity, 
-            z: value.z * intensity, 
-            w: 1 
+        this.setProperty('_EmissionColor', {
+            x: value.x * intensity,
+            y: value.y * intensity,
+            z: value.z * intensity,
+            w: 1,
         });
 
         const hasEmission = value.x > 0 || value.y > 0 || value.z > 0;
@@ -481,10 +479,14 @@ export class StandardMaterialComponent extends BaseMaterialComponent<StandardMat
     get renderingMode(): 'Opaque' | 'Cutout' | 'Fade' | 'Transparent' {
         const mode = this.getProperty<number>('_Mode') || 0;
         switch (mode) {
-            case 1: return 'Cutout';
-            case 2: return 'Fade';
-            case 3: return 'Transparent';
-            default: return 'Opaque';
+            case 1:
+                return 'Cutout';
+            case 2:
+                return 'Fade';
+            case 3:
+                return 'Transparent';
+            default:
+                return 'Opaque';
         }
     }
 
@@ -515,7 +517,7 @@ export class StandardMaterialComponent extends BaseMaterialComponent<StandardMat
                 this.enableKeyword('_ALPHAPREMULTIPLY_ON');
                 this.renderQueue = 3000;
                 break;
-            default: 
+            default:
                 mode = 0;
                 this.blendMode = BlendMode.OPAQUE;
                 this.disableKeyword('_ALPHATEST_ON');
@@ -564,7 +566,6 @@ export class StandardMaterialComponent extends BaseMaterialComponent<StandardMat
     }
 
     protected _setupDefaultKeywords(): void {
-
         if (this.albedoMap) this.enableKeyword('_MAINTEX');
         if (this.normalMap) this.enableKeyword('_NORMALMAP');
         if (this.metallicMap) this.enableKeyword('_METALLICGLOSSMAP');

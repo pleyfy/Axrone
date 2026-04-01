@@ -15,12 +15,7 @@ describe('IslandSolver2D', () => {
         bodyManager = new BodyManager2D(64);
         contactManager = new ContactManager2D(128);
         constraintManager = new ConstraintManager2D(64);
-        islandSolver = new IslandSolver2D(
-            bodyManager,
-            contactManager,
-            constraintManager,
-            128
-        );
+        islandSolver = new IslandSolver2D(bodyManager, contactManager, constraintManager, 128);
     });
 
     describe('Island Solver Basics', () => {
@@ -29,9 +24,7 @@ describe('IslandSolver2D', () => {
         });
 
         it('solves empty islands', () => {
-            expect(() =>
-                islandSolver.solveIslands(1 / 60, 8, 3, true, 0)
-            ).not.toThrow();
+            expect(() => islandSolver.solveIslands(1 / 60, 8, 3, true, 0)).not.toThrow();
         });
 
         it('solves islands with dynamic bodies', () => {
@@ -43,9 +36,7 @@ describe('IslandSolver2D', () => {
 
             bodyManager.setMassData(bodyA, 1, 0.1, { x: 0, y: 0 });
 
-            expect(() =>
-                islandSolver.solveIslands(1 / 60, 8, 3, true, 0)
-            ).not.toThrow();
+            expect(() => islandSolver.solveIslands(1 / 60, 8, 3, true, 0)).not.toThrow();
         });
 
         it('solves islands with multiple bodies', () => {
@@ -64,9 +55,7 @@ describe('IslandSolver2D', () => {
             bodyManager.setMassData(bodyA, 1, 0.1, { x: 0, y: 0 });
             bodyManager.setMassData(bodyB, 1, 0.1, { x: 0, y: 0 });
 
-            expect(() =>
-                islandSolver.solveIslands(1 / 60, 8, 3, true, 0)
-            ).not.toThrow();
+            expect(() => islandSolver.solveIslands(1 / 60, 8, 3, true, 0)).not.toThrow();
         });
 
         it('handles sleep flag', () => {
@@ -78,9 +67,7 @@ describe('IslandSolver2D', () => {
 
             bodyManager.setMassData(bodyA, 1, 0.1, { x: 0, y: 0 });
 
-            expect(() =>
-                islandSolver.solveIslands(1 / 60, 8, 3, false, 0)
-            ).not.toThrow();
+            expect(() => islandSolver.solveIslands(1 / 60, 8, 3, false, 0)).not.toThrow();
         });
 
         it('handles different iteration counts', () => {
@@ -92,13 +79,9 @@ describe('IslandSolver2D', () => {
 
             bodyManager.setMassData(bodyA, 1, 0.1, { x: 0, y: 0 });
 
-            expect(() =>
-                islandSolver.solveIslands(1 / 60, 4, 2, true, 0)
-            ).not.toThrow();
+            expect(() => islandSolver.solveIslands(1 / 60, 4, 2, true, 0)).not.toThrow();
 
-            expect(() =>
-                islandSolver.solveIslands(1 / 60, 16, 6, true, 0)
-            ).not.toThrow();
+            expect(() => islandSolver.solveIslands(1 / 60, 16, 6, true, 0)).not.toThrow();
         });
     });
 });

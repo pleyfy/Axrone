@@ -8,11 +8,10 @@ export const enum TextureDimension {
     TEXTURE_3D = '3D',
     TEXTURE_CUBE = 'CUBE',
     TEXTURE_2D_ARRAY = '2D_ARRAY',
-    TEXTURE_CUBE_ARRAY = 'CUBE_ARRAY'
+    TEXTURE_CUBE_ARRAY = 'CUBE_ARRAY',
 }
 
 export const enum TextureFormat {
-
     R8 = 'R8',
     RG8 = 'RG8',
     RGB8 = 'RGB8',
@@ -88,7 +87,7 @@ export const enum TextureFormat {
     ASTC_10x8 = 'ASTC_10x8',
     ASTC_10x10 = 'ASTC_10x10',
     ASTC_12x10 = 'ASTC_12x10',
-    ASTC_12x12 = 'ASTC_12x12'
+    ASTC_12x12 = 'ASTC_12x12',
 }
 
 export const enum FilterMode {
@@ -97,30 +96,30 @@ export const enum FilterMode {
     NEAREST_MIPMAP_NEAREST = 'NEAREST_MIPMAP_NEAREST',
     LINEAR_MIPMAP_NEAREST = 'LINEAR_MIPMAP_NEAREST',
     NEAREST_MIPMAP_LINEAR = 'NEAREST_MIPMAP_LINEAR',
-    LINEAR_MIPMAP_LINEAR = 'LINEAR_MIPMAP_LINEAR'
+    LINEAR_MIPMAP_LINEAR = 'LINEAR_MIPMAP_LINEAR',
 }
 
 export const enum WrapMode {
     REPEAT = 'REPEAT',
     CLAMP_TO_EDGE = 'CLAMP_TO_EDGE',
     CLAMP_TO_BORDER = 'CLAMP_TO_BORDER',
-    MIRRORED_REPEAT = 'MIRRORED_REPEAT'
+    MIRRORED_REPEAT = 'MIRRORED_REPEAT',
 }
 
 export const enum TextureUsage {
-    STATIC = 'STATIC',          
-    DYNAMIC = 'DYNAMIC',        
-    STREAM = 'STREAM',          
-    RENDER_TARGET = 'RENDER_TARGET',  
-    DEPTH_BUFFER = 'DEPTH_BUFFER',   
-    COMPUTE = 'COMPUTE'         
+    STATIC = 'STATIC',
+    DYNAMIC = 'DYNAMIC',
+    STREAM = 'STREAM',
+    RENDER_TARGET = 'RENDER_TARGET',
+    DEPTH_BUFFER = 'DEPTH_BUFFER',
+    COMPUTE = 'COMPUTE',
 }
 
 export const enum ColorSpace {
     LINEAR = 'LINEAR',
     SRGB = 'SRGB',
     HDR10 = 'HDR10',
-    REC2020 = 'REC2020'
+    REC2020 = 'REC2020',
 }
 
 export interface ITextureCreateOptions {
@@ -146,13 +145,21 @@ export interface ITextureSamplerOptions {
     readonly borderColor?: Vec4;
     readonly maxAnisotropy?: number;
     readonly compareMode?: 'NONE' | 'COMPARE_REF_TO_TEXTURE';
-    readonly compareFunc?: 'NEVER' | 'LESS' | 'EQUAL' | 'LEQUAL' | 'GREATER' | 'NOTEQUAL' | 'GEQUAL' | 'ALWAYS';
+    readonly compareFunc?:
+        | 'NEVER'
+        | 'LESS'
+        | 'EQUAL'
+        | 'LEQUAL'
+        | 'GREATER'
+        | 'NOTEQUAL'
+        | 'GEQUAL'
+        | 'ALWAYS';
     readonly minLod?: number;
     readonly maxLod?: number;
     readonly lodBias?: number;
 }
 
-export type TextureDataSource = 
+export type TextureDataSource =
     | ArrayBufferView
     | ImageData
     | HTMLImageElement
@@ -194,7 +201,11 @@ export interface ITexture extends IBindableTarget {
 
     setData(data: TextureDataSource, subresource?: ITextureSubresource): void;
     getData(subresource?: ITextureSubresource): Promise<ArrayBufferView>;
-    copyTo(destination: ITexture, sourceRegion?: ITextureSubresource, destRegion?: ITextureSubresource): void;
+    copyTo(
+        destination: ITexture,
+        sourceRegion?: ITextureSubresource,
+        destRegion?: ITextureSubresource
+    ): void;
 
     generateMipmaps(): void;
     hasMipmaps(): boolean;
@@ -215,12 +226,28 @@ export interface ITextureSampler extends IBindableTarget {
 }
 
 export interface ITextureManager {
-
     createTexture(options: ITextureCreateOptions, data?: TextureDataSource): ITexture;
-    createTexture2D(width: number, height: number, format: TextureFormat, data?: TextureDataSource): ITexture;
-    createTexture3D(width: number, height: number, depth: number, format: TextureFormat, data?: TextureDataSource): ITexture;
+    createTexture2D(
+        width: number,
+        height: number,
+        format: TextureFormat,
+        data?: TextureDataSource
+    ): ITexture;
+    createTexture3D(
+        width: number,
+        height: number,
+        depth: number,
+        format: TextureFormat,
+        data?: TextureDataSource
+    ): ITexture;
     createTextureCube(size: number, format: TextureFormat, data?: TextureDataSource[]): ITexture;
-    createTextureArray(width: number, height: number, layers: number, format: TextureFormat, data?: TextureDataSource[]): ITexture;
+    createTextureArray(
+        width: number,
+        height: number,
+        layers: number,
+        format: TextureFormat,
+        data?: TextureDataSource[]
+    ): ITexture;
 
     createSampler(options: ITextureSamplerOptions): ITextureSampler;
     getDefaultSampler(filterMode: FilterMode, wrapMode: WrapMode): ITextureSampler;
@@ -306,7 +333,11 @@ export interface ITextureAtlas {
 export interface ITextureCompressor {
     readonly supportedFormats: readonly TextureFormat[];
 
-    compress(source: ITexture, targetFormat: TextureFormat, quality?: number): Promise<ArrayBufferView>;
+    compress(
+        source: ITexture,
+        targetFormat: TextureFormat,
+        quality?: number
+    ): Promise<ArrayBufferView>;
     decompress(data: ArrayBufferView, format: TextureFormat): Promise<ArrayBufferView>;
 
     estimateSize(width: number, height: number, format: TextureFormat): number;
@@ -359,5 +390,5 @@ export const enum TextureErrorCode {
     CONTEXT_LOST = 'CONTEXT_LOST',
     LOAD_FAILED = 'LOAD_FAILED',
     COMPRESSION_FAILED = 'COMPRESSION_FAILED',
-    INVALID_OPERATION = 'INVALID_OPERATION'
+    INVALID_OPERATION = 'INVALID_OPERATION',
 }

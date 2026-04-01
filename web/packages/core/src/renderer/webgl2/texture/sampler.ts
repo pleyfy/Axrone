@@ -5,12 +5,9 @@ import {
     FilterMode,
     WrapMode,
     TextureError,
-    TextureErrorCode
+    TextureErrorCode,
 } from './interfaces';
-import { 
-    TextureWebGLConstants,
-    TextureValidation 
-} from './utils';
+import { TextureWebGLConstants, TextureValidation } from './utils';
 
 export class WebGLTextureSampler implements ITextureSampler {
     public readonly id: string;
@@ -28,7 +25,7 @@ export class WebGLTextureSampler implements ITextureSampler {
         TextureValidation.validateSamplerOptions(options);
 
         this.id = this._generateSamplerId();
-        this.options = { ...options }; 
+        this.options = { ...options };
 
         const handle = this._gl.createSampler();
         if (!handle) {
@@ -105,24 +102,38 @@ export class WebGLTextureSampler implements ITextureSampler {
         const gl = this._gl;
         const sampler = this.nativeHandle;
 
-        gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, 
-            TextureWebGLConstants.getFilterConstant(this.options.minFilter));
-        gl.samplerParameteri(sampler, gl.TEXTURE_MAG_FILTER, 
-            TextureWebGLConstants.getFilterConstant(this.options.magFilter));
+        gl.samplerParameteri(
+            sampler,
+            gl.TEXTURE_MIN_FILTER,
+            TextureWebGLConstants.getFilterConstant(this.options.minFilter)
+        );
+        gl.samplerParameteri(
+            sampler,
+            gl.TEXTURE_MAG_FILTER,
+            TextureWebGLConstants.getFilterConstant(this.options.magFilter)
+        );
 
-        gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_S, 
-            TextureWebGLConstants.getWrapConstant(this.options.wrapS));
-        gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_T, 
-            TextureWebGLConstants.getWrapConstant(this.options.wrapT));
+        gl.samplerParameteri(
+            sampler,
+            gl.TEXTURE_WRAP_S,
+            TextureWebGLConstants.getWrapConstant(this.options.wrapS)
+        );
+        gl.samplerParameteri(
+            sampler,
+            gl.TEXTURE_WRAP_T,
+            TextureWebGLConstants.getWrapConstant(this.options.wrapT)
+        );
 
         if (this.options.wrapR !== undefined) {
-            gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_R, 
-                TextureWebGLConstants.getWrapConstant(this.options.wrapR));
+            gl.samplerParameteri(
+                sampler,
+                gl.TEXTURE_WRAP_R,
+                TextureWebGLConstants.getWrapConstant(this.options.wrapR)
+            );
         }
 
         if (this.options.borderColor) {
             const color = this.options.borderColor;
-
         }
 
         if (this.options.maxAnisotropy !== undefined && this.options.maxAnisotropy > 1) {
@@ -141,18 +152,21 @@ export class WebGLTextureSampler implements ITextureSampler {
 
             if (this.options.compareFunc) {
                 const compareFuncs: Record<string, number> = {
-                    'NEVER': gl.NEVER,
-                    'LESS': gl.LESS,
-                    'EQUAL': gl.EQUAL,
-                    'LEQUAL': gl.LEQUAL,
-                    'GREATER': gl.GREATER,
-                    'NOTEQUAL': gl.NOTEQUAL,
-                    'GEQUAL': gl.GEQUAL,
-                    'ALWAYS': gl.ALWAYS
+                    NEVER: gl.NEVER,
+                    LESS: gl.LESS,
+                    EQUAL: gl.EQUAL,
+                    LEQUAL: gl.LEQUAL,
+                    GREATER: gl.GREATER,
+                    NOTEQUAL: gl.NOTEQUAL,
+                    GEQUAL: gl.GEQUAL,
+                    ALWAYS: gl.ALWAYS,
                 };
 
-                gl.samplerParameteri(sampler, gl.TEXTURE_COMPARE_FUNC, 
-                    compareFuncs[this.options.compareFunc]);
+                gl.samplerParameteri(
+                    sampler,
+                    gl.TEXTURE_COMPARE_FUNC,
+                    compareFuncs[this.options.compareFunc]
+                );
             }
         } else {
             gl.samplerParameteri(sampler, gl.TEXTURE_COMPARE_MODE, gl.NONE);
@@ -167,7 +181,6 @@ export class WebGLTextureSampler implements ITextureSampler {
         }
 
         if (this.options.lodBias !== undefined) {
-
         }
     }
 }
@@ -176,33 +189,32 @@ export class SamplerFactory {
     private static readonly _commonSamplers = new Map<string, ITextureSamplerOptions>();
 
     static {
-
         this._commonSamplers.set('linear_repeat', {
             minFilter: FilterMode.LINEAR,
             magFilter: FilterMode.LINEAR,
             wrapS: WrapMode.REPEAT,
-            wrapT: WrapMode.REPEAT
+            wrapT: WrapMode.REPEAT,
         });
 
         this._commonSamplers.set('linear_clamp', {
             minFilter: FilterMode.LINEAR,
             magFilter: FilterMode.LINEAR,
             wrapS: WrapMode.CLAMP_TO_EDGE,
-            wrapT: WrapMode.CLAMP_TO_EDGE
+            wrapT: WrapMode.CLAMP_TO_EDGE,
         });
 
         this._commonSamplers.set('nearest_repeat', {
             minFilter: FilterMode.NEAREST,
             magFilter: FilterMode.NEAREST,
             wrapS: WrapMode.REPEAT,
-            wrapT: WrapMode.REPEAT
+            wrapT: WrapMode.REPEAT,
         });
 
         this._commonSamplers.set('nearest_clamp', {
             minFilter: FilterMode.NEAREST,
             magFilter: FilterMode.NEAREST,
             wrapS: WrapMode.CLAMP_TO_EDGE,
-            wrapT: WrapMode.CLAMP_TO_EDGE
+            wrapT: WrapMode.CLAMP_TO_EDGE,
         });
 
         this._commonSamplers.set('trilinear', {
@@ -210,7 +222,7 @@ export class SamplerFactory {
             magFilter: FilterMode.LINEAR,
             wrapS: WrapMode.REPEAT,
             wrapT: WrapMode.REPEAT,
-            maxAnisotropy: 16
+            maxAnisotropy: 16,
         });
 
         this._commonSamplers.set('shadow', {
@@ -219,13 +231,19 @@ export class SamplerFactory {
             wrapS: WrapMode.CLAMP_TO_EDGE,
             wrapT: WrapMode.CLAMP_TO_EDGE,
             compareMode: 'COMPARE_REF_TO_TEXTURE',
-            compareFunc: 'LEQUAL'
+            compareFunc: 'LEQUAL',
         });
     }
 
     public static createCommonSampler(
-        gl: WebGL2RenderingContext, 
-        type: 'linear_repeat' | 'linear_clamp' | 'nearest_repeat' | 'nearest_clamp' | 'trilinear' | 'shadow'
+        gl: WebGL2RenderingContext,
+        type:
+            | 'linear_repeat'
+            | 'linear_clamp'
+            | 'nearest_repeat'
+            | 'nearest_clamp'
+            | 'trilinear'
+            | 'shadow'
     ): WebGLTextureSampler {
         const options = this._commonSamplers.get(type);
         if (!options) {
@@ -253,7 +271,15 @@ export class SamplerBuilder {
         borderColor?: Vec4;
         maxAnisotropy?: number;
         compareMode?: 'NONE' | 'COMPARE_REF_TO_TEXTURE';
-        compareFunc?: 'NEVER' | 'LESS' | 'EQUAL' | 'LEQUAL' | 'GREATER' | 'NOTEQUAL' | 'GEQUAL' | 'ALWAYS';
+        compareFunc?:
+            | 'NEVER'
+            | 'LESS'
+            | 'EQUAL'
+            | 'LEQUAL'
+            | 'GREATER'
+            | 'NOTEQUAL'
+            | 'GEQUAL'
+            | 'ALWAYS';
         minLod?: number;
         maxLod?: number;
         lodBias?: number;
@@ -301,7 +327,9 @@ export class SamplerBuilder {
         return this;
     }
 
-    public shadowComparison(func: 'NEVER' | 'LESS' | 'EQUAL' | 'LEQUAL' | 'GREATER' | 'NOTEQUAL' | 'GEQUAL' | 'ALWAYS'): SamplerBuilder {
+    public shadowComparison(
+        func: 'NEVER' | 'LESS' | 'EQUAL' | 'LEQUAL' | 'GREATER' | 'NOTEQUAL' | 'GEQUAL' | 'ALWAYS'
+    ): SamplerBuilder {
         this._options.compareMode = 'COMPARE_REF_TO_TEXTURE';
         this._options.compareFunc = func;
         return this;
@@ -319,7 +347,6 @@ export class SamplerBuilder {
     }
 
     public build(gl: WebGL2RenderingContext): WebGLTextureSampler {
-
         if (!this._options.minFilter || !this._options.magFilter) {
             throw new TextureError(
                 'Min and mag filters are required',

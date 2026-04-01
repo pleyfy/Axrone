@@ -81,14 +81,16 @@ describe('PhysicsWorld2D Integration', () => {
         it('creates and destroys multiple bodies', () => {
             const bodies = [];
             for (let i = 0; i < 10; i++) {
-                bodies.push(world.createBody({
-                    type: BodyType.Dynamic,
-                    position: { x: i, y: 0 },
-                    rotation: 0,
-                }));
+                bodies.push(
+                    world.createBody({
+                        type: BodyType.Dynamic,
+                        position: { x: i, y: 0 },
+                        rotation: 0,
+                    })
+                );
             }
 
-            bodies.forEach(id => world.destroyBody(id));
+            bodies.forEach((id) => world.destroyBody(id));
         });
     });
 
@@ -559,11 +561,13 @@ describe('PhysicsWorld2D Integration', () => {
         it('handles many constraints', () => {
             const bodies = [];
             for (let i = 0; i < 20; i++) {
-                bodies.push(world.createBody({
-                    type: BodyType.Dynamic,
-                    position: { x: i, y: 0 },
-                    rotation: 0,
-                }));
+                bodies.push(
+                    world.createBody({
+                        type: BodyType.Dynamic,
+                        position: { x: i, y: 0 },
+                        rotation: 0,
+                    })
+                );
             }
 
             for (let i = 0; i < bodies.length - 1; i++) {

@@ -149,7 +149,7 @@ export interface SizeConfiguration extends ModuleConfiguration {
     readonly sizeY: CurveConfiguration;
     readonly sizeZ: CurveConfiguration;
     readonly separateAxes: boolean;
-    
+
     readonly minSize: number;
     readonly maxSize: number;
     readonly speedInfluence: number;

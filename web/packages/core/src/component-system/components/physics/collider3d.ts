@@ -1,9 +1,7 @@
 import { Vec3, Quat, type IVec3Like, type IQuatLike } from '@axrone/numeric';
 import { Component } from '../../core/component';
 import type { Rigidbody3D } from './rigidbody3d';
-import type {
-    ShapeId3D,
-} from '../../../physics/types/physics-3d';
+import type { ShapeId3D } from '../../../physics/types/physics-3d';
 import type { IMaterial, Friction, Restitution, Density } from '../../../physics/types';
 import type { PhysicsWorld3D, ShapeManager3D } from '../../../physics/core/physics-world-3d';
 

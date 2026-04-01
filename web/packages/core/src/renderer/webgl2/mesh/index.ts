@@ -18,5 +18,5 @@ export type {
     VertexAttributeType,
     IndexType,
     BufferUsage,
-    PrimitiveTopology
+    PrimitiveTopology,
 } from './interfaces';

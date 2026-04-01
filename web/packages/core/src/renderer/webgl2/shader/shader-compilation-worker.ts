@@ -67,7 +67,7 @@ export class ShaderCompilationWorker {
     compile(
         source: string,
         type: 'vertex' | 'fragment',
-        options?: { defines?: Record<string, any>; version?: string; precision?: string; }
+        options?: { defines?: Record<string, any>; version?: string; precision?: string }
     ): Promise<string> {
         return new Promise((resolve, reject) => {
             const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -78,7 +78,7 @@ export class ShaderCompilationWorker {
                 id,
                 source,
                 type,
-                options
+                options,
             });
         });
     }

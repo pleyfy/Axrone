@@ -130,9 +130,13 @@ export class ShapeManager2D implements Disposable {
 
         const center = def.center ?? def.offset ?? { x: 0, y: 0 };
         const halfWidth = def.halfWidth ?? (def.width !== undefined ? def.width / 2 : undefined);
-        const halfHeight = def.halfHeight ?? (def.height !== undefined ? def.height / 2 : undefined);
+        const halfHeight =
+            def.halfHeight ?? (def.height !== undefined ? def.height / 2 : undefined);
         if (halfWidth === undefined || halfHeight === undefined) {
-            throw new ShapeError('Box must have halfWidth/halfHeight or width/height', ShapeManagerError.INVALID_SHAPE);
+            throw new ShapeError(
+                'Box must have halfWidth/halfHeight or width/height',
+                ShapeManagerError.INVALID_SHAPE
+            );
         }
         this._boxData[offset] = center.x;
         this._boxData[offset + 1] = center.y;

@@ -23,7 +23,7 @@ function generateKey(): SingletonKey {
 }
 
 function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, key: SingletonKey): Promise<T> {
@@ -33,11 +33,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number, key: SingletonKey): Pro
         }, ms);
 
         promise
-            .then(value => {
+            .then((value) => {
                 clearTimeout(timeoutId);
                 resolve(value);
             })
-            .catch(error => {
+            .catch((error) => {
                 clearTimeout(timeoutId);
                 reject(error);
             });

@@ -4,7 +4,7 @@ import {
     IShaderVariant,
     ShaderUniformValue,
     IUniformBlock,
-    ShaderDataType
+    ShaderDataType,
 } from './interfaces';
 
 import { getWebGLType, getShaderDataTypeComponentCount } from './utils';
@@ -18,7 +18,11 @@ class UniformUploader {
         this.gl = gl;
     }
 
-    uploadUniform(location: WebGLUniformLocation, type: ShaderDataType, value: ShaderUniformValue): void {
+    uploadUniform(
+        location: WebGLUniformLocation,
+        type: ShaderDataType,
+        value: ShaderUniformValue
+    ): void {
         if (value === null || value === undefined) {
             return;
         }
@@ -167,7 +171,6 @@ export class ShaderInstance implements IShaderInstance {
     }
 
     bind(gl: WebGL2RenderingContext): void {
-
         if (this.lastProgramBind !== this.variant.shader.program) {
             gl.useProgram(this.variant.shader.program);
             this.lastProgramBind = this.variant.shader.program as any;
@@ -183,7 +186,6 @@ export class ShaderInstance implements IShaderInstance {
     }
 
     unbind(gl: WebGL2RenderingContext): void {
-
         for (const unit of this.boundTextureUnits) {
             gl.activeTexture(gl.TEXTURE0 + unit);
             gl.bindTexture(gl.TEXTURE_2D, null);
@@ -212,12 +214,11 @@ export class ShaderInstance implements IShaderInstance {
             uniformUpdateCount: this.uniformUpdateCount,
             dirtyUniforms: this.dirtyUniforms.size,
             dirtyBuffers: this.dirtyBuffers.size,
-            boundTextures: this.textures.size
+            boundTextures: this.textures.size,
         };
     }
 
     private initializeDefaultValues(): void {
-
         for (const uniform of this.shader.configuration.uniforms) {
             if (uniform.defaultValue !== undefined) {
                 this.uniforms.set(uniform.name, uniform.defaultValue);
@@ -241,8 +242,9 @@ export class ShaderInstance implements IShaderInstance {
             const value = this.uniforms.get(uniformName);
 
             if (location && value !== undefined) {
-
-                const uniformConfig = this.shader.configuration.uniforms.find(u => u.name === uniformName);
+                const uniformConfig = this.shader.configuration.uniforms.find(
+                    (u) => u.name === uniformName
+                );
                 if (uniformConfig) {
                     this.uniformUploader.uploadUniform(location, uniformConfig.type, value);
                     this.uniformUpdateCount++;
@@ -277,13 +279,16 @@ export class ShaderInstance implements IShaderInstance {
             const buffer = this.uniformBuffers.get(bufferName);
 
             if (block && buffer) {
-
                 let glBuffer = this.gl.createBuffer();
                 if (glBuffer) {
                     this.gl.bindBuffer(this.gl.UNIFORM_BUFFER, glBuffer);
 
-                    const bufferData = buffer as any; 
-                    this.gl.bufferData(this.gl.UNIFORM_BUFFER, bufferData.buffer || bufferData, this.gl.DYNAMIC_DRAW);
+                    const bufferData = buffer as any;
+                    this.gl.bufferData(
+                        this.gl.UNIFORM_BUFFER,
+                        bufferData.buffer || bufferData,
+                        this.gl.DYNAMIC_DRAW
+                    );
                     this.gl.bindBufferBase(this.gl.UNIFORM_BUFFER, block.binding, glBuffer);
                 }
             }
@@ -331,7 +336,7 @@ export class ShaderInstance implements IShaderInstance {
         if (state.colorWrite) {
             gl.colorMask(
                 state.colorWrite[0],
-                state.colorWrite[1], 
+                state.colorWrite[1],
                 state.colorWrite[2],
                 state.colorWrite[3]
             );
@@ -340,15 +345,24 @@ export class ShaderInstance implements IShaderInstance {
 
     private getDepthFunc(gl: WebGL2RenderingContext, func: string): number {
         switch (func) {
-            case 'never': return gl.NEVER;
-            case 'less': return gl.LESS;
-            case 'equal': return gl.EQUAL;
-            case 'lequal': return gl.LEQUAL;
-            case 'greater': return gl.GREATER;
-            case 'notequal': return gl.NOTEQUAL;
-            case 'gequal': return gl.GEQUAL;
-            case 'always': return gl.ALWAYS;
-            default: return gl.LESS;
+            case 'never':
+                return gl.NEVER;
+            case 'less':
+                return gl.LESS;
+            case 'equal':
+                return gl.EQUAL;
+            case 'lequal':
+                return gl.LEQUAL;
+            case 'greater':
+                return gl.GREATER;
+            case 'notequal':
+                return gl.NOTEQUAL;
+            case 'gequal':
+                return gl.GEQUAL;
+            case 'always':
+                return gl.ALWAYS;
+            default:
+                return gl.LESS;
         }
     }
 
@@ -407,7 +421,6 @@ export class ShaderInstance implements IShaderInstance {
     }
 
     private getWebGLContext(program: WebGLProgram): WebGL2RenderingContext {
-
         const canvas = document.createElement('canvas');
         const gl = canvas.getContext('webgl2');
         if (!gl) {

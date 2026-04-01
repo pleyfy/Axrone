@@ -1,5 +1,5 @@
-import { 
-    ShaderManager, 
+import {
+    ShaderManager,
     WebGLShaderCompiler,
     MaterialInstance,
     IShaderConfiguration,
@@ -8,13 +8,12 @@ import {
     ShaderStage,
     BlendMode,
     CullMode,
-    DepthFunc
+    DepthFunc,
 } from '../index';
 
 import { StandardUnlitShader } from '../templates/standard-shaders';
 
 async function basicShaderUsage() {
-
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) {
@@ -26,7 +25,7 @@ async function basicShaderUsage() {
     const shader = await shaderManager.loadFromConfiguration(StandardUnlitShader);
 
     const material = shaderManager.createMaterial('Standard/Unlit', {
-        u_Color: [1.0, 0.5, 0.0, 1.0], 
+        u_Color: [1.0, 0.5, 0.0, 1.0],
     });
 
     material.enableKeyword('MAIN_TEXTURE');
@@ -36,87 +35,87 @@ async function basicShaderUsage() {
 }
 
 const CustomEffectShader: IShaderConfiguration = {
-    name: "Custom/Effect",
-    version: "1.0.0",
-    description: "Custom effect shader with time-based animation",
-    author: "Your Name",
-    tags: ["custom", "effect", "animated"],
-    category: "Effects",
+    name: 'Custom/Effect',
+    version: '1.0.0',
+    description: 'Custom effect shader with time-based animation',
+    author: 'Your Name',
+    tags: ['custom', 'effect', 'animated'],
+    category: 'Effects',
 
     attributes: [
         {
-            name: "a_Position",
+            name: 'a_Position',
             type: ShaderDataType.VEC3,
             qualifier: ShaderQualifier.ATTRIBUTE,
             binding: 0,
-            semantic: "POSITION"
+            semantic: 'POSITION',
         },
         {
-            name: "a_TexCoord",
+            name: 'a_TexCoord',
             type: ShaderDataType.VEC2,
             qualifier: ShaderQualifier.ATTRIBUTE,
             binding: 1,
-            semantic: "TEXCOORD"
-        }
+            semantic: 'TEXCOORD',
+        },
     ],
 
     uniforms: [
         {
-            name: "u_MVPMatrix",
+            name: 'u_MVPMatrix',
             type: ShaderDataType.MAT4,
             qualifier: ShaderQualifier.UNIFORM,
-            category: "frame"
+            category: 'frame',
         },
         {
-            name: "u_Time",
+            name: 'u_Time',
             type: ShaderDataType.FLOAT,
             qualifier: ShaderQualifier.UNIFORM,
-            category: "frame",
-            defaultValue: 0.0
+            category: 'frame',
+            defaultValue: 0.0,
         },
         {
-            name: "u_Color",
+            name: 'u_Color',
             type: ShaderDataType.VEC4,
             qualifier: ShaderQualifier.UNIFORM,
-            category: "material",
-            defaultValue: [1.0, 1.0, 1.0, 1.0]
+            category: 'material',
+            defaultValue: [1.0, 1.0, 1.0, 1.0],
         },
         {
-            name: "u_WaveAmplitude",
+            name: 'u_WaveAmplitude',
             type: ShaderDataType.FLOAT,
             qualifier: ShaderQualifier.UNIFORM,
-            category: "material",
-            defaultValue: 0.1
+            category: 'material',
+            defaultValue: 0.1,
         },
         {
-            name: "u_WaveFrequency",
+            name: 'u_WaveFrequency',
             type: ShaderDataType.FLOAT,
             qualifier: ShaderQualifier.UNIFORM,
-            category: "material",
-            defaultValue: 2.0
-        }
+            category: 'material',
+            defaultValue: 2.0,
+        },
     ],
 
     textures: [
         {
-            name: "u_MainTexture",
-            type: "texture2D",
+            name: 'u_MainTexture',
+            type: 'texture2D',
             slot: 0,
-            defaultTexture: "white"
-        }
+            defaultTexture: 'white',
+        },
     ],
 
     varyings: [
         {
-            name: "v_TexCoord",
+            name: 'v_TexCoord',
             type: ShaderDataType.VEC2,
-            qualifier: ShaderQualifier.VARYING
-        }
+            qualifier: ShaderQualifier.VARYING,
+        },
     ],
 
     passes: [
         {
-            name: "WaveEffect",
+            name: 'WaveEffect',
             stage: [ShaderStage.VERTEX, ShaderStage.FRAGMENT],
             vertexShader: `
 void main() {
@@ -151,19 +150,19 @@ void main() {
                 depthWrite: true,
                 depthFunc: DepthFunc.LEQUAL,
                 cullMode: CullMode.BACK,
-                blendMode: BlendMode.OPAQUE
-            }
-        }
+                blendMode: BlendMode.OPAQUE,
+            },
+        },
     ],
 
-    keywords: ["WAVE_EFFECT", "MAIN_TEXTURE", "ANIMATED_COLOR"],
+    keywords: ['WAVE_EFFECT', 'MAIN_TEXTURE', 'ANIMATED_COLOR'],
 
     optimization: {
-        level: "basic",
+        level: 'basic',
         preservePrecision: true,
         removeUnusedVariables: true,
-        inlineConstants: true
-    }
+        inlineConstants: true,
+    },
 };
 
 async function advancedShaderUsage() {
@@ -178,16 +177,15 @@ async function advancedShaderUsage() {
     const customShader = await shaderManager.loadFromConfiguration(CustomEffectShader);
 
     const material = shaderManager.createMaterial('Custom/Effect', {
-        u_Color: [0.2, 0.8, 1.0, 1.0], 
+        u_Color: [0.2, 0.8, 1.0, 1.0],
         u_WaveAmplitude: 0.05,
-        u_WaveFrequency: 4.0
+        u_WaveFrequency: 4.0,
     });
 
     material.enableKeyword('WAVE_EFFECT');
     material.enableKeyword('ANIMATED_COLOR');
 
     function animate(time: number) {
-
         material.setProperty('u_Time', time * 0.001);
 
         const amplitude = Math.sin(time * 0.002) * 0.1 + 0.05;
@@ -318,7 +316,7 @@ async function loadShaderFromJSON() {
 
     const textMaterial = shaderManager.createMaterial('UI/Text', {
         u_TextColor: [1.0, 1.0, 1.0, 1.0],
-        u_Smoothing: 0.05
+        u_Smoothing: 0.05,
     });
 
     textMaterial.enableKeyword('SDF_TEXT');
@@ -328,7 +326,6 @@ async function loadShaderFromJSON() {
 }
 
 function monitorShaderPerformance(shaderManager: ShaderManager) {
-
     const cacheInfo = shaderManager.getCacheInfo();
 
     console.log('Shader Cache Statistics:');
@@ -340,7 +337,9 @@ function monitorShaderPerformance(shaderManager: ShaderManager) {
 
     console.log('\nMost Accessed Shaders:');
     cacheInfo.shaders.slice(0, 5).forEach((shader, index) => {
-        console.log(`${index + 1}. ${shader.name} (${shader.accessCount} accesses, ${shader.variants} variants)`);
+        console.log(
+            `${index + 1}. ${shader.name} (${shader.accessCount} accesses, ${shader.variants} variants)`
+        );
     });
 }
 
@@ -349,5 +348,5 @@ export {
     advancedShaderUsage,
     loadShaderFromJSON,
     monitorShaderPerformance,
-    CustomEffectShader
+    CustomEffectShader,
 };

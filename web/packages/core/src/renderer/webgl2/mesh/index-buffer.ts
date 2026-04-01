@@ -1,5 +1,11 @@
 import { IBuffer, IBufferFactory, createBufferFactory, GLBufferUsage } from '../buffer';
-import { IIndexBuffer, IIndexBufferConfig, IndexBufferError, IndexType, BufferUsage } from './interfaces';
+import {
+    IIndexBuffer,
+    IIndexBufferConfig,
+    IndexBufferError,
+    IndexType,
+    BufferUsage,
+} from './interfaces';
 import { ByteBuffer } from '@axrone/utility';
 
 export class WebGLIndexBuffer implements IIndexBuffer {
@@ -68,7 +74,6 @@ export class WebGLIndexBuffer implements IIndexBuffer {
 
     setData(data: ArrayBufferView | ArrayBuffer | ByteBuffer): IndexBufferError {
         try {
-
             if (this.buffer) {
                 this.buffer.dispose();
                 this.buffer = null;
@@ -79,8 +84,8 @@ export class WebGLIndexBuffer implements IIndexBuffer {
             if (data instanceof ByteBuffer) {
                 const uint8Data = data.toUint8Array();
                 bufferData = uint8Data as unknown as BufferSource;
-                this._indexType = IndexType.UNSIGNED_SHORT; 
-                this._count = uint8Data.byteLength / 2; 
+                this._indexType = IndexType.UNSIGNED_SHORT;
+                this._count = uint8Data.byteLength / 2;
             } else if (data instanceof Uint16Array) {
                 this._indexType = IndexType.UNSIGNED_SHORT;
                 this._count = data.length;
@@ -90,7 +95,6 @@ export class WebGLIndexBuffer implements IIndexBuffer {
                 this._count = data.length;
                 bufferData = data as BufferSource;
             } else if (data instanceof ArrayBuffer) {
-
                 this._indexType = IndexType.UNSIGNED_SHORT;
                 this._count = data.byteLength / 2;
                 bufferData = data as BufferSource;
@@ -113,16 +117,19 @@ export class WebGLIndexBuffer implements IIndexBuffer {
 
     private convertToGLUsage(usage: BufferUsage): number {
         switch (usage) {
-            case BufferUsage.STATIC_DRAW: return this.gl.STATIC_DRAW;
-            case BufferUsage.DYNAMIC_DRAW: return this.gl.DYNAMIC_DRAW;
-            case BufferUsage.STREAM_DRAW: return this.gl.STREAM_DRAW;
-            default: return this.gl.STATIC_DRAW;
+            case BufferUsage.STATIC_DRAW:
+                return this.gl.STATIC_DRAW;
+            case BufferUsage.DYNAMIC_DRAW:
+                return this.gl.DYNAMIC_DRAW;
+            case BufferUsage.STREAM_DRAW:
+                return this.gl.STREAM_DRAW;
+            default:
+                return this.gl.STATIC_DRAW;
         }
     }
 
     update(data: ArrayBuffer | ArrayBufferView, offset: number = 0): this {
         if (data instanceof ArrayBuffer) {
-
             const view = new Uint8Array(data);
             this.updateRange(view, offset);
         } else {
@@ -132,7 +139,6 @@ export class WebGLIndexBuffer implements IIndexBuffer {
     }
 
     resize(newSize: number): this {
-
         console.warn('IndexBuffer.resize not fully implemented');
         return this;
     }

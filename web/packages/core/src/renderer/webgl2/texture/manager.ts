@@ -14,7 +14,7 @@ import {
     WrapMode,
     TextureDataSource,
     TextureError,
-    TextureErrorCode
+    TextureErrorCode,
 } from './interfaces';
 import { WebGLTexture } from './texture';
 import { WebGLTextureSampler, SamplerFactory } from './sampler';
@@ -34,10 +34,10 @@ export class WebGLTextureManager implements ITextureManager {
         cacheMisses: 0,
         texturesByFormat: new Map<TextureFormat, number>(),
         texturesByDimension: new Map<TextureDimension, number>(),
-        texturesByUsage: new Map<TextureUsage, number>()
+        texturesByUsage: new Map<TextureUsage, number>(),
     };
 
-    private _maxMemoryUsage: number = 512 * 1024 * 1024; 
+    private _maxMemoryUsage: number = 512 * 1024 * 1024;
     private _enableCache: boolean = true;
 
     constructor(gl: WebGL2RenderingContext) {
@@ -54,38 +54,53 @@ export class WebGLTextureManager implements ITextureManager {
         return texture;
     }
 
-    public createTexture2D(width: number, height: number, format: TextureFormat, data?: TextureDataSource): ITexture {
+    public createTexture2D(
+        width: number,
+        height: number,
+        format: TextureFormat,
+        data?: TextureDataSource
+    ): ITexture {
         const options: ITextureCreateOptions = {
             width,
             height,
             format,
             dimension: TextureDimension.TEXTURE_2D,
-            usage: TextureUsage.STATIC
+            usage: TextureUsage.STATIC,
         };
 
         return this.createTexture(options, data);
     }
 
-    public createTexture3D(width: number, height: number, depth: number, format: TextureFormat, data?: TextureDataSource): ITexture {
+    public createTexture3D(
+        width: number,
+        height: number,
+        depth: number,
+        format: TextureFormat,
+        data?: TextureDataSource
+    ): ITexture {
         const options: ITextureCreateOptions = {
             width,
             height,
             depth,
             format,
             dimension: TextureDimension.TEXTURE_3D,
-            usage: TextureUsage.STATIC
+            usage: TextureUsage.STATIC,
         };
 
         return this.createTexture(options, data);
     }
 
-    public createTextureCube(size: number, format: TextureFormat, data?: TextureDataSource[]): ITexture {
+    public createTextureCube(
+        size: number,
+        format: TextureFormat,
+        data?: TextureDataSource[]
+    ): ITexture {
         const options: ITextureCreateOptions = {
             width: size,
             height: size,
             format,
             dimension: TextureDimension.TEXTURE_CUBE,
-            usage: TextureUsage.STATIC
+            usage: TextureUsage.STATIC,
         };
 
         const texture = new WebGLTexture(this._gl, options);
@@ -102,14 +117,20 @@ export class WebGLTextureManager implements ITextureManager {
         return texture;
     }
 
-    public createTextureArray(width: number, height: number, layers: number, format: TextureFormat, data?: TextureDataSource[]): ITexture {
+    public createTextureArray(
+        width: number,
+        height: number,
+        layers: number,
+        format: TextureFormat,
+        data?: TextureDataSource[]
+    ): ITexture {
         const options: ITextureCreateOptions = {
             width,
             height,
             arrayLayers: layers,
             format,
             dimension: TextureDimension.TEXTURE_2D_ARRAY,
-            usage: TextureUsage.STATIC
+            usage: TextureUsage.STATIC,
         };
 
         const texture = new WebGLTexture(this._gl, options);
@@ -137,9 +158,10 @@ export class WebGLTextureManager implements ITextureManager {
         if (!this._samplerCache.has(cacheKey)) {
             const options: ITextureSamplerOptions = {
                 minFilter: filterMode,
-                magFilter: filterMode === FilterMode.LINEAR_MIPMAP_LINEAR ? FilterMode.LINEAR : filterMode,
+                magFilter:
+                    filterMode === FilterMode.LINEAR_MIPMAP_LINEAR ? FilterMode.LINEAR : filterMode,
                 wrapS: wrapMode,
-                wrapT: wrapMode
+                wrapT: wrapMode,
             };
 
             const sampler = new WebGLTextureSampler(this._gl, options);
@@ -149,8 +171,10 @@ export class WebGLTextureManager implements ITextureManager {
         return this._samplerCache.get(cacheKey)!;
     }
 
-    public async loadFromFile(path: string, options?: Partial<ITextureCreateOptions>): Promise<ITexture> {
-
+    public async loadFromFile(
+        path: string,
+        options?: Partial<ITextureCreateOptions>
+    ): Promise<ITexture> {
         if (this._loadPromises.has(path)) {
             return this._loadPromises.get(path)!;
         }
@@ -166,12 +190,17 @@ export class WebGLTextureManager implements ITextureManager {
         }
     }
 
-    public async loadFromURL(url: string, options?: Partial<ITextureCreateOptions>): Promise<ITexture> {
+    public async loadFromURL(
+        url: string,
+        options?: Partial<ITextureCreateOptions>
+    ): Promise<ITexture> {
         return this.loadFromFile(url, options);
     }
 
-    public async loadCubeFromFiles(paths: [string, string, string, string, string, string]): Promise<ITexture> {
-        const loadPromises = paths.map(path => this._loadImageFromPath(path));
+    public async loadCubeFromFiles(
+        paths: [string, string, string, string, string, string]
+    ): Promise<ITexture> {
+        const loadPromises = paths.map((path) => this._loadImageFromPath(path));
         const images = await Promise.all(loadPromises);
 
         const firstImage = images[0];
@@ -202,7 +231,6 @@ export class WebGLTextureManager implements ITextureManager {
     }
 
     public clearCache(): void {
-
         for (const texture of this._textureCache.values()) {
             if (!texture.isDisposed) {
                 texture.dispose();
@@ -242,7 +270,7 @@ export class WebGLTextureManager implements ITextureManager {
 
     public getNormalTexture(): ITexture {
         return this._getOrCreateDefaultTexture('normal', () => {
-            const data = new Uint8Array([128, 128, 255, 255]); 
+            const data = new Uint8Array([128, 128, 255, 255]);
             return this.createTexture2D(1, 1, TextureFormat.RGBA8, data);
         });
     }
@@ -258,10 +286,10 @@ export class WebGLTextureManager implements ITextureManager {
                     const isBlack = (x + y) % 2 === 0;
                     const color = isBlack ? 0 : 255;
 
-                    data[index] = color;     
-                    data[index + 1] = color; 
-                    data[index + 2] = color; 
-                    data[index + 3] = 255;   
+                    data[index] = color;
+                    data[index + 1] = color;
+                    data[index + 2] = color;
+                    data[index + 3] = 255;
                 }
             }
 
@@ -277,8 +305,11 @@ export class WebGLTextureManager implements ITextureManager {
             texturesByDimension: new Map(this._stats.texturesByDimension),
             texturesByUsage: new Map(this._stats.texturesByUsage),
             cacheHitRate: this._stats.cacheHits / (this._stats.cacheHits + this._stats.cacheMisses),
-            averageTextureSize: this._stats.totalTextures > 0 ? this._stats.totalMemoryUsage / this._stats.totalTextures : 0,
-            largestTexture: this._findLargestTexture()
+            averageTextureSize:
+                this._stats.totalTextures > 0
+                    ? this._stats.totalMemoryUsage / this._stats.totalTextures
+                    : 0,
+            largestTexture: this._findLargestTexture(),
         };
     }
 
@@ -320,9 +351,7 @@ export class WebGLTextureManager implements ITextureManager {
         return new TextureBuilder(this);
     }
 
-    private _initializeDefaultTextures(): void {
-
-    }
+    private _initializeDefaultTextures(): void {}
 
     private _registerTexture(texture: ITexture): void {
         this._stats.totalTextures++;
@@ -396,7 +425,10 @@ export class WebGLTextureManager implements ITextureManager {
         return largest;
     }
 
-    private async _loadTextureFromPath(path: string, options?: Partial<ITextureCreateOptions>): Promise<ITexture> {
+    private async _loadTextureFromPath(
+        path: string,
+        options?: Partial<ITextureCreateOptions>
+    ): Promise<ITexture> {
         try {
             const image = await this._loadImageFromPath(path);
 
@@ -407,7 +439,7 @@ export class WebGLTextureManager implements ITextureManager {
                 dimension: TextureDimension.TEXTURE_2D,
                 usage: TextureUsage.STATIC,
                 mipLevels: 1,
-                ...options
+                ...options,
             };
 
             const texture = this.createTexture(createOptions, image);
@@ -550,7 +582,6 @@ class TextureBuilder implements ITextureBuilder {
     }
 
     public build(): ITexture {
-
         if (!this._options.width || !this._options.height) {
             throw new TextureError(
                 'Width and height are required',

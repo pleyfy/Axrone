@@ -29,16 +29,20 @@ export class WebGLVertexBuffer implements IVertexBuffer {
         this.buffer = this.bufferFactory.createArrayBuffer({
             initialData: data as BufferSource,
             usage: this.convertUsage(usage),
-            label: `VertexBuffer_${id}`
+            label: `VertexBuffer_${id}`,
         });
     }
 
     private convertUsage(usage: BufferUsage): GLBufferUsage {
         switch (usage) {
-            case BufferUsage.STATIC_DRAW: return WebGL2RenderingContext.STATIC_DRAW;
-            case BufferUsage.DYNAMIC_DRAW: return WebGL2RenderingContext.DYNAMIC_DRAW;
-            case BufferUsage.STREAM_DRAW: return WebGL2RenderingContext.STREAM_DRAW;
-            default: return WebGL2RenderingContext.STATIC_DRAW;
+            case BufferUsage.STATIC_DRAW:
+                return WebGL2RenderingContext.STATIC_DRAW;
+            case BufferUsage.DYNAMIC_DRAW:
+                return WebGL2RenderingContext.DYNAMIC_DRAW;
+            case BufferUsage.STREAM_DRAW:
+                return WebGL2RenderingContext.STREAM_DRAW;
+            default:
+                return WebGL2RenderingContext.STATIC_DRAW;
         }
     }
 
@@ -52,7 +56,10 @@ export class WebGLVertexBuffer implements IVertexBuffer {
 
     public bind(): this {
         if (this.isDisposed) {
-            throw new MeshError('Cannot bind disposed vertex buffer', MeshErrorCode.DISPOSED_RESOURCE_ACCESS);
+            throw new MeshError(
+                'Cannot bind disposed vertex buffer',
+                MeshErrorCode.DISPOSED_RESOURCE_ACCESS
+            );
         }
         this.buffer.bind();
         return this;
@@ -65,7 +72,10 @@ export class WebGLVertexBuffer implements IVertexBuffer {
 
     public update(data: ArrayBuffer | ArrayBufferView, offset: number = 0): this {
         if (this.isDisposed) {
-            throw new MeshError('Cannot update disposed vertex buffer', MeshErrorCode.DISPOSED_RESOURCE_ACCESS);
+            throw new MeshError(
+                'Cannot update disposed vertex buffer',
+                MeshErrorCode.DISPOSED_RESOURCE_ACCESS
+            );
         }
         this.buffer.update(data as BufferSource, offset);
         return this;
@@ -73,7 +83,10 @@ export class WebGLVertexBuffer implements IVertexBuffer {
 
     public resize(newSize: number): this {
         if (this.isDisposed) {
-            throw new MeshError('Cannot resize disposed vertex buffer', MeshErrorCode.DISPOSED_RESOURCE_ACCESS);
+            throw new MeshError(
+                'Cannot resize disposed vertex buffer',
+                MeshErrorCode.DISPOSED_RESOURCE_ACCESS
+            );
         }
         this.buffer.resize(newSize, this.convertUsage(this.usage));
         return this;

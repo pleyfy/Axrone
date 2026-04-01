@@ -200,7 +200,10 @@ export const isGameLoopSnapshot = (value: unknown): value is GameLoopSnapshot<un
 
     return (
         version === SNAPSHOT_VERSION &&
-        (status === 'idle' || status === 'running' || status === 'paused' || status === 'stopped') &&
+        (status === 'idle' ||
+            status === 'running' ||
+            status === 'paused' ||
+            status === 'stopped') &&
         isSafeNonNegativeInteger(frame) &&
         isNonNegativeFiniteNumber(elapsed) &&
         isNonNegativeFiniteNumber(accumulator) &&
@@ -423,8 +426,7 @@ export class GameLoop<TState> implements GameLoopController<TState> {
                 'loop.invalid-system',
                 this._resolveMessage({
                     code: 'loop.invalid-system',
-                    reason:
-                        'A game loop system must define a non-empty id, optional numeric priority, optional boolean enabled flag, and function hooks when provided',
+                    reason: 'A game loop system must define a non-empty id, optional numeric priority, optional boolean enabled flag, and function hooks when provided',
                 })
             );
         }
@@ -665,7 +667,13 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         this._elapsed += scaledDelta;
         this._accumulator += scaledDelta;
 
-        this._syncBaseContext(this._beforeUpdateContext, timestamp, scaledDelta, unscaledDelta, this._accumulator);
+        this._syncBaseContext(
+            this._beforeUpdateContext,
+            timestamp,
+            scaledDelta,
+            unscaledDelta,
+            this._accumulator
+        );
         this._invokePhase('before-update', this._beforeUpdateContext);
 
         if (this._status !== 'running') {
@@ -705,7 +713,13 @@ export class GameLoop<TState> implements GameLoopController<TState> {
             this._accumulator = remainder;
         }
 
-        this._syncBaseContext(this._updateContext, timestamp, scaledDelta, unscaledDelta, this._accumulator);
+        this._syncBaseContext(
+            this._updateContext,
+            timestamp,
+            scaledDelta,
+            unscaledDelta,
+            this._accumulator
+        );
         this._invokePhase('update', this._updateContext);
 
         if (this._status !== 'running') {
@@ -713,7 +727,13 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         }
 
         const alpha = normalizeAlpha(this._accumulator / this._fixedDelta);
-        this._syncBaseContext(this._renderContext, timestamp, scaledDelta, unscaledDelta, this._accumulator);
+        this._syncBaseContext(
+            this._renderContext,
+            timestamp,
+            scaledDelta,
+            unscaledDelta,
+            this._accumulator
+        );
         this._renderContext.alpha = alpha;
         this._invokePhase('render', this._renderContext);
 
@@ -790,10 +810,7 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         }
     }
 
-    private _handleSystemFailure(
-        error: unknown,
-        failure: GameLoopFailureContext<TState>
-    ): void {
+    private _handleSystemFailure(error: unknown, failure: GameLoopFailureContext<TState>): void {
         const wrappedError = new GameLoopSystemError(
             this._resolveMessage({
                 code: 'loop.system.failed',
@@ -873,7 +890,9 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         };
     }
 
-    private _createDisposeFailureContext(system: GameLoopSystem<TState>): GameLoopFailureContext<TState> {
+    private _createDisposeFailureContext(
+        system: GameLoopSystem<TState>
+    ): GameLoopFailureContext<TState> {
         return {
             system,
             phase: 'dispose',
@@ -886,7 +905,9 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         };
     }
 
-    private _createSnapshot<TSnapshotState>(state: TSnapshotState): GameLoopSnapshot<TSnapshotState> {
+    private _createSnapshot<TSnapshotState>(
+        state: TSnapshotState
+    ): GameLoopSnapshot<TSnapshotState> {
         return {
             version: SNAPSHOT_VERSION,
             status: this._status === 'disposed' ? 'stopped' : this._status,
@@ -912,8 +933,7 @@ export class GameLoop<TState> implements GameLoopController<TState> {
             throw new GameLoopSnapshotError(
                 this._resolveMessage({
                     code: 'loop.snapshot.invalid',
-                    reason:
-                        'A game loop snapshot must include a supported version, valid status, finite timings, and positive step configuration values',
+                    reason: 'A game loop snapshot must include a supported version, valid status, finite timings, and positive step configuration values',
                 })
             );
         }
@@ -1034,7 +1054,10 @@ export class GameLoop<TState> implements GameLoopController<TState> {
 
     private _safeNow(): number {
         try {
-            return this._assertNonNegativeFiniteNumber(this._scheduler.now(), 'loop.invalid-timestamp');
+            return this._assertNonNegativeFiniteNumber(
+                this._scheduler.now(),
+                'loop.invalid-timestamp'
+            );
         } catch {
             return Date.now();
         }
@@ -1069,10 +1092,7 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         );
     }
 
-    private _assertPositiveSafeInteger(
-        value: unknown,
-        code: 'loop.invalid-max-sub-steps'
-    ): number {
+    private _assertPositiveSafeInteger(value: unknown, code: 'loop.invalid-max-sub-steps'): number {
         if (isPositiveSafeInteger(value)) {
             return value;
         }
@@ -1121,7 +1141,9 @@ export class GameLoop<TState> implements GameLoopController<TState> {
     }
 
     private _resolveMessage(descriptor: GameLoopMessageDescriptor): string {
-        return this._messageResolver?.(descriptor, this._locale) ?? defaultMessageResolver(descriptor);
+        return (
+            this._messageResolver?.(descriptor, this._locale) ?? defaultMessageResolver(descriptor)
+        );
     }
 }
 

@@ -157,7 +157,7 @@ export class RayPrimitiveIntersector2D {
         return {
             hit,
             distance,
-            fraction: hit ? distance / maxDistance : 0
+            fraction: hit ? distance / maxDistance : 0,
         };
     }
 
@@ -170,7 +170,7 @@ export class RayPrimitiveIntersector2D {
         maxDistance: number
     ): IRayIntersection {
         const segmentHit = this.intersectSegment(origin, direction, p0, p1, maxDistance);
-        
+
         const p0Hit = this.intersectCircle(origin, direction, p0, radius, maxDistance);
         const p1Hit = this.intersectCircle(origin, direction, p1, radius, maxDistance);
 
@@ -379,7 +379,7 @@ export class RayPrimitiveIntersector3D {
         maxDistance: number
     ): IRayIntersection {
         const localOrigin = Vec3.subtract(origin, center);
-        
+
         const invDir = Vec3.create(
             Math.abs(direction.x) > EPSILON ? 1.0 / direction.x : Number.MAX_VALUE,
             Math.abs(direction.y) > EPSILON ? 1.0 / direction.y : Number.MAX_VALUE,
@@ -416,7 +416,7 @@ export class RayPrimitiveIntersector3D {
         return {
             hit,
             distance,
-            fraction: hit ? distance / maxDistance : 0
+            fraction: hit ? distance / maxDistance : 0,
         };
     }
 
@@ -485,14 +485,14 @@ export class RayPrimitiveIntersector3D {
         if (discriminant < 0) {
             const sphere0 = this.intersectSphere(origin, direction, p0, radius, maxDistance);
             const sphere1 = this.intersectSphere(origin, direction, p1, radius, maxDistance);
-            
+
             if (sphere0.hit && (!sphere1.hit || sphere0.distance < sphere1.distance)) {
                 return sphere0;
             }
             if (sphere1.hit) {
                 return sphere1;
             }
-            
+
             return { hit: false, distance: 0, fraction: 0 };
         }
 
@@ -523,7 +523,7 @@ export class RayPrimitiveIntersector3D {
 
         const sphere0 = this.intersectSphere(origin, direction, p0, radius, maxDistance);
         const sphere1 = this.intersectSphere(origin, direction, p1, radius, maxDistance);
-        
+
         if (sphere0.hit && (!sphere1.hit || sphere0.distance < sphere1.distance)) {
             return sphere0;
         }

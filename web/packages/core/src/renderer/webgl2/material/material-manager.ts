@@ -1,13 +1,15 @@
-import { 
-    BaseMaterialComponent, 
-    MaterialType, 
+import {
+    BaseMaterialComponent,
+    MaterialType,
     MaterialConfig,
-    MaterialPropertyValue
+    MaterialPropertyValue,
 } from './base-material';
 import { StandardMaterialComponent } from './standard-material';
 import { PBRMaterialComponent } from './pbr-material';
 
-export type MaterialConstructor<T extends MaterialConfig = MaterialConfig> = new (config: T) => BaseMaterialComponent<T>;
+export type MaterialConstructor<T extends MaterialConfig = MaterialConfig> = new (
+    config: T
+) => BaseMaterialComponent<T>;
 
 export interface MaterialFactoryEntry {
     readonly type: MaterialType;
@@ -19,7 +21,11 @@ export interface MaterialFactoryEntry {
 export interface MaterialEvents {
     materialCreated: { material: BaseMaterialComponent; type: MaterialType };
     materialDestroyed: { materialId: string; type: MaterialType };
-    materialModified: { material: BaseMaterialComponent; property: string; value: MaterialPropertyValue };
+    materialModified: {
+        material: BaseMaterialComponent;
+        property: string;
+        value: MaterialPropertyValue;
+    };
     materialCloned: { original: BaseMaterialComponent; clone: BaseMaterialComponent };
 }
 
@@ -33,8 +39,8 @@ export class MaterialManager {
     private readonly _materialsByType = new Map<MaterialType, Set<BaseMaterialComponent>>();
     private readonly _factory = new Map<MaterialType, MaterialFactoryEntry>();
     private readonly _eventListeners = new Map<keyof MaterialEvents, Set<MaterialEventListener>>();
-    private readonly _resourceTracker = new Map<string, number>(); 
-    private readonly _cacheTimeout: number = 60000; 
+    private readonly _resourceTracker = new Map<string, number>();
+    private readonly _cacheTimeout: number = 60000;
     private readonly _cleanupInterval: NodeJS.Timeout;
 
     private constructor() {
@@ -70,7 +76,7 @@ export class MaterialManager {
             type,
             constructor: constructor as MaterialConstructor,
             defaultConfig,
-            description
+            description,
         });
 
         console.log(`✅ Material type '${type}' registered successfully`);
@@ -115,11 +121,10 @@ export class MaterialManager {
         }
 
         try {
-
-            const finalConfig = { 
-                ...factoryEntry.defaultConfig, 
+            const finalConfig = {
+                ...factoryEntry.defaultConfig,
                 ...config,
-                materialType: type
+                materialType: type,
             } as T;
 
             const material = new factoryEntry.constructor(finalConfig) as BaseMaterialComponent<T>;
@@ -137,7 +142,6 @@ export class MaterialManager {
 
             console.log(`✅ Material '${material.id}' of type '${type}' created successfully`);
             return material;
-
         } catch (error) {
             console.error(`❌ Failed to create material of type ${type}:`, error);
             return null;
@@ -165,10 +169,11 @@ export class MaterialManager {
         }
 
         try {
-
             const refCount = this._resourceTracker.get(id) || 0;
             if (refCount > 1) {
-                console.warn(`Material ${id} still has ${refCount} references. Force destroying...`);
+                console.warn(
+                    `Material ${id} still has ${refCount} references. Force destroying...`
+                );
             }
 
             this._materials.delete(id);
@@ -184,14 +189,13 @@ export class MaterialManager {
 
             material.onDestroy();
 
-            this._emitEvent('materialDestroyed', { 
-                materialId: id, 
-                type: material.materialType 
+            this._emitEvent('materialDestroyed', {
+                materialId: id,
+                type: material.materialType,
             });
 
             console.log(`✅ Material '${id}' destroyed successfully`);
             return true;
-
         } catch (error) {
             console.error(`❌ Failed to destroy material ${id}:`, error);
             return false;
@@ -206,11 +210,9 @@ export class MaterialManager {
         }
 
         try {
-
             const clone = original.clone();
 
             if (newId) {
-
                 (clone as any)._id = newId;
             }
 
@@ -227,7 +229,6 @@ export class MaterialManager {
 
             console.log(`✅ Material '${id}' cloned successfully as '${clone.id}'`);
             return clone;
-
         } catch (error) {
             console.error(`❌ Failed to clone material ${id}:`, error);
             return null;
@@ -253,7 +254,6 @@ export class MaterialManager {
 
         const currentCount = this._resourceTracker.get(id) || 0;
         if (currentCount <= 1) {
-
             console.log(`Material ${id} has no more references - eligible for cleanup`);
             this._resourceTracker.set(id, 0);
             return false;
@@ -287,10 +287,7 @@ export class MaterialManager {
         }
     }
 
-    private _emitEvent<T extends keyof MaterialEvents>(
-        event: T,
-        data: MaterialEvents[T]
-    ): void {
+    private _emitEvent<T extends keyof MaterialEvents>(event: T, data: MaterialEvents[T]): void {
         const listeners = this._eventListeners.get(event);
         if (listeners) {
             for (const listener of listeners) {
@@ -315,21 +312,23 @@ export class MaterialManager {
             materialsByType[type] = materials.size;
         }
 
-        const totalReferences = Array.from(this._resourceTracker.values())
-            .reduce((sum, count) => sum + count, 0);
+        const totalReferences = Array.from(this._resourceTracker.values()).reduce(
+            (sum, count) => sum + count,
+            0
+        );
 
-        const memoryUsage = this._materials.size * 1024; 
+        const memoryUsage = this._materials.size * 1024;
 
         return {
             totalMaterials: this._materials.size,
             materialsByType,
             totalReferences,
-            memoryUsage
+            memoryUsage,
         };
     }
 
     public findMaterialsByProperty(
-        propertyName: string, 
+        propertyName: string,
         value?: MaterialPropertyValue
     ): BaseMaterialComponent[] {
         const results: BaseMaterialComponent[] = [];
@@ -358,7 +357,6 @@ export class MaterialManager {
     }
 
     private _registerBuiltInMaterials(): void {
-
         this.registerMaterialType(
             MaterialType.STANDARD,
             StandardMaterialComponent,
@@ -392,7 +390,6 @@ export class MaterialManager {
     }
 
     private _cleanup(): void {
-
         if (this._cleanupInterval) {
             clearInterval(this._cleanupInterval);
         }

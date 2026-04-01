@@ -1,10 +1,5 @@
 import { Vec2, Vec3, IVec2Like, IVec3Like, EPSILON } from '@axrone/numeric';
-import type {
-    IRaycastHit2D,
-    IRaycastHit3D,
-    LayerMask,
-    RaycastFlags,
-} from '../types/raycast-types';
+import type { IRaycastHit2D, IRaycastHit3D, LayerMask, RaycastFlags } from '../types/raycast-types';
 import type { BodyId, ShapeId } from '../types/primitives';
 
 const CACHE_SIZE = 64;
@@ -63,13 +58,13 @@ export class RaycastCache2D {
         this._cache.set(hash, {
             hit,
             frameId: this._currentFrame,
-            hash
+            hash,
         });
     }
 
     public advanceFrame(): void {
         this._currentFrame++;
-        
+
         if (this._currentFrame % 60 === 0) {
             this._clearOldEntries();
         }
@@ -172,13 +167,13 @@ export class RaycastCache3D {
         this._cache.set(hash, {
             hit,
             frameId: this._currentFrame,
-            hash
+            hash,
         });
     }
 
     public advanceFrame(): void {
         this._currentFrame++;
-        
+
         if (this._currentFrame % 60 === 0) {
             this._clearOldEntries();
         }
@@ -282,7 +277,7 @@ export class RaycastBatcher2D {
             maxDistance,
             layerMask,
             flags,
-            callback
+            callback,
         });
 
         if (this._pending.length >= this._batchSize) {
@@ -333,7 +328,7 @@ export class RaycastBatcher3D {
             maxDistance,
             layerMask,
             flags,
-            callback
+            callback,
         });
 
         if (this._pending.length >= this._batchSize) {
@@ -355,11 +350,17 @@ export class RaycastBatcher3D {
 
     private _sortByDirection(): void {
         this._pending.sort((a, b) => {
-            const theta1 = Math.atan2(Math.sqrt(a.direction.x * a.direction.x + a.direction.y * a.direction.y), a.direction.z);
+            const theta1 = Math.atan2(
+                Math.sqrt(a.direction.x * a.direction.x + a.direction.y * a.direction.y),
+                a.direction.z
+            );
             const phi1 = Math.atan2(a.direction.y, a.direction.x);
-            const theta2 = Math.atan2(Math.sqrt(b.direction.x * b.direction.x + b.direction.y * b.direction.y), b.direction.z);
+            const theta2 = Math.atan2(
+                Math.sqrt(b.direction.x * b.direction.x + b.direction.y * b.direction.y),
+                b.direction.z
+            );
             const phi2 = Math.atan2(b.direction.y, b.direction.x);
-            
+
             const diff = theta1 - theta2;
             return Math.abs(diff) > EPSILON ? diff : phi1 - phi2;
         });

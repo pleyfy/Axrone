@@ -160,11 +160,9 @@ export interface GameLoopContextBase<TState, TPhase extends GameLoopFramePhase> 
     readonly timeScale: number;
 }
 
-export interface BeforeUpdateContext<TState>
-    extends GameLoopContextBase<TState, 'before-update'> {}
+export interface BeforeUpdateContext<TState> extends GameLoopContextBase<TState, 'before-update'> {}
 
-export interface FixedUpdateContext<TState>
-    extends GameLoopContextBase<TState, 'fixed-update'> {
+export interface FixedUpdateContext<TState> extends GameLoopContextBase<TState, 'fixed-update'> {
     readonly step: number;
     readonly maxSteps: number;
 }
@@ -175,23 +173,24 @@ export interface RenderContext<TState> extends GameLoopContextBase<TState, 'rend
     readonly alpha: number;
 }
 
-export interface AfterFrameContext<TState>
-    extends GameLoopContextBase<TState, 'after-frame'> {
+export interface AfterFrameContext<TState> extends GameLoopContextBase<TState, 'after-frame'> {
     readonly alpha: number;
     readonly fixedSteps: number;
     readonly droppedDelta: number;
 }
 
-export type GameLoopPhaseContext<TState, TPhase extends GameLoopFramePhase = GameLoopFramePhase> =
-    TPhase extends 'before-update'
-        ? BeforeUpdateContext<TState>
-        : TPhase extends 'fixed-update'
-          ? FixedUpdateContext<TState>
-          : TPhase extends 'update'
-            ? UpdateContext<TState>
-            : TPhase extends 'render'
-              ? RenderContext<TState>
-              : AfterFrameContext<TState>;
+export type GameLoopPhaseContext<
+    TState,
+    TPhase extends GameLoopFramePhase = GameLoopFramePhase,
+> = TPhase extends 'before-update'
+    ? BeforeUpdateContext<TState>
+    : TPhase extends 'fixed-update'
+      ? FixedUpdateContext<TState>
+      : TPhase extends 'update'
+        ? UpdateContext<TState>
+        : TPhase extends 'render'
+          ? RenderContext<TState>
+          : AfterFrameContext<TState>;
 
 export type GameLoopPhaseMethodName<TPhase extends GameLoopFramePhase = GameLoopFramePhase> =
     TPhase extends 'before-update'

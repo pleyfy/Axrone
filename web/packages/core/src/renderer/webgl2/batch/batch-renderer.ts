@@ -23,7 +23,7 @@ export class BatchRenderer implements IBatchRenderer {
     private frameStats = {
         drawCalls: 0,
         instancesRendered: 0,
-        batchesProcessed: 0
+        batchesProcessed: 0,
     };
 
     constructor(gl: WebGL2RenderingContext, config: BatchConfiguration = {}) {
@@ -36,7 +36,7 @@ export class BatchRenderer implements IBatchRenderer {
             enableDynamicBatching: config.enableDynamicBatching ?? true,
             enableInstancing: config.enableInstancing ?? true,
             sortByMaterial: config.sortByMaterial ?? true,
-            sortByDepth: config.sortByDepth ?? false
+            sortByDepth: config.sortByDepth ?? false,
         };
     }
 
@@ -77,7 +77,6 @@ export class BatchRenderer implements IBatchRenderer {
 
         for (const group of this.batchGroups.values()) {
             if (group.removeInstance(instanceId)) {
-
                 if (group.isEmpty) {
                     this.removeBatchGroup(group);
                 }
@@ -94,7 +93,7 @@ export class BatchRenderer implements IBatchRenderer {
         }
 
         for (const group of this.batchGroups.values()) {
-            const instance = group.instances.find(inst => inst.id === instanceId);
+            const instance = group.instances.find((inst) => inst.id === instanceId);
             if (instance) {
                 group.updateInstance(instanceId);
                 break;
@@ -217,16 +216,18 @@ export class BatchRenderer implements IBatchRenderer {
             const priority = this.calculateGroupPriority(group);
             const depth = this.calculateGroupDepth(group, viewMatrix);
 
-            this.renderQueue.enqueue({
-                group,
-                priority,
-                depth
-            }, priority);
+            this.renderQueue.enqueue(
+                {
+                    group,
+                    priority,
+                    depth,
+                },
+                priority
+            );
         }
     }
 
     private calculateGroupPriority(group: BatchGroup): number {
-
         const material = group.material;
         const blendMode = material.getProperty('blendMode') as string;
 
@@ -249,8 +250,7 @@ export class BatchRenderer implements IBatchRenderer {
 
         for (const instance of group.instances) {
             if (instance.visible) {
-
-                const worldPos = instance.worldMatrix.data.slice(12, 15); 
+                const worldPos = instance.worldMatrix.data.slice(12, 15);
                 const viewPos = viewMatrix.multiply(instance.worldMatrix).data.slice(12, 15);
                 totalDepth += viewPos[2];
                 count++;
@@ -261,16 +261,14 @@ export class BatchRenderer implements IBatchRenderer {
     }
 
     private getMaterialKey(material: IMaterialInstance): string {
-
         const shader = material.shader.shader.name;
-        const blendMode = material.getProperty('blendMode') as string || 'opaque';
-        const cullMode = material.getProperty('cullMode') as string || 'back';
+        const blendMode = (material.getProperty('blendMode') as string) || 'opaque';
+        const cullMode = (material.getProperty('cullMode') as string) || 'back';
 
         return `${shader}_${blendMode}_${cullMode}`;
     }
 
     private isInstanceCompatible(group: BatchGroup, instance: IBatchable): boolean {
-
         return group.material.shader === instance.material.shader;
     }
 }

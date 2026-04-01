@@ -8,11 +8,7 @@ module.exports = {
             jsx: true,
         },
     },
-    plugins: [
-        '@typescript-eslint',
-        'jest',
-        'import'
-    ],
+    plugins: ['@typescript-eslint', 'jest', 'import'],
     extends: [
         'eslint:recommended',
         'plugin:@typescript-eslint/recommended',
@@ -20,7 +16,7 @@ module.exports = {
         'plugin:import/errors',
         'plugin:import/warnings',
         'plugin:import/typescript',
-        'prettier'
+        'prettier',
     ],
     rules: {
         '@typescript-eslint/explicit-module-boundary-types': 'error',
@@ -34,6 +30,6 @@ module.exports = {
                 alphabetize: { order: 'asc', caseInsensitive: true },
             },
         ],
-        'no-console': ['warn', { allow: ['warn', 'error'] }]
-    }
+        'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
 };

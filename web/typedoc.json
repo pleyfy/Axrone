@@ -1,7 +1,5 @@
 {
-    "entryPoints": [
-        "packages/*/src/index.ts"
-    ],
+    "entryPoints": ["packages/*/src/index.ts"],
     "out": "docs/api",
     "name": "Axrone WebGL Engine API Documentation",
     "includeVersion": true,
@@ -9,7 +7,5 @@
     "excludeProtected": true,
     "excludeExternals": true,
     "readme": "README.md",
-    "plugin": [
-        "typedoc-plugin-markdown"
-    ]
+    "plugin": ["typedoc-plugin-markdown"]
 }

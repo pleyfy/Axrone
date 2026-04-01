@@ -1,15 +1,15 @@
 import { Vec2, Vec3, Vec4 } from '@axrone/numeric';
-import { 
-    TextureDimension, 
-    TextureFormat, 
-    FilterMode, 
-    WrapMode, 
+import {
+    TextureDimension,
+    TextureFormat,
+    FilterMode,
+    WrapMode,
     TextureUsage,
     ColorSpace,
     ITextureCreateOptions,
     ITextureSamplerOptions,
     TextureError,
-    TextureErrorCode
+    TextureErrorCode,
 } from './interfaces';
 
 interface FormatInfo {
@@ -29,112 +29,281 @@ interface FormatInfo {
 
 export class TextureFormatInfo {
     private static readonly formatDatabase = new Map<TextureFormat, FormatInfo>([
+        [
+            TextureFormat.R8,
+            {
+                internalFormat: WebGL2RenderingContext.R8,
+                format: WebGL2RenderingContext.RED,
+                type: WebGL2RenderingContext.UNSIGNED_BYTE,
+                bytesPerPixel: 1,
+                channels: 1,
+                compressed: false,
+                floatingPoint: false,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RG8,
+            {
+                internalFormat: WebGL2RenderingContext.RG8,
+                format: WebGL2RenderingContext.RG,
+                type: WebGL2RenderingContext.UNSIGNED_BYTE,
+                bytesPerPixel: 2,
+                channels: 2,
+                compressed: false,
+                floatingPoint: false,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RGB8,
+            {
+                internalFormat: WebGL2RenderingContext.RGB8,
+                format: WebGL2RenderingContext.RGB,
+                type: WebGL2RenderingContext.UNSIGNED_BYTE,
+                bytesPerPixel: 3,
+                channels: 3,
+                compressed: false,
+                floatingPoint: false,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RGBA8,
+            {
+                internalFormat: WebGL2RenderingContext.RGBA8,
+                format: WebGL2RenderingContext.RGBA,
+                type: WebGL2RenderingContext.UNSIGNED_BYTE,
+                bytesPerPixel: 4,
+                channels: 4,
+                compressed: false,
+                floatingPoint: false,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
 
-        [TextureFormat.R8, { 
-            internalFormat: WebGL2RenderingContext.R8, 
-            format: WebGL2RenderingContext.RED, 
-            type: WebGL2RenderingContext.UNSIGNED_BYTE, 
-            bytesPerPixel: 1, channels: 1, compressed: false, floatingPoint: false, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RG8, { 
-            internalFormat: WebGL2RenderingContext.RG8, 
-            format: WebGL2RenderingContext.RG, 
-            type: WebGL2RenderingContext.UNSIGNED_BYTE, 
-            bytesPerPixel: 2, channels: 2, compressed: false, floatingPoint: false, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RGB8, { 
-            internalFormat: WebGL2RenderingContext.RGB8, 
-            format: WebGL2RenderingContext.RGB, 
-            type: WebGL2RenderingContext.UNSIGNED_BYTE, 
-            bytesPerPixel: 3, channels: 3, compressed: false, floatingPoint: false, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RGBA8, { 
-            internalFormat: WebGL2RenderingContext.RGBA8, 
-            format: WebGL2RenderingContext.RGBA, 
-            type: WebGL2RenderingContext.UNSIGNED_BYTE, 
-            bytesPerPixel: 4, channels: 4, compressed: false, floatingPoint: false, integer: false, depth: false, stencil: false, srgb: false 
-        }],
+        [
+            TextureFormat.R16F,
+            {
+                internalFormat: WebGL2RenderingContext.R16F,
+                format: WebGL2RenderingContext.RED,
+                type: WebGL2RenderingContext.HALF_FLOAT,
+                bytesPerPixel: 2,
+                channels: 1,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RG16F,
+            {
+                internalFormat: WebGL2RenderingContext.RG16F,
+                format: WebGL2RenderingContext.RG,
+                type: WebGL2RenderingContext.HALF_FLOAT,
+                bytesPerPixel: 4,
+                channels: 2,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RGB16F,
+            {
+                internalFormat: WebGL2RenderingContext.RGB16F,
+                format: WebGL2RenderingContext.RGB,
+                type: WebGL2RenderingContext.HALF_FLOAT,
+                bytesPerPixel: 6,
+                channels: 3,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RGBA16F,
+            {
+                internalFormat: WebGL2RenderingContext.RGBA16F,
+                format: WebGL2RenderingContext.RGBA,
+                type: WebGL2RenderingContext.HALF_FLOAT,
+                bytesPerPixel: 8,
+                channels: 4,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
 
-        [TextureFormat.R16F, { 
-            internalFormat: WebGL2RenderingContext.R16F, 
-            format: WebGL2RenderingContext.RED, 
-            type: WebGL2RenderingContext.HALF_FLOAT, 
-            bytesPerPixel: 2, channels: 1, compressed: false, floatingPoint: true, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RG16F, { 
-            internalFormat: WebGL2RenderingContext.RG16F, 
-            format: WebGL2RenderingContext.RG, 
-            type: WebGL2RenderingContext.HALF_FLOAT, 
-            bytesPerPixel: 4, channels: 2, compressed: false, floatingPoint: true, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RGB16F, { 
-            internalFormat: WebGL2RenderingContext.RGB16F, 
-            format: WebGL2RenderingContext.RGB, 
-            type: WebGL2RenderingContext.HALF_FLOAT, 
-            bytesPerPixel: 6, channels: 3, compressed: false, floatingPoint: true, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RGBA16F, { 
-            internalFormat: WebGL2RenderingContext.RGBA16F, 
-            format: WebGL2RenderingContext.RGBA, 
-            type: WebGL2RenderingContext.HALF_FLOAT, 
-            bytesPerPixel: 8, channels: 4, compressed: false, floatingPoint: true, integer: false, depth: false, stencil: false, srgb: false 
-        }],
+        [
+            TextureFormat.R32F,
+            {
+                internalFormat: WebGL2RenderingContext.R32F,
+                format: WebGL2RenderingContext.RED,
+                type: WebGL2RenderingContext.FLOAT,
+                bytesPerPixel: 4,
+                channels: 1,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RG32F,
+            {
+                internalFormat: WebGL2RenderingContext.RG32F,
+                format: WebGL2RenderingContext.RG,
+                type: WebGL2RenderingContext.FLOAT,
+                bytesPerPixel: 8,
+                channels: 2,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RGB32F,
+            {
+                internalFormat: WebGL2RenderingContext.RGB32F,
+                format: WebGL2RenderingContext.RGB,
+                type: WebGL2RenderingContext.FLOAT,
+                bytesPerPixel: 12,
+                channels: 3,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.RGBA32F,
+            {
+                internalFormat: WebGL2RenderingContext.RGBA32F,
+                format: WebGL2RenderingContext.RGBA,
+                type: WebGL2RenderingContext.FLOAT,
+                bytesPerPixel: 16,
+                channels: 4,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: false,
+                stencil: false,
+                srgb: false,
+            },
+        ],
 
-        [TextureFormat.R32F, { 
-            internalFormat: WebGL2RenderingContext.R32F, 
-            format: WebGL2RenderingContext.RED, 
-            type: WebGL2RenderingContext.FLOAT, 
-            bytesPerPixel: 4, channels: 1, compressed: false, floatingPoint: true, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RG32F, { 
-            internalFormat: WebGL2RenderingContext.RG32F, 
-            format: WebGL2RenderingContext.RG, 
-            type: WebGL2RenderingContext.FLOAT, 
-            bytesPerPixel: 8, channels: 2, compressed: false, floatingPoint: true, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RGB32F, { 
-            internalFormat: WebGL2RenderingContext.RGB32F, 
-            format: WebGL2RenderingContext.RGB, 
-            type: WebGL2RenderingContext.FLOAT, 
-            bytesPerPixel: 12, channels: 3, compressed: false, floatingPoint: true, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-        [TextureFormat.RGBA32F, { 
-            internalFormat: WebGL2RenderingContext.RGBA32F, 
-            format: WebGL2RenderingContext.RGBA, 
-            type: WebGL2RenderingContext.FLOAT, 
-            bytesPerPixel: 16, channels: 4, compressed: false, floatingPoint: true, integer: false, depth: false, stencil: false, srgb: false 
-        }],
-
-        [TextureFormat.DEPTH_COMPONENT16, { 
-            internalFormat: WebGL2RenderingContext.DEPTH_COMPONENT16, 
-            format: WebGL2RenderingContext.DEPTH_COMPONENT, 
-            type: WebGL2RenderingContext.UNSIGNED_SHORT, 
-            bytesPerPixel: 2, channels: 1, compressed: false, floatingPoint: false, integer: false, depth: true, stencil: false, srgb: false 
-        }],
-        [TextureFormat.DEPTH_COMPONENT24, { 
-            internalFormat: WebGL2RenderingContext.DEPTH_COMPONENT24, 
-            format: WebGL2RenderingContext.DEPTH_COMPONENT, 
-            type: WebGL2RenderingContext.UNSIGNED_INT, 
-            bytesPerPixel: 4, channels: 1, compressed: false, floatingPoint: false, integer: false, depth: true, stencil: false, srgb: false 
-        }],
-        [TextureFormat.DEPTH_COMPONENT32F, { 
-            internalFormat: WebGL2RenderingContext.DEPTH_COMPONENT32F, 
-            format: WebGL2RenderingContext.DEPTH_COMPONENT, 
-            type: WebGL2RenderingContext.FLOAT, 
-            bytesPerPixel: 4, channels: 1, compressed: false, floatingPoint: true, integer: false, depth: true, stencil: false, srgb: false 
-        }],
-        [TextureFormat.DEPTH24_STENCIL8, { 
-            internalFormat: WebGL2RenderingContext.DEPTH24_STENCIL8, 
-            format: WebGL2RenderingContext.DEPTH_STENCIL, 
-            type: WebGL2RenderingContext.UNSIGNED_INT_24_8, 
-            bytesPerPixel: 4, channels: 2, compressed: false, floatingPoint: false, integer: false, depth: true, stencil: true, srgb: false 
-        }],
-        [TextureFormat.DEPTH32F_STENCIL8, { 
-            internalFormat: WebGL2RenderingContext.DEPTH32F_STENCIL8, 
-            format: WebGL2RenderingContext.DEPTH_STENCIL, 
-            type: WebGL2RenderingContext.FLOAT_32_UNSIGNED_INT_24_8_REV, 
-            bytesPerPixel: 8, channels: 2, compressed: false, floatingPoint: true, integer: false, depth: true, stencil: true, srgb: false 
-        }]
+        [
+            TextureFormat.DEPTH_COMPONENT16,
+            {
+                internalFormat: WebGL2RenderingContext.DEPTH_COMPONENT16,
+                format: WebGL2RenderingContext.DEPTH_COMPONENT,
+                type: WebGL2RenderingContext.UNSIGNED_SHORT,
+                bytesPerPixel: 2,
+                channels: 1,
+                compressed: false,
+                floatingPoint: false,
+                integer: false,
+                depth: true,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.DEPTH_COMPONENT24,
+            {
+                internalFormat: WebGL2RenderingContext.DEPTH_COMPONENT24,
+                format: WebGL2RenderingContext.DEPTH_COMPONENT,
+                type: WebGL2RenderingContext.UNSIGNED_INT,
+                bytesPerPixel: 4,
+                channels: 1,
+                compressed: false,
+                floatingPoint: false,
+                integer: false,
+                depth: true,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.DEPTH_COMPONENT32F,
+            {
+                internalFormat: WebGL2RenderingContext.DEPTH_COMPONENT32F,
+                format: WebGL2RenderingContext.DEPTH_COMPONENT,
+                type: WebGL2RenderingContext.FLOAT,
+                bytesPerPixel: 4,
+                channels: 1,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: true,
+                stencil: false,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.DEPTH24_STENCIL8,
+            {
+                internalFormat: WebGL2RenderingContext.DEPTH24_STENCIL8,
+                format: WebGL2RenderingContext.DEPTH_STENCIL,
+                type: WebGL2RenderingContext.UNSIGNED_INT_24_8,
+                bytesPerPixel: 4,
+                channels: 2,
+                compressed: false,
+                floatingPoint: false,
+                integer: false,
+                depth: true,
+                stencil: true,
+                srgb: false,
+            },
+        ],
+        [
+            TextureFormat.DEPTH32F_STENCIL8,
+            {
+                internalFormat: WebGL2RenderingContext.DEPTH32F_STENCIL8,
+                format: WebGL2RenderingContext.DEPTH_STENCIL,
+                type: WebGL2RenderingContext.FLOAT_32_UNSIGNED_INT_24_8_REV,
+                bytesPerPixel: 8,
+                channels: 2,
+                compressed: false,
+                floatingPoint: true,
+                integer: false,
+                depth: true,
+                stencil: true,
+                srgb: false,
+            },
+        ],
     ]);
 
     public static getFormatInfo(format: TextureFormat): FormatInfo {
@@ -187,12 +356,12 @@ export class TextureFormatInfo {
 
 export class TextureWebGLConstants {
     public static readonly DIMENSION_MAP = new Map<TextureDimension, number>([
-        [TextureDimension.TEXTURE_1D, 0x0DE0], 
+        [TextureDimension.TEXTURE_1D, 0x0de0],
         [TextureDimension.TEXTURE_2D, WebGL2RenderingContext.TEXTURE_2D],
         [TextureDimension.TEXTURE_3D, WebGL2RenderingContext.TEXTURE_3D],
         [TextureDimension.TEXTURE_CUBE, WebGL2RenderingContext.TEXTURE_CUBE_MAP],
         [TextureDimension.TEXTURE_2D_ARRAY, WebGL2RenderingContext.TEXTURE_2D_ARRAY],
-        [TextureDimension.TEXTURE_CUBE_ARRAY, 0x9009] 
+        [TextureDimension.TEXTURE_CUBE_ARRAY, 0x9009],
     ]);
 
     public static readonly FILTER_MAP = new Map<FilterMode, number>([
@@ -201,14 +370,14 @@ export class TextureWebGLConstants {
         [FilterMode.NEAREST_MIPMAP_NEAREST, WebGL2RenderingContext.NEAREST_MIPMAP_NEAREST],
         [FilterMode.LINEAR_MIPMAP_NEAREST, WebGL2RenderingContext.LINEAR_MIPMAP_NEAREST],
         [FilterMode.NEAREST_MIPMAP_LINEAR, WebGL2RenderingContext.NEAREST_MIPMAP_LINEAR],
-        [FilterMode.LINEAR_MIPMAP_LINEAR, WebGL2RenderingContext.LINEAR_MIPMAP_LINEAR]
+        [FilterMode.LINEAR_MIPMAP_LINEAR, WebGL2RenderingContext.LINEAR_MIPMAP_LINEAR],
     ]);
 
     public static readonly WRAP_MAP = new Map<WrapMode, number>([
         [WrapMode.REPEAT, WebGL2RenderingContext.REPEAT],
         [WrapMode.CLAMP_TO_EDGE, WebGL2RenderingContext.CLAMP_TO_EDGE],
-        [WrapMode.CLAMP_TO_BORDER, 0x812D], 
-        [WrapMode.MIRRORED_REPEAT, WebGL2RenderingContext.MIRRORED_REPEAT]
+        [WrapMode.CLAMP_TO_BORDER, 0x812d],
+        [WrapMode.MIRRORED_REPEAT, WebGL2RenderingContext.MIRRORED_REPEAT],
     ]);
 
     public static getDimensionConstant(dimension: TextureDimension): number {
@@ -246,12 +415,11 @@ export class TextureWebGLConstants {
 }
 
 export class TextureUtils {
-
     public static calculateMemoryUsage(
-        width: number, 
-        height: number, 
-        depth: number, 
-        format: TextureFormat, 
+        width: number,
+        height: number,
+        depth: number,
+        format: TextureFormat,
         mipLevels: number = 1
     ): number {
         const bytesPerPixel = TextureFormatInfo.getBytesPerPixel(format);
@@ -274,22 +442,22 @@ export class TextureUtils {
     }
 
     public static getMipDimensions(
-        width: number, 
-        height: number, 
-        depth: number, 
+        width: number,
+        height: number,
+        depth: number,
         mipLevel: number
     ): { width: number; height: number; depth: number } {
         return {
             width: Math.max(1, width >> mipLevel),
             height: Math.max(1, height >> mipLevel),
-            depth: Math.max(1, depth >> mipLevel)
+            depth: Math.max(1, depth >> mipLevel),
         };
     }
 
     public static validateDimensions(
-        width: number, 
-        height: number, 
-        depth: number, 
+        width: number,
+        height: number,
+        depth: number,
         dimension: TextureDimension
     ): void {
         if (width <= 0 || height <= 0 || depth <= 0) {
@@ -333,13 +501,11 @@ export class TextureUtils {
     }
 
     public static isFormatCompatible(format: TextureFormat, dimension: TextureDimension): boolean {
-
         if (dimension === TextureDimension.TEXTURE_3D && TextureFormatInfo.isDepth(format)) {
             return false;
         }
 
         if (TextureFormatInfo.isInteger(format)) {
-
         }
 
         return true;
@@ -359,7 +525,7 @@ export class TextureUtils {
             options.mipLevels || 1,
             options.arrayLayers || 1,
             options.usage,
-            options.colorSpace || ColorSpace.LINEAR
+            options.colorSpace || ColorSpace.LINEAR,
         ].join('|');
 
         return this.simpleHash(hashData);
@@ -369,8 +535,8 @@ export class TextureUtils {
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
             const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; 
+            hash = (hash << 5) - hash + char;
+            hash = hash & hash;
         }
         return Math.abs(hash).toString(36);
     }
@@ -383,7 +549,7 @@ export class TextureUtils {
                     magFilter: FilterMode.LINEAR,
                     wrapS: WrapMode.REPEAT,
                     wrapT: WrapMode.REPEAT,
-                    maxAnisotropy: 16
+                    maxAnisotropy: 16,
                 };
 
             case TextureUsage.RENDER_TARGET:
@@ -391,7 +557,7 @@ export class TextureUtils {
                     minFilter: FilterMode.LINEAR,
                     magFilter: FilterMode.LINEAR,
                     wrapS: WrapMode.CLAMP_TO_EDGE,
-                    wrapT: WrapMode.CLAMP_TO_EDGE
+                    wrapT: WrapMode.CLAMP_TO_EDGE,
                 };
 
             case TextureUsage.DEPTH_BUFFER:
@@ -401,7 +567,7 @@ export class TextureUtils {
                     wrapS: WrapMode.CLAMP_TO_EDGE,
                     wrapT: WrapMode.CLAMP_TO_EDGE,
                     compareMode: 'COMPARE_REF_TO_TEXTURE',
-                    compareFunc: 'LEQUAL'
+                    compareFunc: 'LEQUAL',
                 };
 
             default:
@@ -409,13 +575,12 @@ export class TextureUtils {
                     minFilter: FilterMode.LINEAR,
                     magFilter: FilterMode.LINEAR,
                     wrapS: WrapMode.REPEAT,
-                    wrapT: WrapMode.REPEAT
+                    wrapT: WrapMode.REPEAT,
                 };
         }
     }
 
     public static colorToVec4(color: string): Vec4 {
-
         if (color.startsWith('#')) {
             const hex = color.slice(1);
             const r = parseInt(hex.substr(0, 2), 16) / 255;
@@ -451,13 +616,11 @@ export class TextureUtils {
 }
 
 export class TextureValidation {
-
     public static validateCreateOptions(options: ITextureCreateOptions): void {
-
         TextureUtils.validateDimensions(
-            options.width, 
-            options.height, 
-            options.depth || 1, 
+            options.width,
+            options.height,
+            options.depth || 1,
             options.dimension
         );
 
@@ -470,8 +633,8 @@ export class TextureValidation {
 
         if (options.mipLevels !== undefined) {
             const maxMips = TextureUtils.calculateMaxMipLevels(
-                options.width, 
-                options.height, 
+                options.width,
+                options.height,
                 options.depth || 1
             );
             if (options.mipLevels > maxMips) {
@@ -501,7 +664,6 @@ export class TextureValidation {
     }
 
     public static validateSamplerOptions(options: ITextureSamplerOptions): void {
-
         if (options.maxAnisotropy !== undefined && options.maxAnisotropy < 1) {
             throw new TextureError(
                 'Max anisotropy must be at least 1',
@@ -520,8 +682,16 @@ export class TextureValidation {
 
         if (options.borderColor) {
             const color = options.borderColor;
-            if (color.x < 0 || color.x > 1 || color.y < 0 || color.y > 1 ||
-                color.z < 0 || color.z > 1 || color.w < 0 || color.w > 1) {
+            if (
+                color.x < 0 ||
+                color.x > 1 ||
+                color.y < 0 ||
+                color.y > 1 ||
+                color.z < 0 ||
+                color.z > 1 ||
+                color.w < 0 ||
+                color.w > 1
+            ) {
                 throw new TextureError(
                     'Border color components must be in range [0, 1]',
                     TextureErrorCode.INVALID_OPERATION

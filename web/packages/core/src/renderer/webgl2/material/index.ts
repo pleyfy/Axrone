@@ -12,7 +12,7 @@ export type {
     MaterialConfig,
     StandardMaterialConfig,
     PBRMaterialConfig,
-    UnlitMaterialConfig
+    UnlitMaterialConfig,
 } from './base-material';
 
 export {
@@ -21,16 +21,11 @@ export {
     CullMode,
     DepthTest,
     ShadowCasting,
-    LightMode
+    LightMode,
 } from './base-material';
 
 export { StandardMaterialComponent as StandardMaterial } from './standard-material';
 export { PBRMaterialComponent as PBRMaterial } from './pbr-material';
 export { materialManager } from './material-manager';
 
-export {
-    createMaterial,
-    getMaterial,
-    destroyMaterial,
-    cloneMaterial
-} from './material-manager';
+export { createMaterial, getMaterial, destroyMaterial, cloneMaterial } from './material-manager';

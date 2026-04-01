@@ -17,7 +17,7 @@ export const enum VertexAttributeType {
     CUSTOM_0 = 'CUSTOM_0',
     CUSTOM_1 = 'CUSTOM_1',
     CUSTOM_2 = 'CUSTOM_2',
-    CUSTOM_3 = 'CUSTOM_3'
+    CUSTOM_3 = 'CUSTOM_3',
 }
 
 export const enum VertexDataType {
@@ -28,7 +28,7 @@ export const enum VertexDataType {
     INT = 'INT',
     UNSIGNED_INT = 'UNSIGNED_INT',
     FLOAT = 'FLOAT',
-    HALF_FLOAT = 'HALF_FLOAT'
+    HALF_FLOAT = 'HALF_FLOAT',
 }
 
 export const enum PrimitiveTopology {
@@ -38,7 +38,7 @@ export const enum PrimitiveTopology {
     LINE_LOOP = 'LINE_LOOP',
     TRIANGLES = 'TRIANGLES',
     TRIANGLE_STRIP = 'TRIANGLE_STRIP',
-    TRIANGLE_FAN = 'TRIANGLE_FAN'
+    TRIANGLE_FAN = 'TRIANGLE_FAN',
 }
 
 export const enum BufferUsage {
@@ -50,13 +50,13 @@ export const enum BufferUsage {
     STREAM_READ = 'STREAM_READ',
     STATIC_COPY = 'STATIC_COPY',
     DYNAMIC_COPY = 'DYNAMIC_COPY',
-    STREAM_COPY = 'STREAM_COPY'
+    STREAM_COPY = 'STREAM_COPY',
 }
 
 export const enum IndexType {
     UNSIGNED_BYTE = 'UNSIGNED_BYTE',
     UNSIGNED_SHORT = 'UNSIGNED_SHORT',
-    UNSIGNED_INT = 'UNSIGNED_INT'
+    UNSIGNED_INT = 'UNSIGNED_INT',
 }
 
 export const enum VertexBufferError {
@@ -66,7 +66,7 @@ export const enum VertexBufferError {
     BUFFER_NOT_INITIALIZED = 3,
     UPDATE_FAILED = 4,
     INVALID_LAYOUT = 5,
-    ATTRIBUTE_MISMATCH = 6
+    ATTRIBUTE_MISMATCH = 6,
 }
 
 export const enum IndexBufferError {
@@ -75,7 +75,7 @@ export const enum IndexBufferError {
     BUFFER_CREATION_FAILED = 2,
     BUFFER_NOT_INITIALIZED = 3,
     UPDATE_FAILED = 4,
-    INVALID_INDEX_TYPE = 5
+    INVALID_INDEX_TYPE = 5,
 }
 
 export interface IVertexBufferConfig {
@@ -97,7 +97,7 @@ export interface IVertexAttributeDescriptor {
     readonly normalized: boolean;
     readonly offset: number;
     readonly stride: number;
-    readonly divisor?: number; 
+    readonly divisor?: number;
 }
 
 export interface IVertexLayout {
@@ -246,7 +246,6 @@ export interface IMeshCreateOptions {
 }
 
 export interface IMeshManager {
-
     createVertexBuffer(options: IVertexBufferCreateOptions): IVertexBuffer;
     createIndexBuffer(options: IIndexBufferCreateOptions): IIndexBuffer;
     createVertexArrayObject(): IVertexArrayObject;
@@ -293,13 +292,20 @@ export interface IPrimitiveGenerator {
         layout: IVertexLayout;
     };
 
-    generateSphere(radius: number, segments: number): {
+    generateSphere(
+        radius: number,
+        segments: number
+    ): {
         vertices: Float32Array;
         indices: Uint16Array;
         layout: IVertexLayout;
     };
 
-    generatePlane(width: number, height: number, subdivisions?: number): {
+    generatePlane(
+        width: number,
+        height: number,
+        subdivisions?: number
+    ): {
         vertices: Float32Array;
         indices: Uint16Array;
         layout: IVertexLayout;
@@ -329,13 +335,18 @@ export const enum MeshErrorCode {
     DISPOSED_RESOURCE_ACCESS = 'DISPOSED_RESOURCE_ACCESS',
     CONTEXT_LOST = 'CONTEXT_LOST',
     OUT_OF_MEMORY = 'OUT_OF_MEMORY',
-    INVALID_OPERATION = 'INVALID_OPERATION'
+    INVALID_OPERATION = 'INVALID_OPERATION',
 }
 
 export interface IMeshBuilder {
     vertices(data: ArrayBufferView | number[]): IMeshBuilder;
     indices(data: ArrayBufferView | number[]): IMeshBuilder;
-    attribute(type: VertexAttributeType, dataType: VertexDataType, componentCount: number, normalized?: boolean): IMeshBuilder;
+    attribute(
+        type: VertexAttributeType,
+        dataType: VertexDataType,
+        componentCount: number,
+        normalized?: boolean
+    ): IMeshBuilder;
     topology(topology: PrimitiveTopology): IMeshBuilder;
     usage(usage: BufferUsage): IMeshBuilder;
     label(name: string): IMeshBuilder;

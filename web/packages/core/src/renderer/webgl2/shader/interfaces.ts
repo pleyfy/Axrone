@@ -3,15 +3,15 @@ import { ByteBuffer } from '@axrone/utility';
 
 export const enum ShaderDataType {
     FLOAT = 'float',
-    VEC2 = 'vec2', 
+    VEC2 = 'vec2',
     VEC3 = 'vec3',
     VEC4 = 'vec4',
     MAT2 = 'mat2',
-    MAT3 = 'mat3', 
+    MAT3 = 'mat3',
     MAT4 = 'mat4',
     INT = 'int',
     IVEC2 = 'ivec2',
-    IVEC3 = 'ivec3', 
+    IVEC3 = 'ivec3',
     IVEC4 = 'ivec4',
     UINT = 'uint',
     UVEC2 = 'uvec2',
@@ -23,17 +23,17 @@ export const enum ShaderDataType {
     BVEC4 = 'bvec4',
     SAMPLER_2D = 'sampler2D',
     SAMPLER_CUBE = 'samplerCube',
-    SAMPLER_2D_ARRAY = 'sampler2DArray'
+    SAMPLER_2D_ARRAY = 'sampler2DArray',
 }
 
 export const enum ShaderQualifier {
     ATTRIBUTE = 'attribute',
-    UNIFORM = 'uniform',  
+    UNIFORM = 'uniform',
     VARYING = 'varying',
     CONST = 'const',
     IN = 'in',
     OUT = 'out',
-    INOUT = 'inout'
+    INOUT = 'inout',
 }
 
 export const enum ShaderStage {
@@ -42,7 +42,7 @@ export const enum ShaderStage {
     GEOMETRY = 'geometry',
     TESSELLATION_CONTROL = 'tessellation_control',
     TESSELLATION_EVALUATION = 'tessellation_evaluation',
-    COMPUTE = 'compute'
+    COMPUTE = 'compute',
 }
 
 export const enum BlendMode {
@@ -51,24 +51,24 @@ export const enum BlendMode {
     ADDITIVE = 'additive',
     MULTIPLY = 'multiply',
     SCREEN = 'screen',
-    OVERLAY = 'overlay'
+    OVERLAY = 'overlay',
 }
 
 export const enum CullMode {
     OFF = 'off',
-    FRONT = 'front', 
-    BACK = 'back'
+    FRONT = 'front',
+    BACK = 'back',
 }
 
 export const enum DepthFunc {
     NEVER = 'never',
     LESS = 'less',
     EQUAL = 'equal',
-    LEQUAL = 'lequal', 
+    LEQUAL = 'lequal',
     GREATER = 'greater',
     NOTEQUAL = 'notequal',
     GEQUAL = 'gequal',
-    ALWAYS = 'always'
+    ALWAYS = 'always',
 }
 
 export interface IShaderVariable {
@@ -88,7 +88,7 @@ export interface IVertexAttribute extends IShaderVariable {
     readonly stride?: number;
     readonly offset?: number;
     readonly normalized?: boolean;
-    readonly divisor?: number; 
+    readonly divisor?: number;
 }
 
 export interface IUniformVariable extends IShaderVariable {
@@ -103,15 +103,15 @@ export interface IVaryingVariable extends IShaderVariable {
     readonly interpolation?: 'smooth' | 'flat' | 'noperspective';
 }
 
-export type ShaderUniformValue = 
-    | number 
+export type ShaderUniformValue =
+    | number
     | boolean
-    | Vec2 
-    | Vec3 
-    | Vec4 
+    | Vec2
+    | Vec3
+    | Vec4
     | Mat4
-    | Float32Array 
-    | Int32Array 
+    | Float32Array
+    | Int32Array
     | Uint32Array
     | WebGLTexture
     | null;
@@ -131,7 +131,13 @@ export interface ITextureProperty {
     readonly defaultTexture?: string;
     readonly wrapS?: 'repeat' | 'clamp' | 'mirror';
     readonly wrapT?: 'repeat' | 'clamp' | 'mirror';
-    readonly filterMin?: 'nearest' | 'linear' | 'nearest_mipmap_nearest' | 'linear_mipmap_nearest' | 'nearest_mipmap_linear' | 'linear_mipmap_linear';
+    readonly filterMin?:
+        | 'nearest'
+        | 'linear'
+        | 'nearest_mipmap_nearest'
+        | 'linear_mipmap_nearest'
+        | 'nearest_mipmap_linear'
+        | 'linear_mipmap_linear';
     readonly filterMag?: 'nearest' | 'linear';
     readonly anisotropy?: number;
     readonly sRGB?: boolean;
@@ -258,8 +264,15 @@ export interface IShaderCompilerOptions {
 }
 
 export interface IShaderCompiler {
-    compile(configuration: IShaderConfiguration, options?: IShaderCompilerOptions): Promise<ICompiledShader>;
-    compileVariant(shader: ICompiledShader, keywords: string[], defines: Record<string, any>): Promise<IShaderVariant>;
+    compile(
+        configuration: IShaderConfiguration,
+        options?: IShaderCompilerOptions
+    ): Promise<ICompiledShader>;
+    compileVariant(
+        shader: ICompiledShader,
+        keywords: string[],
+        defines: Record<string, any>
+    ): Promise<IShaderVariant>;
     validateConfiguration(configuration: IShaderConfiguration): ValidationResult;
 }
 
@@ -273,7 +286,10 @@ export interface IShaderManager {
     loadFromJSON(json: string): Promise<ICompiledShader>;
     loadFromFile(path: string): Promise<ICompiledShader>;
     loadFromConfiguration(configuration: IShaderConfiguration): Promise<ICompiledShader>;
-    createMaterial(shaderName: string, properties?: Record<string, ShaderUniformValue>): IMaterialInstance;
+    createMaterial(
+        shaderName: string,
+        properties?: Record<string, ShaderUniformValue>
+    ): IMaterialInstance;
     getShader(name: string): ICompiledShader | null;
     getVariant(shader: ICompiledShader, keywords: string[]): Promise<IShaderVariant>;
     dispose(shader: ICompiledShader): void;

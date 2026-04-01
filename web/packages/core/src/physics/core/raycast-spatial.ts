@@ -26,7 +26,7 @@ export class SpatialHashGrid3D<T> {
 
     public insert(item: T, min: Readonly<IVec3Like>, max: Readonly<IVec3Like>): void {
         const cellKeys = this._getCellKeys(min, max);
-        
+
         if (!this._itemCells.has(item)) {
             this._itemCells.set(item, new Set());
         }
@@ -112,9 +112,18 @@ export class SpatialHashGrid3D<T> {
         let y = startCell.y;
         let z = startCell.z;
 
-        let tMaxX = dx > 0 ? Math.abs((this._cellBoundary(x, sx) - origin.x) / direction.x) : Number.MAX_VALUE;
-        let tMaxY = dy > 0 ? Math.abs((this._cellBoundary(y, sy) - origin.y) / direction.y) : Number.MAX_VALUE;
-        let tMaxZ = dz > 0 ? Math.abs((this._cellBoundary(z, sz) - origin.z) / direction.z) : Number.MAX_VALUE;
+        let tMaxX =
+            dx > 0
+                ? Math.abs((this._cellBoundary(x, sx) - origin.x) / direction.x)
+                : Number.MAX_VALUE;
+        let tMaxY =
+            dy > 0
+                ? Math.abs((this._cellBoundary(y, sy) - origin.y) / direction.y)
+                : Number.MAX_VALUE;
+        let tMaxZ =
+            dz > 0
+                ? Math.abs((this._cellBoundary(z, sz) - origin.z) / direction.z)
+                : Number.MAX_VALUE;
 
         const tDeltaX = dx > 0 ? this._cellSize / Math.abs(direction.x) : Number.MAX_VALUE;
         const tDeltaY = dy > 0 ? this._cellSize / Math.abs(direction.y) : Number.MAX_VALUE;
@@ -178,7 +187,7 @@ export class SpatialHashGrid3D<T> {
         return {
             x: Math.floor(point.x * this._invCellSize),
             y: Math.floor(point.y * this._invCellSize),
-            z: Math.floor(point.z * this._invCellSize)
+            z: Math.floor(point.z * this._invCellSize),
         };
     }
 
@@ -221,19 +230,19 @@ export class SpatialOctree<T> {
         const min = {
             x: center.x - halfSize,
             y: center.y - halfSize,
-            z: center.z - halfSize
+            z: center.z - halfSize,
         };
         const max = {
             x: center.x + halfSize,
             y: center.y + halfSize,
-            z: center.z + halfSize
+            z: center.z + halfSize,
         };
 
         this._octree = new Octree<T>([min, max], {
             maxDepth,
             maxItemsPerNode,
             minNodeSize,
-            splitThreshold: 0.8
+            splitThreshold: 0.8,
         });
     }
 
@@ -244,7 +253,7 @@ export class SpatialOctree<T> {
 
     public query(min: Readonly<IVec3Like>, max: Readonly<IVec3Like>): T[] {
         const results = this._octree.query([min, max]);
-        return results.map(result => result.item);
+        return results.map((result) => result.item);
     }
 
     public queryRay(
@@ -253,7 +262,7 @@ export class SpatialOctree<T> {
         maxDistance: number
     ): T[] {
         const results = this._octree.raycast(origin, direction, maxDistance);
-        return results.map(result => result.item);
+        return results.map((result) => result.item);
     }
 
     public clear(): void {

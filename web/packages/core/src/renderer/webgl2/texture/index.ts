@@ -16,12 +16,7 @@ export {
     TextureUsage,
     ColorSpace,
     TextureError,
-    TextureErrorCode
+    TextureErrorCode,
 } from './interfaces';
 
-export {
-    TextureFormatInfo,
-    TextureWebGLConstants,
-    TextureUtils,
-    TextureValidation
-} from './utils';
+export { TextureFormatInfo, TextureWebGLConstants, TextureUtils, TextureValidation } from './utils';

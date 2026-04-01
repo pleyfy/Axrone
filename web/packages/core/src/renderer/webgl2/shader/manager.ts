@@ -6,7 +6,7 @@ import {
     IShaderVariant,
     IMaterialInstance,
     ShaderUniformValue,
-    IShaderCompiler
+    IShaderCompiler,
 } from './interfaces';
 
 import { WebGLShaderCompiler } from './compiler';
@@ -38,7 +38,7 @@ export class ShaderManager implements IShaderManager {
     private readonly configurationCache = new Map<string, IShaderConfiguration>();
     private readonly includeCache = new Map<string, string>();
     private readonly materialPool: ObjectPool<MaterialInstance>;
-    
+
     private stats: ShaderManagerStats = {
         loadedShaders: 0,
         totalVariants: 0,
@@ -46,17 +46,16 @@ export class ShaderManager implements IShaderManager {
         cacheMisses: 0,
         memoryUsage: 0,
         compilationTime: 0,
-        hitRate: 0
+        hitRate: 0,
     };
 
     constructor(gl: WebGL2RenderingContext) {
         this.gl = gl;
         this.compiler = new WebGLShaderCompiler(gl);
-        
+
         this.materialPool = new ObjectPool<MaterialInstance>({
             factory: () => new MaterialInstance(null as any),
-            resetHandler: (material) => {
-            }
+            resetHandler: (material) => {},
         });
     }
 
@@ -77,7 +76,6 @@ export class ShaderManager implements IShaderManager {
         const startTime = performance.now();
 
         try {
-
             if (this.configurationCache.has(path)) {
                 const configuration = this.configurationCache.get(path)!;
                 return await this.loadFromConfiguration(configuration);
@@ -104,7 +102,7 @@ export class ShaderManager implements IShaderManager {
     async loadFromConfiguration(configuration: IShaderConfiguration): Promise<ICompiledShader> {
         const cacheKey = configuration.name;
         const cachedEntry = this.shaderCache.get(cacheKey);
-        
+
         if (cachedEntry) {
             cachedEntry.lastAccessed = Date.now();
             cachedEntry.accessCount++;
@@ -121,7 +119,7 @@ export class ShaderManager implements IShaderManager {
             shader,
             variants: new Map<string, IShaderVariant>(),
             lastAccessed: Date.now(),
-            accessCount: 1
+            accessCount: 1,
         };
 
         this.shaderCache.set(cacheKey, entry);
@@ -132,7 +130,7 @@ export class ShaderManager implements IShaderManager {
     }
 
     createMaterial(
-        shaderName: string, 
+        shaderName: string,
         properties: Record<string, ShaderUniformValue> = {}
     ): IMaterialInstance {
         const shader = this.getShader(shaderName);
@@ -144,7 +142,7 @@ export class ShaderManager implements IShaderManager {
             keywords: [],
             defines: {},
             hash: generateVariantKey(shaderName, [], {}),
-            shader
+            shader,
         });
 
         const material = new MaterialInstance(instance);
@@ -170,10 +168,7 @@ export class ShaderManager implements IShaderManager {
         return null;
     }
 
-    async getVariant(
-        shader: ICompiledShader, 
-        keywords: string[]
-    ): Promise<IShaderVariant> {
+    async getVariant(shader: ICompiledShader, keywords: string[]): Promise<IShaderVariant> {
         const entry = this.shaderCache.get(shader.name);
         if (!entry) {
             throw new Error(`Shader "${shader.name}" not found in cache`);
@@ -212,7 +207,7 @@ export class ShaderManager implements IShaderManager {
         for (const entry of this.shaderCache.values()) {
             this.disposeShaderEntry(entry);
         }
-        
+
         this.shaderCache.clear();
         this.configurationCache.clear();
         this.includeCache.clear();
@@ -224,7 +219,7 @@ export class ShaderManager implements IShaderManager {
             cacheMisses: 0,
             memoryUsage: 0,
             compilationTime: 0,
-            hitRate: 0
+            hitRate: 0,
         };
     }
 
@@ -270,9 +265,10 @@ export class ShaderManager implements IShaderManager {
         // Force garbage collection if memory usage is too high
         if (this.stats.memoryUsage > SHADER_CACHE_LIMITS.MAX_CACHE_SIZE_BYTES) {
             // Remove half of the least recently used shaders
-            const entries = Array.from(this.shaderCache.entries())
-                .sort(([, a], [, b]) => a.lastAccessed - b.lastAccessed);
-            
+            const entries = Array.from(this.shaderCache.entries()).sort(
+                ([, a], [, b]) => a.lastAccessed - b.lastAccessed
+            );
+
             const toRemove = Math.floor(entries.length * 0.5);
             for (let i = 0; i < toRemove; i++) {
                 const [key, entry] = entries[i];
@@ -308,7 +304,7 @@ export class ShaderManager implements IShaderManager {
                 variants: entry.variants.size,
                 lastAccessed: entry.lastAccessed,
                 accessCount: entry.accessCount,
-                memorySize: entry.shader.bytecodeSize + variantMemory
+                memorySize: entry.shader.bytecodeSize + variantMemory,
             });
         }
 
@@ -317,18 +313,17 @@ export class ShaderManager implements IShaderManager {
             totalVariants: this.stats.totalVariants,
             totalMemory: this.stats.memoryUsage,
             hitRate: this.stats.hitRate,
-            averageCompilationTime: this.stats.compilationTime / Math.max(1, this.stats.loadedShaders),
+            averageCompilationTime:
+                this.stats.compilationTime / Math.max(1, this.stats.loadedShaders),
             cacheEfficiency: {
                 shaderCacheSize: this.shaderCache.size,
                 shaderCacheMaxSize: SHADER_CACHE_LIMITS.MAX_COMPILED_SHADERS,
                 configCacheSize: this.configurationCache.size,
-                configCacheMaxSize: SHADER_CACHE_LIMITS.MAX_CONFIGURATIONS
+                configCacheMaxSize: SHADER_CACHE_LIMITS.MAX_CONFIGURATIONS,
             },
-            shaders: shaders.sort((a, b) => b.accessCount - a.accessCount)
+            shaders: shaders.sort((a, b) => b.accessCount - a.accessCount),
         };
     }
-
-
 
     private updateStats(): void {
         let totalSize = 0;
@@ -337,7 +332,7 @@ export class ShaderManager implements IShaderManager {
         for (const entry of this.shaderCache.values()) {
             totalSize += entry.shader.bytecodeSize;
             totalVariants += entry.variants.size;
-            
+
             for (const variant of entry.variants.values()) {
                 totalSize += variant.shader.bytecodeSize;
             }
@@ -347,13 +342,14 @@ export class ShaderManager implements IShaderManager {
             ...this.stats,
             memoryUsage: totalSize,
             totalVariants,
-            hitRate: this.stats.cacheHits / Math.max(1, this.stats.cacheHits + this.stats.cacheMisses)
+            hitRate:
+                this.stats.cacheHits / Math.max(1, this.stats.cacheHits + this.stats.cacheMisses),
         };
     }
 
     private disposeShaderEntry(entry: ShaderCacheEntry): void {
         this.gl.deleteProgram(entry.shader.program);
-        
+
         for (const variant of entry.variants.values()) {
             this.disposeVariant(variant);
         }

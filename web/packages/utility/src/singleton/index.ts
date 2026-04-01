@@ -1,6 +1,4 @@
-export type {
-    ScopeDisposer,
-} from './singleton-core';
+export type { ScopeDisposer } from './singleton-core';
 export * from './singleton-core';
 
 export { SingletonImpl } from './singleton-impl';

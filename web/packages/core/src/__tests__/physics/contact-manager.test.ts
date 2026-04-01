@@ -64,14 +64,16 @@ describe('ContactManager2D', () => {
             const manifold = {
                 normal: { x: 1, y: 0 },
                 pointCount: 1,
-                points: [{
-                    localPointA: { x: 0, y: 0 },
-                    localPointB: { x: 0, y: 0 },
-                    separation: -0.1,
-                    id: 0 as any,
-                    normalImpulse: 0,
-                    tangentImpulse: 0,
-                }],
+                points: [
+                    {
+                        localPointA: { x: 0, y: 0 },
+                        localPointB: { x: 0, y: 0 },
+                        separation: -0.1,
+                        id: 0 as any,
+                        normalImpulse: 0,
+                        tangentImpulse: 0,
+                    },
+                ],
             };
 
             manager.updateContact(contactId, manifold as any);

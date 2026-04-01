@@ -92,7 +92,10 @@ export class SingletonImpl<T> implements ISingleton<T> {
         }
 
         if (this.state === INITIALIZING) {
-            throw SingletonError.invalidOperation('Circular dependency detected during initialization', this.key);
+            throw SingletonError.invalidOperation(
+                'Circular dependency detected during initialization',
+                this.key
+            );
         }
 
         if (!this.hasValue) {
@@ -225,7 +228,10 @@ export class SingletonImpl<T> implements ISingleton<T> {
         }
 
         if (this.state === INITIALIZING) {
-            throw SingletonError.invalidOperation('Circular dependency detected during initialization', this.key);
+            throw SingletonError.invalidOperation(
+                'Circular dependency detected during initialization',
+                this.key
+            );
         }
 
         this.state = INITIALIZING;
