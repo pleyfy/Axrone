@@ -68,7 +68,12 @@ export const encodeSceneValue = (value: unknown): SceneSerializedValue => {
 };
 
 export const decodeSceneValue = (value: SceneSerializedValue): unknown => {
-    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    if (
+        value === null ||
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+    ) {
         return value;
     }
 
@@ -88,7 +93,11 @@ export const decodeSceneValue = (value: SceneSerializedValue): unknown => {
             case 'Vec2':
                 return new Vec2(Number(encodedValue[0]), Number(encodedValue[1]));
             case 'Vec3':
-                return new Vec3(Number(encodedValue[0]), Number(encodedValue[1]), Number(encodedValue[2]));
+                return new Vec3(
+                    Number(encodedValue[0]),
+                    Number(encodedValue[1]),
+                    Number(encodedValue[2])
+                );
             case 'Vec4':
                 return new Vec4(
                     Number(encodedValue[0]),
@@ -156,7 +165,13 @@ export const cloneMeshDefinition = (definition: SceneMeshDefinition): SceneMeshD
 
 export const serializeMeshDefinition = (definition: SceneMeshDefinition): SceneSerializedValue => {
     const vertices = ArrayBuffer.isView(definition.vertices)
-        ? [...new Uint8Array(definition.vertices.buffer, definition.vertices.byteOffset, definition.vertices.byteLength)]
+        ? [
+              ...new Uint8Array(
+                  definition.vertices.buffer,
+                  definition.vertices.byteOffset,
+                  definition.vertices.byteLength
+              ),
+          ]
         : [];
 
     const indices =
@@ -193,7 +208,10 @@ export const deserializeMeshDefinition = (value: SceneSerializedValue): SceneMes
 
     let indices: Uint8Array | Uint16Array | Uint32Array | undefined;
     if (Array.isArray(objectValue.indices)) {
-        const type = typeof objectValue.indexArrayType === 'string' ? objectValue.indexArrayType : 'Uint16Array';
+        const type =
+            typeof objectValue.indexArrayType === 'string'
+                ? objectValue.indexArrayType
+                : 'Uint16Array';
         const numeric = objectValue.indices.map((entry) => Number(entry));
 
         switch (type) {
@@ -213,21 +231,33 @@ export const deserializeMeshDefinition = (value: SceneSerializedValue): SceneMes
         id: String(objectValue.id),
         vertices,
         indices,
-        vertexCount: typeof objectValue.vertexCount === 'number' ? objectValue.vertexCount : undefined,
-        topology: (typeof objectValue.topology === 'string' ? objectValue.topology : 'triangles') as SceneMeshDefinition['topology'],
+        vertexCount:
+            typeof objectValue.vertexCount === 'number' ? objectValue.vertexCount : undefined,
+        topology: (typeof objectValue.topology === 'string'
+            ? objectValue.topology
+            : 'triangles') as SceneMeshDefinition['topology'],
         usage: typeof objectValue.usage === 'number' ? objectValue.usage : undefined,
         attributes: Array.isArray(objectValue.attributes)
             ? objectValue.attributes.map((attribute) => {
-                  if (attribute === null || Array.isArray(attribute) || typeof attribute !== 'object') {
+                  if (
+                      attribute === null ||
+                      Array.isArray(attribute) ||
+                      typeof attribute !== 'object'
+                  ) {
                       throw new Error('Invalid serialized mesh attribute');
                   }
                   return {
-                      semantic: String(attribute.semantic) as SceneMeshDefinition['attributes'][number]['semantic'],
+                      semantic: String(
+                          attribute.semantic
+                      ) as SceneMeshDefinition['attributes'][number]['semantic'],
                       componentCount: Number(attribute.componentCount) as 1 | 2 | 3 | 4,
                       offset: Number(attribute.offset),
                       stride: Number(attribute.stride),
                       type: typeof attribute.type === 'number' ? attribute.type : undefined,
-                      normalized: typeof attribute.normalized === 'boolean' ? attribute.normalized : undefined,
+                      normalized:
+                          typeof attribute.normalized === 'boolean'
+                              ? attribute.normalized
+                              : undefined,
                   };
               })
             : [],

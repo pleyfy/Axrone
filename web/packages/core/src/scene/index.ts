@@ -53,7 +53,13 @@ export { OrbitCameraController } from './components/orbit-camera-controller';
 export type { PointLightConfig } from './components/point-light';
 export { PointLight } from './components/point-light';
 
-export { FilterMode, TextureDimension, TextureFormat, TextureUsage, WrapMode } from '../renderer/webgl2/texture/interfaces';
+export {
+    FilterMode,
+    TextureDimension,
+    TextureFormat,
+    TextureUsage,
+    WrapMode,
+} from '../renderer/webgl2/texture/interfaces';
 
 export { decodeSceneValue, encodeSceneValue } from './serialization';
 

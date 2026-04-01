@@ -1,10 +1,15 @@
 export class SceneError extends Error {
-    constructor(message: string, readonly code: string, readonly cause?: unknown) {
+    constructor(
+        message: string,
+        readonly code: string,
+        readonly cause?: unknown
+    ) {
         super(message);
         this.name = 'SceneError';
         Object.setPrototypeOf(this, new.target.prototype);
-        (Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void })
-            .captureStackTrace?.(this, this.constructor);
+        (
+            Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void }
+        ).captureStackTrace?.(this, this.constructor);
     }
 }
 

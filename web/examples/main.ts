@@ -13,7 +13,8 @@ const resolveExamples = async (): Promise<readonly SceneExample[]> => {
     const modules = await Promise.all(entries.map(async ([, load]) => (await load()).default));
 
     return modules.sort((left, right) => {
-        const orderDelta = (left.order ?? Number.MAX_SAFE_INTEGER) - (right.order ?? Number.MAX_SAFE_INTEGER);
+        const orderDelta =
+            (left.order ?? Number.MAX_SAFE_INTEGER) - (right.order ?? Number.MAX_SAFE_INTEGER);
         if (orderDelta !== 0) {
             return orderDelta;
         }

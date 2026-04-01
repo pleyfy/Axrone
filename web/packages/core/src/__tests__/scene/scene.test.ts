@@ -176,7 +176,9 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
         deleteProgram: vi.fn((program: object) => {
             programs.delete(program);
         }),
-        getUniformLocation: vi.fn((_: WebGLProgram, name: string) => ({ name }) as WebGLUniformLocation),
+        getUniformLocation: vi.fn(
+            (_: WebGLProgram, name: string) => ({ name }) as WebGLUniformLocation
+        ),
         useProgram: vi.fn(),
         createVertexArray: vi.fn(() => {
             const vao = {};
@@ -261,7 +263,10 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
     return gl as unknown as WebGL2RenderingContext;
 };
 
-const createSceneOptions = (scheduler: ManualScheduler, canvas: HTMLCanvasElement): SceneOptions => {
+const createSceneOptions = (
+    scheduler: ManualScheduler,
+    canvas: HTMLCanvasElement
+): SceneOptions => {
     const gl = createMockGL(canvas);
     Object.defineProperty(canvas, 'getContext', {
         value: vi.fn(() => gl),

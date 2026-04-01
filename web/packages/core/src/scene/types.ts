@@ -305,7 +305,10 @@ export interface SceneSerializationHost {
         options?: ScenePrefabInstantiateOptions
     ): readonly Actor[];
     serializeScene(): SceneSnapshot;
-    loadScene(snapshot: SceneSnapshot, options?: SceneSnapshotLoadOptions): Promise<readonly Actor[]>;
+    loadScene(
+        snapshot: SceneSnapshot,
+        options?: SceneSnapshotLoadOptions
+    ): Promise<readonly Actor[]>;
 }
 
 export interface SceneRenderPassHost {

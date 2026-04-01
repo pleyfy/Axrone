@@ -14,7 +14,10 @@ export interface OrbitCameraControllerConfig {
     readonly autoRotateSpeed?: number;
 }
 
-const toVec3 = (value?: Vec3 | readonly [number, number, number], fallback: Vec3 = Vec3.ZERO): Vec3 => {
+const toVec3 = (
+    value?: Vec3 | readonly [number, number, number],
+    fallback: Vec3 = Vec3.ZERO
+): Vec3 => {
     if (value instanceof Vec3) {
         return new Vec3(value.x, value.y, value.z);
     }
@@ -134,7 +137,11 @@ export class OrbitCameraController extends Component {
 
     override deserialize(data: Record<string, any>): void {
         if (Array.isArray(data.target) && data.target.length === 3) {
-            this._target = new Vec3(Number(data.target[0]), Number(data.target[1]), Number(data.target[2]));
+            this._target = new Vec3(
+                Number(data.target[0]),
+                Number(data.target[1]),
+                Number(data.target[2])
+            );
         }
 
         if (Array.isArray(data.up) && data.up.length === 3) {

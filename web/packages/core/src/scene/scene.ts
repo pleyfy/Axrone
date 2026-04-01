@@ -31,7 +31,12 @@ import {
     SceneMeshError,
     SceneShaderError,
 } from './errors';
-import { cloneMeshDefinition, cloneTextureBinding, decodeSceneValue, encodeSceneValue } from './serialization';
+import {
+    cloneMeshDefinition,
+    cloneTextureBinding,
+    decodeSceneValue,
+    encodeSceneValue,
+} from './serialization';
 import type {
     SceneActorSnapshot,
     SceneClearFlag,
@@ -222,12 +227,18 @@ const cloneMaterialDefinition = (definition: SceneMaterialDefinition): SceneMate
     shaderId: definition.shaderId,
     uniforms: definition.uniforms
         ? Object.fromEntries(
-              Object.entries(definition.uniforms).map(([name, value]) => [name, cloneSceneValue(value)])
+              Object.entries(definition.uniforms).map(([name, value]) => [
+                  name,
+                  cloneSceneValue(value),
+              ])
           )
         : undefined,
     textures: definition.textures
         ? Object.fromEntries(
-              Object.entries(definition.textures).map(([name, binding]) => [name, cloneTextureBinding(binding)])
+              Object.entries(definition.textures).map(([name, binding]) => [
+                  name,
+                  cloneTextureBinding(binding),
+              ])
           )
         : undefined,
 });
@@ -280,7 +291,9 @@ const cloneTextureDefinition = (definition: SceneTextureDefinition): SceneTextur
     };
 };
 
-const cloneRenderPassDefinition = (definition: SceneRenderPassDefinition): SceneRenderPassDefinition => ({
+const cloneRenderPassDefinition = (
+    definition: SceneRenderPassDefinition
+): SceneRenderPassDefinition => ({
     ...definition,
     clearFlags: definition.clearFlags ? [...definition.clearFlags] : undefined,
     clearColor:
@@ -306,10 +319,7 @@ const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {
     }
 };
 
-const mapTopologyToMode = (
-    gl: WebGL2RenderingContext,
-    topology: SceneMeshTopology
-): number => {
+const mapTopologyToMode = (gl: WebGL2RenderingContext, topology: SceneMeshTopology): number => {
     switch (topology) {
         case 'lines':
             return gl.LINES;
@@ -1004,7 +1014,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         );
     }
 
-    createPrefab(id: string, actors: readonly Actor[] = this.world.getAllActors()): ScenePrefabDefinition {
+    createPrefab(
+        id: string,
+        actors: readonly Actor[] = this.world.getAllActors()
+    ): ScenePrefabDefinition {
         this._assertNotDisposed();
 
         return {
@@ -1049,11 +1062,21 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         return {
             version: 1,
             prefab: this.createPrefab(`${this.id}:prefab`),
-            shaders: [...this._shaderDefinitions.values()].map((definition) => cloneShaderDefinition(definition)),
-            meshes: [...this._meshDefinitions.values()].map((definition) => cloneMeshDefinition(definition)),
-            materials: [...this._materialDefinitions.values()].map((definition) => cloneMaterialDefinition(definition)),
-            textures: [...this._textureDefinitions.values()].map((definition) => cloneTextureDefinition(definition)),
-            samplers: [...this._samplerDefinitions.values()].map((definition) => cloneSamplerDefinition(definition)),
+            shaders: [...this._shaderDefinitions.values()].map((definition) =>
+                cloneShaderDefinition(definition)
+            ),
+            meshes: [...this._meshDefinitions.values()].map((definition) =>
+                cloneMeshDefinition(definition)
+            ),
+            materials: [...this._materialDefinitions.values()].map((definition) =>
+                cloneMaterialDefinition(definition)
+            ),
+            textures: [...this._textureDefinitions.values()].map((definition) =>
+                cloneTextureDefinition(definition)
+            ),
+            samplers: [...this._samplerDefinitions.values()].map((definition) =>
+                cloneSamplerDefinition(definition)
+            ),
             renderPasses: [...this._renderPassDefinitions.values()]
                 .map((definition) => cloneRenderPassDefinition(definition))
                 .sort((left, right) => (left.order ?? 0) - (right.order ?? 0)),
@@ -1067,7 +1090,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._assertNotDisposed();
 
         if (snapshot.version !== 1) {
-            throw new SceneLifecycleError(`Unsupported scene snapshot version '${snapshot.version}'`);
+            throw new SceneLifecycleError(
+                `Unsupported scene snapshot version '${snapshot.version}'`
+            );
         }
 
         if (options.clearExisting !== false) {
@@ -1096,17 +1121,18 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             this._renderPassDefinitions.clear();
         }
 
-        const renderPasses = snapshot.renderPasses.length > 0
-            ? snapshot.renderPasses
-            : [
-                  {
-                      id: DEFAULT_RENDER_PASS_ID,
-                      order: 0,
-                      rendererPassId: DEFAULT_RENDER_PASS_ID,
-                      clearFlags: ['color', 'depth'],
-                      clearColor: this._defaultClearColor,
-                  } satisfies SceneRenderPassDefinition,
-              ];
+        const renderPasses =
+            snapshot.renderPasses.length > 0
+                ? snapshot.renderPasses
+                : [
+                      {
+                          id: DEFAULT_RENDER_PASS_ID,
+                          order: 0,
+                          rendererPassId: DEFAULT_RENDER_PASS_ID,
+                          clearFlags: ['color', 'depth'],
+                          clearColor: this._defaultClearColor,
+                      } satisfies SceneRenderPassDefinition,
+                  ];
 
         for (const renderPass of renderPasses) {
             this.registerRenderPass(renderPass);
@@ -1207,7 +1233,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             } else if (options.createCanvas) {
                 canvas = options.createCanvas();
                 autoCreated = true;
-            } else if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+            } else if (
+                typeof document !== 'undefined' &&
+                typeof document.createElement === 'function'
+            ) {
                 canvas = document.createElement('canvas');
                 autoCreated = true;
             } else {
@@ -1252,7 +1281,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         } as Record<SceneMeshSemantic, string>;
 
         const vertexShader = this._compileShader(this.gl.VERTEX_SHADER, definition.vertexSource);
-        const fragmentShader = this._compileShader(this.gl.FRAGMENT_SHADER, definition.fragmentSource);
+        const fragmentShader = this._compileShader(
+            this.gl.FRAGMENT_SHADER,
+            definition.fragmentSource
+        );
 
         try {
             for (const semantic of Object.keys(attributeNames) as SceneMeshSemantic[]) {
@@ -1358,7 +1390,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         if (definition.indices) {
             indexBuffer = this.gl.createBuffer();
             if (!indexBuffer) {
-                throw new SceneMeshError(`Failed to create index buffer for mesh '${definition.id}'`);
+                throw new SceneMeshError(
+                    `Failed to create index buffer for mesh '${definition.id}'`
+                );
             }
 
             this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
@@ -1393,7 +1427,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         };
     }
 
-    private async _createTextureResource(definition: SceneTextureDefinition): Promise<TextureResource> {
+    private async _createTextureResource(
+        definition: SceneTextureDefinition
+    ): Promise<TextureResource> {
         const format = definition.format ?? TextureFormat.RGBA8;
         const generateMipmaps = definition.generateMipmaps ?? true;
         const mipLevelsFor = (width: number, height: number): number =>
@@ -1506,7 +1542,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         });
     }
 
-    private _registerGeometryBuffers(id: string, geometryBuffers: IGeometryBuffers): SceneMeshHandle {
+    private _registerGeometryBuffers(
+        id: string,
+        geometryBuffers: IGeometryBuffers
+    ): SceneMeshHandle {
         const attributes = geometryBuffers.layout.attributes
             .map((attribute) => {
                 const semantic = mapGeometryAttribute(attribute.name);
@@ -1625,7 +1664,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this._setUniform(shader, 'u_Time', this.loop.elapsed / 1000);
                 this._setUniform(shader, 'u_DeltaTime', deltaTime / 1000);
                 this._setUniform(shader, 'u_Frame', this.loop.frame);
-                this._setUniform(shader, 'u_Resolution', new Vec2(this.canvas.width, this.canvas.height));
+                this._setUniform(
+                    shader,
+                    'u_Resolution',
+                    new Vec2(this.canvas.width, this.canvas.height)
+                );
                 this._setUniform(shader, 'u_CameraPosition', cameraPosition);
                 this._applyLightingUniforms(shader, item.renderer, lighting);
 
@@ -1657,7 +1700,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         let mask = 0;
 
         if (clearFlags.includes('color')) {
-            const clearColor = renderPass.clearColor ?? camera?.clearColor ?? this._defaultClearColor;
+            const clearColor =
+                renderPass.clearColor ?? camera?.clearColor ?? this._defaultClearColor;
             this.gl.clearColor(clearColor.x, clearColor.y, clearColor.z, clearColor.w);
             mask |= this.gl.COLOR_BUFFER_BIT;
         }
@@ -2012,7 +2056,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _createActorSnapshot(actor: Actor): SceneActorSnapshot {
-        const components = actor.getAllComponents().map((component) => this._createComponentSnapshot(component));
+        const components = actor
+            .getAllComponents()
+            .map((component) => this._createComponentSnapshot(component));
 
         return {
             name: actor.name,
@@ -2027,7 +2073,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _createComponentSnapshot(component: Component): SceneComponentSnapshot {
         const serialize = (component as { serialize?: () => Record<string, any> }).serialize;
-        const data = typeof serialize === 'function' ? serialize.call(component) ?? {} : {};
+        const data = typeof serialize === 'function' ? (serialize.call(component) ?? {}) : {};
 
         return {
             type: component.constructor.name,
@@ -2047,9 +2093,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             );
         }
 
-        const existingComponent = actor.getAllComponents().find(
-            (component) => component.constructor === componentType
-        );
+        const existingComponent = actor
+            .getAllComponents()
+            .find((component) => component.constructor === componentType);
         const component =
             existingComponent ??
             actor.addComponent(
@@ -2058,7 +2104,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             );
 
         const decoded = decodeSceneValue(snapshot.data);
-        if (typeof (component as { deserialize?: (data: Record<string, any>) => void }).deserialize === 'function') {
+        if (
+            typeof (component as { deserialize?: (data: Record<string, any>) => void })
+                .deserialize === 'function'
+        ) {
             (component as { deserialize(data: Record<string, any>): void }).deserialize(
                 (decoded && typeof decoded === 'object' && !Array.isArray(decoded)
                     ? decoded

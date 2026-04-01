@@ -1029,7 +1029,6 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
-
     private _registerComponentEventBridge(componentName: string): void {
         this._eventBus.on(`${componentName}Added` as any, (data) => {
             try {

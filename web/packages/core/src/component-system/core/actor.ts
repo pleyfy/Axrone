@@ -478,7 +478,12 @@ export class Actor<
             const sortedComponents = this._getSortedComponents();
 
             for (const [componentType, component] of sortedComponents) {
-                this._executeComponentPhase(componentType, component, 'fixedUpdate', fixedDeltaTime);
+                this._executeComponentPhase(
+                    componentType,
+                    component,
+                    'fixedUpdate',
+                    fixedDeltaTime
+                );
             }
         } catch (error) {
             console.error(

@@ -7,10 +7,7 @@
         "declarationMap": false,
         "sourceMap": true
     },
-    "include": [
-        "packages/*/src/**/*.ts",
-        "types/**/*.d.ts"
-    ],
+    "include": ["packages/*/src/**/*.ts", "types/**/*.d.ts"],
     "exclude": [
         "node_modules",
         "dist",

@@ -15,7 +15,8 @@ import type { ExampleContext, SceneExample } from './example-types';
 const advancedSceneExample: SceneExample = {
     id: 'scene-advanced',
     title: 'Advanced Scene',
-    description: 'Texture pipeline, multipass render, orbit camera, directional light ve prefab snapshot akislarini birlikte gosterir.',
+    description:
+        'Texture pipeline, multipass render, orbit camera, directional light ve prefab snapshot akislarini birlikte gosterir.',
     tags: ['texture', 'multipass', 'prefab', 'lighting'],
     order: 2,
     async mount({ container }: ExampleContext) {

@@ -28,7 +28,8 @@ class OrbitMotion extends Component {
 const basicSceneExample: SceneExample = {
     id: 'scene-basic',
     title: 'Basic Scene',
-    description: 'Tek shader, tek mesh ve custom component update akisi ile minimum scene kurulumu.',
+    description:
+        'Tek shader, tek mesh ve custom component update akisi ile minimum scene kurulumu.',
     tags: ['scene', 'component', 'shader'],
     order: 1,
     mount({ container }: ExampleContext) {
