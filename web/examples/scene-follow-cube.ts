@@ -304,14 +304,13 @@ void main() {
             },
         });
 
-        // Create ground plane - rotated to be flat
+        // Plane mesh is already generated on the XZ ground plane with +Y normal.
         const ground = scene.createRenderableActor(
             { name: 'Ground' },
             { meshId: 'ground-plane', materialId: 'ground-grid-material' }
         );
         const groundTransform = ground.requireComponent(Transform);
         groundTransform.position = new Vec3(0, -0.9, 0);
-        groundTransform.rotation = Quat.fromEuler(-Math.PI / 2, 0, 0);
 
         // Create player cube with controller
         const player = scene.createRenderableActor(
