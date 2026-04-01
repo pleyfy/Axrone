@@ -1,8 +1,37 @@
 import { Vec3 } from '@axrone/numeric';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Component } from '../../component-system/core/component';
 import { Transform } from '../../component-system/components/transform';
-import { Camera, MeshRenderer, Scene, type SceneOptions } from '../../scene';
+import type { SceneOptions } from '../../scene';
+
+const installWebGL2Constants = (): void => {
+    const root = globalThis as typeof globalThis & {
+        WebGL2RenderingContext?: typeof WebGL2RenderingContext;
+    };
+
+    if (root.WebGL2RenderingContext) {
+        return;
+    }
+
+    let nextConstant = 0x2000;
+    root.WebGL2RenderingContext = new Proxy(class WebGL2RenderingContext {}, {
+        get(target, property, receiver) {
+            if (typeof property === 'string' && !(property in target)) {
+                Reflect.set(target, property, nextConstant++);
+            }
+
+            return Reflect.get(target, property, receiver);
+        },
+    }) as typeof WebGL2RenderingContext;
+};
+
+let Scene: typeof import('../../scene').Scene;
+let MeshRenderer: typeof import('../../scene').MeshRenderer;
+let DirectionalLight: typeof import('../../scene').DirectionalLight;
+let OrbitCameraController: typeof import('../../scene').OrbitCameraController;
+let FilterMode: typeof import('../../scene').FilterMode;
+let TextureFormat: typeof import('../../scene').TextureFormat;
+let WrapMode: typeof import('../../scene').WrapMode;
 
 class ManualScheduler {
     readonly kind = 'manual';
@@ -58,6 +87,8 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
     const programs = new Set<object>();
     const buffers = new Set<object>();
     const vertexArrays = new Set<object>();
+    const textures = new Set<object>();
+    const samplers = new Set<object>();
 
     const gl = {
         canvas,
@@ -83,6 +114,46 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
         BACK: 0x0405,
         SRC_ALPHA: 0x0302,
         ONE_MINUS_SRC_ALPHA: 0x0303,
+        TEXTURE_2D: 0x0de1,
+        TEXTURE_3D: 0x806f,
+        TEXTURE_CUBE_MAP: 0x8513,
+        TEXTURE_2D_ARRAY: 0x8c1a,
+        TEXTURE_CUBE_MAP_POSITIVE_X: 0x8515,
+        TEXTURE_CUBE_MAP_NEGATIVE_X: 0x8516,
+        TEXTURE_CUBE_MAP_POSITIVE_Y: 0x8517,
+        TEXTURE_CUBE_MAP_NEGATIVE_Y: 0x8518,
+        TEXTURE_CUBE_MAP_POSITIVE_Z: 0x8519,
+        TEXTURE_CUBE_MAP_NEGATIVE_Z: 0x851a,
+        TEXTURE0: 0x84c0,
+        TEXTURE_MIN_FILTER: 0x2801,
+        TEXTURE_MAG_FILTER: 0x2800,
+        TEXTURE_WRAP_S: 0x2802,
+        TEXTURE_WRAP_T: 0x2803,
+        TEXTURE_WRAP_R: 0x8072,
+        TEXTURE_COMPARE_MODE: 0x884c,
+        TEXTURE_COMPARE_FUNC: 0x884d,
+        TEXTURE_MIN_LOD: 0x813a,
+        TEXTURE_MAX_LOD: 0x813b,
+        COMPARE_REF_TO_TEXTURE: 0x884e,
+        NONE: 0,
+        REPEAT: 0x2901,
+        CLAMP_TO_EDGE: 0x812f,
+        CLAMP_TO_BORDER: 0x812d,
+        MIRRORED_REPEAT: 0x8370,
+        NEAREST: 0x2600,
+        LINEAR: 0x2601,
+        NEAREST_MIPMAP_NEAREST: 0x2700,
+        LINEAR_MIPMAP_NEAREST: 0x2701,
+        NEAREST_MIPMAP_LINEAR: 0x2702,
+        LINEAR_MIPMAP_LINEAR: 0x2703,
+        NEVER: 0x0200,
+        LESS: 0x0201,
+        EQUAL: 0x0202,
+        LEQUAL: 0x0203,
+        GREATER: 0x0204,
+        NOTEQUAL: 0x0205,
+        GEQUAL: 0x0206,
+        ALWAYS: 0x0207,
         createShader: vi.fn((type: number) => {
             const shader = { type };
             shaders.add(shader);
@@ -160,6 +231,34 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
         uniform1uiv: vi.fn(),
         drawArrays: vi.fn(),
         drawElements: vi.fn(),
+        createTexture: vi.fn(() => {
+            const texture = {};
+            textures.add(texture);
+            return texture as WebGLTexture;
+        }),
+        bindTexture: vi.fn(),
+        activeTexture: vi.fn(),
+        deleteTexture: vi.fn((texture: object) => {
+            textures.delete(texture);
+        }),
+        texImage2D: vi.fn(),
+        texImage3D: vi.fn(),
+        texSubImage2D: vi.fn(),
+        texSubImage3D: vi.fn(),
+        generateMipmap: vi.fn(),
+        createSampler: vi.fn(() => {
+            const sampler = {};
+            samplers.add(sampler);
+            return sampler as WebGLSampler;
+        }),
+        bindSampler: vi.fn(),
+        deleteSampler: vi.fn((sampler: object) => {
+            samplers.delete(sampler);
+        }),
+        samplerParameteri: vi.fn(),
+        samplerParameterf: vi.fn(),
+        getExtension: vi.fn(() => null),
+        getParameter: vi.fn(() => 1),
     };
 
     return gl as unknown as WebGL2RenderingContext;
@@ -184,6 +283,18 @@ const createSceneOptions = (scheduler: ManualScheduler, canvas: HTMLCanvasElemen
 
 describe('Scene', () => {
     let scheduler: ManualScheduler;
+
+    beforeAll(async () => {
+        installWebGL2Constants();
+        const sceneModule = await import('../../scene');
+        Scene = sceneModule.Scene;
+        MeshRenderer = sceneModule.MeshRenderer;
+        DirectionalLight = sceneModule.DirectionalLight;
+        OrbitCameraController = sceneModule.OrbitCameraController;
+        FilterMode = sceneModule.FilterMode;
+        TextureFormat = sceneModule.TextureFormat;
+        WrapMode = sceneModule.WrapMode;
+    });
 
     beforeEach(() => {
         scheduler = new ManualScheduler();
@@ -223,14 +334,13 @@ describe('Scene', () => {
         scene.dispose();
     });
 
-    it('registers shader, mesh, material, and issues a draw call', () => {
+    it('binds textures, applies lighting uniforms, and renders across multiple passes', async () => {
         const canvas = document.createElement('canvas');
-        const options = createSceneOptions(scheduler, canvas);
-        const scene = new Scene(options);
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
         const gl = scene.gl as unknown as ReturnType<typeof createMockGL>;
 
         scene.registerShader({
-            id: 'test/solid',
+            id: 'test/lit-textured',
             vertexSource: `#version 300 es
 layout(location = 0) in vec3 a_Position;
 uniform mat4 u_Model;
@@ -241,12 +351,25 @@ void main() {
 }`,
             fragmentSource: `#version 300 es
 precision highp float;
-uniform vec4 u_Color;
+uniform sampler2D u_MainTex;
+uniform vec3 u_LightColor;
+uniform vec3 u_AmbientLight;
+uniform bool u_ReceiveLighting;
 out vec4 o_Color;
 void main() {
-    o_Color = u_Color;
+    vec3 base = texture(u_MainTex, vec2(0.5)).rgb;
+    vec3 lit = base * (u_AmbientLight + (u_ReceiveLighting ? u_LightColor : vec3(0.0)));
+    o_Color = vec4(lit, 1.0);
 }`,
-            uniforms: ['u_Model', 'u_View', 'u_Projection', 'u_Color'],
+            uniforms: [
+                'u_Model',
+                'u_View',
+                'u_Projection',
+                'u_MainTex',
+                'u_LightColor',
+                'u_AmbientLight',
+                'u_ReceiveLighting',
+            ],
         });
 
         scene.registerMesh({
@@ -263,27 +386,152 @@ void main() {
             vertexCount: 3,
         });
 
-        scene.createMaterial({
-            id: 'triangle-material',
-            shaderId: 'test/solid',
-            uniforms: {
-                u_Color: [1, 0.4, 0.2, 1],
+        scene.registerSampler({
+            id: 'linear-repeat',
+            minFilter: FilterMode.LINEAR,
+            magFilter: FilterMode.LINEAR,
+            wrapS: WrapMode.REPEAT,
+            wrapT: WrapMode.REPEAT,
+        });
+
+        await scene.registerTexture({
+            id: 'checker',
+            format: TextureFormat.RGBA8,
+            samplerId: 'linear-repeat',
+            source: {
+                kind: 'checker',
+                size: 4,
             },
         });
 
-        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        cameraActor.requireComponent(Transform).position = Vec3.ZERO.clone();
+        scene.createMaterial({
+            id: 'triangle-material',
+            shaderId: 'test/lit-textured',
+            textures: {
+                u_MainTex: {
+                    textureId: 'checker',
+                    samplerId: 'linear-repeat',
+                },
+            },
+        });
 
-        const meshActor = scene.createRenderableActor(
-            { name: 'Triangle' },
-            { meshId: 'triangle', materialId: 'triangle-material' }
+        scene.registerRenderPass({
+            id: 'overlay',
+            order: 1,
+            rendererPassId: 'overlay',
+            clearFlags: [],
+            blend: true,
+        });
+
+        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        cameraActor.addComponent(OrbitCameraController, { distance: 5, azimuth: 0, elevation: 0 });
+
+        const lightActor = scene.createActor({ name: 'Sun' });
+        lightActor.addComponent(DirectionalLight, {
+            color: [1, 0.9, 0.8],
+            primary: true,
+        });
+
+        const mainMesh = scene.createRenderableActor(
+            { name: 'MainTriangle' },
+            { meshId: 'triangle', materialId: 'triangle-material', passId: 'main' }
         );
-        meshActor.requireComponent(Transform).position = new Vec3(0, 0, 0);
+        mainMesh.requireComponent(Transform).position = new Vec3(-0.5, 0, 0);
+
+        const overlayMesh = scene.createRenderableActor(
+            { name: 'OverlayTriangle' },
+            { meshId: 'triangle', materialId: 'triangle-material', passId: 'overlay' }
+        );
+        overlayMesh.requireComponent(Transform).position = new Vec3(0.5, 0, 0);
 
         scene.start(0);
         scheduler.flush(16);
 
-        expect(gl.drawArrays).toHaveBeenCalledTimes(1);
+        expect(gl.drawArrays).toHaveBeenCalledTimes(2);
+        expect(gl.bindSampler).toHaveBeenCalled();
+        expect(gl.bindTexture).toHaveBeenCalled();
+
+        const lightColorCalls = gl.uniform3f.mock.calls.filter(
+            ([location]) => (location as { name: string }).name === 'u_LightColor'
+        );
+        expect(lightColorCalls.length).toBeGreaterThan(0);
+        expect(lightColorCalls[0].slice(1)).toEqual([1, 0.9, 0.8]);
+
+        expect(cameraActor.requireComponent(Transform).position.z).toBeGreaterThan(0);
+
+        scene.dispose();
+    });
+
+    it('serializes and reloads scene assets and prefab actors', async () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const gl = scene.gl as unknown as ReturnType<typeof createMockGL>;
+
+        scene.registerShader({
+            id: 'test/solid',
+            vertexSource: `#version 300 es
+layout(location = 0) in vec3 a_Position;
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+void main() {
+    gl_Position = u_Projection * u_View * u_Model * vec4(a_Position, 1.0);
+}`,
+            fragmentSource: `#version 300 es
+precision highp float;
+uniform sampler2D u_MainTex;
+out vec4 o_Color;
+void main() {
+    o_Color = texture(u_MainTex, vec2(0.5));
+}`,
+            uniforms: ['u_Model', 'u_View', 'u_Projection', 'u_MainTex'],
+        });
+
+        scene.createPlaneMesh('plane', 1, 1);
+        await scene.registerTexture({
+            id: 'solid',
+            format: TextureFormat.RGBA8,
+            source: {
+                kind: 'color',
+                color: [0.2, 0.6, 1, 1],
+                width: 2,
+                height: 2,
+            },
+        });
+
+        scene.createMaterial({
+            id: 'plane-material',
+            shaderId: 'test/solid',
+            textures: {
+                u_MainTex: 'solid',
+            },
+        });
+
+        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        const plane = scene.createRenderableActor(
+            { name: 'Plane' },
+            { meshId: 'plane', materialId: 'plane-material', passId: 'main' }
+        );
+        plane.requireComponent(Transform).position = new Vec3(0, 0, -2);
+
+        const snapshot = scene.serializeScene();
+
+        expect(snapshot.prefab.actors.length).toBe(2);
+        expect(snapshot.textures.length).toBe(1);
+        expect(snapshot.materials[0].textures?.u_MainTex).toBe('solid');
+
+        await scene.loadScene(snapshot);
+        scene.renderNow();
+
+        expect(scene.world.getAllActors().length).toBe(snapshot.prefab.actors.length);
+
+        const restoredPlane = scene.world
+            .getAllActors()
+            .find((actor) => actor.name === 'Plane');
+        expect(restoredPlane).toBeDefined();
+        expect(restoredPlane?.getComponent(MeshRenderer)?.materialId).toBe('plane-material');
+        expect(scene.getTexture('solid')?.width).toBe(2);
+        expect(gl.drawArrays).toHaveBeenCalled();
 
         scene.dispose();
     });
