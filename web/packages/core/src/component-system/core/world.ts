@@ -665,7 +665,7 @@ export class World<R extends ComponentRegistry> {
             );
         }
 
-        const componentName = componentType.name;
+        const componentName = getComponentMetadata(componentType)?.scriptName ?? componentType.name;
         const registry = this._registry as Record<string, ComponentConstructor>;
         const existing = registry[componentName];
 
@@ -690,7 +690,7 @@ export class World<R extends ComponentRegistry> {
         const componentName =
             typeof componentTypeOrName === 'string'
                 ? componentTypeOrName
-                : componentTypeOrName.name;
+                : getComponentMetadata(componentTypeOrName)?.scriptName ?? componentTypeOrName.name;
 
         return componentName in this._registry;
     }

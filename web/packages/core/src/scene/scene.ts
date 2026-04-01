@@ -6,6 +6,7 @@ import { Transform } from '../component-system/components/transform';
 import { Component } from '../component-system/core/component';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { World } from '../component-system/core/world';
+import { getComponentMetadata } from '../component-system/decorators/script';
 import { SystemManager, SystemPhase } from '../component-system/systems/system-manager';
 import type { ComponentConstructor, ComponentRegistry } from '../component-system/types/core';
 import type { System, SystemQuery } from '../component-system/types/system';
@@ -550,7 +551,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         } as RuntimeRegistry<R>;
 
         for (const componentType of Object.values(this._registry)) {
-            this._componentTypes.set(componentType.name, componentType);
+            const componentName =
+                getComponentMetadata(componentType)?.scriptName ?? componentType.name;
+            this._componentTypes.set(componentName, componentType);
         }
 
         this.world = new World(this._registry);
@@ -630,7 +633,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
         this._assertNotDisposed();
-        this._componentTypes.set(componentType.name, componentType);
+        const componentName = getComponentMetadata(componentType)?.scriptName ?? componentType.name;
+        this._componentTypes.set(componentName, componentType);
         this.world.registerComponentType(componentType);
         return this;
     }
