@@ -2,6 +2,7 @@ import type { Entity } from '../types/core';
 import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
 import type { Actor } from './actor';
+import { getComponentMetadata } from '../decorators/script';
 
 const getComponentTypeName = (componentType: ComponentType): string =>
     getComponentMetadata(componentType)?.scriptName ?? componentType.name;

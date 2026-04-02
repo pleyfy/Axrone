@@ -1,26 +1,74 @@
 import './styles.css';
 import type { ExampleHandle, SceneExample } from './example-types';
+import type { LiveEditorController } from './playground/live-editor';
 
 type ExampleModule = {
     readonly default: SceneExample;
 };
 
-const loaders = import.meta.glob('./*.ts') as Record<string, () => Promise<ExampleModule>>;
+type ExampleDescriptor = {
+    readonly path: string;
+    readonly example: SceneExample;
+    readonly source: string;
+};
+
+type PlaygroundTools = {
+    readonly editorModule: typeof import('./playground/live-editor');
+    readonly compilerModule: typeof import('./playground/live-example-runtime');
+};
+
+const moduleLoaders = import.meta.glob('./*.ts') as Record<string, () => Promise<ExampleModule>>;
+const sourceLoaders = import.meta.glob('./*.ts', {
+    query: '?raw',
+    import: 'default',
+}) as Record<string, () => Promise<string>>;
+
 const ignoredModules = new Set(['./main.ts', './example-types.ts', './example-runtime.ts']);
+const sourceStoragePrefix = 'axrone:examples:source:';
 
-const resolveExamples = async (): Promise<readonly SceneExample[]> => {
-    const entries = Object.entries(loaders).filter(([path]) => !ignoredModules.has(path));
-    const modules = await Promise.all(entries.map(async ([, load]) => (await load()).default));
+const resolveExamples = async (): Promise<readonly ExampleDescriptor[]> => {
+    const entries = Object.entries(moduleLoaders).filter(([path]) => !ignoredModules.has(path));
+    const descriptors = await Promise.all(
+        entries.map(async ([path, loadModule]) => {
+            const sourceLoader = sourceLoaders[path];
 
-    return modules.sort((left, right) => {
+            if (!sourceLoader) {
+                throw new Error(`Missing raw source loader for ${path}`);
+            }
+
+            const [module, source] = await Promise.all([loadModule(), sourceLoader()]);
+
+            return {
+                path,
+                example: module.default,
+                source,
+            } satisfies ExampleDescriptor;
+        })
+    );
+
+    return descriptors.sort((left, right) => {
         const orderDelta =
-            (left.order ?? Number.MAX_SAFE_INTEGER) - (right.order ?? Number.MAX_SAFE_INTEGER);
+            (left.example.order ?? Number.MAX_SAFE_INTEGER) -
+            (right.example.order ?? Number.MAX_SAFE_INTEGER);
+
         if (orderDelta !== 0) {
             return orderDelta;
         }
 
-        return left.title.localeCompare(right.title);
+        return left.example.title.localeCompare(right.example.title);
     });
+};
+
+const loadPlaygroundTools = async (): Promise<PlaygroundTools> => {
+    const [editorModule, compilerModule] = await Promise.all([
+        import('./playground/live-editor'),
+        import('./playground/live-example-runtime'),
+    ]);
+
+    return {
+        editorModule,
+        compilerModule,
+    };
 };
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -30,52 +78,163 @@ if (!app) {
 }
 
 app.innerHTML = `
-    <div class="shell">
-        <aside class="sidebar">
-            <div class="brand-block">
-                <span class="eyebrow">Axrone</span>
-                <h1>Example Runner</h1>
-                <p>Yeni example dosyalari ekleyip otomatik olarak listede gorebilir, sahneleri izole sekilde mount edebilirsin.</p>
+    <div class="page-shell">
+        <header class="page-header">
+            <div class="brand-copy">
+                <span class="eyebrow">Axrone Playground</span>
+                <h1>Live Examples Studio</h1>
+                <p class="lead-copy">Solda Monaco editor, sagda canli preview. Secili ornegi dropdown uzerinden degistirip kodu ayni sayfada aninda test edebilirsin.</p>
             </div>
-            <div class="command-block">
-                <span class="command-label">Commands</span>
-                <code>npm run examples:dev</code>
-                <code>npm run examples:build</code>
-            </div>
-            <nav class="example-list" aria-label="Examples"></nav>
-        </aside>
-        <main class="stage-layout">
-            <header class="stage-header">
-                <div>
-                    <span class="eyebrow">Live Preview</span>
-                    <h2 id="example-title">Select an example</h2>
+            <div class="header-controls">
+                <label class="field-group" for="example-select">
+                    <span class="field-label">Example</span>
+                    <select id="example-select" class="project-select" aria-label="Select example"></select>
+                </label>
+                <div class="toolbar-actions">
+                    <label class="toggle-control" for="autorun-toggle">
+                        <input id="autorun-toggle" type="checkbox" checked />
+                        <span>Auto-run</span>
+                    </label>
+                    <button id="run-button" type="button" class="toolbar-button toolbar-button--accent">Run</button>
+                    <button id="reset-button" type="button" class="toolbar-button">Reset</button>
                 </div>
-                <p id="example-description">Engine yuzeyini sahne bazli scriptlerle dogrudan denemek icin bir example sec.</p>
-            </header>
-            <section class="stage-frame">
-                <div id="example-host" class="example-host"></div>
-                <div id="stage-status" class="stage-status">Loading examples...</div>
+            </div>
+        </header>
+        <section class="context-bar">
+            <div class="context-copy">
+                <span class="context-label">Secili Ornek</span>
+                <h2 id="example-title">Select an example</h2>
+                <p id="example-description">Dropdown uzerinden bir ornek secip editor ve preview alanini kullan.</p>
+            </div>
+            <div class="context-meta">
+                <span class="meta-pill">npm run examples:dev</span>
+                <span class="meta-pill">npm run examples:build</span>
+            </div>
+        </section>
+        <section class="workbench">
+            <section class="editor-panel">
+                <div class="panel-header panel-header--editor">
+                    <div>
+                        <span class="eyebrow">Source Editor</span>
+                        <p id="editor-caption" class="panel-copy">Preparing editor...</p>
+                    </div>
+                </div>
+                <div id="editor-host" class="editor-host"></div>
+                <footer class="editor-footer">
+                    <p id="editor-status" class="editor-status" data-mode="loading">Loading Monaco and TypeScript runtime...</p>
+                    <p id="editor-supported-imports" class="editor-supported-imports"></p>
+                </footer>
             </section>
-        </main>
+            <section class="preview-panel">
+                <div class="panel-header">
+                    <div>
+                        <span class="eyebrow">Live View</span>
+                        <p class="panel-copy">Secili dosya mevcut mount/dispose akisi korunarak yeniden calistirilir.</p>
+                    </div>
+                </div>
+                <section class="stage-frame">
+                    <div id="example-host" class="example-host"></div>
+                    <div id="stage-status" class="stage-status" data-mode="loading">Loading examples...</div>
+                </section>
+            </section>
+        </section>
     </div>
 `;
 
-const list = app.querySelector<HTMLElement>('.example-list');
+const exampleSelect = app.querySelector<HTMLSelectElement>('#example-select');
 const host = app.querySelector<HTMLElement>('#example-host');
 const title = app.querySelector<HTMLElement>('#example-title');
 const description = app.querySelector<HTMLElement>('#example-description');
 const status = app.querySelector<HTMLElement>('#stage-status');
+const editorHost = app.querySelector<HTMLElement>('#editor-host');
+const editorCaption = app.querySelector<HTMLElement>('#editor-caption');
+const editorStatus = app.querySelector<HTMLElement>('#editor-status');
+const editorSupportedImports = app.querySelector<HTMLElement>('#editor-supported-imports');
+const runButton = app.querySelector<HTMLButtonElement>('#run-button');
+const resetButton = app.querySelector<HTMLButtonElement>('#reset-button');
+const autoRunToggle = app.querySelector<HTMLInputElement>('#autorun-toggle');
 
-if (!list || !host || !title || !description || !status) {
+if (
+    !exampleSelect ||
+    !host ||
+    !title ||
+    !description ||
+    !status ||
+    !editorHost ||
+    !editorCaption ||
+    !editorStatus ||
+    !editorSupportedImports ||
+    !runButton ||
+    !resetButton ||
+    !autoRunToggle
+) {
     throw new Error('Examples UI failed to initialize');
 }
 
+const playgroundToolsPromise = loadPlaygroundTools();
+const sourceOverrides = new Map<string, string>();
+
 let currentHandle: ExampleHandle | undefined;
-let currentId = '';
+let currentDescriptor: ExampleDescriptor | undefined;
+let currentRunToken = 0;
+let isApplyingEditorSource = false;
+let autoRun = autoRunToggle.checked;
+let rerunTimer: number | undefined;
+let editor: LiveEditorController | undefined;
 
 const setStatus = (message: string, mode: 'loading' | 'ready' | 'error' = 'ready') => {
     status.textContent = message;
     status.dataset.mode = mode;
+};
+
+const setEditorStatus = (message: string, mode: 'loading' | 'ready' | 'error' = 'ready') => {
+    editorStatus.textContent = message;
+    editorStatus.dataset.mode = mode;
+};
+
+const readPersistedSource = (path: string): string | undefined => {
+    try {
+        return globalThis.localStorage.getItem(`${sourceStoragePrefix}${path}`) ?? undefined;
+    } catch {
+        return undefined;
+    }
+};
+
+const persistSource = (path: string, source: string) => {
+    try {
+        globalThis.localStorage.setItem(`${sourceStoragePrefix}${path}`, source);
+    } catch {
+        // Ignore environments where local storage is unavailable.
+    }
+};
+
+const clearPersistedSource = (path: string) => {
+    try {
+        globalThis.localStorage.removeItem(`${sourceStoragePrefix}${path}`);
+    } catch {
+        // Ignore environments where local storage is unavailable.
+    }
+};
+
+const getEffectiveSource = (descriptor: ExampleDescriptor): string => {
+    return sourceOverrides.get(descriptor.path) ?? readPersistedSource(descriptor.path) ?? descriptor.source;
+};
+
+const updateEditorCaption = (descriptor: ExampleDescriptor, source: string) => {
+    const displayPath = descriptor.path.replace(/^\.\//, '');
+    const isModified = source !== descriptor.source;
+
+    editorCaption.textContent = `${displayPath} - ${isModified ? 'modified buffer' : 'synced with repo source'}`;
+    resetButton.disabled = !isModified;
+};
+
+const cancelScheduledRun = () => {
+    if (rerunTimer === undefined) {
+        return;
+    }
+
+    globalThis.clearTimeout(rerunTimer);
+    rerunTimer = undefined;
 };
 
 const unmountCurrentExample = async () => {
@@ -89,63 +248,232 @@ const unmountCurrentExample = async () => {
     host.replaceChildren();
 };
 
-const selectExample = async (example: SceneExample) => {
-    if (currentId === example.id) {
+const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorController> => {
+    if (editor) {
+        return editor;
+    }
+
+    const { editorModule, compilerModule } = await playgroundToolsPromise;
+    editorSupportedImports.textContent = `Supported imports: ${compilerModule
+        .getSupportedPlaygroundImports()
+        .join(', ')}`;
+
+    editor = editorModule.createLiveEditor({
+        container: editorHost,
+        value: getEffectiveSource(descriptor),
+        path: descriptor.path,
+        onChange: () => {
+            if (isApplyingEditorSource || !currentDescriptor || !editor) {
+                return;
+            }
+
+            const nextSource = editor.getValue();
+
+            if (nextSource === currentDescriptor.source) {
+                sourceOverrides.delete(currentDescriptor.path);
+                clearPersistedSource(currentDescriptor.path);
+            } else {
+                sourceOverrides.set(currentDescriptor.path, nextSource);
+                persistSource(currentDescriptor.path, nextSource);
+            }
+
+            updateEditorCaption(currentDescriptor, nextSource);
+
+            if (!autoRun) {
+                setEditorStatus('Changes pending. Use Run to refresh the preview.', 'ready');
+                return;
+            }
+
+            cancelScheduledRun();
+            setEditorStatus('Queued live refresh...', 'loading');
+            rerunTimer = globalThis.setTimeout(() => {
+                rerunTimer = undefined;
+                void runCurrentSource('live');
+            }, 450);
+        },
+    });
+
+    return editor;
+};
+
+const syncEditorToDescriptor = async (descriptor: ExampleDescriptor) => {
+    const liveEditor = await ensureEditor(descriptor);
+    const nextSource = getEffectiveSource(descriptor);
+
+    isApplyingEditorSource = true;
+    liveEditor.loadSource(nextSource, descriptor.path);
+    isApplyingEditorSource = false;
+
+    updateEditorCaption(descriptor, nextSource);
+    setEditorStatus(
+        autoRun
+            ? 'Editing this script will refresh the preview automatically.'
+            : 'Auto-run is off. Use Run to refresh the preview.',
+        'ready'
+    );
+    liveEditor.focus();
+};
+
+const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
+    if (!currentDescriptor) {
         return;
     }
 
-    currentId = example.id;
-    title.textContent = example.title;
-    description.textContent = example.description;
-    setStatus('Preparing scene...', 'loading');
+    const liveEditor = await ensureEditor(currentDescriptor);
+    cancelScheduledRun();
 
-    list.querySelectorAll<HTMLButtonElement>('button[data-example-id]').forEach((button) => {
-        button.dataset.active = String(button.dataset.exampleId === example.id);
-    });
+    const runToken = ++currentRunToken;
+    const source = liveEditor.getValue();
+
+    setStatus(reason === 'select' ? 'Preparing scene...' : 'Refreshing scene...', 'loading');
+    setEditorStatus(
+        reason === 'live' ? 'Compiling live changes...' : 'Compiling example source...',
+        'loading'
+    );
 
     try {
+        const { compilerModule } = await playgroundToolsPromise;
+        const runtimeExample = compilerModule.compileSceneExample(source, currentDescriptor.path);
+
+        if (runToken !== currentRunToken) {
+            return;
+        }
+
         await unmountCurrentExample();
-        const maybeHandle = await example.mount({ container: host });
+
+        if (runToken !== currentRunToken) {
+            return;
+        }
+
+        const maybeHandle = await runtimeExample.mount({ container: host });
+
+        if (runToken !== currentRunToken) {
+            await maybeHandle?.dispose?.();
+            return;
+        }
+
         currentHandle = maybeHandle ?? undefined;
-        location.hash = example.id;
+        title.textContent = runtimeExample.title;
+        description.textContent = runtimeExample.description;
         setStatus('Scene ready', 'ready');
+        setEditorStatus(
+            reason === 'live' ? 'Live preview synced.' : 'Preview updated from the editor buffer.',
+            'ready'
+        );
     } catch (error) {
-        currentHandle = undefined;
-        host.replaceChildren();
-        setStatus(error instanceof Error ? error.message : String(error), 'error');
+        if (runToken !== currentRunToken) {
+            return;
+        }
+
+        const message = error instanceof Error ? error.message : String(error);
+        setStatus('Last valid scene is still running.', 'error');
+        setEditorStatus(message, 'error');
     }
 };
 
-const bootstrap = async () => {
-    const examples = await resolveExamples();
-
-    for (const example of examples) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'example-card';
-        button.dataset.exampleId = example.id;
-        button.dataset.active = 'false';
-        button.innerHTML = `
-            <span class="example-title">${example.title}</span>
-            <span class="example-description">${example.description}</span>
-            <span class="example-tags">${(example.tags ?? []).join(' • ')}</span>
-        `;
-        button.addEventListener('click', () => {
-            void selectExample(example);
-        });
-        list.appendChild(button);
-    }
-
-    if (examples.length === 0) {
-        setStatus('No examples were discovered in the examples folder.', 'error');
+const selectExample = async (descriptor: ExampleDescriptor) => {
+    if (currentDescriptor?.path === descriptor.path) {
         return;
     }
 
-    const hashMatch = examples.find((example) => example.id === location.hash.slice(1));
+    currentRunToken += 1;
+    cancelScheduledRun();
+    currentDescriptor = descriptor;
+    exampleSelect.value = descriptor.example.id;
+
+    title.textContent = descriptor.example.title;
+    description.textContent = descriptor.example.description;
+    setStatus('Loading example source...', 'loading');
+
+    try {
+        await syncEditorToDescriptor(descriptor);
+        await runCurrentSource('select');
+        location.hash = descriptor.example.id;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setStatus(message, 'error');
+        setEditorStatus(message, 'error');
+    }
+};
+
+runButton.addEventListener('click', () => {
+    void runCurrentSource('manual');
+});
+
+resetButton.addEventListener('click', () => {
+    if (!currentDescriptor || !editor) {
+        return;
+    }
+
+    sourceOverrides.delete(currentDescriptor.path);
+    clearPersistedSource(currentDescriptor.path);
+
+    isApplyingEditorSource = true;
+    editor.setValue(currentDescriptor.source);
+    isApplyingEditorSource = false;
+
+    updateEditorCaption(currentDescriptor, currentDescriptor.source);
+
+    if (!autoRun) {
+        setEditorStatus('Source reset. Use Run to refresh the preview.', 'ready');
+        return;
+    }
+
+    void runCurrentSource('manual');
+});
+
+autoRunToggle.addEventListener('change', () => {
+    autoRun = autoRunToggle.checked;
+
+    if (!autoRun) {
+        cancelScheduledRun();
+        setEditorStatus('Auto-run disabled. Use Run to refresh the preview.', 'ready');
+        return;
+    }
+
+    setEditorStatus('Auto-run enabled. Refreshing the preview...', 'loading');
+    void runCurrentSource('live');
+});
+
+void playgroundToolsPromise
+    .then(({ compilerModule }) => {
+        editorSupportedImports.textContent = `Supported imports: ${compilerModule
+            .getSupportedPlaygroundImports()
+            .join(', ')}`;
+    })
+    .catch((error) => {
+        setEditorStatus(error instanceof Error ? error.message : String(error), 'error');
+    });
+
+const bootstrap = async () => {
+    const examples = await resolveExamples();
+    const examplesById = new Map(examples.map((descriptor) => [descriptor.example.id, descriptor]));
+
+    for (const descriptor of examples) {
+        const option = document.createElement('option');
+        option.value = descriptor.example.id;
+        option.textContent = descriptor.example.title;
+        exampleSelect.appendChild(option);
+    }
+
+    exampleSelect.addEventListener('change', () => {
+        const nextExample = examplesById.get(exampleSelect.value);
+        if (nextExample) {
+            void selectExample(nextExample);
+        }
+    });
+
+    if (examples.length === 0) {
+        setStatus('No examples were discovered in the examples folder.', 'error');
+        setEditorStatus('No editable example files were found.', 'error');
+        return;
+    }
+
+    const hashMatch = examples.find((example) => example.example.id === location.hash.slice(1));
     await selectExample(hashMatch ?? examples[0]);
 
     globalThis.addEventListener('hashchange', () => {
-        const nextExample = examples.find((example) => example.id === location.hash.slice(1));
+        const nextExample = examplesById.get(location.hash.slice(1));
         if (nextExample) {
             void selectExample(nextExample);
         }
@@ -153,5 +481,7 @@ const bootstrap = async () => {
 };
 
 void bootstrap().catch((error) => {
-    setStatus(error instanceof Error ? error.message : String(error), 'error');
+    const message = error instanceof Error ? error.message : String(error);
+    setStatus(message, 'error');
+    setEditorStatus(message, 'error');
 });
