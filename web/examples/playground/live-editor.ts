@@ -27,6 +27,9 @@ const AXRONE_THEME = 'axrone-playground-light';
 
 let isConfigured = false;
 
+// Track existing models to prevent duplicates
+const existingModels = new Map<string, monaco.editor.ITextModel>();
+
 const toModelUri = (path: string) => {
     const normalizedPath = path.replace(/^\.\//, '').replace(/\\/g, '/');
     return monaco.Uri.parse(`file:///examples/${normalizedPath}`);
@@ -92,8 +95,27 @@ const configureMonaco = () => {
     });
 };
 
-const createModel = (value: string, path: string) =>
-    monaco.editor.createModel(value, 'typescript', toModelUri(path));
+const createModel = (value: string, path: string) => {
+    const uri = toModelUri(path);
+    const uriString = uri.toString();
+
+    // Check if model already exists and dispose it
+    const existingModel = existingModels.get(uriString);
+    if (existingModel) {
+        existingModel.dispose();
+        existingModels.delete(uriString);
+    }
+
+    // Also dispose any model at this URI in Monaco's registry
+    const modelFromRegistry = monaco.editor.getModel(uri);
+    if (modelFromRegistry) {
+        modelFromRegistry.dispose();
+    }
+
+    const newModel = monaco.editor.createModel(value, 'typescript', uri);
+    existingModels.set(uriString, newModel);
+    return newModel;
+};
 
 export const createLiveEditor = ({
     container,
@@ -140,8 +162,16 @@ export const createLiveEditor = ({
         },
         loadSource(nextValue, nextPath) {
             const previousModel = model;
+            const uriString = toModelUri(nextPath).toString();
+            
+            // Remove from tracking map
+            existingModels.delete(uriString);
+            
+            // Create new model (which will handle disposal of any existing)
             model = createModel(nextValue, nextPath);
             editor.setModel(model);
+            
+            // Dispose old model
             previousModel.dispose();
         },
         focus() {
@@ -150,6 +180,10 @@ export const createLiveEditor = ({
         dispose() {
             changeSubscription.dispose();
             editor.dispose();
+            
+            // Remove from tracking and dispose
+            const uriString = toModelUri(path).toString();
+            existingModels.delete(uriString);
             model.dispose();
         },
     };

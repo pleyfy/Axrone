@@ -77,70 +77,104 @@ if (!app) {
     throw new Error('Examples app root was not found');
 }
 
+// Modern Professional UI Structure
 app.innerHTML = `
     <div class="page-shell">
+        <!-- Header -->
         <header class="page-header">
             <div class="brand-copy">
-                <span class="eyebrow">Axrone Playground</span>
-                <h1>Live Examples Studio</h1>
-                <p class="lead-copy">Solda Monaco editor, sagda canli preview. Secili ornegi dropdown uzerinden degistirip kodu ayni sayfada aninda test edebilirsin.</p>
+                <div class="brand-logo">
+                    <div class="brand-logo-icon">A</div>
+                    <div class="brand-copy-text">
+                        <span class="brand-title">Axrone Playground</span>
+                        <span class="brand-subtitle">Live Examples Studio</span>
+                    </div>
+                </div>
             </div>
+            
             <div class="header-controls">
                 <label class="field-group" for="example-select">
                     <span class="field-label">Example</span>
                     <select id="example-select" class="project-select" aria-label="Select example"></select>
                 </label>
+                
                 <div class="toolbar-actions">
                     <label class="toggle-control" for="autorun-toggle">
                         <input id="autorun-toggle" type="checkbox" checked />
                         <span>Auto-run</span>
                     </label>
-                    <button id="run-button" type="button" class="toolbar-button toolbar-button--accent">Run</button>
-                    <button id="reset-button" type="button" class="toolbar-button">Reset</button>
+                    
+                    <div class="divider"></div>
+                    
+                    <button id="run-button" type="button" class="toolbar-button toolbar-button--accent">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                        Run
+                    </button>
+                    
+                    <button id="reset-button" type="button" class="toolbar-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                            <path d="M3 3v5h5"/>
+                        </svg>
+                        Reset
+                    </button>
                 </div>
             </div>
         </header>
+        
+        <!-- Context Bar -->
         <section class="context-bar">
             <div class="context-copy">
-                <span class="context-label">Secili Ornek</span>
+                <span class="context-label">Selected Example</span>
                 <h2 id="example-title">Select an example</h2>
-                <p id="example-description">Dropdown uzerinden bir ornek secip editor ve preview alanini kullan.</p>
+                <p id="example-description">Choose an example from the dropdown to explore the code and live preview.</p>
             </div>
             <div class="context-meta">
-                <span class="meta-pill">npm run examples:dev</span>
-                <span class="meta-pill">npm run examples:build</span>
+                <span class="meta-pill">⚡ Live Reload</span>
+                <span class="meta-pill">🎨 Interactive</span>
             </div>
         </section>
+        
+        <!-- Main Workbench - Split Screen -->
         <section class="workbench">
+            <!-- Editor Panel -->
             <section class="editor-panel">
                 <div class="panel-header panel-header--editor">
                     <div>
                         <span class="eyebrow">Source Editor</span>
-                        <p id="editor-caption" class="panel-copy">Preparing editor...</p>
+                        <p id="editor-caption" class="panel-copy">Loading editor...</p>
                     </div>
                 </div>
                 <div id="editor-host" class="editor-host"></div>
                 <footer class="editor-footer">
-                    <p id="editor-status" class="editor-status" data-mode="loading">Loading Monaco and TypeScript runtime...</p>
+                    <p id="editor-status" class="editor-status" data-mode="loading">Initializing Monaco...</p>
                     <p id="editor-supported-imports" class="editor-supported-imports"></p>
                 </footer>
             </section>
+            
+            <!-- Resize Handle -->
+            <div id="resize-handle" class="resize-handle" title="Drag to resize"></div>
+            
+            <!-- Preview Panel -->
             <section class="preview-panel">
                 <div class="panel-header">
                     <div>
-                        <span class="eyebrow">Live View</span>
-                        <p class="panel-copy">Secili dosya mevcut mount/dispose akisi korunarak yeniden calistirilir.</p>
+                        <span class="eyebrow">Live Preview</span>
+                        <p class="panel-copy">Real-time rendering with interactive controls</p>
                     </div>
                 </div>
                 <section class="stage-frame">
                     <div id="example-host" class="example-host"></div>
-                    <div id="stage-status" class="stage-status" data-mode="loading">Loading examples...</div>
+                    <div id="stage-status" class="stage-status" data-mode="loading">Loading scene...</div>
                 </section>
             </section>
         </section>
     </div>
 `;
 
+// DOM References
 const exampleSelect = app.querySelector<HTMLSelectElement>('#example-select');
 const host = app.querySelector<HTMLElement>('#example-host');
 const title = app.querySelector<HTMLElement>('#example-title');
@@ -153,6 +187,8 @@ const editorSupportedImports = app.querySelector<HTMLElement>('#editor-supported
 const runButton = app.querySelector<HTMLButtonElement>('#run-button');
 const resetButton = app.querySelector<HTMLButtonElement>('#reset-button');
 const autoRunToggle = app.querySelector<HTMLInputElement>('#autorun-toggle');
+const resizeHandle = app.querySelector<HTMLElement>('#resize-handle');
+const editorPanel = app.querySelector<HTMLElement>('.editor-panel');
 
 if (
     !exampleSelect ||
@@ -166,11 +202,14 @@ if (
     !editorSupportedImports ||
     !runButton ||
     !resetButton ||
-    !autoRunToggle
+    !autoRunToggle ||
+    !resizeHandle ||
+    !editorPanel
 ) {
     throw new Error('Examples UI failed to initialize');
 }
 
+// State
 const playgroundToolsPromise = loadPlaygroundTools();
 const sourceOverrides = new Map<string, string>();
 
@@ -182,6 +221,7 @@ let autoRun = autoRunToggle.checked;
 let rerunTimer: number | undefined;
 let editor: LiveEditorController | undefined;
 
+// Status Helpers
 const setStatus = (message: string, mode: 'loading' | 'ready' | 'error' = 'ready') => {
     status.textContent = message;
     status.dataset.mode = mode;
@@ -192,6 +232,7 @@ const setEditorStatus = (message: string, mode: 'loading' | 'ready' | 'error' = 
     editorStatus.dataset.mode = mode;
 };
 
+// Local Storage Helpers
 const readPersistedSource = (path: string): string | undefined => {
     try {
         return globalThis.localStorage.getItem(`${sourceStoragePrefix}${path}`) ?? undefined;
@@ -224,10 +265,11 @@ const updateEditorCaption = (descriptor: ExampleDescriptor, source: string) => {
     const displayPath = descriptor.path.replace(/^\.\//, '');
     const isModified = source !== descriptor.source;
 
-    editorCaption.textContent = `${displayPath} - ${isModified ? 'modified buffer' : 'synced with repo source'}`;
+    editorCaption.textContent = `${displayPath}${isModified ? ' • Modified' : ''}`;
     resetButton.disabled = !isModified;
 };
 
+// Run Management
 const cancelScheduledRun = () => {
     if (rerunTimer === undefined) {
         return;
@@ -248,13 +290,14 @@ const unmountCurrentExample = async () => {
     host.replaceChildren();
 };
 
+// Editor Management
 const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorController> => {
     if (editor) {
         return editor;
     }
 
     const { editorModule, compilerModule } = await playgroundToolsPromise;
-    editorSupportedImports.textContent = `Supported imports: ${compilerModule
+    editorSupportedImports.textContent = `Supported: ${compilerModule
         .getSupportedPlaygroundImports()
         .join(', ')}`;
 
@@ -280,12 +323,12 @@ const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorCo
             updateEditorCaption(currentDescriptor, nextSource);
 
             if (!autoRun) {
-                setEditorStatus('Changes pending. Use Run to refresh the preview.', 'ready');
+                setEditorStatus('Changes pending. Use Run to refresh.', 'ready');
                 return;
             }
 
             cancelScheduledRun();
-            setEditorStatus('Queued live refresh...', 'loading');
+            setEditorStatus('Refreshing preview...', 'loading');
             rerunTimer = globalThis.setTimeout(() => {
                 rerunTimer = undefined;
                 void runCurrentSource('live');
@@ -307,8 +350,8 @@ const syncEditorToDescriptor = async (descriptor: ExampleDescriptor) => {
     updateEditorCaption(descriptor, nextSource);
     setEditorStatus(
         autoRun
-            ? 'Editing this script will refresh the preview automatically.'
-            : 'Auto-run is off. Use Run to refresh the preview.',
+            ? 'Editing will refresh preview automatically'
+            : 'Auto-run off. Click Run to refresh.',
         'ready'
     );
     liveEditor.focus();
@@ -327,7 +370,7 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
 
     setStatus(reason === 'select' ? 'Preparing scene...' : 'Refreshing scene...', 'loading');
     setEditorStatus(
-        reason === 'live' ? 'Compiling live changes...' : 'Compiling example source...',
+        reason === 'live' ? 'Compiling changes...' : 'Compiling example...',
         'loading'
     );
 
@@ -357,7 +400,7 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
         description.textContent = runtimeExample.description;
         setStatus('Scene ready', 'ready');
         setEditorStatus(
-            reason === 'live' ? 'Live preview synced.' : 'Preview updated from the editor buffer.',
+            reason === 'live' ? 'Preview synced' : 'Preview updated',
             'ready'
         );
     } catch (error) {
@@ -366,7 +409,7 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
         }
 
         const message = error instanceof Error ? error.message : String(error);
-        setStatus('Last valid scene is still running.', 'error');
+        setStatus('Last valid scene still running', 'error');
         setEditorStatus(message, 'error');
     }
 };
@@ -383,7 +426,7 @@ const selectExample = async (descriptor: ExampleDescriptor) => {
 
     title.textContent = descriptor.example.title;
     description.textContent = descriptor.example.description;
-    setStatus('Loading example source...', 'loading');
+    setStatus('Loading example...', 'loading');
 
     try {
         await syncEditorToDescriptor(descriptor);
@@ -396,6 +439,7 @@ const selectExample = async (descriptor: ExampleDescriptor) => {
     }
 };
 
+// Event Listeners
 runButton.addEventListener('click', () => {
     void runCurrentSource('manual');
 });
@@ -415,7 +459,7 @@ resetButton.addEventListener('click', () => {
     updateEditorCaption(currentDescriptor, currentDescriptor.source);
 
     if (!autoRun) {
-        setEditorStatus('Source reset. Use Run to refresh the preview.', 'ready');
+        setEditorStatus('Source reset. Click Run to refresh.', 'ready');
         return;
     }
 
@@ -427,17 +471,18 @@ autoRunToggle.addEventListener('change', () => {
 
     if (!autoRun) {
         cancelScheduledRun();
-        setEditorStatus('Auto-run disabled. Use Run to refresh the preview.', 'ready');
+        setEditorStatus('Auto-run disabled', 'ready');
         return;
     }
 
-    setEditorStatus('Auto-run enabled. Refreshing the preview...', 'loading');
+    setEditorStatus('Auto-run enabled. Refreshing...', 'loading');
     void runCurrentSource('live');
 });
 
+// Initialize supported imports display
 void playgroundToolsPromise
     .then(({ compilerModule }) => {
-        editorSupportedImports.textContent = `Supported imports: ${compilerModule
+        editorSupportedImports.textContent = `Supported: ${compilerModule
             .getSupportedPlaygroundImports()
             .join(', ')}`;
     })
@@ -445,6 +490,46 @@ void playgroundToolsPromise
         setEditorStatus(error instanceof Error ? error.message : String(error), 'error');
     });
 
+// Resize Handle Logic
+let isResizing = false;
+
+const startResize = (e: MouseEvent | TouchEvent) => {
+    isResizing = true;
+    resizeHandle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+};
+
+const doResize = (e: MouseEvent | TouchEvent) => {
+    if (!isResizing) return;
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const containerWidth = app.clientWidth;
+    const newWidth = (clientX / containerWidth) * 100;
+
+    // Constrain between 20% and 80%
+    if (newWidth >= 20 && newWidth <= 80) {
+        editorPanel.style.width = `${newWidth}%`;
+    }
+};
+
+const stopResize = () => {
+    isResizing = false;
+    resizeHandle.classList.remove('resizing');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+};
+
+resizeHandle.addEventListener('mousedown', startResize);
+resizeHandle.addEventListener('touchstart', startResize);
+
+document.addEventListener('mousemove', doResize);
+document.addEventListener('touchmove', doResize);
+
+document.addEventListener('mouseup', stopResize);
+document.addEventListener('touchend', stopResize);
+
+// Bootstrap
 const bootstrap = async () => {
     const examples = await resolveExamples();
     const examplesById = new Map(examples.map((descriptor) => [descriptor.example.id, descriptor]));
@@ -464,8 +549,8 @@ const bootstrap = async () => {
     });
 
     if (examples.length === 0) {
-        setStatus('No examples were discovered in the examples folder.', 'error');
-        setEditorStatus('No editable example files were found.', 'error');
+        setStatus('No examples found in the examples folder.', 'error');
+        setEditorStatus('No editable files found.', 'error');
         return;
     }
 
