@@ -325,62 +325,6 @@ body {
 }
 
 /* ============================================
-   Context Bar - Example Info
-   ============================================ */
-.context-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-primary);
-}
-
-.context-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.context-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--accent-primary);
-}
-
-#example-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-#example-description {
-    font-size: 13px;
-    color: var(--text-secondary);
-    max-width: 600px;
-}
-
-.context-meta {
-    display: flex;
-    gap: 8px;
-}
-
-.meta-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-primary);
-    border-radius: 100px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-}
-
-/* ============================================
    Workbench - Split Screen Layout
    ============================================ */
 .workbench {

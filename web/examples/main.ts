@@ -124,19 +124,6 @@ app.innerHTML = `
             </div>
         </header>
         
-        <!-- Context Bar -->
-        <section class="context-bar">
-            <div class="context-copy">
-                <span class="context-label">Selected Example</span>
-                <h2 id="example-title">Select an example</h2>
-                <p id="example-description">Choose an example from the dropdown to explore the code and live preview.</p>
-            </div>
-            <div class="context-meta">
-                <span class="meta-pill">⚡ Live Reload</span>
-                <span class="meta-pill">🎨 Interactive</span>
-            </div>
-        </section>
-        
         <!-- Main Workbench - Split Screen -->
         <section class="workbench">
             <!-- Editor Panel -->
@@ -162,7 +149,7 @@ app.innerHTML = `
                 <div class="panel-header">
                     <div>
                         <span class="eyebrow">Live Preview</span>
-                        <p class="panel-copy">Real-time rendering with interactive controls</p>
+                        <p class="panel-copy">Real-time rendering</p>
                     </div>
                 </div>
                 <section class="stage-frame">
@@ -177,8 +164,6 @@ app.innerHTML = `
 // DOM References
 const exampleSelect = app.querySelector<HTMLSelectElement>('#example-select');
 const host = app.querySelector<HTMLElement>('#example-host');
-const title = app.querySelector<HTMLElement>('#example-title');
-const description = app.querySelector<HTMLElement>('#example-description');
 const status = app.querySelector<HTMLElement>('#stage-status');
 const editorHost = app.querySelector<HTMLElement>('#editor-host');
 const editorCaption = app.querySelector<HTMLElement>('#editor-caption');
@@ -193,9 +178,6 @@ const editorPanel = app.querySelector<HTMLElement>('.editor-panel');
 if (
     !exampleSelect ||
     !host ||
-    !title ||
-    !description ||
-    !status ||
     !editorHost ||
     !editorCaption ||
     !editorStatus ||
@@ -396,8 +378,6 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
         }
 
         currentHandle = maybeHandle ?? undefined;
-        title.textContent = runtimeExample.title;
-        description.textContent = runtimeExample.description;
         setStatus('Scene ready', 'ready');
         setEditorStatus(
             reason === 'live' ? 'Preview synced' : 'Preview updated',
@@ -424,8 +404,6 @@ const selectExample = async (descriptor: ExampleDescriptor) => {
     currentDescriptor = descriptor;
     exampleSelect.value = descriptor.example.id;
 
-    title.textContent = descriptor.example.title;
-    description.textContent = descriptor.example.description;
     setStatus('Loading example...', 'loading');
 
     try {
