@@ -77,43 +77,48 @@ if (!app) {
     throw new Error('Examples app root was not found');
 }
 
-// Modern Professional UI Structure
+// Modern Professional UI with Tailwind CSS
 app.innerHTML = `
-    <div class="page-shell">
+    <div class="flex flex-col h-screen overflow-hidden bg-bg-primary">
         <!-- Header -->
-        <header class="page-header">
-            <div class="brand-copy">
-                <div class="brand-logo">
-                    <div class="brand-logo-icon">A</div>
-                    <div class="brand-copy-text">
-                        <span class="brand-title">Axrone Playground</span>
-                        <span class="brand-subtitle">Live Examples Studio</span>
+        <header class="flex items-center justify-between h-18 px-6 bg-gradient-to-br from-bg-secondary to-bg-primary border-b border-border-primary backdrop-blur-sm">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 bg-gradient-to-br from-accent-primary to-accent-secondary rounded-lg flex items-center justify-center font-bold text-white text-lg shadow-glow">
+                        A
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-base font-bold text-text-primary tracking-tight">Axrone Playground</span>
+                        <span class="text-xs font-medium text-text-secondary">Live Examples Studio</span>
                     </div>
                 </div>
             </div>
             
-            <div class="header-controls">
-                <label class="field-group" for="example-select">
-                    <span class="field-label">Example</span>
-                    <select id="example-select" class="project-select" aria-label="Select example"></select>
+            <div class="flex items-center gap-4">
+                <label class="flex flex-col gap-1">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-text-muted">Example</span>
+                    <select id="example-select" class="project-select min-w-[220px] px-3 py-2 bg-bg-tertiary border border-border-primary rounded-md text-text-primary text-sm cursor-pointer transition-all hover:border-border-accent hover:bg-bg-elevated focus:outline-none focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 appearance-none" style="background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 8px center;" aria-label="Select example"></select>
                 </label>
                 
-                <div class="toolbar-actions">
-                    <label class="toggle-control" for="autorun-toggle">
-                        <input id="autorun-toggle" type="checkbox" checked />
-                        <span>Auto-run</span>
+                <div class="flex items-center gap-2 pl-4 border-l border-border-primary">
+                    <label class="toggle-control flex items-center gap-2 px-3 py-1.5 bg-bg-tertiary border border-border-primary rounded-md cursor-pointer transition-all hover:border-border-accent select-none">
+                        <input id="autorun-toggle" type="checkbox" class="hidden" checked />
+                        <span class="flex items-center gap-2 text-xs font-medium text-text-secondary">
+                            <span class="relative w-8 h-4.5 bg-bg-elevated border-2 border-border-primary rounded-[10px] transition-all before:content-[''] before:absolute before:w-3 before:h-3 before:bg-text-muted before:rounded-full before:left-0.5 before:top-0.5 before:transition-all checked:bg-accent-primary checked:border-accent-primary before:checked:translate-x-[14px] before:checked:bg-white"></span>
+                            Auto-run
+                        </span>
                     </label>
                     
-                    <div class="divider"></div>
+                    <div class="w-px h-6 bg-border-primary"></div>
                     
-                    <button id="run-button" type="button" class="toolbar-button toolbar-button--accent">
+                    <button id="run-button" type="button" class="toolbar-button toolbar-button--accent inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-br from-accent-primary to-accent-secondary border border-transparent rounded-md text-white text-xs font-semibold cursor-pointer transition-all hover:brightness-110 hover:translate-y-[-1px] active:translate-y-0 shadow-sm shadow-glow disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5v14l11-7z"/>
                         </svg>
                         Run
                     </button>
                     
-                    <button id="reset-button" type="button" class="toolbar-button">
+                    <button id="reset-button" type="button" class="toolbar-button inline-flex items-center gap-1.5 px-3.5 py-2 bg-bg-tertiary border border-border-primary rounded-md text-text-primary text-xs font-semibold cursor-pointer transition-all hover:bg-bg-elevated hover:border-border-accent hover:translate-y-[-1px] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
                             <path d="M3 3v5h5"/>
@@ -125,36 +130,36 @@ app.innerHTML = `
         </header>
         
         <!-- Main Workbench - Split Screen -->
-        <section class="workbench">
+        <section class="flex flex-1 overflow-hidden">
             <!-- Editor Panel -->
-            <section class="editor-panel">
-                <div class="panel-header panel-header--editor">
+            <section class="editor-panel flex flex-col w-1/2 min-w-[300px] max-w-[70%] border-r border-border-primary bg-bg-secondary">
+                <div class="panel-header panel-header--editor flex items-center justify-between px-4 py-3 bg-gradient-to-br from-bg-tertiary to-bg-secondary border-b border-border-primary">
                     <div>
-                        <span class="eyebrow">Source Editor</span>
-                        <p id="editor-caption" class="panel-copy">Loading editor...</p>
+                        <span class="eyebrow inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-text-muted mb-0.5 before:content-[''] before:w-2 before:h-2 before:bg-accent-primary before:rounded-[2px]">Source Editor</span>
+                        <p id="editor-caption" class="panel-copy text-xs text-text-secondary">Loading editor...</p>
                     </div>
                 </div>
-                <div id="editor-host" class="editor-host"></div>
-                <footer class="editor-footer">
-                    <p id="editor-status" class="editor-status" data-mode="loading">Initializing Monaco...</p>
-                    <p id="editor-supported-imports" class="editor-supported-imports"></p>
+                <div id="editor-host" class="flex-1 overflow-hidden relative"></div>
+                <footer class="editor-footer flex items-center justify-between px-4 py-1.5 bg-bg-tertiary border-t border-border-primary h-8">
+                    <p id="editor-status" class="editor-status flex items-center gap-1.5 text-[11px] font-mono text-text-secondary before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-text-muted data-[mode=loading]:before:bg-accent-warning data-[mode=loading]:before:animate-pulse data-[mode=ready]:before:bg-accent-success data-[mode=error]:before:bg-accent-error data-[mode=error]:before:animate-[pulse_0.5s_infinite]"></p>
+                    <p id="editor-supported-imports" class="editor-supported-imports text-[10px] text-text-muted font-mono max-w-[400px] whitespace-nowrap overflow-hidden text-ellipsis"></p>
                 </footer>
             </section>
             
             <!-- Resize Handle -->
-            <div id="resize-handle" class="resize-handle" title="Drag to resize"></div>
+            <div id="resize-handle" class="resize-handle w-1 bg-bg-tertiary border-l border-r border-border-primary cursor-col-resize transition-all hover:bg-accent-primary hover:border-accent-primary relative z-10 before:content-['⋮'] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rotate-90 before:text-text-muted before:text-xs before:tracking-[2px] before:opacity-0 before:transition-opacity hover:before:opacity-100"></div>
             
             <!-- Preview Panel -->
-            <section class="preview-panel">
-                <div class="panel-header">
+            <section class="preview-panel flex flex-col flex-1 overflow-hidden bg-bg-primary">
+                <div class="panel-header flex items-center justify-between px-4 py-3 bg-bg-tertiary border-b border-border-primary">
                     <div>
-                        <span class="eyebrow">Live Preview</span>
-                        <p class="panel-copy">Real-time rendering</p>
+                        <span class="eyebrow inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-text-muted mb-0.5 before:content-[''] before:w-2 before:h-2 before:bg-accent-primary before:rounded-[2px]">Live Preview</span>
+                        <p class="panel-copy text-xs text-text-secondary">Real-time rendering</p>
                     </div>
                 </div>
-                <section class="stage-frame">
-                    <div id="example-host" class="example-host"></div>
-                    <div id="stage-status" class="stage-status" data-mode="loading">Loading scene...</div>
+                <section class="stage-frame flex-1 relative overflow-hidden bg-[radial-gradient(ellipse_at_top,rgba(31,111,235,0.05)_0%,transparent_50%),#0d1117]">
+                    <div id="example-host" class="w-full h-full relative"></div>
+                    <div id="stage-status" class="stage-status absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-3 px-6 py-5 bg-bg-secondary/95 border border-border-primary rounded-xl backdrop-blur-sm shadow-lg text-sm text-text-secondary opacity-0 pointer-events-none transition-opacity data-[mode=loading]:opacity-10 data-[mode=error]:opacity-10 data-[mode=ready]:opacity-0 data-[mode=ready]:pointer-events-none data-[mode=loading]:before:content-[''] data-[mode=loading]:before:w-6 data-[mode=loading]:before:h-6 data-[mode=loading]:before:border-2 data-[mode=loading]:before:border-border-primary data-[mode=loading]:before:border-t-accent-primary data-[mode=loading]:before:rounded-full data-[mode=loading]:before:animate-[spin_0.8s_linear_infinite] data-[mode=error]:before:hidden data-[mode=error]:text-accent-error data-[mode=error]:border-accent-error"></div>
                 </section>
             </section>
         </section>

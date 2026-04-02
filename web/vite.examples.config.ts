@@ -36,4 +36,7 @@ export default defineConfig({
     worker: {
         format: 'es',
     },
+    css: {
+        postcss: path.resolve(workspaceDir, 'postcss.config.js'),
+    },
 });
