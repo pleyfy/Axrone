@@ -15,6 +15,7 @@ export type {
     SceneRegistry,
     SceneRenderPassDefinition,
     SceneRenderPassHandle,
+    SceneRenderStats,
     SceneSamplerDefinition,
     SceneSamplerHandle,
     SceneSerializedValue,

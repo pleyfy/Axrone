@@ -32,6 +32,12 @@ export default defineConfig({
         outDir: path.resolve(workspaceDir, 'dist/examples'),
         emptyOutDir: true,
         sourcemap: true,
+        rollupOptions: {
+            input: {
+                index: path.resolve(workspaceDir, 'examples/index.html'),
+                'engine-benchmark': path.resolve(workspaceDir, 'examples/engine-benchmark.html'),
+            },
+        },
     },
     worker: {
         format: 'es',

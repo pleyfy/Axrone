@@ -143,6 +143,12 @@ interface RenderItem {
     readonly renderer: MeshRenderer;
 }
 
+interface SceneRenderStatsState {
+    frame: number;
+    drawCalls: number;
+    trianglesSubmitted: number;
+}
+
 interface DirectionalLightState {
     readonly direction: Vec3;
     readonly color: Vec3;
@@ -335,6 +341,18 @@ const mapTopologyToMode = (gl: WebGL2RenderingContext, topology: SceneMeshTopolo
     }
 };
 
+const estimateTriangleCount = (mesh: MeshResource): number => {
+    if (mesh.topology !== 'triangles') {
+        return 0;
+    }
+
+    if (mesh.indexCount > 0) {
+        return Math.floor(mesh.indexCount / 3);
+    }
+
+    return Math.floor(mesh.vertexCount / 3);
+};
+
 const extractUniformNames = (...sources: string[]): string[] => {
     const names = new Set<string>();
     const pattern = /\buniform\s+\w+\s+(\w+)(?:\s*\[[^\]]+\])?\s*;/g;
@@ -522,6 +540,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _autoCreatedCanvas: boolean;
     private readonly _defaultClearColor: Vec4;
     private readonly _ambientLight: Vec3;
+    private readonly _renderStats: SceneRenderStatsState = {
+        frame: 0,
+        drawCalls: 0,
+        trianglesSubmitted: 0,
+    };
     private _pixelRatio: number;
     private _disposed = false;
 
@@ -629,6 +652,14 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     get isDisposed(): boolean {
         return this._disposed;
+    }
+
+    get renderStats() {
+        return {
+            frame: this._renderStats.frame,
+            drawCalls: this._renderStats.drawCalls,
+            trianglesSubmitted: this._renderStats.trianglesSubmitted,
+        };
     }
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
@@ -1641,6 +1672,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _render(deltaTime: number): void {
+        this._renderStats.frame = this.loop.frame;
+        this._renderStats.drawCalls = 0;
+        this._renderStats.trianglesSubmitted = 0;
+
         const camera = this._selectCamera();
         const lighting = this._collectLighting();
         const renderPasses = [...this._renderPasses.values()]
@@ -1722,6 +1757,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 } else {
                     this.gl.drawArrays(mesh.mode, 0, mesh.vertexCount);
                 }
+
+                this._renderStats.drawCalls += 1;
+                this._renderStats.trianglesSubmitted += estimateTriangleCount(mesh);
 
                 this._unbindTextureUnits(boundUnits);
             }

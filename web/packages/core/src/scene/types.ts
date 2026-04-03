@@ -260,6 +260,12 @@ export interface SceneLoopState {
     readonly sceneId: string;
 }
 
+export interface SceneRenderStats {
+    readonly frame: number;
+    readonly drawCalls: number;
+    readonly trianglesSubmitted: number;
+}
+
 export interface SceneActorFactory<R extends ComponentRegistry = Record<string, never>> {
     createActor(config?: ActorConfig): Actor<World<SceneRegistry<R>>>;
 }
@@ -268,6 +274,7 @@ export interface SceneLifecycle<R extends ComponentRegistry = Record<string, nev
     extends SceneActorFactory<R> {
     readonly status: GameLoopStatus;
     readonly isDisposed: boolean;
+    readonly renderStats: SceneRenderStats;
     start(now?: number): this;
     pause(): this;
     resume(now?: number): this;
