@@ -1,10 +1,11 @@
 import {
+    Camera,
     MeshRenderer,
     Scene,
     Transform,
     createUnlitColorShaderDefinition,
 } from '@axrone/core';
-import { Quat, Vec3 } from '@axrone/numeric';
+import { Mat4, Quat, Vec3 } from '@axrone/numeric';
 import * as THREE from 'three';
 import { SystemPhase } from '../../packages/core/src/component-system/systems/system-manager';
 
@@ -358,9 +359,18 @@ const createAxroneRuntime = (
     const boxMesh = scene.createBoxMesh('benchmark/box', 1, 1, 1);
     const sphereMesh = scene.createSphereMesh('benchmark/sphere', 0.65, 16);
     const cameraActor = scene.createCameraActor({ autoStart: false }, { primary: true, fieldOfView: 58 });
+    const cameraComponent = cameraActor.requireComponent(Camera);
     const cameraTransform = cameraActor.requireComponent(Transform);
     const orbit = computeSceneOrbit(descriptors);
     const orbitCameraReference = new THREE.PerspectiveCamera(58, 1, 0.1, 1000);
+    let currentCameraPosition = new Vec3(
+        orbit.target.x + orbit.radius,
+        orbit.target.y + orbit.height,
+        orbit.target.z
+    );
+
+    cameraComponent.getViewMatrix = () =>
+        Mat4.lookAt(currentCameraPosition, orbit.target, Vec3.UP, new Mat4());
 
     const renderables: { readonly transform: Transform; readonly descriptor: WorkloadDescriptor }[] = [];
     const sphereScale = new Vec3(0.72, 0.72, 0.72);
@@ -408,13 +418,13 @@ const createAxroneRuntime = (
             enabled: true,
             execute: (_entities, deltaTime) => {
                 const elapsed = scene.loop.elapsed;
-                const cameraPosition = new Vec3(
+                currentCameraPosition = new Vec3(
                     orbit.target.x + Math.cos(elapsed * 0.00017) * orbit.radius,
                     orbit.target.y + orbit.height,
                     orbit.target.z + Math.sin(elapsed * 0.00017) * orbit.radius
                 );
                 applyThreeStyleOrbitPose(
-                    cameraPosition,
+                    currentCameraPosition,
                     orbit.target,
                     orbitCameraReference,
                     cameraTransform
