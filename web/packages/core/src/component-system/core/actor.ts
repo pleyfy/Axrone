@@ -64,6 +64,7 @@ export class Actor<
     TComponents extends readonly ComponentType[] = readonly ComponentType[],
 > {
     private static readonly _componentMetadataMap = new WeakMap<ComponentType, ComponentMetadata>();
+    private static _nextActorId = 1;
 
     public readonly entity: Entity;
     public readonly world: TWorld;
@@ -102,7 +103,7 @@ export class Actor<
         this.creationTime = performance.now();
 
         this._name = config.name ?? 'Actor';
-        this.id = `${this._name}_${this.entity}_${Date.now()}` as ActorId;
+        this.id = `${this._name}_${this.entity}_${Actor._nextActorId++}` as ActorId;
         this._active = config.active ?? true;
         this._layer = (config.layer ?? 0) as ActorLayer;
         this._tag = (config.tag ?? 'Default') as ActorTag;
@@ -288,11 +289,13 @@ export class Actor<
             );
         }
 
+        const componentName = getComponentTypeName(componentType);
+
         if (this._components.size >= this._maxComponents) {
             throw new ComponentError(
                 `Maximum component limit (${this._maxComponents}) reached`,
                 this.id,
-                getComponentTypeName(componentType)
+                componentName
             );
         }
 
@@ -304,7 +307,7 @@ export class Actor<
             throw new ComponentError(
                 'Component already exists and is not singleton',
                 this.id,
-                getComponentTypeName(componentType)
+                componentName
             );
         }
 
@@ -323,11 +326,7 @@ export class Actor<
             this._components.set(componentType, component);
             this._componentPriorities.set(componentType, metadata?.priority ?? 0);
 
-            this.world.addComponent(
-                this.entity,
-                getComponentTypeName(componentType) as any,
-                component
-            );
+            this.world.addComponent(this.entity, componentName as any, component);
 
             this._executeComponentLifecycle(component, 'awake');
 
@@ -340,7 +339,7 @@ export class Actor<
             }
 
             this._emitEvent('actor:componentAdded', {
-                componentType: getComponentTypeName(componentType),
+                componentType: componentName,
                 component,
             });
 
@@ -349,7 +348,7 @@ export class Actor<
             throw new ComponentError(
                 'Failed to add component',
                 this.id,
-                getComponentTypeName(componentType),
+                componentName,
                 error instanceof Error ? error : new Error(String(error))
             );
         }

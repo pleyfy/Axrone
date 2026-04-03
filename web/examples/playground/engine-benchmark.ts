@@ -295,17 +295,14 @@ const createAxroneRuntime = (
 
     const boxMesh = scene.createBoxMesh('benchmark/box', 1, 1, 1);
     const sphereMesh = scene.createSphereMesh('benchmark/sphere', 0.65, 16);
-    const cameraActor = scene.createCameraActor(
-        { name: 'BenchmarkCamera' },
-        { primary: true, fieldOfView: 58 }
-    );
+    const cameraActor = scene.createCameraActor({ autoStart: false }, { primary: true, fieldOfView: 58 });
     const cameraTransform = cameraActor.requireComponent(Transform);
 
     const renderables: { readonly transform: Transform; readonly descriptor: WorkloadDescriptor }[] = [];
 
     for (const descriptor of descriptors) {
         const actor = scene.createRenderableActor(
-            { name: `Workload:${descriptor.kind}` },
+            { autoStart: false },
             {
                 meshId: descriptor.kind === 'sphere' ? sphereMesh.id : boxMesh.id,
                 materialId: 'benchmark/material',
