@@ -579,7 +579,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             this._componentTypes.set(componentName, componentType);
         }
 
-        this.world = new World(this._registry);
+        this.world = new World(this._registry, options.worldConfig);
         this.systems = new SystemManager(this.world);
         this.resize(options.width, options.height, this._pixelRatio);
 

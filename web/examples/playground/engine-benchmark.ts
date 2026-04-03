@@ -280,6 +280,9 @@ const createAxroneRuntime = (
         width: host.clientWidth,
         height: host.clientHeight,
         pixelRatio: Math.min(devicePixelRatio || 1, 2),
+        worldConfig: {
+            enableValidation: false,
+        },
         autoStart: false,
         clearColor: [0.03, 0.06, 0.1, 1],
     });
@@ -299,25 +302,34 @@ const createAxroneRuntime = (
     const cameraTransform = cameraActor.requireComponent(Transform);
 
     const renderables: { readonly transform: Transform; readonly descriptor: WorkloadDescriptor }[] = [];
+    const sphereScale = new Vec3(0.72, 0.72, 0.72);
+    const boxScale = new Vec3(0.84, 0.84, 0.84);
 
-    for (const descriptor of descriptors) {
-        const actor = scene.createRenderableActor(
-            { autoStart: false },
-            {
-                meshId: descriptor.kind === 'sphere' ? sphereMesh.id : boxMesh.id,
-                materialId: 'benchmark/material',
-            }
-        );
+    scene.world.batchStructureChanges(() => {
+        for (const descriptor of descriptors) {
+            const actor = scene.createRenderableActor(
+                { autoStart: false },
+                {
+                    meshId: descriptor.kind === 'sphere' ? sphereMesh.id : boxMesh.id,
+                    materialId: 'benchmark/material',
+                }
+            );
 
-        const transform = actor.requireComponent(Transform);
-        transform.position = descriptor.basePosition.clone();
-        transform.scale = new Vec3(descriptor.scale, descriptor.scale, descriptor.scale);
+            const transform = actor.requireComponent(Transform);
+            transform.position = descriptor.basePosition;
+            transform.scale = descriptor.kind === 'sphere' ? sphereScale : boxScale;
 
-        const renderer = actor.getComponent(MeshRenderer);
-        renderer?.setUniform('u_Color', [...descriptor.color, 1]);
+            const renderer = actor.getComponent(MeshRenderer);
+            renderer?.setUniform('u_Color', [
+                descriptor.color[0],
+                descriptor.color[1],
+                descriptor.color[2],
+                1,
+            ]);
 
-        renderables.push({ transform, descriptor });
-    }
+            renderables.push({ transform, descriptor });
+        }
+    });
 
     const stats: EngineStats = {
         frameCount: 0,

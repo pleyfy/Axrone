@@ -155,6 +155,13 @@ export interface SceneCanvasOptions {
 export interface SceneOptions<R extends ComponentRegistry = Record<string, never>>
     extends SceneCanvasOptions {
     readonly registry?: R;
+    readonly worldConfig?: {
+        readonly maxEntities?: number;
+        readonly enableMetrics?: boolean;
+        readonly enableValidation?: boolean;
+        readonly enableEventBatching?: boolean;
+        readonly cacheSize?: number;
+    };
     readonly scheduler?: GameLoopScheduler;
     readonly autoStart?: boolean;
     readonly fixedDelta?: number;
