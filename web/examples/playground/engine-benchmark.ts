@@ -215,6 +215,7 @@ const colorFromIndex = (index: number, count: number): readonly [number, number,
 
 const createDescriptors = (count: number, workload: WorkloadType): readonly WorkloadDescriptor[] => {
     const columns = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / columns);
     const spacing = workload === 'triangle' ? 2.45 : 2.1;
     const descriptors: WorkloadDescriptor[] = [];
 
@@ -223,7 +224,7 @@ const createDescriptors = (count: number, workload: WorkloadType): readonly Work
         const col = index % columns;
         const layer = index % 6;
         const centeredX = (col - columns * 0.5) * spacing;
-        const centeredZ = (row - columns * 0.5) * spacing;
+        const centeredZ = (row - rows * 0.5) * spacing;
         const wave = Math.sin(index * 0.61) * 0.85;
         const height = layer * 0.95 + wave;
         const kind =
@@ -252,6 +253,64 @@ const createDescriptors = (count: number, workload: WorkloadType): readonly Work
     }
 
     return descriptors;
+};
+
+const computeSceneOrbit = (
+    descriptors: readonly WorkloadDescriptor[]
+): { readonly target: Vec3; readonly radius: number; readonly height: number } => {
+    if (descriptors.length === 0) {
+        return {
+            target: new Vec3(0, 0, 0),
+            radius: 28,
+            height: 18,
+        };
+    }
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let minZ = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    let maxZ = Number.NEGATIVE_INFINITY;
+
+    for (const descriptor of descriptors) {
+        const halfExtent = descriptor.scale;
+        minX = Math.min(minX, descriptor.basePosition.x - halfExtent);
+        minY = Math.min(minY, descriptor.basePosition.y - descriptor.bobAmplitude - halfExtent);
+        minZ = Math.min(minZ, descriptor.basePosition.z - halfExtent);
+        maxX = Math.max(maxX, descriptor.basePosition.x + halfExtent);
+        maxY = Math.max(maxY, descriptor.basePosition.y + descriptor.bobAmplitude + halfExtent);
+        maxZ = Math.max(maxZ, descriptor.basePosition.z + halfExtent);
+    }
+
+    const extentX = maxX - minX;
+    const extentY = maxY - minY;
+    const extentZ = maxZ - minZ;
+    const target = new Vec3((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5);
+    const horizontalSpan = Math.max(extentX, extentZ);
+
+    return {
+        target,
+        radius: Math.max(28, horizontalSpan * 0.9),
+        height: Math.max(18, extentY * 1.75),
+    };
+};
+
+const applyThreeStyleOrbitPose = (
+    position: Readonly<Vec3>,
+    target: Readonly<Vec3>,
+    threeCamera: THREE.PerspectiveCamera,
+    transform: Transform
+): void => {
+    threeCamera.position.set(position.x, position.y, position.z);
+    threeCamera.lookAt(target.x, target.y, target.z);
+    transform.position = new Vec3(position.x, position.y, position.z);
+    transform.rotation = new Quat(
+        threeCamera.quaternion.x,
+        threeCamera.quaternion.y,
+        threeCamera.quaternion.z,
+        threeCamera.quaternion.w
+    );
 };
 
 const resizeCanvas = (
@@ -300,6 +359,8 @@ const createAxroneRuntime = (
     const sphereMesh = scene.createSphereMesh('benchmark/sphere', 0.65, 16);
     const cameraActor = scene.createCameraActor({ autoStart: false }, { primary: true, fieldOfView: 58 });
     const cameraTransform = cameraActor.requireComponent(Transform);
+    const orbit = computeSceneOrbit(descriptors);
+    const orbitCameraReference = new THREE.PerspectiveCamera(58, 1, 0.1, 1000);
 
     const renderables: { readonly transform: Transform; readonly descriptor: WorkloadDescriptor }[] = [];
     const sphereScale = new Vec3(0.72, 0.72, 0.72);
@@ -347,17 +408,16 @@ const createAxroneRuntime = (
             enabled: true,
             execute: (_entities, deltaTime) => {
                 const elapsed = scene.loop.elapsed;
-                const orbitRadius = Math.max(28, Math.sqrt(descriptors.length) * 1.55);
-                cameraTransform.position = new Vec3(
-                    Math.cos(elapsed * 0.00017) * orbitRadius,
-                    Math.max(18, orbitRadius * 0.52),
-                    Math.sin(elapsed * 0.00017) * orbitRadius
+                const cameraPosition = new Vec3(
+                    orbit.target.x + Math.cos(elapsed * 0.00017) * orbit.radius,
+                    orbit.target.y + orbit.height,
+                    orbit.target.z + Math.sin(elapsed * 0.00017) * orbit.radius
                 );
-                cameraTransform.rotation = Quat.fromLookAt(
-                    cameraTransform.position,
-                    new Vec3(0, 4, 0),
-                    Vec3.UP,
-                    new Quat()
+                applyThreeStyleOrbitPose(
+                    cameraPosition,
+                    orbit.target,
+                    orbitCameraReference,
+                    cameraTransform
                 );
 
                 for (const { transform, descriptor } of renderables) {
@@ -484,6 +544,7 @@ const createThreeRuntime = (
     let previousFrameTime = 0;
     let paused = true;
     let logicalElapsed = 0;
+    const orbit = computeSceneOrbit(descriptors);
 
     const frame = (timestamp: number) => {
         if (paused) {
@@ -498,13 +559,12 @@ const createThreeRuntime = (
         previousFrameTime = timestamp;
         logicalElapsed += deltaTime;
 
-        const orbitRadius = Math.max(28, Math.sqrt(descriptors.length) * 1.55);
         camera.position.set(
-            Math.cos(logicalElapsed * 0.00017) * orbitRadius,
-            Math.max(18, orbitRadius * 0.52),
-            Math.sin(logicalElapsed * 0.00017) * orbitRadius
+            orbit.target.x + Math.cos(logicalElapsed * 0.00017) * orbit.radius,
+            orbit.target.y + orbit.height,
+            orbit.target.z + Math.sin(logicalElapsed * 0.00017) * orbit.radius
         );
-        camera.lookAt(0, 4, 0);
+        camera.lookAt(orbit.target.x, orbit.target.y, orbit.target.z);
 
         for (const { mesh, descriptor } of objects) {
             mesh.position.y =
