@@ -101,11 +101,11 @@ app.innerHTML = `
                 </label>
                 
                 <div class="flex items-center gap-2 pl-4 border-l border-border-primary">
-                    <label class="toggle-control flex items-center gap-2 px-3 py-1.5 bg-bg-tertiary border border-border-primary rounded-md cursor-pointer transition-all hover:border-border-accent select-none">
+                    <label class="toggle-control flex items-center gap-2 px-3 py-1.5 bg-bg-tertiary border border-border-primary rounded-md cursor-pointer transition-all hover:border-border-accent select-none" title="Toggle auto-run on/off">
                         <input id="autorun-toggle" type="checkbox" class="hidden" checked />
                         <span class="flex items-center gap-2 text-xs font-medium text-text-secondary">
-                            <span class="relative w-8 h-4.5 bg-bg-elevated border-2 border-border-primary rounded-[10px] transition-all before:content-[''] before:absolute before:w-3 before:h-3 before:bg-text-muted before:rounded-full before:left-0.5 before:top-0.5 before:transition-all checked:bg-accent-primary checked:border-accent-primary before:checked:translate-x-[14px] before:checked:bg-white"></span>
-                            Auto-run
+                            <span id="autorun-indicator" class="relative inline-flex w-8 h-4.5 bg-accent-primary border-2 border-accent-primary rounded-[10px] transition-colors before:content-[''] before:absolute before:w-3 before:h-3 before:bg-white before:rounded-full before:left-[14px] before:top-0.5 before:transition-all"></span>
+                            <span id="autorun-label">Auto-run</span>
                         </span>
                     </label>
                     
@@ -177,6 +177,7 @@ const editorSupportedImports = app.querySelector<HTMLElement>('#editor-supported
 const runButton = app.querySelector<HTMLButtonElement>('#run-button');
 const resetButton = app.querySelector<HTMLButtonElement>('#reset-button');
 const autoRunToggle = app.querySelector<HTMLInputElement>('#autorun-toggle');
+const autoRunIndicator = app.querySelector<HTMLElement>('#autorun-indicator');
 const resizeHandle = app.querySelector<HTMLElement>('#resize-handle');
 const editorPanel = app.querySelector<HTMLElement>('.editor-panel');
 
@@ -196,6 +197,17 @@ if (
     throw new Error('Examples UI failed to initialize');
 }
 
+// Toggle visual state updater
+const updateAutoRunIndicator = () => {
+    if (!autoRunIndicator) return;
+    
+    if (autoRun) {
+        autoRunIndicator.className = 'relative inline-flex w-8 h-4.5 bg-accent-primary border-2 border-accent-primary rounded-[10px] transition-colors before:content-[\'\'] before:absolute before:w-3 before:h-3 before:bg-white before:rounded-full before:left-[14px] before:top-0.5 before:transition-all';
+    } else {
+        autoRunIndicator.className = 'relative inline-flex w-8 h-4.5 bg-bg-elevated border-2 border-border-primary rounded-[10px] transition-colors before:content-[\'\'] before:absolute before:w-3 before:h-3 before:bg-text-muted before:rounded-full before:left-0.5 before:top-0.5 before:transition-all';
+    }
+};
+
 // State
 const playgroundToolsPromise = loadPlaygroundTools();
 const sourceOverrides = new Map<string, string>();
@@ -204,7 +216,7 @@ let currentHandle: ExampleHandle | undefined;
 let currentDescriptor: ExampleDescriptor | undefined;
 let currentRunToken = 0;
 let isApplyingEditorSource = false;
-let autoRun = autoRunToggle.checked;
+let autoRun = true; // Default to enabled
 let rerunTimer: number | undefined;
 let editor: LiveEditorController | undefined;
 
@@ -314,12 +326,13 @@ const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorCo
                 return;
             }
 
+            // Debounce: Wait 500ms after last keystroke before refreshing
             cancelScheduledRun();
-            setEditorStatus('Refreshing preview...', 'loading');
+            setEditorStatus('Typing... refreshing soon', 'loading');
             rerunTimer = globalThis.setTimeout(() => {
                 rerunTimer = undefined;
                 void runCurrentSource('live');
-            }, 450);
+            }, 500);
         },
     });
 
@@ -450,24 +463,27 @@ resetButton.addEventListener('click', () => {
 });
 
 autoRunToggle.addEventListener('change', () => {
-    autoRun = autoRunToggle.checked;
+    autoRun = !autoRun; // Toggle state
+    updateAutoRunIndicator();
 
     if (!autoRun) {
         cancelScheduledRun();
-        setEditorStatus('Auto-run disabled', 'ready');
+        setEditorStatus('Auto-run disabled. Click Run to refresh.', 'ready');
         return;
     }
 
-    setEditorStatus('Auto-run enabled. Refreshing...', 'loading');
+    setEditorStatus('Auto-run enabled. Will refresh as you type...', 'ready');
+    // Optionally trigger immediate refresh when enabling
     void runCurrentSource('live');
 });
 
-// Initialize supported imports display
+// Initialize supported imports display and auto-run indicator
 void playgroundToolsPromise
     .then(({ compilerModule }) => {
         editorSupportedImports.textContent = `Supported: ${compilerModule
             .getSupportedPlaygroundImports()
             .join(', ')}`;
+        updateAutoRunIndicator(); // Initialize toggle state
     })
     .catch((error) => {
         setEditorStatus(error instanceof Error ? error.message : String(error), 'error');
