@@ -7,7 +7,6 @@ import {
 } from '@axrone/core';
 import { Mat4, Quat, Vec3 } from '@axrone/numeric';
 import * as THREE from 'three';
-import { SystemPhase } from '../../packages/core/src/component-system/systems/system-manager';
 
 type WorkloadType = 'draw-call' | 'triangle' | 'mixed';
 type WorkloadKind = 'box' | 'sphere';
@@ -37,6 +36,7 @@ type BenchmarkRuntime = {
     pause(): void;
     resume(): void;
     resize(): void;
+    syncMetrics(): void;
     readonly stats: EngineStats;
 };
 
@@ -409,6 +409,11 @@ const createAxroneRuntime = (
         triangles: 0,
         setupTimeMs: 0,
     };
+    const syncMetrics = () => {
+        const renderStats = scene.renderStats;
+        stats.drawCalls = renderStats.drawCalls;
+        stats.triangles = renderStats.trianglesSubmitted;
+    };
 
     scene.addSystem(
         {
@@ -448,31 +453,19 @@ const createAxroneRuntime = (
                 if (deltaTime > 0) {
                     stats.frameTimes.push(deltaTime);
                 }
-            },
-        },
-        SystemPhase.Update
-    );
 
-    scene.addSystem(
-        {
-            id: 'benchmark/render-counter',
-            query: ['Transform'] as const,
-            priority: -1,
-            enabled: true,
-            execute: () => {
                 stats.frameCount += 1;
-                stats.drawCalls = scene.renderStats.drawCalls;
-                stats.triangles = scene.renderStats.trianglesSubmitted;
             },
-        },
-        SystemPhase.Render
+        }
     );
 
     scene.renderNow();
+    syncMetrics();
     stats.setupTimeMs = performance.now() - setupStartedAt;
 
     return {
         stats,
+        syncMetrics,
         pause: () => {
             scene.pause();
         },
@@ -482,6 +475,7 @@ const createAxroneRuntime = (
         resize: () => {
             scene.resize(host.clientWidth, host.clientHeight, Math.min(devicePixelRatio || 1, 2));
             scene.renderNow();
+            syncMetrics();
         },
         dispose: () => {
             scene.dispose();
@@ -503,6 +497,10 @@ const createThreeRuntime = (
         drawCalls: 0,
         triangles: 0,
         setupTimeMs: 0,
+    };
+    const syncMetrics = () => {
+        stats.drawCalls = renderer.info.render.calls;
+        stats.triangles = renderer.info.render.triangles;
     };
 
     const setupStartedAt = performance.now();
@@ -593,17 +591,18 @@ const createThreeRuntime = (
         if (deltaTime > 0) {
             stats.frameTimes.push(deltaTime);
         }
-        stats.drawCalls = renderer.info.render.calls;
-        stats.triangles = renderer.info.render.triangles;
+        syncMetrics();
 
         rafId = requestAnimationFrame(frame);
     };
 
     renderer.render(scene, camera);
+    syncMetrics();
     stats.setupTimeMs = performance.now() - setupStartedAt;
 
     return {
         stats,
+        syncMetrics,
         pause: () => {
             paused = true;
             if (rafId !== 0) {
@@ -625,6 +624,7 @@ const createThreeRuntime = (
             camera.aspect = host.clientWidth / Math.max(1, host.clientHeight);
             camera.updateProjectionMatrix();
             renderer.render(scene, camera);
+            syncMetrics();
         },
         dispose: () => {
             if (rafId !== 0) {
@@ -691,6 +691,9 @@ const writeWinner = (
 };
 
 const refreshMetrics = () => {
+    state.axrone?.syncMetrics();
+    state.three?.syncMetrics();
+
     const axroneStats = state.axrone?.stats;
     const threeStats = state.three?.stats;
 
@@ -759,6 +762,9 @@ const getWinnerLabel = (
 };
 
 const createBenchmarkSnapshot = (): BenchmarkSnapshot => {
+    state.axrone?.syncMetrics();
+    state.three?.syncMetrics();
+
     const axrone = computeEngineSummary(state.axrone?.stats);
     const three = computeEngineSummary(state.three?.stats);
     const elapsedMs = state.running ? performance.now() - state.startedAt : 0;

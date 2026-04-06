@@ -79,6 +79,14 @@ class PulseComponent extends Component {
     }
 }
 
+class ParentAwareComponent extends Component {
+    parentNameAtAwake: string | null = null;
+
+    awake(): void {
+        this.parentNameAtAwake = this.actor?.parent?.name ?? null;
+    }
+}
+
 const createMockGL = (canvas: HTMLCanvasElement) => {
     const shaders = new Set<object>();
     const programs = new Set<object>();
@@ -265,7 +273,8 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
 
 const createSceneOptions = (
     scheduler: ManualScheduler,
-    canvas: HTMLCanvasElement
+    canvas: HTMLCanvasElement,
+    registry: SceneOptions['registry'] = {}
 ): SceneOptions => {
     const gl = createMockGL(canvas);
     Object.defineProperty(canvas, 'getContext', {
@@ -274,6 +283,7 @@ const createSceneOptions = (
     });
 
     return {
+        registry,
         scheduler: scheduler as any,
         autoStart: false,
         createCanvas: () => canvas,
@@ -544,6 +554,32 @@ void main() {
         expect(restoredPlane?.requireComponent(Transform).parent?.actor).toBe(restoredCamera);
         expect(scene.getTexture('solid')?.width).toBe(2);
         expect(gl.drawElements).toHaveBeenCalled();
+
+        scene.dispose();
+    });
+
+    it('hydrates prefab components after restoring parent links', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(
+            createSceneOptions(scheduler, canvas, {
+                ParentAwareComponent,
+            })
+        );
+
+        const parent = scene.createActor({ name: 'Parent' });
+        const child = scene.createActor({ name: 'Child' });
+        child.setParent(parent);
+        child.addComponent(ParentAwareComponent);
+
+        const prefab = scene.createPrefab('hierarchy-aware', [parent, child]);
+        const instantiated = scene.instantiatePrefab(prefab, {
+            namePrefix: 'Copy ',
+        });
+        const restoredChild = instantiated.find((actor) => actor.name === 'Copy Child');
+        const restoredComponent = restoredChild?.getComponent(ParentAwareComponent);
+
+        expect(restoredChild?.parent?.name).toBe('Copy Parent');
+        expect(restoredComponent?.parentNameAtAwake).toBe('Copy Parent');
 
         scene.dispose();
     });

@@ -1073,6 +1073,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._assertNotDisposed();
         const createdActors: Actor[] = [];
         const createdByNodeId = new Map<string, Actor>();
+        const pendingComponentHydration: Array<{
+            readonly actor: Actor;
+            readonly components: readonly SceneComponentSnapshot[];
+        }> = [];
         const pendingHierarchyLinks: Array<{
             readonly actor: Actor;
             readonly parentNodeId?: string | null;
@@ -1089,14 +1093,16 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 autoStart: false,
             });
 
-            for (const componentSnapshot of actorSnapshot.components) {
-                this._hydrateComponent(actor, componentSnapshot, options);
-            }
             createdActors.push(actor);
 
             if (actorSnapshot.nodeId) {
                 createdByNodeId.set(actorSnapshot.nodeId, actor);
             }
+
+            pendingComponentHydration.push({
+                actor,
+                components: actorSnapshot.components,
+            });
 
             pendingHierarchyLinks.push({
                 actor,
@@ -1112,6 +1118,12 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             const parentActor = createdByNodeId.get(pendingLink.parentNodeId);
             if (parentActor) {
                 pendingLink.actor.setParent(parentActor);
+            }
+        }
+
+        for (const pendingHydration of pendingComponentHydration) {
+            for (const componentSnapshot of pendingHydration.components) {
+                this._hydrateComponent(pendingHydration.actor, componentSnapshot, options);
             }
         }
 
