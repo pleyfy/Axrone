@@ -1,8 +1,9 @@
 import { Component } from '../core/component';
 import { script } from '../decorators/script';
 import { Mat4, Vec3, Quat } from '@axrone/numeric';
-import type { Entity } from '../types/core';
-import type { Actor } from '../core/actor';
+import type { Hierarchy } from './hierarchy';
+
+const WORLD_TRANSLATION_EPSILON = 1e-8;
 
 @script({
     scriptName: 'Transform',
@@ -22,10 +23,13 @@ export class Transform extends Component {
     private _rotation: Quat = Quat.IDENTITY.clone();
     private _scale: Vec3 = Vec3.ONE.clone();
 
-    private _parent?: Transform;
-    private readonly _children = new Map<Entity, Transform>();
-    private readonly _childrenArray: Transform[] = [];
-    private _childrenDirty = false;
+    private _detachedParent?: Transform;
+    private readonly _detachedChildren = new Set<Transform>();
+    private readonly _detachedChildrenArray: Transform[] = [];
+    private _detachedChildrenDirty = false;
+
+    private readonly _attachedChildrenArray: Transform[] = [];
+    private _attachedHierarchyVersion = -1;
 
     private _localMatrix?: Mat4;
     private _worldMatrix?: Mat4;
@@ -33,8 +37,8 @@ export class Transform extends Component {
     private _worldDirty = true;
 
     private static readonly _tempVec3 = new Vec3();
+    private static readonly _tempVec3B = new Vec3();
     private static readonly _tempQuat = new Quat();
-    private static readonly _tempMat4 = new Mat4();
 
     private _worldPosition?: Vec3;
     private _worldRotation?: Quat;
@@ -81,53 +85,77 @@ export class Transform extends Component {
     }
 
     get parent(): Transform | undefined {
-        return this._parent;
+        const hierarchy = this._getHierarchy();
+        if (hierarchy) {
+            return this._resolveTransformFromHierarchy(hierarchy.parent);
+        }
+
+        return this._detachedParent;
     }
 
     set parent(value: Transform | undefined) {
-        if (this._parent === value) return;
+        const hierarchy = this._getHierarchy();
 
-        if (this._parent) {
-            this._parent.removeChild(this);
+        if (hierarchy) {
+            if (!value) {
+                hierarchy.parent = undefined;
+                return;
+            }
+
+            const parentHierarchy = value._getHierarchy();
+            if (parentHierarchy) {
+                hierarchy.parent = parentHierarchy;
+            }
+
+            return;
         }
 
-        this._parent = value;
-
-        if (value) {
-            value.addChild(this);
+        if (value?._getHierarchy()) {
+            return;
         }
 
-        this.markWorldDirty();
+        this._setDetachedParent(value);
     }
 
     get children(): readonly Transform[] {
-        if (this._childrenDirty) {
-            this.updateChildrenArray();
+        const hierarchy = this._getHierarchy();
+
+        if (hierarchy) {
+            if (this._attachedHierarchyVersion !== hierarchy.version) {
+                this._rebuildAttachedChildrenArray(hierarchy);
+            }
+
+            return this._attachedChildrenArray;
         }
-        return this._childrenArray;
+
+        if (this._detachedChildrenDirty) {
+            this._rebuildDetachedChildrenArray();
+        }
+
+        return this._detachedChildrenArray;
     }
 
     get childCount(): number {
-        return this._children.size;
+        return this.children.length;
     }
 
     get worldPosition(): Vec3 {
         if (this._worldDirty || !this._worldPosition) {
-            this.updateWorldPosition();
+            this.updateWorldState();
         }
         return this._worldPosition!;
     }
 
     get worldRotation(): Quat {
         if (this._worldDirty || !this._worldRotation) {
-            this.updateWorldRotation();
+            this.updateWorldState();
         }
         return this._worldRotation!;
     }
 
     get worldScale(): Vec3 {
         if (this._worldDirty || !this._worldScale) {
-            this.updateWorldScale();
+            this.updateWorldState();
         }
         return this._worldScale!;
     }
@@ -141,161 +169,50 @@ export class Transform extends Component {
 
     get worldMatrix(): Mat4 {
         if (this._worldDirty || !this._worldMatrix) {
-            this.updateWorldMatrix();
+            this.updateWorldState();
         }
         return this._worldMatrix!;
     }
 
-    private addChild(child: Transform): void {
-        if (!child.entity) return;
-
-        this._children.set(child.entity, child);
-        this._childrenDirty = true;
-
-        if (this.world) {
-            this.world.emitSync('TransformHierarchyChanged' as any, {
-                entity: child.entity!,
-                component: child,
-                actor: child.actor!,
-            });
-        }
-    }
-
-    private removeChild(child: Transform): void {
-        if (!child.entity) return;
-
-        if (this._children.delete(child.entity)) {
-            this._childrenDirty = true;
-
-            if (this.world) {
-                this.world.emitSync('TransformHierarchyChanged' as any, {
-                    entity: child.entity!,
-                    component: child,
-                    actor: child.actor!,
-                });
-            }
-        }
-    }
-
-    private updateChildrenArray(): void {
-        this._childrenArray.length = 0;
-        this._childrenArray.push(...this._children.values());
-        this._childrenDirty = false;
-    }
-
-    private markLocalDirty(): void {
-        this._localDirty = true;
+    markHierarchyDirty(): void {
+        this._attachedHierarchyVersion = -1;
         this.markWorldDirty();
-    }
-
-    private markWorldDirty(): void {
-        if (this._worldDirty) return;
-
-        this._worldDirty = true;
-        this._worldPosition = undefined;
-        this._worldRotation = undefined;
-        this._worldScale = undefined;
-
-        for (const child of this._children.values()) {
-            child.markWorldDirty();
-        }
-    }
-
-    private updateLocalMatrix(): void {
-        if (!this._localMatrix) {
-            this._localMatrix = new Mat4();
-        }
-
-        this._localMatrix = Mat4.fromTRS(
-            this._position,
-            this._rotation,
-            this._scale,
-            this._localMatrix
-        );
-
-        this._localDirty = false;
-    }
-
-    private updateWorldMatrix(): void {
-        if (!this._worldMatrix) {
-            this._worldMatrix = new Mat4();
-        }
-
-        const localMatrix = this.localMatrix;
-
-        if (this._parent) {
-            const parentWorldMatrix = this._parent.worldMatrix;
-            this._worldMatrix = Mat4.multiply(parentWorldMatrix, localMatrix);
-        } else {
-            this._worldMatrix = localMatrix.clone();
-        }
-
-        this._worldDirty = false;
-    }
-
-    private updateWorldPosition(): void {
-        if (!this._worldPosition) {
-            this._worldPosition = new Vec3();
-        }
-
-        if (this._parent) {
-            const parentWorldPos = this._parent.worldPosition;
-            this._worldPosition = Vec3.add(parentWorldPos, this._position, this._worldPosition);
-        } else {
-            this._worldPosition.x = this._position.x;
-            this._worldPosition.y = this._position.y;
-            this._worldPosition.z = this._position.z;
-        }
-    }
-
-    private updateWorldRotation(): void {
-        if (!this._worldRotation) {
-            this._worldRotation = new Quat();
-        }
-
-        if (this._parent) {
-            this._worldRotation = Quat.multiply(
-                this._parent.worldRotation,
-                this._rotation,
-                this._worldRotation
-            );
-        } else {
-            this._worldRotation.x = this._rotation.x;
-            this._worldRotation.y = this._rotation.y;
-            this._worldRotation.z = this._rotation.z;
-            this._worldRotation.w = this._rotation.w;
-        }
-    }
-
-    private updateWorldScale(): void {
-        if (!this._worldScale) {
-            this._worldScale = new Vec3();
-        }
-
-        if (this._parent) {
-            this._worldScale = Vec3.multiply(
-                this._parent.worldScale,
-                this._scale,
-                this._worldScale
-            );
-        } else {
-            this._worldScale.x = this._scale.x;
-            this._worldScale.y = this._scale.y;
-            this._worldScale.z = this._scale.z;
-        }
     }
 
     translate(translation: Vec3, space: 'local' | 'world' = 'local'): void {
         if (space === 'local') {
             this._position.add(translation);
-        } else {
-            if (this._parent) {
-                const localTranslation = translation.clone();
-                this._position.add(localTranslation);
-            } else {
-                this._position.add(translation);
-            }
+            this.markLocalDirty();
+            return;
         }
+
+        const parent = this.parent;
+        if (!parent) {
+            this._position.add(translation);
+            this.markLocalDirty();
+            return;
+        }
+
+        const inverseParentRotation = parent.worldRotation.clone().inverse();
+        const localDelta = inverseParentRotation.rotateVector(
+            translation,
+            Transform._tempVec3
+        ) as Vec3;
+        const parentScale = parent.worldScale;
+
+        this._position.x +=
+            Math.abs(parentScale.x) > WORLD_TRANSLATION_EPSILON
+                ? localDelta.x / parentScale.x
+                : 0;
+        this._position.y +=
+            Math.abs(parentScale.y) > WORLD_TRANSLATION_EPSILON
+                ? localDelta.y / parentScale.y
+                : 0;
+        this._position.z +=
+            Math.abs(parentScale.z) > WORLD_TRANSLATION_EPSILON
+                ? localDelta.z / parentScale.z
+                : 0;
+
         this.markLocalDirty();
     }
 
@@ -312,29 +229,31 @@ export class Transform extends Component {
     rotate(rotation: Quat, space: 'local' | 'world' = 'local'): void {
         if (space === 'local') {
             this._rotation = Quat.multiply(this._rotation, rotation, this._rotation);
-        } else {
-            if (this._parent) {
-                const parentWorldRotation = this._parent.worldRotation;
-                const parentInverse = parentWorldRotation.clone().inverse();
-                const localRotation = Quat.multiply(parentInverse, rotation, Transform._tempQuat);
-                this._rotation = Quat.multiply(localRotation, this._rotation, this._rotation);
-            } else {
-                this._rotation = Quat.multiply(this._rotation, rotation, this._rotation);
-            }
+            this.markLocalDirty();
+            return;
         }
+
+        const parent = this.parent;
+        if (parent) {
+            const parentInverse = parent.worldRotation.clone().inverse();
+            const localRotation = Quat.multiply(parentInverse, rotation, Transform._tempQuat);
+            this._rotation = Quat.multiply(localRotation, this._rotation, this._rotation);
+        } else {
+            this._rotation = Quat.multiply(this._rotation, rotation, this._rotation);
+        }
+
         this.markLocalDirty();
     }
 
     lookAt(target: Vec3, up: Vec3 = Vec3.UP): void {
-        const worldPos = this.worldPosition;
-        const direction = Vec3.subtract(target, worldPos, Transform._tempVec3);
+        const direction = Vec3.subtract(target, this.worldPosition, Transform._tempVec3);
         Vec3.normalize(direction, direction);
 
         const lookRotation = Quat.lookRotation(direction, up, Transform._tempQuat);
+        const parent = this.parent;
 
-        if (this._parent) {
-            const parentWorldRotation = this._parent.worldRotation;
-            const parentInverse = parentWorldRotation.clone().inverse();
+        if (parent) {
+            const parentInverse = parent.worldRotation.clone().inverse();
             this._rotation = Quat.multiply(parentInverse, lookRotation, this._rotation);
         } else {
             this._rotation.x = lookRotation.x;
@@ -347,41 +266,46 @@ export class Transform extends Component {
     }
 
     findChild(name: string): Transform | undefined {
-        for (const child of this._children.values()) {
+        for (const child of this.children) {
             if (child.actor?.name === name) {
                 return child;
             }
         }
+
         return undefined;
     }
 
     findChildByTag(tag: string): Transform | undefined {
-        for (const child of this._children.values()) {
+        for (const child of this.children) {
             if (child.actor?.tag === tag) {
                 return child;
             }
         }
+
         return undefined;
     }
 
     findChildrenByTag(tag: string): Transform[] {
         const results: Transform[] = [];
-        for (const child of this._children.values()) {
+
+        for (const child of this.children) {
             if (child.actor?.tag === tag) {
                 results.push(child);
             }
         }
+
         return results;
     }
 
     findChildWithComponent<T extends Component>(
         componentType: new (...args: any[]) => T
     ): Transform | undefined {
-        for (const child of this._children.values()) {
+        for (const child of this.children) {
             if (child.actor?.hasComponent(componentType)) {
                 return child;
             }
         }
+
         return undefined;
     }
 
@@ -389,19 +313,21 @@ export class Transform extends Component {
         componentType: new (...args: any[]) => T
     ): Transform[] {
         const results: Transform[] = [];
-        for (const child of this._children.values()) {
+
+        for (const child of this.children) {
             if (child.actor?.hasComponent(componentType)) {
                 results.push(child);
             }
         }
+
         return results;
     }
 
     findInChildren(name: string): Transform | undefined {
         const queue: Transform[] = [this];
 
-        while (queue.length > 0) {
-            const current = queue.shift()!;
+        for (let index = 0; index < queue.length; index += 1) {
+            const current = queue[index]!;
 
             if (current !== this && current.actor?.name === name) {
                 return current;
@@ -416,8 +342,8 @@ export class Transform extends Component {
     findInChildrenByTag(tag: string): Transform | undefined {
         const queue: Transform[] = [this];
 
-        while (queue.length > 0) {
-            const current = queue.shift()!;
+        for (let index = 0; index < queue.length; index += 1) {
+            const current = queue[index]!;
 
             if (current !== this && current.actor?.tag === tag) {
                 return current;
@@ -433,8 +359,8 @@ export class Transform extends Component {
         const descendants: Transform[] = [];
         const queue: Transform[] = [...this.children];
 
-        while (queue.length > 0) {
-            const current = queue.shift()!;
+        for (let index = 0; index < queue.length; index += 1) {
+            const current = queue[index]!;
             descendants.push(current);
             queue.push(...current.children);
         }
@@ -444,10 +370,15 @@ export class Transform extends Component {
 
     isAncestorOf(transform: Transform): boolean {
         let current = transform.parent;
+
         while (current) {
-            if (current === this) return true;
+            if (current === this) {
+                return true;
+            }
+
             current = current.parent;
         }
+
         return false;
     }
 
@@ -457,19 +388,23 @@ export class Transform extends Component {
 
     getRoot(): Transform {
         let root: Transform = this;
+
         while (root.parent) {
             root = root.parent;
         }
+
         return root;
     }
 
     getDepth(): number {
         let depth = 0;
         let current = this.parent;
+
         while (current) {
-            depth++;
+            depth += 1;
             current = current.parent;
         }
+
         return depth;
     }
 
@@ -502,22 +437,228 @@ export class Transform extends Component {
         }
 
         this._localDirty = true;
-        this._worldDirty = true;
         this.markWorldDirty();
     }
 
-    onDestroy(): void {
-        if (this._parent) {
+    override onDestroy(): void {
+        const detachedChildren = [...this._detachedChildren];
+
+        for (const child of detachedChildren) {
+            child.parent = undefined;
+        }
+
+        if (this._detachedParent) {
             this.parent = undefined;
         }
 
-        this._children.clear();
-        this._childrenArray.length = 0;
+        this._detachedChildren.clear();
+        this._detachedChildrenArray.length = 0;
+        this._attachedChildrenArray.length = 0;
+        this._attachedHierarchyVersion = -1;
+        this._detachedChildrenDirty = false;
 
         this._localMatrix = undefined;
         this._worldMatrix = undefined;
         this._worldPosition = undefined;
         this._worldRotation = undefined;
         this._worldScale = undefined;
+        this._worldDirty = true;
+        this._localDirty = true;
+    }
+
+    private static _copyMatrix(source: Mat4, target: Mat4): void {
+        const sourceData = source.data;
+        const targetData = (target as any).data as number[];
+
+        targetData[0] = sourceData[0];
+        targetData[1] = sourceData[1];
+        targetData[2] = sourceData[2];
+        targetData[3] = sourceData[3];
+        targetData[4] = sourceData[4];
+        targetData[5] = sourceData[5];
+        targetData[6] = sourceData[6];
+        targetData[7] = sourceData[7];
+        targetData[8] = sourceData[8];
+        targetData[9] = sourceData[9];
+        targetData[10] = sourceData[10];
+        targetData[11] = sourceData[11];
+        targetData[12] = sourceData[12];
+        targetData[13] = sourceData[13];
+        targetData[14] = sourceData[14];
+        targetData[15] = sourceData[15];
+    }
+
+    private _getHierarchy(): Hierarchy | undefined {
+        if (!this.actor) {
+            return undefined;
+        }
+
+        const HierarchyClass =
+            (this.world as any)?.registry?.Hierarchy || (globalThis as any).Hierarchy;
+
+        if (!HierarchyClass) {
+            return undefined;
+        }
+
+        return this.actor.getComponent(HierarchyClass) as Hierarchy | undefined;
+    }
+
+    private _resolveTransformFromHierarchy(hierarchy?: Hierarchy): Transform | undefined {
+        const actor = (hierarchy as any)?.actor;
+        if (!actor) {
+            return undefined;
+        }
+
+        const TransformClass =
+            ((hierarchy as any)?.world as any)?.registry?.Transform ||
+            (globalThis as any).Transform;
+
+        if (!TransformClass) {
+            return undefined;
+        }
+
+        return actor.getComponent(TransformClass) as Transform | undefined;
+    }
+
+    private _setDetachedParent(value?: Transform): void {
+        if (this._detachedParent === value || value === this) {
+            return;
+        }
+
+        if (value && value.isDescendantOf(this)) {
+            return;
+        }
+
+        if (this._detachedParent) {
+            this._detachedParent._removeDetachedChild(this);
+        }
+
+        this._detachedParent = value;
+
+        if (value) {
+            value._addDetachedChild(this);
+        }
+
+        this.markHierarchyDirty();
+    }
+
+    private _addDetachedChild(child: Transform): void {
+        if (this._detachedChildren.has(child)) {
+            return;
+        }
+
+        this._detachedChildren.add(child);
+        this._detachedChildrenDirty = true;
+    }
+
+    private _removeDetachedChild(child: Transform): void {
+        if (!this._detachedChildren.delete(child)) {
+            return;
+        }
+
+        this._detachedChildrenDirty = true;
+    }
+
+    private _rebuildDetachedChildrenArray(): void {
+        this._detachedChildrenArray.length = 0;
+        this._detachedChildrenArray.push(...this._detachedChildren);
+        this._detachedChildrenDirty = false;
+    }
+
+    private _rebuildAttachedChildrenArray(hierarchy: Hierarchy): void {
+        this._attachedChildrenArray.length = 0;
+
+        for (const childHierarchy of hierarchy.children) {
+            const childTransform = this._resolveTransformFromHierarchy(childHierarchy);
+            if (childTransform) {
+                this._attachedChildrenArray.push(childTransform);
+            }
+        }
+
+        this._attachedHierarchyVersion = hierarchy.version;
+    }
+
+    private markLocalDirty(): void {
+        this._localDirty = true;
+        this.markWorldDirty();
+    }
+
+    private markWorldDirty(): void {
+        this._worldDirty = true;
+        this._worldPosition = undefined;
+        this._worldRotation = undefined;
+        this._worldScale = undefined;
+
+        for (const child of this.children) {
+            child.markWorldDirty();
+        }
+    }
+
+    private updateLocalMatrix(): void {
+        if (!this._localMatrix) {
+            this._localMatrix = new Mat4();
+        }
+
+        this._localMatrix = Mat4.fromTRS(
+            this._position,
+            this._rotation,
+            this._scale,
+            this._localMatrix
+        );
+
+        this._localDirty = false;
+    }
+
+    private updateWorldState(): void {
+        if (!this._worldMatrix) {
+            this._worldMatrix = new Mat4();
+        }
+
+        if (!this._worldPosition) {
+            this._worldPosition = new Vec3();
+        }
+
+        if (!this._worldRotation) {
+            this._worldRotation = new Quat();
+        }
+
+        if (!this._worldScale) {
+            this._worldScale = new Vec3();
+        }
+
+        const parent = this.parent;
+        const localMatrix = this.localMatrix;
+
+        if (parent) {
+            Mat4.multiply(parent.worldMatrix, localMatrix, this._worldMatrix);
+
+            const scaled = Vec3.multiply(
+                parent.worldScale,
+                this._position,
+                Transform._tempVec3
+            ) as Vec3;
+            parent.worldRotation.rotateVector(scaled, Transform._tempVec3B);
+            Vec3.add(parent.worldPosition, Transform._tempVec3B, this._worldPosition);
+
+            Quat.multiply(parent.worldRotation, this._rotation, this._worldRotation);
+            Vec3.multiply(parent.worldScale, this._scale, this._worldScale);
+        } else {
+            Transform._copyMatrix(localMatrix, this._worldMatrix);
+
+            this._worldPosition.x = this._position.x;
+            this._worldPosition.y = this._position.y;
+            this._worldPosition.z = this._position.z;
+
+            this._worldRotation.x = this._rotation.x;
+            this._worldRotation.y = this._rotation.y;
+            this._worldRotation.z = this._rotation.z;
+            this._worldRotation.w = this._rotation.w;
+
+            this._worldScale.x = this._scale.x;
+            this._worldScale.y = this._scale.y;
+            this._worldScale.z = this._scale.z;
+        }
+
+        this._worldDirty = false;
     }
 }

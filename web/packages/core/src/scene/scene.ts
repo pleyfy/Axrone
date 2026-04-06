@@ -2,6 +2,7 @@ import { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 import { createBox, createPlane, createSphere } from '../geometry/primitives';
 import type { IGeometryBuffers } from '../geometry/primitives/types';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
+import { Hierarchy } from '../component-system/components/hierarchy';
 import { Transform } from '../component-system/components/transform';
 import { Component } from '../component-system/core/component';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
@@ -564,6 +565,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         );
 
         this._registry = {
+            Hierarchy,
             Transform,
             Camera,
             MeshRenderer,
@@ -1070,6 +1072,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     ): readonly Actor[] {
         this._assertNotDisposed();
         const createdActors: Actor[] = [];
+        const createdByNodeId = new Map<string, Actor>();
+        const pendingHierarchyLinks: Array<{
+            readonly actor: Actor;
+            readonly parentNodeId?: string | null;
+        }> = [];
 
         for (const actorSnapshot of prefab.actors) {
             const actor = this.createActor({
@@ -1085,10 +1092,35 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             for (const componentSnapshot of actorSnapshot.components) {
                 this._hydrateComponent(actor, componentSnapshot, options);
             }
+            createdActors.push(actor);
+
+            if (actorSnapshot.nodeId) {
+                createdByNodeId.set(actorSnapshot.nodeId, actor);
+            }
+
+            pendingHierarchyLinks.push({
+                actor,
+                parentNodeId: actorSnapshot.parentNodeId,
+            });
+        }
+
+        for (const pendingLink of pendingHierarchyLinks) {
+            if (!pendingLink.parentNodeId) {
+                continue;
+            }
+
+            const parentActor = createdByNodeId.get(pendingLink.parentNodeId);
+            if (parentActor) {
+                pendingLink.actor.setParent(parentActor);
+            }
+        }
+
+        for (let index = 0; index < prefab.actors.length; index += 1) {
+            const actor = createdActors[index]!;
+            const actorSnapshot = prefab.actors[index]!;
 
             actor.start();
             actor.active = actorSnapshot.active;
-            createdActors.push(actor);
         }
 
         return createdActors;
@@ -1358,16 +1390,22 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 }
             }
 
-            const activeUniformCount = this.gl.getProgramParameter(program, this.gl.ACTIVE_UNIFORMS);
-            for (let index = 0; index < activeUniformCount; index += 1) {
-                const info = this.gl.getActiveUniform(program, index);
-                if (!info) {
-                    continue;
-                }
+            if (typeof this.gl.getActiveUniform === 'function') {
+                const activeUniformCount = this.gl.getProgramParameter(
+                    program,
+                    this.gl.ACTIVE_UNIFORMS
+                );
 
-                const normalizedName = normalizeUniformName(info.name);
-                uniformTypes.set(info.name, info.type);
-                uniformTypes.set(normalizedName, info.type);
+                for (let index = 0; index < activeUniformCount; index += 1) {
+                    const info = this.gl.getActiveUniform(program, index);
+                    if (!info) {
+                        continue;
+                    }
+
+                    const normalizedName = normalizeUniformName(info.name);
+                    uniformTypes.set(info.name, info.type);
+                    uniformTypes.set(normalizedName, info.type);
+                }
             }
 
             return {
@@ -1901,27 +1939,27 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         const blend = renderPass.blend ?? shader.blend;
 
         if (depthTest) {
-            this.gl.enable(this.gl.DEPTH_TEST);
+            this.gl.enable?.(this.gl.DEPTH_TEST);
         } else {
-            this.gl.disable(this.gl.DEPTH_TEST);
+            this.gl.disable?.(this.gl.DEPTH_TEST);
         }
 
         if (cull) {
-            this.gl.enable(this.gl.CULL_FACE);
-            this.gl.frontFace(this.gl.CCW);
-            this.gl.cullFace(this.gl.BACK);
+            this.gl.enable?.(this.gl.CULL_FACE);
+            this.gl.frontFace?.(this.gl.CCW);
+            this.gl.cullFace?.(this.gl.BACK);
         } else {
-            this.gl.disable(this.gl.CULL_FACE);
+            this.gl.disable?.(this.gl.CULL_FACE);
         }
 
         if (blend) {
-            this.gl.enable(this.gl.BLEND);
-            this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+            this.gl.enable?.(this.gl.BLEND);
+            this.gl.blendFunc?.(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
         } else {
-            this.gl.disable(this.gl.BLEND);
+            this.gl.disable?.(this.gl.BLEND);
         }
 
-        this.gl.depthMask(true);
+        this.gl.depthMask?.(true);
     }
 
     private _applyLightingUniforms(
@@ -2174,11 +2212,15 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _createActorSnapshot(actor: Actor): SceneActorSnapshot {
+        const hierarchy = actor.getComponent(Hierarchy);
         const components = actor
             .getAllComponents()
+            .filter((component) => !(component instanceof Hierarchy))
             .map((component) => this._createComponentSnapshot(component));
 
         return {
+            nodeId: actor.id,
+            parentNodeId: hierarchy?.parentActor?.id ?? null,
             name: actor.name,
             layer: actor.layer,
             tag: actor.tag,

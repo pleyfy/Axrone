@@ -9,6 +9,7 @@ import type { DirectionalLight } from './components/directional-light';
 import type { MeshRenderer } from './components/mesh-renderer';
 import type { OrbitCameraController } from './components/orbit-camera-controller';
 import type { PointLight } from './components/point-light';
+import type { Hierarchy } from '../component-system/components/hierarchy';
 import type { Transform } from '../component-system/components/transform';
 import type { FilterMode, TextureFormat, WrapMode } from '../renderer/webgl2/texture/interfaces';
 
@@ -214,6 +215,8 @@ export interface SceneComponentSnapshot {
 }
 
 export interface SceneActorSnapshot {
+    readonly nodeId?: string;
+    readonly parentNodeId?: string | null;
     readonly name: string;
     readonly layer: number;
     readonly tag: string;
@@ -252,6 +255,7 @@ export interface SceneSnapshotLoadOptions extends ScenePrefabInstantiateOptions 
 }
 
 export type SceneBuiltInRegistry = {
+    readonly Hierarchy: typeof Hierarchy;
     readonly Transform: typeof Transform;
     readonly Camera: typeof Camera;
     readonly MeshRenderer: typeof MeshRenderer;

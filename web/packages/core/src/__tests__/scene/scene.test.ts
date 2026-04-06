@@ -510,18 +510,23 @@ void main() {
             },
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
         const plane = scene.createRenderableActor(
             { name: 'Plane' },
             { meshId: 'plane', materialId: 'plane-material', passId: 'main' }
         );
         plane.requireComponent(Transform).position = new Vec3(0, 0, -2);
+        plane.requireComponent(Transform).parent = camera.requireComponent(Transform);
 
         const snapshot = scene.serializeScene();
+        const serializedPlane = snapshot.prefab.actors.find(
+            (actor: { name: string }) => actor.name === 'Plane'
+        );
 
         expect(snapshot.prefab.actors.length).toBe(2);
         expect(snapshot.textures.length).toBe(1);
         expect(snapshot.materials[0].textures?.u_MainTex).toBe('solid');
+        expect(serializedPlane?.parentNodeId).toBe(camera.id);
 
         await scene.loadScene(snapshot);
         scene.renderNow();
@@ -531,8 +536,12 @@ void main() {
         const restoredPlane = scene.world
             .getAllActors()
             .find((actor: { name: string }) => actor.name === 'Plane');
+        const restoredCamera = scene.world
+            .getAllActors()
+            .find((actor: { name: string }) => actor.name === 'Camera');
         expect(restoredPlane).toBeDefined();
         expect(restoredPlane?.getComponent(MeshRenderer)?.materialId).toBe('plane-material');
+        expect(restoredPlane?.requireComponent(Transform).parent?.actor).toBe(restoredCamera);
         expect(scene.getTexture('solid')?.width).toBe(2);
         expect(gl.drawElements).toHaveBeenCalled();
 

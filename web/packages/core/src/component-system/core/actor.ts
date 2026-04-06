@@ -2,6 +2,8 @@ import type { Entity, ActorId } from '../types/core';
 import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
 import { Component, getComponentMetadata } from './component';
+import { Hierarchy } from '../components/hierarchy';
+import { Transform } from '../components/transform';
 
 const getComponentTypeName = (componentType: ComponentType): string =>
     getComponentMetadata(componentType)?.scriptName ?? componentType.name;
@@ -109,14 +111,14 @@ export class Actor<
         this._tag = (config.tag ?? 'Default') as ActorTag;
         this._persistent = config.persistent ?? false;
         this._pooled = config.pooled ?? false;
-        this._maxComponents = config.maxComponents ?? 64;
+        this._maxComponents = (config.maxComponents ?? 64) + 1;
 
         this._eventBus = (world as any).eventBus || null;
 
         try {
             world.registerActor(this.entity, this);
 
-            this._initializeTransformComponent();
+            this._initializeCoreComponents();
 
             this._state = 'active';
 
@@ -266,6 +268,14 @@ export class Actor<
         return this._components.size;
     }
 
+    get parent(): Actor | undefined {
+        return this._getHierarchyComponent()?.parentActor;
+    }
+
+    get children(): readonly Actor[] {
+        return this._getHierarchyComponent()?.childActors ?? [];
+    }
+
     get persistent(): boolean {
         return this._persistent;
     }
@@ -276,6 +286,25 @@ export class Actor<
 
     get started(): boolean {
         return this._started;
+    }
+
+    setParent(parent?: Actor): void {
+        this._validateNotDestroyed('setParent');
+
+        const hierarchy = this._getHierarchyComponent();
+        if (!hierarchy) {
+            return;
+        }
+
+        if (!parent) {
+            hierarchy.parent = undefined;
+            return;
+        }
+
+        const parentHierarchy = parent._getHierarchyComponent();
+        if (parentHierarchy) {
+            hierarchy.parent = parentHierarchy;
+        }
     }
 
     addComponent<T extends Component>(componentType: ComponentType<T>, ...args: any[]): T {
@@ -614,25 +643,19 @@ export class Actor<
         return getComponentMetadata(componentType);
     }
 
-    private _initializeTransformComponent(): void {
+    private _initializeCoreComponents(): void {
         try {
-            const TransformClass =
-                (this.world as any).registry?.Transform || (globalThis as any).Transform;
+            const HierarchyClass = this._resolveCoreComponent('Hierarchy', Hierarchy);
+            const TransformClass = this._resolveCoreComponent('Transform', Transform);
 
-            if (TransformClass) {
-                this.addComponent(TransformClass);
-            } else {
-                console.warn(
-                    `[Actor:${this.id}] Transform component not found in registry. ` +
-                        'Every Actor should have a Transform component for spatial operations.'
-                );
-            }
+            this.addComponent(HierarchyClass as any);
+            this.addComponent(TransformClass as any);
         } catch (error) {
             console.error(
                 new ComponentError(
-                    'Failed to initialize Transform component',
+                    'Failed to initialize core spatial components',
                     this.id,
-                    'Transform',
+                    'Hierarchy/Transform',
                     error instanceof Error ? error : new Error(String(error))
                 )
             );
@@ -647,6 +670,35 @@ export class Actor<
                 operation
             );
         }
+    }
+
+    private _getHierarchyComponent(): any {
+        const HierarchyClass = this._resolveCoreComponent('Hierarchy', Hierarchy, false);
+
+        if (!HierarchyClass) {
+            return undefined;
+        }
+
+        return this.getComponent(HierarchyClass as any);
+    }
+
+    private _resolveCoreComponent(
+        name: 'Hierarchy' | 'Transform',
+        fallback: ComponentType,
+        ensureRegistered: boolean = true
+    ): ComponentType | undefined {
+        const registryComponent =
+            (this.world as any).registry?.[name] || (globalThis as any)[name] || fallback;
+
+        if (!registryComponent) {
+            return undefined;
+        }
+
+        if (ensureRegistered && !this.world.isComponentRegistered(registryComponent as any)) {
+            this.world.registerComponentType(registryComponent as any);
+        }
+
+        return registryComponent as ComponentType;
     }
 
     private _getSortedComponents(): Array<[ComponentType, Component]> {
