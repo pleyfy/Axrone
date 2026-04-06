@@ -57,9 +57,9 @@ export class ComparisonError extends Error {
         this.name = 'ComparisonError';
         this.#code = code;
 
-        if (Error.captureStackTrace) {
-            Error.captureStackTrace(this, ComparisonError);
-        }
+        (
+            Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void }
+        ).captureStackTrace?.(this, ComparisonError);
     }
 
     get code(): string {

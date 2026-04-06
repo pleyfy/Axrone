@@ -62,7 +62,8 @@ export type {
     IObserverConnection,
 } from './interfaces';
 
-export { Subject, ISubject } from './subject';
+export type { ISubject } from './subject';
+export { Subject } from './subject';
 export { ObserverRegistry } from './registry';
 export { MemoryManager } from './memory-manager';
 

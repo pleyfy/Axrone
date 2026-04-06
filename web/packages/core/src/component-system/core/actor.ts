@@ -2,6 +2,11 @@ import type { Entity, ActorId } from '../types/core';
 import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
 import { Component, getComponentMetadata } from './component';
+import { Hierarchy } from '../components/hierarchy';
+import { Transform } from '../components/transform';
+
+const getComponentTypeName = (componentType: ComponentType): string =>
+    getComponentMetadata(componentType)?.scriptName ?? componentType.name;
 
 export interface EventBus {
     emit(eventType: string, data: any): void;
@@ -61,6 +66,7 @@ export class Actor<
     TComponents extends readonly ComponentType[] = readonly ComponentType[],
 > {
     private static readonly _componentMetadataMap = new WeakMap<ComponentType, ComponentMetadata>();
+    private static _nextActorId = 1;
 
     public readonly entity: Entity;
     public readonly world: TWorld;
@@ -99,20 +105,20 @@ export class Actor<
         this.creationTime = performance.now();
 
         this._name = config.name ?? 'Actor';
-        this.id = `${this._name}_${this.entity}_${Date.now()}` as ActorId;
+        this.id = `${this._name}_${this.entity}_${Actor._nextActorId++}` as ActorId;
         this._active = config.active ?? true;
         this._layer = (config.layer ?? 0) as ActorLayer;
         this._tag = (config.tag ?? 'Default') as ActorTag;
         this._persistent = config.persistent ?? false;
         this._pooled = config.pooled ?? false;
-        this._maxComponents = config.maxComponents ?? 64;
+        this._maxComponents = (config.maxComponents ?? 64) + 1;
 
         this._eventBus = (world as any).eventBus || null;
 
         try {
             world.registerActor(this.entity, this);
 
-            this._initializeTransformComponent();
+            this._initializeCoreComponents();
 
             this._state = 'active';
 
@@ -262,6 +268,45 @@ export class Actor<
         return this._components.size;
     }
 
+    get parent(): Actor | undefined {
+        return this._getHierarchyComponent()?.parentActor;
+    }
+
+    get children(): readonly Actor[] {
+        return this._getHierarchyComponent()?.childActors ?? [];
+    }
+
+    get persistent(): boolean {
+        return this._persistent;
+    }
+
+    get pooled(): boolean {
+        return this._pooled;
+    }
+
+    get started(): boolean {
+        return this._started;
+    }
+
+    setParent(parent?: Actor): void {
+        this._validateNotDestroyed('setParent');
+
+        const hierarchy = this._getHierarchyComponent();
+        if (!hierarchy) {
+            return;
+        }
+
+        if (!parent) {
+            hierarchy.parent = undefined;
+            return;
+        }
+
+        const parentHierarchy = parent._getHierarchyComponent();
+        if (parentHierarchy) {
+            hierarchy.parent = parentHierarchy;
+        }
+    }
+
     addComponent<T extends Component>(componentType: ComponentType<T>, ...args: any[]): T {
         this._validateNotDestroyed('addComponent');
 
@@ -269,15 +314,17 @@ export class Actor<
             throw new ComponentError(
                 'Invalid component type provided',
                 this.id,
-                (componentType as any)?.name ?? 'unknown'
+                getComponentTypeName((componentType as any) ?? { name: 'unknown' })
             );
         }
+
+        const componentName = getComponentTypeName(componentType);
 
         if (this._components.size >= this._maxComponents) {
             throw new ComponentError(
                 `Maximum component limit (${this._maxComponents}) reached`,
                 this.id,
-                componentType.name
+                componentName
             );
         }
 
@@ -289,7 +336,7 @@ export class Actor<
             throw new ComponentError(
                 'Component already exists and is not singleton',
                 this.id,
-                componentType.name
+                componentName
             );
         }
 
@@ -308,7 +355,7 @@ export class Actor<
             this._components.set(componentType, component);
             this._componentPriorities.set(componentType, metadata?.priority ?? 0);
 
-            this.world.addComponent(this.entity, componentType.name as any, component);
+            this.world.addComponent(this.entity, componentName as any, component);
 
             this._executeComponentLifecycle(component, 'awake');
 
@@ -321,7 +368,7 @@ export class Actor<
             }
 
             this._emitEvent('actor:componentAdded', {
-                componentType: componentType.name,
+                componentType: componentName,
                 component,
             });
 
@@ -330,7 +377,7 @@ export class Actor<
             throw new ComponentError(
                 'Failed to add component',
                 this.id,
-                componentType.name,
+                componentName,
                 error instanceof Error ? error : new Error(String(error))
             );
         }
@@ -357,10 +404,10 @@ export class Actor<
             this._componentPriorities.delete(componentType);
             this._componentDependencies.delete(componentType);
 
-            this.world.removeComponent(this.entity, componentType.name as any);
+            this.world.removeComponent(this.entity, getComponentTypeName(componentType) as any);
 
             this._emitEvent('actor:componentRemoved', {
-                componentType: componentType.name,
+                componentType: getComponentTypeName(componentType),
                 component,
             });
 
@@ -369,7 +416,7 @@ export class Actor<
             throw new ComponentError(
                 'Failed to remove component',
                 this.id,
-                componentType.name,
+                getComponentTypeName(componentType),
                 error instanceof Error ? error : new Error(String(error))
             );
         }
@@ -382,7 +429,11 @@ export class Actor<
     requireComponent<T extends Component>(componentType: ComponentType<T>): T {
         const component = this.getComponent(componentType);
         if (!component) {
-            throw new ComponentError('Required component not found', this.id, componentType.name);
+            throw new ComponentError(
+                'Required component not found',
+                this.id,
+                getComponentTypeName(componentType)
+            );
         }
         return component;
     }
@@ -443,20 +494,7 @@ export class Actor<
             const sortedComponents = this._getSortedComponents();
 
             for (const [componentType, component] of sortedComponents) {
-                try {
-                    if (component.update) {
-                        component.update(deltaTime);
-                    }
-                } catch (error) {
-                    console.error(
-                        new ComponentError(
-                            'Component update failed',
-                            this.id,
-                            componentType.name,
-                            error instanceof Error ? error : new Error(String(error))
-                        )
-                    );
-                }
+                this._executeComponentPhase(componentType, component, 'update', deltaTime);
             }
         } catch (error) {
             console.error(
@@ -464,6 +502,57 @@ export class Actor<
                     'Actor update failed',
                     this.id,
                     'update',
+                    error instanceof Error ? error : new Error(String(error))
+                )
+            );
+        }
+    }
+
+    fixedUpdate(fixedDeltaTime: number): void {
+        if (!this._active || this._destroyed || this._state !== 'active') {
+            return;
+        }
+
+        try {
+            const sortedComponents = this._getSortedComponents();
+
+            for (const [componentType, component] of sortedComponents) {
+                this._executeComponentPhase(
+                    componentType,
+                    component,
+                    'fixedUpdate',
+                    fixedDeltaTime
+                );
+            }
+        } catch (error) {
+            console.error(
+                new ActorError(
+                    'Actor fixed update failed',
+                    this.id,
+                    'fixedUpdate',
+                    error instanceof Error ? error : new Error(String(error))
+                )
+            );
+        }
+    }
+
+    lateUpdate(deltaTime: number): void {
+        if (!this._active || this._destroyed || this._state !== 'active') {
+            return;
+        }
+
+        try {
+            const sortedComponents = this._getSortedComponents();
+
+            for (const [componentType, component] of sortedComponents) {
+                this._executeComponentPhase(componentType, component, 'lateUpdate', deltaTime);
+            }
+        } catch (error) {
+            console.error(
+                new ActorError(
+                    'Actor late update failed',
+                    this.id,
+                    'lateUpdate',
                     error instanceof Error ? error : new Error(String(error))
                 )
             );
@@ -554,25 +643,19 @@ export class Actor<
         return getComponentMetadata(componentType);
     }
 
-    private _initializeTransformComponent(): void {
+    private _initializeCoreComponents(): void {
         try {
-            const TransformClass =
-                (this.world as any).registry?.Transform || (globalThis as any).Transform;
+            const HierarchyClass = this._resolveCoreComponent('Hierarchy', Hierarchy);
+            const TransformClass = this._resolveCoreComponent('Transform', Transform);
 
-            if (TransformClass) {
-                this.addComponent(TransformClass);
-            } else {
-                console.warn(
-                    `[Actor:${this.id}] Transform component not found in registry. ` +
-                        'Every Actor should have a Transform component for spatial operations.'
-                );
-            }
+            this.addComponent(HierarchyClass as any);
+            this.addComponent(TransformClass as any);
         } catch (error) {
             console.error(
                 new ComponentError(
-                    'Failed to initialize Transform component',
+                    'Failed to initialize core spatial components',
                     this.id,
-                    'Transform',
+                    'Hierarchy/Transform',
                     error instanceof Error ? error : new Error(String(error))
                 )
             );
@@ -587,6 +670,35 @@ export class Actor<
                 operation
             );
         }
+    }
+
+    private _getHierarchyComponent(): any {
+        const HierarchyClass = this._resolveCoreComponent('Hierarchy', Hierarchy, false);
+
+        if (!HierarchyClass) {
+            return undefined;
+        }
+
+        return this.getComponent(HierarchyClass as any);
+    }
+
+    private _resolveCoreComponent(
+        name: 'Hierarchy' | 'Transform',
+        fallback: ComponentType,
+        ensureRegistered: boolean = true
+    ): ComponentType | undefined {
+        const registryComponent =
+            (this.world as any).registry?.[name] || (globalThis as any)[name] || fallback;
+
+        if (!registryComponent) {
+            return undefined;
+        }
+
+        if (ensureRegistered && !this.world.isComponentRegistered(registryComponent as any)) {
+            this.world.registerComponentType(registryComponent as any);
+        }
+
+        return registryComponent as ComponentType;
     }
 
     private _getSortedComponents(): Array<[ComponentType, Component]> {
@@ -640,7 +752,7 @@ export class Actor<
                 throw new ComponentError(
                     `Cannot remove component: ${type.name} depends on it`,
                     this.id,
-                    componentType.name
+                    getComponentTypeName(componentType)
                 );
             }
         }
@@ -658,6 +770,33 @@ export class Actor<
                 this.id,
                 component.constructor.name,
                 error instanceof Error ? error : new Error(String(error))
+            );
+        }
+    }
+
+    private _executeComponentPhase(
+        componentType: ComponentType,
+        component: Component,
+        phase: 'update' | 'fixedUpdate' | 'lateUpdate',
+        deltaTime: number
+    ): void {
+        if (!component.enabled) {
+            return;
+        }
+
+        try {
+            const lifecycleMethod = component[phase];
+            if (typeof lifecycleMethod === 'function') {
+                (lifecycleMethod as (deltaTime: number) => void).call(component, deltaTime);
+            }
+        } catch (error) {
+            console.error(
+                new ComponentError(
+                    `Component ${phase} failed`,
+                    this.id,
+                    componentType.name,
+                    error instanceof Error ? error : new Error(String(error))
+                )
             );
         }
     }

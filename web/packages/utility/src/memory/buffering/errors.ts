@@ -7,7 +7,9 @@ abstract class BaseBufferError extends Error {
         super(message);
         this.name = name;
         Object.setPrototypeOf(this, new.target.prototype);
-        Error.captureStackTrace?.(this, new.target);
+        (
+            Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void }
+        ).captureStackTrace?.(this, new.target);
     }
 }
 

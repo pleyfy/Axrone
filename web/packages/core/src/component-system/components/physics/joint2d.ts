@@ -60,7 +60,7 @@ export abstract class Joint2D extends Component {
     }
 
     awake(): void {
-        this._rigidbodyA = this.getComponent(Rigidbody2D as any) ?? null;
+        this._rigidbodyA = (this.getComponent(Rigidbody2D as any) as Rigidbody2D | null) ?? null;
         if (!this._rigidbodyA) {
             throw new Error('Joint2D requires Rigidbody2D component');
         }

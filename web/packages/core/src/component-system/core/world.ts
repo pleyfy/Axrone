@@ -5,6 +5,7 @@ import type {
     ArchetypeId,
     BitMask,
     ComponentInstance,
+    ComponentConstructor,
 } from '../types/core';
 import type { QueryResult } from '../types/system';
 import type { EventKey } from '../../event';
@@ -99,6 +100,8 @@ export class World<R extends ComponentRegistry> {
     private readonly _enableValidation: boolean;
     private _queryCount = 0;
     private _eventCount = 0;
+    private _structureBatchDepth = 0;
+    private _structureChangedDuringBatch = false;
 
     private readonly _disposables = new Set<() => void>();
 
@@ -170,6 +173,22 @@ export class World<R extends ComponentRegistry> {
             memoryUsage: this._calculateMemoryUsage(),
             lastUpdateTime: this._lastUpdateTime,
         };
+    }
+
+    batchStructureChanges<T>(callback: () => T): T {
+        this._validateWorldState('batchStructureChanges');
+        this._structureBatchDepth += 1;
+
+        try {
+            return callback();
+        } finally {
+            this._structureBatchDepth -= 1;
+
+            if (this._structureBatchDepth === 0 && this._structureChangedDuringBatch) {
+                this._queryCache.invalidate();
+                this._structureChangedDuringBatch = false;
+            }
+        }
     }
 
     createEntity(): Entity {
@@ -349,7 +368,7 @@ export class World<R extends ComponentRegistry> {
             targetArchetype.addEntity(entity, removedComponents);
 
             this._entityArchetypes.set(entity, targetArchetype.id);
-            this._queryCache.invalidate();
+            this._invalidateStructureCaches();
 
             if (metadata?.singleton) {
                 this._singletonComponents.set(componentName as string, {
@@ -413,7 +432,7 @@ export class World<R extends ComponentRegistry> {
 
             targetArchetype.addEntity(entity, removedComponents);
             this._entityArchetypes.set(entity, targetArchetype.id);
-            this._queryCache.invalidate();
+            this._invalidateStructureCaches();
 
             // Clear singleton cache if this was a singleton component
             const componentConstructor = this._registry[componentName];
@@ -652,6 +671,50 @@ export class World<R extends ComponentRegistry> {
 
     getArchetypeCount(): number {
         return this._archetypes.size;
+    }
+
+    registerComponentType<T extends ComponentConstructor>(componentType: T): void {
+        this._validateWorldState('registerComponentType');
+
+        if (typeof componentType !== 'function' || componentType.name.trim().length === 0) {
+            throw new WorldError(
+                'Component type must be a named constructor',
+                'registerComponentType'
+            );
+        }
+
+        const componentName = getComponentMetadata(componentType)?.scriptName ?? componentType.name;
+        const registry = this._registry as Record<string, ComponentConstructor>;
+        const existing = registry[componentName];
+
+        if (existing !== undefined) {
+            if (existing !== componentType) {
+                throw new WorldError(
+                    `Component '${componentName}' is already registered with a different constructor`,
+                    'registerComponentType'
+                );
+            }
+
+            return;
+        }
+
+        registry[componentName] = componentType;
+        this._componentMask.set(componentName, this._componentMask.size);
+        this._registerComponentEventBridge(componentName);
+        this._invalidateStructureCaches();
+    }
+
+    isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean {
+        const componentName =
+            typeof componentTypeOrName === 'string'
+                ? componentTypeOrName
+                : getComponentMetadata(componentTypeOrName)?.scriptName ?? componentTypeOrName.name;
+
+        return componentName in this._registry;
+    }
+
+    getRegisteredComponentNames(): readonly string[] {
+        return Object.keys(this._registry);
     }
 
     on<T extends EventKey<ECSEventMap<R>>>(
@@ -973,27 +1036,7 @@ export class World<R extends ComponentRegistry> {
             });
 
             for (const componentName of Object.keys(this._registry)) {
-                this._eventBus.on(`${componentName}Added` as any, (data) => {
-                    try {
-                        const observables = this._observables.getComponentObservables(
-                            componentName as keyof R
-                        );
-                        observables.added.notify(data);
-                    } catch (error) {
-                        console.error(`Failed to notify ${componentName} added:`, error);
-                    }
-                });
-
-                this._eventBus.on(`${componentName}Removed` as any, (data) => {
-                    try {
-                        const observables = this._observables.getComponentObservables(
-                            componentName as keyof R
-                        );
-                        observables.removed.notify(data);
-                    } catch (error) {
-                        console.error(`Failed to notify ${componentName} removed:`, error);
-                    }
-                });
+                this._registerComponentEventBridge(componentName);
             }
         } catch (error) {
             throw new WorldError(
@@ -1004,6 +1047,29 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
+    private _registerComponentEventBridge(componentName: string): void {
+        this._eventBus.on(`${componentName}Added` as any, (data) => {
+            try {
+                const observables = this._observables.getComponentObservables(
+                    componentName as keyof R
+                );
+                observables.added.notify(data);
+            } catch (error) {
+                console.error(`Failed to notify ${componentName} added:`, error);
+            }
+        });
+
+        this._eventBus.on(`${componentName}Removed` as any, (data) => {
+            try {
+                const observables = this._observables.getComponentObservables(
+                    componentName as keyof R
+                );
+                observables.removed.notify(data);
+            } catch (error) {
+                console.error(`Failed to notify ${componentName} removed:`, error);
+            }
+        });
+    }
     private _getOrCreateArchetype(signature: readonly string[]): Archetype<R> {
         try {
             const sortedSignature = signature.slice().sort();
@@ -1021,7 +1087,7 @@ export class World<R extends ComponentRegistry> {
                     this._componentMask
                 );
                 this._archetypes.set(id, archetype);
-                this._queryCache.invalidate();
+                this._invalidateStructureCaches();
             }
 
             return archetype;
@@ -1088,6 +1154,15 @@ export class World<R extends ComponentRegistry> {
         } catch (error) {
             console.error(`Failed to emit event ${String(event)}:`, error);
         }
+    }
+
+    private _invalidateStructureCaches(): void {
+        if (this._structureBatchDepth > 0) {
+            this._structureChangedDuringBatch = true;
+            return;
+        }
+
+        this._queryCache.invalidate();
     }
 
     private _calculateMemoryUsage(): number {

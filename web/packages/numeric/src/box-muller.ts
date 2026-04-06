@@ -5,9 +5,9 @@ import type {
     SeedSource,
     IRandomState,
     RandomResult,
-} from '../../core/src/random/';
+} from '@axrone/random';
 
-import { Random, rand, NormalDistribution as CoreNormalDistribution } from '../../core/src/random/';
+import { Random, rand, NormalDistribution as CoreNormalDistribution } from '@axrone/random';
 
 export type BoxMullerOptions = {
     readonly mean?: number;
