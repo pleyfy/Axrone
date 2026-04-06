@@ -79,6 +79,14 @@ class PulseComponent extends Component {
     }
 }
 
+class ParentAwareComponent extends Component {
+    parentNameAtAwake: string | null = null;
+
+    awake(): void {
+        this.parentNameAtAwake = this.actor?.parent?.name ?? null;
+    }
+}
+
 const createMockGL = (canvas: HTMLCanvasElement) => {
     const shaders = new Set<object>();
     const programs = new Set<object>();
@@ -265,7 +273,8 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
 
 const createSceneOptions = (
     scheduler: ManualScheduler,
-    canvas: HTMLCanvasElement
+    canvas: HTMLCanvasElement,
+    registry: SceneOptions['registry'] = {}
 ): SceneOptions => {
     const gl = createMockGL(canvas);
     Object.defineProperty(canvas, 'getContext', {
@@ -274,6 +283,7 @@ const createSceneOptions = (
     });
 
     return {
+        registry,
         scheduler: scheduler as any,
         autoStart: false,
         createCanvas: () => canvas,
@@ -510,18 +520,23 @@ void main() {
             },
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
         const plane = scene.createRenderableActor(
             { name: 'Plane' },
             { meshId: 'plane', materialId: 'plane-material', passId: 'main' }
         );
         plane.requireComponent(Transform).position = new Vec3(0, 0, -2);
+        plane.requireComponent(Transform).parent = camera.requireComponent(Transform);
 
         const snapshot = scene.serializeScene();
+        const serializedPlane = snapshot.prefab.actors.find(
+            (actor: { name: string }) => actor.name === 'Plane'
+        );
 
         expect(snapshot.prefab.actors.length).toBe(2);
         expect(snapshot.textures.length).toBe(1);
         expect(snapshot.materials[0].textures?.u_MainTex).toBe('solid');
+        expect(serializedPlane?.parentNodeId).toBe(camera.id);
 
         await scene.loadScene(snapshot);
         scene.renderNow();
@@ -531,10 +546,40 @@ void main() {
         const restoredPlane = scene.world
             .getAllActors()
             .find((actor: { name: string }) => actor.name === 'Plane');
+        const restoredCamera = scene.world
+            .getAllActors()
+            .find((actor: { name: string }) => actor.name === 'Camera');
         expect(restoredPlane).toBeDefined();
         expect(restoredPlane?.getComponent(MeshRenderer)?.materialId).toBe('plane-material');
+        expect(restoredPlane?.requireComponent(Transform).parent?.actor).toBe(restoredCamera);
         expect(scene.getTexture('solid')?.width).toBe(2);
         expect(gl.drawElements).toHaveBeenCalled();
+
+        scene.dispose();
+    });
+
+    it('hydrates prefab components after restoring parent links', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(
+            createSceneOptions(scheduler, canvas, {
+                ParentAwareComponent,
+            })
+        );
+
+        const parent = scene.createActor({ name: 'Parent' });
+        const child = scene.createActor({ name: 'Child' });
+        child.setParent(parent);
+        child.addComponent(ParentAwareComponent);
+
+        const prefab = scene.createPrefab('hierarchy-aware', [parent, child]);
+        const instantiated = scene.instantiatePrefab(prefab, {
+            namePrefix: 'Copy ',
+        });
+        const restoredChild = instantiated.find((actor) => actor.name === 'Copy Child');
+        const restoredComponent = restoredChild?.getComponent(ParentAwareComponent);
+
+        expect(restoredChild?.parent?.name).toBe('Copy Parent');
+        expect(restoredComponent?.parentNameAtAwake).toBe('Copy Parent');
 
         scene.dispose();
     });

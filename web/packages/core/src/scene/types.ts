@@ -9,6 +9,7 @@ import type { DirectionalLight } from './components/directional-light';
 import type { MeshRenderer } from './components/mesh-renderer';
 import type { OrbitCameraController } from './components/orbit-camera-controller';
 import type { PointLight } from './components/point-light';
+import type { Hierarchy } from '../component-system/components/hierarchy';
 import type { Transform } from '../component-system/components/transform';
 import type { FilterMode, TextureFormat, WrapMode } from '../renderer/webgl2/texture/interfaces';
 
@@ -155,6 +156,13 @@ export interface SceneCanvasOptions {
 export interface SceneOptions<R extends ComponentRegistry = Record<string, never>>
     extends SceneCanvasOptions {
     readonly registry?: R;
+    readonly worldConfig?: {
+        readonly maxEntities?: number;
+        readonly enableMetrics?: boolean;
+        readonly enableValidation?: boolean;
+        readonly enableEventBatching?: boolean;
+        readonly cacheSize?: number;
+    };
     readonly scheduler?: GameLoopScheduler;
     readonly autoStart?: boolean;
     readonly fixedDelta?: number;
@@ -207,6 +215,8 @@ export interface SceneComponentSnapshot {
 }
 
 export interface SceneActorSnapshot {
+    readonly nodeId?: string;
+    readonly parentNodeId?: string | null;
     readonly name: string;
     readonly layer: number;
     readonly tag: string;
@@ -245,6 +255,7 @@ export interface SceneSnapshotLoadOptions extends ScenePrefabInstantiateOptions 
 }
 
 export type SceneBuiltInRegistry = {
+    readonly Hierarchy: typeof Hierarchy;
     readonly Transform: typeof Transform;
     readonly Camera: typeof Camera;
     readonly MeshRenderer: typeof MeshRenderer;
@@ -260,6 +271,12 @@ export interface SceneLoopState {
     readonly sceneId: string;
 }
 
+export interface SceneRenderStats {
+    readonly frame: number;
+    readonly drawCalls: number;
+    readonly trianglesSubmitted: number;
+}
+
 export interface SceneActorFactory<R extends ComponentRegistry = Record<string, never>> {
     createActor(config?: ActorConfig): Actor<World<SceneRegistry<R>>>;
 }
@@ -268,6 +285,7 @@ export interface SceneLifecycle<R extends ComponentRegistry = Record<string, nev
     extends SceneActorFactory<R> {
     readonly status: GameLoopStatus;
     readonly isDisposed: boolean;
+    readonly renderStats: SceneRenderStats;
     start(now?: number): this;
     pause(): this;
     resume(now?: number): this;

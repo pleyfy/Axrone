@@ -84,8 +84,8 @@ interface ComponentMetrics {
 
 interface ComponentCache {
     transformCache: WeakRef<any> | null;
-    readonly componentCache: Map<ComponentType, WeakRef<Component>>;
-    readonly actorCache: Map<ComponentType, WeakRef<Actor>[]>;
+    componentCache?: Map<ComponentType, WeakRef<Component>>;
+    actorCache?: Map<ComponentType, WeakRef<Actor>[]>;
     lastCacheUpdate: number;
 }
 
@@ -112,6 +112,7 @@ export abstract class Component<
         ComponentType,
         Set<WeakRef<Component>>
     >();
+    private static _nextComponentId = 1;
 
     protected entity?: Entity;
     protected actor?: Actor;
@@ -144,8 +145,7 @@ export abstract class Component<
 
     constructor(config: TConfig = {} as TConfig) {
         this._creationTime = performance.now();
-        this._id = (config.id ??
-            `${this.constructor.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`) as ComponentId;
+        this._id = (config.id ?? `${this.constructor.name}_${Component._nextComponentId++}`) as ComponentId;
         this._priority = (config.priority ?? 0) as ComponentPriority;
         this._enabled = config.enabled ?? true;
         this._persistent = config.persistent ?? false;
@@ -157,8 +157,6 @@ export abstract class Component<
 
         this._cache = {
             transformCache: null,
-            componentCache: new Map(),
-            actorCache: new Map(),
             lastCacheUpdate: 0,
         };
 
@@ -305,7 +303,8 @@ export abstract class Component<
         }
 
         const now = performance.now();
-        const cachedRef = this._cache.componentCache.get(componentType);
+        const componentCache = this._cache.componentCache;
+        const cachedRef = componentCache?.get(componentType);
 
         if (cachedRef && now - this._cache.lastCacheUpdate < this._cacheTimeout) {
             const cached = cachedRef.deref();
@@ -316,7 +315,7 @@ export abstract class Component<
 
         const component = this.actor.getComponent(componentType);
         if (component) {
-            this._cache.componentCache.set(componentType, new WeakRef(component));
+            this._getComponentCache().set(componentType, new WeakRef(component));
             this._cache.lastCacheUpdate = now;
         }
 
@@ -392,7 +391,8 @@ export abstract class Component<
         }
 
         const now = performance.now();
-        const cachedRefs = this._cache.actorCache.get(componentType);
+        const actorCache = this._cache.actorCache;
+        const cachedRefs = actorCache?.get(componentType);
 
         if (
             cachedRefs &&
@@ -407,7 +407,7 @@ export abstract class Component<
 
         const actor = this._findActorOfTypeDirect(componentType);
         if (actor) {
-            this._cache.actorCache.set(componentType, [new WeakRef(actor)]);
+            this._getActorCache().set(componentType, [new WeakRef(actor)]);
             this._cache.lastCacheUpdate = now;
         }
 
@@ -426,7 +426,8 @@ export abstract class Component<
         }
 
         const now = performance.now();
-        const cachedRefs = this._cache.actorCache.get(componentType);
+        const actorCache = this._cache.actorCache;
+        const cachedRefs = actorCache?.get(componentType);
 
         if (cachedRefs && now - this._cache.lastCacheUpdate < this._cacheTimeout) {
             const cached = cachedRefs.map((ref) => ref.deref()).filter(Boolean) as Actor[];
@@ -437,7 +438,7 @@ export abstract class Component<
 
         const actors = this._findActorsOfTypeDirect(componentType);
         if (actors.length > 0) {
-            this._cache.actorCache.set(
+            this._getActorCache().set(
                 componentType,
                 actors.map((actor) => new WeakRef(actor))
             );
@@ -667,8 +668,8 @@ export abstract class Component<
             cacheStats: this._enableCaching
                 ? {
                       transformCached: !!this._cache.transformCache?.deref(),
-                      componentsCached: this._cache.componentCache.size,
-                      actorsCached: this._cache.actorCache.size,
+                      componentsCached: this._cache.componentCache?.size ?? 0,
+                      actorsCached: this._cache.actorCache?.size ?? 0,
                       lastCacheUpdate: this._cache.lastCacheUpdate,
                   }
                 : null,
@@ -709,6 +710,22 @@ export abstract class Component<
         if (instances.size % 100 === 0) {
             this._cleanupDeadReferences(instances);
         }
+    }
+
+    private _getComponentCache(): Map<ComponentType, WeakRef<Component>> {
+        if (!this._cache.componentCache) {
+            this._cache.componentCache = new Map();
+        }
+
+        return this._cache.componentCache;
+    }
+
+    private _getActorCache(): Map<ComponentType, WeakRef<Actor>[]> {
+        if (!this._cache.actorCache) {
+            this._cache.actorCache = new Map();
+        }
+
+        return this._cache.actorCache;
     }
 
     private _cleanupDeadReferences(instances: Set<WeakRef<Component>>): void {
@@ -839,8 +856,8 @@ export abstract class Component<
 
             size += 200;
 
-            size += this._cache.componentCache.size * 50;
-            size += this._cache.actorCache.size * 100;
+            size += (this._cache.componentCache?.size ?? 0) * 50;
+            size += (this._cache.actorCache?.size ?? 0) * 100;
 
             size += this._dependencies.size * 50;
             size += this._dependents.size * 50;
@@ -860,8 +877,8 @@ export abstract class Component<
         }
 
         this._cache.transformCache = null;
-        this._cache.componentCache.clear();
-        this._cache.actorCache.clear();
+        this._cache.componentCache?.clear();
+        this._cache.actorCache?.clear();
         this._cache.lastCacheUpdate = 0;
     }
 

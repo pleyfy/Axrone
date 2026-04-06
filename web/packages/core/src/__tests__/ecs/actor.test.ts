@@ -109,7 +109,7 @@ describe('Actor', () => {
             expect(actor.layer).toBe(0);
             expect(actor.tag).toBe('Default');
             expect(actor.isDestroyed).toBe(false);
-            expect(actor.componentCount).toBe(1);
+            expect(actor.componentCount).toBe(2);
         });
 
         it('should initialize with custom configuration', () => {
@@ -156,7 +156,7 @@ describe('Actor', () => {
             expect(component.value).toBe(2);
             expect(component.name).toBe('test');
             expect(actor.hasComponent(TestComponent)).toBe(true);
-            expect(actor.componentCount).toBe(2);
+            expect(actor.componentCount).toBe(3);
         });
 
         it('should get components correctly', () => {
@@ -194,7 +194,7 @@ describe('Actor', () => {
             const removed = actor.removeComponent(TestComponent);
             expect(removed).toBe(true);
             expect(actor.hasComponent(TestComponent)).toBe(false);
-            expect(actor.componentCount).toBe(1);
+            expect(actor.componentCount).toBe(2);
         });
 
         it('should return false when removing non-existent component', () => {
@@ -207,7 +207,7 @@ describe('Actor', () => {
             actor.addComponent(AsyncComponent);
 
             const components = actor.getAllComponents();
-            expect(components).toHaveLength(3);
+            expect(components).toHaveLength(4);
             expect(components.some((c) => c instanceof TestComponent)).toBe(true);
             expect(components.some((c) => c instanceof AsyncComponent)).toBe(true);
         });
@@ -226,7 +226,7 @@ describe('Actor', () => {
             const component = actor.getComponent(TestComponent);
             expect(component?.value).toBe(2);
             expect(component?.name).toBe('first');
-            expect(actor.componentCount).toBe(2);
+            expect(actor.componentCount).toBe(3);
         });
     });
 
@@ -387,7 +387,7 @@ describe('Actor', () => {
             actor.addComponent(AsyncComponent);
 
             const allComponents = actor.getAllComponents();
-            expect(allComponents).toHaveLength(3);
+            expect(allComponents).toHaveLength(4);
             expect(allComponents.some((c) => c instanceof TestComponent)).toBe(true);
             expect(allComponents.some((c) => c instanceof AsyncComponent)).toBe(true);
         });
@@ -532,7 +532,7 @@ describe('Actor', () => {
 
             const endTime = performance.now();
             expect(endTime - startTime).toBeLessThan(50);
-            expect(actor.componentCount).toBe(4);
+            expect(actor.componentCount).toBe(5);
         });
 
         it('should track creation time', () => {
