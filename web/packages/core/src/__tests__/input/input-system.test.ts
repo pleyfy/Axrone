@@ -122,6 +122,49 @@ describe('InputSystem', () => {
         expect(input.read('fire')).toBe(true);
     });
 
+    it('attaches DOM targets and forwards browser events into the system', () => {
+        const input = createInputSystem({
+            schema: {
+                jump: { kind: 'button' },
+                look: { kind: 'vector2' },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        jump: [{ type: 'control', control: 'keyboard/Space' }],
+                        look: [{ type: 'dual-axis', x: 'mouse/move/x', y: 'mouse/move/y' }],
+                    },
+                },
+            ],
+        });
+
+        const attachment = input.attach({ document, window });
+        const keyDown = new Event('keydown') as KeyboardEvent;
+        Object.defineProperty(keyDown, 'code', { value: 'Space' });
+        Object.defineProperty(keyDown, 'repeat', { value: false });
+        document.dispatchEvent(keyDown);
+        input.update(1);
+        expect(input.read('jump')).toBe(true);
+
+        const move = new Event('mousemove') as MouseEvent;
+        Object.defineProperty(move, 'clientX', { value: 10 });
+        Object.defineProperty(move, 'clientY', { value: 5 });
+        window.dispatchEvent(move);
+        input.update(2);
+        expect(input.read('look')).toEqual({ x: 10, y: 5 });
+
+        const keyUp = new Event('keyup') as KeyboardEvent;
+        Object.defineProperty(keyUp, 'code', { value: 'Space' });
+        Object.defineProperty(keyUp, 'repeat', { value: false });
+        document.dispatchEvent(keyUp);
+        input.update(3);
+        expect(input.read('jump')).toBe(false);
+
+        attachment.dispose();
+        expect(attachment.isDisposed).toBe(true);
+    });
+
     it('applies binding and action processor chains', () => {
         const input = createInputSystem({
             schema: {
