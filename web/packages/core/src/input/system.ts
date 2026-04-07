@@ -10,11 +10,17 @@ import { normalizeInputContextId, normalizeInputControlPath, parseInputControlPa
 import type {
     InputActionBindings,
     InputActionDefinition,
+    InputActionEvent,
+    InputActionEventPhase,
+    InputActionEventTrigger,
     InputActionKind,
+    InputActionListener,
     InputActionName,
     InputActionSchema,
     InputActionState,
     InputActionStateForDefinition,
+    InputActionSubscription,
+    InputActionSubscriptionOptions,
     InputAttachment,
     InputAxisActionDefinition,
     InputAxisCompositeBinding,
@@ -85,6 +91,13 @@ const DEFAULT_MULTI_TAP_COUNT = 2;
 const DEFAULT_MULTI_TAP_DELAY_MS = 300;
 const DEFAULT_REPEAT_DELAY_MS = 450;
 const DEFAULT_REPEAT_INTERVAL_MS = 60;
+const INPUT_ACTION_PHASE_MASKS: Readonly<Record<InputActionEventPhase, number>> = Object.freeze({
+    started: 1,
+    performed: 2,
+    changed: 4,
+    canceled: 8,
+});
+const INPUT_ACTION_PHASE_MASK_ALL = 15;
 
 interface MutableVector2 {
     x: number;
@@ -388,6 +401,17 @@ interface ActiveRebinding<TSchema extends InputActionSchema> {
     readonly handlers?: InputRebindingHandlers<TSchema>;
     readonly startedAtEpochMs: number;
     readonly deadlineEpochMs?: number;
+}
+
+interface InternalActionListener<TSchema extends InputActionSchema> {
+    readonly phases: number;
+    readonly listener: InputActionListener<TSchema, InputActionName<TSchema>>;
+}
+
+interface InternalActionEventDescriptor {
+    readonly phase: InputActionEventPhase;
+    readonly trigger: InputActionEventTrigger;
+    readonly context?: InputContextId;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -797,6 +821,9 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
     private _timestamp = 0;
     private _contextOrderDirty = true;
     private _orderedContexts: InternalContext<TSchema>[] = [];
+    private readonly _globalActionListeners = new Set<InternalActionListener<TSchema>>();
+    private readonly _scopedActionListeners: Array<Set<InternalActionListener<TSchema>> | undefined>;
+    private _actionListenerCount = 0;
     private _sequence = 0;
     private _disposed = false;
     private _rebindToken = 0;
@@ -885,6 +912,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._accumulatorY = new Float64Array(actionDefinitions.length);
         this._assigned = new Uint8Array(actionDefinitions.length);
         this._sourceContexts = new Array<InputContextId | undefined>(actionDefinitions.length);
+        this._scopedActionListeners = new Array(actionDefinitions.length);
 
         for (const context of options.contexts ?? []) {
             this.registerContext(context);
@@ -1452,6 +1480,25 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         }
     }
 
+    subscribe(
+        listener: InputActionListener<TSchema>,
+        options: InputActionSubscriptionOptions = {}
+    ): InputActionSubscription {
+        return this._subscribeActionListener(undefined, listener, options);
+    }
+
+    subscribeAction<TAction extends InputActionName<TSchema>>(
+        action: TAction,
+        listener: InputActionListener<TSchema, TAction>,
+        options: InputActionSubscriptionOptions = {}
+    ): InputActionSubscription {
+        return this._subscribeActionListener(
+            this._requireActionIndex(action),
+            listener as InputActionListener<TSchema>,
+            options
+        );
+    }
+
     state<TAction extends InputActionName<TSchema>>(
         action: TAction
     ): InputActionStateForDefinition<TSchema[TAction]> {
@@ -1512,10 +1559,209 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         }
 
         this._attachments.clear();
+        this._globalActionListeners.clear();
+        this._scopedActionListeners.fill(undefined);
+        this._actionListenerCount = 0;
         this._contexts.clear();
         this._consumedPaths.clear();
         this._clearDeviceState(true);
         this._gamepads.clear();
+    }
+
+    private _subscribeActionListener(
+        actionIndex: number | undefined,
+        listener: InputActionListener<TSchema>,
+        options: InputActionSubscriptionOptions
+    ): InputActionSubscription {
+        this._assertNotDisposed();
+
+        if (typeof listener !== 'function') {
+            throw new InputConfigurationError(
+                'input.invalid-action',
+                this._resolveMessage({
+                    code: 'input.invalid-action',
+                    value: listener,
+                })
+            );
+        }
+
+        const entry = Object.freeze({
+            phases: this._actionEventPhaseMask(options.phases),
+            listener: listener as InputActionListener<TSchema, InputActionName<TSchema>>,
+        });
+        const bucket =
+            typeof actionIndex === 'number'
+                ? (this._scopedActionListeners[actionIndex] ??= new Set())
+                : this._globalActionListeners;
+        bucket.add(entry);
+        this._actionListenerCount += 1;
+        let disposed = false;
+
+        return {
+            get isDisposed(): boolean {
+                return disposed;
+            },
+            dispose: () => {
+                if (disposed) {
+                    return;
+                }
+
+                disposed = true;
+                if (!bucket.delete(entry)) {
+                    return;
+                }
+
+                this._actionListenerCount = Math.max(0, this._actionListenerCount - 1);
+
+                if (typeof actionIndex === 'number' && bucket.size === 0) {
+                    this._scopedActionListeners[actionIndex] = undefined;
+                }
+            },
+        };
+    }
+
+    private _actionEventPhaseMask(phases?: readonly InputActionEventPhase[]): number {
+        if (!phases?.length) {
+            return INPUT_ACTION_PHASE_MASK_ALL;
+        }
+
+        let mask = 0;
+
+        for (const phase of phases) {
+            const phaseMask = INPUT_ACTION_PHASE_MASKS[phase];
+
+            if (!phaseMask) {
+                throw new InputConfigurationError(
+                    'input.invalid-action',
+                    this._resolveMessage({
+                        code: 'input.invalid-action',
+                        value: phase,
+                    })
+                );
+            }
+
+            mask |= phaseMask;
+        }
+
+        return mask;
+    }
+
+    private _snapshotActionState(
+        index: number,
+        definition: InternalActionDefinition
+    ): InputActionState {
+        switch (definition.kind) {
+            case 'button': {
+                const state = this._buttonStateStores[index]!;
+                return Object.freeze({
+                    kind: 'button',
+                    value: state.value,
+                    previousValue: state.previousValue,
+                    rawValue: state.rawValue,
+                    previousRawValue: state.previousRawValue,
+                    pressed: state.pressed,
+                    released: state.released,
+                    heldDurationMs: state.heldDurationMs,
+                    tapSequenceCount: state.tapSequenceCount,
+                    repeatCount: state.repeatCount,
+                    holdTriggered: state.holdTriggered,
+                    tapTriggered: state.tapTriggered,
+                    multiTapTriggered: state.multiTapTriggered,
+                    repeatTriggered: state.repeatTriggered,
+                    active: state.active,
+                    changed: state.changed,
+                    frame: state.frame,
+                    timestamp: state.timestamp,
+                    context: state.context,
+                });
+            }
+            case 'axis': {
+                const state = this._axisStateStores[index]!;
+                return Object.freeze({
+                    kind: 'axis',
+                    value: state.value,
+                    previousValue: state.previousValue,
+                    delta: state.delta,
+                    active: state.active,
+                    changed: state.changed,
+                    frame: state.frame,
+                    timestamp: state.timestamp,
+                    context: state.context,
+                });
+            }
+            case 'vector2': {
+                const state = this._vectorStateStores[index]!;
+                return Object.freeze({
+                    kind: 'vector2',
+                    value: Object.freeze({
+                        x: state.value.x,
+                        y: state.value.y,
+                    }),
+                    previousValue: Object.freeze({
+                        x: state.previousValue.x,
+                        y: state.previousValue.y,
+                    }),
+                    delta: Object.freeze({
+                        x: state.delta.x,
+                        y: state.delta.y,
+                    }),
+                    magnitude: state.magnitude,
+                    previousMagnitude: state.previousMagnitude,
+                    active: state.active,
+                    changed: state.changed,
+                    frame: state.frame,
+                    timestamp: state.timestamp,
+                    context: state.context,
+                });
+            }
+        }
+    }
+
+    private _emitActionEvents(
+        index: number,
+        definition: InternalActionDefinition,
+        descriptors: readonly InternalActionEventDescriptor[]
+    ): void {
+        if (this._actionListenerCount === 0 || descriptors.length === 0) {
+            return;
+        }
+
+        const scopedListeners = this._scopedActionListeners[index];
+        if (!scopedListeners && this._globalActionListeners.size === 0) {
+            return;
+        }
+
+        const listeners = scopedListeners
+            ? [...this._globalActionListeners, ...scopedListeners]
+            : [...this._globalActionListeners];
+        const action = this._actionNames[index]!;
+        let stateSnapshot: InputActionState | undefined;
+
+        for (const descriptor of descriptors) {
+            const phaseMask = INPUT_ACTION_PHASE_MASKS[descriptor.phase];
+            let event: InputActionEvent<TSchema, InputActionName<TSchema>> | undefined;
+
+            for (const entry of listeners) {
+                if ((entry.phases & phaseMask) === 0) {
+                    continue;
+                }
+
+                event ??= Object.freeze({
+                    action,
+                    kind: definition.kind,
+                    phase: descriptor.phase,
+                    trigger: descriptor.trigger,
+                    frame: this._frame,
+                    timestamp: this._timestamp,
+                    context: descriptor.context,
+                    state:
+                        (stateSnapshot ??= this._snapshotActionState(index, definition)) as InputActionStateForDefinition<
+                            TSchema[InputActionName<TSchema>]
+                        >,
+                }) as InputActionEvent<TSchema, InputActionName<TSchema>>;
+                entry.listener(event);
+            }
+        }
     }
 
     private _compileProcessors(
@@ -3497,6 +3743,75 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         state.frame = this._frame;
         state.timestamp = this._timestamp;
         state.context = this._sourceContexts[index];
+
+        if (this._actionListenerCount > 0) {
+            const context = state.context;
+            const terminalContext = context ?? previousContext;
+            const descriptors: InternalActionEventDescriptor[] = [];
+
+            if (pressed) {
+                descriptors.push({
+                    phase: 'started',
+                    trigger: 'press',
+                    context,
+                });
+                descriptors.push({
+                    phase: 'performed',
+                    trigger: 'press',
+                    context,
+                });
+            }
+
+            if (holdTriggered) {
+                descriptors.push({
+                    phase: 'performed',
+                    trigger: 'hold',
+                    context,
+                });
+            }
+
+            if (tapTriggered) {
+                descriptors.push({
+                    phase: 'performed',
+                    trigger: 'tap',
+                    context: terminalContext,
+                });
+            }
+
+            if (multiTapTriggered) {
+                descriptors.push({
+                    phase: 'performed',
+                    trigger: 'multi-tap',
+                    context: terminalContext,
+                });
+            }
+
+            if (repeatTriggered) {
+                descriptors.push({
+                    phase: 'performed',
+                    trigger: 'repeat',
+                    context,
+                });
+            }
+
+            if (state.changed) {
+                descriptors.push({
+                    phase: 'changed',
+                    trigger: 'change',
+                    context: nextValue ? context : terminalContext,
+                });
+            }
+
+            if (released) {
+                descriptors.push({
+                    phase: 'canceled',
+                    trigger: 'release',
+                    context: terminalContext,
+                });
+            }
+
+            this._emitActionEvents(index, definition, descriptors);
+        }
     }
 
     private _commitAxisState(
@@ -3504,6 +3819,8 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         definition: Extract<InternalActionDefinition, { kind: 'axis' }>
     ): void {
         const state = this._axisStateStores[index]!;
+        const previousActive = state.active;
+        const previousContext = state.context;
         const previousValue = state.value;
         const unclamped = applyDeadzone(this._accumulatorX[index]!, definition.deadzone);
         const value = applyScalarProcessors(
@@ -3519,6 +3836,46 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         state.frame = this._frame;
         state.timestamp = this._timestamp;
         state.context = this._sourceContexts[index];
+
+        if (this._actionListenerCount > 0) {
+            const context = state.context;
+            const terminalContext = context ?? previousContext;
+            const descriptors: InternalActionEventDescriptor[] = [];
+
+            if (!previousActive && state.active) {
+                descriptors.push({
+                    phase: 'started',
+                    trigger: 'activate',
+                    context,
+                });
+            }
+
+            if (state.active && state.changed) {
+                descriptors.push({
+                    phase: 'performed',
+                    trigger: 'change',
+                    context,
+                });
+            }
+
+            if (state.changed) {
+                descriptors.push({
+                    phase: 'changed',
+                    trigger: 'change',
+                    context: state.active ? context : terminalContext,
+                });
+            }
+
+            if (previousActive && !state.active) {
+                descriptors.push({
+                    phase: 'canceled',
+                    trigger: 'deactivate',
+                    context: terminalContext,
+                });
+            }
+
+            this._emitActionEvents(index, definition, descriptors);
+        }
     }
 
     private _commitVectorState(
@@ -3526,6 +3883,8 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         definition: Extract<InternalActionDefinition, { kind: 'vector2' }>
     ): void {
         const state = this._vectorStateStores[index]!;
+        const previousActive = state.active;
+        const previousContext = state.context;
         let x = this._accumulatorX[index]!;
         let y = this._accumulatorY[index]!;
         let length = magnitude(x, y);
@@ -3564,6 +3923,46 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         state.frame = this._frame;
         state.timestamp = this._timestamp;
         state.context = this._sourceContexts[index];
+
+        if (this._actionListenerCount > 0) {
+            const context = state.context;
+            const terminalContext = context ?? previousContext;
+            const descriptors: InternalActionEventDescriptor[] = [];
+
+            if (!previousActive && state.active) {
+                descriptors.push({
+                    phase: 'started',
+                    trigger: 'activate',
+                    context,
+                });
+            }
+
+            if (state.active && state.changed) {
+                descriptors.push({
+                    phase: 'performed',
+                    trigger: 'change',
+                    context,
+                });
+            }
+
+            if (state.changed) {
+                descriptors.push({
+                    phase: 'changed',
+                    trigger: 'change',
+                    context: state.active ? context : terminalContext,
+                });
+            }
+
+            if (previousActive && !state.active) {
+                descriptors.push({
+                    phase: 'canceled',
+                    trigger: 'deactivate',
+                    context: terminalContext,
+                });
+            }
+
+            this._emitActionEvents(index, definition, descriptors);
+        }
     }
 
     private _clearTransients(): void {

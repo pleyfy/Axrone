@@ -384,6 +384,44 @@ export type InputActionStateForDefinition<TDefinition extends InputActionDefinit
           ? InputAxisState
           : InputVector2State;
 
+export type InputActionEventPhase = 'started' | 'performed' | 'changed' | 'canceled';
+
+export type InputActionEventTrigger =
+    | 'activate'
+    | 'deactivate'
+    | 'change'
+    | 'press'
+    | 'release'
+    | 'hold'
+    | 'tap'
+    | 'multi-tap'
+    | 'repeat';
+
+export interface InputActionEvent<
+    TSchema extends InputActionSchema = InputActionSchema,
+    TAction extends InputActionName<TSchema> = InputActionName<TSchema>,
+> {
+    readonly action: TAction;
+    readonly kind: TSchema[TAction]['kind'];
+    readonly phase: InputActionEventPhase;
+    readonly trigger: InputActionEventTrigger;
+    readonly frame: number;
+    readonly timestamp: number;
+    readonly context?: InputContextId;
+    readonly state: InputActionStateForDefinition<TSchema[TAction]>;
+}
+
+export type InputActionListener<
+    TSchema extends InputActionSchema = InputActionSchema,
+    TAction extends InputActionName<TSchema> = InputActionName<TSchema>,
+> = (event: InputActionEvent<TSchema, TAction>) => void;
+
+export interface InputActionSubscriptionOptions {
+    readonly phases?: readonly InputActionEventPhase[];
+}
+
+export interface InputActionSubscription extends IDisposable {}
+
 export type InputActionValues<TSchema extends InputActionSchema> = {
     readonly [TAction in InputActionName<TSchema>]: InputActionValue<TSchema[TAction]>;
 };

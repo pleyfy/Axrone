@@ -298,6 +298,123 @@ describe('InputSystem', () => {
         expect(input.state('dash').tapSequenceCount).toBe(0);
     });
 
+    it('emits action lifecycle events with stable button snapshots', () => {
+        const input = createInputSystem({
+            schema: {
+                jump: {
+                    kind: 'button',
+                    interactions: [{ type: 'tap', maxDurationMs: 40 }],
+                },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        jump: [{ type: 'control', control: 'keyboard/Space' }],
+                    },
+                },
+            ],
+        });
+        const phases: string[] = [];
+        const snapshots: boolean[] = [];
+        const subscription = input.subscribeAction('jump', (event) => {
+            phases.push(`${event.phase}:${event.trigger}`);
+            snapshots.push(event.state.value);
+            expect(Object.isFrozen(event)).toBe(true);
+            expect(Object.isFrozen(event.state)).toBe(true);
+        });
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'Space',
+            pressed: true,
+        });
+        input.update(0);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'Space',
+            pressed: false,
+        });
+        input.update(20);
+
+        expect(phases).toEqual([
+            'started:press',
+            'performed:press',
+            'changed:change',
+            'performed:tap',
+            'changed:change',
+            'canceled:release',
+        ]);
+        expect(snapshots).toEqual([true, true, true, false, false, false]);
+
+        subscription.dispose();
+        expect(subscription.isDisposed).toBe(true);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'Space',
+            pressed: true,
+        });
+        input.update(40);
+
+        expect(phases).toHaveLength(6);
+    });
+
+    it('supports phase-filtered global subscriptions for analog actions', () => {
+        const input = createInputSystem({
+            schema: {
+                moveX: { kind: 'axis' },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        moveX: [{ type: 'control', control: 'gamepad/0/axis/0' }],
+                    },
+                },
+            ],
+        });
+        const phases: string[] = [];
+
+        input.subscribe(
+            (event) => {
+                phases.push(`${event.phase}:${event.trigger}:${event.kind}`);
+            },
+            {
+                phases: ['started', 'canceled'],
+            }
+        );
+
+        input.dispatch({
+            type: 'gamepad',
+            gamepads: [
+                {
+                    index: 0,
+                    connected: true,
+                    buttons: [],
+                    axes: [0.5],
+                },
+            ],
+        });
+        input.update(0);
+
+        input.dispatch({
+            type: 'gamepad',
+            gamepads: [
+                {
+                    index: 0,
+                    connected: true,
+                    buttons: [],
+                    axes: [0],
+                },
+            ],
+        });
+        input.update(10);
+
+        expect(phases).toEqual(['started:activate:axis', 'canceled:deactivate:axis']);
+    });
+
     it('rebinding updates bindings and survives snapshot restore', () => {
         const input = createInputSystem({
             schema: {
