@@ -3,8 +3,11 @@ import {
     GameLoopDisposedError,
     GameLoopSchedulerError,
     GameLoopSnapshotError,
-    GameLoopSystemError,
 } from './errors';
+import {
+    GameLoopSystemRunner,
+    type GameLoopSystemRunnerRuntime,
+} from './game-loop-system-runner';
 import { createAnimationFrameScheduler, isGameLoopScheduler } from './scheduler';
 import type {
     AfterFrameContext,
@@ -13,15 +16,11 @@ import type {
     FixedUpdateContext,
     GameLoopContextBase,
     GameLoopController,
-    GameLoopErrorPolicy,
-    GameLoopFailureContext,
     GameLoopFramePhase,
     GameLoopMessageDescriptor,
     GameLoopMessageResolver,
     GameLoopOptions,
     GameLoopPhaseContext,
-    GameLoopPhaseHandler,
-    GameLoopPhaseMethodName,
     GameLoopScheduler,
     GameLoopSnapshot,
     GameLoopStateSerializer,
@@ -41,33 +40,9 @@ const DEFAULT_LOCALE = 'en';
 const EPSILON = 1e-7;
 const SNAPSHOT_VERSION = 1 as const;
 
-const PHASE_TO_METHOD = {
-    'before-update': 'beforeUpdate',
-    'fixed-update': 'fixedUpdate',
-    update: 'update',
-    render: 'render',
-    'after-frame': 'afterFrame',
-} as const satisfies {
-    readonly [TPhase in GameLoopFramePhase]: GameLoopPhaseMethodName<TPhase>;
-};
-
-const SYSTEM_METHOD_NAMES = [
-    'beforeUpdate',
-    'fixedUpdate',
-    'update',
-    'render',
-    'afterFrame',
-    'dispose',
-] as const;
-
 type Mutable<T> = {
     -readonly [TKey in keyof T]: T[TKey];
 };
-
-interface RegisteredSystem<TState> {
-    readonly system: GameLoopSystem<TState>;
-    readonly order: number;
-}
 
 const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
@@ -83,9 +58,6 @@ const isSafeNonNegativeInteger = (value: unknown): value is number =>
 
 const isPositiveSafeInteger = (value: unknown): value is number =>
     typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
-
-const isErrorPolicy = (value: unknown): value is GameLoopErrorPolicy =>
-    value === 'throw' || value === 'pause' || value === 'stop' || value === 'continue';
 
 const stringifyUnknown = (value: unknown): string => {
     if (value instanceof Error) {
@@ -156,33 +128,6 @@ const defaultMessageResolver = (descriptor: GameLoopMessageDescriptor): string =
     }
 };
 
-export const isGameLoopSystem = (value: unknown): value is GameLoopSystem<unknown> => {
-    if (typeof value !== 'object' || value === null) {
-        return false;
-    }
-
-    const id = Reflect.get(value, 'id');
-    const priority = Reflect.get(value, 'priority');
-    const enabled = Reflect.get(value, 'enabled');
-
-    if (typeof id !== 'string' || id.trim().length === 0) {
-        return false;
-    }
-
-    if (priority !== undefined && !isFiniteNumber(priority)) {
-        return false;
-    }
-
-    if (enabled !== undefined && typeof enabled !== 'boolean') {
-        return false;
-    }
-
-    return SYSTEM_METHOD_NAMES.every((methodName) => {
-        const method = Reflect.get(value, methodName);
-        return method === undefined || typeof method === 'function';
-    });
-};
-
 export const isGameLoopSnapshot = (value: unknown): value is GameLoopSnapshot<unknown> => {
     if (typeof value !== 'object' || value === null) {
         return false;
@@ -221,16 +166,8 @@ export class GameLoop<TState> implements GameLoopController<TState> {
     private readonly _scheduler: GameLoopScheduler;
     private readonly _locale: string;
     private readonly _messageResolver?: GameLoopMessageResolver;
-    private readonly _onError?: GameLoopOptions<TState>['onError'];
-    private readonly _shouldRetry?: GameLoopOptions<TState>['retry'] extends infer TRetry
-        ? TRetry extends { readonly shouldRetry?: infer TShouldRetry }
-            ? TShouldRetry
-            : never
-        : never;
-    private readonly _systems = new Map<string, RegisteredSystem<TState>>();
-    private _sortedSystems: readonly RegisteredSystem<TState>[] = [];
-    private _systemsDirty = false;
-    private _nextSystemOrder = 0;
+    private readonly _systemRunner: GameLoopSystemRunner<TState>;
+    private readonly _systemRunnerRuntime: GameLoopSystemRunnerRuntime<TState>;
     private _status: GameLoopStatus = 'idle';
     private _frame = 0;
     private _elapsed = 0;
@@ -241,8 +178,6 @@ export class GameLoop<TState> implements GameLoopController<TState> {
     private _maxDelta: number;
     private _maxSubSteps: number;
     private _timeScale: number;
-    private _retryAttempts: number;
-    private _errorPolicy: GameLoopErrorPolicy;
     private _disposed = false;
     private readonly _beforeUpdateContext: Mutable<BeforeUpdateContext<TState>>;
     private readonly _fixedUpdateContext: Mutable<FixedUpdateContext<TState>>;
@@ -268,13 +203,10 @@ export class GameLoop<TState> implements GameLoopController<TState> {
             options.timeScale ?? DEFAULT_TIME_SCALE,
             'loop.invalid-time-scale'
         );
-        this._retryAttempts = this._assertSafeNonNegativeInteger(
+        const retryAttempts = this._assertSafeNonNegativeInteger(
             options.retry?.attempts ?? DEFAULT_RETRY_ATTEMPTS,
             'loop.invalid-retry-attempts'
         );
-        this._errorPolicy = options.errorPolicy ?? DEFAULT_ERROR_POLICY;
-        this._onError = options.onError;
-        this._shouldRetry = options.retry?.shouldRetry;
         this._locale = options.locale ?? DEFAULT_LOCALE;
         this._messageResolver = options.messageResolver;
 
@@ -291,6 +223,22 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         }
 
         this._scheduler = scheduler;
+        this._systemRunner = new GameLoopSystemRunner({
+            errorPolicy: options.errorPolicy ?? DEFAULT_ERROR_POLICY,
+            retryAttempts,
+            resolveMessage: (descriptor) => this._resolveMessage(descriptor),
+            onError: options.onError,
+            shouldRetry: options.retry?.shouldRetry,
+        });
+        this._systemRunnerRuntime = {
+            getState: () => this._state,
+            getFrame: () => this._frame,
+            getElapsed: () => this._elapsed,
+            isRunning: () => this._status === 'running',
+            pause: () => this.pause(),
+            stop: () => this.stop(),
+            safeNow: () => this._safeNow(),
+        };
 
         this._beforeUpdateContext = {
             phase: 'before-update',
@@ -416,91 +364,32 @@ export class GameLoop<TState> implements GameLoopController<TState> {
     }
 
     get systemCount(): number {
-        return this._systems.size;
+        return this._systemRunner.systemCount;
     }
 
     addSystem(system: GameLoopSystem<TState>): this {
         this._assertNotDisposed();
-
-        if (!isGameLoopSystem(system)) {
-            throw new GameLoopConfigurationError(
-                'loop.invalid-system',
-                this._resolveMessage({
-                    code: 'loop.invalid-system',
-                    reason: 'A game loop system must define a non-empty id, optional numeric priority, optional boolean enabled flag, and function hooks when provided',
-                })
-            );
-        }
-
-        if (this._systems.has(system.id)) {
-            throw new GameLoopConfigurationError(
-                'loop.duplicate-system',
-                this._resolveMessage({
-                    code: 'loop.duplicate-system',
-                    systemId: system.id,
-                })
-            );
-        }
-
-        this._systems.set(system.id, {
-            system,
-            order: this._nextSystemOrder++,
-        });
-        this._systemsDirty = true;
+        this._systemRunner.addSystem(system);
 
         return this;
     }
 
     hasSystem(systemId: string): boolean {
-        return this._systems.has(systemId);
+        return this._systemRunner.hasSystem(systemId);
     }
 
     getSystem(systemId: string): GameLoopSystem<TState> | undefined {
-        return this._systems.get(systemId)?.system;
+        return this._systemRunner.getSystem(systemId);
     }
 
     removeSystem(systemOrId: string | GameLoopSystem<TState>): boolean {
         this._assertNotDisposed();
-
-        const systemId = typeof systemOrId === 'string' ? systemOrId : systemOrId.id;
-        const registered = this._systems.get(systemId);
-
-        if (registered === undefined) {
-            return false;
-        }
-
-        this._systems.delete(systemId);
-        this._systemsDirty = true;
-        const disposalError = this._disposeSystem(registered.system);
-
-        if (disposalError !== undefined) {
-            throw disposalError;
-        }
-
-        return true;
+        return this._systemRunner.removeSystem(systemOrId, this._systemRunnerRuntime);
     }
 
     clearSystems(): void {
         this._assertNotDisposed();
-
-        const registeredSystems = [...this._systems.values()];
-        this._systems.clear();
-        this._sortedSystems = [];
-        this._systemsDirty = false;
-
-        let firstError: GameLoopSystemError | undefined;
-
-        for (const registered of registeredSystems) {
-            const disposalError = this._disposeSystem(registered.system);
-
-            if (firstError === undefined && disposalError !== undefined) {
-                firstError = disposalError;
-            }
-        }
-
-        if (firstError !== undefined) {
-            throw firstError;
-        }
+        this._systemRunner.clearSystems(this._systemRunnerRuntime);
     }
 
     replaceState(nextState: TState): void {
@@ -612,17 +501,10 @@ export class GameLoop<TState> implements GameLoopController<TState> {
             }
         }
 
-        const registeredSystems = [...this._systems.values()];
-        this._systems.clear();
-        this._sortedSystems = [];
-        this._systemsDirty = false;
+        const systemDisposalError = this._systemRunner.disposeAllSystems(this._systemRunnerRuntime);
 
-        for (const registered of registeredSystems) {
-            const disposalError = this._disposeSystem(registered.system);
-
-            if (firstError === undefined && disposalError !== undefined) {
-                firstError = disposalError;
-            }
+        if (firstError === undefined && systemDisposalError !== undefined) {
+            firstError = systemDisposalError;
         }
 
         this._status = 'disposed';
@@ -759,156 +641,7 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         phase: TPhase,
         context: GameLoopPhaseContext<TState, TPhase>
     ): void {
-        const systems = this._getSortedSystems();
-        const methodName = PHASE_TO_METHOD[phase];
-
-        for (const registered of systems) {
-            if (this._status !== 'running') {
-                return;
-            }
-
-            if (!this._systems.has(registered.system.id) || registered.system.enabled === false) {
-                continue;
-            }
-
-            const hook = registered.system[methodName];
-
-            if (hook === undefined) {
-                continue;
-            }
-
-            this._invokeSystem(
-                registered.system,
-                phase,
-                context,
-                hook as GameLoopPhaseHandler<TState, TPhase>
-            );
-        }
-    }
-
-    private _invokeSystem<TPhase extends GameLoopFramePhase>(
-        system: GameLoopSystem<TState>,
-        phase: TPhase,
-        context: GameLoopPhaseContext<TState, TPhase>,
-        hook: GameLoopPhaseHandler<TState, TPhase>
-    ): void {
-        const maxAttempts = this._retryAttempts + 1;
-        let attempt = 0;
-
-        while (attempt < maxAttempts) {
-            attempt += 1;
-
-            try {
-                hook.call(system, context);
-                return;
-            } catch (error) {
-                const failure = this._createFailureContext(system, phase, context, attempt);
-                const canRetry =
-                    attempt < maxAttempts && (this._shouldRetry?.(error, failure) ?? true);
-
-                if (canRetry) {
-                    continue;
-                }
-
-                this._handleSystemFailure(error, failure);
-                return;
-            }
-        }
-    }
-
-    private _handleSystemFailure(error: unknown, failure: GameLoopFailureContext<TState>): void {
-        const wrappedError = new GameLoopSystemError(
-            this._resolveMessage({
-                code: 'loop.system.failed',
-                systemId: failure.system.id,
-                phase: failure.phase,
-                attempt: failure.attempt,
-                error,
-            }),
-            failure.system.id,
-            failure.phase,
-            failure.attempt,
-            { cause: error }
-        );
-
-        const override = this._onError?.(wrappedError, failure);
-        const policy = isErrorPolicy(override) ? override : this._errorPolicy;
-
-        switch (policy) {
-            case 'continue':
-                return;
-            case 'pause':
-                this.pause();
-                return;
-            case 'stop':
-                this.stop();
-                return;
-            case 'throw':
-                throw wrappedError;
-        }
-    }
-
-    private _disposeSystem(system: GameLoopSystem<TState>): GameLoopSystemError | undefined {
-        if (typeof system.dispose !== 'function') {
-            return undefined;
-        }
-
-        try {
-            system.dispose.call(system);
-            return undefined;
-        } catch (error) {
-            const failure = this._createDisposeFailureContext(system);
-            const wrappedError = new GameLoopSystemError(
-                this._resolveMessage({
-                    code: 'loop.system.failed',
-                    systemId: system.id,
-                    phase: 'dispose',
-                    attempt: 1,
-                    error,
-                }),
-                system.id,
-                'dispose',
-                1,
-                { cause: error }
-            );
-
-            this._onError?.(wrappedError, failure);
-
-            return wrappedError;
-        }
-    }
-
-    private _createFailureContext<TPhase extends GameLoopFramePhase>(
-        system: GameLoopSystem<TState>,
-        phase: TPhase,
-        context: GameLoopPhaseContext<TState, TPhase>,
-        attempt: number
-    ): GameLoopFailureContext<TState> {
-        return {
-            system,
-            phase,
-            context,
-            frame: this._frame,
-            now: context.now,
-            elapsed: this._elapsed,
-            attempt,
-            state: this._state,
-        };
-    }
-
-    private _createDisposeFailureContext(
-        system: GameLoopSystem<TState>
-    ): GameLoopFailureContext<TState> {
-        return {
-            system,
-            phase: 'dispose',
-            context: undefined,
-            frame: this._frame,
-            now: this._safeNow(),
-            elapsed: this._elapsed,
-            attempt: 1,
-            state: this._state,
-        };
+        this._systemRunner.invokePhase(phase, context, this._systemRunnerRuntime);
     }
 
     private _createSnapshot<TSnapshotState>(
@@ -996,25 +729,6 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         target.accumulator = accumulator;
         target.fixedDelta = this._fixedDelta;
         target.timeScale = this._timeScale;
-    }
-
-    private _getSortedSystems(): readonly RegisteredSystem<TState>[] {
-        if (!this._systemsDirty) {
-            return this._sortedSystems;
-        }
-
-        this._sortedSystems = [...this._systems.values()].sort((left, right) => {
-            const priorityDelta = (right.system.priority ?? 0) - (left.system.priority ?? 0);
-
-            if (priorityDelta !== 0) {
-                return priorityDelta;
-            }
-
-            return left.order - right.order;
-        });
-        this._systemsDirty = false;
-
-        return this._sortedSystems;
     }
 
     private _scheduleNextFrame(): void {
@@ -1152,6 +866,8 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         );
     }
 }
+
+export { isGameLoopSystem } from './game-loop-system-runner';
 
 export const createGameLoop = <TState>(options: GameLoopOptions<TState>): GameLoop<TState> =>
     new GameLoop(options);

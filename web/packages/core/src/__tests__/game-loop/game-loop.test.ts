@@ -219,6 +219,38 @@ describe('GameLoop', () => {
         targetLoop.pause();
     });
 
+    test('removes systems through the extracted registry boundary and disposes them once', () => {
+        const scheduler = new ManualScheduler();
+        const calls: string[] = [];
+        let disposeCount = 0;
+
+        const loop = createGameLoop({
+            state: {},
+            scheduler,
+            systems: [
+                {
+                    id: 'transient',
+                    update() {
+                        calls.push('update');
+                    },
+                    dispose() {
+                        disposeCount += 1;
+                    },
+                },
+            ],
+        });
+
+        expect(loop.systemCount).toBe(1);
+        expect(loop.removeSystem('transient')).toBe(true);
+        expect(loop.systemCount).toBe(0);
+        expect(disposeCount).toBe(1);
+
+        loop.start(0);
+        scheduler.flush(16);
+
+        expect(calls).toEqual([]);
+    });
+
     test('disposes scheduled work and rejects further use', () => {
         const scheduler = new ManualScheduler();
         const loop = createGameLoop({
