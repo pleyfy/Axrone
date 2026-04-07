@@ -1,38 +1,46 @@
-import { INPUT_ACTION_PHASE_MASK_ALL, INPUT_ACTION_PHASE_MASKS } from './shared';
+import { EventEmitter } from '../../event';
 import { InputConfigurationError } from '../errors';
 import type {
     AxisStateStore,
     ButtonStateStore,
     InternalActionDefinition,
     InternalActionEventDescriptor,
-    InternalActionListener,
     Vector2StateStore,
 } from './shared';
 import type {
     InputActionEvent,
+    InputActionEventActionChannel,
+    InputActionEventAllChannel,
+    InputActionEventEmitter,
+    InputActionEventMap,
     InputActionEventPhase,
+    InputActionEventPhaseChannel,
     InputActionListener as PublicInputActionListener,
     InputActionName,
     InputActionSchema,
     InputActionState,
-    InputActionStateForDefinition,
     InputActionSubscription,
     InputActionSubscriptionOptions,
     InputMessageDescriptor,
 } from '../types';
+
+const INPUT_ACTION_ALL_CHANNEL = 'action:*' as const satisfies InputActionEventAllChannel;
 
 export interface InputActionEventsRuntime<TSchema extends InputActionSchema = InputActionSchema> {
     _actionNames: readonly InputActionName<TSchema>[];
     _buttonStateStores: Array<ButtonStateStore | undefined>;
     _axisStateStores: Array<AxisStateStore | undefined>;
     _vectorStateStores: Array<Vector2StateStore | undefined>;
-    _globalActionListeners: Set<InternalActionListener<TSchema>>;
-    _scopedActionListeners: Array<Set<InternalActionListener<TSchema>> | undefined>;
-    _actionListenerCount: number;
+    _actionEvents: InputActionEventEmitter<TSchema>;
     _frame: number;
     _timestamp: number;
     _resolveMessage(descriptor: Readonly<InputMessageDescriptor>): string;
 }
+
+export const createActionEventEmitter = <TSchema extends InputActionSchema>(): InputActionEventEmitter<TSchema> =>
+    new EventEmitter<InputActionEventMap<TSchema>>({
+        maxListeners: Infinity,
+    });
 
 export const subscribeActionListener = <TSchema extends InputActionSchema>(
     runtime: InputActionEventsRuntime<TSchema>,
@@ -50,16 +58,22 @@ export const subscribeActionListener = <TSchema extends InputActionSchema>(
         );
     }
 
-    const entry = Object.freeze({
-        phases: actionEventPhaseMask(runtime, options.phases),
-        listener: listener as PublicInputActionListener<TSchema, InputActionName<TSchema>>,
-    });
-    const bucket =
+    const phaseFilter = normalizePhaseFilter(runtime, options.phases);
+    const callback =
+        phaseFilter.size === 0
+            ? (listener as PublicInputActionListener<TSchema, InputActionName<TSchema>>)
+            : ((event: InputActionEvent<TSchema, InputActionName<TSchema>>) => {
+                  if (phaseFilter.has(event.phase)) {
+                      listener(event);
+                  }
+              });
+    const channels =
         typeof actionIndex === 'number'
-            ? (runtime._scopedActionListeners[actionIndex] ??= new Set())
-            : runtime._globalActionListeners;
-    bucket.add(entry);
-    runtime._actionListenerCount += 1;
+            ? [toActionChannel(runtime._actionNames[actionIndex]!)]
+            : phaseFilter.size > 0
+              ? [...phaseFilter].map((phase) => toPhaseChannel(phase))
+              : [INPUT_ACTION_ALL_CHANNEL];
+    const unsubscribers = channels.map((channel) => subscribeToChannel(runtime, channel, callback));
     let disposed = false;
 
     return {
@@ -72,14 +86,9 @@ export const subscribeActionListener = <TSchema extends InputActionSchema>(
             }
 
             disposed = true;
-            if (!bucket.delete(entry)) {
-                return;
-            }
 
-            runtime._actionListenerCount = Math.max(0, runtime._actionListenerCount - 1);
-
-            if (typeof actionIndex === 'number' && bucket.size === 0) {
-                runtime._scopedActionListeners[actionIndex] = undefined;
+            for (const unsubscribe of unsubscribers) {
+                unsubscribe();
             }
         },
     };
@@ -91,62 +100,65 @@ export const emitActionEvents = <TSchema extends InputActionSchema>(
     definition: InternalActionDefinition,
     descriptors: readonly InternalActionEventDescriptor[]
 ): void => {
-    if (runtime._actionListenerCount === 0 || descriptors.length === 0) {
+    if (descriptors.length === 0 || runtime._actionEvents.listenerCountAll() === 0) {
         return;
     }
 
-    const scopedListeners = runtime._scopedActionListeners[index];
-    if (!scopedListeners && runtime._globalActionListeners.size === 0) {
-        return;
-    }
-
-    const listeners = scopedListeners
-        ? [...runtime._globalActionListeners, ...scopedListeners]
-        : [...runtime._globalActionListeners];
-    const action = runtime._actionNames[index]!;
+    const actionChannel = toActionChannel(runtime._actionNames[index]!);
+    const hasAll = runtime._actionEvents.has(INPUT_ACTION_ALL_CHANNEL);
+    const hasAction = runtime._actionEvents.has(actionChannel);
     let stateSnapshot: InputActionState | undefined;
 
     for (const descriptor of descriptors) {
-        const phaseMask = INPUT_ACTION_PHASE_MASKS[descriptor.phase];
-        let event: InputActionEvent<TSchema, InputActionName<TSchema>> | undefined;
+        const phaseChannel = toPhaseChannel(descriptor.phase);
+        const hasPhase = runtime._actionEvents.has(phaseChannel);
 
-        for (const entry of listeners) {
-            if ((entry.phases & phaseMask) === 0) {
-                continue;
-            }
+        if (!hasAll && !hasAction && !hasPhase) {
+            continue;
+        }
 
-            event ??= Object.freeze({
-                action,
-                kind: definition.kind,
-                phase: descriptor.phase,
-                trigger: descriptor.trigger,
-                frame: runtime._frame,
-                timestamp: runtime._timestamp,
-                context: descriptor.context,
-                state:
-                    (stateSnapshot ??= snapshotActionState(runtime, index, definition)) as InputActionStateForDefinition<
-                        TSchema[InputActionName<TSchema>]
-                    >,
-            }) as InputActionEvent<TSchema, InputActionName<TSchema>>;
-            entry.listener(event);
+        const event = Object.freeze({
+            action: runtime._actionNames[index]!,
+            kind: definition.kind,
+            phase: descriptor.phase,
+            trigger: descriptor.trigger,
+            frame: runtime._frame,
+            timestamp: runtime._timestamp,
+            context: descriptor.context,
+            state: (stateSnapshot ??= snapshotActionState(runtime, index, definition)),
+        }) as InputActionEvent<TSchema>;
+
+        if (hasAll) {
+            emitToChannel(runtime, INPUT_ACTION_ALL_CHANNEL, event);
+        }
+
+        if (hasAction) {
+            emitToChannel(runtime, actionChannel, event);
+        }
+
+        if (hasPhase) {
+            emitToChannel(runtime, phaseChannel, event);
         }
     }
 };
 
-const actionEventPhaseMask = <TSchema extends InputActionSchema>(
+const normalizePhaseFilter = <TSchema extends InputActionSchema>(
     runtime: InputActionEventsRuntime<TSchema>,
     phases?: readonly InputActionEventPhase[]
-): number => {
+): ReadonlySet<InputActionEventPhase> => {
     if (!phases?.length) {
-        return INPUT_ACTION_PHASE_MASK_ALL;
+        return new Set();
     }
 
-    let mask = 0;
+    const unique = new Set<InputActionEventPhase>();
 
     for (const phase of phases) {
-        const phaseMask = INPUT_ACTION_PHASE_MASKS[phase];
-
-        if (!phaseMask) {
+        if (
+            phase !== 'started' &&
+            phase !== 'performed' &&
+            phase !== 'changed' &&
+            phase !== 'canceled'
+        ) {
             throw new InputConfigurationError(
                 'input.invalid-action',
                 runtime._resolveMessage({
@@ -156,10 +168,32 @@ const actionEventPhaseMask = <TSchema extends InputActionSchema>(
             );
         }
 
-        mask |= phaseMask;
+        unique.add(phase);
     }
 
-    return mask;
+    return unique;
+};
+
+const toActionChannel = <TSchema extends InputActionSchema>(
+    action: InputActionName<TSchema>
+): InputActionEventActionChannel<TSchema> => `action:${action}` as InputActionEventActionChannel<TSchema>;
+
+const toPhaseChannel = <TPhase extends InputActionEventPhase>(
+    phase: TPhase
+): InputActionEventPhaseChannel<TPhase> => `phase:${phase}` as InputActionEventPhaseChannel<TPhase>;
+
+const subscribeToChannel = <TSchema extends InputActionSchema>(
+    runtime: InputActionEventsRuntime<TSchema>,
+    channel: Extract<keyof InputActionEventMap<TSchema>, string>,
+    callback: (event: InputActionEvent<TSchema>) => void
+) => runtime._actionEvents.on(channel, callback);
+
+const emitToChannel = <TSchema extends InputActionSchema>(
+    runtime: InputActionEventsRuntime<TSchema>,
+    channel: Extract<keyof InputActionEventMap<TSchema>, string>,
+    event: InputActionEvent<TSchema>
+): void => {
+    runtime._actionEvents.emitSync(channel, event);
 };
 
 const snapshotActionState = <TSchema extends InputActionSchema>(

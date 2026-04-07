@@ -12,6 +12,7 @@ import {
     isButtonInteractionInterrupted,
 } from './internal/evaluator';
 import {
+    createActionEventEmitter,
     emitActionEvents,
     subscribeActionListener,
 } from './internal/action-events';
@@ -66,7 +67,6 @@ import type {
     ButtonStateStore,
     InternalActionDefinition,
     InternalActionEventDescriptor,
-    InternalActionListener,
     InternalContext,
     InternalContextAction,
     MutableGamepadState,
@@ -81,6 +81,7 @@ import type { InputSourceRuntime } from './internal/source-state';
 import type { InputCommitRuntime } from './internal/state-commit';
 import type {
     InputActionDefinition,
+    InputActionEventEmitter,
     InputActionListener,
     InputActionName,
     InputActionSchema,
@@ -170,9 +171,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
     private _timestamp = 0;
     private _contextOrderDirty = true;
     private _orderedContexts: InternalContext<TSchema>[] = [];
-    private readonly _globalActionListeners = new Set<InternalActionListener<TSchema>>();
-    private readonly _scopedActionListeners: Array<Set<InternalActionListener<TSchema>> | undefined>;
-    private _actionListenerCount = 0;
+    private readonly _actionEvents: InputActionEventEmitter<TSchema>;
     private _sequence = 0;
     private _disposed = false;
     private _rebindToken = 0;
@@ -196,6 +195,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._messageResolver = options.messageResolver;
         this._now = options.now ?? Date.now;
         this._timestamp = this._now();
+        this._actionEvents = createActionEventEmitter<TSchema>();
         this._compiler = createInputCompiler({
             getActionKind: (action) => this._actionDefinitions[this._requireActionIndex(action)]!.kind,
             requireControlPath: (value) => this._requireControlPath(value),
@@ -266,7 +266,6 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._accumulatorY = new Float64Array(actionDefinitions.length);
         this._assigned = new Uint8Array(actionDefinitions.length);
         this._sourceContexts = new Array<InputContextId | undefined>(actionDefinitions.length);
-        this._scopedActionListeners = new Array(actionDefinitions.length);
 
         for (const context of options.contexts ?? []) {
             this.registerContext(context);
@@ -287,6 +286,10 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
     get isDisposed(): boolean {
         return this._disposed;
+    }
+
+    get events(): InputActionEventEmitter<TSchema> {
+        return this._actionEvents;
     }
 
     update(now = this._now()): number {
@@ -585,13 +588,15 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         }
 
         this._attachments.clear();
-        this._globalActionListeners.clear();
-        this._scopedActionListeners.fill(undefined);
-        this._actionListenerCount = 0;
+        this._actionEvents.dispose();
         this._contexts.clear();
         this._consumedPaths.clear();
         clearDeviceState(this as unknown as InputSourceRuntime<TSchema>, true);
         this._gamepads.clear();
+    }
+
+    private _hasActionEventListeners(): boolean {
+        return this._actionEvents.listenerCountAll() > 0;
     }
 
     private _emitActionEvents(
@@ -866,3 +871,5 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 export const createInputSystem = <TSchema extends InputActionSchema>(
     options: InputSystemOptions<TSchema>
 ): InputSystem<TSchema> => new InputSystem(options);
+
+export { isInputSystemSnapshot };

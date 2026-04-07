@@ -24,7 +24,7 @@ export interface InputCommitRuntime<TSchema extends InputActionSchema = InputAct
     _vectorStateStores: Array<Vector2StateStore | undefined>;
     _frame: number;
     _timestamp: number;
-    _actionListenerCount: number;
+    _hasActionEventListeners(): boolean;
     _emitActionEvents(
         index: number,
         definition: InternalActionDefinition,
@@ -190,7 +190,7 @@ export const commitButtonState = <TSchema extends InputActionSchema>(
     state.timestamp = runtime._timestamp;
     state.context = runtime._sourceContexts[index];
 
-    if (runtime._actionListenerCount > 0) {
+    if (runtime._hasActionEventListeners()) {
         const context = state.context;
         const terminalContext = context ?? previousContext;
         const descriptors: InternalActionEventDescriptor[] = [];
@@ -284,7 +284,7 @@ export const commitAxisState = <TSchema extends InputActionSchema>(
     state.timestamp = runtime._timestamp;
     state.context = runtime._sourceContexts[index];
 
-    if (runtime._actionListenerCount > 0) {
+    if (runtime._hasActionEventListeners()) {
         const context = state.context;
         const terminalContext = context ?? previousContext;
         const descriptors: InternalActionEventDescriptor[] = [];
@@ -372,7 +372,7 @@ export const commitVectorState = <TSchema extends InputActionSchema>(
     state.timestamp = runtime._timestamp;
     state.context = runtime._sourceContexts[index];
 
-    if (runtime._actionListenerCount > 0) {
+    if (runtime._hasActionEventListeners()) {
         const context = state.context;
         const terminalContext = context ?? previousContext;
         const descriptors: InternalActionEventDescriptor[] = [];

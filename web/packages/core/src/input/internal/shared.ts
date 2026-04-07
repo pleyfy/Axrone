@@ -1,7 +1,6 @@
 import type {
     InputActionEventPhase,
     InputActionEventTrigger,
-    InputActionListener,
     InputActionName,
     InputActionSchema,
     InputAxisState,
@@ -40,13 +39,6 @@ export const DEFAULT_MULTI_TAP_COUNT = 2;
 export const DEFAULT_MULTI_TAP_DELAY_MS = 300;
 export const DEFAULT_REPEAT_DELAY_MS = 450;
 export const DEFAULT_REPEAT_INTERVAL_MS = 60;
-export const INPUT_ACTION_PHASE_MASKS: Readonly<Record<InputActionEventPhase, number>> = Object.freeze({
-    started: 1,
-    performed: 2,
-    changed: 4,
-    canceled: 8,
-});
-export const INPUT_ACTION_PHASE_MASK_ALL = 15;
 
 export interface MutableVector2 {
     x: number;
@@ -350,11 +342,6 @@ export interface ActiveRebinding<TSchema extends InputActionSchema> {
     readonly handlers?: InputRebindingHandlers<TSchema>;
     readonly startedAtEpochMs: number;
     readonly deadlineEpochMs?: number;
-}
-
-export interface InternalActionListener<TSchema extends InputActionSchema> {
-    readonly phases: number;
-    readonly listener: InputActionListener<TSchema, InputActionName<TSchema>>;
 }
 
 export interface InternalActionEventDescriptor {

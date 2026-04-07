@@ -367,6 +367,8 @@ describe('InputSystem', () => {
             expect(Object.isFrozen(event.state)).toBe(true);
         });
 
+        expect(input.events.listenerCountAll()).toBe(1);
+
         input.dispatch({
             type: 'keyboard',
             code: 'Space',
@@ -393,6 +395,7 @@ describe('InputSystem', () => {
 
         subscription.dispose();
         expect(subscription.isDisposed).toBe(true);
+        expect(input.events.listenerCountAll()).toBe(0);
 
         input.dispatch({
             type: 'keyboard',
@@ -402,6 +405,69 @@ describe('InputSystem', () => {
         input.update(40);
 
         expect(phases).toHaveLength(6);
+    });
+
+    it('exposes action channels through the shared core event emitter', () => {
+        const input = createInputSystem({
+            schema: {
+                jump: {
+                    kind: 'button',
+                    interactions: [{ type: 'tap', maxDurationMs: 40 }],
+                },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        jump: [{ type: 'control', control: 'keyboard/Space' }],
+                    },
+                },
+            ],
+        });
+        const allEvents: string[] = [];
+        const actionEvents: string[] = [];
+        const performedEvents: string[] = [];
+        const unsubscribeAll = input.events.on('action:*', (event) => {
+            allEvents.push(`${event.action}:${event.phase}`);
+        });
+        const unsubscribeAction = input.events.on('action:jump', (event) => {
+            actionEvents.push(event.trigger);
+        });
+        const unsubscribePerformed = input.events.on('phase:performed', (event) => {
+            performedEvents.push(`${event.action}:${event.trigger}`);
+        });
+
+        expect(input.events.listenerCountAll()).toBe(3);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'Space',
+            pressed: true,
+        });
+        input.update(0);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'Space',
+            pressed: false,
+        });
+        input.update(20);
+
+        expect(allEvents).toEqual([
+            'jump:started',
+            'jump:performed',
+            'jump:changed',
+            'jump:performed',
+            'jump:changed',
+            'jump:canceled',
+        ]);
+        expect(actionEvents).toEqual(['press', 'press', 'change', 'tap', 'change', 'release']);
+        expect(performedEvents).toEqual(['jump:press', 'jump:tap']);
+
+        expect(unsubscribeAll()).toBe(true);
+        expect(unsubscribeAction()).toBe(true);
+        expect(unsubscribePerformed()).toBe(true);
+        expect(input.events.listenerCountAll()).toBe(0);
     });
 
     it('supports phase-filtered global subscriptions for analog actions', () => {

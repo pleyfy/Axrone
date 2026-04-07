@@ -1,3 +1,4 @@
+import type { IEventEmitter } from '../event';
 import type { IDisposable } from '../types';
 
 export type InputDeviceKind = 'keyboard' | 'mouse' | 'touch' | 'gamepad';
@@ -410,6 +411,29 @@ export interface InputActionEvent<
     readonly context?: InputContextId;
     readonly state: InputActionStateForDefinition<TSchema[TAction]>;
 }
+
+export type InputActionEventAllChannel = 'action:*';
+
+export type InputActionEventPhaseChannel<
+    TPhase extends InputActionEventPhase = InputActionEventPhase,
+> = `phase:${TPhase}`;
+
+export type InputActionEventActionChannel<
+    TSchema extends InputActionSchema = InputActionSchema,
+    TAction extends InputActionName<TSchema> = InputActionName<TSchema>,
+> = `action:${TAction}`;
+
+export type InputActionEventChannel<TSchema extends InputActionSchema = InputActionSchema> =
+    | InputActionEventAllChannel
+    | InputActionEventPhaseChannel
+    | InputActionEventActionChannel<TSchema>;
+
+export type InputActionEventMap<TSchema extends InputActionSchema = InputActionSchema> = Readonly<
+    Record<InputActionEventChannel<TSchema>, InputActionEvent<TSchema>>
+>;
+
+export type InputActionEventEmitter<TSchema extends InputActionSchema = InputActionSchema> =
+    IEventEmitter<InputActionEventMap<TSchema>>;
 
 export type InputActionListener<
     TSchema extends InputActionSchema = InputActionSchema,
