@@ -4,7 +4,6 @@ import type { IGeometryBuffers } from '../geometry/primitives/types';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
 import { Hierarchy } from '../component-system/components/hierarchy';
 import { Transform } from '../component-system/components/transform';
-import { Component } from '../component-system/core/component';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { World } from '../component-system/core/world';
 import { getComponentMetadata } from '../component-system/decorators/script';
@@ -33,6 +32,7 @@ import {
     SceneMeshError,
     SceneShaderError,
 } from './errors';
+import { ScenePrefabRuntime } from './scene-prefab-runtime';
 import {
     cloneMeshDefinition,
     cloneTextureBinding,
@@ -40,9 +40,7 @@ import {
     encodeSceneValue,
 } from './serialization';
 import type {
-    SceneActorSnapshot,
     SceneClearFlag,
-    SceneComponentSnapshot,
     SceneLoopState,
     SceneMaterialDefinition,
     SceneMaterialHandle,
@@ -524,6 +522,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private readonly _registry: RuntimeRegistry<R>;
     private readonly _componentTypes = new Map<string, ComponentConstructor>();
+    private readonly _prefabs: ScenePrefabRuntime;
     private readonly _shaders = new Map<string, ShaderResource>();
     private readonly _shaderDefinitions = new Map<string, SceneShaderDefinition>();
     private readonly _materials = new Map<string, MaterialResource>();
@@ -583,6 +582,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         this.world = new World(this._registry, options.worldConfig);
         this.systems = new SystemManager(this.world);
+        this._prefabs = new ScenePrefabRuntime({
+            componentTypes: this._componentTypes,
+            createActor: (config) => this.createActor(config),
+            getAllActors: () => this.world.getAllActors(),
+        });
         this.resize(options.width, options.height, this._pixelRatio);
 
         const initialRenderPasses = options.renderPasses?.length
@@ -1059,11 +1063,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         actors: readonly Actor[] = this.world.getAllActors()
     ): ScenePrefabDefinition {
         this._assertNotDisposed();
-
-        return {
-            id,
-            actors: actors.map((actor) => this._createActorSnapshot(actor)),
-        };
+        return this._prefabs.createPrefab(id, actors);
     }
 
     instantiatePrefab(
@@ -1071,71 +1071,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         options: ScenePrefabInstantiateOptions = {}
     ): readonly Actor[] {
         this._assertNotDisposed();
-        const createdActors: Actor[] = [];
-        const createdByNodeId = new Map<string, Actor>();
-        const pendingComponentHydration: Array<{
-            readonly actor: Actor;
-            readonly components: readonly SceneComponentSnapshot[];
-        }> = [];
-        const pendingHierarchyLinks: Array<{
-            readonly actor: Actor;
-            readonly parentNodeId?: string | null;
-        }> = [];
-
-        for (const actorSnapshot of prefab.actors) {
-            const actor = this.createActor({
-                name: `${options.namePrefix ?? ''}${actorSnapshot.name}`,
-                layer: actorSnapshot.layer as any,
-                tag: actorSnapshot.tag as any,
-                active: false,
-                persistent: actorSnapshot.persistent,
-                pooled: actorSnapshot.pooled,
-                autoStart: false,
-            });
-
-            createdActors.push(actor);
-
-            if (actorSnapshot.nodeId) {
-                createdByNodeId.set(actorSnapshot.nodeId, actor);
-            }
-
-            pendingComponentHydration.push({
-                actor,
-                components: actorSnapshot.components,
-            });
-
-            pendingHierarchyLinks.push({
-                actor,
-                parentNodeId: actorSnapshot.parentNodeId,
-            });
-        }
-
-        for (const pendingLink of pendingHierarchyLinks) {
-            if (!pendingLink.parentNodeId) {
-                continue;
-            }
-
-            const parentActor = createdByNodeId.get(pendingLink.parentNodeId);
-            if (parentActor) {
-                pendingLink.actor.setParent(parentActor);
-            }
-        }
-
-        for (const pendingHydration of pendingComponentHydration) {
-            for (const componentSnapshot of pendingHydration.components) {
-                this._hydrateComponent(pendingHydration.actor, componentSnapshot, options);
-            }
-        }
-
-        for (let index = 0; index < prefab.actors.length; index += 1) {
-            const actor = createdActors[index]!;
-            const actorSnapshot = prefab.actors[index]!;
-
-            actor.start();
-            actor.active = actorSnapshot.active;
-        }
-
-        return createdActors;
+        return this._prefabs.instantiatePrefab(prefab, options);
     }
 
     serializeScene(): SceneSnapshot {
@@ -1178,7 +1114,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (options.clearExisting !== false) {
-            this._destroyAllActors();
+            this._prefabs.destroyAllActors();
             this._clearSceneAssets();
         }
 
@@ -2223,76 +2159,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
     }
 
-    private _createActorSnapshot(actor: Actor): SceneActorSnapshot {
-        const hierarchy = actor.getComponent(Hierarchy);
-        const components = actor
-            .getAllComponents()
-            .filter((component) => !(component instanceof Hierarchy))
-            .map((component) => this._createComponentSnapshot(component));
-
-        return {
-            nodeId: actor.id,
-            parentNodeId: hierarchy?.parentActor?.id ?? null,
-            name: actor.name,
-            layer: actor.layer,
-            tag: actor.tag,
-            active: actor.active,
-            persistent: actor.persistent,
-            pooled: actor.pooled,
-            components,
-        };
-    }
-
-    private _createComponentSnapshot(component: Component): SceneComponentSnapshot {
-        const serialize = (component as { serialize?: () => Record<string, any> }).serialize;
-        const data = typeof serialize === 'function' ? (serialize.call(component) ?? {}) : {};
-
-        return {
-            type: component.constructor.name,
-            data: encodeSceneValue(data),
-        };
-    }
-
-    private _hydrateComponent(
-        actor: Actor,
-        snapshot: SceneComponentSnapshot,
-        options: ScenePrefabInstantiateOptions
-    ): void {
-        const componentType = this._componentTypes.get(snapshot.type);
-        if (!componentType) {
-            throw new SceneLifecycleError(
-                `Cannot instantiate prefab because component '${snapshot.type}' is not registered`
-            );
-        }
-
-        const existingComponent = actor
-            .getAllComponents()
-            .find((component) => component.constructor === componentType);
-        const component =
-            existingComponent ??
-            actor.addComponent(
-                componentType as new (...args: any[]) => Component,
-                ...(options.componentArgsResolver?.(snapshot.type, snapshot.data) ?? [])
-            );
-
-        const decoded = decodeSceneValue(snapshot.data);
-        if (
-            typeof (component as { deserialize?: (data: Record<string, any>) => void })
-                .deserialize === 'function'
-        ) {
-            (component as { deserialize(data: Record<string, any>): void }).deserialize(
-                (decoded && typeof decoded === 'object' && !Array.isArray(decoded)
-                    ? decoded
-                    : {}) as Record<string, any>
-            );
-            return;
-        }
-
-        if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) {
-            Object.assign(component as object, decoded);
-        }
-    }
-
     private _clearSceneAssets(): void {
         for (const shader of this._shaders.values()) {
             this.gl.deleteProgram(shader.program);
@@ -2326,13 +2192,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._textureDefinitions.clear();
         this._renderPasses.clear();
         this._renderPassDefinitions.clear();
-    }
-
-    private _destroyAllActors(): void {
-        const actors = [...this.world.getAllActors()];
-        for (const actor of actors) {
-            actor.destroy(true);
-        }
     }
 
     private _disposeMesh(mesh: MeshResource): void {
