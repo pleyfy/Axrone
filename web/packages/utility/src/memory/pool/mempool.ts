@@ -1,204 +1,33 @@
-export type PoolObjectStatus = 'free' | 'allocated' | 'reserved';
+import {
+    MemoryPoolError,
+    MemoryPoolErrorCode,
+    createInternalPoolMetrics,
+    createPerformanceTimer,
+    validateMemoryPoolOptions,
+    type AsyncMemoryPoolOperations,
+    type InternalPoolMetrics,
+    type MemoryPoolOperations,
+    type MemoryPoolOptions,
+    type PerformanceTimer,
+    type PoolPerformanceMetrics,
+    type PoolObjectStatus,
+    type PoolSlot,
+    type PoolableObject,
+} from './pool-support';
 
-export interface PoolableObject {
-    __poolId?: number;
-    __poolStatus?: PoolObjectStatus;
-    __lastAccessed?: number;
-    __allocCount?: number;
-    reset(): void;
-}
-
-export type PoolExpansionStrategy = 'fixed' | 'multiplicative' | 'fibonacci' | 'prime';
-
-export type PoolAllocationStrategy =
-    | 'first-available'
-    | 'least-recently-used'
-    | 'most-recently-used'
-    | 'round-robin';
-
-export type PoolEvictionPolicy = 'none' | 'lru' | 'ttl' | 'fifo';
-
-export interface MemoryPoolOptions<T extends PoolableObject> {
-    readonly initialCapacity?: number;
-    readonly maxCapacity?: number;
-    readonly minFree?: number;
-    readonly highWatermarkRatio?: number;
-    readonly lowWatermarkRatio?: number;
-    readonly expansionStrategy?: PoolExpansionStrategy;
-    readonly expansionFactor?: number;
-    readonly expansionRate?: number;
-    readonly allocationStrategy?: PoolAllocationStrategy;
-    readonly evictionPolicy?: PoolEvictionPolicy;
-    readonly ttl?: number;
-    readonly factory: () => T;
-    readonly resetOnRecycle?: boolean;
-    readonly validator?: (obj: T) => boolean;
-    readonly preallocate?: boolean;
-    readonly autoExpand?: boolean;
-    readonly compactionThreshold?: number;
-    readonly compactionTriggerRatio?: number;
-    readonly onAcquire?: (obj: T) => void;
-    readonly onRelease?: (obj: T) => void;
-    readonly onEvict?: (obj: T) => void;
-    readonly onOutOfMemory?: (requested: number, available: number) => void;
-    readonly enableMetrics?: boolean;
-    readonly enableInstrumentation?: boolean;
-    readonly name?: string;
-    readonly maxObjectAge?: number;
-    readonly threadSafe?: boolean;
-    readonly asyncFactory?: () => Promise<T>;
-}
-
-export interface PoolPerformanceMetrics {
-    readonly name: string;
-    readonly capacity: number;
-    readonly available: number;
-    readonly allocated: number;
-    readonly reserved: number;
-    readonly highWaterMark: number;
-    readonly allocations: number;
-    readonly releases: number;
-    readonly creations: number;
-    readonly evictions: number;
-    readonly expansions: number;
-    readonly contractions: number;
-    readonly validationFailures: number;
-    readonly fastPath: number;
-    readonly slowPath: number;
-    readonly averageAllocationTime: number;
-    readonly averageReleaseTime: number;
-    readonly peakMemoryUsage: number;
-    readonly fragmentationRatio: number;
-    readonly utilizationRatio: number;
-    readonly turnoverRate: number;
-    readonly missRate: number;
-    readonly hitRatio: number;
-    readonly allocationsPerSecond: number;
-    readonly releasesPerSecond: number;
-    readonly lastCompactionDuration: number;
-    readonly compactionCount: number;
-    readonly lastResizeDuration: number;
-    readonly objectCreationTime: {
-        readonly min: number;
-        readonly max: number;
-        readonly avg: number;
-    };
-    readonly objectLifetime: {
-        readonly min: number;
-        readonly max: number;
-        readonly avg: number;
-    };
-}
-
-export interface MemoryPoolOperations<T extends PoolableObject> {
-    acquire(): T;
-    release(obj: T): void;
-    tryAcquire(): T | null;
-    releaseAll(): void;
-    clear(): void;
-    drain(): void;
-    resize(newCapacity: number): void;
-    isFromPool(obj: T): boolean;
-    getMetrics(): PoolPerformanceMetrics;
-    getAvailableCount(): number;
-    getAllocatedCount(): number;
-    getTotalCount(): number;
-    forceCompact(): void;
-    [Symbol.dispose](): void;
-}
-
-export interface AsyncMemoryPoolOperations<T extends PoolableObject> {
-    acquireAsync(): Promise<T>;
-    releaseAsync(obj: T): Promise<void>;
-    tryAcquireAsync(timeoutMs?: number): Promise<T | null>;
-    releaseAllAsync(): Promise<void>;
-    clearAsync(): Promise<void>;
-    drainAsync(): Promise<void>;
-}
-
-export const enum MemoryPoolErrorCode {
-    POOL_DEPLETED = 'POOL_DEPLETED',
-    POOL_DISPOSED = 'POOL_DISPOSED',
-    VALIDATION_FAILED = 'VALIDATION_FAILED',
-    FOREIGN_OBJECT = 'FOREIGN_OBJECT',
-    ALREADY_RELEASED = 'ALREADY_RELEASED',
-    IN_USE_DURING_OPERATION = 'IN_USE_DURING_OPERATION',
-    INITIALIZATION_FAILED = 'INITIALIZATION_FAILED',
-    TIMEOUT_EXCEEDED = 'TIMEOUT_EXCEEDED',
-    INVALID_OPERATION = 'INVALID_OPERATION',
-    INTERNAL_ERROR = 'INTERNAL_ERROR',
-}
-
-export class MemoryPoolError extends Error {
-    readonly code: MemoryPoolErrorCode;
-    readonly poolName?: string;
-    readonly timestamp: number;
-    readonly details?: Record<string, any>;
-
-    constructor(
-        message: string,
-        code: MemoryPoolErrorCode,
-        poolName?: string,
-        details?: Record<string, any>
-    ) {
-        super(`MemoryPool${poolName ? ` "${poolName}"` : ''}: ${message}`);
-        this.name = 'MemoryPoolError';
-        this.code = code;
-        this.poolName = poolName;
-        this.timestamp = Date.now();
-        this.details = details;
-        Object.setPrototypeOf(this, MemoryPoolError.prototype);
-    }
-}
-
-type PoolSlot<T extends PoolableObject> = {
-    obj: T | undefined;
-    status: PoolObjectStatus;
-    lastAccessed: number;
-    allocCount: number;
-    createdAt: number;
-};
-
-type PerformanceTimer = {
-    start(): void;
-    stop(): number;
-};
-
-type TimerMetric = {
-    count: number;
-    total: number;
-    min: number;
-    max: number;
-    last: number;
-};
-
-type InternalPoolMetrics = {
-    allocations: number;
-    releases: number;
-    creations: number;
-    evictions: number;
-    expansions: number;
-    contractions: number;
-    validationFailures: number;
-    compactions: number;
-
-    creationTimer: TimerMetric;
-    allocationTimer: TimerMetric;
-    releaseTimer: TimerMetric;
-    compactionTimer: TimerMetric;
-    resizeTimer: TimerMetric;
-
-    highWaterMark: number;
-    fastPath: number;
-    slowPath: number;
-    misses: number;
-    hits: number;
-
-    objectLifetime: TimerMetric;
-
-    startTime: number;
-    lastUpdateTime: number;
-};
+export {
+    MemoryPoolError,
+    MemoryPoolErrorCode,
+    type AsyncMemoryPoolOperations,
+    type MemoryPoolOperations,
+    type MemoryPoolOptions,
+    type PoolAllocationStrategy,
+    type PoolEvictionPolicy,
+    type PoolExpansionStrategy,
+    type PoolObjectStatus,
+    type PoolPerformanceMetrics,
+    type PoolableObject,
+} from './pool-support';
 
 export class MemoryPool<T extends PoolableObject>
     implements MemoryPoolOperations<T>, AsyncMemoryPoolOperations<T>, Iterable<T>
@@ -251,9 +80,9 @@ export class MemoryPool<T extends PoolableObject>
             asyncFactory: options.asyncFactory,
         };
 
-        this._validateOptions();
+        validateMemoryPoolOptions(this._options);
 
-        this._metrics = this._createMetrics();
+        this._metrics = createInternalPoolMetrics();
 
         if (this._options.preallocate) {
             this._preallocate();
@@ -277,7 +106,7 @@ export class MemoryPool<T extends PoolableObject>
 
         let timer: PerformanceTimer | null = null;
         if (this._options.enableMetrics) {
-            timer = this._createTimer();
+            timer = createPerformanceTimer();
             timer.start();
             this._metrics.allocations++;
         }
@@ -333,7 +162,7 @@ export class MemoryPool<T extends PoolableObject>
             slot.allocCount++;
 
             if (!slot.obj) {
-                const createTimer = this._createTimer();
+                const createTimer = createPerformanceTimer();
                 createTimer.start();
                 slot.obj = this._options.factory();
                 const createTime = createTimer.stop();
@@ -421,7 +250,7 @@ export class MemoryPool<T extends PoolableObject>
 
         let timer: PerformanceTimer | null = null;
         if (this._options.enableMetrics) {
-            timer = this._createTimer();
+            timer = createPerformanceTimer();
             timer.start();
             this._metrics.releases++;
         }
@@ -714,7 +543,7 @@ export class MemoryPool<T extends PoolableObject>
 
         let timer: PerformanceTimer | null = null;
         if (this._options.enableMetrics) {
-            timer = this._createTimer();
+            timer = createPerformanceTimer();
             timer.start();
         }
 
@@ -767,7 +596,7 @@ export class MemoryPool<T extends PoolableObject>
 
         let timer: PerformanceTimer | null = null;
         if (this._options.enableMetrics) {
-            timer = this._createTimer();
+            timer = createPerformanceTimer();
             timer.start();
             this._metrics.compactions++;
         }
@@ -1034,121 +863,6 @@ export class MemoryPool<T extends PoolableObject>
         };
     }
 
-    private _validateOptions(): void {
-        if (this._options.initialCapacity <= 0) {
-            throw new Error(`Invalid initialCapacity: ${this._options.initialCapacity}`);
-        }
-
-        if (this._options.maxCapacity < this._options.initialCapacity) {
-            throw new Error(
-                `maxCapacity (${this._options.maxCapacity}) cannot be less than initialCapacity (${this._options.initialCapacity})`
-            );
-        }
-
-        if (this._options.expansionFactor < 1) {
-            throw new Error(`Invalid expansionFactor: ${this._options.expansionFactor}`);
-        }
-
-        if (this._options.highWatermarkRatio <= 0 || this._options.highWatermarkRatio >= 1) {
-            throw new Error(`Invalid highWatermarkRatio: ${this._options.highWatermarkRatio}`);
-        }
-
-        if (
-            this._options.lowWatermarkRatio <= 0 ||
-            this._options.lowWatermarkRatio >= this._options.highWatermarkRatio
-        ) {
-            throw new Error(`Invalid lowWatermarkRatio: ${this._options.lowWatermarkRatio}`);
-        }
-
-        if (
-            this._options.compactionTriggerRatio <= 0 ||
-            this._options.compactionTriggerRatio >= 1
-        ) {
-            throw new Error(
-                `Invalid compactionTriggerRatio: ${this._options.compactionTriggerRatio}`
-            );
-        }
-    }
-
-    private _createTimer(): PerformanceTimer {
-        let startTime = 0;
-
-        return {
-            start() {
-                startTime = performance.now();
-            },
-            stop() {
-                return performance.now() - startTime;
-            },
-        };
-    }
-
-    private _createMetrics(): InternalPoolMetrics {
-        return {
-            allocations: 0,
-            releases: 0,
-            creations: 0,
-            evictions: 0,
-            expansions: 0,
-            contractions: 0,
-            validationFailures: 0,
-            compactions: 0,
-
-            creationTimer: {
-                count: 0,
-                total: 0,
-                min: Number.MAX_VALUE,
-                max: 0,
-                last: 0,
-            },
-            allocationTimer: {
-                count: 0,
-                total: 0,
-                min: Number.MAX_VALUE,
-                max: 0,
-                last: 0,
-            },
-            releaseTimer: {
-                count: 0,
-                total: 0,
-                min: Number.MAX_VALUE,
-                max: 0,
-                last: 0,
-            },
-            compactionTimer: {
-                count: 0,
-                total: 0,
-                min: Number.MAX_VALUE,
-                max: 0,
-                last: 0,
-            },
-            resizeTimer: {
-                count: 0,
-                total: 0,
-                min: Number.MAX_VALUE,
-                max: 0,
-                last: 0,
-            },
-
-            highWaterMark: 0,
-            fastPath: 0,
-            slowPath: 0,
-            misses: 0,
-            hits: 0,
-
-            objectLifetime: {
-                count: 0,
-                total: 0,
-                min: Number.MAX_VALUE,
-                max: 0,
-                last: 0,
-            },
-
-            startTime: Date.now(),
-            lastUpdateTime: Date.now(),
-        };
-    }
-
     private _preallocate(): void {
         for (let i = 0; i < this._options.initialCapacity; i++) {
             this._createSlot(i, true);
@@ -1182,7 +896,7 @@ export class MemoryPool<T extends PoolableObject>
         let obj: T | undefined = undefined;
 
         if (createObject) {
-            const timer = this._createTimer();
+            const timer = createPerformanceTimer();
             timer.start();
 
             obj = this._options.factory();
