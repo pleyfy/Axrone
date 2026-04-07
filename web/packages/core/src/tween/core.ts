@@ -37,6 +37,9 @@ export abstract class TweenCore<T> implements ITween<T> {
     protected _status: TweenStatus = 'idle';
     protected _waitingForRepeatDelay = false;
     protected _repeatDelayEndTime?: number;
+    protected _clockMode: 'manual' | 'realtime' | undefined;
+    protected _lastUpdateTime?: number;
+    protected _pauseStartedAt?: number;
 
     constructor(object: T, config?: TweenConfig<T>) {
         this._object = object;
@@ -50,10 +53,6 @@ export abstract class TweenCore<T> implements ITween<T> {
             if (config.repeat !== undefined) this.repeat(config.repeat);
             if (config.yoyo !== undefined) this.yoyo(config.yoyo);
             if (config.interpolation) this.interpolation(config.interpolation);
-
-            if (config.autoStart) {
-                setTimeout(() => this.start(), 0);
-            }
         }
     }
 
@@ -85,7 +84,7 @@ export abstract class TweenCore<T> implements ITween<T> {
     }
 
     duration(ms: number): this {
-        this._duration = ms;
+        this._duration = Number.isFinite(ms) ? Math.max(0, ms) : 0;
         return this;
     }
 
@@ -97,7 +96,13 @@ export abstract class TweenCore<T> implements ITween<T> {
         this._status = 'running';
         this._isPlaying = true;
         this._onStartCallbackFired = false;
-        this._startTime = time !== undefined ? time : performance.now();
+        const startTime = time !== undefined ? time : performance.now();
+        this._clockMode = time !== undefined ? 'manual' : 'realtime';
+        this._lastUpdateTime = startTime;
+        this._pauseStartedAt = undefined;
+        this._repeatDelayEndTime = undefined;
+        this._waitingForRepeatDelay = false;
+        this._startTime = startTime;
         this._startTime += this._delayTime;
         this._remainingRepeat = this._repeat;
 
@@ -134,6 +139,7 @@ export abstract class TweenCore<T> implements ITween<T> {
 
         this._status = 'paused';
         this._isPlaying = false;
+        this._pauseStartedAt = this._lastUpdateTime ?? performance.now();
 
         this._emit('pause', this);
 
@@ -145,6 +151,23 @@ export abstract class TweenCore<T> implements ITween<T> {
             return this;
         }
 
+        if (
+            this._clockMode !== 'manual' &&
+            this._startTime !== undefined &&
+            this._pauseStartedAt !== undefined
+        ) {
+            const now = performance.now();
+            const pausedDuration = Math.max(0, now - this._pauseStartedAt);
+            this._startTime += pausedDuration;
+
+            if (typeof this._repeatDelayEndTime === 'number') {
+                this._repeatDelayEndTime += pausedDuration;
+            }
+
+            this._lastUpdateTime = now;
+        }
+
+        this._pauseStartedAt = undefined;
         this._status = 'running';
         this._isPlaying = true;
 
@@ -159,8 +182,9 @@ export abstract class TweenCore<T> implements ITween<T> {
     }
 
     repeat(times: number): this {
-        this._repeat = times;
-        this._remainingRepeat = times;
+        const normalized = times === Infinity ? Infinity : Math.max(0, Math.trunc(times));
+        this._repeat = normalized;
+        this._remainingRepeat = normalized;
         return this;
     }
 
@@ -206,6 +230,14 @@ export abstract class TweenCore<T> implements ITween<T> {
 
         const now = time !== undefined ? time : performance.now();
 
+        if (time !== undefined) {
+            this._clockMode = 'manual';
+        } else if (!this._clockMode) {
+            this._clockMode = 'realtime';
+        }
+
+        this._lastUpdateTime = now;
+
         if (now < this._startTime) {
             return this;
         }
@@ -229,7 +261,8 @@ export abstract class TweenCore<T> implements ITween<T> {
             }
         }
 
-        let elapsed = (now - this._startTime) / this._duration;
+        let elapsed =
+            this._duration <= 0 ? 1 : (now - this._startTime) / this._duration;
         elapsed = elapsed > 1 ? 1 : elapsed;
 
         const value = this._easingFunction(elapsed);
@@ -268,6 +301,9 @@ export abstract class TweenCore<T> implements ITween<T> {
         this._chainedTweens = [];
         this._valuesStart = Object.create(null);
         this._valuesEnd = Object.create(null);
+        this._lastUpdateTime = undefined;
+        this._pauseStartedAt = undefined;
+        this._clockMode = undefined;
     }
 
     protected _emit(event: TweenEventType, ...args: any[]): void {

@@ -21,6 +21,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
     private _lastUpdateTime = 0;
     private _animFrameId?: number;
     private _autoUpdate = false;
+    private _clockMode: 'manual' | 'realtime' | undefined;
 
     constructor() {
         super();
@@ -72,7 +73,8 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
 
         this._isPlaying = true;
         this._isPaused = false;
-        this._lastUpdateTime = time ?? 0;
+        this._clockMode = time !== undefined ? 'manual' : 'realtime';
+        this._lastUpdateTime = time ?? (this._autoUpdate ? 0 : performance.now());
 
         for (const item of this._timelineItems) {
             item.target.stop();
@@ -140,7 +142,9 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         }
 
         this._isPaused = false;
-        this._lastUpdateTime = performance.now();
+        if (this._clockMode !== 'manual') {
+            this._lastUpdateTime = performance.now();
+        }
 
         for (const item of this._timelineItems) {
             if ((item.target as any)._status === 'paused') {
@@ -161,8 +165,13 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         if (!this._isPlaying || this._isPaused) return this;
 
         if (time !== undefined) {
+            this._clockMode = 'manual';
             this._currentTime = time * this._timeScale;
         } else {
+            if (!this._clockMode) {
+                this._clockMode = 'realtime';
+            }
+
             const now = performance.now();
             const delta = (now - this._lastUpdateTime) * this._timeScale;
             this._currentTime += delta;
@@ -171,7 +180,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
 
         this.emitSync('update', this._currentTime);
 
-        this._updateItems(time ?? performance.now());
+        this._updateItems();
 
         if (this._currentTime >= this._duration) {
             this._isPlaying = false;
@@ -203,6 +212,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
 
     private _startInternalLoop(): void {
         if (this._animFrameId !== undefined) return;
+        this._lastUpdateTime = performance.now();
         this._internalUpdate();
     }
 
@@ -211,11 +221,10 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
 
         this._animFrameId = requestAnimationFrame(() => this._internalUpdate());
 
-        const now = performance.now();
-        this.update(now);
+        this.update();
     }
 
-    private _updateItems(now: number): void {
+    private _updateItems(): void {
         for (const item of this._timelineItems) {
             const { target, start, end } = item;
 

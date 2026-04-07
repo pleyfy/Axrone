@@ -147,6 +147,20 @@ describe('Tween System', () => {
             expect(tw.getStatus()).toBe('idle');
         });
 
+        test('manual clock pause and resume do not jump tween time', () => {
+            const obj = { x: 0 };
+            const tw = to(obj, { x: 100 }, 100);
+
+            tw.start(0);
+            tw.update(40);
+            expect(obj.x).toBeCloseTo(40, 1);
+
+            tw.pause();
+            tw.resume();
+            tw.update(50);
+            expect(obj.x).toBeCloseTo(50, 1);
+        });
+
         test('end() method completes tween immediately', () => {
             let obj = { x: 0 };
             const tw = to(obj, { x: 100 }, 100);
@@ -460,6 +474,41 @@ describe('Tween System', () => {
             tl.start(0);
             tl.update(100);
             expect(completed).toBe(true);
+        });
+
+        test('timeline auto-update does not interpret performance.now as local timeline time', () => {
+            let rafCallback: FrameRequestCallback | undefined;
+            let now = 1000;
+            const requestSpy = vi
+                .spyOn(globalThis, 'requestAnimationFrame')
+                .mockImplementation((callback: FrameRequestCallback): number => {
+                    rafCallback = callback;
+                    return 1;
+                });
+            const cancelSpy = vi
+                .spyOn(globalThis, 'cancelAnimationFrame')
+                .mockImplementation(() => undefined);
+            const performanceSpy = vi
+                .spyOn(globalThis.performance, 'now')
+                .mockImplementation(() => now);
+
+            try {
+                const obj = { x: 0 };
+                const tw = to(obj, { x: 100 }, 100);
+                const tl = timeline().add(tw);
+
+                (tl as any).setAutoUpdate(true);
+                tl.start();
+                now = 1016;
+                rafCallback?.(1016);
+
+                expect(obj.x).toBeGreaterThan(0);
+                expect(obj.x).toBeLessThan(100);
+            } finally {
+                requestSpy.mockRestore();
+                cancelSpy.mockRestore();
+                performanceSpy.mockRestore();
+            }
         });
     });
 
