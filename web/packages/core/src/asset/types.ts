@@ -102,6 +102,16 @@ export interface AssetLookupByKey<TSchema extends AssetSchema = AssetSchema> {
     readonly kind?: AssetKind<TSchema>;
 }
 
+export interface AssetQuery<TSchema extends AssetSchema = AssetSchema> {
+    readonly kind?: AssetKind<TSchema>;
+    readonly fingerprint?: string;
+    readonly uri?: string;
+    readonly mimeType?: string;
+    readonly locale?: string;
+    readonly tags?: readonly string[];
+    readonly properties?: Readonly<Record<string, AssetJsonValue>>;
+}
+
 export type AssetSelector<
     TSchema extends AssetSchema,
     TKind extends AssetKind<TSchema> = AssetKind<TSchema>,

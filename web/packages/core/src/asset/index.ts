@@ -56,6 +56,7 @@ export type {
     AssetMetadata,
     AssetMetadataInput,
     AssetPipelineExecution,
+    AssetQuery,
     AssetRecord,
     AssetReference,
     AssetReferenceToken,

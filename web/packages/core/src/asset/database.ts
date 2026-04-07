@@ -55,6 +55,7 @@ import type {
     AssetLookupByKey,
     AssetMetadata,
     AssetMetadataInput,
+    AssetQuery,
     AssetRecord,
     AssetReference,
     AssetSchema,
@@ -504,6 +505,12 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     private readonly _revisionsById = new Map<string, StoredAsset<TSchema>[]>();
     private readonly _keyIndex = new Map<string, string>();
     private readonly _aliasIndex = new Map<string, string>();
+    private readonly _fingerprintIndex = new Map<string, Set<string>>();
+    private readonly _metadataUriIndex = new Map<string, Set<string>>();
+    private readonly _metadataMimeTypeIndex = new Map<string, Set<string>>();
+    private readonly _metadataLocaleIndex = new Map<string, Set<string>>();
+    private readonly _metadataTagIndex = new Map<string, Set<string>>();
+    private readonly _metadataPropertyIndex = new Map<string, Map<string, Set<string>>>();
     private readonly _dependentsById = new Map<string, Set<string>>();
     private readonly _listeners = new Set<AssetListener<TSchema>>();
     private readonly _codecs: AssetCodecMap<TSchema>;
@@ -680,6 +687,31 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             if (!kind || asset.kind === kind) {
                 result.push(asset.toRecord());
             }
+        }
+
+        return Object.freeze(result);
+    }
+
+    find(query: AssetQuery<TSchema> = {}): readonly AssetRecord<TSchema>[] {
+        this._assertNotDisposed();
+
+        const candidateIds = this._intersectIdBuckets(this._getQueryBuckets(query));
+        if (candidateIds && candidateIds.size === 0) {
+            return Object.freeze([]);
+        }
+
+        const result: AssetRecord<TSchema>[] = [];
+
+        for (const asset of this._assetsById.values()) {
+            if (candidateIds && !candidateIds.has(asset.id)) {
+                continue;
+            }
+
+            if (query.kind && asset.kind !== query.kind) {
+                continue;
+            }
+
+            result.push(asset.toRecord());
         }
 
         return Object.freeze(result);
@@ -1632,6 +1664,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
 
             if (previous) {
                 this._unlinkDependencies(previous.id, previous.dependencyIds);
+                this._unindexAsset(previous);
                 this._keyIndex.delete(previous.key);
                 for (const alias of previous.aliases) {
                     if (this._aliasIndex.get(alias) === previous.id) {
@@ -1651,6 +1684,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             for (const alias of asset.aliases) {
                 this._aliasIndex.set(alias, asset.id);
             }
+            this._indexAsset(asset);
             this._linkDependencies(asset.id, asset.dependencyIds);
             const record = asset.toRecord();
             records.push(record);
@@ -1787,6 +1821,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 }
             }
 
+            this._unindexAsset(asset);
             this._unlinkDependencies(id, asset.dependencyIds);
             this._dependentsById.delete(id);
             this._revisionsById.delete(id);
@@ -1801,6 +1836,154 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         }
 
         this._runDisposers(disposers);
+    }
+
+    private _getQueryBuckets(query: AssetQuery<TSchema>): readonly ReadonlySet<string>[] {
+        const buckets: ReadonlySet<string>[] = [];
+        const fingerprint = query.fingerprint?.trim();
+        const uri = normalizeAssetUri(query.uri);
+        const mimeType = query.mimeType?.trim() || undefined;
+        const locale = normalizeAssetLocale(query.locale);
+
+        if (fingerprint) {
+            buckets.push(this._fingerprintIndex.get(fingerprint) ?? new Set<string>());
+        }
+
+        if (uri) {
+            buckets.push(this._metadataUriIndex.get(uri) ?? new Set<string>());
+        }
+
+        if (mimeType) {
+            buckets.push(this._metadataMimeTypeIndex.get(mimeType) ?? new Set<string>());
+        }
+
+        if (locale) {
+            buckets.push(this._metadataLocaleIndex.get(locale) ?? new Set<string>());
+        }
+
+        for (const tag of uniqueStrings(query.tags ?? EMPTY_STRING_ARRAY)) {
+            buckets.push(this._metadataTagIndex.get(tag) ?? new Set<string>());
+        }
+
+        for (const [key, value] of Object.entries(query.properties ?? EMPTY_PROPERTIES)) {
+            const normalizedKey = key.trim();
+            if (!normalizedKey) {
+                continue;
+            }
+
+            buckets.push(
+                this._metadataPropertyIndex
+                    .get(normalizedKey)
+                    ?.get(stableStringify(value)) ?? new Set<string>()
+            );
+        }
+
+        return buckets;
+    }
+
+    private _intersectIdBuckets(
+        buckets: readonly ReadonlySet<string>[]
+    ): ReadonlySet<string> | undefined {
+        if (buckets.length === 0) {
+            return undefined;
+        }
+
+        const ordered = [...buckets].sort((left, right) => left.size - right.size);
+        const [seed, ...rest] = ordered;
+        const result = new Set<string>(seed);
+
+        for (const bucket of rest) {
+            for (const id of result) {
+                if (!bucket.has(id)) {
+                    result.delete(id);
+                }
+            }
+
+            if (result.size === 0) {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private _indexAsset(asset: StoredAsset<TSchema>): void {
+        this._indexValue(this._fingerprintIndex, asset.fingerprint, asset.id);
+
+        if (asset.metadata.uri) {
+            this._indexValue(this._metadataUriIndex, asset.metadata.uri, asset.id);
+        }
+
+        if (asset.metadata.mimeType) {
+            this._indexValue(this._metadataMimeTypeIndex, asset.metadata.mimeType, asset.id);
+        }
+
+        if (asset.metadata.locale) {
+            this._indexValue(this._metadataLocaleIndex, asset.metadata.locale, asset.id);
+        }
+
+        for (const tag of asset.metadata.tags) {
+            this._indexValue(this._metadataTagIndex, tag, asset.id);
+        }
+
+        for (const [key, value] of Object.entries(asset.metadata.properties)) {
+            const propertyIndex = this._metadataPropertyIndex.get(key) ?? new Map<string, Set<string>>();
+            if (!this._metadataPropertyIndex.has(key)) {
+                this._metadataPropertyIndex.set(key, propertyIndex);
+            }
+
+            this._indexValue(propertyIndex, stableStringify(value), asset.id);
+        }
+    }
+
+    private _unindexAsset(asset: StoredAsset<TSchema>): void {
+        this._unindexValue(this._fingerprintIndex, asset.fingerprint, asset.id);
+
+        if (asset.metadata.uri) {
+            this._unindexValue(this._metadataUriIndex, asset.metadata.uri, asset.id);
+        }
+
+        if (asset.metadata.mimeType) {
+            this._unindexValue(this._metadataMimeTypeIndex, asset.metadata.mimeType, asset.id);
+        }
+
+        if (asset.metadata.locale) {
+            this._unindexValue(this._metadataLocaleIndex, asset.metadata.locale, asset.id);
+        }
+
+        for (const tag of asset.metadata.tags) {
+            this._unindexValue(this._metadataTagIndex, tag, asset.id);
+        }
+
+        for (const [key, value] of Object.entries(asset.metadata.properties)) {
+            const propertyIndex = this._metadataPropertyIndex.get(key);
+            if (!propertyIndex) {
+                continue;
+            }
+
+            this._unindexValue(propertyIndex, stableStringify(value), asset.id);
+            if (propertyIndex.size === 0) {
+                this._metadataPropertyIndex.delete(key);
+            }
+        }
+    }
+
+    private _indexValue(index: Map<string, Set<string>>, key: string, id: string): void {
+        const bucket = index.get(key) ?? new Set<string>();
+        bucket.add(id);
+        index.set(key, bucket);
+    }
+
+    private _unindexValue(index: Map<string, Set<string>>, key: string, id: string): void {
+        const bucket = index.get(key);
+        if (!bucket) {
+            return;
+        }
+
+        bucket.delete(id);
+        if (bucket.size === 0) {
+            index.delete(key);
+        }
     }
 
     private _runDisposers(assets: readonly StoredAsset<TSchema>[]): void {
