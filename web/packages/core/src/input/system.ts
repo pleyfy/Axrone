@@ -2,8 +2,6 @@ import {
     InputConfigurationError,
     InputContextError,
     InputDisposedError,
-    InputRebindingError,
-    InputSnapshotError,
     resolveInputMessage,
 } from './errors';
 import { normalizeInputContextId, normalizeInputControlPath } from './reference';
@@ -27,6 +25,15 @@ import {
     pollGamepads,
 } from './internal/source-state';
 import {
+    applyBindingMutation,
+    beginRebindingSession,
+    cancelRebindingSession,
+    captureRebindingCandidate,
+    createInputSnapshot,
+    expireRebindingSessionIfNeeded,
+    restoreInputSnapshot,
+} from './internal/rebinding';
+import {
     commitAxisState,
     commitButtonState,
     commitVectorState,
@@ -42,17 +49,14 @@ import {
     createButtonStateView,
     createVector2StateStore,
     createVector2StateView,
-    EMPTY_MODIFIERS,
     EPSILON,
     INPUT_ACTION_PHASE_MASK_ALL,
     INPUT_ACTION_PHASE_MASKS,
-    INPUT_SNAPSHOT_VERSION,
     isEventTargetLike,
     isInputSystemSnapshot,
     isRecord,
     magnitude,
     normalizeLocale,
-    toFiniteNumber,
 } from './internal/shared';
 import type {
     ActiveRebinding,
@@ -69,6 +73,7 @@ import type {
 } from './internal/shared';
 import type { InputCompiler } from './internal/compiler';
 import type { InputEvaluationRuntime } from './internal/evaluator';
+import type { InputRebindingRuntime } from './internal/rebinding';
 import type { InputSourceRuntime } from './internal/source-state';
 import type { InputCommitRuntime } from './internal/state-commit';
 import type {
@@ -87,10 +92,8 @@ import type {
     InputAxisActionDefinition,
     InputAxisState,
     InputBinding,
-    InputBindingControlPatchRequest,
     InputBindingForAction,
     InputBindingMutationRequest,
-    InputBindingReplaceRequest,
     InputBindingSlot,
     InputBrowserTarget,
     InputButtonActionDefinition,
@@ -98,7 +101,6 @@ import type {
     InputContextCapture,
     InputContextDefinition,
     InputContextId,
-    InputContextSnapshot,
     InputContextState,
     InputControlBinding,
     InputControlPath,
@@ -112,10 +114,8 @@ import type {
     InputMouseMoveSourceEvent,
     InputMouseWheelSourceEvent,
     InputProcessor,
-    InputRebindingCandidate,
     InputRebindingHandlers,
     InputRebindingRequest,
-    InputRebindingResult,
     InputRebindingSession,
     InputRestoreOptions,
     InputSourceEvent,
@@ -469,44 +469,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         request: Readonly<InputBindingMutationRequest<TSchema, TAction>>
     ): readonly InputBindingForAction<TSchema[TAction]>[] {
         this._assertNotDisposed();
-
-        if ('bindings' in request) {
-            const replaceRequest = request as InputBindingReplaceRequest<TSchema, TAction>;
-            const entry = this._requireContextAction(replaceRequest.context, replaceRequest.action);
-            const normalized = this._compiler.normalizeBindingList(
-                replaceRequest.action,
-                replaceRequest.bindings
-            );
-            entry.current = normalized as readonly InputBinding[];
-            entry.compiled = this._compiler.compileBindings(entry.current);
-            return entry.current as readonly InputBindingForAction<TSchema[TAction]>[];
-        }
-
-        const patchRequest = request as InputBindingControlPatchRequest<TSchema, TAction>;
-        const { entry, index, slot, control } = this._resolveControlPatch(patchRequest);
-        const nextBindings = [...entry.current];
-
-        if (index >= nextBindings.length) {
-            nextBindings.push(
-                Object.freeze({
-                    type: 'control',
-                    control,
-                    scale: 1,
-                    invert: false,
-                    deadzone: 0,
-                    consume: false,
-                    modifiers: EMPTY_MODIFIERS,
-                    exactModifiers: false,
-                }) as InputControlBinding
-            );
-        } else {
-            nextBindings[index] = this._patchBindingControl(nextBindings[index]!, slot, control);
-        }
-
-        const normalized = this._compiler.normalizeBindingList(patchRequest.action, nextBindings);
-        entry.current = normalized as readonly InputBinding[];
-        entry.compiled = this._compiler.compileBindings(entry.current);
-        return entry.current as readonly InputBindingForAction<TSchema[TAction]>[];
+        return applyBindingMutation(this as unknown as InputRebindingRuntime<TSchema>, request);
     }
 
     beginRebinding<TAction extends InputActionName<TSchema>>(
@@ -514,113 +477,26 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         handlers?: InputRebindingHandlers<TSchema, TAction>
     ): InputRebindingSession<TSchema, TAction> {
         this._assertNotDisposed();
-        this._resolveBindingTarget(request.context, request.action, request.index, request.slot);
-
-        if (this._activeRebinding) {
-            this._cancelRebinding('replaced');
-        }
-
-        const token = ++this._rebindToken;
-        const startedAtEpochMs = this._now();
-        const timeoutMs =
-            typeof request.timeoutMs === 'number' && Number.isFinite(request.timeoutMs)
-                ? Math.max(0, request.timeoutMs)
-                : undefined;
-
-        this._activeRebinding = {
-            token,
+        return beginRebindingSession(
+            this as unknown as InputRebindingRuntime<TSchema>,
             request,
-            handlers,
-            startedAtEpochMs,
-            deadlineEpochMs:
-                typeof timeoutMs === 'number' ? startedAtEpochMs + timeoutMs : undefined,
-        };
-
-        let disposed = false;
-
-        return {
-            request,
-            startedAtEpochMs,
-            get isDisposed(): boolean {
-                return disposed;
-            },
-            dispose: () => {
-                if (disposed) {
-                    return;
-                }
-
-                disposed = true;
-                if (this._activeRebinding?.token === token) {
-                    this._cancelRebinding('manual');
-                }
-            },
-        };
+            handlers
+        );
     }
 
     snapshot(): InputSystemSnapshot<TSchema> {
         this._assertNotDisposed();
-
-        const contexts = this._getOrderedContexts().map<InputContextSnapshot<TSchema>>((context) => {
-            const bindings: Partial<InputActionBindings<TSchema>> = {};
-
-            for (const [actionIndex, actionEntry] of context.actions) {
-                const actionName = this._actionNames[actionIndex]!;
-                bindings[actionName] =
-                    actionEntry.current as readonly InputBindingForAction<TSchema[typeof actionName]>[];
-            }
-
-            return Object.freeze({
-                id: context.id,
-                priority: context.priority,
-                enabled: context.enabled,
-                capture: context.capture,
-                bindings: Object.freeze(bindings) as InputContextSnapshot<TSchema>['bindings'],
-            });
-        });
-
-        return Object.freeze({
-            version: INPUT_SNAPSHOT_VERSION,
-            locale: this._locale,
-            capturedAtEpochMs: this._now(),
-            contexts: Object.freeze(contexts),
-        });
+        return createInputSnapshot(this as unknown as InputRebindingRuntime<TSchema>);
     }
 
     restore(snapshot: Readonly<InputSystemSnapshot<TSchema>>, options: InputRestoreOptions = {}): void {
         this._assertNotDisposed();
-
-        if (!isInputSystemSnapshot(snapshot)) {
-            throw new InputSnapshotError(
-                this._resolveMessage({
-                    code: 'input.invalid-snapshot',
-                    reason: 'snapshot shape is invalid',
-                })
-            );
-        }
-
-        if (!options.merge) {
-            this._contexts.clear();
-            this._contextOrderDirty = true;
-        }
-
-        for (const contextSnapshot of snapshot.contexts) {
-            if (!isRecord(contextSnapshot) || typeof contextSnapshot.id !== 'string') {
-                throw new InputSnapshotError(
-                    this._resolveMessage({
-                        code: 'input.invalid-snapshot',
-                        reason: 'context entry is invalid',
-                    })
-                );
-            }
-
-            this._upsertContext({
-                id: contextSnapshot.id,
-                priority: contextSnapshot.priority,
-                enabled: contextSnapshot.enabled,
-                capture: contextSnapshot.capture,
-                bindings: contextSnapshot.bindings,
-            }, true);
-        }
+        restoreInputSnapshot(
+            this as unknown as InputRebindingRuntime<TSchema>,
+            snapshot,
+            options,
+            isInputSystemSnapshot
+        );
     }
 
     subscribe(
@@ -977,250 +853,27 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         return this._snapshotContextState(context);
     }
 
-    private _resolveBindingTarget<TAction extends InputActionName<TSchema>>(
-        contextValue: string | InputContextId,
-        action: TAction,
-        indexValue: number | undefined,
-        slotValue?: InputBindingSlot
-    ): {
-        readonly entry: InternalContextAction<TSchema>;
-        readonly index: number;
-        readonly slot: InputBindingSlot;
-        readonly context: InternalContext<TSchema>;
-    } {
-        const context = this._requireContext(contextValue);
-        const entry = this._requireContextAction(context.id, action);
-        const actionIndex = this._requireActionIndex(action);
-        const actionDefinition = this._actionDefinitions[actionIndex]!;
-
-        if (typeof indexValue !== 'number' || !Number.isInteger(indexValue) || indexValue < 0) {
-            if (actionDefinition.kind === 'vector2') {
-                throw new InputRebindingError(
-                    'input.invalid-rebind',
-                    this._resolveMessage({
-                        code: 'input.invalid-rebind',
-                        value: { context: contextValue, action, index: indexValue, slot: slotValue },
-                    })
-                );
-            }
-
-            return {
-                entry,
-                index: entry.current.length,
-                slot: 'control',
-                context,
-            };
-        }
-
-        const binding = entry.current[indexValue];
-        if (!binding) {
-            throw new InputRebindingError(
-                'input.invalid-rebind',
-                this._resolveMessage({
-                    code: 'input.invalid-rebind',
-                    value: { context: contextValue, action, index: indexValue, slot: slotValue },
-                })
-            );
-        }
-
-        const slot = this._resolveBindingSlot(binding, slotValue);
-        return {
-            entry,
-            index: indexValue,
-            slot,
-            context,
-        };
-    }
-
-    private _resolveControlPatch<TAction extends InputActionName<TSchema>>(
-        request: Readonly<InputBindingControlPatchRequest<TSchema, TAction>>
-    ): {
-        readonly entry: InternalContextAction<TSchema>;
-        readonly index: number;
-        readonly slot: InputBindingSlot;
-        readonly control: InputControlPath;
-        readonly context: InternalContext<TSchema>;
-    } {
-        if (!isRecord(request)) {
-            throw new InputRebindingError(
-                'input.invalid-rebind',
-                this._resolveMessage({
-                    code: 'input.invalid-rebind',
-                    value: request,
-                })
-            );
-        }
-
-        return {
-            ...this._resolveBindingTarget(request.context, request.action, request.index, request.slot),
-            control: this._requireControlPath(request.control),
-        };
-    }
-
-    private _resolveBindingSlot(binding: InputBinding, slot?: InputBindingSlot): InputBindingSlot {
-        if (binding.type === 'control') {
-            return 'control';
-        }
-
-        if (slot) {
-            switch (binding.type) {
-                case 'axis':
-                    if (slot === 'negative' || slot === 'positive') {
-                        return slot;
-                    }
-                    break;
-                case 'vector2':
-                    if (slot === 'up' || slot === 'down' || slot === 'left' || slot === 'right') {
-                        return slot;
-                    }
-                    break;
-                case 'dual-axis':
-                    if (slot === 'x' || slot === 'y') {
-                        return slot;
-                    }
-                    break;
-            }
-        }
-
-        throw new InputRebindingError(
-            'input.invalid-slot',
-            this._resolveMessage({
-                code: 'input.invalid-slot',
-                value: slot ?? binding.type,
-            })
-        );
-    }
-
-    private _patchBindingControl(
-        binding: InputBinding,
-        slot: InputBindingSlot,
-        control: InputControlPath
-    ): InputBinding {
-        switch (binding.type) {
-            case 'control':
-                return Object.freeze({
-                    ...binding,
-                    control,
-                });
-            case 'axis':
-                if (slot === 'negative' || slot === 'positive') {
-                    return Object.freeze({
-                        ...binding,
-                        [slot]: control,
-                    });
-                }
-                break;
-            case 'vector2':
-                if (slot === 'up' || slot === 'down' || slot === 'left' || slot === 'right') {
-                    return Object.freeze({
-                        ...binding,
-                        [slot]: control,
-                    });
-                }
-                break;
-            case 'dual-axis':
-                if (slot === 'x' || slot === 'y') {
-                    return Object.freeze({
-                        ...binding,
-                        [slot]: control,
-                    });
-                }
-                break;
-        }
-
-        throw new InputRebindingError(
-            'input.invalid-slot',
-            this._resolveMessage({
-                code: 'input.invalid-slot',
-                value: slot,
-            })
-        );
-    }
-
     private _captureRebinding(
         control: InputControlPath,
         device: InputDeviceKind,
         timestamp: number,
         magnitudeValue = 1
     ): void {
-        const active = this._activeRebinding;
-        if (!active) {
-            return;
-        }
-
-        if (active.request.devices?.length && !active.request.devices.includes(device)) {
-            return;
-        }
-
-        const threshold = Math.max(0, toFiniteNumber(active.request.threshold, 0.5));
-        if (magnitudeValue < threshold) {
-            return;
-        }
-
-        const candidate: InputRebindingCandidate = Object.freeze({
+        captureRebindingCandidate(
+            this as unknown as InputRebindingRuntime<TSchema>,
             control,
             device,
             timestamp,
-        });
-
-        if (active.handlers?.accept?.(candidate) === false) {
-            return;
-        }
-
-        const nextBindings = this.rebind({
-            context: active.request.context,
-            action: active.request.action,
-            index: active.request.index,
-            slot: active.request.slot,
-            control,
-        } as InputBindingControlPatchRequest<TSchema>);
-        const resolved = this._resolveBindingTarget(
-            active.request.context,
-            active.request.action,
-            active.request.index,
-            active.request.slot
+            magnitudeValue
         );
-        const binding = nextBindings[resolved.index]!;
-        const handlers = active.handlers;
-        this._activeRebinding = undefined;
-
-        const result: InputRebindingResult<TSchema> = Object.freeze({
-            context: resolved.context.id,
-            action: active.request.action,
-            index: resolved.index,
-            slot: resolved.slot,
-            control,
-            binding,
-            timestamp,
-        });
-
-        handlers?.complete?.(result);
     }
 
     private _cancelRebinding(reason: 'manual' | 'timeout' | 'disposed' | 'replaced' | 'completed'): void {
-        const active = this._activeRebinding;
-        if (!active) {
-            return;
-        }
-
-        this._activeRebinding = undefined;
-        active.handlers?.cancel?.(reason);
+        cancelRebindingSession(this as unknown as InputRebindingRuntime<TSchema>, reason);
     }
 
     private _expireRebindingIfNeeded(now: number): void {
-        const active = this._activeRebinding;
-        if (!active || typeof active.deadlineEpochMs !== 'number' || now < active.deadlineEpochMs) {
-            return;
-        }
-
-        const message = this._resolveMessage({
-            code: 'input.rebind.timeout',
-            action: String(active.request.action),
-            context: String(active.request.context),
-        });
-        const handlers = active.handlers;
-        this._activeRebinding = undefined;
-        handlers?.cancel?.('timeout');
+        expireRebindingSessionIfNeeded(this as unknown as InputRebindingRuntime<TSchema>, now);
     }
 
     private _evaluate(): void {
