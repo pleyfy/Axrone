@@ -55,12 +55,14 @@ import type {
     AssetSchema,
     AssetSelector,
     AssetSnapshotRecord,
+    AssetSnapshotRevisionRecord,
     AssetSubscription,
     AssetVersionedReference,
     AssetWriteInput,
 } from './types';
 
-const ASSET_SNAPSHOT_VERSION = 1 as const;
+const ASSET_SNAPSHOT_VERSION = 2 as const;
+const LEGACY_ASSET_SNAPSHOT_VERSION = 1 as const;
 const EMPTY_STRING_ARRAY = Object.freeze([]) as readonly string[];
 const EMPTY_PROPERTIES = Object.freeze({}) as Readonly<Record<string, AssetJsonValue>>;
 const RANDOM = createRandom();
@@ -370,11 +372,14 @@ export const isAssetDatabaseSnapshot = <TKind extends string = string>(
 ): value is AssetDatabaseSnapshot<TKind> =>
     value !== null &&
     typeof value === 'object' &&
-    (value as AssetDatabaseSnapshot<TKind>).version === ASSET_SNAPSHOT_VERSION &&
+    (((value as AssetDatabaseSnapshot<TKind>).version as number) === ASSET_SNAPSHOT_VERSION ||
+        ((value as AssetDatabaseSnapshot<TKind>).version as number) ===
+            LEGACY_ASSET_SNAPSHOT_VERSION) &&
     Array.isArray((value as AssetDatabaseSnapshot<TKind>).assets);
 
 export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     private readonly _assetsById = new Map<string, StoredAsset<TSchema>>();
+    private readonly _revisionsById = new Map<string, StoredAsset<TSchema>[]>();
     private readonly _keyIndex = new Map<string, string>();
     private readonly _aliasIndex = new Map<string, string>();
     private readonly _dependentsById = new Map<string, Set<string>>();
@@ -731,32 +736,24 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                     : left.kind.localeCompare(right.kind)
             )
             .map((asset) => {
-                const codec = this._codecs?.[asset.kind] as
-                    | AssetCodec<typeof asset.data>
-                    | undefined;
-                const serializedData = codec
-                    ? codec.serialize(asset.data)
-                    : this._serializeJsonCompatible(asset.data, asset.kind);
+                const revisions = this._revisionsById.get(asset.id);
+                const history =
+                    revisions && revisions.length > 1
+                        ? Object.freeze(
+                              revisions
+                                  .slice(0, Math.max(0, asset.revision - 1))
+                                  .filter(
+                                      (
+                                          revision
+                                      ): revision is StoredAsset<TSchema> => revision !== undefined
+                                  )
+                                  .map((revision) => this._serializeSnapshotRevision(revision))
+                          )
+                        : undefined;
 
                 return Object.freeze({
-                    kind: asset.kind,
-                    id: asset.id,
-                    key: asset.key,
-                    aliases: asset.aliases,
-                    name: asset.name,
-                    revision: asset.revision,
-                    fingerprint: asset.fingerprint,
-                    createdAtEpochMs: asset.createdAtEpochMs,
-                    updatedAtEpochMs: asset.updatedAtEpochMs,
-                    metadata: Object.freeze({
-                        uri: asset.metadata.uri,
-                        mimeType: asset.metadata.mimeType,
-                        locale: asset.metadata.locale,
-                        tags: asset.metadata.tags,
-                        properties: asset.metadata.properties,
-                    }),
-                    dependencyIds: asset.dependencyIds,
-                    data: serializedData,
+                    ...this._serializeSnapshotRevision(asset),
+                    ...(history && history.length > 0 ? { history } : {}),
                 }) as AssetSnapshotRecord<AssetKind<TSchema>>;
             });
 
@@ -797,55 +794,65 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             }
 
             const staged = new Map<string, StoredAsset<TSchema>>();
+            const stagedRevisions = new Map<string, StoredAsset<TSchema>[]>();
 
             for (const entry of snapshot.assets) {
-                const kind = this._validateKind(entry.kind);
-                const id = this._validateId(entry.id);
-                const key = this._validateKey(entry.key);
-                const revision = this._validateRevision(entry.revision);
-                const metadata = normalizeMetadata({
-                    uri: entry.metadata.uri,
-                    mimeType: entry.metadata.mimeType,
-                    locale: entry.metadata.locale,
-                    tags: entry.metadata.tags,
-                    properties: entry.metadata.properties,
-                });
-                const codec = this._codecs?.[kind] as AssetCodec<TSchema[typeof kind]> | undefined;
-                const data = codec
-                    ? codec.deserialize(entry.data)
-                    : this._deserializeJsonCompatible(entry.data, kind);
-                const aliases = this._normalizeAliases(entry.aliases, key);
-                const disposer = this._disposers?.[kind]
-                    ? (value: unknown, record: Readonly<AssetRecord<TSchema>>) =>
-                          (
-                              this._disposers?.[kind] as (
-                                  data: TSchema[typeof kind],
-                                  record: Readonly<AssetRecord<TSchema, typeof kind>>
-                              ) => void
-                          )(
-                              value as TSchema[typeof kind],
-                              record as AssetRecord<TSchema, typeof kind>
-                          )
-                    : undefined;
+                const history = entry.history ?? [];
+                let previousRevision = 0;
 
-                staged.set(
-                    id,
-                    new StoredAsset<TSchema>({
-                        id,
-                        kind,
-                        key,
-                        aliases,
-                        name: inferAssetName(kind, key, entry.name),
-                        data,
-                        revision,
-                        fingerprint: entry.fingerprint,
-                        createdAtEpochMs: entry.createdAtEpochMs,
-                        updatedAtEpochMs: entry.updatedAtEpochMs,
-                        metadata,
-                        dependencyIds: [...entry.dependencyIds],
-                        disposer,
-                    })
-                );
+                for (const historicalEntry of history) {
+                    const historicalAsset = this._createStoredAssetFromSnapshotRecord(historicalEntry);
+
+                    if (historicalAsset.id !== entry.id || historicalAsset.kind !== entry.kind) {
+                        throw new AssetSnapshotError(
+                            resolveAssetMessage(
+                                {
+                                    code: 'asset.snapshot.invalid',
+                                    reason: `history mismatch for asset ${entry.id}`,
+                                },
+                                this._locale,
+                                this._messageResolver
+                            )
+                        );
+                    }
+
+                    if (historicalAsset.revision <= previousRevision) {
+                        throw new AssetSnapshotError(
+                            resolveAssetMessage(
+                                {
+                                    code: 'asset.snapshot.invalid',
+                                    reason: `non-monotonic revision history for asset ${entry.id}`,
+                                },
+                                this._locale,
+                                this._messageResolver
+                            )
+                        );
+                    }
+
+                    this._stageRevisionAsset(stagedRevisions, historicalAsset);
+                    previousRevision = historicalAsset.revision;
+                }
+
+                const currentAsset = this._createStoredAssetFromSnapshotRecord(entry);
+
+                if (history.length > 0 && currentAsset.revision <= previousRevision) {
+                    throw new AssetSnapshotError(
+                        resolveAssetMessage(
+                            {
+                                code: 'asset.snapshot.invalid',
+                                reason: `current revision is not newer than history for asset ${entry.id}`,
+                            },
+                            this._locale,
+                            this._messageResolver
+                        )
+                    );
+                }
+
+                staged.set(currentAsset.id, currentAsset);
+            }
+
+            for (const [id, revisions] of stagedRevisions) {
+                this._revisionsById.set(id, revisions);
             }
 
             const availableIds = new Set<string>([...this._assetsById.keys(), ...staged.keys()]);
@@ -870,6 +877,98 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             return this._commitStoredAssets([...staged.values()]);
         } finally {
             this._endBatch();
+        }
+    }
+
+    private _serializeSnapshotRevision(
+        asset: StoredAsset<TSchema>
+    ): AssetSnapshotRevisionRecord<AssetKind<TSchema>> {
+        const codec = this._codecs?.[asset.kind] as AssetCodec<typeof asset.data> | undefined;
+        const serializedData = codec
+            ? codec.serialize(asset.data)
+            : this._serializeJsonCompatible(asset.data, asset.kind);
+
+        return Object.freeze({
+            kind: asset.kind,
+            id: asset.id,
+            key: asset.key,
+            aliases: asset.aliases,
+            name: asset.name,
+            revision: asset.revision,
+            fingerprint: asset.fingerprint,
+            createdAtEpochMs: asset.createdAtEpochMs,
+            updatedAtEpochMs: asset.updatedAtEpochMs,
+            metadata: Object.freeze({
+                uri: asset.metadata.uri,
+                mimeType: asset.metadata.mimeType,
+                locale: asset.metadata.locale,
+                tags: asset.metadata.tags,
+                properties: asset.metadata.properties,
+            }),
+            dependencyIds: asset.dependencyIds,
+            data: serializedData,
+        });
+    }
+
+    private _createStoredAssetFromSnapshotRecord(
+        entry: AssetSnapshotRevisionRecord<AssetKind<TSchema>>
+    ): StoredAsset<TSchema> {
+        const kind = this._validateKind(entry.kind);
+        const id = this._validateId(entry.id);
+        const key = this._validateKey(entry.key);
+        const revision = this._validateRevision(entry.revision);
+        const metadata = normalizeMetadata({
+            uri: entry.metadata.uri,
+            mimeType: entry.metadata.mimeType,
+            locale: entry.metadata.locale,
+            tags: entry.metadata.tags,
+            properties: entry.metadata.properties,
+        });
+        const codec = this._codecs?.[kind] as AssetCodec<TSchema[typeof kind]> | undefined;
+        const data = codec
+            ? codec.deserialize(entry.data)
+            : this._deserializeJsonCompatible(entry.data, kind);
+        const aliases = this._normalizeAliases(entry.aliases, key);
+        const disposer = this._disposers?.[kind]
+            ? (value: unknown, record: Readonly<AssetRecord<TSchema>>) =>
+                  (
+                      this._disposers?.[kind] as (
+                          data: TSchema[typeof kind],
+                          record: Readonly<AssetRecord<TSchema, typeof kind>>
+                      ) => void
+                  )(value as TSchema[typeof kind], record as AssetRecord<TSchema, typeof kind>)
+            : undefined;
+
+        return new StoredAsset<TSchema>({
+            id,
+            kind,
+            key,
+            aliases,
+            name: inferAssetName(kind, key, entry.name),
+            data,
+            revision,
+            fingerprint: entry.fingerprint,
+            createdAtEpochMs: entry.createdAtEpochMs,
+            updatedAtEpochMs: entry.updatedAtEpochMs,
+            metadata,
+            dependencyIds: [...entry.dependencyIds],
+            disposer,
+        });
+    }
+
+    private _stageRevisionAsset(
+        stagedRevisions: Map<string, StoredAsset<TSchema>[]>,
+        asset: StoredAsset<TSchema>
+    ): void {
+        const revisions = stagedRevisions.get(asset.id) ?? [];
+        if (!stagedRevisions.has(asset.id)) {
+            stagedRevisions.set(asset.id, revisions);
+        }
+
+        revisions[asset.revision - 1] = asset;
+
+        if (revisions.length < asset.revision) {
+            revisions.length = asset.revision;
         }
     }
 
@@ -1028,12 +1127,12 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     private _resolveVersionedReference(
         reference: AssetVersionedReference
     ): StoredAsset<TSchema> | undefined {
-        const asset = this._assetsById.get(reference.id);
-        if (!asset || asset.revision !== reference.revision) {
+        const revisions = this._revisionsById.get(reference.id);
+        if (!revisions) {
             return undefined;
         }
 
-        return asset;
+        return revisions[reference.revision - 1];
     }
 
     private _resolveByKey(key: string): StoredAsset<TSchema> | undefined {
@@ -1386,6 +1485,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 }
             }
 
+            this._storeRevision(asset, previous);
             this._assetsById.set(asset.id, asset);
             this._keyIndex.set(asset.key, asset.id);
             this._aliasIndex.delete(asset.key);
@@ -1404,6 +1504,24 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
 
         this._runDisposers(disposers);
         return Object.freeze(records);
+    }
+
+    private _storeRevision(asset: StoredAsset<TSchema>, previous?: StoredAsset<TSchema>): void {
+        const revisions = this._revisionsById.get(asset.id) ?? [];
+
+        if (!this._revisionsById.has(asset.id)) {
+            this._revisionsById.set(asset.id, revisions);
+        }
+
+        if (previous) {
+            revisions[previous.revision - 1] = previous;
+        }
+
+        revisions[asset.revision - 1] = asset;
+
+        if (revisions.length < asset.revision) {
+            revisions.length = asset.revision;
+        }
     }
 
     private _assertKeyOwnership(asset: StoredAsset<TSchema>): void {
@@ -1512,6 +1630,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
 
             this._unlinkDependencies(id, asset.dependencyIds);
             this._dependentsById.delete(id);
+            this._revisionsById.delete(id);
             this._emitLeaf({
                 type: 'delete',
                 asset: asset.toRecord(),

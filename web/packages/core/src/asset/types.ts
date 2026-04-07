@@ -430,7 +430,7 @@ export interface AssetDeleteOptions {
     readonly cascade?: boolean;
 }
 
-export interface AssetSnapshotRecord<TKind extends string = string> {
+export interface AssetSnapshotRevisionRecord<TKind extends string = string> {
     readonly kind: TKind;
     readonly id: string;
     readonly key: string;
@@ -451,8 +451,13 @@ export interface AssetSnapshotRecord<TKind extends string = string> {
     readonly data: AssetJsonValue;
 }
 
+export interface AssetSnapshotRecord<TKind extends string = string>
+    extends AssetSnapshotRevisionRecord<TKind> {
+    readonly history?: readonly AssetSnapshotRevisionRecord<TKind>[];
+}
+
 export interface AssetDatabaseSnapshot<TKind extends string = string> {
-    readonly version: 1;
+    readonly version: 2;
     readonly locale: string;
     readonly capturedAtEpochMs: number;
     readonly assets: readonly AssetSnapshotRecord<TKind>[];

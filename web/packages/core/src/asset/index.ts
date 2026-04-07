@@ -49,6 +49,7 @@ export type {
     AssetSchema,
     AssetSelector,
     AssetSnapshotRecord,
+    AssetSnapshotRevisionRecord,
     AssetSourceBase,
     AssetSourceKind,
     AssetSubscription,

@@ -59,6 +59,7 @@ describe('AssetDatabase', () => {
             data: 'hello',
             uri: 'assets/hello.txt',
         });
+        const firstRevisionReference = first.primary.versionedReference;
         const second = await database.import({
             kind: 'text',
             data: 'hello-again',
@@ -68,6 +69,8 @@ describe('AssetDatabase', () => {
         expect(second.primary.id).toBe(first.primary.id);
         expect(second.primary.revision).toBe(first.primary.revision + 1);
         expect(database.get(first.primary.reference)?.data).toBe('hello-again');
+        expect(database.get(firstRevisionReference)?.data).toBe('hello');
+        expect(database.get(second.primary.versionedReference)?.data).toBe('hello-again');
     });
 
     it('resolves aliases after moving an asset to a new canonical key', () => {
@@ -115,5 +118,33 @@ describe('AssetDatabase', () => {
             entry: 'text',
         });
         expect(restored.get(dependency!.reference)?.data).toBe('from-bundle');
+    });
+
+    it('preserves historical revisions across snapshot hydration', async () => {
+        const database = new AssetDatabase<TestAssetSchema>({
+            importers: [textImporter],
+        });
+
+        const first = await database.import({
+            kind: 'text',
+            data: 'v1',
+            uri: 'assets/history.txt',
+        });
+        const second = await database.import({
+            kind: 'text',
+            data: 'v2',
+            uri: 'assets/history.txt',
+        });
+
+        const snapshot = database.snapshot();
+        expect(snapshot.version).toBe(2);
+        expect(snapshot.assets[0]?.history?.length).toBe(1);
+
+        const restored = new AssetDatabase<TestAssetSchema>();
+        restored.hydrate(snapshot);
+
+        expect(restored.get(first.primary.versionedReference)?.data).toBe('v1');
+        expect(restored.get(second.primary.versionedReference)?.data).toBe('v2');
+        expect(restored.get(first.primary.reference)?.data).toBe('v2');
     });
 });
