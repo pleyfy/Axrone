@@ -6,7 +6,8 @@ import {
     InputSnapshotError,
     resolveInputMessage,
 } from './errors';
-import { normalizeInputContextId, normalizeInputControlPath, parseInputControlPath } from './reference';
+import { normalizeInputContextId, normalizeInputControlPath } from './reference';
+import { createInputCompiler } from './internal/compiler';
 import {
     applyDeadzone,
     applyScalarProcessors,
@@ -18,14 +19,7 @@ import {
     createButtonStateView,
     createVector2StateStore,
     createVector2StateView,
-    DEFAULT_HOLD_DURATION_MS,
-    DEFAULT_MULTI_TAP_COUNT,
-    DEFAULT_MULTI_TAP_DELAY_MS,
-    DEFAULT_REPEAT_DELAY_MS,
-    DEFAULT_REPEAT_INTERVAL_MS,
-    DEFAULT_TAP_DURATION_MS,
     EMPTY_MODIFIERS,
-    EMPTY_PROCESSORS,
     EPSILON,
     GAMEPAD_ANY,
     INPUT_ACTION_PHASE_MASK_ALL,
@@ -36,12 +30,10 @@ import {
     isRecord,
     magnitude,
     MODIFIER_MASKS,
-    modifiersToMask,
     normalizeLocale,
-    toFiniteNumber,
     TOUCH_ANY,
     TOUCH_PRIMARY,
-    uniqueModifiers,
+    toFiniteNumber,
 } from './internal/shared';
 import type {
     ActiveRebinding,
@@ -53,27 +45,23 @@ import type {
     InternalAxisCompositeBinding,
     InternalBinding,
     InternalBindingBase,
-    InternalButtonInteractions,
     InternalContext,
     InternalContextAction,
     InternalControl,
     InternalControlBinding,
     InternalDirectionalBinding,
     InternalDualAxisBinding,
-    InternalProcessor,
-    InternalScalarProcessor,
-    InternalVectorProcessor,
     MutableGamepadState,
     MutableTouchPoint,
     MutableVector2,
     Vector2StateStore,
 } from './internal/shared';
+import type { InputCompiler } from './internal/compiler';
 import type {
     InputActionBindings,
     InputActionDefinition,
     InputActionEvent,
     InputActionEventPhase,
-    InputActionKind,
     InputActionListener,
     InputActionName,
     InputActionSchema,
@@ -83,7 +71,6 @@ import type {
     InputActionSubscriptionOptions,
     InputAttachment,
     InputAxisActionDefinition,
-    InputAxisCompositeBinding,
     InputAxisState,
     InputBinding,
     InputBindingControlPatchRequest,
@@ -93,7 +80,6 @@ import type {
     InputBindingSlot,
     InputBrowserTarget,
     InputButtonActionDefinition,
-    InputButtonInteraction,
     InputButtonState,
     InputContextCapture,
     InputContextDefinition,
@@ -103,8 +89,6 @@ import type {
     InputControlBinding,
     InputControlPath,
     InputDeviceKind,
-    InputDirectionalBinding,
-    InputDualAxisBinding,
     InputFocusSourceEvent,
     InputGamepadOptions,
     InputGamepadSnapshot,
@@ -154,6 +138,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
     private readonly _locale: string;
     private readonly _messageResolver?: InputMessageResolver;
     private readonly _now: () => number;
+    private readonly _compiler: InputCompiler<TSchema>;
     private readonly _gamepad: Required<Pick<InputGamepadOptions, 'enabled' | 'autoPoll'>> &
         Pick<InputGamepadOptions, 'provider'>;
     private _mouseButtons = 0;
@@ -198,6 +183,11 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._messageResolver = options.messageResolver;
         this._now = options.now ?? Date.now;
         this._timestamp = this._now();
+        this._compiler = createInputCompiler({
+            getActionKind: (action) => this._actionDefinitions[this._requireActionIndex(action)]!.kind,
+            requireControlPath: (value) => this._requireControlPath(value),
+            resolveMessage: (descriptor) => this._resolveMessage(descriptor),
+        });
         this._gamepad = Object.freeze({
             enabled: options.gamepad?.enabled ?? true,
             autoPoll: options.gamepad?.autoPoll ?? true,
@@ -228,7 +218,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                 );
             }
 
-            const definition = this._normalizeActionDefinition(name, rawDefinition);
+            const definition = this._compiler.normalizeActionDefinition(name, rawDefinition);
             const index = actionDefinitions.length;
             actionNames.push(name);
             actionIndices.set(name, index);
@@ -663,14 +653,14 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         if (typeof action === 'undefined') {
             for (const [, actionEntry] of storedContext.actions) {
                 actionEntry.current = actionEntry.defaults;
-                actionEntry.compiled = this._compileBindings(actionEntry.current);
+                actionEntry.compiled = this._compiler.compileBindings(actionEntry.current);
             }
             return;
         }
 
         const actionEntry = this._requireContextAction(context, action);
         actionEntry.current = actionEntry.defaults;
-        actionEntry.compiled = this._compileBindings(actionEntry.current);
+        actionEntry.compiled = this._compiler.compileBindings(actionEntry.current);
     }
 
     rebind<TAction extends InputActionName<TSchema>>(
@@ -681,12 +671,12 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         if ('bindings' in request) {
             const replaceRequest = request as InputBindingReplaceRequest<TSchema, TAction>;
             const entry = this._requireContextAction(replaceRequest.context, replaceRequest.action);
-            const normalized = this._normalizeBindingList(
+            const normalized = this._compiler.normalizeBindingList(
                 replaceRequest.action,
                 replaceRequest.bindings
             );
             entry.current = normalized as readonly InputBinding[];
-            entry.compiled = this._compileBindings(entry.current);
+            entry.compiled = this._compiler.compileBindings(entry.current);
             return entry.current as readonly InputBindingForAction<TSchema[TAction]>[];
         }
 
@@ -711,9 +701,9 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             nextBindings[index] = this._patchBindingControl(nextBindings[index]!, slot, control);
         }
 
-        const normalized = this._normalizeBindingList(patchRequest.action, nextBindings);
+        const normalized = this._compiler.normalizeBindingList(patchRequest.action, nextBindings);
         entry.current = normalized as readonly InputBinding[];
-        entry.compiled = this._compileBindings(entry.current);
+        entry.compiled = this._compiler.compileBindings(entry.current);
         return entry.current as readonly InputBindingForAction<TSchema[TAction]>[];
     }
 
@@ -1115,404 +1105,6 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         }
     }
 
-    private _compileProcessors(
-        kind: 'scalar',
-        processors?: readonly InputProcessor[]
-    ): readonly InternalScalarProcessor[];
-    private _compileProcessors(
-        kind: 'vector2',
-        processors?: readonly InputProcessor[]
-    ): readonly InternalVectorProcessor[];
-    private _compileProcessors(
-        kind: 'scalar' | 'vector2',
-        processors?: readonly InputProcessor[]
-    ): readonly InternalProcessor[] {
-        if (!processors?.length) {
-            return Object.freeze([]);
-        }
-
-        const compiled: InternalProcessor[] = [];
-
-        for (const processor of processors) {
-            if (!isRecord(processor) || typeof processor.type !== 'string') {
-                throw new InputConfigurationError(
-                    'input.invalid-binding',
-                    this._resolveMessage({
-                        code: 'input.invalid-binding',
-                        value: processor,
-                    })
-                );
-            }
-
-            switch (processor.type) {
-                case 'scale':
-                    if (kind !== 'scalar') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'scalar',
-                            type: 'scale',
-                            value: toFiniteNumber(processor.value, 1),
-                        })
-                    );
-                    continue;
-                case 'invert':
-                    if (kind !== 'scalar') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'scalar',
-                            type: 'invert',
-                        })
-                    );
-                    continue;
-                case 'clamp':
-                    if (kind !== 'scalar') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'scalar',
-                            type: 'clamp',
-                            min: Math.min(
-                                toFiniteNumber(processor.min, -Infinity),
-                                toFiniteNumber(processor.max, Infinity)
-                            ),
-                            max: Math.max(
-                                toFiniteNumber(processor.min, -Infinity),
-                                toFiniteNumber(processor.max, Infinity)
-                            ),
-                        })
-                    );
-                    continue;
-                case 'deadzone':
-                    if (kind !== 'scalar') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'scalar',
-                            type: 'deadzone',
-                            value: Math.max(0, toFiniteNumber(processor.value, 0)),
-                        })
-                    );
-                    continue;
-                case 'curve':
-                    if (kind !== 'scalar') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'scalar',
-                            type: 'curve',
-                            exponent: Math.max(EPSILON, toFiniteNumber(processor.exponent, 1)),
-                            signed: processor.signed ?? true,
-                        })
-                    );
-                    continue;
-                case 'scale-vector2':
-                    if (kind !== 'vector2') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'vector2',
-                            type: 'scale-vector2',
-                            x: toFiniteNumber(processor.x, 1),
-                            y: toFiniteNumber(processor.y, 1),
-                        })
-                    );
-                    continue;
-                case 'invert-vector2':
-                    if (kind !== 'vector2') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'vector2',
-                            type: 'invert-vector2',
-                            x: processor.x ?? true,
-                            y: processor.y ?? true,
-                        })
-                    );
-                    continue;
-                case 'normalize-vector2':
-                    if (kind !== 'vector2') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'vector2',
-                            type: 'normalize-vector2',
-                        })
-                    );
-                    continue;
-                case 'clamp-magnitude':
-                    if (kind !== 'vector2') {
-                        break;
-                    }
-
-                    compiled.push(
-                        Object.freeze({
-                            kind: 'vector2',
-                            type: 'clamp-magnitude',
-                            min: Math.max(0, toFiniteNumber(processor.min, 0)),
-                            max: Math.max(0, toFiniteNumber(processor.max, 1)),
-                        })
-                    );
-                    continue;
-            }
-
-            throw new InputConfigurationError(
-                'input.invalid-binding',
-                this._resolveMessage({
-                    code: 'input.invalid-binding',
-                    value: processor,
-                })
-            );
-        }
-
-        return Object.freeze(compiled);
-    }
-
-    private _compileButtonInteractions(
-        interactions?: readonly InputButtonInteraction[]
-    ): InternalButtonInteractions {
-        let press = false;
-        let hold: InternalButtonInteractions['hold'];
-        let tap: InternalButtonInteractions['tap'];
-        let multiTap: InternalButtonInteractions['multiTap'];
-        let repeat: InternalButtonInteractions['repeat'];
-
-        for (const interaction of interactions ?? []) {
-            if (!isRecord(interaction) || typeof interaction.type !== 'string') {
-                throw new InputConfigurationError(
-                    'input.invalid-action',
-                    this._resolveMessage({
-                        code: 'input.invalid-action',
-                        value: interaction,
-                    })
-                );
-            }
-
-            switch (interaction.type) {
-                case 'press':
-                    if (press) {
-                        break;
-                    }
-
-                    press = true;
-                    break;
-                case 'hold':
-                    if (hold) {
-                        throw new InputConfigurationError(
-                            'input.invalid-action',
-                            this._resolveMessage({
-                                code: 'input.invalid-action',
-                                value: interaction,
-                            })
-                        );
-                    }
-
-                    hold = Object.freeze({
-                        durationMs: Math.max(
-                            0,
-                            toFiniteNumber(interaction.durationMs, DEFAULT_HOLD_DURATION_MS)
-                        ),
-                        continuous: interaction.mode === 'continuous',
-                    });
-                    break;
-                case 'tap':
-                    if (tap) {
-                        throw new InputConfigurationError(
-                            'input.invalid-action',
-                            this._resolveMessage({
-                                code: 'input.invalid-action',
-                                value: interaction,
-                            })
-                        );
-                    }
-
-                    tap = Object.freeze({
-                        maxDurationMs: Math.max(
-                            0,
-                            toFiniteNumber(interaction.maxDurationMs, DEFAULT_TAP_DURATION_MS)
-                        ),
-                    });
-                    break;
-                case 'multi-tap':
-                    if (multiTap) {
-                        throw new InputConfigurationError(
-                            'input.invalid-action',
-                            this._resolveMessage({
-                                code: 'input.invalid-action',
-                                value: interaction,
-                            })
-                        );
-                    }
-
-                    multiTap = Object.freeze({
-                        tapCount: Math.max(
-                            2,
-                            Math.trunc(
-                                toFiniteNumber(
-                                    interaction.tapCount,
-                                    DEFAULT_MULTI_TAP_COUNT
-                                )
-                            )
-                        ),
-                        maxDelayMs: Math.max(
-                            0,
-                            toFiniteNumber(
-                                interaction.maxDelayMs,
-                                DEFAULT_MULTI_TAP_DELAY_MS
-                            )
-                        ),
-                        maxDurationMs: Math.max(
-                            0,
-                            toFiniteNumber(
-                                interaction.maxDurationMs,
-                                DEFAULT_TAP_DURATION_MS
-                            )
-                        ),
-                    });
-                    break;
-                case 'repeat':
-                    if (repeat) {
-                        throw new InputConfigurationError(
-                            'input.invalid-action',
-                            this._resolveMessage({
-                                code: 'input.invalid-action',
-                                value: interaction,
-                            })
-                        );
-                    }
-
-                    repeat = Object.freeze({
-                        delayMs: Math.max(
-                            0,
-                            toFiniteNumber(interaction.delayMs, DEFAULT_REPEAT_DELAY_MS)
-                        ),
-                        intervalMs: Math.max(
-                            1,
-                            toFiniteNumber(
-                                interaction.intervalMs,
-                                DEFAULT_REPEAT_INTERVAL_MS
-                            )
-                        ),
-                    });
-                    break;
-                default:
-                    throw new InputConfigurationError(
-                        'input.invalid-action',
-                        this._resolveMessage({
-                            code: 'input.invalid-action',
-                            value: interaction,
-                        })
-                    );
-            }
-        }
-
-        return Object.freeze({
-            press,
-            hold,
-            tap,
-            multiTap,
-            repeat,
-        });
-    }
-
-    private _normalizeActionDefinition(
-        name: string,
-        definition: InputActionDefinition
-    ): InternalActionDefinition {
-        if (!isRecord(definition) || typeof definition.kind !== 'string') {
-            throw new InputConfigurationError(
-                'input.invalid-action',
-                this._resolveMessage({
-                    code: 'input.invalid-action',
-                    value: { name, definition },
-                })
-            );
-        }
-
-        const consume = !!definition.consume;
-
-        switch (definition.kind) {
-            case 'button': {
-                const buttonDefinition = definition as InputButtonActionDefinition;
-                const pressPoint = clamp(toFiniteNumber(buttonDefinition.pressPoint, 0.5), 0, 1);
-                const releasePoint = clamp(
-                    toFiniteNumber(buttonDefinition.releasePoint, pressPoint * 0.5),
-                    0,
-                    pressPoint
-                );
-                return Object.freeze({
-                    kind: 'button',
-                    name,
-                    consume,
-                    pressPoint,
-                    releasePoint,
-                    processors: this._compileProcessors('scalar', buttonDefinition.processors),
-                    interactions: this._compileButtonInteractions(buttonDefinition.interactions),
-                });
-            }
-            case 'axis': {
-                const axisDefinition = definition as InputAxisActionDefinition;
-                const rawClamp = axisDefinition.clamp;
-                const min = Array.isArray(rawClamp)
-                    ? toFiniteNumber(rawClamp[0], -Infinity)
-                    : -Infinity;
-                const max = Array.isArray(rawClamp)
-                    ? toFiniteNumber(rawClamp[1], Infinity)
-                    : Infinity;
-                return Object.freeze({
-                    kind: 'axis',
-                    name,
-                    consume,
-                    deadzone: Math.max(0, toFiniteNumber(axisDefinition.deadzone, 0)),
-                    min: Math.min(min, max),
-                    max: Math.max(min, max),
-                    combine:
-                        axisDefinition.combine === 'max-abs' || axisDefinition.combine === 'latest'
-                            ? axisDefinition.combine
-                            : 'sum',
-                    processors: this._compileProcessors('scalar', axisDefinition.processors),
-                });
-            }
-            case 'vector2': {
-                const vectorDefinition = definition as InputVector2ActionDefinition;
-                return Object.freeze({
-                    kind: 'vector2',
-                    name,
-                    consume,
-                    deadzone: Math.max(0, toFiniteNumber(vectorDefinition.deadzone, 0)),
-                    normalize: !!vectorDefinition.normalize,
-                    combine: vectorDefinition.combine === 'latest' ? 'latest' : 'sum',
-                    processors: this._compileProcessors('vector2', vectorDefinition.processors),
-                });
-            }
-            default:
-                throw new InputConfigurationError(
-                    'input.invalid-action',
-                    this._resolveMessage({
-                        code: 'input.invalid-action',
-                        value: { name, definition },
-                    })
-                );
-        }
-    }
-
     private _upsertContext(
         definition: InputContextDefinition<TSchema>,
         allowReplace: boolean
@@ -1532,12 +1124,12 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             }
 
             const actionIndex = this._requireActionIndex(rawAction);
-            const normalizedBindings = this._normalizeBindingList(rawAction, rawBindings);
+            const normalizedBindings = this._compiler.normalizeBindingList(rawAction, rawBindings);
             actions.set(actionIndex, {
                 action: rawAction,
                 current: normalizedBindings,
                 defaults: normalizedBindings,
-                compiled: this._compileBindings(normalizedBindings),
+                compiled: this._compiler.compileBindings(normalizedBindings),
             });
         }
 
@@ -1581,351 +1173,6 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._contexts.set(id, context);
         this._contextOrderDirty = true;
         return this._snapshotContextState(context);
-    }
-
-    private _normalizeBindingList<TAction extends InputActionName<TSchema>>(
-        action: TAction,
-        bindings: readonly InputBindingForAction<TSchema[TAction]>[] | readonly InputBinding[]
-    ): readonly InputBinding[] {
-        const index = this._requireActionIndex(action);
-        const actionDefinition = this._actionDefinitions[index]!;
-        const normalized: InputBinding[] = [];
-
-        for (const binding of bindings) {
-            normalized.push(this._normalizeBinding(actionDefinition.kind, binding));
-        }
-
-        return Object.freeze(normalized);
-    }
-
-    private _normalizeBinding(actionKind: InputActionKind, binding: InputBinding): InputBinding {
-        if (!isRecord(binding) || typeof binding.type !== 'string') {
-            throw new InputConfigurationError(
-                'input.invalid-binding',
-                this._resolveMessage({
-                    code: 'input.invalid-binding',
-                    value: binding,
-                })
-            );
-        }
-
-        const modifiers = uniqueModifiers(binding.modifiers);
-        const exactModifiers = !!binding.exactModifiers;
-        const consume = !!binding.consume;
-
-        switch (binding.type) {
-            case 'control': {
-                if (actionKind === 'vector2') {
-                    break;
-                }
-
-                const control = this._requireControlPath((binding as InputControlBinding).control);
-                return Object.freeze({
-                    type: 'control',
-                    control,
-                    scale: toFiniteNumber((binding as InputControlBinding).scale, 1),
-                    invert: !!(binding as InputControlBinding).invert,
-                    deadzone: Math.max(
-                        0,
-                        toFiniteNumber((binding as InputControlBinding).deadzone, 0)
-                    ),
-                    consume,
-                    modifiers,
-                    exactModifiers,
-                    processors: binding.processors ?? EMPTY_PROCESSORS,
-                });
-            }
-            case 'axis': {
-                if (actionKind === 'vector2') {
-                    break;
-                }
-
-                const axisBinding = binding as InputAxisCompositeBinding;
-                return Object.freeze({
-                    type: 'axis',
-                    negative: this._requireControlPath(axisBinding.negative),
-                    positive: this._requireControlPath(axisBinding.positive),
-                    scale: toFiniteNumber(axisBinding.scale, 1),
-                    consume,
-                    modifiers,
-                    exactModifiers,
-                    processors: binding.processors ?? EMPTY_PROCESSORS,
-                });
-            }
-            case 'vector2': {
-                if (actionKind !== 'vector2') {
-                    break;
-                }
-
-                const vectorBinding = binding as InputDirectionalBinding;
-                return Object.freeze({
-                    type: 'vector2',
-                    up: this._requireControlPath(vectorBinding.up),
-                    down: this._requireControlPath(vectorBinding.down),
-                    left: this._requireControlPath(vectorBinding.left),
-                    right: this._requireControlPath(vectorBinding.right),
-                    normalize: !!vectorBinding.normalize,
-                    scale: toFiniteNumber(vectorBinding.scale, 1),
-                    consume,
-                    modifiers,
-                    exactModifiers,
-                    processors: binding.processors ?? EMPTY_PROCESSORS,
-                });
-            }
-            case 'dual-axis': {
-                if (actionKind !== 'vector2') {
-                    break;
-                }
-
-                const dualAxisBinding = binding as InputDualAxisBinding;
-                return Object.freeze({
-                    type: 'dual-axis',
-                    x: this._requireControlPath(dualAxisBinding.x),
-                    y: this._requireControlPath(dualAxisBinding.y),
-                    normalize: !!dualAxisBinding.normalize,
-                    scale: toFiniteNumber(dualAxisBinding.scale, 1),
-                    deadzone: Math.max(0, toFiniteNumber(dualAxisBinding.deadzone, 0)),
-                    consume,
-                    modifiers,
-                    exactModifiers,
-                    processors: binding.processors ?? EMPTY_PROCESSORS,
-                });
-            }
-        }
-
-        throw new InputConfigurationError(
-            'input.invalid-binding',
-            this._resolveMessage({
-                code: 'input.invalid-binding',
-                value: binding,
-            })
-        );
-    }
-
-    private _compileBindings(bindings: readonly InputBinding[]): readonly InternalBinding[] {
-        const compiled: InternalBinding[] = [];
-
-        for (const binding of bindings) {
-            const modifiers = uniqueModifiers(binding.modifiers);
-            const modifierMask = modifiersToMask(modifiers);
-            const exactModifiers = !!binding.exactModifiers;
-            const consume = !!binding.consume;
-
-            switch (binding.type) {
-                case 'control': {
-                    const control = this._compileControl(this._requireControlPath(String(binding.control)));
-                    const processors = this._compileProcessors('scalar', binding.processors);
-                    compiled.push(
-                        Object.freeze({
-                            type: 'control',
-                            control,
-                            scale: binding.scale ?? 1,
-                            invert: !!binding.invert,
-                            deadzone: binding.deadzone ?? 0,
-                            consume,
-                            modifierMask,
-                            exactModifiers,
-                            processors,
-                            paths: Object.freeze([control.path]),
-                        })
-                    );
-                    break;
-                }
-                case 'axis': {
-                    const negative = this._compileControl(
-                        this._requireControlPath(String(binding.negative))
-                    );
-                    const positive = this._compileControl(
-                        this._requireControlPath(String(binding.positive))
-                    );
-                    const processors = this._compileProcessors('scalar', binding.processors);
-                    compiled.push(
-                        Object.freeze({
-                            type: 'axis',
-                            negative,
-                            positive,
-                            scale: binding.scale ?? 1,
-                            consume,
-                            modifierMask,
-                            exactModifiers,
-                            processors,
-                            paths: Object.freeze([negative.path, positive.path]),
-                        })
-                    );
-                    break;
-                }
-                case 'vector2': {
-                    const up = this._compileControl(this._requireControlPath(String(binding.up)));
-                    const down = this._compileControl(
-                        this._requireControlPath(String(binding.down))
-                    );
-                    const left = this._compileControl(
-                        this._requireControlPath(String(binding.left))
-                    );
-                    const right = this._compileControl(
-                        this._requireControlPath(String(binding.right))
-                    );
-                    const processors = this._compileProcessors('vector2', binding.processors);
-                    compiled.push(
-                        Object.freeze({
-                            type: 'vector2',
-                            up,
-                            down,
-                            left,
-                            right,
-                            normalize: !!binding.normalize,
-                            scale: binding.scale ?? 1,
-                            consume,
-                            modifierMask,
-                            exactModifiers,
-                            processors,
-                            paths: Object.freeze([up.path, down.path, left.path, right.path]),
-                        })
-                    );
-                    break;
-                }
-                case 'dual-axis': {
-                    const x = this._compileControl(this._requireControlPath(String(binding.x)));
-                    const y = this._compileControl(this._requireControlPath(String(binding.y)));
-                    const processors = this._compileProcessors('vector2', binding.processors);
-                    compiled.push(
-                        Object.freeze({
-                            type: 'dual-axis',
-                            x,
-                            y,
-                            normalize: !!binding.normalize,
-                            scale: binding.scale ?? 1,
-                            deadzone: binding.deadzone ?? 0,
-                            consume,
-                            modifierMask,
-                            exactModifiers,
-                            processors,
-                            paths: Object.freeze([x.path, y.path]),
-                        })
-                    );
-                    break;
-                }
-            }
-        }
-
-        return Object.freeze(compiled);
-    }
-
-    private _compileControl(path: InputControlPath): InternalControl {
-        const parsed = parseInputControlPath(path);
-
-        if (!parsed) {
-            throw new InputConfigurationError(
-                'input.invalid-control-path',
-                this._resolveMessage({
-                    code: 'input.invalid-control-path',
-                    value: path,
-                })
-            );
-        }
-
-        switch (parsed.device) {
-            case 'keyboard':
-                return Object.freeze({
-                    device: 'keyboard',
-                    kind: 'key',
-                    path: parsed.path,
-                    code: parsed.code,
-                    signed: false,
-                });
-            case 'mouse':
-                if (parsed.kind === 'button') {
-                    return Object.freeze({
-                        device: 'mouse',
-                        kind: 'button',
-                        path: parsed.path,
-                        button: parsed.button,
-                        signed: false,
-                    });
-                }
-
-                return Object.freeze({
-                    device: 'mouse',
-                    kind: parsed.kind,
-                    path: parsed.path,
-                    axis: parsed.axis,
-                    signed: parsed.kind !== 'position',
-                });
-            case 'touch':
-                if (parsed.kind === 'contact') {
-                    return Object.freeze({
-                        device: 'touch',
-                        kind: 'contact',
-                        path: parsed.path,
-                        target: this._compileTouchSelector(parsed.target),
-                        signed: false,
-                    });
-                }
-
-                if (parsed.kind === 'position' || parsed.kind === 'delta') {
-                    return Object.freeze({
-                        device: 'touch',
-                        kind: parsed.kind,
-                        path: parsed.path,
-                        axis: parsed.axis,
-                        target: this._compileTouchSelector(parsed.target),
-                        signed: parsed.kind === 'delta',
-                    });
-                }
-
-                return Object.freeze({
-                    device: 'touch',
-                    kind: parsed.kind,
-                    path: parsed.path,
-                    signed: parsed.kind === 'pinch',
-                });
-            case 'gamepad':
-                if (parsed.kind === 'button') {
-                    return Object.freeze({
-                        device: 'gamepad',
-                        kind: 'button',
-                        path: parsed.path,
-                        selector: this._compileGamepadSelector(parsed.selector),
-                        button: parsed.button,
-                        signed: false,
-                    });
-                }
-
-                if (parsed.kind === 'axis') {
-                    return Object.freeze({
-                        device: 'gamepad',
-                        kind: 'axis',
-                        path: parsed.path,
-                        selector: this._compileGamepadSelector(parsed.selector),
-                        axis: parsed.axis,
-                        signed: true,
-                    });
-                }
-
-                return Object.freeze({
-                    device: 'gamepad',
-                    kind: 'connected',
-                    path: parsed.path,
-                    selector: this._compileGamepadSelector(parsed.selector),
-                    signed: false,
-                });
-        }
-    }
-
-    private _compileTouchSelector(token: string): number {
-        if (token === 'any') {
-            return TOUCH_ANY;
-        }
-
-        if (token === 'primary') {
-            return TOUCH_PRIMARY;
-        }
-
-        return Number(token);
-    }
-
-    private _compileGamepadSelector(token: string): number {
-        return token === 'any' ? GAMEPAD_ANY : Number(token);
     }
 
     private _resolveBindingTarget<TAction extends InputActionName<TSchema>>(
@@ -3480,12 +2727,12 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             return entry;
         }
 
-        const normalized = this._normalizeBindingList(action, []);
+        const normalized = this._compiler.normalizeBindingList(action, []);
         const created: InternalContextAction<TSchema> = {
             action,
             current: normalized,
             defaults: normalized,
-            compiled: this._compileBindings(normalized),
+            compiled: this._compiler.compileBindings(normalized),
         };
         storedContext.actions.set(actionIndex, created);
         return created;
