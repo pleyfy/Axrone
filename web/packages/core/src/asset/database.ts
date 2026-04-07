@@ -80,6 +80,8 @@ import type {
     AssetWriteInput,
 } from './types';
 
+export { isAssetDatabaseSnapshot };
+
 const DEFAULT_BINARY_INLINE_THRESHOLD_BYTES = 64 * 1024;
 const EMPTY_STRING_ARRAY = Object.freeze([]) as readonly string[];
 const RANDOM = createRandom();

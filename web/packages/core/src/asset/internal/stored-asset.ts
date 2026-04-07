@@ -10,9 +10,9 @@ import {
     createVersionedAssetReference,
     normalizeAssetLocale,
     normalizeAssetUri,
-    type AssetKey,
 } from '../reference';
 import type {
+    AssetKey,
     AssetJsonValue,
     AssetKind,
     AssetMetadata,

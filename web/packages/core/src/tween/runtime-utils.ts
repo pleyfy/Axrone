@@ -1,27 +1,32 @@
 import type { TypedArray } from '@axrone/utility';
 
+export type TweenTypedArray = Exclude<TypedArray, BigInt64Array | BigUint64Array>;
+
 export type TweenTypedArrayConstructor = new (
     source: number | ArrayLike<number>
-) => TypedArray;
+) => TweenTypedArray;
 
-export const isTweenTypedArray = (value: unknown): value is TypedArray =>
-    ArrayBuffer.isView(value) && !(value instanceof DataView);
+export const isTweenTypedArray = (value: unknown): value is TweenTypedArray =>
+    ArrayBuffer.isView(value) &&
+    !(value instanceof DataView) &&
+    !(value instanceof BigInt64Array) &&
+    !(value instanceof BigUint64Array);
 
 export const cloneTweenArrayLike = <T extends ArrayLike<number>>(array: T): T => {
     if (isTweenTypedArray(array)) {
         const constructor = array.constructor as TweenTypedArrayConstructor;
-        return new constructor(array as ArrayLike<number>) as T;
+        return new constructor(array as ArrayLike<number>) as unknown as T;
     }
 
     if (Array.isArray(array)) {
-        return [...array] as T;
+        return [...array] as unknown as T;
     }
 
     const result: number[] = [];
     for (let index = 0; index < array.length; index += 1) {
         result[index] = array[index] ?? 0;
     }
-    return result as T;
+    return result as unknown as T;
 };
 
 export const allocateSequenceLike = (

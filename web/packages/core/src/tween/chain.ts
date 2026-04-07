@@ -175,7 +175,7 @@ export class TweenChain extends EventEmitter<TweenChainEventMap> implements IGro
         if (typeof eventTarget.on === 'function') {
             const subscription = eventTarget.on('complete', callback);
             if (typeof subscription === 'function') {
-                return subscription;
+                return subscription as () => void;
             }
 
             return () => {

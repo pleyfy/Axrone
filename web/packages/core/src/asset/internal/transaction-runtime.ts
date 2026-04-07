@@ -12,12 +12,12 @@ import {
     isAssetVersionedReferenceToken,
     parseAssetReferenceToken,
     parseAssetVersionedReferenceToken,
-    type AssetKey,
 } from '../reference';
 import type {
     AssetData,
     AssetDatabaseOptions,
     AssetDependencyInput,
+    AssetKey,
     AssetKind,
     AssetLeafChangeEvent,
     AssetLookupByKey,

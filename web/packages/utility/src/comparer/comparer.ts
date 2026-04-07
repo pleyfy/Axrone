@@ -19,10 +19,7 @@ import {
 
 export {
     ComparerError,
-    DeepEqualityComparer,
-    DefaultEqualityComparer,
     InvalidOperationError,
-    equality,
     isComparer,
     isEqualityComparer,
     isEquatable,
@@ -40,6 +37,12 @@ export {
     type OrderKey,
     type PropertyPath,
 } from './shared';
+
+export {
+    DeepEqualityComparer,
+    DefaultEqualityComparer,
+    equality,
+} from './equality';
 
 export class DefaultComparer<T> implements Comparer<T> {
     compare(a: T, b: T): CompareResult {

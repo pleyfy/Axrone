@@ -64,7 +64,7 @@ export function from<T extends TweenableValue>(
 
     return TweenFactory.create(object, {
         from: properties,
-        to: targetState,
+        to: targetState as DeepPartial<T>,
         duration,
         easing,
     });

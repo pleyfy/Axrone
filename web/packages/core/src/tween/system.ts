@@ -122,8 +122,9 @@ export class TweenSystem {
     };
 
     private _hasCompleted(tween: IGroupable): boolean {
-        return typeof (tween as { getStatus?: () => string }).getStatus === 'function'
-            ? (tween as { getStatus: () => string }).getStatus() === 'completed'
+        const tweenWithStatus = tween as unknown as { getStatus?: () => string };
+        return typeof tweenWithStatus.getStatus === 'function'
+            ? tweenWithStatus.getStatus() === 'completed'
             : false;
     }
 }

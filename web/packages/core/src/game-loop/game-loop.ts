@@ -16,6 +16,7 @@ import type {
     FixedUpdateContext,
     GameLoopContextBase,
     GameLoopController,
+    GameLoopErrorPolicy,
     GameLoopFramePhase,
     GameLoopMessageDescriptor,
     GameLoopMessageResolver,
