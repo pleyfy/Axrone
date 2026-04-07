@@ -12,6 +12,10 @@ import {
     isButtonInteractionInterrupted,
 } from './internal/evaluator';
 import {
+    emitActionEvents,
+    subscribeActionListener,
+} from './internal/action-events';
+import {
     captureGamepadCandidate,
     clearDeviceState,
     clearTransients,
@@ -50,8 +54,6 @@ import {
     createVector2StateStore,
     createVector2StateView,
     EPSILON,
-    INPUT_ACTION_PHASE_MASK_ALL,
-    INPUT_ACTION_PHASE_MASKS,
     isEventTargetLike,
     isInputSystemSnapshot,
     isRecord,
@@ -72,15 +74,13 @@ import type {
     Vector2StateStore,
 } from './internal/shared';
 import type { InputCompiler } from './internal/compiler';
+import type { InputActionEventsRuntime } from './internal/action-events';
 import type { InputEvaluationRuntime } from './internal/evaluator';
 import type { InputRebindingRuntime } from './internal/rebinding';
 import type { InputSourceRuntime } from './internal/source-state';
 import type { InputCommitRuntime } from './internal/state-commit';
 import type {
-    InputActionBindings,
     InputActionDefinition,
-    InputActionEvent,
-    InputActionEventPhase,
     InputActionListener,
     InputActionName,
     InputActionSchema,
@@ -102,7 +102,6 @@ import type {
     InputContextDefinition,
     InputContextId,
     InputContextState,
-    InputControlBinding,
     InputControlPath,
     InputDeviceKind,
     InputFocusSourceEvent,
@@ -503,7 +502,13 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         listener: InputActionListener<TSchema>,
         options: InputActionSubscriptionOptions = {}
     ): InputActionSubscription {
-        return this._subscribeActionListener(undefined, listener, options);
+        this._assertNotDisposed();
+        return subscribeActionListener(
+            this as unknown as InputActionEventsRuntime<TSchema>,
+            undefined,
+            listener,
+            options
+        );
     }
 
     subscribeAction<TAction extends InputActionName<TSchema>>(
@@ -511,7 +516,9 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         listener: InputActionListener<TSchema, TAction>,
         options: InputActionSubscriptionOptions = {}
     ): InputActionSubscription {
-        return this._subscribeActionListener(
+        this._assertNotDisposed();
+        return subscribeActionListener(
+            this as unknown as InputActionEventsRuntime<TSchema>,
             this._requireActionIndex(action),
             listener as InputActionListener<TSchema>,
             options
@@ -587,200 +594,17 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._gamepads.clear();
     }
 
-    private _subscribeActionListener(
-        actionIndex: number | undefined,
-        listener: InputActionListener<TSchema>,
-        options: InputActionSubscriptionOptions
-    ): InputActionSubscription {
-        this._assertNotDisposed();
-
-        if (typeof listener !== 'function') {
-            throw new InputConfigurationError(
-                'input.invalid-action',
-                this._resolveMessage({
-                    code: 'input.invalid-action',
-                    value: listener,
-                })
-            );
-        }
-
-        const entry = Object.freeze({
-            phases: this._actionEventPhaseMask(options.phases),
-            listener: listener as InputActionListener<TSchema, InputActionName<TSchema>>,
-        });
-        const bucket =
-            typeof actionIndex === 'number'
-                ? (this._scopedActionListeners[actionIndex] ??= new Set())
-                : this._globalActionListeners;
-        bucket.add(entry);
-        this._actionListenerCount += 1;
-        let disposed = false;
-
-        return {
-            get isDisposed(): boolean {
-                return disposed;
-            },
-            dispose: () => {
-                if (disposed) {
-                    return;
-                }
-
-                disposed = true;
-                if (!bucket.delete(entry)) {
-                    return;
-                }
-
-                this._actionListenerCount = Math.max(0, this._actionListenerCount - 1);
-
-                if (typeof actionIndex === 'number' && bucket.size === 0) {
-                    this._scopedActionListeners[actionIndex] = undefined;
-                }
-            },
-        };
-    }
-
-    private _actionEventPhaseMask(phases?: readonly InputActionEventPhase[]): number {
-        if (!phases?.length) {
-            return INPUT_ACTION_PHASE_MASK_ALL;
-        }
-
-        let mask = 0;
-
-        for (const phase of phases) {
-            const phaseMask = INPUT_ACTION_PHASE_MASKS[phase];
-
-            if (!phaseMask) {
-                throw new InputConfigurationError(
-                    'input.invalid-action',
-                    this._resolveMessage({
-                        code: 'input.invalid-action',
-                        value: phase,
-                    })
-                );
-            }
-
-            mask |= phaseMask;
-        }
-
-        return mask;
-    }
-
-    private _snapshotActionState(
-        index: number,
-        definition: InternalActionDefinition
-    ): InputActionState {
-        switch (definition.kind) {
-            case 'button': {
-                const state = this._buttonStateStores[index]!;
-                return Object.freeze({
-                    kind: 'button',
-                    value: state.value,
-                    previousValue: state.previousValue,
-                    rawValue: state.rawValue,
-                    previousRawValue: state.previousRawValue,
-                    pressed: state.pressed,
-                    released: state.released,
-                    heldDurationMs: state.heldDurationMs,
-                    tapSequenceCount: state.tapSequenceCount,
-                    repeatCount: state.repeatCount,
-                    holdTriggered: state.holdTriggered,
-                    tapTriggered: state.tapTriggered,
-                    multiTapTriggered: state.multiTapTriggered,
-                    repeatTriggered: state.repeatTriggered,
-                    active: state.active,
-                    changed: state.changed,
-                    frame: state.frame,
-                    timestamp: state.timestamp,
-                    context: state.context,
-                });
-            }
-            case 'axis': {
-                const state = this._axisStateStores[index]!;
-                return Object.freeze({
-                    kind: 'axis',
-                    value: state.value,
-                    previousValue: state.previousValue,
-                    delta: state.delta,
-                    active: state.active,
-                    changed: state.changed,
-                    frame: state.frame,
-                    timestamp: state.timestamp,
-                    context: state.context,
-                });
-            }
-            case 'vector2': {
-                const state = this._vectorStateStores[index]!;
-                return Object.freeze({
-                    kind: 'vector2',
-                    value: Object.freeze({
-                        x: state.value.x,
-                        y: state.value.y,
-                    }),
-                    previousValue: Object.freeze({
-                        x: state.previousValue.x,
-                        y: state.previousValue.y,
-                    }),
-                    delta: Object.freeze({
-                        x: state.delta.x,
-                        y: state.delta.y,
-                    }),
-                    magnitude: state.magnitude,
-                    previousMagnitude: state.previousMagnitude,
-                    active: state.active,
-                    changed: state.changed,
-                    frame: state.frame,
-                    timestamp: state.timestamp,
-                    context: state.context,
-                });
-            }
-        }
-    }
-
     private _emitActionEvents(
         index: number,
         definition: InternalActionDefinition,
         descriptors: readonly InternalActionEventDescriptor[]
     ): void {
-        if (this._actionListenerCount === 0 || descriptors.length === 0) {
-            return;
-        }
-
-        const scopedListeners = this._scopedActionListeners[index];
-        if (!scopedListeners && this._globalActionListeners.size === 0) {
-            return;
-        }
-
-        const listeners = scopedListeners
-            ? [...this._globalActionListeners, ...scopedListeners]
-            : [...this._globalActionListeners];
-        const action = this._actionNames[index]!;
-        let stateSnapshot: InputActionState | undefined;
-
-        for (const descriptor of descriptors) {
-            const phaseMask = INPUT_ACTION_PHASE_MASKS[descriptor.phase];
-            let event: InputActionEvent<TSchema, InputActionName<TSchema>> | undefined;
-
-            for (const entry of listeners) {
-                if ((entry.phases & phaseMask) === 0) {
-                    continue;
-                }
-
-                event ??= Object.freeze({
-                    action,
-                    kind: definition.kind,
-                    phase: descriptor.phase,
-                    trigger: descriptor.trigger,
-                    frame: this._frame,
-                    timestamp: this._timestamp,
-                    context: descriptor.context,
-                    state:
-                        (stateSnapshot ??= this._snapshotActionState(index, definition)) as InputActionStateForDefinition<
-                            TSchema[InputActionName<TSchema>]
-                        >,
-                }) as InputActionEvent<TSchema, InputActionName<TSchema>>;
-                entry.listener(event);
-            }
-        }
+        emitActionEvents(
+            this as unknown as InputActionEventsRuntime<TSchema>,
+            index,
+            definition,
+            descriptors
+        );
     }
 
     private _upsertContext(
