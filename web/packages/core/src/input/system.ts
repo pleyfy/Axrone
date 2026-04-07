@@ -10,6 +10,10 @@ import { normalizeInputContextId, normalizeInputControlPath } from './reference'
 import { attachInputBrowserTarget } from './internal/attachment';
 import { createInputCompiler } from './internal/compiler';
 import {
+    collectActionInputs,
+    isButtonInteractionInterrupted,
+} from './internal/evaluator';
+import {
     captureGamepadCandidate,
     clearDeviceState,
     clearTransients,
@@ -35,7 +39,6 @@ import {
     createVector2StateView,
     EMPTY_MODIFIERS,
     EPSILON,
-    GAMEPAD_ANY,
     INPUT_ACTION_PHASE_MASK_ALL,
     INPUT_ACTION_PHASE_MASKS,
     INPUT_SNAPSHOT_VERSION,
@@ -43,10 +46,7 @@ import {
     isInputSystemSnapshot,
     isRecord,
     magnitude,
-    MODIFIER_MASKS,
     normalizeLocale,
-    TOUCH_ANY,
-    TOUCH_PRIMARY,
     toFiniteNumber,
 } from './internal/shared';
 import type {
@@ -56,21 +56,14 @@ import type {
     InternalActionDefinition,
     InternalActionEventDescriptor,
     InternalActionListener,
-    InternalAxisCompositeBinding,
-    InternalBinding,
-    InternalBindingBase,
     InternalContext,
     InternalContextAction,
-    InternalControl,
-    InternalControlBinding,
-    InternalDirectionalBinding,
-    InternalDualAxisBinding,
     MutableGamepadState,
     MutableTouchPoint,
-    MutableVector2,
     Vector2StateStore,
 } from './internal/shared';
 import type { InputCompiler } from './internal/compiler';
+import type { InputEvaluationRuntime } from './internal/evaluator';
 import type { InputSourceRuntime } from './internal/source-state';
 import type {
     InputActionBindings,
@@ -1225,28 +1218,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
     }
 
     private _evaluate(): void {
-        this._accumulatorX.fill(0);
-        this._accumulatorY.fill(0);
-        this._assigned.fill(0);
-        this._sourceContexts.fill(undefined);
-        this._consumedPaths.clear();
-
-        for (const context of this._getOrderedContexts()) {
-            if (!context.enabled) {
-                continue;
-            }
-
-            for (const [actionIndex, actionEntry] of context.actions) {
-                const definition = this._actionDefinitions[actionIndex]!;
-
-                if (definition.kind === 'vector2') {
-                    this._evaluateVectorAction(actionIndex, definition, context, actionEntry.compiled);
-                    continue;
-                }
-
-                this._evaluateScalarAction(actionIndex, definition, context, actionEntry.compiled);
-            }
-        }
+        collectActionInputs(this as unknown as InputEvaluationRuntime<TSchema>);
 
         for (let index = 0; index < this._actionDefinitions.length; index += 1) {
             const definition = this._actionDefinitions[index]!;
@@ -1263,403 +1235,6 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     break;
             }
         }
-    }
-
-    private _evaluateScalarAction(
-        actionIndex: number,
-        definition: Extract<InternalActionDefinition, { kind: 'button' | 'axis' }>,
-        context: InternalContext<TSchema>,
-        bindings: readonly InternalBinding[]
-    ): void {
-        for (const binding of bindings) {
-            if (binding.type !== 'control' && binding.type !== 'axis') {
-                continue;
-            }
-
-            if (!this._matchesModifiers(binding) || this._isBindingConsumed(binding)) {
-                continue;
-            }
-
-            const value =
-                binding.type === 'control'
-                    ? this._evaluateControlBinding(binding)
-                    : this._evaluateAxisCompositeBinding(binding);
-
-            if (Math.abs(value) <= EPSILON) {
-                continue;
-            }
-
-            if (!this._sourceContexts[actionIndex]) {
-                this._sourceContexts[actionIndex] = context.id;
-            }
-
-            if (definition.kind === 'button') {
-                this._accumulatorX[actionIndex] = Math.max(
-                    this._accumulatorX[actionIndex]!,
-                    Math.abs(value)
-                );
-            } else if (definition.combine === 'latest') {
-                if (this._assigned[actionIndex] === 0) {
-                    this._assigned[actionIndex] = 1;
-                    this._accumulatorX[actionIndex] = value;
-                }
-            } else if (definition.combine === 'max-abs') {
-                if (Math.abs(value) > Math.abs(this._accumulatorX[actionIndex]!)) {
-                    this._accumulatorX[actionIndex] = value;
-                }
-            } else {
-                this._accumulatorX[actionIndex] += value;
-            }
-
-            if (context.capture === 'used' || definition.consume || binding.consume) {
-                this._consumeBinding(binding);
-            }
-        }
-    }
-
-    private _evaluateVectorAction(
-        actionIndex: number,
-        definition: Extract<InternalActionDefinition, { kind: 'vector2' }>,
-        context: InternalContext<TSchema>,
-        bindings: readonly InternalBinding[]
-    ): void {
-        for (const binding of bindings) {
-            if (binding.type !== 'vector2' && binding.type !== 'dual-axis') {
-                continue;
-            }
-
-            if (!this._matchesModifiers(binding) || this._isBindingConsumed(binding)) {
-                continue;
-            }
-
-            const vector =
-                binding.type === 'vector2'
-                    ? this._evaluateDirectionalBinding(binding)
-                    : this._evaluateDualAxisBinding(binding);
-
-            if (Math.abs(vector.x) <= EPSILON && Math.abs(vector.y) <= EPSILON) {
-                continue;
-            }
-
-            if (!this._sourceContexts[actionIndex]) {
-                this._sourceContexts[actionIndex] = context.id;
-            }
-
-            if (definition.combine === 'latest') {
-                if (this._assigned[actionIndex] === 0) {
-                    this._assigned[actionIndex] = 1;
-                    this._accumulatorX[actionIndex] = vector.x;
-                    this._accumulatorY[actionIndex] = vector.y;
-                }
-            } else {
-                this._accumulatorX[actionIndex] += vector.x;
-                this._accumulatorY[actionIndex] += vector.y;
-            }
-
-            if (context.capture === 'used' || definition.consume || binding.consume) {
-                this._consumeBinding(binding);
-            }
-        }
-    }
-
-    private _evaluateControlBinding(binding: InternalControlBinding): number {
-        let value = this._sampleControl(binding.control);
-
-        if (binding.invert) {
-            value = -value;
-        }
-
-        value = applyDeadzone(value, binding.deadzone);
-        return applyScalarProcessors(value * binding.scale, binding.processors);
-    }
-
-    private _evaluateAxisCompositeBinding(binding: InternalAxisCompositeBinding): number {
-        const positive = this._sampleDirectional(binding.positive, 'positive');
-        const negative = this._sampleDirectional(binding.negative, 'negative');
-        return applyScalarProcessors((positive - negative) * binding.scale, binding.processors);
-    }
-
-    private _evaluateDirectionalBinding(binding: InternalDirectionalBinding): MutableVector2 {
-        let x =
-            this._sampleDirectional(binding.right, 'positive') -
-            this._sampleDirectional(binding.left, 'negative');
-        let y =
-            this._sampleDirectional(binding.up, 'positive') -
-            this._sampleDirectional(binding.down, 'negative');
-
-        x *= binding.scale;
-        y *= binding.scale;
-
-        if (binding.normalize) {
-            const length = magnitude(x, y);
-            if (length > 1) {
-                x /= length;
-                y /= length;
-            }
-        }
-
-        return applyVectorProcessors(
-            {
-                x,
-                y,
-            },
-            binding.processors
-        );
-    }
-
-    private _evaluateDualAxisBinding(binding: InternalDualAxisBinding): MutableVector2 {
-        let x = this._sampleControl(binding.x) * binding.scale;
-        let y = this._sampleControl(binding.y) * binding.scale;
-        const length = magnitude(x, y);
-
-        if (length <= binding.deadzone) {
-            x = 0;
-            y = 0;
-        } else if (binding.normalize && length > 1) {
-            x /= length;
-            y /= length;
-        }
-
-        return applyVectorProcessors(
-            {
-                x,
-                y,
-            },
-            binding.processors
-        );
-    }
-
-    private _sampleControl(control: InternalControl): number {
-        switch (control.device) {
-            case 'keyboard':
-                return this._keysDown.has(control.code) ? 1 : 0;
-            case 'mouse':
-                switch (control.kind) {
-                    case 'button':
-                        return (this._mouseButtons & (1 << control.button)) !== 0 ? 1 : 0;
-                    case 'move':
-                        return control.axis === 'x' ? this._mouseDeltaX : this._mouseDeltaY;
-                    case 'wheel':
-                        if (control.axis === 'x') {
-                            return this._mouseWheelX;
-                        }
-
-                        if (control.axis === 'y') {
-                            return this._mouseWheelY;
-                        }
-
-                        return this._mouseWheelZ;
-                    case 'position':
-                        return control.axis === 'x' ? this._mouseX : this._mouseY;
-                }
-                return 0;
-            case 'touch':
-                switch (control.kind) {
-                    case 'contact':
-                        if (control.target === TOUCH_ANY) {
-                            return this._touches.size > 0 ? 1 : 0;
-                        }
-                        return this._resolveTouch(control.target) ? 1 : 0;
-                    case 'position': {
-                        const touch = this._resolveTouch(control.target);
-                        if (!touch) {
-                            return 0;
-                        }
-                        return control.axis === 'x' ? touch.x : touch.y;
-                    }
-                    case 'delta': {
-                        const touch = this._resolveTouch(control.target);
-                        if (!touch) {
-                            return 0;
-                        }
-                        return control.axis === 'x' ? touch.deltaX : touch.deltaY;
-                    }
-                    case 'pinch':
-                        return this._touchPinchDelta;
-                    case 'count':
-                        return this._touches.size;
-                }
-                return 0;
-            case 'gamepad':
-                switch (control.kind) {
-                    case 'connected':
-                        return this._sampleGamepadConnected(control.selector);
-                    case 'button':
-                        return this._sampleGamepadButton(control.selector, control.button);
-                    case 'axis':
-                        return this._sampleGamepadAxis(control.selector, control.axis);
-                }
-                return 0;
-        }
-    }
-
-    private _sampleDirectional(control: InternalControl, direction: 'positive' | 'negative'): number {
-        const raw = this._sampleControl(control);
-
-        if (!control.signed) {
-            return raw > 0 ? raw : 0;
-        }
-
-        return direction === 'positive' ? Math.max(raw, 0) : Math.max(-raw, 0);
-    }
-
-    private _resolveTouch(target: number): MutableTouchPoint | undefined {
-        if (target === TOUCH_ANY) {
-            return this._primaryTouchId !== undefined
-                ? this._touches.get(this._primaryTouchId)
-                : this._touches.values().next().value;
-        }
-
-        if (target === TOUCH_PRIMARY) {
-            return this._primaryTouchId !== undefined
-                ? this._touches.get(this._primaryTouchId)
-                : undefined;
-        }
-
-        return this._touches.get(target);
-    }
-
-    private _sampleGamepadConnected(selector: number): number {
-        if (selector === GAMEPAD_ANY) {
-            for (const [, state] of this._gamepads) {
-                if (state.connected) {
-                    return 1;
-                }
-            }
-            return 0;
-        }
-
-        return this._gamepads.get(selector)?.connected ? 1 : 0;
-    }
-
-    private _sampleGamepadButton(selector: number, button: number): number {
-        if (selector === GAMEPAD_ANY) {
-            let maxValue = 0;
-
-            for (const [, state] of this._gamepads) {
-                if (!state.connected) {
-                    continue;
-                }
-
-                maxValue = Math.max(maxValue, state.buttons[button] ?? 0);
-            }
-
-            return maxValue;
-        }
-
-        const state = this._gamepads.get(selector);
-        return state?.connected ? state.buttons[button] ?? 0 : 0;
-    }
-
-    private _sampleGamepadAxis(selector: number, axis: number): number {
-        if (selector === GAMEPAD_ANY) {
-            let best = 0;
-
-            for (const [, state] of this._gamepads) {
-                if (!state.connected) {
-                    continue;
-                }
-
-                const value = state.axes[axis] ?? 0;
-                if (Math.abs(value) > Math.abs(best)) {
-                    best = value;
-                }
-            }
-
-            return best;
-        }
-
-        const state = this._gamepads.get(selector);
-        return state?.connected ? state.axes[axis] ?? 0 : 0;
-    }
-
-    private _matchesModifiers(binding: InternalBindingBase<InputBinding['type']>): boolean {
-        if (binding.modifierMask === 0) {
-            return true;
-        }
-
-        const currentMask = this._currentModifierMask();
-        if (binding.exactModifiers) {
-            return currentMask === binding.modifierMask;
-        }
-
-        return (currentMask & binding.modifierMask) === binding.modifierMask;
-    }
-
-    private _currentModifierMask(): number {
-        let mask = 0;
-
-        if (this._keysDown.has('ShiftLeft') || this._keysDown.has('ShiftRight')) {
-            mask |= MODIFIER_MASKS.shift;
-        }
-
-        if (this._keysDown.has('ControlLeft') || this._keysDown.has('ControlRight')) {
-            mask |= MODIFIER_MASKS.ctrl;
-        }
-
-        if (this._keysDown.has('AltLeft') || this._keysDown.has('AltRight')) {
-            mask |= MODIFIER_MASKS.alt;
-        }
-
-        if (this._keysDown.has('MetaLeft') || this._keysDown.has('MetaRight')) {
-            mask |= MODIFIER_MASKS.meta;
-        }
-
-        return mask;
-    }
-
-    private _isBindingConsumed(binding: InternalBindingBase<InputBinding['type']>): boolean {
-        for (const path of binding.paths) {
-            if (this._consumedPaths.has(path)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private _consumeBinding(binding: InternalBindingBase<InputBinding['type']>): void {
-        for (const path of binding.paths) {
-            this._consumedPaths.add(path);
-        }
-    }
-
-    private _isButtonInteractionInterrupted(
-        actionIndex: number,
-        previousContext: InputContextId | undefined
-    ): boolean {
-        if (!previousContext) {
-            return false;
-        }
-
-        const context = this._contexts.get(previousContext);
-
-        if (!context) {
-            return true;
-        }
-
-        const action = context.actions.get(actionIndex);
-
-        if (!action) {
-            return true;
-        }
-
-        for (const binding of action.compiled) {
-            if (binding.type !== 'control' && binding.type !== 'axis') {
-                continue;
-            }
-
-            const value =
-                binding.type === 'control'
-                    ? this._evaluateControlBinding(binding)
-                    : this._evaluateAxisCompositeBinding(binding);
-
-            if (Math.abs(value) > EPSILON) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private _commitButtonState(
@@ -1746,7 +1321,11 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             }
         } else if (released) {
             const pressStartedAt = state.pressStartedAt ?? this._timestamp;
-            const interrupted = this._isButtonInteractionInterrupted(index, previousContext);
+            const interrupted = isButtonInteractionInterrupted(
+                this as unknown as InputEvaluationRuntime<TSchema>,
+                index,
+                previousContext
+            );
             heldDurationMs = Math.max(0, this._timestamp - pressStartedAt);
             state.pressStartedAt = undefined;
             state.holdConsumed = false;
