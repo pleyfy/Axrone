@@ -1,5 +1,6 @@
 import { IDisposable } from '../../types';
 import type { IBindableTarget } from './interfaces';
+import { BufferPool, ResourceTracker } from './internal/buffer-management';
 
 type Nominal<T, K extends string> = T & { readonly __brand: K };
 
@@ -617,213 +618,10 @@ type ArrayBufferViewConstructor = {
     new (buffer: ArrayBufferLike, byteOffset?: number, length?: number): ArrayBufferView;
 };
 
-interface PooledBuffer {
-    buffer: IBuffer;
-    size: number;
-    lastUsed: number;
-    inUse: boolean;
-}
-
-class BufferPool<T extends BufferSource> implements IBufferPool<T> {
-    readonly #gl: WebGL2RenderingContext;
-    readonly #buffers: PooledBuffer[] = [];
-    readonly #constants: ReturnType<typeof createGLConstants>;
-    #isDisposed: boolean = false;
-
-    readonly #config = {
-        initialSize: 8,
-        maxSize: 64,
-        releaseThreshold: 30000,
-        cleanupInterval: 60000,
-    };
-
-    #cleanupTimer?: number;
-
-    constructor(gl: WebGL2RenderingContext) {
-        this.#gl = gl;
-        this.#constants = createGLConstants(gl);
-        this.#startCleanupTimer();
-    }
-
-    public get isDisposed(): boolean {
-        return this.#isDisposed;
-    }
-
-    public allocate = (
-        size: number,
-        usage: GLBufferUsage = this.#constants.STATIC_DRAW as GLBufferUsage
-    ): IBuffer => {
-        this.#throwIfDisposed();
-
-        if (size <= 0) {
-            throw new GLError('Buffer size must be positive', 'INVALID_VALUE');
-        }
-
-        const match = this.#findAvailableBuffer(size);
-        if (match) {
-            match.inUse = true;
-            match.lastUsed = Date.now();
-            return match.buffer;
-        }
-
-        const buffer = new Buffer(this.#gl, this.#constants.ARRAY_BUFFER as GLBufferTarget, {
-            byteSize: size,
-            usage,
-        });
-
-        this.#buffers.push({
-            buffer,
-            size,
-            lastUsed: Date.now(),
-            inUse: true,
-        });
-
-        return buffer;
-    };
-
-    public release = (buffer: IBuffer): void => {
-        this.#throwIfDisposed();
-
-        const index = this.#buffers.findIndex((item) => item.buffer === buffer);
-        if (index >= 0) {
-            this.#buffers[index].inUse = false;
-            this.#buffers[index].lastUsed = Date.now();
-        }
-    };
-
-    public acquire = (
-        data: T,
-        usage: GLBufferUsage = this.#constants.STATIC_DRAW as GLBufferUsage
-    ): IBuffer => {
-        this.#throwIfDisposed();
-
-        const dataSize =
-            data instanceof ArrayBuffer || data instanceof SharedArrayBuffer
-                ? data.byteLength
-                : data.byteLength;
-
-        const buffer = this.allocate(dataSize, usage);
-        buffer.update(data);
-
-        return buffer;
-    };
-
-    public dispose = (): void => {
-        if (this.#isDisposed) return;
-
-        if (this.#cleanupTimer !== undefined) {
-            clearInterval(this.#cleanupTimer);
-            this.#cleanupTimer = undefined;
-        }
-
-        for (const item of this.#buffers) {
-            if (!item.buffer.isDisposed) {
-                item.buffer.dispose();
-            }
-        }
-
-        this.#buffers.length = 0;
-        this.#isDisposed = true;
-    };
-
-    #findAvailableBuffer = (minSize: number): PooledBuffer | undefined => {
-        const exactMatch = this.#buffers.find((item) => !item.inUse && item.size === minSize);
-
-        if (exactMatch) {
-            return exactMatch;
-        }
-
-        let bestFit: PooledBuffer | undefined;
-        let bestFitSize = Number.MAX_SAFE_INTEGER;
-
-        for (const item of this.#buffers) {
-            if (!item.inUse && item.size >= minSize && item.size < bestFitSize) {
-                bestFit = item;
-                bestFitSize = item.size;
-            }
-        }
-
-        return bestFit;
-    };
-
-    #cleanupUnusedBuffers = (): void => {
-        if (this.#isDisposed) return;
-
-        const now = Date.now();
-        const threshold = now - this.#config.releaseThreshold;
-
-        const indicesToRemove: number[] = [];
-
-        for (let i = 0; i < this.#buffers.length; i++) {
-            const item = this.#buffers[i];
-
-            if (item.buffer.isDisposed || (!item.inUse && item.lastUsed < threshold)) {
-                if (!item.buffer.isDisposed) {
-                    item.buffer.dispose();
-                }
-                indicesToRemove.push(i);
-            }
-        }
-
-        for (let i = indicesToRemove.length - 1; i >= 0; i--) {
-            this.#buffers.splice(indicesToRemove[i], 1);
-        }
-    };
-
-    #startCleanupTimer = (): void => {
-        this.#cleanupTimer = setInterval(
-            () => this.#cleanupUnusedBuffers(),
-            this.#config.cleanupInterval
-        ) as unknown as number;
-    };
-
-    #throwIfDisposed = (): void => {
-        if (this.#isDisposed) {
-            throw new GLError('BufferPool has been disposed', 'BUFFER_ALREADY_DISPOSED');
-        }
-    };
-}
-
-class ResourceTracker {
-    readonly #resources: Set<IDisposable> = new Set();
-    #isDisposed = false;
-
-    public track = <T extends IDisposable>(resource: T): T => {
-        if (this.#isDisposed) {
-            throw new GLError('ResourceTracker has been disposed', 'INVALID_OPERATION');
-        }
-
-        this.#resources.add(resource);
-        return resource;
-    };
-
-    public untrack = <T extends IDisposable>(resource: T): T => {
-        this.#resources.delete(resource);
-        return resource;
-    };
-
-    public dispose = (): void => {
-        if (this.#isDisposed) return;
-
-        for (const resource of this.#resources) {
-            if (!resource.isDisposed) {
-                try {
-                    resource.dispose();
-                } catch (e) {
-                    // Ignore errors during disposal
-                }
-            }
-        }
-
-        this.#resources.clear();
-        this.#isDisposed = true;
-    };
-}
-
 class BufferFactory implements IBufferFactory {
     readonly #gl: WebGL2RenderingContext;
     readonly #constants: ReturnType<typeof createGLConstants>;
-    readonly #tracker = new ResourceTracker();
+    readonly #tracker = new ResourceTracker((message, code) => new GLError(message, code));
     readonly #contextLostHandler: (event: Event) => void;
     #isDisposed = false;
 
@@ -904,7 +702,17 @@ class BufferFactory implements IBufferFactory {
 
     public createPool = <T extends BufferSource>(): IBufferPool<T> => {
         this.#throwIfDisposed();
-        return this.#tracker.track(new BufferPool<T>(this.#gl));
+        return this.#tracker.track(
+            new BufferPool<T>({
+                defaultUsage: this.#constants.STATIC_DRAW as GLBufferUsage,
+                createBuffer: (size, usage) =>
+                    new Buffer(this.#gl, this.#constants.ARRAY_BUFFER as GLBufferTarget, {
+                        byteSize: size,
+                        usage,
+                    }),
+                createError: (message, code) => new GLError(message, code),
+            })
+        );
     };
 
     public dispose = (): void => {
