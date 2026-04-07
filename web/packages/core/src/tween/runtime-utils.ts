@@ -65,10 +65,12 @@ export const deepCloneTweenValue = <T>(source: T): T => {
         return result as unknown as T;
     }
 
-    const result = Object.create(null) as Record<string, unknown>;
-    for (const key in source as Record<string, unknown>) {
-        if (Object.prototype.hasOwnProperty.call(source, key)) {
-            result[key] = deepCloneTweenValue((source as Record<string, unknown>)[key]);
+    const typedSource = source as Record<PropertyKey, unknown>;
+    const result = Object.create(Object.getPrototypeOf(source)) as Record<PropertyKey, unknown>;
+
+    for (const key of Reflect.ownKeys(typedSource)) {
+        if (Object.prototype.propertyIsEnumerable.call(typedSource, key)) {
+            result[key] = deepCloneTweenValue(typedSource[key]);
         }
     }
 

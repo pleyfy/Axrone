@@ -8,6 +8,10 @@ import {
     VoidCallback,
 } from './types';
 import { deepCloneTweenValue } from './runtime-utils';
+import {
+    getOrCreateTweenPropertyAccessor,
+    TweenPropertyAccessor,
+} from './property-accessor';
 
 export class SpringSimulation {
     private _mass: number;
@@ -57,7 +61,7 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
     private _lastTime?: number;
     private _props = new Set<string>();
     private _autoUpdate = false;
-    private _propPathCache = new Map<string, readonly string[]>();
+    private _propertyAccessors = new Map<string, TweenPropertyAccessor>();
 
     constructor(initial: T, config: SpringConfig = {}) {
         super();
@@ -73,6 +77,7 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
             this._target = { value: initial } as any;
             this._velocity['value'] = initialVelocity;
             this._props.add('value');
+            this._getAccessor('value');
         } else {
             this._collectProps(initial, '', this._props);
 
@@ -101,25 +106,20 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
         if (Array.isArray(obj) || ArrayBuffer.isView(obj)) {
             const length = Array.isArray(obj) ? obj.length : (obj as any).length;
             for (let i = 0; i < length; i++) {
-                props.add(prefix ? `${prefix}.${i}` : `${i}`);
+                const propPath = prefix ? `${prefix}.${i}` : `${i}`;
+                props.add(propPath);
+                this._getAccessor(propPath);
             }
         } else {
             for (const key in obj) {
                 const value = obj[key];
                 const propPath = prefix ? `${prefix}.${key}` : key;
 
-                if (
-                    value !== null &&
-                    typeof value === 'object' &&
-                    !Array.isArray(value) &&
-                    !ArrayBuffer.isView(value)
-                ) {
+                if (value !== null && typeof value === 'object') {
                     this._collectProps(value, propPath, props);
                 } else {
                     props.add(propPath);
-                    if (!this._propPathCache.has(propPath)) {
-                        this._propPathCache.set(propPath, propPath.split('.'));
-                    }
+                    this._getAccessor(propPath);
                 }
             }
         }
@@ -243,36 +243,24 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
     private _simulateStep(dt: number): boolean {
         let allAtRest = true;
 
-        if (typeof this._current === 'number' && typeof this._target === 'number') {
-            const [position, velocity, atRest] = this._simulation.update(
-                this._current as number,
-                this._velocity['value'],
-                this._target as number,
-                dt
-            );
+        for (const prop of this._props) {
+            const accessor = this._propertyAccessors.get(prop) ?? this._getAccessor(prop);
+            const position = accessor.get(this._current) ?? 0;
+            const target = accessor.get(this._target) ?? 0;
 
-            (this._current as any) = position;
-            this._velocity['value'] = velocity;
-            allAtRest = atRest;
-        } else {
-            for (const prop of this._props) {
-                const position = this._getPropValue(this._current, prop) ?? 0;
-                const target = this._getPropValue(this._target, prop) ?? 0;
+            if (typeof position === 'number' && typeof target === 'number') {
+                const [newPosition, newVelocity, atRest] = this._simulation.update(
+                    position,
+                    this._velocity[prop] ?? 0,
+                    target,
+                    dt
+                );
 
-                if (typeof position === 'number' && typeof target === 'number') {
-                    const [newPosition, newVelocity, atRest] = this._simulation.update(
-                        position,
-                        this._velocity[prop] ?? 0,
-                        target,
-                        dt
-                    );
+                accessor.set(this._current, newPosition);
+                this._velocity[prop] = newVelocity;
 
-                    this._setPropValue(this._current, prop, newPosition);
-                    this._velocity[prop] = newVelocity;
-
-                    if (!atRest) {
-                        allAtRest = false;
-                    }
+                if (!atRest) {
+                    allAtRest = false;
                 }
             }
         }
@@ -313,54 +301,11 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
         }
     };
 
-    private _getPropValue(obj: any, path: string): any {
-        if (!obj) return undefined;
-
-        if (path === 'value' && typeof obj === 'number') {
-            return obj;
-        }
-
-        const parts = this._propPathCache.get(path) ?? path.split('.');
-        this._propPathCache.set(path, parts);
-        let current = obj;
-
-        for (const part of parts) {
-            if (current === undefined || current === null) return undefined;
-            current = current[part];
-        }
-
-        return current;
-    }
-
-    private _setPropValue(obj: any, path: string, value: any): void {
-        if (!obj) return;
-
-        if (path === 'value' && typeof obj === 'number') {
-            (obj as any) = value;
-            return;
-        }
-
-        const parts = this._propPathCache.get(path) ?? path.split('.');
-        this._propPathCache.set(path, parts);
-        let current = obj;
-
-        for (let i = 0; i < parts.length - 1; i++) {
-            const part = parts[i];
-
-            if (current[part] === undefined) {
-                const nextPart = parts[i + 1];
-                const isArrayIndex = !isNaN(Number(nextPart));
-                current[part] = isArrayIndex ? [] : {};
-            }
-
-            current = current[part];
-        }
-
-        const lastPart = parts[parts.length - 1];
-        current[lastPart] = value;
-    }
-
     private _deepClone<U>(source: U): U {
         return deepCloneTweenValue(source);
+    }
+
+    private _getAccessor(path: string): TweenPropertyAccessor {
+        return getOrCreateTweenPropertyAccessor(this._propertyAccessors, path);
     }
 }

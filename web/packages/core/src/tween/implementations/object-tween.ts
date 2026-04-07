@@ -1,24 +1,23 @@
 import { DeepPartial } from '@axrone/utility';
 import { TweenCore } from '../core';
 import { TweenConfig } from '../types';
-import { Interpolation } from '../interpolation';
 import {
-    allocateSequenceLike,
+    getOrCreateTweenPropertyAccessor,
+    TweenPropertyAccessor,
+} from '../property-accessor';
+import {
     deepCloneTweenValue,
     isTweenTypedArray,
     type TweenTypedArrayConstructor,
 } from '../runtime-utils';
-
-interface ObjectTweenPropertyEntry {
-    readonly path: string;
-    readonly parts: readonly string[];
-}
+import { createObjectTweenTrack, ObjectTweenTrack } from '../object-tracks';
 
 export class ObjectTween<T extends object> extends TweenCore<T> {
     protected _valuesStartRepeat: DeepPartial<T> | null = null;
     protected _objectProps = new Set<string>();
-    protected _propPathCache: Map<string, readonly string[]> = new Map();
-    protected _propertyEntries: ObjectTweenPropertyEntry[] = [];
+    protected _propertyAccessors = new Map<string, TweenPropertyAccessor>();
+    protected _propertyEntries: TweenPropertyAccessor[] = [];
+    protected _tracks: ObjectTweenTrack[] = [];
     protected _twoValueBuffer: [number, number] = [0, 0];
 
     constructor(object: T, config?: TweenConfig<T>) {
@@ -33,32 +32,31 @@ export class ObjectTween<T extends object> extends TweenCore<T> {
         this._collectProps(this._valuesStart, '', this._objectProps);
 
         for (const path of this._objectProps) {
-            const parts = this._propPathCache.get(path) ?? path.split('.');
-            this._propPathCache.set(path, parts);
-            this._propertyEntries.push({ path, parts });
+            this._propertyEntries.push(getOrCreateTweenPropertyAccessor(this._propertyAccessors, path));
         }
 
-        for (const entry of this._propertyEntries) {
-            const propValue = this._getPropValue(this._object, entry.parts);
-            const endValue = this._getPropValue(this._valuesEnd, entry.parts);
+        for (const accessor of this._propertyEntries) {
+            const propValue = accessor.get(this._object);
+            const endValue = accessor.get(this._valuesEnd);
 
-            if (this._getPropValue(this._valuesStart, entry.parts) === undefined) {
+            if (accessor.get(this._valuesStart) === undefined) {
                 const startValue =
                     propValue !== undefined ? propValue : this._getDefaultValue(endValue);
-                this._setPropValue(this._valuesStart, entry.parts, startValue);
+                accessor.set(this._valuesStart, startValue);
             }
 
-            if (this._getPropValue(this._valuesEnd, entry.parts) === undefined) {
-                this._setPropValue(this._valuesEnd, entry.parts, propValue);
+            if (accessor.get(this._valuesEnd) === undefined) {
+                accessor.set(this._valuesEnd, propValue);
             }
 
             if (propValue === undefined) {
-                const startValue = this._getPropValue(this._valuesStart, entry.parts);
-                this._setPropValue(this._object, entry.parts, startValue);
+                const startValue = accessor.get(this._valuesStart);
+                accessor.set(this._object, startValue);
             }
         }
 
         this._valuesStartRepeat = deepCloneTweenValue(this._valuesStart);
+        this._compileTracks();
     }
 
     protected _getDefaultValue(endValue: any): any {
@@ -98,119 +96,13 @@ export class ObjectTween<T extends object> extends TweenCore<T> {
             }
 
             props.add(propPath);
-            if (!this._propPathCache.has(propPath)) {
-                this._propPathCache.set(propPath, propPath.split('.'));
-            }
+            getOrCreateTweenPropertyAccessor(this._propertyAccessors, propPath);
         }
-    }
-
-    protected _getPropValue(obj: any, parts: readonly string[]): any {
-        if (!obj) {
-            return undefined;
-        }
-
-        let current = obj;
-
-        for (let index = 0; index < parts.length; index += 1) {
-            const part = parts[index];
-            if (current === undefined || current === null) {
-                return undefined;
-            }
-
-            current = current[part];
-        }
-
-        return current;
-    }
-
-    protected _setPropValue(obj: any, parts: readonly string[], value: any): void {
-        if (!obj) {
-            return;
-        }
-
-        let current = obj;
-
-        for (let index = 0; index < parts.length - 1; index += 1) {
-            const part = parts[index];
-
-            if (current[part] === undefined) {
-                current[part] = this._isNumericPathPart(parts[index + 1]) ? [] : {};
-            }
-
-            current = current[part];
-        }
-
-        const lastPart = parts[parts.length - 1];
-        const existing = current[lastPart];
-
-        if (
-            isTweenTypedArray(existing) &&
-            isTweenTypedArray(value) &&
-            existing.length === value.length
-        ) {
-            (existing as any).set(value as any);
-            return;
-        }
-
-        current[lastPart] = value;
     }
 
     protected _updateProperties(progress: number): void {
-        for (const entry of this._propertyEntries) {
-            const start = this._getPropValue(this._valuesStart, entry.parts);
-            const end = this._getPropValue(this._valuesEnd, entry.parts);
-
-            if (start === undefined || end === undefined) {
-                continue;
-            }
-
-            if (
-                (Array.isArray(end) && Array.isArray(start)) ||
-                (isTweenTypedArray(end) && isTweenTypedArray(start))
-            ) {
-                const length = (end as ArrayLike<number>).length;
-                const existing = this._getPropValue(this._object, entry.parts);
-                const result = this._resolveSequenceTarget(
-                    existing,
-                    end as unknown as ArrayLike<number>,
-                    length,
-                    entry.parts
-                ) as any;
-
-                if (
-                    this._interpolationFunction &&
-                    this._interpolationFunction !== Interpolation.Linear &&
-                    length > 1
-                ) {
-                    const buffer = this._twoValueBuffer;
-
-                    for (let index = 0; index < length; index += 1) {
-                        const startValue = index < start.length ? start[index] : 0;
-                        buffer[0] = startValue;
-                        buffer[1] = end[index] ?? 0;
-                        result[index] = this._interpolationFunction(buffer, progress);
-                    }
-
-                    continue;
-                }
-
-                for (let index = 0; index < length; index += 1) {
-                    const startValue = index < start.length ? start[index] : 0;
-                    const endValue = end[index] ?? 0;
-                    result[index] = startValue + (endValue - startValue) * progress;
-                }
-
-                continue;
-            }
-
-            if (typeof end === 'number') {
-                const startValue = typeof start === 'number' ? start : 0;
-                this._setPropValue(
-                    this._object,
-                    entry.parts,
-                    startValue + (end - startValue) * progress
-                );
-            }
+        for (const track of this._tracks) {
+            track.apply(this._object, progress, this._interpolationFunction, this._twoValueBuffer);
         }
     }
 
@@ -220,6 +112,7 @@ export class ObjectTween<T extends object> extends TweenCore<T> {
             this._valuesStart = this._valuesEnd;
             this._valuesEnd = previousStart;
             this._reversed = !this._reversed;
+            this._compileTracks();
             return;
         }
 
@@ -228,59 +121,30 @@ export class ObjectTween<T extends object> extends TweenCore<T> {
         }
 
         this._valuesStart = deepCloneTweenValue(this._valuesStartRepeat);
+        this._compileTracks();
 
-        for (const entry of this._propertyEntries) {
-            const startValue = this._getPropValue(this._valuesStart, entry.parts);
-            if (startValue === undefined) {
-                continue;
-            }
-
-            const existing = this._getPropValue(this._object, entry.parts);
-
-            if (
-                isTweenTypedArray(existing) &&
-                isTweenTypedArray(startValue) &&
-                existing.length === startValue.length
-            ) {
-                (existing as any).set(startValue as any);
-                continue;
-            }
-
-            if (Array.isArray(existing) && Array.isArray(startValue) && existing.length === startValue.length) {
-                for (let index = 0; index < startValue.length; index += 1) {
-                    existing[index] = startValue[index] ?? 0;
-                }
-                continue;
-            }
-
-            this._setPropValue(this._object, entry.parts, startValue);
+        for (const track of this._tracks) {
+            track.reset(this._object);
         }
-    }
-
-    protected _resolveSequenceTarget(
-        existing: unknown,
-        template: ArrayLike<number>,
-        length: number,
-        parts: readonly string[]
-    ): ArrayLike<number> {
-        if (isTweenTypedArray(existing) && isTweenTypedArray(template) && existing.length === length) {
-            return existing as unknown as ArrayLike<number>;
-        }
-
-        if (Array.isArray(existing) && Array.isArray(template) && existing.length === length) {
-            return existing;
-        }
-
-        const created = allocateSequenceLike(template, length);
-        this._setPropValue(this._object, parts, created);
-        return created;
     }
 
     protected _deepClone<U>(source: U): U {
         return deepCloneTweenValue(source);
     }
 
-    protected _isNumericPathPart(value: string | undefined): boolean {
-        return typeof value === 'string' && /^\d+$/.test(value);
+    protected _compileTracks(): void {
+        this._tracks = [];
+
+        for (const accessor of this._propertyEntries) {
+            const track = createObjectTweenTrack(
+                accessor,
+                accessor.get(this._valuesStart),
+                accessor.get(this._valuesEnd)
+            );
+
+            if (track) {
+                this._tracks.push(track);
+            }
+        }
     }
 }

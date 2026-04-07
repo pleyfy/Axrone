@@ -636,6 +636,22 @@ describe('Tween System', () => {
             expect(spr.getCurrent().y).toBeCloseTo(0, 1);
         });
 
+        test('spring supports nested array targets', () => {
+            const spr = spring({ path: [0, 0, 0] }, { stiffness: 200, damping: 20 });
+
+            spr.setTarget({ path: [10, 20, 30] });
+            spr.start();
+
+            const isRunning = spr.updateManual(16);
+            const current = spr.getCurrent();
+
+            expect(Array.isArray(current.path)).toBe(true);
+            expect(current.path[0]).toBeGreaterThan(0);
+            expect(current.path[1]).toBeGreaterThan(current.path[0]);
+            expect(current.path[2]).toBeGreaterThan(current.path[1]);
+            expect(isRunning).toBe(true);
+        });
+
         test('spring events', () => {
             const spr = spring(0);
             let started = false;
@@ -677,6 +693,38 @@ describe('Tween System', () => {
 
             expect(obj.data).toBe(data);
             expect(obj.data[0]).toBeCloseTo(0.5, 1);
+        });
+
+        test('nested object array tween reuses existing sequence storage', () => {
+            const positions = [0, 0, 0];
+            const obj: any = { transform: { positions } };
+            const tw = to(obj, { transform: { positions: [10, 20, 30] } } as any, 100);
+
+            tw.start(0);
+            tw.update(50);
+
+            expect(obj.transform.positions).toBe(positions);
+            expect(positions[0]).toBeCloseTo(5, 1);
+            expect(positions[1]).toBeCloseTo(10, 1);
+            expect(positions[2]).toBeCloseTo(15, 1);
+        });
+
+        test('nested typed-array tween resets in place across repeats', () => {
+            const points = new Float32Array([0, 0, 0]);
+            const obj: any = { transform: { points } };
+            const tw = to(obj, { transform: { points: new Float32Array([2, 4, 6]) } } as any, 100)
+                .repeat(1);
+
+            tw.start(0);
+            tw.update(100);
+
+            expect(obj.transform.points).toBe(points);
+            expect(Array.from(points)).toEqual([2, 4, 6]);
+
+            tw.update(101);
+
+            expect(obj.transform.points).toBe(points);
+            expect(Array.from(points)).toEqual([0, 0, 0]);
         });
 
         test('from helper preserves typed-array end state', () => {
