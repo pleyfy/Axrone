@@ -1,5 +1,6 @@
 export * from './types';
 export * from './event';
+export * from './input';
 // Explicitly export observer to avoid conflicts with event and tween
 export {
     // Core types
