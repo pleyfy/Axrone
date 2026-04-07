@@ -512,7 +512,7 @@ export class TextureUtils {
     }
 
     public static generateTextureId(): string {
-        return `tex_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return `tex_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     }
 
     public static calculateTextureHash(options: ITextureCreateOptions): string {
@@ -583,10 +583,10 @@ export class TextureUtils {
     public static colorToVec4(color: string): Vec4 {
         if (color.startsWith('#')) {
             const hex = color.slice(1);
-            const r = parseInt(hex.substr(0, 2), 16) / 255;
-            const g = parseInt(hex.substr(2, 2), 16) / 255;
-            const b = parseInt(hex.substr(4, 2), 16) / 255;
-            const a = hex.length === 8 ? parseInt(hex.substr(6, 2), 16) / 255 : 1;
+            const r = parseInt(hex.slice(0, 2), 16) / 255;
+            const g = parseInt(hex.slice(2, 4), 16) / 255;
+            const b = parseInt(hex.slice(4, 6), 16) / 255;
+            const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
             return new Vec4(r, g, b, a);
         }
 

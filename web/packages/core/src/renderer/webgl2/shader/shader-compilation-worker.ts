@@ -70,7 +70,7 @@ export class ShaderCompilationWorker {
         options?: { defines?: Record<string, any>; version?: string; precision?: string }
     ): Promise<string> {
         return new Promise((resolve, reject) => {
-            const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const id = `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
             this.pendingCompilations.set(id, resolve);
 

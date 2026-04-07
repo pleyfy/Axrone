@@ -22,7 +22,7 @@ export class WebGLIndexBuffer implements IIndexBuffer {
         this.bufferFactory = createBufferFactory(gl);
         this._usage = config.usage || BufferUsage.STATIC_DRAW;
         this._indexType = config.indexType || IndexType.UNSIGNED_SHORT;
-        this._id = `index_buffer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        this._id = `index_buffer_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
         if (config.data) {
             this.setData(config.data);

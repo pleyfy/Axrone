@@ -97,7 +97,7 @@ export class ChatEventSystem {
 
     public sendMessage(userId: string, content: string): void {
         this.messageEvents.notify({
-            messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            messageId: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
             userId,
             content,
             timestamp: Date.now(),

@@ -307,7 +307,7 @@ export class MeshUtils {
     }
 
     public static generateMeshId(): string {
-        return `mesh_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return `mesh_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     }
 
     public static validateIndexType(indexType: IndexType, vertexCount: number): void {

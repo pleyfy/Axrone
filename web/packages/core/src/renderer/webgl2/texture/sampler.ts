@@ -95,7 +95,7 @@ export class WebGLTextureSampler implements ITextureSampler {
     }
 
     private _generateSamplerId(): string {
-        return `sampler_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return `sampler_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     }
 
     private _configureSampler(): void {
