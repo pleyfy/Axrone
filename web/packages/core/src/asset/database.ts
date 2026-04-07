@@ -411,6 +411,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             options.pipeline ??
             new AssetImportPipeline<TSchema>({
                 importers: options.importers,
+                stages: options.stages,
                 locale: this._locale,
                 retry: options.retry,
                 messageResolver: options.messageResolver,
@@ -420,6 +421,12 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         if (options.pipeline && options.importers?.length) {
             for (const importer of options.importers) {
                 this._pipeline.register(importer);
+            }
+        }
+
+        if (options.pipeline && options.stages?.length) {
+            for (const stage of options.stages) {
+                this._pipeline.registerStage(stage);
             }
         }
     }
@@ -450,6 +457,22 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     listImporters(): readonly AssetImporter<TSchema>[] {
         this._assertNotDisposed();
         return this._pipeline.listImporters();
+    }
+
+    registerStage(stage: Parameters<AssetImportPipeline<TSchema>['registerStage']>[0]): this {
+        this._assertNotDisposed();
+        this._pipeline.registerStage(stage);
+        return this;
+    }
+
+    unregisterStage(stageId: string): boolean {
+        this._assertNotDisposed();
+        return this._pipeline.unregisterStage(stageId);
+    }
+
+    listStages(): ReturnType<AssetImportPipeline<TSchema>['listStages']> {
+        this._assertNotDisposed();
+        return this._pipeline.listStages();
     }
 
     subscribe(listener: AssetListener<TSchema>): AssetSubscription {

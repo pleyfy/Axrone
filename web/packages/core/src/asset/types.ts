@@ -212,6 +212,82 @@ export interface AssetImportContext<
     ) => AssetRecord<TSchema> | undefined;
 }
 
+export type AssetImportStagePhase = 'source' | 'before-import' | 'after-import';
+
+export interface AssetImportStageContextBase<
+    TSchema extends AssetSchema,
+    TSource extends AssetImportSource = AssetImportSource,
+> extends AssetImporterMatchContext<TSchema, TSource> {
+    readonly phase: AssetImportStagePhase;
+    readonly pipeline: AssetImportPipeline<TSchema>;
+    readonly signal?: AbortSignal;
+    readonly attempt: number;
+    readonly nowEpochMs: number;
+    readonly baseKey: AssetKey;
+}
+
+export interface AssetSourceStageContext<
+    TSchema extends AssetSchema,
+    TSource extends AssetImportSource = AssetImportSource,
+> extends AssetImportStageContextBase<TSchema, TSource> {
+    readonly phase: 'source';
+}
+
+export interface AssetBeforeImportStageContext<
+    TSchema extends AssetSchema,
+    TSource extends AssetImportSource = AssetImportSource,
+> extends AssetImportStageContextBase<TSchema, TSource> {
+    readonly phase: 'before-import';
+    readonly importer: AssetImporter<TSchema, TSource>;
+}
+
+export interface AssetAfterImportStageContext<
+    TSchema extends AssetSchema,
+    TSource extends AssetImportSource = AssetImportSource,
+    TPrimaryKind extends AssetKind<TSchema> = AssetKind<TSchema>,
+> extends AssetImportStageContextBase<TSchema, TSource> {
+    readonly phase: 'after-import';
+    readonly importer: AssetImporter<TSchema, TSource>;
+    readonly result: AssetImportResult<TSchema, TPrimaryKind>;
+}
+
+export type AssetImportStageContext<
+    TSchema extends AssetSchema,
+    TSource extends AssetImportSource = AssetImportSource,
+    TPrimaryKind extends AssetKind<TSchema> = AssetKind<TSchema>,
+> =
+    | AssetSourceStageContext<TSchema, TSource>
+    | AssetBeforeImportStageContext<TSchema, TSource>
+    | AssetAfterImportStageContext<TSchema, TSource, TPrimaryKind>;
+
+export interface AssetImportStageOutput<
+    TSchema extends AssetSchema,
+    TPrimaryKind extends AssetKind<TSchema> = AssetKind<TSchema>,
+> {
+    readonly source?: AssetImportSource;
+    readonly result?: AssetImportResult<TSchema, TPrimaryKind>;
+    readonly diagnostics?: readonly AssetImportDiagnostic[];
+}
+
+export interface AssetImportStage<
+    TSchema extends AssetSchema,
+    TSource extends AssetImportSource = AssetImportSource,
+    TPrimaryKind extends AssetKind<TSchema> = AssetKind<TSchema>,
+> {
+    readonly id: string;
+    readonly priority?: number;
+    readonly phases?: readonly AssetImportStagePhase[];
+    readonly sourceKinds?: readonly TSource['kind'][];
+    canProcess?(
+        context: Readonly<AssetImportStageContext<TSchema, TSource, TPrimaryKind>>
+    ): boolean;
+    run(
+        context: Readonly<AssetImportStageContext<TSchema, TSource, TPrimaryKind>>
+    ):
+        | AssetImportStageOutput<TSchema, TPrimaryKind>
+        | Promise<AssetImportStageOutput<TSchema, TPrimaryKind>>;
+}
+
 export interface AssetImporter<
     TSchema extends AssetSchema,
     TSource extends AssetImportSource = AssetImportSource,
@@ -308,7 +384,7 @@ export interface AssetImportReceipt<
 }
 
 export type AssetValidationMessageCode =
-    | `asset.invalid-${'id' | 'importer' | 'key' | 'kind' | 'revision' | 'source'}`
+    | `asset.invalid-${'id' | 'importer' | 'key' | 'kind' | 'revision' | 'source' | 'stage'}`
     | `asset.conflict.${'key-bound' | 'kind-mismatch'}`
     | 'asset.dependency.missing';
 
@@ -345,6 +421,10 @@ export type AssetMessageDescriptor =
       }
     | {
           readonly code: 'asset.invalid-source';
+          readonly value: unknown;
+      }
+    | {
+          readonly code: 'asset.invalid-stage';
           readonly value: unknown;
       }
     | {
@@ -469,6 +549,7 @@ export interface AssetHydrateOptions {
 
 export interface AssetImportPipelineOptions<TSchema extends AssetSchema> {
     readonly importers?: readonly AssetImporter<TSchema>[];
+    readonly stages?: readonly AssetImportStage<TSchema>[];
     readonly locale?: string;
     readonly retry?: AssetRetryPolicy<TSchema>;
     readonly messageResolver?: AssetMessageResolver;
@@ -478,6 +559,7 @@ export interface AssetImportPipelineOptions<TSchema extends AssetSchema> {
 export interface AssetDatabaseOptions<TSchema extends AssetSchema> {
     readonly locale?: string;
     readonly importers?: readonly AssetImporter<TSchema>[];
+    readonly stages?: readonly AssetImportStage<TSchema>[];
     readonly pipeline?: AssetImportPipeline<TSchema>;
     readonly retry?: AssetRetryPolicy<TSchema>;
     readonly codecs?: AssetCodecMap<TSchema>;

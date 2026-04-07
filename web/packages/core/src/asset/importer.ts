@@ -1,5 +1,6 @@
 import type { AssetDatabase } from './database';
 import {
+    AssetError,
     AssetConfigurationError,
     AssetDisposedError,
     AssetImportError,
@@ -13,12 +14,17 @@ import {
 } from './reference';
 import type {
     AssetImportContext,
+    AssetImportDiagnostic,
     AssetImportFailureContext,
     AssetImporter,
     AssetImporterMatchContext,
     AssetImportOptions,
     AssetImportPipelineOptions,
+    AssetImportResult,
     AssetImportSource,
+    AssetImportStage,
+    AssetImportStageContext,
+    AssetImportStagePhase,
     AssetKind,
     AssetKey,
     AssetMessageResolver,
@@ -33,6 +39,23 @@ const DEFAULT_RETRY_POLICY = {
     baseDelayMs: 0,
     maxDelayMs: 0,
 } as const satisfies Required<Pick<AssetRetryPolicy, 'attempts' | 'baseDelayMs' | 'maxDelayMs'>>;
+const DEFAULT_STAGE_PHASES = Object.freeze([
+    'source',
+    'before-import',
+    'after-import',
+] as const satisfies readonly AssetImportStagePhase[]);
+const EMPTY_IMPORT_DIAGNOSTICS = Object.freeze([]) as readonly AssetImportDiagnostic[];
+
+type AssetPipelineNodeKind = 'importer' | 'stage';
+
+interface AssetStageExecutionState<
+    TSchema extends AssetSchema,
+    TPrimaryKind extends AssetKind<TSchema> = AssetKind<TSchema>,
+> {
+    readonly source: AssetImportSource;
+    readonly result?: AssetImportResult<TSchema, TPrimaryKind>;
+    readonly diagnostics: readonly AssetImportDiagnostic[];
+}
 
 const createAbortError = (): Error => {
     const error = new Error('The operation was aborted');
@@ -129,6 +152,9 @@ const matchesImporter = <TSchema extends AssetSchema>(
 const normalizeImporterPriority = (value: number | undefined): number =>
     Number.isFinite(value) ? value! : 0;
 
+const normalizeStagePriority = (value: number | undefined): number =>
+    Number.isFinite(value) ? value! : 0;
+
 export const isAssetImporter = <TSchema extends AssetSchema = AssetSchema>(
     value: unknown
 ): value is AssetImporter<TSchema> =>
@@ -136,6 +162,14 @@ export const isAssetImporter = <TSchema extends AssetSchema = AssetSchema>(
     typeof value === 'object' &&
     typeof (value as AssetImporter<TSchema>).id === 'string' &&
     typeof (value as AssetImporter<TSchema>).import === 'function';
+
+export const isAssetImportStage = <TSchema extends AssetSchema = AssetSchema>(
+    value: unknown
+): value is AssetImportStage<TSchema> =>
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as AssetImportStage<TSchema>).id === 'string' &&
+    typeof (value as AssetImportStage<TSchema>).run === 'function';
 
 export class AssetImporterRegistry<TSchema extends AssetSchema = AssetSchema> {
     private readonly _byId = new Map<string, AssetImporter<TSchema>>();
@@ -303,8 +337,137 @@ export class AssetImporterRegistry<TSchema extends AssetSchema = AssetSchema> {
     }
 }
 
+const matchesStage = <TSchema extends AssetSchema>(
+    stage: AssetImportStage<TSchema>,
+    phase: AssetImportStagePhase,
+    sourceKind: AssetSourceKind,
+    context: Readonly<AssetImportStageContext<TSchema>>
+): boolean => {
+    if (stage.phases?.length && !stage.phases.includes(phase)) {
+        return false;
+    }
+
+    if (stage.sourceKinds?.length && !stage.sourceKinds.includes(sourceKind)) {
+        return false;
+    }
+
+    return stage.canProcess?.(context as never) ?? true;
+};
+
+export class AssetImportStageRegistry<TSchema extends AssetSchema = AssetSchema> {
+    private readonly _byId = new Map<string, AssetImportStage<TSchema>>();
+    private readonly _byPhase = new Map<AssetImportStagePhase, AssetImportStage<TSchema>[]>();
+    private _sorted: readonly AssetImportStage<TSchema>[] = Object.freeze([]);
+    private _disposed = false;
+
+    constructor() {
+        for (const phase of DEFAULT_STAGE_PHASES) {
+            this._byPhase.set(phase, []);
+        }
+    }
+
+    get isDisposed(): boolean {
+        return this._disposed;
+    }
+
+    register(stage: AssetImportStage<TSchema>): this {
+        if (this._disposed) {
+            throw new AssetDisposedError('Cannot register a stage on a disposed asset pipeline');
+        }
+
+        if (!isAssetImportStage(stage) || !stage.id.trim()) {
+            throw new AssetConfigurationError(
+                'asset.invalid-stage',
+                resolveAssetMessage(
+                    {
+                        code: 'asset.invalid-stage',
+                        value: stage,
+                    },
+                    'en-US'
+                )
+            );
+        }
+
+        this._byId.set(stage.id, stage);
+        this._rebuild();
+        return this;
+    }
+
+    unregister(stageId: string): boolean {
+        if (this._disposed) {
+            return false;
+        }
+
+        const deleted = this._byId.delete(stageId);
+        if (deleted) {
+            this._rebuild();
+        }
+
+        return deleted;
+    }
+
+    clear(): void {
+        if (this._disposed) {
+            return;
+        }
+
+        this._byId.clear();
+        this._rebuild();
+    }
+
+    list(): readonly AssetImportStage<TSchema>[] {
+        return this._sorted;
+    }
+
+    listByPhase(phase: AssetImportStagePhase): readonly AssetImportStage<TSchema>[] {
+        return this._byPhase.get(phase) ?? [];
+    }
+
+    dispose(): void {
+        if (this._disposed) {
+            return;
+        }
+
+        this._disposed = true;
+        this._byId.clear();
+        this._sorted = Object.freeze([]);
+        for (const phase of DEFAULT_STAGE_PHASES) {
+            this._byPhase.set(phase, []);
+        }
+    }
+
+    private _rebuild(): void {
+        const sorted = [...this._byId.values()].sort((left, right) => {
+            const priorityDelta =
+                normalizeStagePriority(right.priority) - normalizeStagePriority(left.priority);
+
+            if (priorityDelta !== 0) {
+                return priorityDelta;
+            }
+
+            return left.id.localeCompare(right.id);
+        });
+
+        for (const phase of DEFAULT_STAGE_PHASES) {
+            this._byPhase.set(phase, []);
+        }
+
+        for (const stage of sorted) {
+            const phases = stage.phases?.length ? stage.phases : DEFAULT_STAGE_PHASES;
+
+            for (const phase of phases) {
+                const bucket = this._byPhase.get(phase)!;
+                bucket.push(stage);
+            }
+        }
+
+        this._sorted = Object.freeze(sorted);
+    }
+}
+
 export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
     private readonly _registry: AssetImporterRegistry<TSchema>;
+    private readonly _stageRegistry: AssetImportStageRegistry<TSchema>;
     private readonly _locale: string;
     private readonly _messageResolver?: AssetMessageResolver;
     private readonly _now: () => number;
@@ -317,6 +480,7 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
 
     constructor(options: AssetImportPipelineOptions<TSchema> = {}) {
         this._registry = new AssetImporterRegistry<TSchema>();
+        this._stageRegistry = new AssetImportStageRegistry<TSchema>();
         this._locale = normalizeAssetLocale(options.locale) ?? 'en-US';
         this._messageResolver = options.messageResolver;
         this._now = options.now ?? Date.now;
@@ -332,6 +496,10 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
 
         for (const importer of options.importers ?? []) {
             this._registry.register(importer);
+        }
+
+        for (const stage of options.stages ?? []) {
+            this._stageRegistry.register(stage);
         }
     }
 
@@ -355,6 +523,22 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
         return this._registry.list();
     }
 
+    registerStage(stage: AssetImportStage<TSchema>): this {
+        this._assertNotDisposed();
+        this._stageRegistry.register(stage);
+        return this;
+    }
+
+    unregisterStage(stageId: string): boolean {
+        this._assertNotDisposed();
+        return this._stageRegistry.unregister(stageId);
+    }
+
+    listStages(): readonly AssetImportStage<TSchema>[] {
+        this._assertNotDisposed();
+        return this._stageRegistry.list();
+    }
+
     async import<TPrimaryKind extends AssetKind<TSchema> = AssetKind<TSchema>>(
         database: AssetDatabase<TSchema>,
         source: AssetImportSource,
@@ -366,59 +550,56 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
 
         const locale = normalizeAssetLocale(options.locale) ?? this._locale;
         const baseKey = this._resolveBaseKey(source, options);
-        const importer = this._registry.find({
-            source,
-            locale,
-            database,
-        });
-
-        if (!importer) {
-            throw new AssetImporterNotFoundError(
-                resolveAssetMessage(
-                    {
-                        code: 'asset.importer.not-found',
-                        sourceKind: source.kind,
-                        uri: source.uri,
-                        mimeType: source.mimeType,
-                    },
-                    locale,
-                    this._messageResolver
-                )
-            );
-        }
-
-        const importerId = asAssetImporterId(importer.id);
         const retry = options.retry;
         const maxAttempts = Math.max(1, Math.trunc(retry?.attempts ?? this._retry.attempts));
         const baseDelayMs = Math.max(0, retry?.baseDelayMs ?? this._retry.baseDelayMs);
         const maxDelayMs = Math.max(baseDelayMs, retry?.maxDelayMs ?? this._retry.maxDelayMs);
         const shouldRetry = retry?.shouldRetry ?? this._retry.shouldRetry;
+        let lastImporterId = 'unknown';
 
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
             ensureNotAborted(options.signal);
+            let currentSource = source;
+            let importerId = lastImporterId;
 
             try {
-                const result = await importer.import({
+                const nowEpochMs = this._now();
+                const sourceStageOutput = await this._runStages('source', {
                     source,
                     locale,
                     database,
-                    pipeline: this,
                     signal: options.signal,
                     attempt,
-                    nowEpochMs: this._now(),
+                    nowEpochMs,
                     baseKey,
-                    createSubKey: (suffix: string) =>
-                        canonicalizeAssetKey(`${baseKey}#${suffix.trim()}`),
-                    resolveDependency: (input) => database.get(input),
-                } as Readonly<AssetImportContext<TSchema>>);
+                    createContext: (state) => ({
+                        phase: 'source',
+                        source: state.source,
+                        locale,
+                        database,
+                        pipeline: this,
+                        signal: options.signal,
+                        attempt,
+                        nowEpochMs,
+                        baseKey,
+                    }),
+                });
+                const sourceForImport = sourceStageOutput.source;
+                currentSource = sourceForImport;
+                const importer = this._registry.find({
+                    source: sourceForImport,
+                    locale,
+                    database,
+                });
 
-                if (!result || typeof result !== 'object' || !result.primary) {
-                    throw new AssetConfigurationError(
-                        'asset.invalid-importer',
+                if (!importer) {
+                    throw new AssetImporterNotFoundError(
                         resolveAssetMessage(
                             {
-                                code: 'asset.invalid-importer',
-                                value: importer,
+                                code: 'asset.importer.not-found',
+                                sourceKind: sourceForImport.kind,
+                                uri: sourceForImport.uri,
+                                mimeType: sourceForImport.mimeType,
                             },
                             locale,
                             this._messageResolver
@@ -426,19 +607,100 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
                     );
                 }
 
+                importerId = importer.id;
+                lastImporterId = importerId;
+                const beforeImportOutput = await this._runStages<TPrimaryKind>('before-import', {
+                    locale,
+                    database,
+                    signal: options.signal,
+                    attempt,
+                    nowEpochMs,
+                    baseKey,
+                    source: sourceForImport,
+                    createContext: (state) => ({
+                        phase: 'before-import',
+                        source: state.source,
+                        locale,
+                        database,
+                        pipeline: this,
+                        signal: options.signal,
+                        attempt,
+                        nowEpochMs,
+                        baseKey,
+                        importer,
+                    }),
+                });
+                const finalSource = beforeImportOutput.source;
+                currentSource = finalSource;
+                let result = beforeImportOutput.result;
+
+                if (result === undefined) {
+                    const importedResult = await importer.import({
+                        source: finalSource,
+                        locale,
+                        database,
+                        pipeline: this,
+                        signal: options.signal,
+                        attempt,
+                        nowEpochMs,
+                        baseKey,
+                        createSubKey: (suffix: string) =>
+                            canonicalizeAssetKey(`${baseKey}#${suffix.trim()}`),
+                        resolveDependency: (input) => database.get(input),
+                    } as Readonly<AssetImportContext<TSchema>>);
+                    this._assertValidImportResult<TPrimaryKind>(
+                        importedResult,
+                        'importer',
+                        importer,
+                        locale
+                    );
+                    result = importedResult;
+                }
+
+                this._assertValidImportResult<TPrimaryKind>(result, 'importer', importer, locale);
+                const afterImportOutput = await this._runStages<TPrimaryKind>('after-import', {
+                    locale,
+                    database,
+                    signal: options.signal,
+                    attempt,
+                    nowEpochMs,
+                    baseKey,
+                    source: finalSource,
+                    result,
+                    createContext: (state) => ({
+                        phase: 'after-import',
+                        source: state.source,
+                        locale,
+                        database,
+                        pipeline: this,
+                        signal: options.signal,
+                        attempt,
+                        nowEpochMs,
+                        baseKey,
+                        importer,
+                        result: state.result!,
+                    }),
+                });
+                result = afterImportOutput.result ?? result;
+
                 return Object.freeze({
-                    importerId,
+                    importerId: asAssetImporterId(importerId),
                     importer,
                     baseKey,
                     importedAtEpochMs: this._now(),
-                    diagnostics: Object.freeze([...(result.diagnostics ?? [])]),
+                    diagnostics: Object.freeze([
+                        ...sourceStageOutput.diagnostics,
+                        ...beforeImportOutput.diagnostics,
+                        ...(result.diagnostics ?? []),
+                        ...afterImportOutput.diagnostics,
+                    ]),
                     result,
-                }) as unknown as AssetPipelineExecution<TSchema, TPrimaryKind>;
+                });
             } catch (error) {
                 ensureNotAborted(options.signal);
 
                 const failureContext: AssetImportFailureContext<TSchema> = {
-                    source,
+                    source: currentSource,
                     importerId,
                     attempt,
                     maxAttempts,
@@ -450,11 +712,14 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
                 const canRetry =
                     attempt < maxAttempts &&
                     (shouldRetry?.(error, failureContext) ??
-                        (error instanceof AssetImportError === false &&
-                            error instanceof AssetConfigurationError === false &&
+                        (error instanceof AssetError === false &&
                             (error as Error | undefined)?.name !== 'AbortError'));
 
                 if (!canRetry) {
+                    if (error instanceof AssetError) {
+                        throw error;
+                    }
+
                     throw new AssetImportError(
                         resolveAssetMessage(
                             {
@@ -483,14 +748,14 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
             resolveAssetMessage(
                 {
                     code: 'asset.import.failed',
-                    importerId,
+                    importerId: lastImporterId,
                     attempt: maxAttempts,
                     reason: 'retry-exhausted',
                 },
                 locale,
                 this._messageResolver
             ),
-            importerId,
+            lastImporterId,
             maxAttempts
         );
     }
@@ -502,6 +767,126 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
 
         this._disposed = true;
         this._registry.dispose();
+        this._stageRegistry.dispose();
+    }
+
+    private async _runStages<TPrimaryKind extends AssetKind<TSchema> = AssetKind<TSchema>>(
+        phase: AssetImportStagePhase,
+        options: {
+            readonly source: AssetImportSource;
+            readonly locale: string;
+            readonly database: AssetDatabase<TSchema>;
+            readonly signal?: AbortSignal;
+            readonly attempt: number;
+            readonly nowEpochMs: number;
+            readonly baseKey: AssetKey;
+            readonly result?: AssetImportResult<TSchema, TPrimaryKind>;
+            readonly createContext: (
+                state: Readonly<{
+                    source: AssetImportSource;
+                    result?: AssetImportResult<TSchema, TPrimaryKind>;
+                }>
+            ) => AssetImportStageContext<TSchema, AssetImportSource, TPrimaryKind>;
+        }
+    ): Promise<AssetStageExecutionState<TSchema, TPrimaryKind>> {
+        const stages = this._stageRegistry.listByPhase(phase);
+        if (stages.length === 0) {
+            return {
+                source: options.source,
+                result: options.result,
+                diagnostics: EMPTY_IMPORT_DIAGNOSTICS,
+            };
+        }
+
+        let currentSource = options.source;
+        let currentResult = options.result;
+        const diagnostics: AssetImportDiagnostic[] = [];
+
+        for (const stage of stages) {
+            ensureNotAborted(options.signal);
+
+            const context = options.createContext({
+                source: currentSource,
+                result: currentResult,
+            });
+
+            if (
+                !matchesStage(
+                    stage,
+                    phase,
+                    currentSource.kind,
+                    context as Readonly<AssetImportStageContext<TSchema>>
+                )
+            ) {
+                continue;
+            }
+
+            const output = await stage.run(context as never);
+            if (output === undefined) {
+                continue;
+            }
+
+            if (output === null || typeof output !== 'object') {
+                this._throwInvalidPipelineValue(
+                    'stage',
+                    {
+                        phase,
+                        stageId: stage.id,
+                        output,
+                    },
+                    options.locale
+                );
+            }
+
+            if (output.source !== undefined) {
+                this._assertValidSource(output.source);
+                currentSource = output.source;
+            }
+
+            if (output.result !== undefined) {
+                if (phase === 'source') {
+                    this._throwInvalidPipelineValue(
+                        'stage',
+                        {
+                            phase,
+                            stageId: stage.id,
+                            output,
+                        },
+                        options.locale
+                    );
+                }
+
+                this._assertValidImportResult<TPrimaryKind>(
+                    output.result,
+                    'stage',
+                    {
+                        phase,
+                        stageId: stage.id,
+                        output,
+                    },
+                    options.locale
+                );
+                currentResult = output.result;
+            }
+
+            this._appendDiagnostics(
+                output.diagnostics,
+                diagnostics,
+                'stage',
+                {
+                    phase,
+                    stageId: stage.id,
+                    output,
+                },
+                options.locale
+            );
+        }
+
+        return {
+            source: currentSource,
+            result: currentResult,
+            diagnostics: diagnostics.length === 0 ? EMPTY_IMPORT_DIAGNOSTICS : Object.freeze(diagnostics),
+        };
     }
 
     private _assertValidSource(source: AssetImportSource): void {
@@ -518,6 +903,113 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
                 )
             );
         }
+    }
+
+    private _assertValidImportResult<TPrimaryKind extends AssetKind<TSchema>>(
+        result: unknown,
+        nodeKind: AssetPipelineNodeKind,
+        value: unknown,
+        locale: string
+    ): asserts result is AssetImportResult<TSchema, TPrimaryKind> {
+        if (!result || typeof result !== 'object') {
+            this._throwInvalidPipelineValue(nodeKind, value, locale);
+        }
+
+        const primary = (result as { readonly primary?: unknown }).primary;
+        if (!this._isValidWriteInput(primary)) {
+            this._throwInvalidPipelineValue(nodeKind, value, locale);
+        }
+
+        const additional = (result as { readonly additional?: unknown }).additional;
+        if (
+            additional !== undefined &&
+            (!Array.isArray(additional) || additional.some((entry) => !this._isValidWriteInput(entry)))
+        ) {
+            this._throwInvalidPipelineValue(nodeKind, value, locale);
+        }
+
+        this._assertValidDiagnostics(
+            (result as { readonly diagnostics?: unknown }).diagnostics,
+            nodeKind,
+            value,
+            locale
+        );
+    }
+
+    private _isValidWriteInput(value: unknown): value is AssetImportResult<TSchema>['primary'] {
+        return (
+            value !== null &&
+            typeof value === 'object' &&
+            typeof (value as { readonly kind?: unknown }).kind === 'string' &&
+            'data' in value
+        );
+    }
+
+    private _appendDiagnostics(
+        diagnostics: unknown,
+        target: AssetImportDiagnostic[],
+        nodeKind: AssetPipelineNodeKind,
+        value: unknown,
+        locale: string
+    ): void {
+        this._assertValidDiagnostics(diagnostics, nodeKind, value, locale);
+        target.push(...(diagnostics ?? EMPTY_IMPORT_DIAGNOSTICS));
+    }
+
+    private _assertValidDiagnostics(
+        diagnostics: unknown,
+        nodeKind: AssetPipelineNodeKind,
+        value: unknown,
+        locale: string
+    ): asserts diagnostics is readonly AssetImportDiagnostic[] | undefined {
+        if (diagnostics === undefined) {
+            return;
+        }
+
+        if (!Array.isArray(diagnostics)) {
+            this._throwInvalidPipelineValue(nodeKind, value, locale);
+        }
+
+        for (const diagnostic of diagnostics) {
+            if (!this._isValidDiagnostic(diagnostic)) {
+                this._throwInvalidPipelineValue(nodeKind, value, locale);
+            }
+        }
+    }
+
+    private _isValidDiagnostic(value: unknown): value is AssetImportDiagnostic {
+        return (
+            value !== null &&
+            typeof value === 'object' &&
+            typeof (value as { readonly message?: unknown }).message === 'string' &&
+            ((value as { readonly code?: unknown }).code === undefined ||
+                typeof (value as { readonly code?: unknown }).code === 'string') &&
+            ((value as { readonly level?: unknown }).level === 'info' ||
+                (value as { readonly level?: unknown }).level === 'warning' ||
+                (value as { readonly level?: unknown }).level === 'error')
+        );
+    }
+
+    private _throwInvalidPipelineValue(
+        nodeKind: AssetPipelineNodeKind,
+        value: unknown,
+        locale: string
+    ): never {
+        const descriptor =
+            nodeKind === 'stage'
+                ? {
+                      code: 'asset.invalid-stage' as const,
+                      value,
+                  }
+                : {
+                      code: 'asset.invalid-importer' as const,
+                      value,
+                  };
+
+        throw new AssetConfigurationError(
+            descriptor.code,
+            resolveAssetMessage(descriptor, locale, this._messageResolver)
+        );
     }
 
     private _resolveBaseKey(source: AssetImportSource, options: AssetImportOptions<TSchema>): AssetKey {
