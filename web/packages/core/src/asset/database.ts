@@ -1654,6 +1654,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     private _commitStoredAssets(
         assets: readonly StoredAsset<TSchema>[]
     ): readonly AssetRecord<TSchema>[] {
+        const previousById = new Map<string, StoredAsset<TSchema> | undefined>();
         const disposers: StoredAsset<TSchema>[] = [];
         const records: AssetRecord<TSchema>[] = [];
 
@@ -1661,7 +1662,17 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             this._assertKeyOwnership(asset);
 
             const previous = this._assetsById.get(asset.id);
+            previousById.set(asset.id, previous);
 
+            if (previous?.disposer && previous.data !== asset.data) {
+                disposers.push(previous);
+            }
+        }
+
+        this._runDisposers(disposers);
+
+        for (const asset of assets) {
+            const previous = previousById.get(asset.id);
             if (previous) {
                 this._unlinkDependencies(previous.id, previous.dependencyIds);
                 this._unindexAsset(previous);
@@ -1670,10 +1681,6 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                     if (this._aliasIndex.get(alias) === previous.id) {
                         this._aliasIndex.delete(alias);
                     }
-                }
-
-                if (previous.disposer && previous.data !== asset.data) {
-                    disposers.push(previous);
                 }
             }
 
@@ -1695,7 +1702,6 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             });
         }
 
-        this._runDisposers(disposers);
         return Object.freeze(records);
     }
 
@@ -1805,6 +1811,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     }
 
     private _deleteIds(ids: readonly string[]): void {
+        const assets: StoredAsset<TSchema>[] = [];
         const disposers: StoredAsset<TSchema>[] = [];
 
         for (const id of ids) {
@@ -1813,6 +1820,17 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 continue;
             }
 
+            assets.push(asset);
+
+            if (asset.disposer) {
+                disposers.push(asset);
+            }
+        }
+
+        this._runDisposers(disposers);
+
+        for (const asset of assets) {
+            const id = asset.id;
             this._assetsById.delete(id);
             this._keyIndex.delete(asset.key);
             for (const alias of asset.aliases) {
@@ -1829,13 +1847,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 type: 'delete',
                 asset: asset.toRecord(),
             });
-
-            if (asset.disposer) {
-                disposers.push(asset);
-            }
         }
-
-        this._runDisposers(disposers);
     }
 
     private _getQueryBuckets(query: AssetQuery<TSchema>): readonly ReadonlySet<string>[] {
