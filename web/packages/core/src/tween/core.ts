@@ -40,6 +40,7 @@ export abstract class TweenCore<T> implements ITween<T> {
     protected _clockMode: 'manual' | 'realtime' | undefined;
     protected _lastUpdateTime?: number;
     protected _pauseStartedAt?: number;
+    protected _eventCallbackWrappers = new Map<TweenEventType, Map<TweenEventCallback<T>, (payload: any) => void>>();
 
     constructor(object: T, config?: TweenConfig<T>) {
         this._object = object;
@@ -214,12 +215,43 @@ export abstract class TweenCore<T> implements ITween<T> {
     }
 
     on(event: TweenEventType, callback: TweenEventCallback<T>): this {
-        this._events.on(event, callback as any);
+        let wrappers = this._eventCallbackWrappers.get(event);
+
+        if (!wrappers) {
+            wrappers = new Map();
+            this._eventCallbackWrappers.set(event, wrappers);
+        }
+
+        const wrapper =
+            event === 'update'
+                ? (payload: TweenEventMap<T>['update']) => callback(payload.tween, payload.elapsed)
+                : (payload: TweenEventMap<T>[Exclude<TweenEventType, 'update'>]) =>
+                      callback(payload as ITween<T>);
+
+        wrappers.set(callback, wrapper as (payload: any) => void);
+        this._events.on(event, wrapper as any);
         return this;
     }
 
     off(event: TweenEventType, callback?: TweenEventCallback<T>): this {
-        this._events.off(event, callback as any);
+        if (!callback) {
+            this._eventCallbackWrappers.delete(event);
+            this._events.off(event);
+            return this;
+        }
+
+        const wrappers = this._eventCallbackWrappers.get(event);
+        const wrapper = wrappers?.get(callback);
+
+        if (wrapper) {
+            this._events.off(event, wrapper as any);
+            wrappers?.delete(callback);
+
+            if (wrappers && wrappers.size === 0) {
+                this._eventCallbackWrappers.delete(event);
+            }
+        }
+
         return this;
     }
 
@@ -304,9 +336,18 @@ export abstract class TweenCore<T> implements ITween<T> {
         this._lastUpdateTime = undefined;
         this._pauseStartedAt = undefined;
         this._clockMode = undefined;
+        this._eventCallbackWrappers.clear();
     }
 
     protected _emit(event: TweenEventType, ...args: any[]): void {
+        if (event === 'update') {
+            this._events.emitSync(event, {
+                tween: args[0],
+                elapsed: args[1],
+            } as TweenEventMap<T>[typeof event]);
+            return;
+        }
+
         this._events.emitSync(event, args[0]);
     }
 

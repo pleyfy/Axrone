@@ -22,6 +22,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
     private _animFrameId?: number;
     private _autoUpdate = false;
     private _clockMode: 'manual' | 'realtime' | undefined;
+    private _status: 'idle' | 'running' | 'paused' | 'completed' = 'idle';
 
     constructor() {
         super();
@@ -42,6 +43,10 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
 
     isPlaying(): boolean {
         return this._isPlaying;
+    }
+
+    getStatus(): 'idle' | 'running' | 'paused' | 'completed' {
+        return this._status;
     }
 
     add(tween: IGroupable, options: TimelineOptions = {}): this {
@@ -73,6 +78,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
 
         this._isPlaying = true;
         this._isPaused = false;
+        this._status = 'running';
         this._clockMode = time !== undefined ? 'manual' : 'realtime';
         this._lastUpdateTime = time ?? (this._autoUpdate ? 0 : performance.now());
 
@@ -98,6 +104,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
 
         this._isPlaying = false;
         this._isPaused = false;
+        this._status = 'idle';
 
         if (this._animFrameId) {
             cancelAnimationFrame(this._animFrameId);
@@ -119,6 +126,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         }
 
         this._isPaused = true;
+        this._status = 'paused';
 
         if (this._animFrameId) {
             cancelAnimationFrame(this._animFrameId);
@@ -142,6 +150,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         }
 
         this._isPaused = false;
+        this._status = 'running';
         if (this._clockMode !== 'manual') {
             this._lastUpdateTime = performance.now();
         }
@@ -184,6 +193,8 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
 
         if (this._currentTime >= this._duration) {
             this._isPlaying = false;
+            this._isPaused = false;
+            this._status = 'completed';
             this.emitSync('complete', undefined);
             return this;
         }

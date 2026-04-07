@@ -311,6 +311,23 @@ describe('Tween System', () => {
             expect(updateCount).toBe(3);
         });
 
+        test('update event exposes tween instance and elapsed value', () => {
+            let obj = { x: 0 };
+            let lastTween: unknown;
+            let lastElapsed = -1;
+
+            const tw = to(obj, { x: 100 }, 100).on('update', (receivedTween, elapsed) => {
+                lastTween = receivedTween;
+                lastElapsed = elapsed ?? -1;
+            });
+
+            tw.start(0);
+            tw.update(25);
+
+            expect(lastTween).toBe(tw);
+            expect(lastElapsed).toBeCloseTo(0.25, 5);
+        });
+
         test('complete event', () => {
             let obj = { x: 0 };
             let completeCalled = false;
@@ -368,6 +385,30 @@ describe('Tween System', () => {
             tw2.update(51);
             tw2.update(100);
             expect(obj.z).toBe(10);
+        });
+
+        test('chain restart does not duplicate completion listeners', () => {
+            let obj = { z: 0 };
+            const tw1 = to(obj, { z: 5 }, 50);
+            const tw2 = to(obj, { z: 10 }, 50);
+            const ch = chain().add(tw1).add(tw2);
+            let completed = 0;
+
+            ch.on('complete', () => {
+                completed += 1;
+            });
+
+            ch.start(0);
+            tw1.update(50);
+            tw1.update(51);
+            tw2.update(100);
+            expect(completed).toBe(1);
+
+            ch.start(0);
+            tw1.update(50);
+            tw1.update(51);
+            tw2.update(100);
+            expect(completed).toBe(2);
         });
     });
 
@@ -723,6 +764,21 @@ describe('Tween System', () => {
     });
 
     describe('Performance', () => {
+        test('tween system prunes completed tweens from the active set', () => {
+            const obj = { x: 0 };
+            const tw = tween(obj, { to: { x: 100 }, duration: 100 });
+
+            tw.start(0);
+            TWEEN.add(tw);
+
+            expect(TWEEN.getActiveTweenCount()).toBe(1);
+
+            TWEEN.update(100);
+
+            expect(tw.getStatus()).toBe('completed');
+            expect(TWEEN.getActiveTweenCount()).toBe(0);
+        });
+
         test('many simultaneous tweens', () => {
             const objects = Array.from({ length: 100 }, () => ({ x: 0, y: 0 }));
             const tweens = objects.map((obj) => to(obj, { x: 100, y: 100 }, 100));

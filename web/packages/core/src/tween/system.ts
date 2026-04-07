@@ -53,6 +53,10 @@ export class TweenSystem {
 
         for (const tween of this._tweens) {
             tween.update(now);
+
+            if (this._hasCompleted(tween)) {
+                this._tweensToRemove.add(tween);
+            }
         }
 
         this._isUpdating = false;
@@ -116,4 +120,10 @@ export class TweenSystem {
             this._animFrameId = undefined;
         }
     };
+
+    private _hasCompleted(tween: IGroupable): boolean {
+        return typeof (tween as { getStatus?: () => string }).getStatus === 'function'
+            ? (tween as { getStatus: () => string }).getStatus() === 'completed'
+            : false;
+    }
 }

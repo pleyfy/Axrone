@@ -12,6 +12,8 @@ export class TweenChain extends EventEmitter<TweenChainEventMap> implements IGro
     private _currentIndex = -1;
     private _isPlaying = false;
     private _isPaused = false;
+    private _status: 'idle' | 'running' | 'paused' | 'completed' = 'idle';
+    private _detachCurrentCompletion?: () => void;
 
     constructor() {
         super();
@@ -19,6 +21,10 @@ export class TweenChain extends EventEmitter<TweenChainEventMap> implements IGro
 
     isPlaying(): boolean {
         return this._isPlaying;
+    }
+
+    getStatus(): 'idle' | 'running' | 'paused' | 'completed' {
+        return this._status;
     }
 
     add(tween: IGroupable): this {
@@ -38,6 +44,7 @@ export class TweenChain extends EventEmitter<TweenChainEventMap> implements IGro
         this._isPlaying = true;
         this._isPaused = false;
         this._currentIndex = 0;
+        this._status = 'running';
 
         this._playCurrentTween(time);
 
@@ -53,6 +60,9 @@ export class TweenChain extends EventEmitter<TweenChainEventMap> implements IGro
 
         this._isPlaying = false;
         this._isPaused = false;
+        this._status = 'idle';
+        this._detachCurrentCompletion?.();
+        this._detachCurrentCompletion = undefined;
 
         if (this._currentIndex >= 0 && this._currentIndex < this._tweens.length) {
             this._tweens[this._currentIndex].stop();
@@ -71,6 +81,7 @@ export class TweenChain extends EventEmitter<TweenChainEventMap> implements IGro
         }
 
         this._isPaused = true;
+        this._status = 'paused';
 
         if (this._currentIndex >= 0 && this._currentIndex < this._tweens.length) {
             this._tweens[this._currentIndex].pause();
@@ -87,6 +98,7 @@ export class TweenChain extends EventEmitter<TweenChainEventMap> implements IGro
         }
 
         this._isPaused = false;
+        this._status = 'running';
 
         if (this._currentIndex >= 0 && this._currentIndex < this._tweens.length) {
             this._tweens[this._currentIndex].resume();
@@ -119,24 +131,58 @@ export class TweenChain extends EventEmitter<TweenChainEventMap> implements IGro
         }
 
         const currentTween = this._tweens[this._currentIndex];
+        const completeHandler = () => this._advanceToNextTween(time);
 
-        if (currentTween instanceof TweenCore) {
-            currentTween.on('complete', () => this._advanceToNextTween(time));
-        } else if (currentTween instanceof Timeline) {
-            currentTween.onComplete(() => this._advanceToNextTween(time));
-        }
+        this._detachCurrentCompletion?.();
+        this._detachCurrentCompletion = this._subscribeToCompletion(currentTween, completeHandler);
 
         currentTween.start(time);
     }
 
     private _advanceToNextTween(time?: number): void {
+        this._detachCurrentCompletion?.();
+        this._detachCurrentCompletion = undefined;
         this._currentIndex++;
 
         if (this._currentIndex >= this._tweens.length) {
             this._isPlaying = false;
+            this._isPaused = false;
+            this._status = 'completed';
             this.emitSync('complete', undefined);
         } else {
             this._playCurrentTween(time);
         }
+    }
+
+    private _subscribeToCompletion(target: IGroupable, callback: VoidCallback): () => void {
+        if (target instanceof TweenCore) {
+            target.on('complete', callback);
+            return () => {
+                target.off('complete', callback);
+            };
+        }
+
+        if (target instanceof Timeline) {
+            const unsubscribe = target.on('complete', callback);
+            return typeof unsubscribe === 'function' ? unsubscribe : () => undefined;
+        }
+
+        const eventTarget = target as {
+            on?: (event: string, callback: VoidCallback) => unknown;
+            off?: (event: string, callback: VoidCallback) => unknown;
+        };
+
+        if (typeof eventTarget.on === 'function') {
+            const subscription = eventTarget.on('complete', callback);
+            if (typeof subscription === 'function') {
+                return subscription;
+            }
+
+            return () => {
+                eventTarget.off?.('complete', callback);
+            };
+        }
+
+        return () => undefined;
     }
 }

@@ -3,6 +3,7 @@ import { IGroupable } from './types';
 
 export class TweenGroup {
     private _tweens = new Set<IGroupable>();
+    private _pausedTweens = new Set<IGroupable>();
 
     add(tween: IGroupable): this {
         this._tweens.add(tween);
@@ -15,6 +16,7 @@ export class TweenGroup {
     }
 
     start(time?: number): this {
+        this._pausedTweens.clear();
         for (const tween of this._tweens) {
             tween.start(time);
         }
@@ -25,12 +27,15 @@ export class TweenGroup {
         for (const tween of this._tweens) {
             tween.stop();
         }
+        this._pausedTweens.clear();
         return this;
     }
 
     pause(): this {
+        this._pausedTweens.clear();
         for (const tween of this._tweens) {
             if (tween.isPlaying()) {
+                this._pausedTweens.add(tween);
                 tween.pause();
             }
         }
@@ -38,11 +43,10 @@ export class TweenGroup {
     }
 
     resume(): this {
-        for (const tween of this._tweens) {
-            if (tween instanceof TweenCore && (tween as any)._status === 'paused') {
-                tween.resume();
-            }
+        for (const tween of this._pausedTweens) {
+            tween.resume();
         }
+        this._pausedTweens.clear();
         return this;
     }
 
@@ -56,5 +60,6 @@ export class TweenGroup {
     dispose(): void {
         this.stop();
         this._tweens.clear();
+        this._pausedTweens.clear();
     }
 }
