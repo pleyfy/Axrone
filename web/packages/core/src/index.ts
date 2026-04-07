@@ -94,6 +94,7 @@ export {
 } from './observer';
 export * from './random';
 export * from './geometry';
+export * from './asset';
 export * from './component-system';
 export * from './game-loop';
 export * from './scene';
