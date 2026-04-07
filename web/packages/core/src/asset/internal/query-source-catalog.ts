@@ -4,8 +4,8 @@ import {
     normalizeAssetLocale,
     normalizeAssetUri,
 } from '../reference';
+import { stableStringify, uniqueStrings } from './stored-asset';
 import type {
-    AssetJsonValue,
     AssetMetadata,
     AssetQuery,
     AssetSchema,
@@ -13,8 +13,7 @@ import type {
     AssetSourceIdentity,
 } from '../types';
 
-const EMPTY_STRING_ARRAY = Object.freeze([]) as readonly string[];
-const EMPTY_PROPERTIES = Object.freeze({}) as Readonly<Record<string, AssetJsonValue>>;
+const EMPTY_PROPERTIES = Object.freeze({}) as Readonly<Record<string, unknown>>;
 
 interface SourceBindingEntry {
     readonly assetId: string;
@@ -29,101 +28,6 @@ interface AssetCatalogRecord {
         'uri' | 'mimeType' | 'locale' | 'tags' | 'properties'
     >;
 }
-
-const uniqueStrings = (values: readonly string[]): readonly string[] => {
-    if (values.length === 0) {
-        return EMPTY_STRING_ARRAY;
-    }
-
-    const seen = new Set<string>();
-    const result: string[] = [];
-
-    for (const value of values) {
-        const trimmed = value.trim();
-        if (!trimmed || seen.has(trimmed)) {
-            continue;
-        }
-
-        seen.add(trimmed);
-        result.push(trimmed);
-    }
-
-    return Object.freeze(result);
-};
-
-const stableStringify = (value: unknown, seen = new WeakSet<object>()): string => {
-    if (value === null) {
-        return 'null';
-    }
-
-    switch (typeof value) {
-        case 'string':
-            return JSON.stringify(value);
-        case 'number':
-            return Number.isNaN(value) ? '"NaN"' : JSON.stringify(value);
-        case 'boolean':
-            return value ? 'true' : 'false';
-        case 'undefined':
-            return '"undefined"';
-        case 'bigint':
-            return `"${value}n"`;
-        case 'symbol':
-            return `"${String(value)}"`;
-        case 'function':
-            return `"${value.name || 'anonymous'}"`;
-        default:
-            break;
-    }
-
-    if (value instanceof Date) {
-        return JSON.stringify(value.toISOString());
-    }
-
-    if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
-        const bytes = new Uint8Array(
-            value instanceof ArrayBuffer ? value : value.buffer,
-            value instanceof ArrayBuffer ? 0 : value.byteOffset,
-            value instanceof ArrayBuffer ? value.byteLength : value.byteLength
-        );
-        let result = '[';
-
-        for (let index = 0; index < bytes.length; index += 1) {
-            if (index > 0) {
-                result += ',';
-            }
-
-            result += bytes[index]!.toString(16).padStart(2, '0');
-        }
-
-        return `${Object.prototype.toString.call(value)}:${result}]`;
-    }
-
-    if (Array.isArray(value)) {
-        return `[${value.map((entry) => stableStringify(entry, seen)).join(',')}]`;
-    }
-
-    if (value !== null && typeof value === 'object') {
-        if (seen.has(value)) {
-            return '"[Circular]"';
-        }
-
-        seen.add(value);
-
-        if (typeof (value as { toJSON?: () => unknown }).toJSON === 'function') {
-            return stableStringify((value as { toJSON: () => unknown }).toJSON(), seen);
-        }
-
-        const keys = Object.keys(value).sort();
-        const body = keys
-            .map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key], seen)}`)
-            .join(',');
-
-        seen.delete(value);
-        return `{${body}}`;
-    }
-
-    return JSON.stringify(String(value));
-};
 
 export class AssetQuerySourceCatalog<TSchema extends AssetSchema = AssetSchema> {
     private readonly _sourceBindings = new Map<string, SourceBindingEntry>();
@@ -256,7 +160,7 @@ export class AssetQuerySourceCatalog<TSchema extends AssetSchema = AssetSchema> 
             buckets.push(this._metadataLocaleIndex.get(locale) ?? new Set<string>());
         }
 
-        for (const tag of uniqueStrings(query.tags ?? EMPTY_STRING_ARRAY)) {
+        for (const tag of uniqueStrings(query.tags ?? [])) {
             buckets.push(this._metadataTagIndex.get(tag) ?? new Set<string>());
         }
 

@@ -3,13 +3,23 @@ import { AssetImportPipeline } from './importer';
 import {
     ASSET_SNAPSHOT_VERSION,
     deserializeAssetSnapshotData,
-    getBytes,
     isAssetDatabaseSnapshot,
-    isTypedArrayView,
     serializeAssetSnapshotData,
     type AssetSnapshotSerializationContext,
 } from './internal/snapshot-serialization';
 import { AssetQuerySourceCatalog } from './internal/query-source-catalog';
+import {
+    StoredAsset,
+    computeFingerprint,
+    inferAssetName,
+    normalizeMetadata,
+    type InternalAssetDisposer,
+    type StoredAssetConfig,
+} from './internal/stored-asset';
+import {
+    AssetTransactionRuntime,
+    type PreparedAssetWrite,
+} from './internal/transaction-runtime';
 import {
     AssetConflictError,
     AssetConfigurationError,
@@ -22,12 +32,8 @@ import {
 } from './errors';
 import {
     asAssetFingerprint,
-    asAssetId,
-    asAssetRevision,
     asAssetSourceIdentity,
     canonicalizeAssetKey,
-    createAssetReference,
-    createVersionedAssetReference,
     isAssetReference,
     isAssetReferenceToken,
     isAssetVersionedReference,
@@ -54,14 +60,11 @@ import type {
     AssetImportManyOptions,
     AssetImportReceipt,
     AssetImportSource,
-    AssetJsonValue,
     AssetKind,
     AssetKey,
     AssetLeafChangeEvent,
     AssetListener,
     AssetLookupByKey,
-    AssetMetadata,
-    AssetMetadataInput,
     AssetQuery,
     AssetRecord,
     AssetReference,
@@ -79,256 +82,7 @@ import type {
 
 const DEFAULT_BINARY_INLINE_THRESHOLD_BYTES = 64 * 1024;
 const EMPTY_STRING_ARRAY = Object.freeze([]) as readonly string[];
-const EMPTY_PROPERTIES = Object.freeze({}) as Readonly<Record<string, AssetJsonValue>>;
 const RANDOM = createRandom();
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object';
-
-const uniqueStrings = (values: readonly string[]): readonly string[] => {
-    if (values.length === 0) {
-        return EMPTY_STRING_ARRAY;
-    }
-
-    const seen = new Set<string>();
-    const result: string[] = [];
-
-    for (const value of values) {
-        const trimmed = value.trim();
-        if (!trimmed || seen.has(trimmed)) {
-            continue;
-        }
-
-        seen.add(trimmed);
-        result.push(trimmed);
-    }
-
-    return Object.freeze(result);
-};
-
-const sortPropertyRecord = (
-    value: Readonly<Record<string, AssetJsonValue>>
-): Readonly<Record<string, AssetJsonValue>> => {
-    const entries = Object.keys(value)
-        .sort()
-        .map((key) => [key, value[key]] as const);
-
-    return Object.freeze(Object.fromEntries(entries) as Record<string, AssetJsonValue>);
-};
-
-const normalizeMetadata = (input?: AssetMetadataInput): AssetMetadata =>
-    Object.freeze({
-        uri: normalizeAssetUri(input?.uri),
-        mimeType: input?.mimeType?.trim() || undefined,
-        locale: normalizeAssetLocale(input?.locale),
-        tags: uniqueStrings([...(input?.tags ?? EMPTY_STRING_ARRAY)]),
-        properties: sortPropertyRecord(input?.properties ?? EMPTY_PROPERTIES),
-    });
-
-const stableStringify = (value: unknown, seen = new WeakSet<object>()): string => {
-    if (value === null) {
-        return 'null';
-    }
-
-    switch (typeof value) {
-        case 'string':
-            return JSON.stringify(value);
-        case 'number':
-            return Number.isNaN(value) ? '"NaN"' : JSON.stringify(value);
-        case 'boolean':
-            return value ? 'true' : 'false';
-        case 'undefined':
-            return '"undefined"';
-        case 'bigint':
-            return `"${value}n"`;
-        case 'symbol':
-            return `"${String(value)}"`;
-        case 'function':
-            return `"${value.name || 'anonymous'}"`;
-        default:
-            break;
-    }
-
-    if (value instanceof Date) {
-        return JSON.stringify(value.toISOString());
-    }
-
-    if (value instanceof ArrayBuffer || isTypedArrayView(value)) {
-        const bytes = getBytes(value as ArrayBuffer | ArrayBufferView);
-        let result = '[';
-
-        for (let index = 0; index < bytes.length; index += 1) {
-            if (index > 0) {
-                result += ',';
-            }
-
-            result += bytes[index]!.toString(16).padStart(2, '0');
-        }
-
-        return `${Object.prototype.toString.call(value)}:${result}]`;
-    }
-
-    if (Array.isArray(value)) {
-        return `[${value.map((entry) => stableStringify(entry, seen)).join(',')}]`;
-    }
-
-    if (isRecord(value)) {
-        if (seen.has(value)) {
-            return '"[Circular]"';
-        }
-
-        seen.add(value);
-
-        if (typeof (value as { toJSON?: () => unknown }).toJSON === 'function') {
-            return stableStringify((value as { toJSON: () => unknown }).toJSON(), seen);
-        }
-
-        const keys = Object.keys(value).sort();
-        const body = keys
-            .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key], seen)}`)
-            .join(',');
-
-        seen.delete(value);
-        return `{${body}}`;
-    }
-
-    return JSON.stringify(String(value));
-};
-
-const hashString = (value: string): string => {
-    let hash = 2166136261;
-
-    for (let index = 0; index < value.length; index += 1) {
-        hash ^= value.charCodeAt(index)!;
-        hash = Math.imul(hash, 16777619);
-    }
-
-    return (hash >>> 0).toString(16).padStart(8, '0');
-};
-
-const computeFingerprint = (
-    kind: string,
-    key: AssetKey,
-    data: unknown,
-    metadata: AssetMetadata
-): string =>
-    `fp:${hashString(`${kind}|${key}|${stableStringify(data)}|${stableStringify(metadata)}`)}`;
-
-type InternalAssetDisposer<TSchema extends AssetSchema> = (
-    data: unknown,
-    record: Readonly<AssetRecord<TSchema>>
-) => void;
-
-const inferAssetName = (kind: string, key: AssetKey, explicitName?: string): string => {
-    const trimmed = explicitName?.trim();
-    if (trimmed) {
-        return trimmed;
-    }
-
-    const normalized = String(key);
-    const withoutFragment = normalized.split('#', 1)[0] ?? normalized;
-    const segment = withoutFragment.split('/').filter(Boolean).pop();
-    return segment ?? kind;
-};
-
-interface StoredAssetConfig<
-    TSchema extends AssetSchema,
-    TKind extends AssetKind<TSchema> = AssetKind<TSchema>,
-> {
-    readonly id: string;
-    readonly kind: TKind;
-    readonly key: AssetKey;
-    readonly aliases: readonly AssetKey[];
-    readonly name: string;
-    readonly data: TSchema[TKind];
-    readonly revision: number;
-    readonly fingerprint: string;
-    readonly createdAtEpochMs: number;
-    readonly updatedAtEpochMs: number;
-    readonly metadata: AssetMetadata;
-    readonly dependencyIds: readonly string[];
-    readonly disposer?: InternalAssetDisposer<TSchema>;
-}
-
-class StoredAsset<
-    TSchema extends AssetSchema,
-    TKind extends AssetKind<TSchema> = AssetKind<TSchema>,
-> {
-    readonly id = asAssetId(this._config.id);
-    readonly kind = this._config.kind;
-    readonly key = this._config.key;
-    readonly aliases = this._config.aliases;
-    readonly name = this._config.name;
-    readonly data = this._config.data;
-    readonly revision = asAssetRevision(this._config.revision);
-    readonly fingerprint = asAssetFingerprint(this._config.fingerprint);
-    readonly createdAtEpochMs = this._config.createdAtEpochMs;
-    readonly updatedAtEpochMs = this._config.updatedAtEpochMs;
-    readonly metadata = this._config.metadata;
-    readonly dependencyIds = Object.freeze([...this._config.dependencyIds].map(asAssetId));
-    readonly disposer = this._config.disposer;
-    private _reference?: AssetReference<TKind>;
-    private _versionedReference?: AssetVersionedReference<TKind>;
-    private _record?: AssetRecord<TSchema, TKind>;
-
-    constructor(private readonly _config: StoredAssetConfig<TSchema, TKind>) {}
-
-    get reference(): AssetReference<TKind> {
-        this._reference ??= createAssetReference(this.kind, this.id);
-        return this._reference;
-    }
-
-    get versionedReference(): AssetVersionedReference<TKind> {
-        this._versionedReference ??= createVersionedAssetReference(
-            this.kind,
-            this.id,
-            this.revision
-        );
-        return this._versionedReference;
-    }
-
-    toRecord(): AssetRecord<TSchema, TKind> {
-        this._record ??= Object.freeze({
-            kind: this.kind,
-            id: this.id,
-            key: this.key,
-            aliases: this.aliases,
-            name: this.name,
-            data: this.data,
-            revision: this.revision,
-            fingerprint: this.fingerprint,
-            createdAtEpochMs: this.createdAtEpochMs,
-            updatedAtEpochMs: this.updatedAtEpochMs,
-            metadata: this.metadata,
-            dependencyIds: this.dependencyIds,
-            reference: this.reference,
-            versionedReference: this.versionedReference,
-        });
-
-        return this._record;
-    }
-}
-
-interface PreparedWrite<TSchema extends AssetSchema> {
-    readonly id: string;
-    readonly kind: AssetKind<TSchema>;
-    readonly key: AssetKey;
-    readonly aliases: readonly AssetKey[];
-    readonly name: string;
-    readonly data: AssetData<TSchema>;
-    readonly revision: number;
-    readonly fingerprint: string;
-    readonly createdAtEpochMs: number;
-    readonly updatedAtEpochMs: number;
-    readonly metadata: AssetMetadata;
-    readonly dependencyInputs: readonly AssetDependencyInput<TSchema>[];
-    readonly disposer?: InternalAssetDisposer<TSchema>;
-}
-
-interface SourceBindingEntry {
-    readonly assetId: string;
-    readonly updatedAtEpochMs: number;
-}
 
 const isLookupByKey = <TSchema extends AssetSchema>(
     value: unknown
@@ -361,6 +115,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         Pick<AssetBinaryPersistenceOptions, 'mode' | 'inlineThresholdBytes'>
     > &
         Pick<AssetBinaryPersistenceOptions, 'store'>;
+    private readonly _transactions: AssetTransactionRuntime<TSchema>;
     private readonly _pipeline: AssetImportPipeline<TSchema>;
     private readonly _ownPipeline: boolean;
     private readonly _messageResolver: AssetDatabaseOptions<TSchema>['messageResolver'];
@@ -390,6 +145,18 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 )
             ),
             store: options.binary?.store,
+        });
+        this._transactions = new AssetTransactionRuntime<TSchema>({
+            assetsById: this._assetsById,
+            revisionsById: this._revisionsById,
+            keyIndex: this._keyIndex,
+            aliasIndex: this._aliasIndex,
+            dependentsById: this._dependentsById,
+            catalog: this._catalog,
+            locale: this._locale,
+            messageResolver: this._messageResolver,
+            resolveStored: (selector) => this._resolveStored(selector),
+            emitLeaf: (event) => this._emitLeaf(event),
         });
         this._ownPipeline = !options.pipeline;
         this._pipeline =
@@ -772,8 +539,10 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         this._beginBatch();
 
         try {
-            const order = options.cascade ? this._collectDeleteOrder([asset.id]) : [asset.id];
-            this._deleteIds(order);
+            const order = options.cascade
+                ? this._transactions.collectDeleteOrder([asset.id])
+                : [asset.id];
+            this._transactions.deleteIds(order);
             return true;
         } finally {
             this._endBatch();
@@ -789,7 +558,9 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         this._beginBatch();
 
         try {
-            this._deleteIds(this._collectDeleteOrder([...this._assetsById.keys()]));
+            this._transactions.deleteIds(
+                this._transactions.collectDeleteOrder([...this._assetsById.keys()])
+            );
         } finally {
             this._endBatch();
         }
@@ -869,7 +640,9 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
 
         try {
             if (replace) {
-                this._deleteIds(this._collectDeleteOrder([...this._assetsById.keys()]));
+                this._transactions.deleteIds(
+                    this._transactions.collectDeleteOrder([...this._assetsById.keys()])
+                );
             }
 
             const staged = new Map<string, StoredAsset<TSchema>>();
@@ -979,7 +752,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 });
             }
 
-            const records = this._commitStoredAssets([...staged.values()]);
+            const records = this._transactions.commitStoredAssets([...staged.values()]);
 
             for (const binding of stagedSourceBindings) {
                 this._catalog.bindSourceIdentity(
@@ -1331,71 +1104,10 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             readonly additional?: readonly AssetWriteInput<TSchema>[];
         }
     ): readonly AssetWriteInput<TSchema>[] {
-        const normalizeDependency = (
-            dependency: AssetDependencyInput<TSchema>
-        ): AssetDependencyInput<TSchema> => {
-            if (typeof dependency === 'string' && dependency.startsWith('#')) {
-                return `${baseKey}${dependency}`;
-            }
-
-            if (isLookupByKey(dependency) && dependency.key.startsWith('#')) {
-                return {
-                    key: `${baseKey}${dependency.key}`,
-                    ...(dependency.kind ? { kind: dependency.kind } : {}),
-                } as AssetLookupByKey<TSchema>;
-            }
-
-            return dependency;
-        };
-
-        const normalizeWrite = (
-            write: AssetWriteInput<TSchema>,
-            index: number,
-            isPrimary: boolean
-        ): AssetWriteInput<TSchema> => {
-            const stableKey = write.stableKey?.trim()
-                ? write.stableKey.startsWith('#')
-                    ? `${baseKey}${write.stableKey}`
-                    : write.stableKey
-                : isPrimary
-                  ? String(baseKey)
-                  : `${baseKey}#${index}`;
-
-            return Object.freeze({
-                ...write,
-                stableKey,
-                dependencies: Object.freeze(
-                    [...(write.dependencies ?? [])].map(normalizeDependency)
-                ),
-            });
-        };
-
-        const writes = [
-            normalizeWrite(result.primary, 0, true),
-            ...(result.additional ?? []).map((write, index) =>
-                normalizeWrite(write, index + 1, false)
-            ),
-        ];
-
-        if (!sourceIdentity || writes[0]?.id?.trim()) {
-            return Object.freeze(writes);
-        }
-
-        const binding = this._catalog.getSourceBinding(sourceIdentity);
-        if (!binding) {
-            return Object.freeze(writes);
-        }
-
-        return Object.freeze([
-            Object.freeze({
-                ...writes[0],
-                id: binding.assetId,
-            }),
-            ...writes.slice(1),
-        ]);
+        return this._transactions.normalizeImportWrites(baseKey, sourceIdentity, result);
     }
 
-    private _prepareWrite(input: AssetWriteInput<TSchema>): PreparedWrite<TSchema> {
+    private _prepareWrite(input: AssetWriteInput<TSchema>): PreparedAssetWrite<TSchema> {
         const kind = this._validateKind(input.kind);
         const metadata = normalizeMetadata(input.metadata);
         const explicitId = input.id ? this._validateId(input.id) : undefined;
@@ -1496,374 +1208,26 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     private _applyWrites(
         inputs: readonly AssetWriteInput<TSchema>[]
     ): readonly AssetRecord<TSchema>[] {
-        if (inputs.length === 0) {
-            return Object.freeze([]);
-        }
-
-        const prepared = inputs.map((input) => this._prepareWrite(input));
-        const stagedById = new Map<string, PreparedWrite<TSchema>>();
-        const stagedByKey = new Map<string, PreparedWrite<TSchema>>();
-
-        for (const write of prepared) {
-            stagedById.set(write.id, write);
-            stagedByKey.set(write.key, write);
-            for (const alias of write.aliases) {
-                stagedByKey.set(alias, write);
-            }
-        }
-
-        const assets = prepared.map((write) => {
-            const dependencyIds = this._resolveDependencyIds(
-                write.dependencyInputs,
-                stagedById,
-                stagedByKey
-            );
-
-            return new StoredAsset<TSchema>({
-                id: write.id,
-                kind: write.kind,
-                key: write.key,
-                aliases: write.aliases,
-                name: write.name,
-                data: write.data,
-                revision: write.revision,
-                fingerprint: write.fingerprint,
-                createdAtEpochMs: write.createdAtEpochMs,
-                updatedAtEpochMs: write.updatedAtEpochMs,
-                metadata: write.metadata,
-                dependencyIds,
-                disposer: write.disposer,
-            });
-        });
-
-        return this._commitStoredAssets(assets);
-    }
-
-    private _resolveDependencyIds(
-        inputs: readonly AssetDependencyInput<TSchema>[],
-        stagedById: ReadonlyMap<string, PreparedWrite<TSchema>>,
-        stagedByKey: ReadonlyMap<string, PreparedWrite<TSchema>>
-    ): readonly string[] {
-        if (inputs.length === 0) {
-            return Object.freeze([]);
-        }
-
-        const ids: string[] = [];
-        const seen = new Set<string>();
-
-        for (const input of inputs) {
-            const resolved =
-                this._resolveDependencyInput(input, stagedById, stagedByKey) ??
-                this._resolveStored(input)?.id;
-
-            if (!resolved) {
-                const descriptor =
-                    typeof input === 'string'
-                        ? input
-                        : isLookupByKey(input)
-                          ? input.key
-                          : isAssetReference(input) || isAssetVersionedReference(input)
-                            ? input.id
-                            : isAssetRecordValue(input)
-                              ? input.id
-                              : stableStringify(input);
-
-                throw new AssetDependencyError(
-                    resolveAssetMessage(
-                        {
-                            code: 'asset.dependency.missing',
-                            dependency: descriptor,
-                        },
-                        this._locale,
-                        this._messageResolver
-                    ),
-                    descriptor
-                );
-            }
-
-            if (!seen.has(resolved)) {
-                seen.add(resolved);
-                ids.push(resolved);
-            }
-        }
-
-        return Object.freeze(ids);
-    }
-
-    private _resolveDependencyInput(
-        input: AssetDependencyInput<TSchema>,
-        stagedById: ReadonlyMap<string, PreparedWrite<TSchema>>,
-        stagedByKey: ReadonlyMap<string, PreparedWrite<TSchema>>
-    ): string | undefined {
-        if (typeof input === 'string') {
-            if (isAssetVersionedReferenceToken(input)) {
-                return parseAssetVersionedReferenceToken(input)?.id;
-            }
-
-            if (isAssetReferenceToken(input)) {
-                return parseAssetReferenceToken(input)?.id;
-            }
-
-            return (
-                stagedById.get(input)?.id ??
-                stagedByKey.get(canonicalizeAssetKey(input))?.id ??
-                this._resolveStored(input)?.id
-            );
-        }
-
-        if (
-            isAssetVersionedReference(input) ||
-            isAssetReference(input) ||
-            isAssetRecordValue(input)
-        ) {
-            return input.id;
-        }
-
-        if (isLookupByKey(input)) {
-            const resolved = stagedByKey.get(canonicalizeAssetKey(input.key));
-            if (resolved && (!input.kind || resolved.kind === input.kind)) {
-                return resolved.id;
-            }
-
-            const existing = this._resolveStored(input);
-            return existing && (!input.kind || existing.kind === input.kind)
-                ? existing.id
-                : undefined;
-        }
-
-        return undefined;
-    }
-
-    private _commitStoredAssets(
-        assets: readonly StoredAsset<TSchema>[]
-    ): readonly AssetRecord<TSchema>[] {
-        const previousById = new Map<string, StoredAsset<TSchema> | undefined>();
-        const disposers: StoredAsset<TSchema>[] = [];
-        const records: AssetRecord<TSchema>[] = [];
-
-        for (const asset of assets) {
-            this._assertKeyOwnership(asset);
-
-            const previous = this._assetsById.get(asset.id);
-            previousById.set(asset.id, previous);
-
-            if (previous?.disposer && previous.data !== asset.data) {
-                disposers.push(previous);
-            }
-        }
-
-        this._runDisposers(disposers);
-
-        for (const asset of assets) {
-            const previous = previousById.get(asset.id);
-            if (previous) {
-                this._unlinkDependencies(previous.id, previous.dependencyIds);
-                this._catalog.unindexAsset(previous);
-                this._keyIndex.delete(previous.key);
-                for (const alias of previous.aliases) {
-                    if (this._aliasIndex.get(alias) === previous.id) {
-                        this._aliasIndex.delete(alias);
-                    }
-                }
-            }
-
-            this._storeRevision(asset, previous);
-            this._assetsById.set(asset.id, asset);
-            this._keyIndex.set(asset.key, asset.id);
-            this._aliasIndex.delete(asset.key);
-            for (const alias of asset.aliases) {
-                this._aliasIndex.set(alias, asset.id);
-            }
-            this._catalog.indexAsset(asset);
-            this._linkDependencies(asset.id, asset.dependencyIds);
-            const record = asset.toRecord();
-            records.push(record);
-            this._emitLeaf({
-                type: 'upsert',
-                asset: record,
-                previous: previous?.toRecord(),
-            });
-        }
-
-        return Object.freeze(records);
-    }
-
-    private _storeRevision(asset: StoredAsset<TSchema>, previous?: StoredAsset<TSchema>): void {
-        const revisions = this._revisionsById.get(asset.id) ?? [];
-
-        if (!this._revisionsById.has(asset.id)) {
-            this._revisionsById.set(asset.id, revisions);
-        }
-
-        if (previous) {
-            revisions[previous.revision - 1] = previous;
-        }
-
-        revisions[asset.revision - 1] = asset;
-
-        if (revisions.length < asset.revision) {
-            revisions.length = asset.revision;
-        }
-    }
-
-    private _assertKeyOwnership(asset: StoredAsset<TSchema>): void {
-        const keyOwner = this._keyIndex.get(asset.key) ?? this._aliasIndex.get(asset.key);
-        if (keyOwner && keyOwner !== asset.id) {
-            throw new AssetConflictError(
-                'asset.conflict.key-bound',
-                resolveAssetMessage(
-                    {
-                        code: 'asset.conflict.key-bound',
-                        key: asset.key,
-                        currentId: keyOwner,
-                        requestedId: asset.id,
-                    },
-                    this._locale,
-                    this._messageResolver
-                )
-            );
-        }
-
-        for (const alias of asset.aliases) {
-            const aliasOwner = this._keyIndex.get(alias) ?? this._aliasIndex.get(alias);
-            if (aliasOwner && aliasOwner !== asset.id) {
-                throw new AssetConflictError(
-                    'asset.conflict.key-bound',
-                    resolveAssetMessage(
-                        {
-                            code: 'asset.conflict.key-bound',
-                            key: alias,
-                            currentId: aliasOwner,
-                            requestedId: asset.id,
-                        },
-                        this._locale,
-                        this._messageResolver
-                    )
-                );
-            }
-        }
-    }
-
-    private _linkDependencies(assetId: string, dependencyIds: readonly string[]): void {
-        for (const dependencyId of dependencyIds) {
-            const dependents = this._dependentsById.get(dependencyId) ?? new Set<string>();
-            dependents.add(assetId);
-            this._dependentsById.set(dependencyId, dependents);
-        }
-    }
-
-    private _unlinkDependencies(assetId: string, dependencyIds: readonly string[]): void {
-        for (const dependencyId of dependencyIds) {
-            const dependents = this._dependentsById.get(dependencyId);
-            if (!dependents) {
-                continue;
-            }
-
-            dependents.delete(assetId);
-            if (dependents.size === 0) {
-                this._dependentsById.delete(dependencyId);
-            }
-        }
-    }
-
-    private _collectDeleteOrder(startIds: readonly string[]): readonly string[] {
-        const visited = new Set<string>();
-        const order: string[] = [];
-
-        const visit = (id: string): void => {
-            if (visited.has(id)) {
-                return;
-            }
-
-            visited.add(id);
-            for (const dependentId of this._dependentsById.get(id) ?? []) {
-                if (this._assetsById.has(dependentId)) {
-                    visit(dependentId);
-                }
-            }
-            order.push(id);
-        };
-
-        for (const id of startIds) {
-            if (this._assetsById.has(id)) {
-                visit(id);
-            }
-        }
-
-        return order;
-    }
-
-    private _deleteIds(ids: readonly string[]): void {
-        const assets: StoredAsset<TSchema>[] = [];
-        const disposers: StoredAsset<TSchema>[] = [];
-
-        for (const id of ids) {
-            const asset = this._assetsById.get(id);
-            if (!asset) {
-                continue;
-            }
-
-            assets.push(asset);
-
-            if (asset.disposer) {
-                disposers.push(asset);
-            }
-        }
-
-        this._runDisposers(disposers);
-
-        for (const asset of assets) {
-            const id = asset.id;
-            this._assetsById.delete(id);
-            this._keyIndex.delete(asset.key);
-            for (const alias of asset.aliases) {
-                if (this._aliasIndex.get(alias) === id) {
-                    this._aliasIndex.delete(alias);
-                }
-            }
-
-            this._catalog.unindexAsset(asset);
-            this._unlinkDependencies(id, asset.dependencyIds);
-            this._dependentsById.delete(id);
-            this._revisionsById.delete(id);
-            this._catalog.unbindSourceIdentitiesForAsset(id);
-            this._emitLeaf({
-                type: 'delete',
-                asset: asset.toRecord(),
-            });
-        }
-    }
-
-    private _runDisposers(assets: readonly StoredAsset<TSchema>[]): void {
-        let firstError: AssetLifecycleError | undefined;
-
-        for (const asset of assets) {
-            try {
-                asset.disposer?.(asset.data, asset.toRecord());
-            } catch (error) {
-                firstError ??= new AssetLifecycleError(
-                    resolveAssetMessage(
-                        {
-                            code: 'asset.lifecycle.dispose-failed',
-                            id: asset.id,
-                            kind: asset.kind,
-                            reason: error,
-                        },
-                        this._locale,
-                        this._messageResolver
-                    ),
-                    asset.id,
-                    asset.kind,
-                    {
-                        cause: error,
-                    }
-                );
-            }
-        }
-
-        if (firstError) {
-            throw firstError;
-        }
+        return this._transactions.applyWrites(
+            inputs,
+            (input) => this._prepareWrite(input),
+            (write, dependencyIds) =>
+                new StoredAsset<TSchema>({
+                    id: write.id,
+                    kind: write.kind,
+                    key: write.key,
+                    aliases: write.aliases,
+                    name: write.name,
+                    data: write.data,
+                    revision: write.revision,
+                    fingerprint: write.fingerprint,
+                    createdAtEpochMs: write.createdAtEpochMs,
+                    updatedAtEpochMs: write.updatedAtEpochMs,
+                    metadata: write.metadata,
+                    dependencyIds,
+                    disposer: write.disposer,
+                })
+        );
     }
 
     private _getSnapshotSerializationContext(): AssetSnapshotSerializationContext<TSchema> {
