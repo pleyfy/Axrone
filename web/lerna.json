@@ -1,0 +1,22 @@
+{
+    "$schema": "node_modules/lerna/schemas/lerna-schema.json",
+    "version": "independent",
+    "npmClient": "yarn",
+    "packages": ["packages/*"],
+    "command": {
+        "version": {
+            "allowBranch": ["main", "dev", "release/*"],
+            "conventionalCommits": true,
+            "message": "chore(release): publish [skip ci]"
+        },
+        "publish": {
+            "conventionalCommits": true,
+            "registry": "https://registry.npmjs.org/",
+            "access": "public"
+        },
+        "bootstrap": {
+            "hoist": "*",
+            "noCi": true
+        }
+    }
+}
