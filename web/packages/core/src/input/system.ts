@@ -10,6 +10,19 @@ import { normalizeInputContextId, normalizeInputControlPath } from './reference'
 import { attachInputBrowserTarget } from './internal/attachment';
 import { createInputCompiler } from './internal/compiler';
 import {
+    captureGamepadCandidate,
+    clearDeviceState,
+    clearTransients,
+    handleFocusEvent,
+    handleKeyboardEvent,
+    handleMouseButtonEvent,
+    handleMouseMoveEvent,
+    handleMouseWheelEvent,
+    handleTouchEvent,
+    ingestGamepadSnapshots,
+    pollGamepads,
+} from './internal/source-state';
+import {
     applyDeadzone,
     applyScalarProcessors,
     applyVectorProcessors,
@@ -58,6 +71,7 @@ import type {
     Vector2StateStore,
 } from './internal/shared';
 import type { InputCompiler } from './internal/compiler';
+import type { InputSourceRuntime } from './internal/source-state';
 import type {
     InputActionBindings,
     InputActionDefinition,
@@ -281,10 +295,10 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._assertNotDisposed();
         this._timestamp = Number.isFinite(now) ? now : this._now();
         this._expireRebindingIfNeeded(this._timestamp);
-        this._pollGamepads();
+        pollGamepads(this as unknown as InputSourceRuntime<TSchema>);
         this._frame += 1;
         this._evaluate();
-        this._clearTransients();
+        clearTransients(this as unknown as InputSourceRuntime<TSchema>);
         return this._frame;
     }
 
@@ -293,26 +307,26 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
         switch (event.type) {
             case 'keyboard':
-                this._handleKeyboardEvent(event);
+                handleKeyboardEvent(this as unknown as InputSourceRuntime<TSchema>, event);
                 break;
             case 'mouse-button':
-                this._handleMouseButtonEvent(event);
+                handleMouseButtonEvent(this as unknown as InputSourceRuntime<TSchema>, event);
                 break;
             case 'mouse-move':
-                this._handleMouseMoveEvent(event);
+                handleMouseMoveEvent(this as unknown as InputSourceRuntime<TSchema>, event);
                 break;
             case 'mouse-wheel':
-                this._handleMouseWheelEvent(event);
+                handleMouseWheelEvent(this as unknown as InputSourceRuntime<TSchema>, event);
                 break;
             case 'touch':
-                this._handleTouchEvent(event);
+                handleTouchEvent(this as unknown as InputSourceRuntime<TSchema>, event);
                 break;
             case 'gamepad':
-                this._ingestGamepadSnapshots(event.gamepads);
-                this._captureGamepadCandidate(this._timestamp);
+                ingestGamepadSnapshots(this as unknown as InputSourceRuntime<TSchema>, event.gamepads);
+                captureGamepadCandidate(this as unknown as InputSourceRuntime<TSchema>, this._timestamp);
                 break;
             case 'focus':
-                this._handleFocusEvent(event);
+                handleFocusEvent(this as unknown as InputSourceRuntime<TSchema>, event);
                 break;
         }
     }
@@ -694,7 +708,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._actionListenerCount = 0;
         this._contexts.clear();
         this._consumedPaths.clear();
-        this._clearDeviceState(true);
+        clearDeviceState(this as unknown as InputSourceRuntime<TSchema>, true);
         this._gamepads.clear();
     }
 
@@ -1124,303 +1138,6 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         );
     }
 
-    private _handleKeyboardEvent(
-        event: Readonly<Extract<InputSourceEvent, { type: 'keyboard' }>>
-    ): void {
-        const code = event.code.trim();
-        if (!code) {
-            return;
-        }
-
-        if (event.pressed) {
-            this._keysDown.add(code);
-            if (!event.repeat) {
-                this._captureRebinding(
-                    this._requireControlPath(`keyboard/${code}`),
-                    'keyboard',
-                    this._timestamp
-                );
-            }
-        } else {
-            this._keysDown.delete(code);
-        }
-    }
-
-    private _handleMouseButtonEvent(event: Readonly<InputMouseButtonSourceEvent>): void {
-        if (Number.isFinite(event.x)) {
-            this._mouseX = event.x!;
-        }
-
-        if (Number.isFinite(event.y)) {
-            this._mouseY = event.y!;
-        }
-
-        if (!Number.isInteger(event.button) || event.button < 0 || event.button > 30) {
-            return;
-        }
-
-        const mask = 1 << event.button;
-        if (event.pressed) {
-            this._mouseButtons |= mask;
-            this._captureRebinding(
-                this._requireControlPath(`mouse/button/${event.button}`),
-                'mouse',
-                this._timestamp
-            );
-        } else {
-            this._mouseButtons &= ~mask;
-        }
-    }
-
-    private _handleMouseMoveEvent(event: Readonly<InputMouseMoveSourceEvent>): void {
-        this._mouseX = event.x;
-        this._mouseY = event.y;
-        this._mouseDeltaX += event.deltaX;
-        this._mouseDeltaY += event.deltaY;
-
-        const axis =
-            Math.abs(event.deltaX) >= Math.abs(event.deltaY)
-                ? event.deltaX !== 0
-                    ? 'x'
-                    : undefined
-                : event.deltaY !== 0
-                  ? 'y'
-                  : undefined;
-
-        if (axis) {
-            this._captureRebinding(
-                this._requireControlPath(`mouse/move/${axis}`),
-                'mouse',
-                this._timestamp,
-                Math.max(Math.abs(event.deltaX), Math.abs(event.deltaY))
-            );
-        }
-    }
-
-    private _handleMouseWheelEvent(event: Readonly<InputMouseWheelSourceEvent>): void {
-        this._mouseWheelX += event.deltaX;
-        this._mouseWheelY += event.deltaY;
-        this._mouseWheelZ += event.deltaZ ?? 0;
-
-        const absX = Math.abs(event.deltaX);
-        const absY = Math.abs(event.deltaY);
-        const absZ = Math.abs(event.deltaZ ?? 0);
-        const dominant = Math.max(absX, absY, absZ);
-
-        if (dominant <= 0) {
-            return;
-        }
-
-        const axis = dominant === absX ? 'x' : dominant === absY ? 'y' : 'z';
-        this._captureRebinding(
-            this._requireControlPath(`mouse/wheel/${axis}`),
-            'mouse',
-            this._timestamp,
-            dominant
-        );
-    }
-
-    private _handleTouchEvent(event: Readonly<InputTouchSourceEvent>): void {
-        const changedIds = new Set<number>();
-
-        for (const point of event.changed) {
-            changedIds.add(point.id);
-            const existing = this._touches.get(point.id);
-
-            if (event.phase === 'end' || event.phase === 'cancel') {
-                if (existing) {
-                    existing.deltaX += point.x - existing.x;
-                    existing.deltaY += point.y - existing.y;
-                    existing.x = point.x;
-                    existing.y = point.y;
-                }
-
-                this._touches.delete(point.id);
-                continue;
-            }
-
-            if (existing) {
-                existing.deltaX += point.x - existing.x;
-                existing.deltaY += point.y - existing.y;
-                existing.x = point.x;
-                existing.y = point.y;
-            } else {
-                this._touches.set(point.id, {
-                    id: point.id,
-                    order: ++this._touchOrder,
-                    x: point.x,
-                    y: point.y,
-                    deltaX: 0,
-                    deltaY: 0,
-                });
-            }
-        }
-
-        if (event.phase === 'start' || event.phase === 'move') {
-            for (const point of event.touches) {
-                if (changedIds.has(point.id)) {
-                    continue;
-                }
-
-                const existing = this._touches.get(point.id);
-                if (!existing) {
-                    this._touches.set(point.id, {
-                        id: point.id,
-                        order: ++this._touchOrder,
-                        x: point.x,
-                        y: point.y,
-                        deltaX: 0,
-                        deltaY: 0,
-                    });
-                    continue;
-                }
-
-                existing.x = point.x;
-                existing.y = point.y;
-            }
-        }
-
-        this._refreshPrimaryTouch();
-        this._updateTouchPinch();
-
-        if (event.phase === 'start' && event.changed.length > 0) {
-            this._captureRebinding(
-                this._requireControlPath('touch/contact/primary'),
-                'touch',
-                this._timestamp
-            );
-        } else if (event.phase === 'move' && Math.abs(this._touchPinchDelta) > 0) {
-            this._captureRebinding(
-                this._requireControlPath('touch/pinch'),
-                'touch',
-                this._timestamp,
-                Math.abs(this._touchPinchDelta)
-            );
-        }
-    }
-
-    private _handleFocusEvent(event: Readonly<InputFocusSourceEvent>): void {
-        if (event.focused) {
-            return;
-        }
-
-        this._clearDeviceState(true);
-    }
-
-    private _ingestGamepadSnapshots(gamepads: readonly InputGamepadSnapshot[]): void {
-        this._gamepadSeen.clear();
-
-        for (const snapshot of gamepads) {
-            if (!Number.isInteger(snapshot.index) || snapshot.index < 0) {
-                continue;
-            }
-
-            this._gamepadSeen.add(snapshot.index);
-            const state = this._ensureGamepadState(
-                snapshot.index,
-                snapshot.buttons.length,
-                snapshot.axes.length
-            );
-            state.connected = snapshot.connected;
-
-            for (let index = 0; index < state.buttons.length; index += 1) {
-                state.buttons[index] = snapshot.buttons[index] ?? 0;
-            }
-
-            for (let index = 0; index < state.axes.length; index += 1) {
-                state.axes[index] = snapshot.axes[index] ?? 0;
-            }
-        }
-
-        for (const [index, state] of this._gamepads) {
-            if (!this._gamepadSeen.has(index)) {
-                state.connected = false;
-                state.buttons.fill(0);
-                state.axes.fill(0);
-            }
-        }
-    }
-
-    private _pollGamepads(): void {
-        if (!this._gamepad.enabled || !this._gamepad.autoPoll) {
-            return;
-        }
-
-        const provider =
-            this._gamepad.provider ??
-            (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function'
-                ? navigator
-                : undefined);
-
-        if (!provider) {
-            return;
-        }
-
-        const rawGamepads = provider.getGamepads();
-        if (!rawGamepads) {
-            return;
-        }
-
-        const snapshots: InputGamepadSnapshot[] = [];
-
-        for (const rawGamepad of rawGamepads) {
-            if (!rawGamepad) {
-                continue;
-            }
-
-            snapshots.push({
-                index: rawGamepad.index,
-                connected: rawGamepad.connected,
-                buttons: rawGamepad.buttons.map((button) => button.value),
-                axes: [...rawGamepad.axes],
-            });
-        }
-
-        this._ingestGamepadSnapshots(snapshots);
-        this._captureGamepadCandidate(this._timestamp);
-    }
-
-    private _captureGamepadCandidate(timestamp: number): void {
-        const active = this._activeRebinding;
-        if (!active || (active.request.devices?.length && !active.request.devices.includes('gamepad'))) {
-            return;
-        }
-
-        const threshold = Math.max(0, toFiniteNumber(active.request.threshold, 0.5));
-
-        for (const [index, state] of this._gamepads) {
-            if (!state.connected) {
-                continue;
-            }
-
-            for (let button = 0; button < state.buttons.length; button += 1) {
-                const value = state.buttons[button] ?? 0;
-                if (value >= threshold) {
-                    this._captureRebinding(
-                        this._requireControlPath(`gamepad/${index}/button/${button}`),
-                        'gamepad',
-                        timestamp,
-                        value
-                    );
-                    return;
-                }
-            }
-
-            for (let axis = 0; axis < state.axes.length; axis += 1) {
-                const value = state.axes[axis] ?? 0;
-                if (Math.abs(value) >= threshold) {
-                    this._captureRebinding(
-                        this._requireControlPath(`gamepad/${index}/axis/${axis}`),
-                        'gamepad',
-                        timestamp,
-                        Math.abs(value)
-                    );
-                    return;
-                }
-            }
-        }
-    }
-
     private _captureRebinding(
         control: InputControlPath,
         device: InputDeviceKind,
@@ -1505,30 +1222,6 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         const handlers = active.handlers;
         this._activeRebinding = undefined;
         handlers?.cancel?.('timeout');
-    }
-
-    private _clearDeviceState(resetGamepads: boolean): void {
-        this._keysDown.clear();
-        this._mouseButtons = 0;
-        this._mouseDeltaX = 0;
-        this._mouseDeltaY = 0;
-        this._mouseWheelX = 0;
-        this._mouseWheelY = 0;
-        this._mouseWheelZ = 0;
-        this._touches.clear();
-        this._primaryTouchId = undefined;
-        this._touchPinchDistance = 0;
-        this._touchPinchDelta = 0;
-
-        if (!resetGamepads) {
-            return;
-        }
-
-        for (const [, state] of this._gamepads) {
-            state.connected = false;
-            state.buttons.fill(0);
-            state.axes.fill(0);
-        }
     }
 
     private _evaluate(): void {
@@ -2350,84 +2043,6 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
             this._emitActionEvents(index, definition, descriptors);
         }
-    }
-
-    private _clearTransients(): void {
-        this._mouseDeltaX = 0;
-        this._mouseDeltaY = 0;
-        this._mouseWheelX = 0;
-        this._mouseWheelY = 0;
-        this._mouseWheelZ = 0;
-        this._touchPinchDelta = 0;
-
-        for (const [, touch] of this._touches) {
-            touch.deltaX = 0;
-            touch.deltaY = 0;
-        }
-    }
-
-    private _refreshPrimaryTouch(): void {
-        let selected: MutableTouchPoint | undefined;
-
-        for (const [, touch] of this._touches) {
-            if (!selected || touch.order < selected.order) {
-                selected = touch;
-            }
-        }
-
-        this._primaryTouchId = selected?.id;
-    }
-
-    private _updateTouchPinch(): void {
-        const activeTouches = [...this._touches.values()].sort(
-            (left, right) => left.order - right.order
-        );
-
-        if (activeTouches.length < 2) {
-            this._touchPinchDistance = 0;
-            this._touchPinchDelta = 0;
-            return;
-        }
-
-        const [first, second] = activeTouches;
-        const distance = Math.hypot(second!.x - first!.x, second!.y - first!.y);
-
-        if (this._touchPinchDistance > 0) {
-            this._touchPinchDelta += distance - this._touchPinchDistance;
-        }
-
-        this._touchPinchDistance = distance;
-    }
-
-    private _ensureGamepadState(index: number, buttonCount: number, axisCount: number): MutableGamepadState {
-        const existing = this._gamepads.get(index);
-
-        if (existing) {
-            if (existing.buttons.length !== buttonCount) {
-                const nextButtons = new Float64Array(buttonCount);
-                nextButtons.set(
-                    existing.buttons.subarray(0, Math.min(buttonCount, existing.buttons.length))
-                );
-                existing.buttons = nextButtons;
-            }
-
-            if (existing.axes.length !== axisCount) {
-                const nextAxes = new Float64Array(axisCount);
-                nextAxes.set(existing.axes.subarray(0, Math.min(axisCount, existing.axes.length)));
-                existing.axes = nextAxes;
-            }
-
-            return existing;
-        }
-
-        const created: MutableGamepadState = {
-            connected: false,
-            buttons: new Float64Array(buttonCount),
-            axes: new Float64Array(axisCount),
-        };
-
-        this._gamepads.set(index, created);
-        return created;
     }
 
     private _getOrderedContexts(): readonly InternalContext<TSchema>[] {
