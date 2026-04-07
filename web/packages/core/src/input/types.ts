@@ -73,6 +73,41 @@ export type InputVector2Processor =
 
 export type InputProcessor = InputScalarProcessor | InputVector2Processor;
 
+export interface InputPressInteraction {
+    readonly type: 'press';
+}
+
+export interface InputHoldInteraction {
+    readonly type: 'hold';
+    readonly durationMs?: number;
+    readonly mode?: 'once' | 'continuous';
+}
+
+export interface InputTapInteraction {
+    readonly type: 'tap';
+    readonly maxDurationMs?: number;
+}
+
+export interface InputMultiTapInteraction {
+    readonly type: 'multi-tap';
+    readonly tapCount?: number;
+    readonly maxDelayMs?: number;
+    readonly maxDurationMs?: number;
+}
+
+export interface InputRepeatInteraction {
+    readonly type: 'repeat';
+    readonly delayMs?: number;
+    readonly intervalMs?: number;
+}
+
+export type InputButtonInteraction =
+    | InputPressInteraction
+    | InputHoldInteraction
+    | InputTapInteraction
+    | InputMultiTapInteraction
+    | InputRepeatInteraction;
+
 export interface InputActionDefinitionBase<TKind extends InputActionKind> {
     readonly kind: TKind;
     readonly consume?: boolean;
@@ -82,6 +117,7 @@ export interface InputActionDefinitionBase<TKind extends InputActionKind> {
 export interface InputButtonActionDefinition extends InputActionDefinitionBase<'button'> {
     readonly pressPoint?: number;
     readonly releasePoint?: number;
+    readonly interactions?: readonly InputButtonInteraction[];
 }
 
 export interface InputAxisActionDefinition extends InputActionDefinitionBase<'axis'> {
@@ -316,6 +352,13 @@ export interface InputButtonState extends InputActionFrameStateBase<'button'> {
     readonly previousRawValue: number;
     readonly pressed: boolean;
     readonly released: boolean;
+    readonly heldDurationMs: number;
+    readonly tapSequenceCount: number;
+    readonly repeatCount: number;
+    readonly holdTriggered: boolean;
+    readonly tapTriggered: boolean;
+    readonly multiTapTriggered: boolean;
+    readonly repeatTriggered: boolean;
 }
 
 export interface InputAxisState extends InputActionFrameStateBase<'axis'> {

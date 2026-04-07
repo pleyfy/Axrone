@@ -184,6 +184,120 @@ describe('InputSystem', () => {
         expect(look.y).toBeCloseTo(Math.SQRT1_2, 6);
     });
 
+    it('tracks hold repeat tap and multi-tap interaction states', () => {
+        const input = createInputSystem({
+            schema: {
+                charge: {
+                    kind: 'button',
+                    interactions: [
+                        { type: 'hold', durationMs: 30 },
+                        { type: 'repeat', delayMs: 20, intervalMs: 10 },
+                    ],
+                },
+                dash: {
+                    kind: 'button',
+                    interactions: [
+                        { type: 'tap', maxDurationMs: 40 },
+                        { type: 'multi-tap', tapCount: 2, maxDelayMs: 80, maxDurationMs: 40 },
+                    ],
+                },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        charge: [{ type: 'control', control: 'keyboard/KeyQ' }],
+                        dash: [{ type: 'control', control: 'keyboard/KeyE' }],
+                    },
+                },
+            ],
+        });
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'KeyQ',
+            pressed: true,
+        });
+        input.update(0);
+
+        let charge = input.state('charge');
+        expect(charge.pressed).toBe(true);
+        expect(charge.holdTriggered).toBe(false);
+        expect(charge.repeatTriggered).toBe(false);
+
+        input.update(20);
+        charge = input.state('charge');
+        expect(charge.repeatTriggered).toBe(true);
+        expect(charge.repeatCount).toBe(1);
+        expect(charge.holdTriggered).toBe(false);
+
+        input.update(30);
+        charge = input.state('charge');
+        expect(charge.holdTriggered).toBe(true);
+        expect(charge.heldDurationMs).toBe(30);
+        expect(charge.repeatTriggered).toBe(true);
+        expect(charge.repeatCount).toBe(2);
+
+        input.update(40);
+        charge = input.state('charge');
+        expect(charge.holdTriggered).toBe(false);
+        expect(charge.repeatTriggered).toBe(true);
+        expect(charge.repeatCount).toBe(3);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'KeyQ',
+            pressed: false,
+        });
+        input.update(50);
+
+        charge = input.state('charge');
+        expect(charge.released).toBe(true);
+        expect(charge.heldDurationMs).toBe(50);
+        expect(charge.repeatCount).toBe(3);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'KeyE',
+            pressed: true,
+        });
+        input.update(60);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'KeyE',
+            pressed: false,
+        });
+        input.update(80);
+
+        let dash = input.state('dash');
+        expect(dash.tapTriggered).toBe(true);
+        expect(dash.multiTapTriggered).toBe(false);
+        expect(dash.tapSequenceCount).toBe(1);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'KeyE',
+            pressed: true,
+        });
+        input.update(100);
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'KeyE',
+            pressed: false,
+        });
+        input.update(120);
+
+        dash = input.state('dash');
+        expect(dash.tapTriggered).toBe(true);
+        expect(dash.multiTapTriggered).toBe(true);
+        expect(dash.tapSequenceCount).toBe(2);
+
+        input.update(121);
+        expect(input.state('dash').tapSequenceCount).toBe(0);
+    });
+
     it('rebinding updates bindings and survives snapshot restore', () => {
         const input = createInputSystem({
             schema: {
@@ -328,6 +442,40 @@ describe('InputSystem', () => {
 
         expect(input.read('fire')).toBe(false);
         expect(input.read('move')).toEqual({ x: 0, y: 0 });
+    });
+
+    it('does not misfire tap interactions when a context interrupts an active action', () => {
+        const input = createInputSystem({
+            schema: {
+                interact: {
+                    kind: 'button',
+                    interactions: [{ type: 'tap', maxDurationMs: 80 }],
+                },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        interact: [{ type: 'control', control: 'keyboard/KeyF' }],
+                    },
+                },
+            ],
+        });
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'KeyF',
+            pressed: true,
+        });
+        input.update(0);
+
+        input.deactivateContext('gameplay');
+        input.update(20);
+
+        const state = input.state('interact');
+        expect(state.released).toBe(true);
+        expect(state.tapTriggered).toBe(false);
+        expect(state.tapSequenceCount).toBe(0);
     });
 
     it('keeps public vector state views immutable', () => {

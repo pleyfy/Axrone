@@ -27,6 +27,7 @@ import type {
     InputBindingSlot,
     InputBrowserTarget,
     InputButtonActionDefinition,
+    InputButtonInteraction,
     InputButtonState,
     InputContextCapture,
     InputContextDefinition,
@@ -78,6 +79,12 @@ const MODIFIER_MASKS: Record<InputModifierKey, number> = Object.freeze({
 const TOUCH_ANY = -1;
 const TOUCH_PRIMARY = -2;
 const GAMEPAD_ANY = -1;
+const DEFAULT_HOLD_DURATION_MS = 400;
+const DEFAULT_TAP_DURATION_MS = 250;
+const DEFAULT_MULTI_TAP_COUNT = 2;
+const DEFAULT_MULTI_TAP_DELAY_MS = 300;
+const DEFAULT_REPEAT_DELAY_MS = 450;
+const DEFAULT_REPEAT_INTERVAL_MS = 60;
 
 interface MutableVector2 {
     x: number;
@@ -97,6 +104,17 @@ interface ButtonStateStore {
     frame: number;
     timestamp: number;
     context?: InputContextId;
+    heldDurationMs: number;
+    tapSequenceCount: number;
+    repeatCount: number;
+    holdTriggered: boolean;
+    tapTriggered: boolean;
+    multiTapTriggered: boolean;
+    repeatTriggered: boolean;
+    pressStartedAt?: number;
+    lastTapTimestamp?: number;
+    nextRepeatAt?: number;
+    holdConsumed: boolean;
 }
 
 interface AxisStateStore {
@@ -133,6 +151,7 @@ type InternalActionDefinition =
           readonly pressPoint: number;
           readonly releasePoint: number;
           readonly processors: readonly InternalScalarProcessor[];
+          readonly interactions: InternalButtonInteractions;
       }
     | {
           readonly kind: 'axis';
@@ -271,6 +290,26 @@ type InternalVectorProcessor =
       };
 
 type InternalProcessor = InternalScalarProcessor | InternalVectorProcessor;
+
+interface InternalButtonInteractions {
+    readonly press: boolean;
+    readonly hold?: {
+        readonly durationMs: number;
+        readonly continuous: boolean;
+    };
+    readonly tap?: {
+        readonly maxDurationMs: number;
+    };
+    readonly multiTap?: {
+        readonly tapCount: number;
+        readonly maxDelayMs: number;
+        readonly maxDurationMs: number;
+    };
+    readonly repeat?: {
+        readonly delayMs: number;
+        readonly intervalMs: number;
+    };
+}
 
 interface InternalControlBinding extends InternalBindingBase<'control'> {
     readonly processors: readonly InternalScalarProcessor[];
@@ -535,6 +574,17 @@ const createButtonStateStore = (): ButtonStateStore => ({
     frame: 0,
     timestamp: 0,
     context: undefined,
+    heldDurationMs: 0,
+    tapSequenceCount: 0,
+    repeatCount: 0,
+    holdTriggered: false,
+    tapTriggered: false,
+    multiTapTriggered: false,
+    repeatTriggered: false,
+    pressStartedAt: undefined,
+    lastTapTimestamp: undefined,
+    nextRepeatAt: undefined,
+    holdConsumed: false,
 });
 
 const createAxisStateStore = (): AxisStateStore => ({
@@ -585,6 +635,27 @@ const createButtonStateView = (state: ButtonStateStore): InputButtonState =>
         },
         get released(): boolean {
             return state.released;
+        },
+        get heldDurationMs(): number {
+            return state.heldDurationMs;
+        },
+        get tapSequenceCount(): number {
+            return state.tapSequenceCount;
+        },
+        get repeatCount(): number {
+            return state.repeatCount;
+        },
+        get holdTriggered(): boolean {
+            return state.holdTriggered;
+        },
+        get tapTriggered(): boolean {
+            return state.tapTriggered;
+        },
+        get multiTapTriggered(): boolean {
+            return state.multiTapTriggered;
+        },
+        get repeatTriggered(): boolean {
+            return state.repeatTriggered;
         },
         get active(): boolean {
             return state.active;
@@ -1617,6 +1688,153 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         return Object.freeze(compiled);
     }
 
+    private _compileButtonInteractions(
+        interactions?: readonly InputButtonInteraction[]
+    ): InternalButtonInteractions {
+        let press = false;
+        let hold: InternalButtonInteractions['hold'];
+        let tap: InternalButtonInteractions['tap'];
+        let multiTap: InternalButtonInteractions['multiTap'];
+        let repeat: InternalButtonInteractions['repeat'];
+
+        for (const interaction of interactions ?? []) {
+            if (!isRecord(interaction) || typeof interaction.type !== 'string') {
+                throw new InputConfigurationError(
+                    'input.invalid-action',
+                    this._resolveMessage({
+                        code: 'input.invalid-action',
+                        value: interaction,
+                    })
+                );
+            }
+
+            switch (interaction.type) {
+                case 'press':
+                    if (press) {
+                        break;
+                    }
+
+                    press = true;
+                    break;
+                case 'hold':
+                    if (hold) {
+                        throw new InputConfigurationError(
+                            'input.invalid-action',
+                            this._resolveMessage({
+                                code: 'input.invalid-action',
+                                value: interaction,
+                            })
+                        );
+                    }
+
+                    hold = Object.freeze({
+                        durationMs: Math.max(
+                            0,
+                            toFiniteNumber(interaction.durationMs, DEFAULT_HOLD_DURATION_MS)
+                        ),
+                        continuous: interaction.mode === 'continuous',
+                    });
+                    break;
+                case 'tap':
+                    if (tap) {
+                        throw new InputConfigurationError(
+                            'input.invalid-action',
+                            this._resolveMessage({
+                                code: 'input.invalid-action',
+                                value: interaction,
+                            })
+                        );
+                    }
+
+                    tap = Object.freeze({
+                        maxDurationMs: Math.max(
+                            0,
+                            toFiniteNumber(interaction.maxDurationMs, DEFAULT_TAP_DURATION_MS)
+                        ),
+                    });
+                    break;
+                case 'multi-tap':
+                    if (multiTap) {
+                        throw new InputConfigurationError(
+                            'input.invalid-action',
+                            this._resolveMessage({
+                                code: 'input.invalid-action',
+                                value: interaction,
+                            })
+                        );
+                    }
+
+                    multiTap = Object.freeze({
+                        tapCount: Math.max(
+                            2,
+                            Math.trunc(
+                                toFiniteNumber(
+                                    interaction.tapCount,
+                                    DEFAULT_MULTI_TAP_COUNT
+                                )
+                            )
+                        ),
+                        maxDelayMs: Math.max(
+                            0,
+                            toFiniteNumber(
+                                interaction.maxDelayMs,
+                                DEFAULT_MULTI_TAP_DELAY_MS
+                            )
+                        ),
+                        maxDurationMs: Math.max(
+                            0,
+                            toFiniteNumber(
+                                interaction.maxDurationMs,
+                                DEFAULT_TAP_DURATION_MS
+                            )
+                        ),
+                    });
+                    break;
+                case 'repeat':
+                    if (repeat) {
+                        throw new InputConfigurationError(
+                            'input.invalid-action',
+                            this._resolveMessage({
+                                code: 'input.invalid-action',
+                                value: interaction,
+                            })
+                        );
+                    }
+
+                    repeat = Object.freeze({
+                        delayMs: Math.max(
+                            0,
+                            toFiniteNumber(interaction.delayMs, DEFAULT_REPEAT_DELAY_MS)
+                        ),
+                        intervalMs: Math.max(
+                            1,
+                            toFiniteNumber(
+                                interaction.intervalMs,
+                                DEFAULT_REPEAT_INTERVAL_MS
+                            )
+                        ),
+                    });
+                    break;
+                default:
+                    throw new InputConfigurationError(
+                        'input.invalid-action',
+                        this._resolveMessage({
+                            code: 'input.invalid-action',
+                            value: interaction,
+                        })
+                    );
+            }
+        }
+
+        return Object.freeze({
+            press,
+            hold,
+            tap,
+            multiTap,
+            repeat,
+        });
+    }
+
     private _normalizeActionDefinition(
         name: string,
         definition: InputActionDefinition
@@ -1649,6 +1867,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     pressPoint,
                     releasePoint,
                     processors: this._compileProcessors('scalar', buttonDefinition.processors),
+                    interactions: this._compileButtonInteractions(buttonDefinition.interactions),
                 });
             }
             case 'axis': {
@@ -3079,6 +3298,44 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         }
     }
 
+    private _isButtonInteractionInterrupted(
+        actionIndex: number,
+        previousContext: InputContextId | undefined
+    ): boolean {
+        if (!previousContext) {
+            return false;
+        }
+
+        const context = this._contexts.get(previousContext);
+
+        if (!context) {
+            return true;
+        }
+
+        const action = context.actions.get(actionIndex);
+
+        if (!action) {
+            return true;
+        }
+
+        for (const binding of action.compiled) {
+            if (binding.type !== 'control' && binding.type !== 'axis') {
+                continue;
+            }
+
+            const value =
+                binding.type === 'control'
+                    ? this._evaluateControlBinding(binding)
+                    : this._evaluateAxisCompositeBinding(binding);
+
+            if (Math.abs(value) > EPSILON) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private _commitButtonState(
         index: number,
         definition: Extract<InternalActionDefinition, { kind: 'button' }>
@@ -3086,21 +3343,156 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         const state = this._buttonStateStores[index]!;
         const previousValue = state.value;
         const previousRawValue = state.rawValue;
+        const previousContext = state.context;
+        const previousTapSequenceCount = state.tapSequenceCount;
+        const previousRepeatCount = state.repeatCount;
         const rawValue = applyScalarProcessors(this._accumulatorX[index]!, definition.processors);
         const nextValue = previousValue
             ? rawValue > definition.releasePoint + EPSILON
             : rawValue >= definition.pressPoint - EPSILON;
+        const pressed = !previousValue && nextValue;
+        const released = previousValue && !nextValue;
+        const interactions = definition.interactions;
+        const multiTap = interactions.multiTap;
+        let heldDurationMs = 0;
+        let tapSequenceCount = state.tapSequenceCount;
+        let repeatCount = state.repeatCount;
+        let holdTriggered = false;
+        let tapTriggered = false;
+        let multiTapTriggered = false;
+        let repeatTriggered = false;
+
+        if (tapSequenceCount > 0) {
+            const maxDelayMs = multiTap?.maxDelayMs ?? 0;
+            if (
+                typeof state.lastTapTimestamp !== 'number' ||
+                maxDelayMs <= 0 ||
+                this._timestamp - state.lastTapTimestamp > maxDelayMs + EPSILON
+            ) {
+                tapSequenceCount = 0;
+                state.lastTapTimestamp = undefined;
+            }
+        }
+
+        if (pressed) {
+            state.pressStartedAt = this._timestamp;
+            state.holdConsumed = false;
+            repeatCount = 0;
+            state.nextRepeatAt =
+                interactions.repeat
+                    ? this._timestamp + interactions.repeat.delayMs
+                    : undefined;
+        }
+
+        if (nextValue) {
+            const pressStartedAt = state.pressStartedAt ?? this._timestamp;
+            const hold = interactions.hold;
+            const repeat = interactions.repeat;
+            state.pressStartedAt = pressStartedAt;
+            heldDurationMs = Math.max(0, this._timestamp - pressStartedAt);
+
+            if (hold && heldDurationMs + EPSILON >= hold.durationMs) {
+                if (hold.continuous) {
+                    holdTriggered = true;
+                } else if (!state.holdConsumed) {
+                    holdTriggered = true;
+                    state.holdConsumed = true;
+                }
+            }
+
+            if (repeat) {
+                const nextRepeatAt = state.nextRepeatAt ?? pressStartedAt + repeat.delayMs;
+                if (this._timestamp + EPSILON >= nextRepeatAt) {
+                    const emittedCount =
+                        1 +
+                        Math.floor(
+                            Math.max(0, this._timestamp - nextRepeatAt) / repeat.intervalMs
+                        );
+                    repeatTriggered = emittedCount > 0;
+                    repeatCount += emittedCount;
+                    state.nextRepeatAt = nextRepeatAt + emittedCount * repeat.intervalMs;
+                } else {
+                    state.nextRepeatAt = nextRepeatAt;
+                }
+            } else {
+                repeatCount = 0;
+                state.nextRepeatAt = undefined;
+            }
+        } else if (released) {
+            const pressStartedAt = state.pressStartedAt ?? this._timestamp;
+            const interrupted = this._isButtonInteractionInterrupted(index, previousContext);
+            heldDurationMs = Math.max(0, this._timestamp - pressStartedAt);
+            state.pressStartedAt = undefined;
+            state.holdConsumed = false;
+            state.nextRepeatAt = undefined;
+
+            if (interrupted) {
+                tapSequenceCount = 0;
+                state.lastTapTimestamp = undefined;
+            } else {
+                if (
+                    interactions.tap &&
+                    heldDurationMs <= interactions.tap.maxDurationMs + EPSILON
+                ) {
+                    tapTriggered = true;
+                }
+
+                if (
+                    multiTap &&
+                    heldDurationMs <= multiTap.maxDurationMs + EPSILON
+                ) {
+                    const withinDelay =
+                        typeof state.lastTapTimestamp === 'number' &&
+                        this._timestamp - state.lastTapTimestamp <= multiTap.maxDelayMs + EPSILON;
+                    tapSequenceCount = withinDelay ? tapSequenceCount + 1 : 1;
+                    state.lastTapTimestamp = this._timestamp;
+
+                    if (tapSequenceCount >= multiTap.tapCount) {
+                        tapSequenceCount = multiTap.tapCount;
+                        multiTapTriggered = true;
+                        state.lastTapTimestamp = undefined;
+                    }
+                } else if (!multiTap && tapTriggered) {
+                    tapSequenceCount = 1;
+                    state.lastTapTimestamp = this._timestamp;
+                } else if (multiTap) {
+                    tapSequenceCount = 0;
+                    state.lastTapTimestamp = undefined;
+                }
+            }
+        } else {
+            repeatCount = 0;
+            state.nextRepeatAt = undefined;
+
+            if (tapSequenceCount > 0 && !multiTap) {
+                tapSequenceCount = 0;
+                state.lastTapTimestamp = undefined;
+            }
+        }
 
         state.previousValue = previousValue;
         state.previousRawValue = previousRawValue;
         state.value = nextValue;
         state.rawValue = rawValue;
-        state.pressed = !previousValue && nextValue;
-        state.released = previousValue && !nextValue;
+        state.pressed = pressed;
+        state.released = released;
+        state.heldDurationMs = heldDurationMs;
+        state.tapSequenceCount = tapSequenceCount;
+        state.repeatCount = repeatCount;
+        state.holdTriggered = holdTriggered;
+        state.tapTriggered = tapTriggered;
+        state.multiTapTriggered = multiTapTriggered;
+        state.repeatTriggered = repeatTriggered;
         state.active = nextValue;
         state.changed =
-            state.pressed ||
-            state.released ||
+            pressed ||
+            released ||
+            holdTriggered ||
+            tapTriggered ||
+            multiTapTriggered ||
+            repeatTriggered ||
+            tapSequenceCount !== previousTapSequenceCount ||
+            repeatCount !== previousRepeatCount ||
             Math.abs(rawValue - previousRawValue) > EPSILON;
         state.frame = this._frame;
         state.timestamp = this._timestamp;
