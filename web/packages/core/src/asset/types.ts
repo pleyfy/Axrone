@@ -31,6 +31,24 @@ export interface AssetJsonArray extends ReadonlyArray<AssetJsonValue> {}
 
 export type AssetJsonValue = AssetJsonPrimitive | AssetJsonObject | AssetJsonArray;
 
+export interface AssetInlineBinaryValue {
+    readonly __asset: 'axrone.binary';
+    readonly storage: 'inline';
+    readonly encoding: 'base64';
+    readonly data: string;
+    readonly byteLength: number;
+}
+
+export interface AssetExternalBinaryValue {
+    readonly __asset: 'axrone.binary';
+    readonly storage: 'external';
+    readonly storageKey: string;
+    readonly byteLength: number;
+}
+
+export type AssetBinaryValue = AssetInlineBinaryValue | AssetExternalBinaryValue;
+export type AssetSerializedValue = AssetJsonValue | AssetBinaryValue;
+
 export interface AssetMetadataInput {
     readonly uri?: string;
     readonly mimeType?: string;
@@ -106,10 +124,19 @@ export type AssetDisposer<
     TKind extends AssetKind<TSchema> = AssetKind<TSchema>,
 > = (data: AssetData<TSchema, TKind>, record: Readonly<AssetRecord<TSchema, TKind>>) => void;
 
-export interface AssetCodec<TData> {
+export interface AssetJsonCodec<TData> {
+    readonly format?: 'json';
     serialize(data: TData): AssetJsonValue;
     deserialize(data: AssetJsonValue): TData;
 }
+
+export interface AssetBinaryCodec<TData> {
+    readonly format: 'binary';
+    serialize(data: TData): ArrayBuffer | ArrayBufferView | Uint8Array;
+    deserialize(data: Uint8Array): TData;
+}
+
+export type AssetCodec<TData> = AssetJsonCodec<TData> | AssetBinaryCodec<TData>;
 
 export type AssetCodecMap<TSchema extends AssetSchema> = {
     readonly [TKind in AssetKind<TSchema>]?: AssetCodec<AssetData<TSchema, TKind>>;
@@ -528,7 +555,7 @@ export interface AssetSnapshotRevisionRecord<TKind extends string = string> {
         readonly properties: Readonly<Record<string, AssetJsonValue>>;
     };
     readonly dependencyIds: readonly string[];
-    readonly data: AssetJsonValue;
+    readonly data: AssetSerializedValue;
 }
 
 export interface AssetSnapshotRecord<TKind extends string = string>
@@ -537,7 +564,7 @@ export interface AssetSnapshotRecord<TKind extends string = string>
 }
 
 export interface AssetDatabaseSnapshot<TKind extends string = string> {
-    readonly version: 2;
+    readonly version: 3;
     readonly locale: string;
     readonly capturedAtEpochMs: number;
     readonly assets: readonly AssetSnapshotRecord<TKind>[];
@@ -556,10 +583,42 @@ export interface AssetImportPipelineOptions<TSchema extends AssetSchema> {
     readonly now?: () => number;
 }
 
+export interface AssetBinaryStoreWriteRequest {
+    readonly kind: string;
+    readonly id: string;
+    readonly key: string;
+    readonly revision: number;
+    readonly fingerprint: string;
+    readonly metadata: AssetMetadata;
+    readonly bytes: Uint8Array;
+}
+
+export interface AssetBinaryStoreReadRequest {
+    readonly kind: string;
+    readonly id: string;
+    readonly key: string;
+    readonly revision: number;
+    readonly fingerprint: string;
+    readonly metadata: AssetMetadata;
+    readonly reference: AssetExternalBinaryValue;
+}
+
+export interface AssetBinaryStore {
+    write(request: Readonly<AssetBinaryStoreWriteRequest>): string;
+    read(request: Readonly<AssetBinaryStoreReadRequest>): ArrayBuffer | ArrayBufferView | Uint8Array;
+}
+
+export interface AssetBinaryPersistenceOptions {
+    readonly mode?: 'inline' | 'external' | 'auto';
+    readonly inlineThresholdBytes?: number;
+    readonly store?: AssetBinaryStore;
+}
+
 export interface AssetDatabaseOptions<TSchema extends AssetSchema> {
     readonly locale?: string;
     readonly importers?: readonly AssetImporter<TSchema>[];
     readonly stages?: readonly AssetImportStage<TSchema>[];
+    readonly binary?: AssetBinaryPersistenceOptions;
     readonly pipeline?: AssetImportPipeline<TSchema>;
     readonly retry?: AssetRetryPolicy<TSchema>;
     readonly codecs?: AssetCodecMap<TSchema>;

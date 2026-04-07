@@ -27,6 +27,11 @@ import {
     parseAssetVersionedReferenceToken,
 } from './reference';
 import type {
+    AssetBinaryCodec,
+    AssetBinaryPersistenceOptions,
+    AssetBinaryStoreReadRequest,
+    AssetBinaryStoreWriteRequest,
+    AssetBinaryValue,
     AssetChangeEvent,
     AssetCodec,
     AssetCodecMap,
@@ -57,15 +62,28 @@ import type {
     AssetSnapshotRecord,
     AssetSnapshotRevisionRecord,
     AssetSubscription,
+    AssetSerializedValue,
     AssetVersionedReference,
     AssetWriteInput,
 } from './types';
 
-const ASSET_SNAPSHOT_VERSION = 2 as const;
-const LEGACY_ASSET_SNAPSHOT_VERSION = 1 as const;
+const ASSET_SNAPSHOT_VERSION = 3 as const;
+const LEGACY_ASSET_SNAPSHOT_VERSIONS = Object.freeze([1, 2] as const);
+const DEFAULT_BINARY_INLINE_THRESHOLD_BYTES = 64 * 1024;
 const EMPTY_STRING_ARRAY = Object.freeze([]) as readonly string[];
 const EMPTY_PROPERTIES = Object.freeze({}) as Readonly<Record<string, AssetJsonValue>>;
 const RANDOM = createRandom();
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const BASE64_CODES = (() => {
+    const table = new Int16Array(123);
+    table.fill(-1);
+
+    for (let index = 0; index < BASE64_ALPHABET.length; index += 1) {
+        table[BASE64_ALPHABET.charCodeAt(index)!] = index;
+    }
+
+    return table;
+})();
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     value !== null && typeof value === 'object';
@@ -149,6 +167,109 @@ const getBytes = (value: ArrayBuffer | ArrayBufferView | Uint8Array): Uint8Array
         : value instanceof ArrayBuffer
           ? new Uint8Array(value)
           : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+
+const encodeBase64 = (bytes: Uint8Array): string => {
+    if (bytes.length === 0) {
+        return '';
+    }
+
+    let result = '';
+    let index = 0;
+
+    for (; index + 2 < bytes.length; index += 3) {
+        const block = (bytes[index]! << 16) | (bytes[index + 1]! << 8) | bytes[index + 2]!;
+        result +=
+            BASE64_ALPHABET[(block >>> 18) & 63] +
+            BASE64_ALPHABET[(block >>> 12) & 63] +
+            BASE64_ALPHABET[(block >>> 6) & 63] +
+            BASE64_ALPHABET[block & 63];
+    }
+
+    const remaining = bytes.length - index;
+    if (remaining === 1) {
+        const block = bytes[index]! << 16;
+        result +=
+            BASE64_ALPHABET[(block >>> 18) & 63] +
+            BASE64_ALPHABET[(block >>> 12) & 63] +
+            '==';
+    } else if (remaining === 2) {
+        const block = (bytes[index]! << 16) | (bytes[index + 1]! << 8);
+        result +=
+            BASE64_ALPHABET[(block >>> 18) & 63] +
+            BASE64_ALPHABET[(block >>> 12) & 63] +
+            BASE64_ALPHABET[(block >>> 6) & 63] +
+            '=';
+    }
+
+    return result;
+};
+
+const getBase64Code = (value: string): number => {
+    const code = value.charCodeAt(0);
+    return code < BASE64_CODES.length ? BASE64_CODES[code]! : -1;
+};
+
+const decodeBase64 = (value: string): Uint8Array => {
+    if (value.length === 0) {
+        return new Uint8Array(0);
+    }
+
+    if (value.length % 4 !== 0) {
+        throw new Error('Invalid base64 payload length');
+    }
+
+    const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+    const output = new Uint8Array((value.length / 4) * 3 - padding);
+    let outputIndex = 0;
+
+    for (let index = 0; index < value.length; index += 4) {
+        const char0 = value[index]!;
+        const char1 = value[index + 1]!;
+        const char2 = value[index + 2]!;
+        const char3 = value[index + 3]!;
+        const code0 = getBase64Code(char0);
+        const code1 = getBase64Code(char1);
+        const code2 = char2 === '=' ? 0 : getBase64Code(char2);
+        const code3 = char3 === '=' ? 0 : getBase64Code(char3);
+        const isLastChunk = index + 4 === value.length;
+
+        if (
+            code0 < 0 ||
+            code1 < 0 ||
+            (char2 !== '=' && code2 < 0) ||
+            (char3 !== '=' && code3 < 0) ||
+            (!isLastChunk && (char2 === '=' || char3 === '='))
+        ) {
+            throw new Error('Invalid base64 payload');
+        }
+
+        const block = (code0 << 18) | (code1 << 12) | (code2 << 6) | code3;
+        output[outputIndex++] = (block >>> 16) & 255;
+
+        if (char2 !== '=') {
+            output[outputIndex++] = (block >>> 8) & 255;
+        }
+
+        if (char3 !== '=') {
+            output[outputIndex++] = block & 255;
+        }
+    }
+
+    return output;
+};
+
+const isBinaryCodec = <TData>(codec: AssetCodec<TData>): codec is AssetBinaryCodec<TData> =>
+    codec.format === 'binary';
+
+const isAssetBinaryValue = (value: unknown): value is AssetBinaryValue =>
+    isPlainObject(value) &&
+    value.__asset === 'axrone.binary' &&
+    Number.isSafeInteger(value.byteLength) &&
+    Number(value.byteLength) >= 0 &&
+    ((value.storage === 'inline' &&
+        value.encoding === 'base64' &&
+        typeof value.data === 'string') ||
+        (value.storage === 'external' && typeof value.storageKey === 'string'));
 
 const stableStringify = (value: unknown, seen = new WeakSet<object>()): string => {
     if (value === null) {
@@ -373,8 +494,9 @@ export const isAssetDatabaseSnapshot = <TKind extends string = string>(
     value !== null &&
     typeof value === 'object' &&
     (((value as AssetDatabaseSnapshot<TKind>).version as number) === ASSET_SNAPSHOT_VERSION ||
-        ((value as AssetDatabaseSnapshot<TKind>).version as number) ===
-            LEGACY_ASSET_SNAPSHOT_VERSION) &&
+        LEGACY_ASSET_SNAPSHOT_VERSIONS.includes(
+            (value as AssetDatabaseSnapshot<TKind>).version as 1 | 2
+        )) &&
     Array.isArray((value as AssetDatabaseSnapshot<TKind>).assets);
 
 export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
@@ -386,6 +508,10 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     private readonly _listeners = new Set<AssetListener<TSchema>>();
     private readonly _codecs: AssetCodecMap<TSchema>;
     private readonly _disposers: AssetDisposerMap<TSchema>;
+    private readonly _binary: Required<
+        Pick<AssetBinaryPersistenceOptions, 'mode' | 'inlineThresholdBytes'>
+    > &
+        Pick<AssetBinaryPersistenceOptions, 'store'>;
     private readonly _pipeline: AssetImportPipeline<TSchema>;
     private readonly _ownPipeline: boolean;
     private readonly _messageResolver: AssetDatabaseOptions<TSchema>['messageResolver'];
@@ -406,6 +532,16 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         this._disposers = Object.freeze({
             ...(options.disposers ?? {}),
         }) as AssetDisposerMap<TSchema>;
+        this._binary = Object.freeze({
+            mode: options.binary?.mode ?? 'auto',
+            inlineThresholdBytes: Math.max(
+                0,
+                Math.trunc(
+                    options.binary?.inlineThresholdBytes ?? DEFAULT_BINARY_INLINE_THRESHOLD_BYTES
+                )
+            ),
+            store: options.binary?.store,
+        });
         this._ownPipeline = !options.pipeline;
         this._pipeline =
             options.pipeline ??
@@ -906,11 +1042,6 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     private _serializeSnapshotRevision(
         asset: StoredAsset<TSchema>
     ): AssetSnapshotRevisionRecord<AssetKind<TSchema>> {
-        const codec = this._codecs?.[asset.kind] as AssetCodec<typeof asset.data> | undefined;
-        const serializedData = codec
-            ? codec.serialize(asset.data)
-            : this._serializeJsonCompatible(asset.data, asset.kind);
-
         return Object.freeze({
             kind: asset.kind,
             id: asset.id,
@@ -929,7 +1060,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 properties: asset.metadata.properties,
             }),
             dependencyIds: asset.dependencyIds,
-            data: serializedData,
+            data: this._serializeSnapshotData(asset),
         });
     }
 
@@ -947,10 +1078,15 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             tags: entry.metadata.tags,
             properties: entry.metadata.properties,
         });
-        const codec = this._codecs?.[kind] as AssetCodec<TSchema[typeof kind]> | undefined;
-        const data = codec
-            ? codec.deserialize(entry.data)
-            : this._deserializeJsonCompatible(entry.data, kind);
+        const data = this._deserializeSnapshotData(
+            entry,
+            kind,
+            id,
+            key,
+            revision,
+            entry.fingerprint,
+            metadata
+        );
         const aliases = this._normalizeAliases(entry.aliases, key);
         const disposer = this._disposers?.[kind]
             ? (value: unknown, record: Readonly<AssetRecord<TSchema>>) =>
@@ -1699,8 +1835,296 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         }
     }
 
+    private _serializeSnapshotData<TKind extends AssetKind<TSchema>>(
+        asset: StoredAsset<TSchema, TKind>
+    ): AssetSerializedValue {
+        const codec = this._codecs?.[asset.kind] as AssetCodec<TSchema[TKind]> | undefined;
+
+        if (codec) {
+            if (isBinaryCodec(codec)) {
+                return this._serializeBinaryCompatible(codec.serialize(asset.data), asset);
+            }
+
+            return this._serializeJsonCompatible(codec.serialize(asset.data), asset.kind);
+        }
+
+        if (isAssetJsonValue(asset.data)) {
+            return this._serializeJsonCompatible(asset.data, asset.kind);
+        }
+
+        return this._serializeBinaryCompatible(asset.data, asset);
+    }
+
+    private _deserializeSnapshotData<TKind extends AssetKind<TSchema>>(
+        entry: AssetSnapshotRevisionRecord<AssetKind<TSchema>>,
+        kind: TKind,
+        id: string,
+        key: AssetKey,
+        revision: number,
+        fingerprint: string,
+        metadata: AssetMetadata
+    ): TSchema[TKind] {
+        const codec = this._codecs?.[kind] as AssetCodec<TSchema[TKind]> | undefined;
+
+        if (codec) {
+            if (isBinaryCodec(codec)) {
+                return codec.deserialize(
+                    this._deserializeBinaryCompatible(entry.data, {
+                        kind,
+                        id,
+                        key,
+                        revision,
+                        fingerprint,
+                        metadata,
+                    })
+                );
+            }
+
+            return codec.deserialize(this._requireJsonSerializedValue(entry.data, kind));
+        }
+
+        if (isAssetBinaryValue(entry.data)) {
+            return this._deserializeBinaryCompatible(entry.data, {
+                kind,
+                id,
+                key,
+                revision,
+                fingerprint,
+                metadata,
+            }) as TSchema[TKind];
+        }
+
+        return this._deserializeJsonCompatible(entry.data, kind);
+    }
+
+    private _serializeBinaryCompatible<TKind extends AssetKind<TSchema>>(
+        value: unknown,
+        asset: Pick<StoredAsset<TSchema, TKind>, 'kind' | 'id' | 'key' | 'revision' | 'fingerprint' | 'metadata'>
+    ): AssetBinaryValue {
+        if (!(value instanceof ArrayBuffer) && !isTypedArrayView(value)) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `asset kind "${asset.kind}" is not binary serializable`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        const bytes = getBytes(value);
+        const useExternalStore =
+            this._binary.mode === 'external' ||
+            (this._binary.mode === 'auto' &&
+                !!this._binary.store &&
+                bytes.length > this._binary.inlineThresholdBytes);
+
+        if (!useExternalStore) {
+            return Object.freeze({
+                __asset: 'axrone.binary',
+                storage: 'inline',
+                encoding: 'base64',
+                data: encodeBase64(bytes),
+                byteLength: bytes.length,
+            });
+        }
+
+        const store = this._binary.store;
+        if (!store) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `asset kind "${asset.kind}" requires a binary store`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        let storageKey: string;
+
+        try {
+            storageKey = store.write({
+                kind: asset.kind,
+                id: asset.id,
+                key: asset.key,
+                revision: asset.revision,
+                fingerprint: asset.fingerprint,
+                metadata: asset.metadata,
+                bytes,
+            } satisfies AssetBinaryStoreWriteRequest);
+        } catch (error) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `binary store write failed for asset ${asset.id}`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                ),
+                {
+                    cause: error,
+                }
+            );
+        }
+
+        if (typeof storageKey !== 'string' || !storageKey.trim()) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `binary store returned an invalid key for asset ${asset.id}`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        return Object.freeze({
+            __asset: 'axrone.binary',
+            storage: 'external',
+            storageKey: storageKey.trim(),
+            byteLength: bytes.length,
+        });
+    }
+
+    private _deserializeBinaryCompatible<TKind extends AssetKind<TSchema>>(
+        value: AssetSerializedValue,
+        asset: {
+            readonly kind: TKind;
+            readonly id: string;
+            readonly key: AssetKey;
+            readonly revision: number;
+            readonly fingerprint: string;
+            readonly metadata: AssetMetadata;
+        }
+    ): Uint8Array {
+        if (!isAssetBinaryValue(value)) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `asset kind "${asset.kind}" does not contain binary data`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        if (value.storage === 'inline') {
+            try {
+                const bytes = decodeBase64(value.data);
+
+                if (bytes.length !== value.byteLength) {
+                    throw new Error('byte length mismatch');
+                }
+
+                return bytes;
+            } catch (error) {
+                throw new AssetSnapshotError(
+                    resolveAssetMessage(
+                        {
+                            code: 'asset.snapshot.invalid',
+                            reason: `invalid inline binary payload for asset ${asset.id}`,
+                        },
+                        this._locale,
+                        this._messageResolver
+                    ),
+                    {
+                        cause: error,
+                    }
+                );
+            }
+        }
+
+        const store = this._binary.store;
+        if (!store) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `missing binary store for asset ${asset.id}`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        let loaded: ArrayBuffer | ArrayBufferView | Uint8Array;
+
+        try {
+            loaded = store.read({
+                kind: asset.kind,
+                id: asset.id,
+                key: asset.key,
+                revision: asset.revision,
+                fingerprint: asset.fingerprint,
+                metadata: asset.metadata,
+                reference: value,
+            } satisfies AssetBinaryStoreReadRequest);
+        } catch (error) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `binary store read failed for asset ${asset.id}`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                ),
+                {
+                    cause: error,
+                }
+            );
+        }
+
+        if (!(loaded instanceof ArrayBuffer) && !isTypedArrayView(loaded)) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `binary store returned invalid data for asset ${asset.id}`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        const bytes = getBytes(loaded);
+        if (bytes.length !== value.byteLength) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `binary payload length mismatch for asset ${asset.id}`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        return bytes;
+    }
+
     private _serializeJsonCompatible<TKind extends AssetKind<TSchema>>(
-        data: TSchema[TKind],
+        data: unknown,
+        kind: TKind
+    ): AssetJsonValue {
+        return this._requireJsonSerializedValue(data, kind);
+    }
+
+    private _requireJsonSerializedValue<TKind extends AssetKind<TSchema>>(
+        data: unknown,
         kind: TKind
     ): AssetJsonValue {
         if (!isAssetJsonValue(data)) {
@@ -1720,23 +2144,10 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     }
 
     private _deserializeJsonCompatible<TKind extends AssetKind<TSchema>>(
-        data: AssetJsonValue,
+        data: unknown,
         kind: TKind
     ): TSchema[TKind] {
-        if (!isAssetJsonValue(data)) {
-            throw new AssetSnapshotError(
-                resolveAssetMessage(
-                    {
-                        code: 'asset.snapshot.invalid',
-                        reason: `asset kind "${kind}" contains invalid JSON data`,
-                    },
-                    this._locale,
-                    this._messageResolver
-                )
-            );
-        }
-
-        return data as TSchema[TKind];
+        return this._requireJsonSerializedValue(data, kind) as TSchema[TKind];
     }
 
     private _beginBatch(): void {

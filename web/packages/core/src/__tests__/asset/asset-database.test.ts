@@ -137,7 +137,7 @@ describe('AssetDatabase', () => {
         });
 
         const snapshot = database.snapshot();
-        expect(snapshot.version).toBe(2);
+        expect(snapshot.version).toBe(3);
         expect(snapshot.assets[0]?.history?.length).toBe(1);
 
         const restored = new AssetDatabase<TestAssetSchema>();
