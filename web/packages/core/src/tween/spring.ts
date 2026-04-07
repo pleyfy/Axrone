@@ -7,6 +7,7 @@ import {
     UpdateCallback,
     VoidCallback,
 } from './types';
+import { deepCloneTweenValue } from './runtime-utils';
 
 export class SpringSimulation {
     private _mass: number;
@@ -56,6 +57,7 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
     private _lastTime?: number;
     private _props = new Set<string>();
     private _autoUpdate = false;
+    private _propPathCache = new Map<string, readonly string[]>();
 
     constructor(initial: T, config: SpringConfig = {}) {
         super();
@@ -115,6 +117,9 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
                     this._collectProps(value, propPath, props);
                 } else {
                     props.add(propPath);
+                    if (!this._propPathCache.has(propPath)) {
+                        this._propPathCache.set(propPath, propPath.split('.'));
+                    }
                 }
             }
         }
@@ -272,7 +277,7 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
             }
         }
 
-        this.emitSync('update', this._deepClone(this._current));
+        this.emitSync('update', this._current as T);
 
         if (allAtRest) {
             this._current = this._deepClone(this._target);
@@ -282,7 +287,7 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
             }
 
             this._isRunning = false;
-            this.emitSync('update', this._deepClone(this._current));
+            this.emitSync('update', this._current as T);
             this.emitSync('complete', undefined);
             return false;
         }
@@ -315,7 +320,8 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
             return obj;
         }
 
-        const parts = path.split('.');
+        const parts = this._propPathCache.get(path) ?? path.split('.');
+        this._propPathCache.set(path, parts);
         let current = obj;
 
         for (const part of parts) {
@@ -334,7 +340,8 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
             return;
         }
 
-        const parts = path.split('.');
+        const parts = this._propPathCache.get(path) ?? path.split('.');
+        this._propPathCache.set(path, parts);
         let current = obj;
 
         for (let i = 0; i < parts.length - 1; i++) {
@@ -354,46 +361,6 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
     }
 
     private _deepClone<U>(source: U): U {
-        if (source === null || source === undefined || typeof source !== 'object') {
-            return source;
-        }
-
-        if (Array.isArray(source)) {
-            return source.map((item) => this._deepClone(item)) as unknown as U;
-        }
-
-        if (ArrayBuffer.isView(source)) {
-            const constructor = source.constructor as any;
-            return new constructor(source as any) as unknown as U;
-        }
-
-        if (source instanceof Date) {
-            return new Date(source.getTime()) as unknown as U;
-        }
-
-        if (source instanceof Map) {
-            const result = new Map();
-            source.forEach((value, key) => {
-                result.set(key, this._deepClone(value));
-            });
-            return result as unknown as U;
-        }
-
-        if (source instanceof Set) {
-            const result = new Set();
-            for (const value of source) {
-                result.add(this._deepClone(value));
-            }
-            return result as unknown as U;
-        }
-
-        const result = Object.create(null);
-        for (const key in source) {
-            if (Object.prototype.hasOwnProperty.call(source, key)) {
-                result[key] = this._deepClone((source as any)[key]);
-            }
-        }
-
-        return result as U;
+        return deepCloneTweenValue(source);
     }
 }

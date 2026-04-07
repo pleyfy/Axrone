@@ -667,6 +667,30 @@ describe('Tween System', () => {
             expect(obj.data[2]).toBeCloseTo(1.5, 1);
         });
 
+        test('typed array tween reuses existing storage', () => {
+            const data = new Float32Array([0, 0, 0]);
+            const obj = { data };
+            const tw = to(obj, { data: new Float32Array([1, 2, 3]) }, 100);
+
+            tw.start(0);
+            tw.update(50);
+
+            expect(obj.data).toBe(data);
+            expect(obj.data[0]).toBeCloseTo(0.5, 1);
+        });
+
+        test('from helper preserves typed-array end state', () => {
+            const obj = { data: new Float32Array([2, 4, 6]) };
+            const tw = from(obj, { data: new Float32Array([0, 0, 0]) }, 100);
+
+            tw.start(0);
+            tw.update(0);
+            expect(Array.from(obj.data)).toEqual([0, 0, 0]);
+
+            tw.update(100);
+            expect(Array.from(obj.data)).toEqual([2, 4, 6]);
+        });
+
         test('complex nested object tweening', () => {
             let obj = {
                 position: { x: 0, y: 0, z: 0 },

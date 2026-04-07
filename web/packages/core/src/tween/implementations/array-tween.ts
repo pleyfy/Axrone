@@ -1,7 +1,11 @@
 import { TweenCore } from '../core';
 import { TweenConfig } from '../types';
 import { Interpolation } from '../interpolation';
-import { TypedArrayConstructor } from 'packages/utility/src/types';
+import {
+    cloneTweenArrayLike,
+    isTweenTypedArray,
+    type TweenTypedArrayConstructor,
+} from '../runtime-utils';
 
 export class ArrayTween<T extends ArrayLike<number>> extends TweenCore<T> {
     protected _valuesStartRepeat: T | null = null;
@@ -51,8 +55,8 @@ export class ArrayTween<T extends ArrayLike<number>> extends TweenCore<T> {
     protected _extendArray(array: any[], newLength: number): any {
         const lastValue = array.length > 0 ? array[array.length - 1] : 0;
 
-        if (ArrayBuffer.isView(array)) {
-            const constructor = array.constructor as TypedArrayConstructor;
+        if (isTweenTypedArray(array)) {
+            const constructor = array.constructor as TweenTypedArrayConstructor;
             const newArray = new constructor(newLength);
 
             newArray.set(array);
@@ -72,18 +76,7 @@ export class ArrayTween<T extends ArrayLike<number>> extends TweenCore<T> {
     }
 
     protected _cloneArray(array: any): any {
-        if (ArrayBuffer.isView(array)) {
-            const constructor = array.constructor as TypedArrayConstructor;
-            return new constructor(array as any);
-        } else if (Array.isArray(array)) {
-            return [...array];
-        } else {
-            const result: number[] = [];
-            for (let i = 0; i < array.length; i++) {
-                result[i] = array[i];
-            }
-            return result;
-        }
+        return cloneTweenArrayLike(array as ArrayLike<number>);
     }
 
     protected _updateProperties(progress: number): void {
@@ -91,7 +84,7 @@ export class ArrayTween<T extends ArrayLike<number>> extends TweenCore<T> {
         const end = this._valuesEnd as any;
         const object = this._object as any;
 
-        if (ArrayBuffer.isView(object)) {
+        if (isTweenTypedArray(object)) {
             const typedArray = object as any;
             for (let i = 0; i < typedArray.length; i++) {
                 if (i < start.length && i < end.length) {
@@ -150,7 +143,7 @@ export class ArrayTween<T extends ArrayLike<number>> extends TweenCore<T> {
     }
 
     protected _deepClone<U>(source: U): U {
-        if (Array.isArray(source) || ArrayBuffer.isView(source)) {
+        if (Array.isArray(source) || isTweenTypedArray(source)) {
             return this._cloneArray(source) as unknown as U;
         }
         return source;

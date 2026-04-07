@@ -7,6 +7,7 @@ import { Spring } from './spring';
 import { TweenSystem } from './system';
 import { Easing, EasingFunction } from './easing-functions';
 import { ITween, ITimeline, TweenableValue, TweenConfig, SpringConfig } from './types';
+import { deepCloneTweenValue } from './runtime-utils';
 
 export const TWEEN = new TweenSystem();
 
@@ -59,7 +60,7 @@ export function from<T extends TweenableValue>(
     duration = 1000,
     easing: EasingFunction = Easing.Linear.None
 ): ITween<T> {
-    const targetState = JSON.parse(JSON.stringify(object));
+    const targetState = deepCloneTweenValue(object);
 
     return TweenFactory.create(object, {
         from: properties,

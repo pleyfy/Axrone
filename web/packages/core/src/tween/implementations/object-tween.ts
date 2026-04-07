@@ -2,58 +2,86 @@ import { DeepPartial } from '@axrone/utility';
 import { TweenCore } from '../core';
 import { TweenConfig } from '../types';
 import { Interpolation } from '../interpolation';
-import { TypedArrayConstructor } from 'packages/utility/src/types';
+import {
+    allocateSequenceLike,
+    deepCloneTweenValue,
+    isTweenTypedArray,
+    type TweenTypedArrayConstructor,
+} from '../runtime-utils';
+
+interface ObjectTweenPropertyEntry {
+    readonly path: string;
+    readonly parts: readonly string[];
+}
 
 export class ObjectTween<T extends object> extends TweenCore<T> {
     protected _valuesStartRepeat: DeepPartial<T> | null = null;
     protected _objectProps = new Set<string>();
-    protected _propPathCache: Map<string, string[]> = new Map();
+    protected _propPathCache: Map<string, readonly string[]> = new Map();
+    protected _propertyEntries: ObjectTweenPropertyEntry[] = [];
+    protected _twoValueBuffer: [number, number] = [0, 0];
 
     constructor(object: T, config?: TweenConfig<T>) {
         super(object, config);
     }
 
     protected _initStartEndValues(): void {
+        this._objectProps.clear();
+        this._propertyEntries = [];
+
         this._collectProps(this._valuesEnd, '', this._objectProps);
         this._collectProps(this._valuesStart, '', this._objectProps);
 
-        for (const prop of this._objectProps) {
-            const propValue = this._getPropValue(this._object, prop);
-            const endValue = this._getPropValue(this._valuesEnd, prop);
+        for (const path of this._objectProps) {
+            const parts = this._propPathCache.get(path) ?? path.split('.');
+            this._propPathCache.set(path, parts);
+            this._propertyEntries.push({ path, parts });
+        }
 
-            if (this._getPropValue(this._valuesStart, prop) === undefined) {
+        for (const entry of this._propertyEntries) {
+            const propValue = this._getPropValue(this._object, entry.parts);
+            const endValue = this._getPropValue(this._valuesEnd, entry.parts);
+
+            if (this._getPropValue(this._valuesStart, entry.parts) === undefined) {
                 const startValue =
                     propValue !== undefined ? propValue : this._getDefaultValue(endValue);
-                this._setPropValue(this._valuesStart, prop, startValue);
+                this._setPropValue(this._valuesStart, entry.parts, startValue);
             }
 
-            if (this._getPropValue(this._valuesEnd, prop) === undefined) {
-                this._setPropValue(this._valuesEnd, prop, propValue);
+            if (this._getPropValue(this._valuesEnd, entry.parts) === undefined) {
+                this._setPropValue(this._valuesEnd, entry.parts, propValue);
             }
 
             if (propValue === undefined) {
-                const startValue = this._getPropValue(this._valuesStart, prop);
-                this._setPropValue(this._object, prop, startValue);
+                const startValue = this._getPropValue(this._valuesStart, entry.parts);
+                this._setPropValue(this._object, entry.parts, startValue);
             }
         }
 
-        this._valuesStartRepeat = this._deepClone(this._valuesStart);
+        this._valuesStartRepeat = deepCloneTweenValue(this._valuesStart);
     }
 
     protected _getDefaultValue(endValue: any): any {
         if (typeof endValue === 'number') {
             return 0;
-        } else if (Array.isArray(endValue)) {
-            return endValue.map(() => 0);
-        } else if (ArrayBuffer.isView(endValue)) {
-            const typedArray = endValue as any;
-            return new (typedArray.constructor as TypedArrayConstructor)(typedArray.length);
         }
+
+        if (Array.isArray(endValue)) {
+            return endValue.map(() => 0);
+        }
+
+        if (isTweenTypedArray(endValue)) {
+            const typedArray = endValue as any;
+            return new (typedArray.constructor as TweenTypedArrayConstructor)(typedArray.length);
+        }
+
         return 0;
     }
 
     protected _collectProps(obj: any, prefix: string, props: Set<string>): void {
-        if (!obj || typeof obj !== 'object') return;
+        if (!obj || typeof obj !== 'object') {
+            return;
+        }
 
         for (const key in obj) {
             const value = obj[key];
@@ -63,43 +91,50 @@ export class ObjectTween<T extends object> extends TweenCore<T> {
                 value !== null &&
                 typeof value === 'object' &&
                 !Array.isArray(value) &&
-                !ArrayBuffer.isView(value)
+                !isTweenTypedArray(value)
             ) {
                 this._collectProps(value, propPath, props);
-            } else {
-                props.add(propPath);
-                if (!this._propPathCache.has(propPath)) {
-                    this._propPathCache.set(propPath, propPath.split('.'));
-                }
+                continue;
+            }
+
+            props.add(propPath);
+            if (!this._propPathCache.has(propPath)) {
+                this._propPathCache.set(propPath, propPath.split('.'));
             }
         }
     }
 
-    protected _getPropValue(obj: any, path: string): any {
-        if (!obj) return undefined;
-        const parts = this._propPathCache.get(path) ?? path.split('.');
+    protected _getPropValue(obj: any, parts: readonly string[]): any {
+        if (!obj) {
+            return undefined;
+        }
+
         let current = obj;
 
-        for (let i = 0; i < parts.length; i++) {
-            const part = parts[i];
-            if (current === undefined || current === null) return undefined;
+        for (let index = 0; index < parts.length; index += 1) {
+            const part = parts[index];
+            if (current === undefined || current === null) {
+                return undefined;
+            }
+
             current = current[part];
         }
 
         return current;
     }
 
-    protected _setPropValue(obj: any, path: string, value: any): void {
-        if (!obj) return;
+    protected _setPropValue(obj: any, parts: readonly string[], value: any): void {
+        if (!obj) {
+            return;
+        }
 
-        const parts = this._propPathCache.get(path) ?? path.split('.');
         let current = obj;
 
-        for (let i = 0; i < parts.length - 1; i++) {
-            const part = parts[i];
+        for (let index = 0; index < parts.length - 1; index += 1) {
+            const part = parts[index];
 
             if (current[part] === undefined) {
-                current[part] = {};
+                current[part] = this._isNumericPathPart(parts[index + 1]) ? [] : {};
             }
 
             current = current[part];
@@ -107,177 +142,145 @@ export class ObjectTween<T extends object> extends TweenCore<T> {
 
         const lastPart = parts[parts.length - 1];
         const existing = current[lastPart];
+
         if (
-            ArrayBuffer.isView(existing) &&
-            ArrayBuffer.isView(value) &&
-            (existing as any).length === (value as any).length
+            isTweenTypedArray(existing) &&
+            isTweenTypedArray(value) &&
+            existing.length === value.length
         ) {
             (existing as any).set(value as any);
-        } else {
-            current[lastPart] = value;
+            return;
         }
+
+        current[lastPart] = value;
     }
 
     protected _updateProperties(progress: number): void {
-        for (const prop of this._objectProps) {
-            const start = this._getPropValue(this._valuesStart, prop);
-            const end = this._getPropValue(this._valuesEnd, prop);
+        for (const entry of this._propertyEntries) {
+            const start = this._getPropValue(this._valuesStart, entry.parts);
+            const end = this._getPropValue(this._valuesEnd, entry.parts);
 
-            if (start === undefined || end === undefined) continue;
+            if (start === undefined || end === undefined) {
+                continue;
+            }
 
             if (
                 (Array.isArray(end) && Array.isArray(start)) ||
-                (ArrayBuffer.isView(end) && ArrayBuffer.isView(start))
+                (isTweenTypedArray(end) && isTweenTypedArray(start))
             ) {
-                const len = (end as any).length as number;
-
-                const existing = this._getPropValue(this._object, prop);
+                const length = (end as ArrayLike<number>).length;
+                const existing = this._getPropValue(this._object, entry.parts);
+                const result = this._resolveSequenceTarget(
+                    existing,
+                    end as unknown as ArrayLike<number>,
+                    length,
+                    entry.parts
+                ) as any;
 
                 if (
                     this._interpolationFunction &&
                     this._interpolationFunction !== Interpolation.Linear &&
-                    len > 1
+                    length > 1
                 ) {
-                    const buf: [number, number] = [0, 0];
+                    const buffer = this._twoValueBuffer;
 
-                    if (
-                        ArrayBuffer.isView(end) &&
-                        ArrayBuffer.isView(start) &&
-                        ArrayBuffer.isView(existing) &&
-                        (existing as any).length === len
-                    ) {
-                        const typedExisting = existing as any;
-                        for (let i = 0; i < len; i++) {
-                            const s = i < (start as any).length ? (start as any)[i] : 0;
-                            buf[0] = s;
-                            buf[1] = (end as any)[i];
-                            typedExisting[i] = this._interpolationFunction(buf as any, progress);
-                        }
-                        this._setPropValue(this._object, prop, typedExisting);
-                    } else {
-                        const result: number[] = new Array(len);
-                        for (let i = 0; i < len; i++) {
-                            const s = i < (start as any).length ? (start as any)[i] : 0;
-                            buf[0] = s;
-                            buf[1] = (end as any)[i];
-                            result[i] = this._interpolationFunction(buf as any, progress);
-                        }
-
-                        if (ArrayBuffer.isView(end)) {
-                            const constructor = (end as any).constructor as TypedArrayConstructor;
-                            const typedResult = new constructor(result as any);
-                            this._setPropValue(this._object, prop, typedResult);
-                        } else {
-                            this._setPropValue(this._object, prop, result);
-                        }
+                    for (let index = 0; index < length; index += 1) {
+                        const startValue = index < start.length ? start[index] : 0;
+                        buffer[0] = startValue;
+                        buffer[1] = end[index] ?? 0;
+                        result[index] = this._interpolationFunction(buffer, progress);
                     }
-                } else {
-                    if (
-                        ArrayBuffer.isView(end) &&
-                        ArrayBuffer.isView(start) &&
-                        ArrayBuffer.isView(existing) &&
-                        (existing as any).length === len
-                    ) {
-                        const typedExisting = existing as any;
-                        for (let i = 0; i < len; i++) {
-                            const s = i < (start as any).length ? (start as any)[i] : 0;
-                            const e = (end as any)[i];
-                            typedExisting[i] = s + (e - s) * progress;
-                        }
-                        this._setPropValue(this._object, prop, typedExisting);
-                    } else {
-                        const result: number[] = new Array(len);
-                        for (let i = 0; i < len; i++) {
-                            const s = i < (start as any).length ? (start as any)[i] : 0;
-                            const e = (end as any)[i];
-                            result[i] = s + (e - s) * progress;
-                        }
 
-                        if (ArrayBuffer.isView(end)) {
-                            const constructor = (end as any).constructor as TypedArrayConstructor;
-                            const typedResult = new constructor(result as any);
-                            this._setPropValue(this._object, prop, typedResult);
-                        } else {
-                            this._setPropValue(this._object, prop, result);
-                        }
-                    }
+                    continue;
                 }
-            } else if (typeof end === 'number') {
-                const startVal = typeof start === 'number' ? start : 0;
-                const value = startVal + (end - startVal) * progress;
-                this._setPropValue(this._object, prop, value);
+
+                for (let index = 0; index < length; index += 1) {
+                    const startValue = index < start.length ? start[index] : 0;
+                    const endValue = end[index] ?? 0;
+                    result[index] = startValue + (endValue - startValue) * progress;
+                }
+
+                continue;
+            }
+
+            if (typeof end === 'number') {
+                const startValue = typeof start === 'number' ? start : 0;
+                this._setPropValue(
+                    this._object,
+                    entry.parts,
+                    startValue + (end - startValue) * progress
+                );
             }
         }
     }
 
     protected _reset(): void {
         if (this._yoyo) {
-            const tmp = this._valuesStart;
+            const previousStart = this._valuesStart;
             this._valuesStart = this._valuesEnd;
-            this._valuesEnd = tmp;
+            this._valuesEnd = previousStart;
             this._reversed = !this._reversed;
-        } else if (this._valuesStartRepeat) {
-            this._valuesStart = this._deepClone(this._valuesStartRepeat);
+            return;
+        }
 
-            for (const prop of this._objectProps) {
-                const startValue = this._getPropValue(this._valuesStart, prop);
-                if (startValue !== undefined) {
-                    const existing = this._getPropValue(this._object, prop);
-                    if (
-                        ArrayBuffer.isView(existing) &&
-                        ArrayBuffer.isView(startValue) &&
-                        (existing as any).length === (startValue as any).length
-                    ) {
-                        (existing as any).set(startValue as any);
-                    } else {
-                        this._setPropValue(this._object, prop, startValue);
-                    }
-                }
+        if (!this._valuesStartRepeat) {
+            return;
+        }
+
+        this._valuesStart = deepCloneTweenValue(this._valuesStartRepeat);
+
+        for (const entry of this._propertyEntries) {
+            const startValue = this._getPropValue(this._valuesStart, entry.parts);
+            if (startValue === undefined) {
+                continue;
             }
+
+            const existing = this._getPropValue(this._object, entry.parts);
+
+            if (
+                isTweenTypedArray(existing) &&
+                isTweenTypedArray(startValue) &&
+                existing.length === startValue.length
+            ) {
+                (existing as any).set(startValue as any);
+                continue;
+            }
+
+            if (Array.isArray(existing) && Array.isArray(startValue) && existing.length === startValue.length) {
+                for (let index = 0; index < startValue.length; index += 1) {
+                    existing[index] = startValue[index] ?? 0;
+                }
+                continue;
+            }
+
+            this._setPropValue(this._object, entry.parts, startValue);
         }
     }
 
+    protected _resolveSequenceTarget(
+        existing: unknown,
+        template: ArrayLike<number>,
+        length: number,
+        parts: readonly string[]
+    ): ArrayLike<number> {
+        if (isTweenTypedArray(existing) && isTweenTypedArray(template) && existing.length === length) {
+            return existing as unknown as ArrayLike<number>;
+        }
+
+        if (Array.isArray(existing) && Array.isArray(template) && existing.length === length) {
+            return existing;
+        }
+
+        const created = allocateSequenceLike(template, length);
+        this._setPropValue(this._object, parts, created);
+        return created;
+    }
+
     protected _deepClone<U>(source: U): U {
-        if (source === null || source === undefined || typeof source !== 'object') {
-            return source;
-        }
+        return deepCloneTweenValue(source);
+    }
 
-        if (Array.isArray(source)) {
-            return source.map((item) => this._deepClone(item)) as unknown as U;
-        }
-
-        if (ArrayBuffer.isView(source)) {
-            const constructor = source.constructor as TypedArrayConstructor;
-            return new constructor(source as any) as unknown as U;
-        }
-
-        if (source instanceof Date) {
-            return new Date(source.getTime()) as unknown as U;
-        }
-
-        if (source instanceof Map) {
-            const result = new Map();
-            source.forEach((value, key) => {
-                result.set(key, this._deepClone(value));
-            });
-            return result as unknown as U;
-        }
-
-        if (source instanceof Set) {
-            const result = new Set();
-            for (const value of source) {
-                result.add(this._deepClone(value));
-            }
-            return result as unknown as U;
-        }
-
-        const result = Object.create(null);
-        for (const key in source) {
-            if (Object.prototype.hasOwnProperty.call(source, key)) {
-                result[key] = this._deepClone((source as any)[key]);
-            }
-        }
-
-        return result as U;
+    protected _isNumericPathPart(value: string | undefined): boolean {
+        return typeof value === 'string' && /^\d+$/.test(value);
     }
 }
