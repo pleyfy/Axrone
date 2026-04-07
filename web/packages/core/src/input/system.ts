@@ -82,7 +82,8 @@ interface MutableVector2 {
     y: number;
 }
 
-interface MutableButtonState extends InputButtonState {
+interface ButtonStateStore {
+    readonly kind: 'button';
     value: boolean;
     previousValue: boolean;
     rawValue: number;
@@ -96,7 +97,8 @@ interface MutableButtonState extends InputButtonState {
     context?: InputContextId;
 }
 
-interface MutableAxisState extends InputAxisState {
+interface AxisStateStore {
+    readonly kind: 'axis';
     value: number;
     previousValue: number;
     delta: number;
@@ -107,7 +109,8 @@ interface MutableAxisState extends InputAxisState {
     context?: InputContextId;
 }
 
-interface MutableVector2State extends InputVector2State {
+interface Vector2StateStore {
+    readonly kind: 'vector2';
     value: MutableVector2;
     previousValue: MutableVector2;
     delta: MutableVector2;
@@ -360,7 +363,17 @@ const applyDeadzone = (value: number, deadzone: number): number =>
 
 const magnitude = (x: number, y: number): number => Math.hypot(x, y);
 
-const createButtonState = (): MutableButtonState => ({
+const createVectorView = (source: MutableVector2): InputVector2 =>
+    Object.freeze({
+        get x(): number {
+            return source.x;
+        },
+        get y(): number {
+            return source.y;
+        },
+    });
+
+const createButtonStateStore = (): ButtonStateStore => ({
     kind: 'button',
     value: false,
     previousValue: false,
@@ -375,7 +388,7 @@ const createButtonState = (): MutableButtonState => ({
     context: undefined,
 });
 
-const createAxisState = (): MutableAxisState => ({
+const createAxisStateStore = (): AxisStateStore => ({
     kind: 'axis',
     value: 0,
     previousValue: 0,
@@ -387,7 +400,7 @@ const createAxisState = (): MutableAxisState => ({
     context: undefined,
 });
 
-const createVector2State = (): MutableVector2State => ({
+const createVector2StateStore = (): Vector2StateStore => ({
     kind: 'vector2',
     value: { x: 0, y: 0 },
     previousValue: { x: 0, y: 0 },
@@ -401,6 +414,119 @@ const createVector2State = (): MutableVector2State => ({
     context: undefined,
 });
 
+const createButtonStateView = (state: ButtonStateStore): InputButtonState =>
+    Object.freeze({
+        get kind(): 'button' {
+            return 'button';
+        },
+        get value(): boolean {
+            return state.value;
+        },
+        get previousValue(): boolean {
+            return state.previousValue;
+        },
+        get rawValue(): number {
+            return state.rawValue;
+        },
+        get previousRawValue(): number {
+            return state.previousRawValue;
+        },
+        get pressed(): boolean {
+            return state.pressed;
+        },
+        get released(): boolean {
+            return state.released;
+        },
+        get active(): boolean {
+            return state.active;
+        },
+        get changed(): boolean {
+            return state.changed;
+        },
+        get frame(): number {
+            return state.frame;
+        },
+        get timestamp(): number {
+            return state.timestamp;
+        },
+        get context(): InputContextId | undefined {
+            return state.context;
+        },
+    });
+
+const createAxisStateView = (state: AxisStateStore): InputAxisState =>
+    Object.freeze({
+        get kind(): 'axis' {
+            return 'axis';
+        },
+        get value(): number {
+            return state.value;
+        },
+        get previousValue(): number {
+            return state.previousValue;
+        },
+        get delta(): number {
+            return state.delta;
+        },
+        get active(): boolean {
+            return state.active;
+        },
+        get changed(): boolean {
+            return state.changed;
+        },
+        get frame(): number {
+            return state.frame;
+        },
+        get timestamp(): number {
+            return state.timestamp;
+        },
+        get context(): InputContextId | undefined {
+            return state.context;
+        },
+    });
+
+const createVector2StateView = (state: Vector2StateStore): InputVector2State => {
+    const valueView = createVectorView(state.value);
+    const previousValueView = createVectorView(state.previousValue);
+    const deltaView = createVectorView(state.delta);
+
+    return Object.freeze({
+        get kind(): 'vector2' {
+            return 'vector2';
+        },
+        get value(): InputVector2 {
+            return valueView;
+        },
+        get previousValue(): InputVector2 {
+            return previousValueView;
+        },
+        get delta(): InputVector2 {
+            return deltaView;
+        },
+        get magnitude(): number {
+            return state.magnitude;
+        },
+        get previousMagnitude(): number {
+            return state.previousMagnitude;
+        },
+        get active(): boolean {
+            return state.active;
+        },
+        get changed(): boolean {
+            return state.changed;
+        },
+        get frame(): number {
+            return state.frame;
+        },
+        get timestamp(): number {
+            return state.timestamp;
+        },
+        get context(): InputContextId | undefined {
+            return state.context;
+        },
+    });
+};
+
 export const isInputSystemSnapshot = <TSchema extends InputActionSchema = InputActionSchema>(
     value: unknown
 ): value is InputSystemSnapshot<TSchema> =>
@@ -413,9 +539,12 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
     private readonly _actionNames: readonly InputActionName<TSchema>[];
     private readonly _actionIndices: ReadonlyMap<string, number>;
     private readonly _actionDefinitions: readonly InternalActionDefinition[];
-    private readonly _buttonStates: Array<MutableButtonState | undefined>;
-    private readonly _axisStates: Array<MutableAxisState | undefined>;
-    private readonly _vectorStates: Array<MutableVector2State | undefined>;
+    private readonly _buttonStateStores: Array<ButtonStateStore | undefined>;
+    private readonly _axisStateStores: Array<AxisStateStore | undefined>;
+    private readonly _vectorStateStores: Array<Vector2StateStore | undefined>;
+    private readonly _buttonStates: Array<InputButtonState | undefined>;
+    private readonly _axisStates: Array<InputAxisState | undefined>;
+    private readonly _vectorStates: Array<InputVector2State | undefined>;
     private readonly _contexts = new Map<string, InternalContext<TSchema>>();
     private readonly _keysDown = new Set<string>();
     private readonly _touches = new Map<number, MutableTouchPoint>();
@@ -480,9 +609,12 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         const actionNames: InputActionName<TSchema>[] = [];
         const actionIndices = new Map<string, number>();
         const actionDefinitions: InternalActionDefinition[] = [];
-        const buttonStates: Array<MutableButtonState | undefined> = [];
-        const axisStates: Array<MutableAxisState | undefined> = [];
-        const vectorStates: Array<MutableVector2State | undefined> = [];
+        const buttonStateStores: Array<ButtonStateStore | undefined> = [];
+        const axisStateStores: Array<AxisStateStore | undefined> = [];
+        const vectorStateStores: Array<Vector2StateStore | undefined> = [];
+        const buttonStates: Array<InputButtonState | undefined> = [];
+        const axisStates: Array<InputAxisState | undefined> = [];
+        const vectorStates: Array<InputVector2State | undefined> = [];
 
         for (const [rawName, rawDefinition] of Object.entries(options.schema) as Array<
             [InputActionName<TSchema>, InputActionDefinition]
@@ -506,13 +638,16 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
             switch (definition.kind) {
                 case 'button':
-                    buttonStates[index] = createButtonState();
+                    buttonStateStores[index] = createButtonStateStore();
+                    buttonStates[index] = createButtonStateView(buttonStateStores[index]!);
                     break;
                 case 'axis':
-                    axisStates[index] = createAxisState();
+                    axisStateStores[index] = createAxisStateStore();
+                    axisStates[index] = createAxisStateView(axisStateStores[index]!);
                     break;
                 case 'vector2':
-                    vectorStates[index] = createVector2State();
+                    vectorStateStores[index] = createVector2StateStore();
+                    vectorStates[index] = createVector2StateView(vectorStateStores[index]!);
                     break;
             }
         }
@@ -520,6 +655,9 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._actionNames = Object.freeze(actionNames);
         this._actionIndices = actionIndices;
         this._actionDefinitions = Object.freeze(actionDefinitions);
+        this._buttonStateStores = buttonStateStores;
+        this._axisStateStores = axisStateStores;
+        this._vectorStateStores = vectorStateStores;
         this._buttonStates = buttonStates;
         this._axisStates = axisStates;
         this._vectorStates = vectorStates;
@@ -837,7 +975,12 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
     registerContext(definition: InputContextDefinition<TSchema>): InputContextState {
         this._assertNotDisposed();
-        return this._upsertContext(definition);
+        return this._upsertContext(definition, false);
+    }
+
+    upsertContext(definition: InputContextDefinition<TSchema>): InputContextState {
+        this._assertNotDisposed();
+        return this._upsertContext(definition, true);
     }
 
     removeContext(id: string | InputContextId): boolean {
@@ -1085,7 +1228,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                 enabled: contextSnapshot.enabled,
                 capture: contextSnapshot.capture,
                 bindings: contextSnapshot.bindings,
-            });
+            }, true);
         }
     }
 
@@ -1150,19 +1293,9 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
         this._attachments.clear();
         this._contexts.clear();
-        this._keysDown.clear();
-        this._touches.clear();
-        this._gamepads.clear();
         this._consumedPaths.clear();
-        this._mouseButtons = 0;
-        this._mouseDeltaX = 0;
-        this._mouseDeltaY = 0;
-        this._mouseWheelX = 0;
-        this._mouseWheelY = 0;
-        this._mouseWheelZ = 0;
-        this._touchPinchDistance = 0;
-        this._touchPinchDelta = 0;
-        this._primaryTouchId = undefined;
+        this._clearDeviceState(true);
+        this._gamepads.clear();
     }
 
     private _normalizeActionDefinition(
@@ -1242,7 +1375,10 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         }
     }
 
-    private _upsertContext(definition: InputContextDefinition<TSchema>): InputContextState {
+    private _upsertContext(
+        definition: InputContextDefinition<TSchema>,
+        allowReplace: boolean
+    ): InputContextState {
         const id = this._requireContextId(definition.id);
         const priority = this._normalizePriority(definition.priority ?? 0);
         const capture = definition.capture === 'used' ? 'used' : 'none';
@@ -1270,6 +1406,17 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         const existing = this._contexts.get(id);
 
         if (existing) {
+            if (!allowReplace) {
+                throw new InputContextError(
+                    'input.context.conflict',
+                    String(id),
+                    this._resolveMessage({
+                        code: 'input.context.conflict',
+                        id: String(id),
+                    })
+                );
+            }
+
             existing.priority = priority;
             existing.enabled = enabled;
             existing.capture = capture;
@@ -1971,17 +2118,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             return;
         }
 
-        this._keysDown.clear();
-        this._mouseButtons = 0;
-        this._mouseDeltaX = 0;
-        this._mouseDeltaY = 0;
-        this._mouseWheelX = 0;
-        this._mouseWheelY = 0;
-        this._mouseWheelZ = 0;
-        this._touches.clear();
-        this._primaryTouchId = undefined;
-        this._touchPinchDistance = 0;
-        this._touchPinchDelta = 0;
+        this._clearDeviceState(true);
     }
 
     private _ingestGamepadSnapshots(gamepads: readonly InputGamepadSnapshot[]): void {
@@ -2182,7 +2319,30 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         const handlers = active.handlers;
         this._activeRebinding = undefined;
         handlers?.cancel?.('timeout');
-        throw new InputRebindingError('input.rebind.timeout', message);
+    }
+
+    private _clearDeviceState(resetGamepads: boolean): void {
+        this._keysDown.clear();
+        this._mouseButtons = 0;
+        this._mouseDeltaX = 0;
+        this._mouseDeltaY = 0;
+        this._mouseWheelX = 0;
+        this._mouseWheelY = 0;
+        this._mouseWheelZ = 0;
+        this._touches.clear();
+        this._primaryTouchId = undefined;
+        this._touchPinchDistance = 0;
+        this._touchPinchDelta = 0;
+
+        if (!resetGamepads) {
+            return;
+        }
+
+        for (const [, state] of this._gamepads) {
+            state.connected = false;
+            state.buttons.fill(0);
+            state.axes.fill(0);
+        }
     }
 
     private _evaluate(): void {
@@ -2583,7 +2743,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         index: number,
         definition: Extract<InternalActionDefinition, { kind: 'button' }>
     ): void {
-        const state = this._buttonStates[index]!;
+        const state = this._buttonStateStores[index]!;
         const previousValue = state.value;
         const previousRawValue = state.rawValue;
         const rawValue = this._accumulatorX[index]!;
@@ -2611,7 +2771,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         index: number,
         definition: Extract<InternalActionDefinition, { kind: 'axis' }>
     ): void {
-        const state = this._axisStates[index]!;
+        const state = this._axisStateStores[index]!;
         const previousValue = state.value;
         const unclamped = applyDeadzone(this._accumulatorX[index]!, definition.deadzone);
         const value = clamp(unclamped, definition.min, definition.max);
@@ -2630,7 +2790,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         index: number,
         definition: Extract<InternalActionDefinition, { kind: 'vector2' }>
     ): void {
-        const state = this._vectorStates[index]!;
+        const state = this._vectorStateStores[index]!;
         let x = this._accumulatorX[index]!;
         let y = this._accumulatorY[index]!;
         let length = magnitude(x, y);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInputSystem } from '../../input';
+import { createInputSystem, InputContextError } from '../../input';
 
 describe('InputSystem', () => {
     it('honors context priority and capture rules', () => {
@@ -188,5 +188,157 @@ describe('InputSystem', () => {
                 control: 'keyboard/KeyF',
             }),
         ]);
+    });
+
+    it('cancels rebinding timeouts without breaking the update loop', () => {
+        const reasons: string[] = [];
+        const input = createInputSystem({
+            now: () => 0,
+            schema: {
+                jump: { kind: 'button' },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        jump: [{ type: 'control', control: 'keyboard/Space' }],
+                    },
+                },
+            ],
+        });
+
+        input.beginRebinding(
+            {
+                context: 'gameplay',
+                action: 'jump',
+                index: 0,
+                timeoutMs: 5,
+            },
+            {
+                cancel(reason) {
+                    reasons.push(reason);
+                },
+            }
+        );
+
+        expect(() => input.update(10)).not.toThrow();
+        expect(reasons).toEqual(['timeout']);
+    });
+
+    it('resets gamepad state on focus loss', () => {
+        const input = createInputSystem({
+            schema: {
+                move: { kind: 'vector2' },
+                fire: { kind: 'button' },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        move: [{ type: 'dual-axis', x: 'gamepad/0/axis/0', y: 'gamepad/0/axis/1' }],
+                        fire: [{ type: 'control', control: 'gamepad/0/button/0' }],
+                    },
+                },
+            ],
+        });
+
+        input.dispatch({
+            type: 'gamepad',
+            gamepads: [
+                {
+                    index: 0,
+                    connected: true,
+                    buttons: [1],
+                    axes: [0.75, -0.5],
+                },
+            ],
+        });
+        input.update(1);
+
+        expect(input.read('fire')).toBe(true);
+        expect(input.read('move')).toEqual({ x: 0.75, y: -0.5 });
+
+        input.dispatch({
+            type: 'focus',
+            focused: false,
+        });
+        input.update(2);
+
+        expect(input.read('fire')).toBe(false);
+        expect(input.read('move')).toEqual({ x: 0, y: 0 });
+    });
+
+    it('keeps public vector state views immutable', () => {
+        const input = createInputSystem({
+            schema: {
+                look: { kind: 'vector2' },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        look: [{ type: 'dual-axis', x: 'mouse/move/x', y: 'mouse/move/y' }],
+                    },
+                },
+            ],
+        });
+
+        input.dispatch({
+            type: 'mouse-move',
+            x: 4,
+            y: 6,
+            deltaX: 4,
+            deltaY: 6,
+        });
+        input.update(1);
+
+        const state = input.state('look');
+        expect(Object.isFrozen(state)).toBe(true);
+        expect(Object.isFrozen(state.value)).toBe(true);
+        expect(() => {
+            (state.value as { x: number }).x = 999;
+        }).toThrow();
+        expect(input.read('look')).toEqual({ x: 4, y: 6 });
+    });
+
+    it('throws on duplicate context registration and supports explicit upsert', () => {
+        const input = createInputSystem({
+            schema: {
+                jump: { kind: 'button' },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        jump: [{ type: 'control', control: 'keyboard/Space' }],
+                    },
+                },
+            ],
+        });
+
+        expect(() =>
+            input.registerContext({
+                id: 'gameplay',
+                bindings: {
+                    jump: [{ type: 'control', control: 'keyboard/KeyJ' }],
+                },
+            })
+        ).toThrow(InputContextError);
+
+        input.upsertContext({
+            id: 'gameplay',
+            bindings: {
+                jump: [{ type: 'control', control: 'keyboard/KeyJ' }],
+            },
+        });
+
+        input.dispatch({
+            type: 'keyboard',
+            code: 'KeyJ',
+            pressed: true,
+        });
+        input.update(1);
+
+        expect(input.read('jump')).toBe(true);
     });
 });
