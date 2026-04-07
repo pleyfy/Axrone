@@ -7,6 +7,7 @@ import type {
     AssetReference,
     AssetReferenceToken,
     AssetRevision,
+    AssetSourceIdentity,
     AssetUri,
     AssetVersionedReference,
     AssetVersionedReferenceToken,
@@ -23,6 +24,8 @@ export const asAssetFingerprint = (value: string): AssetFingerprint => value as 
 export const asAssetRevision = (value: number): AssetRevision => value as AssetRevision;
 export const asAssetLocale = (value: string): AssetLocale => value as AssetLocale;
 export const asAssetImporterId = (value: string): AssetImporterId => value as AssetImporterId;
+export const asAssetSourceIdentity = (value: string): AssetSourceIdentity =>
+    value as AssetSourceIdentity;
 
 const normalizePathLike = (value: string): string => value.trim().replace(/\\/g, '/');
 
@@ -74,6 +77,17 @@ export const normalizeAssetLocale = (value?: string): AssetLocale | undefined =>
     } catch {
         return asAssetLocale(trimmed);
     }
+};
+
+export const normalizeAssetSourceIdentity = (
+    value?: string
+): AssetSourceIdentity | undefined => {
+    if (!value) {
+        return undefined;
+    }
+
+    const normalized = value.trim();
+    return normalized ? asAssetSourceIdentity(normalized) : undefined;
 };
 
 export const createAssetReference = <TKind extends string>(

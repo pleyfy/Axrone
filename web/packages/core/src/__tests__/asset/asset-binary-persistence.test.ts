@@ -68,7 +68,7 @@ describe('Asset binary persistence', () => {
 
         const snapshot = database.snapshot();
 
-        expect(snapshot.version).toBe(3);
+        expect(snapshot.version).toBe(4);
         expect(snapshot.assets[0]?.data).toEqual({
             __asset: 'axrone.binary',
             storage: 'inline',

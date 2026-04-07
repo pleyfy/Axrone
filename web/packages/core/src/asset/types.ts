@@ -16,6 +16,7 @@ export type AssetFingerprint = string & { readonly __assetFingerprintBrand: uniq
 export type AssetRevision = number & { readonly __assetRevisionBrand: unique symbol };
 export type AssetLocale = string & { readonly __assetLocaleBrand: unique symbol };
 export type AssetImporterId = string & { readonly __assetImporterIdBrand: unique symbol };
+export type AssetSourceIdentity = string & { readonly __assetSourceIdentityBrand: unique symbol };
 
 export type AssetReferenceToken<TKind extends string = string> = `asset:${TKind}:${string}`;
 export type AssetVersionedReferenceToken<TKind extends string = string> =
@@ -100,6 +101,12 @@ export interface AssetRecord<
 export interface AssetLookupByKey<TSchema extends AssetSchema = AssetSchema> {
     readonly key: string;
     readonly kind?: AssetKind<TSchema>;
+}
+
+export interface AssetSourceBinding {
+    readonly sourceIdentity: AssetSourceIdentity;
+    readonly assetId: AssetId;
+    readonly updatedAtEpochMs: number;
 }
 
 export interface AssetQuery<TSchema extends AssetSchema = AssetSchema> {
@@ -190,6 +197,7 @@ export interface AssetImportResult<
 export interface AssetSourceBase {
     readonly uri?: string;
     readonly stableKey?: string;
+    readonly sourceIdentity?: string;
     readonly name?: string;
     readonly mimeType?: string;
     readonly locale?: string;
@@ -382,6 +390,7 @@ export interface AssetImportOptions<
     TSource extends AssetImportSource = AssetImportSource,
 > {
     readonly stableKey?: string;
+    readonly sourceIdentity?: string;
     readonly locale?: string;
     readonly signal?: AbortSignal;
     readonly retry?: AssetRetryPolicy<TSchema, TSource>;
@@ -401,6 +410,7 @@ export interface AssetPipelineExecution<
     readonly importerId: AssetImporterId;
     readonly importer: AssetImporter<TSchema>;
     readonly baseKey: AssetKey;
+    readonly sourceIdentity?: AssetSourceIdentity;
     readonly importedAtEpochMs: number;
     readonly diagnostics: readonly AssetImportDiagnostic[];
     readonly result: AssetImportResult<TSchema, TPrimaryKind>;
@@ -414,6 +424,7 @@ export interface AssetImportReceipt<
     readonly sourceKind: AssetSourceKind;
     readonly sourceUri?: AssetUri;
     readonly baseKey: AssetKey;
+    readonly sourceIdentity?: AssetSourceIdentity;
     readonly importedAtEpochMs: number;
     readonly diagnostics: readonly AssetImportDiagnostic[];
     readonly primary: AssetRecord<TSchema, TPrimaryKind>;
@@ -421,7 +432,7 @@ export interface AssetImportReceipt<
 }
 
 export type AssetValidationMessageCode =
-    | `asset.invalid-${'id' | 'importer' | 'key' | 'kind' | 'revision' | 'source' | 'stage'}`
+    | `asset.invalid-${'id' | 'importer' | 'key' | 'kind' | 'revision' | 'source' | 'source-identity' | 'stage'}`
     | `asset.conflict.${'key-bound' | 'kind-mismatch'}`
     | 'asset.dependency.missing';
 
@@ -458,6 +469,10 @@ export type AssetMessageDescriptor =
       }
     | {
           readonly code: 'asset.invalid-source';
+          readonly value: unknown;
+      }
+    | {
+          readonly code: 'asset.invalid-source-identity';
           readonly value: unknown;
       }
     | {
@@ -573,11 +588,18 @@ export interface AssetSnapshotRecord<TKind extends string = string>
     readonly history?: readonly AssetSnapshotRevisionRecord<TKind>[];
 }
 
+export interface AssetSnapshotSourceBindingRecord {
+    readonly sourceIdentity: string;
+    readonly assetId: string;
+    readonly updatedAtEpochMs: number;
+}
+
 export interface AssetDatabaseSnapshot<TKind extends string = string> {
-    readonly version: 3;
+    readonly version: 4;
     readonly locale: string;
     readonly capturedAtEpochMs: number;
     readonly assets: readonly AssetSnapshotRecord<TKind>[];
+    readonly sourceBindings?: readonly AssetSnapshotSourceBindingRecord[];
 }
 
 export interface AssetHydrateOptions {

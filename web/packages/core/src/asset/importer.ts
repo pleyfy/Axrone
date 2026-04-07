@@ -11,6 +11,7 @@ import {
     asAssetImporterId,
     canonicalizeAssetKey,
     normalizeAssetLocale,
+    normalizeAssetSourceIdentity,
 } from './reference';
 import type {
     AssetImportContext,
@@ -31,6 +32,7 @@ import type {
     AssetPipelineExecution,
     AssetRetryPolicy,
     AssetSchema,
+    AssetSourceIdentity,
     AssetSourceKind,
 } from './types';
 
@@ -549,7 +551,8 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
         ensureNotAborted(options.signal);
 
         const locale = normalizeAssetLocale(options.locale) ?? this._locale;
-        const baseKey = this._resolveBaseKey(source, options);
+        const initialSourceIdentity = this._resolveSourceIdentity(source, options);
+        const baseKey = this._resolveBaseKey(source, options, initialSourceIdentity);
         const retry = options.retry;
         const maxAttempts = Math.max(1, Math.trunc(retry?.attempts ?? this._retry.attempts));
         const baseDelayMs = Math.max(0, retry?.baseDelayMs ?? this._retry.baseDelayMs);
@@ -632,6 +635,7 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
                 });
                 const finalSource = beforeImportOutput.source;
                 currentSource = finalSource;
+                const sourceIdentity = this._resolveSourceIdentity(finalSource, options) ?? initialSourceIdentity;
                 let result = beforeImportOutput.result;
 
                 if (result === undefined) {
@@ -687,6 +691,7 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
                     importerId: asAssetImporterId(importerId),
                     importer,
                     baseKey,
+                    ...(sourceIdentity ? { sourceIdentity } : {}),
                     importedAtEpochMs: this._now(),
                     diagnostics: Object.freeze([
                         ...sourceStageOutput.diagnostics,
@@ -1012,7 +1017,11 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
         );
     }
 
-    private _resolveBaseKey(source: AssetImportSource, options: AssetImportOptions<TSchema>): AssetKey {
+    private _resolveBaseKey(
+        source: AssetImportSource,
+        options: AssetImportOptions<TSchema>,
+        sourceIdentity?: AssetSourceIdentity
+    ): AssetKey {
         const explicitKey = options.stableKey?.trim();
         if (explicitKey) {
             return canonicalizeAssetKey(explicitKey);
@@ -1027,8 +1036,24 @@ export class AssetImportPipeline<TSchema extends AssetSchema = AssetSchema> {
             return canonicalizeAssetKey(source.uri);
         }
 
+        if (sourceIdentity) {
+            return canonicalizeAssetKey(
+                `asset://${source.kind}/identity/${encodeURIComponent(sourceIdentity)}`
+            );
+        }
+
         this._anonymousCounter += 1;
         return canonicalizeAssetKey(`asset://${source.kind}/${this._anonymousCounter}`);
+    }
+
+    private _resolveSourceIdentity(
+        source: AssetImportSource,
+        options: AssetImportOptions<TSchema>
+    ): AssetSourceIdentity | undefined {
+        return (
+            normalizeAssetSourceIdentity(options.sourceIdentity) ??
+            normalizeAssetSourceIdentity(source.sourceIdentity)
+        );
     }
 
     private _assertNotDisposed(): void {

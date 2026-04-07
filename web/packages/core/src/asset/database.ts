@@ -14,6 +14,7 @@ import {
     asAssetFingerprint,
     asAssetId,
     asAssetRevision,
+    asAssetSourceIdentity,
     canonicalizeAssetKey,
     createAssetReference,
     createVersionedAssetReference,
@@ -22,6 +23,7 @@ import {
     isAssetVersionedReference,
     isAssetVersionedReferenceToken,
     normalizeAssetLocale,
+    normalizeAssetSourceIdentity,
     normalizeAssetUri,
     parseAssetReferenceToken,
     parseAssetVersionedReferenceToken,
@@ -62,14 +64,17 @@ import type {
     AssetSelector,
     AssetSnapshotRecord,
     AssetSnapshotRevisionRecord,
+    AssetSnapshotSourceBindingRecord,
+    AssetSourceBinding,
+    AssetSourceIdentity,
     AssetSubscription,
     AssetSerializedValue,
     AssetVersionedReference,
     AssetWriteInput,
 } from './types';
 
-const ASSET_SNAPSHOT_VERSION = 3 as const;
-const LEGACY_ASSET_SNAPSHOT_VERSIONS = Object.freeze([1, 2] as const);
+const ASSET_SNAPSHOT_VERSION = 4 as const;
+const LEGACY_ASSET_SNAPSHOT_VERSIONS = Object.freeze([1, 2, 3] as const);
 const DEFAULT_BINARY_INLINE_THRESHOLD_BYTES = 64 * 1024;
 const EMPTY_STRING_ARRAY = Object.freeze([]) as readonly string[];
 const EMPTY_PROPERTIES = Object.freeze({}) as Readonly<Record<string, AssetJsonValue>>;
@@ -472,6 +477,11 @@ interface PreparedWrite<TSchema extends AssetSchema> {
     readonly disposer?: InternalAssetDisposer<TSchema>;
 }
 
+interface SourceBindingEntry {
+    readonly assetId: string;
+    readonly updatedAtEpochMs: number;
+}
+
 const isLookupByKey = <TSchema extends AssetSchema>(
     value: unknown
 ): value is AssetLookupByKey<TSchema> =>
@@ -496,7 +506,7 @@ export const isAssetDatabaseSnapshot = <TKind extends string = string>(
     typeof value === 'object' &&
     (((value as AssetDatabaseSnapshot<TKind>).version as number) === ASSET_SNAPSHOT_VERSION ||
         LEGACY_ASSET_SNAPSHOT_VERSIONS.includes(
-            (value as AssetDatabaseSnapshot<TKind>).version as 1 | 2
+            (value as AssetDatabaseSnapshot<TKind>).version as 1 | 2 | 3
         )) &&
     Array.isArray((value as AssetDatabaseSnapshot<TKind>).assets);
 
@@ -505,6 +515,8 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     private readonly _revisionsById = new Map<string, StoredAsset<TSchema>[]>();
     private readonly _keyIndex = new Map<string, string>();
     private readonly _aliasIndex = new Map<string, string>();
+    private readonly _sourceBindings = new Map<string, SourceBindingEntry>();
+    private readonly _sourceIdentitiesByAssetId = new Map<string, Set<string>>();
     private readonly _fingerprintIndex = new Map<string, Set<string>>();
     private readonly _metadataUriIndex = new Map<string, Set<string>>();
     private readonly _metadataMimeTypeIndex = new Map<string, Set<string>>();
@@ -616,6 +628,43 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
     listStages(): ReturnType<AssetImportPipeline<TSchema>['listStages']> {
         this._assertNotDisposed();
         return this._pipeline.listStages();
+    }
+
+    resolveSourceIdentity(identity: string): AssetRecord<TSchema> | undefined {
+        this._assertNotDisposed();
+
+        const normalized = this._validateSourceIdentity(identity);
+        const binding = this._sourceBindings.get(normalized);
+        return binding ? this._assetsById.get(binding.assetId)?.toRecord() : undefined;
+    }
+
+    bindSourceIdentity(identity: string, selector: AssetSelector<TSchema>): this {
+        this._assertNotDisposed();
+
+        const asset = this.require(selector);
+        this._bindSourceIdentity(this._validateSourceIdentity(identity), asset.id, this._now());
+        return this;
+    }
+
+    unbindSourceIdentity(identity: string): boolean {
+        this._assertNotDisposed();
+        return this._unbindSourceIdentity(this._validateSourceIdentity(identity));
+    }
+
+    listSourceBindings(): readonly AssetSourceBinding[] {
+        this._assertNotDisposed();
+
+        return Object.freeze(
+            [...this._sourceBindings.entries()]
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([sourceIdentity, binding]) =>
+                    Object.freeze({
+                        sourceIdentity: asAssetSourceIdentity(sourceIdentity),
+                        assetId: asAssetId(binding.assetId),
+                        updatedAtEpochMs: binding.updatedAtEpochMs,
+                    })
+                )
+        );
     }
 
     subscribe(listener: AssetListener<TSchema>): AssetSubscription {
@@ -799,6 +848,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         const execution = await this._pipeline.import<TKind>(this, source, options);
         const writes = this._normalizeImportWrites(
             execution.baseKey,
+            execution.sourceIdentity,
             execution.result as unknown as {
                 readonly primary: AssetWriteInput<TSchema>;
                 readonly additional?: readonly AssetWriteInput<TSchema>[];
@@ -814,11 +864,20 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 sourceKind: source.kind,
                 sourceUri: normalizeAssetUri(source.uri),
                 baseKey: execution.baseKey,
+                sourceIdentity: execution.sourceIdentity,
                 importedAtEpochMs: execution.importedAtEpochMs,
                 diagnostics: execution.diagnostics,
                 primary: assets[0] as unknown as AssetRecord<TSchema, TKind>,
                 assets,
             }) as unknown as AssetImportReceipt<TSchema, TKind>;
+
+            if (execution.sourceIdentity) {
+                this._bindSourceIdentity(
+                    execution.sourceIdentity,
+                    receipt.primary.id,
+                    execution.importedAtEpochMs
+                );
+            }
 
             this._emitLeaf({
                 type: 'import',
@@ -953,6 +1012,21 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             locale: this._locale,
             capturedAtEpochMs: this._now(),
             assets: Object.freeze(assets),
+            ...(this._sourceBindings.size > 0
+                ? {
+                      sourceBindings: Object.freeze(
+                          [...this._sourceBindings.entries()]
+                              .sort(([left], [right]) => left.localeCompare(right))
+                              .map(([sourceIdentity, binding]) =>
+                                  Object.freeze({
+                                      sourceIdentity,
+                                      assetId: binding.assetId,
+                                      updatedAtEpochMs: binding.updatedAtEpochMs,
+                                  }) as AssetSnapshotSourceBindingRecord
+                              )
+                      ),
+                  }
+                : {}),
         });
     }
 
@@ -986,6 +1060,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
 
             const staged = new Map<string, StoredAsset<TSchema>>();
             const stagedRevisions = new Map<string, StoredAsset<TSchema>[]>();
+            const stagedSourceBindings: AssetSnapshotSourceBindingRecord[] = [];
 
             for (const entry of snapshot.assets) {
                 const history = entry.history ?? [];
@@ -1065,7 +1140,42 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 }
             }
 
-            return this._commitStoredAssets([...staged.values()]);
+            for (const binding of snapshot.sourceBindings ?? []) {
+                const sourceIdentity = this._validateSourceIdentity(binding.sourceIdentity);
+                const assetId = this._validateId(binding.assetId);
+                const updatedAtEpochMs = this._validateEpochMs(binding.updatedAtEpochMs);
+
+                if (!availableIds.has(assetId)) {
+                    throw new AssetSnapshotError(
+                        resolveAssetMessage(
+                            {
+                                code: 'asset.snapshot.invalid',
+                                reason: `missing source binding asset ${assetId}`,
+                            },
+                            this._locale,
+                            this._messageResolver
+                        )
+                    );
+                }
+
+                stagedSourceBindings.push({
+                    sourceIdentity,
+                    assetId,
+                    updatedAtEpochMs,
+                });
+            }
+
+            const records = this._commitStoredAssets([...staged.values()]);
+
+            for (const binding of stagedSourceBindings) {
+                this._bindSourceIdentity(
+                    asAssetSourceIdentity(binding.sourceIdentity),
+                    binding.assetId,
+                    binding.updatedAtEpochMs
+                );
+            }
+
+            return records;
         } finally {
             this._endBatch();
         }
@@ -1274,6 +1384,45 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
         return Number(value);
     }
 
+    private _validateSourceIdentity(value: unknown): AssetSourceIdentity {
+        const normalized = normalizeAssetSourceIdentity(
+            typeof value === 'string' ? value : undefined
+        );
+
+        if (!normalized) {
+            throw new AssetConfigurationError(
+                'asset.invalid-source-identity',
+                resolveAssetMessage(
+                    {
+                        code: 'asset.invalid-source-identity',
+                        value,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        return normalized;
+    }
+
+    private _validateEpochMs(value: unknown): number {
+        if (!Number.isSafeInteger(value) || Number(value) < 0) {
+            throw new AssetSnapshotError(
+                resolveAssetMessage(
+                    {
+                        code: 'asset.snapshot.invalid',
+                        reason: `invalid timestamp ${String(value)}`,
+                    },
+                    this._locale,
+                    this._messageResolver
+                )
+            );
+        }
+
+        return Number(value);
+    }
+
     private _resolveStored(
         selector: AssetSelector<TSchema> | AssetDependencyInput<TSchema>
     ): StoredAsset<TSchema> | undefined {
@@ -1358,6 +1507,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
 
     private _normalizeImportWrites(
         baseKey: AssetKey,
+        sourceIdentity: AssetSourceIdentity | undefined,
         result: {
             readonly primary: AssetWriteInput<TSchema>;
             readonly additional?: readonly AssetWriteInput<TSchema>[];
@@ -1409,7 +1559,22 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             ),
         ];
 
-        return Object.freeze(writes);
+        if (!sourceIdentity || writes[0]?.id?.trim()) {
+            return Object.freeze(writes);
+        }
+
+        const binding = this._sourceBindings.get(sourceIdentity);
+        if (!binding) {
+            return Object.freeze(writes);
+        }
+
+        return Object.freeze([
+            Object.freeze({
+                ...writes[0],
+                id: binding.assetId,
+            }),
+            ...writes.slice(1),
+        ]);
     }
 
     private _prepareWrite(input: AssetWriteInput<TSchema>): PreparedWrite<TSchema> {
@@ -1843,6 +2008,7 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
             this._unlinkDependencies(id, asset.dependencyIds);
             this._dependentsById.delete(id);
             this._revisionsById.delete(id);
+            this._unbindSourceIdentitiesForAsset(id);
             this._emitLeaf({
                 type: 'delete',
                 asset: asset.toRecord(),
@@ -1978,6 +2144,64 @@ export class AssetDatabase<TSchema extends AssetSchema = AssetSchema> {
                 this._metadataPropertyIndex.delete(key);
             }
         }
+    }
+
+    private _bindSourceIdentity(
+        sourceIdentity: AssetSourceIdentity,
+        assetId: string,
+        updatedAtEpochMs: number
+    ): void {
+        const normalizedIdentity = String(sourceIdentity);
+        const previous = this._sourceBindings.get(normalizedIdentity);
+
+        if (previous && previous.assetId !== assetId) {
+            this._sourceIdentitiesByAssetId.get(previous.assetId)?.delete(normalizedIdentity);
+
+            if (this._sourceIdentitiesByAssetId.get(previous.assetId)?.size === 0) {
+                this._sourceIdentitiesByAssetId.delete(previous.assetId);
+            }
+        }
+
+        this._sourceBindings.set(normalizedIdentity, {
+            assetId,
+            updatedAtEpochMs,
+        });
+
+        const identities = this._sourceIdentitiesByAssetId.get(assetId) ?? new Set<string>();
+        identities.add(normalizedIdentity);
+        this._sourceIdentitiesByAssetId.set(assetId, identities);
+    }
+
+    private _unbindSourceIdentity(sourceIdentity: AssetSourceIdentity): boolean {
+        const normalizedIdentity = String(sourceIdentity);
+        const binding = this._sourceBindings.get(normalizedIdentity);
+
+        if (!binding) {
+            return false;
+        }
+
+        this._sourceBindings.delete(normalizedIdentity);
+
+        const identities = this._sourceIdentitiesByAssetId.get(binding.assetId);
+        identities?.delete(normalizedIdentity);
+        if (identities?.size === 0) {
+            this._sourceIdentitiesByAssetId.delete(binding.assetId);
+        }
+
+        return true;
+    }
+
+    private _unbindSourceIdentitiesForAsset(assetId: string): void {
+        const identities = this._sourceIdentitiesByAssetId.get(assetId);
+        if (!identities?.size) {
+            return;
+        }
+
+        for (const sourceIdentity of identities) {
+            this._sourceBindings.delete(sourceIdentity);
+        }
+
+        this._sourceIdentitiesByAssetId.delete(assetId);
     }
 
     private _indexValue(index: Map<string, Set<string>>, key: string, id: string): void {

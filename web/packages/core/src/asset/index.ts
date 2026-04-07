@@ -70,13 +70,16 @@ export type {
     AssetSnapshotRecord,
     AssetSnapshotRevisionRecord,
     AssetSourceBase,
+    AssetSourceBinding,
     AssetSourceKind,
+    AssetSourceIdentity,
     AssetSubscription,
     AssetTextSource,
     AssetUri,
     AssetVersionedReference,
     AssetVersionedReferenceToken,
     AssetWriteInput,
+    AssetSnapshotSourceBindingRecord,
 } from './types';
 
 export {
@@ -101,6 +104,7 @@ export {
     asAssetKey,
     asAssetLocale,
     asAssetRevision,
+    asAssetSourceIdentity,
     asAssetUri,
     canonicalizeAssetKey,
     createAssetReference,
@@ -110,6 +114,7 @@ export {
     isAssetVersionedReference,
     isAssetVersionedReferenceToken,
     normalizeAssetLocale,
+    normalizeAssetSourceIdentity,
     normalizeAssetUri,
     parseAssetReferenceToken,
     parseAssetVersionedReferenceToken,

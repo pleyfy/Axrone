@@ -36,6 +36,8 @@ export const DEFAULT_ASSET_MESSAGE_RESOLVER: AssetMessageResolver = (
             return `Invalid asset revision: ${formatUnknown(descriptor.value)}`;
         case 'asset.invalid-source':
             return `Invalid asset source: ${formatUnknown(descriptor.value)}`;
+        case 'asset.invalid-source-identity':
+            return `Invalid asset source identity: ${formatUnknown(descriptor.value)}`;
         case 'asset.invalid-stage':
             return `Invalid asset import stage: ${formatUnknown(descriptor.value)}`;
         case 'asset.conflict.key-bound':
