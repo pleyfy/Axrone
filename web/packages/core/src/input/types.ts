@@ -10,9 +10,73 @@ export interface InputVector2 {
     readonly y: number;
 }
 
+export interface InputScaleProcessor {
+    readonly type: 'scale';
+    readonly value: number;
+}
+
+export interface InputInvertProcessor {
+    readonly type: 'invert';
+}
+
+export interface InputClampProcessor {
+    readonly type: 'clamp';
+    readonly min: number;
+    readonly max: number;
+}
+
+export interface InputDeadzoneProcessor {
+    readonly type: 'deadzone';
+    readonly value: number;
+}
+
+export interface InputCurveProcessor {
+    readonly type: 'curve';
+    readonly exponent: number;
+    readonly signed?: boolean;
+}
+
+export interface InputScaleVector2Processor {
+    readonly type: 'scale-vector2';
+    readonly x?: number;
+    readonly y?: number;
+}
+
+export interface InputInvertVector2Processor {
+    readonly type: 'invert-vector2';
+    readonly x?: boolean;
+    readonly y?: boolean;
+}
+
+export interface InputNormalizeVector2Processor {
+    readonly type: 'normalize-vector2';
+}
+
+export interface InputClampMagnitudeProcessor {
+    readonly type: 'clamp-magnitude';
+    readonly min?: number;
+    readonly max: number;
+}
+
+export type InputScalarProcessor =
+    | InputScaleProcessor
+    | InputInvertProcessor
+    | InputClampProcessor
+    | InputDeadzoneProcessor
+    | InputCurveProcessor;
+
+export type InputVector2Processor =
+    | InputScaleVector2Processor
+    | InputInvertVector2Processor
+    | InputNormalizeVector2Processor
+    | InputClampMagnitudeProcessor;
+
+export type InputProcessor = InputScalarProcessor | InputVector2Processor;
+
 export interface InputActionDefinitionBase<TKind extends InputActionKind> {
     readonly kind: TKind;
     readonly consume?: boolean;
+    readonly processors?: readonly InputProcessor[];
 }
 
 export interface InputButtonActionDefinition extends InputActionDefinitionBase<'button'> {
@@ -156,6 +220,7 @@ export interface InputBindingBase<TType extends string> {
     readonly consume?: boolean;
     readonly modifiers?: readonly InputModifierKey[];
     readonly exactModifiers?: boolean;
+    readonly processors?: readonly InputProcessor[];
 }
 
 export interface InputControlBinding extends InputBindingBase<'control'> {

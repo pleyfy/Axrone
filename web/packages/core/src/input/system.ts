@@ -47,6 +47,7 @@ import type {
     InputMouseButtonSourceEvent,
     InputMouseMoveSourceEvent,
     InputMouseWheelSourceEvent,
+    InputProcessor,
     InputRebindingCandidate,
     InputRebindingHandlers,
     InputRebindingRequest,
@@ -66,6 +67,7 @@ import type {
 const INPUT_SNAPSHOT_VERSION = 1 as const;
 const EPSILON = 1e-6;
 const EMPTY_MODIFIERS = Object.freeze([]) as readonly InputModifierKey[];
+const EMPTY_PROCESSORS = Object.freeze([]) as readonly InputProcessor[];
 const MODIFIER_ORDER = Object.freeze(['shift', 'ctrl', 'alt', 'meta'] as const);
 const MODIFIER_MASKS: Record<InputModifierKey, number> = Object.freeze({
     shift: 1,
@@ -124,12 +126,13 @@ interface Vector2StateStore {
 }
 
 type InternalActionDefinition =
-    | {
+      | {
           readonly kind: 'button';
           readonly name: string;
           readonly consume: boolean;
           readonly pressPoint: number;
           readonly releasePoint: number;
+          readonly processors: readonly InternalScalarProcessor[];
       }
     | {
           readonly kind: 'axis';
@@ -139,6 +142,7 @@ type InternalActionDefinition =
           readonly min: number;
           readonly max: number;
           readonly combine: 'sum' | 'max-abs' | 'latest';
+          readonly processors: readonly InternalScalarProcessor[];
       }
     | {
           readonly kind: 'vector2';
@@ -147,6 +151,7 @@ type InternalActionDefinition =
           readonly deadzone: number;
           readonly normalize: boolean;
           readonly combine: 'sum' | 'latest';
+          readonly processors: readonly InternalVectorProcessor[];
       };
 
 interface ControlBase<TDevice extends InputDeviceKind, TKind extends string> {
@@ -210,9 +215,65 @@ interface InternalBindingBase<TType extends InputBinding['type']> {
     readonly modifierMask: number;
     readonly exactModifiers: boolean;
     readonly paths: readonly InputControlPath[];
+    readonly processors: readonly InternalProcessor[];
 }
 
+type InternalScalarProcessor =
+    | {
+          readonly kind: 'scalar';
+          readonly type: 'scale';
+          readonly value: number;
+      }
+    | {
+          readonly kind: 'scalar';
+          readonly type: 'invert';
+      }
+    | {
+          readonly kind: 'scalar';
+          readonly type: 'clamp';
+          readonly min: number;
+          readonly max: number;
+      }
+    | {
+          readonly kind: 'scalar';
+          readonly type: 'deadzone';
+          readonly value: number;
+      }
+    | {
+          readonly kind: 'scalar';
+          readonly type: 'curve';
+          readonly exponent: number;
+          readonly signed: boolean;
+      };
+
+type InternalVectorProcessor =
+    | {
+          readonly kind: 'vector2';
+          readonly type: 'scale-vector2';
+          readonly x: number;
+          readonly y: number;
+      }
+    | {
+          readonly kind: 'vector2';
+          readonly type: 'invert-vector2';
+          readonly x: boolean;
+          readonly y: boolean;
+      }
+    | {
+          readonly kind: 'vector2';
+          readonly type: 'normalize-vector2';
+      }
+    | {
+          readonly kind: 'vector2';
+          readonly type: 'clamp-magnitude';
+          readonly min: number;
+          readonly max: number;
+      };
+
+type InternalProcessor = InternalScalarProcessor | InternalVectorProcessor;
+
 interface InternalControlBinding extends InternalBindingBase<'control'> {
+    readonly processors: readonly InternalScalarProcessor[];
     readonly control: InternalControl;
     readonly scale: number;
     readonly invert: boolean;
@@ -220,12 +281,14 @@ interface InternalControlBinding extends InternalBindingBase<'control'> {
 }
 
 interface InternalAxisCompositeBinding extends InternalBindingBase<'axis'> {
+    readonly processors: readonly InternalScalarProcessor[];
     readonly negative: InternalControl;
     readonly positive: InternalControl;
     readonly scale: number;
 }
 
 interface InternalDirectionalBinding extends InternalBindingBase<'vector2'> {
+    readonly processors: readonly InternalVectorProcessor[];
     readonly up: InternalControl;
     readonly down: InternalControl;
     readonly left: InternalControl;
@@ -235,6 +298,7 @@ interface InternalDirectionalBinding extends InternalBindingBase<'vector2'> {
 }
 
 interface InternalDualAxisBinding extends InternalBindingBase<'dual-axis'> {
+    readonly processors: readonly InternalVectorProcessor[];
     readonly x: InternalControl;
     readonly y: InternalControl;
     readonly normalize: boolean;
@@ -362,6 +426,91 @@ const applyDeadzone = (value: number, deadzone: number): number =>
     Math.abs(value) <= deadzone ? 0 : value;
 
 const magnitude = (x: number, y: number): number => Math.hypot(x, y);
+
+const applyScalarProcessors = (
+    value: number,
+    processors: readonly InternalScalarProcessor[]
+): number => {
+    let next = value;
+
+    for (const processor of processors) {
+        switch (processor.type) {
+            case 'scale':
+                next *= processor.value;
+                break;
+            case 'invert':
+                next = -next;
+                break;
+            case 'clamp':
+                next = clamp(next, processor.min, processor.max);
+                break;
+            case 'deadzone':
+                next = applyDeadzone(next, processor.value);
+                break;
+            case 'curve': {
+                const magnitudeValue = Math.abs(next);
+                const curved = Math.pow(magnitudeValue, processor.exponent);
+                next = processor.signed ? Math.sign(next) * curved : curved;
+                break;
+            }
+        }
+    }
+
+    return next;
+};
+
+const applyVectorProcessors = (
+    value: MutableVector2,
+    processors: readonly InternalVectorProcessor[]
+): MutableVector2 => {
+    let nextX = value.x;
+    let nextY = value.y;
+
+    for (const processor of processors) {
+        switch (processor.type) {
+            case 'scale-vector2':
+                nextX *= processor.x;
+                nextY *= processor.y;
+                break;
+            case 'invert-vector2':
+                if (processor.x) {
+                    nextX = -nextX;
+                }
+
+                if (processor.y) {
+                    nextY = -nextY;
+                }
+                break;
+            case 'normalize-vector2': {
+                const length = magnitude(nextX, nextY);
+                if (length > EPSILON) {
+                    nextX /= length;
+                    nextY /= length;
+                }
+                break;
+            }
+            case 'clamp-magnitude': {
+                const length = magnitude(nextX, nextY);
+                if (length <= EPSILON) {
+                    break;
+                }
+
+                const clamped = clamp(length, processor.min, processor.max);
+                if (Math.abs(clamped - length) > EPSILON) {
+                    const ratio = clamped / length;
+                    nextX *= ratio;
+                    nextY *= ratio;
+                }
+                break;
+            }
+        }
+    }
+
+    return {
+        x: nextX,
+        y: nextY,
+    };
+};
 
 const createVectorView = (source: MutableVector2): InputVector2 =>
     Object.freeze({
@@ -1298,6 +1447,176 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._gamepads.clear();
     }
 
+    private _compileProcessors(
+        kind: 'scalar',
+        processors?: readonly InputProcessor[]
+    ): readonly InternalScalarProcessor[];
+    private _compileProcessors(
+        kind: 'vector2',
+        processors?: readonly InputProcessor[]
+    ): readonly InternalVectorProcessor[];
+    private _compileProcessors(
+        kind: 'scalar' | 'vector2',
+        processors?: readonly InputProcessor[]
+    ): readonly InternalProcessor[] {
+        if (!processors?.length) {
+            return Object.freeze([]);
+        }
+
+        const compiled: InternalProcessor[] = [];
+
+        for (const processor of processors) {
+            if (!isRecord(processor) || typeof processor.type !== 'string') {
+                throw new InputConfigurationError(
+                    'input.invalid-binding',
+                    this._resolveMessage({
+                        code: 'input.invalid-binding',
+                        value: processor,
+                    })
+                );
+            }
+
+            switch (processor.type) {
+                case 'scale':
+                    if (kind !== 'scalar') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'scalar',
+                            type: 'scale',
+                            value: toFiniteNumber(processor.value, 1),
+                        })
+                    );
+                    continue;
+                case 'invert':
+                    if (kind !== 'scalar') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'scalar',
+                            type: 'invert',
+                        })
+                    );
+                    continue;
+                case 'clamp':
+                    if (kind !== 'scalar') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'scalar',
+                            type: 'clamp',
+                            min: Math.min(
+                                toFiniteNumber(processor.min, -Infinity),
+                                toFiniteNumber(processor.max, Infinity)
+                            ),
+                            max: Math.max(
+                                toFiniteNumber(processor.min, -Infinity),
+                                toFiniteNumber(processor.max, Infinity)
+                            ),
+                        })
+                    );
+                    continue;
+                case 'deadzone':
+                    if (kind !== 'scalar') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'scalar',
+                            type: 'deadzone',
+                            value: Math.max(0, toFiniteNumber(processor.value, 0)),
+                        })
+                    );
+                    continue;
+                case 'curve':
+                    if (kind !== 'scalar') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'scalar',
+                            type: 'curve',
+                            exponent: Math.max(EPSILON, toFiniteNumber(processor.exponent, 1)),
+                            signed: processor.signed ?? true,
+                        })
+                    );
+                    continue;
+                case 'scale-vector2':
+                    if (kind !== 'vector2') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'vector2',
+                            type: 'scale-vector2',
+                            x: toFiniteNumber(processor.x, 1),
+                            y: toFiniteNumber(processor.y, 1),
+                        })
+                    );
+                    continue;
+                case 'invert-vector2':
+                    if (kind !== 'vector2') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'vector2',
+                            type: 'invert-vector2',
+                            x: processor.x ?? true,
+                            y: processor.y ?? true,
+                        })
+                    );
+                    continue;
+                case 'normalize-vector2':
+                    if (kind !== 'vector2') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'vector2',
+                            type: 'normalize-vector2',
+                        })
+                    );
+                    continue;
+                case 'clamp-magnitude':
+                    if (kind !== 'vector2') {
+                        break;
+                    }
+
+                    compiled.push(
+                        Object.freeze({
+                            kind: 'vector2',
+                            type: 'clamp-magnitude',
+                            min: Math.max(0, toFiniteNumber(processor.min, 0)),
+                            max: Math.max(0, toFiniteNumber(processor.max, 1)),
+                        })
+                    );
+                    continue;
+            }
+
+            throw new InputConfigurationError(
+                'input.invalid-binding',
+                this._resolveMessage({
+                    code: 'input.invalid-binding',
+                    value: processor,
+                })
+            );
+        }
+
+        return Object.freeze(compiled);
+    }
+
     private _normalizeActionDefinition(
         name: string,
         definition: InputActionDefinition
@@ -1329,6 +1648,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     consume,
                     pressPoint,
                     releasePoint,
+                    processors: this._compileProcessors('scalar', buttonDefinition.processors),
                 });
             }
             case 'axis': {
@@ -1351,6 +1671,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                         axisDefinition.combine === 'max-abs' || axisDefinition.combine === 'latest'
                             ? axisDefinition.combine
                             : 'sum',
+                    processors: this._compileProcessors('scalar', axisDefinition.processors),
                 });
             }
             case 'vector2': {
@@ -1362,6 +1683,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     deadzone: Math.max(0, toFiniteNumber(vectorDefinition.deadzone, 0)),
                     normalize: !!vectorDefinition.normalize,
                     combine: vectorDefinition.combine === 'latest' ? 'latest' : 'sum',
+                    processors: this._compileProcessors('vector2', vectorDefinition.processors),
                 });
             }
             default:
@@ -1494,6 +1816,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     consume,
                     modifiers,
                     exactModifiers,
+                    processors: binding.processors ?? EMPTY_PROCESSORS,
                 });
             }
             case 'axis': {
@@ -1510,6 +1833,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     consume,
                     modifiers,
                     exactModifiers,
+                    processors: binding.processors ?? EMPTY_PROCESSORS,
                 });
             }
             case 'vector2': {
@@ -1529,6 +1853,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     consume,
                     modifiers,
                     exactModifiers,
+                    processors: binding.processors ?? EMPTY_PROCESSORS,
                 });
             }
             case 'dual-axis': {
@@ -1547,6 +1872,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     consume,
                     modifiers,
                     exactModifiers,
+                    processors: binding.processors ?? EMPTY_PROCESSORS,
                 });
             }
         }
@@ -1572,6 +1898,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             switch (binding.type) {
                 case 'control': {
                     const control = this._compileControl(this._requireControlPath(String(binding.control)));
+                    const processors = this._compileProcessors('scalar', binding.processors);
                     compiled.push(
                         Object.freeze({
                             type: 'control',
@@ -1582,6 +1909,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                             consume,
                             modifierMask,
                             exactModifiers,
+                            processors,
                             paths: Object.freeze([control.path]),
                         })
                     );
@@ -1594,6 +1922,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     const positive = this._compileControl(
                         this._requireControlPath(String(binding.positive))
                     );
+                    const processors = this._compileProcessors('scalar', binding.processors);
                     compiled.push(
                         Object.freeze({
                             type: 'axis',
@@ -1603,6 +1932,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                             consume,
                             modifierMask,
                             exactModifiers,
+                            processors,
                             paths: Object.freeze([negative.path, positive.path]),
                         })
                     );
@@ -1619,6 +1949,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                     const right = this._compileControl(
                         this._requireControlPath(String(binding.right))
                     );
+                    const processors = this._compileProcessors('vector2', binding.processors);
                     compiled.push(
                         Object.freeze({
                             type: 'vector2',
@@ -1631,6 +1962,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                             consume,
                             modifierMask,
                             exactModifiers,
+                            processors,
                             paths: Object.freeze([up.path, down.path, left.path, right.path]),
                         })
                     );
@@ -1639,6 +1971,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                 case 'dual-axis': {
                     const x = this._compileControl(this._requireControlPath(String(binding.x)));
                     const y = this._compileControl(this._requireControlPath(String(binding.y)));
+                    const processors = this._compileProcessors('vector2', binding.processors);
                     compiled.push(
                         Object.freeze({
                             type: 'dual-axis',
@@ -1650,6 +1983,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                             consume,
                             modifierMask,
                             exactModifiers,
+                            processors,
                             paths: Object.freeze([x.path, y.path]),
                         })
                     );
@@ -2491,13 +2825,13 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         }
 
         value = applyDeadzone(value, binding.deadzone);
-        return value * binding.scale;
+        return applyScalarProcessors(value * binding.scale, binding.processors);
     }
 
     private _evaluateAxisCompositeBinding(binding: InternalAxisCompositeBinding): number {
         const positive = this._sampleDirectional(binding.positive, 'positive');
         const negative = this._sampleDirectional(binding.negative, 'negative');
-        return (positive - negative) * binding.scale;
+        return applyScalarProcessors((positive - negative) * binding.scale, binding.processors);
     }
 
     private _evaluateDirectionalBinding(binding: InternalDirectionalBinding): MutableVector2 {
@@ -2519,10 +2853,13 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             }
         }
 
-        return {
-            x,
-            y,
-        };
+        return applyVectorProcessors(
+            {
+                x,
+                y,
+            },
+            binding.processors
+        );
     }
 
     private _evaluateDualAxisBinding(binding: InternalDualAxisBinding): MutableVector2 {
@@ -2538,10 +2875,13 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             y /= length;
         }
 
-        return {
-            x,
-            y,
-        };
+        return applyVectorProcessors(
+            {
+                x,
+                y,
+            },
+            binding.processors
+        );
     }
 
     private _sampleControl(control: InternalControl): number {
@@ -2746,7 +3086,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         const state = this._buttonStateStores[index]!;
         const previousValue = state.value;
         const previousRawValue = state.rawValue;
-        const rawValue = this._accumulatorX[index]!;
+        const rawValue = applyScalarProcessors(this._accumulatorX[index]!, definition.processors);
         const nextValue = previousValue
             ? rawValue > definition.releasePoint + EPSILON
             : rawValue >= definition.pressPoint - EPSILON;
@@ -2774,7 +3114,10 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         const state = this._axisStateStores[index]!;
         const previousValue = state.value;
         const unclamped = applyDeadzone(this._accumulatorX[index]!, definition.deadzone);
-        const value = clamp(unclamped, definition.min, definition.max);
+        const value = applyScalarProcessors(
+            clamp(unclamped, definition.min, definition.max),
+            definition.processors
+        );
 
         state.previousValue = previousValue;
         state.value = value;
@@ -2803,6 +3146,13 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             x /= length;
             y /= length;
             length = 1;
+        }
+
+        if (definition.processors.length > 0) {
+            const processed = applyVectorProcessors({ x, y }, definition.processors);
+            x = processed.x;
+            y = processed.y;
+            length = magnitude(x, y);
         }
 
         const previousX = state.value.x;

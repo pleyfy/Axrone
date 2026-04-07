@@ -122,6 +122,68 @@ describe('InputSystem', () => {
         expect(input.read('fire')).toBe(true);
     });
 
+    it('applies binding and action processor chains', () => {
+        const input = createInputSystem({
+            schema: {
+                throttle: {
+                    kind: 'axis',
+                    processors: [{ type: 'curve', exponent: 2 }],
+                },
+                look: {
+                    kind: 'vector2',
+                    processors: [{ type: 'clamp-magnitude', max: 1 }],
+                },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        throttle: [
+                            {
+                                type: 'control',
+                                control: 'gamepad/0/axis/0',
+                                processors: [{ type: 'invert' }],
+                            },
+                        ],
+                        look: [
+                            {
+                                type: 'dual-axis',
+                                x: 'mouse/move/x',
+                                y: 'mouse/move/y',
+                                processors: [{ type: 'scale-vector2', x: 2, y: 0.5 }],
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+
+        input.dispatch({
+            type: 'gamepad',
+            gamepads: [
+                {
+                    index: 0,
+                    connected: true,
+                    buttons: [],
+                    axes: [0.5],
+                },
+            ],
+        });
+        input.dispatch({
+            type: 'mouse-move',
+            x: 1,
+            y: 4,
+            deltaX: 1,
+            deltaY: 4,
+        });
+        input.update(1);
+
+        expect(input.read('throttle')).toBeCloseTo(-0.25, 6);
+        const look = input.read('look');
+        expect(look.x).toBeCloseTo(Math.SQRT1_2, 6);
+        expect(look.y).toBeCloseTo(Math.SQRT1_2, 6);
+    });
+
     it('rebinding updates bindings and survives snapshot restore', () => {
         const input = createInputSystem({
             schema: {
