@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Axrone vs Three.js Benchmark</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --bg: #07111c;
+                --panel: #0f1b2a;
+                --panel-2: #142338;
+                --border: #28415e;
+                --text: #e6edf6;
+                --muted: #8ea3bd;
+                --accent-a: #3c8cff;
+                --accent-b: #31c48d;
+                --warn: #ffb86b;
+                --danger: #ff7a7a;
+                --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                font-family: "Segoe UI", sans-serif;
+                background:
+                    radial-gradient(circle at top left, rgba(60, 140, 255, 0.18), transparent 28%),
+                    radial-gradient(circle at top right, rgba(49, 196, 141, 0.16), transparent 24%),
+                    linear-gradient(180deg, #08111c 0%, #07111c 100%);
+                color: var(--text);
+            }
+
+            .page {
+                display: grid;
+                grid-template-rows: auto auto 1fr;
+                min-height: 100vh;
+            }
+
+            .header {
+                display: flex;
+                justify-content: space-between;
+                gap: 24px;
+                padding: 22px 28px 18px;
+                border-bottom: 1px solid rgba(40, 65, 94, 0.65);
+                background: rgba(7, 17, 28, 0.78);
+                backdrop-filter: blur(12px);
+            }
+
+            .title-block h1 {
+                margin: 0 0 6px;
+                font-size: 26px;
+                line-height: 1.1;
+            }
+
+            .title-block p {
+                margin: 0;
+                max-width: 780px;
+                color: var(--muted);
+                font-size: 14px;
+                line-height: 1.5;
+            }
+
+            .status-cluster {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+
+            .pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                min-height: 38px;
+                padding: 0 14px;
+                border: 1px solid var(--border);
+                border-radius: 999px;
+                background: rgba(15, 27, 42, 0.9);
+                font-size: 12px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+
+            .pill::before {
+                content: "";
+                width: 8px;
+                height: 8px;
+                border-radius: 999px;
+                background: currentColor;
+            }
+
+            .pill.idle {
+                color: var(--muted);
+            }
+
+            .pill.running {
+                color: var(--accent-b);
+            }
+
+            .toolbar {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(180px, 1fr)) auto;
+                gap: 12px;
+                padding: 18px 28px;
+                border-bottom: 1px solid rgba(40, 65, 94, 0.65);
+                background: rgba(9, 19, 32, 0.72);
+            }
+
+            .field {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 14px;
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                background: rgba(15, 27, 42, 0.9);
+                box-shadow: var(--shadow);
+            }
+
+            .field label,
+            .field .label {
+                font-size: 11px;
+                font-weight: 800;
+                color: var(--muted);
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+
+            .field select,
+            .field input[type="range"] {
+                width: 100%;
+            }
+
+            .field select {
+                min-height: 40px;
+                padding: 0 10px;
+                border-radius: 10px;
+                border: 1px solid var(--border);
+                background: #0b1522;
+                color: var(--text);
+            }
+
+            .field .value {
+                font-size: 13px;
+                font-weight: 700;
+                color: var(--text);
+            }
+
+            .button-row {
+                display: flex;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            button {
+                min-height: 52px;
+                padding: 0 18px;
+                border-radius: 14px;
+                border: 1px solid var(--border);
+                background: linear-gradient(180deg, #13233a, #0d1b2d);
+                color: var(--text);
+                font-size: 13px;
+                font-weight: 800;
+                cursor: pointer;
+            }
+
+            button.primary {
+                border-color: transparent;
+                background: linear-gradient(135deg, #2f78ff, #58a6ff);
+                color: white;
+            }
+
+            button.secondary {
+                background: linear-gradient(135deg, #16324d, #10253a);
+            }
+
+            button:disabled {
+                opacity: 0.55;
+                cursor: not-allowed;
+            }
+
+            .content {
+                display: grid;
+                grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.95fr);
+                gap: 18px;
+                padding: 18px 28px 28px;
+                min-height: 0;
+            }
+
+            .viewport-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 18px;
+                min-height: 0;
+            }
+
+            .viewport-card,
+            .panel-card {
+                min-height: 0;
+                border: 1px solid var(--border);
+                border-radius: 22px;
+                background: linear-gradient(180deg, rgba(15, 27, 42, 0.96), rgba(10, 20, 32, 0.98));
+                box-shadow: var(--shadow);
+                overflow: hidden;
+            }
+
+            .card-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                padding: 14px 16px;
+                border-bottom: 1px solid rgba(40, 65, 94, 0.65);
+            }
+
+            .card-head h2,
+            .card-head h3 {
+                margin: 0;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+
+            .card-head span {
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .engine-tag {
+                padding: 5px 10px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 800;
+            }
+
+            .engine-tag.axrone {
+                color: #b6d5ff;
+                background: rgba(60, 140, 255, 0.16);
+            }
+
+            .engine-tag.three {
+                color: #b7f1db;
+                background: rgba(49, 196, 141, 0.16);
+            }
+
+            .viewport-shell {
+                position: relative;
+                height: min(68vh, 780px);
+                background:
+                    radial-gradient(circle at top, rgba(60, 140, 255, 0.14), transparent 38%),
+                    linear-gradient(180deg, #08111a, #050b14);
+            }
+
+            .viewport-shell canvas {
+                display: block;
+                width: 100%;
+                height: 100%;
+            }
+
+            .overlay-note {
+                position: absolute;
+                left: 14px;
+                bottom: 14px;
+                max-width: 280px;
+                padding: 10px 12px;
+                border-radius: 14px;
+                border: 1px solid rgba(40, 65, 94, 0.8);
+                background: rgba(7, 17, 28, 0.82);
+                color: var(--muted);
+                font-size: 12px;
+                line-height: 1.45;
+            }
+
+            .panel-card {
+                display: grid;
+                grid-template-rows: auto auto auto 1fr;
+            }
+
+            .summary {
+                padding: 16px;
+                border-bottom: 1px solid rgba(40, 65, 94, 0.65);
+            }
+
+            .summary h2 {
+                margin: 0 0 6px;
+                font-size: 16px;
+            }
+
+            .summary p {
+                margin: 0;
+                color: var(--muted);
+                font-size: 13px;
+                line-height: 1.55;
+            }
+
+            .summary strong {
+                color: var(--text);
+            }
+
+            .metric-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+                padding: 16px;
+                border-bottom: 1px solid rgba(40, 65, 94, 0.65);
+            }
+
+            .metric {
+                padding: 14px;
+                border: 1px solid rgba(40, 65, 94, 0.8);
+                border-radius: 16px;
+                background: rgba(20, 35, 56, 0.55);
+            }
+
+            .metric h3 {
+                margin: 0 0 10px;
+                font-size: 11px;
+                color: var(--muted);
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+
+            .metric .split {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                align-items: baseline;
+            }
+
+            .metric .engine-value {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .metric .engine-value span {
+                font-size: 11px;
+                color: var(--muted);
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+
+            .metric .engine-value strong {
+                font-size: 24px;
+                line-height: 1;
+                font-family: Consolas, monospace;
+            }
+
+            .metric .winner {
+                margin-top: 10px;
+                font-size: 12px;
+                font-weight: 700;
+                color: var(--warn);
+            }
+
+            .detail-list {
+                display: grid;
+                gap: 8px;
+                padding: 16px;
+                border-bottom: 1px solid rgba(40, 65, 94, 0.65);
+            }
+
+            .detail-row {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                font-size: 13px;
+            }
+
+            .detail-row span:first-child {
+                color: var(--muted);
+            }
+
+            .methodology {
+                padding: 16px;
+                overflow: auto;
+            }
+
+            .methodology h3 {
+                margin: 0 0 10px;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+
+            .methodology ul {
+                margin: 0;
+                padding-left: 18px;
+                color: var(--muted);
+                font-size: 13px;
+                line-height: 1.6;
+            }
+
+            .error {
+                color: var(--danger);
+            }
+
+            @media (max-width: 1300px) {
+                .content {
+                    grid-template-columns: 1fr;
+                }
+
+                .viewport-shell {
+                    height: 46vh;
+                }
+            }
+
+            @media (max-width: 980px) {
+                .toolbar,
+                .viewport-grid,
+                .metric-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+
+                .status-cluster {
+                    justify-content: flex-start;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="page">
+            <header class="header">
+                <div class="title-block">
+                    <h1>Axrone vs Three.js Benchmark</h1>
+                    <p>
+                        Standalone benchmark page. Same object field, same camera motion, same
+                        unlit shading model, no instancing, no post-process. This isolates scene
+                        management, transform updates and raw draw submission behavior.
+                    </p>
+                </div>
+                <div class="status-cluster">
+                    <div id="run-status" class="pill idle">Idle</div>
+                    <div id="elapsed-pill" class="pill idle">0.0s / 30s</div>
+                </div>
+            </header>
+
+            <section class="toolbar">
+                <div class="field">
+                    <label for="workload">Workload</label>
+                    <select id="workload">
+                        <option value="draw-call">Draw Call Stress</option>
+                        <option value="triangle">Triangle Stress</option>
+                        <option value="mixed">Mixed Scene</option>
+                    </select>
+                    <div class="value" id="workload-label">One draw per object, low-poly boxes.</div>
+                </div>
+
+                <div class="field">
+                    <label for="object-count">Object Count</label>
+                    <input id="object-count" type="range" min="100" max="20000" step="500" value="2500" />
+                    <div class="value" id="object-count-value">2500 objects</div>
+                </div>
+
+                <div class="field">
+                    <label for="duration">Duration</label>
+                    <input id="duration" type="range" min="5" max="60" step="5" value="30" />
+                    <div class="value" id="duration-value">30 seconds</div>
+                </div>
+
+                <div class="field">
+                    <label for="comparison-mode">Comparison Mode</label>
+                    <select id="comparison-mode">
+                        <option value="no-culling">No Culling Baseline</option>
+                        <option value="three-culling">Three Culling Enabled</option>
+                    </select>
+                    <div class="value" id="comparison-mode-value">Both engines submit the full visible set.</div>
+                </div>
+
+                <div class="field">
+                    <div class="label">Test Status</div>
+                    <div class="value" id="status-text">Ready for a fresh run.</div>
+                    <div class="value" id="error-text"></div>
+                </div>
+
+                <div class="button-row">
+                    <button id="start-button" class="primary">Start Benchmark</button>
+                    <button id="stop-button" class="secondary" disabled>Stop</button>
+                    <button id="reset-button" class="secondary">Reset</button>
+                    <button id="copy-json-button" class="secondary">Copy JSON</button>
+                </div>
+            </section>
+
+            <main class="content">
+                <section class="viewport-grid">
+                    <article class="viewport-card">
+                        <div class="card-head">
+                            <div>
+                                <h2>Axrone</h2>
+                                <span>Standalone Scene renderer path</span>
+                            </div>
+                            <div class="engine-tag axrone">Axrone</div>
+                        </div>
+                        <div class="viewport-shell" id="axrone-shell">
+                            <canvas id="axrone-canvas"></canvas>
+                            <div class="overlay-note">
+                                Draw submissions are derived from the current Scene renderer path:
+                                one visible renderable actor produces one draw submission.
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="viewport-card">
+                        <div class="card-head">
+                            <div>
+                                <h2>Three.js</h2>
+                                <span>WebGLRenderer standard path</span>
+                            </div>
+                            <div class="engine-tag three">Three.js</div>
+                        </div>
+                        <div class="viewport-shell" id="three-shell">
+                            <canvas id="three-canvas"></canvas>
+                            <div class="overlay-note">
+                                Reported draw calls and triangles come directly from
+                                <code>renderer.info.render</code> after each frame.
+                            </div>
+                        </div>
+                    </article>
+                </section>
+
+                <aside class="panel-card">
+                    <div class="summary">
+                        <h2 id="summary-title">Waiting for benchmark run</h2>
+                        <p id="summary-copy">
+                            Configure workload and start the benchmark. Results will compare
+                            throughput, frame consistency and setup cost using the exact same scene
+                            descriptors for both engines.
+                        </p>
+                    </div>
+
+                    <div class="metric-grid">
+                        <section class="metric">
+                            <h3>Average FPS</h3>
+                            <div class="split">
+                                <div class="engine-value">
+                                    <span>Axrone</span>
+                                    <strong id="axrone-fps">0</strong>
+                                </div>
+                                <div class="engine-value">
+                                    <span>Three.js</span>
+                                    <strong id="three-fps">0</strong>
+                                </div>
+                            </div>
+                            <div class="winner" id="fps-winner">No result yet.</div>
+                        </section>
+
+                        <section class="metric">
+                            <h3>P95 Frame Time</h3>
+                            <div class="split">
+                                <div class="engine-value">
+                                    <span>Axrone</span>
+                                    <strong id="axrone-p95">0</strong>
+                                </div>
+                                <div class="engine-value">
+                                    <span>Three.js</span>
+                                    <strong id="three-p95">0</strong>
+                                </div>
+                            </div>
+                            <div class="winner" id="p95-winner">No result yet.</div>
+                        </section>
+
+                        <section class="metric">
+                            <h3>Draw Submissions</h3>
+                            <div class="split">
+                                <div class="engine-value">
+                                    <span>Axrone</span>
+                                    <strong id="axrone-draws">0</strong>
+                                </div>
+                                <div class="engine-value">
+                                    <span>Three.js</span>
+                                    <strong id="three-draws">0</strong>
+                                </div>
+                            </div>
+                            <div class="winner" id="draw-winner">No result yet.</div>
+                        </section>
+
+                        <section class="metric">
+                            <h3>Submitted Triangles</h3>
+                            <div class="split">
+                                <div class="engine-value">
+                                    <span>Axrone</span>
+                                    <strong id="axrone-tris">0</strong>
+                                </div>
+                                <div class="engine-value">
+                                    <span>Three.js</span>
+                                    <strong id="three-tris">0</strong>
+                                </div>
+                            </div>
+                            <div class="winner" id="tri-winner">No result yet.</div>
+                        </section>
+                    </div>
+
+                    <div class="detail-list">
+                        <div class="detail-row">
+                            <span>Axrone setup time</span>
+                            <strong id="axrone-setup">0 ms</strong>
+                        </div>
+                        <div class="detail-row">
+                            <span>Three.js setup time</span>
+                            <strong id="three-setup">0 ms</strong>
+                        </div>
+                        <div class="detail-row">
+                            <span>Workload objects</span>
+                            <strong id="detail-objects">2500</strong>
+                        </div>
+                        <div class="detail-row">
+                            <span>Scene profile</span>
+                            <strong id="detail-profile">Draw Call Stress</strong>
+                        </div>
+                    </div>
+
+                    <div class="methodology">
+                        <h3>Methodology</h3>
+                        <ul>
+                            <li>Both engines receive the same deterministic object descriptors.</li>
+                            <li>Motion field, camera path and color assignment are matched.</li>
+                            <li>Materials are intentionally unlit to reduce shading noise.</li>
+                            <li>Axrone draw submissions are inferred from current scene source behavior.</li>
+                            <li>Three.js draw submissions and triangles come from renderer frame stats.</li>
+                            <li>Use the same browser session for relative comparison, not absolute marketing claims.</li>
+                        </ul>
+                    </div>
+                </aside>
+            </main>
+        </div>
+
+        <script type="module" src="./playground/engine-benchmark.ts"></script>
+    </body>
+</html>
