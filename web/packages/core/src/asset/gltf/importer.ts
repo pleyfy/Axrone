@@ -32,6 +32,7 @@ import type {
     GltfMaterialTextureBinding,
     GltfMeshAsset,
     GltfNodeJson,
+    GltfPunctualLightJson,
     GltfRootJson,
     GltfSamplerJson,
     GltfTextureAsset,
@@ -55,6 +56,8 @@ const DEFAULT_MATERIAL_NAME = 'Default Material';
 const DEFAULT_DOCUMENT_NAME = 'glTF Document';
 const RADIANS_TO_DEGREES = 180 / Math.PI;
 const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
+    'KHR_lights_punctual',
+    'KHR_materials_emissive_strength',
     'KHR_materials_unlit',
     'KHR_mesh_quantization',
     'KHR_texture_basisu',
@@ -67,6 +70,7 @@ interface PrefabBuildResult {
     readonly nodeIds: readonly string[];
     readonly meshKeys: readonly string[];
     readonly materialKeys: readonly string[];
+    readonly diagnostics: readonly AssetImportDiagnostic[];
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -394,6 +398,29 @@ const createCameraSnapshot = (
     });
 };
 
+const createDirectionalLightSnapshot = (
+    light: GltfPunctualLightJson,
+    isPrimary: boolean
+): SceneComponentSnapshot =>
+    Object.freeze({
+        type: 'DirectionalLight',
+        data: Object.freeze({
+            color: Object.freeze([...(light.color ?? [1, 1, 1])]),
+            intensity: light.intensity ?? 1,
+            primary: isPrimary,
+        }),
+    });
+
+const createPointLightSnapshot = (light: GltfPunctualLightJson): SceneComponentSnapshot =>
+    Object.freeze({
+        type: 'PointLight',
+        data: Object.freeze({
+            color: Object.freeze([...(light.color ?? [1, 1, 1])]),
+            intensity: light.intensity ?? 1,
+            ...(light.range !== undefined ? { range: light.range } : {}),
+        }),
+    });
+
 const createMeshRendererSnapshot = (
     meshKey: string,
     materialKey: string | undefined
@@ -455,6 +482,34 @@ const createSamplerDefinition = (
 const resolveTextureImageIndex = (texture: GltfTextureJson): number | undefined =>
     texture.extensions?.KHR_texture_basisu?.source ?? texture.source;
 
+const resolveNodeLight = (
+    root: GltfRootJson,
+    node: GltfNodeJson,
+    nodeIndex: number
+): { readonly index: number; readonly light: GltfPunctualLightJson } | undefined => {
+    const lightIndex = node.extensions?.KHR_lights_punctual?.light;
+    if (lightIndex === undefined) {
+        return undefined;
+    }
+
+    const light = root.extensions?.KHR_lights_punctual?.lights?.[lightIndex];
+    if (!light) {
+        throw new GltfSchemaError(`Node ${nodeIndex} references missing punctual light ${lightIndex}`);
+    }
+
+    return Object.freeze({ index: lightIndex, light });
+};
+
+const scaleEmissiveFactor = (
+    value: readonly [number, number, number] | undefined,
+    strength: number
+): readonly [number, number, number] =>
+    Object.freeze([
+        (value?.[0] ?? 0) * strength,
+        (value?.[1] ?? 0) * strength,
+        (value?.[2] ?? 0) * strength,
+    ]) as readonly [number, number, number];
+
 const createDocumentName = (
     normalized: NormalizedGltfSource,
     explicitName: string | undefined
@@ -500,11 +555,13 @@ const createMaterialDefinition = (
     readonly doubleSided: boolean;
     readonly unlit: boolean;
 } => {
+    const emissiveStrength =
+        material.extensions?.KHR_materials_emissive_strength?.emissiveStrength ?? 1;
     const uniforms: Record<string, number | readonly number[]> = {
         _BaseColorFactor: material.pbrMetallicRoughness?.baseColorFactor ?? [1, 1, 1, 1],
         _MetallicFactor: material.pbrMetallicRoughness?.metallicFactor ?? 1,
         _RoughnessFactor: material.pbrMetallicRoughness?.roughnessFactor ?? 1,
-        _EmissiveFactor: material.emissiveFactor ?? [0, 0, 0],
+        _EmissiveFactor: scaleEmissiveFactor(material.emissiveFactor, emissiveStrength),
         _AlphaMode:
             material.alphaMode === 'MASK' ? 1 : material.alphaMode === 'BLEND' ? 2 : 0,
         _AlphaCutoff: material.alphaCutoff ?? 0.5,
@@ -619,7 +676,11 @@ const buildPrefabDefinition = (
     const nodeIds: string[] = [];
     const meshKeys = new Set<string>();
     const materialKeys = new Set<string>();
+    const diagnostics: AssetImportDiagnostic[] = [];
     let primaryCameraAssigned = false;
+    let primaryDirectionalAssigned = false;
+    let directionalLightCount = 0;
+    let pointLightCount = 0;
 
     const visitNode = (nodeIndex: number, parentNodeId: string | null): void => {
         const node = root.nodes?.[nodeIndex];
@@ -638,6 +699,7 @@ const buildPrefabDefinition = (
             node.mesh !== undefined ? materialKeysByMesh[node.mesh] ?? EMPTY_ARRAY : EMPTY_ARRAY;
         const transformComponent = createTransformSnapshot(node);
         const nodeName = sanitizeName(node.name, `Node ${nodeIndex}`);
+        const punctualLight = resolveNodeLight(root, node, nodeIndex);
         const cameraComponent =
             node.camera !== undefined
                 ? createCameraSnapshot(
@@ -648,15 +710,47 @@ const buildPrefabDefinition = (
                       sceneIndex === defaultSceneIndex && primaryCameraAssigned === false
                   )
                 : undefined;
+        const lightComponent =
+            punctualLight?.light.type === 'directional'
+                ? createDirectionalLightSnapshot(
+                      punctualLight.light,
+                      sceneIndex === defaultSceneIndex && primaryDirectionalAssigned === false
+                  )
+                : punctualLight?.light.type === 'point'
+                  ? createPointLightSnapshot(punctualLight.light)
+                  : undefined;
 
         if (cameraComponent && sceneIndex === defaultSceneIndex && primaryCameraAssigned === false) {
             primaryCameraAssigned = true;
+        }
+
+        if (
+            punctualLight?.light.type === 'directional' &&
+            sceneIndex === defaultSceneIndex &&
+            primaryDirectionalAssigned === false
+        ) {
+            primaryDirectionalAssigned = true;
+        }
+
+        if (punctualLight?.light.type === 'directional') {
+            directionalLightCount += 1;
+        } else if (punctualLight?.light.type === 'point') {
+            pointLightCount += 1;
+        } else if (punctualLight?.light.type === 'spot') {
+            diagnostics.push(
+                Object.freeze({
+                    level: 'warning',
+                    code: 'gltf.light.spot.unsupported',
+                    message: `Scene ${sceneIndex} node ${nodeIndex} references spot light ${punctualLight.index}, but Axrone does not import spot lights yet`,
+                } satisfies AssetImportDiagnostic)
+            );
         }
 
         if (primitives.length <= 1) {
             const components = Object.freeze([
                 transformComponent,
                 ...(cameraComponent ? [cameraComponent] : EMPTY_ARRAY),
+                ...(lightComponent ? [lightComponent] : EMPTY_ARRAY),
                 ...(primitives.length === 1
                     ? [
                           createMeshRendererSnapshot(
@@ -685,6 +779,7 @@ const buildPrefabDefinition = (
                     Object.freeze([
                         transformComponent,
                         ...(cameraComponent ? [cameraComponent] : EMPTY_ARRAY),
+                        ...(lightComponent ? [lightComponent] : EMPTY_ARRAY),
                     ])
                 )
             );
@@ -730,6 +825,26 @@ const buildPrefabDefinition = (
         visitNode(rootNode, null);
     }
 
+    if (directionalLightCount > 1) {
+        diagnostics.push(
+            Object.freeze({
+                level: 'warning',
+                code: 'gltf.light.directional.runtime-limit',
+                message: `Scene ${sceneIndex} imports ${directionalLightCount} directional lights, but Axrone currently shades only one directional light`,
+            } satisfies AssetImportDiagnostic)
+        );
+    }
+
+    if (pointLightCount > 1) {
+        diagnostics.push(
+            Object.freeze({
+                level: 'warning',
+                code: 'gltf.light.point.runtime-limit',
+                message: `Scene ${sceneIndex} imports ${pointLightCount} point lights, but Axrone currently shades only the first point light`,
+            } satisfies AssetImportDiagnostic)
+        );
+    }
+
     return {
         prefab: Object.freeze({
             id: `gltf/scene/${sceneIndex}`,
@@ -739,6 +854,7 @@ const buildPrefabDefinition = (
         nodeIds: Object.freeze(nodeIds),
         meshKeys: Object.freeze([...meshKeys]),
         materialKeys: Object.freeze([...materialKeys]),
+        diagnostics: Object.freeze(diagnostics),
     };
 };
 
@@ -1178,6 +1294,7 @@ export const createGltfImporter = <
                     meshKeysByMesh,
                     materialKeysByMesh
                 );
+                diagnostics.push(...built.diagnostics);
                 const key = String(createSubKey(`scene/${sceneIndex}/prefab`));
                 const asset = maybeFreeze(
                     {
@@ -1253,6 +1370,9 @@ export const createGltfImporter = <
                         sceneCount: sceneEntries.length,
                         nodeCount: ensureArray(normalized.json.nodes).length,
                         cameraCount: ensureArray(normalized.json.cameras).length,
+                        lightCount:
+                            ensureArray(normalized.json.extensions?.KHR_lights_punctual?.lights)
+                                .length,
                         meshCount: explicitMeshes.length,
                         primitiveCount: meshKeysByMesh.reduce(
                             (total, entries) => total + entries.length,

@@ -700,4 +700,173 @@ describe('glTF importer', () => {
             'gltf.extension.unsupported'
         );
     });
+
+    it('imports punctual lights that fit Axrone scene components and warns on unsupported or over-limit lights', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb({
+                ...createTriangleJson(),
+                extensionsUsed: ['KHR_lights_punctual'],
+                extensions: {
+                    KHR_lights_punctual: {
+                        lights: [
+                            {
+                                type: 'directional',
+                                color: [1, 0.95, 0.9],
+                                intensity: 4,
+                            },
+                            {
+                                type: 'point',
+                                color: [0.2, 0.6, 1],
+                                intensity: 12,
+                                range: 18,
+                            },
+                            {
+                                type: 'point',
+                                color: [1, 0.4, 0.2],
+                                intensity: 6,
+                            },
+                            {
+                                type: 'spot',
+                                intensity: 3,
+                                spot: {
+                                    innerConeAngle: 0.2,
+                                    outerConeAngle: 0.5,
+                                },
+                            },
+                        ],
+                    },
+                },
+                nodes: [
+                    {
+                        name: 'Sun',
+                        extensions: {
+                            KHR_lights_punctual: {
+                                light: 0,
+                            },
+                        },
+                    },
+                    {
+                        name: 'Lamp A',
+                        translation: [1, 2, 3],
+                        extensions: {
+                            KHR_lights_punctual: {
+                                light: 1,
+                            },
+                        },
+                    },
+                    {
+                        name: 'Lamp B',
+                        translation: [-1, 1, 0],
+                        extensions: {
+                            KHR_lights_punctual: {
+                                light: 2,
+                            },
+                        },
+                    },
+                    {
+                        name: 'Spot',
+                        extensions: {
+                            KHR_lights_punctual: {
+                                light: 3,
+                            },
+                        },
+                    },
+                    {
+                        name: 'Mesh Root',
+                        mesh: 0,
+                    },
+                ],
+                scenes: [
+                    {
+                        name: 'Main',
+                        nodes: [0, 1, 2, 3, 4],
+                    },
+                ],
+            } satisfies GltfRootJson, createBinaryBlob()),
+            uri: 'models/lit-scene.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+        const sunActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Sun');
+        const pointActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Lamp A');
+
+        expect(sunActor?.components).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'DirectionalLight',
+                    data: expect.objectContaining({
+                        primary: true,
+                        intensity: 4,
+                    }),
+                }),
+            ])
+        );
+        expect(pointActor?.components).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'PointLight',
+                    data: expect.objectContaining({
+                        intensity: 12,
+                        range: 18,
+                    }),
+                }),
+            ])
+        );
+        expect(receipt.primary.data.stats.lightCount).toBe(4);
+        expect(receipt.diagnostics).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'gltf.light.spot.unsupported',
+                    level: 'warning',
+                }),
+                expect.objectContaining({
+                    code: 'gltf.light.point.runtime-limit',
+                    level: 'warning',
+                }),
+            ])
+        );
+    });
+
+    it('applies KHR_materials_emissive_strength to imported material uniforms', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb({
+                ...createTriangleJson(),
+                extensionsUsed: ['KHR_materials_emissive_strength'],
+                materials: [
+                    {
+                        name: 'Emissive',
+                        emissiveFactor: [0.25, 0.5, 0.75],
+                        emissiveTexture: {
+                            index: 0,
+                        },
+                        extensions: {
+                            KHR_materials_emissive_strength: {
+                                emissiveStrength: 4,
+                            },
+                        },
+                    },
+                ],
+            } satisfies GltfRootJson, createBinaryBlob()),
+            uri: 'models/emissive-strength.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const material = receipt.assets.find((entry) => entry.kind === 'gltf.material');
+
+        expect(material?.data.definition.uniforms?._EmissiveFactor).toEqual([1, 2, 3]);
+        expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.extension.unsupported'
+        );
+    });
 });

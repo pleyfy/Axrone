@@ -27,6 +27,8 @@ export type {
     GltfMeshAsset,
     GltfMeshBounds,
     GltfNodeJson,
+    GltfPunctualLightJson,
+    GltfPunctualLightSpotJson,
     GltfPackageInput,
     GltfPackageResourceInput,
     GltfPackageSource,

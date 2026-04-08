@@ -46,6 +46,7 @@ export interface GltfDocumentStats {
     readonly sceneCount: number;
     readonly nodeCount: number;
     readonly cameraCount: number;
+    readonly lightCount: number;
     readonly meshCount: number;
     readonly primitiveCount: number;
     readonly materialCount: number;
@@ -448,14 +449,37 @@ export interface GltfMaterialJson {
     readonly alphaCutoff?: number;
     readonly doubleSided?: boolean;
     readonly extensions?: {
+        readonly KHR_materials_emissive_strength?: {
+            readonly emissiveStrength?: number;
+        };
         readonly KHR_materials_unlit?: Readonly<Record<string, never>>;
         readonly [extensionName: string]: unknown;
     };
 }
 
+export interface GltfPunctualLightSpotJson {
+    readonly innerConeAngle?: number;
+    readonly outerConeAngle?: number;
+}
+
+export interface GltfPunctualLightJson {
+    readonly type: 'directional' | 'point' | 'spot';
+    readonly color?: readonly [number, number, number];
+    readonly intensity?: number;
+    readonly range?: number;
+    readonly spot?: GltfPunctualLightSpotJson;
+    readonly name?: string;
+}
+
 export interface GltfNodeJson {
     readonly camera?: number;
     readonly children?: readonly number[];
+    readonly extensions?: {
+        readonly KHR_lights_punctual?: {
+            readonly light: number;
+        };
+        readonly [extensionName: string]: unknown;
+    };
     readonly skin?: number;
     readonly matrix?: readonly [
         number,
@@ -494,6 +518,12 @@ export interface GltfRootJson {
     readonly scene?: number;
     readonly scenes?: readonly GltfSceneJson[];
     readonly cameras?: readonly GltfCameraJson[];
+    readonly extensions?: {
+        readonly KHR_lights_punctual?: {
+            readonly lights: readonly GltfPunctualLightJson[];
+        };
+        readonly [extensionName: string]: unknown;
+    };
     readonly nodes?: readonly GltfNodeJson[];
     readonly meshes?: readonly GltfMeshJson[];
     readonly skins?: readonly GltfSkinJson[];
