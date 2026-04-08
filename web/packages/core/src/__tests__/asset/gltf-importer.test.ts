@@ -481,4 +481,131 @@ describe('glTF importer', () => {
             })
         ).rejects.toThrow('Unsupported required glTF extensions: KHR_materials_clearcoat');
     });
+
+    it('imports glTF cameras into prefab snapshots and marks the default scene camera as primary', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb({
+                ...createTriangleJson(),
+                cameras: [
+                    {
+                        type: 'perspective',
+                        perspective: {
+                            yfov: Math.PI / 3,
+                            znear: 0.5,
+                            zfar: 250,
+                        },
+                        name: 'Main Camera',
+                    },
+                ],
+                nodes: [
+                    {
+                        name: 'Camera Root',
+                        camera: 0,
+                        translation: [0, 2, 5],
+                    },
+                    {
+                        name: 'Mesh Root',
+                        mesh: 0,
+                    },
+                ],
+                scenes: [
+                    {
+                        name: 'Main',
+                        nodes: [0, 1],
+                    },
+                ],
+            } satisfies GltfRootJson, createBinaryBlob()),
+            uri: 'models/camera-scene.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+        const cameraActor = prefab?.data.definition.actors.find(
+            (actor) => actor.name === 'Camera Root'
+        );
+        const cameraComponent = cameraActor?.components.find(
+            (component) => component.type === 'Camera'
+        );
+
+        expect(cameraActor?.components).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: 'Transform' }),
+                expect.objectContaining({ type: 'Camera' }),
+            ])
+        );
+        expect(cameraComponent?.data).toMatchObject({
+            primary: true,
+            near: 0.5,
+            far: 250,
+            orthographic: false,
+        });
+        expect((cameraComponent?.data as { fieldOfView?: number } | undefined)?.fieldOfView).toBeCloseTo(60, 10);
+        expect(receipt.primary.data.stats.cameraCount).toBe(1);
+    });
+
+    it('warns when glTF animations and skins are present without runtime support', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb({
+                ...createTriangleJson(),
+                skins: [
+                    {
+                        joints: [0],
+                    },
+                ],
+                nodes: [
+                    {
+                        name: 'Root',
+                        mesh: 0,
+                        skin: 0,
+                    },
+                ],
+                animations: [
+                    {
+                        samplers: [
+                            {
+                                input: 0,
+                                output: 1,
+                            },
+                        ],
+                        channels: [
+                            {
+                                sampler: 0,
+                                target: {
+                                    node: 0,
+                                    path: 'translation',
+                                },
+                            },
+                        ],
+                    },
+                ],
+            } satisfies GltfRootJson, createBinaryBlob()),
+            uri: 'models/unsupported-features.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        expect(receipt.diagnostics).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'gltf.skin.unsupported',
+                    level: 'warning',
+                }),
+                expect.objectContaining({
+                    code: 'gltf.animation.unsupported',
+                    level: 'warning',
+                }),
+            ])
+        );
+        expect(receipt.primary.data.stats.skinCount).toBe(1);
+        expect(receipt.primary.data.stats.animationCount).toBe(1);
+    });
 });

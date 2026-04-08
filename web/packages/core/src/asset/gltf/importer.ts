@@ -21,6 +21,7 @@ import { buildMeshDefinition, collectPrimitiveDiagnostics } from './internal/mes
 import type {
     GltfAssetSchema,
     GltfAssetSchemaLike,
+    GltfCameraJson,
     GltfDocumentAsset,
     GltfDocumentSceneAsset,
     GltfImporter,
@@ -51,6 +52,7 @@ const DEFAULT_SAMPLER_ID = 'gltf/sampler/default';
 const DEFAULT_MATERIAL_KEY_SUFFIX = 'material/default';
 const DEFAULT_MATERIAL_NAME = 'Default Material';
 const DEFAULT_DOCUMENT_NAME = 'glTF Document';
+const RADIANS_TO_DEGREES = 180 / Math.PI;
 const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
     'KHR_materials_unlit',
     'KHR_mesh_quantization',
@@ -136,6 +138,34 @@ const collectExtensionDiagnostics = (root: GltfRootJson): readonly AssetImportDi
                     } satisfies AssetImportDiagnostic)
             )
     );
+};
+
+const collectFeatureDiagnostics = (root: GltfRootJson): readonly AssetImportDiagnostic[] => {
+    const diagnostics: AssetImportDiagnostic[] = [];
+    const skinCount = root.skins?.length ?? 0;
+    const animationCount = root.animations?.length ?? 0;
+
+    if (skinCount > 0) {
+        diagnostics.push(
+            Object.freeze({
+                level: 'warning',
+                code: 'gltf.skin.unsupported',
+                message: `glTF defines ${skinCount} skin${skinCount === 1 ? '' : 's'}, but Axrone does not import skeletal data yet`,
+            } satisfies AssetImportDiagnostic)
+        );
+    }
+
+    if (animationCount > 0) {
+        diagnostics.push(
+            Object.freeze({
+                level: 'warning',
+                code: 'gltf.animation.unsupported',
+                message: `glTF defines ${animationCount} animation clip${animationCount === 1 ? '' : 's'}, but Axrone does not import animation data yet`,
+            } satisfies AssetImportDiagnostic)
+        );
+    }
+
+    return Object.freeze(diagnostics);
 };
 
 const mapWrapMode = (
@@ -319,6 +349,45 @@ const createTransformSnapshot = (node: GltfNodeJson): SceneComponentSnapshot => 
             position: Object.freeze([...transform.position]),
             rotation: Object.freeze([...transform.rotation]),
             scale: Object.freeze([...transform.scale]),
+        }),
+    });
+};
+
+const createCameraSnapshot = (
+    camera: GltfCameraJson,
+    isPrimary: boolean
+): SceneComponentSnapshot => {
+    if (camera.type === 'orthographic') {
+        if (!camera.orthographic) {
+            throw new GltfSchemaError('Orthographic glTF camera is missing orthographic settings');
+        }
+
+        return Object.freeze({
+            type: 'Camera',
+            data: Object.freeze({
+                primary: isPrimary,
+                near: camera.orthographic.znear,
+                far: camera.orthographic.zfar,
+                orthographic: true,
+                orthographicSize: camera.orthographic.ymag,
+            }),
+        });
+    }
+
+    if (!camera.perspective) {
+        throw new GltfSchemaError('Perspective glTF camera is missing perspective settings');
+    }
+
+    return Object.freeze({
+        type: 'Camera',
+        data: Object.freeze({
+            primary: isPrimary,
+            near: camera.perspective.znear,
+            ...(camera.perspective.zfar !== undefined
+                ? { far: camera.perspective.zfar }
+                : {}),
+            fieldOfView: camera.perspective.yfov * RADIANS_TO_DEGREES,
+            orthographic: false,
         }),
     });
 };
@@ -531,6 +600,7 @@ const createActorSnapshot = (
 const buildPrefabDefinition = (
     root: GltfRootJson,
     sceneIndex: number,
+    defaultSceneIndex: number,
     meshKeysByMesh: readonly (readonly string[])[],
     materialKeysByMesh: readonly (readonly (string | undefined)[])[]
 ): PrefabBuildResult => {
@@ -544,6 +614,7 @@ const buildPrefabDefinition = (
     const nodeIds: string[] = [];
     const meshKeys = new Set<string>();
     const materialKeys = new Set<string>();
+    let primaryCameraAssigned = false;
 
     const visitNode = (nodeIndex: number, parentNodeId: string | null): void => {
         const node = root.nodes?.[nodeIndex];
@@ -562,18 +633,34 @@ const buildPrefabDefinition = (
             node.mesh !== undefined ? materialKeysByMesh[node.mesh] ?? EMPTY_ARRAY : EMPTY_ARRAY;
         const transformComponent = createTransformSnapshot(node);
         const nodeName = sanitizeName(node.name, `Node ${nodeIndex}`);
+        const cameraComponent =
+            node.camera !== undefined
+                ? createCameraSnapshot(
+                      root.cameras?.[node.camera] ??
+                          (() => {
+                              throw new GltfSchemaError(`Missing camera ${node.camera}`);
+                          })(),
+                      sceneIndex === defaultSceneIndex && primaryCameraAssigned === false
+                  )
+                : undefined;
+
+        if (cameraComponent && sceneIndex === defaultSceneIndex && primaryCameraAssigned === false) {
+            primaryCameraAssigned = true;
+        }
 
         if (primitives.length <= 1) {
-            const components =
-                primitives.length === 1
-                    ? Object.freeze([
-                          transformComponent,
+            const components = Object.freeze([
+                transformComponent,
+                ...(cameraComponent ? [cameraComponent] : EMPTY_ARRAY),
+                ...(primitives.length === 1
+                    ? [
                           createMeshRendererSnapshot(
                               primitives[0]!,
                               primitiveMaterials[0]
                           ),
-                      ])
-                    : Object.freeze([transformComponent]);
+                      ]
+                    : EMPTY_ARRAY),
+            ]);
 
             actors.push(createActorSnapshot(baseNodeId, parentNodeId, nodeName, components));
             nodeIds.push(baseNodeId);
@@ -590,7 +677,10 @@ const buildPrefabDefinition = (
                     baseNodeId,
                     parentNodeId,
                     nodeName,
-                    Object.freeze([transformComponent])
+                    Object.freeze([
+                        transformComponent,
+                        ...(cameraComponent ? [cameraComponent] : EMPTY_ARRAY),
+                    ])
                 )
             );
             nodeIds.push(baseNodeId);
@@ -861,7 +951,10 @@ export const createGltfImporter = <
             assertSupportedRequiredExtensions(normalized.json);
             const runtime = new GltfResourceRuntime(normalized, source, options.resourceResolver);
             const accessors = new GltfAccessorRuntime(runtime);
-            const diagnostics: AssetImportDiagnostic[] = [...collectExtensionDiagnostics(normalized.json)];
+            const diagnostics: AssetImportDiagnostic[] = [
+                ...collectExtensionDiagnostics(normalized.json),
+                ...collectFeatureDiagnostics(normalized.json),
+            ];
             const textureUsageMap = collectTextureUsages(normalized.json);
             const explicitTextures = normalized.json.textures ?? EMPTY_ARRAY;
             const explicitMaterials = normalized.json.materials ?? EMPTY_ARRAY;
@@ -1065,12 +1158,17 @@ export const createGltfImporter = <
                               ),
                           }),
                       ]);
+            const defaultSceneIndex = Math.min(
+                Math.max(normalized.json.scene ?? 0, 0),
+                Math.max(0, scenes.length - 1)
+            );
             const sceneEntries: GltfDocumentSceneAsset[] = [];
 
             for (let sceneIndex = 0; sceneIndex < scenes.length; sceneIndex += 1) {
                 const built = buildPrefabDefinition(
                     normalized.json,
                     sceneIndex,
+                    defaultSceneIndex,
                     meshKeysByMesh,
                     materialKeysByMesh
                 );
@@ -1129,10 +1227,7 @@ export const createGltfImporter = <
                     ...(normalized.json.asset.copyright
                         ? { copyright: normalized.json.asset.copyright }
                         : {}),
-                    defaultScene: Math.min(
-                        Math.max(normalized.json.scene ?? 0, 0),
-                        Math.max(0, sceneEntries.length - 1)
-                    ),
+                    defaultScene: defaultSceneIndex,
                     scenes: Object.freeze(sceneEntries),
                     meshKeys: Object.freeze(meshKeysByMesh.flat()),
                     materialKeys: Object.freeze(
@@ -1151,6 +1246,7 @@ export const createGltfImporter = <
                     stats: Object.freeze({
                         sceneCount: sceneEntries.length,
                         nodeCount: ensureArray(normalized.json.nodes).length,
+                        cameraCount: ensureArray(normalized.json.cameras).length,
                         meshCount: explicitMeshes.length,
                         primitiveCount: meshKeysByMesh.reduce(
                             (total, entries) => total + entries.length,
@@ -1159,6 +1255,8 @@ export const createGltfImporter = <
                         materialCount:
                             explicitMaterials.length + (defaultMaterialKey ? 1 : 0),
                         textureCount: textureKeys.length,
+                        skinCount: ensureArray(normalized.json.skins).length,
+                        animationCount: ensureArray(normalized.json.animations).length,
                     }),
                 } satisfies GltfDocumentAsset,
                 freeze

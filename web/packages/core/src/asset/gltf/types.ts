@@ -45,10 +45,13 @@ export interface GltfDocumentSceneAsset {
 export interface GltfDocumentStats {
     readonly sceneCount: number;
     readonly nodeCount: number;
+    readonly cameraCount: number;
     readonly meshCount: number;
     readonly primitiveCount: number;
     readonly materialCount: number;
     readonly textureCount: number;
+    readonly skinCount: number;
+    readonly animationCount: number;
 }
 
 export interface GltfMeshBounds {
@@ -370,6 +373,56 @@ export interface GltfTextureJson {
     readonly name?: string;
 }
 
+export interface GltfCameraPerspectiveJson {
+    readonly aspectRatio?: number;
+    readonly yfov: number;
+    readonly zfar?: number;
+    readonly znear: number;
+}
+
+export interface GltfCameraOrthographicJson {
+    readonly xmag: number;
+    readonly ymag: number;
+    readonly zfar: number;
+    readonly znear: number;
+}
+
+export interface GltfCameraJson {
+    readonly type: 'perspective' | 'orthographic';
+    readonly perspective?: GltfCameraPerspectiveJson;
+    readonly orthographic?: GltfCameraOrthographicJson;
+    readonly name?: string;
+}
+
+export interface GltfSkinJson {
+    readonly inverseBindMatrices?: number;
+    readonly skeleton?: number;
+    readonly joints: readonly number[];
+    readonly name?: string;
+}
+
+export interface GltfAnimationSamplerJson {
+    readonly input: number;
+    readonly interpolation?: 'LINEAR' | 'STEP' | 'CUBICSPLINE';
+    readonly output: number;
+}
+
+export interface GltfAnimationChannelTargetJson {
+    readonly node?: number;
+    readonly path: 'translation' | 'rotation' | 'scale' | 'weights';
+}
+
+export interface GltfAnimationChannelJson {
+    readonly sampler: number;
+    readonly target: GltfAnimationChannelTargetJson;
+}
+
+export interface GltfAnimationJson {
+    readonly channels: readonly GltfAnimationChannelJson[];
+    readonly samplers: readonly GltfAnimationSamplerJson[];
+    readonly name?: string;
+}
+
 export interface GltfPbrMetallicRoughnessJson {
     readonly baseColorFactor?: readonly [number, number, number, number];
     readonly baseColorTexture?: GltfTextureBindingJson;
@@ -434,8 +487,11 @@ export interface GltfRootJson {
     readonly asset: GltfRootAssetInfoJson;
     readonly scene?: number;
     readonly scenes?: readonly GltfSceneJson[];
+    readonly cameras?: readonly GltfCameraJson[];
     readonly nodes?: readonly GltfNodeJson[];
     readonly meshes?: readonly GltfMeshJson[];
+    readonly skins?: readonly GltfSkinJson[];
+    readonly animations?: readonly GltfAnimationJson[];
     readonly accessors?: readonly GltfAccessorJson[];
     readonly bufferViews?: readonly GltfBufferViewJson[];
     readonly buffers?: readonly GltfBufferJson[];
