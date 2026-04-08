@@ -23,6 +23,8 @@
         "@axrone/numeric": "^0.0.1",
         "@axrone/random": "^0.0.1",
         "@axrone/utility": "^0.0.1",
+        "@loaders.gl/core": "^4.4.1",
+        "@loaders.gl/textures": "^4.4.1",
         "draco3dgltf": "^1.5.7",
         "meshoptimizer": "^1.0.1"
     }
