@@ -43,8 +43,12 @@ export const DEFAULT_INPUT_MESSAGE_RESOLVER: InputMessageResolver = (
             return `Invalid input snapshot: ${descriptor.reason}`;
         case 'input.invalid-target':
             return `Invalid input target: ${formatUnknown(descriptor.value)}`;
+        case 'input.invalid-user':
+            return `Invalid input user: ${formatUnknown(descriptor.value)}`;
         case 'input.context.conflict':
             return `Input context "${descriptor.id}" already exists`;
+        case 'input.user.conflict':
+            return `Input user "${descriptor.id}" already exists`;
         case 'input.disposed':
             return 'Input system has been disposed';
         case 'input.rebind.timeout':
@@ -102,6 +106,15 @@ export class InputContextError extends InputError {
     constructor(code: 'input.invalid-context' | 'input.context.conflict', contextId: string, message: string, options?: ErrorOptions) {
         super('InputContextError', code, message, options);
         this.contextId = contextId;
+    }
+}
+
+export class InputUserError extends InputError {
+    readonly userId: string;
+
+    constructor(code: 'input.invalid-user' | 'input.user.conflict', userId: string, message: string, options?: ErrorOptions) {
+        super('InputUserError', code, message, options);
+        this.userId = userId;
     }
 }
 

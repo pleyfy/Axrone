@@ -141,6 +141,7 @@ export type InputActionDefinition =
 export type InputActionSchema = Readonly<Record<string, InputActionDefinition>>;
 export type InputActionName<TSchema extends InputActionSchema> = Extract<keyof TSchema, string>;
 export type InputContextId = string & { readonly __inputContextIdBrand: unique symbol };
+export type InputUserId = string & { readonly __inputUserIdBrand: unique symbol };
 export type InputControlPath = string & { readonly __inputControlPathBrand: unique symbol };
 
 export type InputTouchSelectorToken = 'any' | 'primary' | `${number}`;
@@ -160,6 +161,36 @@ export type GamepadButtonControlPath =
     `gamepad/${InputGamepadSelectorToken}/button/${number}`;
 export type GamepadAxisControlPath = `gamepad/${InputGamepadSelectorToken}/axis/${number}`;
 export type GamepadConnectionControlPath = `gamepad/${InputGamepadSelectorToken}/connected`;
+export type GamepadSemanticButtonName =
+    | 'south'
+    | 'east'
+    | 'west'
+    | 'north'
+    | 'left-shoulder'
+    | 'right-shoulder'
+    | 'left-trigger-button'
+    | 'right-trigger-button'
+    | 'select'
+    | 'start'
+    | 'left-stick-press'
+    | 'right-stick-press'
+    | 'dpad-up'
+    | 'dpad-down'
+    | 'dpad-left'
+    | 'dpad-right'
+    | 'guide'
+    | 'touchpad';
+export type GamepadSemanticAxisName =
+    | 'left-stick/x'
+    | 'left-stick/y'
+    | 'right-stick/x'
+    | 'right-stick/y'
+    | 'left-trigger'
+    | 'right-trigger';
+export type GamepadSemanticButtonControlPath =
+    `gamepad/${InputGamepadSelectorToken}/${GamepadSemanticButtonName}`;
+export type GamepadSemanticAxisControlPath =
+    `gamepad/${InputGamepadSelectorToken}/${GamepadSemanticAxisName}`;
 export type KnownInputControlPath =
     | KeyboardControlPath
     | MouseButtonControlPath
@@ -172,7 +203,9 @@ export type KnownInputControlPath =
     | TouchAggregateControlPath
     | GamepadButtonControlPath
     | GamepadAxisControlPath
-    | GamepadConnectionControlPath;
+    | GamepadConnectionControlPath
+    | GamepadSemanticButtonControlPath
+    | GamepadSemanticAxisControlPath;
 
 export interface ParsedKeyboardControlPath {
     readonly device: 'keyboard';
@@ -320,6 +353,7 @@ export interface InputContextDefinition<TSchema extends InputActionSchema> {
     readonly priority?: number;
     readonly enabled?: boolean;
     readonly capture?: InputContextCapture;
+    readonly user?: string | InputUserId;
     readonly bindings?: InputActionBindings<TSchema>;
 }
 
@@ -328,6 +362,7 @@ export interface InputContextState {
     readonly priority: number;
     readonly enabled: boolean;
     readonly capture: InputContextCapture;
+    readonly user?: InputUserId;
 }
 
 export type InputActionValue<TDefinition extends InputActionDefinition> =
@@ -517,6 +552,17 @@ export interface InputFocusSourceEvent {
     readonly focused: boolean;
 }
 
+export interface InputTextSourceEvent {
+    readonly type: 'text';
+    readonly text: string;
+}
+
+export interface InputCompositionSourceEvent {
+    readonly type: 'composition';
+    readonly phase: 'start' | 'update' | 'end';
+    readonly text: string;
+}
+
 export type InputSourceEvent =
     | InputKeyboardSourceEvent
     | InputMouseButtonSourceEvent
@@ -524,7 +570,9 @@ export type InputSourceEvent =
     | InputMouseWheelSourceEvent
     | InputTouchSourceEvent
     | InputGamepadSourceEvent
-    | InputFocusSourceEvent;
+    | InputFocusSourceEvent
+    | InputTextSourceEvent
+    | InputCompositionSourceEvent;
 
 export interface InputBindingReplaceRequest<
     TSchema extends InputActionSchema,
@@ -614,6 +662,7 @@ export interface InputContextSnapshot<TSchema extends InputActionSchema = InputA
     readonly priority: number;
     readonly enabled: boolean;
     readonly capture: InputContextCapture;
+    readonly user?: string;
     readonly bindings: {
         readonly [TAction in InputActionName<TSchema>]?: readonly InputBindingForAction<
             TSchema[TAction]
@@ -621,10 +670,51 @@ export interface InputContextSnapshot<TSchema extends InputActionSchema = InputA
     };
 }
 
+export type InputOwnedDeviceDefinition =
+    | {
+          readonly device: 'keyboard' | 'mouse' | 'touch';
+      }
+    | {
+          readonly device: 'gamepad';
+          readonly index: number;
+      };
+
+export interface InputUserDefinition {
+    readonly id: string;
+    readonly enabled?: boolean;
+    readonly devices?: readonly InputOwnedDeviceDefinition[];
+}
+
+export interface InputUserState {
+    readonly id: InputUserId;
+    readonly enabled: boolean;
+    readonly devices: readonly InputOwnedDeviceDefinition[];
+}
+
+export interface InputUserSnapshot {
+    readonly id: string;
+    readonly enabled: boolean;
+    readonly devices: readonly InputOwnedDeviceDefinition[];
+}
+
+export interface InputTextEntry {
+    readonly text: string;
+    readonly frame: number;
+    readonly timestamp: number;
+}
+
+export interface InputCompositionState {
+    readonly active: boolean;
+    readonly text: string;
+    readonly frame: number;
+    readonly timestamp: number;
+}
+
 export interface InputSystemSnapshot<TSchema extends InputActionSchema = InputActionSchema> {
     readonly version: 1;
     readonly locale: string;
     readonly capturedAtEpochMs: number;
+    readonly users?: readonly InputUserSnapshot[];
     readonly contexts: readonly InputContextSnapshot<TSchema>[];
 }
 
@@ -638,6 +728,15 @@ export interface InputGamepadOptions {
     readonly provider?: Pick<Navigator, 'getGamepads'>;
 }
 
+export interface InputPointerLockOptions {
+    readonly enabled?: boolean;
+    readonly requestOnMouseDown?: boolean;
+    readonly exitOnDispose?: boolean;
+    readonly useRawMovement?: boolean;
+}
+
+export type InputBrowserCoordinateSpace = 'client' | 'element' | 'viewport';
+
 export interface InputBrowserTarget {
     readonly window?: Window & typeof globalThis;
     readonly document?: Document;
@@ -645,12 +744,21 @@ export interface InputBrowserTarget {
     readonly capture?: boolean;
     readonly passive?: boolean;
     readonly preventDefault?: boolean;
+    readonly coordinateSpace?: InputBrowserCoordinateSpace;
+    readonly wheelPixelsPerLine?: number;
+    readonly wheelPixelsPerPage?: number;
+    readonly pointerLock?: boolean | InputPointerLockOptions;
 }
 
-export interface InputAttachment extends IDisposable {}
+export interface InputAttachment extends IDisposable {
+    readonly isPointerLocked?: boolean;
+    requestPointerLock?(): boolean;
+    exitPointerLock?(): boolean;
+}
 
 export interface InputSystemOptions<TSchema extends InputActionSchema> {
     readonly schema: TSchema;
+    readonly users?: readonly InputUserDefinition[];
     readonly contexts?: readonly InputContextDefinition<TSchema>[];
     readonly locale?: string;
     readonly gamepad?: InputGamepadOptions;
@@ -659,8 +767,9 @@ export interface InputSystemOptions<TSchema extends InputActionSchema> {
 }
 
 export type InputValidationMessageCode =
-    | `input.invalid-${'action' | 'binding' | 'context' | 'control-path' | 'priority' | 'rebind' | 'slot' | 'snapshot' | 'target'}`
-    | 'input.context.conflict';
+    | `input.invalid-${'action' | 'binding' | 'context' | 'control-path' | 'priority' | 'rebind' | 'slot' | 'snapshot' | 'target' | 'user'}`
+    | 'input.context.conflict'
+    | 'input.user.conflict';
 
 export type InputRuntimeMessageCode = 'input.disposed' | 'input.rebind.timeout';
 export type InputMessageCode = InputValidationMessageCode | InputRuntimeMessageCode;
@@ -703,7 +812,15 @@ export type InputMessageDescriptor =
           readonly value: unknown;
       }
     | {
+          readonly code: 'input.invalid-user';
+          readonly value: unknown;
+      }
+    | {
           readonly code: 'input.context.conflict';
+          readonly id: string;
+      }
+    | {
+          readonly code: 'input.user.conflict';
           readonly id: string;
       }
     | {

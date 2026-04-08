@@ -15,6 +15,8 @@ import type {
     InputRebindingHandlers,
     InputRebindingRequest,
     InputSystemSnapshot,
+    InputOwnedDeviceDefinition,
+    InputUserId,
     InputVector2,
     InputVector2State,
 } from '../types';
@@ -317,8 +319,16 @@ export interface InternalContext<TSchema extends InputActionSchema> {
     priority: number;
     enabled: boolean;
     capture: InputContextCapture;
+    user?: InputUserId;
     sequence: number;
     readonly actions: Map<number, InternalContextAction<TSchema>>;
+}
+
+export interface InternalInputUser {
+    readonly id: InputUserId;
+    enabled: boolean;
+    sequence: number;
+    readonly devices: Map<string, InputOwnedDeviceDefinition>;
 }
 
 export interface MutableTouchPoint {
