@@ -232,6 +232,7 @@ export const createMockGL = (canvas: HTMLCanvasElement) => {
         }),
         texImage2D: vi.fn(),
         texImage3D: vi.fn(),
+        compressedTexImage2D: vi.fn(),
         texSubImage2D: vi.fn(),
         texSubImage3D: vi.fn(),
         generateMipmap: vi.fn(),

@@ -213,6 +213,51 @@ const createGlb = (json: GltfRootJson, bin: Uint8Array): Uint8Array => {
     return glb;
 };
 
+const writeUint64 = (view: DataView, byteOffset: number, value: number): void => {
+    view.setUint32(byteOffset, value >>> 0, true);
+    view.setUint32(byteOffset + 4, Math.floor(value / 0x1_0000_0000), true);
+};
+
+const createKtx2Texture = (
+    levels: readonly Uint8Array[],
+    options: {
+        readonly vkFormat?: number;
+        readonly width?: number;
+        readonly height?: number;
+    } = {}
+): Uint8Array => {
+    const vkFormat = options.vkFormat ?? 157;
+    const width = options.width ?? 4;
+    const height = options.height ?? 4;
+    const headerLength = 80;
+    const levelIndexLength = levels.length * 24;
+    const dataOffset = headerLength + levelIndexLength;
+    const totalLength = dataOffset + levels.reduce((total, level) => total + level.byteLength, 0);
+    const bytes = new Uint8Array(totalLength);
+    const view = new DataView(bytes.buffer);
+
+    bytes.set([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+    view.setUint32(12, vkFormat, true);
+    view.setUint32(16, 1, true);
+    view.setUint32(20, width, true);
+    view.setUint32(24, height, true);
+    view.setUint32(36, 1, true);
+    view.setUint32(40, levels.length, true);
+
+    let payloadOffset = dataOffset;
+    for (let index = 0; index < levels.length; index += 1) {
+        const level = levels[index]!;
+        const entryOffset = headerLength + index * 24;
+        writeUint64(view, entryOffset, payloadOffset);
+        writeUint64(view, entryOffset + 8, level.byteLength);
+        writeUint64(view, entryOffset + 16, level.byteLength);
+        bytes.set(level, payloadOffset);
+        payloadOffset += level.byteLength;
+    }
+
+    return bytes;
+};
+
 const createExtendedAttributeJson = (): GltfRootJson => ({
     ...createTriangleJson(),
     extensionsUsed: ['KHR_materials_clearcoat'],
@@ -1126,6 +1171,93 @@ describe('glTF importer', () => {
                     source: expect.objectContaining({
                         kind: 'bytes',
                         mimeType: 'image/png',
+                    }),
+                }),
+            ])
+        );
+    });
+
+    it('builds scene snapshots that preserve runtime-ready KTX2 textures as compressed scene sources', async () => {
+        const binary = createBinaryBlob();
+        const ktx2 = createKtx2Texture([
+            new Uint8Array([
+                1, 2, 3, 4, 5, 6, 7, 8,
+                9, 10, 11, 12, 13, 14, 15, 16,
+            ]),
+            new Uint8Array([
+                16, 15, 14, 13, 12, 11, 10, 9,
+                8, 7, 6, 5, 4, 3, 2, 1,
+            ]),
+        ]);
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [
+                createGltfImporter({
+                    resourceResolver: ({ uri }) => {
+                        if (uri === 'mesh.bin') {
+                            return {
+                                uri,
+                                bytes: binary,
+                                mimeType: 'application/octet-stream',
+                            };
+                        }
+
+                        if (uri === 'albedo.ktx2') {
+                            return {
+                                uri,
+                                bytes: ktx2,
+                                mimeType: 'image/ktx2',
+                            };
+                        }
+
+                        return undefined;
+                    },
+                }),
+            ],
+            stages: [
+                createGltfTextureTranscodeStage({
+                    registry: new GltfTextureTranscoderRegistry([
+                        createPassthroughGltfTextureTranscoder(TextureFormat.ASTC_4x4),
+                    ]),
+                }),
+            ],
+        });
+
+        const receipt = await database.import({
+            kind: 'text',
+            data: JSON.stringify(createTriangleJson('mesh.bin', 'albedo.ktx2', 'image/ktx2')),
+            uri: 'assets/runtime-compressed.gltf',
+            mimeType: 'model/gltf+json',
+        });
+
+        const built = createGltfSceneSnapshot(database, receipt.primary.reference);
+        const texture = receipt.assets.find((entry) => entry.kind === 'gltf.texture');
+
+        expect(built.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.texture.runtime-fallback'
+        );
+        expect(built.snapshot.textures).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: texture?.key,
+                    format: TextureFormat.ASTC_4x4,
+                    generateMipmaps: false,
+                    source: expect.objectContaining({
+                        kind: 'compressed',
+                        container: 'ktx2',
+                        levels: [
+                            expect.objectContaining({
+                                level: 0,
+                                width: 4,
+                                height: 4,
+                                byteLength: 16,
+                            }),
+                            expect.objectContaining({
+                                level: 1,
+                                width: 2,
+                                height: 2,
+                                byteLength: 16,
+                            }),
+                        ],
                     }),
                 }),
             ])

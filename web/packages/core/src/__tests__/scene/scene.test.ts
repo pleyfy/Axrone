@@ -1,7 +1,8 @@
 import { Vec3 } from '@axrone/numeric';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Component } from '../../component-system/core/component';
 import { Transform } from '../../component-system/components/transform';
+import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
 import {
     createMockGL,
     createSceneOptions,
@@ -273,6 +274,81 @@ void main() {
         } finally {
             (scene as unknown as { _loadImageFromBytes: typeof loadImageFromBytes })._loadImageFromBytes =
                 loadImageFromBytes;
+            scene.dispose();
+        }
+    });
+
+    it('uploads compressed texture mip chains when runtime-ready blocks are provided', async () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const gl = scene.gl as unknown as ReturnType<typeof createMockGL>;
+        const getExtension = gl.getExtension;
+
+        gl.getExtension = vi.fn((name: string) =>
+            name === 'WEBGL_compressed_texture_astc' ? {} : null
+        ) as typeof gl.getExtension;
+        (gl.compressedTexImage2D as unknown as { mockClear: () => void }).mockClear();
+        (gl.generateMipmap as unknown as { mockClear: () => void }).mockClear();
+
+        try {
+            const texture = await scene.registerTexture({
+                id: 'compressed-texture',
+                format: TextureFormat.ASTC_4x4,
+                generateMipmaps: false,
+                source: {
+                    kind: 'compressed',
+                    bytes: new Uint8Array([
+                        1, 2, 3, 4, 5, 6, 7, 8,
+                        9, 10, 11, 12, 13, 14, 15, 16,
+                        17, 18, 19, 20, 21, 22, 23, 24,
+                        25, 26, 27, 28, 29, 30, 31, 32,
+                    ]),
+                    container: 'ktx2',
+                    levels: [
+                        {
+                            level: 0,
+                            width: 4,
+                            height: 4,
+                            byteOffset: 0,
+                            byteLength: 16,
+                        },
+                        {
+                            level: 1,
+                            width: 2,
+                            height: 2,
+                            byteOffset: 16,
+                            byteLength: 16,
+                        },
+                    ],
+                },
+            });
+
+            expect(texture.width).toBe(4);
+            expect(texture.height).toBe(4);
+            expect(gl.compressedTexImage2D).toHaveBeenCalledTimes(2);
+            expect(gl.compressedTexImage2D).toHaveBeenNthCalledWith(
+                1,
+                expect.any(Number),
+                0,
+                0x93b0,
+                4,
+                4,
+                0,
+                expect.any(Uint8Array)
+            );
+            expect(gl.compressedTexImage2D).toHaveBeenNthCalledWith(
+                2,
+                expect.any(Number),
+                1,
+                0x93b0,
+                2,
+                2,
+                0,
+                expect.any(Uint8Array)
+            );
+            expect(gl.generateMipmap).not.toHaveBeenCalled();
+        } finally {
+            gl.getExtension = getExtension;
             scene.dispose();
         }
     });
