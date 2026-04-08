@@ -1,7 +1,9 @@
 import type {
     CustomRenderCommand,
+    ImageRenderCommand,
     RectLike,
     SizeLike,
+    UIImageSource,
     UIFrame,
     UIFrameProducer,
     UIFrameSink,
@@ -11,6 +13,8 @@ import type { GameLoop, RenderPipelineBackend, Scene } from '@axrone/core';
 export interface WebGL2UIRendererStatistics {
     readonly drawCalls: number;
     readonly quadCount: number;
+    readonly imageCount: number;
+    readonly materialImageCount: number;
     readonly glyphCount: number;
     readonly customCommandCount: number;
     readonly uploadedGlyphCount: number;
@@ -27,13 +31,46 @@ export interface WebGL2UICustomCommandContext<TPayload = unknown> {
 export interface WebGL2UIRendererOptions<TPayload = unknown> {
     readonly gl: WebGL2RenderingContext;
     readonly quadBatchCapacity?: number;
+    readonly imageBatchCapacity?: number;
     readonly glyphBatchCapacity?: number;
     readonly atlasFilter?: 'nearest' | 'linear';
+    readonly resolveImageResource?: (
+        source: UIImageSource,
+        context: WebGL2UIResolveImageResourceContext<TPayload>
+    ) => WebGL2UIResolvedImageResource<TPayload> | null;
     readonly customCommandRenderer?: (
         command: CustomRenderCommand<TPayload>,
         context: WebGL2UICustomCommandContext<TPayload>
     ) => void;
 }
+
+export interface WebGL2UIResolveImageResourceContext<TPayload = unknown> {
+    readonly gl: WebGL2RenderingContext;
+    readonly frame: Readonly<UIFrame<TPayload>>;
+    readonly command: ImageRenderCommand;
+}
+
+export interface WebGL2UIResolvedTextureImage {
+    readonly kind: 'texture';
+    readonly texture: WebGLTexture;
+}
+
+export interface WebGL2UIMaterialImageContext<TPayload = unknown> {
+    readonly gl: WebGL2RenderingContext;
+    readonly frame: Readonly<UIFrame<TPayload>>;
+    readonly command: ImageRenderCommand;
+    readonly clip: RectLike | null;
+    readonly viewport: Readonly<SizeLike>;
+}
+
+export interface WebGL2UIResolvedMaterialImage<TPayload = unknown> {
+    readonly kind: 'material';
+    render(context: WebGL2UIMaterialImageContext<TPayload>): void;
+}
+
+export type WebGL2UIResolvedImageResource<TPayload = unknown> =
+    | WebGL2UIResolvedTextureImage
+    | WebGL2UIResolvedMaterialImage<TPayload>;
 
 export interface UIOverlayRenderPipelineBackendOptions<TNative = unknown, TPayload = unknown> {
     readonly base?: RenderPipelineBackend<TNative>;

@@ -2,6 +2,7 @@ import type {
     CustomRenderCommand,
     FontGlyphBitmapFormat,
     GlyphAtlasEntry,
+    ImageRenderCommand,
     QuadRenderCommand,
     RectLike,
     TextGlyphPlacement,
@@ -12,11 +13,14 @@ import type {
 import { DisposedUIError } from '@axrone/ui';
 import type {
     WebGL2UICustomCommandContext,
+    WebGL2UIMaterialImageContext,
+    WebGL2UIResolvedImageResource,
     WebGL2UIRendererOptions,
     WebGL2UIRendererStatistics,
 } from './types';
 
 const QUAD_FLOATS_PER_INSTANCE = 19;
+const IMAGE_FLOATS_PER_INSTANCE = 16;
 const TEXT_FLOATS_PER_INSTANCE = 12;
 
 const QUAD_VERTEX_SOURCE = `#version 300 es
@@ -125,6 +129,66 @@ void main() {
     o_Color = color;
 }`;
 
+const IMAGE_VERTEX_SOURCE = `#version 300 es
+precision mediump float;
+layout(location = 0) in vec2 a_Unit;
+layout(location = 1) in vec4 a_Rect;
+layout(location = 2) in vec4 a_UvRect;
+layout(location = 3) in vec4 a_Tint;
+layout(location = 4) in vec4 a_Radius;
+uniform vec2 u_Viewport;
+out vec2 v_Local;
+out vec2 v_Size;
+out vec2 v_Uv;
+out vec4 v_Tint;
+out vec4 v_Radius;
+void main() {
+    vec2 pixel = a_Rect.xy + a_Unit * a_Rect.zw;
+    vec2 ndc = vec2((pixel.x / u_Viewport.x) * 2.0 - 1.0, 1.0 - (pixel.y / u_Viewport.y) * 2.0);
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    v_Local = a_Unit * a_Rect.zw;
+    v_Size = a_Rect.zw;
+    v_Uv = a_UvRect.xy + a_Unit * a_UvRect.zw;
+    v_Tint = a_Tint;
+    v_Radius = a_Radius;
+}`;
+
+const IMAGE_FRAGMENT_SOURCE = `#version 300 es
+precision mediump float;
+uniform sampler2D u_Image;
+in vec2 v_Local;
+in vec2 v_Size;
+in vec2 v_Uv;
+in vec4 v_Tint;
+in vec4 v_Radius;
+out vec4 o_Color;
+float selectRadius(vec2 local, vec2 size, vec4 radii) {
+    bool left = local.x <= size.x * 0.5;
+    bool top = local.y <= size.y * 0.5;
+    if (left && top) return radii.x;
+    if (!left && top) return radii.y;
+    if (!left && !top) return radii.z;
+    return radii.w;
+}
+float roundedRectSdf(vec2 local, vec2 size, vec4 radii) {
+    float radius = selectRadius(local, size, radii);
+    vec2 center = size * 0.5;
+    vec2 halfSize = max(center - vec2(radius), vec2(0.0));
+    vec2 delta = abs(local - center) - halfSize;
+    return length(max(delta, 0.0)) + min(max(delta.x, delta.y), 0.0) - radius;
+}
+void main() {
+    float sdf = roundedRectSdf(v_Local, v_Size, v_Radius);
+    float aa = max(fwidth(sdf), 0.75);
+    float mask = 1.0 - smoothstep(-aa, aa, sdf);
+    vec4 color = texture(u_Image, v_Uv) * v_Tint;
+    color *= mask;
+    if (color.a <= 0.0) {
+        discard;
+    }
+    o_Color = color;
+}`;
+
 interface ClipState {
     readonly x: number;
     readonly y: number;
@@ -216,54 +280,76 @@ const createProgram = (
 export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayload> {
     private readonly gl: WebGL2RenderingContext;
     private readonly quadProgram: WebGLProgram;
+    private readonly imageProgram: WebGLProgram;
     private readonly textProgram: WebGLProgram;
     private readonly quadViewportUniform: WebGLUniformLocation | null;
+    private readonly imageViewportUniform: WebGLUniformLocation | null;
+    private readonly imageTextureUniform: WebGLUniformLocation | null;
     private readonly textViewportUniform: WebGLUniformLocation | null;
     private readonly textAtlasUniform: WebGLUniformLocation | null;
     private readonly quadVao: WebGLVertexArrayObject | null;
+    private readonly imageVao: WebGLVertexArrayObject | null;
     private readonly textVao: WebGLVertexArrayObject | null;
     private readonly quadStaticBuffer: WebGLBuffer | null;
     private readonly quadInstanceBuffer: WebGLBuffer | null;
+    private readonly imageStaticBuffer: WebGLBuffer | null;
+    private readonly imageInstanceBuffer: WebGLBuffer | null;
     private readonly textStaticBuffer: WebGLBuffer | null;
     private readonly textInstanceBuffer: WebGLBuffer | null;
     private readonly pages = new Map<string, TexturePage>();
     private readonly quadBatch: Float32Array;
+    private readonly imageBatch: Float32Array;
     private readonly textBatch: Float32Array;
+    private readonly resolveImageResource?: WebGL2UIRendererOptions<TPayload>['resolveImageResource'];
     private readonly customCommandRenderer?: WebGL2UIRendererOptions<TPayload>['customCommandRenderer'];
     private readonly atlasFilter: 'nearest' | 'linear';
     private readonly statisticsState = {
         drawCalls: 0,
         quadCount: 0,
+        imageCount: 0,
+        materialImageCount: 0,
         glyphCount: 0,
         customCommandCount: 0,
         uploadedGlyphCount: 0,
     };
     private quadCount = 0;
+    private imageCount = 0;
     private textCount = 0;
+    private activeImageTexture: WebGLTexture | null = null;
     private activeTextPageKey: string | null = null;
     private activeQuadClip: ClipState | null = null;
+    private activeImageClip: ClipState | null = null;
     private activeTextClip: ClipState | null = null;
     private currentFrame: UIFrame<TPayload> | null = null;
     private disposed = false;
 
     constructor(options: WebGL2UIRendererOptions<TPayload>) {
         this.gl = options.gl;
+        this.resolveImageResource = options.resolveImageResource;
         this.customCommandRenderer = options.customCommandRenderer;
         this.atlasFilter = options.atlasFilter ?? 'linear';
         this.quadProgram = createProgram(this.gl, QUAD_VERTEX_SOURCE, QUAD_FRAGMENT_SOURCE);
+        this.imageProgram = createProgram(this.gl, IMAGE_VERTEX_SOURCE, IMAGE_FRAGMENT_SOURCE);
         this.textProgram = createProgram(this.gl, TEXT_VERTEX_SOURCE, TEXT_FRAGMENT_SOURCE);
         this.quadViewportUniform = this.gl.getUniformLocation(this.quadProgram, 'u_Viewport');
+        this.imageViewportUniform = this.gl.getUniformLocation(this.imageProgram, 'u_Viewport');
+        this.imageTextureUniform = this.gl.getUniformLocation(this.imageProgram, 'u_Image');
         this.textViewportUniform = this.gl.getUniformLocation(this.textProgram, 'u_Viewport');
         this.textAtlasUniform = this.gl.getUniformLocation(this.textProgram, 'u_Atlas');
         this.quadBatch = new Float32Array((options.quadBatchCapacity ?? 1024) * QUAD_FLOATS_PER_INSTANCE);
+        this.imageBatch = new Float32Array((options.imageBatchCapacity ?? 1024) * IMAGE_FLOATS_PER_INSTANCE);
         this.textBatch = new Float32Array((options.glyphBatchCapacity ?? 4096) * TEXT_FLOATS_PER_INSTANCE);
         this.quadStaticBuffer = this.gl.createBuffer();
         this.quadInstanceBuffer = this.gl.createBuffer();
+        this.imageStaticBuffer = this.gl.createBuffer();
+        this.imageInstanceBuffer = this.gl.createBuffer();
         this.textStaticBuffer = this.gl.createBuffer();
         this.textInstanceBuffer = this.gl.createBuffer();
         this.quadVao = this.gl.createVertexArray();
+        this.imageVao = this.gl.createVertexArray();
         this.textVao = this.gl.createVertexArray();
         this.initializeQuadPipeline();
+        this.initializeImagePipeline();
         this.initializeTextPipeline();
     }
 
@@ -271,6 +357,8 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         return {
             drawCalls: this.statisticsState.drawCalls,
             quadCount: this.statisticsState.quadCount,
+            imageCount: this.statisticsState.imageCount,
+            materialImageCount: this.statisticsState.materialImageCount,
             glyphCount: this.statisticsState.glyphCount,
             customCommandCount: this.statisticsState.customCommandCount,
             uploadedGlyphCount: this.statisticsState.uploadedGlyphCount,
@@ -283,19 +371,25 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.currentFrame = frame as UIFrame<TPayload>;
         this.statisticsState.drawCalls = 0;
         this.statisticsState.quadCount = 0;
+        this.statisticsState.imageCount = 0;
+        this.statisticsState.materialImageCount = 0;
         this.statisticsState.glyphCount = 0;
         this.statisticsState.customCommandCount = 0;
         this.statisticsState.uploadedGlyphCount = 0;
         this.quadCount = 0;
+        this.imageCount = 0;
         this.textCount = 0;
         this.activeQuadClip = null;
+        this.activeImageClip = null;
         this.activeTextClip = null;
+        this.activeImageTexture = null;
         this.activeTextPageKey = null;
 
         this.prepareFrame(frame.viewportWidth, frame.viewportHeight);
 
         for (const command of frame.commands) {
             if (command.kind === 'quad') {
+                this.flushImageBatch(frame.viewportHeight);
                 this.flushTextBatch(frame.viewportHeight);
                 if (!sameClip(this.activeQuadClip, command.clip)) {
                     this.flushQuadBatch(frame.viewportHeight);
@@ -304,12 +398,20 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
                 this.pushQuad(command);
                 continue;
             }
+            if (command.kind === 'image') {
+                this.flushQuadBatch(frame.viewportHeight);
+                this.flushTextBatch(frame.viewportHeight);
+                this.pushImageCommand(command, frame);
+                continue;
+            }
             if (command.kind === 'text') {
                 this.flushQuadBatch(frame.viewportHeight);
+                this.flushImageBatch(frame.viewportHeight);
                 this.pushTextCommand(command, frame.viewportHeight);
                 continue;
             }
             this.flushQuadBatch(frame.viewportHeight);
+            this.flushImageBatch(frame.viewportHeight);
             this.flushTextBatch(frame.viewportHeight);
             if (this.customCommandRenderer) {
                 this.statisticsState.customCommandCount += 1;
@@ -326,6 +428,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         }
 
         this.flushQuadBatch(frame.viewportHeight);
+        this.flushImageBatch(frame.viewportHeight);
         this.flushTextBatch(frame.viewportHeight);
         this.currentFrame = null;
     }
@@ -340,11 +443,15 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.pages.clear();
         this.gl.deleteBuffer(this.quadStaticBuffer);
         this.gl.deleteBuffer(this.quadInstanceBuffer);
+        this.gl.deleteBuffer(this.imageStaticBuffer);
+        this.gl.deleteBuffer(this.imageInstanceBuffer);
         this.gl.deleteBuffer(this.textStaticBuffer);
         this.gl.deleteBuffer(this.textInstanceBuffer);
         this.gl.deleteVertexArray(this.quadVao);
+        this.gl.deleteVertexArray(this.imageVao);
         this.gl.deleteVertexArray(this.textVao);
         this.gl.deleteProgram(this.quadProgram);
+        this.gl.deleteProgram(this.imageProgram);
         this.gl.deleteProgram(this.textProgram);
         this.disposed = true;
     }
@@ -376,6 +483,29 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.enableVertexAttribArray(5);
         this.gl.vertexAttribPointer(5, 1, this.gl.FLOAT, false, stride, 64);
         this.gl.vertexAttribDivisor(5, 1);
+        this.gl.bindVertexArray(null);
+    }
+
+    private initializeImagePipeline(): void {
+        const stride = IMAGE_FLOATS_PER_INSTANCE * 4;
+        this.gl.bindVertexArray(this.imageVao);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.imageStaticBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, UNIT_QUAD, this.gl.STATIC_DRAW);
+        this.gl.enableVertexAttribArray(0);
+        this.gl.vertexAttribPointer(0, 2, this.gl.FLOAT, false, 8, 0);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.imageInstanceBuffer);
+        this.gl.enableVertexAttribArray(1);
+        this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, stride, 0);
+        this.gl.vertexAttribDivisor(1, 1);
+        this.gl.enableVertexAttribArray(2);
+        this.gl.vertexAttribPointer(2, 4, this.gl.FLOAT, false, stride, 16);
+        this.gl.vertexAttribDivisor(2, 1);
+        this.gl.enableVertexAttribArray(3);
+        this.gl.vertexAttribPointer(3, 4, this.gl.FLOAT, false, stride, 32);
+        this.gl.vertexAttribDivisor(3, 1);
+        this.gl.enableVertexAttribArray(4);
+        this.gl.vertexAttribPointer(4, 4, this.gl.FLOAT, false, stride, 48);
+        this.gl.vertexAttribDivisor(4, 1);
         this.gl.bindVertexArray(null);
     }
 
@@ -443,6 +573,64 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         }
     }
 
+    private pushImageCommand(command: ImageRenderCommand, frame: Readonly<UIFrame<TPayload>>): void {
+        const resource = this.resolveImageResource?.(command.source, {
+            gl: this.gl,
+            frame,
+            command,
+        });
+        if (!resource) {
+            return;
+        }
+        this.statisticsState.imageCount += 1;
+        if (resource.kind === 'material') {
+            this.flushImageBatch(frame.viewportHeight);
+            this.statisticsState.materialImageCount += 1;
+            this.applyClip(toClipState(command.clip), frame.viewportHeight);
+            resource.render({
+                gl: this.gl,
+                frame,
+                command,
+                clip: command.clip,
+                viewport: { width: frame.viewportWidth, height: frame.viewportHeight },
+            } satisfies WebGL2UIMaterialImageContext<TPayload>);
+            return;
+        }
+        if (
+            (this.activeImageTexture !== null && this.activeImageTexture !== resource.texture) ||
+            (this.activeImageClip !== null && !sameClip(this.activeImageClip, command.clip))
+        ) {
+            this.flushImageBatch(frame.viewportHeight);
+        }
+        const base = this.imageCount * IMAGE_FLOATS_PER_INSTANCE;
+        if (base + IMAGE_FLOATS_PER_INSTANCE > this.imageBatch.length) {
+            this.flushImageBatch(frame.viewportHeight);
+            return this.pushImageCommand(command, frame);
+        }
+        this.activeImageTexture = resource.texture;
+        this.activeImageClip = toClipState(command.clip);
+        const tint = [
+            command.tint.r,
+            command.tint.g,
+            command.tint.b,
+            multiplyAlpha(command.tint.a, command.opacity),
+        ] as const;
+        this.imageBatch[base] = command.x;
+        this.imageBatch[base + 1] = command.y;
+        this.imageBatch[base + 2] = command.width;
+        this.imageBatch[base + 3] = command.height;
+        this.imageBatch[base + 4] = command.uvRect.x;
+        this.imageBatch[base + 5] = command.uvRect.y;
+        this.imageBatch[base + 6] = command.uvRect.width;
+        this.imageBatch[base + 7] = command.uvRect.height;
+        this.imageBatch.set(tint, base + 8);
+        this.imageBatch[base + 12] = command.radius.topLeft;
+        this.imageBatch[base + 13] = command.radius.topRight;
+        this.imageBatch[base + 14] = command.radius.bottomRight;
+        this.imageBatch[base + 15] = command.radius.bottomLeft;
+        this.imageCount += 1;
+    }
+
     private pushGlyph(
         command: TextRenderCommand,
         glyph: TextGlyphPlacement,
@@ -504,6 +692,32 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.bindVertexArray(null);
         this.statisticsState.drawCalls += 1;
         this.quadCount = 0;
+    }
+
+    private flushImageBatch(viewportHeight: number): void {
+        if (this.imageCount === 0 || !this.currentFrame || !this.activeImageTexture) {
+            this.imageCount = 0;
+            this.activeImageTexture = null;
+            return;
+        }
+        this.applyClip(this.activeImageClip, viewportHeight);
+        this.gl.useProgram(this.imageProgram);
+        this.gl.uniform2f(this.imageViewportUniform, this.currentFrame.viewportWidth, this.currentFrame.viewportHeight);
+        this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.activeImageTexture);
+        this.gl.uniform1i(this.imageTextureUniform, 0);
+        this.gl.bindVertexArray(this.imageVao);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.imageInstanceBuffer);
+        this.gl.bufferData(
+            this.gl.ARRAY_BUFFER,
+            this.imageBatch.subarray(0, this.imageCount * IMAGE_FLOATS_PER_INSTANCE),
+            this.gl.DYNAMIC_DRAW
+        );
+        this.gl.drawArraysInstanced(this.gl.TRIANGLE_STRIP, 0, 4, this.imageCount);
+        this.gl.bindVertexArray(null);
+        this.statisticsState.drawCalls += 1;
+        this.imageCount = 0;
+        this.activeImageTexture = null;
     }
 
     private flushTextBatch(viewportHeight: number): void {
