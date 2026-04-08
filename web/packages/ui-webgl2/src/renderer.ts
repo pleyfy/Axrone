@@ -21,7 +21,7 @@ import type {
 
 const QUAD_FLOATS_PER_INSTANCE = 19;
 const IMAGE_FLOATS_PER_INSTANCE = 16;
-const TEXT_FLOATS_PER_INSTANCE = 12;
+const TEXT_FLOATS_PER_INSTANCE = 20;
 
 const QUAD_VERTEX_SOURCE = `#version 300 es
 precision mediump float;
@@ -103,15 +103,21 @@ layout(location = 0) in vec2 a_Unit;
 layout(location = 1) in vec4 a_Rect;
 layout(location = 2) in vec4 a_UvRect;
 layout(location = 3) in vec4 a_Color;
+layout(location = 4) in vec4 a_OutlineColor;
+layout(location = 5) in vec4 a_SdfParams;
 uniform vec2 u_Viewport;
 out vec2 v_Uv;
 out vec4 v_Color;
+out vec4 v_OutlineColor;
+out vec4 v_SdfParams;
 void main() {
     vec2 pixel = a_Rect.xy + a_Unit * a_Rect.zw;
     vec2 ndc = vec2((pixel.x / u_Viewport.x) * 2.0 - 1.0, 1.0 - (pixel.y / u_Viewport.y) * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     v_Uv = a_UvRect.xy + a_Unit * a_UvRect.zw;
     v_Color = a_Color;
+    v_OutlineColor = a_OutlineColor;
+    v_SdfParams = a_SdfParams;
 }`;
 
 const TEXT_FRAGMENT_SOURCE = `#version 300 es
@@ -119,10 +125,24 @@ precision mediump float;
 uniform sampler2D u_Atlas;
 in vec2 v_Uv;
 in vec4 v_Color;
+in vec4 v_OutlineColor;
+in vec4 v_SdfParams;
 out vec4 o_Color;
 void main() {
     float alpha = texture(u_Atlas, v_Uv).r;
-    vec4 color = vec4(v_Color.rgb, v_Color.a * alpha);
+    vec4 color;
+    if (v_SdfParams.x > 0.5) {
+        float distanceRange = max(v_SdfParams.y, 1.0);
+        float smoothing = max(fwidth(alpha) * max(1.0, v_SdfParams.w) * distanceRange, 0.0001);
+        float fillAlpha = smoothstep(0.5 - smoothing, 0.5 + smoothing, alpha);
+        float outlineThreshold = 0.5 - (v_SdfParams.z / distanceRange);
+        float outlineAlpha = smoothstep(outlineThreshold - smoothing, outlineThreshold + smoothing, alpha);
+        vec4 fill = vec4(v_Color.rgb, v_Color.a * fillAlpha);
+        vec4 outline = vec4(v_OutlineColor.rgb, v_OutlineColor.a * max(0.0, outlineAlpha - fillAlpha));
+        color = fill + outline;
+    } else {
+        color = vec4(v_Color.rgb, v_Color.a * alpha);
+    }
     if (color.a <= 0.0) {
         discard;
     }
@@ -526,6 +546,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.enableVertexAttribArray(3);
         this.gl.vertexAttribPointer(3, 4, this.gl.FLOAT, false, stride, 32);
         this.gl.vertexAttribDivisor(3, 1);
+        this.gl.enableVertexAttribArray(4);
+        this.gl.vertexAttribPointer(4, 4, this.gl.FLOAT, false, stride, 48);
+        this.gl.vertexAttribDivisor(4, 1);
+        this.gl.enableVertexAttribArray(5);
+        this.gl.vertexAttribPointer(5, 4, this.gl.FLOAT, false, stride, 64);
+        this.gl.vertexAttribDivisor(5, 1);
         this.gl.bindVertexArray(null);
     }
 
@@ -563,10 +589,11 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
 
     private pushTextCommand(command: TextRenderCommand, viewportHeight: number): void {
         const color = blendColor(command.color, command.opacity);
+        const outlineColor = blendColor(command.outlineColor, command.opacity);
         for (const glyph of command.layout.glyphs) {
-            if (!this.pushGlyph(command, glyph, color, viewportHeight)) {
+            if (!this.pushGlyph(command, glyph, color, outlineColor, viewportHeight)) {
                 this.flushTextBatch(viewportHeight);
-                if (!this.pushGlyph(command, glyph, color, viewportHeight)) {
+                if (!this.pushGlyph(command, glyph, color, outlineColor, viewportHeight)) {
                     throw new Error('Glyph batch capacity exceeded.');
                 }
             }
@@ -635,6 +662,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         command: TextRenderCommand,
         glyph: TextGlyphPlacement,
         color: readonly [number, number, number, number],
+        outlineColor: readonly [number, number, number, number],
         viewportHeight: number
     ): boolean {
         const entry = glyph.atlasEntry;
@@ -667,6 +695,11 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.textBatch[base + 6] = entry.u1 - entry.u0;
         this.textBatch[base + 7] = entry.v1 - entry.v0;
         this.textBatch.set(color, base + 8);
+        this.textBatch.set(outlineColor, base + 12);
+        this.textBatch[base + 16] = entry.format === 'sdf8' ? 1 : 0;
+        this.textBatch[base + 17] = entry.distanceRange;
+        this.textBatch[base + 18] = command.outlineWidth;
+        this.textBatch[base + 19] = command.edgeSoftness;
         this.textCount += 1;
         this.statisticsState.glyphCount += 1;
         void page;
