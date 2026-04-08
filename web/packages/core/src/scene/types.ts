@@ -13,7 +13,13 @@ import type { Hierarchy } from '../component-system/components/hierarchy';
 import type { Transform } from '../component-system/components/transform';
 import type { FilterMode, TextureFormat, WrapMode } from '../renderer/webgl2/texture/interfaces';
 
-export type SceneMeshSemantic = 'position' | 'normal' | 'uv0' | 'color0';
+export type SceneMeshSemantic =
+    | 'position'
+    | 'normal'
+    | 'uv0'
+    | 'uv1'
+    | 'tangent'
+    | 'color0';
 export type SceneMeshTopology = 'triangles' | 'lines' | 'points';
 export type SceneClearFlag = 'color' | 'depth';
 

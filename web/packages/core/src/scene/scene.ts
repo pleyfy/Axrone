@@ -172,6 +172,8 @@ const DEFAULT_ATTRIBUTE_NAMES: Readonly<Record<SceneMeshSemantic, string>> = Obj
     position: 'a_Position',
     normal: 'a_Normal',
     uv0: 'a_UV0',
+    uv1: 'a_UV1',
+    tangent: 'a_Tangent',
     color0: 'a_Color0',
 });
 
@@ -182,6 +184,8 @@ const ATTRIBUTE_LOCATIONS: Readonly<Record<SceneMeshSemantic, number>> = Object.
     normal: 1,
     uv0: 2,
     color0: 3,
+    tangent: 4,
+    uv1: 5,
 });
 
 const DEFAULT_CLEAR_COLOR = new Vec4(0.08, 0.09, 0.11, 1);
@@ -321,6 +325,10 @@ const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {
             return 'normal';
         case 'texCoord':
             return 'uv0';
+        case 'texCoord1':
+            return 'uv1';
+        case 'tangent':
+            return 'tangent';
         case 'color':
             return 'color0';
         default:

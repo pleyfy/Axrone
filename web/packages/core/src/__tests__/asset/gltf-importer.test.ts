@@ -10,15 +10,47 @@ import {
     type GltfRootJson,
 } from '../../asset';
 
+const pngHeaderBytes = new Uint8Array([137, 80, 78, 71]);
+
 const createBinaryBlob = (): Uint8Array => {
     const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
     const indices = new Uint16Array([0, 1, 2]);
-    const image = new Uint8Array([137, 80, 78, 71]);
+    const image = pngHeaderBytes;
     const total = positions.byteLength + indices.byteLength + image.byteLength + 2;
     const bytes = new Uint8Array(total);
     bytes.set(new Uint8Array(positions.buffer), 0);
     bytes.set(new Uint8Array(indices.buffer), positions.byteLength);
     bytes.set(image, positions.byteLength + indices.byteLength);
+    return bytes;
+};
+
+const createExtendedBinaryBlob = (): Uint8Array => {
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const tangents = new Float32Array([
+        1, 0, 0, 1,
+        1, 0, 0, 1,
+        1, 0, 0, 1,
+    ]);
+    const uv1 = new Float32Array([0, 0, 1, 0, 0, 1]);
+    const indices = new Uint16Array([0, 1, 2]);
+    const total =
+        positions.byteLength +
+        tangents.byteLength +
+        uv1.byteLength +
+        indices.byteLength +
+        pngHeaderBytes.byteLength +
+        2;
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    bytes.set(new Uint8Array(positions.buffer), offset);
+    offset += positions.byteLength;
+    bytes.set(new Uint8Array(tangents.buffer), offset);
+    offset += tangents.byteLength;
+    bytes.set(new Uint8Array(uv1.buffer), offset);
+    offset += uv1.byteLength;
+    bytes.set(new Uint8Array(indices.buffer), offset);
+    offset += indices.byteLength;
+    bytes.set(pngHeaderBytes, offset);
     return bytes;
 };
 
@@ -170,6 +202,95 @@ const createGlb = (json: GltfRootJson, bin: Uint8Array): Uint8Array => {
     return glb;
 };
 
+const createExtendedAttributeJson = (): GltfRootJson => ({
+    ...createTriangleJson(),
+    extensionsUsed: ['KHR_materials_clearcoat'],
+    buffers: [
+        {
+            byteLength: 116,
+        },
+    ],
+    bufferViews: [
+        {
+            buffer: 0,
+            byteOffset: 0,
+            byteLength: 36,
+        },
+        {
+            buffer: 0,
+            byteOffset: 36,
+            byteLength: 48,
+        },
+        {
+            buffer: 0,
+            byteOffset: 84,
+            byteLength: 24,
+        },
+        {
+            buffer: 0,
+            byteOffset: 108,
+            byteLength: 6,
+        },
+        {
+            buffer: 0,
+            byteOffset: 114,
+            byteLength: 4,
+        },
+    ],
+    accessors: [
+        {
+            bufferView: 0,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        },
+        {
+            bufferView: 1,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC4',
+        },
+        {
+            bufferView: 2,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC2',
+        },
+        {
+            bufferView: 3,
+            componentType: 5123,
+            count: 3,
+            type: 'SCALAR',
+        },
+    ],
+    images: [
+        {
+            bufferView: 4,
+            mimeType: 'image/png',
+            name: 'Albedo',
+        },
+    ],
+    meshes: [
+        {
+            name: 'Triangle',
+            primitives: [
+                {
+                    attributes: {
+                        POSITION: 0,
+                        TANGENT: 1,
+                        TEXCOORD_1: 2,
+                        JOINTS_0: 2,
+                    },
+                    indices: 3,
+                    material: 0,
+                },
+            ],
+        },
+    ],
+});
+
 describe('glTF importer', () => {
     it('imports GLB sources into document, prefab, mesh, material, and transcoded texture assets', async () => {
         const registry = new GltfTextureTranscoderRegistry([
@@ -307,5 +428,57 @@ describe('glTF importer', () => {
         expect(texture?.data.payload.uri).toBe('albedo.ktx2');
         expect(receipt.primary.data.stats.textureCount).toBe(1);
         expect(receipt.primary.data.scenes).toHaveLength(1);
+    });
+
+    it('preserves tangent and secondary uv attributes while warning on ignored semantics', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(createExtendedAttributeJson(), createExtendedBinaryBlob()),
+            uri: 'models/triangle-extended.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
+        expect(mesh?.data.definition.attributes).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ semantic: 'position', componentCount: 3 }),
+                expect.objectContaining({ semantic: 'tangent', componentCount: 4 }),
+                expect.objectContaining({ semantic: 'uv1', componentCount: 2 }),
+            ])
+        );
+        expect(receipt.diagnostics).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'gltf.extension.unsupported',
+                    level: 'warning',
+                }),
+                expect.objectContaining({
+                    code: 'gltf.mesh.attribute.unsupported',
+                    level: 'warning',
+                }),
+            ])
+        );
+    });
+
+    it('fails fast for unsupported required glTF extensions', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        await expect(
+            database.import({
+                kind: 'text',
+                data: JSON.stringify({
+                    ...createTriangleJson(),
+                    extensionsRequired: ['KHR_materials_clearcoat'],
+                } satisfies GltfRootJson),
+                uri: 'models/unsupported-required.gltf',
+                mimeType: 'model/gltf+json',
+            })
+        ).rejects.toThrow('Unsupported required glTF extensions: KHR_materials_clearcoat');
     });
 });

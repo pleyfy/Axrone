@@ -53,7 +53,19 @@ const DEFAULT_SAMPLER_ID = 'gltf/sampler/default';
 const DEFAULT_MATERIAL_KEY_SUFFIX = 'material/default';
 const DEFAULT_MATERIAL_NAME = 'Default Material';
 const DEFAULT_DOCUMENT_NAME = 'glTF Document';
-const SUPPORTED_ATTRIBUTE_SEMANTICS = ['POSITION', 'NORMAL', 'TEXCOORD_0', 'COLOR_0'] as const;
+const SUPPORTED_ATTRIBUTE_SEMANTICS = [
+    'POSITION',
+    'NORMAL',
+    'TANGENT',
+    'TEXCOORD_0',
+    'TEXCOORD_1',
+    'COLOR_0',
+] as const;
+const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
+    'KHR_materials_unlit',
+    'KHR_mesh_quantization',
+    'KHR_texture_transform',
+]);
 
 type SupportedAttributeSemantic = (typeof SUPPORTED_ATTRIBUTE_SEMANTICS)[number];
 
@@ -92,6 +104,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 const isTypedArray = (value: unknown): value is ArrayBufferView =>
     ArrayBuffer.isView(value) && (value instanceof DataView === false);
+
+const isSupportedAttributeSemantic = (value: string): value is SupportedAttributeSemantic =>
+    (SUPPORTED_ATTRIBUTE_SEMANTICS as readonly string[]).includes(value);
 
 const freezeDeep = <T>(value: T): T => {
     if (value === null || typeof value !== 'object') {
@@ -352,6 +367,76 @@ const parseGlb = (bytes: Uint8Array): Pick<NormalizedGltfSource, 'format' | 'jso
         json: parseJsonText(trimNullCharacters(decodeUtf8(jsonChunk))),
         binChunk,
     };
+};
+
+const listUnsupportedExtensions = (
+    extensions: readonly string[] | undefined
+): readonly string[] =>
+    Object.freeze(
+        [...new Set(extensions?.filter((extension) => !SUPPORTED_GLTF_EXTENSIONS.has(extension)) ?? [])].sort(
+            (left, right) => left.localeCompare(right)
+        )
+    );
+
+const assertSupportedRequiredExtensions = (root: GltfRootJson): void => {
+    const unsupported = listUnsupportedExtensions(root.extensionsRequired);
+    if (unsupported.length === 0) {
+        return;
+    }
+
+    throw new GltfSchemaError(
+        `Unsupported required glTF extensions: ${unsupported.join(', ')}`
+    );
+};
+
+const collectExtensionDiagnostics = (root: GltfRootJson): readonly AssetImportDiagnostic[] => {
+    const required = new Set(root.extensionsRequired ?? EMPTY_ARRAY);
+
+    return Object.freeze(
+        listUnsupportedExtensions(root.extensionsUsed)
+            .filter((extension) => required.has(extension) === false)
+            .map(
+                (extension) =>
+                    Object.freeze({
+                        level: 'warning',
+                        code: 'gltf.extension.unsupported',
+                        message: `glTF extension ${extension} is not supported and related data may be ignored`,
+                    } satisfies AssetImportDiagnostic)
+            )
+    );
+};
+
+const collectPrimitiveDiagnostics = (
+    primitive: GltfPrimitiveJson,
+    meshIndex: number,
+    primitiveIndex: number
+): readonly AssetImportDiagnostic[] => {
+    const diagnostics: AssetImportDiagnostic[] = [];
+    const unsupportedAttributes = Object.keys(primitive.attributes)
+        .filter((semantic) => isSupportedAttributeSemantic(semantic) === false)
+        .sort((left, right) => left.localeCompare(right));
+
+    for (const semantic of unsupportedAttributes) {
+        diagnostics.push(
+            Object.freeze({
+                level: 'warning',
+                code: 'gltf.mesh.attribute.unsupported',
+                message: `Mesh ${meshIndex} primitive ${primitiveIndex} attribute ${semantic} is not supported and will be ignored`,
+            } satisfies AssetImportDiagnostic)
+        );
+    }
+
+    if (primitive.targets && primitive.targets.length > 0) {
+        diagnostics.push(
+            Object.freeze({
+                level: 'warning',
+                code: 'gltf.mesh.targets.unsupported',
+                message: `Mesh ${meshIndex} primitive ${primitiveIndex} morph targets are not supported and will be ignored`,
+            } satisfies AssetImportDiagnostic)
+        );
+    }
+
+    return Object.freeze(diagnostics);
 };
 
 const normalizePackageResources = (
@@ -1303,8 +1388,12 @@ const mapAttributeSemantic = (
             return 'position';
         case 'NORMAL':
             return 'normal';
+        case 'TANGENT':
+            return 'tangent';
         case 'TEXCOORD_0':
             return 'uv0';
+        case 'TEXCOORD_1':
+            return 'uv1';
         case 'COLOR_0':
             return 'color0';
     }
@@ -1886,9 +1975,10 @@ export const createGltfImporter = <
         ) => {
             const { source, createSubKey } = context;
             const normalized = normalizeGltfSource(source);
+            assertSupportedRequiredExtensions(normalized.json);
             const runtime = new GltfResourceRuntime(normalized, source, options.resourceResolver);
             const accessors = new GltfAccessorRuntime(runtime);
-            const diagnostics: AssetImportDiagnostic[] = [];
+            const diagnostics: AssetImportDiagnostic[] = [...collectExtensionDiagnostics(normalized.json)];
             const textureUsageMap = collectTextureUsages(normalized.json);
             const explicitTextures = normalized.json.textures ?? EMPTY_ARRAY;
             const explicitMaterials = normalized.json.materials ?? EMPTY_ARRAY;
@@ -2030,6 +2120,9 @@ export const createGltfImporter = <
                     primitiveIndex += 1
                 ) {
                     const primitive = mesh.primitives[primitiveIndex]!;
+                    diagnostics.push(
+                        ...collectPrimitiveDiagnostics(primitive, meshIndex, primitiveIndex)
+                    );
                     const built = await buildMeshDefinition(primitive, accessors);
                     const key = String(
                         createSubKey(`mesh/${meshIndex}/primitive/${primitiveIndex}`)
