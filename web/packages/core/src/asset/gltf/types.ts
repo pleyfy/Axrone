@@ -14,6 +14,8 @@ export type GltfAssetKind =
     | 'gltf.document'
     | 'gltf.prefab'
     | 'gltf.mesh'
+    | 'gltf.skin'
+    | 'gltf.animation'
     | 'gltf.material'
     | 'gltf.texture';
 
@@ -28,6 +30,8 @@ export interface GltfDocumentAsset {
     readonly defaultScene: number;
     readonly scenes: readonly GltfDocumentSceneAsset[];
     readonly meshKeys: readonly string[];
+    readonly skinKeys: readonly string[];
+    readonly animationKeys: readonly string[];
     readonly materialKeys: readonly string[];
     readonly textureKeys: readonly string[];
     readonly extensionsUsed: readonly string[];
@@ -68,6 +72,39 @@ export interface GltfMeshAsset {
     readonly bounds?: GltfMeshBounds;
     readonly materialKey?: string;
     readonly extras?: Readonly<Record<string, unknown>>;
+}
+
+export interface GltfSkinAsset {
+    readonly id: string;
+    readonly skinIndex: number;
+    readonly jointNodeIds: readonly string[];
+    readonly jointNodeIndices: readonly number[];
+    readonly skeletonNodeId?: string;
+    readonly skeletonNodeIndex?: number;
+    readonly inverseBindMatrices?: Float32Array;
+}
+
+export interface GltfAnimationTrackAsset {
+    readonly channelIndex: number;
+    readonly samplerIndex: number;
+    readonly inputAccessor: number;
+    readonly outputAccessor: number;
+    readonly targetNodeIndex: number;
+    readonly targetNodeId: string;
+    readonly path: GltfAnimationChannelTargetJson['path'];
+    readonly interpolation: NonNullable<GltfAnimationSamplerJson['interpolation']>;
+    readonly keyframeCount: number;
+    readonly valueComponentCount: number;
+    readonly sampleStride: number;
+    readonly times: Float32Array;
+    readonly values: Float32Array;
+}
+
+export interface GltfAnimationClipAsset {
+    readonly id: string;
+    readonly animationIndex: number;
+    readonly duration: number;
+    readonly tracks: readonly GltfAnimationTrackAsset[];
 }
 
 export type GltfMaterialAlphaMode = 'OPAQUE' | 'MASK' | 'BLEND';
@@ -184,6 +221,8 @@ export interface GltfAssetSchema extends AssetSchema {
     readonly 'gltf.document': GltfDocumentAsset;
     readonly 'gltf.prefab': GltfPrefabAsset;
     readonly 'gltf.mesh': GltfMeshAsset;
+    readonly 'gltf.skin': GltfSkinAsset;
+    readonly 'gltf.animation': GltfAnimationClipAsset;
     readonly 'gltf.material': GltfMaterialAsset;
     readonly 'gltf.texture': GltfTextureAsset;
 }
@@ -192,6 +231,8 @@ export interface GltfAssetSchemaLike extends AssetSchema {
     readonly 'gltf.document': GltfDocumentAsset;
     readonly 'gltf.prefab': GltfPrefabAsset;
     readonly 'gltf.mesh': GltfMeshAsset;
+    readonly 'gltf.skin': GltfSkinAsset;
+    readonly 'gltf.animation': GltfAnimationClipAsset;
     readonly 'gltf.material': GltfMaterialAsset;
     readonly 'gltf.texture': GltfTextureAsset;
 }

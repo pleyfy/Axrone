@@ -19,6 +19,8 @@ import {
 } from './internal/source-runtime';
 import { buildMeshDefinition, collectPrimitiveDiagnostics } from './internal/mesh-runtime';
 import type {
+    GltfAccessorJson,
+    GltfAnimationClipAsset,
     GltfAssetSchema,
     GltfAssetSchemaLike,
     GltfCameraJson,
@@ -31,6 +33,7 @@ import type {
     GltfMaterialJson,
     GltfMaterialTextureBinding,
     GltfMeshAsset,
+    GltfSkinAsset,
     GltfNodeJson,
     GltfPunctualLightJson,
     GltfRootJson,
@@ -158,8 +161,8 @@ const collectFeatureDiagnostics = (root: GltfRootJson): readonly AssetImportDiag
         diagnostics.push(
             Object.freeze({
                 level: 'warning',
-                code: 'gltf.skin.unsupported',
-                message: `glTF defines ${skinCount} skin${skinCount === 1 ? '' : 's'}, but Axrone does not import skeletal data yet`,
+                code: 'gltf.skin.runtime-missing',
+                message: `glTF defines ${skinCount} skin${skinCount === 1 ? '' : 's'}; Axrone now preserves skin metadata assets, but runtime skinning is not implemented yet`,
             } satisfies AssetImportDiagnostic)
         );
     }
@@ -168,8 +171,8 @@ const collectFeatureDiagnostics = (root: GltfRootJson): readonly AssetImportDiag
         diagnostics.push(
             Object.freeze({
                 level: 'warning',
-                code: 'gltf.animation.unsupported',
-                message: `glTF defines ${animationCount} animation clip${animationCount === 1 ? '' : 's'}, but Axrone does not import animation data yet`,
+                code: 'gltf.animation.runtime-missing',
+                message: `glTF defines ${animationCount} animation clip${animationCount === 1 ? '' : 's'}; Axrone now preserves clip assets, but runtime playback is not implemented yet`,
             } satisfies AssetImportDiagnostic)
         );
     }
@@ -674,6 +677,192 @@ const createActorSnapshot = (
         components,
     });
 
+const nodeIdFromIndex = (nodeIndex: number): string => `node/${nodeIndex}`;
+
+const accessorTypeComponentCount = (type: GltfAccessorJson['type']): number => {
+    switch (type) {
+        case 'SCALAR':
+            return 1;
+        case 'VEC2':
+            return 2;
+        case 'VEC3':
+            return 3;
+        case 'VEC4':
+        case 'MAT2':
+            return 4;
+        case 'MAT3':
+            return 9;
+        case 'MAT4':
+            return 16;
+    }
+
+    throw new GltfSchemaError(`Unsupported accessor type: ${type}`);
+};
+
+const createSkinAsset = async (
+    root: GltfRootJson,
+    skinIndex: number,
+    accessors: GltfAccessorRuntime,
+    freeze: boolean
+): Promise<GltfSkinAsset> => {
+    const skin = root.skins?.[skinIndex];
+    if (!skin) {
+        throw new GltfSchemaError(`Missing skin ${skinIndex}`);
+    }
+
+    const jointNodeIds = skin.joints.map((jointIndex) => {
+        if (!root.nodes?.[jointIndex]) {
+            throw new GltfSchemaError(`Skin ${skinIndex} references a missing joint node ${jointIndex}`);
+        }
+
+        return nodeIdFromIndex(jointIndex);
+    });
+
+    if (skin.skeleton !== undefined && !root.nodes?.[skin.skeleton]) {
+        throw new GltfSchemaError(`Skin ${skinIndex} references a missing skeleton node ${skin.skeleton}`);
+    }
+
+    let inverseBindMatrices: Float32Array | undefined;
+    if (skin.inverseBindMatrices !== undefined) {
+        const decoded = await accessors.decodeAccessor(skin.inverseBindMatrices);
+        if (decoded.componentCount !== 16) {
+            throw new GltfSchemaError(
+                `Skin ${skinIndex} inverse bind matrices must use MAT4 accessors`
+            );
+        }
+
+        if (decoded.count !== skin.joints.length) {
+            throw new GltfSchemaError(
+                `Skin ${skinIndex} inverse bind matrix count does not match its joints`
+            );
+        }
+
+        inverseBindMatrices = decoded.values;
+    }
+
+    return maybeFreeze(
+        {
+            id: sanitizeName(skin.name, `Skin ${skinIndex}`),
+            skinIndex,
+            jointNodeIds: Object.freeze(jointNodeIds),
+            jointNodeIndices: Object.freeze([...skin.joints]),
+            ...(skin.skeleton !== undefined
+                ? {
+                      skeletonNodeId: nodeIdFromIndex(skin.skeleton),
+                      skeletonNodeIndex: skin.skeleton,
+                  }
+                : {}),
+            ...(inverseBindMatrices ? { inverseBindMatrices } : {}),
+        } satisfies GltfSkinAsset,
+        freeze
+    );
+};
+
+const createAnimationClipAsset = async (
+    root: GltfRootJson,
+    animationIndex: number,
+    accessors: GltfAccessorRuntime,
+    freeze: boolean
+): Promise<GltfAnimationClipAsset> => {
+    const animation = root.animations?.[animationIndex];
+    if (!animation) {
+        throw new GltfSchemaError(`Missing animation ${animationIndex}`);
+    }
+
+    const tracks: GltfAnimationClipAsset['tracks'][number][] = [];
+    let duration = 0;
+
+    for (let channelIndex = 0; channelIndex < animation.channels.length; channelIndex += 1) {
+        const channel = animation.channels[channelIndex]!;
+        const sampler = animation.samplers[channel.sampler];
+        if (!sampler) {
+            throw new GltfSchemaError(
+                `Animation ${animationIndex} channel ${channelIndex} references a missing sampler`
+            );
+        }
+
+        const targetNodeIndex = channel.target.node;
+        if (targetNodeIndex === undefined) {
+            throw new GltfSchemaError(
+                `Animation ${animationIndex} channel ${channelIndex} is missing a target node`
+            );
+        }
+
+        if (!root.nodes?.[targetNodeIndex]) {
+            throw new GltfSchemaError(
+                `Animation ${animationIndex} channel ${channelIndex} references a missing node ${targetNodeIndex}`
+            );
+        }
+
+        const input = await accessors.decodeAccessor(sampler.input);
+        if (input.componentCount !== 1) {
+            throw new GltfSchemaError(
+                `Animation ${animationIndex} sampler ${channel.sampler} input must use SCALAR accessors`
+            );
+        }
+
+        const output = await accessors.decodeAccessor(sampler.output);
+        const interpolation = sampler.interpolation ?? 'LINEAR';
+        const keyframeCount = input.count;
+        const sampleStride =
+            keyframeCount > 0 ? output.values.length / keyframeCount : accessorTypeComponentCount(
+                root.accessors?.[sampler.output]?.type ?? 'SCALAR'
+            );
+
+        if (!Number.isFinite(sampleStride) || Number.isInteger(sampleStride) === false) {
+            throw new GltfSchemaError(
+                `Animation ${animationIndex} sampler ${channel.sampler} output does not align with its keyframe count`
+            );
+        }
+
+        const valueComponentCount =
+            interpolation === 'CUBICSPLINE' ? sampleStride / 3 : sampleStride;
+        if (
+            interpolation === 'CUBICSPLINE' &&
+            (sampleStride % 3 !== 0 || Number.isInteger(valueComponentCount) === false)
+        ) {
+            throw new GltfSchemaError(
+                `Animation ${animationIndex} sampler ${channel.sampler} CUBICSPLINE output must pack in-tangent, value, and out-tangent triplets`
+            );
+        }
+
+        for (const time of input.values) {
+            duration = Math.max(duration, time);
+        }
+
+        tracks.push(
+            maybeFreeze(
+                {
+                    channelIndex,
+                    samplerIndex: channel.sampler,
+                    inputAccessor: sampler.input,
+                    outputAccessor: sampler.output,
+                    targetNodeIndex,
+                    targetNodeId: nodeIdFromIndex(targetNodeIndex),
+                    path: channel.target.path,
+                    interpolation,
+                    keyframeCount,
+                    valueComponentCount,
+                    sampleStride,
+                    times: input.values,
+                    values: output.values,
+                },
+                freeze
+            )
+        );
+    }
+
+    return maybeFreeze(
+        {
+            id: sanitizeName(animation.name, `Animation ${animationIndex}`),
+            animationIndex,
+            duration,
+            tracks: Object.freeze(tracks),
+        } satisfies GltfAnimationClipAsset,
+        freeze
+    );
+};
+
 const buildPrefabDefinition = (
     root: GltfRootJson,
     sceneIndex: number,
@@ -1092,11 +1281,17 @@ export const createGltfImporter = <
             const explicitTextures = normalized.json.textures ?? EMPTY_ARRAY;
             const explicitMaterials = normalized.json.materials ?? EMPTY_ARRAY;
             const explicitMeshes = normalized.json.meshes ?? EMPTY_ARRAY;
+            const explicitSkins = normalized.json.skins ?? EMPTY_ARRAY;
+            const explicitAnimations = normalized.json.animations ?? EMPTY_ARRAY;
             const textureKeys = explicitTextures.map((_, index) =>
                 String(createSubKey(`texture/${index}`))
             );
             const materialKeys = explicitMaterials.map((_, index) =>
                 String(createSubKey(`material/${index}`))
+            );
+            const skinKeys = explicitSkins.map((_, index) => String(createSubKey(`skin/${index}`)));
+            const animationKeys = explicitAnimations.map((_, index) =>
+                String(createSubKey(`animation/${index}`))
             );
             const meshKeysByMesh: string[][] = [];
             const materialKeysByMesh: Array<Array<string | undefined>> = [];
@@ -1281,6 +1476,37 @@ export const createGltfImporter = <
                 materialKeysByMesh[meshIndex] = primitiveMaterialKeys;
             }
 
+            for (let skinIndex = 0; skinIndex < explicitSkins.length; skinIndex += 1) {
+                const key = skinKeys[skinIndex]!;
+                const asset = await createSkinAsset(normalized.json, skinIndex, accessors, freeze);
+                additional.push(
+                    asWrite<TSchema>(Object.freeze({
+                        kind: 'gltf.skin',
+                        stableKey: key,
+                        name: asset.id,
+                        data: asset as unknown as TSchema['gltf.skin'],
+                    }))
+                );
+            }
+
+            for (let animationIndex = 0; animationIndex < explicitAnimations.length; animationIndex += 1) {
+                const key = animationKeys[animationIndex]!;
+                const asset = await createAnimationClipAsset(
+                    normalized.json,
+                    animationIndex,
+                    accessors,
+                    freeze
+                );
+                additional.push(
+                    asWrite<TSchema>(Object.freeze({
+                        kind: 'gltf.animation',
+                        stableKey: key,
+                        name: asset.id,
+                        data: asset as unknown as TSchema['gltf.animation'],
+                    }))
+                );
+            }
+
             const scenes =
                 normalized.json.scenes && normalized.json.scenes.length > 0
                     ? normalized.json.scenes
@@ -1365,6 +1591,8 @@ export const createGltfImporter = <
                     defaultScene: defaultSceneIndex,
                     scenes: Object.freeze(sceneEntries),
                     meshKeys: Object.freeze(meshKeysByMesh.flat()),
+                    skinKeys: Object.freeze([...skinKeys]),
+                    animationKeys: Object.freeze([...animationKeys]),
                     materialKeys: Object.freeze(
                         [
                             ...(defaultMaterialKey ? [defaultMaterialKey] : EMPTY_ARRAY),
@@ -1410,6 +1638,8 @@ export const createGltfImporter = <
                         ...document.textureKeys,
                         ...document.materialKeys,
                         ...document.meshKeys,
+                        ...document.skinKeys,
+                        ...document.animationKeys,
                         ...document.scenes.map((scene) => scene.prefabKey),
                     ]),
                 })),

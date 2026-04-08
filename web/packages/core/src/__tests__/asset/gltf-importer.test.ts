@@ -531,6 +531,172 @@ const createDracoCompressedTriangle = async (): Promise<{
     }
 };
 
+const createRigBinaryBlob = (): Uint8Array => {
+    const inverseBindMatrices = new Float32Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+    ]);
+    const animationTimes = new Float32Array([0, 1]);
+    const animationTranslations = new Float32Array([
+        0, 0, 0,
+        1, 0, 0,
+    ]);
+    const total =
+        trianglePositions.byteLength +
+        triangleIndices.byteLength +
+        2 +
+        inverseBindMatrices.byteLength +
+        animationTimes.byteLength +
+        animationTranslations.byteLength;
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    bytes.set(new Uint8Array(trianglePositions.buffer), offset);
+    offset += trianglePositions.byteLength;
+    bytes.set(new Uint8Array(triangleIndices.buffer), offset);
+    offset += triangleIndices.byteLength + 2;
+    bytes.set(new Uint8Array(inverseBindMatrices.buffer), offset);
+    offset += inverseBindMatrices.byteLength;
+    bytes.set(new Uint8Array(animationTimes.buffer), offset);
+    offset += animationTimes.byteLength;
+    bytes.set(new Uint8Array(animationTranslations.buffer), offset);
+    return bytes;
+};
+
+const createRigJson = (): GltfRootJson => ({
+    asset: {
+        version: '2.0',
+        generator: 'vitest',
+    },
+    buffers: [
+        {
+            byteLength: 140,
+        },
+    ],
+    bufferViews: [
+        {
+            buffer: 0,
+            byteOffset: 0,
+            byteLength: 36,
+        },
+        {
+            buffer: 0,
+            byteOffset: 36,
+            byteLength: 6,
+        },
+        {
+            buffer: 0,
+            byteOffset: 44,
+            byteLength: 64,
+        },
+        {
+            buffer: 0,
+            byteOffset: 108,
+            byteLength: 8,
+        },
+        {
+            buffer: 0,
+            byteOffset: 116,
+            byteLength: 24,
+        },
+    ],
+    accessors: [
+        {
+            bufferView: 0,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        },
+        {
+            bufferView: 1,
+            componentType: 5123,
+            count: 3,
+            type: 'SCALAR',
+        },
+        {
+            bufferView: 2,
+            componentType: 5126,
+            count: 1,
+            type: 'MAT4',
+        },
+        {
+            bufferView: 3,
+            componentType: 5126,
+            count: 2,
+            type: 'SCALAR',
+            min: [0],
+            max: [1],
+        },
+        {
+            bufferView: 4,
+            componentType: 5126,
+            count: 2,
+            type: 'VEC3',
+        },
+    ],
+    meshes: [
+        {
+            name: 'Triangle',
+            primitives: [
+                {
+                    attributes: {
+                        POSITION: 0,
+                    },
+                    indices: 1,
+                },
+            ],
+        },
+    ],
+    nodes: [
+        {
+            name: 'Joint Root',
+        },
+        {
+            name: 'Mesh Root',
+            mesh: 0,
+            skin: 0,
+        },
+    ],
+    skins: [
+        {
+            inverseBindMatrices: 2,
+            skeleton: 0,
+            joints: [0],
+            name: 'Rig',
+        },
+    ],
+    animations: [
+        {
+            name: 'Move',
+            samplers: [
+                {
+                    input: 3,
+                    output: 4,
+                },
+            ],
+            channels: [
+                {
+                    sampler: 0,
+                    target: {
+                        node: 1,
+                        path: 'translation',
+                    },
+                },
+            ],
+        },
+    ],
+    scenes: [
+        {
+            name: 'Main',
+            nodes: [0, 1],
+        },
+    ],
+    scene: 0,
+});
+
 describe('glTF importer', () => {
     it('imports GLB sources into document, prefab, mesh, material, and transcoded texture assets', async () => {
         const registry = new GltfTextureTranscoderRegistry([
@@ -788,63 +954,64 @@ describe('glTF importer', () => {
         expect(receipt.primary.data.stats.cameraCount).toBe(1);
     });
 
-    it('warns when glTF animations and skins are present without runtime support', async () => {
+    it('imports skin and animation metadata while warning that runtime playback is still missing', async () => {
         const database = new AssetDatabase<GltfAssetSchema>({
             importers: [createGltfImporter()],
         });
 
         const receipt = await database.import({
             kind: 'bytes',
-            data: createGlb({
-                ...createTriangleJson(),
-                skins: [
-                    {
-                        joints: [0],
-                    },
-                ],
-                nodes: [
-                    {
-                        name: 'Root',
-                        mesh: 0,
-                        skin: 0,
-                    },
-                ],
-                animations: [
-                    {
-                        samplers: [
-                            {
-                                input: 0,
-                                output: 1,
-                            },
-                        ],
-                        channels: [
-                            {
-                                sampler: 0,
-                                target: {
-                                    node: 0,
-                                    path: 'translation',
-                                },
-                            },
-                        ],
-                    },
-                ],
-            } satisfies GltfRootJson, createBinaryBlob()),
+            data: createGlb(createRigJson(), createRigBinaryBlob()),
             uri: 'models/unsupported-features.glb',
             mimeType: 'model/gltf-binary',
         });
 
+        const skin = receipt.assets.find((entry) => entry.kind === 'gltf.skin');
+        const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
+
         expect(receipt.diagnostics).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
-                    code: 'gltf.skin.unsupported',
+                    code: 'gltf.skin.runtime-missing',
                     level: 'warning',
                 }),
                 expect.objectContaining({
-                    code: 'gltf.animation.unsupported',
+                    code: 'gltf.animation.runtime-missing',
                     level: 'warning',
                 }),
             ])
         );
+        expect(skin?.data).toMatchObject({
+            skinIndex: 0,
+            jointNodeIds: ['node/0'],
+            skeletonNodeId: 'node/0',
+        });
+        expect(skin?.data.inverseBindMatrices).toEqual(
+            new Float32Array([
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1,
+            ])
+        );
+        expect(animation?.data.duration).toBe(1);
+        expect(animation?.data.tracks).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    targetNodeId: 'node/1',
+                    path: 'translation',
+                    keyframeCount: 2,
+                    valueComponentCount: 3,
+                    times: new Float32Array([0, 1]),
+                    values: new Float32Array([
+                        0, 0, 0,
+                        1, 0, 0,
+                    ]),
+                }),
+            ])
+        );
+        expect(receipt.primary.data.skinKeys).toEqual([skin?.key]);
+        expect(receipt.primary.data.animationKeys).toEqual([animation?.key]);
         expect(receipt.primary.data.stats.skinCount).toBe(1);
         expect(receipt.primary.data.stats.animationCount).toBe(1);
     });
