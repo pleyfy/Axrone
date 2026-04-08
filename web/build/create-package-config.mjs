@@ -39,13 +39,18 @@ const createExternalMatcher = (packageJson, additionalExternalIds) => {
     };
 };
 
-export const createPackageConfig = ({ packageDir, external = [] }) => {
+export const createPackageConfig = ({
+    packageDir,
+    external = [],
+    inputRelativePath = 'src/index.ts',
+    outputBasename = 'index',
+}) => {
     const packageJsonPath = path.join(packageDir, 'package.json');
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     const packageTsconfigPath = fs.existsSync(path.join(packageDir, 'tsconfig.build.json'))
         ? path.join(packageDir, 'tsconfig.build.json')
         : defaultTsconfigPath;
-    const input = path.join(packageDir, 'src/index.ts');
+    const input = path.join(packageDir, inputRelativePath);
     const distDir = path.join(packageDir, 'dist');
     const isExternal = createExternalMatcher(packageJson, external);
 
@@ -55,13 +60,13 @@ export const createPackageConfig = ({ packageDir, external = [] }) => {
             external: isExternal,
             output: [
                 {
-                    file: path.join(distDir, 'index.js'),
+                    file: path.join(distDir, `${outputBasename}.js`),
                     format: 'cjs',
                     sourcemap: true,
                     exports: 'named',
                 },
                 {
-                    file: path.join(distDir, 'index.mjs'),
+                    file: path.join(distDir, `${outputBasename}.mjs`),
                     format: 'es',
                     sourcemap: true,
                 },
@@ -89,7 +94,7 @@ export const createPackageConfig = ({ packageDir, external = [] }) => {
             input,
             external: isExternal,
             output: {
-                file: path.join(distDir, 'index.d.ts'),
+                file: path.join(distDir, `${outputBasename}.d.ts`),
                 format: 'es',
             },
             plugins: [
