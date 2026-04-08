@@ -23,6 +23,11 @@
             "types": "./dist/pipeline/index.d.ts",
             "import": "./dist/pipeline/index.mjs",
             "require": "./dist/pipeline/index.js"
+        },
+        "./scene": {
+            "types": "./dist/scene/index.d.ts",
+            "import": "./dist/scene/index.mjs",
+            "require": "./dist/scene/index.js"
         }
     },
     "scripts": {

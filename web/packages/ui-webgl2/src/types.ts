@@ -6,7 +6,7 @@ import type {
     UIFrameProducer,
     UIFrameSink,
 } from '@axrone/ui';
-import type { RenderPipelineBackend } from '@axrone/core';
+import type { GameLoop, RenderPipelineBackend, Scene } from '@axrone/core';
 
 export interface WebGL2UIRendererStatistics {
     readonly drawCalls: number;
@@ -53,5 +53,26 @@ export interface ManagedWebGL2UIOverlayRenderPipelineBackendOptions<TNative = un
 export interface ManagedUIOverlayRenderPipelineBackend<TNative = unknown>
     extends RenderPipelineBackend<TNative>,
         Disposable {
+    dispose(): void;
+}
+
+export interface SceneUIOverlayTarget {
+    readonly canvas: Pick<HTMLCanvasElement, 'width' | 'height'>;
+    readonly gl: Pick<WebGL2RenderingContext, 'drawingBufferWidth' | 'drawingBufferHeight'> & WebGL2RenderingContext;
+    readonly loop: Pick<GameLoop<{ readonly sceneId: string }>, 'addSystem' | 'removeSystem' | 'getSystem'>;
+}
+
+export interface SceneUIOverlayOptions<TPayload = unknown> {
+    readonly ui: UIFrameProducer<TPayload>;
+    readonly renderer?: Omit<WebGL2UIRendererOptions<TPayload>, 'gl'>;
+    readonly systemId?: string;
+    readonly priority?: number;
+}
+
+export interface SceneUIOverlayHandle<TPayload = unknown> extends Disposable {
+    readonly scene: SceneUIOverlayTarget;
+    readonly systemId: string;
+    readonly renderer: Pick<UIFrameSink<TPayload>, 'render'> & Disposable;
+    render(): UIFrame<TPayload> | null;
     dispose(): void;
 }

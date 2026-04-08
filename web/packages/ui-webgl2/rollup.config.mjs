@@ -16,4 +16,9 @@ export default [
         inputRelativePath: 'src/pipeline.ts',
         outputBasename: 'pipeline/index',
     }),
+    ...createPackageConfig({
+        packageDir,
+        inputRelativePath: 'src/scene.ts',
+        outputBasename: 'scene/index',
+    }),
 ];

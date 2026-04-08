@@ -1,7 +1,9 @@
+import { createGameLoop } from '@axrone/core';
 import { describe, expect, it, vi } from 'vitest';
 import type { GlyphAtlasEntry, TextLayoutResult, UIFrame, UIFrameMetrics, WidgetId } from '@axrone/ui';
 import {
     WebGL2UIRenderer,
+    attachUIOverlayToScene,
     createManagedWebGL2UIOverlayRenderPipelineBackend,
     createUIOverlayRenderPipelineBackend,
 } from '../index';
@@ -299,5 +301,37 @@ describe('@axrone/ui-webgl2', () => {
         backend.dispose();
 
         expect(glB.deleteProgram).toHaveBeenCalledTimes(2);
+    });
+
+    it('attaches UI rendering to the scene after-frame hook', () => {
+        const gl = createMockWebGL2Context();
+        const loop = createGameLoop({
+            state: { sceneId: 'scene:test' },
+            autoStart: false,
+        });
+        const frame = createFrame();
+        const overlay = attachUIOverlayToScene(
+            {
+                gl,
+                canvas: { width: 320, height: 180 } as HTMLCanvasElement,
+                loop,
+            },
+            {
+                systemId: 'ui.overlay.test',
+                ui: () => frame,
+            }
+        );
+        const system = loop.getSystem('ui.overlay.test');
+
+        expect(system).toBeDefined();
+        system?.afterFrame?.({} as never);
+
+        expect(gl.drawArraysInstanced).toHaveBeenCalledTimes(2);
+        expect(overlay.render()).toBe(frame);
+
+        overlay.dispose();
+
+        expect(loop.getSystem('ui.overlay.test')).toBeUndefined();
+        expect(gl.deleteProgram).toHaveBeenCalledTimes(2);
     });
 });

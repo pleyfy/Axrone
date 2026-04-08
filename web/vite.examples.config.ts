@@ -12,6 +12,8 @@ export default defineConfig({
             '@axrone/core': path.resolve(workspaceDir, 'packages/core/src'),
             '@axrone/numeric': path.resolve(workspaceDir, 'packages/numeric/src'),
             '@axrone/random': path.resolve(workspaceDir, 'packages/random/src'),
+            '@axrone/ui': path.resolve(workspaceDir, 'packages/ui/src'),
+            '@axrone/ui-webgl2': path.resolve(workspaceDir, 'packages/ui-webgl2/src'),
             '@axrone/utility': path.resolve(workspaceDir, 'packages/utility/src'),
         },
     },
@@ -25,7 +27,14 @@ export default defineConfig({
         open: '/index.html',
     },
     optimizeDeps: {
-        exclude: ['@axrone/core', '@axrone/numeric', '@axrone/random', '@axrone/utility'],
+        exclude: [
+            '@axrone/core',
+            '@axrone/numeric',
+            '@axrone/random',
+            '@axrone/ui',
+            '@axrone/ui-webgl2',
+            '@axrone/utility',
+        ],
         include: ['monaco-editor'],
     },
     build: {
