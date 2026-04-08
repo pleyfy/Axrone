@@ -605,6 +605,13 @@ export interface RenderShadowPassMetadata {
     readonly cascadeCount: 1 | 2 | 4;
     readonly filter: RenderShadowFilter;
     readonly maxDistance: number;
+    readonly cascades: readonly {
+        readonly index: number;
+        readonly near: number;
+        readonly far: number;
+        readonly splitDepth: number;
+    }[];
+    readonly lightIds: readonly string[];
 }
 
 export interface RenderOpaquePassMetadata {
@@ -645,7 +652,7 @@ export interface RenderTransparentPassMetadata {
 
 export interface RenderPostProcessPassMetadata {
     readonly source: RenderResourceName;
-    readonly target: RenderResourceName<'post' | 'frame'>;
+    readonly target: RenderResourceName<'post' | 'frame' | 'history'>;
     readonly phase: RenderPostProcessPhase;
     readonly effect: ResolvedPostProcessEffect;
 }
@@ -654,6 +661,10 @@ export interface RenderTonemapPassMetadata {
     readonly source: RenderResourceName;
     readonly target: RenderResourceName<'post' | 'frame'>;
     readonly mode: RenderTonemappingMode;
+    readonly hdr: boolean;
+    readonly colorSpace: RenderOutputColorSpace;
+    readonly exposure: RenderExposureSettings | null;
+    readonly exposureHistory: RenderResourceName<'history'> | null;
 }
 
 export interface RenderPresentPassMetadata {
@@ -664,6 +675,7 @@ export interface RenderPresentPassMetadata {
 
 export interface RenderLightBakePassMetadata {
     readonly taskIds: readonly string[];
+    readonly budgetMs: number;
 }
 
 export type RenderPassMetadata =
@@ -734,12 +746,14 @@ export interface RenderFrameStatistics {
     readonly frame: number;
     readonly deltaTime: number;
     readonly passCount: number;
+    readonly postProcessPassCount: number;
     readonly opaqueCount: number;
     readonly transparentCount: number;
     readonly shadowCasterCount: number;
     readonly lightCount: number;
     readonly activeLocalLightCount: number;
     readonly activeReflectionProbeCount: number;
+    readonly reflectionProbeUpdateCount: number;
     readonly bakeTaskCount: number;
     readonly transientResourceCount: number;
     readonly persistentResourceCount: number;

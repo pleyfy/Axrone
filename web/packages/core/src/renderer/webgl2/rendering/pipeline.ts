@@ -27,6 +27,7 @@ import {
     type RenderLight,
     type RenderLightBakeTask,
     type RenderLightBakingSettings,
+    type RenderEnvironmentState,
     type RenderPassKind,
     type RenderPassMetadata,
     type RenderPassName,
@@ -147,6 +148,12 @@ interface FrameBuild<TNative> {
     readonly livePasses: readonly ResolvedRenderPass[];
 }
 
+const BAKE_TASK_COST: Readonly<Record<InternalBakeTask['type'], number>> = Object.freeze({
+    lightmap: 0.28,
+    probe: 0.18,
+    'irradiance-cache': 0.22,
+});
+
 const DEFAULT_HDR_SETTINGS: NormalizedHdrSettings = Object.freeze({
     enabled: true,
     colorFormat: 'rgba16f',
@@ -266,6 +273,87 @@ const primitiveDistanceSq = (primitive: RenderPrimitiveInstance, camera: RenderC
     const dy = py - cy;
     const dz = pz - cz;
     return dx * dx + dy * dy + dz * dz;
+};
+
+const probeUpdateUrgency = (probe: RenderReflectionProbe, frame: number): number => {
+    const interval = Math.max(1, probe.updateInterval ?? 30);
+    const age =
+        probe.lastUpdatedFrame === undefined ? interval : Math.max(0, frame - probe.lastUpdatedFrame);
+    const dirtyBoost = probe.dirty === true ? interval * 2 : 0;
+    const priority = probe.priority ?? 0;
+    return priority * 100 + dirtyBoost + age;
+};
+
+const computeCascadeSplits = (
+    near: number,
+    far: number,
+    cascadeCount: 1 | 2 | 4,
+    lambda: number,
+    maxDistance: number
+): readonly {
+    readonly index: number;
+    readonly near: number;
+    readonly far: number;
+    readonly splitDepth: number;
+}[] => {
+    const count = cascadeCount;
+    const clampedNear = Math.max(0.001, near);
+    const clampedFar = Math.max(clampedNear + 0.001, Math.min(far, maxDistance));
+    const ranges: Array<{
+        index: number;
+        near: number;
+        far: number;
+        splitDepth: number;
+    }> = [];
+    let previous = clampedNear;
+
+    for (let i = 1; i <= count; i++) {
+        const ratio = i / count;
+        const logarithmic = clampedNear * Math.pow(clampedFar / clampedNear, ratio);
+        const uniform = clampedNear + (clampedFar - clampedNear) * ratio;
+        const splitDepth = uniform + (logarithmic - uniform) * lambda;
+        const currentFar = i === count ? clampedFar : clamp(splitDepth, previous, clampedFar);
+
+        ranges.push(
+            Object.freeze({
+                index: i - 1,
+                near: previous,
+                far: currentFar,
+                splitDepth: currentFar,
+            })
+        );
+        previous = currentFar;
+    }
+
+    return Object.freeze(ranges);
+};
+
+const exposureHistoryDescriptor = (): RenderTextureDescriptor => ({
+    width: 1,
+    height: 1,
+    format: 'r16f',
+    usage: ['sampled', 'history'],
+});
+
+const postEffectCost = (effect: ResolvedPostProcessEffect): number => {
+    if (effect.category === 'custom') {
+        return 0.16;
+    }
+
+    switch (effect.name) {
+        case 'taa':
+            return 0.2;
+        case 'depth-of-field':
+            return 0.22;
+        case 'bloom':
+            return 0.18;
+        case 'ssao':
+            return 0.19;
+        case 'fxaa':
+            return 0.09;
+        default:
+            return 0.12;
+    }
 };
 
 const reflectionProbeDistanceSq = (probe: RenderReflectionProbe, camera: RenderCameraState): number => {
@@ -663,13 +751,14 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
 
         const frame = input.frame ?? ++this._frame;
         const deltaTime = Math.max(0, input.deltaTime ?? 1 / 60);
+        this._frame = frame;
 
         this._resetScratch();
         this._graph.beginFrame(frame);
 
         this._classifyPrimitives(input);
         this._classifyLights(input);
-        this._classifyProbes(input);
+        this._classifyProbes(input, frame);
 
         const hdr = this._resolveHdr(input);
         let gi = input.environment?.gi ?? this._options.gi;
@@ -684,9 +773,9 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
 
         const baseEstimatedCost = this._estimateBaseCost(
             deltaTime,
-            postEffects.length,
+            postEffects.reduce((sum, effect) => sum + postEffectCost(effect), 0),
             probeUpdates,
-            bakeTasks.length,
+            bakeTasks.reduce((sum, task) => sum + BAKE_TASK_COST[task.type], 0),
             gi,
             volumetrics,
             shadowEnabled
@@ -717,6 +806,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             deltaTime,
             input.viewport,
             input.camera,
+            input.environment,
             hdr,
             gi,
             volumetrics,
@@ -733,7 +823,6 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             gi,
             shadowEnabled,
             bakeTasks.length,
-            postEffects.length,
             probeUpdates,
             volumetrics
         );
@@ -896,9 +985,9 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         }
     }
 
-    private _classifyProbes(input: RenderFrameInput): void {
+    private _classifyProbes(input: RenderFrameInput, frame: number): void {
         for (const probe of input.environment?.reflectionProbes ?? []) {
-            const priority = probe.priority ?? 0;
+            const priority = probeUpdateUrgency(probe, frame);
             const distanceSq = reflectionProbeDistanceSq(probe, input.camera);
             this._probeCandidates.push(probe, priority, distanceSq, probe.intensity ?? 1);
         }
@@ -917,7 +1006,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                 mode !== 'baked' &&
                 (probe.dirty === true ||
                     probe.lastUpdatedFrame === undefined ||
-                    this._frame - probe.lastUpdatedFrame >= interval);
+                    frame - probe.lastUpdatedFrame >= interval);
             if (shouldUpdate) {
                 this._probeUpdates.push(probe);
             }
@@ -935,14 +1024,22 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         return Object.freeze({
             ...this._options.hdr,
             exposure:
-                input.camera.exposureCompensation !== undefined &&
-                this._options.hdr.exposure?.mode === 'manual'
-                    ? {
-                          mode: 'manual' as const,
-                          exposure:
-                              this._options.hdr.exposure.exposure +
-                              input.camera.exposureCompensation,
-                      }
+                input.camera.exposureCompensation !== undefined
+                    ? this._options.hdr.exposure?.mode === 'manual'
+                        ? {
+                              mode: 'manual' as const,
+                              exposure:
+                                  this._options.hdr.exposure.exposure +
+                                  input.camera.exposureCompensation,
+                          }
+                        : this._options.hdr.exposure?.mode === 'automatic'
+                          ? {
+                                ...this._options.hdr.exposure,
+                                keyValue:
+                                    (this._options.hdr.exposure.keyValue ?? 0.18) *
+                                    Math.pow(2, input.camera.exposureCompensation),
+                            }
+                          : this._options.hdr.exposure
                     : this._options.hdr.exposure,
         });
     }
@@ -958,7 +1055,8 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
 
         const limit = settings.maxTasksPerFrame ?? this._options.lightBaking.maxTasksPerFrame;
         const throttleFrames = settings.throttleFrames ?? this._options.lightBaking.throttleFrames;
-        const selected = Array.from(this._bakeTasks.values())
+        const budgetMs = Math.max(0, settings.budgetMs ?? this._options.lightBaking.budgetMs);
+        const candidates = Array.from(this._bakeTasks.values())
             .filter((task) => {
                 if (task.state === 'completed' || task.state === 'failed') {
                     return false;
@@ -968,22 +1066,36 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                 }
                 return true;
             })
-            .sort((a, b) => b.priority - a.priority || a.createdAt - b.createdAt)
-            .slice(0, limit)
-            .map((task) => {
-                task.state = 'scheduled';
-                task.scheduledAt = frame;
-                return task;
-            });
+            .sort(
+                (a, b) =>
+                    b.priority - a.priority ||
+                    a.retries - b.retries ||
+                    a.createdAt - b.createdAt
+            );
+        const selected: InternalBakeTask[] = [];
+        let spentBudget = 0;
+
+        for (let i = 0; i < candidates.length && selected.length < limit; i++) {
+            const task = candidates[i];
+            const taskCost = BAKE_TASK_COST[task.type];
+            if (budgetMs > 0 && selected.length > 0 && spentBudget + taskCost > budgetMs) {
+                continue;
+            }
+
+            spentBudget += taskCost;
+            task.state = 'running';
+            task.scheduledAt = frame;
+            selected.push(task);
+        }
 
         return Object.freeze(selected);
     }
 
     private _estimateBaseCost(
         deltaTime: number,
-        effectCount: number,
+        postProcessCost: number,
         probeUpdates: number,
-        bakeTaskCount: number,
+        bakeTaskCost: number,
         gi: RenderGlobalIlluminationSettings,
         volumetrics: NormalizedVolumetricSettings,
         shadowEnabled: boolean
@@ -1011,9 +1123,9 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             cost += 0.6;
         }
 
-        cost += effectCount * 0.14;
+        cost += postProcessCost;
         cost += probeUpdates * 0.32;
-        cost += bakeTaskCount * 0.28;
+        cost += bakeTaskCost;
         return cost;
     }
 
@@ -1064,7 +1176,10 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         };
 
         if (currentCost > this._options.frameBudgetMs && nextBakeTasks.length > 0) {
-            mark('light baking deferred due to frame budget pressure', nextBakeTasks.length * 0.28);
+            mark(
+                'light baking deferred due to frame budget pressure',
+                nextBakeTasks.reduce((sum, task) => sum + BAKE_TASK_COST[task.type], 0)
+            );
             nextBakeTasks = Object.freeze([]);
         }
 
@@ -1111,7 +1226,9 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             if (keep < nextPostEffects.length) {
                 mark(
                     'post-process stack truncated to fit budget',
-                    (nextPostEffects.length - keep) * 0.14
+                    nextPostEffects
+                        .slice(keep)
+                        .reduce((sum, effect) => sum + postEffectCost(effect), 0)
                 );
                 nextPostEffects = Object.freeze(nextPostEffects.slice(0, keep));
             }
@@ -1133,6 +1250,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         deltaTime: number,
         viewport: RenderViewport,
         camera: RenderCameraState,
+        environment: RenderEnvironmentState | undefined,
         hdr: NormalizedHdrSettings,
         gi: RenderGlobalIlluminationSettings,
         volumetrics: NormalizedVolumetricSettings,
@@ -1181,6 +1299,14 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         let currentColor: RenderResourceName = sceneColor;
         let ping: RenderResourceName<'post'> | null = null;
         let pong: RenderResourceName<'post'> | null = null;
+        const exposureHistory =
+            hdr.enabled && hdr.exposure?.mode === 'automatic'
+                ? (this._acquireTexture(
+                      createRenderResourceName('history', 'exposure'),
+                      exposureHistoryDescriptor(),
+                      'history'
+                  ).id as RenderResourceName<'history'>)
+                : null;
 
         const useDepthPrepass =
             this._options.enableDepthPrepass === true ||
@@ -1206,6 +1332,13 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         }
 
         if (shadowEnabled) {
+            const cascades = computeCascadeSplits(
+                camera.near,
+                camera.far,
+                this._options.shadows.cascadeCount,
+                this._options.shadows.cascadeSplitLambda,
+                this._options.shadows.maxDistance
+            );
             const shadowAtlas = this._acquireTexture(
                 createRenderResourceName('shadow', 'atlas'),
                 {
@@ -1232,6 +1365,8 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                     cascadeCount: this._options.shadows.cascadeCount,
                     filter: this._options.shadows.filter,
                     maxDistance: this._options.shadows.maxDistance,
+                    cascades,
+                    lightIds: Object.freeze(this._shadowLights.toArray().map((light) => light.id)),
                 },
             });
         }
@@ -1334,7 +1469,12 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             },
         });
 
-        if ((camera.clearState ?? {}).color && (camera.clearState ?? {}).depth !== 0) {
+        const hasSkyLighting =
+            !!environment?.skybox ||
+            !!environment?.ibl?.enabled ||
+            this._activeProbes.length > 0;
+
+        if (hasSkyLighting) {
             order = this._pushPass(order, {
                 kind: 'skybox',
                 name: createRenderPassName('skybox'),
@@ -1440,22 +1580,55 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         }
 
         for (let i = 0; i < effectsBefore.length; i++) {
+            const effect = effectsBefore[i];
+            const taaTargetHistory =
+                effect.category === 'builtin' && effect.name === 'taa'
+                    ? (this._acquireTexture(
+                          createRenderResourceName('history', frame % 2 === 0 ? 'taa-b' : 'taa-a'),
+                          {
+                              width,
+                              height,
+                              format: hdr.enabled ? hdr.colorFormat : 'rgba8',
+                              usage: ['color-attachment', 'sampled', 'history'],
+                          },
+                          'history'
+                      ).id as RenderResourceName<'history'>)
+                    : null;
+            const taaSourceHistory =
+                effect.category === 'builtin' && effect.name === 'taa'
+                    ? (this._acquireTexture(
+                          createRenderResourceName('history', frame % 2 === 0 ? 'taa-a' : 'taa-b'),
+                          {
+                              width,
+                              height,
+                              format: hdr.enabled ? hdr.colorFormat : 'rgba8',
+                              usage: ['sampled', 'history'],
+                          },
+                          'history'
+                      ).id as RenderResourceName<'history'>)
+                    : null;
             const target =
-                i % 2 === 0
-                    ? (ping as RenderResourceName<'post'>)
-                    : (pong as RenderResourceName<'post'>);
+                taaTargetHistory
+                    ? taaTargetHistory
+                    : i % 2 === 0
+                      ? (ping as RenderResourceName<'post'>)
+                      : (pong as RenderResourceName<'post'>);
+            const inputs =
+                taaSourceHistory
+                    ? Object.freeze([currentColor, taaSourceHistory])
+                    : Object.freeze([currentColor]);
             order = this._pushPass(order, {
                 kind: 'post-process',
-                name: createRenderPassName(`post-process:${effectsBefore[i].name}`),
+                name: createRenderPassName(`post-process:${effect.name}`),
                 queue: 'post-process',
                 target,
-                inputs: [currentColor],
-                estimatedCost: 0.14,
+                inputs,
+                estimatedCost: postEffectCost(effect),
                 metadata: {
                     source: currentColor,
-                    target,
+                    target: target as RenderResourceName<'post' | 'frame' | 'history'>,
                     phase: 'before-tonemap',
-                    effect: effectsBefore[i],
+                    effect,
                 },
             });
             currentColor = target;
@@ -1476,34 +1649,39 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                 name: createRenderPassName('tonemap'),
                 queue: 'post-process',
                 target: tonemapTarget,
-                inputs: [currentColor],
+                inputs: exposureHistory ? [currentColor, exposureHistory] : [currentColor],
                 estimatedCost: 0.12,
                 metadata: {
                     source: currentColor,
                     target: tonemapTarget,
                     mode: this._options.tonemapping.mode,
+                    hdr: hdr.enabled,
+                    colorSpace: hdr.outputColorSpace,
+                    exposure: hdr.exposure ?? null,
+                    exposureHistory,
                 },
             });
             currentColor = tonemapTarget;
         }
 
         for (let i = 0; i < effectsAfter.length; i++) {
+            const effect = effectsAfter[i];
             const target =
                 i % 2 === 0
                     ? (pong as RenderResourceName<'post'>)
                     : (ping as RenderResourceName<'post'>);
             order = this._pushPass(order, {
                 kind: 'post-process',
-                name: createRenderPassName(`post-process:${effectsAfter[i].name}`),
+                name: createRenderPassName(`post-process:${effect.name}`),
                 queue: 'post-process',
                 target,
                 inputs: [currentColor],
-                estimatedCost: 0.14,
+                estimatedCost: postEffectCost(effect),
                 metadata: {
                     source: currentColor,
                     target,
                     phase: 'after-tonemap',
-                    effect: effectsAfter[i],
+                    effect,
                 },
             });
             currentColor = target;
@@ -1516,9 +1694,12 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                 queue: 'async',
                 target: null,
                 inputs: [],
-                estimatedCost: bakeTasks.length * 0.28,
+                estimatedCost: bakeTasks.reduce((sum, task) => sum + BAKE_TASK_COST[task.type], 0),
                 metadata: {
                     taskIds: Object.freeze(bakeTasks.map((task) => task.id)),
+                    budgetMs:
+                        environment?.lightBaking?.budgetMs ??
+                        this._options.lightBaking.budgetMs,
                 },
             });
         }
@@ -1602,7 +1783,6 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         gi: RenderGlobalIlluminationSettings,
         shadowEnabled: boolean,
         bakeTaskCount: number,
-        effectCount: number,
         probeUpdates: number,
         volumetrics: NormalizedVolumetricSettings
     ): RenderFrameStatistics {
@@ -1621,21 +1801,27 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             frame,
             deltaTime,
             passCount: passes.length,
+            postProcessPassCount: passes.filter((pass) => pass.kind === 'post-process').length,
             opaqueCount: this._opaque.length,
             transparentCount: this._transparent.length,
             shadowCasterCount: shadowEnabled ? this._shadowCasters.length : 0,
             lightCount: this._activeLights.length,
             activeLocalLightCount: Math.max(0, this._activeLights.length - this._shadowLights.length),
             activeReflectionProbeCount: this._activeProbes.length,
+            reflectionProbeUpdateCount: probeUpdates,
             bakeTaskCount,
             transientResourceCount: transientResources,
             persistentResourceCount: persistentResources,
             resourceReuseCount: this._graph.reuseCount,
             estimatedCost: this._estimateBaseCost(
                 deltaTime,
-                effectCount,
+                passes
+                    .filter((pass) => pass.kind === 'post-process')
+                    .reduce((sum, pass) => sum + pass.estimatedCost, 0),
                 probeUpdates,
-                bakeTaskCount,
+                passes
+                    .filter((pass) => pass.kind === 'light-bake')
+                    .reduce((sum, pass) => sum + pass.estimatedCost, 0),
                 gi,
                 volumetrics,
                 shadowEnabled
