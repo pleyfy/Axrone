@@ -837,6 +837,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             ? {
                   kind: 'material' as const,
                   materialId: input.source.materialId,
+                  textureBinding: input.source.textureBinding,
                   width: Math.max(1, input.source.width),
                   height: Math.max(1, input.source.height),
               }

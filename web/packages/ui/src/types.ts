@@ -263,6 +263,7 @@ export interface UIImageTextureSource {
 export interface UIImageMaterialSource {
     readonly kind: 'material';
     readonly materialId: string;
+    readonly textureBinding?: string;
     readonly width: number;
     readonly height: number;
 }
