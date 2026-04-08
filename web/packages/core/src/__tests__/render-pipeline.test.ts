@@ -229,4 +229,147 @@ describe('RenderPipeline', () => {
             2
         );
     });
+
+    it('plans cascade metadata and temporal history for shadowed HDR frames', () => {
+        const pipeline = new RenderPipeline({
+            hdr: {
+                enabled: true,
+                exposure: {
+                    mode: 'automatic',
+                    keyValue: 0.18,
+                },
+            },
+            shadows: {
+                enabled: true,
+                cascadeCount: 4,
+                cascadeSplitLambda: 0.8,
+                maxDistance: 120,
+            },
+            postProcess: [{ category: 'builtin', name: 'taa' }],
+        });
+
+        const result = pipeline.plan({
+            frame: 3,
+            deltaTime: 1 / 60,
+            viewport: { width: 1440, height: 900 },
+            camera: createCamera(),
+            primitives: [createOpaquePrimitive()],
+            lights: [
+                {
+                    type: 'directional',
+                    id: 'light:sun',
+                    direction: [0, -1, 0],
+                    color: [1, 1, 1],
+                    intensity: 4,
+                    castsShadows: true,
+                },
+            ],
+            environment: {
+                skybox: {
+                    textureId: 'sky:studio',
+                },
+            },
+        });
+
+        const shadow = result.passes.find((pass) => pass.kind === 'shadow');
+        const taa = result.passes.find(
+            (pass) => pass.kind === 'post-process' && pass.metadata.effect.name === 'taa'
+        );
+        const tonemap = result.passes.find((pass) => pass.kind === 'tonemap');
+
+        expect(shadow?.metadata).toEqual(
+            expect.objectContaining({
+                lightIds: ['light:sun'],
+            })
+        );
+        expect((shadow?.metadata as { cascades: readonly unknown[] }).cascades).toHaveLength(4);
+        expect(taa?.target).toContain('history:taa-');
+        expect(taa?.inputs.some((input) => input.includes('history:taa-'))).toBe(true);
+        expect(tonemap?.metadata).toEqual(
+            expect.objectContaining({
+                hdr: true,
+                colorSpace: 'srgb',
+                exposureHistory: 'history:exposure',
+            })
+        );
+    });
+
+    it('uses the provided frame number when deciding reflection probe refresh cadence', () => {
+        const pipeline = new RenderPipeline({
+            maxActiveReflectionProbes: 1,
+        });
+
+        const input = {
+            deltaTime: 1 / 60,
+            viewport: { width: 800, height: 600 },
+            camera: createCamera(),
+            primitives: [createOpaquePrimitive()],
+            environment: {
+                reflectionProbes: [
+                    {
+                        id: 'probe:lobby',
+                        mode: 'realtime' as const,
+                        position: [0, 0, 0] as const,
+                        lastUpdatedFrame: 2,
+                        updateInterval: 4,
+                    },
+                ],
+            },
+        };
+
+        const early = pipeline.plan({
+            frame: 3,
+            ...input,
+        });
+        const due = pipeline.plan({
+            frame: 6,
+            ...input,
+        });
+
+        expect(early.passes.some((pass) => pass.kind === 'reflection-probe')).toBe(false);
+        expect(due.passes.some((pass) => pass.kind === 'reflection-probe')).toBe(true);
+        expect(due.statistics.reflectionProbeUpdateCount).toBe(1);
+    });
+
+    it('respects light baking budget when selecting async work for a frame', () => {
+        const pipeline = new RenderPipeline({
+            lightBaking: {
+                enabled: true,
+                maxTasksPerFrame: 3,
+                budgetMs: 0.4,
+            },
+        });
+
+        pipeline.enqueueBakeTask({
+            id: 'bake:lightmap',
+            type: 'lightmap',
+            priority: 10,
+        });
+        pipeline.enqueueBakeTask({
+            id: 'bake:probe',
+            type: 'probe',
+            priority: 9,
+        });
+        pipeline.enqueueBakeTask({
+            id: 'bake:cache',
+            type: 'irradiance-cache',
+            priority: 8,
+        });
+
+        const result = pipeline.plan({
+            frame: 1,
+            deltaTime: 1 / 60,
+            viewport: { width: 1280, height: 720 },
+            camera: createCamera(),
+            primitives: [createOpaquePrimitive()],
+        });
+
+        const bakePass = result.passes.find((pass) => pass.kind === 'light-bake');
+        expect(bakePass?.metadata).toEqual(
+            expect.objectContaining({
+                taskIds: ['bake:lightmap'],
+                budgetMs: 0.4,
+            })
+        );
+    });
 });
