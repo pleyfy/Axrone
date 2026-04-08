@@ -5,6 +5,7 @@ import type {
     InternalActionDefinition,
     InternalContext,
     InternalContextAction,
+    InternalInputUser,
 } from './shared';
 import type { InputCompiler } from './compiler';
 import type {
@@ -32,6 +33,9 @@ import type {
     InputRebindingSession,
     InputRestoreOptions,
     InputSystemSnapshot,
+    InputUserDefinition,
+    InputUserSnapshot,
+    InputUserId,
 } from '../types';
 
 export interface InputRebindingRuntime<TSchema extends InputActionSchema = InputActionSchema> {
@@ -39,6 +43,8 @@ export interface InputRebindingRuntime<TSchema extends InputActionSchema = Input
     _actionNames: readonly InputActionName<TSchema>[];
     _actionDefinitions: readonly InternalActionDefinition[];
     _contexts: Map<string, InternalContext<TSchema>>;
+    _users: Map<string, InternalInputUser>;
+    _gamepadOwners: Map<number, InputUserId>;
     _contextOrderDirty: boolean;
     _activeRebinding: ActiveRebinding<TSchema> | undefined;
     _rebindToken: number;
@@ -53,6 +59,7 @@ export interface InputRebindingRuntime<TSchema extends InputActionSchema = Input
     _requireControlPath(value: string): InputControlPath;
     _resolveMessage(descriptor: Readonly<InputMessageDescriptor>): string;
     _upsertContext(definition: InputContextDefinition<TSchema>, allowReplace: boolean): InputContextState;
+    _upsertUser(definition: InputUserDefinition, allowReplace: boolean): void;
     _getOrderedContexts(): readonly InternalContext<TSchema>[];
 }
 
@@ -243,6 +250,18 @@ export const expireRebindingSessionIfNeeded = <TSchema extends InputActionSchema
 export const createInputSnapshot = <TSchema extends InputActionSchema>(
     runtime: InputRebindingRuntime<TSchema>
 ): InputSystemSnapshot<TSchema> => {
+    const users =
+        runtime._users.size > 0
+            ? Object.freeze(
+                  [...runtime._users.values()].map<InputUserSnapshot>((user) =>
+                      Object.freeze({
+                          id: user.id,
+                          enabled: user.enabled,
+                          devices: Object.freeze([...user.devices.values()]),
+                      })
+                  )
+              )
+            : undefined;
     const contexts = runtime._getOrderedContexts().map<InputContextSnapshot<TSchema>>((context) => {
         const bindings: Partial<InputActionBindings<TSchema>> = {};
 
@@ -257,6 +276,7 @@ export const createInputSnapshot = <TSchema extends InputActionSchema>(
             priority: context.priority,
             enabled: context.enabled,
             capture: context.capture,
+            user: context.user,
             bindings: Object.freeze(bindings) as InputContextSnapshot<TSchema>['bindings'],
         });
     });
@@ -265,6 +285,7 @@ export const createInputSnapshot = <TSchema extends InputActionSchema>(
         version: INPUT_SNAPSHOT_VERSION,
         locale: runtime._locale,
         capturedAtEpochMs: runtime._now(),
+        users,
         contexts: Object.freeze(contexts),
     });
 };
@@ -285,8 +306,30 @@ export const restoreInputSnapshot = <TSchema extends InputActionSchema>(
     }
 
     if (!options.merge) {
+        runtime._users.clear();
+        runtime._gamepadOwners.clear();
         runtime._contexts.clear();
         runtime._contextOrderDirty = true;
+    }
+
+    for (const userSnapshot of snapshot.users ?? []) {
+        if (!isRecord(userSnapshot) || typeof userSnapshot.id !== 'string') {
+            throw new InputSnapshotError(
+                runtime._resolveMessage({
+                    code: 'input.invalid-snapshot',
+                    reason: 'user entry is invalid',
+                })
+            );
+        }
+
+        runtime._upsertUser(
+            {
+                id: userSnapshot.id,
+                enabled: userSnapshot.enabled,
+                devices: userSnapshot.devices,
+            },
+            true
+        );
     }
 
     for (const contextSnapshot of snapshot.contexts) {
@@ -305,6 +348,7 @@ export const restoreInputSnapshot = <TSchema extends InputActionSchema>(
                 priority: contextSnapshot.priority,
                 enabled: contextSnapshot.enabled,
                 capture: contextSnapshot.capture,
+                user: contextSnapshot.user,
                 bindings: contextSnapshot.bindings,
             },
             true

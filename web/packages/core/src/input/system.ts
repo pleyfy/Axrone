@@ -2,9 +2,14 @@ import {
     InputConfigurationError,
     InputContextError,
     InputDisposedError,
+    InputUserError,
     resolveInputMessage,
 } from './errors';
-import { normalizeInputContextId, normalizeInputControlPath } from './reference';
+import {
+    normalizeInputContextId,
+    normalizeInputControlPath,
+    normalizeInputUserId,
+} from './reference';
 import { attachInputBrowserTarget } from './internal/attachment';
 import { createInputCompiler } from './internal/compiler';
 import {
@@ -69,6 +74,7 @@ import type {
     InternalActionEventDescriptor,
     InternalContext,
     InternalContextAction,
+    InternalInputUser,
     MutableGamepadState,
     MutableTouchPoint,
     Vector2StateStore,
@@ -123,6 +129,15 @@ import type {
     InputSystemSnapshot,
     InputTouchPoint,
     InputTouchSourceEvent,
+    InputTextEntry,
+    InputTextSourceEvent,
+    InputCompositionSourceEvent,
+    InputCompositionState,
+    InputOwnedDeviceDefinition,
+    InputUserDefinition,
+    InputUserId,
+    InputUserSnapshot,
+    InputUserState,
     InputVector2,
     InputVector2ActionDefinition,
     InputVector2State,
@@ -139,9 +154,11 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
     private readonly _axisStates: Array<InputAxisState | undefined>;
     private readonly _vectorStates: Array<InputVector2State | undefined>;
     private readonly _contexts = new Map<string, InternalContext<TSchema>>();
+    private readonly _users = new Map<string, InternalInputUser>();
     private readonly _keysDown = new Set<string>();
     private readonly _touches = new Map<number, MutableTouchPoint>();
     private readonly _gamepads = new Map<number, MutableGamepadState>();
+    private readonly _gamepadOwners = new Map<number, InputUserId>();
     private readonly _consumedPaths = new Set<InputControlPath>();
     private readonly _accumulatorX: Float64Array;
     private readonly _accumulatorY: Float64Array;
@@ -169,6 +186,12 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
     private _primaryTouchId: number | undefined;
     private _frame = 0;
     private _timestamp = 0;
+    private _textEntries: InputTextEntry[] = [];
+    private _textEntryFrame = -1;
+    private _compositionActive = false;
+    private _compositionText = '';
+    private _compositionFrame = 0;
+    private _compositionTimestamp = 0;
     private _contextOrderDirty = true;
     private _orderedContexts: InternalContext<TSchema>[] = [];
     private readonly _actionEvents: InputActionEventEmitter<TSchema>;
@@ -267,6 +290,10 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._assigned = new Uint8Array(actionDefinitions.length);
         this._sourceContexts = new Array<InputContextId | undefined>(actionDefinitions.length);
 
+        for (const user of options.users ?? []) {
+            this.registerUser(user);
+        }
+
         for (const context of options.contexts ?? []) {
             this.registerContext(context);
         }
@@ -294,6 +321,10 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
     update(now = this._now()): number {
         this._assertNotDisposed();
+        if (this._textEntries.length > 0 && this._textEntryFrame < this._frame) {
+            this._textEntries = [];
+            this._textEntryFrame = -1;
+        }
         this._timestamp = Number.isFinite(now) ? now : this._now();
         this._expireRebindingIfNeeded(this._timestamp);
         pollGamepads(this as unknown as InputSourceRuntime<TSchema>);
@@ -328,6 +359,15 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
                 break;
             case 'focus':
                 handleFocusEvent(this as unknown as InputSourceRuntime<TSchema>, event);
+                if (!event.focused) {
+                    this._clearTextInputState(true);
+                }
+                break;
+            case 'text':
+                this._recordText(event);
+                break;
+            case 'composition':
+                this._updateComposition(event);
                 break;
         }
     }
@@ -352,6 +392,11 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             get isDisposed(): boolean {
                 return attachedTarget.isDisposed;
             },
+            get isPointerLocked(): boolean | undefined {
+                return attachedTarget.isPointerLocked;
+            },
+            requestPointerLock: () => attachedTarget.requestPointerLock?.() ?? false,
+            exitPointerLock: () => attachedTarget.exitPointerLock?.() ?? false,
             dispose: () => {
                 if (attachedTarget.isDisposed) {
                     return;
@@ -364,6 +409,110 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
         this._attachments.add(attachment);
         return attachment;
+    }
+
+    registerUser(definition: InputUserDefinition): InputUserState {
+        this._assertNotDisposed();
+        return this._upsertUser(definition, false);
+    }
+
+    upsertUser(definition: InputUserDefinition): InputUserState {
+        this._assertNotDisposed();
+        return this._upsertUser(definition, true);
+    }
+
+    removeUser(id: string | InputUserId): boolean {
+        this._assertNotDisposed();
+        const normalized = this._requireUserId(id);
+        const removed = this._users.delete(normalized);
+
+        if (!removed) {
+            return false;
+        }
+
+        for (const [index, owner] of [...this._gamepadOwners]) {
+            if (owner === normalized) {
+                this._gamepadOwners.delete(index);
+            }
+        }
+
+        for (const [, context] of this._contexts) {
+            if (context.user === normalized) {
+                context.user = undefined;
+            }
+        }
+
+        return true;
+    }
+
+    user(id: string | InputUserId): InputUserState | undefined {
+        const normalized = normalizeInputUserId(String(id));
+        if (!normalized) {
+            return undefined;
+        }
+
+        const user = this._users.get(normalized);
+        return user ? this._snapshotUserState(user) : undefined;
+    }
+
+    users(): readonly InputUserState[] {
+        return Object.freeze([...this._users.values()].map((user) => this._snapshotUserState(user)));
+    }
+
+    setUserEnabled(id: string | InputUserId, enabled: boolean): InputUserState {
+        this._assertNotDisposed();
+        const user = this._requireUser(id);
+        user.enabled = !!enabled;
+        user.sequence = ++this._sequence;
+        return this._snapshotUserState(user);
+    }
+
+    assignGamepad(user: string | InputUserId, index: number): InputUserState {
+        this._assertNotDisposed();
+        if (!Number.isInteger(index) || index < 0) {
+            throw new InputUserError(
+                'input.invalid-user',
+                String(user),
+                this._resolveMessage({
+                    code: 'input.invalid-user',
+                    value: { user, index },
+                })
+            );
+        }
+
+        const storedUser = this._requireUser(user);
+        const previousOwner = this._gamepadOwners.get(index);
+        if (previousOwner && previousOwner !== storedUser.id) {
+            const owner = this._users.get(previousOwner);
+            owner?.devices.delete(this._deviceOwnershipKey({ device: 'gamepad', index }));
+        }
+
+        storedUser.devices.set(
+            this._deviceOwnershipKey({ device: 'gamepad', index }),
+            Object.freeze({
+                device: 'gamepad',
+                index,
+            })
+        );
+        this._gamepadOwners.set(index, storedUser.id);
+        storedUser.sequence = ++this._sequence;
+        return this._snapshotUserState(storedUser);
+    }
+
+    releaseGamepad(index: number): InputUserId | undefined {
+        this._assertNotDisposed();
+        if (!Number.isInteger(index) || index < 0) {
+            return undefined;
+        }
+
+        const owner = this._gamepadOwners.get(index);
+        if (!owner) {
+            return undefined;
+        }
+
+        this._gamepadOwners.delete(index);
+        this._users.get(owner)?.devices.delete(this._deviceOwnershipKey({ device: 'gamepad', index }));
+        return owner;
     }
 
     registerContext(definition: InputContextDefinition<TSchema>): InputContextState {
@@ -575,6 +724,19 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         return state.kind === 'button' ? state.released : false;
     }
 
+    textEntries(): readonly InputTextEntry[] {
+        return Object.freeze([...this._textEntries]);
+    }
+
+    composition(): InputCompositionState {
+        return Object.freeze({
+            active: this._compositionActive,
+            text: this._compositionText,
+            frame: this._compositionFrame,
+            timestamp: this._compositionTimestamp,
+        });
+    }
+
     dispose(): void {
         if (this._disposed) {
             return;
@@ -590,9 +752,12 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         this._attachments.clear();
         this._actionEvents.dispose();
         this._contexts.clear();
+        this._users.clear();
+        this._gamepadOwners.clear();
         this._consumedPaths.clear();
         clearDeviceState(this as unknown as InputSourceRuntime<TSchema>, true);
         this._gamepads.clear();
+        this._clearTextInputState(true);
     }
 
     private _hasActionEventListeners(): boolean {
@@ -620,6 +785,10 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         const priority = this._normalizePriority(definition.priority ?? 0);
         const capture = definition.capture === 'used' ? 'used' : 'none';
         const enabled = definition.enabled ?? true;
+        const user =
+            typeof definition.user === 'undefined'
+                ? undefined
+                : this._requireExistingUserId(definition.user);
         const bindings = definition.bindings ?? {};
         const actions = new Map<number, InternalContextAction<TSchema>>();
 
@@ -657,6 +826,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             existing.priority = priority;
             existing.enabled = enabled;
             existing.capture = capture;
+            existing.user = user;
             existing.sequence = ++this._sequence;
             existing.actions.clear();
 
@@ -673,6 +843,7 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             priority,
             enabled,
             capture,
+            user,
             sequence: ++this._sequence,
             actions,
         };
@@ -747,7 +918,79 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             priority: context.priority,
             enabled: context.enabled,
             capture: context.capture,
+            user: context.user,
         });
+    }
+
+    private _snapshotUserState(user: InternalInputUser): InputUserState {
+        return Object.freeze({
+            id: user.id,
+            enabled: user.enabled,
+            devices: Object.freeze([...user.devices.values()]),
+        });
+    }
+
+    private _upsertUser(definition: InputUserDefinition, allowReplace: boolean): InputUserState {
+        const id = this._requireUserId(definition.id);
+        const normalizedDevices = this._normalizeOwnedDevices(definition.devices);
+        const existing = this._users.get(id);
+
+        if (existing) {
+            if (!allowReplace) {
+                throw new InputUserError(
+                    'input.user.conflict',
+                    String(id),
+                    this._resolveMessage({
+                        code: 'input.user.conflict',
+                        id: String(id),
+                    })
+                );
+            }
+
+            for (const device of [...existing.devices.values()]) {
+                if (device.device === 'gamepad') {
+                    this._gamepadOwners.delete(device.index);
+                }
+            }
+
+            existing.enabled = definition.enabled ?? true;
+            existing.sequence = ++this._sequence;
+            existing.devices.clear();
+
+            for (const device of normalizedDevices) {
+                existing.devices.set(this._deviceOwnershipKey(device), device);
+                if (device.device === 'gamepad') {
+                    const previousOwner = this._gamepadOwners.get(device.index);
+                    if (previousOwner && previousOwner !== existing.id) {
+                        this._users.get(previousOwner)?.devices.delete(this._deviceOwnershipKey(device));
+                    }
+                    this._gamepadOwners.set(device.index, existing.id);
+                }
+            }
+
+            return this._snapshotUserState(existing);
+        }
+
+        const user: InternalInputUser = {
+            id,
+            enabled: definition.enabled ?? true,
+            sequence: ++this._sequence,
+            devices: new Map<string, InputOwnedDeviceDefinition>(),
+        };
+
+        for (const device of normalizedDevices) {
+            user.devices.set(this._deviceOwnershipKey(device), device);
+            if (device.device === 'gamepad') {
+                const previousOwner = this._gamepadOwners.get(device.index);
+                if (previousOwner && previousOwner !== user.id) {
+                    this._users.get(previousOwner)?.devices.delete(this._deviceOwnershipKey(device));
+                }
+                this._gamepadOwners.set(device.index, user.id);
+            }
+        }
+
+        this._users.set(id, user);
+        return this._snapshotUserState(user);
     }
 
     private _requireActionIndex(action: string): number {
@@ -776,6 +1019,56 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
             String(value),
             this._resolveMessage({
                 code: 'input.invalid-context',
+                value,
+            })
+        );
+    }
+
+    private _requireUserId(value: string | InputUserId): InputUserId {
+        const normalized = normalizeInputUserId(String(value));
+        if (normalized) {
+            return normalized;
+        }
+
+        throw new InputUserError(
+            'input.invalid-user',
+            String(value),
+            this._resolveMessage({
+                code: 'input.invalid-user',
+                value,
+            })
+        );
+    }
+
+    private _requireExistingUserId(value: string | InputUserId): InputUserId {
+        const normalized = normalizeInputUserId(String(value));
+        if (normalized && this._users.has(normalized)) {
+            return normalized;
+        }
+
+        throw new InputUserError(
+            'input.invalid-user',
+            String(value),
+            this._resolveMessage({
+                code: 'input.invalid-user',
+                value,
+            })
+        );
+    }
+
+    private _requireUser(value: string | InputUserId): InternalInputUser {
+        const id = this._requireExistingUserId(value);
+        const user = this._users.get(id);
+
+        if (user) {
+            return user;
+        }
+
+        throw new InputUserError(
+            'input.invalid-user',
+            String(value),
+            this._resolveMessage({
+                code: 'input.invalid-user',
                 value,
             })
         );
@@ -836,6 +1129,63 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
         return Math.trunc(value);
     }
 
+    private _normalizeOwnedDevices(
+        devices?: readonly InputOwnedDeviceDefinition[]
+    ): readonly InputOwnedDeviceDefinition[] {
+        if (!devices?.length) {
+            return Object.freeze([]);
+        }
+
+        const normalized = new Map<string, InputOwnedDeviceDefinition>();
+
+        for (const device of devices) {
+            if (!isRecord(device) || typeof device.device !== 'string') {
+                throw new InputUserError(
+                    'input.invalid-user',
+                    'unknown',
+                    this._resolveMessage({
+                        code: 'input.invalid-user',
+                        value: device,
+                    })
+                );
+            }
+
+            if (device.device === 'keyboard' || device.device === 'mouse' || device.device === 'touch') {
+                const next = Object.freeze({ device: device.device });
+                normalized.set(this._deviceOwnershipKey(next), next);
+                continue;
+            }
+
+            if (
+                device.device === 'gamepad' &&
+                Number.isInteger(device.index) &&
+                device.index >= 0
+            ) {
+                const next = Object.freeze({
+                    device: 'gamepad',
+                    index: device.index,
+                }) as InputOwnedDeviceDefinition;
+                normalized.set(this._deviceOwnershipKey(next), next);
+                continue;
+            }
+
+            throw new InputUserError(
+                'input.invalid-user',
+                'unknown',
+                this._resolveMessage({
+                    code: 'input.invalid-user',
+                    value: device,
+                })
+            );
+        }
+
+        return Object.freeze([...normalized.values()]);
+    }
+
+    private _deviceOwnershipKey(device: InputOwnedDeviceDefinition): string {
+        return device.device === 'gamepad' ? `gamepad:${device.index}` : device.device;
+    }
+
     private _requireControlPath(value: string): InputControlPath {
         const normalized = normalizeInputControlPath(value);
         if (normalized) {
@@ -853,6 +1203,41 @@ export class InputSystem<TSchema extends InputActionSchema = InputActionSchema> 
 
     private _resolveMessage(descriptor: Readonly<InputMessageDescriptor>): string {
         return resolveInputMessage(descriptor, this._locale, this._messageResolver);
+    }
+
+    private _recordText(event: Readonly<InputTextSourceEvent>): void {
+        if (!event.text) {
+            return;
+        }
+
+        this._textEntries.push(
+            Object.freeze({
+                text: event.text,
+                frame: this._frame,
+                timestamp: this._timestamp,
+            })
+        );
+        this._textEntryFrame = this._frame;
+    }
+
+    private _updateComposition(event: Readonly<InputCompositionSourceEvent>): void {
+        this._compositionActive = event.phase !== 'end';
+        this._compositionText = event.phase === 'end' ? '' : event.text;
+        this._compositionFrame = this._frame;
+        this._compositionTimestamp = this._timestamp;
+    }
+
+    private _clearTextInputState(resetComposition: boolean): void {
+        this._textEntries = [];
+        this._textEntryFrame = -1;
+        if (!resetComposition) {
+            return;
+        }
+
+        this._compositionActive = false;
+        this._compositionText = '';
+        this._compositionFrame = this._frame;
+        this._compositionTimestamp = this._timestamp;
     }
 
     private _assertNotDisposed(): void {

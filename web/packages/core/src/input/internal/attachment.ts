@@ -1,5 +1,5 @@
 import { InputConfigurationError } from '../errors';
-import { isEventTargetLike } from './shared';
+import { isEventTargetLike, toFiniteNumber } from './shared';
 import type {
     InputAttachment,
     InputBrowserTarget,
@@ -13,6 +13,18 @@ interface InputBrowserAttachmentHost {
     getMousePosition(): Readonly<{ x: number; y: number }>;
     resolveMessage(descriptor: Readonly<InputMessageDescriptor>): string;
 }
+
+interface PointerLockCapableTarget extends EventTarget {
+    requestPointerLock?(): Promise<void> | void;
+}
+
+type PointerLockDocument = Document & {
+    pointerLockElement?: Element | null;
+    exitPointerLock?: (() => Promise<void> | void) | undefined;
+};
+
+const DEFAULT_LINE_PIXELS = 16;
+const DEFAULT_PAGE_PIXELS = 800;
 
 export const attachInputBrowserTarget = (
     host: InputBrowserAttachmentHost,
@@ -39,7 +51,39 @@ export const attachInputBrowserTarget = (
     let disposed = false;
     const capture = target.capture ?? false;
     const passive = target.passive ?? false;
+    const coordinateSpace = target.coordinateSpace ?? 'client';
+    const linePixels = Math.max(1, toFiniteNumber(target.wheelPixelsPerLine, DEFAULT_LINE_PIXELS));
+    const pagePixels = Math.max(1, toFiniteNumber(target.wheelPixelsPerPage, DEFAULT_PAGE_PIXELS));
+    const rawPointerLock = target.pointerLock;
+    const pointerLock =
+        rawPointerLock === true
+            ? {
+                  enabled: true,
+                  requestOnMouseDown: true,
+                  exitOnDispose: true,
+                  useRawMovement: true,
+              }
+            : {
+                  enabled:
+                      rawPointerLock !== false && typeof rawPointerLock === 'object'
+                          ? rawPointerLock.enabled ?? false
+                          : false,
+                  requestOnMouseDown:
+                      rawPointerLock !== false && typeof rawPointerLock === 'object'
+                          ? rawPointerLock.requestOnMouseDown ?? false
+                          : false,
+                  exitOnDispose:
+                      rawPointerLock !== false && typeof rawPointerLock === 'object'
+                          ? rawPointerLock.exitOnDispose ?? true
+                          : true,
+                  useRawMovement:
+                      rawPointerLock !== false && typeof rawPointerLock === 'object'
+                          ? rawPointerLock.useRawMovement ?? true
+                          : true,
+              };
     const listenerOptions = { capture, passive };
+    const pointerLockElement = isPointerLockCapable(pointerTarget) ? pointerTarget : undefined;
+    const pointerLockDocument = isPointerLockDocument(resolvedDocument) ? resolvedDocument : undefined;
 
     const add = <TEvent extends Event>(
         source: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>,
@@ -58,6 +102,109 @@ export const attachInputBrowserTarget = (
         if (target.preventDefault) {
             event.preventDefault();
         }
+    };
+
+    const isPointerLocked = (): boolean =>
+        !!pointerLock.enabled &&
+        !!pointerLockElement &&
+        !!pointerLockDocument &&
+        pointerLockDocument.pointerLockElement === pointerLockElement;
+
+    const requestPointerLock = (): boolean => {
+        if (!pointerLock.enabled || !pointerLockElement?.requestPointerLock) {
+            return false;
+        }
+
+        pointerLockElement.requestPointerLock();
+        return true;
+    };
+
+    const exitPointerLock = (): boolean => {
+        if (!pointerLockDocument?.exitPointerLock || !isPointerLocked()) {
+            return false;
+        }
+
+        pointerLockDocument.exitPointerLock();
+        return true;
+    };
+
+    const resolveClientSize = (): { width: number; height: number } => {
+        if (hasBoundingRect(pointerTarget)) {
+            const rect = pointerTarget.getBoundingClientRect();
+            return {
+                width: Math.max(rect.width, 1),
+                height: Math.max(rect.height, 1),
+            };
+        }
+
+        return {
+            width: Math.max(resolvedWindow?.innerWidth ?? 1, 1),
+            height: Math.max(resolvedWindow?.innerHeight ?? 1, 1),
+        };
+    };
+
+    const resolvePoint = (
+        clientX: number,
+        clientY: number,
+        deltaX?: number,
+        deltaY?: number
+    ): { x: number; y: number } => {
+        const previous = host.getMousePosition();
+
+        if (isPointerLocked() && pointerLock.useRawMovement) {
+            const nextX = previous.x + (deltaX ?? 0);
+            const nextY = previous.y + (deltaY ?? 0);
+
+            if (coordinateSpace === 'viewport') {
+                const size = resolveClientSize();
+                return {
+                    x: nextX / size.width,
+                    y: nextY / size.height,
+                };
+            }
+
+            return {
+                x: nextX,
+                y: nextY,
+            };
+        }
+
+        let nextX = clientX;
+        let nextY = clientY;
+
+        if (hasBoundingRect(pointerTarget)) {
+            const rect = pointerTarget.getBoundingClientRect();
+            if (coordinateSpace === 'element' || coordinateSpace === 'viewport') {
+                nextX -= rect.left;
+                nextY -= rect.top;
+            }
+
+            if (coordinateSpace === 'viewport') {
+                nextX /= Math.max(rect.width, 1);
+                nextY /= Math.max(rect.height, 1);
+            }
+        } else if (coordinateSpace === 'viewport') {
+            const size = resolveClientSize();
+            nextX /= size.width;
+            nextY /= size.height;
+        }
+
+        return {
+            x: nextX,
+            y: nextY,
+        };
+    };
+
+    const resolveWheelDelta = (value: number, deltaMode: number): number => {
+        if (deltaMode === 1) {
+            return value * linePixels;
+        }
+
+        if (deltaMode === 2) {
+            return value * pagePixels;
+        }
+
+        return value;
     };
 
     add<KeyboardEvent>(keyboardTarget, 'keydown', (event) => {
@@ -80,17 +227,78 @@ export const attachInputBrowserTarget = (
         });
     });
 
+    add<InputEvent>(
+        keyboardTarget,
+        'beforeinput',
+        (event) => {
+            if (typeof event.data !== 'string' || !event.data) {
+                return;
+            }
+
+            preventIfNeeded(event);
+            host.dispatch({
+                type: 'text',
+                text: event.data,
+            });
+        },
+        listenerOptions
+    );
+
+    add<CompositionEvent>(
+        keyboardTarget,
+        'compositionstart',
+        (event) => {
+            host.dispatch({
+                type: 'composition',
+                phase: 'start',
+                text: event.data ?? '',
+            });
+        },
+        listenerOptions
+    );
+
+    add<CompositionEvent>(
+        keyboardTarget,
+        'compositionupdate',
+        (event) => {
+            host.dispatch({
+                type: 'composition',
+                phase: 'update',
+                text: event.data ?? '',
+            });
+        },
+        listenerOptions
+    );
+
+    add<CompositionEvent>(
+        keyboardTarget,
+        'compositionend',
+        (event) => {
+            host.dispatch({
+                type: 'composition',
+                phase: 'end',
+                text: event.data ?? '',
+            });
+        },
+        listenerOptions
+    );
+
     add<MouseEvent>(
         pointerTarget,
         'mousedown',
         (event) => {
             preventIfNeeded(event);
+            const point = resolvePoint(event.clientX, event.clientY, event.movementX, event.movementY);
+            if (pointerLock.requestOnMouseDown) {
+                requestPointerLock();
+            }
+
             host.dispatch({
                 type: 'mouse-button',
                 button: event.button,
                 pressed: true,
-                x: event.clientX,
-                y: event.clientY,
+                x: point.x,
+                y: point.y,
             });
         },
         listenerOptions
@@ -101,12 +309,13 @@ export const attachInputBrowserTarget = (
         'mouseup',
         (event) => {
             preventIfNeeded(event);
+            const point = resolvePoint(event.clientX, event.clientY, event.movementX, event.movementY);
             host.dispatch({
                 type: 'mouse-button',
                 button: event.button,
                 pressed: false,
-                x: event.clientX,
-                y: event.clientY,
+                x: point.x,
+                y: point.y,
             });
         },
         listenerOptions
@@ -117,15 +326,20 @@ export const attachInputBrowserTarget = (
         'mousemove',
         (event) => {
             preventIfNeeded(event);
-            const position = host.getMousePosition();
+            const previous = host.getMousePosition();
+            const point = resolvePoint(event.clientX, event.clientY, event.movementX, event.movementY);
             host.dispatch({
                 type: 'mouse-move',
-                x: event.clientX,
-                y: event.clientY,
+                x: point.x,
+                y: point.y,
                 deltaX:
-                    typeof event.movementX === 'number' ? event.movementX : event.clientX - position.x,
+                    typeof event.movementX === 'number'
+                        ? event.movementX
+                        : point.x - previous.x,
                 deltaY:
-                    typeof event.movementY === 'number' ? event.movementY : event.clientY - position.y,
+                    typeof event.movementY === 'number'
+                        ? event.movementY
+                        : point.y - previous.y,
             });
         },
         listenerOptions
@@ -138,9 +352,9 @@ export const attachInputBrowserTarget = (
             preventIfNeeded(event);
             host.dispatch({
                 type: 'mouse-wheel',
-                deltaX: event.deltaX,
-                deltaY: event.deltaY,
-                deltaZ: event.deltaZ,
+                deltaX: resolveWheelDelta(event.deltaX, event.deltaMode),
+                deltaY: resolveWheelDelta(event.deltaY, event.deltaMode),
+                deltaZ: resolveWheelDelta(event.deltaZ, event.deltaMode),
             });
         },
         { capture, passive: false }
@@ -155,10 +369,11 @@ export const attachInputBrowserTarget = (
                 continue;
             }
 
+            const point = resolvePoint(touch.clientX, touch.clientY);
             result.push({
                 id: touch.identifier,
-                x: touch.clientX,
-                y: touch.clientY,
+                x: point.x,
+                y: point.y,
                 force: typeof touch.force === 'number' ? touch.force : undefined,
             });
         }
@@ -239,6 +454,11 @@ export const attachInputBrowserTarget = (
         get isDisposed(): boolean {
             return disposed;
         },
+        get isPointerLocked(): boolean | undefined {
+            return pointerLock.enabled ? isPointerLocked() : undefined;
+        },
+        requestPointerLock,
+        exitPointerLock,
         dispose: () => {
             if (disposed) {
                 return;
@@ -249,6 +469,25 @@ export const attachInputBrowserTarget = (
             for (const remove of removers.splice(0, removers.length)) {
                 remove();
             }
+
+            if (pointerLock.exitOnDispose) {
+                exitPointerLock();
+            }
         },
     };
 };
+
+const hasBoundingRect = (value: unknown): value is EventTarget & { getBoundingClientRect(): DOMRect } =>
+    isEventTargetLike(value) &&
+    typeof (value as { getBoundingClientRect?: unknown }).getBoundingClientRect === 'function';
+
+const isPointerLockCapable = (value: unknown): value is PointerLockCapableTarget =>
+    isEventTargetLike(value) &&
+    typeof (value as PointerLockCapableTarget).requestPointerLock === 'function';
+
+const isPointerLockDocument = (value: unknown): value is PointerLockDocument =>
+    isRecordLike(value) &&
+    typeof (value as unknown as PointerLockDocument).exitPointerLock === 'function';
+
+const isRecordLike = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === 'object';

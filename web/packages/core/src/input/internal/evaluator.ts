@@ -16,6 +16,7 @@ import type {
     InternalBindingBase,
     InternalContext,
     InternalControl,
+    InternalInputUser,
     InternalControlBinding,
     InternalDirectionalBinding,
     InternalDualAxisBinding,
@@ -23,14 +24,16 @@ import type {
     MutableTouchPoint,
     MutableVector2,
 } from './shared';
-import type { InputActionSchema, InputContextId, InputControlPath } from '../types';
+import type { InputActionSchema, InputContextId, InputControlPath, InputUserId } from '../types';
 
 export interface InputEvaluationRuntime<TSchema extends InputActionSchema = InputActionSchema> {
     _actionDefinitions: readonly InternalActionDefinition[];
     _contexts: Map<string, InternalContext<TSchema>>;
+    _users: Map<string, InternalInputUser>;
     _keysDown: Set<string>;
     _touches: Map<number, MutableTouchPoint>;
     _gamepads: Map<number, MutableGamepadState>;
+    _gamepadOwners: Map<number, InputUserId>;
     _consumedPaths: Set<InputControlPath>;
     _accumulatorX: Float64Array;
     _accumulatorY: Float64Array;
@@ -104,8 +107,8 @@ export const isButtonInteractionInterrupted = <TSchema extends InputActionSchema
 
         const value =
             binding.type === 'control'
-                ? evaluateControlBinding(runtime, binding)
-                : evaluateAxisCompositeBinding(runtime, binding);
+                ? evaluateControlBinding(runtime, binding, context.user)
+                : evaluateAxisCompositeBinding(runtime, binding, context.user);
 
         if (Math.abs(value) > EPSILON) {
             return true;
@@ -133,8 +136,8 @@ const evaluateScalarAction = <TSchema extends InputActionSchema>(
 
         const value =
             binding.type === 'control'
-                ? evaluateControlBinding(runtime, binding)
-                : evaluateAxisCompositeBinding(runtime, binding);
+                ? evaluateControlBinding(runtime, binding, context.user)
+                : evaluateAxisCompositeBinding(runtime, binding, context.user);
 
         if (Math.abs(value) <= EPSILON) {
             continue;
@@ -186,8 +189,8 @@ const evaluateVectorAction = <TSchema extends InputActionSchema>(
 
         const vector =
             binding.type === 'vector2'
-                ? evaluateDirectionalBinding(runtime, binding)
-                : evaluateDualAxisBinding(runtime, binding);
+                ? evaluateDirectionalBinding(runtime, binding, context.user)
+                : evaluateDualAxisBinding(runtime, binding, context.user);
 
         if (Math.abs(vector.x) <= EPSILON && Math.abs(vector.y) <= EPSILON) {
             continue;
@@ -216,9 +219,10 @@ const evaluateVectorAction = <TSchema extends InputActionSchema>(
 
 const evaluateControlBinding = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
-    binding: InternalControlBinding
+    binding: InternalControlBinding,
+    user?: InputUserId
 ): number => {
-    let value = sampleControl(runtime, binding.control);
+    let value = sampleControl(runtime, binding.control, user);
 
     if (binding.invert) {
         value = -value;
@@ -230,23 +234,25 @@ const evaluateControlBinding = <TSchema extends InputActionSchema>(
 
 const evaluateAxisCompositeBinding = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
-    binding: InternalAxisCompositeBinding
+    binding: InternalAxisCompositeBinding,
+    user?: InputUserId
 ): number => {
-    const positive = sampleDirectional(runtime, binding.positive, 'positive');
-    const negative = sampleDirectional(runtime, binding.negative, 'negative');
+    const positive = sampleDirectional(runtime, binding.positive, 'positive', user);
+    const negative = sampleDirectional(runtime, binding.negative, 'negative', user);
     return applyScalarProcessors((positive - negative) * binding.scale, binding.processors);
 };
 
 const evaluateDirectionalBinding = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
-    binding: InternalDirectionalBinding
+    binding: InternalDirectionalBinding,
+    user?: InputUserId
 ): MutableVector2 => {
     let x =
-        sampleDirectional(runtime, binding.right, 'positive') -
-        sampleDirectional(runtime, binding.left, 'negative');
+        sampleDirectional(runtime, binding.right, 'positive', user) -
+        sampleDirectional(runtime, binding.left, 'negative', user);
     let y =
-        sampleDirectional(runtime, binding.up, 'positive') -
-        sampleDirectional(runtime, binding.down, 'negative');
+        sampleDirectional(runtime, binding.up, 'positive', user) -
+        sampleDirectional(runtime, binding.down, 'negative', user);
 
     x *= binding.scale;
     y *= binding.scale;
@@ -270,10 +276,11 @@ const evaluateDirectionalBinding = <TSchema extends InputActionSchema>(
 
 const evaluateDualAxisBinding = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
-    binding: InternalDualAxisBinding
+    binding: InternalDualAxisBinding,
+    user?: InputUserId
 ): MutableVector2 => {
-    let x = sampleControl(runtime, binding.x) * binding.scale;
-    let y = sampleControl(runtime, binding.y) * binding.scale;
+    let x = sampleControl(runtime, binding.x, user) * binding.scale;
+    let y = sampleControl(runtime, binding.y, user) * binding.scale;
     const length = magnitude(x, y);
 
     if (length <= binding.deadzone) {
@@ -295,8 +302,13 @@ const evaluateDualAxisBinding = <TSchema extends InputActionSchema>(
 
 const sampleControl = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
-    control: InternalControl
+    control: InternalControl,
+    user?: InputUserId
 ): number => {
+    if (!canAccessControl(runtime, control, user)) {
+        return 0;
+    }
+
     switch (control.device) {
         case 'keyboard':
             return runtime._keysDown.has(control.code) ? 1 : 0;
@@ -350,11 +362,11 @@ const sampleControl = <TSchema extends InputActionSchema>(
         case 'gamepad':
             switch (control.kind) {
                 case 'connected':
-                    return sampleGamepadConnected(runtime, control.selector);
+                    return sampleGamepadConnected(runtime, control.selector, user);
                 case 'button':
-                    return sampleGamepadButton(runtime, control.selector, control.button);
+                    return sampleGamepadButton(runtime, control.selector, control.button, user);
                 case 'axis':
-                    return sampleGamepadAxis(runtime, control.selector, control.axis);
+                    return sampleGamepadAxis(runtime, control.selector, control.axis, user);
             }
             return 0;
     }
@@ -363,9 +375,10 @@ const sampleControl = <TSchema extends InputActionSchema>(
 const sampleDirectional = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
     control: InternalControl,
-    direction: 'positive' | 'negative'
+    direction: 'positive' | 'negative',
+    user?: InputUserId
 ): number => {
-    const raw = sampleControl(runtime, control);
+    const raw = sampleControl(runtime, control, user);
 
     if (!control.signed) {
         return raw > 0 ? raw : 0;
@@ -395,14 +408,19 @@ const resolveTouch = <TSchema extends InputActionSchema>(
 
 const sampleGamepadConnected = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
-    selector: number
+    selector: number,
+    user?: InputUserId
 ): number => {
     if (selector === GAMEPAD_ANY) {
-        for (const [, state] of runtime._gamepads) {
-            if (state.connected) {
+        for (const [index, state] of runtime._gamepads) {
+            if (state.connected && canAccessGamepadIndex(runtime, index, user)) {
                 return 1;
             }
         }
+        return 0;
+    }
+
+    if (!canAccessGamepadIndex(runtime, selector, user)) {
         return 0;
     }
 
@@ -412,13 +430,18 @@ const sampleGamepadConnected = <TSchema extends InputActionSchema>(
 const sampleGamepadButton = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
     selector: number,
-    button: number
+    button: number,
+    user?: InputUserId
 ): number => {
     if (selector === GAMEPAD_ANY) {
         let maxValue = 0;
 
-        for (const [, state] of runtime._gamepads) {
+        for (const [index, state] of runtime._gamepads) {
             if (!state.connected) {
+                continue;
+            }
+
+            if (!canAccessGamepadIndex(runtime, index, user)) {
                 continue;
             }
 
@@ -428,6 +451,10 @@ const sampleGamepadButton = <TSchema extends InputActionSchema>(
         return maxValue;
     }
 
+    if (!canAccessGamepadIndex(runtime, selector, user)) {
+        return 0;
+    }
+
     const state = runtime._gamepads.get(selector);
     return state?.connected ? state.buttons[button] ?? 0 : 0;
 };
@@ -435,13 +462,18 @@ const sampleGamepadButton = <TSchema extends InputActionSchema>(
 const sampleGamepadAxis = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
     selector: number,
-    axis: number
+    axis: number,
+    user?: InputUserId
 ): number => {
     if (selector === GAMEPAD_ANY) {
         let best = 0;
 
-        for (const [, state] of runtime._gamepads) {
+        for (const [index, state] of runtime._gamepads) {
             if (!state.connected) {
+                continue;
+            }
+
+            if (!canAccessGamepadIndex(runtime, index, user)) {
                 continue;
             }
 
@@ -454,8 +486,47 @@ const sampleGamepadAxis = <TSchema extends InputActionSchema>(
         return best;
     }
 
+    if (!canAccessGamepadIndex(runtime, selector, user)) {
+        return 0;
+    }
+
     const state = runtime._gamepads.get(selector);
     return state?.connected ? state.axes[axis] ?? 0 : 0;
+};
+
+const canAccessControl = <TSchema extends InputActionSchema>(
+    runtime: InputEvaluationRuntime<TSchema>,
+    control: InternalControl,
+    user?: InputUserId
+): boolean => {
+    if (!user) {
+        return true;
+    }
+
+    const owner = runtime._users.get(user);
+    if (!owner?.enabled) {
+        return false;
+    }
+
+    if (control.device === 'gamepad') {
+        return control.selector === GAMEPAD_ANY
+            ? [...owner.devices.values()].some((device) => device.device === 'gamepad')
+            : canAccessGamepadIndex(runtime, control.selector, user);
+    }
+
+    return owner.devices.has(control.device);
+};
+
+const canAccessGamepadIndex = <TSchema extends InputActionSchema>(
+    runtime: InputEvaluationRuntime<TSchema>,
+    index: number,
+    user?: InputUserId
+): boolean => {
+    if (!user) {
+        return true;
+    }
+
+    return runtime._gamepadOwners.get(index) === user;
 };
 
 const matchesModifiers = <TSchema extends InputActionSchema>(
