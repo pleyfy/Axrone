@@ -328,6 +328,10 @@ export class WebGLTexture implements ITexture {
     }
 
     private _initializeTexture2D(options: ITextureCreateOptions, formatInfo: any): void {
+        if (formatInfo.compressed) {
+            return;
+        }
+
         for (let mip = 0; mip < options.mipLevels!; mip++) {
             const mipDims = TextureUtils.getMipDimensions(options.width, options.height, 1, mip);
 
@@ -346,6 +350,10 @@ export class WebGLTexture implements ITexture {
     }
 
     private _initializeTexture3D(options: ITextureCreateOptions, formatInfo: any): void {
+        if (formatInfo.compressed) {
+            return;
+        }
+
         for (let mip = 0; mip < options.mipLevels!; mip++) {
             const mipDims = TextureUtils.getMipDimensions(
                 options.width,
@@ -370,6 +378,10 @@ export class WebGLTexture implements ITexture {
     }
 
     private _initializeTextureCube(options: ITextureCreateOptions, formatInfo: any): void {
+        if (formatInfo.compressed) {
+            return;
+        }
+
         const faces = [
             this._gl.TEXTURE_CUBE_MAP_POSITIVE_X,
             this._gl.TEXTURE_CUBE_MAP_NEGATIVE_X,
@@ -404,6 +416,10 @@ export class WebGLTexture implements ITexture {
     }
 
     private _initializeTexture2DArray(options: ITextureCreateOptions, formatInfo: any): void {
+        if (formatInfo.compressed) {
+            return;
+        }
+
         for (let mip = 0; mip < options.mipLevels!; mip++) {
             const mipDims = TextureUtils.getMipDimensions(options.width, options.height, 1, mip);
 
@@ -520,6 +536,14 @@ export class WebGLTexture implements ITexture {
         x: number,
         y: number
     ): void {
+        if (this.isCompressed) {
+            throw new TextureError(
+                'Image upload is not supported for compressed textures',
+                TextureErrorCode.INVALID_OPERATION,
+                this.id
+            );
+        }
+
         switch (this.dimension) {
             case TextureDimension.TEXTURE_2D:
                 this._gl.texSubImage2D(
@@ -575,6 +599,21 @@ export class WebGLTexture implements ITexture {
         height: number,
         depth: number
     ): void {
+        if (this.isCompressed) {
+            this._uploadCompressedTypedArrayData(
+                data,
+                mipLevel,
+                arrayLayer,
+                x,
+                y,
+                z,
+                width,
+                height,
+                depth
+            );
+            return;
+        }
+
         switch (this.dimension) {
             case TextureDimension.TEXTURE_2D:
                 this._gl.texSubImage2D(
@@ -648,6 +687,81 @@ export class WebGLTexture implements ITexture {
             default:
                 throw new TextureError(
                     `Data upload not supported for dimension: ${this.dimension}`,
+                    TextureErrorCode.INVALID_OPERATION,
+                    this.id
+                );
+        }
+    }
+
+    private _uploadCompressedTypedArrayData(
+        data: ArrayBufferView,
+        mipLevel: number,
+        arrayLayer: number,
+        x: number,
+        y: number,
+        z: number,
+        width: number,
+        height: number,
+        depth: number
+    ): void {
+        if (x !== 0 || y !== 0 || z !== 0) {
+            throw new TextureError(
+                'Compressed texture uploads must cover the full mip level',
+                TextureErrorCode.INVALID_OPERATION,
+                this.id
+            );
+        }
+
+        if (depth !== 1) {
+            throw new TextureError(
+                'Compressed texture uploads only support 2D surfaces',
+                TextureErrorCode.INVALID_OPERATION,
+                this.id
+            );
+        }
+
+        const internalFormat = TextureWebGLConstants.getCompressedInternalFormat(
+            this._gl,
+            this.format
+        );
+
+        switch (this.dimension) {
+            case TextureDimension.TEXTURE_2D:
+                this._gl.compressedTexImage2D(
+                    this._target,
+                    mipLevel,
+                    internalFormat,
+                    width,
+                    height,
+                    0,
+                    data
+                );
+                break;
+
+            case TextureDimension.TEXTURE_CUBE:
+                const faces = [
+                    this._gl.TEXTURE_CUBE_MAP_POSITIVE_X,
+                    this._gl.TEXTURE_CUBE_MAP_NEGATIVE_X,
+                    this._gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
+                    this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
+                    this._gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
+                    this._gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
+                ];
+
+                this._gl.compressedTexImage2D(
+                    faces[arrayLayer],
+                    mipLevel,
+                    internalFormat,
+                    width,
+                    height,
+                    0,
+                    data
+                );
+                break;
+
+            default:
+                throw new TextureError(
+                    `Compressed texture uploads are not supported for dimension: ${this.dimension}`,
                     TextureErrorCode.INVALID_OPERATION,
                     this.id
                 );

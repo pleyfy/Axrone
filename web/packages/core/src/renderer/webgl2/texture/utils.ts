@@ -20,12 +20,151 @@ interface FormatInfo {
     readonly channels: number;
     readonly compressed: boolean;
     readonly blockSize?: number;
+    readonly blockWidth?: number;
+    readonly blockHeight?: number;
+    readonly extensionNames?: readonly string[];
     readonly floatingPoint: boolean;
     readonly integer: boolean;
     readonly depth: boolean;
     readonly stencil: boolean;
     readonly srgb: boolean;
 }
+
+const WEBGL_S3TC_EXTENSIONS = [
+    'WEBGL_compressed_texture_s3tc',
+    'WEBKIT_WEBGL_compressed_texture_s3tc',
+] as const;
+const WEBGL_RGTC_EXTENSIONS = ['EXT_texture_compression_rgtc'] as const;
+const WEBGL_BPTC_EXTENSIONS = ['EXT_texture_compression_bptc'] as const;
+const WEBGL_ASTC_EXTENSIONS = ['WEBGL_compressed_texture_astc'] as const;
+
+const createCompressedFormatInfo = (
+    internalFormat: number,
+    channels: number,
+    blockSize: number,
+    blockWidth: number,
+    blockHeight: number,
+    extensionNames: readonly string[],
+    options: {
+        readonly floatingPoint?: boolean;
+        readonly srgb?: boolean;
+    } = {}
+): FormatInfo => ({
+    internalFormat,
+    format: 0,
+    type: 0,
+    bytesPerPixel: 0,
+    channels,
+    compressed: true,
+    blockSize,
+    blockWidth,
+    blockHeight,
+    extensionNames,
+    floatingPoint: options.floatingPoint ?? false,
+    integer: false,
+    depth: false,
+    stencil: false,
+    srgb: options.srgb ?? false,
+});
+
+const COMPRESSED_FORMAT_DATABASE: readonly [TextureFormat, FormatInfo][] = [
+    [
+        TextureFormat.BC1_RGB,
+        createCompressedFormatInfo(0x83f0, 3, 8, 4, 4, WEBGL_S3TC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.BC1_RGBA,
+        createCompressedFormatInfo(0x83f1, 4, 8, 4, 4, WEBGL_S3TC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.BC2_RGBA,
+        createCompressedFormatInfo(0x83f2, 4, 16, 4, 4, WEBGL_S3TC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.BC3_RGBA,
+        createCompressedFormatInfo(0x83f3, 4, 16, 4, 4, WEBGL_S3TC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.BC4_R,
+        createCompressedFormatInfo(0x8dbb, 1, 8, 4, 4, WEBGL_RGTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.BC5_RG,
+        createCompressedFormatInfo(0x8dbd, 2, 16, 4, 4, WEBGL_RGTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.BC6H_RGB_UF16,
+        createCompressedFormatInfo(0x8e8f, 3, 16, 4, 4, WEBGL_BPTC_EXTENSIONS, {
+            floatingPoint: true,
+        }),
+    ],
+    [
+        TextureFormat.BC6H_RGB_SF16,
+        createCompressedFormatInfo(0x8e8e, 3, 16, 4, 4, WEBGL_BPTC_EXTENSIONS, {
+            floatingPoint: true,
+        }),
+    ],
+    [
+        TextureFormat.BC7_RGBA,
+        createCompressedFormatInfo(0x8e8c, 4, 16, 4, 4, WEBGL_BPTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_4x4,
+        createCompressedFormatInfo(0x93b0, 4, 16, 4, 4, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_5x4,
+        createCompressedFormatInfo(0x93b1, 4, 16, 5, 4, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_5x5,
+        createCompressedFormatInfo(0x93b2, 4, 16, 5, 5, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_6x5,
+        createCompressedFormatInfo(0x93b3, 4, 16, 6, 5, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_6x6,
+        createCompressedFormatInfo(0x93b4, 4, 16, 6, 6, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_8x5,
+        createCompressedFormatInfo(0x93b5, 4, 16, 8, 5, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_8x6,
+        createCompressedFormatInfo(0x93b6, 4, 16, 8, 6, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_8x8,
+        createCompressedFormatInfo(0x93b7, 4, 16, 8, 8, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_10x5,
+        createCompressedFormatInfo(0x93b8, 4, 16, 10, 5, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_10x6,
+        createCompressedFormatInfo(0x93b9, 4, 16, 10, 6, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_10x8,
+        createCompressedFormatInfo(0x93ba, 4, 16, 10, 8, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_10x10,
+        createCompressedFormatInfo(0x93bb, 4, 16, 10, 10, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_12x10,
+        createCompressedFormatInfo(0x93bc, 4, 16, 12, 10, WEBGL_ASTC_EXTENSIONS),
+    ],
+    [
+        TextureFormat.ASTC_12x12,
+        createCompressedFormatInfo(0x93bd, 4, 16, 12, 12, WEBGL_ASTC_EXTENSIONS),
+    ],
+];
 
 export class TextureFormatInfo {
     private static readonly formatDatabase = new Map<TextureFormat, FormatInfo>([
@@ -304,6 +443,7 @@ export class TextureFormatInfo {
                 srgb: false,
             },
         ],
+        ...COMPRESSED_FORMAT_DATABASE,
     ]);
 
     public static getFormatInfo(format: TextureFormat): FormatInfo {
@@ -412,6 +552,29 @@ export class TextureWebGLConstants {
         }
         return constant;
     }
+
+    public static getCompressedInternalFormat(
+        gl: WebGL2RenderingContext,
+        format: TextureFormat
+    ): number {
+        const info = TextureFormatInfo.getFormatInfo(format);
+        if (info.compressed === false) {
+            return info.internalFormat;
+        }
+
+        const extensionNames = info.extensionNames ?? [];
+        if (extensionNames.length > 0) {
+            const supported = extensionNames.some((name) => gl.getExtension(name) !== null);
+            if (!supported) {
+                throw new TextureError(
+                    `Compressed texture format ${format} is not supported by this WebGL context`,
+                    TextureErrorCode.UNSUPPORTED_FORMAT
+                );
+            }
+        }
+
+        return info.internalFormat;
+    }
 }
 
 export class TextureUtils {
@@ -422,7 +585,7 @@ export class TextureUtils {
         format: TextureFormat,
         mipLevels: number = 1
     ): number {
-        const bytesPerPixel = TextureFormatInfo.getBytesPerPixel(format);
+        const formatInfo = TextureFormatInfo.getFormatInfo(format);
         let totalBytes = 0;
 
         for (let mip = 0; mip < mipLevels; mip++) {
@@ -430,7 +593,17 @@ export class TextureUtils {
             const mipHeight = Math.max(1, height >> mip);
             const mipDepth = Math.max(1, depth >> mip);
 
-            totalBytes += mipWidth * mipHeight * mipDepth * bytesPerPixel;
+            if (formatInfo.compressed) {
+                const blockWidth = formatInfo.blockWidth ?? 4;
+                const blockHeight = formatInfo.blockHeight ?? 4;
+                const blockSize = formatInfo.blockSize ?? 0;
+                const blocksWide = Math.max(1, Math.ceil(mipWidth / blockWidth));
+                const blocksHigh = Math.max(1, Math.ceil(mipHeight / blockHeight));
+                totalBytes += blocksWide * blocksHigh * mipDepth * blockSize;
+                continue;
+            }
+
+            totalBytes += mipWidth * mipHeight * mipDepth * formatInfo.bytesPerPixel;
         }
 
         return totalBytes;

@@ -355,6 +355,20 @@ const cloneTextureDefinition = (definition: SceneTextureDefinition): SceneTextur
         };
     }
 
+    if (source.kind === 'compressed') {
+        return {
+            ...definition,
+            source: {
+                ...source,
+                bytes:
+                    source.bytes instanceof Uint8Array
+                        ? new Uint8Array(source.bytes)
+                        : [...source.bytes],
+                levels: source.levels.map((level) => ({ ...level })),
+            },
+        };
+    }
+
     return {
         ...definition,
         source: { ...source },
@@ -1730,9 +1744,59 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 );
                 break;
             }
+            case 'compressed': {
+                if (definition.format === undefined) {
+                    throw new SceneMaterialError(
+                        `Compressed texture '${definition.id}' must provide an explicit texture format`
+                    );
+                }
+
+                const levels = [...definition.source.levels].sort((left, right) => left.level - right.level);
+                const topLevel = levels[0];
+                if (!topLevel) {
+                    throw new SceneMaterialError(
+                        `Compressed texture '${definition.id}' must include at least one mip level`
+                    );
+                }
+
+                const compressedBytes =
+                    definition.source.bytes instanceof Uint8Array
+                        ? definition.source.bytes
+                        : new Uint8Array(definition.source.bytes);
+                const mipLevelCount = levels.reduce(
+                    (count, level) => Math.max(count, level.level + 1),
+                    1
+                );
+
+                texture = this._textureManager.createTexture({
+                    width: topLevel.width,
+                    height: topLevel.height,
+                    format,
+                    dimension: TextureDimension.TEXTURE_2D,
+                    usage: TextureUsage.STATIC,
+                    mipLevels: mipLevelCount,
+                });
+
+                for (const level of levels) {
+                    const start = level.byteOffset;
+                    const end = start + level.byteLength;
+                    if (start < 0 || end > compressedBytes.byteLength) {
+                        throw new SceneMaterialError(
+                            `Compressed texture '${definition.id}' mip ${level.level} exceeds its payload bounds`
+                        );
+                    }
+
+                    texture.setData(compressedBytes.subarray(start, end), {
+                        mipLevel: level.level,
+                        width: level.width,
+                        height: level.height,
+                    });
+                }
+                break;
+            }
         }
 
-        if (generateMipmaps && texture.mipLevels > 1) {
+        if (generateMipmaps && texture.mipLevels > 1 && texture.isCompressed === false) {
             texture.generateMipmaps();
         }
 

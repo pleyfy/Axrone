@@ -13,17 +13,23 @@ import type {
     SceneShaderDefinition,
     SceneSnapshot,
     SceneSnapshotLoadOptions,
+    SceneTextureCompressedLevelDefinition,
     SceneTextureDefinition,
     SceneUniformValue,
     Scene,
 } from '../../scene';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
+import {
+    inferTextureFormatFromKtx2,
+    parseKtx2Texture,
+} from './internal/ktx2-container';
 import type {
     GltfAssetSchemaLike,
     GltfDocumentSceneAsset,
     GltfMaterialAsset,
     GltfPrefabAsset,
     GltfTextureAsset,
+    GltfTextureMipLevel,
     GltfTextureUsage,
 } from './types';
 
@@ -135,6 +141,148 @@ const toSceneTextureMimeType = (texture: GltfTextureAsset): string | undefined =
 const isRuntimeLoadableImageMimeType = (mimeType: string | undefined): boolean =>
     mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/jpg' || mimeType === 'image/webp';
 
+const createCompressedLevelDefinitions = (
+    levels: readonly GltfTextureMipLevel[]
+): readonly SceneTextureCompressedLevelDefinition[] =>
+    Object.freeze(
+        [...levels]
+            .sort((left, right) => left.level - right.level)
+            .map((level) =>
+                Object.freeze({
+                    level: level.level,
+                    width: level.width,
+                    height: level.height,
+                    byteOffset: level.byteOffset,
+                    byteLength: level.byteLength,
+                })
+            )
+    );
+
+const createCompressedRuntimeTextureDefinition = (
+    key: string,
+    asset: GltfTextureAsset
+): { readonly definition: SceneTextureDefinition; readonly diagnostics: readonly AssetImportDiagnostic[] } | undefined => {
+    if (asset.payload.kind !== 'compressed') {
+        return undefined;
+    }
+
+    const bytes = new Uint8Array(asset.payload.bytes);
+    let runtimeFormat = asset.runtimeFormat ?? asset.payload.targetFormat;
+    let levels = asset.payload.levels;
+
+    if ((runtimeFormat === undefined || !levels?.length) && asset.payload.container === 'ktx2') {
+        try {
+            const parsed = parseKtx2Texture(bytes);
+            if (parsed.supercompressionScheme !== 0 && !levels?.length) {
+                return {
+                    definition: {
+                        id: key,
+                        samplerId: asset.sampler.id,
+                        format: TextureFormat.RGBA8,
+                        generateMipmaps: false,
+                        source: createFallbackTextureSource(asset.usageHints),
+                    },
+                    diagnostics: [
+                        {
+                            level: 'warning',
+                            code: 'gltf.texture.runtime-supercompressed-unsupported',
+                            message: `Texture '${key}' is a supercompressed KTX2 payload and still requires a transcoder before Axrone can upload it at runtime`,
+                        },
+                    ],
+                };
+            }
+
+            runtimeFormat ??= inferTextureFormatFromKtx2(bytes);
+            levels ??= parsed.levels;
+        } catch (error) {
+            return {
+                definition: {
+                    id: key,
+                    samplerId: asset.sampler.id,
+                    format: TextureFormat.RGBA8,
+                    generateMipmaps: false,
+                    source: createFallbackTextureSource(asset.usageHints),
+                },
+                diagnostics: [
+                    {
+                        level: 'warning',
+                        code: 'gltf.texture.runtime-ktx2-invalid',
+                        message: `Texture '${key}' could not be parsed as KTX2 and was replaced with a deterministic fallback`,
+                        ...(error instanceof Error ? { cause: error } : {}),
+                    },
+                ],
+            };
+        }
+    }
+
+    if (!runtimeFormat) {
+        return {
+            definition: {
+                id: key,
+                samplerId: asset.sampler.id,
+                format: TextureFormat.RGBA8,
+                generateMipmaps: false,
+                source: createFallbackTextureSource(asset.usageHints),
+            },
+            diagnostics: [
+                {
+                    level: 'warning',
+                    code: 'gltf.texture.runtime-format-missing',
+                    message: `Texture '${key}' does not expose a runtime GPU format, so Axrone substituted a deterministic fallback texture`,
+                },
+            ],
+        };
+    }
+
+    if (!levels?.length) {
+        if (asset.payload.width && asset.payload.height) {
+            levels = [
+                Object.freeze({
+                    level: 0,
+                    width: asset.payload.width,
+                    height: asset.payload.height,
+                    byteOffset: 0,
+                    byteLength: bytes.byteLength,
+                }),
+            ];
+        } else {
+            return {
+                definition: {
+                    id: key,
+                    samplerId: asset.sampler.id,
+                    format: TextureFormat.RGBA8,
+                    generateMipmaps: false,
+                    source: createFallbackTextureSource(asset.usageHints),
+                },
+                diagnostics: [
+                    {
+                        level: 'warning',
+                        code: 'gltf.texture.runtime-levels-missing',
+                        message: `Texture '${key}' does not expose mip metadata, so Axrone substituted a deterministic fallback texture`,
+                    },
+                ],
+            };
+        }
+    }
+
+    return {
+        definition: {
+            id: key,
+            samplerId: asset.sampler.id,
+            format: runtimeFormat,
+            generateMipmaps: false,
+            source: {
+                kind: 'compressed',
+                bytes,
+                levels: createCompressedLevelDefinitions(levels),
+                container: asset.payload.container,
+                ...(asset.payload.uri ? { uri: asset.payload.uri } : {}),
+            },
+        },
+        diagnostics: [],
+    };
+};
+
 const createFallbackTextureSource = (
     usageHints: readonly GltfTextureUsage[]
 ): SceneTextureDefinition['source'] => {
@@ -231,6 +379,11 @@ const createSceneTextureDefinitionFromGltfTexture = (
     asset: GltfTextureAsset
 ): { readonly definition: SceneTextureDefinition; readonly diagnostics: readonly AssetImportDiagnostic[] } => {
     const mimeType = toSceneTextureMimeType(asset);
+
+    const compressed = createCompressedRuntimeTextureDefinition(key, asset);
+    if (compressed) {
+        return compressed;
+    }
 
     if (asset.payload.kind === 'raw' && isRuntimeLoadableImageMimeType(mimeType)) {
         return {

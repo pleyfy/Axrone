@@ -79,6 +79,14 @@ export interface SceneSamplerDefinition {
     readonly maxAnisotropy?: number;
 }
 
+export interface SceneTextureCompressedLevelDefinition {
+    readonly level: number;
+    readonly width: number;
+    readonly height: number;
+    readonly byteOffset: number;
+    readonly byteLength: number;
+}
+
 export type SceneTextureSourceDefinition =
     | {
           readonly kind: 'color';
@@ -108,6 +116,13 @@ export type SceneTextureSourceDefinition =
             readonly kind: 'bytes';
             readonly bytes: readonly number[] | Uint8Array;
             readonly mimeType: string;
+            readonly uri?: string;
+        }
+        | {
+            readonly kind: 'compressed';
+            readonly bytes: readonly number[] | Uint8Array;
+            readonly levels: readonly SceneTextureCompressedLevelDefinition[];
+            readonly container?: 'ktx2' | 'basisu';
             readonly uri?: string;
       };
 

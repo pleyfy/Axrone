@@ -24,6 +24,7 @@ export type {
     SceneSnapshot,
     SceneSnapshotLoadOptions,
     SceneTextureBindingDefinition,
+    SceneTextureCompressedLevelDefinition,
     SceneTextureDefinition,
     SceneTextureHandle,
     SceneUniformValue,
