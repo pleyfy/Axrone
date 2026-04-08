@@ -541,6 +541,8 @@ export class FontRegistry implements Disposable {
                 faceId: null,
                 codePoint,
                 advance: fontSize * 0.6,
+                width: fontSize * 0.6,
+                height: fontSize,
                 metric: null,
                 atlasEntry: null,
             };
@@ -553,10 +555,14 @@ export class FontRegistry implements Disposable {
         const kerningKey = nextCodePoint === undefined ? null : `${codePoint}:${nextCodePoint}`;
         const kerning = kerningKey ? face.kernings.get(kerningKey as KerningPairKey) ?? 0 : 0;
         const scale = fontSize / face.info.unitsPerEm;
+        const width = (metric?.width ?? metric?.advance ?? face.info.defaultAdvance) * scale;
+        const height = (metric?.height ?? face.info.ascent + face.info.descent) * scale;
         return {
             faceId,
             codePoint,
             advance: ((metric?.advance ?? face.info.defaultAdvance) + kerning) * scale,
+            width,
+            height,
             metric,
             atlasEntry: metric ? face.atlas.ensure(metric) : null,
         };

@@ -22,6 +22,8 @@ interface TextLayoutEngineOptions {
 interface MeasuredClusterGlyph {
     readonly codePoint: number;
     readonly advance: number;
+    readonly width: number;
+    readonly height: number;
     readonly atlasEntry: ReturnType<FontRegistry['ensureGlyph']>;
 }
 
@@ -240,6 +242,8 @@ export class TextLayoutEngine implements Disposable {
                         x: x + cursorX + gapCursor,
                         y,
                         advance: glyph.advance,
+                        width: glyph.width,
+                        height: glyph.height,
                         line: lineIndex,
                         text: cluster.text,
                         atlasEntry: glyph.atlasEntry,
@@ -355,6 +359,8 @@ export class TextLayoutEngine implements Disposable {
                 glyphs.push({
                     codePoint,
                     advance,
+                    width: measurement.width,
+                    height: measurement.height,
                     atlasEntry: measurement.atlasEntry,
                 });
                 width += advance;

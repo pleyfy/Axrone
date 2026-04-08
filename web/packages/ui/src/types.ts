@@ -618,6 +618,8 @@ export interface FontGlyphMeasurement {
     readonly faceId: FontFaceId | null;
     readonly codePoint: number;
     readonly advance: number;
+    readonly width: number;
+    readonly height: number;
     readonly metric: FontGlyphMetric | null;
     readonly atlasEntry: GlyphAtlasEntry | null;
 }
@@ -657,6 +659,8 @@ export interface TextGlyphPlacement {
     readonly x: number;
     readonly y: number;
     readonly advance: number;
+    readonly width: number;
+    readonly height: number;
     readonly line: number;
     readonly text: string;
     readonly atlasEntry: GlyphAtlasEntry | null;

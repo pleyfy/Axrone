@@ -24,6 +24,8 @@ const createGlyphEntry = (): GlyphAtlasEntry => ({
     faceId: 1 as GlyphAtlasEntry['faceId'],
     page: 1 as GlyphAtlasEntry['page'],
     pageWidth: 64,
+            width: 14,
+            height: 16,
     pageHeight: 64,
     codePoint: 65,
     x: 4,
