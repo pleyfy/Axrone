@@ -5,6 +5,7 @@ export type {
     SceneLoopState,
     SceneMaterialDefinition,
     SceneMaterialHandle,
+    SceneMaterialTextureBindingHandle,
     SceneMeshDefinition,
     SceneMeshHandle,
     SceneMorphTargetAttribute,
@@ -30,6 +31,7 @@ export type {
     SceneTextureCompressedLevelDefinition,
     SceneTextureDefinition,
     SceneTextureHandle,
+    SceneTextureResourceHandle,
     SceneUniformValue,
     SceneVertexAttribute,
 } from './types';

@@ -47,6 +47,7 @@ import type {
     SceneLoopState,
     SceneMaterialDefinition,
     SceneMaterialHandle,
+    SceneMaterialTextureBindingHandle,
     SceneMeshDefinition,
     SceneMeshHandle,
     SceneMeshSemantic,
@@ -66,6 +67,7 @@ import type {
     SceneTextureBindingDefinition,
     SceneTextureDefinition,
     SceneTextureHandle,
+    SceneTextureResourceHandle,
     SceneUniformValue,
 } from './types';
 
@@ -1185,6 +1187,70 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             height: texture.height,
             samplerId: texture.samplerId,
         };
+    }
+
+    getTextureResource(id: string): SceneTextureResourceHandle | null {
+        const texture = this._textures.get(id);
+        if (!texture) {
+            return null;
+        }
+        const sampler = this._resolveSampler(texture.samplerId);
+        return {
+            id: texture.id,
+            width: texture.width,
+            height: texture.height,
+            samplerId: texture.samplerId,
+            nativeTexture: texture.texture.nativeHandle,
+            nativeSampler: sampler.nativeHandle,
+        };
+    }
+
+    getMaterialTextureBindings(materialId: string): readonly SceneMaterialTextureBindingHandle[] {
+        const material = this._materials.get(materialId);
+        if (!material) {
+            return [];
+        }
+
+        return [...material.textureBindings.entries()]
+            .sort((left, right) => {
+                const leftUnit = left[1].unit ?? Number.MAX_SAFE_INTEGER;
+                const rightUnit = right[1].unit ?? Number.MAX_SAFE_INTEGER;
+                return leftUnit - rightUnit || left[0].localeCompare(right[0]);
+            })
+            .flatMap(([uniformName, binding]) => {
+                const texture = this._textures.get(binding.textureId);
+                if (!texture) {
+                    return [];
+                }
+                const sampler = this._resolveSampler(binding.samplerId ?? texture.samplerId);
+                return [
+                    {
+                        materialId,
+                        uniformName,
+                        textureId: binding.textureId,
+                        samplerId: binding.samplerId ?? texture.samplerId,
+                        unit: binding.unit ?? null,
+                        width: texture.width,
+                        height: texture.height,
+                        nativeTexture: texture.texture.nativeHandle,
+                        nativeSampler: sampler.nativeHandle,
+                    } satisfies SceneMaterialTextureBindingHandle,
+                ];
+            });
+    }
+
+    getMaterialTextureBinding(
+        materialId: string,
+        uniformName?: string
+    ): SceneMaterialTextureBindingHandle | null {
+        const bindings = this.getMaterialTextureBindings(materialId);
+        if (bindings.length === 0) {
+            return null;
+        }
+        if (!uniformName) {
+            return bindings[0] ?? null;
+        }
+        return bindings.find((binding) => binding.uniformName === uniformName) ?? null;
     }
 
     registerRenderPass(definition: SceneRenderPassDefinition): SceneRenderPassHandle {

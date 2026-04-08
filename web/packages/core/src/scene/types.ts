@@ -244,6 +244,23 @@ export interface SceneTextureHandle {
     readonly samplerId: string | null;
 }
 
+export interface SceneTextureResourceHandle extends SceneTextureHandle {
+    readonly nativeTexture: WebGLTexture;
+    readonly nativeSampler: WebGLSampler | null;
+}
+
+export interface SceneMaterialTextureBindingHandle {
+    readonly materialId: string;
+    readonly uniformName: string;
+    readonly textureId: string;
+    readonly samplerId: string | null;
+    readonly unit: number | null;
+    readonly width: number;
+    readonly height: number;
+    readonly nativeTexture: WebGLTexture;
+    readonly nativeSampler: WebGLSampler | null;
+}
+
 export interface SceneSamplerHandle {
     readonly id: string;
 }
@@ -363,6 +380,7 @@ export interface SceneTextureHost {
     getSampler(id: string): SceneSamplerHandle | null;
     registerTexture(definition: SceneTextureDefinition): Promise<SceneTextureHandle>;
     getTexture(id: string): SceneTextureHandle | null;
+    getTextureResource(id: string): SceneTextureResourceHandle | null;
 }
 
 export interface SceneSerializationHost {
