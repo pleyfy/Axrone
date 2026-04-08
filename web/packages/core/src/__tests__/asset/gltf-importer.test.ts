@@ -291,7 +291,7 @@ const createExtendedAttributeJson = (): GltfRootJson => ({
                         POSITION: 0,
                         TANGENT: 1,
                         TEXCOORD_1: 2,
-                        JOINTS_0: 2,
+                        TEXCOORD_2: 2,
                     },
                     indices: 3,
                     material: 0,
@@ -532,6 +532,16 @@ const createDracoCompressedTriangle = async (): Promise<{
 };
 
 const createRigBinaryBlob = (): Uint8Array => {
+    const jointIndices = new Uint16Array([
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+    ]);
+    const jointWeights = new Float32Array([
+        1, 0, 0, 0,
+        1, 0, 0, 0,
+        1, 0, 0, 0,
+    ]);
     const inverseBindMatrices = new Float32Array([
         1, 0, 0, 0,
         0, 1, 0, 0,
@@ -545,6 +555,8 @@ const createRigBinaryBlob = (): Uint8Array => {
     ]);
     const total =
         trianglePositions.byteLength +
+        jointIndices.byteLength +
+        jointWeights.byteLength +
         triangleIndices.byteLength +
         2 +
         inverseBindMatrices.byteLength +
@@ -554,6 +566,10 @@ const createRigBinaryBlob = (): Uint8Array => {
     let offset = 0;
     bytes.set(new Uint8Array(trianglePositions.buffer), offset);
     offset += trianglePositions.byteLength;
+    bytes.set(new Uint8Array(jointIndices.buffer), offset);
+    offset += jointIndices.byteLength;
+    bytes.set(new Uint8Array(jointWeights.buffer), offset);
+    offset += jointWeights.byteLength;
     bytes.set(new Uint8Array(triangleIndices.buffer), offset);
     offset += triangleIndices.byteLength + 2;
     bytes.set(new Uint8Array(inverseBindMatrices.buffer), offset);
@@ -571,7 +587,7 @@ const createRigJson = (): GltfRootJson => ({
     },
     buffers: [
         {
-            byteLength: 140,
+            byteLength: 212,
         },
     ],
     bufferViews: [
@@ -583,21 +599,31 @@ const createRigJson = (): GltfRootJson => ({
         {
             buffer: 0,
             byteOffset: 36,
-            byteLength: 6,
+            byteLength: 24,
         },
         {
             buffer: 0,
-            byteOffset: 44,
-            byteLength: 64,
+            byteOffset: 60,
+            byteLength: 48,
         },
         {
             buffer: 0,
             byteOffset: 108,
-            byteLength: 8,
+            byteLength: 6,
         },
         {
             buffer: 0,
             byteOffset: 116,
+            byteLength: 64,
+        },
+        {
+            buffer: 0,
+            byteOffset: 180,
+            byteLength: 8,
+        },
+        {
+            buffer: 0,
+            byteOffset: 188,
             byteLength: 24,
         },
     ],
@@ -614,16 +640,28 @@ const createRigJson = (): GltfRootJson => ({
             bufferView: 1,
             componentType: 5123,
             count: 3,
-            type: 'SCALAR',
+            type: 'VEC4',
         },
         {
             bufferView: 2,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC4',
+        },
+        {
+            bufferView: 3,
+            componentType: 5123,
+            count: 3,
+            type: 'SCALAR',
+        },
+        {
+            bufferView: 4,
             componentType: 5126,
             count: 1,
             type: 'MAT4',
         },
         {
-            bufferView: 3,
+            bufferView: 5,
             componentType: 5126,
             count: 2,
             type: 'SCALAR',
@@ -631,7 +669,7 @@ const createRigJson = (): GltfRootJson => ({
             max: [1],
         },
         {
-            bufferView: 4,
+            bufferView: 6,
             componentType: 5126,
             count: 2,
             type: 'VEC3',
@@ -644,8 +682,10 @@ const createRigJson = (): GltfRootJson => ({
                 {
                     attributes: {
                         POSITION: 0,
+                        JOINTS_0: 1,
+                        WEIGHTS_0: 2,
                     },
-                    indices: 1,
+                    indices: 3,
                 },
             ],
         },
@@ -662,7 +702,7 @@ const createRigJson = (): GltfRootJson => ({
     ],
     skins: [
         {
-            inverseBindMatrices: 2,
+            inverseBindMatrices: 4,
             skeleton: 0,
             joints: [0],
             name: 'Rig',
@@ -673,8 +713,8 @@ const createRigJson = (): GltfRootJson => ({
             name: 'Move',
             samplers: [
                 {
-                    input: 3,
-                    output: 4,
+                    input: 5,
+                    output: 6,
                 },
             ],
             channels: [
@@ -954,7 +994,7 @@ describe('glTF importer', () => {
         expect(receipt.primary.data.stats.cameraCount).toBe(1);
     });
 
-    it('imports skin and animation metadata while warning that runtime playback is still missing', async () => {
+    it('embeds runtime skinning and animation playback data into imported prefabs', async () => {
         const database = new AssetDatabase<GltfAssetSchema>({
             importers: [createGltfImporter()],
         });
@@ -968,19 +1008,14 @@ describe('glTF importer', () => {
 
         const skin = receipt.assets.find((entry) => entry.kind === 'gltf.skin');
         const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
-
-        expect(receipt.diagnostics).toEqual(
-            expect.arrayContaining([
-                expect.objectContaining({
-                    code: 'gltf.skin.runtime-missing',
-                    level: 'warning',
-                }),
-                expect.objectContaining({
-                    code: 'gltf.animation.runtime-missing',
-                    level: 'warning',
-                }),
-            ])
+        const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
+        const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+        const meshActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Mesh Root');
+        const meshRenderer = meshActor?.components.find((component) => component.type === 'MeshRenderer');
+        const animator = prefab?.data.definition.actors[0]?.components.find(
+            (component) => component.type === 'Animator'
         );
+
         expect(skin?.data).toMatchObject({
             skinIndex: 0,
             jointNodeIds: ['node/0'],
@@ -1010,10 +1045,34 @@ describe('glTF importer', () => {
                 }),
             ])
         );
+        expect(mesh?.data.definition.attributes).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ semantic: 'joints0', componentCount: 4, integer: true }),
+                expect.objectContaining({ semantic: 'weights0', componentCount: 4 }),
+            ])
+        );
+        expect(meshRenderer?.data).toMatchObject({
+            skin: {
+                jointNodeIds: ['node/0'],
+                skeletonNodeId: 'node/0',
+            },
+        });
+        expect(animator?.data).toMatchObject({
+            clipId: 'Move',
+            playing: true,
+        });
         expect(receipt.primary.data.skinKeys).toEqual([skin?.key]);
         expect(receipt.primary.data.animationKeys).toEqual([animation?.key]);
+        expect(prefab?.data.skinKeys).toEqual([skin?.key]);
+        expect(prefab?.data.animationKeys).toEqual([animation?.key]);
         expect(receipt.primary.data.stats.skinCount).toBe(1);
         expect(receipt.primary.data.stats.animationCount).toBe(1);
+        expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.skin.runtime-missing'
+        );
+        expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.animation.runtime-missing'
+        );
     });
 
     it('prefers KHR_texture_basisu sources over fallback texture images', async () => {

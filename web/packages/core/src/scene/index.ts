@@ -42,11 +42,21 @@ export {
 export type { CameraConfig } from './components/camera';
 export { Camera } from './components/camera';
 
+export type {
+    AnimatorClipConfig,
+    AnimatorConfig,
+    AnimatorTrackConfig,
+} from './components/animator';
+export { Animator } from './components/animator';
+
 export type { DirectionalLightConfig } from './components/directional-light';
 export { DirectionalLight } from './components/directional-light';
 
 export type { MeshRendererConfig } from './components/mesh-renderer';
 export { MeshRenderer } from './components/mesh-renderer';
+
+export type { PrefabNodeBindingConfig } from './components/prefab-node-binding';
+export { PrefabNodeBinding } from './components/prefab-node-binding';
 
 export type { OrbitCameraControllerConfig } from './components/orbit-camera-controller';
 export { OrbitCameraController } from './components/orbit-camera-controller';

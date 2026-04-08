@@ -5,6 +5,8 @@ import { GltfResourceRuntime } from './source-runtime';
 export interface DecodedAccessor {
     readonly count: number;
     readonly componentCount: number;
+    readonly componentType: GltfAccessorJson['componentType'];
+    readonly normalized: boolean;
     readonly values: Float32Array;
     readonly min?: readonly number[];
     readonly max?: readonly number[];
@@ -182,6 +184,8 @@ export class GltfAccessorRuntime {
         return Object.freeze({
             count: accessor.count,
             componentCount,
+            componentType: accessor.componentType,
+            normalized: accessor.normalized ?? false,
             values,
             min: accessor.min ? Object.freeze([...accessor.min]) : undefined,
             max: accessor.max ? Object.freeze([...accessor.max]) : undefined,

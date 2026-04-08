@@ -5,9 +5,11 @@ import type { ComponentConstructor, ComponentRegistry } from '../component-syste
 import type { System, SystemQuery } from '../component-system/types/system';
 import type { GameLoopScheduler, GameLoopStatus } from '../game-loop';
 import type { Camera } from './components/camera';
+import type { Animator } from './components/animator';
 import type { DirectionalLight } from './components/directional-light';
 import type { MeshRenderer } from './components/mesh-renderer';
 import type { OrbitCameraController } from './components/orbit-camera-controller';
+import type { PrefabNodeBinding } from './components/prefab-node-binding';
 import type { PointLight } from './components/point-light';
 import type { SpotLight } from './components/spot-light';
 import type { Hierarchy } from '../component-system/components/hierarchy';
@@ -20,7 +22,9 @@ export type SceneMeshSemantic =
     | 'uv0'
     | 'uv1'
     | 'tangent'
-    | 'color0';
+    | 'color0'
+    | 'joints0'
+    | 'weights0';
 export type SceneMeshTopology = 'triangles' | 'lines' | 'points';
 export type SceneClearFlag = 'color' | 'depth';
 
@@ -52,6 +56,7 @@ export interface SceneVertexAttribute {
     readonly stride: number;
     readonly type?: number;
     readonly normalized?: boolean;
+    readonly integer?: boolean;
 }
 
 export interface SceneMeshDefinition {
@@ -264,6 +269,8 @@ export interface SceneSnapshotLoadOptions extends ScenePrefabInstantiateOptions 
 export type SceneBuiltInRegistry = {
     readonly Hierarchy: typeof Hierarchy;
     readonly Transform: typeof Transform;
+    readonly PrefabNodeBinding: typeof PrefabNodeBinding;
+    readonly Animator: typeof Animator;
     readonly Camera: typeof Camera;
     readonly MeshRenderer: typeof MeshRenderer;
     readonly DirectionalLight: typeof DirectionalLight;

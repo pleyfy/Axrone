@@ -1,6 +1,21 @@
+import { Mat4 } from '@axrone/numeric';
+import { Transform } from '../../component-system/components/transform';
 import { Component } from '../../component-system/core/component';
 import { script } from '../../component-system/decorators/script';
 import type { SceneUniformValue } from '../types';
+import { PrefabNodeBinding } from './prefab-node-binding';
+
+export interface MeshRendererSkinConfig {
+    readonly jointNodeIds: readonly string[];
+    readonly skeletonNodeId?: string;
+    readonly inverseBindMatrices?: readonly number[] | Float32Array;
+}
+
+interface MeshRendererSkinState {
+    readonly jointNodeIds: readonly string[];
+    readonly skeletonNodeId?: string;
+    readonly inverseBindMatrices?: Float32Array;
+}
 
 export interface MeshRendererConfig {
     readonly meshId?: string;
@@ -9,7 +24,36 @@ export interface MeshRendererConfig {
     readonly renderOrder?: number;
     readonly passId?: string;
     readonly receiveLighting?: boolean;
+    readonly skin?: MeshRendererSkinConfig | null;
 }
+
+const toFloat32Array = (value: readonly number[] | Float32Array | undefined): Float32Array | undefined => {
+    if (!value) {
+        return undefined;
+    }
+
+    return value instanceof Float32Array ? new Float32Array(value) : new Float32Array(value);
+};
+
+const normalizeSkin = (value: MeshRendererSkinConfig | null | undefined): MeshRendererSkinState | null => {
+    if (!value || !Array.isArray(value.jointNodeIds) || value.jointNodeIds.length === 0) {
+        return null;
+    }
+
+    const inverseBindMatrices = toFloat32Array(value.inverseBindMatrices);
+    if (
+        inverseBindMatrices &&
+        inverseBindMatrices.length !== value.jointNodeIds.length * 16
+    ) {
+        throw new Error('Skin inverse bind matrices must contain 16 values per joint');
+    }
+
+    return Object.freeze({
+        jointNodeIds: Object.freeze(value.jointNodeIds.filter((entry): entry is string => typeof entry === 'string')),
+        ...(typeof value.skeletonNodeId === 'string' ? { skeletonNodeId: value.skeletonNodeId } : {}),
+        ...(inverseBindMatrices ? { inverseBindMatrices } : {}),
+    });
+};
 
 @script({
     scriptName: 'MeshRenderer',
@@ -25,6 +69,9 @@ export class MeshRenderer extends Component {
     private _passId: string;
     private _receiveLighting: boolean;
     private readonly _uniformOverrides = new Map<string, SceneUniformValue>();
+    private _skin: MeshRendererSkinState | null;
+    private _resolvedSkinInstanceId: string | null = null;
+    private _resolvedJointTransforms: readonly (Transform | null)[] | null = null;
 
     constructor(config: MeshRendererConfig = {}) {
         super();
@@ -34,6 +81,7 @@ export class MeshRenderer extends Component {
         this._renderOrder = config.renderOrder ?? 0;
         this._passId = config.passId ?? 'main';
         this._receiveLighting = config.receiveLighting ?? true;
+        this._skin = normalizeSkin(config.skin);
     }
 
     get meshId(): string | null {
@@ -84,6 +132,59 @@ export class MeshRenderer extends Component {
         this._receiveLighting = value;
     }
 
+    get skin(): MeshRendererSkinConfig | null {
+        return this._skin;
+    }
+
+    set skin(value: MeshRendererSkinConfig | null) {
+        this._skin = normalizeSkin(value);
+        this._resolvedSkinInstanceId = null;
+        this._resolvedJointTransforms = null;
+    }
+
+    get hasSkin(): boolean {
+        return this._skin !== null;
+    }
+
+    get skinJointCount(): number {
+        return this._skin?.jointNodeIds.length ?? 0;
+    }
+
+    getSkinJointMatrixPalette(): Float32Array | null {
+        if (!this._skin) {
+            return null;
+        }
+
+        const meshTransform = this.transform as Transform | undefined;
+        if (!meshTransform) {
+            return null;
+        }
+
+        const jointTransforms = this._resolveJointTransforms();
+        if (!jointTransforms) {
+            return null;
+        }
+
+        const meshInverse = Mat4.invert(meshTransform.worldMatrix);
+        const palette = new Float32Array(jointTransforms.length * 16);
+
+        for (let jointIndex = 0; jointIndex < jointTransforms.length; jointIndex += 1) {
+            const jointTransform = jointTransforms[jointIndex]!;
+            let jointMatrix = Mat4.multiply(meshInverse, jointTransform.worldMatrix);
+
+            if (this._skin.inverseBindMatrices) {
+                jointMatrix = Mat4.multiply(
+                    jointMatrix,
+                    Mat4.fromArray(this._skin.inverseBindMatrices, jointIndex * 16)
+                );
+            }
+
+            palette.set(jointMatrix.data, jointIndex * 16);
+        }
+
+        return palette;
+    }
+
     setUniform(name: string, value: SceneUniformValue): this {
         this._uniformOverrides.set(name, value);
         return this;
@@ -110,6 +211,17 @@ export class MeshRenderer extends Component {
             passId: this._passId,
             receiveLighting: this._receiveLighting,
             uniformOverrides: Object.fromEntries(this._uniformOverrides),
+            skin: this._skin
+                ? {
+                      jointNodeIds: [...this._skin.jointNodeIds],
+                      ...(this._skin.skeletonNodeId
+                          ? { skeletonNodeId: this._skin.skeletonNodeId }
+                          : {}),
+                      ...(this._skin.inverseBindMatrices
+                          ? { inverseBindMatrices: this._skin.inverseBindMatrices }
+                          : {}),
+                  }
+                : null,
         };
     }
 
@@ -133,11 +245,74 @@ export class MeshRenderer extends Component {
             this._receiveLighting = data.receiveLighting;
         }
 
+        if (data.skin === null) {
+            this.skin = null;
+        } else if (typeof data.skin === 'object' && data.skin !== null && Array.isArray(data.skin) === false) {
+            this.skin = {
+                jointNodeIds: Array.isArray(data.skin.jointNodeIds)
+                    ? data.skin.jointNodeIds.filter((entry: unknown): entry is string => typeof entry === 'string')
+                    : [],
+                ...(typeof data.skin.skeletonNodeId === 'string'
+                    ? { skeletonNodeId: data.skin.skeletonNodeId }
+                    : {}),
+                ...(data.skin.inverseBindMatrices instanceof Float32Array
+                    ? { inverseBindMatrices: data.skin.inverseBindMatrices }
+                    : Array.isArray(data.skin.inverseBindMatrices)
+                      ? { inverseBindMatrices: new Float32Array(data.skin.inverseBindMatrices.map((entry: unknown) => Number(entry))) }
+                      : {}),
+            };
+        }
+
         this._uniformOverrides.clear();
         if (typeof data.uniformOverrides === 'object' && data.uniformOverrides !== null) {
             for (const [name, value] of Object.entries(data.uniformOverrides)) {
                 this._uniformOverrides.set(name, value as SceneUniformValue);
             }
         }
+    }
+
+    private _resolveJointTransforms(): readonly Transform[] | null {
+        if (!this._skin) {
+            return null;
+        }
+
+        const instanceId = this.actor?.getComponent(PrefabNodeBinding)?.instanceId ?? null;
+        if (
+            this._resolvedJointTransforms &&
+            this._resolvedSkinInstanceId === instanceId &&
+            this._resolvedJointTransforms.length === this._skin.jointNodeIds.length &&
+            this._resolvedJointTransforms.every((entry) => entry !== null)
+        ) {
+            return this._resolvedJointTransforms as readonly Transform[];
+        }
+
+        const actors = (this.world as { getAllActors?: () => readonly { getComponent: (type: any) => any }[] } | undefined)?.getAllActors?.() ?? [];
+        const transformsByNodeId = new Map<string, Transform>();
+
+        for (const actor of actors) {
+            const binding = actor.getComponent(PrefabNodeBinding) as PrefabNodeBinding | undefined;
+            if (!binding || binding.nodeId === null) {
+                continue;
+            }
+            if (instanceId && binding.instanceId !== instanceId) {
+                continue;
+            }
+
+            const transform = actor.getComponent(Transform) as Transform | undefined;
+            if (transform) {
+                transformsByNodeId.set(binding.nodeId, transform);
+            }
+        }
+
+        this._resolvedSkinInstanceId = instanceId;
+        this._resolvedJointTransforms = this._skin.jointNodeIds.map(
+            (nodeId) => transformsByNodeId.get(nodeId) ?? null
+        );
+
+        if (this._resolvedJointTransforms.some((entry) => entry === null)) {
+            return null;
+        }
+
+        return this._resolvedJointTransforms as readonly Transform[];
     }
 }

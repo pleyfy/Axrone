@@ -4,6 +4,8 @@ import type {
     SceneMaterialDefinition,
     ScenePrefabDefinition,
 } from '../../scene/types';
+import { encodeSceneValue } from '../../scene/serialization';
+import type { MeshRendererSkinConfig } from '../../scene/components/mesh-renderer';
 import { FilterMode, TextureFormat, WrapMode } from '../../renderer/webgl2/texture/interfaces';
 import type { AssetImportDiagnostic, AssetImportResult, AssetImportSource, AssetWriteInput } from '../types';
 import { GltfSchemaError } from './errors';
@@ -75,6 +77,8 @@ interface PrefabBuildResult {
     readonly rootNodeIds: readonly string[];
     readonly nodeIds: readonly string[];
     readonly meshKeys: readonly string[];
+    readonly skinKeys: readonly string[];
+    readonly animationKeys: readonly string[];
     readonly materialKeys: readonly string[];
     readonly diagnostics: readonly AssetImportDiagnostic[];
 }
@@ -154,25 +158,18 @@ const collectExtensionDiagnostics = (root: GltfRootJson): readonly AssetImportDi
 
 const collectFeatureDiagnostics = (root: GltfRootJson): readonly AssetImportDiagnostic[] => {
     const diagnostics: AssetImportDiagnostic[] = [];
-    const skinCount = root.skins?.length ?? 0;
-    const animationCount = root.animations?.length ?? 0;
+    const weightTrackCount = ensureArray(root.animations).reduce(
+        (total, animation) =>
+            total + animation.channels.filter((channel) => channel.target.path === 'weights').length,
+        0
+    );
 
-    if (skinCount > 0) {
+    if (weightTrackCount > 0) {
         diagnostics.push(
             Object.freeze({
                 level: 'warning',
-                code: 'gltf.skin.runtime-missing',
-                message: `glTF defines ${skinCount} skin${skinCount === 1 ? '' : 's'}; Axrone now preserves skin metadata assets, but runtime skinning is not implemented yet`,
-            } satisfies AssetImportDiagnostic)
-        );
-    }
-
-    if (animationCount > 0) {
-        diagnostics.push(
-            Object.freeze({
-                level: 'warning',
-                code: 'gltf.animation.runtime-missing',
-                message: `glTF defines ${animationCount} animation clip${animationCount === 1 ? '' : 's'}; Axrone now preserves clip assets, but runtime playback is not implemented yet`,
+                code: 'gltf.animation.weights.runtime-missing',
+                message: `glTF defines ${weightTrackCount} morph-weight animation track${weightTrackCount === 1 ? '' : 's'}; Axrone still ignores morph target playback at runtime`,
             } satisfies AssetImportDiagnostic)
         );
     }
@@ -441,20 +438,128 @@ const createSpotLightSnapshot = (light: GltfPunctualLightJson): SceneComponentSn
 
 const createMeshRendererSnapshot = (
     meshKey: string,
-    materialKey: string | undefined
-): SceneComponentSnapshot =>
-    Object.freeze({
+    materialKey: string | undefined,
+    skin: MeshRendererSkinConfig | undefined
+): SceneComponentSnapshot => {
+    const skinData = skin
+        ? Object.freeze({
+              jointNodeIds: Object.freeze([...skin.jointNodeIds]),
+              ...(skin.skeletonNodeId ? { skeletonNodeId: skin.skeletonNodeId } : {}),
+              ...(skin.inverseBindMatrices
+                  ? { inverseBindMatrices: new Float32Array(skin.inverseBindMatrices) }
+                  : {}),
+          })
+        : undefined;
+
+    return Object.freeze({
         type: 'MeshRenderer',
-        data: Object.freeze({
-            meshId: meshKey,
-            materialId: materialKey ?? null,
-            visible: true,
-            renderOrder: 0,
-            passId: 'main',
-            receiveLighting: true,
-            uniformOverrides: Object.freeze({}),
-        }),
+        data: encodeSceneValue(
+            Object.freeze({
+                meshId: meshKey,
+                materialId: materialKey ?? null,
+                visible: true,
+                renderOrder: 0,
+                passId: 'main',
+                receiveLighting: true,
+                uniformOverrides: Object.freeze({}),
+                ...(skinData ? { skin: skinData } : {}),
+            })
+        ),
     });
+};
+
+const createSkinBinding = (skin: GltfSkinAsset | undefined): MeshRendererSkinConfig | undefined => {
+    if (!skin) {
+        return undefined;
+    }
+
+    return Object.freeze({
+        jointNodeIds: Object.freeze([...skin.jointNodeIds]),
+        ...(skin.skeletonNodeId ? { skeletonNodeId: skin.skeletonNodeId } : {}),
+        ...(skin.inverseBindMatrices
+            ? { inverseBindMatrices: new Float32Array(skin.inverseBindMatrices) }
+            : {}),
+    });
+};
+
+const createAnimatorSnapshot = (
+    animations: readonly GltfAnimationClipAsset[]
+): SceneComponentSnapshot | undefined => {
+    type SerializableTrack = Readonly<{
+        targetNodeId: string;
+        path: 'translation' | 'rotation' | 'scale';
+        interpolation: NonNullable<GltfAnimationClipAsset['tracks'][number]['interpolation']>;
+        keyframeCount: number;
+        valueComponentCount: number;
+        sampleStride: number;
+        times: Float32Array;
+        values: Float32Array;
+    }>;
+
+    type SerializableClip = Readonly<{
+        id: string;
+        duration: number;
+        tracks: readonly SerializableTrack[];
+    }>;
+
+    const clips = animations
+        .map((clip) => {
+            const tracks = clip.tracks
+                .filter(
+                    (
+                        track
+                    ): track is GltfAnimationClipAsset['tracks'][number] & {
+                        readonly path: 'translation' | 'rotation' | 'scale';
+                    } =>
+                        track.path === 'translation' ||
+                        track.path === 'rotation' ||
+                        track.path === 'scale'
+                )
+                .map(
+                    (track) =>
+                        Object.freeze({
+                            targetNodeId: track.targetNodeId,
+                            path: track.path,
+                            interpolation: track.interpolation,
+                            keyframeCount: track.keyframeCount,
+                            valueComponentCount: track.valueComponentCount,
+                            sampleStride: track.sampleStride,
+                            times: new Float32Array(track.times),
+                            values: new Float32Array(track.values),
+                        } satisfies SerializableTrack)
+                );
+
+            if (tracks.length === 0) {
+                return undefined;
+            }
+
+            return Object.freeze({
+                id: clip.id,
+                duration: clip.duration,
+                tracks: Object.freeze(tracks),
+            } satisfies SerializableClip);
+        })
+        .filter((clip) => clip !== undefined) as readonly SerializableClip[];
+
+    if (clips.length === 0) {
+        return undefined;
+    }
+
+    return Object.freeze({
+        type: 'Animator',
+        data: encodeSceneValue(
+            Object.freeze({
+                clips: Object.freeze(clips),
+                clipId: clips[0]?.id ?? null,
+                playOnStart: true,
+                playing: true,
+                loop: true,
+                speed: 1,
+                time: 0,
+            })
+        ),
+    });
+};
 
 const collectTextureUsages = (root: GltfRootJson): Map<number, Set<GltfTextureUsage>> => {
     const usages = new Map<number, Set<GltfTextureUsage>>();
@@ -868,7 +973,11 @@ const buildPrefabDefinition = (
     sceneIndex: number,
     defaultSceneIndex: number,
     meshKeysByMesh: readonly (readonly string[])[],
-    materialKeysByMesh: readonly (readonly (string | undefined)[])[]
+    materialKeysByMesh: readonly (readonly (string | undefined)[])[],
+    skinsByIndex: readonly (GltfSkinAsset | undefined)[],
+    skinKeysByIndex: readonly string[],
+    animationsByIndex: readonly (GltfAnimationClipAsset | undefined)[],
+    animationKeysByIndex: readonly string[]
 ): PrefabBuildResult => {
     const scene = root.scenes?.[sceneIndex];
     if (!scene) {
@@ -879,6 +988,8 @@ const buildPrefabDefinition = (
     const rootNodeIds: string[] = [];
     const nodeIds: string[] = [];
     const meshKeys = new Set<string>();
+    const skinKeys = new Set<string>();
+    const animationKeys = new Set<string>();
     const materialKeys = new Set<string>();
     const diagnostics: AssetImportDiagnostic[] = [];
     let primaryCameraAssigned = false;
@@ -903,6 +1014,14 @@ const buildPrefabDefinition = (
             node.mesh !== undefined ? materialKeysByMesh[node.mesh] ?? EMPTY_ARRAY : EMPTY_ARRAY;
         const transformComponent = createTransformSnapshot(node);
         const nodeName = sanitizeName(node.name, `Node ${nodeIndex}`);
+                const skin =
+                        node.skin !== undefined
+                                ? skinsByIndex[node.skin] ??
+                                    (() => {
+                                            throw new GltfSchemaError(`Missing skin ${node.skin}`);
+                                    })()
+                                : undefined;
+                const skinBinding = createSkinBinding(skin);
         const punctualLight = resolveNodeLight(root, node, nodeIndex);
         const cameraComponent =
             node.camera !== undefined
@@ -956,7 +1075,8 @@ const buildPrefabDefinition = (
                     ? [
                           createMeshRendererSnapshot(
                               primitives[0]!,
-                              primitiveMaterials[0]
+                              primitiveMaterials[0],
+                              skinBinding
                           ),
                       ]
                     : EMPTY_ARRAY),
@@ -967,6 +1087,9 @@ const buildPrefabDefinition = (
 
             if (primitives.length === 1) {
                 meshKeys.add(primitives[0]!);
+                if (node.skin !== undefined && skinKeysByIndex[node.skin]) {
+                    skinKeys.add(skinKeysByIndex[node.skin]!);
+                }
                 if (primitiveMaterials[0]) {
                     materialKeys.add(primitiveMaterials[0]!);
                 }
@@ -1004,13 +1127,17 @@ const buildPrefabDefinition = (
                             }),
                             createMeshRendererSnapshot(
                                 primitives[primitiveIndex]!,
-                                primitiveMaterials[primitiveIndex]
+                                primitiveMaterials[primitiveIndex],
+                                skinBinding
                             ),
                         ])
                     )
                 );
                 nodeIds.push(primitiveNodeId);
                 meshKeys.add(primitives[primitiveIndex]!);
+                if (node.skin !== undefined && skinKeysByIndex[node.skin]) {
+                    skinKeys.add(skinKeysByIndex[node.skin]!);
+                }
                 if (primitiveMaterials[primitiveIndex]) {
                     materialKeys.add(primitiveMaterials[primitiveIndex]!);
                 }
@@ -1024,6 +1151,43 @@ const buildPrefabDefinition = (
 
     for (const rootNode of ensureArray(scene.nodes)) {
         visitNode(rootNode, null);
+    }
+
+    const importedNodeIds = new Set(nodeIds.filter((nodeId) => nodeId.startsWith('node/')));
+    const sceneAnimations = animationsByIndex
+        .map((animation, index) => {
+            if (!animation) {
+                return undefined;
+            }
+
+            const hasTrackedTarget = animation.tracks.some(
+                (track) =>
+                    importedNodeIds.has(track.targetNodeId) &&
+                    (track.path === 'translation' ||
+                        track.path === 'rotation' ||
+                        track.path === 'scale')
+            );
+            if (!hasTrackedTarget) {
+                return undefined;
+            }
+
+            if (animationKeysByIndex[index]) {
+                animationKeys.add(animationKeysByIndex[index]!);
+            }
+            return animation;
+        })
+        .filter((animation): animation is GltfAnimationClipAsset => Boolean(animation));
+
+    const animatorComponent = createAnimatorSnapshot(sceneAnimations);
+    if (animatorComponent) {
+        const firstRootActorIndex = actors.findIndex((actor) => actor.parentNodeId === null);
+        if (firstRootActorIndex >= 0) {
+            const firstRootActor = actors[firstRootActorIndex]!;
+            actors[firstRootActorIndex] = Object.freeze({
+                ...firstRootActor,
+                components: Object.freeze([...firstRootActor.components, animatorComponent]),
+            });
+        }
     }
 
     if (directionalLightCount > 1) {
@@ -1054,6 +1218,8 @@ const buildPrefabDefinition = (
         rootNodeIds: Object.freeze(rootNodeIds),
         nodeIds: Object.freeze(nodeIds),
         meshKeys: Object.freeze([...meshKeys]),
+        skinKeys: Object.freeze([...skinKeys]),
+        animationKeys: Object.freeze([...animationKeys]),
         materialKeys: Object.freeze([...materialKeys]),
         diagnostics: Object.freeze(diagnostics),
     };
@@ -1295,6 +1461,8 @@ export const createGltfImporter = <
             );
             const meshKeysByMesh: string[][] = [];
             const materialKeysByMesh: Array<Array<string | undefined>> = [];
+            const skinsByIndex: Array<GltfSkinAsset | undefined> = [];
+            const animationsByIndex: Array<GltfAnimationClipAsset | undefined> = [];
             const additional: AssetWriteInput<TSchema>[] = [];
             let defaultMaterialKey: string | undefined;
 
@@ -1479,6 +1647,7 @@ export const createGltfImporter = <
             for (let skinIndex = 0; skinIndex < explicitSkins.length; skinIndex += 1) {
                 const key = skinKeys[skinIndex]!;
                 const asset = await createSkinAsset(normalized.json, skinIndex, accessors, freeze);
+                skinsByIndex[skinIndex] = asset;
                 additional.push(
                     asWrite<TSchema>(Object.freeze({
                         kind: 'gltf.skin',
@@ -1497,6 +1666,7 @@ export const createGltfImporter = <
                     accessors,
                     freeze
                 );
+                animationsByIndex[animationIndex] = asset;
                 additional.push(
                     asWrite<TSchema>(Object.freeze({
                         kind: 'gltf.animation',
@@ -1530,7 +1700,11 @@ export const createGltfImporter = <
                     sceneIndex,
                     defaultSceneIndex,
                     meshKeysByMesh,
-                    materialKeysByMesh
+                    materialKeysByMesh,
+                    skinsByIndex,
+                    skinKeys,
+                    animationsByIndex,
+                    animationKeys
                 );
                 diagnostics.push(...built.diagnostics);
                 const key = String(createSubKey(`scene/${sceneIndex}/prefab`));
@@ -1545,6 +1719,8 @@ export const createGltfImporter = <
                         rootNodeIds: built.rootNodeIds,
                         nodeIds: built.nodeIds,
                         meshKeys: built.meshKeys,
+                        skinKeys: built.skinKeys,
+                        animationKeys: built.animationKeys,
                         materialKeys: built.materialKeys,
                     },
                     freeze
@@ -1558,6 +1734,8 @@ export const createGltfImporter = <
                         data: asset as unknown as TSchema['gltf.prefab'],
                         dependencies: Object.freeze([
                             ...built.meshKeys,
+                            ...built.skinKeys,
+                            ...built.animationKeys,
                             ...built.materialKeys,
                         ]),
                     }))

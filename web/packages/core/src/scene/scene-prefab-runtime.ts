@@ -2,6 +2,7 @@ import { Hierarchy } from '../component-system/components/hierarchy';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { Component } from '../component-system/core/component';
 import type { ComponentConstructor } from '../component-system/types/core';
+import { PrefabNodeBinding } from './components/prefab-node-binding';
 import { SceneLifecycleError } from './errors';
 import { decodeSceneValue, encodeSceneValue } from './serialization';
 import type {
@@ -16,6 +17,10 @@ interface ScenePrefabHost {
     createActor(config: ActorConfig): Actor;
     getAllActors(): readonly Actor[];
 }
+
+let prefabInstanceSequence = 1;
+
+const createPrefabInstanceId = (): string => `prefab-instance-${prefabInstanceSequence++}`;
 
 export class ScenePrefabRuntime {
     private readonly _host: ScenePrefabHost;
@@ -40,6 +45,7 @@ export class ScenePrefabRuntime {
     ): readonly Actor[] {
         const createdActors: Actor[] = [];
         const createdByNodeId = new Map<string, Actor>();
+        const instanceId = createPrefabInstanceId();
         const pendingComponentHydration: Array<{
             readonly actor: Actor;
             readonly components: readonly SceneComponentSnapshot[];
@@ -63,6 +69,10 @@ export class ScenePrefabRuntime {
             createdActors.push(actor);
 
             if (actorSnapshot.nodeId) {
+                actor.addComponent(PrefabNodeBinding, {
+                    nodeId: actorSnapshot.nodeId,
+                    instanceId,
+                });
                 createdByNodeId.set(actorSnapshot.nodeId, actor);
             }
 
@@ -113,15 +123,23 @@ export class ScenePrefabRuntime {
     }
 
     private _createActorSnapshot(actor: Actor): SceneActorSnapshot {
+        const binding = actor.getComponent(PrefabNodeBinding);
         const hierarchy = actor.getComponent(Hierarchy);
         const components = actor
             .getAllComponents()
-            .filter((component) => !(component instanceof Hierarchy))
+            .filter(
+                (component) =>
+                    !(component instanceof Hierarchy) &&
+                    !(component instanceof PrefabNodeBinding)
+            )
             .map((component) => this._createComponentSnapshot(component));
 
+        const parentActor = hierarchy?.parentActor;
+        const parentNodeId = parentActor?.getComponent(PrefabNodeBinding)?.nodeId ?? parentActor?.id ?? null;
+
         return {
-            nodeId: actor.id,
-            parentNodeId: hierarchy?.parentActor?.id ?? null,
+            nodeId: binding?.nodeId ?? actor.id,
+            parentNodeId,
             name: actor.name,
             layer: actor.layer,
             tag: actor.tag,

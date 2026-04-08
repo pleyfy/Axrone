@@ -20,10 +20,12 @@ import {
     type ITextureSampler,
 } from '../renderer/webgl2/texture/interfaces';
 import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
+import { Animator } from './components/animator';
 import { Camera, type CameraConfig } from './components/camera';
 import { DirectionalLight } from './components/directional-light';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
+import { PrefabNodeBinding } from './components/prefab-node-binding';
 import { PointLight } from './components/point-light';
 import { SpotLight } from './components/spot-light';
 import {
@@ -191,6 +193,8 @@ const DEFAULT_ATTRIBUTE_NAMES: Readonly<Record<SceneMeshSemantic, string>> = Obj
     uv1: 'a_UV1',
     tangent: 'a_Tangent',
     color0: 'a_Color0',
+    joints0: 'a_Joints0',
+    weights0: 'a_Weights0',
 });
 
 const normalizeUniformName = (name: string): string => name.replace(/\[0\]$/, '');
@@ -202,6 +206,8 @@ const ATTRIBUTE_LOCATIONS: Readonly<Record<SceneMeshSemantic, number>> = Object.
     color0: 3,
     tangent: 4,
     uv1: 5,
+    joints0: 9,
+    weights0: 10,
 });
 
 const DEFAULT_CLEAR_COLOR = new Vec4(0.08, 0.09, 0.11, 1);
@@ -664,6 +670,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._registry = {
             Hierarchy,
             Transform,
+            PrefabNodeBinding,
+            Animator,
             Camera,
             MeshRenderer,
             DirectionalLight,
@@ -1520,14 +1528,25 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         for (const attribute of definition.attributes) {
             const location = ATTRIBUTE_LOCATIONS[attribute.semantic];
             this.gl.enableVertexAttribArray(location);
-            this.gl.vertexAttribPointer(
-                location,
-                attribute.componentCount,
-                attribute.type ?? this.gl.FLOAT,
-                attribute.normalized ?? false,
-                attribute.stride,
-                attribute.offset
-            );
+            const attributeType = attribute.type ?? this.gl.FLOAT;
+            if (attribute.integer && typeof this.gl.vertexAttribIPointer === 'function') {
+                this.gl.vertexAttribIPointer(
+                    location,
+                    attribute.componentCount,
+                    attributeType,
+                    attribute.stride,
+                    attribute.offset
+                );
+            } else {
+                this.gl.vertexAttribPointer(
+                    location,
+                    attribute.componentCount,
+                    attributeType,
+                    attribute.normalized ?? false,
+                    attribute.stride,
+                    attribute.offset
+                );
+            }
         }
 
         let indexBuffer: WebGLBuffer | null = null;
@@ -1836,6 +1855,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 );
                 this._setUniform(shader, 'u_CameraPosition', cameraPosition);
                 this._applyLightingUniforms(shader, item.renderer, lighting);
+                this._applySkinningUniforms(shader, item.renderer);
 
                 const boundUnits = this._bindMaterialTextures(shader, material);
 
@@ -2109,6 +2129,17 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._setUniform(shader, 'u_LocalLightOuterCone', localLightOuterCones);
     }
 
+    private _applySkinningUniforms(shader: ShaderResource, renderer: MeshRenderer): void {
+        const palette = renderer.getSkinJointMatrixPalette();
+        const jointCount = palette ? renderer.skinJointCount : 0;
+
+        this._setUniform(shader, 'u_Skinning', Boolean(palette && jointCount > 0));
+        this._setUniform(shader, 'u_SkinJointCount', jointCount);
+        if (palette) {
+            this._setUniform(shader, 'u_JointMatrices', palette);
+        }
+    }
+
     private _bindMaterialTextures(shader: ShaderResource, material: MaterialResource): number[] {
         const assignments = [...material.textureBindings.entries()].sort((left, right) => {
             const leftUnit = left[1].unit ?? Number.MAX_SAFE_INTEGER;
@@ -2156,6 +2187,21 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _toWebGLMatrixData(value: Mat4): Float32Array {
         return new Float32Array(Mat4.transpose(value).data);
+    }
+
+    private _toWebGLMatrixArrayData(value: Float32Array): Float32Array {
+        if (value.length <= 16) {
+            return this._toWebGLMatrixData(new Mat4(value));
+        }
+
+        const transformed = new Float32Array(value.length);
+        for (let offset = 0; offset + 15 < value.length; offset += 16) {
+            transformed.set(
+                this._toWebGLMatrixData(new Mat4(value.subarray(offset, offset + 16))),
+                offset
+            );
+        }
+        return transformed;
     }
 
     private _setNumericUniform(
@@ -2247,6 +2293,13 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             switch (uniformType) {
                 case this.gl.FLOAT:
                     this.gl.uniform1fv(location, value);
+                    return;
+                case this.gl.FLOAT_MAT4:
+                    this.gl.uniformMatrix4fv(
+                        location,
+                        false,
+                        this._toWebGLMatrixArrayData(value)
+                    );
                     return;
                 case this.gl.FLOAT_VEC4:
                     this.gl.uniform4fv(location, value);
@@ -2360,6 +2413,16 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (Array.isArray(value)) {
+            const uniformType = shader.uniformTypes.get(name);
+            if (uniformType === this.gl.FLOAT_MAT4 && value.length % 16 === 0) {
+                this.gl.uniformMatrix4fv(
+                    location,
+                    false,
+                    this._toWebGLMatrixArrayData(new Float32Array(value))
+                );
+                return;
+            }
+
             switch (value.length) {
                 case 16:
                     this.gl.uniformMatrix4fv(

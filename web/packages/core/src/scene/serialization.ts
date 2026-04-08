@@ -258,6 +258,10 @@ export const deserializeMeshDefinition = (value: SceneSerializedValue): SceneMes
                           typeof attribute.normalized === 'boolean'
                               ? attribute.normalized
                               : undefined,
+                      integer:
+                          typeof attribute.integer === 'boolean'
+                              ? attribute.integer
+                              : undefined,
                   };
               })
             : [],

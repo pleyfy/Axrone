@@ -214,6 +214,8 @@ export interface GltfPrefabAsset {
     readonly rootNodeIds: readonly string[];
     readonly nodeIds: readonly string[];
     readonly meshKeys: readonly string[];
+    readonly skinKeys: readonly string[];
+    readonly animationKeys: readonly string[];
     readonly materialKeys: readonly string[];
 }
 

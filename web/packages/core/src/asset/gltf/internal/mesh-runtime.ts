@@ -12,6 +12,8 @@ const SUPPORTED_ATTRIBUTE_SEMANTICS = [
     'TEXCOORD_0',
     'TEXCOORD_1',
     'COLOR_0',
+    'JOINTS_0',
+    'WEIGHTS_0',
 ] as const;
 
 type SupportedAttributeSemantic = (typeof SUPPORTED_ATTRIBUTE_SEMANTICS)[number];
@@ -19,6 +21,8 @@ type SupportedAttributeSemantic = (typeof SUPPORTED_ATTRIBUTE_SEMANTICS)[number]
 interface AttributeStream {
     readonly semantic: SupportedAttributeSemantic;
     readonly componentCount: number;
+    readonly componentType: GltfAccessorJson['componentType'];
+    readonly normalized: boolean;
     readonly values: Float32Array;
 }
 
@@ -125,6 +129,55 @@ const mapAttributeSemantic = (
             return 'uv1';
         case 'COLOR_0':
             return 'color0';
+        case 'JOINTS_0':
+            return 'joints0';
+        case 'WEIGHTS_0':
+            return 'weights0';
+    }
+};
+
+const componentTypeByteSize = (
+    componentType: GltfAccessorJson['componentType']
+): 1 | 2 | 4 => {
+    switch (componentType) {
+        case 5120:
+        case 5121:
+            return 1;
+        case 5122:
+        case 5123:
+            return 2;
+        case 5125:
+        case 5126:
+            return 4;
+    }
+};
+
+const writeIntegerComponent = (
+    view: DataView,
+    offset: number,
+    componentType: GltfAccessorJson['componentType'],
+    value: number
+): void => {
+    const rounded = Math.round(value);
+    switch (componentType) {
+        case 5120:
+            view.setInt8(offset, rounded);
+            return;
+        case 5121:
+            view.setUint8(offset, rounded);
+            return;
+        case 5122:
+            view.setInt16(offset, rounded, true);
+            return;
+        case 5123:
+            view.setUint16(offset, rounded, true);
+            return;
+        case 5125:
+            view.setUint32(offset, rounded, true);
+            return;
+        default:
+            view.setFloat32(offset, value, true);
+            return;
     }
 };
 
@@ -329,6 +382,8 @@ const collectPrimitiveAttributes = async (
             Object.freeze({
                 semantic,
                 componentCount: decoded.componentCount,
+                componentType: accessor.componentType,
+                normalized: accessor.normalized ?? false,
                 values: decoded.values,
             })
         );
@@ -504,38 +559,99 @@ export const buildMeshDefinition = async (
     const attributeStreams = resolved.attributeStreams;
     const vertexCount =
         attributeStreams[0]!.values.length / attributeStreams[0]!.componentCount;
-    const strideComponents = attributeStreams.reduce(
-        (total, attribute) => total + attribute.componentCount,
-        0
-    );
-    const interleaved = new Float32Array(vertexCount * strideComponents);
+    const attributeLayouts = attributeStreams.map((attribute) => {
+        const integer = attribute.semantic === 'JOINTS_0' && attribute.componentType !== 5126;
+        const componentByteSize = integer
+            ? componentTypeByteSize(attribute.componentType)
+            : Float32Array.BYTES_PER_ELEMENT;
+        return {
+            attribute,
+            integer,
+            componentByteSize,
+            byteLength: attribute.componentCount * componentByteSize,
+        };
+    });
+    const hasIntegerAttributes = attributeLayouts.some((layout) => layout.integer);
+    const strideBytes = attributeLayouts.reduce((total, layout) => total + layout.byteLength, 0);
     const attributes: SceneMeshDefinition['attributes'][number][] = [];
-    let componentOffset = 0;
+    const vertices = hasIntegerAttributes
+        ? (() => {
+              const bytes = new Uint8Array(vertexCount * strideBytes);
+              const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+              let byteOffset = 0;
 
-    for (const attribute of attributeStreams) {
-        const offsetBytes = componentOffset * Float32Array.BYTES_PER_ELEMENT;
-        for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-            interleaved.set(
-                attribute.values.subarray(
-                    vertex * attribute.componentCount,
-                    vertex * attribute.componentCount + attribute.componentCount
-                ),
-                vertex * strideComponents + componentOffset
-            );
-        }
+              for (const layout of attributeLayouts) {
+                  const { attribute, integer, componentByteSize, byteLength } = layout;
+                  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+                      const baseOffset = vertex * strideBytes + byteOffset;
+                      for (let component = 0; component < attribute.componentCount; component += 1) {
+                          const value =
+                              attribute.values[vertex * attribute.componentCount + component] ?? 0;
+                          const componentOffset = baseOffset + component * componentByteSize;
+                          if (integer) {
+                              writeIntegerComponent(
+                                  view,
+                                  componentOffset,
+                                  attribute.componentType,
+                                  value
+                              );
+                          } else {
+                              view.setFloat32(componentOffset, value, true);
+                          }
+                      }
+                  }
 
-        attributes.push(
-            Object.freeze({
-                semantic: mapAttributeSemantic(attribute.semantic),
-                componentCount: attribute.componentCount as 1 | 2 | 3 | 4,
-                offset: offsetBytes,
-                stride: strideComponents * Float32Array.BYTES_PER_ELEMENT,
-                type: 5126,
-                normalized: false,
-            })
-        );
-        componentOffset += attribute.componentCount;
-    }
+                  attributes.push(
+                      Object.freeze({
+                          semantic: mapAttributeSemantic(attribute.semantic),
+                          componentCount: attribute.componentCount as 1 | 2 | 3 | 4,
+                          offset: byteOffset,
+                          stride: strideBytes,
+                          type: integer ? attribute.componentType : 5126,
+                          normalized: false,
+                          integer: integer || undefined,
+                      })
+                  );
+                  byteOffset += byteLength;
+              }
+
+              return bytes;
+          })()
+        : (() => {
+              const strideComponents = attributeStreams.reduce(
+                  (total, attribute) => total + attribute.componentCount,
+                  0
+              );
+              const interleaved = new Float32Array(vertexCount * strideComponents);
+              let componentOffset = 0;
+
+              for (const attribute of attributeStreams) {
+                  const offsetBytes = componentOffset * Float32Array.BYTES_PER_ELEMENT;
+                  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+                      interleaved.set(
+                          attribute.values.subarray(
+                              vertex * attribute.componentCount,
+                              vertex * attribute.componentCount + attribute.componentCount
+                          ),
+                          vertex * strideComponents + componentOffset
+                      );
+                  }
+
+                  attributes.push(
+                      Object.freeze({
+                          semantic: mapAttributeSemantic(attribute.semantic),
+                          componentCount: attribute.componentCount as 1 | 2 | 3 | 4,
+                          offset: offsetBytes,
+                          stride: strideComponents * Float32Array.BYTES_PER_ELEMENT,
+                          type: 5126,
+                          normalized: false,
+                      })
+                  );
+                  componentOffset += attribute.componentCount;
+              }
+
+              return interleaved;
+          })();
 
     const expandedIndices = expandPrimitiveIndices(
         resolved.topologyMode,
@@ -548,7 +664,7 @@ export const buildMeshDefinition = async (
     return {
         definition: Object.freeze({
             id: '',
-            vertices: interleaved,
+            vertices,
             attributes: Object.freeze(attributes),
             ...(expandedIndices && expandedIndices.length > 0
                 ? { indices: toSmallestIndexArray(expandedIndices) }

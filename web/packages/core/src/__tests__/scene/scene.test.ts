@@ -1,67 +1,22 @@
 import { Vec3 } from '@axrone/numeric';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Component } from '../../component-system/core/component';
 import { Transform } from '../../component-system/components/transform';
-import type { SceneOptions } from '../../scene';
-
-const installWebGL2Constants = (): void => {
-    const root = globalThis as typeof globalThis & {
-        WebGL2RenderingContext?: typeof WebGL2RenderingContext;
-    };
-
-    if (root.WebGL2RenderingContext) {
-        return;
-    }
-
-    let nextConstant = 0x2000;
-    root.WebGL2RenderingContext = new Proxy(class WebGL2RenderingContext {}, {
-        get(target, property, receiver) {
-            if (typeof property === 'string' && !(property in target)) {
-                Reflect.set(target, property, nextConstant++);
-            }
-
-            return Reflect.get(target, property, receiver);
-        },
-    }) as typeof WebGL2RenderingContext;
-};
+import {
+    createMockGL,
+    createSceneOptions,
+    installWebGL2Constants,
+    ManualScheduler,
+} from './test-harness';
 
 let Scene: typeof import('../../scene').Scene;
+let Animator: typeof import('../../scene').Animator;
 let MeshRenderer: typeof import('../../scene').MeshRenderer;
 let DirectionalLight: typeof import('../../scene').DirectionalLight;
 let OrbitCameraController: typeof import('../../scene').OrbitCameraController;
+let PrefabNodeBinding: typeof import('../../scene').PrefabNodeBinding;
 let PointLight: typeof import('../../scene').PointLight;
 let SpotLight: typeof import('../../scene').SpotLight;
-
-class ManualScheduler {
-    readonly kind = 'manual';
-    private _now = 0;
-    private _nextHandle = 1;
-    private readonly _callbacks = new Map<number, (timestamp: number) => void>();
-
-    now(): number {
-        return this._now;
-    }
-
-    request(callback: (timestamp: number) => void): number {
-        const handle = this._nextHandle++;
-        this._callbacks.set(handle, callback);
-        return handle;
-    }
-
-    cancel(handle: number): void {
-        this._callbacks.delete(handle);
-    }
-
-    flush(timestamp: number): void {
-        this._now = timestamp;
-        const callbacks = [...this._callbacks.values()];
-        this._callbacks.clear();
-
-        for (const callback of callbacks) {
-            callback(timestamp);
-        }
-    }
-}
 
 class PulseComponent extends Component {
     fixedCalls = 0;
@@ -89,227 +44,6 @@ class ParentAwareComponent extends Component {
     }
 }
 
-const createMockGL = (canvas: HTMLCanvasElement) => {
-    const shaders = new Set<object>();
-    const programs = new Set<object>();
-    const buffers = new Set<object>();
-    const vertexArrays = new Set<object>();
-    const textures = new Set<object>();
-    const samplers = new Set<object>();
-
-    const gl = {
-        canvas,
-        ARRAY_BUFFER: 0x8892,
-        ELEMENT_ARRAY_BUFFER: 0x8893,
-        STATIC_DRAW: 0x88e4,
-        FLOAT: 0x1406,
-        FLOAT_VEC2: 0x8b50,
-        FLOAT_VEC3: 0x8b51,
-        FLOAT_VEC4: 0x8b52,
-        FLOAT_MAT4: 0x8b5c,
-        INT: 0x1404,
-        INT_VEC2: 0x8b53,
-        INT_VEC3: 0x8b54,
-        INT_VEC4: 0x8b55,
-        BOOL: 0x8b56,
-        BOOL_VEC2: 0x8b57,
-        BOOL_VEC3: 0x8b58,
-        BOOL_VEC4: 0x8b59,
-        UNSIGNED_BYTE: 0x1401,
-        UNSIGNED_SHORT: 0x1403,
-        UNSIGNED_INT: 0x1405,
-        UNSIGNED_INT_VEC2: 0x8dc6,
-        UNSIGNED_INT_VEC3: 0x8dc7,
-        UNSIGNED_INT_VEC4: 0x8dc8,
-        TRIANGLES: 0x0004,
-        LINES: 0x0001,
-        POINTS: 0x0000,
-        VERTEX_SHADER: 0x8b31,
-        FRAGMENT_SHADER: 0x8b30,
-        COMPILE_STATUS: 0x8b81,
-        LINK_STATUS: 0x8b82,
-        COLOR_BUFFER_BIT: 0x4000,
-        DEPTH_BUFFER_BIT: 0x0100,
-        DEPTH_TEST: 0x0b71,
-        CULL_FACE: 0x0b44,
-        BLEND: 0x0be2,
-        BACK: 0x0405,
-        SRC_ALPHA: 0x0302,
-        ONE_MINUS_SRC_ALPHA: 0x0303,
-        TEXTURE_2D: 0x0de1,
-        TEXTURE_3D: 0x806f,
-        TEXTURE_CUBE_MAP: 0x8513,
-        TEXTURE_2D_ARRAY: 0x8c1a,
-        TEXTURE_CUBE_MAP_POSITIVE_X: 0x8515,
-        TEXTURE_CUBE_MAP_NEGATIVE_X: 0x8516,
-        TEXTURE_CUBE_MAP_POSITIVE_Y: 0x8517,
-        TEXTURE_CUBE_MAP_NEGATIVE_Y: 0x8518,
-        TEXTURE_CUBE_MAP_POSITIVE_Z: 0x8519,
-        TEXTURE_CUBE_MAP_NEGATIVE_Z: 0x851a,
-        TEXTURE0: 0x84c0,
-        TEXTURE_MIN_FILTER: 0x2801,
-        TEXTURE_MAG_FILTER: 0x2800,
-        TEXTURE_WRAP_S: 0x2802,
-        TEXTURE_WRAP_T: 0x2803,
-        TEXTURE_WRAP_R: 0x8072,
-        TEXTURE_COMPARE_MODE: 0x884c,
-        TEXTURE_COMPARE_FUNC: 0x884d,
-        TEXTURE_MIN_LOD: 0x813a,
-        TEXTURE_MAX_LOD: 0x813b,
-        COMPARE_REF_TO_TEXTURE: 0x884e,
-        NONE: 0,
-        REPEAT: 0x2901,
-        CLAMP_TO_EDGE: 0x812f,
-        CLAMP_TO_BORDER: 0x812d,
-        MIRRORED_REPEAT: 0x8370,
-        NEAREST: 0x2600,
-        LINEAR: 0x2601,
-        NEAREST_MIPMAP_NEAREST: 0x2700,
-        LINEAR_MIPMAP_NEAREST: 0x2701,
-        NEAREST_MIPMAP_LINEAR: 0x2702,
-        LINEAR_MIPMAP_LINEAR: 0x2703,
-        NEVER: 0x0200,
-        LESS: 0x0201,
-        EQUAL: 0x0202,
-        LEQUAL: 0x0203,
-        GREATER: 0x0204,
-        NOTEQUAL: 0x0205,
-        GEQUAL: 0x0206,
-        ALWAYS: 0x0207,
-        createShader: vi.fn((type: number) => {
-            const shader = { type };
-            shaders.add(shader);
-            return shader as unknown as WebGLShader;
-        }),
-        shaderSource: vi.fn(),
-        compileShader: vi.fn(),
-        getShaderParameter: vi.fn(() => true),
-        getShaderInfoLog: vi.fn(() => ''),
-        deleteShader: vi.fn((shader: object) => {
-            shaders.delete(shader);
-        }),
-        createProgram: vi.fn(() => {
-            const program = {};
-            programs.add(program);
-            return program as WebGLProgram;
-        }),
-        bindAttribLocation: vi.fn(),
-        attachShader: vi.fn(),
-        linkProgram: vi.fn(),
-        getProgramParameter: vi.fn(() => true),
-        getProgramInfoLog: vi.fn(() => ''),
-        deleteProgram: vi.fn((program: object) => {
-            programs.delete(program);
-        }),
-        getUniformLocation: vi.fn(
-            (_: WebGLProgram, name: string) => ({ name }) as WebGLUniformLocation
-        ),
-        useProgram: vi.fn(),
-        createVertexArray: vi.fn(() => {
-            const vao = {};
-            vertexArrays.add(vao);
-            return vao as WebGLVertexArrayObject;
-        }),
-        bindVertexArray: vi.fn(),
-        deleteVertexArray: vi.fn((vao: object) => {
-            vertexArrays.delete(vao);
-        }),
-        createBuffer: vi.fn(() => {
-            const buffer = {};
-            buffers.add(buffer);
-            return buffer as WebGLBuffer;
-        }),
-        bindBuffer: vi.fn(),
-        bufferData: vi.fn(),
-        deleteBuffer: vi.fn((buffer: object) => {
-            buffers.delete(buffer);
-        }),
-        enableVertexAttribArray: vi.fn(),
-        vertexAttribPointer: vi.fn(),
-        viewport: vi.fn(),
-        clearColor: vi.fn(),
-        clearDepth: vi.fn(),
-        clear: vi.fn(),
-        enable: vi.fn(),
-        disable: vi.fn(),
-        cullFace: vi.fn(),
-        blendFunc: vi.fn(),
-        depthMask: vi.fn(),
-        uniformMatrix4fv: vi.fn(),
-        uniform4f: vi.fn(),
-        uniform3f: vi.fn(),
-        uniform2f: vi.fn(),
-        uniform1f: vi.fn(),
-        uniform1i: vi.fn(),
-        uniform4fv: vi.fn(),
-        uniform3fv: vi.fn(),
-        uniform2fv: vi.fn(),
-        uniform1fv: vi.fn(),
-        uniform4iv: vi.fn(),
-        uniform3iv: vi.fn(),
-        uniform2iv: vi.fn(),
-        uniform1iv: vi.fn(),
-        uniform4uiv: vi.fn(),
-        uniform3uiv: vi.fn(),
-        uniform2uiv: vi.fn(),
-        uniform1uiv: vi.fn(),
-        drawArrays: vi.fn(),
-        drawElements: vi.fn(),
-        createTexture: vi.fn(() => {
-            const texture = {};
-            textures.add(texture);
-            return texture as WebGLTexture;
-        }),
-        bindTexture: vi.fn(),
-        activeTexture: vi.fn(),
-        deleteTexture: vi.fn((texture: object) => {
-            textures.delete(texture);
-        }),
-        texImage2D: vi.fn(),
-        texImage3D: vi.fn(),
-        texSubImage2D: vi.fn(),
-        texSubImage3D: vi.fn(),
-        generateMipmap: vi.fn(),
-        createSampler: vi.fn(() => {
-            const sampler = {};
-            samplers.add(sampler);
-            return sampler as WebGLSampler;
-        }),
-        bindSampler: vi.fn(),
-        deleteSampler: vi.fn((sampler: object) => {
-            samplers.delete(sampler);
-        }),
-        samplerParameteri: vi.fn(),
-        samplerParameterf: vi.fn(),
-        getExtension: vi.fn(() => null),
-        getParameter: vi.fn(() => 1),
-    };
-
-    return gl as unknown as WebGL2RenderingContext;
-};
-
-const createSceneOptions = (
-    scheduler: ManualScheduler,
-    canvas: HTMLCanvasElement,
-    registry: SceneOptions<any>['registry'] = {}
-): SceneOptions<any> => {
-    const gl = createMockGL(canvas);
-    Object.defineProperty(canvas, 'getContext', {
-        value: vi.fn(() => gl),
-        configurable: true,
-    });
-
-    return {
-        registry,
-        scheduler: scheduler as any,
-        autoStart: false,
-        createCanvas: () => canvas,
-        width: 640,
-        height: 360,
-        fixedDelta: 16,
-    };
-};
-
 describe('Scene', () => {
     let scheduler: ManualScheduler;
 
@@ -317,9 +51,11 @@ describe('Scene', () => {
         installWebGL2Constants();
         const sceneModule = await import('../../scene');
         Scene = sceneModule.Scene;
+        Animator = sceneModule.Animator;
         MeshRenderer = sceneModule.MeshRenderer;
         DirectionalLight = sceneModule.DirectionalLight;
         OrbitCameraController = sceneModule.OrbitCameraController;
+        PrefabNodeBinding = sceneModule.PrefabNodeBinding;
         PointLight = sceneModule.PointLight;
         SpotLight = sceneModule.SpotLight;
     });
@@ -601,6 +337,235 @@ void main() {
 
         expect(restoredChild?.parent?.name).toBe('Copy Parent');
         expect(restoredComponent?.parentNameAtAwake).toBe('Copy Parent');
+
+        scene.dispose();
+    });
+
+    it('animates prefab-scoped nodes without leaking across instances', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+
+        const templateRoot = scene.createActor({ name: 'AnimatedRoot' });
+        templateRoot.addComponent(PrefabNodeBinding, { nodeId: 'node/0' });
+        templateRoot.addComponent(Animator, {
+            clips: [
+                {
+                    id: 'Move',
+                    duration: 1,
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            interpolation: 'LINEAR',
+                            keyframeCount: 2,
+                            valueComponentCount: 3,
+                            sampleStride: 3,
+                            times: new Float32Array([0, 1]),
+                            values: new Float32Array([0, 0, 0, 2, 0, 0]),
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Move',
+            playOnStart: true,
+            playing: true,
+            loop: false,
+        });
+
+        const templateChild = scene.createActor({ name: 'AnimatedChild' });
+        templateChild.addComponent(PrefabNodeBinding, { nodeId: 'node/1' });
+        templateChild.setParent(templateRoot);
+
+        const prefab = scene.createPrefab('animated-prefab', [templateRoot, templateChild]);
+        templateChild.destroy(true);
+        templateRoot.destroy(true);
+
+        const firstInstance = scene.instantiatePrefab(prefab, { namePrefix: 'A ' });
+        const secondInstance = scene.instantiatePrefab(prefab, { namePrefix: 'B ' });
+
+        const firstChild = firstInstance.find((actor) => actor.name === 'A AnimatedChild');
+        const secondRoot = secondInstance.find((actor) => actor.name === 'B AnimatedRoot');
+        const secondChild = secondInstance.find((actor) => actor.name === 'B AnimatedChild');
+
+        secondRoot?.requireComponent(Animator).pause();
+
+        scene.start(0);
+        scheduler.flush(250);
+        scheduler.flush(500);
+        scheduler.flush(750);
+        scheduler.flush(1000);
+
+        expect(firstChild?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
+        expect(secondChild?.requireComponent(Transform).position.x).toBeCloseTo(0, 5);
+
+        scene.dispose();
+    });
+
+    it('uploads joint palettes and integer joint attributes for skinned meshes', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const gl = scene.gl as unknown as ReturnType<typeof createMockGL>;
+
+        scene.registerShader({
+            id: 'test/skinned',
+            vertexSource: `#version 300 es
+layout(location = 0) in vec3 a_Position;
+layout(location = 9) in uvec4 a_Joints0;
+layout(location = 10) in vec4 a_Weights0;
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+uniform bool u_Skinning;
+uniform int u_SkinJointCount;
+uniform mat4 u_JointMatrices[1];
+void main() {
+    vec4 localPosition = vec4(a_Position, 1.0);
+    if (u_Skinning && u_SkinJointCount > 0) {
+        localPosition = (u_JointMatrices[int(a_Joints0.x)] * localPosition) * a_Weights0.x;
+    }
+    gl_Position = u_Projection * u_View * u_Model * localPosition;
+}`,
+            fragmentSource: `#version 300 es
+precision highp float;
+out vec4 o_Color;
+void main() {
+    o_Color = vec4(1.0);
+}`,
+            uniforms: [
+                'u_Model',
+                'u_View',
+                'u_Projection',
+                'u_Skinning',
+                'u_SkinJointCount',
+                'u_JointMatrices',
+            ],
+        });
+
+        const stride = 36;
+        const vertices = new Uint8Array(stride * 3);
+        const vertexView = new DataView(vertices.buffer);
+        const positions = [
+            [0, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+        ] as const;
+
+        for (let vertex = 0; vertex < positions.length; vertex += 1) {
+            const baseOffset = vertex * stride;
+            vertexView.setFloat32(baseOffset, positions[vertex]![0], true);
+            vertexView.setFloat32(baseOffset + 4, positions[vertex]![1], true);
+            vertexView.setFloat32(baseOffset + 8, positions[vertex]![2], true);
+            vertexView.setUint16(baseOffset + 12, 0, true);
+            vertexView.setUint16(baseOffset + 14, 0, true);
+            vertexView.setUint16(baseOffset + 16, 0, true);
+            vertexView.setUint16(baseOffset + 18, 0, true);
+            vertexView.setFloat32(baseOffset + 20, 1, true);
+            vertexView.setFloat32(baseOffset + 24, 0, true);
+            vertexView.setFloat32(baseOffset + 28, 0, true);
+            vertexView.setFloat32(baseOffset + 32, 0, true);
+        }
+
+        scene.registerMesh({
+            id: 'skinned-triangle',
+            vertices,
+            indices: new Uint16Array([0, 1, 2]),
+            vertexCount: 3,
+            attributes: [
+                {
+                    semantic: 'position',
+                    componentCount: 3,
+                    offset: 0,
+                    stride,
+                    type: gl.FLOAT,
+                },
+                {
+                    semantic: 'joints0',
+                    componentCount: 4,
+                    offset: 12,
+                    stride,
+                    type: gl.UNSIGNED_SHORT,
+                    integer: true,
+                },
+                {
+                    semantic: 'weights0',
+                    componentCount: 4,
+                    offset: 20,
+                    stride,
+                    type: gl.FLOAT,
+                },
+            ],
+        });
+
+        scene.createMaterial({
+            id: 'skinned-material',
+            shaderId: 'test/skinned',
+        });
+
+        const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
+
+        const rigRoot = scene.createActor({ name: 'RigRoot' });
+        rigRoot.addComponent(PrefabNodeBinding, {
+            nodeId: 'node/0',
+            instanceId: 'skin-instance',
+        });
+
+        const joint = scene.createActor({ name: 'Joint' });
+        joint.addComponent(PrefabNodeBinding, {
+            nodeId: 'node/1',
+            instanceId: 'skin-instance',
+        });
+        joint.setParent(rigRoot);
+        joint.requireComponent(Transform).position = new Vec3(0, 1, 0);
+
+        const meshActor = scene.createRenderableActor(
+            { name: 'SkinnedMesh' },
+            {
+                meshId: 'skinned-triangle',
+                materialId: 'skinned-material',
+                skin: {
+                    jointNodeIds: ['node/1'],
+                    inverseBindMatrices: new Float32Array([
+                        1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 1, 0,
+                        0, 0, 0, 1,
+                    ]),
+                },
+            }
+        );
+        meshActor.addComponent(PrefabNodeBinding, {
+            nodeId: 'node/2',
+            instanceId: 'skin-instance',
+        });
+        meshActor.setParent(rigRoot);
+        meshActor.requireComponent(Transform).position = new Vec3(0, 0, -2);
+
+        scene.start(0);
+        scheduler.flush(16);
+
+        expect(gl.vertexAttribIPointer).toHaveBeenCalledWith(9, 4, gl.UNSIGNED_SHORT, stride, 12);
+
+        const uniform1iMock = gl.uniform1i as unknown as {
+            mock: { calls: readonly [WebGLUniformLocation | null, number][] };
+        };
+        const skinningCall = uniform1iMock.mock.calls.find(
+            ([location]) => (location as { name: string }).name === 'u_Skinning'
+        );
+        const jointCountCall = uniform1iMock.mock.calls.find(
+            ([location]) => (location as { name: string }).name === 'u_SkinJointCount'
+        );
+        const jointPaletteCall = (gl.uniformMatrix4fv as unknown as {
+            mock: { calls: readonly [WebGLUniformLocation | null, boolean, Float32Array][] };
+        }).mock.calls.find(
+            ([location]) => (location as { name: string }).name === 'u_JointMatrices'
+        );
+
+        expect(skinningCall?.[1]).toBe(1);
+        expect(jointCountCall?.[1]).toBe(1);
+        expect(jointPaletteCall?.[2].length).toBe(16);
+        expect(jointPaletteCall?.[2].some((value, index) => ![0, 5, 10, 15].includes(index) && value !== 0)).toBe(true);
+        expect(gl.drawElements).toHaveBeenCalled();
 
         scene.dispose();
     });
