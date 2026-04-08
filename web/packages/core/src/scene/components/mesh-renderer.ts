@@ -11,10 +11,18 @@ export interface MeshRendererSkinConfig {
     readonly inverseBindMatrices?: readonly number[] | Float32Array;
 }
 
+export interface MeshRendererMorphConfig {
+    readonly weights?: readonly number[] | Float32Array;
+}
+
 interface MeshRendererSkinState {
     readonly jointNodeIds: readonly string[];
     readonly skeletonNodeId?: string;
     readonly inverseBindMatrices?: Float32Array;
+}
+
+interface MeshRendererMorphState {
+    readonly weights: Float32Array;
 }
 
 export interface MeshRendererConfig {
@@ -24,6 +32,7 @@ export interface MeshRendererConfig {
     readonly renderOrder?: number;
     readonly passId?: string;
     readonly receiveLighting?: boolean;
+    readonly morph?: MeshRendererMorphConfig | null;
     readonly skin?: MeshRendererSkinConfig | null;
 }
 
@@ -55,6 +64,40 @@ const normalizeSkin = (value: MeshRendererSkinConfig | null | undefined): MeshRe
     });
 };
 
+const normalizeMorph = (
+    value: MeshRendererMorphConfig | null | undefined
+): MeshRendererMorphState | null => {
+    const weights = toFloat32Array(value?.weights);
+    if (!weights || weights.length === 0) {
+        return null;
+    }
+
+    return Object.freeze({
+        weights,
+    });
+};
+
+const areEqualWeights = (
+    left: Float32Array | undefined,
+    right: Float32Array | undefined
+): boolean => {
+    if (left === right) {
+        return true;
+    }
+
+    if (!left || !right || left.length !== right.length) {
+        return false;
+    }
+
+    for (let index = 0; index < left.length; index += 1) {
+        if (left[index] !== right[index]) {
+            return false;
+        }
+    }
+
+    return true;
+};
+
 @script({
     scriptName: 'MeshRenderer',
     priority: 100,
@@ -69,6 +112,8 @@ export class MeshRenderer extends Component {
     private _passId: string;
     private _receiveLighting: boolean;
     private readonly _uniformOverrides = new Map<string, SceneUniformValue>();
+    private _morph: MeshRendererMorphState | null;
+    private _morphVersion = 0;
     private _skin: MeshRendererSkinState | null;
     private _resolvedSkinInstanceId: string | null = null;
     private _resolvedJointTransforms: readonly (Transform | null)[] | null = null;
@@ -81,6 +126,7 @@ export class MeshRenderer extends Component {
         this._renderOrder = config.renderOrder ?? 0;
         this._passId = config.passId ?? 'main';
         this._receiveLighting = config.receiveLighting ?? true;
+        this._morph = normalizeMorph(config.morph);
         this._skin = normalizeSkin(config.skin);
     }
 
@@ -130,6 +176,53 @@ export class MeshRenderer extends Component {
 
     set receiveLighting(value: boolean) {
         this._receiveLighting = value;
+    }
+
+    get morph(): MeshRendererMorphConfig | null {
+        return this._morph
+            ? {
+                  weights: new Float32Array(this._morph.weights),
+              }
+            : null;
+    }
+
+    set morph(value: MeshRendererMorphConfig | null) {
+        const normalized = normalizeMorph(value);
+        if (areEqualWeights(this._morph?.weights, normalized?.weights)) {
+            return;
+        }
+
+        this._morph = normalized;
+        this._morphVersion += 1;
+    }
+
+    get morphWeights(): Float32Array | null {
+        return this._morph ? new Float32Array(this._morph.weights) : null;
+    }
+
+    set morphWeights(value: readonly number[] | Float32Array | null) {
+        this.morph = value ? { weights: value } : null;
+    }
+
+    get morphWeightCount(): number {
+        return this._morph?.weights.length ?? 0;
+    }
+
+    get morphWeightVersion(): number {
+        return this._morphVersion;
+    }
+
+    get hasMorphWeights(): boolean {
+        return (this._morph?.weights.length ?? 0) > 0;
+    }
+
+    getMorphWeightArray(): Float32Array | null {
+        return this._morph?.weights ?? null;
+    }
+
+    setMorphWeights(value: readonly number[] | Float32Array | null): this {
+        this.morphWeights = value;
+        return this;
     }
 
     get skin(): MeshRendererSkinConfig | null {
@@ -211,6 +304,11 @@ export class MeshRenderer extends Component {
             passId: this._passId,
             receiveLighting: this._receiveLighting,
             uniformOverrides: Object.fromEntries(this._uniformOverrides),
+            morph: this._morph
+                ? {
+                      weights: this._morph.weights,
+                  }
+                : null,
             skin: this._skin
                 ? {
                       jointNodeIds: [...this._skin.jointNodeIds],
@@ -243,6 +341,18 @@ export class MeshRenderer extends Component {
         }
         if (typeof data.receiveLighting === 'boolean') {
             this._receiveLighting = data.receiveLighting;
+        }
+
+        if (data.morph === null) {
+            this.morph = null;
+        } else if (typeof data.morph === 'object' && data.morph !== null && Array.isArray(data.morph) === false) {
+            this.morph = {
+                ...(data.morph.weights instanceof Float32Array
+                    ? { weights: data.morph.weights }
+                    : Array.isArray(data.morph.weights)
+                      ? { weights: data.morph.weights.map((entry: unknown) => Number(entry)) }
+                      : {}),
+            };
         }
 
         if (data.skin === null) {

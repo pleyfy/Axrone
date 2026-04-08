@@ -7,6 +7,9 @@ export type {
     SceneMaterialHandle,
     SceneMeshDefinition,
     SceneMeshHandle,
+    SceneMorphTargetAttribute,
+    SceneMorphTargetDefinition,
+    SceneMorphTargetSemantic,
     SceneMeshSemantic,
     SceneMeshTopology,
     SceneOptions,
@@ -53,7 +56,10 @@ export { Animator } from './components/animator';
 export type { DirectionalLightConfig } from './components/directional-light';
 export { DirectionalLight } from './components/directional-light';
 
-export type { MeshRendererConfig } from './components/mesh-renderer';
+export type {
+    MeshRendererConfig,
+    MeshRendererMorphConfig,
+} from './components/mesh-renderer';
 export { MeshRenderer } from './components/mesh-renderer';
 
 export type { PrefabNodeBindingConfig } from './components/prefab-node-binding';

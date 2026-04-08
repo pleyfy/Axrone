@@ -66,6 +66,7 @@ export const createMockGL = (canvas: HTMLCanvasElement) => {
         ARRAY_BUFFER: 0x8892,
         ELEMENT_ARRAY_BUFFER: 0x8893,
         STATIC_DRAW: 0x88e4,
+        DYNAMIC_DRAW: 0x88e8,
         FLOAT: 0x1406,
         FLOAT_VEC2: 0x8b50,
         FLOAT_VEC3: 0x8b51,

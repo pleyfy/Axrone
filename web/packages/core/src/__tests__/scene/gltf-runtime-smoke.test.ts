@@ -256,6 +256,163 @@ const createRigJson = (): GltfRootJson => ({
     scene: 0,
 });
 
+const createMorphBinaryBlob = (): Uint8Array => {
+    const morphPositions = new Float32Array([
+        1, 0, 0,
+        0, 0, 0,
+        0, 0, 0,
+    ]);
+    const animationTimes = new Float32Array([0, 1]);
+    const animationWeights = new Float32Array([0, 1]);
+    const total =
+        trianglePositions.byteLength +
+        morphPositions.byteLength +
+        triangleIndices.byteLength +
+        2 +
+        animationTimes.byteLength +
+        animationWeights.byteLength;
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    bytes.set(new Uint8Array(trianglePositions.buffer), offset);
+    offset += trianglePositions.byteLength;
+    bytes.set(new Uint8Array(morphPositions.buffer), offset);
+    offset += morphPositions.byteLength;
+    bytes.set(new Uint8Array(triangleIndices.buffer), offset);
+    offset += triangleIndices.byteLength + 2;
+    bytes.set(new Uint8Array(animationTimes.buffer), offset);
+    offset += animationTimes.byteLength;
+    bytes.set(new Uint8Array(animationWeights.buffer), offset);
+    return bytes;
+};
+
+const createMorphJson = (): GltfRootJson => ({
+    asset: {
+        version: '2.0',
+        generator: 'vitest',
+    },
+    buffers: [
+        {
+            byteLength: 96,
+        },
+    ],
+    bufferViews: [
+        {
+            buffer: 0,
+            byteOffset: 0,
+            byteLength: 36,
+        },
+        {
+            buffer: 0,
+            byteOffset: 36,
+            byteLength: 36,
+        },
+        {
+            buffer: 0,
+            byteOffset: 72,
+            byteLength: 6,
+        },
+        {
+            buffer: 0,
+            byteOffset: 80,
+            byteLength: 8,
+        },
+        {
+            buffer: 0,
+            byteOffset: 88,
+            byteLength: 8,
+        },
+    ],
+    accessors: [
+        {
+            bufferView: 0,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        },
+        {
+            bufferView: 1,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+        },
+        {
+            bufferView: 2,
+            componentType: 5123,
+            count: 3,
+            type: 'SCALAR',
+        },
+        {
+            bufferView: 3,
+            componentType: 5126,
+            count: 2,
+            type: 'SCALAR',
+            min: [0],
+            max: [1],
+        },
+        {
+            bufferView: 4,
+            componentType: 5126,
+            count: 2,
+            type: 'SCALAR',
+        },
+    ],
+    meshes: [
+        {
+            name: 'Morph Triangle',
+            weights: [0.25],
+            primitives: [
+                {
+                    attributes: {
+                        POSITION: 0,
+                    },
+                    indices: 2,
+                    targets: [
+                        {
+                            POSITION: 1,
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+    nodes: [
+        {
+            name: 'Morph Root',
+            mesh: 0,
+            weights: [0.5],
+        },
+    ],
+    animations: [
+        {
+            name: 'Morph',
+            samplers: [
+                {
+                    input: 3,
+                    output: 4,
+                },
+            ],
+            channels: [
+                {
+                    sampler: 0,
+                    target: {
+                        node: 0,
+                        path: 'weights',
+                    },
+                },
+            ],
+        },
+    ],
+    scenes: [
+        {
+            name: 'Main',
+            nodes: [0],
+        },
+    ],
+    scene: 0,
+});
+
 describe('glTF runtime smoke', () => {
     let scheduler: ManualScheduler;
 
@@ -358,6 +515,84 @@ describe('glTF runtime smoke', () => {
 
             expect(skinningCall?.[1]).toBe(1);
             expect(jointPaletteCall?.[2].length).toBe(16);
+            expect((gl.drawElements as unknown as { mock: { calls: readonly unknown[][] } }).mock.calls.length).toBeGreaterThan(0);
+        } finally {
+            scene.dispose();
+        }
+    });
+
+    it('imports morph-target glTF prefabs into the scene runtime and uploads morphed vertices', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(createMorphJson(), createMorphBinaryBlob()),
+            uri: 'models/morph.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const gl = scene.gl as unknown as MockGLContext;
+
+        try {
+            const load = await loadGltfSceneIntoScene(scene, database, receipt.primary.reference);
+            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
+
+            const rootActor = load.actors.find((actor) => actor.name === 'Morph Root');
+            const renderer = rootActor?.getComponent(MeshRenderer) ?? null;
+            const animator = rootActor?.getComponent(Animator) ?? null;
+
+            expect(renderer?.morphWeights).toEqual(new Float32Array([0]));
+            expect(animator?.clipId).toBe('Morph');
+
+            animator?.seek(0.5);
+            scene.renderNow();
+
+            const firstMorphUpload = (gl.bufferData as unknown as {
+                mock: { calls: readonly [number, Uint8Array, number][] };
+            }).mock.calls.find(
+                ([target, _data, usage], index) =>
+                    index > 0 && target === gl.ARRAY_BUFFER && usage === gl.DYNAMIC_DRAW
+            );
+            const firstUploadView = firstMorphUpload
+                ? new DataView(
+                      firstMorphUpload[1].buffer,
+                      firstMorphUpload[1].byteOffset,
+                      firstMorphUpload[1].byteLength
+                  )
+                : null;
+
+            expect(renderer?.morphWeights?.[0]).toBeCloseTo(0.5, 5);
+            expect(firstUploadView?.getFloat32(0, true)).toBeCloseTo(0.5, 5);
+
+            if (animator) {
+                animator.loop = false;
+            }
+            animator?.seek(1);
+            scene.renderNow();
+
+            const bufferDataCalls = (gl.bufferData as unknown as {
+                mock: { calls: readonly [number, Uint8Array, number][] };
+            }).mock.calls;
+            const latestMorphUpload = [...bufferDataCalls]
+                .reverse()
+                .find(
+                    ([target, _data, usage]) =>
+                        target === gl.ARRAY_BUFFER && usage === gl.DYNAMIC_DRAW
+                );
+            const latestUploadView = latestMorphUpload
+                ? new DataView(
+                      latestMorphUpload[1].buffer,
+                      latestMorphUpload[1].byteOffset,
+                      latestMorphUpload[1].byteLength
+                  )
+                : null;
+
+            expect(renderer?.morphWeights?.[0]).toBeCloseTo(1, 5);
+            expect(latestUploadView?.getFloat32(0, true)).toBeCloseTo(1, 5);
             expect((gl.drawElements as unknown as { mock: { calls: readonly unknown[][] } }).mock.calls.length).toBeGreaterThan(0);
         } finally {
             scene.dispose();

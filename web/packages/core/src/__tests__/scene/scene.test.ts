@@ -524,6 +524,69 @@ void main() {
         scene.dispose();
     });
 
+    it('animates prefab-scoped morph weights without leaking across instances', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+
+        const templateRoot = scene.createActor({ name: 'MorphRoot' });
+        templateRoot.addComponent(PrefabNodeBinding, { nodeId: 'node/0' });
+        templateRoot.addComponent(Animator, {
+            clips: [
+                {
+                    id: 'Morph',
+                    duration: 1,
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'weights',
+                            interpolation: 'LINEAR',
+                            keyframeCount: 2,
+                            valueComponentCount: 1,
+                            sampleStride: 1,
+                            times: new Float32Array([0, 1]),
+                            values: new Float32Array([0, 1]),
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Morph',
+            playOnStart: true,
+            playing: true,
+            loop: false,
+        });
+
+        const templateChild = scene.createActor({ name: 'MorphChild' });
+        templateChild.addComponent(PrefabNodeBinding, { nodeId: 'node/1' });
+        templateChild.addComponent(MeshRenderer, {
+            morph: {
+                weights: new Float32Array([0]),
+            },
+        });
+        templateChild.setParent(templateRoot);
+
+        const prefab = scene.createPrefab('morph-prefab', [templateRoot, templateChild]);
+        templateChild.destroy(true);
+        templateRoot.destroy(true);
+
+        const firstInstance = scene.instantiatePrefab(prefab, { namePrefix: 'A ' });
+        const secondInstance = scene.instantiatePrefab(prefab, { namePrefix: 'B ' });
+
+        const firstChild = firstInstance.find((actor) => actor.name === 'A MorphChild');
+        const secondRoot = secondInstance.find((actor) => actor.name === 'B MorphRoot');
+        const secondChild = secondInstance.find((actor) => actor.name === 'B MorphChild');
+
+        secondRoot?.requireComponent(Animator).pause();
+
+        scene.start(0);
+        scheduler.flush(250);
+        scheduler.flush(500);
+
+        expect(firstChild?.requireComponent(MeshRenderer).morphWeights?.[0]).toBeCloseTo(0.5, 5);
+        expect(secondChild?.requireComponent(MeshRenderer).morphWeights?.[0]).toBeCloseTo(0, 5);
+
+        scene.dispose();
+    });
+
     it('uploads joint palettes and integer joint attributes for skinned meshes', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));

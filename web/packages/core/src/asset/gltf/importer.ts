@@ -35,6 +35,7 @@ import type {
     GltfMaterialJson,
     GltfMaterialTextureBinding,
     GltfMeshAsset,
+    GltfMeshJson,
     GltfSkinAsset,
     GltfNodeJson,
     GltfPunctualLightJson,
@@ -157,24 +158,7 @@ const collectExtensionDiagnostics = (root: GltfRootJson): readonly AssetImportDi
 };
 
 const collectFeatureDiagnostics = (root: GltfRootJson): readonly AssetImportDiagnostic[] => {
-    const diagnostics: AssetImportDiagnostic[] = [];
-    const weightTrackCount = ensureArray(root.animations).reduce(
-        (total, animation) =>
-            total + animation.channels.filter((channel) => channel.target.path === 'weights').length,
-        0
-    );
-
-    if (weightTrackCount > 0) {
-        diagnostics.push(
-            Object.freeze({
-                level: 'warning',
-                code: 'gltf.animation.weights.runtime-missing',
-                message: `glTF defines ${weightTrackCount} morph-weight animation track${weightTrackCount === 1 ? '' : 's'}; Axrone still ignores morph target playback at runtime`,
-            } satisfies AssetImportDiagnostic)
-        );
-    }
-
-    return Object.freeze(diagnostics);
+    return Object.freeze([]);
 };
 
 const mapWrapMode = (
@@ -439,6 +423,7 @@ const createSpotLightSnapshot = (light: GltfPunctualLightJson): SceneComponentSn
 const createMeshRendererSnapshot = (
     meshKey: string,
     materialKey: string | undefined,
+    morphWeights: readonly number[] | Float32Array | undefined,
     skin: MeshRendererSkinConfig | undefined
 ): SceneComponentSnapshot => {
     const skinData = skin
@@ -448,6 +433,11 @@ const createMeshRendererSnapshot = (
               ...(skin.inverseBindMatrices
                   ? { inverseBindMatrices: new Float32Array(skin.inverseBindMatrices) }
                   : {}),
+          })
+        : undefined;
+    const morphData = morphWeights
+        ? Object.freeze({
+              weights: new Float32Array(morphWeights),
           })
         : undefined;
 
@@ -462,10 +452,34 @@ const createMeshRendererSnapshot = (
                 passId: 'main',
                 receiveLighting: true,
                 uniformOverrides: Object.freeze({}),
+                ...(morphData ? { morph: morphData } : {}),
                 ...(skinData ? { skin: skinData } : {}),
             })
         ),
     });
+};
+
+const createMorphWeights = (
+    node: GltfNodeJson,
+    mesh: GltfMeshJson | undefined,
+    primitiveIndex: number
+): Float32Array | undefined => {
+    const primitive = mesh?.primitives[primitiveIndex];
+    const targetCount = primitive?.targets?.length ?? 0;
+    if (targetCount === 0) {
+        return undefined;
+    }
+
+    const sourceWeights = node.weights ?? mesh?.weights;
+    const weights = new Float32Array(targetCount);
+    if (sourceWeights) {
+        const count = Math.min(targetCount, sourceWeights.length);
+        for (let index = 0; index < count; index += 1) {
+            weights[index] = Number(sourceWeights[index] ?? 0);
+        }
+    }
+
+    return weights;
 };
 
 const createSkinBinding = (skin: GltfSkinAsset | undefined): MeshRendererSkinConfig | undefined => {
@@ -487,7 +501,7 @@ const createAnimatorSnapshot = (
 ): SceneComponentSnapshot | undefined => {
     type SerializableTrack = Readonly<{
         targetNodeId: string;
-        path: 'translation' | 'rotation' | 'scale';
+        path: 'translation' | 'rotation' | 'scale' | 'weights';
         interpolation: NonNullable<GltfAnimationClipAsset['tracks'][number]['interpolation']>;
         keyframeCount: number;
         valueComponentCount: number;
@@ -505,16 +519,6 @@ const createAnimatorSnapshot = (
     const clips = animations
         .map((clip) => {
             const tracks = clip.tracks
-                .filter(
-                    (
-                        track
-                    ): track is GltfAnimationClipAsset['tracks'][number] & {
-                        readonly path: 'translation' | 'rotation' | 'scale';
-                    } =>
-                        track.path === 'translation' ||
-                        track.path === 'rotation' ||
-                        track.path === 'scale'
-                )
                 .map(
                     (track) =>
                         Object.freeze({
@@ -1014,6 +1018,12 @@ const buildPrefabDefinition = (
             node.mesh !== undefined ? meshKeysByMesh[node.mesh] ?? EMPTY_ARRAY : EMPTY_ARRAY;
         const primitiveMaterials =
             node.mesh !== undefined ? materialKeysByMesh[node.mesh] ?? EMPTY_ARRAY : EMPTY_ARRAY;
+        const meshDefinition = node.mesh !== undefined ? root.meshes?.[node.mesh] : undefined;
+        const primitiveMorphWeights = meshDefinition
+            ? meshDefinition.primitives.map((_, primitiveIndex) =>
+                  createMorphWeights(node, meshDefinition, primitiveIndex)
+              )
+            : EMPTY_ARRAY;
         const transformComponent = createTransformSnapshot(node);
         const nodeName = sanitizeName(node.name, `Node ${nodeIndex}`);
                 const skin =
@@ -1078,6 +1088,7 @@ const buildPrefabDefinition = (
                           createMeshRendererSnapshot(
                               primitives[0]!,
                               primitiveMaterials[0],
+                              primitiveMorphWeights[0],
                               skinBinding
                           ),
                       ]
@@ -1130,6 +1141,7 @@ const buildPrefabDefinition = (
                             createMeshRendererSnapshot(
                                 primitives[primitiveIndex]!,
                                 primitiveMaterials[primitiveIndex],
+                                primitiveMorphWeights[primitiveIndex],
                                 skinBinding
                             ),
                         ])
@@ -1167,7 +1179,8 @@ const buildPrefabDefinition = (
                     importedNodeIds.has(track.targetNodeId) &&
                     (track.path === 'translation' ||
                         track.path === 'rotation' ||
-                        track.path === 'scale')
+                        track.path === 'scale' ||
+                        track.path === 'weights')
             );
             if (!hasTrackedTarget) {
                 return undefined;

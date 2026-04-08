@@ -1,9 +1,28 @@
 import { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 import type {
+    SceneMorphTargetDefinition,
     SceneMeshDefinition,
     SceneSerializedValue,
     SceneTextureBindingDefinition,
 } from './types';
+
+const cloneMorphTargets = (
+    morphTargets: readonly SceneMorphTargetDefinition[] | undefined
+): readonly SceneMorphTargetDefinition[] | undefined =>
+    morphTargets
+        ? Object.freeze(
+              morphTargets.map((target) => ({
+                  ...(typeof target.name === 'string' ? { name: target.name } : {}),
+                  attributes: Object.freeze(
+                      target.attributes.map((attribute) => ({
+                          semantic: attribute.semantic,
+                          componentCount: attribute.componentCount,
+                          values: new Float32Array(attribute.values),
+                      }))
+                  ),
+              }))
+          )
+        : undefined;
 
 const asSerializedArray = (value: readonly unknown[]): readonly SceneSerializedValue[] =>
     value.map((item) => encodeSceneValue(item));
@@ -160,6 +179,9 @@ export const cloneMeshDefinition = (definition: SceneMeshDefinition): SceneMeshD
         vertices,
         indices,
         attributes: definition.attributes.map((attribute) => ({ ...attribute })),
+        ...(definition.morphTargets
+            ? { morphTargets: cloneMorphTargets(definition.morphTargets) }
+            : {}),
     };
 };
 
@@ -185,6 +207,16 @@ export const serializeMeshDefinition = (definition: SceneMeshDefinition): SceneS
         id: definition.id,
         vertices,
         indices,
+        morphTargets: definition.morphTargets
+            ? definition.morphTargets.map((target) => ({
+                  name: target.name ?? null,
+                  attributes: target.attributes.map((attribute) => ({
+                      semantic: attribute.semantic,
+                      componentCount: attribute.componentCount,
+                      values: [...attribute.values],
+                  })),
+              }))
+            : null,
         vertexCount: definition.vertexCount ?? null,
         topology: definition.topology ?? 'triangles',
         usage: definition.usage ?? null,
@@ -231,6 +263,62 @@ export const deserializeMeshDefinition = (value: SceneSerializedValue): SceneMes
         id: String(objectValue.id),
         vertices,
         indices,
+        morphTargets: Array.isArray(objectValue.morphTargets)
+            ? Object.freeze(
+                  objectValue.morphTargets.map((target: SceneSerializedValue) => {
+                      if (target === null || Array.isArray(target) || typeof target !== 'object') {
+                          throw new Error('Invalid serialized mesh morph target');
+                      }
+
+                      const targetObject = target as Record<string, SceneSerializedValue>;
+
+                      return {
+                          ...(typeof targetObject.name === 'string'
+                              ? { name: targetObject.name }
+                              : {}),
+                          attributes: Array.isArray(targetObject.attributes)
+                              ? Object.freeze(
+                                    targetObject.attributes.map(
+                                        (attribute: SceneSerializedValue) => {
+                                        if (
+                                            attribute === null ||
+                                            Array.isArray(attribute) ||
+                                            typeof attribute !== 'object'
+                                        ) {
+                                            throw new Error(
+                                                'Invalid serialized mesh morph target attribute'
+                                            );
+                                        }
+
+                                        const attributeObject = attribute as Record<
+                                            string,
+                                            SceneSerializedValue
+                                        >;
+
+                                        return {
+                                            semantic: String(
+                                                attributeObject.semantic
+                                            ) as NonNullable<
+                                                SceneMeshDefinition['morphTargets']
+                                            >[number]['attributes'][number]['semantic'],
+                                            componentCount: 3 as const,
+                                            values: new Float32Array(
+                                                Array.isArray(attributeObject.values)
+                                                    ? attributeObject.values.map(
+                                                          (entry: SceneSerializedValue) =>
+                                                              Number(entry)
+                                                      )
+                                                    : []
+                                            ),
+                                        };
+                                    }
+                                    )
+                                )
+                              : Object.freeze([]),
+                      };
+                  })
+              )
+            : undefined,
         vertexCount:
             typeof objectValue.vertexCount === 'number' ? objectValue.vertexCount : undefined,
         topology: (typeof objectValue.topology === 'string'

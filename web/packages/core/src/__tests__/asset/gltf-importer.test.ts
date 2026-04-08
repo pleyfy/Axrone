@@ -794,6 +794,163 @@ const createRigJson = (): GltfRootJson => ({
     scene: 0,
 });
 
+const createMorphBinaryBlob = (): Uint8Array => {
+    const morphPositions = new Float32Array([
+        1, 0, 0,
+        0, 0, 0,
+        0, 0, 0,
+    ]);
+    const animationTimes = new Float32Array([0, 1]);
+    const animationWeights = new Float32Array([0, 1]);
+    const total =
+        trianglePositions.byteLength +
+        morphPositions.byteLength +
+        triangleIndices.byteLength +
+        2 +
+        animationTimes.byteLength +
+        animationWeights.byteLength;
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    bytes.set(new Uint8Array(trianglePositions.buffer), offset);
+    offset += trianglePositions.byteLength;
+    bytes.set(new Uint8Array(morphPositions.buffer), offset);
+    offset += morphPositions.byteLength;
+    bytes.set(new Uint8Array(triangleIndices.buffer), offset);
+    offset += triangleIndices.byteLength + 2;
+    bytes.set(new Uint8Array(animationTimes.buffer), offset);
+    offset += animationTimes.byteLength;
+    bytes.set(new Uint8Array(animationWeights.buffer), offset);
+    return bytes;
+};
+
+const createMorphJson = (): GltfRootJson => ({
+    asset: {
+        version: '2.0',
+        generator: 'vitest',
+    },
+    buffers: [
+        {
+            byteLength: 96,
+        },
+    ],
+    bufferViews: [
+        {
+            buffer: 0,
+            byteOffset: 0,
+            byteLength: 36,
+        },
+        {
+            buffer: 0,
+            byteOffset: 36,
+            byteLength: 36,
+        },
+        {
+            buffer: 0,
+            byteOffset: 72,
+            byteLength: 6,
+        },
+        {
+            buffer: 0,
+            byteOffset: 80,
+            byteLength: 8,
+        },
+        {
+            buffer: 0,
+            byteOffset: 88,
+            byteLength: 8,
+        },
+    ],
+    accessors: [
+        {
+            bufferView: 0,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        },
+        {
+            bufferView: 1,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+        },
+        {
+            bufferView: 2,
+            componentType: 5123,
+            count: 3,
+            type: 'SCALAR',
+        },
+        {
+            bufferView: 3,
+            componentType: 5126,
+            count: 2,
+            type: 'SCALAR',
+            min: [0],
+            max: [1],
+        },
+        {
+            bufferView: 4,
+            componentType: 5126,
+            count: 2,
+            type: 'SCALAR',
+        },
+    ],
+    meshes: [
+        {
+            name: 'Morph Triangle',
+            weights: [0.25],
+            primitives: [
+                {
+                    attributes: {
+                        POSITION: 0,
+                    },
+                    indices: 2,
+                    targets: [
+                        {
+                            POSITION: 1,
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+    nodes: [
+        {
+            name: 'Morph Root',
+            mesh: 0,
+            weights: [0.5],
+        },
+    ],
+    animations: [
+        {
+            name: 'Morph',
+            samplers: [
+                {
+                    input: 3,
+                    output: 4,
+                },
+            ],
+            channels: [
+                {
+                    sampler: 0,
+                    target: {
+                        node: 0,
+                        path: 'weights',
+                    },
+                },
+            ],
+        },
+    ],
+    scenes: [
+        {
+            name: 'Main',
+            nodes: [0],
+        },
+    ],
+    scene: 0,
+});
+
 describe('glTF importer', () => {
     it('imports GLB sources into document, prefab, mesh, material, and transcoded texture assets', async () => {
         const registry = new GltfTextureTranscoderRegistry([
@@ -1129,6 +1286,81 @@ describe('glTF importer', () => {
         );
         expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
             'gltf.animation.runtime-missing'
+        );
+    });
+
+    it('embeds morph target meshes, defaults, and weight animation into imported prefabs', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(createMorphJson(), createMorphBinaryBlob()),
+            uri: 'models/morph.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
+        const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
+        const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+        const rootActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Morph Root');
+        const meshRenderer = rootActor?.components.find((component) => component.type === 'MeshRenderer');
+        const animator = rootActor?.components.find((component) => component.type === 'Animator');
+
+        expect(mesh?.data.definition.morphTargets).toEqual([
+            expect.objectContaining({
+                attributes: [
+                    expect.objectContaining({
+                        semantic: 'position',
+                        componentCount: 3,
+                        values: new Float32Array([
+                            1, 0, 0,
+                            0, 0, 0,
+                            0, 0, 0,
+                        ]),
+                    }),
+                ],
+            }),
+        ]);
+        expect(meshRenderer?.data).toMatchObject({
+            morph: {
+                weights: {
+                    $type: 'Float32Array',
+                    value: [0.5],
+                },
+            },
+        });
+        expect(animation?.data.tracks).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    targetNodeId: 'node/0',
+                    path: 'weights',
+                    keyframeCount: 2,
+                    valueComponentCount: 1,
+                    times: new Float32Array([0, 1]),
+                    values: new Float32Array([0, 1]),
+                }),
+            ])
+        );
+        expect(animator?.data).toMatchObject({
+            clipId: 'Morph',
+            clips: [
+                expect.objectContaining({
+                    tracks: [
+                        expect.objectContaining({
+                            path: 'weights',
+                            valueComponentCount: 1,
+                        }),
+                    ],
+                }),
+            ],
+        });
+        expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.mesh.targets.unsupported'
+        );
+        expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.animation.weights.runtime-missing'
         );
     });
 

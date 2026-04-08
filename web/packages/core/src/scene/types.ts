@@ -25,6 +25,7 @@ export type SceneMeshSemantic =
     | 'color0'
     | 'joints0'
     | 'weights0';
+export type SceneMorphTargetSemantic = 'position' | 'normal' | 'tangent';
 export type SceneMeshTopology = 'triangles' | 'lines' | 'points';
 export type SceneClearFlag = 'color' | 'depth';
 
@@ -59,10 +60,22 @@ export interface SceneVertexAttribute {
     readonly integer?: boolean;
 }
 
+export interface SceneMorphTargetAttribute {
+    readonly semantic: SceneMorphTargetSemantic;
+    readonly componentCount: 3;
+    readonly values: Float32Array;
+}
+
+export interface SceneMorphTargetDefinition {
+    readonly name?: string;
+    readonly attributes: readonly SceneMorphTargetAttribute[];
+}
+
 export interface SceneMeshDefinition {
     readonly id: string;
     readonly vertices: BufferSource;
     readonly attributes: readonly SceneVertexAttribute[];
+    readonly morphTargets?: readonly SceneMorphTargetDefinition[];
     readonly indices?: Uint8Array | Uint16Array | Uint32Array;
     readonly vertexCount?: number;
     readonly topology?: SceneMeshTopology;

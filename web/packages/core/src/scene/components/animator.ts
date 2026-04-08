@@ -2,11 +2,12 @@ import { Quat, Vec3 } from '@axrone/numeric';
 import { Transform } from '../../component-system/components/transform';
 import { Component } from '../../component-system/core/component';
 import { script } from '../../component-system/decorators/script';
+import { MeshRenderer } from './mesh-renderer';
 import { PrefabNodeBinding } from './prefab-node-binding';
 
 export interface AnimatorTrackConfig {
     readonly targetNodeId: string;
-    readonly path: 'translation' | 'rotation' | 'scale';
+    readonly path: 'translation' | 'rotation' | 'scale' | 'weights';
     readonly interpolation?: 'LINEAR' | 'STEP' | 'CUBICSPLINE';
     readonly keyframeCount?: number;
     readonly valueComponentCount?: number;
@@ -46,6 +47,11 @@ interface AnimatorClipState {
     readonly id: string;
     readonly duration: number;
     readonly tracks: readonly AnimatorTrackState[];
+}
+
+interface AnimatorResolvedTarget {
+    readonly transform?: Transform;
+    readonly meshRenderer?: MeshRenderer;
 }
 
 const toFloat32Array = (value: readonly number[] | Float32Array): Float32Array =>
@@ -99,7 +105,7 @@ const findFrameIndex = (times: Float32Array, time: number): number => {
 export class Animator extends Component {
     private readonly _clips = new Map<string, AnimatorClipState>();
     private readonly _clipOrder: string[] = [];
-    private readonly _resolvedTargets = new Map<string, Transform>();
+    private readonly _resolvedTargets = new Map<string, AnimatorResolvedTarget>();
     private _resolvedInstanceId: string | null = null;
     private _currentClipId: string | null = null;
     private _playOnStart: boolean;
@@ -396,16 +402,33 @@ export class Animator extends Component {
 
             switch (track.path) {
                 case 'translation':
+                    if (!target.transform) {
+                        break;
+                    }
                     this._sampleVec3(track, this._time, this._tempVec3);
-                    target.position = this._tempVec3;
+                    target.transform.position = this._tempVec3;
                     break;
                 case 'scale':
+                    if (!target.transform) {
+                        break;
+                    }
                     this._sampleVec3(track, this._time, this._tempVec3);
-                    target.scale = this._tempVec3;
+                    target.transform.scale = this._tempVec3;
                     break;
                 case 'rotation':
+                    if (!target.transform) {
+                        break;
+                    }
                     this._sampleQuat(track, this._time, this._tempQuat);
-                    target.rotation = this._tempQuat;
+                    target.transform.rotation = this._tempQuat;
+                    break;
+                case 'weights':
+                    if (!target.meshRenderer) {
+                        break;
+                    }
+                    target.meshRenderer.setMorphWeights(
+                        this._sampleComponents(track, this._time, track.valueComponentCount)
+                    );
                     break;
             }
         }
@@ -426,8 +449,15 @@ export class Animator extends Component {
             }
 
             const transform = actor.getComponent(Transform) as Transform | undefined;
-            if (transform) {
-                this._resolvedTargets.set(binding.nodeId, transform);
+            const meshRenderer = actor.getComponent(MeshRenderer) as MeshRenderer | undefined;
+            if (transform || meshRenderer) {
+                this._resolvedTargets.set(
+                    binding.nodeId,
+                    Object.freeze({
+                        ...(transform ? { transform } : {}),
+                        ...(meshRenderer ? { meshRenderer } : {}),
+                    })
+                );
             }
         }
     }

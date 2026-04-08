@@ -16,7 +16,10 @@ const SUPPORTED_ATTRIBUTE_SEMANTICS = [
     'WEIGHTS_0',
 ] as const;
 
+const SUPPORTED_MORPH_TARGET_SEMANTICS = ['POSITION', 'NORMAL', 'TANGENT'] as const;
+
 type SupportedAttributeSemantic = (typeof SUPPORTED_ATTRIBUTE_SEMANTICS)[number];
+type SupportedMorphTargetSemantic = (typeof SUPPORTED_MORPH_TARGET_SEMANTICS)[number];
 
 interface AttributeStream {
     readonly semantic: SupportedAttributeSemantic;
@@ -26,6 +29,17 @@ interface AttributeStream {
     readonly values: Float32Array;
 }
 
+interface MorphTargetAttributeStream {
+    readonly semantic: SupportedMorphTargetSemantic;
+    readonly componentCount: 3;
+    readonly values: Float32Array;
+}
+
+interface MorphTargetStream {
+    readonly name?: string;
+    readonly attributes: readonly MorphTargetAttributeStream[];
+}
+
 interface DracoPrimitiveGeometry {
     readonly attributes: ReadonlyMap<string, Float32Array>;
     readonly indices: Uint32Array;
@@ -33,6 +47,7 @@ interface DracoPrimitiveGeometry {
 
 interface ResolvedPrimitiveGeometry {
     readonly attributeStreams: readonly AttributeStream[];
+    readonly morphTargets: readonly MorphTargetStream[];
     readonly indices?: Uint32Array;
     readonly positionAccessor?: DecodedAccessor;
     readonly topologyMode: 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -42,6 +57,9 @@ let dracoDecoderModulePromise: Promise<any> | undefined;
 
 const isSupportedAttributeSemantic = (value: string): value is SupportedAttributeSemantic =>
     (SUPPORTED_ATTRIBUTE_SEMANTICS as readonly string[]).includes(value);
+
+const isSupportedMorphTargetSemantic = (value: string): value is SupportedMorphTargetSemantic =>
+    (SUPPORTED_MORPH_TARGET_SEMANTICS as readonly string[]).includes(value);
 
 const loadDracoDecoderModule = async (): Promise<any> => {
     dracoDecoderModulePromise ??= import('draco3dgltf').then((module) =>
@@ -80,6 +98,20 @@ const collectPrimitiveAttributeSemantics = (primitive: GltfPrimitiveJson): reado
     return [...semantics];
 };
 
+const collectPrimitiveMorphTargetSemantics = (
+    primitive: GltfPrimitiveJson
+): readonly string[] => {
+    const semantics = new Set<string>();
+
+    for (const target of primitive.targets ?? []) {
+        for (const semantic of Object.keys(target)) {
+            semantics.add(semantic);
+        }
+    }
+
+    return [...semantics];
+};
+
 export const collectPrimitiveDiagnostics = (
     primitive: GltfPrimitiveJson,
     meshIndex: number,
@@ -100,14 +132,33 @@ export const collectPrimitiveDiagnostics = (
         );
     }
 
-    if (primitive.targets && primitive.targets.length > 0) {
+    const unsupportedTargetSemantics = collectPrimitiveMorphTargetSemantics(primitive)
+        .filter((semantic) => isSupportedMorphTargetSemantic(semantic) === false)
+        .sort((left, right) => left.localeCompare(right));
+
+    for (const semantic of unsupportedTargetSemantics) {
         diagnostics.push(
             Object.freeze({
                 level: 'warning',
-                code: 'gltf.mesh.targets.unsupported',
-                message: `Mesh ${meshIndex} primitive ${primitiveIndex} morph targets are not supported and will be ignored`,
+                code: 'gltf.mesh.target.attribute.unsupported',
+                message: `Mesh ${meshIndex} primitive ${primitiveIndex} morph target attribute ${semantic} is not supported and will be ignored`,
             } satisfies AssetImportDiagnostic)
         );
+    }
+
+    for (const semantic of collectPrimitiveMorphTargetSemantics(primitive)) {
+        if (
+            isSupportedMorphTargetSemantic(semantic) &&
+            primitive.attributes[semantic] === undefined
+        ) {
+            diagnostics.push(
+                Object.freeze({
+                    level: 'warning',
+                    code: 'gltf.mesh.target.attribute.base-missing',
+                    message: `Mesh ${meshIndex} primitive ${primitiveIndex} morph target attribute ${semantic} is ignored because the base primitive does not define ${semantic}`,
+                } satisfies AssetImportDiagnostic)
+            );
+        }
     }
 
     return Object.freeze(diagnostics);
@@ -133,6 +184,19 @@ const mapAttributeSemantic = (
             return 'joints0';
         case 'WEIGHTS_0':
             return 'weights0';
+    }
+};
+
+const mapMorphTargetSemantic = (
+    value: SupportedMorphTargetSemantic
+): NonNullable<SceneMeshDefinition['morphTargets']>[number]['attributes'][number]['semantic'] => {
+    switch (value) {
+        case 'POSITION':
+            return 'position';
+        case 'NORMAL':
+            return 'normal';
+        case 'TANGENT':
+            return 'tangent';
     }
 };
 
@@ -393,6 +457,61 @@ const collectPrimitiveAttributes = async (
         throw new GltfSchemaError('Mesh primitive is missing POSITION attribute');
     }
 
+    const vertexCount = result[0]!.values.length / result[0]!.componentCount;
+    const morphTargets: MorphTargetStream[] = [];
+    for (let targetIndex = 0; targetIndex < (primitive.targets?.length ?? 0); targetIndex += 1) {
+        const target = primitive.targets?.[targetIndex];
+        if (!target) {
+            continue;
+        }
+
+        const targetAttributes: MorphTargetAttributeStream[] = [];
+        for (const semantic of SUPPORTED_MORPH_TARGET_SEMANTICS) {
+            const accessorIndex = target[semantic];
+            if (accessorIndex === undefined || primitive.attributes[semantic] === undefined) {
+                continue;
+            }
+
+            const accessor = runtime.source.json.accessors?.[accessorIndex];
+            if (!accessor) {
+                throw new GltfSchemaError(
+                    `Mesh primitive morph target ${targetIndex} attribute ${semantic} references a missing accessor`
+                );
+            }
+
+            const decoded = await accessors.decodeAccessor(accessorIndex);
+            if (decoded.componentCount !== 3) {
+                throw new GltfSchemaError(
+                    `Mesh primitive morph target ${targetIndex} attribute ${semantic} must use VEC3 accessors`
+                );
+            }
+
+            if (decoded.values.length !== vertexCount * 3) {
+                throw new GltfSchemaError(
+                    `Mesh primitive morph target ${targetIndex} attribute ${semantic} does not match the base vertex count`
+                );
+            }
+
+            targetAttributes.push(
+                Object.freeze({
+                    semantic,
+                    componentCount: 3,
+                    values: decoded.values,
+                })
+            );
+        }
+
+        if (targetAttributes.length === 0) {
+            continue;
+        }
+
+        morphTargets.push(
+            Object.freeze({
+                attributes: Object.freeze(targetAttributes),
+            })
+        );
+    }
+
     const positionAccessorIndex = primitive.attributes.POSITION;
     const positionAccessor =
         positionAccessorIndex !== undefined
@@ -404,6 +523,7 @@ const collectPrimitiveAttributes = async (
 
     return Object.freeze({
         attributeStreams: Object.freeze(result),
+        morphTargets: Object.freeze(morphTargets),
         indices,
         positionAccessor,
         topologyMode: dracoGeometry && topologyMode === 5 ? 4 : topologyMode,
@@ -666,6 +786,30 @@ export const buildMeshDefinition = async (
             id: '',
             vertices,
             attributes: Object.freeze(attributes),
+            ...(resolved.morphTargets.length > 0
+                ? {
+                      morphTargets: Object.freeze(
+                          resolved.morphTargets.map((target) =>
+                              Object.freeze({
+                                  ...(typeof target.name === 'string'
+                                      ? { name: target.name }
+                                      : {}),
+                                  attributes: Object.freeze(
+                                      target.attributes.map((attribute) =>
+                                          Object.freeze({
+                                              semantic: mapMorphTargetSemantic(
+                                                  attribute.semantic
+                                              ),
+                                              componentCount: attribute.componentCount,
+                                              values: new Float32Array(attribute.values),
+                                          })
+                                      )
+                                  ),
+                              })
+                          )
+                      ),
+                  }
+                : {}),
             ...(expandedIndices && expandedIndices.length > 0
                 ? { indices: toSmallestIndexArray(expandedIndices) }
                 : {}),
