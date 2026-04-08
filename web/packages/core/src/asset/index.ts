@@ -127,3 +127,4 @@ export {
     isAssetImporter,
 } from './importer';
 export { AssetDatabase, createAssetDatabase, isAssetDatabaseSnapshot } from './database';
+export * from './gltf';
