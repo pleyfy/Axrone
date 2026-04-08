@@ -37,6 +37,7 @@ import type {
     GltfTextureAsset,
     GltfTextureBindingJson,
     GltfTexturePayload,
+    GltfTextureJson,
     GltfTextureSampler,
     GltfTextureTranscodeRequest,
     GltfTextureTranscodeResult,
@@ -56,6 +57,7 @@ const RADIANS_TO_DEGREES = 180 / Math.PI;
 const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
     'KHR_materials_unlit',
     'KHR_mesh_quantization',
+    'KHR_texture_basisu',
     'KHR_texture_transform',
 ]);
 
@@ -449,6 +451,9 @@ const createSamplerDefinition = (
         wrapS: mapWrapMode(sampler?.wrapS),
         wrapT: mapWrapMode(sampler?.wrapT),
     });
+
+const resolveTextureImageIndex = (texture: GltfTextureJson): number | undefined =>
+    texture.extensions?.KHR_texture_basisu?.source ?? texture.source;
 
 const createDocumentName = (
     normalized: NormalizedGltfSource,
@@ -972,7 +977,8 @@ export const createGltfImporter = <
 
             for (let textureIndex = 0; textureIndex < explicitTextures.length; textureIndex += 1) {
                 const texture = explicitTextures[textureIndex]!;
-                if (texture.source === undefined) {
+                const imageIndex = resolveTextureImageIndex(texture);
+                if (imageIndex === undefined) {
                     diagnostics.push({
                         level: 'warning',
                         code: 'gltf.texture.missing-source',
@@ -981,7 +987,7 @@ export const createGltfImporter = <
                     continue;
                 }
 
-                const payload = await runtime.resolveImage(texture.source);
+                const payload = await runtime.resolveImage(imageIndex);
                 const sampler = createSamplerDefinition(
                     texture.sampler,
                     texture.sampler !== undefined
@@ -996,7 +1002,7 @@ export const createGltfImporter = <
                     {
                         id: sanitizeName(texture.name, `Texture ${textureIndex}`),
                         textureIndex,
-                        imageIndex: texture.source,
+                        imageIndex,
                         sampler,
                         payload,
                         usageHints,

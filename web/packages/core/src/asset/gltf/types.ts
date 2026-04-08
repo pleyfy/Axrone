@@ -370,6 +370,12 @@ export interface GltfSamplerJson {
 export interface GltfTextureJson {
     readonly sampler?: number;
     readonly source?: number;
+    readonly extensions?: {
+        readonly KHR_texture_basisu?: {
+            readonly source: number;
+        };
+        readonly [extensionName: string]: unknown;
+    };
     readonly name?: string;
 }
 

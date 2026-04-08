@@ -608,4 +608,96 @@ describe('glTF importer', () => {
         expect(receipt.primary.data.stats.skinCount).toBe(1);
         expect(receipt.primary.data.stats.animationCount).toBe(1);
     });
+
+    it('prefers KHR_texture_basisu sources over fallback texture images', async () => {
+        const binary = createBinaryBlob();
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [
+                createGltfImporter({
+                    resourceResolver: ({ uri }) => {
+                        if (uri === 'mesh.bin') {
+                            return {
+                                uri,
+                                bytes: binary,
+                                mimeType: 'application/octet-stream',
+                            };
+                        }
+
+                        if (uri === 'albedo.png') {
+                            return {
+                                uri,
+                                bytes: pngHeaderBytes,
+                                mimeType: 'image/png',
+                            };
+                        }
+
+                        if (uri === 'albedo.ktx2') {
+                            return {
+                                uri,
+                                bytes: new Uint8Array([11, 22, 33, 44]),
+                                mimeType: 'image/ktx2',
+                            };
+                        }
+
+                        return undefined;
+                    },
+                }),
+            ],
+        });
+
+        const json = createTriangleJson('mesh.bin', 'albedo.png', 'image/png');
+        json.images = [
+            {
+                uri: 'albedo.png',
+                mimeType: 'image/png',
+                name: 'Fallback',
+            },
+            {
+                uri: 'albedo.ktx2',
+                mimeType: 'image/ktx2',
+                name: 'BasisU',
+            },
+        ];
+        json.textures = [
+            {
+                source: 0,
+                sampler: 0,
+                name: 'Base',
+                extensions: {
+                    KHR_texture_basisu: {
+                        source: 1,
+                    },
+                },
+            },
+        ];
+        json.extensionsUsed = ['KHR_texture_basisu'];
+        json.bufferViews = [
+            {
+                buffer: 0,
+                byteOffset: 0,
+                byteLength: 36,
+            },
+            {
+                buffer: 0,
+                byteOffset: 36,
+                byteLength: 6,
+            },
+        ];
+
+        const receipt = await database.import({
+            kind: 'text',
+            data: JSON.stringify(json),
+            uri: 'assets/basisu-texture.gltf',
+            mimeType: 'model/gltf+json',
+        });
+
+        const texture = receipt.assets.find((entry) => entry.kind === 'gltf.texture');
+
+        expect(texture?.data.imageIndex).toBe(1);
+        expect(texture?.data.payload.kind).toBe('compressed');
+        expect(texture?.data.payload.uri).toBe('albedo.ktx2');
+        expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.extension.unsupported'
+        );
+    });
 });
