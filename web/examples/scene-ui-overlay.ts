@@ -1,4 +1,5 @@
 import { Scene, Transform, Vec3, createUnlitColorShaderDefinition } from '@axrone/core';
+import { Quat } from '@axrone/numeric';
 import { UIRuntime } from '@axrone/ui';
 import { attachUIOverlayToScene } from '@axrone/ui-webgl2';
 import { bindSceneToContainer } from './example-runtime';
@@ -330,9 +331,9 @@ const sceneUiOverlayExample: SceneExample = {
             id: 'scene-ui-overlay.stats',
             priority: 100,
             enabled: true,
-            update() {
-                const angle = performance.now() * 0.001;
-                cube.requireComponent(Transform).rotation.setFromEuler(0, angle, angle * 0.5);
+            update(context) {
+                const angle = context.elapsed * 0.001;
+                cube.requireComponent(Transform).rotation = Quat.fromEuler(0, angle, angle * 0.5);
             },
             afterFrame(context) {
                 const editor = resolveEditorState(context.frame);
