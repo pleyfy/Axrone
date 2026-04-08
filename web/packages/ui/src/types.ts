@@ -25,6 +25,8 @@ export type TextOverflowMode = 'clip' | 'ellipsis';
 export type TextAlignMode = 'start' | 'center' | 'end' | 'justify';
 export type TextDirectionMode = 'auto' | 'ltr' | 'rtl';
 export type ResolvedTextDirection = 'ltr' | 'rtl';
+export type UIImageFitMode = 'fill' | 'contain' | 'cover' | 'none' | 'scale-down';
+export type UIImageSamplingMode = 'linear' | 'nearest';
 export type FontStyle = 'normal' | 'italic' | 'oblique';
 export type FontWeight =
     | 100
@@ -67,6 +69,13 @@ export interface SizeLike {
 }
 
 export interface RectLike extends Vec2Like, SizeLike {}
+
+export interface UVRect {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+}
 
 export interface EdgeInsets {
     readonly top: number;
@@ -241,6 +250,32 @@ export interface TextBlockInput {
     readonly color?: ColorInput;
 }
 
+export interface UIImageTextureSource {
+    readonly kind: 'texture';
+    readonly resourceId: string;
+    readonly width: number;
+    readonly height: number;
+}
+
+export interface UIImageMaterialSource {
+    readonly kind: 'material';
+    readonly materialId: string;
+    readonly width: number;
+    readonly height: number;
+}
+
+export type UIImageSource = UIImageTextureSource | UIImageMaterialSource;
+
+export interface WidgetImageInput {
+    readonly source: UIImageSource;
+    readonly fit?: UIImageFitMode;
+    readonly alignX?: number;
+    readonly alignY?: number;
+    readonly sampling?: UIImageSamplingMode;
+    readonly tint?: ColorInput;
+    readonly uvRect?: Readonly<Partial<UVRect>>;
+}
+
 export interface ResolvedTextBlock {
     readonly value: string;
     readonly family: string;
@@ -256,6 +291,16 @@ export interface ResolvedTextBlock {
     readonly maxLines: number;
     readonly align: TextAlignMode;
     readonly color: ReadonlyColor;
+}
+
+export interface ResolvedWidgetImage {
+    readonly source: UIImageSource;
+    readonly fit: UIImageFitMode;
+    readonly alignX: number;
+    readonly alignY: number;
+    readonly sampling: UIImageSamplingMode;
+    readonly tint: ReadonlyColor;
+    readonly uvRect: UVRect;
 }
 
 export interface WidgetFocusPolicyInput {
@@ -367,6 +412,7 @@ export interface WidgetConfig<
     readonly layout?: WidgetLayoutInput;
     readonly style?: WidgetStyleInput;
     readonly text?: TextBlockInput | null;
+    readonly image?: WidgetImageInput | null;
     readonly focus?: WidgetFocusPolicyInput;
     readonly handlers?: WidgetEventHandlers<TProps, TRuntime>;
 }
@@ -627,6 +673,23 @@ export interface TextRenderCommand {
     readonly layout: TextLayoutResult;
 }
 
+export interface ImageRenderCommand {
+    readonly kind: 'image';
+    readonly widget: WidgetId;
+    readonly source: UIImageSource;
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly zIndex: number;
+    readonly tint: ReadonlyColor;
+    readonly opacity: number;
+    readonly sampling: UIImageSamplingMode;
+    readonly radius: CornerRadii;
+    readonly clip: RectLike | null;
+    readonly uvRect: UVRect;
+}
+
 export interface CustomRenderCommand<TPayload = unknown> {
     readonly kind: 'custom';
     readonly widget: WidgetId;
@@ -637,6 +700,7 @@ export interface CustomRenderCommand<TPayload = unknown> {
 
 export type RenderCommand<TPayload = unknown> =
     | QuadRenderCommand
+    | ImageRenderCommand
     | TextRenderCommand
     | CustomRenderCommand<TPayload>;
 
@@ -645,6 +709,7 @@ export interface UIFrameMetrics {
     readonly visibleWidgetCount: number;
     readonly renderCount: number;
     readonly customCommandCount: number;
+    readonly imageCommandCount: number;
     readonly textCommandCount: number;
     readonly glyphCount: number;
     readonly layoutPasses: number;
@@ -667,6 +732,7 @@ export interface WidgetSnapshot {
     readonly layout?: WidgetLayoutInput;
     readonly style?: WidgetStyleInput;
     readonly text?: TextBlockInput | null;
+    readonly image?: WidgetImageInput | null;
     readonly focus?: WidgetFocusPolicyInput;
     readonly children: readonly WidgetSnapshot[];
 }

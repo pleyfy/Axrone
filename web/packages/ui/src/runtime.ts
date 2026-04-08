@@ -15,11 +15,13 @@ import type {
     CustomRenderCommand,
     FocusMoveDirection,
     FontRegistryOptions,
+    ImageRenderCommand,
     LayoutBox,
     QuadRenderCommand,
     ReadonlyColor,
     RenderCommand,
     ResolvedFocusPolicy,
+    ResolvedWidgetImage,
     ResolvedLayout,
     ResolvedTextBlock,
     ResolvedWidgetStyle,
@@ -38,6 +40,7 @@ import type {
     WidgetEventHandlers,
     WidgetFocusChangeEvent,
     WidgetFocusPolicyInput,
+    WidgetImageInput,
     WidgetId,
     WidgetKey,
     WidgetLayoutInput,
@@ -70,6 +73,7 @@ interface StoredWidgetRecord<TPayload> {
     readonly layoutInput: WidgetLayoutInput;
     readonly styleInput: WidgetStyleInput;
     readonly textInput: TextBlockInput | null;
+    readonly imageInput: WidgetImageInput | null;
     readonly focusInput: WidgetFocusPolicyInput;
     readonly handlers: WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>> | null;
 }
@@ -80,6 +84,7 @@ const EMPTY_STYLE_INPUT: WidgetStyleInput = Object.freeze({});
 const EMPTY_FOCUS_INPUT: WidgetFocusPolicyInput = Object.freeze({});
 const TRANSPARENT: ReadonlyColor = Object.freeze({ r: 0, g: 0, b: 0, a: 0 });
 const BLACK: ReadonlyColor = Object.freeze({ r: 0, g: 0, b: 0, a: 1 });
+const WHITE: ReadonlyColor = Object.freeze({ r: 1, g: 1, b: 1, a: 1 });
 
 const enum NodeFlag {
     Allocated = 1 << 0,
@@ -254,6 +259,24 @@ const mergeTextInput = (
     return { ...(base ?? { value: '' }), ...patch } as TextBlockInput;
 };
 
+const mergeImageInput = (
+    base: WidgetImageInput | null,
+    patch: WidgetPatch['image'] | undefined
+): WidgetImageInput | null => {
+    if (patch === undefined) {
+        return base;
+    }
+    if (patch === null) {
+        return null;
+    }
+    const next = patch as WidgetImageInput;
+    return {
+        ...(base ?? {}),
+        ...next,
+        uvRect: next.uvRect ? { ...(base?.uvRect ?? {}), ...next.uvRect } : base?.uvRect,
+    } as WidgetImageInput;
+};
+
 const mergeFocusInput = (
     base: WidgetFocusPolicyInput,
     patch: WidgetPatch['focus'] | undefined
@@ -273,6 +296,14 @@ const mergeProps = (
     base: Readonly<Record<string, unknown>>,
     patch: Readonly<Record<string, unknown>> | undefined
 ): Readonly<Record<string, unknown>> => ({ ...(base ?? EMPTY_RECORD_OBJECT), ...(patch ?? {}) });
+
+const normalizeUvRect = (input: WidgetImageInput['uvRect']): { readonly x: number; readonly y: number; readonly width: number; readonly height: number } => {
+    const x = clamp(input?.x ?? 0, 0, 1);
+    const y = clamp(input?.y ?? 0, 0, 1);
+    const width = clamp(input?.width ?? 1, 0, 1 - x);
+    const height = clamp(input?.height ?? 1, 0, 1 - y);
+    return { x, y, width, height };
+};
 
 const intersectsPoint = (box: LayoutBox | null, x: number, y: number): boolean => {
     if (!box) {
@@ -314,6 +345,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     private layouts: Array<ResolvedLayout | null> = [];
     private styles: Array<ResolvedWidgetStyle | null> = [];
     private texts: Array<ResolvedTextBlock | null> = [];
+    private images: Array<ResolvedWidgetImage | null> = [];
     private focuses: Array<ResolvedFocusPolicy | null> = [];
     private states: unknown[] = [];
     private textLayouts: Array<TextLayoutResult | null> = [];
@@ -489,6 +521,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             layoutInput: mergeLayoutInput(current.layoutInput, patch.layout),
             styleInput: mergeStyleInput(current.styleInput, patch.style),
             textInput: mergeTextInput(current.textInput, patch.text),
+            imageInput: mergeImageInput(current.imageInput, patch.image),
             focusInput: mergeFocusInput(current.focusInput, patch.focus),
             handlers: mergeHandlers(
                 current.handlers,
@@ -675,6 +708,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             layout: cloneData(rootSnapshot.layout ?? EMPTY_LAYOUT_INPUT),
             style: cloneData(rootSnapshot.style ?? EMPTY_STYLE_INPUT),
             text: cloneData(rootSnapshot.text ?? null),
+            image: cloneData(rootSnapshot.image ?? null),
             focus: cloneData(rootSnapshot.focus ?? EMPTY_FOCUS_INPUT),
         });
         this.applyRecord(this.rootId, null, null, true);
@@ -717,6 +751,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             layoutInput: cloneData(config.layout ?? EMPTY_LAYOUT_INPUT),
             styleInput: cloneData(config.style ?? EMPTY_STYLE_INPUT),
             textInput: cloneData(config.text ?? null),
+            imageInput: cloneData(config.image ?? null),
             focusInput: cloneData(config.focus ?? EMPTY_FOCUS_INPUT),
             handlers: (config.handlers as WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>>) ?? null,
         };
@@ -741,6 +776,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.layouts[index] = compileLayoutInput(record.layoutInput);
         this.styles[index] = this.compileStyle(record.styleInput);
         this.texts[index] = this.compileText(record.textInput, this.styles[index]!.color);
+        this.images[index] = this.compileImage(record.imageInput);
         this.focuses[index] = this.compileFocus(record.focusInput, record.interactive);
         this.textLayouts[index] = null;
         this.textLayoutWidths[index] = Number.NaN;
@@ -787,6 +823,34 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             maxLines: Math.max(1, Math.floor(input.maxLines ?? Number.MAX_SAFE_INTEGER)),
             align: input.align ?? 'start',
             color: normalizeColor(input.color, fallbackColor),
+        };
+    }
+
+    private compileImage(input: WidgetImageInput | null): ResolvedWidgetImage | null {
+        if (!input) {
+            return null;
+        }
+        const source = input.source.kind === 'material'
+            ? {
+                  kind: 'material' as const,
+                  materialId: input.source.materialId,
+                  width: Math.max(1, input.source.width),
+                  height: Math.max(1, input.source.height),
+              }
+            : {
+                  kind: 'texture' as const,
+                  resourceId: input.source.resourceId,
+                  width: Math.max(1, input.source.width),
+                  height: Math.max(1, input.source.height),
+              };
+        return {
+            source,
+            fit: input.fit ?? 'fill',
+            alignX: clamp(input.alignX ?? 0.5, 0, 1),
+            alignY: clamp(input.alignY ?? 0.5, 0, 1),
+            sampling: input.sampling ?? 'linear',
+            tint: normalizeColor(input.tint, WHITE),
+            uvRect: normalizeUvRect(input.uvRect),
         };
     }
 
@@ -858,6 +922,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.layouts.length = nextCapacity;
         this.styles.length = nextCapacity;
         this.texts.length = nextCapacity;
+        this.images.length = nextCapacity;
         this.focuses.length = nextCapacity;
         this.states.length = nextCapacity;
         this.textLayouts.length = nextCapacity;
@@ -961,6 +1026,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
 
     private measureContent(index: number, constraints: Readonly<SizeLike>): SizeLike {
         const text = this.texts[index];
+        const image = this.images[index];
         const controllerType = this.records[index]?.controller;
         if (controllerType) {
             const controller = this.registry.resolve(controllerType);
@@ -976,23 +1042,66 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
                 return measured;
             }
         }
-        if (!text || text.value.length === 0) {
-            return { width: 0, height: 0 };
+        let measuredWidth = 0;
+        let measuredHeight = 0;
+        if (image) {
+            const imageSize = this.measureImageContent(image, constraints);
+            measuredWidth = Math.max(measuredWidth, imageSize.width);
+            measuredHeight = Math.max(measuredHeight, imageSize.height);
         }
-        const width = Number.isFinite(constraints.width) ? Math.max(0, constraints.width) : Number.POSITIVE_INFINITY;
-        if (this.textLayouts[index] && this.textLayoutWidths[index] === width) {
+        if (text && text.value.length > 0) {
+            const width = Number.isFinite(constraints.width)
+                ? Math.max(0, constraints.width)
+                : Number.POSITIVE_INFINITY;
+            if (!this.textLayouts[index] || this.textLayoutWidths[index] !== width) {
+                this.textLayouts[index] = this.textEngine.measure(text, {
+                    width,
+                    height: constraints.height,
+                });
+                this.textLayoutWidths[index] = width;
+            }
+            measuredWidth = Math.max(measuredWidth, this.textLayouts[index]!.width);
+            measuredHeight = Math.max(measuredHeight, this.textLayouts[index]!.height);
+        }
+        return { width: measuredWidth, height: measuredHeight };
+    }
+
+    private measureImageContent(image: ResolvedWidgetImage, constraints: Readonly<SizeLike>): SizeLike {
+        const intrinsicWidth = image.source.width;
+        const intrinsicHeight = image.source.height;
+        const maxWidth = Number.isFinite(constraints.width) ? Math.max(0, constraints.width) : Number.POSITIVE_INFINITY;
+        const maxHeight = Number.isFinite(constraints.height) ? Math.max(0, constraints.height) : Number.POSITIVE_INFINITY;
+        if (!Number.isFinite(maxWidth) && !Number.isFinite(maxHeight)) {
+            return { width: intrinsicWidth, height: intrinsicHeight };
+        }
+        if (image.fit === 'fill') {
             return {
-                width: this.textLayouts[index]!.width,
-                height: this.textLayouts[index]!.height,
+                width: Number.isFinite(maxWidth) ? maxWidth : intrinsicWidth,
+                height: Number.isFinite(maxHeight) ? maxHeight : intrinsicHeight,
             };
         }
-        const layout = this.textEngine.measure(text, {
-            width,
-            height: constraints.height,
-        });
-        this.textLayouts[index] = layout;
-        this.textLayoutWidths[index] = width;
-        return { width: layout.width, height: layout.height };
+        const widthScale = Number.isFinite(maxWidth) ? maxWidth / intrinsicWidth : Number.POSITIVE_INFINITY;
+        const heightScale = Number.isFinite(maxHeight) ? maxHeight / intrinsicHeight : Number.POSITIVE_INFINITY;
+        if (image.fit === 'none') {
+            return {
+                width: Number.isFinite(maxWidth) ? Math.min(intrinsicWidth, maxWidth) : intrinsicWidth,
+                height: Number.isFinite(maxHeight) ? Math.min(intrinsicHeight, maxHeight) : intrinsicHeight,
+            };
+        }
+        const containScale = Math.min(widthScale, heightScale);
+        const coverScale = Math.max(widthScale, heightScale);
+        const scale = image.fit === 'cover'
+            ? coverScale
+            : image.fit === 'scale-down'
+              ? Math.min(1, containScale)
+              : containScale;
+        if (!Number.isFinite(scale) || scale <= 0) {
+            return { width: intrinsicWidth, height: intrinsicHeight };
+        }
+        return {
+            width: intrinsicWidth * scale,
+            height: intrinsicHeight * scale,
+        };
     }
 
     private writeBox(index: number, box: LayoutBox): void {
@@ -1023,6 +1132,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         const commands: RenderCommand<TPayload>[] = [];
         let visibleWidgetCount = 0;
         let textCommandCount = 0;
+        let imageCommandCount = 0;
         let customCommandCount = 0;
         let glyphCount = 0;
         const visit = (index: number, clip: LayoutBox | null): void => {
@@ -1054,6 +1164,14 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
                     clip: nextClip,
                 };
                 commands.push(quad);
+            }
+            const image = this.images[index];
+            if (image) {
+                const imageCommand = this.resolveImageCommand(index, box, image, style, nextClip, zIndex);
+                if (imageCommand) {
+                    imageCommandCount += 1;
+                    commands.push(imageCommand);
+                }
             }
             const textLayout = this.resolveTextLayoutForRender(index);
             if (textLayout && textLayout.glyphs.length > 0) {
@@ -1108,6 +1226,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             visibleWidgetCount,
             renderCount: commands.length,
             customCommandCount,
+            imageCommandCount,
             textCommandCount,
             glyphCount,
             layoutPasses: this.lastLayoutPasses,
@@ -1134,6 +1253,55 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             this.textLayoutWidths[index] = width;
         }
         return this.textLayouts[index];
+    }
+
+    private resolveImageCommand(
+        index: number,
+        box: LayoutBox,
+        image: ResolvedWidgetImage,
+        style: ResolvedWidgetStyle,
+        clip: LayoutBox | null,
+        zIndex: number
+    ): ImageRenderCommand | null {
+        const containerWidth = box.contentWidth;
+        const containerHeight = box.contentHeight;
+        if (containerWidth <= 0 || containerHeight <= 0) {
+            return null;
+        }
+        const intrinsicWidth = image.source.width;
+        const intrinsicHeight = image.source.height;
+        let renderWidth = containerWidth;
+        let renderHeight = containerHeight;
+        if (image.fit === 'none') {
+            renderWidth = intrinsicWidth;
+            renderHeight = intrinsicHeight;
+        } else if (image.fit !== 'fill') {
+            const containScale = Math.min(containerWidth / intrinsicWidth, containerHeight / intrinsicHeight);
+            const coverScale = Math.max(containerWidth / intrinsicWidth, containerHeight / intrinsicHeight);
+            const scale = image.fit === 'cover'
+                ? coverScale
+                : image.fit === 'scale-down'
+                  ? Math.min(1, containScale)
+                  : containScale;
+            renderWidth = intrinsicWidth * scale;
+            renderHeight = intrinsicHeight * scale;
+        }
+        return {
+            kind: 'image',
+            widget: index as WidgetId,
+            source: image.source,
+            x: box.contentX + (containerWidth - renderWidth) * image.alignX,
+            y: box.contentY + (containerHeight - renderHeight) * image.alignY,
+            width: renderWidth,
+            height: renderHeight,
+            zIndex,
+            tint: image.tint,
+            opacity: style.opacity,
+            sampling: image.sampling,
+            radius: style.radius,
+            clip,
+            uvRect: image.uvRect,
+        };
     }
 
     private dispatchPointer(event: Readonly<UIPointerEvent>): boolean {
@@ -1478,6 +1646,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             layout: cloneData(record.layoutInput),
             style: cloneData(record.styleInput),
             text: cloneData(record.textInput),
+            image: cloneData(record.imageInput),
             focus: cloneData(record.focusInput),
             children,
         };
@@ -1504,6 +1673,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             layout: cloneData(snapshot.layout ?? EMPTY_LAYOUT_INPUT),
             style: cloneData(snapshot.style ?? EMPTY_STYLE_INPUT),
             text: cloneData(snapshot.text ?? null),
+            image: cloneData(snapshot.image ?? null),
             focus: cloneData(snapshot.focus ?? EMPTY_FOCUS_INPUT),
         });
         this.appendChild(parent, child);
@@ -1531,6 +1701,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.layouts[index] = null;
         this.styles[index] = null;
         this.texts[index] = null;
+        this.images[index] = null;
         this.focuses[index] = null;
         this.states[index] = undefined;
         this.textLayouts[index] = null;
