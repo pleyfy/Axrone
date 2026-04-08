@@ -25,6 +25,7 @@ import { DirectionalLight } from './components/directional-light';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { PointLight } from './components/point-light';
+import { SpotLight } from './components/spot-light';
 import {
     SceneCanvasError,
     SceneLifecycleError,
@@ -155,17 +156,32 @@ interface DirectionalLightState {
 }
 
 interface PointLightState {
+    readonly type: 'point';
     readonly position: Vec3;
     readonly color: Vec3;
     readonly intensity: number;
     readonly range: number;
 }
 
+interface SpotLightState {
+    readonly type: 'spot';
+    readonly position: Vec3;
+    readonly direction: Vec3;
+    readonly color: Vec3;
+    readonly intensity: number;
+    readonly range: number;
+    readonly innerConeAngle: number;
+    readonly outerConeAngle: number;
+}
+
+type LocalLightState = PointLightState | SpotLightState;
+
 interface LightingState {
     readonly ambient: Vec3;
     readonly directional: DirectionalLightState | null;
-    readonly point: PointLightState | null;
+    readonly localLights: readonly LocalLightState[];
     readonly pointCount: number;
+    readonly spotCount: number;
 }
 
 const DEFAULT_ATTRIBUTE_NAMES: Readonly<Record<SceneMeshSemantic, string>> = Object.freeze({
@@ -193,6 +209,7 @@ const DEFAULT_AMBIENT_LIGHT = new Vec3(0.08, 0.08, 0.1);
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
 const DEFAULT_RENDER_PASS_ID = 'main';
+const MAX_SCENE_LOCAL_LIGHTS = 4;
 
 const createId = (prefix: string): string =>
     `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -375,6 +392,79 @@ const extractUniformNames = (...sources: string[]): string[] => {
     }
 
     return [...names];
+};
+
+const mapUniformTypeName = (
+    gl: WebGL2RenderingContext,
+    typeName: string
+): number | undefined => {
+    switch (typeName) {
+        case 'float':
+            return gl.FLOAT;
+        case 'vec2':
+            return gl.FLOAT_VEC2;
+        case 'vec3':
+            return gl.FLOAT_VEC3;
+        case 'vec4':
+            return gl.FLOAT_VEC4;
+        case 'int':
+            return gl.INT;
+        case 'ivec2':
+            return gl.INT_VEC2;
+        case 'ivec3':
+            return gl.INT_VEC3;
+        case 'ivec4':
+            return gl.INT_VEC4;
+        case 'uint':
+            return gl.UNSIGNED_INT;
+        case 'uvec2':
+            return gl.UNSIGNED_INT_VEC2;
+        case 'uvec3':
+            return gl.UNSIGNED_INT_VEC3;
+        case 'uvec4':
+            return gl.UNSIGNED_INT_VEC4;
+        case 'bool':
+            return gl.BOOL;
+        case 'bvec2':
+            return gl.BOOL_VEC2;
+        case 'bvec3':
+            return gl.BOOL_VEC3;
+        case 'bvec4':
+            return gl.BOOL_VEC4;
+        case 'mat4':
+            return gl.FLOAT_MAT4;
+        case 'sampler2D':
+            return gl.SAMPLER_2D;
+        case 'samplerCube':
+            return gl.SAMPLER_CUBE;
+        default:
+            return undefined;
+    }
+};
+
+const extractUniformTypeHints = (
+    gl: WebGL2RenderingContext,
+    ...sources: string[]
+): Map<string, number> => {
+    const types = new Map<string, number>();
+    const pattern = /\buniform\s+(\w+)\s+(\w+)(?:\s*\[[^\]]+\])?\s*;/g;
+
+    for (const source of sources) {
+        pattern.lastIndex = 0;
+        let match = pattern.exec(source);
+
+        while (match !== null) {
+            const uniformType = mapUniformTypeName(gl, match[1]!);
+            if (uniformType !== undefined) {
+                const uniformName = match[2]!;
+                types.set(uniformName, uniformType);
+                types.set(normalizeUniformName(uniformName), uniformType);
+            }
+            match = pattern.exec(source);
+        }
+    }
+
+    return types;
 };
 
 const normalizeTextureBinding = (
@@ -578,6 +668,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             MeshRenderer,
             DirectionalLight,
             PointLight,
+            SpotLight,
             OrbitCameraController,
             ...(options.registry ?? ({} as R)),
         } as RuntimeRegistry<R>;
@@ -1364,6 +1455,16 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 }
             }
 
+            for (const [uniformName, uniformType] of extractUniformTypeHints(
+                this.gl,
+                definition.vertexSource,
+                definition.fragmentSource
+            )) {
+                if (!uniformTypes.has(uniformName)) {
+                    uniformTypes.set(uniformName, uniformType);
+                }
+            }
+
             return {
                 id: definition.id,
                 program,
@@ -1839,8 +1940,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private _collectLighting(): LightingState {
         let primaryDirectional: DirectionalLightState | null = null;
         let fallbackDirectional: DirectionalLightState | null = null;
-        let pointLight: PointLightState | null = null;
+        const localLights: LocalLightState[] = [];
         let pointCount = 0;
+        let spotCount = 0;
         const ambient = new Vec3(this._ambientLight.x, this._ambientLight.y, this._ambientLight.z);
 
         for (const actor of this.world.getAllActors()) {
@@ -1868,24 +1970,39 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             }
 
             const point = actor.getComponent(PointLight);
-            if (point && point.enabled) {
+            if (point && point.enabled && localLights.length < MAX_SCENE_LOCAL_LIGHTS) {
                 pointCount += 1;
-                if (!pointLight) {
-                    pointLight = {
-                        position: point.getWorldPosition(),
-                        color: point.color.clone(),
-                        intensity: point.intensity,
-                        range: point.range,
-                    };
-                }
+                localLights.push({
+                    type: 'point',
+                    position: point.getWorldPosition(),
+                    color: point.color.clone(),
+                    intensity: point.intensity,
+                    range: point.range,
+                });
+            }
+
+            const spot = actor.getComponent(SpotLight);
+            if (spot && spot.enabled && localLights.length < MAX_SCENE_LOCAL_LIGHTS) {
+                spotCount += 1;
+                localLights.push({
+                    type: 'spot',
+                    position: spot.getWorldPosition(),
+                    direction: spot.getDirection(),
+                    color: spot.color.clone(),
+                    intensity: spot.intensity,
+                    range: spot.range,
+                    innerConeAngle: spot.innerConeAngle,
+                    outerConeAngle: spot.outerConeAngle,
+                });
             }
         }
 
         return {
             ambient,
             directional: primaryDirectional ?? fallbackDirectional,
-            point: pointLight,
+            localLights: Object.freeze(localLights),
             pointCount,
+            spotCount,
         };
     }
 
@@ -1925,7 +2042,43 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     ): void {
         const receiveLighting = renderer.receiveLighting;
         const directional = receiveLighting ? lighting.directional : null;
-        const point = receiveLighting ? lighting.point : null;
+        const localLights: readonly LocalLightState[] = receiveLighting ? lighting.localLights : [];
+        const point = localLights.find(
+            (light: LocalLightState): light is PointLightState => light.type === 'point'
+        );
+        const spot = localLights.find(
+            (light: LocalLightState): light is SpotLightState => light.type === 'spot'
+        );
+        const localLightTypes = new Int32Array(Math.max(1, localLights.length));
+        const localLightPositions = new Float32Array(Math.max(1, localLights.length) * 3);
+        const localLightDirections = new Float32Array(Math.max(1, localLights.length) * 3);
+        const localLightColors = new Float32Array(Math.max(1, localLights.length) * 3);
+        const localLightIntensities = new Float32Array(Math.max(1, localLights.length));
+        const localLightRanges = new Float32Array(Math.max(1, localLights.length));
+        const localLightInnerCones = new Float32Array(Math.max(1, localLights.length));
+        const localLightOuterCones = new Float32Array(Math.max(1, localLights.length));
+
+        for (let index = 0; index < localLights.length; index += 1) {
+            const light = localLights[index]!;
+            const offset = index * 3;
+            localLightTypes[index] = light.type === 'spot' ? 1 : 0;
+            localLightPositions[offset] = light.position.x;
+            localLightPositions[offset + 1] = light.position.y;
+            localLightPositions[offset + 2] = light.position.z;
+            localLightColors[offset] = light.color.x;
+            localLightColors[offset + 1] = light.color.y;
+            localLightColors[offset + 2] = light.color.z;
+            localLightIntensities[index] = light.intensity;
+            localLightRanges[index] = light.range;
+
+            if (light.type === 'spot') {
+                localLightDirections[offset] = light.direction.x;
+                localLightDirections[offset + 1] = light.direction.y;
+                localLightDirections[offset + 2] = light.direction.z;
+                localLightInnerCones[index] = light.innerConeAngle;
+                localLightOuterCones[index] = light.outerConeAngle;
+            }
+        }
 
         this._setUniform(shader, 'u_ReceiveLighting', receiveLighting);
         this._setUniform(shader, 'u_AmbientLight', receiveLighting ? lighting.ambient : Vec3.ZERO);
@@ -1937,6 +2090,23 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._setUniform(shader, 'u_PointLightColor', point?.color ?? Vec3.ZERO);
         this._setUniform(shader, 'u_PointLightIntensity', point?.intensity ?? 0);
         this._setUniform(shader, 'u_PointLightRange', point?.range ?? 0);
+        this._setUniform(shader, 'u_SpotLightCount', receiveLighting ? lighting.spotCount : 0);
+        this._setUniform(shader, 'u_SpotLightPosition', spot?.position ?? Vec3.ZERO);
+        this._setUniform(shader, 'u_SpotLightDirection', spot?.direction ?? new Vec3(0, -1, 0));
+        this._setUniform(shader, 'u_SpotLightColor', spot?.color ?? Vec3.ZERO);
+        this._setUniform(shader, 'u_SpotLightIntensity', spot?.intensity ?? 0);
+        this._setUniform(shader, 'u_SpotLightRange', spot?.range ?? 0);
+        this._setUniform(shader, 'u_SpotLightInnerCone', spot?.innerConeAngle ?? 0);
+        this._setUniform(shader, 'u_SpotLightOuterCone', spot?.outerConeAngle ?? 0);
+        this._setUniform(shader, 'u_LocalLightCount', receiveLighting ? localLights.length : 0);
+        this._setUniform(shader, 'u_LocalLightType', localLightTypes);
+        this._setUniform(shader, 'u_LocalLightPosition', localLightPositions);
+        this._setUniform(shader, 'u_LocalLightDirection', localLightDirections);
+        this._setUniform(shader, 'u_LocalLightColor', localLightColors);
+        this._setUniform(shader, 'u_LocalLightIntensity', localLightIntensities);
+        this._setUniform(shader, 'u_LocalLightRange', localLightRanges);
+        this._setUniform(shader, 'u_LocalLightInnerCone', localLightInnerCones);
+        this._setUniform(shader, 'u_LocalLightOuterCone', localLightOuterCones);
     }
 
     private _bindMaterialTextures(shader: ShaderResource, material: MaterialResource): number[] {
@@ -2073,6 +2243,21 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (value instanceof Float32Array) {
+            const uniformType = shader.uniformTypes.get(name);
+            switch (uniformType) {
+                case this.gl.FLOAT:
+                    this.gl.uniform1fv(location, value);
+                    return;
+                case this.gl.FLOAT_VEC4:
+                    this.gl.uniform4fv(location, value);
+                    return;
+                case this.gl.FLOAT_VEC3:
+                    this.gl.uniform3fv(location, value);
+                    return;
+                case this.gl.FLOAT_VEC2:
+                    this.gl.uniform2fv(location, value);
+                    return;
+            }
             switch (value.length) {
                 case 16:
                     this.gl.uniformMatrix4fv(
@@ -2097,6 +2282,35 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (value instanceof Int32Array) {
+            const uniformType = shader.uniformTypes.get(name);
+            switch (uniformType) {
+                case this.gl.INT:
+                case this.gl.BOOL:
+                case this.gl.SAMPLER_2D:
+                case this.gl.SAMPLER_CUBE:
+                case this.gl.SAMPLER_2D_SHADOW:
+                case this.gl.SAMPLER_2D_ARRAY:
+                case this.gl.SAMPLER_2D_ARRAY_SHADOW:
+                case this.gl.SAMPLER_CUBE_SHADOW:
+                case this.gl.INT_SAMPLER_2D:
+                case this.gl.INT_SAMPLER_3D:
+                case this.gl.INT_SAMPLER_CUBE:
+                case this.gl.INT_SAMPLER_2D_ARRAY:
+                    this.gl.uniform1iv(location, value);
+                    return;
+                case this.gl.INT_VEC4:
+                case this.gl.BOOL_VEC4:
+                    this.gl.uniform4iv(location, value);
+                    return;
+                case this.gl.INT_VEC3:
+                case this.gl.BOOL_VEC3:
+                    this.gl.uniform3iv(location, value);
+                    return;
+                case this.gl.INT_VEC2:
+                case this.gl.BOOL_VEC2:
+                    this.gl.uniform2iv(location, value);
+                    return;
+            }
             switch (value.length) {
                 case 4:
                     this.gl.uniform4iv(location, value);
@@ -2114,6 +2328,21 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (value instanceof Uint32Array) {
+            const uniformType = shader.uniformTypes.get(name);
+            switch (uniformType) {
+                case this.gl.UNSIGNED_INT:
+                    this.gl.uniform1uiv(location, value);
+                    return;
+                case this.gl.UNSIGNED_INT_VEC4:
+                    this.gl.uniform4uiv(location, value);
+                    return;
+                case this.gl.UNSIGNED_INT_VEC3:
+                    this.gl.uniform3uiv(location, value);
+                    return;
+                case this.gl.UNSIGNED_INT_VEC2:
+                    this.gl.uniform2uiv(location, value);
+                    return;
+            }
             switch (value.length) {
                 case 4:
                     this.gl.uniform4uiv(location, value);

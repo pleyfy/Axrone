@@ -54,6 +54,7 @@ const DEFAULT_SAMPLER_ID = 'gltf/sampler/default';
 const DEFAULT_MATERIAL_KEY_SUFFIX = 'material/default';
 const DEFAULT_MATERIAL_NAME = 'Default Material';
 const DEFAULT_DOCUMENT_NAME = 'glTF Document';
+const MAX_SCENE_LOCAL_LIGHTS = 4;
 const RADIANS_TO_DEGREES = 180 / Math.PI;
 const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
     'KHR_lights_punctual',
@@ -421,6 +422,18 @@ const createPointLightSnapshot = (light: GltfPunctualLightJson): SceneComponentS
         }),
     });
 
+const createSpotLightSnapshot = (light: GltfPunctualLightJson): SceneComponentSnapshot =>
+    Object.freeze({
+        type: 'SpotLight',
+        data: Object.freeze({
+            color: Object.freeze([...(light.color ?? [1, 1, 1])]),
+            intensity: light.intensity ?? 1,
+            ...(light.range !== undefined ? { range: light.range } : {}),
+            innerConeAngle: light.spot?.innerConeAngle ?? 0,
+            outerConeAngle: light.spot?.outerConeAngle ?? Math.PI / 4,
+        }),
+    });
+
 const createMeshRendererSnapshot = (
     meshKey: string,
     materialKey: string | undefined
@@ -680,7 +693,7 @@ const buildPrefabDefinition = (
     let primaryCameraAssigned = false;
     let primaryDirectionalAssigned = false;
     let directionalLightCount = 0;
-    let pointLightCount = 0;
+    let localLightCount = 0;
 
     const visitNode = (nodeIndex: number, parentNodeId: string | null): void => {
         const node = root.nodes?.[nodeIndex];
@@ -718,6 +731,8 @@ const buildPrefabDefinition = (
                   )
                 : punctualLight?.light.type === 'point'
                   ? createPointLightSnapshot(punctualLight.light)
+                                    : punctualLight?.light.type === 'spot'
+                                        ? createSpotLightSnapshot(punctualLight.light)
                   : undefined;
 
         if (cameraComponent && sceneIndex === defaultSceneIndex && primaryCameraAssigned === false) {
@@ -734,16 +749,11 @@ const buildPrefabDefinition = (
 
         if (punctualLight?.light.type === 'directional') {
             directionalLightCount += 1;
-        } else if (punctualLight?.light.type === 'point') {
-            pointLightCount += 1;
-        } else if (punctualLight?.light.type === 'spot') {
-            diagnostics.push(
-                Object.freeze({
-                    level: 'warning',
-                    code: 'gltf.light.spot.unsupported',
-                    message: `Scene ${sceneIndex} node ${nodeIndex} references spot light ${punctualLight.index}, but Axrone does not import spot lights yet`,
-                } satisfies AssetImportDiagnostic)
-            );
+        } else if (
+            punctualLight?.light.type === 'point' ||
+            punctualLight?.light.type === 'spot'
+        ) {
+            localLightCount += 1;
         }
 
         if (primitives.length <= 1) {
@@ -835,12 +845,12 @@ const buildPrefabDefinition = (
         );
     }
 
-    if (pointLightCount > 1) {
+    if (localLightCount > MAX_SCENE_LOCAL_LIGHTS) {
         diagnostics.push(
             Object.freeze({
                 level: 'warning',
-                code: 'gltf.light.point.runtime-limit',
-                message: `Scene ${sceneIndex} imports ${pointLightCount} point lights, but Axrone currently shades only the first point light`,
+                code: 'gltf.light.local.runtime-limit',
+                message: `Scene ${sceneIndex} imports ${localLightCount} local lights, but Axrone currently shades only ${MAX_SCENE_LOCAL_LIGHTS} point/spot lights`,
             } satisfies AssetImportDiagnostic)
         );
     }

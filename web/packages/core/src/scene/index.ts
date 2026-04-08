@@ -54,6 +54,9 @@ export { OrbitCameraController } from './components/orbit-camera-controller';
 export type { PointLightConfig } from './components/point-light';
 export { PointLight } from './components/point-light';
 
+export type { SpotLightConfig } from './components/spot-light';
+export { SpotLight } from './components/spot-light';
+
 export {
     FilterMode,
     TextureDimension,

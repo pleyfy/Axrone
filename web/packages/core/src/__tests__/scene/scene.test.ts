@@ -29,6 +29,8 @@ let Scene: typeof import('../../scene').Scene;
 let MeshRenderer: typeof import('../../scene').MeshRenderer;
 let DirectionalLight: typeof import('../../scene').DirectionalLight;
 let OrbitCameraController: typeof import('../../scene').OrbitCameraController;
+let PointLight: typeof import('../../scene').PointLight;
+let SpotLight: typeof import('../../scene').SpotLight;
 
 class ManualScheduler {
     readonly kind = 'manual';
@@ -101,9 +103,24 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
         ELEMENT_ARRAY_BUFFER: 0x8893,
         STATIC_DRAW: 0x88e4,
         FLOAT: 0x1406,
+        FLOAT_VEC2: 0x8b50,
+        FLOAT_VEC3: 0x8b51,
+        FLOAT_VEC4: 0x8b52,
+        FLOAT_MAT4: 0x8b5c,
+        INT: 0x1404,
+        INT_VEC2: 0x8b53,
+        INT_VEC3: 0x8b54,
+        INT_VEC4: 0x8b55,
+        BOOL: 0x8b56,
+        BOOL_VEC2: 0x8b57,
+        BOOL_VEC3: 0x8b58,
+        BOOL_VEC4: 0x8b59,
         UNSIGNED_BYTE: 0x1401,
         UNSIGNED_SHORT: 0x1403,
         UNSIGNED_INT: 0x1405,
+        UNSIGNED_INT_VEC2: 0x8dc6,
+        UNSIGNED_INT_VEC3: 0x8dc7,
+        UNSIGNED_INT_VEC4: 0x8dc8,
         TRIANGLES: 0x0004,
         LINES: 0x0001,
         POINTS: 0x0000,
@@ -274,8 +291,8 @@ const createMockGL = (canvas: HTMLCanvasElement) => {
 const createSceneOptions = (
     scheduler: ManualScheduler,
     canvas: HTMLCanvasElement,
-    registry: SceneOptions['registry'] = {}
-): SceneOptions => {
+    registry: SceneOptions<any>['registry'] = {}
+): SceneOptions<any> => {
     const gl = createMockGL(canvas);
     Object.defineProperty(canvas, 'getContext', {
         value: vi.fn(() => gl),
@@ -303,6 +320,8 @@ describe('Scene', () => {
         MeshRenderer = sceneModule.MeshRenderer;
         DirectionalLight = sceneModule.DirectionalLight;
         OrbitCameraController = sceneModule.OrbitCameraController;
+        PointLight = sceneModule.PointLight;
+        SpotLight = sceneModule.SpotLight;
     });
 
     beforeEach(() => {
@@ -551,7 +570,9 @@ void main() {
             .find((actor: { name: string }) => actor.name === 'Camera');
         expect(restoredPlane).toBeDefined();
         expect(restoredPlane?.getComponent(MeshRenderer)?.materialId).toBe('plane-material');
-        expect(restoredPlane?.requireComponent(Transform).parent?.actor).toBe(restoredCamera);
+        expect(restoredPlane?.requireComponent(Transform).parent?.id).toBe(
+            restoredCamera?.requireComponent(Transform).id
+        );
         expect(scene.getTexture('solid')?.width).toBe(2);
         expect(gl.drawElements).toHaveBeenCalled();
 
@@ -580,6 +601,143 @@ void main() {
 
         expect(restoredChild?.parent?.name).toBe('Copy Parent');
         expect(restoredComponent?.parentNameAtAwake).toBe('Copy Parent');
+
+        scene.dispose();
+    });
+
+    it('uploads point and spot light arrays for shaders that declare local light uniforms', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const gl = scene.gl as unknown as ReturnType<typeof createMockGL>;
+
+        scene.registerShader({
+            id: 'test/local-lights',
+            vertexSource: `#version 300 es
+layout(location = 0) in vec3 a_Position;
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+void main() {
+    gl_Position = u_Projection * u_View * u_Model * vec4(a_Position, 1.0);
+}`,
+            fragmentSource: `#version 300 es
+precision highp float;
+uniform bool u_ReceiveLighting;
+uniform int u_PointLightCount;
+uniform int u_SpotLightCount;
+uniform int u_LocalLightCount;
+uniform int u_LocalLightType[4];
+uniform vec3 u_LocalLightPosition[4];
+uniform vec3 u_LocalLightDirection[4];
+uniform vec3 u_LocalLightColor[4];
+uniform float u_LocalLightIntensity[4];
+uniform float u_LocalLightRange[4];
+uniform float u_LocalLightInnerCone[4];
+uniform float u_LocalLightOuterCone[4];
+out vec4 o_Color;
+void main() {
+    float intensity = u_ReceiveLighting ? float(u_LocalLightCount) : 0.0;
+    o_Color = vec4(intensity / 4.0, 0.0, 0.0, 1.0);
+}`,
+            uniforms: [
+                'u_Model',
+                'u_View',
+                'u_Projection',
+                'u_ReceiveLighting',
+                'u_PointLightCount',
+                'u_SpotLightCount',
+                'u_LocalLightCount',
+                'u_LocalLightType',
+                'u_LocalLightPosition',
+                'u_LocalLightDirection',
+                'u_LocalLightColor',
+                'u_LocalLightIntensity',
+                'u_LocalLightRange',
+                'u_LocalLightInnerCone',
+                'u_LocalLightOuterCone',
+            ],
+        });
+
+        scene.createPlaneMesh('plane', 1, 1);
+        scene.createMaterial({
+            id: 'plane-material',
+            shaderId: 'test/local-lights',
+        });
+
+        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        const pointActor = scene.createActor({ name: 'Point' });
+        pointActor.addComponent(SpotLight, {
+            color: [0.8, 0.7, 0.6],
+            intensity: 4,
+            range: 12,
+            innerConeAngle: 0.2,
+            outerConeAngle: 0.6,
+        });
+        pointActor.requireComponent(Transform).position = new Vec3(2, 3, 4);
+
+        const spotActor = scene.createActor({ name: 'Spot' });
+        spotActor.addComponent(SpotLight, {
+            color: [0.2, 0.4, 1],
+            intensity: 8,
+            range: 18,
+            innerConeAngle: 0.15,
+            outerConeAngle: 0.5,
+        });
+        spotActor.requireComponent(Transform).position = new Vec3(-1, 5, 2);
+
+        const pointLightActor = scene.createActor({ name: 'PointLight' });
+        pointLightActor.addComponent(PointLight, {
+            color: [1, 0.5, 0.25],
+            intensity: 3,
+            range: 9,
+        });
+        pointLightActor.requireComponent(Transform).position = new Vec3(1, 2, 3);
+
+        const plane = scene.createRenderableActor(
+            { name: 'Plane' },
+            { meshId: 'plane', materialId: 'plane-material', passId: 'main' }
+        );
+        plane.requireComponent(Transform).position = new Vec3(0, 0, -2);
+
+        scene.start(0);
+        scheduler.flush(16);
+
+        const uniform1iMock = gl.uniform1i as unknown as {
+            mock: { calls: readonly [WebGLUniformLocation | null, number][] };
+        };
+        const uniform3fvMock = gl.uniform3fv as unknown as {
+            mock: { calls: readonly [WebGLUniformLocation | null, Float32Array][] };
+        };
+        const uniform1ivMock = gl.uniform1iv as unknown as {
+            mock: { calls: readonly [WebGLUniformLocation | null, Int32Array][] };
+        };
+        const uniform1fvMock = gl.uniform1fv as unknown as {
+            mock: { calls: readonly [WebGLUniformLocation | null, Float32Array][] };
+        };
+
+        const localLightCountCall = uniform1iMock.mock.calls.find(
+            ([location]) => (location as { name: string }).name === 'u_LocalLightCount'
+        );
+        const spotLightCountCall = uniform1iMock.mock.calls.find(
+            ([location]) => (location as { name: string }).name === 'u_SpotLightCount'
+        );
+        const localLightTypesCall = uniform1ivMock.mock.calls.find(
+            ([location]) => (location as { name: string }).name === 'u_LocalLightType'
+        );
+        const localLightPositionsCall = uniform3fvMock.mock.calls.find(
+            ([location]) => (location as { name: string }).name === 'u_LocalLightPosition'
+        );
+        const localLightOuterConesCall = uniform1fvMock.mock.calls.find(
+            ([location]) => (location as { name: string }).name === 'u_LocalLightOuterCone'
+        );
+
+        expect(localLightCountCall?.[1]).toBe(3);
+        expect(spotLightCountCall?.[1]).toBe(2);
+        expect(localLightTypesCall?.[1]).toEqual(new Int32Array([1, 1, 0]));
+        expect(localLightPositionsCall?.[1]).toEqual(
+            new Float32Array([2, 3, 4, -1, 5, 2, 1, 2, 3])
+        );
+        expect(localLightOuterConesCall?.[1]).toEqual(new Float32Array([0.6, 0.5, 0]));
 
         scene.dispose();
     });

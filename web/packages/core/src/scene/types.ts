@@ -9,6 +9,7 @@ import type { DirectionalLight } from './components/directional-light';
 import type { MeshRenderer } from './components/mesh-renderer';
 import type { OrbitCameraController } from './components/orbit-camera-controller';
 import type { PointLight } from './components/point-light';
+import type { SpotLight } from './components/spot-light';
 import type { Hierarchy } from '../component-system/components/hierarchy';
 import type { Transform } from '../component-system/components/transform';
 import type { FilterMode, TextureFormat, WrapMode } from '../renderer/webgl2/texture/interfaces';
@@ -267,6 +268,7 @@ export type SceneBuiltInRegistry = {
     readonly MeshRenderer: typeof MeshRenderer;
     readonly DirectionalLight: typeof DirectionalLight;
     readonly PointLight: typeof PointLight;
+    readonly SpotLight: typeof SpotLight;
     readonly OrbitCameraController: typeof OrbitCameraController;
 };
 

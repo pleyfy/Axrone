@@ -701,7 +701,7 @@ describe('glTF importer', () => {
         );
     });
 
-    it('imports punctual lights that fit Axrone scene components and warns on unsupported or over-limit lights', async () => {
+    it('imports punctual lights that fit Axrone scene components and warns when local light capacity is exceeded', async () => {
         const database = new AssetDatabase<GltfAssetSchema>({
             importers: [createGltfImporter()],
         });
@@ -737,6 +737,20 @@ describe('glTF importer', () => {
                                     innerConeAngle: 0.2,
                                     outerConeAngle: 0.5,
                                 },
+                            },
+                            {
+                                type: 'spot',
+                                intensity: 2,
+                                range: 10,
+                                spot: {
+                                    innerConeAngle: 0.1,
+                                    outerConeAngle: 0.4,
+                                },
+                            },
+                            {
+                                type: 'point',
+                                intensity: 5,
+                                range: 14,
                             },
                         ],
                     },
@@ -780,11 +794,27 @@ describe('glTF importer', () => {
                         name: 'Mesh Root',
                         mesh: 0,
                     },
+                    {
+                        name: 'Spot B',
+                        extensions: {
+                            KHR_lights_punctual: {
+                                light: 4,
+                            },
+                        },
+                    },
+                    {
+                        name: 'Lamp C',
+                        extensions: {
+                            KHR_lights_punctual: {
+                                light: 5,
+                            },
+                        },
+                    },
                 ],
                 scenes: [
                     {
                         name: 'Main',
-                        nodes: [0, 1, 2, 3, 4],
+                        nodes: [0, 1, 2, 3, 4, 5, 6],
                     },
                 ],
             } satisfies GltfRootJson, createBinaryBlob()),
@@ -795,6 +825,7 @@ describe('glTF importer', () => {
         const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
         const sunActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Sun');
         const pointActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Lamp A');
+        const spotActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Spot');
 
         expect(sunActor?.components).toEqual(
             expect.arrayContaining([
@@ -818,15 +849,23 @@ describe('glTF importer', () => {
                 }),
             ])
         );
-        expect(receipt.primary.data.stats.lightCount).toBe(4);
+        expect(spotActor?.components).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'SpotLight',
+                    data: expect.objectContaining({
+                        intensity: 3,
+                        innerConeAngle: 0.2,
+                        outerConeAngle: 0.5,
+                    }),
+                }),
+            ])
+        );
+        expect(receipt.primary.data.stats.lightCount).toBe(6);
         expect(receipt.diagnostics).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
-                    code: 'gltf.light.spot.unsupported',
-                    level: 'warning',
-                }),
-                expect.objectContaining({
-                    code: 'gltf.light.point.runtime-limit',
+                    code: 'gltf.light.local.runtime-limit',
                     level: 'warning',
                 }),
             ])
