@@ -40,3 +40,18 @@ export interface UIOverlayRenderPipelineBackendOptions<TNative = unknown, TPaylo
     readonly renderer: Pick<UIFrameSink<TPayload>, 'render'>;
     readonly ui: UIFrameProducer<TPayload>;
 }
+
+export interface ManagedWebGL2UIOverlayRenderPipelineBackendOptions<TNative = unknown, TPayload = unknown>
+    extends Omit<UIOverlayRenderPipelineBackendOptions<TNative, TPayload>, 'renderer'> {
+    readonly renderer?: Omit<WebGL2UIRendererOptions<TPayload>, 'gl'>;
+    readonly getGL: (input: {
+        readonly context: Parameters<NonNullable<RenderPipelineBackend<TNative>['beginFrame']>>[0];
+        readonly result: Parameters<NonNullable<RenderPipelineBackend<TNative>['endFrame']>>[0];
+    }) => WebGL2RenderingContext;
+}
+
+export interface ManagedUIOverlayRenderPipelineBackend<TNative = unknown>
+    extends RenderPipelineBackend<TNative>,
+        Disposable {
+    dispose(): void;
+}
