@@ -73,6 +73,12 @@ export {
 } from './errors';
 
 export {
+    createGltfPbrShaderDefinition,
+    createGltfSceneSnapshot,
+    createGltfUnlitShaderDefinition,
+    loadGltfSceneIntoScene,
+} from './runtime';
+export {
     createGltfImporter,
     createGltfTextureTranscodeStage,
     createPassthroughGltfTextureTranscoder,

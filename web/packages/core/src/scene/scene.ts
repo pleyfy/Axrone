@@ -127,6 +127,27 @@ interface SamplerResource {
     readonly sampler: ITextureSampler;
 }
 
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+const encodeBase64 = (bytes: Uint8Array): string => {
+    let result = '';
+
+    for (let index = 0; index < bytes.length; index += 3) {
+        const byte0 = bytes[index] ?? 0;
+        const byte1 = bytes[index + 1] ?? 0;
+        const byte2 = bytes[index + 2] ?? 0;
+        const block = (byte0 << 16) | (byte1 << 8) | byte2;
+
+        result +=
+            BASE64_ALPHABET[(block >>> 18) & 63] +
+            BASE64_ALPHABET[(block >>> 12) & 63] +
+            (index + 1 < bytes.length ? BASE64_ALPHABET[(block >>> 6) & 63] : '=') +
+            (index + 2 < bytes.length ? BASE64_ALPHABET[block & 63] : '=');
+    }
+
+    return result;
+};
+
 interface RenderPassResource {
     readonly id: string;
     readonly order: number;
@@ -317,6 +338,19 @@ const cloneTextureDefinition = (definition: SceneTextureDefinition): SceneTextur
             source: {
                 ...source,
                 data: [...source.data],
+            },
+        };
+    }
+
+    if (source.kind === 'bytes') {
+        return {
+            ...definition,
+            source: {
+                ...source,
+                bytes:
+                    source.bytes instanceof Uint8Array
+                        ? new Uint8Array(source.bytes)
+                        : [...source.bytes],
             },
         };
     }
@@ -1677,6 +1711,25 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 );
                 break;
             }
+            case 'bytes': {
+                const image = await this._loadImageFromBytes(
+                    definition.source.bytes,
+                    definition.source.mimeType,
+                    definition.source.uri
+                );
+                texture = this._textureManager.createTexture(
+                    {
+                        width: image.width,
+                        height: image.height,
+                        format,
+                        dimension: TextureDimension.TEXTURE_2D,
+                        usage: TextureUsage.STATIC,
+                        mipLevels: mipLevelsFor(image.width, image.height),
+                    },
+                    image
+                );
+                break;
+            }
         }
 
         if (generateMipmaps && texture.mipLevels > 1) {
@@ -1706,6 +1759,35 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             image.onerror = () => reject(new SceneMaterialError(`Failed to load texture '${url}'`));
             image.src = url;
         });
+    }
+
+    private async _loadImageFromBytes(
+        bytes: readonly number[] | Uint8Array,
+        mimeType: string,
+        uri?: string
+    ): Promise<HTMLImageElement> {
+        if (mimeType.startsWith('image/') === false) {
+            throw new SceneMaterialError(
+                `Cannot decode texture bytes${uri ? ` for '${uri}'` : ''} because mime type '${mimeType}' is not an image`
+            );
+        }
+
+        const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        const blobBytes = new Uint8Array(data);
+        const blob = new Blob([blobBytes.buffer], { type: mimeType });
+        const canCreateObjectUrl =
+            typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
+        const objectUrl = canCreateObjectUrl
+            ? URL.createObjectURL(blob)
+            : `data:${mimeType};base64,${encodeBase64(blobBytes)}`;
+
+        try {
+            return await this._loadImage(objectUrl);
+        } finally {
+            if (canCreateObjectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        }
     }
 
     private _registerGeometryBuffers(

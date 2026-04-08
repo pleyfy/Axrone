@@ -720,6 +720,8 @@ const createMaterialDefinition = (
                 binding.transform.offset[0],
                 binding.transform.offset[1],
             ]);
+            uniforms[`${uniformName}_Rotation`] = binding.transform.rotation;
+            uniforms[`${uniformName}_TexCoord`] = binding.transform.texCoord;
         }
         if (binding.scale !== undefined) {
             uniforms[`${uniformName}_Scale`] = binding.scale;

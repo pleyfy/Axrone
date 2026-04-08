@@ -103,6 +103,12 @@ export type SceneTextureSourceDefinition =
           readonly kind: 'url';
           readonly url: string;
           readonly crossOrigin?: string | null;
+        }
+        | {
+            readonly kind: 'bytes';
+            readonly bytes: readonly number[] | Uint8Array;
+            readonly mimeType: string;
+            readonly uri?: string;
       };
 
 export interface SceneTextureDefinition {
