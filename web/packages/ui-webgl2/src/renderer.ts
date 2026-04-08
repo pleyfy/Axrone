@@ -336,6 +336,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
     private imageCount = 0;
     private textCount = 0;
     private activeImageTexture: WebGLTexture | null = null;
+    private activeImageSampler: WebGLSampler | null = null;
     private activeTextPageKey: string | null = null;
     private activeQuadClip: ClipState | null = null;
     private activeImageClip: ClipState | null = null;
@@ -401,6 +402,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.textCount = 0;
         this.activeQuadClip = null;
         this.activeImageClip = null;
+        this.activeImageSampler = null;
         this.activeTextClip = null;
         this.activeImageTexture = null;
         this.activeTextPageKey = null;
@@ -625,6 +627,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         }
         if (
             (this.activeImageTexture !== null && this.activeImageTexture !== resource.texture) ||
+            (this.activeImageSampler !== (resource.sampler ?? null)) ||
             (this.activeImageClip !== null && !sameClip(this.activeImageClip, command.clip))
         ) {
             this.flushImageBatch(frame.viewportHeight);
@@ -635,6 +638,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
             return this.pushImageCommand(command, frame);
         }
         this.activeImageTexture = resource.texture;
+        this.activeImageSampler = resource.sampler ?? null;
         this.activeImageClip = toClipState(command.clip);
         const tint = [
             command.tint.r,
@@ -738,6 +742,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.uniform2f(this.imageViewportUniform, this.currentFrame.viewportWidth, this.currentFrame.viewportHeight);
         this.gl.activeTexture(this.gl.TEXTURE0);
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.activeImageTexture);
+        this.gl.bindSampler?.(0, this.activeImageSampler);
         this.gl.uniform1i(this.imageTextureUniform, 0);
         this.gl.bindVertexArray(this.imageVao);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.imageInstanceBuffer);
@@ -751,6 +756,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.statisticsState.drawCalls += 1;
         this.imageCount = 0;
         this.activeImageTexture = null;
+        this.activeImageSampler = null;
     }
 
     private flushTextBatch(viewportHeight: number): void {

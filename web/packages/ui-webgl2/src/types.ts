@@ -8,7 +8,12 @@ import type {
     UIFrameProducer,
     UIFrameSink,
 } from '@axrone/ui';
-import type { GameLoop, RenderPipelineBackend, Scene } from '@axrone/core';
+import type {
+    GameLoop,
+    RenderPipelineBackend,
+    SceneMaterialTextureBindingHandle,
+    SceneTextureResourceHandle,
+} from '@axrone/core';
 
 export interface WebGL2UIRendererStatistics {
     readonly drawCalls: number;
@@ -53,6 +58,7 @@ export interface WebGL2UIResolveImageResourceContext<TPayload = unknown> {
 export interface WebGL2UIResolvedTextureImage {
     readonly kind: 'texture';
     readonly texture: WebGLTexture;
+    readonly sampler?: WebGLSampler | null;
 }
 
 export interface WebGL2UIMaterialImageContext<TPayload = unknown> {
@@ -71,6 +77,26 @@ export interface WebGL2UIResolvedMaterialImage<TPayload = unknown> {
 export type WebGL2UIResolvedImageResource<TPayload = unknown> =
     | WebGL2UIResolvedTextureImage
     | WebGL2UIResolvedMaterialImage<TPayload>;
+
+export interface SceneUIResourceResolverTarget {
+    getTextureResource(id: string): SceneTextureResourceHandle | null;
+    getMaterialTextureBinding(
+        materialId: string,
+        uniformName?: string
+    ): SceneMaterialTextureBindingHandle | null;
+}
+
+export interface SceneUIResourceResolverOptions<TPayload = unknown> {
+    readonly materialTextureBinding?: string;
+    readonly resolveMaterial?: (
+        source: Extract<UIImageSource, { readonly kind: 'material' }>,
+        input: {
+            readonly scene: SceneUIResourceResolverTarget;
+            readonly binding: SceneMaterialTextureBindingHandle | null;
+            readonly context: WebGL2UIResolveImageResourceContext<TPayload>;
+        }
+    ) => WebGL2UIResolvedImageResource<TPayload> | null;
+}
 
 export interface UIOverlayRenderPipelineBackendOptions<TNative = unknown, TPayload = unknown> {
     readonly base?: RenderPipelineBackend<TNative>;
@@ -93,7 +119,7 @@ export interface ManagedUIOverlayRenderPipelineBackend<TNative = unknown>
     dispose(): void;
 }
 
-export interface SceneUIOverlayTarget {
+export interface SceneUIOverlayTarget extends Partial<SceneUIResourceResolverTarget> {
     readonly canvas: Pick<HTMLCanvasElement, 'width' | 'height'>;
     readonly gl: Pick<WebGL2RenderingContext, 'drawingBufferWidth' | 'drawingBufferHeight'> & WebGL2RenderingContext;
     readonly loop: Pick<GameLoop<{ readonly sceneId: string }>, 'addSystem' | 'removeSystem' | 'getSystem'>;
@@ -102,6 +128,7 @@ export interface SceneUIOverlayTarget {
 export interface SceneUIOverlayOptions<TPayload = unknown> {
     readonly ui: UIFrameProducer<TPayload>;
     readonly renderer?: Omit<WebGL2UIRendererOptions<TPayload>, 'gl'>;
+    readonly resources?: SceneUIResourceResolverOptions<TPayload>;
     readonly systemId?: string;
     readonly priority?: number;
 }
