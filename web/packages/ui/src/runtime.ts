@@ -823,6 +823,9 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             maxLines: Math.max(1, Math.floor(input.maxLines ?? Number.MAX_SAFE_INTEGER)),
             align: input.align ?? 'start',
             color: normalizeColor(input.color, fallbackColor),
+            outlineColor: normalizeColor(input.outlineColor, TRANSPARENT),
+            outlineWidth: Math.max(0, input.outlineWidth ?? 0),
+            edgeSoftness: Math.max(0.5, input.edgeSoftness ?? 1),
         };
     }
 
@@ -1182,6 +1185,9 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
                     y: box.contentY,
                     zIndex,
                     color: this.texts[index]!.color,
+                    outlineColor: this.texts[index]!.outlineColor,
+                    outlineWidth: this.texts[index]!.outlineWidth,
+                    edgeSoftness: this.texts[index]!.edgeSoftness,
                     opacity: style.opacity,
                     clip: nextClip,
                     layout: textLayout,

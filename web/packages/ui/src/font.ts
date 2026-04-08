@@ -159,6 +159,7 @@ class GlyphAtlas {
             height,
             format,
             rowStride,
+            distanceRange: metric.distanceRange ?? 1,
             u0: x / page.width,
             v0: y / page.height,
             u1: (x + width) / page.width,
