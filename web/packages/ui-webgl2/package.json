@@ -1,0 +1,37 @@
+{
+    "name": "@axrone/ui-webgl2",
+    "version": "0.0.1",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./renderer": {
+            "types": "./dist/renderer/index.d.ts",
+            "import": "./dist/renderer/index.mjs",
+            "require": "./dist/renderer/index.js"
+        },
+        "./pipeline": {
+            "types": "./dist/pipeline/index.d.ts",
+            "import": "./dist/pipeline/index.mjs",
+            "require": "./dist/pipeline/index.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@axrone/core": "^0.1.0",
+        "@axrone/ui": "^0.0.1"
+    }
+}

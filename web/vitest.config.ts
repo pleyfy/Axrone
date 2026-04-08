@@ -21,6 +21,8 @@ export default defineConfig({
             '@axrone/core': path.resolve(__dirname, 'packages/core/src'),
             '@axrone/numeric': path.resolve(__dirname, 'packages/numeric/src'),
             '@axrone/random': path.resolve(__dirname, 'packages/random/src'),
+            '@axrone/ui': path.resolve(__dirname, 'packages/ui/src'),
+            '@axrone/ui-webgl2': path.resolve(__dirname, 'packages/ui-webgl2/src'),
             '@axrone/utility': path.resolve(__dirname, 'packages/utility/src'),
         },
     },

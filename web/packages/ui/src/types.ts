@@ -618,6 +618,8 @@ export interface QuadRenderCommand {
 export interface TextRenderCommand {
     readonly kind: 'text';
     readonly widget: WidgetId;
+    readonly x: number;
+    readonly y: number;
     readonly zIndex: number;
     readonly color: ReadonlyColor;
     readonly opacity: number;

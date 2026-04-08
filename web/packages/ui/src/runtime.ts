@@ -1060,6 +1060,8 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
                 const textCommand: TextRenderCommand = {
                     kind: 'text',
                     widget: index as WidgetId,
+                    x: box.contentX,
+                    y: box.contentY,
                     zIndex,
                     color: this.texts[index]!.color,
                     opacity: style.opacity,
