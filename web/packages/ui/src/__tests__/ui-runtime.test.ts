@@ -71,6 +71,38 @@ describe('@axrone/ui runtime', () => {
         }
     });
 
+    it('measures intrinsic image widgets and emits image commands', () => {
+        const runtime = new UIRuntime({ width: 320, height: 180 });
+        const image = runtime.createWidget({
+            layout: { width: 'content', height: 'content' },
+            image: {
+                source: {
+                    kind: 'texture',
+                    resourceId: 'ui:hero',
+                    width: 128,
+                    height: 64,
+                },
+                fit: 'none',
+            },
+        });
+
+        runtime.appendChild(runtime.root, image);
+
+        const frame = runtime.commit();
+        const box = runtime.getLayoutBox(image);
+        const command = frame.commands.find((entry) => entry.kind === 'image');
+
+        expect(box.width).toBe(128);
+        expect(box.height).toBe(64);
+        expect(frame.metrics.imageCommandCount).toBe(1);
+        expect(command).toBeDefined();
+        if (command && command.kind === 'image') {
+            expect(command.source.kind).toBe('texture');
+            expect(command.width).toBe(128);
+            expect(command.height).toBe(64);
+        }
+    });
+
     it('moves focus with directional and linear navigation', () => {
         const runtime = new UIRuntime({ width: 320, height: 120 });
 

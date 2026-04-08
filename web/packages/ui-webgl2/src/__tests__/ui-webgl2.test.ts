@@ -13,6 +13,7 @@ const createMetrics = (): UIFrameMetrics => ({
     visibleWidgetCount: 2,
     renderCount: 2,
     customCommandCount: 1,
+    imageCommandCount: 0,
     textCommandCount: 1,
     glyphCount: 1,
     layoutPasses: 1,
@@ -213,6 +214,8 @@ describe('@axrone/ui-webgl2', () => {
         expect(renderer.getStats()).toEqual({
             drawCalls: 2,
             quadCount: 1,
+            imageCount: 0,
+            materialImageCount: 0,
             glyphCount: 1,
             customCommandCount: 1,
             uploadedGlyphCount: 1,
@@ -290,17 +293,17 @@ describe('@axrone/ui-webgl2', () => {
         await backend.endFrame?.(result, contextFor(0));
         await backend.endFrame?.(result, contextFor(1));
 
-        expect(glA.createProgram).toHaveBeenCalledTimes(2);
+        expect(glA.createProgram).toHaveBeenCalledTimes(3);
         expect(glA.deleteProgram).not.toHaveBeenCalled();
 
         await backend.endFrame?.(result, contextFor(2));
 
-        expect(glB.createProgram).toHaveBeenCalledTimes(2);
-        expect(glA.deleteProgram).toHaveBeenCalledTimes(2);
+        expect(glB.createProgram).toHaveBeenCalledTimes(3);
+        expect(glA.deleteProgram).toHaveBeenCalledTimes(3);
 
         backend.dispose();
 
-        expect(glB.deleteProgram).toHaveBeenCalledTimes(2);
+        expect(glB.deleteProgram).toHaveBeenCalledTimes(3);
     });
 
     it('attaches UI rendering to the scene after-frame hook', () => {
@@ -332,6 +335,98 @@ describe('@axrone/ui-webgl2', () => {
         overlay.dispose();
 
         expect(loop.getSystem('ui.overlay.test')).toBeUndefined();
-        expect(gl.deleteProgram).toHaveBeenCalledTimes(2);
+        expect(gl.deleteProgram).toHaveBeenCalledTimes(3);
+    });
+
+    it('renders texture images and delegates material-backed image commands', () => {
+        const gl = createMockWebGL2Context();
+        const texture = { id: 'texture:image' } as unknown as WebGLTexture;
+        const materialRender = vi.fn();
+        const renderer = new WebGL2UIRenderer({
+            gl,
+            resolveImageResource(source) {
+                if (source.kind === 'material') {
+                    return {
+                        kind: 'material',
+                        render: materialRender,
+                    };
+                }
+                return {
+                    kind: 'texture',
+                    texture,
+                };
+            },
+        });
+        const frame: UIFrame<never> = {
+            viewportWidth: 128,
+            viewportHeight: 96,
+            metrics: {
+                ...createMetrics(),
+                renderCount: 2,
+                imageCommandCount: 2,
+                textCommandCount: 0,
+                customCommandCount: 0,
+                glyphCount: 0,
+            },
+            commands: [
+                {
+                    kind: 'image',
+                    widget: 1 as WidgetId,
+                    source: {
+                        kind: 'texture',
+                        resourceId: 'ui:texture',
+                        width: 32,
+                        height: 32,
+                    },
+                    x: 8,
+                    y: 10,
+                    width: 32,
+                    height: 32,
+                    zIndex: 0,
+                    tint: { r: 1, g: 1, b: 1, a: 1 },
+                    opacity: 1,
+                    sampling: 'linear',
+                    radius: { topLeft: 4, topRight: 4, bottomRight: 4, bottomLeft: 4 },
+                    clip: null,
+                    uvRect: { x: 0, y: 0, width: 1, height: 1 },
+                },
+                {
+                    kind: 'image',
+                    widget: 2 as WidgetId,
+                    source: {
+                        kind: 'material',
+                        materialId: 'ui:material',
+                        width: 48,
+                        height: 24,
+                    },
+                    x: 40,
+                    y: 18,
+                    width: 48,
+                    height: 24,
+                    zIndex: 1,
+                    tint: { r: 1, g: 1, b: 1, a: 1 },
+                    opacity: 0.85,
+                    sampling: 'nearest',
+                    radius: { topLeft: 0, topRight: 0, bottomRight: 0, bottomLeft: 0 },
+                    clip: { x: 0, y: 0, width: 96, height: 80 },
+                    uvRect: { x: 0, y: 0, width: 1, height: 1 },
+                },
+            ],
+        };
+
+        renderer.render(frame);
+
+        expect(gl.drawArraysInstanced).toHaveBeenCalledTimes(1);
+        expect(materialRender).toHaveBeenCalledTimes(1);
+        expect(renderer.getStats()).toEqual({
+            drawCalls: 1,
+            quadCount: 0,
+            imageCount: 2,
+            materialImageCount: 1,
+            glyphCount: 0,
+            customCommandCount: 0,
+            uploadedGlyphCount: 0,
+            atlasPageCount: 0,
+        });
     });
 });
