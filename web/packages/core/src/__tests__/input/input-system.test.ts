@@ -122,6 +122,112 @@ describe('InputSystem', () => {
         expect(input.read('fire')).toBe(true);
     });
 
+    it('supports semantic gamepad paths with user ownership and hot-swapping', () => {
+        const input = createInputSystem({
+            schema: {
+                moveP1: { kind: 'vector2' },
+                moveP2: { kind: 'vector2' },
+                fireP1: { kind: 'button' },
+                fireP2: { kind: 'button' },
+            },
+            users: [
+                {
+                    id: 'player-1',
+                    devices: [{ device: 'gamepad', index: 0 }],
+                },
+                {
+                    id: 'player-2',
+                    devices: [{ device: 'gamepad', index: 1 }],
+                },
+            ],
+            contexts: [
+                {
+                    id: 'player-1-gameplay',
+                    user: 'player-1',
+                    bindings: {
+                        moveP1: [
+                            {
+                                type: 'dual-axis',
+                                x: 'gamepad/any/left-stick/x',
+                                y: 'gamepad/any/left-stick/y',
+                            },
+                        ],
+                        fireP1: [{ type: 'control', control: 'gamepad/any/south' }],
+                    },
+                },
+                {
+                    id: 'player-2-gameplay',
+                    user: 'player-2',
+                    bindings: {
+                        moveP2: [
+                            {
+                                type: 'dual-axis',
+                                x: 'gamepad/any/left-stick/x',
+                                y: 'gamepad/any/left-stick/y',
+                            },
+                        ],
+                        fireP2: [{ type: 'control', control: 'gamepad/any/south' }],
+                    },
+                },
+            ],
+        });
+
+        input.dispatch({
+            type: 'gamepad',
+            gamepads: [
+                {
+                    index: 0,
+                    connected: true,
+                    buttons: [1],
+                    axes: [0.5, -0.25],
+                },
+                {
+                    index: 1,
+                    connected: true,
+                    buttons: [0],
+                    axes: [-0.75, 0.4],
+                },
+            ],
+        });
+        input.update(1);
+
+        expect(input.read('moveP1')).toEqual({ x: 0.5, y: -0.25 });
+        expect(input.read('fireP1')).toBe(true);
+        expect(input.read('moveP2')).toEqual({ x: -0.75, y: 0.4 });
+        expect(input.read('fireP2')).toBe(false);
+
+        input.assignGamepad('player-1', 1);
+        input.dispatch({
+            type: 'gamepad',
+            gamepads: [
+                {
+                    index: 0,
+                    connected: true,
+                    buttons: [0],
+                    axes: [0, 0],
+                },
+                {
+                    index: 1,
+                    connected: true,
+                    buttons: [1],
+                    axes: [0.2, -0.9],
+                },
+            ],
+        });
+        input.update(2);
+
+        expect(input.read('moveP1')).toEqual({ x: 0.2, y: -0.9 });
+        expect(input.read('fireP1')).toBe(true);
+        expect(input.read('moveP2')).toEqual({ x: 0, y: 0 });
+        expect(input.read('fireP2')).toBe(false);
+        expect(input.user('player-1')?.devices).toEqual(
+            expect.arrayContaining([
+                { device: 'gamepad', index: 0 },
+                { device: 'gamepad', index: 1 },
+            ])
+        );
+    });
+
     it('attaches DOM targets and forwards browser events into the system', () => {
         const input = createInputSystem({
             schema: {
@@ -163,6 +269,123 @@ describe('InputSystem', () => {
 
         attachment.dispose();
         expect(attachment.isDisposed).toBe(true);
+    });
+
+    it('normalizes browser coordinates, wheel deltas, pointer lock, and text composition events', () => {
+        const input = createInputSystem({
+            schema: {
+                look: { kind: 'vector2' },
+                cursor: { kind: 'vector2' },
+                zoom: { kind: 'axis' },
+            },
+            contexts: [
+                {
+                    id: 'gameplay',
+                    bindings: {
+                        look: [{ type: 'dual-axis', x: 'mouse/move/x', y: 'mouse/move/y' }],
+                        cursor: [{ type: 'dual-axis', x: 'mouse/position/x', y: 'mouse/position/y' }],
+                        zoom: [{ type: 'control', control: 'mouse/wheel/y' }],
+                    },
+                },
+            ],
+        });
+
+        const surface = new EventTarget() as EventTarget & {
+            getBoundingClientRect(): DOMRect;
+            requestPointerLock(): void;
+        };
+        const doc = document as Document & {
+            pointerLockElement?: EventTarget | null;
+            exitPointerLock?: () => void;
+        };
+        doc.pointerLockElement = null;
+        doc.exitPointerLock = () => {
+            doc.pointerLockElement = null;
+        };
+        surface.getBoundingClientRect = () =>
+            ({
+                left: 100,
+                top: 50,
+                width: 200,
+                height: 100,
+            }) as DOMRect;
+        surface.requestPointerLock = () => {
+            doc.pointerLockElement = surface;
+        };
+
+        const attachment = input.attach({
+            document: doc,
+            element: surface,
+            coordinateSpace: 'element',
+            wheelPixelsPerLine: 20,
+            pointerLock: {
+                enabled: true,
+                requestOnMouseDown: true,
+                useRawMovement: true,
+            },
+        });
+
+        const down = new Event('mousedown') as MouseEvent;
+        Object.defineProperty(down, 'button', { value: 0 });
+        Object.defineProperty(down, 'clientX', { value: 110 });
+        Object.defineProperty(down, 'clientY', { value: 70 });
+        Object.defineProperty(down, 'movementX', { value: 0 });
+        Object.defineProperty(down, 'movementY', { value: 0 });
+        surface.dispatchEvent(down);
+
+        const move = new Event('mousemove') as MouseEvent;
+        Object.defineProperty(move, 'clientX', { value: 999 });
+        Object.defineProperty(move, 'clientY', { value: 999 });
+        Object.defineProperty(move, 'movementX', { value: 4 });
+        Object.defineProperty(move, 'movementY', { value: -2 });
+        surface.dispatchEvent(move);
+
+        const wheel = new Event('wheel') as WheelEvent;
+        Object.defineProperty(wheel, 'deltaMode', { value: 1 });
+        Object.defineProperty(wheel, 'deltaX', { value: 0 });
+        Object.defineProperty(wheel, 'deltaY', { value: 3 });
+        Object.defineProperty(wheel, 'deltaZ', { value: 0 });
+        surface.dispatchEvent(wheel);
+
+        const compositionStart = new Event('compositionstart') as CompositionEvent;
+        Object.defineProperty(compositionStart, 'data', { value: 'ya' });
+        document.dispatchEvent(compositionStart);
+        const compositionUpdate = new Event('compositionupdate') as CompositionEvent;
+        Object.defineProperty(compositionUpdate, 'data', { value: 'yaz' });
+        document.dispatchEvent(compositionUpdate);
+        const beforeInput = new Event('beforeinput') as InputEvent;
+        Object.defineProperty(beforeInput, 'data', { value: 'ğ' });
+        document.dispatchEvent(beforeInput);
+        input.update(1);
+
+        expect(attachment.isPointerLocked).toBe(true);
+        expect(input.read('look')).toEqual({ x: 4, y: -2 });
+        expect(input.read('cursor')).toEqual({ x: 14, y: 18 });
+        expect(input.read('zoom')).toBe(60);
+        expect(input.textEntries()).toEqual([
+            expect.objectContaining({
+                text: 'ğ',
+                frame: 0,
+            }),
+        ]);
+        expect(input.composition()).toEqual(
+            expect.objectContaining({
+                active: true,
+                text: 'yaz',
+                frame: 0,
+            })
+        );
+
+        const compositionEnd = new Event('compositionend') as CompositionEvent;
+        Object.defineProperty(compositionEnd, 'data', { value: 'yaz' });
+        document.dispatchEvent(compositionEnd);
+        input.update(2);
+        expect(input.textEntries()).toEqual([]);
+        expect(input.composition().active).toBe(false);
+
+        attachment.dispose();
+        expect(attachment.isDisposed).toBe(true);
+        expect(doc.pointerLockElement).toBe(null);
     });
 
     it('applies binding and action processor chains', () => {
@@ -590,6 +813,56 @@ describe('InputSystem', () => {
                 control: 'keyboard/KeyF',
             }),
         ]);
+    });
+
+    it('restores user ownership snapshots alongside contexts', () => {
+        const input = createInputSystem({
+            schema: {
+                fire: { kind: 'button' },
+            },
+            users: [
+                {
+                    id: 'player-1',
+                    devices: [{ device: 'gamepad', index: 0 }],
+                },
+            ],
+            contexts: [
+                {
+                    id: 'player-1-gameplay',
+                    user: 'player-1',
+                    bindings: {
+                        fire: [{ type: 'control', control: 'gamepad/any/south' }],
+                    },
+                },
+            ],
+        });
+        const snapshot = input.snapshot();
+
+        const restored = createInputSystem({
+            schema: {
+                fire: { kind: 'button' },
+            },
+        });
+        restored.restore(snapshot);
+        restored.dispatch({
+            type: 'gamepad',
+            gamepads: [
+                {
+                    index: 0,
+                    connected: true,
+                    buttons: [1],
+                    axes: [],
+                },
+            ],
+        });
+        restored.update(1);
+
+        expect(restored.read('fire')).toBe(true);
+        expect(restored.context('player-1-gameplay')).toEqual(
+            expect.objectContaining({
+                user: 'player-1',
+            })
+        );
     });
 
     it('cancels rebinding timeouts without breaking the update loop', () => {
