@@ -100,4 +100,5 @@ export * from './component-system';
 export * from './game-loop';
 export * from './scene';
 export * from './renderer/webgl2/buffer';
+export * from './renderer/webgl2/rendering';
 export * from './tween';
