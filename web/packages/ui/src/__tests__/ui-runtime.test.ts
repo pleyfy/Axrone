@@ -66,6 +66,8 @@ describe('@axrone/ui runtime', () => {
         expect(textCommand).toBeDefined();
         if (textCommand && textCommand.kind === 'text') {
             expect(textCommand.layout.glyphs.length).toBeGreaterThan(0);
+            expect(textCommand.x).toBe(labelBox.contentX);
+            expect(textCommand.y).toBe(labelBox.contentY);
         }
     });
 
