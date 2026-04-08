@@ -8,6 +8,7 @@ import type {
     GltfTextureTranscoder,
 } from './types';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
+import { TextureFormatInfo } from '../../renderer/webgl2/texture/utils';
 
 type BasisParseResult = Awaited<ReturnType<typeof BasisLoader.parse>>;
 type BasisTextureLevel = BasisParseResult[number][number];
@@ -29,6 +30,15 @@ const LOADERS_TO_AXRONE_TEXTURE_FORMAT = new Map<LoadersTextureFormat, TextureFo
     ['bc7-rgba-unorm', TextureFormat.BC7_RGBA],
     ['astc-4x4-unorm', TextureFormat.ASTC_4x4],
 ]);
+
+const DEFAULT_LOADERS_BASIS_TARGET_FORMAT_PREFERENCE = Object.freeze([
+    TextureFormat.ASTC_4x4,
+    TextureFormat.BC7_RGBA,
+    TextureFormat.BC3_RGBA,
+    TextureFormat.BC1_RGB,
+    TextureFormat.BC5_RG,
+    TextureFormat.BC4_R,
+] as const);
 
 const createDiagnosticResult = (
     transcoderId: string,
@@ -96,17 +106,66 @@ const isSupercompressedOrRuntimeUnknownKtx2 = (payload: GltfCompressedTexturePay
 export interface LoadersBasisGltfTextureTranscoderOptions {
     readonly id?: string;
     readonly priority?: number;
-    readonly supportedFormats: readonly TextureFormat[];
+    readonly supportedFormats?: readonly TextureFormat[];
+    readonly gl?: WebGL2RenderingContext;
+    readonly preferredFormats?: readonly TextureFormat[];
     readonly transcoderJsUrl?: string;
     readonly transcoderWasmUrl?: string;
     readonly useLocalLibraries?: boolean;
 }
 
+const normalizeLoadersTargetFormats = (
+    formats: readonly TextureFormat[] | undefined,
+    messagePrefix: string
+): readonly TextureFormat[] => {
+    const normalized = (formats ?? []).map((format) => {
+        if (!AXRONE_TO_LOADERS_TEXTURE_FORMAT.has(format)) {
+            throw new Error(
+                `${messagePrefix} does not support target format '${format}'`
+            );
+        }
+        return format;
+    });
+
+    if (normalized.length === 0) {
+        throw new Error(`${messagePrefix} requires at least one supported target format`);
+    }
+
+    return Object.freeze(normalized);
+};
+
+export const resolveLoadersBasisGltfTextureFormats = (
+    gl: WebGL2RenderingContext,
+    preferredFormats: readonly TextureFormat[] = DEFAULT_LOADERS_BASIS_TARGET_FORMAT_PREFERENCE
+): readonly TextureFormat[] =>
+    TextureFormatInfo.getContextSupportedCompressedFormats(
+        gl,
+        normalizeLoadersTargetFormats(
+            preferredFormats,
+            'Loaders-based glTF texture format resolution'
+        )
+    );
+
 export const createLoadersBasisGltfTextureTranscoder = (
     options: LoadersBasisGltfTextureTranscoderOptions
 ): GltfTextureTranscoder => {
     const transcoderId = options.id ?? 'gltf.texture.loaders.basis';
-    const supportedTextureFormats = options.supportedFormats.map((format) => {
+    const supportedFormats = options.supportedFormats
+        ? normalizeLoadersTargetFormats(
+              options.supportedFormats,
+              'Loaders-based glTF texture transcoder'
+          )
+        : options.gl
+          ? resolveLoadersBasisGltfTextureFormats(
+                options.gl,
+                options.preferredFormats
+            )
+          : (() => {
+                throw new Error(
+                    'Loaders-based glTF texture transcoder requires either supportedFormats or a WebGL2 context'
+                );
+            })();
+    const supportedTextureFormats = supportedFormats.map((format) => {
         const resolved = AXRONE_TO_LOADERS_TEXTURE_FORMAT.get(format);
         if (!resolved) {
             throw new Error(
@@ -117,7 +176,9 @@ export const createLoadersBasisGltfTextureTranscoder = (
     });
 
     if (supportedTextureFormats.length === 0) {
-        throw new Error('Loaders-based glTF texture transcoder requires at least one supported target format');
+        throw new Error(
+            'Loaders-based glTF texture transcoder could not resolve any supported compressed target formats for this WebGL context'
+        );
     }
 
     const libraryModules = {

@@ -489,6 +489,32 @@ export class TextureFormatInfo {
         return this.getFormatInfo(format).srgb;
     }
 
+    public static getCompressedFormats(): readonly TextureFormat[] {
+        return this.getSupportedFormats().filter((format) => this.isCompressed(format));
+    }
+
+    public static getContextSupportedCompressedFormats(
+        gl: WebGL2RenderingContext,
+        formats: readonly TextureFormat[] = this.getCompressedFormats()
+    ): readonly TextureFormat[] {
+        const supported: TextureFormat[] = [];
+
+        for (const format of formats) {
+            if (this.isCompressed(format) === false) {
+                continue;
+            }
+
+            try {
+                TextureWebGLConstants.getCompressedInternalFormat(gl, format);
+                supported.push(format);
+            } catch {
+                continue;
+            }
+        }
+
+        return Object.freeze(supported);
+    }
+
     public static getSupportedFormats(): readonly TextureFormat[] {
         return Array.from(this.formatDatabase.keys());
     }

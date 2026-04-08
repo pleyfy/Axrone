@@ -78,7 +78,10 @@ export {
     createGltfUnlitShaderDefinition,
     loadGltfSceneIntoScene,
 } from './runtime';
-export { createLoadersBasisGltfTextureTranscoder } from './loaders-texture-transcoder';
+export {
+    createLoadersBasisGltfTextureTranscoder,
+    resolveLoadersBasisGltfTextureFormats,
+} from './loaders-texture-transcoder';
 export {
     createGltfImporter,
     createGltfTextureTranscodeStage,

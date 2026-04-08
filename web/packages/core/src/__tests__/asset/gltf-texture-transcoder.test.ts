@@ -6,6 +6,7 @@ import {
     createGltfImporter,
     createGltfTextureTranscodeStage,
     GltfTextureTranscoderRegistry,
+    resolveLoadersBasisGltfTextureFormats,
     type GltfCompressedTexturePayload,
     type GltfAssetSchema,
     type GltfTextureAsset,
@@ -208,6 +209,15 @@ const createTextureAsset = (payload: GltfCompressedTexturePayload): GltfTextureA
     },
 });
 
+const createMockCompressedTextureGl = (
+    supportedExtensions: readonly string[]
+): WebGL2RenderingContext =>
+    ({
+        getExtension: vi.fn((name: string) =>
+            supportedExtensions.includes(name) ? { name } : null
+        ),
+    }) as unknown as WebGL2RenderingContext;
+
 describe('glTF loaders texture transcoder', () => {
     beforeEach(() => {
         parseBasisMock.mockReset();
@@ -298,6 +308,66 @@ describe('glTF loaders texture transcoder', () => {
         expect(Array.from(result.payload?.kind === 'compressed' ? result.payload.bytes : [])).toEqual([
             1, 2, 3, 4, 5, 6,
         ]);
+    });
+
+    it('resolves supported loaders target formats from WebGL capability order', () => {
+        const gl = createMockCompressedTextureGl([
+            'WEBGL_compressed_texture_astc',
+            'WEBGL_compressed_texture_s3tc',
+        ]);
+
+        expect(
+            resolveLoadersBasisGltfTextureFormats(gl, [
+                TextureFormat.ASTC_4x4,
+                TextureFormat.BC7_RGBA,
+                TextureFormat.BC3_RGBA,
+                TextureFormat.BC1_RGB,
+            ])
+        ).toEqual([
+            TextureFormat.ASTC_4x4,
+            TextureFormat.BC3_RGBA,
+            TextureFormat.BC1_RGB,
+        ]);
+    });
+
+    it('derives supported target formats from a WebGL context when supportedFormats are omitted', async () => {
+        parseBasisMock.mockResolvedValue([
+            [
+                {
+                    shape: 'texture-level',
+                    width: 4,
+                    height: 4,
+                    compressed: true,
+                    textureFormat: 'astc-4x4-unorm',
+                    data: new Uint8Array([1, 2, 3, 4]),
+                },
+            ],
+        ] as Awaited<ReturnType<typeof BasisLoader.parse>>);
+
+        const gl = createMockCompressedTextureGl(['WEBGL_compressed_texture_astc']);
+        const transcoder = createLoadersBasisGltfTextureTranscoder({
+            gl,
+            preferredFormats: [TextureFormat.ASTC_4x4, TextureFormat.BC3_RGBA],
+        });
+        const texture = createTextureAsset({
+            kind: 'compressed',
+            bytes: new Uint8Array([9, 9, 9, 9]),
+            container: 'basisu',
+            uri: 'textures/albedo.basis',
+            mimeType: 'image/basis',
+        });
+
+        const result = await transcoder.transcode({ texture });
+
+        expect(parseBasisMock).toHaveBeenCalledWith(
+            expect.any(ArrayBuffer),
+            expect.objectContaining({
+                basis: expect.objectContaining({
+                    supportedTextureFormats: ['astc-4x4-unorm'],
+                }),
+            })
+        );
+        expect(result.runtimeFormat).toBe(TextureFormat.ASTC_4x4);
     });
 
     it('skips unsupported loaders output formats with a diagnostic', async () => {
