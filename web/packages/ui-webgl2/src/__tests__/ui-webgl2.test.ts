@@ -60,6 +60,23 @@ const createTextLayout = (entry: GlyphAtlasEntry): TextLayoutResult => ({
             gapCount: 0,
         },
     ],
+    clusters: [
+        {
+            index: 0,
+            line: 0,
+            x: 2,
+            y: 0,
+            width: 14,
+            height: 16,
+            text: 'A',
+            whitespace: false,
+            newline: false,
+        },
+    ],
+    carets: [
+        { index: 0, line: 0, x: 2, y: 0, height: 16 },
+        { index: 1, line: 0, x: 16, y: 0, height: 16 },
+    ],
     glyphs: [
         {
             codePoint: 65,

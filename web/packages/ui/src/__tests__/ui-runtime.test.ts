@@ -152,6 +152,49 @@ describe('@axrone/ui runtime', () => {
         }
     });
 
+    it('composes selection, shadow, underline and caret commands for rich text widgets', () => {
+        const runtime = new UIRuntime({ width: 240, height: 120 });
+        runtime.fonts.registerFace(createFontAsset('RichTextSans'));
+
+        const label = runtime.createWidget({
+            layout: { width: 160, height: 32 },
+            text: {
+                value: 'AB',
+                family: 'RichTextSans',
+                size: 20,
+                shadowColor: '#00000099',
+                shadowOffsetX: 2,
+                shadowOffsetY: 1,
+                underline: true,
+                underlineColor: '#22d3eeff',
+                underlineThickness: 2,
+                selectionStart: 0,
+                selectionEnd: 1,
+                selectionColor: '#1d4ed8aa',
+                caretIndex: 1,
+                caretColor: '#f8fafcff',
+                caretWidth: 2,
+            },
+        });
+
+        runtime.appendChild(runtime.root, label);
+
+        const frame = runtime.commit();
+        const textCommands = frame.commands.filter((entry) => entry.kind === 'text');
+        const quadCommands = frame.commands.filter((entry) => entry.kind === 'quad');
+        const caretQuad = quadCommands.find((entry) => entry.kind === 'quad' && entry.width === 2);
+        const underlineQuad = quadCommands.find((entry) => entry.kind === 'quad' && entry.height === 2);
+
+        expect(textCommands).toHaveLength(2);
+        expect(frame.metrics.textCommandCount).toBe(2);
+        expect(quadCommands.length).toBeGreaterThanOrEqual(3);
+        expect(caretQuad).toBeDefined();
+        expect(underlineQuad).toBeDefined();
+        if (textCommands[0] && textCommands[0].kind === 'text') {
+            expect(textCommands[0].x).toBeGreaterThan(0);
+        }
+    });
+
     it('moves focus with directional and linear navigation', () => {
         const runtime = new UIRuntime({ width: 320, height: 120 });
 
