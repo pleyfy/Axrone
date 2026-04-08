@@ -1,8 +1,9 @@
 import type { SceneMeshDefinition } from '../../../scene/types';
 import type { AssetImportDiagnostic } from '../../types';
 import { GltfSchemaError, GltfTopologyError } from '../errors';
-import type { GltfMeshBounds, GltfPrimitiveJson } from '../types';
+import type { GltfAccessorJson, GltfMeshBounds, GltfPrimitiveJson } from '../types';
 import { type DecodedAccessor, GltfAccessorRuntime } from './accessor-runtime';
+import { GltfResourceRuntime } from './source-runtime';
 
 const SUPPORTED_ATTRIBUTE_SEMANTICS = [
     'POSITION',
@@ -21,8 +22,59 @@ interface AttributeStream {
     readonly values: Float32Array;
 }
 
+interface DracoPrimitiveGeometry {
+    readonly attributes: ReadonlyMap<string, Float32Array>;
+    readonly indices: Uint32Array;
+}
+
+interface ResolvedPrimitiveGeometry {
+    readonly attributeStreams: readonly AttributeStream[];
+    readonly indices?: Uint32Array;
+    readonly positionAccessor?: DecodedAccessor;
+    readonly topologyMode: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+}
+
+let dracoDecoderModulePromise: Promise<any> | undefined;
+
 const isSupportedAttributeSemantic = (value: string): value is SupportedAttributeSemantic =>
     (SUPPORTED_ATTRIBUTE_SEMANTICS as readonly string[]).includes(value);
+
+const loadDracoDecoderModule = async (): Promise<any> => {
+    dracoDecoderModulePromise ??= import('draco3dgltf').then((module) =>
+        module.createDecoderModule({})
+    );
+    return dracoDecoderModulePromise;
+};
+
+const accessorComponentCount = (type: GltfAccessorJson['type']): number => {
+    switch (type) {
+        case 'SCALAR':
+            return 1;
+        case 'VEC2':
+            return 2;
+        case 'VEC3':
+            return 3;
+        case 'VEC4':
+        case 'MAT2':
+            return 4;
+        case 'MAT3':
+            return 9;
+        case 'MAT4':
+            return 16;
+    }
+};
+
+const collectPrimitiveAttributeSemantics = (primitive: GltfPrimitiveJson): readonly string[] => {
+    const semantics = new Set<string>(Object.keys(primitive.attributes));
+
+    for (const semantic of Object.keys(
+        primitive.extensions?.KHR_draco_mesh_compression?.attributes ?? {}
+    )) {
+        semantics.add(semantic);
+    }
+
+    return [...semantics];
+};
 
 export const collectPrimitiveDiagnostics = (
     primitive: GltfPrimitiveJson,
@@ -30,7 +82,7 @@ export const collectPrimitiveDiagnostics = (
     primitiveIndex: number
 ): readonly AssetImportDiagnostic[] => {
     const diagnostics: AssetImportDiagnostic[] = [];
-    const unsupportedAttributes = Object.keys(primitive.attributes)
+    const unsupportedAttributes = collectPrimitiveAttributeSemantics(primitive)
         .filter((semantic) => isSupportedAttributeSemantic(semantic) === false)
         .sort((left, right) => left.localeCompare(right));
 
@@ -76,10 +128,175 @@ const mapAttributeSemantic = (
     }
 };
 
+const computeBoundsFromValues = (
+    values: Float32Array,
+    componentCount: number
+): GltfMeshBounds | undefined => {
+    if (componentCount < 3 || values.length < componentCount) {
+        return undefined;
+    }
+
+    let minX = values[0]!;
+    let minY = values[1]!;
+    let minZ = values[2]!;
+    let maxX = minX;
+    let maxY = minY;
+    let maxZ = minZ;
+
+    for (let index = componentCount; index < values.length; index += componentCount) {
+        const x = values[index]!;
+        const y = values[index + 1]!;
+        const z = values[index + 2]!;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        minZ = Math.min(minZ, z);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        maxZ = Math.max(maxZ, z);
+    }
+
+    return Object.freeze({
+        min: Object.freeze([minX, minY, minZ]) as readonly [number, number, number],
+        max: Object.freeze([maxX, maxY, maxZ]) as readonly [number, number, number],
+    });
+};
+
+const decodeDracoPrimitive = async (
+    primitive: GltfPrimitiveJson,
+    runtime: GltfResourceRuntime
+): Promise<DracoPrimitiveGeometry | undefined> => {
+    const extension = primitive.extensions?.KHR_draco_mesh_compression;
+    if (!extension) {
+        return undefined;
+    }
+
+    const compressedBytes = await runtime.resolveBufferView(extension.bufferView);
+    const decoderModule = await loadDracoDecoderModule();
+    const decoderBuffer = new decoderModule.DecoderBuffer();
+    const decoder = new decoderModule.Decoder();
+    const mesh = new decoderModule.Mesh();
+    const face = new decoderModule.DracoInt32Array();
+
+    try {
+        decoderBuffer.Init(
+            new Int8Array(
+                compressedBytes.buffer,
+                compressedBytes.byteOffset,
+                compressedBytes.byteLength
+            ),
+            compressedBytes.byteLength
+        );
+
+        const geometryType = decoder.GetEncodedGeometryType(decoderBuffer);
+        if (geometryType !== decoderModule.TRIANGULAR_MESH) {
+            throw new GltfSchemaError(
+                'KHR_draco_mesh_compression only supports triangular mesh payloads'
+            );
+        }
+
+        const status = decoder.DecodeBufferToMesh(decoderBuffer, mesh);
+        if (!status.ok()) {
+            throw new GltfSchemaError(
+                `Failed to decode KHR_draco_mesh_compression payload: ${status.error_msg()}`
+            );
+        }
+
+        const attributes = new Map<string, Float32Array>();
+        for (const [semantic, uniqueId] of Object.entries(extension.attributes)) {
+            const accessorIndex = primitive.attributes[semantic];
+            if (accessorIndex === undefined) {
+                throw new GltfSchemaError(
+                    `KHR_draco_mesh_compression attribute ${semantic} is missing its matching accessor`
+                );
+            }
+
+            const accessor = runtime.source.json.accessors?.[accessorIndex];
+            if (!accessor) {
+                throw new GltfSchemaError(
+                    `KHR_draco_mesh_compression attribute ${semantic} references a missing accessor`
+                );
+            }
+
+            const attribute = decoder.GetAttributeByUniqueId(mesh, uniqueId);
+            if (!attribute || attribute.ptr === 0) {
+                throw new GltfSchemaError(
+                    `KHR_draco_mesh_compression attribute ${semantic} could not be resolved from the decoder output`
+                );
+            }
+
+            const values = new Float32Array(accessor.count * accessorComponentCount(accessor.type));
+            const attributeData = new decoderModule.DracoFloat32Array();
+
+            try {
+                const decoded = decoder.GetAttributeFloatForAllPoints(mesh, attribute, attributeData);
+                if (!decoded) {
+                    throw new GltfSchemaError(
+                        `KHR_draco_mesh_compression attribute ${semantic} could not be decoded`
+                    );
+                }
+
+                if (attributeData.size() !== values.length) {
+                    throw new GltfSchemaError(
+                        `KHR_draco_mesh_compression attribute ${semantic} did not match accessor metadata`
+                    );
+                }
+
+                for (let index = 0; index < values.length; index += 1) {
+                    values[index] = attributeData.GetValue(index);
+                }
+            } finally {
+                decoderModule.destroy(attributeData);
+            }
+
+            attributes.set(semantic, values);
+        }
+
+        const faceCount = mesh.num_faces();
+        const indices = new Uint32Array(faceCount * 3);
+        for (let faceIndex = 0; faceIndex < faceCount; faceIndex += 1) {
+            const decoded = decoder.GetFaceFromMesh(mesh, faceIndex, face);
+            if (!decoded) {
+                throw new GltfSchemaError(
+                    'KHR_draco_mesh_compression indices could not be decoded'
+                );
+            }
+
+            const cursor = faceIndex * 3;
+            indices[cursor] = face.GetValue(0);
+            indices[cursor + 1] = face.GetValue(1);
+            indices[cursor + 2] = face.GetValue(2);
+        }
+
+        return Object.freeze({
+            attributes,
+            indices,
+        });
+    } finally {
+        decoderModule.destroy(face);
+        decoderModule.destroy(mesh);
+        decoderModule.destroy(decoder);
+        decoderModule.destroy(decoderBuffer);
+    }
+};
+
 const collectPrimitiveAttributes = async (
     primitive: GltfPrimitiveJson,
-    accessors: GltfAccessorRuntime
-): Promise<readonly AttributeStream[]> => {
+    accessors: GltfAccessorRuntime,
+    runtime: GltfResourceRuntime
+): Promise<ResolvedPrimitiveGeometry> => {
+    const topologyMode = primitive.mode ?? 4;
+    if (
+        primitive.extensions?.KHR_draco_mesh_compression &&
+        topologyMode !== 4 &&
+        topologyMode !== 5
+    ) {
+        throw new GltfTopologyError(
+            'KHR_draco_mesh_compression only supports TRIANGLES and TRIANGLE_STRIP primitives',
+            topologyMode
+        );
+    }
+
+    const dracoGeometry = await decodeDracoPrimitive(primitive, runtime);
     const result: AttributeStream[] = [];
 
     for (const semantic of SUPPORTED_ATTRIBUTE_SEMANTICS) {
@@ -88,7 +305,26 @@ const collectPrimitiveAttributes = async (
             continue;
         }
 
-        const decoded = await accessors.decodeAccessor(accessorIndex);
+        const accessor = runtime.source.json.accessors?.[accessorIndex];
+        if (!accessor) {
+            throw new GltfSchemaError(`Mesh primitive attribute ${semantic} references a missing accessor`);
+        }
+
+        const dracoValues = dracoGeometry?.attributes.get(semantic);
+        const decoded =
+            dracoValues !== undefined
+                ? {
+                      componentCount: accessorComponentCount(accessor.type),
+                      values: dracoValues,
+                  }
+                : await accessors.decodeAccessor(accessorIndex);
+
+        if (decoded.values.length !== accessor.count * decoded.componentCount) {
+            throw new GltfSchemaError(
+                `Mesh primitive attribute ${semantic} does not match its accessor metadata`
+            );
+        }
+
         result.push(
             Object.freeze({
                 semantic,
@@ -102,7 +338,21 @@ const collectPrimitiveAttributes = async (
         throw new GltfSchemaError('Mesh primitive is missing POSITION attribute');
     }
 
-    return Object.freeze(result);
+    const positionAccessorIndex = primitive.attributes.POSITION;
+    const positionAccessor =
+        positionAccessorIndex !== undefined
+            ? await accessors.decodeAccessor(positionAccessorIndex)
+            : undefined;
+    const indices =
+        dracoGeometry?.indices ??
+        (primitive.indices !== undefined ? await accessors.decodeIndices(primitive.indices) : undefined);
+
+    return Object.freeze({
+        attributeStreams: Object.freeze(result),
+        indices,
+        positionAccessor,
+        topologyMode: dracoGeometry && topologyMode === 5 ? 4 : topologyMode,
+    });
 };
 
 const computeBoundsFromAccessor = (decoded: DecodedAccessor): GltfMeshBounds | undefined => {
@@ -244,12 +494,14 @@ const toSmallestIndexArray = (
 
 export const buildMeshDefinition = async (
     primitive: GltfPrimitiveJson,
-    accessors: GltfAccessorRuntime
+    accessors: GltfAccessorRuntime,
+    runtime: GltfResourceRuntime
 ): Promise<{
     readonly definition: SceneMeshDefinition;
     readonly bounds?: GltfMeshBounds;
 }> => {
-    const attributeStreams = await collectPrimitiveAttributes(primitive, accessors);
+    const resolved = await collectPrimitiveAttributes(primitive, accessors, runtime);
+    const attributeStreams = resolved.attributeStreams;
     const vertexCount =
         attributeStreams[0]!.values.length / attributeStreams[0]!.componentCount;
     const strideComponents = attributeStreams.reduce(
@@ -285,13 +537,13 @@ export const buildMeshDefinition = async (
         componentOffset += attribute.componentCount;
     }
 
-    const topologyMode = primitive.mode ?? 4;
-    const indices =
-        primitive.indices !== undefined
-            ? await accessors.decodeIndices(primitive.indices)
-            : undefined;
-    const expandedIndices = expandPrimitiveIndices(topologyMode, vertexCount, indices);
-    const positionAccessor = await accessors.decodeAccessor(primitive.attributes.POSITION);
+    const expandedIndices = expandPrimitiveIndices(
+        resolved.topologyMode,
+        vertexCount,
+        resolved.indices
+    );
+    const positionAccessor = resolved.positionAccessor;
+    const positionStream = attributeStreams.find((attribute) => attribute.semantic === 'POSITION');
 
     return {
         definition: Object.freeze({
@@ -302,8 +554,12 @@ export const buildMeshDefinition = async (
                 ? { indices: toSmallestIndexArray(expandedIndices) }
                 : {}),
             vertexCount,
-            topology: topologicalModeToSceneTopology(topologyMode),
+            topology: topologicalModeToSceneTopology(resolved.topologyMode),
         }),
-        bounds: computeBoundsFromAccessor(positionAccessor),
+        bounds:
+            (positionAccessor ? computeBoundsFromAccessor(positionAccessor) : undefined) ??
+            (positionStream
+                ? computeBoundsFromValues(positionStream.values, positionStream.componentCount)
+                : undefined),
     };
 };

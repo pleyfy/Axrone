@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MeshoptEncoder } from 'meshoptimizer';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
 import {
     AssetDatabase,
@@ -10,17 +11,26 @@ import {
     type GltfRootJson,
 } from '../../asset';
 
+const trianglePositions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+const triangleIndices = new Uint16Array([0, 1, 2]);
 const pngHeaderBytes = new Uint8Array([137, 80, 78, 71]);
 
+let dracoEncoderModulePromise: Promise<any> | undefined;
+
+const loadDracoEncoderModule = async (): Promise<any> => {
+    dracoEncoderModulePromise ??= import('draco3dgltf').then((module) =>
+        module.createEncoderModule({})
+    );
+    return dracoEncoderModulePromise;
+};
+
 const createBinaryBlob = (): Uint8Array => {
-    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
-    const indices = new Uint16Array([0, 1, 2]);
     const image = pngHeaderBytes;
-    const total = positions.byteLength + indices.byteLength + image.byteLength + 2;
+    const total = trianglePositions.byteLength + triangleIndices.byteLength + image.byteLength + 2;
     const bytes = new Uint8Array(total);
-    bytes.set(new Uint8Array(positions.buffer), 0);
-    bytes.set(new Uint8Array(indices.buffer), positions.byteLength);
-    bytes.set(image, positions.byteLength + indices.byteLength);
+    bytes.set(new Uint8Array(trianglePositions.buffer), 0);
+    bytes.set(new Uint8Array(triangleIndices.buffer), trianglePositions.byteLength);
+    bytes.set(image, trianglePositions.byteLength + triangleIndices.byteLength);
     return bytes;
 };
 
@@ -207,7 +217,7 @@ const createExtendedAttributeJson = (): GltfRootJson => ({
     extensionsUsed: ['KHR_materials_clearcoat'],
     buffers: [
         {
-            byteLength: 116,
+            byteLength: 118,
         },
     ],
     bufferViews: [
@@ -290,6 +300,236 @@ const createExtendedAttributeJson = (): GltfRootJson => ({
         },
     ],
 });
+
+const createCompressedTriangleJson = (): GltfRootJson => ({
+    asset: {
+        version: '2.0',
+        generator: 'vitest',
+    },
+    meshes: [
+        {
+            name: 'Triangle',
+            primitives: [
+                {
+                    attributes: {
+                        POSITION: 0,
+                    },
+                    indices: 1,
+                    mode: 4,
+                },
+            ],
+        },
+    ],
+    nodes: [
+        {
+            name: 'Root',
+            mesh: 0,
+        },
+    ],
+    scenes: [
+        {
+            name: 'Main',
+            nodes: [0],
+        },
+    ],
+    scene: 0,
+    accessors: [
+        {
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        },
+        {
+            componentType: 5123,
+            count: 3,
+            type: 'SCALAR',
+        },
+    ],
+});
+
+const createMeshoptCompressedTriangle = async (): Promise<{
+    readonly json: GltfRootJson;
+    readonly bin: Uint8Array;
+}> => {
+    await MeshoptEncoder.ready;
+    const encodedPositions = MeshoptEncoder.encodeGltfBuffer(
+        new Uint8Array(trianglePositions.buffer.slice(0)),
+        3,
+        12,
+        'ATTRIBUTES'
+    );
+    const encodedIndices = MeshoptEncoder.encodeGltfBuffer(
+        new Uint8Array(triangleIndices.buffer.slice(0)),
+        3,
+        2,
+        'TRIANGLES'
+    );
+    const bin = new Uint8Array(encodedPositions.byteLength + encodedIndices.byteLength);
+    bin.set(encodedPositions, 0);
+    bin.set(encodedIndices, encodedPositions.byteLength);
+
+    return {
+        json: {
+            ...createCompressedTriangleJson(),
+            extensionsUsed: ['EXT_meshopt_compression'],
+            extensionsRequired: ['EXT_meshopt_compression'],
+            buffers: [
+                {
+                    byteLength: bin.byteLength,
+                },
+                {
+                    byteLength: trianglePositions.byteLength + triangleIndices.byteLength,
+                },
+            ],
+            bufferViews: [
+                {
+                    buffer: 1,
+                    byteOffset: 0,
+                    byteLength: trianglePositions.byteLength,
+                    extensions: {
+                        EXT_meshopt_compression: {
+                            buffer: 0,
+                            byteOffset: 0,
+                            byteLength: encodedPositions.byteLength,
+                            byteStride: 12,
+                            count: 3,
+                            mode: 'ATTRIBUTES',
+                        },
+                    },
+                },
+                {
+                    buffer: 1,
+                    byteOffset: trianglePositions.byteLength,
+                    byteLength: triangleIndices.byteLength,
+                    extensions: {
+                        EXT_meshopt_compression: {
+                            buffer: 0,
+                            byteOffset: encodedPositions.byteLength,
+                            byteLength: encodedIndices.byteLength,
+                            byteStride: 2,
+                            count: 3,
+                            mode: 'TRIANGLES',
+                        },
+                    },
+                },
+            ],
+            accessors: [
+                {
+                    bufferView: 0,
+                    componentType: 5126,
+                    count: 3,
+                    type: 'VEC3',
+                    min: [0, 0, 0],
+                    max: [1, 1, 0],
+                },
+                {
+                    bufferView: 1,
+                    componentType: 5123,
+                    count: 3,
+                    type: 'SCALAR',
+                },
+            ],
+        } satisfies GltfRootJson,
+        bin,
+    };
+};
+
+const createDracoCompressedTriangle = async (): Promise<{
+    readonly json: GltfRootJson;
+    readonly bin: Uint8Array;
+}> => {
+    const encoderModule = await loadDracoEncoderModule();
+    const encoder = new encoderModule.Encoder();
+    const meshBuilder = new encoderModule.MeshBuilder();
+    const mesh = new encoderModule.Mesh();
+    const encodedData = new encoderModule.DracoInt8Array();
+
+    try {
+        meshBuilder.AddFacesToMesh(mesh, triangleIndices.length / 3, new Uint32Array(triangleIndices));
+        const positionAttributeId = meshBuilder.AddFloatAttributeToMesh(
+            mesh,
+            encoderModule.POSITION,
+            trianglePositions.length / 3,
+            3,
+            trianglePositions
+        );
+        encoder.SetSpeedOptions(5, 5);
+
+        const encodedLength = encoder.EncodeMeshToDracoBuffer(mesh, encodedData);
+        if (encodedLength <= 0) {
+            throw new Error('Failed to encode Draco test mesh');
+        }
+
+        const bin = new Uint8Array(encodedLength);
+        for (let index = 0; index < encodedLength; index += 1) {
+            bin[index] = encodedData.GetValue(index);
+        }
+
+        return {
+            json: {
+                ...createCompressedTriangleJson(),
+                extensionsUsed: ['KHR_draco_mesh_compression'],
+                extensionsRequired: ['KHR_draco_mesh_compression'],
+                buffers: [
+                    {
+                        byteLength: bin.byteLength,
+                    },
+                ],
+                bufferViews: [
+                    {
+                        buffer: 0,
+                        byteOffset: 0,
+                        byteLength: bin.byteLength,
+                    },
+                ],
+                accessors: [
+                    {
+                        componentType: 5126,
+                        count: 3,
+                        type: 'VEC3',
+                        min: [0, 0, 0],
+                        max: [1, 1, 0],
+                    },
+                    {
+                        componentType: 5123,
+                        count: 3,
+                        type: 'SCALAR',
+                    },
+                ],
+                meshes: [
+                    {
+                        name: 'Triangle',
+                        primitives: [
+                            {
+                                attributes: {
+                                    POSITION: 0,
+                                },
+                                indices: 1,
+                                mode: 4,
+                                extensions: {
+                                    KHR_draco_mesh_compression: {
+                                        bufferView: 0,
+                                        attributes: {
+                                            POSITION: positionAttributeId,
+                                        },
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                ],
+            } satisfies GltfRootJson,
+            bin,
+        };
+    } finally {
+        encoderModule.destroy(encodedData);
+        encoderModule.destroy(mesh);
+        encoderModule.destroy(meshBuilder);
+        encoderModule.destroy(encoder);
+    }
+};
 
 describe('glTF importer', () => {
     it('imports GLB sources into document, prefab, mesh, material, and transcoded texture assets', async () => {
@@ -904,6 +1144,53 @@ describe('glTF importer', () => {
         const material = receipt.assets.find((entry) => entry.kind === 'gltf.material');
 
         expect(material?.data.definition.uniforms?._EmissiveFactor).toEqual([1, 2, 3]);
+        expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.extension.unsupported'
+        );
+    });
+
+    it('decodes EXT_meshopt_compression primitives through the importer runtime', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+        const compressed = await createMeshoptCompressedTriangle();
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(compressed.json, compressed.bin),
+            uri: 'models/triangle-meshopt.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
+        expect(mesh?.data.definition.vertexCount).toBe(3);
+        expect(mesh?.data.definition.indices).toEqual(new Uint16Array([0, 1, 2]));
+        expect(mesh?.data.definition.vertices).toEqual(new Float32Array(trianglePositions));
+        expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
+            'gltf.extension.unsupported'
+        );
+    });
+
+    it('decodes KHR_draco_mesh_compression primitives through the importer runtime', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+        const compressed = await createDracoCompressedTriangle();
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(compressed.json, compressed.bin),
+            uri: 'models/triangle-draco.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
+        expect(mesh?.data.definition.vertexCount).toBe(3);
+        expect(mesh?.data.definition.indices).toEqual(new Uint16Array([0, 1, 2]));
+        expect(mesh?.data.bounds).toEqual({
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        });
         expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
             'gltf.extension.unsupported'
         );

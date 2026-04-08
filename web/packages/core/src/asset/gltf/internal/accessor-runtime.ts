@@ -1,5 +1,5 @@
 import { GltfAccessorError } from '../errors';
-import type { GltfAccessorJson } from '../types';
+import type { GltfAccessorJson, GltfBufferViewJson } from '../types';
 import { GltfResourceRuntime } from './source-runtime';
 
 export interface DecodedAccessor {
@@ -43,6 +43,9 @@ const accessorComponentCount = (type: GltfAccessorJson['type']): number => {
             return 16;
     }
 };
+
+const resolveBufferViewStride = (bufferView: GltfBufferViewJson): number | undefined =>
+    bufferView.byteStride ?? bufferView.extensions?.EXT_meshopt_compression?.byteStride;
 
 const readComponent = (
     view: DataView,
@@ -149,7 +152,7 @@ export class GltfAccessorRuntime {
             }
 
             const bytes = await this.runtime.resolveBufferView(accessor.bufferView);
-            const stride = bufferView.byteStride ?? elementSize;
+            const stride = resolveBufferViewStride(bufferView) ?? elementSize;
             if (stride < elementSize) {
                 throw new GltfAccessorError(`Accessor ${index} has an invalid byteStride`, index);
             }
@@ -217,7 +220,11 @@ export class GltfAccessorRuntime {
             }
 
             const bytes = await this.runtime.resolveBufferView(accessor.bufferView);
-            const stride = bufferView.byteStride ?? componentTypeByteSize(accessor.componentType);
+            const stride =
+                resolveBufferViewStride(bufferView) ?? componentTypeByteSize(accessor.componentType);
+            if (stride < componentTypeByteSize(accessor.componentType)) {
+                throw new GltfAccessorError(`Index accessor ${index} has an invalid byteStride`, index);
+            }
             const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
             const accessorOffset = accessor.byteOffset ?? 0;
 

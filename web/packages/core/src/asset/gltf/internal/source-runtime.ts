@@ -1,10 +1,12 @@
 import type { AssetImportSource } from '../../types';
+import { MeshoptDecoder } from 'meshoptimizer';
 import {
     GltfContainerError,
     GltfResourceError,
     GltfSchemaError,
 } from '../errors';
 import type {
+    GltfBufferViewJson,
     GltfCompressedTexturePayload,
     GltfImporterOptions,
     GltfPackageInput,
@@ -51,6 +53,19 @@ const toUint8Array = (value: string | ArrayBuffer | ArrayBufferView | Uint8Array
 const decodeUtf8 = (value: Uint8Array): string => new TextDecoder().decode(value);
 
 const trimNullCharacters = (value: string): string => value.replace(/\u0000+$/u, '');
+
+const sliceBufferRange = (
+    buffer: Uint8Array,
+    byteOffset: number,
+    byteLength: number,
+    label: string
+): Uint8Array => {
+    if (byteOffset < 0 || byteLength < 0 || byteOffset + byteLength > buffer.byteLength) {
+        throw new GltfSchemaError(`${label} exceeds its parent buffer range`);
+    }
+
+    return buffer.subarray(byteOffset, byteOffset + byteLength);
+};
 
 const hasScheme = (value: string): boolean => /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value);
 
@@ -514,9 +529,73 @@ export class GltfResourceRuntime {
             throw new GltfSchemaError(`Missing bufferView ${index}`);
         }
 
+        const meshopt = bufferView.extensions?.EXT_meshopt_compression;
+        if (meshopt) {
+            return this._decodeMeshoptBufferView(index, bufferView, meshopt);
+        }
+
         const buffer = await this.resolveBuffer(bufferView.buffer);
         const byteOffset = bufferView.byteOffset ?? 0;
-        return buffer.subarray(byteOffset, byteOffset + bufferView.byteLength);
+        return sliceBufferRange(buffer, byteOffset, bufferView.byteLength, `bufferView ${index}`);
+    }
+
+    private async _decodeMeshoptBufferView(
+        index: number,
+        bufferView: GltfBufferViewJson,
+        meshopt: NonNullable<GltfBufferViewJson['extensions']>['EXT_meshopt_compression']
+    ): Promise<Uint8Array> {
+        if (!meshopt) {
+            throw new GltfSchemaError(`bufferView ${index} is missing EXT_meshopt_compression payload`);
+        }
+
+        if (bufferView.byteStride !== undefined && bufferView.byteStride !== meshopt.byteStride) {
+            throw new GltfSchemaError(
+                `bufferView ${index} EXT_meshopt_compression byteStride must match the parent bufferView`
+            );
+        }
+
+        const expectedByteLength = meshopt.byteStride * meshopt.count;
+        if (bufferView.byteLength !== expectedByteLength) {
+            throw new GltfSchemaError(
+                `bufferView ${index} EXT_meshopt_compression byteLength must equal byteStride * count`
+            );
+        }
+
+        if (!MeshoptDecoder.supported) {
+            throw new GltfResourceError(
+                `EXT_meshopt_compression is not available in this runtime environment`,
+                `bufferView:${index}`,
+                'buffer'
+            );
+        }
+
+        await MeshoptDecoder.ready;
+        const sourceBuffer = await this.resolveBuffer(meshopt.buffer);
+        const compressedBytes = sliceBufferRange(
+            sourceBuffer,
+            meshopt.byteOffset ?? 0,
+            meshopt.byteLength,
+            `bufferView ${index} EXT_meshopt_compression`
+        );
+        const decoded = new Uint8Array(expectedByteLength);
+
+        try {
+            MeshoptDecoder.decodeGltfBuffer(
+                decoded,
+                meshopt.count,
+                meshopt.byteStride,
+                compressedBytes,
+                meshopt.mode,
+                meshopt.filter && meshopt.filter !== 'NONE' ? meshopt.filter : undefined
+            );
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new GltfSchemaError(
+                `Failed to decode EXT_meshopt_compression bufferView ${index}: ${message}`
+            );
+        }
+
+        return decoded;
     }
 
     private async _resolveExternalResource(

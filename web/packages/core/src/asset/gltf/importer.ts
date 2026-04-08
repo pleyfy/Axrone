@@ -57,6 +57,8 @@ const DEFAULT_DOCUMENT_NAME = 'glTF Document';
 const MAX_SCENE_LOCAL_LIGHTS = 4;
 const RADIANS_TO_DEGREES = 180 / Math.PI;
 const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
+    'EXT_meshopt_compression',
+    'KHR_draco_mesh_compression',
     'KHR_lights_punctual',
     'KHR_materials_emissive_strength',
     'KHR_materials_unlit',
@@ -1231,7 +1233,7 @@ export const createGltfImporter = <
                     diagnostics.push(
                         ...collectPrimitiveDiagnostics(primitive, meshIndex, primitiveIndex)
                     );
-                    const built = await buildMeshDefinition(primitive, accessors);
+                    const built = await buildMeshDefinition(primitive, accessors, runtime);
                     const key = String(
                         createSubKey(`mesh/${meshIndex}/primitive/${primitiveIndex}`)
                     );

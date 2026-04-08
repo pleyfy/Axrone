@@ -298,12 +298,26 @@ export interface GltfBufferJson {
     readonly name?: string;
 }
 
+export interface GltfMeshoptCompressionExtensionJson {
+    readonly buffer: number;
+    readonly byteOffset?: number;
+    readonly byteLength: number;
+    readonly byteStride: number;
+    readonly count: number;
+    readonly mode: 'ATTRIBUTES' | 'TRIANGLES' | 'INDICES';
+    readonly filter?: 'NONE' | 'OCTAHEDRAL' | 'QUATERNION' | 'EXPONENTIAL';
+}
+
 export interface GltfBufferViewJson {
     readonly buffer: number;
     readonly byteOffset?: number;
     readonly byteLength: number;
     readonly byteStride?: number;
     readonly target?: number;
+    readonly extensions?: {
+        readonly EXT_meshopt_compression?: GltfMeshoptCompressionExtensionJson;
+        readonly [extensionName: string]: unknown;
+    };
     readonly name?: string;
 }
 
@@ -337,11 +351,20 @@ export interface GltfAccessorJson {
     readonly name?: string;
 }
 
+export interface GltfDracoMeshCompressionExtensionJson {
+    readonly bufferView: number;
+    readonly attributes: Readonly<Record<string, number>>;
+}
+
 export interface GltfPrimitiveJson {
     readonly attributes: Readonly<Record<string, number>>;
     readonly indices?: number;
     readonly material?: number;
     readonly mode?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    readonly extensions?: {
+        readonly KHR_draco_mesh_compression?: GltfDracoMeshCompressionExtensionJson;
+        readonly [extensionName: string]: unknown;
+    };
     readonly targets?: readonly Readonly<Record<string, number>>[];
     readonly extras?: Readonly<Record<string, unknown>>;
 }
