@@ -18,6 +18,11 @@ export default [
     }),
     ...createPackageConfig({
         packageDir,
+        inputRelativePath: 'src/render.ts',
+        outputBasename: 'render/index',
+    }),
+    ...createPackageConfig({
+        packageDir,
         inputRelativePath: 'src/text.ts',
         outputBasename: 'text/index',
     }),

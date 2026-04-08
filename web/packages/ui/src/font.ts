@@ -9,6 +9,7 @@ import type {
     FontFaceId,
     FontFaceInfo,
     FontFaceSnapshot,
+    FontGlyphBitmapFormat,
     FontFamilyDefinition,
     FontFamilyId,
     FontGlyphMeasurement,
@@ -144,14 +145,20 @@ class GlyphAtlas {
         }
         const x = page.cursorX + this.padding;
         const y = page.cursorY + this.padding;
+        const format: FontGlyphBitmapFormat = metric.format ?? 'alpha8';
+        const rowStride = metric.rowStride ?? width * (format === 'rgba8' ? 4 : 1);
         const entry: GlyphAtlasEntry = {
             faceId: this.faceId,
             page: page.id,
+            pageWidth: page.width,
+            pageHeight: page.height,
             codePoint: metric.codePoint,
             x,
             y,
             width,
             height,
+            format,
+            rowStride,
             u0: x / page.width,
             v0: y / page.height,
             u1: (x + width) / page.width,
@@ -675,6 +682,7 @@ export type {
     FontFaceId,
     FontFaceInfo,
     FontFamilyDefinition,
+    FontGlyphBitmapFormat,
     FontFamilyId,
     FontGlyphMeasurement,
     FontGlyphMetric,

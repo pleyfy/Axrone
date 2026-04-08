@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FontRegistry, UIRuntime } from '../index';
+import { FontRegistry, UIRuntime, createRuntimeFrameSource, renderUIFrame } from '../index';
 
 const createFontAsset = (family = 'TestSans') => ({
     family,
@@ -124,8 +124,36 @@ describe('@axrone/ui runtime', () => {
 
         expect(attempts).toBe(2);
         expect(fonts.getFaceInfo(faceId)?.family).toBe('RemoteSans');
-        expect(fonts.ensureGlyph(faceId, 65)).not.toBeNull();
+        const glyph = fonts.ensureGlyph(faceId, 65);
+        expect(glyph).not.toBeNull();
+        expect(glyph?.pageWidth).toBeGreaterThan(0);
+        expect(glyph?.pageHeight).toBeGreaterThan(0);
+        expect(glyph?.format).toBe('alpha8');
         fonts.dispose();
+    });
+
+    it('resolves runtime frames through the renderer seam helpers', () => {
+        const runtime = new UIRuntime({ width: 96, height: 48 });
+        const box = runtime.createWidget({
+            layout: { width: 24, height: 12 },
+            style: { background: '#ffffffff' },
+        });
+        runtime.appendChild(runtime.root, box);
+
+        const source = createRuntimeFrameSource(runtime);
+        let seenCommands = 0;
+        const frame = renderUIFrame(
+            {
+                render(resolved) {
+                    seenCommands = resolved.commands.length;
+                },
+            },
+            source,
+            { width: 96, height: 48 }
+        );
+
+        expect(frame).not.toBeNull();
+        expect(seenCommands).toBeGreaterThan(0);
     });
 
     it('renders custom widget payloads and restores snapshots', () => {

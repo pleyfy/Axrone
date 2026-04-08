@@ -54,6 +54,7 @@ export type ViewportString = `viewport:${number}`;
 export type ColorHexString = `#${string}`;
 export type KerningPairKey = `${number}:${number}`;
 export type UILengthInput = number | 'auto' | 'content' | PercentageString | StretchString | ViewportString;
+export type FontGlyphBitmapFormat = 'alpha8' | 'rgba8';
 
 export interface Vec2Like {
     readonly x: number;
@@ -399,6 +400,8 @@ export interface FontGlyphMetric {
     readonly width?: number;
     readonly height?: number;
     readonly data?: ArrayBuffer | ArrayBufferView | null;
+    readonly format?: FontGlyphBitmapFormat;
+    readonly rowStride?: number;
 }
 
 export interface FontFaceAsset {
@@ -484,11 +487,15 @@ export interface FontRegistryOptions {
 export interface GlyphAtlasEntry {
     readonly faceId: FontFaceId;
     readonly page: GlyphAtlasPageId;
+    readonly pageWidth: number;
+    readonly pageHeight: number;
     readonly codePoint: number;
     readonly x: number;
     readonly y: number;
     readonly width: number;
     readonly height: number;
+    readonly format: FontGlyphBitmapFormat;
+    readonly rowStride: number;
     readonly u0: number;
     readonly v0: number;
     readonly u1: number;

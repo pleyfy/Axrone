@@ -24,6 +24,11 @@
             "import": "./dist/layout/index.mjs",
             "require": "./dist/layout/index.js"
         },
+        "./render": {
+            "types": "./dist/render/index.d.ts",
+            "import": "./dist/render/index.mjs",
+            "require": "./dist/render/index.js"
+        },
         "./text": {
             "types": "./dist/text/index.d.ts",
             "import": "./dist/text/index.mjs",
