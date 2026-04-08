@@ -1,0 +1,311 @@
+import { describe, expect, it } from 'vitest';
+import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
+import {
+    AssetDatabase,
+    createGltfImporter,
+    createGltfTextureTranscodeStage,
+    createPassthroughGltfTextureTranscoder,
+    GltfTextureTranscoderRegistry,
+    type GltfAssetSchema,
+    type GltfRootJson,
+} from '../../asset';
+
+const createBinaryBlob = (): Uint8Array => {
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const indices = new Uint16Array([0, 1, 2]);
+    const image = new Uint8Array([137, 80, 78, 71]);
+    const total = positions.byteLength + indices.byteLength + image.byteLength + 2;
+    const bytes = new Uint8Array(total);
+    bytes.set(new Uint8Array(positions.buffer), 0);
+    bytes.set(new Uint8Array(indices.buffer), positions.byteLength);
+    bytes.set(image, positions.byteLength + indices.byteLength);
+    return bytes;
+};
+
+const createTriangleJson = (bufferUri?: string, imageUri?: string, imageMimeType?: string): GltfRootJson => ({
+    asset: {
+        version: '2.0',
+        generator: 'vitest',
+    },
+    buffers: [
+        {
+            ...(bufferUri ? { uri: bufferUri } : {}),
+            byteLength: 48,
+        },
+    ],
+    bufferViews: [
+        {
+            buffer: 0,
+            byteOffset: 0,
+            byteLength: 36,
+        },
+        {
+            buffer: 0,
+            byteOffset: 36,
+            byteLength: 6,
+        },
+        imageUri
+            ? {
+                  buffer: 0,
+                  byteOffset: 0,
+                  byteLength: 0,
+              }
+            : {
+                  buffer: 0,
+                  byteOffset: 42,
+                  byteLength: 4,
+              },
+    ],
+    accessors: [
+        {
+            bufferView: 0,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        },
+        {
+            bufferView: 1,
+            componentType: 5123,
+            count: 3,
+            type: 'SCALAR',
+        },
+    ],
+    images: [
+        imageUri
+            ? {
+                  uri: imageUri,
+                  mimeType: imageMimeType,
+                  name: 'Albedo',
+              }
+            : {
+                  bufferView: 2,
+                  mimeType: 'image/png',
+                  name: 'Albedo',
+              },
+    ],
+    samplers: [
+        {
+            minFilter: 9987,
+            magFilter: 9729,
+            wrapS: 10497,
+            wrapT: 10497,
+        },
+    ],
+    textures: [
+        {
+            source: 0,
+            sampler: 0,
+            name: 'Base',
+        },
+    ],
+    materials: [
+        {
+            name: 'Material',
+            pbrMetallicRoughness: {
+                baseColorFactor: [1, 0.5, 0.25, 1],
+                baseColorTexture: {
+                    index: 0,
+                },
+                metallicFactor: 0.1,
+                roughnessFactor: 0.9,
+            },
+        },
+    ],
+    meshes: [
+        {
+            name: 'Triangle',
+            primitives: [
+                {
+                    attributes: {
+                        POSITION: 0,
+                    },
+                    indices: 1,
+                    material: 0,
+                },
+            ],
+        },
+    ],
+    nodes: [
+        {
+            name: 'Root',
+            mesh: 0,
+        },
+    ],
+    scenes: [
+        {
+            name: 'Main',
+            nodes: [0],
+        },
+    ],
+    scene: 0,
+});
+
+const createGlb = (json: GltfRootJson, bin: Uint8Array): Uint8Array => {
+    const encoder = new TextEncoder();
+    const jsonBytes = encoder.encode(JSON.stringify(json));
+    const jsonPadding = (4 - (jsonBytes.byteLength % 4)) % 4;
+    const paddedJson = new Uint8Array(jsonBytes.byteLength + jsonPadding);
+    paddedJson.set(jsonBytes);
+    paddedJson.fill(0x20, jsonBytes.byteLength);
+
+    const binPadding = (4 - (bin.byteLength % 4)) % 4;
+    const paddedBin = new Uint8Array(bin.byteLength + binPadding);
+    paddedBin.set(bin);
+
+    const totalLength = 12 + 8 + paddedJson.byteLength + 8 + paddedBin.byteLength;
+    const glb = new Uint8Array(totalLength);
+    const view = new DataView(glb.buffer);
+    view.setUint32(0, 0x46546c67, true);
+    view.setUint32(4, 2, true);
+    view.setUint32(8, totalLength, true);
+    view.setUint32(12, paddedJson.byteLength, true);
+    view.setUint32(16, 0x4e4f534a, true);
+    glb.set(paddedJson, 20);
+    const binHeaderOffset = 20 + paddedJson.byteLength;
+    view.setUint32(binHeaderOffset, paddedBin.byteLength, true);
+    view.setUint32(binHeaderOffset + 4, 0x004e4942, true);
+    glb.set(paddedBin, binHeaderOffset + 8);
+    return glb;
+};
+
+describe('glTF importer', () => {
+    it('imports GLB sources into document, prefab, mesh, material, and transcoded texture assets', async () => {
+        const registry = new GltfTextureTranscoderRegistry([
+            {
+                id: 'test.texture.transcoder',
+                canTranscode: ({ texture }) => texture.payload.kind === 'raw',
+                transcode: ({ texture }) => ({
+                    payload: {
+                        kind: 'compressed',
+                        bytes: new Uint8Array([9, 8, 7]),
+                        container: 'ktx2',
+                        mimeType: 'image/ktx2',
+                        targetFormat: TextureFormat.BC7_RGBA,
+                        uri: texture.payload.uri,
+                    },
+                    runtimeFormat: TextureFormat.BC7_RGBA,
+                    state: {
+                        status: 'transcoded',
+                        transcoderId: 'test.texture.transcoder',
+                        targetFormat: TextureFormat.BC7_RGBA,
+                    },
+                    diagnostics: [
+                        {
+                            level: 'info',
+                            code: 'gltf.texture.transcoded',
+                            message: 'texture transcoded',
+                        },
+                    ],
+                }),
+            },
+        ]);
+
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+            stages: [createGltfTextureTranscodeStage({ registry })],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(createTriangleJson(), createBinaryBlob()),
+            uri: 'models/triangle.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        expect(receipt.primary.kind).toBe('gltf.document');
+        expect(receipt.assets).toHaveLength(5);
+        expect(receipt.diagnostics.map((entry) => entry.code)).toContain(
+            'gltf.texture.transcoded'
+        );
+
+        const texture = receipt.assets.find((entry) => entry.kind === 'gltf.texture');
+        const material = receipt.assets.find((entry) => entry.kind === 'gltf.material');
+        const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
+        const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+
+        expect(texture?.data.payload.kind).toBe('compressed');
+        expect(texture?.data.runtimeFormat).toBe(TextureFormat.BC7_RGBA);
+        expect(material?.data.definition.textures?._BaseColorTexture).toBe(texture?.key);
+        expect(mesh?.data.definition.topology).toBe('triangles');
+        expect(prefab?.data.definition.actors[0]?.components).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: 'Transform' }),
+                expect.objectContaining({
+                    type: 'MeshRenderer',
+                    data: expect.objectContaining({
+                        meshId: mesh?.key,
+                        materialId: material?.key,
+                    }),
+                }),
+            ])
+        );
+        expect(receipt.primary.data.scenes[0]?.prefabKey).toBe(prefab?.key);
+    });
+
+    it('imports text glTF sources with external resource resolution', async () => {
+        const binary = createBinaryBlob();
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [
+                createGltfImporter({
+                    resourceResolver: ({ uri }) => {
+                        if (uri === 'mesh.bin') {
+                            return {
+                                uri,
+                                bytes: binary,
+                                mimeType: 'application/octet-stream',
+                            };
+                        }
+
+                        if (uri === 'albedo.ktx2') {
+                            return {
+                                uri,
+                                bytes: new Uint8Array([1, 2, 3, 4]),
+                                mimeType: 'image/ktx2',
+                            };
+                        }
+
+                        return undefined;
+                    },
+                }),
+            ],
+            stages: [
+                createGltfTextureTranscodeStage({
+                    registry: new GltfTextureTranscoderRegistry([
+                        createPassthroughGltfTextureTranscoder(TextureFormat.ASTC_4x4),
+                    ]),
+                }),
+            ],
+        });
+
+        const json = createTriangleJson('mesh.bin', 'albedo.ktx2', 'image/ktx2');
+        json.bufferViews = [
+            {
+                buffer: 0,
+                byteOffset: 0,
+                byteLength: 36,
+            },
+            {
+                buffer: 0,
+                byteOffset: 36,
+                byteLength: 6,
+            },
+        ];
+
+        const receipt = await database.import({
+            kind: 'text',
+            data: JSON.stringify(json),
+            uri: 'assets/model.gltf',
+            mimeType: 'model/gltf+json',
+        });
+
+        const texture = receipt.assets.find((entry) => entry.kind === 'gltf.texture');
+        expect(receipt.primary.data.format).toBe('gltf');
+        expect(texture?.data.payload.kind).toBe('compressed');
+        expect(texture?.data.runtimeFormat).toBe(TextureFormat.ASTC_4x4);
+        expect(texture?.data.payload.uri).toBe('albedo.ktx2');
+        expect(receipt.primary.data.stats.textureCount).toBe(1);
+        expect(receipt.primary.data.scenes).toHaveLength(1);
+    });
+});
