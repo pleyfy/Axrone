@@ -230,6 +230,53 @@ void main() {
         scene.dispose();
     });
 
+    it('decodes bytes-backed texture sources before registering GPU textures', async () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const decodedSurface = document.createElement('canvas');
+        Object.defineProperty(decodedSurface, 'width', { value: 2, configurable: true });
+        Object.defineProperty(decodedSurface, 'height', { value: 3, configurable: true });
+        const loadImageFromBytes = (scene as unknown as {
+            _loadImageFromBytes: (
+                bytes: readonly number[] | Uint8Array,
+                mimeType: string,
+                uri?: string
+            ) => Promise<HTMLImageElement>;
+        })._loadImageFromBytes;
+
+        (scene as unknown as {
+            _loadImageFromBytes: (
+                bytes: readonly number[] | Uint8Array,
+                mimeType: string,
+                uri?: string
+            ) => Promise<HTMLImageElement | HTMLCanvasElement>;
+        })._loadImageFromBytes = async (bytes, mimeType, uri) => {
+            expect(bytes).toEqual(new Uint8Array([137, 80, 78, 71]));
+            expect(mimeType).toBe('image/png');
+            expect(uri).toBe('textures/albedo.png');
+            return decodedSurface;
+        };
+
+        try {
+            const texture = await scene.registerTexture({
+                id: 'bytes-texture',
+                source: {
+                    kind: 'bytes',
+                    bytes: new Uint8Array([137, 80, 78, 71]),
+                    mimeType: 'image/png',
+                    uri: 'textures/albedo.png',
+                },
+            });
+
+            expect(texture.width).toBe(2);
+            expect(texture.height).toBe(3);
+        } finally {
+            (scene as unknown as { _loadImageFromBytes: typeof loadImageFromBytes })._loadImageFromBytes =
+                loadImageFromBytes;
+            scene.dispose();
+        }
+    });
+
     it('serializes and reloads scene assets and prefab actors', async () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));

@@ -3,6 +3,7 @@ import { MeshoptEncoder } from 'meshoptimizer';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
 import {
     AssetDatabase,
+    createGltfSceneSnapshot,
     createGltfImporter,
     createGltfTextureTranscodeStage,
     createPassthroughGltfTextureTranscoder,
@@ -686,8 +687,19 @@ const createRigJson = (): GltfRootJson => ({
                         WEIGHTS_0: 2,
                     },
                     indices: 3,
+                    material: 0,
                 },
             ],
+        },
+    ],
+    materials: [
+        {
+            name: 'Rig Material',
+            pbrMetallicRoughness: {
+                baseColorFactor: [1, 1, 1, 1],
+                metallicFactor: 0,
+                roughnessFactor: 1,
+            },
         },
     ],
     nodes: [
@@ -1072,6 +1084,51 @@ describe('glTF importer', () => {
         );
         expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
             'gltf.animation.runtime-missing'
+        );
+    });
+
+    it('builds scene snapshots that carry imported glTF materials, shaders, and bytes-backed textures', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(createTriangleJson(), createBinaryBlob()),
+            uri: 'models/textured-triangle.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const built = createGltfSceneSnapshot(database, receipt.primary.reference);
+        const texture = receipt.assets.find((entry) => entry.kind === 'gltf.texture');
+        const material = receipt.assets.find((entry) => entry.kind === 'gltf.material');
+
+        expect(built.snapshot.shaders.map((entry) => entry.id)).toContain('gltf/pbr');
+        expect(built.snapshot.materials).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: material?.key,
+                    shaderId: 'gltf/pbr',
+                    textures: expect.objectContaining({
+                        _BaseColorTexture: texture?.key,
+                    }),
+                    uniforms: expect.objectContaining({
+                        _BaseColorTexture_TexCoord: 0,
+                        _BaseColorTexture_Rotation: 0,
+                    }),
+                }),
+            ])
+        );
+        expect(built.snapshot.textures).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: texture?.key,
+                    source: expect.objectContaining({
+                        kind: 'bytes',
+                        mimeType: 'image/png',
+                    }),
+                }),
+            ])
         );
     });
 

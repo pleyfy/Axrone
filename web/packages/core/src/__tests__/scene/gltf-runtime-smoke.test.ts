@@ -3,17 +3,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
     AssetDatabase,
     createGltfImporter,
+    loadGltfSceneIntoScene,
     type GltfAssetSchema,
     type GltfRootJson,
 } from '../../asset';
 import { Transform } from '../../component-system/components/transform';
-import type {
-    SceneMaterialDefinition,
-    SceneMeshDefinition,
-    ScenePrefabDefinition,
-    SceneShaderDefinition,
-    SceneSnapshot,
-} from '../../scene';
 import {
     createSceneOptions,
     installWebGL2Constants,
@@ -262,27 +256,6 @@ const createRigJson = (): GltfRootJson => ({
     scene: 0,
 });
 
-const withMaterialBinding = (
-    prefab: ScenePrefabDefinition,
-    materialId: string
-): ScenePrefabDefinition => ({
-    ...prefab,
-    actors: prefab.actors.map((actor) => ({
-        ...actor,
-        components: actor.components.map((component) =>
-            component.type === 'MeshRenderer'
-                ? {
-                      ...component,
-                      data: {
-                          ...(component.data as Record<string, unknown>),
-                          materialId,
-                      },
-                  }
-                : component
-        ),
-    })),
-});
-
 describe('glTF runtime smoke', () => {
     let scheduler: ManualScheduler;
 
@@ -313,91 +286,30 @@ describe('glTF runtime smoke', () => {
             mimeType: 'model/gltf-binary',
         });
 
-        const meshAsset = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
-        const prefabAsset = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-
-        expect(meshAsset?.kind).toBe('gltf.mesh');
-        expect(prefabAsset?.kind).toBe('gltf.prefab');
-
-        if (!meshAsset || meshAsset.kind !== 'gltf.mesh' || !prefabAsset || prefabAsset.kind !== 'gltf.prefab') {
-            throw new Error('Expected rig import to produce mesh and prefab assets');
-        }
-
-        const shader: SceneShaderDefinition = {
-            id: 'test/skinned-smoke',
-            vertexSource: `#version 300 es
-layout(location = 0) in vec3 a_Position;
-layout(location = 9) in uvec4 a_Joints0;
-layout(location = 10) in vec4 a_Weights0;
-uniform mat4 u_Model;
-uniform mat4 u_View;
-uniform mat4 u_Projection;
-uniform bool u_Skinning;
-uniform int u_SkinJointCount;
-uniform mat4 u_JointMatrices[1];
-void main() {
-    vec4 localPosition = vec4(a_Position, 1.0);
-    if (u_Skinning && u_SkinJointCount > 0) {
-        localPosition = (u_JointMatrices[int(a_Joints0.x)] * localPosition) * a_Weights0.x;
-    }
-    gl_Position = u_Projection * u_View * u_Model * localPosition;
-}`,
-            fragmentSource: `#version 300 es
-precision highp float;
-out vec4 o_Color;
-void main() {
-    o_Color = vec4(1.0);
-}`,
-            uniforms: [
-                'u_Model',
-                'u_View',
-                'u_Projection',
-                'u_Skinning',
-                'u_SkinJointCount',
-                'u_JointMatrices',
-            ],
-        };
-        const material: SceneMaterialDefinition = {
-            id: 'test/skinned-smoke-material',
-            shaderId: shader.id,
-        };
-        const prefab = withMaterialBinding(prefabAsset.data.definition, material.id);
-        const snapshot: SceneSnapshot = {
-            version: 1,
-            prefab,
-            shaders: [shader],
-            meshes: [
-                {
-                    ...(meshAsset.data.definition as SceneMeshDefinition),
-                    id: meshAsset.key,
-                },
-            ],
-            materials: [material],
-            textures: [],
-            samplers: [],
-            renderPasses: [],
-        };
-
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
         const gl = scene.gl as unknown as MockGLContext;
 
         try {
-            const firstInstance = await scene.loadScene(snapshot, { namePrefix: 'A ' });
-            const secondInstance = scene.instantiatePrefab(prefab, { namePrefix: 'B ' });
+            const firstLoad = await loadGltfSceneIntoScene(scene, database, receipt.primary.reference, {
+                namePrefix: 'A ',
+            });
+            const secondInstance = scene.instantiatePrefab(firstLoad.prefab.data.definition, { namePrefix: 'B ' });
             const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
             camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
 
-            const firstRootActor = firstInstance.find((actor) => actor.name === 'A Joint Root');
-            const firstMeshActor = firstInstance.find((actor) => actor.name === 'A Mesh Root');
+            const firstRootActor = firstLoad.actors.find((actor) => actor.name === 'A Joint Root');
+            const firstMeshActor = firstLoad.actors.find((actor) => actor.name === 'A Mesh Root');
             const secondRootActor = secondInstance.find((actor) => actor.name === 'B Joint Root');
             const secondMeshActor = secondInstance.find((actor) => actor.name === 'B Mesh Root');
             const firstAnimator = firstRootActor?.getComponent(Animator) ?? null;
 
+            expect(firstLoad.snapshot.materials[0]?.shaderId).toBe('gltf/pbr');
             expect(firstMeshActor?.getComponent(MeshRenderer)?.skin).toMatchObject({
                 jointNodeIds: ['node/0'],
                 skeletonNodeId: 'node/0',
             });
+            expect(firstMeshActor?.getComponent(MeshRenderer)?.materialId).toBe(firstLoad.prefab.data.materialKeys[0]);
 
             expect(firstAnimator?.clipId).toBe('Move');
             expect(firstAnimator?.serialize()).toMatchObject({
