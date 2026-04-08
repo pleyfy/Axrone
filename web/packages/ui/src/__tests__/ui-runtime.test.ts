@@ -103,6 +103,55 @@ describe('@axrone/ui runtime', () => {
         }
     });
 
+    it('emits advanced text appearance for sdf-ready glyph pipelines', () => {
+        const runtime = new UIRuntime({ width: 240, height: 80 });
+        runtime.fonts.registerFace({
+            family: 'SdfSans',
+            face: 'Regular',
+            style: 'normal',
+            weight: 400,
+            ascent: 800,
+            descent: 200,
+            lineGap: 0,
+            unitsPerEm: 1000,
+            defaultAdvance: 500,
+            fallbackCodePoint: 63,
+            glyphs: [32, 63, 65].map((codePoint) => ({
+                codePoint,
+                advance: codePoint === 32 ? 250 : 500,
+                width: codePoint === 32 ? 1 : 480,
+                height: codePoint === 32 ? 1 : 720,
+                format: 'sdf8' as const,
+                distanceRange: 6,
+            })),
+        });
+        const label = runtime.createWidget({
+            layout: { width: 120, height: 28 },
+            text: {
+                value: 'A',
+                family: 'SdfSans',
+                size: 20,
+                outlineColor: '#22d3eeff',
+                outlineWidth: 1.5,
+                edgeSoftness: 1.25,
+            },
+        });
+
+        runtime.appendChild(runtime.root, label);
+
+        const frame = runtime.commit();
+        const command = frame.commands.find((entry) => entry.kind === 'text');
+
+        expect(command).toBeDefined();
+        if (command && command.kind === 'text') {
+            expect(command.outlineWidth).toBe(1.5);
+            expect(command.edgeSoftness).toBe(1.25);
+            expect(command.outlineColor.g).toBeGreaterThan(0);
+            expect(command.layout.glyphs[0]?.atlasEntry?.distanceRange).toBe(6);
+            expect(command.layout.glyphs[0]?.atlasEntry?.format).toBe('sdf8');
+        }
+    });
+
     it('moves focus with directional and linear navigation', () => {
         const runtime = new UIRuntime({ width: 320, height: 120 });
 

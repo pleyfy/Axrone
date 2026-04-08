@@ -31,6 +31,7 @@ const createGlyphEntry = (): GlyphAtlasEntry => ({
     height: 16,
     format: 'alpha8',
     rowStride: 12,
+    distanceRange: 1,
     u0: 4 / 64,
     v0: 6 / 64,
     u1: 16 / 64,
@@ -104,6 +105,9 @@ const createFrame = (): UIFrame<{ readonly kind: 'pulse' }> => {
                 y: 48,
                 zIndex: 1,
                 color: { r: 1, g: 1, b: 1, a: 1 },
+                outlineColor: { r: 0, g: 0, b: 0, a: 0 },
+                outlineWidth: 0,
+                edgeSoftness: 1,
                 opacity: 0.75,
                 clip: { x: 16, y: 20, width: 96, height: 36 },
                 layout: createTextLayout(glyphEntry),
@@ -428,5 +432,55 @@ describe('@axrone/ui-webgl2', () => {
             uploadedGlyphCount: 0,
             atlasPageCount: 0,
         });
+    });
+
+    it('packs sdf text styling into the text batch for outline rendering', () => {
+        const gl = createMockWebGL2Context();
+        const renderer = new WebGL2UIRenderer({ gl });
+        const sdfGlyph = {
+            ...createGlyphEntry(),
+            format: 'sdf8' as const,
+            distanceRange: 6,
+            data: new Uint8Array(12 * 16).fill(127),
+        };
+        const frame: UIFrame<never> = {
+            viewportWidth: 128,
+            viewportHeight: 64,
+            metrics: {
+                ...createMetrics(),
+                renderCount: 1,
+                textCommandCount: 1,
+                glyphCount: 1,
+                customCommandCount: 0,
+            },
+            commands: [
+                {
+                    kind: 'text',
+                    widget: 1 as WidgetId,
+                    x: 12,
+                    y: 20,
+                    zIndex: 0,
+                    color: { r: 1, g: 1, b: 1, a: 1 },
+                    outlineColor: { r: 0.1, g: 0.8, b: 1, a: 1 },
+                    outlineWidth: 1.5,
+                    edgeSoftness: 1.25,
+                    opacity: 1,
+                    clip: null,
+                    layout: createTextLayout(sdfGlyph),
+                },
+            ],
+        };
+
+        renderer.render(frame);
+
+        const dynamicFloatUploads = gl.bufferData.mock.calls
+            .map((call) => call[1])
+            .filter((value): value is Float32Array => value instanceof Float32Array && value.length === 20);
+
+        expect(dynamicFloatUploads).toHaveLength(1);
+        expect(dynamicFloatUploads[0]?.[16]).toBe(1);
+        expect(dynamicFloatUploads[0]?.[17]).toBe(6);
+        expect(dynamicFloatUploads[0]?.[18]).toBe(1.5);
+        expect(dynamicFloatUploads[0]?.[19]).toBe(1.25);
     });
 });
