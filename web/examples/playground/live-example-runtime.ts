@@ -7,6 +7,7 @@ import * as axroneUtility from '@axrone/utility';
 import ts from 'typescript';
 import * as exampleRuntime from '../example-runtime';
 import type { SceneExample } from '../example-types';
+import * as uiExampleHelpers from '../ui/example-helpers';
 
 const supportedModules = {
     '@axrone/core': axroneCore,
@@ -17,6 +18,7 @@ const supportedModules = {
     '@axrone/utility': axroneUtility,
     './example-runtime': exampleRuntime,
     './example-types': {},
+    './ui/example-helpers': uiExampleHelpers,
 } as const;
 
 type SupportedSpecifier = keyof typeof supportedModules;
