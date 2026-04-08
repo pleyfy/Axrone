@@ -251,6 +251,23 @@ export interface TextBlockInput {
     readonly outlineColor?: ColorInput;
     readonly outlineWidth?: number;
     readonly edgeSoftness?: number;
+    readonly shadowColor?: ColorInput;
+    readonly shadowOffsetX?: number;
+    readonly shadowOffsetY?: number;
+    readonly underline?: boolean;
+    readonly underlineColor?: ColorInput;
+    readonly underlineThickness?: number;
+    readonly underlineOffset?: number;
+    readonly strikeThrough?: boolean;
+    readonly strikeThroughColor?: ColorInput;
+    readonly strikeThroughThickness?: number;
+    readonly selectionStart?: number;
+    readonly selectionEnd?: number;
+    readonly selectionColor?: ColorInput;
+    readonly caretIndex?: number;
+    readonly caretColor?: ColorInput;
+    readonly caretWidth?: number;
+    readonly caretInset?: number;
 }
 
 export interface UIImageTextureSource {
@@ -298,6 +315,23 @@ export interface ResolvedTextBlock {
     readonly outlineColor: ReadonlyColor;
     readonly outlineWidth: number;
     readonly edgeSoftness: number;
+    readonly shadowColor: ReadonlyColor;
+    readonly shadowOffsetX: number;
+    readonly shadowOffsetY: number;
+    readonly underline: boolean;
+    readonly underlineColor: ReadonlyColor;
+    readonly underlineThickness: number;
+    readonly underlineOffset: number;
+    readonly strikeThrough: boolean;
+    readonly strikeThroughColor: ReadonlyColor;
+    readonly strikeThroughThickness: number;
+    readonly selectionStart: number | null;
+    readonly selectionEnd: number | null;
+    readonly selectionColor: ReadonlyColor;
+    readonly caretIndex: number | null;
+    readonly caretColor: ReadonlyColor;
+    readonly caretWidth: number;
+    readonly caretInset: number;
 }
 
 export interface ResolvedWidgetImage {
@@ -641,6 +675,26 @@ export interface TextLineLayout {
     readonly gapCount: number;
 }
 
+export interface TextClusterLayout {
+    readonly index: number;
+    readonly line: number;
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly text: string;
+    readonly whitespace: boolean;
+    readonly newline: boolean;
+}
+
+export interface TextCaretPlacement {
+    readonly index: number;
+    readonly line: number;
+    readonly x: number;
+    readonly y: number;
+    readonly height: number;
+}
+
 export interface TextLayoutResult {
     readonly faceId: FontFaceId | null;
     readonly width: number;
@@ -648,6 +702,8 @@ export interface TextLayoutResult {
     readonly lineHeight: number;
     readonly baseline: number;
     readonly lines: readonly TextLineLayout[];
+    readonly clusters: readonly TextClusterLayout[];
+    readonly carets: readonly TextCaretPlacement[];
     readonly glyphs: readonly TextGlyphPlacement[];
     readonly truncated: boolean;
     readonly direction: ResolvedTextDirection;

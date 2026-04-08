@@ -297,6 +297,16 @@ const mergeProps = (
     patch: Readonly<Record<string, unknown>> | undefined
 ): Readonly<Record<string, unknown>> => ({ ...(base ?? EMPTY_RECORD_OBJECT), ...(patch ?? {}) });
 
+const normalizeIndex = (value: number | undefined): number | null => {
+    if (value === undefined || value === null) {
+        return null;
+    }
+    if (!Number.isFinite(value)) {
+        return null;
+    }
+    return Math.max(0, Math.floor(value));
+};
+
 const normalizeUvRect = (input: WidgetImageInput['uvRect']): { readonly x: number; readonly y: number; readonly width: number; readonly height: number } => {
     const x = clamp(input?.x ?? 0, 0, 1);
     const y = clamp(input?.y ?? 0, 0, 1);
@@ -826,6 +836,23 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             outlineColor: normalizeColor(input.outlineColor, TRANSPARENT),
             outlineWidth: Math.max(0, input.outlineWidth ?? 0),
             edgeSoftness: Math.max(0.5, input.edgeSoftness ?? 1),
+            shadowColor: normalizeColor(input.shadowColor, TRANSPARENT),
+            shadowOffsetX: input.shadowOffsetX ?? 0,
+            shadowOffsetY: input.shadowOffsetY ?? 0,
+            underline: input.underline ?? false,
+            underlineColor: normalizeColor(input.underlineColor, TRANSPARENT),
+            underlineThickness: Math.max(1, input.underlineThickness ?? 1),
+            underlineOffset: input.underlineOffset ?? 1,
+            strikeThrough: input.strikeThrough ?? false,
+            strikeThroughColor: normalizeColor(input.strikeThroughColor, TRANSPARENT),
+            strikeThroughThickness: Math.max(1, input.strikeThroughThickness ?? 1),
+            selectionStart: normalizeIndex(input.selectionStart),
+            selectionEnd: normalizeIndex(input.selectionEnd),
+            selectionColor: normalizeColor(input.selectionColor, TRANSPARENT),
+            caretIndex: normalizeIndex(input.caretIndex),
+            caretColor: normalizeColor(input.caretColor, TRANSPARENT),
+            caretWidth: Math.max(1, input.caretWidth ?? 1),
+            caretInset: Math.max(0, input.caretInset ?? 1),
         };
     }
 
@@ -1179,6 +1206,34 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             }
             const textLayout = this.resolveTextLayoutForRender(index);
             if (textLayout && textLayout.glyphs.length > 0) {
+                const textStyle = this.texts[index]!;
+                if (textStyle.selectionColor.a > 0) {
+                    for (const quad of this.buildSelectionCommands(index, box, textStyle, textLayout, nextClip, zIndex, style.opacity)) {
+                        commands.push(quad);
+                    }
+                }
+                if (textStyle.shadowColor.a > 0 && (textStyle.shadowOffsetX !== 0 || textStyle.shadowOffsetY !== 0)) {
+                    const shadowCommand: TextRenderCommand = {
+                        kind: 'text',
+                        widget: index as WidgetId,
+                        x: box.contentX + textStyle.shadowOffsetX,
+                        y: box.contentY + textStyle.shadowOffsetY,
+                        zIndex,
+                        color: textStyle.shadowColor,
+                        outlineColor: TRANSPARENT,
+                        outlineWidth: 0,
+                        edgeSoftness: textStyle.edgeSoftness,
+                        opacity: style.opacity,
+                        clip: nextClip,
+                        layout: textLayout,
+                    };
+                    textCommandCount += 1;
+                    glyphCount += textLayout.glyphs.length;
+                    commands.push(shadowCommand);
+                }
+                for (const quad of this.buildLineDecorationCommands(index, box, textStyle, textLayout, nextClip, zIndex, style.opacity)) {
+                    commands.push(quad);
+                }
                 const textCommand: TextRenderCommand = {
                     kind: 'text',
                     widget: index as WidgetId,
@@ -1196,6 +1251,10 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
                 textCommandCount += 1;
                 glyphCount += textLayout.glyphs.length;
                 commands.push(textCommand);
+                const caretCommand = this.buildCaretCommand(index, box, textStyle, textLayout, nextClip, zIndex, style.opacity);
+                if (caretCommand) {
+                    commands.push(caretCommand);
+                }
             }
             const controller = this.records[index]!.controller
                 ? this.registry.resolve(this.records[index]!.controller)
@@ -1308,6 +1367,134 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             radius: style.radius,
             clip,
             uvRect: image.uvRect,
+        };
+    }
+
+    private buildSelectionCommands(
+        index: number,
+        box: LayoutBox,
+        text: ResolvedTextBlock,
+        layout: TextLayoutResult,
+        clip: LayoutBox | null,
+        zIndex: number,
+        opacity: number
+    ): QuadRenderCommand[] {
+        if (text.selectionStart === null || text.selectionEnd === null || text.selectionStart === text.selectionEnd) {
+            return [];
+        }
+        const start = Math.min(text.selectionStart, text.selectionEnd);
+        const end = Math.max(text.selectionStart, text.selectionEnd);
+        const selected = layout.clusters.filter((cluster) => cluster.index >= start && cluster.index < end);
+        const perLine = new Map<number, { x0: number; x1: number; y: number; height: number }>();
+        for (const cluster of selected) {
+            const current = perLine.get(cluster.line);
+            const x0 = cluster.x;
+            const x1 = cluster.x + cluster.width;
+            if (!current) {
+                perLine.set(cluster.line, { x0, x1, y: cluster.y, height: cluster.height });
+                continue;
+            }
+            current.x0 = Math.min(current.x0, x0);
+            current.x1 = Math.max(current.x1, x1);
+        }
+        return [...perLine.values()].map((line) => ({
+            kind: 'quad' as const,
+            widget: index as WidgetId,
+            x: box.contentX + line.x0,
+            y: box.contentY + line.y,
+            width: Math.max(1, line.x1 - line.x0),
+            height: line.height,
+            zIndex,
+            color: text.selectionColor,
+            borderColor: TRANSPARENT,
+            borderWidth: 0,
+            radius: { topLeft: 2, topRight: 2, bottomRight: 2, bottomLeft: 2 },
+            opacity,
+            clip,
+        }));
+    }
+
+    private buildLineDecorationCommands(
+        index: number,
+        box: LayoutBox,
+        text: ResolvedTextBlock,
+        layout: TextLayoutResult,
+        clip: LayoutBox | null,
+        zIndex: number,
+        opacity: number
+    ): QuadRenderCommand[] {
+        const commands: QuadRenderCommand[] = [];
+        for (const line of layout.lines) {
+            if (text.underline && text.underlineColor.a > 0) {
+                commands.push({
+                    kind: 'quad',
+                    widget: index as WidgetId,
+                    x: box.contentX + line.x,
+                    y: box.contentY + line.y + layout.baseline + text.underlineOffset,
+                    width: Math.max(1, line.width),
+                    height: text.underlineThickness,
+                    zIndex,
+                    color: text.underlineColor,
+                    borderColor: TRANSPARENT,
+                    borderWidth: 0,
+                    radius: { topLeft: 0, topRight: 0, bottomRight: 0, bottomLeft: 0 },
+                    opacity,
+                    clip,
+                });
+            }
+            if (text.strikeThrough && text.strikeThroughColor.a > 0) {
+                commands.push({
+                    kind: 'quad',
+                    widget: index as WidgetId,
+                    x: box.contentX + line.x,
+                    y: box.contentY + line.y + line.ascent * 0.55,
+                    width: Math.max(1, line.width),
+                    height: text.strikeThroughThickness,
+                    zIndex,
+                    color: text.strikeThroughColor,
+                    borderColor: TRANSPARENT,
+                    borderWidth: 0,
+                    radius: { topLeft: 0, topRight: 0, bottomRight: 0, bottomLeft: 0 },
+                    opacity,
+                    clip,
+                });
+            }
+        }
+        return commands;
+    }
+
+    private buildCaretCommand(
+        index: number,
+        box: LayoutBox,
+        text: ResolvedTextBlock,
+        layout: TextLayoutResult,
+        clip: LayoutBox | null,
+        zIndex: number,
+        opacity: number
+    ): QuadRenderCommand | null {
+        if (text.caretIndex === null || text.caretColor.a <= 0) {
+            return null;
+        }
+        const exact = layout.carets.find((caret) => caret.index === text.caretIndex);
+        const fallback = exact ?? layout.carets.filter((caret) => caret.index <= text.caretIndex!).at(-1) ?? layout.carets[0];
+        if (!fallback) {
+            return null;
+        }
+        const caretHeight = Math.max(1, fallback.height - text.caretInset * 2);
+        return {
+            kind: 'quad',
+            widget: index as WidgetId,
+            x: box.contentX + fallback.x - text.caretWidth * 0.5,
+            y: box.contentY + fallback.y + text.caretInset,
+            width: text.caretWidth,
+            height: caretHeight,
+            zIndex,
+            color: text.caretColor,
+            borderColor: TRANSPARENT,
+            borderWidth: 0,
+            radius: { topLeft: 0, topRight: 0, bottomRight: 0, bottomLeft: 0 },
+            opacity,
+            clip,
         };
     }
 

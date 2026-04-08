@@ -6,6 +6,8 @@ import type {
     ResolvedTextBlock,
     ResolvedTextDirection,
     TextBlockInput,
+    TextCaretPlacement,
+    TextClusterLayout,
     TextGlyphPlacement,
     TextLayoutConstraint,
     TextLayoutResult,
@@ -209,6 +211,8 @@ export class TextLayoutEngine implements Disposable {
             this.applyEllipsis(lines[lines.length - 1], clusters, faceId, block, maxWidth);
         }
         const lineLayouts: TextLineLayout[] = [];
+        const clusterLayouts: TextClusterLayout[] = [];
+        const caretMap = new Map<number, TextCaretPlacement>();
         const glyphs: TextGlyphPlacement[] = [];
         let layoutWidth = 0;
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -226,6 +230,9 @@ export class TextLayoutEngine implements Disposable {
             let gapCursor = 0;
             for (let clusterIndex = line.start; clusterIndex < line.end; clusterIndex += 1) {
                 const cluster = clusters[clusterIndex];
+                const rawClusterStart = x + cursorX + gapCursor;
+                const clusterGap = justify && cluster.whitespace ? extraGap : 0;
+                const clusterWidth = cluster.width + clusterGap;
                 for (const glyph of cluster.glyphs) {
                     glyphs.push({
                         codePoint: glyph.codePoint,
@@ -242,6 +249,37 @@ export class TextLayoutEngine implements Disposable {
                 if (justify && cluster.whitespace) {
                     gapCursor += extraGap;
                 }
+                const resolvedClusterStart =
+                    direction === 'rtl'
+                        ? x + line.width - (rawClusterStart - x + clusterWidth)
+                        : rawClusterStart;
+                clusterLayouts.push({
+                    index: cluster.index,
+                    line: lineIndex,
+                    x: resolvedClusterStart,
+                    y,
+                    width: clusterWidth,
+                    height: computedLineHeight,
+                    text: cluster.text,
+                    whitespace: cluster.whitespace,
+                    newline: cluster.newline,
+                });
+                if (!caretMap.has(cluster.index)) {
+                    caretMap.set(cluster.index, {
+                        index: cluster.index,
+                        line: lineIndex,
+                        x: resolvedClusterStart,
+                        y,
+                        height: computedLineHeight,
+                    });
+                }
+                caretMap.set(cluster.index + 1, {
+                    index: cluster.index + 1,
+                    line: lineIndex,
+                    x: resolvedClusterStart + clusterWidth,
+                    y,
+                    height: computedLineHeight,
+                });
             }
             if (direction === 'rtl') {
                 for (let index = glyphs.length - 1; index >= 0 && glyphs[index].line === lineIndex; index -= 1) {
@@ -264,6 +302,24 @@ export class TextLayoutEngine implements Disposable {
                 descent,
                 gapCount: line.gapCount,
             });
+            if (!caretMap.has(line.start)) {
+                caretMap.set(line.start, {
+                    index: line.start,
+                    line: lineIndex,
+                    x,
+                    y,
+                    height: computedLineHeight,
+                });
+            }
+            if (!caretMap.has(line.end)) {
+                caretMap.set(line.end, {
+                    index: line.end,
+                    line: lineIndex,
+                    x: x + line.width,
+                    y,
+                    height: computedLineHeight,
+                });
+            }
         }
         return {
             faceId,
@@ -272,6 +328,8 @@ export class TextLayoutEngine implements Disposable {
             lineHeight: computedLineHeight,
             baseline: ascent,
             lines: lineLayouts,
+            clusters: clusterLayouts,
+            carets: [...caretMap.values()].sort((left, right) => left.index - right.index || left.line - right.line),
             glyphs,
             truncated,
             direction,
