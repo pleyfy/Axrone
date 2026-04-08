@@ -1,4 +1,4 @@
-import { Scene, Transform, Vec3 } from '@axrone/core';
+import { Scene, Transform, Vec3, createUnlitColorShaderDefinition } from '@axrone/core';
 import { UIRuntime } from '@axrone/ui';
 import { attachUIOverlayToScene } from '@axrone/ui-webgl2';
 import { bindSceneToContainer } from './example-runtime';
@@ -152,9 +152,10 @@ const sceneUiOverlayExample: SceneExample = {
         });
 
         scene.createBoxMesh('overlay-demo-box');
+        const overlayShader = scene.registerShader(createUnlitColorShaderDefinition('overlay/unlit-color'));
         scene.createMaterial({
             id: 'overlay-demo-material',
-            shaderId: 'scene/default',
+            shaderId: overlayShader.id,
             uniforms: {
                 u_Color: [0.18, 0.58, 0.96, 1],
             },
@@ -172,7 +173,7 @@ const sceneUiOverlayExample: SceneExample = {
         });
         scene.createMaterial({
             id: 'overlay-ui-preview-material',
-            shaderId: 'scene/default',
+            shaderId: overlayShader.id,
             uniforms: {
                 u_Color: [1, 1, 1, 1],
             },
