@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GlyphAtlasEntry, TextLayoutResult, UIFrame, UIFrameMetrics, WidgetId } from '@axrone/ui';
-import { WebGL2UIRenderer, createUIOverlayRenderPipelineBackend } from '../index';
+import {
+    WebGL2UIRenderer,
+    createManagedWebGL2UIOverlayRenderPipelineBackend,
+    createUIOverlayRenderPipelineBackend,
+} from '../index';
 
 const createMetrics = (): UIFrameMetrics => ({
     widgetCount: 2,
@@ -256,5 +260,44 @@ describe('@axrone/ui-webgl2', () => {
         expect(order).toEqual(['begin', 'pass', 'base-end', 'ui']);
         expect(ui).toHaveBeenCalledWith({ width: 320, height: 180 });
         expect(renderer.render).toHaveBeenCalledWith(frame);
+    });
+
+    it('lazily creates, reuses, and disposes managed renderers across WebGL context changes', async () => {
+        const glA = createMockWebGL2Context();
+        const glB = createMockWebGL2Context();
+        const frame = createFrame();
+        const backend = createManagedWebGL2UIOverlayRenderPipelineBackend({
+            ui: () => frame,
+            getGL: ({ context }) => (context.frame < 2 ? glA : glB),
+        });
+        const contextFor = (frameIndex: number) =>
+            ({
+                frame: frameIndex,
+                viewport: { width: 160, height: 120 },
+            }) as Parameters<NonNullable<typeof backend.endFrame>>[1];
+        const result = {
+            frame: 0,
+            viewport: { width: 160, height: 120 },
+            passes: [],
+            resources: [],
+            statistics: createMetrics() as never,
+            degraded: false,
+            warnings: [],
+        } as Parameters<NonNullable<typeof backend.endFrame>>[0];
+
+        await backend.endFrame?.(result, contextFor(0));
+        await backend.endFrame?.(result, contextFor(1));
+
+        expect(glA.createProgram).toHaveBeenCalledTimes(2);
+        expect(glA.deleteProgram).not.toHaveBeenCalled();
+
+        await backend.endFrame?.(result, contextFor(2));
+
+        expect(glB.createProgram).toHaveBeenCalledTimes(2);
+        expect(glA.deleteProgram).toHaveBeenCalledTimes(2);
+
+        backend.dispose();
+
+        expect(glB.deleteProgram).toHaveBeenCalledTimes(2);
     });
 });
