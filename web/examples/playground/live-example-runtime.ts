@@ -1,6 +1,8 @@
 import * as axroneCore from '@axrone/core';
 import * as axroneNumeric from '@axrone/numeric';
 import * as axroneRandom from '@axrone/random';
+import * as axroneUI from '@axrone/ui';
+import * as axroneUIWebGL2 from '@axrone/ui-webgl2';
 import * as axroneUtility from '@axrone/utility';
 import ts from 'typescript';
 import * as exampleRuntime from '../example-runtime';
@@ -10,6 +12,8 @@ const supportedModules = {
     '@axrone/core': axroneCore,
     '@axrone/numeric': axroneNumeric,
     '@axrone/random': axroneRandom,
+    '@axrone/ui': axroneUI,
+    '@axrone/ui-webgl2': axroneUIWebGL2,
     '@axrone/utility': axroneUtility,
     './example-runtime': exampleRuntime,
     './example-types': {},
