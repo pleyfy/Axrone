@@ -19,6 +19,11 @@
             "import": "./dist/scene-runtime/index.mjs",
             "require": "./dist/scene-runtime/index.js"
         },
+        "./scene-3d": {
+            "types": "./dist/scene-3d/index.d.ts",
+            "import": "./dist/scene-3d/index.mjs",
+            "require": "./dist/scene-3d/index.js"
+        },
         "./runtime-profile-core": {
             "types": "./dist/runtime-profile-core/index.d.ts",
             "import": "./dist/runtime-profile-core/index.mjs",

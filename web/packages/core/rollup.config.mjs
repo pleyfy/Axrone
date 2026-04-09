@@ -15,6 +15,11 @@ export default [
     }),
     ...createPackageConfig({
         packageDir,
+        inputRelativePath: 'src/scene-3d.ts',
+        outputBasename: 'scene-3d/index',
+    }),
+    ...createPackageConfig({
+        packageDir,
         inputRelativePath: 'src/runtime-profile-core.ts',
         outputBasename: 'runtime-profile-core/index',
     }),
