@@ -28,6 +28,10 @@ import { SpotLight } from './components/spot-light';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import {
+    SceneShaderRegistry,
+    type SceneShaderResource,
+} from './shader-registry';
+import {
     SceneRenderPassRegistry,
     type SceneRenderPassResource,
 } from './render-pass-registry';
@@ -80,18 +84,6 @@ interface ResolvedSurface {
     readonly canvas: HTMLCanvasElement;
     readonly gl: WebGL2RenderingContext;
     readonly autoCreated: boolean;
-}
-
-interface ShaderResource {
-    readonly id: string;
-    readonly program: WebGLProgram;
-    readonly uniformLocations: ReadonlyMap<string, WebGLUniformLocation>;
-    readonly uniformTypes: ReadonlyMap<string, number>;
-    readonly uniformNames: readonly string[];
-    readonly attributeNames: Readonly<Record<SceneMeshSemantic, string>>;
-    readonly depthTest: boolean;
-    readonly cull: boolean;
-    readonly blend: boolean;
 }
 
 interface MeshResource {
@@ -345,12 +337,6 @@ const applyMorphTargetsToVertexBytes = (
 };
 
 const cloneSceneValue = <T>(value: T): T => decodeSceneValue(encodeSceneValue(value)) as T;
-
-const cloneShaderDefinition = (definition: SceneShaderDefinition): SceneShaderDefinition => ({
-    ...definition,
-    uniforms: definition.uniforms ? [...definition.uniforms] : undefined,
-    attributes: definition.attributes ? { ...definition.attributes } : undefined,
-});
 
 const cloneMaterialDefinition = (definition: SceneMaterialDefinition): SceneMaterialDefinition => ({
     id: definition.id,
@@ -735,8 +721,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _registry: RuntimeRegistry<R>;
     private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
-    private readonly _shaders = new Map<string, ShaderResource>();
-    private readonly _shaderDefinitions = new Map<string, SceneShaderDefinition>();
+    private readonly _shaderRegistry = new SceneShaderRegistry();
     private readonly _materials = new Map<string, MaterialResource>();
     private readonly _materialDefinitions = new Map<string, SceneMaterialDefinition>();
     private readonly _meshes = new Map<string, MeshResource>();
@@ -915,37 +900,22 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerShader(definition: SceneShaderDefinition): SceneShaderHandle {
         this._assertNotDisposed();
-        const existing = this._shaders.get(definition.id);
-        if (existing) {
-            this.gl.deleteProgram(existing.program);
-            this._shaders.delete(definition.id);
+        const resource = this._createShaderResource(definition);
+        const result = this._shaderRegistry.register(definition, resource);
+        if (result.previous) {
+            this.gl.deleteProgram(result.previous.program);
         }
 
-        const resource = this._createShaderResource(definition);
-        this._shaders.set(resource.id, resource);
-        this._shaderDefinitions.set(resource.id, cloneShaderDefinition(definition));
-
-        return {
-            id: resource.id,
-            uniformNames: resource.uniformNames,
-        };
+        return result.handle;
     }
 
     getShader(id: string): SceneShaderHandle | null {
-        const shader = this._shaders.get(id);
-        if (!shader) {
-            return null;
-        }
-
-        return {
-            id: shader.id,
-            uniformNames: shader.uniformNames,
-        };
+        return this._shaderRegistry.getHandle(id);
     }
 
     createMaterial(definition: SceneMaterialDefinition): SceneMaterialHandle {
         this._assertNotDisposed();
-        if (!this._shaders.has(definition.shaderId)) {
+        if (!this._shaderRegistry.get(definition.shaderId)) {
             throw new SceneMaterialError(
                 `Cannot create material '${definition.id}' because shader '${definition.shaderId}' is not registered`
             );
@@ -1286,9 +1256,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         return {
             version: 1,
             prefab: this.createPrefab(`${this.id}:prefab`),
-            shaders: [...this._shaderDefinitions.values()].map((definition) =>
-                cloneShaderDefinition(definition)
-            ),
+            shaders: this._shaderRegistry.getDefinitions(),
             meshes: [...this._meshDefinitions.values()].map((definition) =>
                 cloneMeshDefinition(definition)
             ),
@@ -1490,7 +1458,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         };
     }
 
-    private _createShaderResource(definition: SceneShaderDefinition): ShaderResource {
+    private _createShaderResource(definition: SceneShaderDefinition): SceneShaderResource {
         const program = this.gl.createProgram();
         if (!program) {
             throw new SceneShaderError(`Failed to create shader program '${definition.id}'`);
@@ -2031,7 +1999,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
                 activeRendererIds.add(item.renderer.id);
 
-                const shader = this._shaders.get(material.shaderId);
+                const shader = this._shaderRegistry.get(material.shaderId);
                 if (!shader) {
                     continue;
                 }
@@ -2330,7 +2298,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _applyRenderState(
-        shader: ShaderResource,
+        shader: SceneShaderResource,
         renderPass: SceneRenderPassResource
     ): void {
         const depthTest = renderPass.depthTest ?? shader.depthTest;
@@ -2362,7 +2330,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _applyLightingUniforms(
-        shader: ShaderResource,
+        shader: SceneShaderResource,
         renderer: MeshRenderer,
         lighting: LightingState
     ): void {
@@ -2435,7 +2403,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._setUniform(shader, 'u_LocalLightOuterCone', localLightOuterCones);
     }
 
-    private _applySkinningUniforms(shader: ShaderResource, renderer: MeshRenderer): void {
+    private _applySkinningUniforms(
+        shader: SceneShaderResource,
+        renderer: MeshRenderer
+    ): void {
         const palette = renderer.getSkinJointMatrixPalette();
         const jointCount = palette ? renderer.skinJointCount : 0;
 
@@ -2446,7 +2417,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
     }
 
-    private _bindMaterialTextures(shader: ShaderResource, material: MaterialResource): number[] {
+    private _bindMaterialTextures(
+        shader: SceneShaderResource,
+        material: MaterialResource
+    ): number[] {
         const assignments = [...material.textureBindings.entries()].sort((left, right) => {
             const leftUnit = left[1].unit ?? Number.MAX_SAFE_INTEGER;
             const rightUnit = right[1].unit ?? Number.MAX_SAFE_INTEGER;
@@ -2511,7 +2485,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _setNumericUniform(
-        shader: ShaderResource,
+        shader: SceneShaderResource,
         location: WebGLUniformLocation,
         name: string,
         value: number
@@ -2556,7 +2530,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _setUniform(
-        shader: ShaderResource,
+        shader: SceneShaderResource,
         name: string,
         value: SceneUniformValue | null | undefined
     ): void {
@@ -2766,7 +2740,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _clearSceneAssets(): void {
-        for (const shader of this._shaders.values()) {
+        for (const shader of this._shaderRegistry.clear()) {
             this.gl.deleteProgram(shader.program);
         }
 
@@ -2790,8 +2764,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             }
         }
 
-        this._shaders.clear();
-        this._shaderDefinitions.clear();
         this._materials.clear();
         this._materialDefinitions.clear();
         this._meshes.clear();

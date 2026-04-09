@@ -17,6 +17,8 @@ export {
 } from './profile';
 export type { SceneComponentTypeResolver } from './component-catalog';
 export { SceneComponentCatalog, getSceneComponentTypeName } from './component-catalog';
+export type { SceneShaderRegistrationResult, SceneShaderResource } from './shader-registry';
+export { cloneSceneShaderDefinition, SceneShaderRegistry } from './shader-registry';
 export type { SceneRenderPassResource, SceneRenderPassRegistryOptions } from './render-pass-registry';
 export {
     cloneSceneRenderPassDefinition,
