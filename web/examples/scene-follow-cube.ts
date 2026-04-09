@@ -303,7 +303,7 @@ void main() {
         cameraTransform.position = new Vec3(10, 8, 10);
 
         // Add camera follow component - fixed offset, no rotation
-        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(10, 6, 10), 4);
+        const cameraFollow = camera.addComponent(CameraFollow, new Vec3(0, 2, 12), 4);
         cameraFollow.setTarget(playerTransform);
 
         // Create professional GUI panel
