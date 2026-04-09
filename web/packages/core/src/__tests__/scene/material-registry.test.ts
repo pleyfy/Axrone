@@ -63,6 +63,17 @@ describe('SceneMaterialRegistry', () => {
             shaderId: 'shader/basic',
             textureBindings: ['u_MainTex'],
         });
+        expect(registry.getTextureSlots('mat/basic')).toEqual([
+            {
+                uniformName: 'u_MainTex',
+                binding: {
+                    textureId: 'checker',
+                    samplerId: 'linear',
+                    unit: 2,
+                },
+                resolvedUnit: 2,
+            },
+        ]);
     });
 
     it('normalizes string texture bindings and clones material definitions', () => {
@@ -101,5 +112,44 @@ describe('SceneMaterialRegistry', () => {
 
         expect(registry.get('mat/basic')).toBeUndefined();
         expect(registry.getDefinitions()).toEqual([]);
+    });
+
+    it('caches deterministic texture slots for repeated lookups', () => {
+        const registry = new SceneMaterialRegistry();
+        registry.create({
+            id: 'mat/basic',
+            shaderId: 'shader/basic',
+            textures: {
+                u_Overlay: {
+                    textureId: 'overlay',
+                    unit: 4,
+                },
+                u_MainTex: {
+                    textureId: 'checker',
+                },
+            },
+        });
+
+        const first = registry.getTextureSlots('mat/basic');
+        const second = registry.getTextureSlots('mat/basic');
+
+        expect(first).toBe(second);
+        expect(first.map((slot) => [slot.uniformName, slot.resolvedUnit])).toEqual([
+            ['u_Overlay', 4],
+            ['u_MainTex', 0],
+        ]);
+
+        registry.setTexture('mat/basic', 'u_Detail', {
+            textureId: 'detail',
+            unit: 1,
+        });
+        const third = registry.getTextureSlots('mat/basic');
+
+        expect(third).not.toBe(first);
+        expect(third.map((slot) => [slot.uniformName, slot.resolvedUnit])).toEqual([
+            ['u_Detail', 1],
+            ['u_Overlay', 4],
+            ['u_MainTex', 0],
+        ]);
     });
 });

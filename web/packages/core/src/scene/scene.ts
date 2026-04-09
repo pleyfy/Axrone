@@ -883,32 +883,28 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             return [];
         }
 
-        return [...material.textureBindings.entries()]
-            .sort((left, right) => {
-                const leftUnit = left[1].unit ?? Number.MAX_SAFE_INTEGER;
-                const rightUnit = right[1].unit ?? Number.MAX_SAFE_INTEGER;
-                return leftUnit - rightUnit || left[0].localeCompare(right[0]);
-            })
-            .flatMap(([uniformName, binding]) => {
-                const texture = this._textureRegistry.get(binding.textureId);
-                if (!texture) {
-                    return [];
-                }
-                const sampler = this._resolveSampler(binding.samplerId ?? texture.samplerId);
-                return [
-                    {
-                        materialId,
-                        uniformName,
-                        textureId: binding.textureId,
-                        samplerId: binding.samplerId ?? texture.samplerId,
-                        unit: binding.unit ?? null,
-                        width: texture.width,
-                        height: texture.height,
-                        nativeTexture: texture.texture.nativeHandle,
-                        nativeSampler: sampler.nativeHandle,
-                    } satisfies SceneMaterialTextureBindingHandle,
-                ];
+        const bindings: SceneMaterialTextureBindingHandle[] = [];
+        for (const slot of this._materialRegistry.getTextureSlots(materialId)) {
+            const texture = this._textureRegistry.get(slot.binding.textureId);
+            if (!texture) {
+                continue;
+            }
+
+            const sampler = this._resolveSampler(slot.binding.samplerId ?? texture.samplerId);
+            bindings.push({
+                materialId,
+                uniformName: slot.uniformName,
+                textureId: slot.binding.textureId,
+                samplerId: slot.binding.samplerId ?? texture.samplerId,
+                unit: slot.resolvedUnit,
+                width: texture.width,
+                height: texture.height,
+                nativeTexture: texture.texture.nativeHandle,
+                nativeSampler: sampler.nativeHandle,
             });
+        }
+
+        return bindings;
     }
 
     getMaterialTextureBinding(
@@ -2163,37 +2159,20 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         shader: SceneShaderResource,
         material: SceneMaterialResource
     ): number[] {
-        const assignments = [...material.textureBindings.entries()].sort((left, right) => {
-            const leftUnit = left[1].unit ?? Number.MAX_SAFE_INTEGER;
-            const rightUnit = right[1].unit ?? Number.MAX_SAFE_INTEGER;
-            return leftUnit - rightUnit;
-        });
-
-        const usedUnits = new Set<number>();
         const boundUnits: number[] = [];
-        let nextUnit = 0;
 
-        for (const [uniformName, binding] of assignments) {
-            const texture = this._textureRegistry.get(binding.textureId);
+        for (const slot of this._materialRegistry.getTextureSlots(material.id)) {
+            const texture = this._textureRegistry.get(slot.binding.textureId);
             if (!texture) {
                 continue;
             }
 
-            let unit = binding.unit;
-            if (unit === undefined) {
-                while (usedUnits.has(nextUnit)) {
-                    nextUnit += 1;
-                }
-                unit = nextUnit;
-            }
+            boundUnits.push(slot.resolvedUnit);
 
-            usedUnits.add(unit);
-            boundUnits.push(unit);
-
-            texture.texture.bind(unit);
-            const sampler = this._resolveSampler(binding.samplerId ?? texture.samplerId);
-            sampler.bind(unit);
-            this._setUniform(shader, uniformName, unit);
+            texture.texture.bind(slot.resolvedUnit);
+            const sampler = this._resolveSampler(slot.binding.samplerId ?? texture.samplerId);
+            sampler.bind(slot.resolvedUnit);
+            this._setUniform(shader, slot.uniformName, slot.resolvedUnit);
         }
 
         return boundUnits;

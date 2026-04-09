@@ -19,7 +19,11 @@ export type { SceneComponentTypeResolver } from './component-catalog';
 export { SceneComponentCatalog, getSceneComponentTypeName } from './component-catalog';
 export type { SceneShaderRegistrationResult, SceneShaderResource } from './shader-registry';
 export { cloneSceneShaderDefinition, SceneShaderRegistry } from './shader-registry';
-export type { SceneMaterialResource, SceneMaterialTextureBinding } from './material-registry';
+export type {
+    SceneMaterialResource,
+    SceneMaterialTextureBinding,
+    SceneMaterialTextureSlot,
+} from './material-registry';
 export {
     cloneSceneMaterialDefinition,
     normalizeSceneTextureBinding,

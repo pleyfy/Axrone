@@ -12,6 +12,12 @@ export interface SceneMaterialTextureBinding {
     readonly unit?: number;
 }
 
+export interface SceneMaterialTextureSlot {
+    readonly uniformName: string;
+    readonly binding: SceneMaterialTextureBinding;
+    readonly resolvedUnit: number;
+}
+
 export interface SceneMaterialResource {
     readonly id: string;
     readonly shaderId: string;
@@ -21,11 +27,50 @@ export interface SceneMaterialResource {
 
 const cloneSceneValue = <T>(value: T): T => decodeSceneValue(encodeSceneValue(value)) as T;
 
+const compareTextureBindings = (
+    left: readonly [string, SceneMaterialTextureBinding],
+    right: readonly [string, SceneMaterialTextureBinding]
+): number => {
+    const leftUnit = left[1].unit ?? Number.MAX_SAFE_INTEGER;
+    const rightUnit = right[1].unit ?? Number.MAX_SAFE_INTEGER;
+    return leftUnit - rightUnit || left[0].localeCompare(right[0]);
+};
+
 const toHandle = (material: SceneMaterialResource): SceneMaterialHandle => ({
     id: material.id,
     shaderId: material.shaderId,
     textureBindings: [...material.textureBindings.keys()],
 });
+
+const createTextureSlots = (
+    material: SceneMaterialResource
+): readonly SceneMaterialTextureSlot[] => {
+    const assignments = [...material.textureBindings.entries()].sort(compareTextureBindings);
+    const usedUnits = new Set<number>();
+    const slots: SceneMaterialTextureSlot[] = [];
+    let nextUnit = 0;
+
+    for (const [uniformName, binding] of assignments) {
+        let resolvedUnit = binding.unit;
+        if (resolvedUnit === undefined) {
+            while (usedUnits.has(nextUnit)) {
+                nextUnit += 1;
+            }
+            resolvedUnit = nextUnit;
+        }
+
+        usedUnits.add(resolvedUnit);
+        slots.push(
+            Object.freeze({
+                uniformName,
+                binding,
+                resolvedUnit,
+            })
+        );
+    }
+
+    return Object.freeze(slots);
+};
 
 export const normalizeSceneTextureBinding = (
     binding: SceneTextureBindingDefinition
@@ -70,6 +115,8 @@ export const cloneSceneMaterialDefinition = (
 export class SceneMaterialRegistry {
     private readonly _resources = new Map<string, SceneMaterialResource>();
     private readonly _definitions = new Map<string, SceneMaterialDefinition>();
+    private readonly _handles = new Map<string, SceneMaterialHandle>();
+    private readonly _textureSlots = new Map<string, readonly SceneMaterialTextureSlot[]>();
 
     get size(): number {
         return this._resources.size;
@@ -90,7 +137,10 @@ export class SceneMaterialRegistry {
 
         this._resources.set(resource.id, resource);
         this._definitions.set(resource.id, cloneSceneMaterialDefinition(definition));
-        return toHandle(resource);
+        const handle = toHandle(resource);
+        this._handles.set(resource.id, handle);
+        this._textureSlots.set(resource.id, createTextureSlots(resource));
+        return handle;
     }
 
     get(id: string): SceneMaterialResource | undefined {
@@ -98,8 +148,7 @@ export class SceneMaterialRegistry {
     }
 
     getHandle(id: string): SceneMaterialHandle | null {
-        const resource = this._resources.get(id);
-        return resource ? toHandle(resource) : null;
+        return this._handles.get(id) ?? null;
     }
 
     setUniform(id: string, name: string, value: SceneUniformValue): boolean {
@@ -140,7 +189,14 @@ export class SceneMaterialRegistry {
             });
         }
 
+        this._handles.set(id, toHandle(material));
+        this._textureSlots.set(id, createTextureSlots(material));
+
         return true;
+    }
+
+    getTextureSlots(id: string): readonly SceneMaterialTextureSlot[] {
+        return this._textureSlots.get(id) ?? Object.freeze([]);
     }
 
     getDefinitions(): readonly SceneMaterialDefinition[] {
@@ -152,5 +208,7 @@ export class SceneMaterialRegistry {
     clear(): void {
         this._resources.clear();
         this._definitions.clear();
+        this._handles.clear();
+        this._textureSlots.clear();
     }
 }
