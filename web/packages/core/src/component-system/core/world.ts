@@ -17,6 +17,7 @@ import { ECSObservables } from '../observers/ecs-observer';
 import type { Actor } from './actor';
 import { getComponentMetadata } from '../decorators/script';
 import { WorldActorRegistry } from './world-actor-registry';
+import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
 export type EntityId = Entity & { readonly __entityBrand: unique symbol };
@@ -60,15 +61,6 @@ export class ComponentError extends WorldError {
     }
 }
 
-interface WorldMetrics {
-    readonly entityCount: number;
-    readonly archetypeCount: number;
-    readonly queryCount: number;
-    readonly eventCount: number;
-    readonly memoryUsage: number;
-    readonly lastUpdateTime: number;
-}
-
 interface WorldConfig {
     readonly maxEntities?: number;
     readonly enableMetrics?: boolean;
@@ -94,13 +86,8 @@ export class World<R extends ComponentRegistry> {
 
     private _state: WorldState = 'initializing';
     private readonly _config: Required<WorldConfig>;
-    private readonly _creationTime: number;
-    private _lastUpdateTime: number = 0;
-
-    private readonly _enableMetrics: boolean;
+    private readonly _diagnostics: WorldDiagnostics;
     private readonly _enableValidation: boolean;
-    private _queryCount = 0;
-    private _eventCount = 0;
     private _structureBatchDepth = 0;
     private _structureChangedDuringBatch = false;
 
@@ -120,9 +107,8 @@ export class World<R extends ComponentRegistry> {
         };
 
         this._registry = registry;
-        this._enableMetrics = this._config.enableMetrics;
+        this._diagnostics = new WorldDiagnostics(this._config.enableMetrics);
         this._enableValidation = this._config.enableValidation;
-        this._creationTime = performance.now();
 
         try {
             this._componentMask = this._createComponentMask();
@@ -162,18 +148,13 @@ export class World<R extends ComponentRegistry> {
     }
 
     get metrics(): Readonly<WorldMetrics> | null {
-        if (!this._enableMetrics) {
-            return null;
-        }
-
-        return {
+        return this._diagnostics.getMetrics({
             entityCount: this._entityArchetypes.size,
             archetypeCount: this._archetypes.size,
-            queryCount: this._queryCount,
-            eventCount: this._eventCount,
-            memoryUsage: this._calculateMemoryUsage(),
-            lastUpdateTime: this._lastUpdateTime,
-        };
+            actorCount: this._actorRegistry.size,
+            freeEntityCount: this._freeEntities.length,
+            componentTypes: Object.keys(this._registry),
+        });
     }
 
     batchStructureChanges<T>(callback: () => T): T {
@@ -213,9 +194,7 @@ export class World<R extends ComponentRegistry> {
             emptyArchetype.addEntity(entity);
             this._entityArchetypes.set(entity, this._emptyArchetypeId);
 
-            if (this._enableMetrics) {
-                this._lastUpdateTime = performance.now();
-            }
+            this._diagnostics.markMutation();
 
             return entity;
         } catch (error) {
@@ -274,9 +253,7 @@ export class World<R extends ComponentRegistry> {
                 this._safeEmitEvent('EntityDestroyed', { entity, actor });
             }
 
-            if (this._enableMetrics) {
-                this._lastUpdateTime = performance.now();
-            }
+            this._diagnostics.markMutation();
         } catch (error) {
             throw new EntityError(
                 'Failed to destroy entity',
@@ -386,9 +363,7 @@ export class World<R extends ComponentRegistry> {
                 });
             }
 
-            if (this._enableMetrics) {
-                this._lastUpdateTime = performance.now();
-            }
+            this._diagnostics.markMutation();
 
             return finalComponent;
         } catch (error) {
@@ -466,9 +441,7 @@ export class World<R extends ComponentRegistry> {
                 });
             }
 
-            if (this._enableMetrics) {
-                this._lastUpdateTime = performance.now();
-            }
+            this._diagnostics.markMutation();
         } catch (error) {
             throw new ComponentError(
                 'Failed to remove component',
@@ -554,10 +527,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         try {
-            if (this._enableMetrics) {
-                this._queryCount++;
-                this._lastUpdateTime = performance.now();
-            }
+            this._diagnostics.recordQuery();
 
             const queryKey = components.slice().sort().join(',');
             let matchingArchetypes = this._queryCache.getQuery(queryKey);
@@ -775,9 +745,7 @@ export class World<R extends ComponentRegistry> {
         this._validateWorldState('emit');
 
         try {
-            if (this._enableMetrics) {
-                this._eventCount++;
-            }
+            this._diagnostics.recordEvent();
 
             return await this._eventBus.emit(event, data);
         } catch (error) {
@@ -790,9 +758,7 @@ export class World<R extends ComponentRegistry> {
         this._validateWorldState('emitSync');
 
         try {
-            if (this._enableMetrics) {
-                this._eventCount++;
-            }
+            this._diagnostics.recordEvent();
 
             return this._eventBus.emitSync(event, data);
         } catch (error) {
@@ -1145,9 +1111,7 @@ export class World<R extends ComponentRegistry> {
         try {
             this._eventBus.emitSync(event, data);
 
-            if (this._enableMetrics) {
-                this._eventCount++;
-            }
+            this._diagnostics.recordEvent();
         } catch (error) {
             console.error(`Failed to emit event ${String(event)}:`, error);
         }
@@ -1162,58 +1126,27 @@ export class World<R extends ComponentRegistry> {
         this._queryCache.invalidate();
     }
 
-    private _calculateMemoryUsage(): number {
-        try {
-            let totalSize = 0;
-
-            totalSize += 1000;
-
-            totalSize += this._entityArchetypes.size * 50;
-            totalSize += this._actorRegistry.size * 100;
-            totalSize += this._freeEntities.length * 10;
-
-            totalSize += this._archetypes.size * 500;
-
-            totalSize += this._componentMask.size * 20;
-
-            totalSize += 200;
-
-            totalSize += 300;
-
-            return totalSize;
-        } catch (error) {
-            console.error('Failed to calculate memory usage:', error);
-            return 0;
-        }
-    }
-
     toString(): string {
         return `World(${this._state}) [Entities: ${this.getEntityCount()}, Archetypes: ${this.getArchetypeCount()}]`;
     }
 
     getDebugInfo(): Record<string, any> {
-        return {
+        return this._diagnostics.getDebugInfo({
             state: this._state,
-            creationTime: this._creationTime,
-            lastUpdateTime: this._lastUpdateTime,
             config: this._config,
             entityCount: this.getEntityCount(),
             archetypeCount: this.getArchetypeCount(),
+            actorCount: this._actorRegistry.size,
             freeEntityCount: this._freeEntities.length,
             nextEntityId: this._nextEntityId,
             componentTypes: Object.keys(this._registry),
-            metrics: this.metrics,
             archetypes: Array.from(this._archetypes.entries()).map(([id, archetype]) => ({
                 id,
                 signature: archetype.signature,
                 entityCount: archetype.entityCount,
                 mask: archetype.mask.toString(2),
             })),
-            queryCache: {
-                enabled: true,
-                invalidated: false,
-            },
-        };
+        });
     }
 }
 
