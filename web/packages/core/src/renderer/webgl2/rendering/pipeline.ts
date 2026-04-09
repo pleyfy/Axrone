@@ -1,7 +1,6 @@
 import type { Mat4 } from '@axrone/numeric';
 import type { IDisposable } from '../../../types';
 import {
-    RenderBakeTaskError,
     RenderExecutionError,
     RenderPipelineError,
     RenderValidationError,
@@ -10,10 +9,14 @@ import { RenderTextureRegistry } from './graph';
 import { MutableObjectArena, ReusableList, SortableRenderList, StringKeyCache } from './memory';
 import { PostProcessStack } from './post-process';
 import {
+    RenderBakeTaskScheduler,
+    type ScheduledRenderBakeTask,
+    sumRenderBakeTaskCost,
+} from './render-bake-task-scheduler';
+import {
     createRenderPassName,
     createRenderResourceName,
     type ReadonlyRenderList,
-    type RenderBakeTaskState,
     type RenderCameraState,
     type RenderClearState,
     type RenderDegradeStrategy,
@@ -132,27 +135,11 @@ interface NormalizedOptions<TNative> {
     readonly resourceAllocator: RenderPipelineOptions<TNative>['resourceAllocator'];
 }
 
-interface InternalBakeTask<TPayload = unknown> extends RenderLightBakeTask<TPayload> {
-    state: RenderBakeTaskState;
-    priority: number;
-    retries: number;
-    maxRetries: number;
-    createdAt: number;
-    scheduledAt: number;
-    lastError: string | null;
-}
-
 interface FrameBuild<TNative> {
     readonly result: RenderFrameResult<TNative>;
     readonly context: RenderExecutionContext<TNative>;
     readonly livePasses: readonly ResolvedRenderPass[];
 }
-
-const BAKE_TASK_COST: Readonly<Record<InternalBakeTask['type'], number>> = Object.freeze({
-    lightmap: 0.28,
-    probe: 0.18,
-    'irradiance-cache': 0.22,
-});
 
 const DEFAULT_HDR_SETTINGS: NormalizedHdrSettings = Object.freeze({
     enabled: true,
@@ -620,7 +607,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
     private readonly _probeUpdates = new ReusableList<RenderReflectionProbe>(4);
     private readonly _warnings = new ReusableList<string>(16);
     private readonly _passArena = new MutableObjectArena<MutablePassRecord>(mutablePassFactory);
-    private readonly _bakeTasks = new Map<string, InternalBakeTask>();
+    private readonly _bakeTasks: RenderBakeTaskScheduler;
     private _frame = 0;
     private _disposed = false;
 
@@ -631,6 +618,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             resourcePoolCapacity: this._options.resourcePoolCapacity,
         });
         this._postProcess = new PostProcessStack(options.postProcess ?? []);
+        this._bakeTasks = new RenderBakeTaskScheduler(this._options.lightBaking.maxRetries);
     }
 
     get isDisposed(): boolean {
@@ -682,50 +670,28 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
     }
 
     enqueueBakeTask<TPayload = unknown>(task: RenderLightBakeTask<TPayload>): this {
-        const now = Date.now();
-        this._bakeTasks.set(task.id, {
-            ...task,
-            state: task.state ?? 'queued',
-            priority: task.priority ?? 0,
-            retries: task.retries ?? 0,
-            maxRetries: task.maxRetries ?? this._options.lightBaking.maxRetries,
-            createdAt: task.createdAt ?? now,
-            scheduledAt: task.scheduledAt ?? 0,
-            lastError: task.lastError ?? null,
-        });
+        this._bakeTasks.enqueue(task);
         return this;
     }
 
     listBakeTasks(): readonly RenderLightBakeTask[] {
-        return Object.freeze(Array.from(this._bakeTasks.values()).map((task) => ({ ...task })));
+        return this._bakeTasks.list();
     }
 
     getBakeTask(id: string): RenderLightBakeTask | null {
-        const task = this._bakeTasks.get(id);
-        return task ? { ...task } : null;
+        return this._bakeTasks.get(id);
     }
 
     completeBakeTask(id: string): void {
-        const task = this._bakeTasks.get(id);
-        if (!task) {
-            throw new RenderBakeTaskError(this._options.locale, { id });
-        }
-        task.state = 'completed';
-        task.lastError = null;
+        this._bakeTasks.complete(id, this._options.locale);
     }
 
     failBakeTask(id: string, error: string): void {
-        const task = this._bakeTasks.get(id);
-        if (!task) {
-            throw new RenderBakeTaskError(this._options.locale, { id });
-        }
-        task.retries += 1;
-        task.lastError = error;
-        task.state = task.retries > task.maxRetries ? 'failed' : 'queued';
+        this._bakeTasks.fail(id, error, this._options.locale);
     }
 
     removeBakeTask(id: string): boolean {
-        return this._bakeTasks.delete(id);
+        return this._bakeTasks.remove(id);
     }
 
     clearBakeTasks(): void {
@@ -775,7 +741,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             deltaTime,
             postEffects.reduce((sum, effect) => sum + postEffectCost(effect), 0),
             probeUpdates,
-            bakeTasks.reduce((sum, task) => sum + BAKE_TASK_COST[task.type], 0),
+            sumRenderBakeTaskCost(bakeTasks),
             gi,
             volumetrics,
             shadowEnabled
@@ -1047,48 +1013,16 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
     private _selectBakeTasks(
         frame: number,
         override?: RenderLightBakingSettings
-    ): readonly InternalBakeTask[] {
+    ): readonly ScheduledRenderBakeTask[] {
         const settings = override ?? this._options.lightBaking;
-        if (!settings.enabled || this._bakeTasks.size === 0) {
-            return Object.freeze([]);
-        }
-
-        const limit = settings.maxTasksPerFrame ?? this._options.lightBaking.maxTasksPerFrame;
-        const throttleFrames = settings.throttleFrames ?? this._options.lightBaking.throttleFrames;
-        const budgetMs = Math.max(0, settings.budgetMs ?? this._options.lightBaking.budgetMs);
-        const candidates = Array.from(this._bakeTasks.values())
-            .filter((task) => {
-                if (task.state === 'completed' || task.state === 'failed') {
-                    return false;
-                }
-                if (task.scheduledAt > 0 && frame - task.scheduledAt < throttleFrames) {
-                    return false;
-                }
-                return true;
-            })
-            .sort(
-                (a, b) =>
-                    b.priority - a.priority ||
-                    a.retries - b.retries ||
-                    a.createdAt - b.createdAt
-            );
-        const selected: InternalBakeTask[] = [];
-        let spentBudget = 0;
-
-        for (let i = 0; i < candidates.length && selected.length < limit; i++) {
-            const task = candidates[i];
-            const taskCost = BAKE_TASK_COST[task.type];
-            if (budgetMs > 0 && selected.length > 0 && spentBudget + taskCost > budgetMs) {
-                continue;
-            }
-
-            spentBudget += taskCost;
-            task.state = 'running';
-            task.scheduledAt = frame;
-            selected.push(task);
-        }
-
-        return Object.freeze(selected);
+        return this._bakeTasks.select(frame, {
+            enabled: settings.enabled ?? this._options.lightBaking.enabled,
+            maxTasksPerFrame:
+                settings.maxTasksPerFrame ?? this._options.lightBaking.maxTasksPerFrame,
+            budgetMs: Math.max(0, settings.budgetMs ?? this._options.lightBaking.budgetMs),
+            throttleFrames:
+                settings.throttleFrames ?? this._options.lightBaking.throttleFrames,
+        });
     }
 
     private _estimateBaseCost(
@@ -1136,14 +1070,14 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         shadowEnabled: boolean,
         probeUpdates: number,
         postEffects: readonly ResolvedPostProcessEffect[],
-        bakeTasks: readonly InternalBakeTask[]
+        bakeTasks: readonly ScheduledRenderBakeTask[]
     ): {
         readonly gi: RenderGlobalIlluminationSettings;
         readonly volumetrics: NormalizedVolumetricSettings;
         readonly shadowEnabled: boolean;
         readonly probeUpdates: number;
         readonly postEffects: readonly ResolvedPostProcessEffect[];
-        readonly bakeTasks: readonly InternalBakeTask[];
+        readonly bakeTasks: readonly ScheduledRenderBakeTask[];
         readonly degraded: boolean;
     } {
         if (this._options.degradeStrategy === 'none') {
@@ -1178,7 +1112,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         if (currentCost > this._options.frameBudgetMs && nextBakeTasks.length > 0) {
             mark(
                 'light baking deferred due to frame budget pressure',
-                nextBakeTasks.reduce((sum, task) => sum + BAKE_TASK_COST[task.type], 0)
+                sumRenderBakeTaskCost(nextBakeTasks)
             );
             nextBakeTasks = Object.freeze([]);
         }
@@ -1257,7 +1191,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         shadowEnabled: boolean,
         probeUpdateCount: number,
         postEffects: readonly ResolvedPostProcessEffect[],
-        bakeTasks: readonly InternalBakeTask[]
+        bakeTasks: readonly ScheduledRenderBakeTask[]
     ): readonly ResolvedRenderPass[] {
         let order = 0;
         const width = Math.max(1, Math.floor(viewport.width * (viewport.pixelRatio ?? 1)));
@@ -1694,7 +1628,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                 queue: 'async',
                 target: null,
                 inputs: [],
-                estimatedCost: bakeTasks.reduce((sum, task) => sum + BAKE_TASK_COST[task.type], 0),
+                estimatedCost: sumRenderBakeTaskCost(bakeTasks),
                 metadata: {
                     taskIds: Object.freeze(bakeTasks.map((task) => task.id)),
                     budgetMs:

@@ -372,4 +372,43 @@ describe('RenderPipeline', () => {
             })
         );
     });
+
+    it('tracks bake task retry lifecycle through the pipeline facade', () => {
+        const pipeline = new RenderPipeline({
+            lightBaking: {
+                enabled: true,
+                maxRetries: 1,
+            },
+        });
+
+        pipeline.enqueueBakeTask({
+            id: 'bake:retry',
+            type: 'probe',
+            priority: 2,
+        });
+
+        expect(pipeline.listBakeTasks()).toHaveLength(1);
+        expect(pipeline.getBakeTask('bake:retry')?.state).toBe('queued');
+
+        pipeline.failBakeTask('bake:retry', 'first failure');
+        expect(pipeline.getBakeTask('bake:retry')).toEqual(
+            expect.objectContaining({
+                retries: 1,
+                state: 'queued',
+                lastError: 'first failure',
+            })
+        );
+
+        pipeline.failBakeTask('bake:retry', 'second failure');
+        expect(pipeline.getBakeTask('bake:retry')).toEqual(
+            expect.objectContaining({
+                retries: 2,
+                state: 'failed',
+                lastError: 'second failure',
+            })
+        );
+
+        expect(pipeline.removeBakeTask('bake:retry')).toBe(true);
+        expect(pipeline.getBakeTask('bake:retry')).toBeNull();
+    });
 });
