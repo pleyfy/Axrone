@@ -28,6 +28,10 @@ import { SpotLight } from './components/spot-light';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import {
+    SceneRenderPassRegistry,
+    type SceneRenderPassResource,
+} from './render-pass-registry';
+import {
     SceneCanvasError,
     SceneLifecycleError,
     SceneMaterialError,
@@ -43,7 +47,6 @@ import {
 } from './serialization';
 import { resolveSceneRegistryFromProfile } from './profile';
 import type {
-    SceneClearFlag,
     SceneLoopState,
     SceneMaterialDefinition,
     SceneMaterialHandle,
@@ -158,19 +161,6 @@ const encodeBase64 = (bytes: Uint8Array): string => {
 
     return result;
 };
-
-interface RenderPassResource {
-    readonly id: string;
-    readonly order: number;
-    readonly rendererPassId: string;
-    readonly enabled: boolean;
-    readonly clearFlags: readonly SceneClearFlag[];
-    readonly clearColor: Vec4 | null;
-    readonly clearDepth: number | null;
-    readonly depthTest?: boolean;
-    readonly cull?: boolean;
-    readonly blend?: boolean;
-}
 
 interface RenderItem {
     readonly transform: Transform;
@@ -457,19 +447,6 @@ const cloneTextureDefinition = (definition: SceneTextureDefinition): SceneTextur
         source: { ...source },
     };
 };
-
-const cloneRenderPassDefinition = (
-    definition: SceneRenderPassDefinition
-): SceneRenderPassDefinition => ({
-    ...definition,
-    clearFlags: definition.clearFlags ? [...definition.clearFlags] : undefined,
-    clearColor:
-        definition.clearColor === null
-            ? null
-            : definition.clearColor
-              ? toVec4(definition.clearColor)
-              : undefined,
-});
 
 const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {
     switch (name) {
@@ -769,8 +746,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _samplerDefinitions = new Map<string, SceneSamplerDefinition>();
     private readonly _textures = new Map<string, TextureResource>();
     private readonly _textureDefinitions = new Map<string, SceneTextureDefinition>();
-    private readonly _renderPasses = new Map<string, RenderPassResource>();
-    private readonly _renderPassDefinitions = new Map<string, SceneRenderPassDefinition>();
+    private readonly _renderPassRegistry: SceneRenderPassRegistry;
     private readonly _textureManager: WebGLTextureManager;
     private readonly _defaultSampler: ITextureSampler;
     private readonly _autoCreatedCanvas: boolean;
@@ -794,6 +770,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._defaultClearColor = toVec4(options.clearColor);
         this._ambientLight = toVec3(options.ambientLight);
         this._textureManager = new WebGLTextureManager(this.gl);
+        this._renderPassRegistry = new SceneRenderPassRegistry({
+            defaultPassId: DEFAULT_RENDER_PASS_ID,
+            defaultClearColor: this._defaultClearColor,
+        });
         this._defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -1227,64 +1207,15 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerRenderPass(definition: SceneRenderPassDefinition): SceneRenderPassHandle {
         this._assertNotDisposed();
-        const resource: RenderPassResource = {
-            id: definition.id,
-            order: definition.order ?? this._renderPasses.size,
-            rendererPassId: definition.rendererPassId ?? definition.id,
-            enabled: definition.enabled ?? true,
-            clearFlags:
-                definition.clearFlags ??
-                (this._renderPasses.size === 0 || definition.id === DEFAULT_RENDER_PASS_ID
-                    ? ['color', 'depth']
-                    : []),
-            clearColor:
-                definition.clearColor === null
-                    ? null
-                    : definition.clearColor
-                      ? toVec4(definition.clearColor)
-                      : definition.id === DEFAULT_RENDER_PASS_ID
-                        ? toVec4(this._defaultClearColor)
-                        : null,
-            clearDepth: definition.clearDepth ?? null,
-            depthTest: definition.depthTest,
-            cull: definition.cull,
-            blend: definition.blend,
-        };
-
-        this._renderPasses.set(definition.id, resource);
-        this._renderPassDefinitions.set(definition.id, cloneRenderPassDefinition(definition));
-
-        return {
-            id: resource.id,
-            order: resource.order,
-            rendererPassId: resource.rendererPassId,
-            enabled: resource.enabled,
-        };
+        return this._renderPassRegistry.register(definition);
     }
 
     getRenderPass(id: string): SceneRenderPassHandle | null {
-        const renderPass = this._renderPasses.get(id);
-        if (!renderPass) {
-            return null;
-        }
-
-        return {
-            id: renderPass.id,
-            order: renderPass.order,
-            rendererPassId: renderPass.rendererPassId,
-            enabled: renderPass.enabled,
-        };
+        return this._renderPassRegistry.getHandle(id);
     }
 
     getRenderPasses(): readonly SceneRenderPassHandle[] {
-        return [...this._renderPasses.values()]
-            .sort((left, right) => left.order - right.order)
-            .map((renderPass) => ({
-                id: renderPass.id,
-                order: renderPass.order,
-                rendererPassId: renderPass.rendererPassId,
-                enabled: renderPass.enabled,
-            }));
+        return this._renderPassRegistry.getHandles();
     }
 
     createBoxMesh(
@@ -1370,9 +1301,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             samplers: [...this._samplerDefinitions.values()].map((definition) =>
                 cloneSamplerDefinition(definition)
             ),
-            renderPasses: [...this._renderPassDefinitions.values()]
-                .map((definition) => cloneRenderPassDefinition(definition))
-                .sort((left, right) => (left.order ?? 0) - (right.order ?? 0)),
+            renderPasses: this._renderPassRegistry.getDefinitions(),
         };
     }
 
@@ -1410,8 +1339,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         if (options.clearExisting !== false) {
-            this._renderPasses.clear();
-            this._renderPassDefinitions.clear();
+            this._renderPassRegistry.clear();
         }
 
         const renderPasses =
@@ -2068,9 +1996,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         const camera = this._selectCamera();
         const lighting = this._collectLighting();
-        const renderPasses = [...this._renderPasses.values()]
-            .filter((renderPass) => renderPass.enabled)
-            .sort((left, right) => left.order - right.order);
+        const renderPasses = this._renderPassRegistry.getEnabledResources();
 
         if (renderPasses.length === 0) {
             return;
@@ -2260,7 +2186,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
     }
 
-    private _prepareRenderPass(renderPass: RenderPassResource, camera?: Camera): void {
+    private _prepareRenderPass(renderPass: SceneRenderPassResource, camera?: Camera): void {
         const clearFlags = renderPass.clearFlags;
         let mask = 0;
 
@@ -2403,7 +2329,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         };
     }
 
-    private _applyRenderState(shader: ShaderResource, renderPass: RenderPassResource): void {
+    private _applyRenderState(
+        shader: ShaderResource,
+        renderPass: SceneRenderPassResource
+    ): void {
         const depthTest = renderPass.depthTest ?? shader.depthTest;
         const cull = renderPass.cull ?? shader.cull;
         const blend = renderPass.blend ?? shader.blend;
@@ -2872,8 +2801,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._samplerDefinitions.clear();
         this._textures.clear();
         this._textureDefinitions.clear();
-        this._renderPasses.clear();
-        this._renderPassDefinitions.clear();
+        this._renderPassRegistry.clear();
     }
 
     private _disposeMesh(mesh: MeshResource): void {

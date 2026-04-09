@@ -17,6 +17,11 @@ export {
 } from './profile';
 export type { SceneComponentTypeResolver } from './component-catalog';
 export { SceneComponentCatalog, getSceneComponentTypeName } from './component-catalog';
+export type { SceneRenderPassResource, SceneRenderPassRegistryOptions } from './render-pass-registry';
+export {
+    cloneSceneRenderPassDefinition,
+    SceneRenderPassRegistry,
+} from './render-pass-registry';
 
 export type {
     SceneBuiltInRegistry,
