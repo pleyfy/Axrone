@@ -21,6 +21,7 @@ import { Animator } from './components/animator';
 import { Camera, type CameraConfig } from './components/camera';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
+import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import type { SceneMeshResource } from './mesh-registry';
@@ -417,6 +418,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
     private readonly _resources: SceneResourceRuntime;
+    private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
     private readonly _renderRuntime: SceneRenderRuntime;
     private readonly _textureManager: WebGLTextureManager;
     private readonly _autoCreatedCanvas: boolean;
@@ -465,6 +467,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         this.world = new World(this._registry, options.worldConfig);
         this.systems = new SystemManager(this.world);
+        this._actorLifecycleRunner = new SceneActorLifecycleRunner({
+            getActors: () => this.world.getAllActors(),
+        });
         this._prefabs = new ScenePrefabRuntime({
             componentCatalog: this._componentCatalog,
             createActor: (config) => this.createActor(config),
@@ -493,13 +498,13 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this.systems.executePhase(phase, delta);
             },
             fixedUpdateActors: (delta) => {
-                this._fixedUpdateActors(delta);
+                this._actorLifecycleRunner.fixedUpdate(delta);
             },
             updateActors: (delta) => {
-                this._updateActors(delta);
+                this._actorLifecycleRunner.update(delta);
             },
             lateUpdateActors: (delta) => {
-                this._lateUpdateActors(delta);
+                this._actorLifecycleRunner.lateUpdate(delta);
             },
             render: (delta) => {
                 this._render(delta);
@@ -1467,24 +1472,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             topology: geometryBuffers.layout.primitiveType,
             attributes,
         });
-    }
-
-    private _fixedUpdateActors(deltaTime: number): void {
-        for (const actor of this.world.getAllActors()) {
-            actor.fixedUpdate(deltaTime);
-        }
-    }
-
-    private _updateActors(deltaTime: number): void {
-        for (const actor of this.world.getAllActors()) {
-            actor.update(deltaTime);
-        }
-    }
-
-    private _lateUpdateActors(deltaTime: number): void {
-        for (const actor of this.world.getAllActors()) {
-            actor.lateUpdate(deltaTime);
-        }
     }
 
     private _render(deltaTime: number): void {
