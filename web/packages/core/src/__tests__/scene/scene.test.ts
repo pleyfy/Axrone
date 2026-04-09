@@ -1,6 +1,7 @@
 import { Mat4, Vec3 } from '@axrone/numeric';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Component } from '../../component-system/core/component';
+import { Hierarchy } from '../../component-system/components/hierarchy';
 import { Transform } from '../../component-system/components/transform';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
 import {
@@ -19,6 +20,7 @@ let OrbitCameraController: typeof import('../../scene').OrbitCameraController;
 let PrefabNodeBinding: typeof import('../../scene').PrefabNodeBinding;
 let PointLight: typeof import('../../scene').PointLight;
 let SpotLight: typeof import('../../scene').SpotLight;
+let createSceneRegistry: typeof import('../../scene').createSceneRegistry;
 
 class PulseComponent extends Component {
     fixedCalls = 0;
@@ -61,6 +63,7 @@ describe('Scene', () => {
         PrefabNodeBinding = sceneModule.PrefabNodeBinding;
         PointLight = sceneModule.PointLight;
         SpotLight = sceneModule.SpotLight;
+        createSceneRegistry = sceneModule.createSceneRegistry;
     });
 
     beforeEach(() => {
@@ -81,6 +84,33 @@ describe('Scene', () => {
         expect(scene.canvas.height).toBe(360);
 
         scene.dispose();
+    });
+
+    it('builds the default scene registry and merges custom components', () => {
+        const registry = createSceneRegistry({
+            registry: {
+                PulseComponent,
+            },
+        });
+
+        expect(registry.Hierarchy).toBe(Hierarchy);
+        expect(registry.Transform).toBe(Transform);
+        expect(registry.Camera).toBe(Camera);
+        expect(registry.PulseComponent).toBe(PulseComponent);
+    });
+
+    it('supports targeted built-in registries for future capability profiles', () => {
+        const registry = createSceneRegistry({
+            registry: {
+                PulseComponent,
+            },
+            builtIns: ['Hierarchy', 'Transform'] as const,
+        });
+
+        expect(registry.Hierarchy).toBe(Hierarchy);
+        expect(registry.Transform).toBe(Transform);
+        expect(registry.PulseComponent).toBe(PulseComponent);
+        expect('Camera' in registry).toBe(false);
     });
 
     it('runs registered custom components through fixed, update, and late phases', () => {

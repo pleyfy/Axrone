@@ -2,7 +2,6 @@ import { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 import { createBox, createPlane, createSphere } from '../geometry/primitives';
 import type { IGeometryBuffers } from '../geometry/primitives/types';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
-import { Hierarchy } from '../component-system/components/hierarchy';
 import { Transform } from '../component-system/components/transform';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { World } from '../component-system/core/world';
@@ -25,7 +24,6 @@ import { Camera, type CameraConfig } from './components/camera';
 import { DirectionalLight } from './components/directional-light';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
-import { PrefabNodeBinding } from './components/prefab-node-binding';
 import { PointLight } from './components/point-light';
 import { SpotLight } from './components/spot-light';
 import {
@@ -42,6 +40,7 @@ import {
     decodeSceneValue,
     encodeSceneValue,
 } from './serialization';
+import { createSceneRegistry } from './registry';
 import type {
     SceneClearFlag,
     SceneLoopState,
@@ -799,19 +798,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             WrapMode.REPEAT
         );
 
-        this._registry = {
-            Hierarchy,
-            Transform,
-            PrefabNodeBinding,
-            Animator,
-            Camera,
-            MeshRenderer,
-            DirectionalLight,
-            PointLight,
-            SpotLight,
-            OrbitCameraController,
-            ...(options.registry ?? ({} as R)),
-        } as RuntimeRegistry<R>;
+        this._registry = createSceneRegistry({
+            registry: options.registry ?? ({} as R),
+        }) as RuntimeRegistry<R>;
 
         for (const componentType of Object.values(this._registry)) {
             const componentName =

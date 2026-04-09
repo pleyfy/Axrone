@@ -1,4 +1,15 @@
 export type {
+    SceneBuiltInComponentName,
+    SceneRegistryBuilderOptions,
+    SceneRegistryForBuiltIns,
+} from './registry';
+export {
+    DEFAULT_SCENE_BUILT_IN_COMPONENTS,
+    createSceneRegistry,
+    getDefaultSceneBuiltInRegistry,
+} from './registry';
+
+export type {
     SceneBuiltInRegistry,
     SceneCanvasOptions,
     SceneClearFlag,
