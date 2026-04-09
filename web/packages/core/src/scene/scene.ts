@@ -17,6 +17,7 @@ import { Camera, type CameraConfig } from './components/camera';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
+import { SceneActorRuntime } from './scene-actor-runtime';
 import { SceneAssetRuntime } from './scene-asset-runtime';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
@@ -24,7 +25,6 @@ import { SceneRenderRuntime } from './scene-render-runtime';
 import { SceneSnapshotLoader } from './scene-snapshot-loader';
 import { resolveSceneSurface } from './scene-surface-resolver';
 import { SceneLifecycleError, SceneMaterialError } from './errors';
-import { ScenePrefabRuntime } from './scene-prefab-runtime';
 import { resolveSceneRegistryFromProfile } from './profile';
 import type {
     SceneLoopState,
@@ -133,8 +133,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     readonly loop: GameLoop<SceneLoopState>;
 
     private readonly _registry: RuntimeRegistry<R>;
-    private readonly _componentCatalog: SceneComponentCatalog;
-    private readonly _prefabs: ScenePrefabRuntime;
+    private readonly _actors: SceneActorRuntime<R>;
     private readonly _assets: SceneAssetRuntime;
     private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
     private readonly _renderRuntime: SceneRenderRuntime;
@@ -181,23 +180,22 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._registry = resolveSceneRegistryFromProfile(options.profile, {
             registry: options.registry ?? ({} as R),
         }) as RuntimeRegistry<R>;
-        this._componentCatalog = new SceneComponentCatalog(this._registry);
+        const componentCatalog = new SceneComponentCatalog(this._registry);
 
         this.world = new World(this._registry, options.worldConfig);
         this.systems = new SystemManager(this.world);
+        this._actors = new SceneActorRuntime({
+            world: this.world,
+            componentCatalog,
+        });
         this._actorLifecycleRunner = new SceneActorLifecycleRunner({
             getActors: () => this.world.getAllActors(),
-        });
-        this._prefabs = new ScenePrefabRuntime({
-            componentCatalog: this._componentCatalog,
-            createActor: (config) => this.createActor(config),
-            getAllActors: () => this.world.getAllActors(),
         });
         this._snapshotLoader = new SceneSnapshotLoader({
             defaultRenderPassId: DEFAULT_RENDER_PASS_ID,
             defaultClearColor: this._defaultClearColor,
             clearExisting: () => {
-                this._prefabs.destroyAllActors();
+                this._actors.destroyAllActors();
                 this._assets.clear();
             },
             clearRenderPasses: () => {
@@ -221,7 +219,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             createMaterial: (material) => {
                 this.createMaterial(material);
             },
-            instantiatePrefab: (prefab, options) => this.instantiatePrefab(prefab, options),
+            instantiatePrefab: (prefab, options) => this._actors.instantiatePrefab(prefab, options),
         });
         this.resize(options.width, options.height, this._pixelRatio);
 
@@ -289,42 +287,39 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
         this._assertNotDisposed();
-        this._componentCatalog.register(componentType);
-        this.world.registerComponentType(componentType);
+        this._actors.registerComponent(componentType);
         return this;
     }
 
     isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean {
         this._assertNotDisposed();
-        return this.world.isComponentRegistered(componentTypeOrName);
+        return this._actors.isComponentRegistered(componentTypeOrName);
     }
 
     getRegisteredComponentNames(): readonly string[] {
         this._assertNotDisposed();
-        return this.world.getRegisteredComponentNames();
+        return this._actors.getRegisteredComponentNames();
     }
 
     createActor(config: ActorConfig = {}): Actor<World<RuntimeRegistry<R>>> {
         this._assertNotDisposed();
-        return new Actor(this.world, config);
+        return this._actors.createActor(config);
     }
 
     createCameraActor(
         actorConfig: ActorConfig = {},
         cameraConfig: CameraConfig = {}
     ): Actor<World<RuntimeRegistry<R>>> {
-        const actor = this.createActor(actorConfig);
-        actor.addComponent(Camera, cameraConfig);
-        return actor;
+        this._assertNotDisposed();
+        return this._actors.createCameraActor(actorConfig, cameraConfig);
     }
 
     createRenderableActor(
         actorConfig: ActorConfig = {},
         rendererConfig: MeshRendererConfig = {}
     ): Actor<World<RuntimeRegistry<R>>> {
-        const actor = this.createActor(actorConfig);
-        actor.addComponent(MeshRenderer, rendererConfig);
-        return actor;
+        this._assertNotDisposed();
+        return this._actors.createRenderableActor(actorConfig, rendererConfig);
     }
 
     addSystem<Q extends SystemQuery<RuntimeRegistry<R>>>(
@@ -478,7 +473,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         actors: readonly Actor[] = this.world.getAllActors()
     ): ScenePrefabDefinition {
         this._assertNotDisposed();
-        return this._prefabs.createPrefab(id, actors);
+        return this._actors.createPrefab(id, actors);
     }
 
     instantiatePrefab(
@@ -486,7 +481,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         options: ScenePrefabInstantiateOptions = {}
     ): readonly Actor[] {
         this._assertNotDisposed();
-        return this._prefabs.instantiatePrefab(prefab, options);
+        return this._actors.instantiatePrefab(prefab, options);
     }
 
     serializeScene(): SceneSnapshot {
