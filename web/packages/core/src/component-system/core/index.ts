@@ -5,3 +5,4 @@ export { Actor } from './actor';
 export { WorldActorRegistry } from './world-actor-registry';
 export { WorldDiagnostics } from './world-diagnostics';
 export { WorldQueryRuntime } from './world-query-runtime';
+export { WorldSingletonRegistry } from './world-singleton-registry';

@@ -19,6 +19,7 @@ import { getComponentMetadata } from '../decorators/script';
 import { WorldActorRegistry } from './world-actor-registry';
 import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
 import { WorldQueryRuntime } from './world-query-runtime';
+import { WorldSingletonRegistry } from './world-singleton-registry';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
 export type EntityId = Entity & { readonly __entityBrand: unique symbol };
@@ -80,7 +81,7 @@ export class World<R extends ComponentRegistry> {
     private readonly _eventBus: IEventEmitter<ECSEventMap<R>>;
     private readonly _observables: ECSObservables<R>;
     private readonly _actorRegistry = new WorldActorRegistry();
-    private readonly _singletonComponents = new Map<string, { entity: Entity; instance: any }>();
+    private readonly _singletonRegistry = new WorldSingletonRegistry();
 
     private _nextEntityId = 1;
     private readonly _freeEntities: Entity[] = [];
@@ -231,12 +232,7 @@ export class World<R extends ComponentRegistry> {
             const removedComponents = archetype.removeEntity(entity);
 
             // Clear singleton cache for any singleton components being destroyed
-            for (const componentName of Object.keys(removedComponents)) {
-                const cached = this._singletonComponents.get(componentName);
-                if (cached && cached.entity === entity) {
-                    this._singletonComponents.delete(componentName);
-                }
-            }
+            this._singletonRegistry.clearEntity(entity, Object.keys(removedComponents));
 
             for (const [componentName, component] of Object.entries(removedComponents)) {
                 try {
@@ -288,7 +284,7 @@ export class World<R extends ComponentRegistry> {
                     : undefined;
 
             if (metadata?.singleton) {
-                const existingSingleton = this._singletonComponents.get(componentName as string);
+                const existingSingleton = this._singletonRegistry.get(componentName as string);
                 if (existingSingleton) {
                     if (existingSingleton.entity !== entity) {
                         throw new ComponentError(
@@ -355,10 +351,7 @@ export class World<R extends ComponentRegistry> {
             this._invalidateStructureCaches();
 
             if (metadata?.singleton) {
-                this._singletonComponents.set(componentName as string, {
-                    entity,
-                    instance: finalComponent,
-                });
+                this._singletonRegistry.set(componentName as string, entity, finalComponent);
             }
 
             const actor = this._actorRegistry.get(entity);
@@ -424,10 +417,7 @@ export class World<R extends ComponentRegistry> {
                     : undefined;
 
             if (metadata?.singleton) {
-                const cached = this._singletonComponents.get(componentName as string);
-                if (cached && cached.entity === entity) {
-                    this._singletonComponents.delete(componentName as string);
-                }
+                this._singletonRegistry.clearComponent(componentName as string, entity);
             }
 
             const pool = currentArchetype.components.get(componentName as string);
@@ -507,7 +497,7 @@ export class World<R extends ComponentRegistry> {
         this._validateWorldState('getSingletonComponent');
         this._validateComponentName(componentName, 'getSingletonComponent');
 
-        const cached = this._singletonComponents.get(componentName as string);
+        const cached = this._singletonRegistry.get(componentName as string);
         if (!cached) {
             return undefined;
         }
@@ -522,8 +512,7 @@ export class World<R extends ComponentRegistry> {
     getSingletonEntity<K extends keyof R>(componentName: K): Entity | undefined {
         this._validateComponentName(componentName, 'getSingletonEntity');
 
-        const cached = this._singletonComponents.get(componentName as string);
-        return cached?.entity;
+        return this._singletonRegistry.getEntity(componentName as string);
     }
 
     query<Q extends readonly (keyof R)[]>(...components: Q): readonly QueryResult<R, Q>[] {
@@ -916,6 +905,7 @@ export class World<R extends ComponentRegistry> {
             this._archetypes.clear();
             this._entityArchetypes.clear();
             this._actorRegistry.clear();
+            this._singletonRegistry.clear();
             this._queryCache.invalidate();
             this._freeEntities.length = 0;
             this._nextEntityId = 1;

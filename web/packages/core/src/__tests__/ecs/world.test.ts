@@ -1,6 +1,7 @@
 import { World, WorldError, EntityError, ComponentError } from '../../component-system/core/world';
 import { Transform } from '../../component-system/components/transform';
 import { Component } from '../../component-system/core/component';
+import { script } from '../../component-system/decorators/script';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 class TestComponent extends Component {
@@ -21,6 +22,11 @@ class AnotherComponent extends Component {
     }
 }
 
+@script({ singleton: true })
+class SingletonComponent extends Component {
+    label: string = 'singleton';
+}
+
 describe('World', () => {
     let world: World<any>;
     let registry: any;
@@ -30,6 +36,7 @@ describe('World', () => {
             Transform: Transform,
             TestComponent: TestComponent,
             AnotherComponent: AnotherComponent,
+            SingletonComponent: SingletonComponent,
         };
         world = new World(registry);
     });
@@ -188,6 +195,42 @@ describe('World', () => {
 
         it('should throw error for invalid entity', () => {
             expect(() => world.addComponent(999 as any, 'TestComponent')).toThrow(ComponentError);
+        });
+
+        it('should enforce singleton components across entities', () => {
+            const otherEntity = world.createEntity();
+
+            const singleton = world.addComponent(entity, 'SingletonComponent');
+
+            expect(singleton).toBeInstanceOf(SingletonComponent);
+            expect(() => world.addComponent(otherEntity, 'SingletonComponent')).toThrow(
+                ComponentError
+            );
+        });
+
+        it('should expose singleton instances and owner entities', () => {
+            const singleton = world.addComponent(entity, 'SingletonComponent');
+
+            expect(world.getSingletonComponent('SingletonComponent')).toBe(singleton);
+            expect(world.getSingletonEntity('SingletonComponent')).toBe(entity);
+        });
+
+        it('should clear singleton ownership when the component is removed', () => {
+            world.addComponent(entity, 'SingletonComponent');
+
+            world.removeComponent(entity, 'SingletonComponent');
+
+            expect(world.getSingletonComponent('SingletonComponent')).toBeUndefined();
+            expect(world.getSingletonEntity('SingletonComponent')).toBeUndefined();
+        });
+
+        it('should clear singleton ownership when the entity is destroyed', () => {
+            world.addComponent(entity, 'SingletonComponent');
+
+            world.destroyEntity(entity);
+
+            expect(world.getSingletonComponent('SingletonComponent')).toBeUndefined();
+            expect(world.getSingletonEntity('SingletonComponent')).toBeUndefined();
         });
     });
 
