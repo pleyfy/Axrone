@@ -1,5 +1,5 @@
 import { Vec4 } from '@axrone/numeric';
-import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
+import type { GameLoop } from '../game-loop';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { World } from '../component-system/core/world';
 import { SystemManager, SystemPhase } from '../component-system/systems/system-manager';
@@ -7,24 +7,12 @@ import type { ComponentConstructor, ComponentRegistry } from '../component-syste
 import type { System, SystemQuery } from '../component-system/types/system';
 import type { CameraConfig } from './components/camera';
 import type { MeshRendererConfig } from './components/mesh-renderer';
-import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
-import { SceneActorRuntime } from './scene-actor-runtime';
-import { SceneAssetRuntime } from './scene-asset-runtime';
-import { SceneComponentCatalog } from './component-catalog';
-import { createSceneLoopSystems } from './loop-bridge';
-import { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
-import { SceneRenderRuntime } from './scene-render-runtime';
-import { SceneSnapshotRuntime } from './scene-snapshot-runtime';
-import { resolveSceneSurface } from './scene-surface-resolver';
 import { SceneMaterialError } from './errors';
-import { resolveSceneRegistryFromProfile } from './profile';
 import {
     DEFAULT_SCENE_HEIGHT,
-    DEFAULT_SCENE_RENDER_PASS_ID,
     DEFAULT_SCENE_WIDTH,
-    resolveSceneAmbientLight,
-    resolveSceneClearColor,
 } from './scene-runtime-defaults';
+import { SceneRuntimeKernel } from './scene-runtime-kernel';
 import type {
     SceneLoopState,
     SceneMaterialDefinition,
@@ -95,116 +83,19 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     readonly systems: SystemManager<RuntimeRegistry<R>>;
     readonly loop: GameLoop<SceneLoopState>;
 
-    private readonly _actors: SceneActorRuntime<R>;
-    private readonly _assets: SceneAssetRuntime;
-    private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
-    private readonly _renderRuntime: SceneRenderRuntime;
-    private readonly _snapshots: SceneSnapshotRuntime;
-    private readonly _lifecycle: SceneLifecycleRuntime;
+    private readonly _kernel: SceneRuntimeKernel<R>;
 
     constructor(options: SceneOptions<R> = {}) {
         this.id = createId('scene');
-        const surface = resolveSceneSurface(options);
-        this.canvas = surface.canvas;
-        this.gl = surface.gl;
-        const pixelRatio = options.pixelRatio ?? globalThis.devicePixelRatio ?? 1;
-        const defaultClearColor = resolveSceneClearColor(options.clearColor);
-        const ambientLight = resolveSceneAmbientLight(options.ambientLight);
-        this._assets = new SceneAssetRuntime({
-            gl: this.gl,
-            defaultPassId: DEFAULT_SCENE_RENDER_PASS_ID,
-            defaultClearColor,
-            releaseBaseMesh: (meshId) => {
-                this._renderRuntime.releaseBaseMesh(meshId);
-            },
-            clearRenderRuntime: () => {
-                this._renderRuntime.clear();
-            },
-        });
-        this._renderRuntime = new SceneRenderRuntime({
-            gl: this.gl,
-            resources: this._assets.resources,
-            ambientLight,
-            defaultClearColor,
-            getActors: () => this.world.getAllActors(),
-            createMeshResource: (definition) => this._assets.createMeshResource(definition),
-            disposeMesh: (mesh) => this._assets.disposeMesh(mesh),
-            applyMissingVertexAttributeDefaults: (mesh) =>
-                this._assets.applyMissingVertexAttributeDefaults(mesh),
-        });
-
-        const registry = resolveSceneRegistryFromProfile(options.profile, {
-            registry: options.registry ?? ({} as R),
-        }) as RuntimeRegistry<R>;
-        const componentCatalog = new SceneComponentCatalog(registry);
-
-        this.world = new World(registry, options.worldConfig);
-        this.systems = new SystemManager(this.world);
-        this._actors = new SceneActorRuntime({
-            world: this.world,
-            componentCatalog,
-        });
-        this._actorLifecycleRunner = new SceneActorLifecycleRunner({
-            getActors: () => this.world.getAllActors(),
-        });
-        this._snapshots = new SceneSnapshotRuntime({
+        this._kernel = new SceneRuntimeKernel({
             sceneId: this.id,
-            defaultRenderPassId: DEFAULT_SCENE_RENDER_PASS_ID,
-            defaultClearColor,
-            actors: this._actors,
-            assets: this._assets,
+            options,
         });
-        this._snapshots.initializeRenderPasses(options.renderPasses);
-
-        const loopSystems: readonly GameLoopSystem<SceneLoopState>[] = createSceneLoopSystems({
-            executePhase: (phase, delta) => {
-                this.systems.executePhase(phase, delta);
-            },
-            fixedUpdateActors: (delta) => {
-                this._actorLifecycleRunner.fixedUpdate(delta);
-            },
-            updateActors: (delta) => {
-                this._actorLifecycleRunner.update(delta);
-            },
-            lateUpdateActors: (delta) => {
-                this._actorLifecycleRunner.lateUpdate(delta);
-            },
-            render: (delta) => {
-                this._render(delta);
-            },
-        });
-
-        this.loop = createGameLoop({
-            state: { sceneId: this.id },
-            scheduler: options.scheduler,
-            fixedDelta: options.fixedDelta,
-            maxDelta: options.maxDelta,
-            maxSubSteps: options.maxSubSteps,
-            autoStart: false,
-            systems: loopSystems,
-            errorPolicy: 'throw',
-        });
-        this._lifecycle = new SceneLifecycleRuntime({
-            canvas: this.canvas,
-            gl: this.gl,
-            loop: this.loop,
-            autoCreatedCanvas: surface.autoCreated,
-            pixelRatio,
-            defaultWidth: DEFAULT_SCENE_WIDTH,
-            defaultHeight: DEFAULT_SCENE_HEIGHT,
-            render: (deltaTime) => {
-                this._render(deltaTime);
-            },
-            disposeAssets: () => {
-                this._assets.dispose();
-            },
-            disposeWorld: () => {
-                if (!this.world.isDisposed) {
-                    this.world.clear();
-                }
-            },
-        });
-        this._lifecycle.resize(options.width, options.height, pixelRatio);
+        this.canvas = this._kernel.canvas;
+        this.gl = this._kernel.gl;
+        this.world = this._kernel.world;
+        this.systems = this._kernel.systems;
+        this.loop = this._kernel.loop;
 
         if (options.autoStart !== false) {
             this.start();
@@ -212,36 +103,36 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     get status() {
-        return this._lifecycle.status;
+        return this._kernel.lifecycle.status;
     }
 
     get isDisposed(): boolean {
-        return this._lifecycle.isDisposed;
+        return this._kernel.lifecycle.isDisposed;
     }
 
     get renderStats() {
-        return this._renderRuntime.stats;
+        return this._kernel.renderRuntime.stats;
     }
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
         this._assertNotDisposed();
-        this._actors.registerComponent(componentType);
+        this._kernel.actors.registerComponent(componentType);
         return this;
     }
 
     isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean {
         this._assertNotDisposed();
-        return this._actors.isComponentRegistered(componentTypeOrName);
+        return this._kernel.actors.isComponentRegistered(componentTypeOrName);
     }
 
     getRegisteredComponentNames(): readonly string[] {
         this._assertNotDisposed();
-        return this._actors.getRegisteredComponentNames();
+        return this._kernel.actors.getRegisteredComponentNames();
     }
 
     createActor(config: ActorConfig = {}): Actor<World<RuntimeRegistry<R>>> {
         this._assertNotDisposed();
-        return this._actors.createActor(config);
+        return this._kernel.actors.createActor(config);
     }
 
     createCameraActor(
@@ -249,7 +140,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         cameraConfig: CameraConfig = {}
     ): Actor<World<RuntimeRegistry<R>>> {
         this._assertNotDisposed();
-        return this._actors.createCameraActor(actorConfig, cameraConfig);
+        return this._kernel.actors.createCameraActor(actorConfig, cameraConfig);
     }
 
     createRenderableActor(
@@ -257,7 +148,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         rendererConfig: MeshRendererConfig = {}
     ): Actor<World<RuntimeRegistry<R>>> {
         this._assertNotDisposed();
-        return this._actors.createRenderableActor(actorConfig, rendererConfig);
+        return this._kernel.actors.createRenderableActor(actorConfig, rendererConfig);
     }
 
     addSystem<Q extends SystemQuery<RuntimeRegistry<R>>>(
@@ -276,17 +167,17 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerShader(definition: SceneShaderDefinition): SceneShaderHandle {
         this._assertNotDisposed();
-        return this._assets.registerShader(definition);
+        return this._kernel.assets.registerShader(definition);
     }
 
     getShader(id: string): SceneShaderHandle | null {
-        return this._assets.getShader(id);
+        return this._kernel.assets.getShader(id);
     }
 
     createMaterial(definition: SceneMaterialDefinition): SceneMaterialHandle {
         this._assertNotDisposed();
         try {
-            return this._assets.createMaterial(definition);
+            return this._kernel.assets.createMaterial(definition);
         } catch (error) {
             if (error instanceof SceneMaterialError) {
                 throw error;
@@ -300,7 +191,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     setMaterialUniform(materialId: string, name: string, value: SceneUniformValue): this {
         this._assertNotDisposed();
-        if (!this._assets.setMaterialUniform(materialId, name, value)) {
+        if (!this._kernel.assets.setMaterialUniform(materialId, name, value)) {
             throw new SceneMaterialError(`Material '${materialId}' is not registered`);
         }
 
@@ -313,7 +204,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         binding: SceneTextureBindingDefinition
     ): this {
         this._assertNotDisposed();
-        if (!this._assets.setMaterialTexture(materialId, name, binding)) {
+        if (!this._kernel.assets.setMaterialTexture(materialId, name, binding)) {
             throw new SceneMaterialError(`Material '${materialId}' is not registered`);
         }
 
@@ -321,62 +212,62 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     getMaterial(materialId: string): SceneMaterialHandle | null {
-        return this._assets.getMaterial(materialId);
+        return this._kernel.assets.getMaterial(materialId);
     }
 
     registerMesh(definition: SceneMeshDefinition): SceneMeshHandle {
         this._assertNotDisposed();
-        return this._assets.registerMesh(definition);
+        return this._kernel.assets.registerMesh(definition);
     }
 
     getMesh(id: string): SceneMeshHandle | null {
-        return this._assets.getMesh(id);
+        return this._kernel.assets.getMesh(id);
     }
 
     registerSampler(definition: SceneSamplerDefinition): SceneSamplerHandle {
         this._assertNotDisposed();
-        return this._assets.registerSampler(definition);
+        return this._kernel.assets.registerSampler(definition);
     }
 
     getSampler(id: string): SceneSamplerHandle | null {
-        return this._assets.getSampler(id);
+        return this._kernel.assets.getSampler(id);
     }
 
     async registerTexture(definition: SceneTextureDefinition): Promise<SceneTextureHandle> {
         this._assertNotDisposed();
-        return await this._assets.registerTexture(definition);
+        return await this._kernel.assets.registerTexture(definition);
     }
 
     getTexture(id: string): SceneTextureHandle | null {
-        return this._assets.getTexture(id);
+        return this._kernel.assets.getTexture(id);
     }
 
     getTextureResource(id: string): SceneTextureResourceHandle | null {
-        return this._assets.getTextureResource(id);
+        return this._kernel.assets.getTextureResource(id);
     }
 
     getMaterialTextureBindings(materialId: string): readonly SceneMaterialTextureBindingHandle[] {
-        return this._assets.getMaterialTextureBindings(materialId);
+        return this._kernel.assets.getMaterialTextureBindings(materialId);
     }
 
     getMaterialTextureBinding(
         materialId: string,
         uniformName?: string
     ): SceneMaterialTextureBindingHandle | null {
-        return this._assets.getMaterialTextureBinding(materialId, uniformName);
+        return this._kernel.assets.getMaterialTextureBinding(materialId, uniformName);
     }
 
     registerRenderPass(definition: SceneRenderPassDefinition): SceneRenderPassHandle {
         this._assertNotDisposed();
-        return this._assets.registerRenderPass(definition);
+        return this._kernel.assets.registerRenderPass(definition);
     }
 
     getRenderPass(id: string): SceneRenderPassHandle | null {
-        return this._assets.getRenderPass(id);
+        return this._kernel.assets.getRenderPass(id);
     }
 
     getRenderPasses(): readonly SceneRenderPassHandle[] {
-        return this._assets.getRenderPasses();
+        return this._kernel.assets.getRenderPasses();
     }
 
     createBoxMesh(
@@ -386,17 +277,17 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         depth: number = 1
     ): SceneMeshHandle {
         this._assertNotDisposed();
-        return this._assets.createBoxMesh(id, width, height, depth);
+        return this._kernel.assets.createBoxMesh(id, width, height, depth);
     }
 
     createPlaneMesh(id: string, width: number = 1, height: number = 1): SceneMeshHandle {
         this._assertNotDisposed();
-        return this._assets.createPlaneMesh(id, width, height);
+        return this._kernel.assets.createPlaneMesh(id, width, height);
     }
 
     createSphereMesh(id: string, radius: number = 1, segments: number = 24): SceneMeshHandle {
         this._assertNotDisposed();
-        return this._assets.createSphereMesh(id, radius, segments);
+        return this._kernel.assets.createSphereMesh(id, radius, segments);
     }
 
     createPrefab(
@@ -404,7 +295,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         actors: readonly Actor[] = this.world.getAllActors()
     ): ScenePrefabDefinition {
         this._assertNotDisposed();
-        return this._snapshots.createPrefab(id, actors);
+        return this._kernel.snapshots.createPrefab(id, actors);
     }
 
     instantiatePrefab(
@@ -412,12 +303,12 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         options: ScenePrefabInstantiateOptions = {}
     ): readonly Actor[] {
         this._assertNotDisposed();
-        return this._snapshots.instantiatePrefab(prefab, options);
+        return this._kernel.snapshots.instantiatePrefab(prefab, options);
     }
 
     serializeScene(): SceneSnapshot {
         this._assertNotDisposed();
-        return this._snapshots.serializeScene();
+        return this._kernel.snapshots.serializeScene();
     }
 
     async loadScene(
@@ -425,31 +316,31 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         options: SceneSnapshotLoadOptions = {}
     ): Promise<readonly Actor[]> {
         this._assertNotDisposed();
-        return await this._snapshots.loadScene(snapshot, options);
+        return await this._kernel.snapshots.loadScene(snapshot, options);
     }
 
     start(now?: number): this {
-        this._lifecycle.start(now);
+        this._kernel.lifecycle.start(now);
         return this;
     }
 
     pause(): this {
-        this._lifecycle.pause();
+        this._kernel.lifecycle.pause();
         return this;
     }
 
     resume(now?: number): this {
-        this._lifecycle.resume(now);
+        this._kernel.lifecycle.resume(now);
         return this;
     }
 
     stop(): this {
-        this._lifecycle.stop();
+        this._kernel.lifecycle.stop();
         return this;
     }
 
     renderNow(): this {
-        this._lifecycle.renderNow();
+        this._kernel.lifecycle.renderNow();
         return this;
     }
 
@@ -458,26 +349,16 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         height: number = this.canvas.clientHeight || DEFAULT_SCENE_HEIGHT,
         pixelRatio?: number
     ): this {
-        this._lifecycle.resize(width, height, pixelRatio);
+        this._kernel.lifecycle.resize(width, height, pixelRatio);
         return this;
     }
 
     dispose(): void {
-        this._lifecycle.dispose();
-    }
-
-    private _render(deltaTime: number): void {
-        this._renderRuntime.render({
-            frame: this.loop.frame,
-            elapsedSeconds: this.loop.elapsed / 1000,
-            deltaSeconds: deltaTime / 1000,
-            viewportWidth: this.canvas.width,
-            viewportHeight: this.canvas.height,
-        });
+        this._kernel.lifecycle.dispose();
     }
 
     private _assertNotDisposed(): void {
-        this._lifecycle.assertNotDisposed();
+        this._kernel.assertNotDisposed();
     }
 }
 

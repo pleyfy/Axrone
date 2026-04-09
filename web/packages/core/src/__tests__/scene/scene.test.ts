@@ -333,16 +333,18 @@ void main() {
         Object.defineProperty(decodedSurface, 'width', { value: 2, configurable: true });
         Object.defineProperty(decodedSurface, 'height', { value: 3, configurable: true });
         const textureFactory = (scene as unknown as {
-            _assets: {
-                _textureFactory: {
-                    _loadImageFromBytes: (
-                        bytes: readonly number[] | Uint8Array,
-                        mimeType: string,
-                        uri?: string
-                    ) => Promise<HTMLImageElement>;
+            _kernel: {
+                assets: {
+                    _textureFactory: {
+                        _loadImageFromBytes: (
+                            bytes: readonly number[] | Uint8Array,
+                            mimeType: string,
+                            uri?: string
+                        ) => Promise<HTMLImageElement>;
+                    };
                 };
             };
-        })._assets._textureFactory;
+        })._kernel.assets._textureFactory;
         const loadImageFromBytes = textureFactory._loadImageFromBytes;
 
         textureFactory._loadImageFromBytes = async (bytes, mimeType, uri) => {

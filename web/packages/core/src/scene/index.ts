@@ -23,6 +23,8 @@ export type { SceneAssetRuntimeOptions } from './scene-asset-runtime';
 export { SceneAssetRuntime } from './scene-asset-runtime';
 export type { SceneLifecycleRuntimeOptions } from './scene-lifecycle-runtime';
 export { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
+export type { SceneRuntimeKernelOptions } from './scene-runtime-kernel';
+export { SceneRuntimeKernel } from './scene-runtime-kernel';
 export {
     DEFAULT_SCENE_AMBIENT_LIGHT,
     DEFAULT_SCENE_CLEAR_COLOR,
