@@ -1,12 +1,21 @@
 export type {
     SceneBuiltInComponentName,
+    SceneBuiltInManifest,
+    SceneManifestRegistryBuilderOptions,
     SceneRegistryBuilderOptions,
     SceneRegistryForBuiltIns,
 } from './registry';
 export {
     DEFAULT_SCENE_BUILT_IN_COMPONENTS,
+    DEFAULT_SCENE_BUILT_IN_MANIFESTS,
+    SCENE_3D_BUILT_IN_MANIFEST,
+    SCENE_ANIMATION_BUILT_IN_MANIFEST,
+    SCENE_CORE_BUILT_IN_MANIFEST,
+    createSceneBuiltInManifest,
     createSceneRegistry,
+    createSceneRegistryFromBuiltInManifests,
     getDefaultSceneBuiltInRegistry,
+    resolveSceneBuiltInComponents,
 } from './registry';
 export type { SceneRuntimeProfile, SceneRuntimeProfileContext } from './profile';
 export {
