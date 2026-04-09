@@ -2,6 +2,7 @@ import {
     AssetDatabase,
     Camera,
     DirectionalLight,
+    MeshRenderer,
     OrbitCameraController,
     Scene,
     Transform,
@@ -87,13 +88,16 @@ const sceneRemoteGltfExample: SceneExample = {
         sceneHost.style.width = '100%';
         sceneHost.style.height = '100%';
 
+        const viewportWidth = sceneHost.clientWidth || 960;
+        const viewportHeight = sceneHost.clientHeight || 540;
+
         shell.appendChild(sceneHost);
         container.appendChild(shell);
 
         const overlay = createStatusPanel(shell);
         const scene = new Scene({
-            width: sceneHost.clientWidth || 960,
-            height: sceneHost.clientHeight || 540,
+            width: viewportWidth,
+            height: viewportHeight,
             autoStart: true,
             parent: sceneHost,
             appendToDom: true,
@@ -101,7 +105,7 @@ const sceneRemoteGltfExample: SceneExample = {
             clearColor: [0.03, 0.04, 0.07, 1],
             ambientLight: [0.22, 0.22, 0.24],
         });
-        const cleanupResize = bindSceneToContainer(scene, sceneHost, 960, 540);
+        const cleanupResize = bindSceneToContainer(scene, sceneHost, viewportWidth, viewportHeight);
         const database = new AssetDatabase<GltfAssetSchemaLike>({
             importers: [
                 createGltfImporter<GltfAssetSchemaLike>() as AssetImporter<GltfAssetSchemaLike>,
@@ -140,13 +144,98 @@ const sceneRemoteGltfExample: SceneExample = {
                 }
             }
 
-            const camera = scene.createCameraActor({ name: 'RemoteCamera' }, { primary: true, fieldOfView: 48 });
+            const computeSceneBounds = () => {
+                let minX = Number.POSITIVE_INFINITY;
+                let minY = Number.POSITIVE_INFINITY;
+                let minZ = Number.POSITIVE_INFINITY;
+                let maxX = Number.NEGATIVE_INFINITY;
+                let maxY = Number.NEGATIVE_INFINITY;
+                let maxZ = Number.NEGATIVE_INFINITY;
+                let found = false;
+
+                for (const actor of load.actors) {
+                    const renderer = actor.getComponent(MeshRenderer);
+                    const transform = actor.getComponent(Transform);
+                    if (!renderer?.meshId || !transform) {
+                        continue;
+                    }
+
+                    const meshAsset = database.get({ key: renderer.meshId, kind: 'gltf.mesh' });
+                    const meshBounds = meshAsset?.data.bounds;
+                    if (!meshBounds) {
+                        continue;
+                    }
+
+                    const corners = [
+                        new Vec3(meshBounds.min[0], meshBounds.min[1], meshBounds.min[2]),
+                        new Vec3(meshBounds.min[0], meshBounds.min[1], meshBounds.max[2]),
+                        new Vec3(meshBounds.min[0], meshBounds.max[1], meshBounds.min[2]),
+                        new Vec3(meshBounds.min[0], meshBounds.max[1], meshBounds.max[2]),
+                        new Vec3(meshBounds.max[0], meshBounds.min[1], meshBounds.min[2]),
+                        new Vec3(meshBounds.max[0], meshBounds.min[1], meshBounds.max[2]),
+                        new Vec3(meshBounds.max[0], meshBounds.max[1], meshBounds.min[2]),
+                        new Vec3(meshBounds.max[0], meshBounds.max[1], meshBounds.max[2]),
+                    ];
+
+                    for (const corner of corners) {
+                        const worldCorner = transform.worldMatrix.transformVec3(corner, new Vec3());
+                        minX = Math.min(minX, worldCorner.x);
+                        minY = Math.min(minY, worldCorner.y);
+                        minZ = Math.min(minZ, worldCorner.z);
+                        maxX = Math.max(maxX, worldCorner.x);
+                        maxY = Math.max(maxY, worldCorner.y);
+                        maxZ = Math.max(maxZ, worldCorner.z);
+                    }
+
+                    found = true;
+                }
+
+                if (!found) {
+                    return null;
+                }
+
+                return {
+                    min: new Vec3(minX, minY, minZ),
+                    max: new Vec3(maxX, maxY, maxZ),
+                    center: new Vec3((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5),
+                    size: new Vec3(maxX - minX, maxY - minY, maxZ - minZ),
+                };
+            };
+
+            const bounds = computeSceneBounds();
+            const fieldOfView = 48;
+            const aspect = Math.max(0.1, viewportWidth / Math.max(1, viewportHeight));
+            const verticalHalfFov = (fieldOfView * Math.PI) / 360;
+            const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * aspect);
+            const framingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov);
+            const target = bounds
+                ? new Vec3(
+                      bounds.center.x,
+                      bounds.min.y + bounds.size.y * 0.45,
+                      bounds.center.z
+                  )
+                : new Vec3(0, 0.45, 0);
+            const radius = bounds
+                ? Math.max(0.8, Math.hypot(bounds.size.x, bounds.size.y, bounds.size.z) * 0.5)
+                : 1.2;
+            const distance = bounds
+                ? (radius / Math.sin(framingHalfFov)) * 1.15
+                : 4.2;
+            const near = Math.max(0.1, radius * 0.02);
+            const far = Math.max(1000, distance + radius * 8);
+
+            const camera = scene.createCameraActor(
+                { name: 'RemoteCamera' },
+                { primary: true, fieldOfView, near, far }
+            );
             camera.addComponent(OrbitCameraController, {
-                target: [0, 0.45, 0],
-                distance: 4.2,
-                azimuth: 0.35,
-                elevation: 0.28,
-                autoRotateSpeed: 0.18,
+                target: [target.x, target.y, target.z],
+                distance,
+                minDistance: Math.max(1, radius * 0.35),
+                maxDistance: Math.max(64, distance * 1.8),
+                azimuth: 0.52,
+                elevation: 0.16,
+                autoRotateSpeed: 0,
             });
 
             const sun = scene.createActor({ name: 'RemoteSun' });
