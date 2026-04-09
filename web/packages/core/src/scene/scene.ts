@@ -24,6 +24,7 @@ import { SceneMeshFactory } from './scene-mesh-factory';
 import { SceneShaderFactory } from './scene-shader-factory';
 import { SceneRenderRuntime } from './scene-render-runtime';
 import { SceneResourceRuntime } from './scene-resource-runtime';
+import { SceneSnapshotLoader } from './scene-snapshot-loader';
 import { SceneTextureFactory } from './scene-texture-factory';
 import {
     SceneCanvasError,
@@ -153,6 +154,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _geometryMeshBuilder = new SceneGeometryMeshBuilder();
     private readonly _meshFactory: SceneMeshFactory;
     private readonly _shaderFactory: SceneShaderFactory;
+    private readonly _snapshotLoader: SceneSnapshotLoader;
     private readonly _textureManager: WebGLTextureManager;
     private readonly _textureFactory: SceneTextureFactory;
     private readonly _autoCreatedCanvas: boolean;
@@ -212,6 +214,36 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             componentCatalog: this._componentCatalog,
             createActor: (config) => this.createActor(config),
             getAllActors: () => this.world.getAllActors(),
+        });
+        this._snapshotLoader = new SceneSnapshotLoader({
+            defaultRenderPassId: DEFAULT_RENDER_PASS_ID,
+            defaultClearColor: this._defaultClearColor,
+            clearExisting: () => {
+                this._prefabs.destroyAllActors();
+                this._clearSceneAssets();
+            },
+            clearRenderPasses: () => {
+                this._resources.renderPasses.clear();
+            },
+            registerShader: (shader) => {
+                this.registerShader(shader);
+            },
+            registerMesh: (mesh) => {
+                this.registerMesh(mesh);
+            },
+            registerSampler: (sampler) => {
+                this.registerSampler(sampler);
+            },
+            registerTexture: async (texture) => {
+                await this.registerTexture(texture);
+            },
+            registerRenderPass: (renderPass) => {
+                this.registerRenderPass(renderPass);
+            },
+            createMaterial: (material) => {
+                this.createMaterial(material);
+            },
+            instantiatePrefab: (prefab, options) => this.instantiatePrefab(prefab, options),
         });
         this.resize(options.width, options.height, this._pixelRatio);
 
@@ -558,60 +590,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         options: SceneSnapshotLoadOptions = {}
     ): Promise<readonly Actor[]> {
         this._assertNotDisposed();
-
-        if (snapshot.version !== 1) {
-            throw new SceneLifecycleError(
-                `Unsupported scene snapshot version '${snapshot.version}'`
-            );
-        }
-
-        if (options.clearExisting !== false) {
-            this._prefabs.destroyAllActors();
-            this._clearSceneAssets();
-        }
-
-        for (const shader of snapshot.shaders) {
-            this.registerShader(shader);
-        }
-
-        for (const mesh of snapshot.meshes) {
-            this.registerMesh(mesh);
-        }
-
-        for (const sampler of snapshot.samplers) {
-            this.registerSampler(sampler);
-        }
-
-        for (const texture of snapshot.textures) {
-            await this.registerTexture(texture);
-        }
-
-        if (options.clearExisting !== false) {
-            this._resources.renderPasses.clear();
-        }
-
-        const renderPasses =
-            snapshot.renderPasses.length > 0
-                ? snapshot.renderPasses
-                : [
-                      {
-                          id: DEFAULT_RENDER_PASS_ID,
-                          order: 0,
-                          rendererPassId: DEFAULT_RENDER_PASS_ID,
-                          clearFlags: ['color', 'depth'],
-                          clearColor: this._defaultClearColor,
-                      } satisfies SceneRenderPassDefinition,
-                  ];
-
-        for (const renderPass of renderPasses) {
-            this.registerRenderPass(renderPass);
-        }
-
-        for (const material of snapshot.materials) {
-            this.createMaterial(material);
-        }
-
-        return this.instantiatePrefab(snapshot.prefab, options);
+        return await this._snapshotLoader.load(snapshot, options);
     }
 
     start(now?: number): this {
