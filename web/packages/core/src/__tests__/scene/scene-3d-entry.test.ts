@@ -14,7 +14,9 @@ describe('scene-3d entry', () => {
         expect(scene3D.MeshRenderer).toBeDefined();
         expect(scene3D.Scene3DActorRuntime).toBeDefined();
         expect(scene3D.SceneAssetFacade).toBeDefined();
+        expect(scene3D.SceneLifecycleFacade).toBeDefined();
         expect(scene3D.SceneRuntimeFacade).toBeDefined();
+        expect(scene3D.SceneSnapshotFacade).toBeDefined();
         expect(scene3D.SceneRuntimeKernel).toBeDefined();
         expect(scene3D.SceneAssetRuntime).toBeDefined();
         expect(scene3D.createUnlitColorShaderDefinition).toBeDefined();
