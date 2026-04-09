@@ -31,6 +31,8 @@ export {
 } from './material-registry';
 export type { SceneMeshRegistrationResult, SceneMeshResource } from './mesh-registry';
 export { cloneSceneMeshDefinition, SceneMeshRegistry } from './mesh-registry';
+export type { SceneRenderItem } from './render-item-collector';
+export { SceneRenderItemCollector } from './render-item-collector';
 export type {
     SceneResourceRuntimeClearCallbacks,
     SceneResourceRuntimeOptions,

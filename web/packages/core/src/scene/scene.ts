@@ -29,6 +29,7 @@ import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import type { SceneMaterialResource } from './material-registry';
 import type { SceneMeshResource } from './mesh-registry';
+import { SceneRenderItemCollector, type SceneRenderItem } from './render-item-collector';
 import type { SceneRenderPassResource } from './render-pass-registry';
 import type { SceneShaderResource } from './shader-registry';
 import type { SceneTextureResource } from './texture-registry';
@@ -106,11 +107,6 @@ const encodeBase64 = (bytes: Uint8Array): string => {
 
     return result;
 };
-
-interface RenderItem {
-    readonly transform: Transform;
-    readonly renderer: MeshRenderer;
-}
 
 interface SceneRenderStatsState {
     frame: number;
@@ -560,6 +556,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
     private readonly _resources: SceneResourceRuntime;
+    private readonly _renderItemCollector = new SceneRenderItemCollector();
     private readonly _morphMeshes = new Map<string, MorphMeshResourceCache>();
     private readonly _textureManager: WebGLTextureManager;
     private readonly _defaultSampler: ITextureSampler;
@@ -1846,32 +1843,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
     }
 
-    private _collectRenderItems(passId: string): RenderItem[] {
-        const items: RenderItem[] = [];
-
-        for (const actor of this.world.getAllActors()) {
-            if (!actor.active) {
-                continue;
-            }
-
-            const transform = actor.getComponent(Transform);
-            const renderer = actor.getComponent(MeshRenderer);
-
-            if (
-                !transform ||
-                !renderer ||
-                !renderer.enabled ||
-                !renderer.visible ||
-                renderer.passId !== passId
-            ) {
-                continue;
-            }
-
-            items.push({ transform, renderer });
-        }
-
-        items.sort((left, right) => left.renderer.renderOrder - right.renderer.renderOrder);
-        return items;
+    private _collectRenderItems(passId: string): readonly SceneRenderItem[] {
+        return this._renderItemCollector.collect(this.world.getAllActors(), passId);
     }
 
     private _selectCamera(): Camera | undefined {
