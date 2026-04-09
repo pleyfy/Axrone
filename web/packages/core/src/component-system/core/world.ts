@@ -16,6 +16,7 @@ import type { ECSEventMap } from '../types/events';
 import { ECSObservables } from '../observers/ecs-observer';
 import type { Actor } from './actor';
 import { getComponentMetadata } from '../decorators/script';
+import { WorldActorRegistry } from './world-actor-registry';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
 export type EntityId = Entity & { readonly __entityBrand: unique symbol };
@@ -84,7 +85,7 @@ export class World<R extends ComponentRegistry> {
     private readonly _queryCache: OptimizedQueryCache;
     private readonly _eventBus: IEventEmitter<ECSEventMap<R>>;
     private readonly _observables: ECSObservables<R>;
-    private readonly _actorRegistry = new Map<Entity, Actor>();
+    private readonly _actorRegistry = new WorldActorRegistry();
     private readonly _singletonComponents = new Map<string, { entity: Entity; instance: any }>();
 
     private _nextEntityId = 1;
@@ -268,9 +269,8 @@ export class World<R extends ComponentRegistry> {
             this._entityArchetypes.delete(entity);
             this._freeEntities.push(entity);
 
-            const actor = this._actorRegistry.get(entity);
+            const actor = this._actorRegistry.unregister(entity);
             if (actor) {
-                this._actorRegistry.delete(entity);
                 this._safeEmitEvent('EntityDestroyed', { entity, actor });
             }
 
@@ -628,7 +628,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         try {
-            this._actorRegistry.set(entity, actor);
+            this._actorRegistry.register(entity, actor);
             this._safeEmitEvent('EntityCreated', { entity, actor });
         } catch (error) {
             throw new EntityError(
@@ -645,10 +645,7 @@ export class World<R extends ComponentRegistry> {
             return;
         }
 
-        const actor = this._actorRegistry.get(entity);
-        if (actor) {
-            this._actorRegistry.delete(entity);
-        }
+        this._actorRegistry.unregister(entity);
     }
 
     getActor(entity: Entity): Actor | undefined {
@@ -662,7 +659,7 @@ export class World<R extends ComponentRegistry> {
 
     getAllActors(): readonly Actor[] {
         this._validateWorldState('getAllActors');
-        return Array.from(this._actorRegistry.values());
+        return this._actorRegistry.getAll();
     }
 
     getEntityCount(): number {
