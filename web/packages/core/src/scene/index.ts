@@ -17,10 +17,17 @@ export {
     getDefaultSceneBuiltInRegistry,
     resolveSceneBuiltInComponents,
 } from './registry';
-export type { SceneRuntimeProfile, SceneRuntimeProfileContext } from './profile';
+export type {
+    SceneManifestRuntimeProfileOptions,
+    SceneRuntimeProfile,
+    SceneRuntimeProfileContext,
+} from './profile';
 export {
+    CORE_SCENE_RUNTIME_PROFILE_ID,
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,
+    createSceneManifestRuntimeProfile,
     createSceneRuntimeProfile,
+    getCoreSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
     resolveSceneRegistryFromProfile,
 } from './profile';
