@@ -76,8 +76,12 @@ export {
     createGltfPbrShaderDefinition,
     createGltfSceneSnapshot,
     createGltfUnlitShaderDefinition,
-    loadGltfSceneIntoScene,
 } from './runtime';
+export type {
+    LoadGltfSceneIntoSceneOptions,
+    LoadGltfSceneIntoSceneResult,
+} from './scene-runtime-adapter';
+export { loadGltfSceneIntoScene } from './scene-runtime-adapter';
 export {
     createLoadersBasisGltfTextureTranscoder,
     resolveLoadersBasisGltfTextureFormats,

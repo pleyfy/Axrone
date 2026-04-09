@@ -1,6 +1,4 @@
 import { Vec3 } from '@axrone/numeric';
-import type { Actor } from '../../component-system/core/actor';
-import type { ComponentRegistry } from '../../component-system/types/core';
 import type { AssetDatabase } from '../database';
 import type {
     AssetImportDiagnostic,
@@ -12,11 +10,9 @@ import type {
     SceneMeshDefinition,
     SceneShaderDefinition,
     SceneSnapshot,
-    SceneSnapshotLoadOptions,
     SceneTextureCompressedLevelDefinition,
     SceneTextureDefinition,
     SceneUniformValue,
-    Scene,
 } from '../../scene';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
 import {
@@ -99,14 +95,6 @@ export interface GltfSceneSnapshotResult {
     readonly prefab: AssetRecord<GltfAssetSchemaLike, 'gltf.prefab'>;
     readonly snapshot: SceneSnapshot;
     readonly diagnostics: readonly AssetImportDiagnostic[];
-}
-
-export interface LoadGltfSceneIntoSceneOptions
-    extends GltfSceneSnapshotOptions,
-        Pick<SceneSnapshotLoadOptions, 'clearExisting' | 'componentArgsResolver' | 'namePrefix'> {}
-
-export interface LoadGltfSceneIntoSceneResult extends GltfSceneSnapshotResult {
-    readonly actors: readonly Actor[];
 }
 
 const toSceneTextureMimeType = (texture: GltfTextureAsset): string | undefined => {
@@ -811,24 +799,5 @@ export const createGltfSceneSnapshot = (
             renderPasses: [],
         },
         diagnostics: Object.freeze(diagnostics),
-    };
-};
-
-export const loadGltfSceneIntoScene = async <R extends ComponentRegistry = Record<string, never>>(
-    scene: Scene<R>,
-    database: AssetDatabase<GltfAssetSchemaLike>,
-    selector: AssetSelector<GltfAssetSchemaLike, 'gltf.document'>,
-    options: LoadGltfSceneIntoSceneOptions = {}
-): Promise<LoadGltfSceneIntoSceneResult> => {
-    const built = createGltfSceneSnapshot(database, selector, options);
-    const actors = await scene.loadScene(built.snapshot, {
-        clearExisting: options.clearExisting,
-        componentArgsResolver: options.componentArgsResolver,
-        namePrefix: options.namePrefix,
-    });
-
-    return {
-        ...built,
-        actors,
     };
 };
