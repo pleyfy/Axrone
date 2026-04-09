@@ -20,12 +20,10 @@ import {
 import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
 import { Animator } from './components/animator';
 import { Camera, type CameraConfig } from './components/camera';
-import { DirectionalLight } from './components/directional-light';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
-import { PointLight } from './components/point-light';
-import { SpotLight } from './components/spot-light';
 import { SceneComponentCatalog } from './component-catalog';
+import { SceneLightingCollector, type SceneLightingState } from './lighting-collector';
 import { createSceneLoopSystems } from './loop-bridge';
 import type { SceneMaterialResource } from './material-registry';
 import type { SceneMeshResource } from './mesh-registry';
@@ -112,41 +110,6 @@ interface SceneRenderStatsState {
     frame: number;
     drawCalls: number;
     trianglesSubmitted: number;
-}
-
-interface DirectionalLightState {
-    readonly direction: Vec3;
-    readonly color: Vec3;
-    readonly intensity: number;
-}
-
-interface PointLightState {
-    readonly type: 'point';
-    readonly position: Vec3;
-    readonly color: Vec3;
-    readonly intensity: number;
-    readonly range: number;
-}
-
-interface SpotLightState {
-    readonly type: 'spot';
-    readonly position: Vec3;
-    readonly direction: Vec3;
-    readonly color: Vec3;
-    readonly intensity: number;
-    readonly range: number;
-    readonly innerConeAngle: number;
-    readonly outerConeAngle: number;
-}
-
-type LocalLightState = PointLightState | SpotLightState;
-
-interface LightingState {
-    readonly ambient: Vec3;
-    readonly directional: DirectionalLightState | null;
-    readonly localLights: readonly LocalLightState[];
-    readonly pointCount: number;
-    readonly spotCount: number;
 }
 
 const DEFAULT_ATTRIBUTE_NAMES: Readonly<Record<SceneMeshSemantic, string>> = Object.freeze({
@@ -556,10 +519,13 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
     private readonly _resources: SceneResourceRuntime;
+    private readonly _lightingCollector = new SceneLightingCollector(MAX_SCENE_LOCAL_LIGHTS);
     private readonly _renderItemCollector = new SceneRenderItemCollector();
+    private readonly _resolutionUniform = new Vec2();
+    private readonly _viewProjectionScratch = new Mat4();
+    private readonly _mvpScratch = new Mat4();
     private readonly _morphMeshes = new Map<string, MorphMeshResourceCache>();
     private readonly _textureManager: WebGLTextureManager;
-    private readonly _defaultSampler: ITextureSampler;
     private readonly _autoCreatedCanvas: boolean;
     private readonly _defaultClearColor: Vec4;
     private readonly _ambientLight: Vec3;
@@ -581,14 +547,14 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._defaultClearColor = toVec4(options.clearColor);
         this._ambientLight = toVec3(options.ambientLight);
         this._textureManager = new WebGLTextureManager(this.gl);
-        this._defaultSampler = this._textureManager.getDefaultSampler(
+        const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
         );
         this._resources = new SceneResourceRuntime({
             defaultPassId: DEFAULT_RENDER_PASS_ID,
             defaultClearColor: this._defaultClearColor,
-            defaultSampler: this._defaultSampler,
+            defaultSampler,
         });
 
         this._registry = resolveSceneRegistryFromProfile(options.profile, {
@@ -1642,13 +1608,19 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         const viewMatrix = camera?.getViewMatrix();
         const projectionMatrix = camera?.getProjectionMatrix(aspectRatio);
         const cameraPosition = camera?.getWorldPosition();
+        const viewProjectionMatrix =
+            viewMatrix && projectionMatrix
+                ? Mat4.multiply(projectionMatrix, viewMatrix, this._viewProjectionScratch)
+                : null;
+        this._resolutionUniform.x = this.canvas.width;
+        this._resolutionUniform.y = this.canvas.height;
 
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
         for (const renderPass of renderPasses) {
             this._prepareRenderPass(renderPass, camera);
 
-            if (!camera || !viewMatrix || !projectionMatrix || !cameraPosition) {
+            if (!camera || !viewMatrix || !projectionMatrix || !viewProjectionMatrix || !cameraPosition) {
                 continue;
             }
 
@@ -1673,8 +1645,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 }
 
                 const modelMatrix = item.transform.worldMatrix;
-                const viewProjectionMatrix = Mat4.multiply(projectionMatrix, viewMatrix);
-                const mvpMatrix = Mat4.multiply(viewProjectionMatrix, modelMatrix);
+                const mvpMatrix = Mat4.multiply(
+                    viewProjectionMatrix,
+                    modelMatrix,
+                    this._mvpScratch
+                );
 
                 this._applyRenderState(shader, renderPass);
                 this.gl.useProgram(shader.program);
@@ -1692,7 +1667,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this._setUniform(
                     shader,
                     'u_Resolution',
-                    new Vec2(this.canvas.width, this.canvas.height)
+                    this._resolutionUniform
                 );
                 this._setUniform(shader, 'u_CameraPosition', cameraPosition);
                 this._applyLightingUniforms(shader, item.renderer, lighting);
@@ -1872,73 +1847,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         return fallback;
     }
 
-    private _collectLighting(): LightingState {
-        let primaryDirectional: DirectionalLightState | null = null;
-        let fallbackDirectional: DirectionalLightState | null = null;
-        const localLights: LocalLightState[] = [];
-        let pointCount = 0;
-        let spotCount = 0;
-        const ambient = new Vec3(this._ambientLight.x, this._ambientLight.y, this._ambientLight.z);
-
-        for (const actor of this.world.getAllActors()) {
-            if (!actor.active) {
-                continue;
-            }
-
-            const directional = actor.getComponent(DirectionalLight);
-            if (directional && directional.enabled) {
-                const state: DirectionalLightState = {
-                    direction: directional.getDirection(),
-                    color: directional.color.clone(),
-                    intensity: directional.intensity,
-                };
-
-                ambient.x += directional.ambientColor.x;
-                ambient.y += directional.ambientColor.y;
-                ambient.z += directional.ambientColor.z;
-
-                if (directional.primary) {
-                    primaryDirectional = state;
-                } else if (!fallbackDirectional) {
-                    fallbackDirectional = state;
-                }
-            }
-
-            const point = actor.getComponent(PointLight);
-            if (point && point.enabled && localLights.length < MAX_SCENE_LOCAL_LIGHTS) {
-                pointCount += 1;
-                localLights.push({
-                    type: 'point',
-                    position: point.getWorldPosition(),
-                    color: point.color.clone(),
-                    intensity: point.intensity,
-                    range: point.range,
-                });
-            }
-
-            const spot = actor.getComponent(SpotLight);
-            if (spot && spot.enabled && localLights.length < MAX_SCENE_LOCAL_LIGHTS) {
-                spotCount += 1;
-                localLights.push({
-                    type: 'spot',
-                    position: spot.getWorldPosition(),
-                    direction: spot.getDirection(),
-                    color: spot.color.clone(),
-                    intensity: spot.intensity,
-                    range: spot.range,
-                    innerConeAngle: spot.innerConeAngle,
-                    outerConeAngle: spot.outerConeAngle,
-                });
-            }
-        }
-
-        return {
-            ambient,
-            directional: primaryDirectional ?? fallbackDirectional,
-            localLights: Object.freeze(localLights),
-            pointCount,
-            spotCount,
-        };
+    private _collectLighting(): SceneLightingState {
+        return this._lightingCollector.collect(this.world.getAllActors(), this._ambientLight);
     }
 
     private _applyRenderState(
@@ -1976,75 +1886,76 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private _applyLightingUniforms(
         shader: SceneShaderResource,
         renderer: MeshRenderer,
-        lighting: LightingState
+        lighting: SceneLightingState
     ): void {
         const receiveLighting = renderer.receiveLighting;
-        const directional = receiveLighting ? lighting.directional : null;
-        const localLights: readonly LocalLightState[] = receiveLighting ? lighting.localLights : [];
-        const point = localLights.find(
-            (light: LocalLightState): light is PointLightState => light.type === 'point'
-        );
-        const spot = localLights.find(
-            (light: LocalLightState): light is SpotLightState => light.type === 'spot'
-        );
-        const localLightTypes = new Int32Array(Math.max(1, localLights.length));
-        const localLightPositions = new Float32Array(Math.max(1, localLights.length) * 3);
-        const localLightDirections = new Float32Array(Math.max(1, localLights.length) * 3);
-        const localLightColors = new Float32Array(Math.max(1, localLights.length) * 3);
-        const localLightIntensities = new Float32Array(Math.max(1, localLights.length));
-        const localLightRanges = new Float32Array(Math.max(1, localLights.length));
-        const localLightInnerCones = new Float32Array(Math.max(1, localLights.length));
-        const localLightOuterCones = new Float32Array(Math.max(1, localLights.length));
-
-        for (let index = 0; index < localLights.length; index += 1) {
-            const light = localLights[index]!;
-            const offset = index * 3;
-            localLightTypes[index] = light.type === 'spot' ? 1 : 0;
-            localLightPositions[offset] = light.position.x;
-            localLightPositions[offset + 1] = light.position.y;
-            localLightPositions[offset + 2] = light.position.z;
-            localLightColors[offset] = light.color.x;
-            localLightColors[offset + 1] = light.color.y;
-            localLightColors[offset + 2] = light.color.z;
-            localLightIntensities[index] = light.intensity;
-            localLightRanges[index] = light.range;
-
-            if (light.type === 'spot') {
-                localLightDirections[offset] = light.direction.x;
-                localLightDirections[offset + 1] = light.direction.y;
-                localLightDirections[offset + 2] = light.direction.z;
-                localLightInnerCones[index] = light.innerConeAngle;
-                localLightOuterCones[index] = light.outerConeAngle;
-            }
-        }
-
         this._setUniform(shader, 'u_ReceiveLighting', receiveLighting);
         this._setUniform(shader, 'u_AmbientLight', receiveLighting ? lighting.ambient : Vec3.ZERO);
-        this._setUniform(shader, 'u_LightDirection', directional?.direction ?? new Vec3(0, -1, 0));
-        this._setUniform(shader, 'u_LightColor', directional?.color ?? Vec3.ZERO);
-        this._setUniform(shader, 'u_LightIntensity', directional?.intensity ?? 0);
+        this._setUniform(shader, 'u_LightDirection', lighting.directionalDirection);
+        this._setUniform(
+            shader,
+            'u_LightColor',
+            receiveLighting && lighting.hasDirectional ? lighting.directionalColor : Vec3.ZERO
+        );
+        this._setUniform(
+            shader,
+            'u_LightIntensity',
+            receiveLighting && lighting.hasDirectional ? lighting.directionalIntensity : 0
+        );
         this._setUniform(shader, 'u_PointLightCount', receiveLighting ? lighting.pointCount : 0);
-        this._setUniform(shader, 'u_PointLightPosition', point?.position ?? Vec3.ZERO);
-        this._setUniform(shader, 'u_PointLightColor', point?.color ?? Vec3.ZERO);
-        this._setUniform(shader, 'u_PointLightIntensity', point?.intensity ?? 0);
-        this._setUniform(shader, 'u_PointLightRange', point?.range ?? 0);
+        this._setUniform(shader, 'u_PointLightPosition', lighting.pointLightPosition);
+        this._setUniform(
+            shader,
+            'u_PointLightColor',
+            receiveLighting && lighting.pointCount > 0 ? lighting.pointLightColor : Vec3.ZERO
+        );
+        this._setUniform(
+            shader,
+            'u_PointLightIntensity',
+            receiveLighting && lighting.pointCount > 0 ? lighting.pointLightIntensity : 0
+        );
+        this._setUniform(
+            shader,
+            'u_PointLightRange',
+            receiveLighting && lighting.pointCount > 0 ? lighting.pointLightRange : 0
+        );
         this._setUniform(shader, 'u_SpotLightCount', receiveLighting ? lighting.spotCount : 0);
-        this._setUniform(shader, 'u_SpotLightPosition', spot?.position ?? Vec3.ZERO);
-        this._setUniform(shader, 'u_SpotLightDirection', spot?.direction ?? new Vec3(0, -1, 0));
-        this._setUniform(shader, 'u_SpotLightColor', spot?.color ?? Vec3.ZERO);
-        this._setUniform(shader, 'u_SpotLightIntensity', spot?.intensity ?? 0);
-        this._setUniform(shader, 'u_SpotLightRange', spot?.range ?? 0);
-        this._setUniform(shader, 'u_SpotLightInnerCone', spot?.innerConeAngle ?? 0);
-        this._setUniform(shader, 'u_SpotLightOuterCone', spot?.outerConeAngle ?? 0);
-        this._setUniform(shader, 'u_LocalLightCount', receiveLighting ? localLights.length : 0);
-        this._setUniform(shader, 'u_LocalLightType', localLightTypes);
-        this._setUniform(shader, 'u_LocalLightPosition', localLightPositions);
-        this._setUniform(shader, 'u_LocalLightDirection', localLightDirections);
-        this._setUniform(shader, 'u_LocalLightColor', localLightColors);
-        this._setUniform(shader, 'u_LocalLightIntensity', localLightIntensities);
-        this._setUniform(shader, 'u_LocalLightRange', localLightRanges);
-        this._setUniform(shader, 'u_LocalLightInnerCone', localLightInnerCones);
-        this._setUniform(shader, 'u_LocalLightOuterCone', localLightOuterCones);
+        this._setUniform(shader, 'u_SpotLightPosition', lighting.spotLightPosition);
+        this._setUniform(shader, 'u_SpotLightDirection', lighting.spotLightDirection);
+        this._setUniform(
+            shader,
+            'u_SpotLightColor',
+            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightColor : Vec3.ZERO
+        );
+        this._setUniform(
+            shader,
+            'u_SpotLightIntensity',
+            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightIntensity : 0
+        );
+        this._setUniform(
+            shader,
+            'u_SpotLightRange',
+            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightRange : 0
+        );
+        this._setUniform(
+            shader,
+            'u_SpotLightInnerCone',
+            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightInnerCone : 0
+        );
+        this._setUniform(
+            shader,
+            'u_SpotLightOuterCone',
+            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightOuterCone : 0
+        );
+        this._setUniform(shader, 'u_LocalLightCount', receiveLighting ? lighting.localLightCount : 0);
+        this._setUniform(shader, 'u_LocalLightType', lighting.localLightTypes);
+        this._setUniform(shader, 'u_LocalLightPosition', lighting.localLightPositions);
+        this._setUniform(shader, 'u_LocalLightDirection', lighting.localLightDirections);
+        this._setUniform(shader, 'u_LocalLightColor', lighting.localLightColors);
+        this._setUniform(shader, 'u_LocalLightIntensity', lighting.localLightIntensities);
+        this._setUniform(shader, 'u_LocalLightRange', lighting.localLightRanges);
+        this._setUniform(shader, 'u_LocalLightInnerCone', lighting.localLightInnerCones);
+        this._setUniform(shader, 'u_LocalLightOuterCone', lighting.localLightOuterCones);
     }
 
     private _applySkinningUniforms(
