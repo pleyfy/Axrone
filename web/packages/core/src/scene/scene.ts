@@ -31,6 +31,7 @@ import type { SceneMaterialResource } from './material-registry';
 import type { SceneMeshResource } from './mesh-registry';
 import { SceneRenderItemCollector, type SceneRenderItem } from './render-item-collector';
 import type { SceneRenderPassResource } from './render-pass-registry';
+import { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneShaderResource } from './shader-registry';
 import type { SceneTextureResource } from './texture-registry';
 import { SceneResourceRuntime } from './scene-resource-runtime';
@@ -527,6 +528,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _resolutionUniform = new Vec2();
     private readonly _mvpScratch = new Mat4();
     private readonly _materialTextureBinder: SceneMaterialTextureBinder;
+    private readonly _renderStateApplier: SceneRenderStateApplier;
     private readonly _textureUniformSetter = (
         shader: SceneShaderResource,
         name: string,
@@ -558,6 +560,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._ambientLight = toVec3(options.ambientLight);
         this._textureManager = new WebGLTextureManager(this.gl);
         this._materialTextureBinder = new SceneMaterialTextureBinder(this.gl);
+        this._renderStateApplier = new SceneRenderStateApplier(this.gl);
         const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -1664,7 +1667,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                     this._mvpScratch
                 );
 
-                this._applyRenderState(shader, renderPass);
+                this._renderStateApplier.apply(shader, renderPass);
                 this.gl.useProgram(shader.program);
                 this.gl.bindVertexArray(mesh.vertexArray);
                 this._applyMissingVertexAttributeDefaults(mesh);
@@ -1846,38 +1849,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _collectLighting(): SceneLightingState {
         return this._lightingCollector.collect(this.world.getAllActors(), this._ambientLight);
-    }
-
-    private _applyRenderState(
-        shader: SceneShaderResource,
-        renderPass: SceneRenderPassResource
-    ): void {
-        const depthTest = renderPass.depthTest ?? shader.depthTest;
-        const cull = renderPass.cull ?? shader.cull;
-        const blend = renderPass.blend ?? shader.blend;
-
-        if (depthTest) {
-            this.gl.enable?.(this.gl.DEPTH_TEST);
-        } else {
-            this.gl.disable?.(this.gl.DEPTH_TEST);
-        }
-
-        if (cull) {
-            this.gl.enable?.(this.gl.CULL_FACE);
-            this.gl.frontFace?.(this.gl.CCW);
-            this.gl.cullFace?.(this.gl.BACK);
-        } else {
-            this.gl.disable?.(this.gl.CULL_FACE);
-        }
-
-        if (blend) {
-            this.gl.enable?.(this.gl.BLEND);
-            this.gl.blendFunc?.(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
-        } else {
-            this.gl.disable?.(this.gl.BLEND);
-        }
-
-        this.gl.depthMask?.(true);
     }
 
     private _applyLightingUniforms(

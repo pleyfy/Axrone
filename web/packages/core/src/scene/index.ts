@@ -49,6 +49,7 @@ export type {
     SceneResourceRuntimeSerializationResult,
 } from './scene-resource-runtime';
 export { SceneResourceRuntime } from './scene-resource-runtime';
+export { SceneRenderStateApplier } from './render-state-applier';
 export type { SceneSamplerRegistrationResult, SceneSamplerResource } from './sampler-registry';
 export { cloneSceneSamplerDefinition, SceneSamplerRegistry } from './sampler-registry';
 export type { SceneTextureRegistrationResult, SceneTextureResource } from './texture-registry';
