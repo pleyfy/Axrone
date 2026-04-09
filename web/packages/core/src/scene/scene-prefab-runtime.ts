@@ -3,6 +3,7 @@ import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { Component } from '../component-system/core/component';
 import type { ComponentConstructor } from '../component-system/types/core';
 import { PrefabNodeBinding } from './components/prefab-node-binding';
+import type { SceneComponentTypeResolver } from './component-catalog';
 import { SceneLifecycleError } from './errors';
 import { decodeSceneValue, encodeSceneValue } from './serialization';
 import type {
@@ -13,7 +14,7 @@ import type {
 } from './types';
 
 interface ScenePrefabHost {
-    readonly componentTypes: ReadonlyMap<string, ComponentConstructor>;
+    readonly componentCatalog: SceneComponentTypeResolver;
     createActor(config: ActorConfig): Actor;
     getAllActors(): readonly Actor[];
 }
@@ -155,7 +156,7 @@ export class ScenePrefabRuntime {
         const data = typeof serialize === 'function' ? (serialize.call(component) ?? {}) : {};
 
         return {
-            type: component.constructor.name,
+            type: this._host.componentCatalog.getName(component.constructor as ComponentConstructor),
             data: encodeSceneValue(data),
         };
     }
@@ -165,7 +166,7 @@ export class ScenePrefabRuntime {
         snapshot: SceneComponentSnapshot,
         options: ScenePrefabInstantiateOptions
     ): void {
-        const componentType = this._host.componentTypes.get(snapshot.type);
+        const componentType = this._host.componentCatalog.get(snapshot.type);
         if (!componentType) {
             throw new SceneLifecycleError(
                 `Cannot instantiate prefab because component '${snapshot.type}' is not registered`

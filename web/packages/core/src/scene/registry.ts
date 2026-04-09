@@ -1,6 +1,6 @@
 import { Hierarchy } from '../component-system/components/hierarchy';
 import { Transform } from '../component-system/components/transform';
-import type { ComponentRegistry } from '../component-system/types/core';
+import type { ComponentConstructor, ComponentRegistry } from '../component-system/types/core';
 import { Animator } from './components/animator';
 import { Camera } from './components/camera';
 import { DirectionalLight } from './components/directional-light';
@@ -58,7 +58,7 @@ export function createSceneRegistry<
     R extends ComponentRegistry = Record<string, never>,
     TBuiltIns extends readonly SceneBuiltInComponentName[] | undefined = undefined,
 >(options: SceneRegistryBuilderOptions<R, TBuiltIns> = {}): ComponentRegistry {
-    const registry = {} as Partial<SceneBuiltInRegistry>;
+    const registry: Record<string, ComponentConstructor> = {};
     const builtIns = options.builtIns ?? DEFAULT_SCENE_BUILT_IN_COMPONENTS;
 
     for (const componentName of builtIns) {

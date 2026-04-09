@@ -5,7 +5,6 @@ import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop
 import { Transform } from '../component-system/components/transform';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { World } from '../component-system/core/world';
-import { getComponentMetadata } from '../component-system/decorators/script';
 import { SystemManager, SystemPhase } from '../component-system/systems/system-manager';
 import type { ComponentConstructor, ComponentRegistry } from '../component-system/types/core';
 import type { System, SystemQuery } from '../component-system/types/system';
@@ -26,6 +25,7 @@ import { MeshRenderer, type MeshRendererConfig } from './components/mesh-rendere
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { PointLight } from './components/point-light';
 import { SpotLight } from './components/spot-light';
+import { SceneComponentCatalog } from './component-catalog';
 import {
     SceneCanvasError,
     SceneLifecycleError,
@@ -755,7 +755,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     readonly loop: GameLoop<SceneLoopState>;
 
     private readonly _registry: RuntimeRegistry<R>;
-    private readonly _componentTypes = new Map<string, ComponentConstructor>();
+    private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
     private readonly _shaders = new Map<string, ShaderResource>();
     private readonly _shaderDefinitions = new Map<string, SceneShaderDefinition>();
@@ -801,17 +801,12 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._registry = resolveSceneRegistryFromProfile(options.profile, {
             registry: options.registry ?? ({} as R),
         }) as RuntimeRegistry<R>;
-
-        for (const componentType of Object.values(this._registry)) {
-            const componentName =
-                getComponentMetadata(componentType)?.scriptName ?? componentType.name;
-            this._componentTypes.set(componentName, componentType);
-        }
+        this._componentCatalog = new SceneComponentCatalog(this._registry);
 
         this.world = new World(this._registry, options.worldConfig);
         this.systems = new SystemManager(this.world);
         this._prefabs = new ScenePrefabRuntime({
-            componentTypes: this._componentTypes,
+            componentCatalog: this._componentCatalog,
             createActor: (config) => this.createActor(config),
             getAllActors: () => this.world.getAllActors(),
         });
@@ -898,8 +893,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
         this._assertNotDisposed();
-        const componentName = getComponentMetadata(componentType)?.scriptName ?? componentType.name;
-        this._componentTypes.set(componentName, componentType);
+        this._componentCatalog.register(componentType);
         this.world.registerComponentType(componentType);
         return this;
     }

@@ -15,6 +15,8 @@ export {
     getDefaultSceneRuntimeProfile,
     resolveSceneRegistryFromProfile,
 } from './profile';
+export type { SceneComponentTypeResolver } from './component-catalog';
+export { SceneComponentCatalog, getSceneComponentTypeName } from './component-catalog';
 
 export type {
     SceneBuiltInRegistry,

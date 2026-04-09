@@ -1,6 +1,6 @@
 import { Mat4, Vec3 } from '@axrone/numeric';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Component } from '../../component-system/core/component';
+import { Component, script } from '../../component-system/core/component';
 import { Hierarchy } from '../../component-system/components/hierarchy';
 import { Transform } from '../../component-system/components/transform';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
@@ -22,6 +22,8 @@ let PointLight: typeof import('../../scene').PointLight;
 let SpotLight: typeof import('../../scene').SpotLight;
 let createSceneRegistry: typeof import('../../scene').createSceneRegistry;
 let createSceneRuntimeProfile: typeof import('../../scene').createSceneRuntimeProfile;
+let SceneComponentCatalog: typeof import('../../scene').SceneComponentCatalog;
+let getSceneComponentTypeName: typeof import('../../scene').getSceneComponentTypeName;
 
 class PulseComponent extends Component {
     fixedCalls = 0;
@@ -49,6 +51,23 @@ class ParentAwareComponent extends Component {
     }
 }
 
+@script({
+    scriptName: 'PrefabAlias',
+})
+class AliasedPrefabComponent extends Component {
+    value = 0;
+
+    serialize(): Record<string, unknown> {
+        return {
+            value: this.value,
+        };
+    }
+
+    deserialize(data: Record<string, unknown>): void {
+        this.value = typeof data.value === 'number' ? data.value : 0;
+    }
+}
+
 describe('Scene', () => {
     let scheduler: ManualScheduler;
 
@@ -66,6 +85,8 @@ describe('Scene', () => {
         SpotLight = sceneModule.SpotLight;
         createSceneRegistry = sceneModule.createSceneRegistry;
         createSceneRuntimeProfile = sceneModule.createSceneRuntimeProfile;
+        SceneComponentCatalog = sceneModule.SceneComponentCatalog;
+        getSceneComponentTypeName = sceneModule.getSceneComponentTypeName;
     });
 
     beforeEach(() => {
@@ -113,6 +134,18 @@ describe('Scene', () => {
         expect(registry.Transform).toBe(Transform);
         expect(registry.PulseComponent).toBe(PulseComponent);
         expect('Camera' in registry).toBe(false);
+    });
+
+    it('uses script metadata names in the component catalog', () => {
+        const catalog = new SceneComponentCatalog({
+            Hierarchy,
+            Transform,
+            AliasedPrefabComponent,
+        });
+
+        expect(getSceneComponentTypeName(AliasedPrefabComponent)).toBe('PrefabAlias');
+        expect(catalog.get('PrefabAlias')).toBe(AliasedPrefabComponent);
+        expect(catalog.get(AliasedPrefabComponent.name)).toBeUndefined();
     });
 
     it('allows runtime profiles to extend the scene registry before world creation', () => {
@@ -496,6 +529,30 @@ void main() {
         );
         expect(scene.getTexture('solid')?.width).toBe(2);
         expect(gl.drawElements).toHaveBeenCalled();
+
+        scene.dispose();
+    });
+
+    it('round-trips prefab components using script metadata names instead of constructor names', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        scene.registerComponent(AliasedPrefabComponent);
+
+        const actor = scene.createActor({ name: 'AliasedActor' });
+        actor.addComponent(AliasedPrefabComponent).value = 42;
+
+        const prefab = scene.createPrefab('aliased-prefab', [actor]);
+        const aliasedSnapshot = prefab.actors[0]?.components.find(
+            (component) => component.type === 'PrefabAlias'
+        );
+        expect(aliasedSnapshot?.type).toBe('PrefabAlias');
+
+        const [instantiated] = scene.instantiatePrefab(prefab, {
+            namePrefix: 'Copy ',
+        });
+
+        expect(instantiated).toBeDefined();
+        expect(instantiated?.getComponent(AliasedPrefabComponent)?.value).toBe(42);
 
         scene.dispose();
     });

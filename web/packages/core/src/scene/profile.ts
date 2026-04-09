@@ -23,7 +23,7 @@ export const DEFAULT_SCENE_RUNTIME_PROFILE_ID = 'scene/full-3d-default';
 
 const DEFAULT_SCENE_RUNTIME_PROFILE: SceneRuntimeProfile<any> = Object.freeze({
     id: DEFAULT_SCENE_RUNTIME_PROFILE_ID,
-    resolveRegistry: ({ registry }) =>
+    resolveRegistry: ({ registry }: SceneRuntimeProfileContext<any>) =>
         createSceneRegistry({
             registry,
         }),
