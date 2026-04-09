@@ -34,6 +34,7 @@ import { SceneRenderItemCollector, type SceneRenderItem } from './render-item-co
 import { SceneRenderPassPreparer } from './render-pass-preparer';
 import { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneShaderResource } from './shader-registry';
+import { SceneSkinningUniformBinder } from './skinning-uniform-binder';
 import type { SceneTextureResource } from './texture-registry';
 import { SceneResourceRuntime } from './scene-resource-runtime';
 import { SceneUniformWriter } from './uniform-writer';
@@ -533,6 +534,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _uniformWriter: SceneUniformWriter;
     private readonly _frameUniformBinder: SceneFrameUniformBinder;
     private readonly _lightingUniformBinder: SceneLightingUniformBinder;
+    private readonly _skinningUniformBinder: SceneSkinningUniformBinder;
     private readonly _textureUniformSetter = (
         shader: SceneShaderResource,
         name: string,
@@ -569,6 +571,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._uniformWriter = new SceneUniformWriter(this.gl);
         this._frameUniformBinder = new SceneFrameUniformBinder(this._uniformWriter);
         this._lightingUniformBinder = new SceneLightingUniformBinder(this._uniformWriter);
+        this._skinningUniformBinder = new SceneSkinningUniformBinder(this._uniformWriter);
         const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -1685,7 +1688,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                     viewportHeight: this.canvas.height,
                 });
                 this._lightingUniformBinder.apply(shader, item.renderer, lighting);
-                this._applySkinningUniforms(shader, item.renderer);
+                this._skinningUniformBinder.apply(shader, item.renderer);
 
                 this._materialTextureBinder.bind(
                     shader,
@@ -1826,20 +1829,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _collectLighting(): SceneLightingState {
         return this._lightingCollector.collect(this.world.getAllActors(), this._ambientLight);
-    }
-
-    private _applySkinningUniforms(
-        shader: SceneShaderResource,
-        renderer: MeshRenderer
-    ): void {
-        const palette = renderer.getSkinJointMatrixPalette();
-        const jointCount = palette ? renderer.skinJointCount : 0;
-
-        this._uniformWriter.write(shader, 'u_Skinning', Boolean(palette && jointCount > 0));
-        this._uniformWriter.write(shader, 'u_SkinJointCount', jointCount);
-        if (palette) {
-            this._uniformWriter.write(shader, 'u_JointMatrices', palette);
-        }
     }
 
     private _clearSceneAssets(): void {

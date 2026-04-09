@@ -56,6 +56,8 @@ export { SceneResourceRuntime } from './scene-resource-runtime';
 export { SceneRenderStateApplier } from './render-state-applier';
 export type { SceneUniformWriteTarget } from './uniform-writer';
 export { SceneUniformWriter } from './uniform-writer';
+export type { SceneSkinningUniformSource } from './skinning-uniform-binder';
+export { SceneSkinningUniformBinder } from './skinning-uniform-binder';
 export type { SceneSamplerRegistrationResult, SceneSamplerResource } from './sampler-registry';
 export { cloneSceneSamplerDefinition, SceneSamplerRegistry } from './sampler-registry';
 export type { SceneTextureRegistrationResult, SceneTextureResource } from './texture-registry';
