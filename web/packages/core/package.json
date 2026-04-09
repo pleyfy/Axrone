@@ -7,11 +7,32 @@
     "files": [
         "dist"
     ],
+    "sideEffects": false,
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.mjs",
             "require": "./dist/index.js"
+        },
+        "./scene-runtime": {
+            "types": "./dist/scene-runtime/index.d.ts",
+            "import": "./dist/scene-runtime/index.mjs",
+            "require": "./dist/scene-runtime/index.js"
+        },
+        "./runtime-profile-core": {
+            "types": "./dist/runtime-profile-core/index.d.ts",
+            "import": "./dist/runtime-profile-core/index.mjs",
+            "require": "./dist/runtime-profile-core/index.js"
+        },
+        "./runtime-profile-3d": {
+            "types": "./dist/runtime-profile-3d/index.d.ts",
+            "import": "./dist/runtime-profile-3d/index.mjs",
+            "require": "./dist/runtime-profile-3d/index.js"
+        },
+        "./runtime-profile-full": {
+            "types": "./dist/runtime-profile-full/index.d.ts",
+            "import": "./dist/runtime-profile-full/index.mjs",
+            "require": "./dist/runtime-profile-full/index.js"
         }
     },
     "scripts": {
