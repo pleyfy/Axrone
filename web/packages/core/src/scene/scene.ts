@@ -1,30 +1,22 @@
-import { Mat4, Vec3, Vec4 } from '@axrone/numeric';
-import { createBox, createPlane, createSphere } from '../geometry/primitives';
+import { Vec3, Vec4 } from '@axrone/numeric';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
-import { Transform } from '../component-system/components/transform';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { World } from '../component-system/core/world';
 import { SystemManager, SystemPhase } from '../component-system/systems/system-manager';
 import type { ComponentConstructor, ComponentRegistry } from '../component-system/types/core';
 import type { System, SystemQuery } from '../component-system/types/system';
-import {
-    FilterMode,
-    WrapMode,
-} from '../renderer/webgl2/texture/interfaces';
-import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
-import { Animator } from './components/animator';
-import { Camera, type CameraConfig } from './components/camera';
-import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
-import { OrbitCameraController } from './components/orbit-camera-controller';
+import type { CameraConfig } from './components/camera';
+import type { MeshRendererConfig } from './components/mesh-renderer';
 import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
 import { SceneActorRuntime } from './scene-actor-runtime';
 import { SceneAssetRuntime } from './scene-asset-runtime';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
+import { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
 import { SceneRenderRuntime } from './scene-render-runtime';
 import { SceneSnapshotLoader } from './scene-snapshot-loader';
 import { resolveSceneSurface } from './scene-surface-resolver';
-import { SceneLifecycleError, SceneMaterialError } from './errors';
+import { SceneMaterialError } from './errors';
 import { resolveSceneRegistryFromProfile } from './profile';
 import type {
     SceneLoopState,
@@ -138,19 +130,16 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
     private readonly _renderRuntime: SceneRenderRuntime;
     private readonly _snapshotLoader: SceneSnapshotLoader;
-    private readonly _autoCreatedCanvas: boolean;
+    private readonly _lifecycle: SceneLifecycleRuntime;
     private readonly _defaultClearColor: Vec4;
     private readonly _ambientLight: Vec3;
-    private _pixelRatio: number;
-    private _disposed = false;
 
     constructor(options: SceneOptions<R> = {}) {
         this.id = createId('scene');
         const surface = resolveSceneSurface(options);
         this.canvas = surface.canvas;
         this.gl = surface.gl;
-        this._autoCreatedCanvas = surface.autoCreated;
-        this._pixelRatio = options.pixelRatio ?? globalThis.devicePixelRatio ?? 1;
+        const pixelRatio = options.pixelRatio ?? globalThis.devicePixelRatio ?? 1;
         this._defaultClearColor = toVec4(options.clearColor);
         const ambientLight = toVec3(options.ambientLight);
         this._ambientLight = ambientLight;
@@ -221,7 +210,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             },
             instantiatePrefab: (prefab, options) => this._actors.instantiatePrefab(prefab, options),
         });
-        this.resize(options.width, options.height, this._pixelRatio);
 
         const initialRenderPasses = options.renderPasses?.length
             ? options.renderPasses
@@ -236,7 +224,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
               ];
 
         for (const renderPass of initialRenderPasses) {
-            this.registerRenderPass(renderPass);
+            this._assets.registerRenderPass(renderPass);
         }
 
         const loopSystems: readonly GameLoopSystem<SceneLoopState>[] = createSceneLoopSystems({
@@ -267,6 +255,27 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             systems: loopSystems,
             errorPolicy: 'throw',
         });
+        this._lifecycle = new SceneLifecycleRuntime({
+            canvas: this.canvas,
+            gl: this.gl,
+            loop: this.loop,
+            autoCreatedCanvas: surface.autoCreated,
+            pixelRatio,
+            defaultWidth: DEFAULT_WIDTH,
+            defaultHeight: DEFAULT_HEIGHT,
+            render: (deltaTime) => {
+                this._render(deltaTime);
+            },
+            disposeAssets: () => {
+                this._assets.dispose();
+            },
+            disposeWorld: () => {
+                if (!this.world.isDisposed) {
+                    this.world.clear();
+                }
+            },
+        });
+        this._lifecycle.resize(options.width, options.height, pixelRatio);
 
         if (options.autoStart !== false) {
             this.start();
@@ -274,11 +283,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     get status() {
-        return this.loop.status;
+        return this._lifecycle.status;
     }
 
     get isDisposed(): boolean {
-        return this._disposed;
+        return this._lifecycle.isDisposed;
     }
 
     get renderStats() {
@@ -503,80 +512,41 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     start(now?: number): this {
-        this._assertNotDisposed();
-        this.loop.start(now);
+        this._lifecycle.start(now);
         return this;
     }
 
     pause(): this {
-        this._assertNotDisposed();
-        this.loop.pause();
+        this._lifecycle.pause();
         return this;
     }
 
     resume(now?: number): this {
-        this._assertNotDisposed();
-        this.loop.resume(now);
+        this._lifecycle.resume(now);
         return this;
     }
 
     stop(): this {
-        this._assertNotDisposed();
-        this.loop.stop();
+        this._lifecycle.stop();
         return this;
     }
 
     renderNow(): this {
-        this._assertNotDisposed();
-        this._render(0);
+        this._lifecycle.renderNow();
         return this;
     }
 
     resize(
         width: number = this.canvas.clientWidth || DEFAULT_WIDTH,
         height: number = this.canvas.clientHeight || DEFAULT_HEIGHT,
-        pixelRatio: number = this._pixelRatio
+        pixelRatio?: number
     ): this {
-        this._assertNotDisposed();
-        this._pixelRatio = pixelRatio > 0 ? pixelRatio : 1;
-
-        const targetWidth = Math.max(1, Math.floor(width * this._pixelRatio));
-        const targetHeight = Math.max(1, Math.floor(height * this._pixelRatio));
-        this.canvas.width = targetWidth;
-        this.canvas.height = targetHeight;
-        this.canvas.style.width = `${width}px`;
-        this.canvas.style.height = `${height}px`;
-        this.gl.viewport(0, 0, targetWidth, targetHeight);
-
+        this._lifecycle.resize(width, height, pixelRatio);
         return this;
     }
 
     dispose(): void {
-        if (this._disposed) {
-            return;
-        }
-
-        try {
-            this.loop.dispose();
-        } catch (error) {
-            throw new SceneLifecycleError('Failed to dispose scene loop', error);
-        } finally {
-            this._assets.dispose();
-
-            if (!this.world.isDisposed) {
-                this.world.clear();
-            }
-
-            if (
-                this._autoCreatedCanvas &&
-                this.canvas.parentNode &&
-                typeof this.canvas.parentNode.removeChild === 'function'
-            ) {
-                this.canvas.parentNode.removeChild(this.canvas);
-            }
-
-            this._disposed = true;
-        }
+        this._lifecycle.dispose();
     }
 
     private _render(deltaTime: number): void {
@@ -590,11 +560,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _assertNotDisposed(): void {
-        if (!this._disposed) {
-            return;
-        }
-
-        throw new SceneLifecycleError('Scene has already been disposed');
+        this._lifecycle.assertNotDisposed();
     }
 }
 
