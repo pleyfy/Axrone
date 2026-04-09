@@ -9,15 +9,15 @@ import type {
 } from '../types/core';
 import type { QueryResult } from '../types/system';
 import type { EventKey } from '../../event';
+import type { ECSObservables } from '../observers/ecs-observer';
 import { Archetype } from '../archetype/archetype';
 import { OptimizedQueryCache } from '../archetype/query-cache';
-import { createTypedEmitter, IEventEmitter } from '../../event';
 import type { ECSEventMap } from '../types/events';
-import { ECSObservables } from '../observers/ecs-observer';
 import type { Actor } from './actor';
 import { getComponentMetadata } from '../decorators/script';
 import { WorldActorRegistry } from './world-actor-registry';
 import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
+import { WorldEventRuntime } from './world-event-runtime';
 import { WorldQueryRuntime } from './world-query-runtime';
 import { WorldSingletonRegistry } from './world-singleton-registry';
 
@@ -78,8 +78,7 @@ export class World<R extends ComponentRegistry> {
     private readonly _entityArchetypes = new Map<Entity, ArchetypeId>();
     private readonly _queryCache: OptimizedQueryCache;
     private readonly _queryRuntime: WorldQueryRuntime<R>;
-    private readonly _eventBus: IEventEmitter<ECSEventMap<R>>;
-    private readonly _observables: ECSObservables<R>;
+    private readonly _events: WorldEventRuntime<R>;
     private readonly _actorRegistry = new WorldActorRegistry();
     private readonly _singletonRegistry = new WorldSingletonRegistry();
 
@@ -93,8 +92,6 @@ export class World<R extends ComponentRegistry> {
     private readonly _enableValidation: boolean;
     private _structureBatchDepth = 0;
     private _structureChangedDuringBatch = false;
-
-    private readonly _disposables = new Set<() => void>();
 
     constructor(registry: R, config: WorldConfig = {}) {
         if (!registry || typeof registry !== 'object') {
@@ -121,10 +118,10 @@ export class World<R extends ComponentRegistry> {
                 getArchetypes: () => this._archetypes.values(),
                 createBitMask: (components) => this._createBitMask(components),
             });
-            this._eventBus = createTypedEmitter<ECSEventMap<R>>();
-            this._observables = new ECSObservables<R>();
-
-            this._setupEventObserverBridge();
+            this._events = new WorldEventRuntime(
+                Object.keys(this._registry),
+                (...components) => this.query(...(components as readonly (keyof R)[]))
+            );
 
             this._emptyArchetypeId = this._getOrCreateArchetype([]).id;
 
@@ -650,7 +647,7 @@ export class World<R extends ComponentRegistry> {
 
         registry[componentName] = componentType;
         this._componentMask.set(componentName, this._componentMask.size);
-        this._registerComponentEventBridge(componentName);
+        this._events.registerComponent(componentName);
         this._invalidateStructureCaches();
     }
 
@@ -682,13 +679,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         try {
-            const unsubscribe = this._eventBus.on(event, handler);
-            this._disposables.add(unsubscribe);
-
-            return () => {
-                unsubscribe();
-                this._disposables.delete(unsubscribe);
-            };
+            return this._events.on(event, handler);
         } catch (error) {
             throw new WorldError(
                 'Failed to subscribe to event',
@@ -705,13 +696,7 @@ export class World<R extends ComponentRegistry> {
         this._validateWorldState('once');
 
         try {
-            const unsubscribe = this._eventBus.once(event, handler);
-            this._disposables.add(unsubscribe);
-
-            return () => {
-                unsubscribe();
-                this._disposables.delete(unsubscribe);
-            };
+            return this._events.once(event, handler);
         } catch (error) {
             throw new WorldError(
                 'Failed to subscribe to event once',
@@ -730,7 +715,7 @@ export class World<R extends ComponentRegistry> {
         try {
             this._diagnostics.recordEvent();
 
-            return await this._eventBus.emit(event, data);
+            return await this._events.emit(event, data);
         } catch (error) {
             console.error(`Failed to emit event ${String(event)}:`, error);
             return false;
@@ -743,7 +728,7 @@ export class World<R extends ComponentRegistry> {
         try {
             this._diagnostics.recordEvent();
 
-            return this._eventBus.emitSync(event, data);
+            return this._events.emitSync(event, data);
         } catch (error) {
             console.error(`Failed to emit sync event ${String(event)}:`, error);
             return false;
@@ -755,7 +740,7 @@ export class World<R extends ComponentRegistry> {
         handler?: (data: ECSEventMap<R>[T]) => void
     ): boolean {
         try {
-            return this._eventBus.off(event, handler);
+            return this._events.off(event, handler);
         } catch (error) {
             console.error(`Failed to unsubscribe from event ${String(event)}:`, error);
             return false;
@@ -764,7 +749,7 @@ export class World<R extends ComponentRegistry> {
 
     getEventMetrics<T extends EventKey<ECSEventMap<R>>>(event: T) {
         try {
-            return this._eventBus.getMetrics(event);
+            return this._events.getEventMetrics(event);
         } catch (error) {
             console.error(`Failed to get event metrics for ${String(event)}:`, error);
             return undefined;
@@ -773,18 +758,7 @@ export class World<R extends ComponentRegistry> {
 
     getAllEventMetrics() {
         try {
-            const allMetrics: Record<string, any> = {};
-            const eventNames = this._eventBus.eventNames();
-
-            for (const eventName of eventNames) {
-                try {
-                    allMetrics[eventName] = this._eventBus.getMetrics(eventName);
-                } catch (error) {
-                    console.warn(`Failed to get metrics for event ${eventName}:`, error);
-                }
-            }
-
-            return allMetrics;
+            return this._events.getAllEventMetrics();
         } catch (error) {
             console.error('Failed to get all event metrics:', error);
             return {};
@@ -793,7 +767,7 @@ export class World<R extends ComponentRegistry> {
 
     pauseEvents(): void {
         try {
-            this._eventBus.pause();
+            this._events.pause();
         } catch (error) {
             console.error('Failed to pause events:', error);
         }
@@ -801,7 +775,7 @@ export class World<R extends ComponentRegistry> {
 
     resumeEvents(): void {
         try {
-            this._eventBus.resume();
+            this._events.resume();
         } catch (error) {
             console.error('Failed to resume events:', error);
         }
@@ -809,7 +783,7 @@ export class World<R extends ComponentRegistry> {
 
     async drainEvents(): Promise<void> {
         try {
-            return await this._eventBus.drain();
+            return await this._events.drain();
         } catch (error) {
             console.error('Failed to drain events:', error);
         }
@@ -817,57 +791,25 @@ export class World<R extends ComponentRegistry> {
 
     getObservables(): ECSObservables<R> {
         this._validateWorldState('getObservables');
-        return this._observables;
+        return this._events.getObservables();
     }
 
     observeEntityLifecycle() {
         this._validateWorldState('observeEntityLifecycle');
-        return this._observables.createEntityLifecycle();
+        return this._events.observeEntityLifecycle();
     }
 
     observeComponent<K extends keyof R>(componentName: K) {
         this._validateWorldState('observeComponent');
         this._validateComponentName(componentName, 'observeComponent');
-        return this._observables.createComponentStream(componentName);
+        return this._events.observeComponent(componentName);
     }
 
     createReactiveQuery<Q extends readonly (keyof R)[]>(...components: Q) {
         this._validateWorldState('createReactiveQuery');
 
         try {
-            const queryKey = components.slice().sort().join(',');
-            const queryObservable = this._observables.getQueryObservable(queryKey);
-
-            const updateQuery = () => {
-                try {
-                    const results = this.query(...components);
-                    queryObservable.notify([...results]);
-                } catch (error) {
-                    console.error('Failed to update reactive query:', error);
-                }
-            };
-
-            const unsubscribes: (() => void)[] = [];
-
-            for (const componentName of components) {
-                unsubscribes.push(
-                    this._eventBus.on(`${componentName as string}Added` as any, updateQuery),
-                    this._eventBus.on(`${componentName as string}Removed` as any, updateQuery)
-                );
-            }
-
-            unsubscribes.push(
-                this._eventBus.on('EntityCreated', updateQuery),
-                this._eventBus.on('EntityDestroyed', updateQuery)
-            );
-
-            for (const unsubscribe of unsubscribes) {
-                this._disposables.add(unsubscribe);
-            }
-
-            updateQuery();
-
-            return queryObservable;
+            return this._events.createReactiveQuery(...components);
         } catch (error) {
             throw new WorldError(
                 'Failed to create reactive query',
@@ -911,25 +853,10 @@ export class World<R extends ComponentRegistry> {
             this._nextEntityId = 1;
 
             try {
-                this._eventBus.dispose();
+                this._events.dispose();
             } catch (error) {
-                console.error('Failed to dispose event bus:', error);
+                console.error('Failed to dispose world event runtime:', error);
             }
-
-            try {
-                this._observables.dispose();
-            } catch (error) {
-                console.error('Failed to dispose observables:', error);
-            }
-
-            for (const dispose of this._disposables) {
-                try {
-                    dispose();
-                } catch (error) {
-                    console.error('Failed to execute disposal task:', error);
-                }
-            }
-            this._disposables.clear();
 
             this._emptyArchetypeId = this._getOrCreateArchetype([]).id;
 
@@ -964,59 +891,6 @@ export class World<R extends ComponentRegistry> {
         return mask;
     }
 
-    private _setupEventObserverBridge(): void {
-        try {
-            this._eventBus.on('EntityCreated', (data) => {
-                try {
-                    this._observables.entityCreated.notify(data);
-                } catch (error) {
-                    console.error('Failed to notify entity created:', error);
-                }
-            });
-
-            this._eventBus.on('EntityDestroyed', (data) => {
-                try {
-                    this._observables.entityDestroyed.notify(data);
-                } catch (error) {
-                    console.error('Failed to notify entity destroyed:', error);
-                }
-            });
-
-            for (const componentName of Object.keys(this._registry)) {
-                this._registerComponentEventBridge(componentName);
-            }
-        } catch (error) {
-            throw new WorldError(
-                'Failed to setup event-observer bridge',
-                '_setupEventObserverBridge',
-                error instanceof Error ? error : new Error(String(error))
-            );
-        }
-    }
-
-    private _registerComponentEventBridge(componentName: string): void {
-        this._eventBus.on(`${componentName}Added` as any, (data) => {
-            try {
-                const observables = this._observables.getComponentObservables(
-                    componentName as keyof R
-                );
-                observables.added.notify(data);
-            } catch (error) {
-                console.error(`Failed to notify ${componentName} added:`, error);
-            }
-        });
-
-        this._eventBus.on(`${componentName}Removed` as any, (data) => {
-            try {
-                const observables = this._observables.getComponentObservables(
-                    componentName as keyof R
-                );
-                observables.removed.notify(data);
-            } catch (error) {
-                console.error(`Failed to notify ${componentName} removed:`, error);
-            }
-        });
-    }
     private _getOrCreateArchetype(signature: readonly string[]): Archetype<R> {
         try {
             const sortedSignature = signature.slice().sort();
@@ -1092,13 +966,8 @@ export class World<R extends ComponentRegistry> {
         event: T,
         data: ECSEventMap<R>[T]
     ): void {
-        try {
-            this._eventBus.emitSync(event, data);
-
-            this._diagnostics.recordEvent();
-        } catch (error) {
-            console.error(`Failed to emit event ${String(event)}:`, error);
-        }
+        this._events.emitSafe(event, data);
+        this._diagnostics.recordEvent();
     }
 
     private _invalidateStructureCaches(): void {

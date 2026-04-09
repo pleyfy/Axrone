@@ -4,6 +4,8 @@ import { Component } from '../../component-system/core/component';
 import { script } from '../../component-system/decorators/script';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+const flushBehaviorSubject = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 class TestComponent extends Component {
     value: number = 0;
 
@@ -339,6 +341,50 @@ describe('World', () => {
             expect(metrics).toHaveProperty('queryCount');
 
             metricsWorld.clear();
+        });
+    });
+
+    describe('events', () => {
+        it('should publish lifecycle events through the world event runtime', () => {
+            const entity = world.createEntity();
+            const actor = { name: 'Actor', tag: 'Default', layer: 0 } as any;
+            const seen: number[] = [];
+
+            const unsubscribe = world.on('EntityCreated', ({ entity: createdEntity, actor: createdActor }) => {
+                seen.push(createdEntity);
+                expect(createdActor).toBe(actor);
+            });
+
+            world.registerActor(entity, actor);
+
+            expect(seen).toEqual([entity]);
+
+            unsubscribe();
+        });
+
+        it('should update reactive queries when component membership changes', async () => {
+            const entity = world.createEntity();
+            world.registerActor(entity, { name: 'Reactive', tag: 'Default', layer: 0 } as any);
+
+            const query = world.createReactiveQuery('TestComponent');
+            const counts: number[] = [];
+            const unsubscribe = query.addObserver((results) => {
+                counts.push(results.length);
+            });
+
+            await flushBehaviorSubject();
+
+            world.addComponent(entity, 'TestComponent');
+            await flushBehaviorSubject();
+
+            world.removeComponent(entity, 'TestComponent');
+            await flushBehaviorSubject();
+
+            unsubscribe();
+
+            expect(counts).toContain(0);
+            expect(counts).toContain(1);
+            expect(counts[counts.length - 1]).toBe(0);
         });
     });
 
