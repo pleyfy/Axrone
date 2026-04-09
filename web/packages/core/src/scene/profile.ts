@@ -46,6 +46,7 @@ export const createSceneManifestRuntimeProfile = <
     });
 
 export const CORE_SCENE_RUNTIME_PROFILE_ID = 'scene/core-default';
+export const SCENE_3D_RUNTIME_PROFILE_ID = 'scene/3d-default';
 export const DEFAULT_SCENE_RUNTIME_PROFILE_ID = 'scene/full-3d-default';
 
 const CORE_SCENE_RUNTIME_PROFILE: SceneRuntimeProfile<any> = Object.freeze(
@@ -65,6 +66,10 @@ const DEFAULT_SCENE_RUNTIME_PROFILE: SceneRuntimeProfile<any> = Object.freeze(
 export const getCoreSceneRuntimeProfile = <
     R extends ComponentRegistry = Record<string, never>,
 >(): SceneRuntimeProfile<R> => CORE_SCENE_RUNTIME_PROFILE as SceneRuntimeProfile<R>;
+
+export const get3DSceneRuntimeProfile = <
+    R extends ComponentRegistry = Record<string, never>,
+>(): SceneRuntimeProfile<R> => DEFAULT_SCENE_RUNTIME_PROFILE as SceneRuntimeProfile<R>;
 
 export const getDefaultSceneRuntimeProfile = <
     R extends ComponentRegistry = Record<string, never>,

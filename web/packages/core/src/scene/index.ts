@@ -25,8 +25,10 @@ export type {
 export {
     CORE_SCENE_RUNTIME_PROFILE_ID,
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,
+    SCENE_3D_RUNTIME_PROFILE_ID,
     createSceneManifestRuntimeProfile,
     createSceneRuntimeProfile,
+    get3DSceneRuntimeProfile,
     getCoreSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
     resolveSceneRegistryFromProfile,
