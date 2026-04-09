@@ -38,6 +38,7 @@ export type { SceneMeshRegistrationResult, SceneMeshResource } from './mesh-regi
 export { cloneSceneMeshDefinition, SceneMeshRegistry } from './mesh-registry';
 export type { SceneLightingState } from './lighting-collector';
 export { SceneLightingCollector } from './lighting-collector';
+export { SceneLightingUniformBinder } from './lighting-uniform-binder';
 export type { SceneCameraFrameState } from './camera-frame-state';
 export { SceneCameraFrameStateCollector } from './camera-frame-state';
 export { selectSceneCamera } from './camera-selector';

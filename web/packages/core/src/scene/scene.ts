@@ -26,6 +26,7 @@ import { SceneComponentCatalog } from './component-catalog';
 import { selectSceneCamera } from './camera-selector';
 import { SceneFrameUniformBinder } from './frame-uniform-binder';
 import { SceneLightingCollector, type SceneLightingState } from './lighting-collector';
+import { SceneLightingUniformBinder } from './lighting-uniform-binder';
 import { createSceneLoopSystems } from './loop-bridge';
 import { SceneMaterialTextureBinder } from './material-texture-binder';
 import type { SceneMeshResource } from './mesh-registry';
@@ -530,6 +531,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _renderStateApplier: SceneRenderStateApplier;
     private readonly _uniformWriter: SceneUniformWriter;
     private readonly _frameUniformBinder: SceneFrameUniformBinder;
+    private readonly _lightingUniformBinder: SceneLightingUniformBinder;
     private readonly _textureUniformSetter = (
         shader: SceneShaderResource,
         name: string,
@@ -564,6 +566,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._renderStateApplier = new SceneRenderStateApplier(this.gl);
         this._uniformWriter = new SceneUniformWriter(this.gl);
         this._frameUniformBinder = new SceneFrameUniformBinder(this._uniformWriter);
+        this._lightingUniformBinder = new SceneLightingUniformBinder(this._uniformWriter);
         const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -1679,7 +1682,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                     viewportWidth: this.canvas.width,
                     viewportHeight: this.canvas.height,
                 });
-                this._applyLightingUniforms(shader, item.renderer, lighting);
+                this._lightingUniformBinder.apply(shader, item.renderer, lighting);
                 this._applySkinningUniforms(shader, item.renderer);
 
                 this._materialTextureBinder.bind(
@@ -1842,89 +1845,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _collectLighting(): SceneLightingState {
         return this._lightingCollector.collect(this.world.getAllActors(), this._ambientLight);
-    }
-
-    private _applyLightingUniforms(
-        shader: SceneShaderResource,
-        renderer: MeshRenderer,
-        lighting: SceneLightingState
-    ): void {
-        const receiveLighting = renderer.receiveLighting;
-        this._uniformWriter.write(shader, 'u_ReceiveLighting', receiveLighting);
-        this._uniformWriter.write(
-            shader,
-            'u_AmbientLight',
-            receiveLighting ? lighting.ambient : Vec3.ZERO
-        );
-        this._uniformWriter.write(shader, 'u_LightDirection', lighting.directionalDirection);
-        this._uniformWriter.write(
-            shader,
-            'u_LightColor',
-            receiveLighting && lighting.hasDirectional ? lighting.directionalColor : Vec3.ZERO
-        );
-        this._uniformWriter.write(
-            shader,
-            'u_LightIntensity',
-            receiveLighting && lighting.hasDirectional ? lighting.directionalIntensity : 0
-        );
-        this._uniformWriter.write(shader, 'u_PointLightCount', receiveLighting ? lighting.pointCount : 0);
-        this._uniformWriter.write(shader, 'u_PointLightPosition', lighting.pointLightPosition);
-        this._uniformWriter.write(
-            shader,
-            'u_PointLightColor',
-            receiveLighting && lighting.pointCount > 0 ? lighting.pointLightColor : Vec3.ZERO
-        );
-        this._uniformWriter.write(
-            shader,
-            'u_PointLightIntensity',
-            receiveLighting && lighting.pointCount > 0 ? lighting.pointLightIntensity : 0
-        );
-        this._uniformWriter.write(
-            shader,
-            'u_PointLightRange',
-            receiveLighting && lighting.pointCount > 0 ? lighting.pointLightRange : 0
-        );
-        this._uniformWriter.write(shader, 'u_SpotLightCount', receiveLighting ? lighting.spotCount : 0);
-        this._uniformWriter.write(shader, 'u_SpotLightPosition', lighting.spotLightPosition);
-        this._uniformWriter.write(shader, 'u_SpotLightDirection', lighting.spotLightDirection);
-        this._uniformWriter.write(
-            shader,
-            'u_SpotLightColor',
-            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightColor : Vec3.ZERO
-        );
-        this._uniformWriter.write(
-            shader,
-            'u_SpotLightIntensity',
-            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightIntensity : 0
-        );
-        this._uniformWriter.write(
-            shader,
-            'u_SpotLightRange',
-            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightRange : 0
-        );
-        this._uniformWriter.write(
-            shader,
-            'u_SpotLightInnerCone',
-            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightInnerCone : 0
-        );
-        this._uniformWriter.write(
-            shader,
-            'u_SpotLightOuterCone',
-            receiveLighting && lighting.spotCount > 0 ? lighting.spotLightOuterCone : 0
-        );
-        this._uniformWriter.write(
-            shader,
-            'u_LocalLightCount',
-            receiveLighting ? lighting.localLightCount : 0
-        );
-        this._uniformWriter.write(shader, 'u_LocalLightType', lighting.localLightTypes);
-        this._uniformWriter.write(shader, 'u_LocalLightPosition', lighting.localLightPositions);
-        this._uniformWriter.write(shader, 'u_LocalLightDirection', lighting.localLightDirections);
-        this._uniformWriter.write(shader, 'u_LocalLightColor', lighting.localLightColors);
-        this._uniformWriter.write(shader, 'u_LocalLightIntensity', lighting.localLightIntensities);
-        this._uniformWriter.write(shader, 'u_LocalLightRange', lighting.localLightRanges);
-        this._uniformWriter.write(shader, 'u_LocalLightInnerCone', lighting.localLightInnerCones);
-        this._uniformWriter.write(shader, 'u_LocalLightOuterCone', lighting.localLightOuterCones);
     }
 
     private _applySkinningUniforms(
