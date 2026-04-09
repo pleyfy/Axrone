@@ -15,6 +15,7 @@ import type { SpotLight } from './components/spot-light';
 import type { Hierarchy } from '../component-system/components/hierarchy';
 import type { Transform } from '../component-system/components/transform';
 import type { FilterMode, TextureFormat, WrapMode } from '../renderer/webgl2/texture/interfaces';
+import type { SceneRuntimeProfile } from './profile';
 
 export type SceneMeshSemantic =
     | 'position'
@@ -202,6 +203,7 @@ export interface SceneCanvasOptions {
 export interface SceneOptions<R extends ComponentRegistry = Record<string, never>>
     extends SceneCanvasOptions {
     readonly registry?: R;
+    readonly profile?: SceneRuntimeProfile<R>;
     readonly worldConfig?: {
         readonly maxEntities?: number;
         readonly enableMetrics?: boolean;

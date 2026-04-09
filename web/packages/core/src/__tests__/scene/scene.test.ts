@@ -21,6 +21,7 @@ let PrefabNodeBinding: typeof import('../../scene').PrefabNodeBinding;
 let PointLight: typeof import('../../scene').PointLight;
 let SpotLight: typeof import('../../scene').SpotLight;
 let createSceneRegistry: typeof import('../../scene').createSceneRegistry;
+let createSceneRuntimeProfile: typeof import('../../scene').createSceneRuntimeProfile;
 
 class PulseComponent extends Component {
     fixedCalls = 0;
@@ -64,6 +65,7 @@ describe('Scene', () => {
         PointLight = sceneModule.PointLight;
         SpotLight = sceneModule.SpotLight;
         createSceneRegistry = sceneModule.createSceneRegistry;
+        createSceneRuntimeProfile = sceneModule.createSceneRuntimeProfile;
     });
 
     beforeEach(() => {
@@ -111,6 +113,34 @@ describe('Scene', () => {
         expect(registry.Transform).toBe(Transform);
         expect(registry.PulseComponent).toBe(PulseComponent);
         expect('Camera' in registry).toBe(false);
+    });
+
+    it('allows runtime profiles to extend the scene registry before world creation', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene({
+            ...createSceneOptions(scheduler, canvas),
+            profile: createSceneRuntimeProfile({
+                id: 'test/runtime-profile',
+                resolveRegistry: ({ registry }) =>
+                    createSceneRegistry({
+                        registry: {
+                            ...(registry ?? {}),
+                            PulseComponent,
+                        },
+                    }),
+            }),
+        });
+
+        const actor = scene.createActor({ name: 'ProfileActor' });
+        const component = actor.addComponent(PulseComponent);
+
+        scene.start(0);
+        scheduler.flush(16);
+
+        expect(scene.isComponentRegistered(PulseComponent)).toBe(true);
+        expect(component.updateCalls).toBe(1);
+
+        scene.dispose();
     });
 
     it('runs registered custom components through fixed, update, and late phases', () => {

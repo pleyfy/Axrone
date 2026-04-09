@@ -8,6 +8,13 @@ export {
     createSceneRegistry,
     getDefaultSceneBuiltInRegistry,
 } from './registry';
+export type { SceneRuntimeProfile, SceneRuntimeProfileContext } from './profile';
+export {
+    DEFAULT_SCENE_RUNTIME_PROFILE_ID,
+    createSceneRuntimeProfile,
+    getDefaultSceneRuntimeProfile,
+    resolveSceneRegistryFromProfile,
+} from './profile';
 
 export type {
     SceneBuiltInRegistry,

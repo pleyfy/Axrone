@@ -40,7 +40,7 @@ import {
     decodeSceneValue,
     encodeSceneValue,
 } from './serialization';
-import { createSceneRegistry } from './registry';
+import { resolveSceneRegistryFromProfile } from './profile';
 import type {
     SceneClearFlag,
     SceneLoopState,
@@ -798,7 +798,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             WrapMode.REPEAT
         );
 
-        this._registry = createSceneRegistry({
+        this._registry = resolveSceneRegistryFromProfile(options.profile, {
             registry: options.registry ?? ({} as R),
         }) as RuntimeRegistry<R>;
 
