@@ -209,17 +209,13 @@ const sceneRemoteGltfExample: SceneExample = {
             const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * aspect);
             const framingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov);
             const target = bounds
-                ? new Vec3(
-                      bounds.center.x,
-                      bounds.min.y + bounds.size.y * 0.45,
-                      bounds.center.z
-                  )
+                ? bounds.center.clone()
                 : new Vec3(0, 0.45, 0);
             const radius = bounds
                 ? Math.max(0.8, Math.hypot(bounds.size.x, bounds.size.y, bounds.size.z) * 0.5)
                 : 1.2;
             const distance = bounds
-                ? (radius / Math.sin(framingHalfFov)) * 1.15
+                ? (radius / Math.sin(framingHalfFov)) * 1.22
                 : 4.2;
             const near = Math.max(0.1, radius * 0.02);
             const far = Math.max(1000, distance + radius * 8);
@@ -235,7 +231,7 @@ const sceneRemoteGltfExample: SceneExample = {
                 maxDistance: Math.max(64, distance * 1.8),
                 azimuth: 0.52,
                 elevation: 0.16,
-                autoRotateSpeed: 0,
+                autoRotateSpeed: 0.12,
             });
 
             const sun = scene.createActor({ name: 'RemoteSun' });
