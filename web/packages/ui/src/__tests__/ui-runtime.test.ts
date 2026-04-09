@@ -259,6 +259,30 @@ describe('@axrone/ui runtime', () => {
         expect(runtime.moveFocus('forward')).toBe(third);
     });
 
+    it('routes text input events to the focused widget', () => {
+        const runtime = new UIRuntime({ width: 200, height: 80 });
+        let received = '';
+
+        const input = runtime.createWidget({
+            layout: { width: 120, height: 24 },
+            interactive: true,
+            focus: { focusable: true },
+            handlers: {
+                textInput: (event) => {
+                    received += event.text;
+                    return true;
+                },
+            },
+        });
+
+        runtime.appendChild(runtime.root, input);
+        runtime.commit();
+
+        expect(runtime.setFocus(input)).toBe(true);
+        expect(runtime.dispatchInput({ type: 'text', text: 'ABC' })).toBe(true);
+        expect(received).toBe('ABC');
+    });
+
     it('loads font assets with retry and allocates atlas entries', async () => {
         let attempts = 0;
         const asset = createFontAsset('RemoteSans');

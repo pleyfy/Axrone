@@ -178,18 +178,36 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
     bridgeHost.appendChild(textBridge);
 
     const focusTextBridge = () => {
-        if (document.activeElement !== textBridge) {
-            textBridge.focus();
+        if (!canvas.isConnected) {
+            return;
         }
+        if (document.activeElement !== textBridge) {
+            textBridge.focus({ preventScroll: true });
+        }
+        const caret = textBridge.value.length;
+        textBridge.setSelectionRange(caret, caret);
+    };
+
+    const scheduleTextBridgeFocus = () => {
+        queueMicrotask(() => {
+            focusTextBridge();
+        });
+    };
+
+    let suppressNextTextInput = false;
+
+    const dispatchTextPayload = (text: string) => {
+        const normalized = text.replace(/\r\n/g, '\n');
+        if (normalized.length === 0) {
+            return false;
+        }
+        return runtime.dispatchInput({ type: 'text', text: normalized });
     };
 
     const flushTextBridgeValue = () => {
-        const text = textBridge.value.replace(/\r\n/g, '\n');
+        const text = textBridge.value;
         textBridge.value = '';
-        if (text.length === 0) {
-            return false;
-        }
-        return runtime.dispatchInput({ type: 'text', text });
+        return dispatchTextPayload(text);
     };
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -211,7 +229,6 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
 
     const handlePointerDown = (event: PointerEvent) => {
         const point = pointerPayload(event, scene);
-        focusTextBridge();
         const handled = runtime.dispatchInput({
             type: 'pointer',
             phase: 'down',
@@ -228,6 +245,7 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
         if (handled) {
             event.preventDefault();
         }
+        scheduleTextBridgeFocus();
     };
 
     const handlePointerUp = (event: PointerEvent) => {
@@ -314,7 +332,7 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
     };
 
     const handleCanvasFocus = () => {
-        focusTextBridge();
+        scheduleTextBridgeFocus();
     };
 
     const handleTextBridgeFocus = () => {
@@ -322,10 +340,68 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
     };
 
     const handleTextBridgeBlur = () => {
+        queueMicrotask(() => {
+            if (!canvas.isConnected) {
+                return;
+            }
+
+            const activeElement = document.activeElement;
+            if (
+                document.hasFocus() &&
+                (activeElement === canvas ||
+                    (activeElement instanceof Node && bridgeHost.contains(activeElement)))
+            ) {
+                scheduleTextBridgeFocus();
+                return;
+            }
+
+            runtime.dispatchInput({ type: 'focus', focused: false });
+        });
+    };
+
+    const handleWindowBlur = () => {
         runtime.dispatchInput({ type: 'focus', focused: false });
     };
 
+    const handleBeforeInput = (event: InputEvent) => {
+        if (event.isComposing) {
+            return;
+        }
+
+        let text = '';
+        switch (event.inputType) {
+            case 'insertText':
+            case 'insertCompositionText':
+            case 'insertFromComposition':
+            case 'insertReplacementText':
+                text = event.data ?? '';
+                break;
+            case 'insertLineBreak':
+                text = '\n';
+                break;
+            default:
+                return;
+        }
+
+        if (text.length === 0) {
+            return;
+        }
+
+        textBridge.value = '';
+        const handled = dispatchTextPayload(text);
+        if (handled) {
+            suppressNextTextInput = true;
+            event.preventDefault();
+        }
+    };
+
     const handleTextInput = (event: Event) => {
+        if (suppressNextTextInput) {
+            suppressNextTextInput = false;
+            textBridge.value = '';
+            event.preventDefault();
+            return;
+        }
         const handled = flushTextBridgeValue();
         if (handled) {
             event.preventDefault();
@@ -353,9 +429,11 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
     textBridge.addEventListener('keyup', handleKeyUp);
     textBridge.addEventListener('focus', handleTextBridgeFocus);
     textBridge.addEventListener('blur', handleTextBridgeBlur);
+    textBridge.addEventListener('beforeinput', handleBeforeInput);
     textBridge.addEventListener('input', handleTextInput);
     textBridge.addEventListener('paste', handlePaste);
     globalThis.addEventListener('pointerup', handlePointerUp);
+    globalThis.addEventListener('blur', handleWindowBlur);
 
     return () => {
         canvas.removeEventListener('pointermove', handlePointerMove);
@@ -367,9 +445,11 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
         textBridge.removeEventListener('keyup', handleKeyUp);
         textBridge.removeEventListener('focus', handleTextBridgeFocus);
         textBridge.removeEventListener('blur', handleTextBridgeBlur);
+        textBridge.removeEventListener('beforeinput', handleBeforeInput);
         textBridge.removeEventListener('input', handleTextInput);
         textBridge.removeEventListener('paste', handlePaste);
         globalThis.removeEventListener('pointerup', handlePointerUp);
+        globalThis.removeEventListener('blur', handleWindowBlur);
         textBridge.remove();
     };
 };

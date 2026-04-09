@@ -10,10 +10,12 @@ const uiInputFocusExample: SceneExample = {
     async mount({ container }: ExampleContext) {
         const host = await createUIExampleHost({ container, bindInput: true });
         const { runtime } = host;
+        const placeholderValue = 'TYPE HERE';
+        container.style.position = 'relative';
 
         const state = {
-            value: 'TYPE HERE',
-            cursor: 9,
+            value: '',
+            cursor: 0,
             selectedAction: 'BUILD',
             log: 'CLICK OR TAB THROUGH THE UI',
             hoveredAction: null as string | null,
@@ -23,6 +25,55 @@ const uiInputFocusExample: SceneExample = {
 
         const clampCursor = () => {
             state.cursor = Math.max(0, Math.min(state.cursor, state.value.length));
+        };
+
+        const getDisplayedInputValue = () =>
+            state.value.length > 0 ? state.value : state.inputFocused ? '' : placeholderValue;
+
+        const isPrintableKey = (key: string) => key.length === 1;
+
+        const insertText = (rawText: string) => {
+            const nextText = rawText.replace(/\s+/g, ' ').toUpperCase();
+            if (!nextText) {
+                return false;
+            }
+            state.value = `${state.value.slice(0, state.cursor)}${nextText}${state.value.slice(state.cursor)}`;
+            state.cursor += nextText.length;
+            clampCursor();
+            state.log = `TEXT ${nextText}`;
+            syncInput();
+            syncStatus();
+            return true;
+        };
+
+        const isTextBridgeActive = () => {
+            const activeElement = document.activeElement;
+            return activeElement instanceof HTMLTextAreaElement && activeElement.getAttribute('aria-hidden') === 'true';
+        };
+
+        const deleteBackward = () => {
+            if (state.cursor <= 0) {
+                return true;
+            }
+            state.value = `${state.value.slice(0, state.cursor - 1)}${state.value.slice(state.cursor)}`;
+            state.cursor -= 1;
+            clampCursor();
+            state.log = 'BACKSPACE';
+            syncInput();
+            syncStatus();
+            return true;
+        };
+
+        const deleteForward = () => {
+            if (state.cursor >= state.value.length) {
+                return true;
+            }
+            state.value = `${state.value.slice(0, state.cursor)}${state.value.slice(state.cursor + 1)}`;
+            clampCursor();
+            state.log = 'DELETE';
+            syncInput();
+            syncStatus();
+            return true;
         };
 
         const panel = createDemoPanel(runtime, { width: 620, height: 340, gap: 16 });
@@ -54,10 +105,10 @@ const uiInputFocusExample: SceneExample = {
             layout: { width: '100%', height: 44, padding: [12, 12] },
             style: { background: '#020617ff', borderColor: '#334155ff', borderWidth: 1, radius: 12 },
             text: {
-                value: state.value,
+                value: getDisplayedInputValue(),
                 family: 'OverlayBitmap',
                 size: 16,
-                color: '#f8fafcff',
+                color: '#64748bff',
                 caretIndex: state.cursor,
                 caretColor: '#f8fafcff',
                 caretWidth: 2,
@@ -65,6 +116,13 @@ const uiInputFocusExample: SceneExample = {
                 wrap: 'none',
             },
             handlers: {
+                pointerDown: () => {
+                    state.inputFocused = true;
+                    state.log = 'INPUT FOCUSED';
+                    syncInput();
+                    syncStatus();
+                    return false;
+                },
                 focus: () => {
                     state.inputFocused = true;
                     state.log = 'INPUT FOCUSED';
@@ -75,65 +133,6 @@ const uiInputFocusExample: SceneExample = {
                     state.inputFocused = false;
                     syncInput();
                     syncStatus();
-                },
-                keyDown: (event) => {
-                    if (event.key === 'Backspace') {
-                        if (state.cursor > 0) {
-                            state.value = `${state.value.slice(0, state.cursor - 1)}${state.value.slice(state.cursor)}`;
-                            state.cursor -= 1;
-                            clampCursor();
-                            state.log = 'BACKSPACE';
-                            syncInput();
-                            syncStatus();
-                        }
-                        return true;
-                    }
-                    if (event.key === 'Delete') {
-                        if (state.cursor < state.value.length) {
-                            state.value = `${state.value.slice(0, state.cursor)}${state.value.slice(state.cursor + 1)}`;
-                            clampCursor();
-                            state.log = 'DELETE';
-                            syncInput();
-                            syncStatus();
-                        }
-                        return true;
-                    }
-                    if (event.key === 'ArrowLeft') {
-                        state.cursor = Math.max(0, state.cursor - 1);
-                        clampCursor();
-                        syncInput();
-                        return true;
-                    }
-                    if (event.key === 'ArrowRight') {
-                        state.cursor = Math.min(state.value.length, state.cursor + 1);
-                        clampCursor();
-                        syncInput();
-                        return true;
-                    }
-                    if (event.key === 'Home') {
-                        state.cursor = 0;
-                        syncInput();
-                        return true;
-                    }
-                    if (event.key === 'End') {
-                        state.cursor = state.value.length;
-                        syncInput();
-                        return true;
-                    }
-                    return false;
-                },
-                textInput: (event) => {
-                    if (!event.text) {
-                        return false;
-                    }
-                    const nextText = event.text.replace(/\s+/g, ' ').toUpperCase();
-                    state.value = `${state.value.slice(0, state.cursor)}${nextText}${state.value.slice(state.cursor)}`;
-                    state.cursor += nextText.length;
-                    clampCursor();
-                    state.log = `TEXT ${nextText}`;
-                    syncInput();
-                    syncStatus();
-                    return true;
                 },
             },
         });
@@ -179,6 +178,8 @@ const uiInputFocusExample: SceneExample = {
             }
         };
 
+        let syncCaptureBox = () => {};
+
         const syncInput = () => {
             runtime.updateWidget(inputWidget, {
                 style: {
@@ -188,11 +189,13 @@ const uiInputFocusExample: SceneExample = {
                     radius: 12,
                 },
                 text: {
-                    value: state.value,
+                    value: getDisplayedInputValue(),
+                    color: state.value.length > 0 ? '#f8fafcff' : '#64748bff',
                     caretIndex: state.cursor,
                     caretColor: state.inputFocused ? '#f8fafcff' : '#00000000',
                 },
             });
+            syncCaptureBox();
         };
 
         const syncStatus = () => {
@@ -221,14 +224,18 @@ const uiInputFocusExample: SceneExample = {
                         }
                     },
                     pointerDown: () => {
+                        state.inputFocused = false;
                         state.selectedAction = action;
                         state.log = `ACTION ${action}`;
                         syncButtons();
+                        syncInput();
                         syncStatus();
                         return true;
                     },
                     focus: () => {
+                        state.inputFocused = false;
                         state.focusedAction = action;
+                        syncInput();
                         syncButtons();
                     },
                     blur: () => {
@@ -285,7 +292,186 @@ const uiInputFocusExample: SceneExample = {
         syncStatus();
         syncButtons();
 
-        return host;
+        const inputCapture = document.createElement('input');
+        inputCapture.type = 'text';
+        inputCapture.value = state.value;
+        inputCapture.spellcheck = false;
+        inputCapture.autocomplete = 'off';
+        inputCapture.autocapitalize = 'off';
+        inputCapture.style.position = 'absolute';
+        inputCapture.style.zIndex = '5';
+        inputCapture.style.background = 'transparent';
+        inputCapture.style.border = '0';
+        inputCapture.style.outline = 'none';
+        inputCapture.style.color = 'transparent';
+        inputCapture.style.caretColor = 'transparent';
+        inputCapture.style.padding = '0';
+        inputCapture.style.margin = '0';
+        inputCapture.style.fontSize = '16px';
+        inputCapture.style.fontFamily = 'monospace';
+        inputCapture.style.opacity = '0.01';
+
+        syncCaptureBox = () => {
+            queueMicrotask(() => {
+                const box = runtime.getLayoutBox(inputWidget);
+                inputCapture.style.left = `${box.x + 12}px`;
+                inputCapture.style.top = `${box.y + 12}px`;
+                inputCapture.style.width = `${Math.max(1, box.width - 24)}px`;
+                inputCapture.style.height = `${Math.max(1, box.height - 24)}px`;
+            });
+        };
+
+        const syncCaptureValue = () => {
+            if (inputCapture.value !== state.value) {
+                inputCapture.value = state.value;
+            }
+            const caret = Math.max(0, Math.min(state.cursor, inputCapture.value.length));
+            inputCapture.setSelectionRange(caret, caret);
+        };
+
+        const handleCaptureFocus = () => {
+            state.inputFocused = true;
+            state.log = 'INPUT FOCUSED';
+            runtime.setFocus(inputWidget);
+            syncCaptureValue();
+            syncInput();
+            syncStatus();
+        };
+
+        const handleCaptureBlur = () => {
+            state.inputFocused = false;
+            runtime.setFocus(null, 'window');
+            syncInput();
+            syncStatus();
+        };
+
+        const syncStateFromCapture = (nextLog?: string) => {
+            const selectionStart = inputCapture.selectionStart ?? inputCapture.value.length;
+            const normalizedValue = inputCapture.value.replace(/\s+/g, ' ').toUpperCase();
+            if (normalizedValue !== inputCapture.value) {
+                inputCapture.value = normalizedValue;
+            }
+            state.value = normalizedValue;
+            state.cursor = Math.max(0, Math.min(selectionStart, normalizedValue.length));
+            if (nextLog) {
+                state.log = nextLog;
+            }
+            syncCaptureValue();
+            syncInput();
+            syncStatus();
+        };
+
+        inputCapture.addEventListener('focus', handleCaptureFocus);
+        inputCapture.addEventListener('blur', handleCaptureBlur);
+        inputCapture.addEventListener('input', () => syncStateFromCapture('TEXT INPUT'));
+        inputCapture.addEventListener('keydown', (event) => {
+            if (event.key === 'Backspace' || event.key === 'Delete') {
+                queueMicrotask(() => syncStateFromCapture(event.key === 'Backspace' ? 'BACKSPACE' : 'DELETE'));
+                return;
+            }
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Home' || event.key === 'End') {
+                queueMicrotask(() => syncStateFromCapture());
+            }
+        });
+        inputCapture.addEventListener('click', () => syncStateFromCapture());
+        inputCapture.addEventListener('select', () => syncStateFromCapture());
+        container.appendChild(inputCapture);
+        syncCaptureValue();
+        syncCaptureBox();
+
+        const handleBridgeKeyDown = (event: KeyboardEvent) => {
+            if (!state.inputFocused || !isTextBridgeActive() || event.altKey || event.ctrlKey || event.metaKey) {
+                return;
+            }
+
+            if (event.key === 'Backspace') {
+                deleteBackward();
+                event.preventDefault();
+                return;
+            }
+            if (event.key === 'Delete') {
+                deleteForward();
+                event.preventDefault();
+                return;
+            }
+            if (event.key === 'ArrowLeft') {
+                state.cursor = Math.max(0, state.cursor - 1);
+                syncInput();
+                event.preventDefault();
+                return;
+            }
+            if (event.key === 'ArrowRight') {
+                state.cursor = Math.min(state.value.length, state.cursor + 1);
+                syncInput();
+                event.preventDefault();
+                return;
+            }
+            if (event.key === 'Home') {
+                state.cursor = 0;
+                syncInput();
+                event.preventDefault();
+                return;
+            }
+            if (event.key === 'End') {
+                state.cursor = state.value.length;
+                syncInput();
+                event.preventDefault();
+                return;
+            }
+            if (isPrintableKey(event.key)) {
+                insertText(event.key);
+                event.preventDefault();
+            }
+        };
+
+        const handleBridgeBeforeInput = (event: InputEvent) => {
+            if (!state.inputFocused || !isTextBridgeActive() || event.isComposing) {
+                return;
+            }
+
+            let text = '';
+            switch (event.inputType) {
+                case 'insertCompositionText':
+                case 'insertFromComposition':
+                case 'insertReplacementText':
+                    text = event.data ?? '';
+                    break;
+                default:
+                    return;
+            }
+
+            if (insertText(text)) {
+                event.preventDefault();
+            }
+        };
+
+        const handleBridgePaste = (event: ClipboardEvent) => {
+            if (!state.inputFocused || !isTextBridgeActive()) {
+                return;
+            }
+
+            const text = event.clipboardData?.getData('text/plain');
+            if (text && insertText(text)) {
+                event.preventDefault();
+            }
+        };
+
+        document.addEventListener('keydown', handleBridgeKeyDown, true);
+        document.addEventListener('beforeinput', handleBridgeBeforeInput, true);
+        document.addEventListener('paste', handleBridgePaste, true);
+
+        return {
+            ...host,
+            dispose() {
+                inputCapture.removeEventListener('focus', handleCaptureFocus);
+                inputCapture.removeEventListener('blur', handleCaptureBlur);
+                inputCapture.remove();
+                document.removeEventListener('keydown', handleBridgeKeyDown, true);
+                document.removeEventListener('beforeinput', handleBridgeBeforeInput, true);
+                document.removeEventListener('paste', handleBridgePaste, true);
+                host.dispose();
+            },
+        };
     },
 };
 
