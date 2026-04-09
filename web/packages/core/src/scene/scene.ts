@@ -32,6 +32,7 @@ import { createSceneLoopSystems } from './loop-bridge';
 import { SceneMaterialTextureBinder } from './material-texture-binder';
 import type { SceneMeshResource } from './mesh-registry';
 import { SceneRenderItemCollector, type SceneRenderItem } from './render-item-collector';
+import { SceneRenderFrameState } from './render-frame-state';
 import { SceneRenderPassPreparer } from './render-pass-preparer';
 import { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneShaderResource } from './shader-registry';
@@ -104,12 +105,6 @@ const encodeBase64 = (bytes: Uint8Array): string => {
 
     return result;
 };
-
-interface SceneRenderStatsState {
-    frame: number;
-    drawCalls: number;
-    trianglesSubmitted: number;
-}
 
 const DEFAULT_ATTRIBUTE_NAMES: Readonly<Record<SceneMeshSemantic, string>> = Object.freeze({
     position: 'a_Position',
@@ -205,18 +200,6 @@ const mapTopologyToMode = (gl: WebGL2RenderingContext, topology: SceneMeshTopolo
         default:
             return gl.TRIANGLES;
     }
-};
-
-const estimateTriangleCount = (mesh: SceneMeshResource): number => {
-    if (mesh.topology !== 'triangles') {
-        return 0;
-    }
-
-    if (mesh.indexCount > 0) {
-        return Math.floor(mesh.indexCount / 3);
-    }
-
-    return Math.floor(mesh.vertexCount / 3);
 };
 
 const extractUniformNames = (...sources: string[]): string[] => {
@@ -450,6 +433,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _lightingCollector = new SceneLightingCollector(MAX_SCENE_LOCAL_LIGHTS);
     private readonly _cameraFrameCollector = new SceneCameraFrameStateCollector();
     private readonly _renderItemCollector = new SceneRenderItemCollector();
+    private readonly _renderFrameState = new SceneRenderFrameState();
     private readonly _materialTextureBinder: SceneMaterialTextureBinder;
     private readonly _renderPassPreparer: SceneRenderPassPreparer;
     private readonly _renderStateApplier: SceneRenderStateApplier;
@@ -469,11 +453,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _autoCreatedCanvas: boolean;
     private readonly _defaultClearColor: Vec4;
     private readonly _ambientLight: Vec3;
-    private readonly _renderStats: SceneRenderStatsState = {
-        frame: 0,
-        drawCalls: 0,
-        trianglesSubmitted: 0,
-    };
     private _pixelRatio: number;
     private _disposed = false;
 
@@ -583,9 +562,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     get renderStats() {
         return {
-            frame: this._renderStats.frame,
-            drawCalls: this._renderStats.drawCalls,
-            trianglesSubmitted: this._renderStats.trianglesSubmitted,
+            frame: this._renderFrameState.frame,
+            drawCalls: this._renderFrameState.drawCalls,
+            trianglesSubmitted: this._renderFrameState.trianglesSubmitted,
         };
     }
 
@@ -1543,10 +1522,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _render(deltaTime: number): void {
-        this._renderStats.frame = this.loop.frame;
-        this._renderStats.drawCalls = 0;
-        this._renderStats.trianglesSubmitted = 0;
-        const activeRendererIds = new Set<string>();
+        const renderFrame = this._renderFrameState.begin(this.loop.frame);
 
         const camera = this._selectCamera();
         const lighting = this._collectLighting();
@@ -1588,7 +1564,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                     continue;
                 }
 
-                activeRendererIds.add(item.renderer.id);
+                renderFrame.markActiveRenderer(item.renderer.id);
 
                 const shader = this._resources.shaders.get(material.shaderId);
                 if (!shader) {
@@ -1638,15 +1614,14 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                     this.gl.drawArrays(mesh.mode, 0, mesh.vertexCount);
                 }
 
-                this._renderStats.drawCalls += 1;
-                this._renderStats.trianglesSubmitted += estimateTriangleCount(mesh);
+                renderFrame.recordDraw(mesh);
 
                 this._materialTextureBinder.unbind();
             }
         }
 
         this.gl.bindVertexArray(null);
-        this._morphMeshRuntime.prune(activeRendererIds);
+        this._morphMeshRuntime.prune(renderFrame.activeRendererIds);
     }
 
     private _collectRenderItems(passId: string): readonly SceneRenderItem[] {
