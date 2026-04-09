@@ -48,6 +48,11 @@ export { SceneRenderPassPreparer } from './render-pass-preparer';
 export type { SceneRenderItem } from './render-item-collector';
 export { SceneRenderItemCollector } from './render-item-collector';
 export type {
+    SceneMorphMeshRegistry,
+    SceneMorphMeshRuntimeOptions,
+} from './morph-mesh-runtime';
+export { SceneMorphMeshRuntime } from './morph-mesh-runtime';
+export type {
     SceneResourceRuntimeClearCallbacks,
     SceneResourceRuntimeOptions,
     SceneResourceRuntimeSerializationResult,

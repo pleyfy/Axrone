@@ -20,6 +20,7 @@ import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
 import { Animator } from './components/animator';
 import { Camera, type CameraConfig } from './components/camera';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
+import { SceneMorphMeshRuntime } from './morph-mesh-runtime';
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { SceneCameraFrameStateCollector } from './camera-frame-state';
 import { SceneComponentCatalog } from './component-catalog';
@@ -81,14 +82,6 @@ interface ResolvedSurface {
     readonly canvas: HTMLCanvasElement;
     readonly gl: WebGL2RenderingContext;
     readonly autoCreated: boolean;
-}
-
-interface MorphMeshResourceCache {
-    readonly rendererId: string;
-    readonly baseMeshId: string;
-    readonly resource: SceneMeshResource;
-    readonly vertices: Uint8Array;
-    lastWeightVersion: number;
 }
 
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -182,77 +175,6 @@ const toVec3 = (
     return new Vec3(fallback.x, fallback.y, fallback.z);
 };
 
-const MORPH_WEIGHT_EPSILON = 1e-6;
-
-const toBufferBytes = (value: BufferSource): Uint8Array =>
-    ArrayBuffer.isView(value)
-        ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-        : new Uint8Array(value);
-
-const hasActiveMorphWeights = (
-    weights: Float32Array | null,
-    targetCount: number
-): boolean => {
-    if (!weights || targetCount <= 0) {
-        return false;
-    }
-
-    const count = Math.min(weights.length, targetCount);
-    for (let index = 0; index < count; index += 1) {
-        if (Math.abs(weights[index] ?? 0) > MORPH_WEIGHT_EPSILON) {
-            return true;
-        }
-    }
-
-    return false;
-};
-
-const applyMorphTargetsToVertexBytes = (
-    definition: SceneMeshDefinition,
-    vertices: Uint8Array,
-    weights: Float32Array
-): void => {
-    const morphTargets = definition.morphTargets;
-    const baseAttributeMap = new Map(
-        definition.attributes.map((attribute) => [attribute.semantic, attribute] as const)
-    );
-    if (!morphTargets || morphTargets.length === 0 || definition.attributes.length === 0) {
-        return;
-    }
-
-    const view = new DataView(vertices.buffer, vertices.byteOffset, vertices.byteLength);
-    const vertexStride = definition.attributes[0]!.stride;
-    const vertexCount = definition.vertexCount ?? Math.floor(vertices.byteLength / vertexStride);
-    const targetCount = Math.min(weights.length, morphTargets.length);
-
-    for (let targetIndex = 0; targetIndex < targetCount; targetIndex += 1) {
-        const weight = weights[targetIndex] ?? 0;
-        if (Math.abs(weight) <= MORPH_WEIGHT_EPSILON) {
-            continue;
-        }
-
-        const target = morphTargets[targetIndex]!;
-        for (const attribute of target.attributes) {
-            const baseAttribute = baseAttributeMap.get(attribute.semantic);
-            if (!baseAttribute) {
-                continue;
-            }
-
-            for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-                const sourceOffset = vertex * attribute.componentCount;
-                const destinationBaseOffset = vertex * baseAttribute.stride + baseAttribute.offset;
-
-                for (let component = 0; component < attribute.componentCount; component += 1) {
-                    const componentOffset =
-                        destinationBaseOffset + component * Float32Array.BYTES_PER_ELEMENT;
-                    const currentValue = view.getFloat32(componentOffset, true);
-                    const delta = attribute.values[sourceOffset + component] ?? 0;
-                    view.setFloat32(componentOffset, currentValue + delta * weight, true);
-                }
-            }
-        }
-    }
-};
 
 const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {
     switch (name) {
@@ -535,6 +457,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _frameUniformBinder: SceneFrameUniformBinder;
     private readonly _lightingUniformBinder: SceneLightingUniformBinder;
     private readonly _skinningUniformBinder: SceneSkinningUniformBinder;
+    private readonly _morphMeshRuntime: SceneMorphMeshRuntime;
     private readonly _textureUniformSetter = (
         shader: SceneShaderResource,
         name: string,
@@ -542,7 +465,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     ): void => {
         this._uniformWriter.write(shader, name, value);
     };
-    private readonly _morphMeshes = new Map<string, MorphMeshResourceCache>();
     private readonly _textureManager: WebGLTextureManager;
     private readonly _autoCreatedCanvas: boolean;
     private readonly _defaultClearColor: Vec4;
@@ -572,6 +494,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._frameUniformBinder = new SceneFrameUniformBinder(this._uniformWriter);
         this._lightingUniformBinder = new SceneLightingUniformBinder(this._uniformWriter);
         this._skinningUniformBinder = new SceneSkinningUniformBinder(this._uniformWriter);
+        this._morphMeshRuntime = new SceneMorphMeshRuntime({
+            gl: this.gl,
+            createMeshResource: (definition) => this._createMeshResource(definition),
+            disposeMesh: (mesh) => this._disposeMesh(mesh),
+        });
         const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -770,7 +697,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerMesh(definition: SceneMeshDefinition): SceneMeshHandle {
         this._assertNotDisposed();
-        this._disposeMorphMeshesForBaseMesh(definition.id);
+        this._morphMeshRuntime.releaseBaseMesh(definition.id);
         const resource = this._createMeshResource(definition);
         const result = this._resources.meshes.register(definition, resource);
         if (result.previous) {
@@ -1654,7 +1581,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                     continue;
                 }
 
-                const mesh = this._resolveRenderableMesh(item.renderer);
+                const mesh = this._morphMeshRuntime.resolve(item.renderer, this._resources.meshes);
                 const material = this._resources.materials.get(item.renderer.materialId);
 
                 if (!mesh || !material) {
@@ -1719,104 +1646,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         this.gl.bindVertexArray(null);
-        this._pruneMorphMeshCache(activeRendererIds);
-    }
-
-    private _resolveRenderableMesh(renderer: MeshRenderer): SceneMeshResource | null {
-        const meshId = renderer.meshId;
-        if (!meshId) {
-            return null;
-        }
-
-        const mesh = this._resources.meshes.get(meshId);
-        const definition = this._resources.meshes.getDefinition(meshId);
-        if (!mesh || !definition?.morphTargets?.length) {
-            return mesh ?? null;
-        }
-
-        const weights = renderer.getMorphWeightArray();
-        if (!hasActiveMorphWeights(weights, definition.morphTargets.length)) {
-            return mesh;
-        }
-
-        return this._getOrCreateMorphMeshResource(renderer, mesh, definition, weights!);
-    }
-
-    private _getOrCreateMorphMeshResource(
-        renderer: MeshRenderer,
-        mesh: SceneMeshResource,
-        definition: SceneMeshDefinition,
-        weights: Float32Array
-    ): SceneMeshResource {
-        const cacheKey = renderer.id;
-        const sourceVertices = toBufferBytes(definition.vertices);
-        let cache = this._morphMeshes.get(cacheKey);
-
-        if (
-            !cache ||
-            cache.baseMeshId !== mesh.id ||
-            cache.vertices.byteLength !== sourceVertices.byteLength
-        ) {
-            if (cache) {
-                this._disposeMesh(cache.resource);
-            }
-
-            const vertices = new Uint8Array(sourceVertices.byteLength);
-            vertices.set(sourceVertices);
-            const resource = this._createMeshResource({
-                id: `${mesh.id}#morph#${renderer.id}`,
-                vertices,
-                attributes: definition.attributes.map((attribute) => ({ ...attribute })),
-                ...(definition.indices ? { indices: definition.indices } : {}),
-                ...(definition.vertexCount !== undefined
-                    ? { vertexCount: definition.vertexCount }
-                    : {}),
-                ...(definition.topology ? { topology: definition.topology } : {}),
-                usage: this.gl.DYNAMIC_DRAW,
-            });
-
-            cache = {
-                rendererId: cacheKey,
-                baseMeshId: mesh.id,
-                resource,
-                vertices,
-                lastWeightVersion: -1,
-            };
-            this._morphMeshes.set(cacheKey, cache);
-        }
-
-        if (cache.lastWeightVersion !== renderer.morphWeightVersion) {
-            cache.vertices.set(sourceVertices);
-            applyMorphTargetsToVertexBytes(definition, cache.vertices, weights);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, cache.resource.vertexBuffer);
-            this.gl.bufferData(this.gl.ARRAY_BUFFER, cache.vertices, this.gl.DYNAMIC_DRAW);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
-            cache.lastWeightVersion = renderer.morphWeightVersion;
-        }
-
-        return cache.resource;
-    }
-
-    private _disposeMorphMeshesForBaseMesh(meshId: string): void {
-        for (const [cacheKey, cache] of this._morphMeshes.entries()) {
-            if (cache.baseMeshId !== meshId) {
-                continue;
-            }
-
-            this._disposeMesh(cache.resource);
-            this._morphMeshes.delete(cacheKey);
-        }
-    }
-
-    private _pruneMorphMeshCache(activeRendererIds: ReadonlySet<string>): void {
-        for (const [cacheKey, cache] of this._morphMeshes.entries()) {
-            if (activeRendererIds.has(cacheKey)) {
-                continue;
-            }
-
-            this._disposeMesh(cache.resource);
-            this._morphMeshes.delete(cacheKey);
-        }
+        this._morphMeshRuntime.prune(activeRendererIds);
     }
 
     private _collectRenderItems(passId: string): readonly SceneRenderItem[] {
@@ -1832,9 +1662,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _clearSceneAssets(): void {
-        for (const mesh of this._morphMeshes.values()) {
-            this._disposeMesh(mesh.resource);
-        }
+        this._morphMeshRuntime.clear();
         this._resources.clear({
             deleteProgram: (shader) => {
                 this.gl.deleteProgram(shader.program);
@@ -1853,7 +1681,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 }
             },
         });
-        this._morphMeshes.clear();
     }
 
     private _disposeMesh(mesh: SceneMeshResource): void {
