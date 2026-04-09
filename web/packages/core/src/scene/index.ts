@@ -29,6 +29,11 @@ export {
     normalizeSceneTextureBinding,
     SceneMaterialRegistry,
 } from './material-registry';
+export type {
+    SceneMaterialTextureBinderResources,
+    SceneMaterialTextureUniformSetter,
+} from './material-texture-binder';
+export { SceneMaterialTextureBinder } from './material-texture-binder';
 export type { SceneMeshRegistrationResult, SceneMeshResource } from './mesh-registry';
 export { cloneSceneMeshDefinition, SceneMeshRegistry } from './mesh-registry';
 export type { SceneLightingState } from './lighting-collector';

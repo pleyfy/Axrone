@@ -15,7 +15,6 @@ import {
     TextureUsage,
     WrapMode,
     type ITexture,
-    type ITextureSampler,
 } from '../renderer/webgl2/texture/interfaces';
 import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
 import { Animator } from './components/animator';
@@ -27,6 +26,7 @@ import { SceneComponentCatalog } from './component-catalog';
 import { selectSceneCamera } from './camera-selector';
 import { SceneLightingCollector, type SceneLightingState } from './lighting-collector';
 import { createSceneLoopSystems } from './loop-bridge';
+import { SceneMaterialTextureBinder } from './material-texture-binder';
 import type { SceneMaterialResource } from './material-registry';
 import type { SceneMeshResource } from './mesh-registry';
 import { SceneRenderItemCollector, type SceneRenderItem } from './render-item-collector';
@@ -526,6 +526,14 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _renderItemCollector = new SceneRenderItemCollector();
     private readonly _resolutionUniform = new Vec2();
     private readonly _mvpScratch = new Mat4();
+    private readonly _materialTextureBinder: SceneMaterialTextureBinder;
+    private readonly _textureUniformSetter = (
+        shader: SceneShaderResource,
+        name: string,
+        value: SceneUniformValue | null | undefined
+    ): void => {
+        this._setUniform(shader, name, value);
+    };
     private readonly _morphMeshes = new Map<string, MorphMeshResourceCache>();
     private readonly _textureManager: WebGLTextureManager;
     private readonly _autoCreatedCanvas: boolean;
@@ -549,6 +557,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._defaultClearColor = toVec4(options.clearColor);
         this._ambientLight = toVec3(options.ambientLight);
         this._textureManager = new WebGLTextureManager(this.gl);
+        this._materialTextureBinder = new SceneMaterialTextureBinder(this.gl);
         const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -1677,7 +1686,12 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this._applyLightingUniforms(shader, item.renderer, lighting);
                 this._applySkinningUniforms(shader, item.renderer);
 
-                const boundUnits = this._bindMaterialTextures(shader, material);
+                this._materialTextureBinder.bind(
+                    shader,
+                    material,
+                    this._resources,
+                    this._textureUniformSetter
+                );
 
                 for (const [name, value] of material.uniforms) {
                     this._setUniform(shader, name, value);
@@ -1696,7 +1710,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this._renderStats.drawCalls += 1;
                 this._renderStats.trianglesSubmitted += estimateTriangleCount(mesh);
 
-                this._unbindTextureUnits(boundUnits);
+                this._materialTextureBinder.unbind();
             }
         }
 
@@ -1955,37 +1969,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
     }
 
-    private _bindMaterialTextures(
-        shader: SceneShaderResource,
-        material: SceneMaterialResource
-    ): number[] {
-        const boundUnits: number[] = [];
-
-        for (const slot of this._resources.materials.getTextureSlots(material.id)) {
-            const texture = this._resources.textures.get(slot.binding.textureId);
-            if (!texture) {
-                continue;
-            }
-
-            boundUnits.push(slot.resolvedUnit);
-
-            texture.texture.bind(slot.resolvedUnit);
-            const sampler = this._resolveSampler(slot.binding.samplerId ?? texture.samplerId);
-            sampler.bind(slot.resolvedUnit);
-            this._setUniform(shader, slot.uniformName, slot.resolvedUnit);
-        }
-
-        return boundUnits;
-    }
-
-    private _unbindTextureUnits(units: readonly number[]): void {
-        for (const unit of units) {
-            this.gl.bindSampler(unit, null);
-            this.gl.activeTexture(this.gl.TEXTURE0 + unit);
-            this.gl.bindTexture(this.gl.TEXTURE_2D, null);
-        }
-    }
-
     private _toWebGLMatrixData(value: Mat4): Float32Array {
         return new Float32Array(Mat4.transpose(value).data);
     }
@@ -2040,10 +2023,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this.gl.uniform1f(location, value);
                 return;
         }
-    }
-
-    private _resolveSampler(id: string | null): ITextureSampler {
-        return this._resources.resolveSampler(id);
     }
 
     private _setUniform(
