@@ -132,7 +132,14 @@ export class Camera extends Component {
             return Mat4.IDENTITY.clone();
         }
 
-        return transform.worldMatrix.clone().invert();
+        const worldPosition = transform.worldPosition;
+        const inverseRotation = transform.worldRotation.clone().inverse();
+        const inverseTranslation = new Vec3(-worldPosition.x, -worldPosition.y, -worldPosition.z);
+
+        return Mat4.multiply(
+            Mat4.fromQuaternion(inverseRotation),
+            Mat4.translate(inverseTranslation)
+        );
     }
 
     getProjectionMatrix(aspectRatio: number): Mat4 {

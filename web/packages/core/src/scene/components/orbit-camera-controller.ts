@@ -14,6 +14,10 @@ export interface OrbitCameraControllerConfig {
     readonly autoRotateSpeed?: number;
 }
 
+const ORBIT_MIN_DISTANCE = 1e-4;
+const ORBIT_PARALLEL_DOT_THRESHOLD = 0.999;
+const ORBIT_ELEVATION_LIMIT = Math.PI * 0.49;
+
 const toVec3 = (
     value?: Vec3 | readonly [number, number, number],
     fallback: Vec3 = Vec3.ZERO
@@ -28,6 +32,17 @@ const toVec3 = (
 
     return fallback.clone();
 };
+
+const normalizeUpVector = (value: Vec3): Vec3 => {
+    if (value.lengthSquared() <= ORBIT_MIN_DISTANCE * ORBIT_MIN_DISTANCE) {
+        return Vec3.UP.clone();
+    }
+
+    return value.normalize();
+};
+
+const clampElevation = (value: number): number =>
+    Math.min(ORBIT_ELEVATION_LIMIT, Math.max(-ORBIT_ELEVATION_LIMIT, value));
 
 @script({
     scriptName: 'OrbitCameraController',
@@ -48,12 +63,12 @@ export class OrbitCameraController extends Component {
     constructor(config: OrbitCameraControllerConfig = {}) {
         super();
         this._target = toVec3(config.target);
-        this._up = toVec3(config.up, Vec3.UP);
-        this._distance = config.distance ?? 6;
-        this._minDistance = config.minDistance ?? 1;
-        this._maxDistance = config.maxDistance ?? 64;
+        this._up = normalizeUpVector(toVec3(config.up, Vec3.UP));
+        this._minDistance = Math.max(ORBIT_MIN_DISTANCE, config.minDistance ?? 1);
+        this._maxDistance = Math.max(this._minDistance, config.maxDistance ?? 64);
+        this._distance = Math.min(this._maxDistance, Math.max(this._minDistance, config.distance ?? 6));
         this._azimuth = config.azimuth ?? 0;
-        this._elevation = config.elevation ?? 0.35;
+        this._elevation = clampElevation(config.elevation ?? 0.35);
         this._autoRotateSpeed = config.autoRotateSpeed ?? 0;
     }
 
@@ -86,8 +101,7 @@ export class OrbitCameraController extends Component {
     }
 
     set elevation(value: number) {
-        const limit = Math.PI * 0.49;
-        this._elevation = Math.min(limit, Math.max(-limit, value));
+        this._elevation = clampElevation(value);
     }
 
     orbit(deltaAzimuth: number, deltaElevation: number): this {
@@ -118,8 +132,21 @@ export class OrbitCameraController extends Component {
             this._target.z + Math.cos(this._azimuth) * cosElevation * this._distance
         );
 
+        const forward = Vec3.subtract(this._target, position, new Vec3());
+        if (Vec3.lengthSquared(forward) <= ORBIT_MIN_DISTANCE * ORBIT_MIN_DISTANCE) {
+            transform.position = position;
+            return;
+        }
+
+        const normalizedForward = Vec3.normalize(forward, new Vec3());
+        const up = Math.abs(Vec3.dot(normalizedForward, this._up)) >= ORBIT_PARALLEL_DOT_THRESHOLD
+            ? Math.abs(normalizedForward.y) < ORBIT_PARALLEL_DOT_THRESHOLD
+                ? Vec3.UP
+                : Vec3.FORWARD
+            : this._up;
+
         transform.position = position;
-        transform.rotation = Quat.fromLookAt(position, this._target, this._up, new Quat());
+        transform.rotation = Quat.fromLookAt(position, this._target, up, new Quat());
     }
 
     override serialize(): Record<string, unknown> {
@@ -145,23 +172,25 @@ export class OrbitCameraController extends Component {
         }
 
         if (Array.isArray(data.up) && data.up.length === 3) {
-            this._up = new Vec3(Number(data.up[0]), Number(data.up[1]), Number(data.up[2]));
+            this._up = normalizeUpVector(
+                new Vec3(Number(data.up[0]), Number(data.up[1]), Number(data.up[2]))
+            );
         }
 
-        if (typeof data.distance === 'number') {
-            this._distance = data.distance;
-        }
         if (typeof data.minDistance === 'number') {
-            this._minDistance = data.minDistance;
+            this._minDistance = Math.max(ORBIT_MIN_DISTANCE, data.minDistance);
         }
         if (typeof data.maxDistance === 'number') {
-            this._maxDistance = data.maxDistance;
+            this._maxDistance = Math.max(this._minDistance, data.maxDistance);
+        }
+        if (typeof data.distance === 'number') {
+            this.distance = data.distance;
         }
         if (typeof data.azimuth === 'number') {
             this._azimuth = data.azimuth;
         }
         if (typeof data.elevation === 'number') {
-            this._elevation = data.elevation;
+            this.elevation = data.elevation;
         }
         if (typeof data.autoRotateSpeed === 'number') {
             this._autoRotateSpeed = data.autoRotateSpeed;

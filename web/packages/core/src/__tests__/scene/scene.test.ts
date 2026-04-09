@@ -1,4 +1,4 @@
-import { Vec3 } from '@axrone/numeric';
+import { Mat4, Vec3 } from '@axrone/numeric';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Component } from '../../component-system/core/component';
 import { Transform } from '../../component-system/components/transform';
@@ -12,6 +12,7 @@ import {
 
 let Scene: typeof import('../../scene').Scene;
 let Animator: typeof import('../../scene').Animator;
+let Camera: typeof import('../../scene').Camera;
 let MeshRenderer: typeof import('../../scene').MeshRenderer;
 let DirectionalLight: typeof import('../../scene').DirectionalLight;
 let OrbitCameraController: typeof import('../../scene').OrbitCameraController;
@@ -53,6 +54,7 @@ describe('Scene', () => {
         const sceneModule = await import('../../scene');
         Scene = sceneModule.Scene;
         Animator = sceneModule.Animator;
+        Camera = sceneModule.Camera;
         MeshRenderer = sceneModule.MeshRenderer;
         DirectionalLight = sceneModule.DirectionalLight;
         OrbitCameraController = sceneModule.OrbitCameraController;
@@ -434,6 +436,51 @@ void main() {
         );
         expect(scene.getTexture('solid')?.width).toBe(2);
         expect(gl.drawElements).toHaveBeenCalled();
+
+        scene.dispose();
+    });
+
+    it('builds a stable view matrix even when camera scale is zero', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        const transform = cameraActor.requireComponent(Transform);
+        const camera = cameraActor.getComponent(Camera);
+
+        transform.position = new Vec3(2, 3, 4);
+        transform.rotateEuler(0.1, 0.25, 0);
+        transform.scale = new Vec3(0, 0, 0);
+
+        const expected = Mat4.multiply(
+            Mat4.fromQuaternion(transform.worldRotation.clone().inverse()),
+            Mat4.translate(new Vec3(-2, -3, -4))
+        );
+
+        expect(camera).toBeDefined();
+        expect(() => camera!.getViewMatrix()).not.toThrow();
+        expect(camera!.getViewMatrix().toArray()).toEqual(expected.toArray());
+
+        scene.dispose();
+    });
+
+    it('clamps orbit camera distance before computing look-at transforms', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        const transform = cameraActor.requireComponent(Transform);
+
+        cameraActor.addComponent(OrbitCameraController, {
+            distance: 0,
+            minDistance: 0,
+            maxDistance: 2,
+            azimuth: 0.2,
+            elevation: 0.1,
+        });
+
+        scene.start(0);
+
+        expect(() => scheduler.flush(16)).not.toThrow();
+        expect(transform.position.length()).toBeGreaterThan(0);
 
         scene.dispose();
     });
