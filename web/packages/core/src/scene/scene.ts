@@ -22,6 +22,7 @@ import { Animator } from './components/animator';
 import { Camera, type CameraConfig } from './components/camera';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
+import { SceneCameraFrameStateCollector } from './camera-frame-state';
 import { SceneComponentCatalog } from './component-catalog';
 import { selectSceneCamera } from './camera-selector';
 import { SceneLightingCollector, type SceneLightingState } from './lighting-collector';
@@ -521,9 +522,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _prefabs: ScenePrefabRuntime;
     private readonly _resources: SceneResourceRuntime;
     private readonly _lightingCollector = new SceneLightingCollector(MAX_SCENE_LOCAL_LIGHTS);
+    private readonly _cameraFrameCollector = new SceneCameraFrameStateCollector();
     private readonly _renderItemCollector = new SceneRenderItemCollector();
     private readonly _resolutionUniform = new Vec2();
-    private readonly _viewProjectionScratch = new Mat4();
     private readonly _mvpScratch = new Mat4();
     private readonly _morphMeshes = new Map<string, MorphMeshResourceCache>();
     private readonly _textureManager: WebGLTextureManager;
@@ -1605,25 +1606,27 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             return;
         }
 
-        const aspectRatio = this.canvas.width / Math.max(1, this.canvas.height);
-        const viewMatrix = camera?.getViewMatrix();
-        const projectionMatrix = camera?.getProjectionMatrix(aspectRatio);
-        const cameraPosition = camera?.getWorldPosition();
-        const viewProjectionMatrix =
-            viewMatrix && projectionMatrix
-                ? Mat4.multiply(projectionMatrix, viewMatrix, this._viewProjectionScratch)
-                : null;
+        const cameraFrame = this._cameraFrameCollector.collect(
+            camera,
+            this.canvas.width,
+            this.canvas.height
+        );
         this._resolutionUniform.x = this.canvas.width;
         this._resolutionUniform.y = this.canvas.height;
 
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
         for (const renderPass of renderPasses) {
-            this._prepareRenderPass(renderPass, camera);
+            this._prepareRenderPass(renderPass, cameraFrame?.camera);
 
-            if (!camera || !viewMatrix || !projectionMatrix || !viewProjectionMatrix || !cameraPosition) {
+            if (!cameraFrame) {
                 continue;
             }
+
+            const viewMatrix = cameraFrame.viewMatrix;
+            const projectionMatrix = cameraFrame.projectionMatrix;
+            const viewProjectionMatrix = cameraFrame.viewProjectionMatrix;
+            const cameraPosition = cameraFrame.position;
 
             const renderItems = this._collectRenderItems(renderPass.rendererPassId);
             for (const item of renderItems) {
