@@ -23,6 +23,12 @@ export type { SceneAssetRuntimeOptions } from './scene-asset-runtime';
 export { SceneAssetRuntime } from './scene-asset-runtime';
 export type { SceneLifecycleRuntimeOptions } from './scene-lifecycle-runtime';
 export { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
+export type {
+    SceneSnapshotActorHost,
+    SceneSnapshotAssetHost,
+    SceneSnapshotRuntimeOptions,
+} from './scene-snapshot-runtime';
+export { SceneSnapshotRuntime } from './scene-snapshot-runtime';
 export type { SceneComponentTypeResolver } from './component-catalog';
 export { SceneComponentCatalog, getSceneComponentTypeName } from './component-catalog';
 export { SceneGeometryMeshBuilder } from './scene-geometry-mesh-builder';

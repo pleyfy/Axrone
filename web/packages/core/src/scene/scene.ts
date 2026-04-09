@@ -14,7 +14,7 @@ import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
 import { SceneRenderRuntime } from './scene-render-runtime';
-import { SceneSnapshotLoader } from './scene-snapshot-loader';
+import { SceneSnapshotRuntime } from './scene-snapshot-runtime';
 import { resolveSceneSurface } from './scene-surface-resolver';
 import { SceneMaterialError } from './errors';
 import { resolveSceneRegistryFromProfile } from './profile';
@@ -124,15 +124,12 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     readonly systems: SystemManager<RuntimeRegistry<R>>;
     readonly loop: GameLoop<SceneLoopState>;
 
-    private readonly _registry: RuntimeRegistry<R>;
     private readonly _actors: SceneActorRuntime<R>;
     private readonly _assets: SceneAssetRuntime;
     private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
     private readonly _renderRuntime: SceneRenderRuntime;
-    private readonly _snapshotLoader: SceneSnapshotLoader;
+    private readonly _snapshots: SceneSnapshotRuntime;
     private readonly _lifecycle: SceneLifecycleRuntime;
-    private readonly _defaultClearColor: Vec4;
-    private readonly _ambientLight: Vec3;
 
     constructor(options: SceneOptions<R> = {}) {
         this.id = createId('scene');
@@ -140,13 +137,12 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this.canvas = surface.canvas;
         this.gl = surface.gl;
         const pixelRatio = options.pixelRatio ?? globalThis.devicePixelRatio ?? 1;
-        this._defaultClearColor = toVec4(options.clearColor);
+        const defaultClearColor = toVec4(options.clearColor);
         const ambientLight = toVec3(options.ambientLight);
-        this._ambientLight = ambientLight;
         this._assets = new SceneAssetRuntime({
             gl: this.gl,
             defaultPassId: DEFAULT_RENDER_PASS_ID,
-            defaultClearColor: this._defaultClearColor,
+            defaultClearColor,
             releaseBaseMesh: (meshId) => {
                 this._renderRuntime.releaseBaseMesh(meshId);
             },
@@ -158,7 +154,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             gl: this.gl,
             resources: this._assets.resources,
             ambientLight,
-            defaultClearColor: this._defaultClearColor,
+            defaultClearColor,
             getActors: () => this.world.getAllActors(),
             createMeshResource: (definition) => this._assets.createMeshResource(definition),
             disposeMesh: (mesh) => this._assets.disposeMesh(mesh),
@@ -166,12 +162,12 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this._assets.applyMissingVertexAttributeDefaults(mesh),
         });
 
-        this._registry = resolveSceneRegistryFromProfile(options.profile, {
+        const registry = resolveSceneRegistryFromProfile(options.profile, {
             registry: options.registry ?? ({} as R),
         }) as RuntimeRegistry<R>;
-        const componentCatalog = new SceneComponentCatalog(this._registry);
+        const componentCatalog = new SceneComponentCatalog(registry);
 
-        this.world = new World(this._registry, options.worldConfig);
+        this.world = new World(registry, options.worldConfig);
         this.systems = new SystemManager(this.world);
         this._actors = new SceneActorRuntime({
             world: this.world,
@@ -180,52 +176,14 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._actorLifecycleRunner = new SceneActorLifecycleRunner({
             getActors: () => this.world.getAllActors(),
         });
-        this._snapshotLoader = new SceneSnapshotLoader({
+        this._snapshots = new SceneSnapshotRuntime({
+            sceneId: this.id,
             defaultRenderPassId: DEFAULT_RENDER_PASS_ID,
-            defaultClearColor: this._defaultClearColor,
-            clearExisting: () => {
-                this._actors.destroyAllActors();
-                this._assets.clear();
-            },
-            clearRenderPasses: () => {
-                this._assets.clearRenderPasses();
-            },
-            registerShader: (shader) => {
-                this.registerShader(shader);
-            },
-            registerMesh: (mesh) => {
-                this.registerMesh(mesh);
-            },
-            registerSampler: (sampler) => {
-                this.registerSampler(sampler);
-            },
-            registerTexture: async (texture) => {
-                await this.registerTexture(texture);
-            },
-            registerRenderPass: (renderPass) => {
-                this.registerRenderPass(renderPass);
-            },
-            createMaterial: (material) => {
-                this.createMaterial(material);
-            },
-            instantiatePrefab: (prefab, options) => this._actors.instantiatePrefab(prefab, options),
+            defaultClearColor,
+            actors: this._actors,
+            assets: this._assets,
         });
-
-        const initialRenderPasses = options.renderPasses?.length
-            ? options.renderPasses
-            : [
-                  {
-                      id: DEFAULT_RENDER_PASS_ID,
-                      order: 0,
-                      rendererPassId: DEFAULT_RENDER_PASS_ID,
-                      clearFlags: ['color', 'depth'],
-                      clearColor: this._defaultClearColor,
-                  } satisfies SceneRenderPassDefinition,
-              ];
-
-        for (const renderPass of initialRenderPasses) {
-            this._assets.registerRenderPass(renderPass);
-        }
+        this._snapshots.initializeRenderPasses(options.renderPasses);
 
         const loopSystems: readonly GameLoopSystem<SceneLoopState>[] = createSceneLoopSystems({
             executePhase: (phase, delta) => {
@@ -434,14 +392,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         materialId: string,
         uniformName?: string
     ): SceneMaterialTextureBindingHandle | null {
-        const bindings = this.getMaterialTextureBindings(materialId);
-        if (bindings.length === 0) {
-            return null;
-        }
-        if (!uniformName) {
-            return bindings[0] ?? null;
-        }
-        return bindings.find((binding) => binding.uniformName === uniformName) ?? null;
+        return this._assets.getMaterialTextureBinding(materialId, uniformName);
     }
 
     registerRenderPass(definition: SceneRenderPassDefinition): SceneRenderPassHandle {
@@ -482,7 +433,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         actors: readonly Actor[] = this.world.getAllActors()
     ): ScenePrefabDefinition {
         this._assertNotDisposed();
-        return this._actors.createPrefab(id, actors);
+        return this._snapshots.createPrefab(id, actors);
     }
 
     instantiatePrefab(
@@ -490,17 +441,12 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         options: ScenePrefabInstantiateOptions = {}
     ): readonly Actor[] {
         this._assertNotDisposed();
-        return this._actors.instantiatePrefab(prefab, options);
+        return this._snapshots.instantiatePrefab(prefab, options);
     }
 
     serializeScene(): SceneSnapshot {
         this._assertNotDisposed();
-
-        return {
-            version: 1,
-            prefab: this.createPrefab(`${this.id}:prefab`),
-            ...this._assets.serializeDefinitions(),
-        };
+        return this._snapshots.serializeScene();
     }
 
     async loadScene(
@@ -508,7 +454,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         options: SceneSnapshotLoadOptions = {}
     ): Promise<readonly Actor[]> {
         this._assertNotDisposed();
-        return await this._snapshotLoader.load(snapshot, options);
+        return await this._snapshots.loadScene(snapshot, options);
     }
 
     start(now?: number): this {
