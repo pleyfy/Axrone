@@ -153,9 +153,44 @@ const pointerPayload = (event: PointerEvent | WheelEvent, scene: Scene) => {
 
 export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => void) => {
     const canvas = scene.canvas;
+    const bridgeHost = canvas.parentElement ?? document.body;
+    const textBridge = document.createElement('textarea');
     canvas.tabIndex = 0;
     canvas.style.outline = 'none';
     canvas.style.touchAction = 'none';
+
+    textBridge.tabIndex = -1;
+    textBridge.setAttribute('aria-hidden', 'true');
+    textBridge.setAttribute('autocomplete', 'off');
+    textBridge.setAttribute('autocorrect', 'off');
+    textBridge.setAttribute('autocapitalize', 'off');
+    textBridge.spellcheck = false;
+    textBridge.style.position = 'fixed';
+    textBridge.style.left = '-10000px';
+    textBridge.style.top = '0';
+    textBridge.style.width = '1px';
+    textBridge.style.height = '1px';
+    textBridge.style.opacity = '0';
+    textBridge.style.pointerEvents = 'none';
+    textBridge.style.border = '0';
+    textBridge.style.padding = '0';
+    textBridge.style.resize = 'none';
+    bridgeHost.appendChild(textBridge);
+
+    const focusTextBridge = () => {
+        if (document.activeElement !== textBridge) {
+            textBridge.focus();
+        }
+    };
+
+    const flushTextBridgeValue = () => {
+        const text = textBridge.value.replace(/\r\n/g, '\n');
+        textBridge.value = '';
+        if (text.length === 0) {
+            return false;
+        }
+        return runtime.dispatchInput({ type: 'text', text });
+    };
 
     const handlePointerMove = (event: PointerEvent) => {
         const point = pointerPayload(event, scene);
@@ -176,7 +211,7 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
 
     const handlePointerDown = (event: PointerEvent) => {
         const point = pointerPayload(event, scene);
-        canvas.focus();
+        focusTextBridge();
         const handled = runtime.dispatchInput({
             type: 'pointer',
             phase: 'down',
@@ -245,7 +280,7 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-        const keyHandled = runtime.dispatchInput({
+        const handled = runtime.dispatchInput({
             type: 'key',
             phase: 'down',
             key: event.key,
@@ -256,17 +291,7 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
             shiftKey: event.shiftKey,
             metaKey: event.metaKey,
         });
-        const textHandled =
-            !event.ctrlKey &&
-            !event.metaKey &&
-            !event.altKey &&
-            (event.key.length === 1 || event.key === 'Enter')
-                ? runtime.dispatchInput({
-                      type: 'text',
-                      text: event.key === 'Enter' ? '\n' : event.key,
-                  })
-                : false;
-        if (keyHandled || textHandled) {
+        if (handled) {
             event.preventDefault();
         }
     };
@@ -288,12 +313,23 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
         }
     };
 
-    const handleFocus = () => {
+    const handleCanvasFocus = () => {
+        focusTextBridge();
+    };
+
+    const handleTextBridgeFocus = () => {
         runtime.dispatchInput({ type: 'focus', focused: true });
     };
 
-    const handleBlur = () => {
+    const handleTextBridgeBlur = () => {
         runtime.dispatchInput({ type: 'focus', focused: false });
+    };
+
+    const handleTextInput = (event: Event) => {
+        const handled = flushTextBridgeValue();
+        if (handled) {
+            event.preventDefault();
+        }
     };
 
     const handlePaste = (event: ClipboardEvent) => {
@@ -301,6 +337,7 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
         if (!text) {
             return;
         }
+        textBridge.value = '';
         const handled = runtime.dispatchInput({ type: 'text', text });
         if (handled) {
             event.preventDefault();
@@ -311,11 +348,13 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointerleave', handlePointerLeave);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
-    canvas.addEventListener('keydown', handleKeyDown);
-    canvas.addEventListener('keyup', handleKeyUp);
-    canvas.addEventListener('focus', handleFocus);
-    canvas.addEventListener('blur', handleBlur);
-    canvas.addEventListener('paste', handlePaste);
+    canvas.addEventListener('focus', handleCanvasFocus);
+    textBridge.addEventListener('keydown', handleKeyDown);
+    textBridge.addEventListener('keyup', handleKeyUp);
+    textBridge.addEventListener('focus', handleTextBridgeFocus);
+    textBridge.addEventListener('blur', handleTextBridgeBlur);
+    textBridge.addEventListener('input', handleTextInput);
+    textBridge.addEventListener('paste', handlePaste);
     globalThis.addEventListener('pointerup', handlePointerUp);
 
     return () => {
@@ -323,12 +362,15 @@ export const bindUIRuntimeToCanvas = (scene: Scene, runtime: UIRuntime): (() => 
         canvas.removeEventListener('pointerdown', handlePointerDown);
         canvas.removeEventListener('pointerleave', handlePointerLeave);
         canvas.removeEventListener('wheel', handleWheel);
-        canvas.removeEventListener('keydown', handleKeyDown);
-        canvas.removeEventListener('keyup', handleKeyUp);
-        canvas.removeEventListener('focus', handleFocus);
-        canvas.removeEventListener('blur', handleBlur);
-        canvas.removeEventListener('paste', handlePaste);
+        canvas.removeEventListener('focus', handleCanvasFocus);
+        textBridge.removeEventListener('keydown', handleKeyDown);
+        textBridge.removeEventListener('keyup', handleKeyUp);
+        textBridge.removeEventListener('focus', handleTextBridgeFocus);
+        textBridge.removeEventListener('blur', handleTextBridgeBlur);
+        textBridge.removeEventListener('input', handleTextInput);
+        textBridge.removeEventListener('paste', handlePaste);
         globalThis.removeEventListener('pointerup', handlePointerUp);
+        textBridge.remove();
     };
 };
 
