@@ -28,6 +28,10 @@ import { SpotLight } from './components/spot-light';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import {
+    SceneMaterialRegistry,
+    type SceneMaterialResource,
+} from './material-registry';
+import {
     SceneShaderRegistry,
     type SceneShaderResource,
 } from './shader-registry';
@@ -45,9 +49,6 @@ import {
 import { ScenePrefabRuntime } from './scene-prefab-runtime';
 import {
     cloneMeshDefinition,
-    cloneTextureBinding,
-    decodeSceneValue,
-    encodeSceneValue,
 } from './serialization';
 import { resolveSceneRegistryFromProfile } from './profile';
 import type {
@@ -105,19 +106,6 @@ interface MorphMeshResourceCache {
     readonly resource: MeshResource;
     readonly vertices: Uint8Array;
     lastWeightVersion: number;
-}
-
-interface MaterialTextureBinding {
-    readonly textureId: string;
-    readonly samplerId: string | null;
-    readonly unit?: number;
-}
-
-interface MaterialResource {
-    readonly id: string;
-    readonly shaderId: string;
-    readonly uniforms: Map<string, SceneUniformValue>;
-    readonly textureBindings: Map<string, MaterialTextureBinding>;
 }
 
 interface TextureResource {
@@ -336,29 +324,6 @@ const applyMorphTargetsToVertexBytes = (
     }
 };
 
-const cloneSceneValue = <T>(value: T): T => decodeSceneValue(encodeSceneValue(value)) as T;
-
-const cloneMaterialDefinition = (definition: SceneMaterialDefinition): SceneMaterialDefinition => ({
-    id: definition.id,
-    shaderId: definition.shaderId,
-    uniforms: definition.uniforms
-        ? Object.fromEntries(
-              Object.entries(definition.uniforms).map(([name, value]) => [
-                  name,
-                  cloneSceneValue(value),
-              ])
-          )
-        : undefined,
-    textures: definition.textures
-        ? Object.fromEntries(
-              Object.entries(definition.textures).map(([name, binding]) => [
-                  name,
-                  cloneTextureBinding(binding),
-              ])
-          )
-        : undefined,
-});
-
 const cloneSamplerDefinition = (definition: SceneSamplerDefinition): SceneSamplerDefinition => ({
     ...definition,
 });
@@ -567,23 +532,6 @@ const extractUniformTypeHints = (
     return types;
 };
 
-const normalizeTextureBinding = (
-    binding: SceneTextureBindingDefinition
-): MaterialTextureBinding => {
-    if (typeof binding === 'string') {
-        return {
-            textureId: binding,
-            samplerId: null,
-        };
-    }
-
-    return {
-        textureId: binding.textureId,
-        samplerId: binding.samplerId ?? null,
-        unit: binding.unit,
-    };
-};
-
 const clampByte = (value: number): number => {
     const normalized = value <= 1 && value >= 0 ? value * 255 : value;
     return Math.max(0, Math.min(255, Math.round(normalized)));
@@ -722,8 +670,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
     private readonly _shaderRegistry = new SceneShaderRegistry();
-    private readonly _materials = new Map<string, MaterialResource>();
-    private readonly _materialDefinitions = new Map<string, SceneMaterialDefinition>();
+    private readonly _materialRegistry = new SceneMaterialRegistry();
     private readonly _meshes = new Map<string, MeshResource>();
     private readonly _meshDefinitions = new Map<string, SceneMeshDefinition>();
     private readonly _morphMeshes = new Map<string, MorphMeshResourceCache>();
@@ -921,44 +868,13 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             );
         }
 
-        const resource: MaterialResource = {
-            id: definition.id,
-            shaderId: definition.shaderId,
-            uniforms: new Map(Object.entries(definition.uniforms ?? {})),
-            textureBindings: new Map(
-                Object.entries(definition.textures ?? {}).map(([name, binding]) => [
-                    name,
-                    normalizeTextureBinding(binding),
-                ])
-            ),
-        };
-
-        this._materials.set(resource.id, resource);
-        this._materialDefinitions.set(resource.id, cloneMaterialDefinition(definition));
-
-        return {
-            id: resource.id,
-            shaderId: resource.shaderId,
-            textureBindings: [...resource.textureBindings.keys()],
-        };
+        return this._materialRegistry.create(definition);
     }
 
     setMaterialUniform(materialId: string, name: string, value: SceneUniformValue): this {
         this._assertNotDisposed();
-        const material = this._materials.get(materialId);
-        if (!material) {
+        if (!this._materialRegistry.setUniform(materialId, name, value)) {
             throw new SceneMaterialError(`Material '${materialId}' is not registered`);
-        }
-
-        material.uniforms.set(name, value);
-        const definition = this._materialDefinitions.get(materialId);
-        if (definition) {
-            const uniforms = { ...(definition.uniforms ?? {}) };
-            uniforms[name] = cloneSceneValue(value);
-            this._materialDefinitions.set(materialId, {
-                ...definition,
-                uniforms,
-            });
         }
 
         return this;
@@ -970,37 +886,15 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         binding: SceneTextureBindingDefinition
     ): this {
         this._assertNotDisposed();
-        const material = this._materials.get(materialId);
-        if (!material) {
+        if (!this._materialRegistry.setTexture(materialId, name, binding)) {
             throw new SceneMaterialError(`Material '${materialId}' is not registered`);
-        }
-
-        material.textureBindings.set(name, normalizeTextureBinding(binding));
-        const definition = this._materialDefinitions.get(materialId);
-        if (definition) {
-            this._materialDefinitions.set(materialId, {
-                ...definition,
-                textures: {
-                    ...(definition.textures ?? {}),
-                    [name]: cloneTextureBinding(binding),
-                },
-            });
         }
 
         return this;
     }
 
     getMaterial(materialId: string): SceneMaterialHandle | null {
-        const material = this._materials.get(materialId);
-        if (!material) {
-            return null;
-        }
-
-        return {
-            id: material.id,
-            shaderId: material.shaderId,
-            textureBindings: [...material.textureBindings.keys()],
-        };
+        return this._materialRegistry.getHandle(materialId);
     }
 
     registerMesh(definition: SceneMeshDefinition): SceneMeshHandle {
@@ -1128,7 +1022,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     getMaterialTextureBindings(materialId: string): readonly SceneMaterialTextureBindingHandle[] {
-        const material = this._materials.get(materialId);
+        const material = this._materialRegistry.get(materialId);
         if (!material) {
             return [];
         }
@@ -1260,9 +1154,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             meshes: [...this._meshDefinitions.values()].map((definition) =>
                 cloneMeshDefinition(definition)
             ),
-            materials: [...this._materialDefinitions.values()].map((definition) =>
-                cloneMaterialDefinition(definition)
-            ),
+            materials: this._materialRegistry.getDefinitions(),
             textures: [...this._textureDefinitions.values()].map((definition) =>
                 cloneTextureDefinition(definition)
             ),
@@ -1991,7 +1883,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 }
 
                 const mesh = this._resolveRenderableMesh(item.renderer);
-                const material = this._materials.get(item.renderer.materialId);
+                const material = this._materialRegistry.get(item.renderer.materialId);
 
                 if (!mesh || !material) {
                     continue;
@@ -2419,7 +2311,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _bindMaterialTextures(
         shader: SceneShaderResource,
-        material: MaterialResource
+        material: SceneMaterialResource
     ): number[] {
         const assignments = [...material.textureBindings.entries()].sort((left, right) => {
             const leftUnit = left[1].unit ?? Number.MAX_SAFE_INTEGER;
@@ -2764,8 +2656,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             }
         }
 
-        this._materials.clear();
-        this._materialDefinitions.clear();
+        this._materialRegistry.clear();
         this._meshes.clear();
         this._meshDefinitions.clear();
         this._morphMeshes.clear();
