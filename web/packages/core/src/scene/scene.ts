@@ -19,29 +19,15 @@ import {
 import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
 import { Animator } from './components/animator';
 import { Camera, type CameraConfig } from './components/camera';
-import { SceneDrawExecutionContextCache } from './draw-execution-context';
-import { SceneDrawExecutor } from './draw-executor';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
-import { SceneMorphMeshRuntime } from './morph-mesh-runtime';
 import { OrbitCameraController } from './components/orbit-camera-controller';
-import { SceneCameraFrameStateCollector } from './camera-frame-state';
 import { SceneComponentCatalog } from './component-catalog';
-import { selectSceneCamera } from './camera-selector';
-import { SceneFrameUniformBinder } from './frame-uniform-binder';
-import { SceneLightingCollector, type SceneLightingState } from './lighting-collector';
-import { SceneLightingUniformBinder } from './lighting-uniform-binder';
 import { createSceneLoopSystems } from './loop-bridge';
-import { SceneMaterialTextureBinder } from './material-texture-binder';
 import type { SceneMeshResource } from './mesh-registry';
-import { SceneRenderItemCollector, type SceneRenderItem } from './render-item-collector';
-import { SceneRenderFrameState } from './render-frame-state';
-import { SceneRenderPassPreparer } from './render-pass-preparer';
-import { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneShaderResource } from './shader-registry';
-import { SceneSkinningUniformBinder } from './skinning-uniform-binder';
 import type { SceneTextureResource } from './texture-registry';
+import { SceneRenderRuntime } from './scene-render-runtime';
 import { SceneResourceRuntime } from './scene-resource-runtime';
-import { SceneUniformWriter } from './uniform-writer';
 import {
     SceneCanvasError,
     SceneLifecycleError,
@@ -137,7 +123,6 @@ const DEFAULT_AMBIENT_LIGHT = new Vec3(0.08, 0.08, 0.1);
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
 const DEFAULT_RENDER_PASS_ID = 'main';
-const MAX_SCENE_LOCAL_LIGHTS = 4;
 
 const createId = (prefix: string): string =>
     `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -432,27 +417,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
     private readonly _resources: SceneResourceRuntime;
-    private readonly _lightingCollector = new SceneLightingCollector(MAX_SCENE_LOCAL_LIGHTS);
-    private readonly _cameraFrameCollector = new SceneCameraFrameStateCollector();
-    private readonly _renderItemCollector = new SceneRenderItemCollector();
-    private readonly _renderFrameState = new SceneRenderFrameState();
-    private readonly _drawExecutionContextCache = new SceneDrawExecutionContextCache();
-    private readonly _materialTextureBinder: SceneMaterialTextureBinder;
-    private readonly _renderPassPreparer: SceneRenderPassPreparer;
-    private readonly _renderStateApplier: SceneRenderStateApplier;
-    private readonly _uniformWriter: SceneUniformWriter;
-    private readonly _frameUniformBinder: SceneFrameUniformBinder;
-    private readonly _lightingUniformBinder: SceneLightingUniformBinder;
-    private readonly _skinningUniformBinder: SceneSkinningUniformBinder;
-    private readonly _morphMeshRuntime: SceneMorphMeshRuntime;
-    private readonly _drawExecutor: SceneDrawExecutor;
-    private readonly _textureUniformSetter = (
-        shader: SceneShaderResource,
-        name: string,
-        value: SceneUniformValue | null | undefined
-    ): void => {
-        this._uniformWriter.write(shader, name, value);
-    };
+    private readonly _renderRuntime: SceneRenderRuntime;
     private readonly _textureManager: WebGLTextureManager;
     private readonly _autoCreatedCanvas: boolean;
     private readonly _defaultClearColor: Vec4;
@@ -468,20 +433,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._autoCreatedCanvas = surface.autoCreated;
         this._pixelRatio = options.pixelRatio ?? globalThis.devicePixelRatio ?? 1;
         this._defaultClearColor = toVec4(options.clearColor);
-        this._ambientLight = toVec3(options.ambientLight);
+        const ambientLight = toVec3(options.ambientLight);
+        this._ambientLight = ambientLight;
         this._textureManager = new WebGLTextureManager(this.gl);
-        this._materialTextureBinder = new SceneMaterialTextureBinder(this.gl);
-        this._renderPassPreparer = new SceneRenderPassPreparer(this.gl, this._defaultClearColor);
-        this._renderStateApplier = new SceneRenderStateApplier(this.gl);
-        this._uniformWriter = new SceneUniformWriter(this.gl);
-        this._frameUniformBinder = new SceneFrameUniformBinder(this._uniformWriter);
-        this._lightingUniformBinder = new SceneLightingUniformBinder(this._uniformWriter);
-        this._skinningUniformBinder = new SceneSkinningUniformBinder(this._uniformWriter);
-        this._morphMeshRuntime = new SceneMorphMeshRuntime({
-            gl: this.gl,
-            createMeshResource: (definition) => this._createMeshResource(definition),
-            disposeMesh: (mesh) => this._disposeMesh(mesh),
-        });
         const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -491,17 +445,14 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             defaultClearColor: this._defaultClearColor,
             defaultSampler,
         });
-        this._drawExecutor = new SceneDrawExecutor({
+        this._renderRuntime = new SceneRenderRuntime({
             gl: this.gl,
             resources: this._resources,
-            morphMeshRuntime: this._morphMeshRuntime,
-            renderStateApplier: this._renderStateApplier,
-            frameUniformBinder: this._frameUniformBinder,
-            lightingUniformBinder: this._lightingUniformBinder,
-            skinningUniformBinder: this._skinningUniformBinder,
-            materialTextureBinder: this._materialTextureBinder,
-            uniformWriter: this._uniformWriter,
-            textureUniformSetter: this._textureUniformSetter,
+            ambientLight,
+            defaultClearColor: this._defaultClearColor,
+            getActors: () => this.world.getAllActors(),
+            createMeshResource: (definition) => this._createMeshResource(definition),
+            disposeMesh: (mesh) => this._disposeMesh(mesh),
             applyMissingVertexAttributeDefaults: (mesh) => {
                 this._applyMissingVertexAttributeDefaults(mesh);
             },
@@ -580,11 +531,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     get renderStats() {
-        return {
-            frame: this._renderFrameState.frame,
-            drawCalls: this._renderFrameState.drawCalls,
-            trianglesSubmitted: this._renderFrameState.trianglesSubmitted,
-        };
+        return this._renderRuntime.stats;
     }
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
@@ -695,7 +642,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerMesh(definition: SceneMeshDefinition): SceneMeshHandle {
         this._assertNotDisposed();
-        this._morphMeshRuntime.releaseBaseMesh(definition.id);
+        this._renderRuntime.releaseBaseMesh(definition.id);
         const resource = this._createMeshResource(definition);
         const result = this._resources.meshes.register(definition, resource);
         if (result.previous) {
@@ -1541,74 +1488,17 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _render(deltaTime: number): void {
-        const renderFrame = this._renderFrameState.begin(this.loop.frame);
-        const viewportWidth = this.canvas.width;
-        const viewportHeight = this.canvas.height;
-        const elapsedSeconds = this.loop.elapsed / 1000;
-        const deltaSeconds = deltaTime / 1000;
-        const frameNumber = this.loop.frame;
-
-        const camera = this._selectCamera();
-        const lighting = this._collectLighting();
-        const renderPasses = this._resources.renderPasses.getEnabledResources();
-
-        if (renderPasses.length === 0) {
-            return;
-        }
-
-        const cameraFrame = this._cameraFrameCollector.collect(
-            camera,
-            viewportWidth,
-            viewportHeight
-        );
-        this.gl.viewport(0, 0, viewportWidth, viewportHeight);
-
-        for (const renderPass of renderPasses) {
-            this._renderPassPreparer.prepare(renderPass, cameraFrame?.camera);
-
-            if (!cameraFrame) {
-                continue;
-            }
-
-            const drawContext = this._drawExecutionContextCache.prepare({
-                renderPass,
-                cameraFrame,
-                lighting,
-                elapsedSeconds,
-                deltaSeconds,
-                frame: frameNumber,
-                viewportWidth,
-                viewportHeight,
-            });
-
-            const renderItems = this._collectRenderItems(renderPass.rendererPassId);
-            for (const item of renderItems) {
-                this._drawExecutor.execute(
-                    item,
-                    drawContext,
-                    renderFrame
-                );
-            }
-        }
-
-        this.gl.bindVertexArray(null);
-        this._morphMeshRuntime.prune(renderFrame.activeRendererIds);
-    }
-
-    private _collectRenderItems(passId: string): readonly SceneRenderItem[] {
-        return this._renderItemCollector.collect(this.world.getAllActors(), passId);
-    }
-
-    private _selectCamera(): Camera | undefined {
-        return selectSceneCamera(this.world.getAllActors());
-    }
-
-    private _collectLighting(): SceneLightingState {
-        return this._lightingCollector.collect(this.world.getAllActors(), this._ambientLight);
+        this._renderRuntime.render({
+            frame: this.loop.frame,
+            elapsedSeconds: this.loop.elapsed / 1000,
+            deltaSeconds: deltaTime / 1000,
+            viewportWidth: this.canvas.width,
+            viewportHeight: this.canvas.height,
+        });
     }
 
     private _clearSceneAssets(): void {
-        this._morphMeshRuntime.clear();
+        this._renderRuntime.clear();
         this._resources.clear({
             deleteProgram: (shader) => {
                 this.gl.deleteProgram(shader.program);

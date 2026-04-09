@@ -76,6 +76,8 @@ export {
     cloneSceneRenderPassDefinition,
     SceneRenderPassRegistry,
 } from './render-pass-registry';
+export type { SceneRenderRuntimeOptions, SceneRenderRuntimeParams } from './scene-render-runtime';
+export { SceneRenderRuntime } from './scene-render-runtime';
 
 export type {
     SceneBuiltInRegistry,
