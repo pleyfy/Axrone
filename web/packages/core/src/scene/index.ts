@@ -50,6 +50,7 @@ export type {
 } from './scene-resource-runtime';
 export { SceneResourceRuntime } from './scene-resource-runtime';
 export { SceneRenderStateApplier } from './render-state-applier';
+export { SceneUniformWriter } from './uniform-writer';
 export type { SceneSamplerRegistrationResult, SceneSamplerResource } from './sampler-registry';
 export { cloneSceneSamplerDefinition, SceneSamplerRegistry } from './sampler-registry';
 export type { SceneTextureRegistrationResult, SceneTextureResource } from './texture-registry';

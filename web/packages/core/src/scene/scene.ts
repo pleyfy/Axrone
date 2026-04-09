@@ -1,4 +1,4 @@
-import { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
+import { Mat4, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 import { createBox, createPlane, createSphere } from '../geometry/primitives';
 import type { IGeometryBuffers } from '../geometry/primitives/types';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
@@ -27,7 +27,6 @@ import { selectSceneCamera } from './camera-selector';
 import { SceneLightingCollector, type SceneLightingState } from './lighting-collector';
 import { createSceneLoopSystems } from './loop-bridge';
 import { SceneMaterialTextureBinder } from './material-texture-binder';
-import type { SceneMaterialResource } from './material-registry';
 import type { SceneMeshResource } from './mesh-registry';
 import { SceneRenderItemCollector, type SceneRenderItem } from './render-item-collector';
 import type { SceneRenderPassResource } from './render-pass-registry';
@@ -35,6 +34,7 @@ import { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneShaderResource } from './shader-registry';
 import type { SceneTextureResource } from './texture-registry';
 import { SceneResourceRuntime } from './scene-resource-runtime';
+import { SceneUniformWriter } from './uniform-writer';
 import {
     SceneCanvasError,
     SceneLifecycleError,
@@ -529,12 +529,13 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _mvpScratch = new Mat4();
     private readonly _materialTextureBinder: SceneMaterialTextureBinder;
     private readonly _renderStateApplier: SceneRenderStateApplier;
+    private readonly _uniformWriter: SceneUniformWriter;
     private readonly _textureUniformSetter = (
         shader: SceneShaderResource,
         name: string,
         value: SceneUniformValue | null | undefined
     ): void => {
-        this._setUniform(shader, name, value);
+        this._uniformWriter.write(shader, name, value);
     };
     private readonly _morphMeshes = new Map<string, MorphMeshResourceCache>();
     private readonly _textureManager: WebGLTextureManager;
@@ -561,6 +562,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._textureManager = new WebGLTextureManager(this.gl);
         this._materialTextureBinder = new SceneMaterialTextureBinder(this.gl);
         this._renderStateApplier = new SceneRenderStateApplier(this.gl);
+        this._uniformWriter = new SceneUniformWriter(this.gl);
         const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -1672,20 +1674,20 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this.gl.bindVertexArray(mesh.vertexArray);
                 this._applyMissingVertexAttributeDefaults(mesh);
 
-                this._setUniform(shader, 'u_Model', modelMatrix);
-                this._setUniform(shader, 'u_View', viewMatrix);
-                this._setUniform(shader, 'u_Projection', projectionMatrix);
-                this._setUniform(shader, 'u_ViewProjection', viewProjectionMatrix);
-                this._setUniform(shader, 'u_MVP', mvpMatrix);
-                this._setUniform(shader, 'u_Time', this.loop.elapsed / 1000);
-                this._setUniform(shader, 'u_DeltaTime', deltaTime / 1000);
-                this._setUniform(shader, 'u_Frame', this.loop.frame);
-                this._setUniform(
+                this._uniformWriter.write(shader, 'u_Model', modelMatrix);
+                this._uniformWriter.write(shader, 'u_View', viewMatrix);
+                this._uniformWriter.write(shader, 'u_Projection', projectionMatrix);
+                this._uniformWriter.write(shader, 'u_ViewProjection', viewProjectionMatrix);
+                this._uniformWriter.write(shader, 'u_MVP', mvpMatrix);
+                this._uniformWriter.write(shader, 'u_Time', this.loop.elapsed / 1000);
+                this._uniformWriter.write(shader, 'u_DeltaTime', deltaTime / 1000);
+                this._uniformWriter.write(shader, 'u_Frame', this.loop.frame);
+                this._uniformWriter.write(
                     shader,
                     'u_Resolution',
                     this._resolutionUniform
                 );
-                this._setUniform(shader, 'u_CameraPosition', cameraPosition);
+                this._uniformWriter.write(shader, 'u_CameraPosition', cameraPosition);
                 this._applyLightingUniforms(shader, item.renderer, lighting);
                 this._applySkinningUniforms(shader, item.renderer);
 
@@ -1697,11 +1699,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 );
 
                 for (const [name, value] of material.uniforms) {
-                    this._setUniform(shader, name, value);
+                    this._uniformWriter.write(shader, name, value);
                 }
 
                 for (const [name, value] of item.renderer.getUniformEntries()) {
-                    this._setUniform(shader, name, value);
+                    this._uniformWriter.write(shader, name, value);
                 }
 
                 if (mesh.indexBuffer && mesh.indexType !== null && mesh.indexCount > 0) {
@@ -1857,73 +1859,81 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         lighting: SceneLightingState
     ): void {
         const receiveLighting = renderer.receiveLighting;
-        this._setUniform(shader, 'u_ReceiveLighting', receiveLighting);
-        this._setUniform(shader, 'u_AmbientLight', receiveLighting ? lighting.ambient : Vec3.ZERO);
-        this._setUniform(shader, 'u_LightDirection', lighting.directionalDirection);
-        this._setUniform(
+        this._uniformWriter.write(shader, 'u_ReceiveLighting', receiveLighting);
+        this._uniformWriter.write(
+            shader,
+            'u_AmbientLight',
+            receiveLighting ? lighting.ambient : Vec3.ZERO
+        );
+        this._uniformWriter.write(shader, 'u_LightDirection', lighting.directionalDirection);
+        this._uniformWriter.write(
             shader,
             'u_LightColor',
             receiveLighting && lighting.hasDirectional ? lighting.directionalColor : Vec3.ZERO
         );
-        this._setUniform(
+        this._uniformWriter.write(
             shader,
             'u_LightIntensity',
             receiveLighting && lighting.hasDirectional ? lighting.directionalIntensity : 0
         );
-        this._setUniform(shader, 'u_PointLightCount', receiveLighting ? lighting.pointCount : 0);
-        this._setUniform(shader, 'u_PointLightPosition', lighting.pointLightPosition);
-        this._setUniform(
+        this._uniformWriter.write(shader, 'u_PointLightCount', receiveLighting ? lighting.pointCount : 0);
+        this._uniformWriter.write(shader, 'u_PointLightPosition', lighting.pointLightPosition);
+        this._uniformWriter.write(
             shader,
             'u_PointLightColor',
             receiveLighting && lighting.pointCount > 0 ? lighting.pointLightColor : Vec3.ZERO
         );
-        this._setUniform(
+        this._uniformWriter.write(
             shader,
             'u_PointLightIntensity',
             receiveLighting && lighting.pointCount > 0 ? lighting.pointLightIntensity : 0
         );
-        this._setUniform(
+        this._uniformWriter.write(
             shader,
             'u_PointLightRange',
             receiveLighting && lighting.pointCount > 0 ? lighting.pointLightRange : 0
         );
-        this._setUniform(shader, 'u_SpotLightCount', receiveLighting ? lighting.spotCount : 0);
-        this._setUniform(shader, 'u_SpotLightPosition', lighting.spotLightPosition);
-        this._setUniform(shader, 'u_SpotLightDirection', lighting.spotLightDirection);
-        this._setUniform(
+        this._uniformWriter.write(shader, 'u_SpotLightCount', receiveLighting ? lighting.spotCount : 0);
+        this._uniformWriter.write(shader, 'u_SpotLightPosition', lighting.spotLightPosition);
+        this._uniformWriter.write(shader, 'u_SpotLightDirection', lighting.spotLightDirection);
+        this._uniformWriter.write(
             shader,
             'u_SpotLightColor',
             receiveLighting && lighting.spotCount > 0 ? lighting.spotLightColor : Vec3.ZERO
         );
-        this._setUniform(
+        this._uniformWriter.write(
             shader,
             'u_SpotLightIntensity',
             receiveLighting && lighting.spotCount > 0 ? lighting.spotLightIntensity : 0
         );
-        this._setUniform(
+        this._uniformWriter.write(
             shader,
             'u_SpotLightRange',
             receiveLighting && lighting.spotCount > 0 ? lighting.spotLightRange : 0
         );
-        this._setUniform(
+        this._uniformWriter.write(
             shader,
             'u_SpotLightInnerCone',
             receiveLighting && lighting.spotCount > 0 ? lighting.spotLightInnerCone : 0
         );
-        this._setUniform(
+        this._uniformWriter.write(
             shader,
             'u_SpotLightOuterCone',
             receiveLighting && lighting.spotCount > 0 ? lighting.spotLightOuterCone : 0
         );
-        this._setUniform(shader, 'u_LocalLightCount', receiveLighting ? lighting.localLightCount : 0);
-        this._setUniform(shader, 'u_LocalLightType', lighting.localLightTypes);
-        this._setUniform(shader, 'u_LocalLightPosition', lighting.localLightPositions);
-        this._setUniform(shader, 'u_LocalLightDirection', lighting.localLightDirections);
-        this._setUniform(shader, 'u_LocalLightColor', lighting.localLightColors);
-        this._setUniform(shader, 'u_LocalLightIntensity', lighting.localLightIntensities);
-        this._setUniform(shader, 'u_LocalLightRange', lighting.localLightRanges);
-        this._setUniform(shader, 'u_LocalLightInnerCone', lighting.localLightInnerCones);
-        this._setUniform(shader, 'u_LocalLightOuterCone', lighting.localLightOuterCones);
+        this._uniformWriter.write(
+            shader,
+            'u_LocalLightCount',
+            receiveLighting ? lighting.localLightCount : 0
+        );
+        this._uniformWriter.write(shader, 'u_LocalLightType', lighting.localLightTypes);
+        this._uniformWriter.write(shader, 'u_LocalLightPosition', lighting.localLightPositions);
+        this._uniformWriter.write(shader, 'u_LocalLightDirection', lighting.localLightDirections);
+        this._uniformWriter.write(shader, 'u_LocalLightColor', lighting.localLightColors);
+        this._uniformWriter.write(shader, 'u_LocalLightIntensity', lighting.localLightIntensities);
+        this._uniformWriter.write(shader, 'u_LocalLightRange', lighting.localLightRanges);
+        this._uniformWriter.write(shader, 'u_LocalLightInnerCone', lighting.localLightInnerCones);
+        this._uniformWriter.write(shader, 'u_LocalLightOuterCone', lighting.localLightOuterCones);
     }
 
     private _applySkinningUniforms(
@@ -1933,276 +1943,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         const palette = renderer.getSkinJointMatrixPalette();
         const jointCount = palette ? renderer.skinJointCount : 0;
 
-        this._setUniform(shader, 'u_Skinning', Boolean(palette && jointCount > 0));
-        this._setUniform(shader, 'u_SkinJointCount', jointCount);
+        this._uniformWriter.write(shader, 'u_Skinning', Boolean(palette && jointCount > 0));
+        this._uniformWriter.write(shader, 'u_SkinJointCount', jointCount);
         if (palette) {
-            this._setUniform(shader, 'u_JointMatrices', palette);
-        }
-    }
-
-    private _toWebGLMatrixData(value: Mat4): Float32Array {
-        return new Float32Array(Mat4.transpose(value).data);
-    }
-
-    private _toWebGLMatrixArrayData(value: Float32Array): Float32Array {
-        if (value.length <= 16) {
-            return this._toWebGLMatrixData(new Mat4(value));
-        }
-
-        const transformed = new Float32Array(value.length);
-        for (let offset = 0; offset + 15 < value.length; offset += 16) {
-            transformed.set(
-                this._toWebGLMatrixData(new Mat4(value.subarray(offset, offset + 16))),
-                offset
-            );
-        }
-        return transformed;
-    }
-
-    private _setNumericUniform(
-        shader: SceneShaderResource,
-        location: WebGLUniformLocation,
-        name: string,
-        value: number
-    ): void {
-        const uniformType = shader.uniformTypes.get(name);
-
-        switch (uniformType) {
-            case this.gl.BOOL:
-            case this.gl.INT:
-            case this.gl.SAMPLER_2D:
-            case this.gl.SAMPLER_CUBE:
-            case this.gl.SAMPLER_2D_SHADOW:
-            case this.gl.SAMPLER_2D_ARRAY:
-            case this.gl.SAMPLER_2D_ARRAY_SHADOW:
-            case this.gl.SAMPLER_CUBE_SHADOW:
-            case this.gl.INT_SAMPLER_2D:
-            case this.gl.INT_SAMPLER_3D:
-            case this.gl.INT_SAMPLER_CUBE:
-            case this.gl.INT_SAMPLER_2D_ARRAY:
-            case this.gl.UNSIGNED_INT_SAMPLER_2D:
-            case this.gl.UNSIGNED_INT_SAMPLER_3D:
-            case this.gl.UNSIGNED_INT_SAMPLER_CUBE:
-            case this.gl.UNSIGNED_INT_SAMPLER_2D_ARRAY:
-                this.gl.uniform1i(location, Math.trunc(value));
-                return;
-            case this.gl.UNSIGNED_INT:
-                this.gl.uniform1ui(location, Math.max(0, Math.trunc(value)));
-                return;
-            case this.gl.FLOAT:
-            default:
-                this.gl.uniform1f(location, value);
-                return;
-        }
-    }
-
-    private _setUniform(
-        shader: SceneShaderResource,
-        name: string,
-        value: SceneUniformValue | null | undefined
-    ): void {
-        if (value === null || value === undefined) {
-            return;
-        }
-
-        const location = shader.uniformLocations.get(name);
-        if (!location) {
-            return;
-        }
-
-        if (value instanceof Mat4) {
-            this.gl.uniformMatrix4fv(location, false, this._toWebGLMatrixData(value));
-            return;
-        }
-
-        if (value instanceof Quat) {
-            this.gl.uniform4f(location, value.x, value.y, value.z, value.w);
-            return;
-        }
-
-        if (value instanceof Vec4) {
-            this.gl.uniform4f(location, value.x, value.y, value.z, value.w);
-            return;
-        }
-
-        if (value instanceof Vec3) {
-            this.gl.uniform3f(location, value.x, value.y, value.z);
-            return;
-        }
-
-        if (value instanceof Vec2) {
-            this.gl.uniform2f(location, value.x, value.y);
-            return;
-        }
-
-        if (value instanceof Float32Array) {
-            const uniformType = shader.uniformTypes.get(name);
-            switch (uniformType) {
-                case this.gl.FLOAT:
-                    this.gl.uniform1fv(location, value);
-                    return;
-                case this.gl.FLOAT_MAT4:
-                    this.gl.uniformMatrix4fv(
-                        location,
-                        false,
-                        this._toWebGLMatrixArrayData(value)
-                    );
-                    return;
-                case this.gl.FLOAT_VEC4:
-                    this.gl.uniform4fv(location, value);
-                    return;
-                case this.gl.FLOAT_VEC3:
-                    this.gl.uniform3fv(location, value);
-                    return;
-                case this.gl.FLOAT_VEC2:
-                    this.gl.uniform2fv(location, value);
-                    return;
-            }
-            switch (value.length) {
-                case 16:
-                    this.gl.uniformMatrix4fv(
-                        location,
-                        false,
-                        this._toWebGLMatrixData(new Mat4(value))
-                    );
-                    return;
-                case 4:
-                    this.gl.uniform4fv(location, value);
-                    return;
-                case 3:
-                    this.gl.uniform3fv(location, value);
-                    return;
-                case 2:
-                    this.gl.uniform2fv(location, value);
-                    return;
-                default:
-                    this.gl.uniform1fv(location, value);
-                    return;
-            }
-        }
-
-        if (value instanceof Int32Array) {
-            const uniformType = shader.uniformTypes.get(name);
-            switch (uniformType) {
-                case this.gl.INT:
-                case this.gl.BOOL:
-                case this.gl.SAMPLER_2D:
-                case this.gl.SAMPLER_CUBE:
-                case this.gl.SAMPLER_2D_SHADOW:
-                case this.gl.SAMPLER_2D_ARRAY:
-                case this.gl.SAMPLER_2D_ARRAY_SHADOW:
-                case this.gl.SAMPLER_CUBE_SHADOW:
-                case this.gl.INT_SAMPLER_2D:
-                case this.gl.INT_SAMPLER_3D:
-                case this.gl.INT_SAMPLER_CUBE:
-                case this.gl.INT_SAMPLER_2D_ARRAY:
-                    this.gl.uniform1iv(location, value);
-                    return;
-                case this.gl.INT_VEC4:
-                case this.gl.BOOL_VEC4:
-                    this.gl.uniform4iv(location, value);
-                    return;
-                case this.gl.INT_VEC3:
-                case this.gl.BOOL_VEC3:
-                    this.gl.uniform3iv(location, value);
-                    return;
-                case this.gl.INT_VEC2:
-                case this.gl.BOOL_VEC2:
-                    this.gl.uniform2iv(location, value);
-                    return;
-            }
-            switch (value.length) {
-                case 4:
-                    this.gl.uniform4iv(location, value);
-                    return;
-                case 3:
-                    this.gl.uniform3iv(location, value);
-                    return;
-                case 2:
-                    this.gl.uniform2iv(location, value);
-                    return;
-                default:
-                    this.gl.uniform1iv(location, value);
-                    return;
-            }
-        }
-
-        if (value instanceof Uint32Array) {
-            const uniformType = shader.uniformTypes.get(name);
-            switch (uniformType) {
-                case this.gl.UNSIGNED_INT:
-                    this.gl.uniform1uiv(location, value);
-                    return;
-                case this.gl.UNSIGNED_INT_VEC4:
-                    this.gl.uniform4uiv(location, value);
-                    return;
-                case this.gl.UNSIGNED_INT_VEC3:
-                    this.gl.uniform3uiv(location, value);
-                    return;
-                case this.gl.UNSIGNED_INT_VEC2:
-                    this.gl.uniform2uiv(location, value);
-                    return;
-            }
-            switch (value.length) {
-                case 4:
-                    this.gl.uniform4uiv(location, value);
-                    return;
-                case 3:
-                    this.gl.uniform3uiv(location, value);
-                    return;
-                case 2:
-                    this.gl.uniform2uiv(location, value);
-                    return;
-                default:
-                    this.gl.uniform1uiv(location, value);
-                    return;
-            }
-        }
-
-        if (Array.isArray(value)) {
-            const uniformType = shader.uniformTypes.get(name);
-            if (uniformType === this.gl.FLOAT_MAT4 && value.length % 16 === 0) {
-                this.gl.uniformMatrix4fv(
-                    location,
-                    false,
-                    this._toWebGLMatrixArrayData(new Float32Array(value))
-                );
-                return;
-            }
-
-            switch (value.length) {
-                case 16:
-                    this.gl.uniformMatrix4fv(
-                        location,
-                        false,
-                        this._toWebGLMatrixData(new Mat4(value))
-                    );
-                    return;
-                case 4:
-                    this.gl.uniform4f(location, value[0], value[1], value[2], value[3]);
-                    return;
-                case 3:
-                    this.gl.uniform3f(location, value[0], value[1], value[2]);
-                    return;
-                case 2:
-                    this.gl.uniform2f(location, value[0], value[1]);
-                    return;
-                case 1:
-                    this.gl.uniform1f(location, value[0]);
-                    return;
-                default:
-                    this.gl.uniform1fv(location, new Float32Array(value));
-                    return;
-            }
-        }
-
-        if (typeof value === 'boolean') {
-            this.gl.uniform1i(location, value ? 1 : 0);
-            return;
-        }
-
-        if (typeof value === 'number') {
-            this._setNumericUniform(shader, location, name, value);
+            this._uniformWriter.write(shader, 'u_JointMatrices', palette);
         }
     }
 
