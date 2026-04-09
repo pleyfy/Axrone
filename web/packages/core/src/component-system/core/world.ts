@@ -18,6 +18,7 @@ import type { Actor } from './actor';
 import { getComponentMetadata } from '../decorators/script';
 import { WorldActorRegistry } from './world-actor-registry';
 import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
+import { WorldQueryRuntime } from './world-query-runtime';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
 export type EntityId = Entity & { readonly __entityBrand: unique symbol };
@@ -75,6 +76,7 @@ export class World<R extends ComponentRegistry> {
     private readonly _archetypes = new Map<ArchetypeId, Archetype<R>>();
     private readonly _entityArchetypes = new Map<Entity, ArchetypeId>();
     private readonly _queryCache: OptimizedQueryCache;
+    private readonly _queryRuntime: WorldQueryRuntime<R>;
     private readonly _eventBus: IEventEmitter<ECSEventMap<R>>;
     private readonly _observables: ECSObservables<R>;
     private readonly _actorRegistry = new WorldActorRegistry();
@@ -113,6 +115,11 @@ export class World<R extends ComponentRegistry> {
         try {
             this._componentMask = this._createComponentMask();
             this._queryCache = new OptimizedQueryCache();
+            this._queryRuntime = new WorldQueryRuntime({
+                cache: this._queryCache,
+                getArchetypes: () => this._archetypes.values(),
+                createBitMask: (components) => this._createBitMask(components),
+            });
             this._eventBus = createTypedEmitter<ECSEventMap<R>>();
             this._observables = new ECSObservables<R>();
 
@@ -528,22 +535,9 @@ export class World<R extends ComponentRegistry> {
 
         try {
             this._diagnostics.recordQuery();
-
-            const queryKey = components.slice().sort().join(',');
-            let matchingArchetypes = this._queryCache.getQuery(queryKey);
-
-            if (!matchingArchetypes) {
-                const queryMask = this._createBitMask(components as readonly string[]);
-                matchingArchetypes = [];
-
-                for (const archetype of this._archetypes.values()) {
-                    if ((archetype.mask & queryMask) === queryMask) {
-                        matchingArchetypes.push(archetype.id);
-                    }
-                }
-
-                this._queryCache.setQuery(queryKey, matchingArchetypes);
-            }
+            const matchingArchetypes = this._queryRuntime.resolveMatchingArchetypes(
+                components as readonly string[]
+            );
 
             const results: QueryResult<R, Q>[] = [];
 
