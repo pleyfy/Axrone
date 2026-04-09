@@ -1,6 +1,7 @@
 import type { ComponentRegistry } from '../component-system/types/core';
 import {
     DEFAULT_SCENE_BUILT_IN_MANIFESTS,
+    SCENE_3D_BUILT_IN_MANIFEST,
     SCENE_CORE_BUILT_IN_MANIFEST,
     type SceneBuiltInManifest,
     createSceneRegistryFromBuiltInManifests,
@@ -56,6 +57,13 @@ const CORE_SCENE_RUNTIME_PROFILE: SceneRuntimeProfile<any> = Object.freeze(
     })
 );
 
+const SCENE_3D_RUNTIME_PROFILE: SceneRuntimeProfile<any> = Object.freeze(
+    createSceneManifestRuntimeProfile({
+        id: SCENE_3D_RUNTIME_PROFILE_ID,
+        manifests: [SCENE_CORE_BUILT_IN_MANIFEST, SCENE_3D_BUILT_IN_MANIFEST],
+    })
+);
+
 const DEFAULT_SCENE_RUNTIME_PROFILE: SceneRuntimeProfile<any> = Object.freeze(
     createSceneManifestRuntimeProfile({
         id: DEFAULT_SCENE_RUNTIME_PROFILE_ID,
@@ -69,7 +77,7 @@ export const getCoreSceneRuntimeProfile = <
 
 export const get3DSceneRuntimeProfile = <
     R extends ComponentRegistry = Record<string, never>,
->(): SceneRuntimeProfile<R> => DEFAULT_SCENE_RUNTIME_PROFILE as SceneRuntimeProfile<R>;
+>(): SceneRuntimeProfile<R> => SCENE_3D_RUNTIME_PROFILE as SceneRuntimeProfile<R>;
 
 export const getDefaultSceneRuntimeProfile = <
     R extends ComponentRegistry = Record<string, never>,

@@ -1,45 +1,32 @@
 export type {
-    SceneBuiltInComponentName,
-    SceneBuiltInManifest,
-    SceneManifestRegistryBuilderOptions,
-    SceneRegistryBuilderOptions,
-    SceneRegistryForBuiltIns,
-} from './scene/registry';
+    SceneRuntimeBuiltInComponentName,
+    SceneRuntimeBuiltInManifest,
+    SceneRuntimeBuiltInRegistry,
+    SceneRuntimeRegistry,
+} from './scene-runtime-registry';
 export {
-    DEFAULT_SCENE_BUILT_IN_MANIFESTS,
-    SCENE_3D_BUILT_IN_MANIFEST,
-    SCENE_ANIMATION_BUILT_IN_MANIFEST,
-    SCENE_CORE_BUILT_IN_MANIFEST,
-    createSceneBuiltInManifest,
-    createSceneRegistryFromBuiltInManifests,
-    resolveSceneBuiltInComponents,
-} from './scene/registry';
-
+    DEFAULT_SCENE_RUNTIME_BUILT_IN_MANIFESTS,
+    SCENE_RUNTIME_CORE_BUILT_IN_MANIFEST,
+    createSceneRuntimeBuiltInManifest,
+    createSceneRuntimeRegistry,
+    resolveSceneRuntimeBuiltInComponents,
+} from './scene-runtime-registry';
 export type {
-    SceneManifestRuntimeProfileOptions,
+    SceneRuntimeManifestProfileOptions,
     SceneRuntimeProfile,
     SceneRuntimeProfileContext,
-} from './scene/profile';
+} from './scene-runtime-profile';
 export {
     CORE_SCENE_RUNTIME_PROFILE_ID,
-    DEFAULT_SCENE_RUNTIME_PROFILE_ID,
-    SCENE_3D_RUNTIME_PROFILE_ID,
-    createSceneManifestRuntimeProfile,
     createSceneRuntimeProfile,
-    get3DSceneRuntimeProfile,
+    createSceneRuntimeManifestProfile,
     getCoreSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
-    resolveSceneRegistryFromProfile,
-} from './scene/profile';
+    resolveSceneRuntimeRegistryFromProfile,
+} from './scene-runtime-profile';
 
 export type { SceneActorRuntimeOptions } from './scene/scene-actor-runtime';
 export { SceneActorRuntime } from './scene/scene-actor-runtime';
-export type { SceneAssetRuntimeOptions } from './scene/scene-asset-runtime';
-export { SceneAssetRuntime } from './scene/scene-asset-runtime';
-export type { SceneLifecycleRuntimeOptions } from './scene/scene-lifecycle-runtime';
-export { SceneLifecycleRuntime } from './scene/scene-lifecycle-runtime';
-export type { SceneRuntimeKernelOptions } from './scene/scene-runtime-kernel';
-export { SceneRuntimeKernel } from './scene/scene-runtime-kernel';
 export {
     DEFAULT_SCENE_AMBIENT_LIGHT,
     DEFAULT_SCENE_CLEAR_COLOR,
@@ -99,9 +86,4 @@ export {
     SceneCapabilityError,
     SceneError,
     SceneLifecycleError,
-    SceneMaterialError,
-    SceneMeshError,
-    SceneShaderError,
 } from './scene/errors';
-
-export { createScene, createUnlitColorShaderDefinition, Scene } from './scene/scene';

@@ -3,14 +3,14 @@ import { Component } from '../../component-system/core/component';
 import {
     CORE_SCENE_RUNTIME_PROFILE_ID,
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,
-    SCENE_CORE_BUILT_IN_MANIFEST,
-    Scene,
-    SceneCapabilityError,
     createSceneManifestRuntimeProfile,
+    get3DSceneRuntimeProfile,
     getCoreSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
-} from '../../scene';
-import { ManualScheduler, createSceneOptions } from './test-harness';
+} from '../../scene/profile';
+import { SceneCapabilityError } from '../../scene/errors';
+import { SCENE_CORE_BUILT_IN_MANIFEST } from '../../scene/registry';
+import { ManualScheduler, createSceneOptions, installWebGL2Constants } from './test-harness';
 
 class PulseComponent extends Component {}
 
@@ -54,9 +54,38 @@ describe('Scene runtime profile manifests', () => {
         expect(getCoreSceneRuntimeProfile().id).toBe(CORE_SCENE_RUNTIME_PROFILE_ID);
     });
 
-    it('fails fast with a capability error when 3d actor helpers are used in a core profile', () => {
+    it('keeps the 3d profile narrower than the full profile', () => {
+        const profile = get3DSceneRuntimeProfile();
+        const registry = profile.resolveRegistry({});
+
+        expect(profile.id).toBe('scene/3d-default');
+        expect(registry.Camera).toBeDefined();
+        expect(registry.MeshRenderer).toBeDefined();
+        expect('Animator' in registry).toBe(false);
+    });
+
+    it('fails fast with a capability error when 3d actor helpers are used in a core profile', async () => {
+        installWebGL2Constants();
+        const { Scene } = await import('../../scene/scene');
         const scheduler = new ManualScheduler();
-        const canvas = document.createElement('canvas');
+        const root = globalThis as typeof globalThis & {
+            HTMLCanvasElement?: typeof HTMLCanvasElement;
+        };
+
+        if (!root.HTMLCanvasElement) {
+            root.HTMLCanvasElement = class HTMLCanvasElement {
+                width = 0;
+                height = 0;
+                clientWidth = 640;
+                clientHeight = 360;
+                style = {
+                    width: '',
+                    height: '',
+                };
+            } as typeof HTMLCanvasElement;
+        }
+
+        const canvas = new root.HTMLCanvasElement() as HTMLCanvasElement;
         const scene = new Scene({
             ...createSceneOptions(scheduler, canvas),
             profile: getCoreSceneRuntimeProfile(),

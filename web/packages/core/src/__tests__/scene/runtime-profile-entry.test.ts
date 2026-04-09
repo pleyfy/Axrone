@@ -22,8 +22,8 @@ describe('runtime profile entrypoints', () => {
     });
 
     it('exposes the 3d runtime profile from its own entrypoint', () => {
-        expect(get3DSceneRuntimeProfile().id).toBe(DEFAULT_SCENE_RUNTIME_PROFILE_ID);
-        expect(scene3DRuntimeProfile().id).toBe(DEFAULT_SCENE_RUNTIME_PROFILE_ID);
+        expect(get3DSceneRuntimeProfile().id).toBe(SCENE_3D_RUNTIME_PROFILE_ID);
+        expect(scene3DRuntimeProfile().id).toBe(SCENE_3D_RUNTIME_PROFILE_ID);
         expect(SCENE_3D_RUNTIME_PROFILE_ID).toBe('scene/3d-default');
     });
 
