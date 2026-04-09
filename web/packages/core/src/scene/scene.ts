@@ -21,18 +21,16 @@ import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import type { SceneMeshResource } from './mesh-registry';
+import { SceneMeshFactory } from './scene-mesh-factory';
 import type { SceneShaderResource } from './shader-registry';
 import { SceneShaderFactory } from './scene-shader-factory';
 import { SceneRenderRuntime } from './scene-render-runtime';
 import { SceneResourceRuntime } from './scene-resource-runtime';
 import { SceneTextureFactory } from './scene-texture-factory';
-import { SCENE_ATTRIBUTE_LOCATIONS } from './scene-vertex-layout';
 import {
     SceneCanvasError,
     SceneLifecycleError,
     SceneMaterialError,
-    SceneMeshError,
-    SceneShaderError,
 } from './errors';
 import { ScenePrefabRuntime } from './scene-prefab-runtime';
 import { resolveSceneRegistryFromProfile } from './profile';
@@ -131,18 +129,6 @@ const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {
     }
 };
 
-const mapTopologyToMode = (gl: WebGL2RenderingContext, topology: SceneMeshTopology): number => {
-    switch (topology) {
-        case 'lines':
-            return gl.LINES;
-        case 'points':
-            return gl.POINTS;
-        case 'triangles':
-        default:
-            return gl.TRIANGLES;
-    }
-};
-
 export const createUnlitColorShaderDefinition = (
     id: string = 'Scene/UnlitColor'
 ): SceneShaderDefinition => ({
@@ -186,6 +172,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _resources: SceneResourceRuntime;
     private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
     private readonly _renderRuntime: SceneRenderRuntime;
+    private readonly _meshFactory: SceneMeshFactory;
     private readonly _shaderFactory: SceneShaderFactory;
     private readonly _textureManager: WebGLTextureManager;
     private readonly _textureFactory: SceneTextureFactory;
@@ -205,6 +192,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._defaultClearColor = toVec4(options.clearColor);
         const ambientLight = toVec3(options.ambientLight);
         this._ambientLight = ambientLight;
+        this._meshFactory = new SceneMeshFactory({ gl: this.gl });
         this._shaderFactory = new SceneShaderFactory({ gl: this.gl });
         this._textureManager = new WebGLTextureManager(this.gl);
         this._textureFactory = new SceneTextureFactory({
@@ -225,11 +213,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             ambientLight,
             defaultClearColor: this._defaultClearColor,
             getActors: () => this.world.getAllActors(),
-            createMeshResource: (definition) => this._createMeshResource(definition),
-            disposeMesh: (mesh) => this._disposeMesh(mesh),
-            applyMissingVertexAttributeDefaults: (mesh) => {
-                this._applyMissingVertexAttributeDefaults(mesh);
-            },
+            createMeshResource: (definition) => this._meshFactory.create(definition),
+            disposeMesh: (mesh) => this._meshFactory.dispose(mesh),
+            applyMissingVertexAttributeDefaults: (mesh) =>
+                this._meshFactory.applyMissingVertexAttributeDefaults(mesh),
         });
 
         this._registry = resolveSceneRegistryFromProfile(options.profile, {
@@ -420,10 +407,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     registerMesh(definition: SceneMeshDefinition): SceneMeshHandle {
         this._assertNotDisposed();
         this._renderRuntime.releaseBaseMesh(definition.id);
-        const resource = this._createMeshResource(definition);
+        const resource = this._meshFactory.create(definition);
         const result = this._resources.meshes.register(definition, resource);
         if (result.previous) {
-            this._disposeMesh(result.previous);
+            this._meshFactory.dispose(result.previous);
         }
 
         return result.handle;
@@ -766,100 +753,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         };
     }
 
-    private _createMeshResource(definition: SceneMeshDefinition): SceneMeshResource {
-        if (definition.attributes.length === 0) {
-            throw new SceneMeshError(`Mesh '${definition.id}' must define at least one attribute`);
-        }
-
-        const vao = this.gl.createVertexArray();
-        const vertexBuffer = this.gl.createBuffer();
-
-        if (!vao || !vertexBuffer) {
-            throw new SceneMeshError(`Failed to allocate mesh resources for '${definition.id}'`);
-        }
-
-        const usage = definition.usage ?? this.gl.STATIC_DRAW;
-        this.gl.bindVertexArray(vao);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertexBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, definition.vertices, usage);
-
-        const attributes = new Set<SceneMeshSemantic>();
-        for (const attribute of definition.attributes) {
-            attributes.add(attribute.semantic);
-            const location = SCENE_ATTRIBUTE_LOCATIONS[attribute.semantic];
-            this.gl.enableVertexAttribArray(location);
-            const attributeType = attribute.type ?? this.gl.FLOAT;
-            if (attribute.integer && typeof this.gl.vertexAttribIPointer === 'function') {
-                this.gl.vertexAttribIPointer(
-                    location,
-                    attribute.componentCount,
-                    attributeType,
-                    attribute.stride,
-                    attribute.offset
-                );
-            } else {
-                this.gl.vertexAttribPointer(
-                    location,
-                    attribute.componentCount,
-                    attributeType,
-                    attribute.normalized ?? false,
-                    attribute.stride,
-                    attribute.offset
-                );
-            }
-        }
-
-        let indexBuffer: WebGLBuffer | null = null;
-        let indexCount = 0;
-        let indexType: number | null = null;
-
-        if (definition.indices) {
-            indexBuffer = this.gl.createBuffer();
-            if (!indexBuffer) {
-                throw new SceneMeshError(
-                    `Failed to create index buffer for mesh '${definition.id}'`
-                );
-            }
-
-            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-            this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, definition.indices, usage);
-            indexCount = definition.indices.length;
-            indexType =
-                definition.indices instanceof Uint32Array
-                    ? this.gl.UNSIGNED_INT
-                    : definition.indices instanceof Uint8Array
-                      ? this.gl.UNSIGNED_BYTE
-                      : this.gl.UNSIGNED_SHORT;
-        }
-
-        this.gl.bindVertexArray(null);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, null);
-
-        const stride = definition.attributes[0].stride;
-        const byteLength = definition.vertices.byteLength;
-        const vertexCount = definition.vertexCount ?? Math.floor(byteLength / stride);
-
-        return {
-            id: definition.id,
-            vertexArray: vao,
-            vertexBuffer,
-            indexBuffer,
-            vertexCount,
-            indexCount,
-            indexType,
-            topology: definition.topology ?? 'triangles',
-            mode: mapTopologyToMode(this.gl, definition.topology ?? 'triangles'),
-            attributes,
-        };
-    }
-
-    private _applyMissingVertexAttributeDefaults(mesh: SceneMeshResource): void {
-        if (!mesh.attributes.has('joints0') && typeof this.gl.vertexAttribI4ui === 'function') {
-            this.gl.vertexAttribI4ui(SCENE_ATTRIBUTE_LOCATIONS.joints0, 0, 0, 0, 0);
-        }
-    }
-
     private _registerGeometryBuffers(
         id: string,
         geometryBuffers: IGeometryBuffers
@@ -936,7 +829,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this._shaderFactory.delete(shader);
             },
             disposeMesh: (mesh) => {
-                this._disposeMesh(mesh);
+                this._meshFactory.dispose(mesh);
             },
             disposeSampler: (sampler) => {
                 if (!sampler.sampler.isDisposed) {
@@ -949,14 +842,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 }
             },
         });
-    }
-
-    private _disposeMesh(mesh: SceneMeshResource): void {
-        this.gl.deleteBuffer(mesh.vertexBuffer);
-        if (mesh.indexBuffer) {
-            this.gl.deleteBuffer(mesh.indexBuffer);
-        }
-        this.gl.deleteVertexArray(mesh.vertexArray);
     }
 
     private _assertNotDisposed(): void {

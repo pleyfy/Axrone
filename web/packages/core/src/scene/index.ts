@@ -40,6 +40,8 @@ export type {
 export { SceneMaterialTextureBinder } from './material-texture-binder';
 export type { SceneMeshRegistrationResult, SceneMeshResource } from './mesh-registry';
 export { cloneSceneMeshDefinition, SceneMeshRegistry } from './mesh-registry';
+export type { SceneMeshFactoryOptions } from './scene-mesh-factory';
+export { SceneMeshFactory } from './scene-mesh-factory';
 export type { SceneLightingState } from './lighting-collector';
 export { SceneLightingCollector } from './lighting-collector';
 export { SceneLightingUniformBinder } from './lighting-uniform-binder';
