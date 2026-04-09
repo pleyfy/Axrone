@@ -32,6 +32,10 @@ import {
     type SceneMaterialResource,
 } from './material-registry';
 import {
+    SceneMeshRegistry,
+    type SceneMeshResource,
+} from './mesh-registry';
+import {
     SceneSamplerRegistry,
     type SceneSamplerResource,
 } from './sampler-registry';
@@ -56,7 +60,6 @@ import {
 } from './errors';
 import { ScenePrefabRuntime } from './scene-prefab-runtime';
 import {
-    cloneMeshDefinition,
 } from './serialization';
 import { resolveSceneRegistryFromProfile } from './profile';
 import type {
@@ -95,23 +98,10 @@ interface ResolvedSurface {
     readonly autoCreated: boolean;
 }
 
-interface MeshResource {
-    readonly id: string;
-    readonly vertexArray: WebGLVertexArrayObject;
-    readonly vertexBuffer: WebGLBuffer;
-    readonly indexBuffer: WebGLBuffer | null;
-    readonly vertexCount: number;
-    readonly indexCount: number;
-    readonly indexType: number | null;
-    readonly topology: SceneMeshTopology;
-    readonly mode: number;
-    readonly attributes: ReadonlySet<SceneMeshSemantic>;
-}
-
 interface MorphMeshResourceCache {
     readonly rendererId: string;
     readonly baseMeshId: string;
-    readonly resource: MeshResource;
+    readonly resource: SceneMeshResource;
     readonly vertices: Uint8Array;
     lastWeightVersion: number;
 }
@@ -350,7 +340,7 @@ const mapTopologyToMode = (gl: WebGL2RenderingContext, topology: SceneMeshTopolo
     }
 };
 
-const estimateTriangleCount = (mesh: MeshResource): number => {
+const estimateTriangleCount = (mesh: SceneMeshResource): number => {
     if (mesh.topology !== 'triangles') {
         return 0;
     }
@@ -591,8 +581,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _prefabs: ScenePrefabRuntime;
     private readonly _shaderRegistry = new SceneShaderRegistry();
     private readonly _materialRegistry = new SceneMaterialRegistry();
-    private readonly _meshes = new Map<string, MeshResource>();
-    private readonly _meshDefinitions = new Map<string, SceneMeshDefinition>();
+    private readonly _meshRegistry = new SceneMeshRegistry();
     private readonly _morphMeshes = new Map<string, MorphMeshResourceCache>();
     private readonly _samplerRegistry = new SceneSamplerRegistry();
     private readonly _textureRegistry = new SceneTextureRegistry();
@@ -818,36 +807,17 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     registerMesh(definition: SceneMeshDefinition): SceneMeshHandle {
         this._assertNotDisposed();
         this._disposeMorphMeshesForBaseMesh(definition.id);
-        const existing = this._meshes.get(definition.id);
-        if (existing) {
-            this._disposeMesh(existing);
-            this._meshes.delete(definition.id);
+        const resource = this._createMeshResource(definition);
+        const result = this._meshRegistry.register(definition, resource);
+        if (result.previous) {
+            this._disposeMesh(result.previous);
         }
 
-        const resource = this._createMeshResource(definition);
-        this._meshes.set(resource.id, resource);
-        this._meshDefinitions.set(resource.id, cloneMeshDefinition(definition));
-
-        return {
-            id: resource.id,
-            vertexCount: resource.vertexCount,
-            indexCount: resource.indexCount,
-            topology: resource.topology,
-        };
+        return result.handle;
     }
 
     getMesh(id: string): SceneMeshHandle | null {
-        const mesh = this._meshes.get(id);
-        if (!mesh) {
-            return null;
-        }
-
-        return {
-            id: mesh.id,
-            vertexCount: mesh.vertexCount,
-            indexCount: mesh.indexCount,
-            topology: mesh.topology,
-        };
+        return this._meshRegistry.getHandle(id);
     }
 
     registerSampler(definition: SceneSamplerDefinition): SceneSamplerHandle {
@@ -1037,9 +1007,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             version: 1,
             prefab: this.createPrefab(`${this.id}:prefab`),
             shaders: this._shaderRegistry.getDefinitions(),
-            meshes: [...this._meshDefinitions.values()].map((definition) =>
-                cloneMeshDefinition(definition)
-            ),
+            meshes: this._meshRegistry.getDefinitions(),
             materials: this._materialRegistry.getDefinitions(),
             textures: this._textureRegistry.getDefinitions(),
             samplers: this._samplerRegistry.getDefinitions(),
@@ -1346,7 +1314,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         return shader;
     }
 
-    private _createMeshResource(definition: SceneMeshDefinition): MeshResource {
+    private _createMeshResource(definition: SceneMeshDefinition): SceneMeshResource {
         if (definition.attributes.length === 0) {
             throw new SceneMeshError(`Mesh '${definition.id}' must define at least one attribute`);
         }
@@ -1434,7 +1402,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         };
     }
 
-    private _applyMissingVertexAttributeDefaults(mesh: MeshResource): void {
+    private _applyMissingVertexAttributeDefaults(mesh: SceneMeshResource): void {
         if (!mesh.attributes.has('joints0') && typeof this.gl.vertexAttribI4ui === 'function') {
             this.gl.vertexAttribI4ui(ATTRIBUTE_LOCATIONS.joints0, 0, 0, 0, 0);
         }
@@ -1831,14 +1799,14 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._pruneMorphMeshCache(activeRendererIds);
     }
 
-    private _resolveRenderableMesh(renderer: MeshRenderer): MeshResource | null {
+    private _resolveRenderableMesh(renderer: MeshRenderer): SceneMeshResource | null {
         const meshId = renderer.meshId;
         if (!meshId) {
             return null;
         }
 
-        const mesh = this._meshes.get(meshId);
-        const definition = this._meshDefinitions.get(meshId);
+        const mesh = this._meshRegistry.get(meshId);
+        const definition = this._meshRegistry.getDefinition(meshId);
         if (!mesh || !definition?.morphTargets?.length) {
             return mesh ?? null;
         }
@@ -1853,10 +1821,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _getOrCreateMorphMeshResource(
         renderer: MeshRenderer,
-        mesh: MeshResource,
+        mesh: SceneMeshResource,
         definition: SceneMeshDefinition,
         weights: Float32Array
-    ): MeshResource {
+    ): SceneMeshResource {
         const cacheKey = renderer.id;
         const sourceVertices = toBufferBytes(definition.vertices);
         let cache = this._morphMeshes.get(cacheKey);
@@ -2514,7 +2482,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             this.gl.deleteProgram(shader.program);
         }
 
-        for (const mesh of this._meshes.values()) {
+        for (const mesh of this._meshRegistry.clear()) {
             this._disposeMesh(mesh);
         }
 
@@ -2535,13 +2503,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         }
 
         this._materialRegistry.clear();
-        this._meshes.clear();
-        this._meshDefinitions.clear();
         this._morphMeshes.clear();
         this._renderPassRegistry.clear();
     }
 
-    private _disposeMesh(mesh: MeshResource): void {
+    private _disposeMesh(mesh: SceneMeshResource): void {
         this.gl.deleteBuffer(mesh.vertexBuffer);
         if (mesh.indexBuffer) {
             this.gl.deleteBuffer(mesh.indexBuffer);

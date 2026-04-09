@@ -25,6 +25,8 @@ export {
     normalizeSceneTextureBinding,
     SceneMaterialRegistry,
 } from './material-registry';
+export type { SceneMeshRegistrationResult, SceneMeshResource } from './mesh-registry';
+export { cloneSceneMeshDefinition, SceneMeshRegistry } from './mesh-registry';
 export type { SceneSamplerRegistrationResult, SceneSamplerResource } from './sampler-registry';
 export { cloneSceneSamplerDefinition, SceneSamplerRegistry } from './sampler-registry';
 export type { SceneTextureRegistrationResult, SceneTextureResource } from './texture-registry';
