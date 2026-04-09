@@ -11,17 +11,18 @@ const uiLayoutGalleryExample: SceneExample = {
         const host = await createUIExampleHost({ container });
         const { runtime } = host;
 
-        const panel = createDemoPanel(runtime, { width: 500, height: 320, gap: 14 });
+        const panel = createDemoPanel(runtime, { width: 544, height: 332, gap: 14 });
         const title = createDemoText(runtime, 'LAYOUT AND ANCHORS', 20, {
             color: '#f8fafcff',
             layout: { height: 26 },
         });
         const subtitle = createDemoText(runtime, 'STACK FLOW GROW ABSOLUTE STRETCH', 12, {
             color: '#93c5fdff',
-            layout: { height: 16 },
+            layout: { width: '100%', height: 16 },
+            text: { wrap: 'none' },
         });
         const body = runtime.createWidget({
-            layout: { display: 'stack', direction: 'row', gap: 12, height: 188 },
+            layout: { display: 'stack', direction: 'row', gap: 12, width: '100%', height: 188 },
         });
         const navigation = runtime.createWidget({
             layout: { width: 118, display: 'stack', direction: 'column', gap: 8, padding: 10 },
@@ -43,10 +44,10 @@ const uiLayoutGalleryExample: SceneExample = {
         }
 
         const content = runtime.createWidget({
-            layout: { grow: 1, display: 'stack', direction: 'column', gap: 10 },
+            layout: { grow: 1, display: 'stack', direction: 'column', gap: 10, width: '100%' },
         });
         const metrics = runtime.createWidget({
-            layout: { display: 'stack', direction: 'row', justifyContent: 'space-between', gap: 10, height: 30 },
+            layout: { display: 'stack', direction: 'row', justifyContent: 'space-between', gap: 10, width: '100%', height: 30 },
         });
         const metricsLeft = runtime.createWidget({
             layout: { width: 'content', height: 28, padding: [8, 10] },
@@ -62,20 +63,20 @@ const uiLayoutGalleryExample: SceneExample = {
         runtime.appendChild(metrics, metricsRight);
 
         const cards = runtime.createWidget({
-            layout: { display: 'stack', direction: 'row', gap: 10, height: 98 },
+            layout: { display: 'stack', direction: 'row', gap: 10, width: '100%', height: 98 },
         });
         const primaryCard = runtime.createWidget({
-            layout: { grow: 2, padding: 12, display: 'stack', direction: 'column', gap: 6 },
+            layout: { grow: 1, padding: 12, display: 'stack', direction: 'column', gap: 6, height: 98 },
             style: { background: '#111827ff', radius: 14, borderColor: '#334155ff', borderWidth: 1 },
         });
         const secondaryCard = runtime.createWidget({
-            layout: { grow: 1, padding: 12, display: 'stack', direction: 'column', gap: 6 },
+            layout: { width: 128, padding: 12, display: 'stack', direction: 'column', gap: 6, height: 98 },
             style: { background: '#131c30ff', radius: 14, borderColor: '#334155ff', borderWidth: 1 },
         });
-        runtime.appendChild(primaryCard, createDemoText(runtime, 'PRIMARY SURFACE', 14, { color: '#f8fafcff', layout: { height: 18 } }));
-        runtime.appendChild(primaryCard, createDemoText(runtime, 'STRETCH CHILDREN KEEP THE GRID TIGHT', 12, { color: '#94a3b8ff', layout: { height: 34 }, text: { wrap: 'word' } }));
-        runtime.appendChild(secondaryCard, createDemoText(runtime, 'SIDE CARD', 14, { color: '#f8fafcff', layout: { height: 18 } }));
-        runtime.appendChild(secondaryCard, createDemoText(runtime, 'CONTENT WIDTH', 12, { color: '#7dd3fcff', layout: { height: 16 } }));
+        runtime.appendChild(primaryCard, createDemoText(runtime, 'PRIMARY SURFACE', 14, { color: '#f8fafcff', layout: { width: '100%', height: 18 }, text: { wrap: 'none' } }));
+        runtime.appendChild(primaryCard, createDemoText(runtime, 'STRETCH CHILDREN KEEP THE GRID TIGHT', 12, { color: '#94a3b8ff', layout: { width: '100%', height: 34 }, text: { wrap: 'word', maxLines: 2 } }));
+        runtime.appendChild(secondaryCard, createDemoText(runtime, 'SIDE CARD', 14, { color: '#f8fafcff', layout: { width: '100%', height: 18 }, text: { wrap: 'none' } }));
+        runtime.appendChild(secondaryCard, createDemoText(runtime, 'CONTENT WIDTH', 12, { color: '#7dd3fcff', layout: { width: '100%', height: 16 }, text: { wrap: 'word' } }));
         runtime.appendChild(cards, primaryCard);
         runtime.appendChild(cards, secondaryCard);
 

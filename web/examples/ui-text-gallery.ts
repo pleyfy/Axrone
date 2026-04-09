@@ -11,60 +11,76 @@ const uiTextGalleryExample: SceneExample = {
         const host = await createUIExampleHost({ container });
         const { runtime } = host;
 
-        const panel = createDemoPanel(runtime, { width: 560, height: 340, gap: 14 });
-        const title = createDemoText(runtime, 'TEXT SYSTEM', 22, {
+        const panel = createDemoPanel(runtime, { width: 676, height: 376, gap: 16 });
+        const title = createDemoText(runtime, 'TEXT SYSTEM', 20, {
             color: '#f8fafcff',
             layout: { height: 28 },
         });
-        const subtitle = createDemoText(runtime, 'SCALED BITMAP GLYPHS WRAP ALIGN DECORATE', 12, {
+        const subtitle = createDemoText(runtime, 'ALIGN JUSTIFY DECORATIONS CARET', 12, {
             color: '#93c5fdff',
-            layout: { height: 16 },
+            layout: { width: '100%', height: 16 },
+            text: { wrap: 'none' },
         });
 
-        const topRow = runtime.createWidget({ layout: { display: 'stack', direction: 'row', gap: 12, height: 118 } });
+        const topRow = runtime.createWidget({ layout: { display: 'stack', direction: 'row', gap: 12, width: '100%', height: 132 } });
         const leftCard = runtime.createWidget({
-            layout: { grow: 1, padding: 12, display: 'stack', direction: 'column', gap: 8 },
+            layout: { width: 176, padding: 12, display: 'stack', direction: 'column', gap: 8, height: 132 },
             style: { background: '#111827ff', borderColor: '#334155ff', borderWidth: 1, radius: 14 },
         });
         const rightCard = runtime.createWidget({
-            layout: { grow: 1, padding: 12, display: 'stack', direction: 'column', gap: 8 },
+            layout: { grow: 1, padding: 14, display: 'stack', direction: 'column', gap: 10, height: 132 },
             style: { background: '#101826ff', borderColor: '#334155ff', borderWidth: 1, radius: 14 },
         });
 
-        runtime.appendChild(leftCard, createDemoText(runtime, 'START ALIGN', 18, { color: '#f8fafcff', layout: { height: 22 } }));
-        runtime.appendChild(leftCard, createDemoText(runtime, 'CENTER ALIGN', 16, { color: '#7dd3fcff', layout: { height: 20 }, text: { align: 'center' } }));
-        runtime.appendChild(leftCard, createDemoText(runtime, 'END ALIGN', 14, { color: '#c4b5fdff', layout: { height: 18 }, text: { align: 'end', letterSpacing: 0.4 } }));
+        runtime.appendChild(leftCard, createDemoText(runtime, 'START ALIGN', 16, { color: '#f8fafcff', layout: { width: '100%', height: 20 }, text: { wrap: 'none' } }));
+        runtime.appendChild(leftCard, createDemoText(runtime, 'CENTER ALIGN', 14, { color: '#7dd3fcff', layout: { width: '100%', height: 18 }, text: { align: 'center', wrap: 'none' } }));
+        runtime.appendChild(leftCard, createDemoText(runtime, 'END ALIGN', 14, { color: '#c4b5fdff', layout: { width: '100%', height: 18 }, text: { align: 'end', letterSpacing: 0.4, wrap: 'none' } }));
 
-        runtime.appendChild(rightCard, createDemoText(runtime, 'JUSTIFY', 14, { color: '#f8fafcff', layout: { height: 18 } }));
-        runtime.appendChild(rightCard, createDemoText(runtime, 'THE TEXT ENGINE NOW SCALES BITMAP GLYPHS WITH THE SAME METRICS USED DURING LAYOUT.', 13, {
+        runtime.appendChild(rightCard, createDemoText(runtime, 'JUSTIFY SAMPLE', 14, { color: '#f8fafcff', layout: { width: '100%', height: 18 }, text: { wrap: 'none' } }));
+        runtime.appendChild(rightCard, createDemoText(runtime, 'JUSTIFY NOW DISTRIBUTES WORD GAPS INSIDE A CARD THAT ACTUALLY HAS ROOM TO BALANCE THE LINE.', 12, {
             color: '#cbd5e1ff',
-            layout: { height: 72 },
-            text: { wrap: 'word', align: 'justify', maxLines: 4 },
+            layout: { width: '100%', height: 54 },
+            text: { wrap: 'word', align: 'justify', maxLines: 3 },
         }));
 
         const effectsCard = runtime.createWidget({
-            layout: { padding: 14, display: 'stack', direction: 'column', gap: 10, height: 124 },
+            layout: { padding: 14, display: 'stack', direction: 'column', gap: 8, width: '100%', height: 144 },
             style: { background: '#111827ff', borderColor: '#334155ff', borderWidth: 1, radius: 14 },
         });
-        runtime.appendChild(effectsCard, createDemoText(runtime, 'SHADOW UNDERLINE STRIKE', 18, {
+        runtime.appendChild(effectsCard, createDemoText(runtime, 'SHADOW PASS', 16, {
             color: '#f8fafcff',
-            layout: { height: 26 },
+            layout: { width: '100%', height: 22 },
             text: {
                 shadowColor: '#020617cc',
                 shadowOffsetX: 2,
                 shadowOffsetY: 2,
+                wrap: 'none',
+            },
+        }));
+        runtime.appendChild(effectsCard, createDemoText(runtime, 'UNDERLINE ACTIVE', 14, {
+            color: '#7dd3fcff',
+            layout: { width: '100%', height: 18 },
+            text: {
                 underline: true,
                 underlineColor: '#38bdf8ff',
                 underlineThickness: 2,
                 underlineOffset: 2,
+                wrap: 'none',
+            },
+        }));
+        runtime.appendChild(effectsCard, createDemoText(runtime, 'STRIKE ACTIVE', 14, {
+            color: '#f8fafcff',
+            layout: { width: '100%', height: 18 },
+            text: {
                 strikeThrough: true,
                 strikeThroughColor: '#f97316ff',
                 strikeThroughThickness: 2,
+                wrap: 'none',
             },
         }));
-        runtime.appendChild(effectsCard, createDemoText(runtime, 'SCENE UI RANGE', 18, {
+        runtime.appendChild(effectsCard, createDemoText(runtime, 'SCENE UI RANGE', 16, {
             color: '#e2e8f0ff',
-            layout: { height: 30 },
+            layout: { width: '100%', height: 24 },
             text: {
                 selectionStart: 6,
                 selectionEnd: 12,
@@ -76,12 +92,13 @@ const uiTextGalleryExample: SceneExample = {
                 shadowColor: '#020617cc',
                 shadowOffsetX: 2,
                 shadowOffsetY: 2,
+                wrap: 'none',
             },
         }));
-        runtime.appendChild(effectsCard, createDemoText(runtime, 'LETTER SPACING  1  2', 14, {
+        runtime.appendChild(effectsCard, createDemoText(runtime, 'LETTER SPACING 1 2 3', 12, {
             color: '#7dd3fcff',
-            layout: { height: 18 },
-            text: { letterSpacing: 1.2 },
+            layout: { width: '100%', height: 16 },
+            text: { letterSpacing: 1.2, wrap: 'none' },
         }));
 
         runtime.appendChild(runtime.root, panel);

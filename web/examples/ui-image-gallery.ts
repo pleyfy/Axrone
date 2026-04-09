@@ -34,17 +34,21 @@ const uiImageGalleryExample: SceneExample = {
             textures: { u_MainTex: 'ui-image.sunset' },
         });
 
-        const panel = createDemoPanel(runtime, { width: 592, height: 356, gap: 14 });
+        const panel = createDemoPanel(runtime, { width: 644, height: 392, gap: 16 });
         runtime.appendChild(runtime.root, panel);
         runtime.appendChild(panel, createDemoText(runtime, 'IMAGE AND MATERIAL MODES', 20, { color: '#f8fafcff', layout: { height: 26 } }));
-        runtime.appendChild(panel, createDemoText(runtime, 'TEXTURE RESOURCE FIT MODES SAMPLING MATERIAL BINDING', 12, { color: '#93c5fdff', layout: { height: 16 } }));
+        runtime.appendChild(panel, createDemoText(runtime, 'TEXTURE CONTAIN COVER PIXEL MATERIAL', 12, {
+            color: '#93c5fdff',
+            layout: { width: '100%', height: 16 },
+            text: { wrap: 'none' },
+        }));
 
-        const grid = runtime.createWidget({ layout: { display: 'stack', direction: 'row', gap: 12, height: 250 } });
-        const leftColumn = runtime.createWidget({ layout: { grow: 1, display: 'stack', direction: 'column', gap: 12 } });
-        const rightColumn = runtime.createWidget({ layout: { grow: 1, display: 'stack', direction: 'column', gap: 12 } });
+        const grid = runtime.createWidget({ layout: { display: 'stack', direction: 'column', gap: 12, width: '100%', height: 286 } });
+        const topRow = runtime.createWidget({ layout: { display: 'stack', direction: 'row', gap: 12, width: '100%', height: 136 } });
+        const bottomRow = runtime.createWidget({ layout: { display: 'stack', direction: 'row', gap: 12, width: '100%', height: 136 } });
         runtime.appendChild(panel, grid);
-        runtime.appendChild(grid, leftColumn);
-        runtime.appendChild(grid, rightColumn);
+        runtime.appendChild(grid, topRow);
+        runtime.appendChild(grid, bottomRow);
 
         const createImageCard = (
             title: string,
@@ -52,22 +56,30 @@ const uiImageGalleryExample: SceneExample = {
             description: string
         ) => {
             const card = runtime.createWidget({
-                layout: { grow: 1, padding: 12, display: 'stack', direction: 'column', gap: 8 },
+                layout: { grow: 1, padding: 12, display: 'stack', direction: 'column', gap: 8, height: 136 },
                 style: { background: '#111827ff', borderColor: '#334155ff', borderWidth: 1, radius: 14 },
             });
             const frame = runtime.createWidget({
-                layout: { height: 92 },
+                layout: { width: '100%', height: 76 },
                 style: { background: '#020617ff', borderColor: '#1e293bff', borderWidth: 1, radius: 12, clip: true },
                 image,
             });
-            runtime.appendChild(card, createDemoText(runtime, title, 14, { color: '#f8fafcff', layout: { height: 18 } }));
+            runtime.appendChild(card, createDemoText(runtime, title, 14, {
+                color: '#f8fafcff',
+                layout: { width: '100%', height: 18 },
+                text: { wrap: 'none' },
+            }));
             runtime.appendChild(card, frame);
-            runtime.appendChild(card, createDemoText(runtime, description, 12, { color: '#7dd3fcff', layout: { height: 16 } }));
+            runtime.appendChild(card, createDemoText(runtime, description, 12, {
+                color: '#7dd3fcff',
+                layout: { width: '100%', height: 28 },
+                text: { wrap: 'word', maxLines: 2 },
+            }));
             return card;
         };
 
         runtime.appendChild(
-            leftColumn,
+            topRow,
             createImageCard(
                 'CONTAIN',
                 { source: { kind: 'texture', resourceId: 'ui-image.cyan', width: 8, height: 8 }, fit: 'contain', sampling: 'linear' },
@@ -75,15 +87,7 @@ const uiImageGalleryExample: SceneExample = {
             )
         );
         runtime.appendChild(
-            leftColumn,
-            createImageCard(
-                'NEAREST',
-                { source: { kind: 'texture', resourceId: 'ui-image.cyan', width: 8, height: 8 }, fit: 'fill', sampling: 'nearest' },
-                'PIXEL SHARP'
-            )
-        );
-        runtime.appendChild(
-            rightColumn,
+            topRow,
             createImageCard(
                 'COVER',
                 { source: { kind: 'texture', resourceId: 'ui-image.lime', width: 8, height: 8 }, fit: 'cover', sampling: 'linear' },
@@ -91,10 +95,18 @@ const uiImageGalleryExample: SceneExample = {
             )
         );
         runtime.appendChild(
-            rightColumn,
+            bottomRow,
+            createImageCard(
+                'NEAREST',
+                { source: { kind: 'texture', resourceId: 'ui-image.cyan', width: 8, height: 8 }, fit: 'contain', sampling: 'nearest' },
+                'PIXEL SHARP'
+            )
+        );
+        runtime.appendChild(
+            bottomRow,
             createImageCard(
                 'MATERIAL',
-                { source: { kind: 'material', materialId: 'ui-image.material.sunset', textureBinding: 'u_MainTex', width: 8, height: 8 }, fit: 'scale-down', sampling: 'linear' },
+                { source: { kind: 'material', materialId: 'ui-image.material.sunset', textureBinding: 'u_MainTex', width: 8, height: 8 }, fit: 'contain', sampling: 'linear' },
                 'SCENE BINDING'
             )
         );
