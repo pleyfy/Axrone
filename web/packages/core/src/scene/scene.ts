@@ -31,7 +31,7 @@ import { createSceneLoopSystems } from './loop-bridge';
 import { SceneMaterialTextureBinder } from './material-texture-binder';
 import type { SceneMeshResource } from './mesh-registry';
 import { SceneRenderItemCollector, type SceneRenderItem } from './render-item-collector';
-import type { SceneRenderPassResource } from './render-pass-registry';
+import { SceneRenderPassPreparer } from './render-pass-preparer';
 import { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneShaderResource } from './shader-registry';
 import type { SceneTextureResource } from './texture-registry';
@@ -528,6 +528,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _cameraFrameCollector = new SceneCameraFrameStateCollector();
     private readonly _renderItemCollector = new SceneRenderItemCollector();
     private readonly _materialTextureBinder: SceneMaterialTextureBinder;
+    private readonly _renderPassPreparer: SceneRenderPassPreparer;
     private readonly _renderStateApplier: SceneRenderStateApplier;
     private readonly _uniformWriter: SceneUniformWriter;
     private readonly _frameUniformBinder: SceneFrameUniformBinder;
@@ -563,6 +564,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._ambientLight = toVec3(options.ambientLight);
         this._textureManager = new WebGLTextureManager(this.gl);
         this._materialTextureBinder = new SceneMaterialTextureBinder(this.gl);
+        this._renderPassPreparer = new SceneRenderPassPreparer(this.gl, this._defaultClearColor);
         this._renderStateApplier = new SceneRenderStateApplier(this.gl);
         this._uniformWriter = new SceneUniformWriter(this.gl);
         this._frameUniformBinder = new SceneFrameUniformBinder(this._uniformWriter);
@@ -1632,7 +1634,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
         for (const renderPass of renderPasses) {
-            this._prepareRenderPass(renderPass, cameraFrame?.camera);
+            this._renderPassPreparer.prepare(renderPass, cameraFrame?.camera);
 
             if (!cameraFrame) {
                 continue;
@@ -1811,27 +1813,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
             this._disposeMesh(cache.resource);
             this._morphMeshes.delete(cacheKey);
-        }
-    }
-
-    private _prepareRenderPass(renderPass: SceneRenderPassResource, camera?: Camera): void {
-        const clearFlags = renderPass.clearFlags;
-        let mask = 0;
-
-        if (clearFlags.includes('color')) {
-            const clearColor =
-                renderPass.clearColor ?? camera?.clearColor ?? this._defaultClearColor;
-            this.gl.clearColor(clearColor.x, clearColor.y, clearColor.z, clearColor.w);
-            mask |= this.gl.COLOR_BUFFER_BIT;
-        }
-
-        if (clearFlags.includes('depth')) {
-            this.gl.clearDepth(renderPass.clearDepth ?? camera?.clearDepth ?? 1);
-            mask |= this.gl.DEPTH_BUFFER_BIT;
-        }
-
-        if (mask !== 0) {
-            this.gl.clear(mask);
         }
     }
 

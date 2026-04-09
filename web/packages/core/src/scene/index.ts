@@ -44,6 +44,7 @@ export { SceneCameraFrameStateCollector } from './camera-frame-state';
 export { selectSceneCamera } from './camera-selector';
 export type { SceneFrameUniformContext } from './frame-uniform-binder';
 export { SceneFrameUniformBinder } from './frame-uniform-binder';
+export { SceneRenderPassPreparer } from './render-pass-preparer';
 export type { SceneRenderItem } from './render-item-collector';
 export { SceneRenderItemCollector } from './render-item-collector';
 export type {
