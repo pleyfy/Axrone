@@ -27,12 +27,12 @@ const createOpaquePrimitive = () => ({
     },
 });
 
-const createTransparentPrimitive = () => ({
-    id: 'primitive:transparent',
+const createTransparentPrimitive = (id: string = 'transparent') => ({
+    id: `primitive:${id}`,
     meshId: 'mesh:glass',
     worldMatrix: new Mat4(),
     material: {
-        id: 'material:glass',
+        id: `material:${id}`,
         model: 'pbr' as const,
         transparent: true,
         renderQueue: 3000,
@@ -228,6 +228,27 @@ describe('RenderPipeline', () => {
         expect(result.passes.filter((pass) => pass.kind === 'post-process').length).toBeLessThanOrEqual(
             2
         );
+    });
+
+    it('caps transparent primitives through the classification service', () => {
+        const pipeline = new RenderPipeline({
+            maxTransparentPrimitives: 1,
+        });
+
+        const result = pipeline.plan({
+            frame: 1,
+            deltaTime: 1 / 60,
+            viewport: { width: 1280, height: 720 },
+            camera: createCamera(),
+            primitives: [
+                createOpaquePrimitive(),
+                createTransparentPrimitive('transparent-a'),
+                createTransparentPrimitive('transparent-b'),
+            ],
+        });
+
+        expect(result.statistics.transparentCount).toBe(1);
+        expect(result.warnings).toContain('transparent primitive budget exceeded at 1');
     });
 
     it('plans cascade metadata and temporal history for shadowed HDR frames', () => {
