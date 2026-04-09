@@ -2,10 +2,12 @@ export * from './scene-runtime';
 
 export type { SceneAssetRuntimeOptions } from './scene/scene-asset-runtime';
 export { SceneAssetRuntime } from './scene/scene-asset-runtime';
+export { SceneAssetFacade } from './scene/scene-asset-facade';
 export type { SceneLifecycleRuntimeOptions } from './scene/scene-lifecycle-runtime';
 export { SceneLifecycleRuntime } from './scene/scene-lifecycle-runtime';
 export type { SceneRuntimeKernelOptions } from './scene/scene-runtime-kernel';
 export { SceneRuntimeKernel } from './scene/scene-runtime-kernel';
+export { SceneRuntimeFacade } from './scene/scene-runtime-facade';
 
 export {
     DEFAULT_SCENE_BUILT_IN_MANIFESTS,
@@ -53,4 +55,6 @@ export type {
 } from './scene/components/animator';
 export { Animator } from './scene/components/animator';
 
-export { createScene, createUnlitColorShaderDefinition, Scene } from './scene/scene';
+export { createScene } from './scene/scene-factory';
+export { createUnlitColorShaderDefinition } from './scene/scene-default-shaders';
+export { Scene } from './scene/scene';

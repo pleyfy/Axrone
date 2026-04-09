@@ -41,10 +41,12 @@ export type { Scene3DActorRuntimeOptions } from './scene-3d-actor-runtime';
 export { Scene3DActorRuntime } from './scene-3d-actor-runtime';
 export type { SceneAssetRuntimeOptions } from './scene-asset-runtime';
 export { SceneAssetRuntime } from './scene-asset-runtime';
+export { SceneAssetFacade } from './scene-asset-facade';
 export type { SceneLifecycleRuntimeOptions } from './scene-lifecycle-runtime';
 export { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
 export type { SceneRuntimeKernelOptions } from './scene-runtime-kernel';
 export { SceneRuntimeKernel } from './scene-runtime-kernel';
+export { SceneRuntimeFacade } from './scene-runtime-facade';
 export {
     DEFAULT_SCENE_AMBIENT_LIGHT,
     DEFAULT_SCENE_CLEAR_COLOR,
@@ -125,6 +127,7 @@ export type { SceneTextureFactoryOptions } from './scene-texture-factory';
 export { SceneTextureFactory } from './scene-texture-factory';
 export type { SceneSnapshotLoaderOptions } from './scene-snapshot-loader';
 export { SceneSnapshotLoader } from './scene-snapshot-loader';
+export { createScene } from './scene-factory';
 export type { ResolvedSceneSurface } from './scene-surface-resolver';
 export { resolveSceneSurface } from './scene-surface-resolver';
 export {
@@ -228,4 +231,5 @@ export {
 
 export { decodeSceneValue, encodeSceneValue } from './serialization';
 
-export { createScene, createUnlitColorShaderDefinition, Scene } from './scene';
+export { createUnlitColorShaderDefinition } from './scene-default-shaders';
+export { Scene } from './scene';
