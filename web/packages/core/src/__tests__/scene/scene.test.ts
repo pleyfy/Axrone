@@ -332,21 +332,18 @@ void main() {
         const decodedSurface = document.createElement('canvas');
         Object.defineProperty(decodedSurface, 'width', { value: 2, configurable: true });
         Object.defineProperty(decodedSurface, 'height', { value: 3, configurable: true });
-        const loadImageFromBytes = (scene as unknown as {
-            _loadImageFromBytes: (
-                bytes: readonly number[] | Uint8Array,
-                mimeType: string,
-                uri?: string
-            ) => Promise<HTMLImageElement>;
-        })._loadImageFromBytes;
+        const textureFactory = (scene as unknown as {
+            _textureFactory: {
+                _loadImageFromBytes: (
+                    bytes: readonly number[] | Uint8Array,
+                    mimeType: string,
+                    uri?: string
+                ) => Promise<HTMLImageElement>;
+            };
+        })._textureFactory;
+        const loadImageFromBytes = textureFactory._loadImageFromBytes;
 
-        (scene as unknown as {
-            _loadImageFromBytes: (
-                bytes: readonly number[] | Uint8Array,
-                mimeType: string,
-                uri?: string
-            ) => Promise<HTMLImageElement | HTMLCanvasElement>;
-        })._loadImageFromBytes = async (bytes, mimeType, uri) => {
+        textureFactory._loadImageFromBytes = async (bytes, mimeType, uri) => {
             expect(bytes).toEqual(new Uint8Array([137, 80, 78, 71]));
             expect(mimeType).toBe('image/png');
             expect(uri).toBe('textures/albedo.png');
@@ -367,8 +364,7 @@ void main() {
             expect(texture.width).toBe(2);
             expect(texture.height).toBe(3);
         } finally {
-            (scene as unknown as { _loadImageFromBytes: typeof loadImageFromBytes })._loadImageFromBytes =
-                loadImageFromBytes;
+            textureFactory._loadImageFromBytes = loadImageFromBytes;
             scene.dispose();
         }
     });

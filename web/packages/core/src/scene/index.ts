@@ -73,6 +73,8 @@ export type { SceneSamplerRegistrationResult, SceneSamplerResource } from './sam
 export { cloneSceneSamplerDefinition, SceneSamplerRegistry } from './sampler-registry';
 export type { SceneTextureRegistrationResult, SceneTextureResource } from './texture-registry';
 export { cloneSceneTextureDefinition, SceneTextureRegistry } from './texture-registry';
+export type { SceneTextureFactoryOptions } from './scene-texture-factory';
+export { SceneTextureFactory } from './scene-texture-factory';
 export type { SceneRenderPassResource, SceneRenderPassRegistryOptions } from './render-pass-registry';
 export {
     cloneSceneRenderPassDefinition,
