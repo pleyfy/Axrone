@@ -21,6 +21,8 @@ export type { SceneComponentTypeResolver } from './component-catalog';
 export { SceneComponentCatalog, getSceneComponentTypeName } from './component-catalog';
 export type { SceneShaderRegistrationResult, SceneShaderResource } from './shader-registry';
 export { cloneSceneShaderDefinition, SceneShaderRegistry } from './shader-registry';
+export type { SceneShaderFactoryOptions } from './scene-shader-factory';
+export { SceneShaderFactory } from './scene-shader-factory';
 export type {
     SceneMaterialResource,
     SceneMaterialTextureBinding,
@@ -75,6 +77,10 @@ export type { SceneTextureRegistrationResult, SceneTextureResource } from './tex
 export { cloneSceneTextureDefinition, SceneTextureRegistry } from './texture-registry';
 export type { SceneTextureFactoryOptions } from './scene-texture-factory';
 export { SceneTextureFactory } from './scene-texture-factory';
+export {
+    DEFAULT_SCENE_ATTRIBUTE_NAMES,
+    SCENE_ATTRIBUTE_LOCATIONS,
+} from './scene-vertex-layout';
 export type { SceneRenderPassResource, SceneRenderPassRegistryOptions } from './render-pass-registry';
 export {
     cloneSceneRenderPassDefinition,

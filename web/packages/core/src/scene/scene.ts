@@ -22,9 +22,11 @@ import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import type { SceneMeshResource } from './mesh-registry';
 import type { SceneShaderResource } from './shader-registry';
+import { SceneShaderFactory } from './scene-shader-factory';
 import { SceneRenderRuntime } from './scene-render-runtime';
 import { SceneResourceRuntime } from './scene-resource-runtime';
 import { SceneTextureFactory } from './scene-texture-factory';
+import { SCENE_ATTRIBUTE_LOCATIONS } from './scene-vertex-layout';
 import {
     SceneCanvasError,
     SceneLifecycleError,
@@ -69,30 +71,6 @@ interface ResolvedSurface {
     readonly gl: WebGL2RenderingContext;
     readonly autoCreated: boolean;
 }
-
-const DEFAULT_ATTRIBUTE_NAMES: Readonly<Record<SceneMeshSemantic, string>> = Object.freeze({
-    position: 'a_Position',
-    normal: 'a_Normal',
-    uv0: 'a_UV0',
-    uv1: 'a_UV1',
-    tangent: 'a_Tangent',
-    color0: 'a_Color0',
-    joints0: 'a_Joints0',
-    weights0: 'a_Weights0',
-});
-
-const normalizeUniformName = (name: string): string => name.replace(/\[0\]$/, '');
-
-const ATTRIBUTE_LOCATIONS: Readonly<Record<SceneMeshSemantic, number>> = Object.freeze({
-    position: 0,
-    normal: 1,
-    uv0: 2,
-    color0: 3,
-    tangent: 4,
-    uv1: 5,
-    joints0: 9,
-    weights0: 10,
-});
 
 const DEFAULT_CLEAR_COLOR = new Vec4(0.08, 0.09, 0.11, 1);
 const DEFAULT_AMBIENT_LIGHT = new Vec3(0.08, 0.08, 0.1);
@@ -165,96 +143,6 @@ const mapTopologyToMode = (gl: WebGL2RenderingContext, topology: SceneMeshTopolo
     }
 };
 
-const extractUniformNames = (...sources: string[]): string[] => {
-    const names = new Set<string>();
-    const pattern = /\buniform\s+\w+\s+(\w+)(?:\s*\[[^\]]+\])?\s*;/g;
-
-    for (const source of sources) {
-        pattern.lastIndex = 0;
-        let match = pattern.exec(source);
-
-        while (match !== null) {
-            names.add(match[1]);
-            match = pattern.exec(source);
-        }
-    }
-
-    return [...names];
-};
-
-const mapUniformTypeName = (
-    gl: WebGL2RenderingContext,
-    typeName: string
-): number | undefined => {
-    switch (typeName) {
-        case 'float':
-            return gl.FLOAT;
-        case 'vec2':
-            return gl.FLOAT_VEC2;
-        case 'vec3':
-            return gl.FLOAT_VEC3;
-        case 'vec4':
-            return gl.FLOAT_VEC4;
-        case 'int':
-            return gl.INT;
-        case 'ivec2':
-            return gl.INT_VEC2;
-        case 'ivec3':
-            return gl.INT_VEC3;
-        case 'ivec4':
-            return gl.INT_VEC4;
-        case 'uint':
-            return gl.UNSIGNED_INT;
-        case 'uvec2':
-            return gl.UNSIGNED_INT_VEC2;
-        case 'uvec3':
-            return gl.UNSIGNED_INT_VEC3;
-        case 'uvec4':
-            return gl.UNSIGNED_INT_VEC4;
-        case 'bool':
-            return gl.BOOL;
-        case 'bvec2':
-            return gl.BOOL_VEC2;
-        case 'bvec3':
-            return gl.BOOL_VEC3;
-        case 'bvec4':
-            return gl.BOOL_VEC4;
-        case 'mat4':
-            return gl.FLOAT_MAT4;
-        case 'sampler2D':
-            return gl.SAMPLER_2D;
-        case 'samplerCube':
-            return gl.SAMPLER_CUBE;
-        default:
-            return undefined;
-    }
-};
-
-const extractUniformTypeHints = (
-    gl: WebGL2RenderingContext,
-    ...sources: string[]
-): Map<string, number> => {
-    const types = new Map<string, number>();
-    const pattern = /\buniform\s+(\w+)\s+(\w+)(?:\s*\[[^\]]+\])?\s*;/g;
-
-    for (const source of sources) {
-        pattern.lastIndex = 0;
-        let match = pattern.exec(source);
-
-        while (match !== null) {
-            const uniformType = mapUniformTypeName(gl, match[1]!);
-            if (uniformType !== undefined) {
-                const uniformName = match[2]!;
-                types.set(uniformName, uniformType);
-                types.set(normalizeUniformName(uniformName), uniformType);
-            }
-            match = pattern.exec(source);
-        }
-    }
-
-    return types;
-};
-
 export const createUnlitColorShaderDefinition = (
     id: string = 'Scene/UnlitColor'
 ): SceneShaderDefinition => ({
@@ -298,6 +186,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _resources: SceneResourceRuntime;
     private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
     private readonly _renderRuntime: SceneRenderRuntime;
+    private readonly _shaderFactory: SceneShaderFactory;
     private readonly _textureManager: WebGLTextureManager;
     private readonly _textureFactory: SceneTextureFactory;
     private readonly _autoCreatedCanvas: boolean;
@@ -316,6 +205,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._defaultClearColor = toVec4(options.clearColor);
         const ambientLight = toVec3(options.ambientLight);
         this._ambientLight = ambientLight;
+        this._shaderFactory = new SceneShaderFactory({ gl: this.gl });
         this._textureManager = new WebGLTextureManager(this.gl);
         this._textureFactory = new SceneTextureFactory({
             textureManager: this._textureManager,
@@ -477,10 +367,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerShader(definition: SceneShaderDefinition): SceneShaderHandle {
         this._assertNotDisposed();
-        const resource = this._createShaderResource(definition);
+        const resource = this._shaderFactory.create(definition);
         const result = this._resources.shaders.register(definition, resource);
         if (result.previous) {
-            this.gl.deleteProgram(result.previous.program);
+            this._shaderFactory.delete(result.previous);
         }
 
         return result.handle;
@@ -876,120 +766,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         };
     }
 
-    private _createShaderResource(definition: SceneShaderDefinition): SceneShaderResource {
-        const program = this.gl.createProgram();
-        if (!program) {
-            throw new SceneShaderError(`Failed to create shader program '${definition.id}'`);
-        }
-
-        const attributeNames = {
-            ...DEFAULT_ATTRIBUTE_NAMES,
-            ...(definition.attributes ?? {}),
-        } as Record<SceneMeshSemantic, string>;
-
-        const vertexShader = this._compileShader(this.gl.VERTEX_SHADER, definition.vertexSource);
-        const fragmentShader = this._compileShader(
-            this.gl.FRAGMENT_SHADER,
-            definition.fragmentSource
-        );
-
-        try {
-            for (const semantic of Object.keys(attributeNames) as SceneMeshSemantic[]) {
-                this.gl.bindAttribLocation(
-                    program,
-                    ATTRIBUTE_LOCATIONS[semantic],
-                    attributeNames[semantic]
-                );
-            }
-
-            this.gl.attachShader(program, vertexShader);
-            this.gl.attachShader(program, fragmentShader);
-            this.gl.linkProgram(program);
-
-            if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-                const info = this.gl.getProgramInfoLog(program) ?? 'Unknown link failure';
-                throw new SceneShaderError(`Failed to link shader '${definition.id}': ${info}`);
-            }
-
-            const uniformNames = Array.from(
-                new Set(
-                    definition.uniforms ??
-                        extractUniformNames(definition.vertexSource, definition.fragmentSource)
-                )
-            );
-
-            const uniformLocations = new Map<string, WebGLUniformLocation>();
-            const uniformTypes = new Map<string, number>();
-            for (const uniformName of uniformNames) {
-                const location = this.gl.getUniformLocation(program, uniformName);
-                if (location !== null) {
-                    uniformLocations.set(uniformName, location);
-                }
-            }
-
-            if (typeof this.gl.getActiveUniform === 'function') {
-                const activeUniformCount = this.gl.getProgramParameter(
-                    program,
-                    this.gl.ACTIVE_UNIFORMS
-                );
-
-                for (let index = 0; index < activeUniformCount; index += 1) {
-                    const info = this.gl.getActiveUniform(program, index);
-                    if (!info) {
-                        continue;
-                    }
-
-                    const normalizedName = normalizeUniformName(info.name);
-                    uniformTypes.set(info.name, info.type);
-                    uniformTypes.set(normalizedName, info.type);
-                }
-            }
-
-            for (const [uniformName, uniformType] of extractUniformTypeHints(
-                this.gl,
-                definition.vertexSource,
-                definition.fragmentSource
-            )) {
-                if (!uniformTypes.has(uniformName)) {
-                    uniformTypes.set(uniformName, uniformType);
-                }
-            }
-
-            return {
-                id: definition.id,
-                program,
-                uniformLocations,
-                uniformTypes,
-                uniformNames,
-                attributeNames,
-                depthTest: definition.depthTest ?? true,
-                cull: definition.cull ?? true,
-                blend: definition.blend ?? false,
-            };
-        } finally {
-            this.gl.deleteShader(vertexShader);
-            this.gl.deleteShader(fragmentShader);
-        }
-    }
-
-    private _compileShader(type: number, source: string): WebGLShader {
-        const shader = this.gl.createShader(type);
-        if (!shader) {
-            throw new SceneShaderError('Failed to create WebGL shader');
-        }
-
-        this.gl.shaderSource(shader, source);
-        this.gl.compileShader(shader);
-
-        if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
-            const info = this.gl.getShaderInfoLog(shader) ?? 'Unknown compilation failure';
-            this.gl.deleteShader(shader);
-            throw new SceneShaderError(`Shader compilation failed: ${info}`);
-        }
-
-        return shader;
-    }
-
     private _createMeshResource(definition: SceneMeshDefinition): SceneMeshResource {
         if (definition.attributes.length === 0) {
             throw new SceneMeshError(`Mesh '${definition.id}' must define at least one attribute`);
@@ -1010,7 +786,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         const attributes = new Set<SceneMeshSemantic>();
         for (const attribute of definition.attributes) {
             attributes.add(attribute.semantic);
-            const location = ATTRIBUTE_LOCATIONS[attribute.semantic];
+            const location = SCENE_ATTRIBUTE_LOCATIONS[attribute.semantic];
             this.gl.enableVertexAttribArray(location);
             const attributeType = attribute.type ?? this.gl.FLOAT;
             if (attribute.integer && typeof this.gl.vertexAttribIPointer === 'function') {
@@ -1080,7 +856,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _applyMissingVertexAttributeDefaults(mesh: SceneMeshResource): void {
         if (!mesh.attributes.has('joints0') && typeof this.gl.vertexAttribI4ui === 'function') {
-            this.gl.vertexAttribI4ui(ATTRIBUTE_LOCATIONS.joints0, 0, 0, 0, 0);
+            this.gl.vertexAttribI4ui(SCENE_ATTRIBUTE_LOCATIONS.joints0, 0, 0, 0, 0);
         }
     }
 
@@ -1157,7 +933,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._renderRuntime.clear();
         this._resources.clear({
             deleteProgram: (shader) => {
-                this.gl.deleteProgram(shader.program);
+                this._shaderFactory.delete(shader);
             },
             disposeMesh: (mesh) => {
                 this._disposeMesh(mesh);
