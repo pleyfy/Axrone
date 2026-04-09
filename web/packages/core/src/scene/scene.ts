@@ -1,4 +1,4 @@
-import { Mat4, Vec2, Vec3, Vec4 } from '@axrone/numeric';
+import { Mat4, Vec3, Vec4 } from '@axrone/numeric';
 import { createBox, createPlane, createSphere } from '../geometry/primitives';
 import type { IGeometryBuffers } from '../geometry/primitives/types';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
@@ -24,6 +24,7 @@ import { OrbitCameraController } from './components/orbit-camera-controller';
 import { SceneCameraFrameStateCollector } from './camera-frame-state';
 import { SceneComponentCatalog } from './component-catalog';
 import { selectSceneCamera } from './camera-selector';
+import { SceneFrameUniformBinder } from './frame-uniform-binder';
 import { SceneLightingCollector, type SceneLightingState } from './lighting-collector';
 import { createSceneLoopSystems } from './loop-bridge';
 import { SceneMaterialTextureBinder } from './material-texture-binder';
@@ -525,11 +526,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _lightingCollector = new SceneLightingCollector(MAX_SCENE_LOCAL_LIGHTS);
     private readonly _cameraFrameCollector = new SceneCameraFrameStateCollector();
     private readonly _renderItemCollector = new SceneRenderItemCollector();
-    private readonly _resolutionUniform = new Vec2();
-    private readonly _mvpScratch = new Mat4();
     private readonly _materialTextureBinder: SceneMaterialTextureBinder;
     private readonly _renderStateApplier: SceneRenderStateApplier;
     private readonly _uniformWriter: SceneUniformWriter;
+    private readonly _frameUniformBinder: SceneFrameUniformBinder;
     private readonly _textureUniformSetter = (
         shader: SceneShaderResource,
         name: string,
@@ -563,6 +563,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._materialTextureBinder = new SceneMaterialTextureBinder(this.gl);
         this._renderStateApplier = new SceneRenderStateApplier(this.gl);
         this._uniformWriter = new SceneUniformWriter(this.gl);
+        this._frameUniformBinder = new SceneFrameUniformBinder(this._uniformWriter);
         const defaultSampler = this._textureManager.getDefaultSampler(
             FilterMode.LINEAR,
             WrapMode.REPEAT
@@ -1625,9 +1626,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             this.canvas.width,
             this.canvas.height
         );
-        this._resolutionUniform.x = this.canvas.width;
-        this._resolutionUniform.y = this.canvas.height;
-
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
         for (const renderPass of renderPasses) {
@@ -1663,31 +1661,24 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 }
 
                 const modelMatrix = item.transform.worldMatrix;
-                const mvpMatrix = Mat4.multiply(
-                    viewProjectionMatrix,
-                    modelMatrix,
-                    this._mvpScratch
-                );
 
                 this._renderStateApplier.apply(shader, renderPass);
                 this.gl.useProgram(shader.program);
                 this.gl.bindVertexArray(mesh.vertexArray);
                 this._applyMissingVertexAttributeDefaults(mesh);
 
-                this._uniformWriter.write(shader, 'u_Model', modelMatrix);
-                this._uniformWriter.write(shader, 'u_View', viewMatrix);
-                this._uniformWriter.write(shader, 'u_Projection', projectionMatrix);
-                this._uniformWriter.write(shader, 'u_ViewProjection', viewProjectionMatrix);
-                this._uniformWriter.write(shader, 'u_MVP', mvpMatrix);
-                this._uniformWriter.write(shader, 'u_Time', this.loop.elapsed / 1000);
-                this._uniformWriter.write(shader, 'u_DeltaTime', deltaTime / 1000);
-                this._uniformWriter.write(shader, 'u_Frame', this.loop.frame);
-                this._uniformWriter.write(
-                    shader,
-                    'u_Resolution',
-                    this._resolutionUniform
-                );
-                this._uniformWriter.write(shader, 'u_CameraPosition', cameraPosition);
+                this._frameUniformBinder.apply(shader, {
+                    modelMatrix,
+                    viewMatrix,
+                    projectionMatrix,
+                    viewProjectionMatrix,
+                    cameraPosition,
+                    elapsedSeconds: this.loop.elapsed / 1000,
+                    deltaSeconds: deltaTime / 1000,
+                    frame: this.loop.frame,
+                    viewportWidth: this.canvas.width,
+                    viewportHeight: this.canvas.height,
+                });
                 this._applyLightingUniforms(shader, item.renderer, lighting);
                 this._applySkinningUniforms(shader, item.renderer);
 

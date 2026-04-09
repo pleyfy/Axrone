@@ -41,6 +41,8 @@ export { SceneLightingCollector } from './lighting-collector';
 export type { SceneCameraFrameState } from './camera-frame-state';
 export { SceneCameraFrameStateCollector } from './camera-frame-state';
 export { selectSceneCamera } from './camera-selector';
+export type { SceneFrameUniformContext } from './frame-uniform-binder';
+export { SceneFrameUniformBinder } from './frame-uniform-binder';
 export type { SceneRenderItem } from './render-item-collector';
 export { SceneRenderItemCollector } from './render-item-collector';
 export type {
@@ -50,6 +52,7 @@ export type {
 } from './scene-resource-runtime';
 export { SceneResourceRuntime } from './scene-resource-runtime';
 export { SceneRenderStateApplier } from './render-state-applier';
+export type { SceneUniformWriteTarget } from './uniform-writer';
 export { SceneUniformWriter } from './uniform-writer';
 export type { SceneSamplerRegistrationResult, SceneSamplerResource } from './sampler-registry';
 export { cloneSceneSamplerDefinition, SceneSamplerRegistry } from './sampler-registry';

@@ -2,6 +2,14 @@ import { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 import type { SceneShaderResource } from './shader-registry';
 import type { SceneUniformValue } from './types';
 
+export interface SceneUniformWriteTarget {
+    write(
+        shader: SceneShaderResource,
+        name: string,
+        value: SceneUniformValue | null | undefined
+    ): void;
+}
+
 const copyNumberArray = (source: ArrayLike<number>, target: Float32Array): Float32Array => {
     for (let index = 0; index < source.length; index += 1) {
         target[index] = source[index] ?? 0;
@@ -40,7 +48,7 @@ const transposeMatrixInto = (
     target[targetOffset + 15] = source[sourceOffset + 15] ?? 0;
 };
 
-export class SceneUniformWriter {
+export class SceneUniformWriter implements SceneUniformWriteTarget {
     private readonly _singleMatrixScratch = new Float32Array(16);
     private readonly _floatArrayScratchCache = new Map<number, Float32Array>();
 
