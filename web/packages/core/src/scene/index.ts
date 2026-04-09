@@ -44,9 +44,11 @@ export { SceneAssetRuntime } from './scene-asset-runtime';
 export { SceneAssetFacade } from './scene-asset-facade';
 export type { SceneLifecycleRuntimeOptions } from './scene-lifecycle-runtime';
 export { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
+export { SceneLifecycleFacade } from './scene-lifecycle-facade';
 export type { SceneRuntimeKernelOptions } from './scene-runtime-kernel';
 export { SceneRuntimeKernel } from './scene-runtime-kernel';
 export { SceneRuntimeFacade } from './scene-runtime-facade';
+export { SceneSnapshotFacade } from './scene-snapshot-facade';
 export {
     DEFAULT_SCENE_AMBIENT_LIGHT,
     DEFAULT_SCENE_CLEAR_COLOR,

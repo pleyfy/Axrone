@@ -4,19 +4,11 @@ import { World } from '../component-system/core/world';
 import { SystemManager, SystemPhase } from '../component-system/systems/system-manager';
 import type { ComponentConstructor, ComponentRegistry } from '../component-system/types/core';
 import type { System, SystemQuery } from '../component-system/types/system';
-import {
-    DEFAULT_SCENE_HEIGHT,
-    DEFAULT_SCENE_WIDTH,
-} from './scene-runtime-defaults';
 import { SceneRuntimeKernel } from './scene-runtime-kernel';
 import type {
     SceneLoopState,
     SceneOptions,
-    ScenePrefabDefinition,
-    ScenePrefabInstantiateOptions,
     SceneRegistry,
-    SceneSnapshot,
-    SceneSnapshotLoadOptions,
 } from './types';
 
 type RuntimeRegistry<R extends ComponentRegistry> = SceneRegistry<R>;
@@ -47,20 +39,8 @@ export class SceneRuntimeFacade<R extends ComponentRegistry = Record<string, nev
         this.loop = this._kernel.loop;
 
         if (options.autoStart !== false) {
-            this.start();
+            this._kernel.lifecycle.start();
         }
-    }
-
-    get status() {
-        return this._kernel.lifecycle.status;
-    }
-
-    get isDisposed(): boolean {
-        return this._kernel.lifecycle.isDisposed;
-    }
-
-    get renderStats() {
-        return this._kernel.renderRuntime.stats;
     }
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
@@ -96,73 +76,6 @@ export class SceneRuntimeFacade<R extends ComponentRegistry = Record<string, nev
     removeSystem(systemId: string): boolean {
         this.assertNotDisposed();
         return this.systems.removeSystem(systemId as any);
-    }
-
-    createPrefab(
-        id: string,
-        actors: readonly Actor[] = this.world.getAllActors()
-    ): ScenePrefabDefinition {
-        this.assertNotDisposed();
-        return this._kernel.snapshots.createPrefab(id, actors);
-    }
-
-    instantiatePrefab(
-        prefab: ScenePrefabDefinition,
-        options: ScenePrefabInstantiateOptions = {}
-    ): readonly Actor[] {
-        this.assertNotDisposed();
-        return this._kernel.snapshots.instantiatePrefab(prefab, options);
-    }
-
-    serializeScene(): SceneSnapshot {
-        this.assertNotDisposed();
-        return this._kernel.snapshots.serializeScene();
-    }
-
-    async loadScene(
-        snapshot: SceneSnapshot,
-        options: SceneSnapshotLoadOptions = {}
-    ): Promise<readonly Actor[]> {
-        this.assertNotDisposed();
-        return await this._kernel.snapshots.loadScene(snapshot, options);
-    }
-
-    start(now?: number): this {
-        this._kernel.lifecycle.start(now);
-        return this;
-    }
-
-    pause(): this {
-        this._kernel.lifecycle.pause();
-        return this;
-    }
-
-    resume(now?: number): this {
-        this._kernel.lifecycle.resume(now);
-        return this;
-    }
-
-    stop(): this {
-        this._kernel.lifecycle.stop();
-        return this;
-    }
-
-    renderNow(): this {
-        this._kernel.lifecycle.renderNow();
-        return this;
-    }
-
-    resize(
-        width: number = this.canvas.clientWidth || DEFAULT_SCENE_WIDTH,
-        height: number = this.canvas.clientHeight || DEFAULT_SCENE_HEIGHT,
-        pixelRatio?: number
-    ): this {
-        this._kernel.lifecycle.resize(width, height, pixelRatio);
-        return this;
-    }
-
-    dispose(): void {
-        this._kernel.lifecycle.dispose();
     }
 
     protected assertNotDisposed(): void {

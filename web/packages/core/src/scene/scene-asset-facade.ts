@@ -1,5 +1,5 @@
 import { SceneMaterialError } from './errors';
-import { SceneRuntimeFacade } from './scene-runtime-facade';
+import { SceneLifecycleFacade } from './scene-lifecycle-facade';
 import type {
     SceneMaterialDefinition,
     SceneMaterialHandle,
@@ -23,7 +23,7 @@ import type { ComponentRegistry } from '../component-system/types/core';
 
 export class SceneAssetFacade<
     R extends ComponentRegistry = Record<string, never>,
-> extends SceneRuntimeFacade<R> {
+> extends SceneLifecycleFacade<R> {
     constructor(options: SceneOptions<R> = {}) {
         super(options);
     }

@@ -3,11 +3,13 @@ export * from './scene-runtime';
 export type { SceneAssetRuntimeOptions } from './scene/scene-asset-runtime';
 export { SceneAssetRuntime } from './scene/scene-asset-runtime';
 export { SceneAssetFacade } from './scene/scene-asset-facade';
+export { SceneLifecycleFacade } from './scene/scene-lifecycle-facade';
 export type { SceneLifecycleRuntimeOptions } from './scene/scene-lifecycle-runtime';
 export { SceneLifecycleRuntime } from './scene/scene-lifecycle-runtime';
 export type { SceneRuntimeKernelOptions } from './scene/scene-runtime-kernel';
 export { SceneRuntimeKernel } from './scene/scene-runtime-kernel';
 export { SceneRuntimeFacade } from './scene/scene-runtime-facade';
+export { SceneSnapshotFacade } from './scene/scene-snapshot-facade';
 
 export {
     DEFAULT_SCENE_BUILT_IN_MANIFESTS,
