@@ -20,57 +20,28 @@ import {
 } from './render-frame-budget-manager';
 import { RenderFrameClassifier } from './render-frame-classifier';
 import {
-    createRenderPassName,
-    createRenderResourceName,
     type ReadonlyRenderList,
-    type RenderCameraState,
-    type RenderClearState,
     type RenderDegradeStrategy,
     type RenderExecutionContext,
     type RenderFrameInput,
     type RenderFrameResult,
     type RenderFrameStatistics,
-    type RenderGlobalIlluminationMode,
     type RenderGlobalIlluminationSettings,
     type RenderHdrSettings,
     type RenderLight,
     type RenderLightBakeTask,
     type RenderLightBakingSettings,
-    type RenderEnvironmentState,
-    type RenderPassKind,
     type RenderPassMetadata,
-    type RenderPassName,
-    type RenderPassQueue,
     type RenderPassSummary,
     type RenderPipelineOptions,
     type RenderPrimitiveInstance,
     type RenderReflectionProbe,
-    type RenderResourceLifetime,
-    type RenderResourceName,
     type RenderShadowSettings,
-    type RenderTextureDescriptor,
     type RenderTonemappingSettings,
-    type RenderViewport,
     type RenderVolumetricSettings,
-    type ResolvedPostProcessEffect,
     type ResolvedRenderPass,
 } from './types';
-
-interface MutablePassRecord {
-    kind: RenderPassKind;
-    name: RenderPassName;
-    order: number;
-    queue: RenderPassQueue;
-    enabled: boolean;
-    estimatedCost: number;
-    target: RenderResourceName | null;
-    inputs: RenderResourceName[];
-    items?: ReadonlyRenderList<RenderPrimitiveInstance>;
-    lights?: ReadonlyRenderList<RenderLight>;
-    probes?: ReadonlyRenderList<RenderReflectionProbe>;
-    clearState?: RenderClearState | null;
-    metadata: RenderPassMetadata;
-}
+import { RenderPassPlanner } from './render-pass-planner';
 
 interface NormalizedHdrSettings extends RenderHdrSettings {
     readonly enabled: boolean;
@@ -211,60 +182,6 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const ensureFinite = (value: number, fallback: number): number =>
     Number.isFinite(value) ? value : fallback;
-
-const computeCascadeSplits = (
-    near: number,
-    far: number,
-    cascadeCount: 1 | 2 | 4,
-    lambda: number,
-    maxDistance: number
-): readonly {
-    readonly index: number;
-    readonly near: number;
-    readonly far: number;
-    readonly splitDepth: number;
-}[] => {
-    const count = cascadeCount;
-    const clampedNear = Math.max(0.001, near);
-    const clampedFar = Math.max(clampedNear + 0.001, Math.min(far, maxDistance));
-    const ranges: Array<{
-        index: number;
-        near: number;
-        far: number;
-        splitDepth: number;
-    }> = [];
-    let previous = clampedNear;
-
-    for (let i = 1; i <= count; i++) {
-        const ratio = i / count;
-        const logarithmic = clampedNear * Math.pow(clampedFar / clampedNear, ratio);
-        const uniform = clampedNear + (clampedFar - clampedNear) * ratio;
-        const splitDepth = uniform + (logarithmic - uniform) * lambda;
-        const currentFar = i === count ? clampedFar : clamp(splitDepth, previous, clampedFar);
-
-        ranges.push(
-            Object.freeze({
-                index: i - 1,
-                near: previous,
-                far: currentFar,
-                splitDepth: currentFar,
-            })
-        );
-        previous = currentFar;
-    }
-
-    return Object.freeze(ranges);
-};
-
-const exposureHistoryDescriptor = (): RenderTextureDescriptor => ({
-    width: 1,
-    height: 1,
-    format: 'r16f',
-    usage: ['sampled', 'history'],
-});
-
-const giModeOf = (settings: RenderGlobalIlluminationSettings): RenderGlobalIlluminationMode =>
-    settings.mode;
 
 const normalizeHdr = (value: RenderPipelineOptions<unknown>['hdr']): NormalizedHdrSettings => {
     if (value === false) {
@@ -467,31 +384,13 @@ const normalizeOptions = <TNative>(
     resourceAllocator: options.resourceAllocator,
 });
 
-const mutablePassFactory = (): MutablePassRecord => ({
-    kind: 'opaque',
-    name: createRenderPassName('opaque'),
-    order: 0,
-    queue: 'geometry',
-    enabled: true,
-    estimatedCost: 0,
-    target: null,
-    inputs: [],
-    metadata: {
-        color: createRenderResourceName('frame', 'scene-color'),
-        depth: createRenderResourceName('frame', 'depth'),
-        hdr: true,
-        giMode: 'disabled',
-        ibl: false,
-    },
-});
-
 export class RenderPipeline<TNative = unknown> implements IDisposable {
     private readonly _options: NormalizedOptions<TNative>;
     private readonly _graph: RenderTextureRegistry<TNative>;
     private readonly _postProcess: PostProcessStack;
     private readonly _classifier: RenderFrameClassifier;
     private readonly _warnings = new ReusableList<string>(16);
-    private readonly _passArena = new MutableObjectArena<MutablePassRecord>(mutablePassFactory);
+    private readonly _planner: RenderPassPlanner<TNative>;
     private readonly _bakeTasks: RenderBakeTaskScheduler;
     private _frame = 0;
     private _disposed = false;
@@ -508,6 +407,12 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             maxActiveLocalLights: this._options.maxActiveLocalLights,
             maxActiveReflectionProbes: this._options.maxActiveReflectionProbes,
             maxShadowedLights: this._options.shadows.maxShadowedLights,
+        });
+        this._planner = new RenderPassPlanner(this._graph, {
+            shadows: this._options.shadows,
+            tonemapping: this._options.tonemapping,
+            lightBaking: this._options.lightBaking,
+            enableDepthPrepass: this._options.enableDepthPrepass,
         });
         this._bakeTasks = new RenderBakeTaskScheduler(this._options.lightBaking.maxRetries);
     }
@@ -622,6 +527,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             return;
         }
 
+        this._planner.clear();
         this._classifier.clear();
         this._warnings.clear();
         this._graph.dispose();
@@ -700,14 +606,11 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
 
         const livePasses = this._planPasses(
             frame,
-            deltaTime,
-            input.viewport,
-            input.camera,
-            input.environment,
+            input,
             hdr,
-                gi,
-                volumetrics,
-                shadowEnabled,
+            gi,
+            volumetrics,
+            shadowEnabled,
             probeUpdates,
             postEffects,
             bakeTasks
@@ -787,7 +690,6 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
     private _resetScratch(): void {
         this._classifier.reset();
         this._warnings.reset();
-        this._passArena.reset();
     }
 
     private _resolveHdr(input: RenderFrameInput): NormalizedHdrSettings {
@@ -838,533 +740,35 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
 
     private _planPasses(
         frame: number,
-        deltaTime: number,
-        viewport: RenderViewport,
-        camera: RenderCameraState,
-        environment: RenderEnvironmentState | undefined,
+        input: RenderFrameInput,
         hdr: NormalizedHdrSettings,
         gi: RenderGlobalIlluminationSettings,
         volumetrics: NormalizedVolumetricSettings,
         shadowEnabled: boolean,
         probeUpdateCount: number,
-        postEffects: readonly ResolvedPostProcessEffect[],
+        postEffects: ReturnType<PostProcessStack['resolve']>,
         bakeTasks: readonly ScheduledRenderBakeTask[]
     ): readonly ResolvedRenderPass[] {
-        let order = 0;
-        const width = Math.max(1, Math.floor(viewport.width * (viewport.pixelRatio ?? 1)));
-        const height = Math.max(1, Math.floor(viewport.height * (viewport.pixelRatio ?? 1)));
-
-        const sceneDepth = this._acquireTexture(
-            createRenderResourceName('frame', 'depth'),
-            {
-                width,
-                height,
-                format: 'depth24',
-                usage: ['depth-attachment', 'sampled'],
-            },
-            'transient'
-        ).id as RenderResourceName<'frame'>;
-
-        const sceneColor = this._acquireTexture(
-            createRenderResourceName('frame', 'scene-color'),
-            {
-                width,
-                height,
-                format: hdr.enabled ? hdr.colorFormat : 'rgba8',
-                usage: ['color-attachment', 'sampled'],
-            },
-            'transient'
-        ).id as RenderResourceName<'frame'>;
-
-        const backBuffer = this._acquireTexture(
-            createRenderResourceName('swap', 'back-buffer'),
-            {
-                width,
-                height,
-                format: 'rgba8',
-                usage: ['present'],
-            },
-            'persistent'
-        ).id as RenderResourceName<'swap'>;
-
-        let currentColor: RenderResourceName = sceneColor;
-        let ping: RenderResourceName<'post'> | null = null;
-        let pong: RenderResourceName<'post'> | null = null;
-        const exposureHistory =
-            hdr.enabled && hdr.exposure?.mode === 'automatic'
-                ? (this._acquireTexture(
-                      createRenderResourceName('history', 'exposure'),
-                      exposureHistoryDescriptor(),
-                      'history'
-                  ).id as RenderResourceName<'history'>)
-                : null;
-
-        const useDepthPrepass =
-            this._options.enableDepthPrepass === true ||
-            (this._options.enableDepthPrepass === 'auto' &&
-                (this._opaque.length > 48 ||
-                    this._shadowLights.length > 0 ||
-                    this._containsAlphaClippedOpaque()));
-
-        if (useDepthPrepass && this._opaque.length > 0) {
-            order = this._pushPass(order, {
-                kind: 'depth-prepass',
-                name: createRenderPassName('depth-prepass'),
-                queue: 'prepass',
-                target: sceneDepth,
-                inputs: [sceneDepth],
-                items: this._opaque,
-                clearState: camera.clearState ?? { depth: 1 },
-                estimatedCost: this._opaque.length * 0.0015,
-                metadata: {
-                    depth: sceneDepth,
-                },
-            });
-        }
-
-        if (shadowEnabled) {
-            const cascades = computeCascadeSplits(
-                camera.near,
-                camera.far,
-                this._options.shadows.cascadeCount,
-                this._options.shadows.cascadeSplitLambda,
-                this._options.shadows.maxDistance
-            );
-            const shadowAtlas = this._acquireTexture(
-                createRenderResourceName('shadow', 'atlas'),
-                {
-                    width: this._options.shadows.atlasSize,
-                    height: this._options.shadows.atlasSize,
-                    format: 'depth32f',
-                    usage: ['shadow', 'depth-attachment', 'sampled'],
-                },
-                'transient'
-            ).id as RenderResourceName<'shadow'>;
-
-            order = this._pushPass(order, {
-                kind: 'shadow',
-                name: createRenderPassName('shadow'),
-                queue: 'shadow',
-                target: shadowAtlas,
-                inputs: [shadowAtlas],
-                items: this._shadowCasters,
-                lights: this._shadowLights,
-                estimatedCost:
-                    this._shadowLights.length * 0.24 + this._shadowCasters.length * 0.0015,
-                metadata: {
-                    atlas: shadowAtlas,
-                    cascadeCount: this._options.shadows.cascadeCount,
-                    filter: this._options.shadows.filter,
-                    maxDistance: this._options.shadows.maxDistance,
-                    cascades,
-                    lightIds: Object.freeze(this._shadowLights.toArray().map((light) => light.id)),
-                },
-            });
-        }
-
-        if (probeUpdateCount > 0) {
-            const probeTarget = this._acquireTexture(
-                createRenderResourceName('probe', 'update-target'),
-                {
-                    width: 1024,
-                    height: 1024,
-                    format: hdr.colorFormat,
-                    usage: ['color-attachment', 'sampled'],
-                    cube: true,
-                },
-                'transient'
-            ).id as RenderResourceName<'probe'>;
-
-            const probeView = this._limitedProbeView(probeUpdateCount);
-            order = this._pushPass(order, {
-                kind: 'reflection-probe',
-                name: createRenderPassName('reflection-probe'),
-                queue: 'environment',
-                target: probeTarget,
-                inputs: [probeTarget],
-                probes: probeView,
-                estimatedCost: probeUpdateCount * 0.32,
-                metadata: {
-                    target: probeTarget,
-                    updateCount: probeUpdateCount,
-                },
-            });
-        }
-
-        if (gi.mode !== 'disabled') {
-            const giTarget = this._acquireTexture(
-                createRenderResourceName('gi', 'indirect'),
-                {
-                    width,
-                    height,
-                    format: hdr.colorFormat,
-                    usage: ['color-attachment', 'sampled', 'history'],
-                },
-                gi.mode === 'baked' ? 'persistent' : 'transient'
-            ).id as RenderResourceName<'gi'>;
-
-            const giHistory =
-                gi.mode === 'ssgi' || gi.mode === 'hybrid'
-                    ? (this._acquireTexture(
-                          createRenderResourceName('history', 'gi'),
-                          {
-                              width,
-                              height,
-                              format: hdr.colorFormat,
-                              usage: ['sampled', 'history'],
-                          },
-                          'history'
-                      ).id as RenderResourceName<'history'>)
-                    : null;
-
-            order = this._pushPass(order, {
-                kind: 'global-illumination',
-                name: createRenderPassName('global-illumination'),
-                queue: 'lighting',
-                target: giTarget,
-                inputs: giHistory ? [giTarget, giHistory] : [giTarget],
-                estimatedCost:
-                    gi.mode === 'ddgi' ? 0.4 : gi.mode === 'hybrid' ? 0.6 : 0.55,
-                metadata: {
-                    mode: gi.mode,
-                    target: giTarget,
-                    history: giHistory,
-                },
-            });
-        }
-
-        order = this._pushPass(order, {
-            kind: 'opaque',
-            name: createRenderPassName('opaque'),
-            queue: 'geometry',
-            target: sceneColor,
-            inputs: [sceneColor, sceneDepth],
-            items: this._opaque,
-            lights: this._activeLights,
-            probes: this._activeProbes,
-            clearState: camera.clearState ?? {
-                color: [0, 0, 0, 1],
-                depth: 1,
-            },
-            estimatedCost:
-                0.15 +
-                this._opaque.length * 0.003 +
-                this._activeLights.length * 0.04 +
-                this._activeProbes.length * 0.02,
-            metadata: {
-                color: sceneColor,
-                depth: sceneDepth,
-                hdr: hdr.enabled,
-                giMode: giModeOf(gi),
-                ibl: this._activeProbes.length > 0,
-            },
+        return this._planner.plan({
+            frame,
+            viewport: input.viewport,
+            camera: input.camera,
+            environment: input.environment,
+            hdr,
+            gi,
+            volumetrics,
+            shadowEnabled,
+            probeUpdateCount,
+            postEffects,
+            bakeTasks,
+            opaque: this._opaque,
+            transparent: this._transparent,
+            shadowCasters: this._shadowCasters,
+            activeLights: this._activeLights,
+            shadowLights: this._shadowLights,
+            activeProbes: this._activeProbes,
+            probeUpdates: this._probeUpdates,
         });
-
-        const hasSkyLighting =
-            !!environment?.skybox ||
-            !!environment?.ibl?.enabled ||
-            this._activeProbes.length > 0;
-
-        if (hasSkyLighting) {
-            order = this._pushPass(order, {
-                kind: 'skybox',
-                name: createRenderPassName('skybox'),
-                queue: 'environment',
-                target: currentColor,
-                inputs: [currentColor, sceneDepth],
-                estimatedCost: 0.08,
-                metadata: {
-                    color: currentColor as RenderResourceName<'frame' | 'post'>,
-                    depth: sceneDepth,
-                    useIbl: this._activeProbes.length > 0,
-                },
-            });
-        }
-
-        if (volumetrics.enabled) {
-            const froxel = this._acquireTexture(
-                createRenderResourceName('volumetric', 'froxel'),
-                {
-                    width: volumetrics.froxelResolution[0],
-                    height: volumetrics.froxelResolution[1],
-                    depth: volumetrics.froxelResolution[2],
-                    format: 'rgba16f',
-                    usage: ['storage', 'sampled', 'history'],
-                },
-                'transient'
-            ).id as RenderResourceName<'volumetric'>;
-
-            const history = volumetrics.temporalReprojection
-                ? (this._acquireTexture(
-                      createRenderResourceName('history', 'volumetric'),
-                      {
-                          width: volumetrics.froxelResolution[0],
-                          height: volumetrics.froxelResolution[1],
-                          depth: volumetrics.froxelResolution[2],
-                          format: 'rgba16f',
-                          usage: ['sampled', 'history'],
-                      },
-                      'history'
-                  ).id as RenderResourceName<'history'>)
-                : null;
-
-            order = this._pushPass(order, {
-                kind: 'volumetric',
-                name: createRenderPassName('volumetric'),
-                queue: 'lighting',
-                target: froxel,
-                inputs: history ? [froxel, history] : [froxel],
-                lights: this._activeLights,
-                estimatedCost: 0.6,
-                metadata: {
-                    froxelGrid: froxel,
-                    history,
-                },
-            });
-        }
-
-        if (this._transparent.length > 0) {
-            order = this._pushPass(order, {
-                kind: 'transparent',
-                name: createRenderPassName('transparent'),
-                queue: 'transparency',
-                target: currentColor,
-                inputs: [currentColor, sceneDepth],
-                items: this._transparent,
-                lights: this._activeLights,
-                probes: this._activeProbes,
-                estimatedCost:
-                    this._transparent.length * 0.004 +
-                    this._activeLights.length * 0.03,
-                metadata: {
-                    color: currentColor as RenderResourceName<'frame' | 'post'>,
-                    depth: sceneDepth,
-                    hdr: hdr.enabled,
-                },
-            });
-        }
-
-        const effectsBefore = postEffects.filter((effect) => effect.phase === 'before-tonemap');
-        const effectsAfter = postEffects.filter((effect) => effect.phase === 'after-tonemap');
-
-        if (effectsBefore.length + effectsAfter.length > 0) {
-            ping = this._acquireTexture(
-                createRenderResourceName('post', 'ping'),
-                {
-                    width,
-                    height,
-                    format: hdr.enabled ? hdr.colorFormat : 'rgba8',
-                    usage: ['color-attachment', 'sampled'],
-                },
-                'transient'
-            ).id as RenderResourceName<'post'>;
-            pong = this._acquireTexture(
-                createRenderResourceName('post', 'pong'),
-                {
-                    width,
-                    height,
-                    format: hdr.enabled ? hdr.colorFormat : 'rgba8',
-                    usage: ['color-attachment', 'sampled'],
-                },
-                'transient'
-            ).id as RenderResourceName<'post'>;
-        }
-
-        for (let i = 0; i < effectsBefore.length; i++) {
-            const effect = effectsBefore[i];
-            const taaTargetHistory =
-                effect.category === 'builtin' && effect.name === 'taa'
-                    ? (this._acquireTexture(
-                          createRenderResourceName('history', frame % 2 === 0 ? 'taa-b' : 'taa-a'),
-                          {
-                              width,
-                              height,
-                              format: hdr.enabled ? hdr.colorFormat : 'rgba8',
-                              usage: ['color-attachment', 'sampled', 'history'],
-                          },
-                          'history'
-                      ).id as RenderResourceName<'history'>)
-                    : null;
-            const taaSourceHistory =
-                effect.category === 'builtin' && effect.name === 'taa'
-                    ? (this._acquireTexture(
-                          createRenderResourceName('history', frame % 2 === 0 ? 'taa-a' : 'taa-b'),
-                          {
-                              width,
-                              height,
-                              format: hdr.enabled ? hdr.colorFormat : 'rgba8',
-                              usage: ['sampled', 'history'],
-                          },
-                          'history'
-                      ).id as RenderResourceName<'history'>)
-                    : null;
-            const target =
-                taaTargetHistory
-                    ? taaTargetHistory
-                    : i % 2 === 0
-                      ? (ping as RenderResourceName<'post'>)
-                      : (pong as RenderResourceName<'post'>);
-            const inputs =
-                taaSourceHistory
-                    ? Object.freeze([currentColor, taaSourceHistory])
-                    : Object.freeze([currentColor]);
-            order = this._pushPass(order, {
-                kind: 'post-process',
-                name: createRenderPassName(`post-process:${effect.name}`),
-                queue: 'post-process',
-                target,
-                inputs,
-                estimatedCost: getRenderPostEffectCost(effect),
-                metadata: {
-                    source: currentColor,
-                    target: target as RenderResourceName<'post' | 'frame' | 'history'>,
-                    phase: 'before-tonemap',
-                    effect,
-                },
-            });
-            currentColor = target;
-        }
-
-        const tonemapTarget: RenderResourceName<'post' | 'frame'> =
-            hdr.enabled || this._options.tonemapping.mode !== 'none'
-                ? ((effectsAfter.length > 0
-                      ? effectsBefore.length % 2 === 0
-                            ? (ping as RenderResourceName<'post'>)
-                            : (pong as RenderResourceName<'post'>)
-                      : sceneColor) as RenderResourceName<'post' | 'frame'>)
-                : (currentColor as RenderResourceName<'post' | 'frame'>);
-
-        if (hdr.enabled || this._options.tonemapping.mode !== 'none') {
-            order = this._pushPass(order, {
-                kind: 'tonemap',
-                name: createRenderPassName('tonemap'),
-                queue: 'post-process',
-                target: tonemapTarget,
-                inputs: exposureHistory ? [currentColor, exposureHistory] : [currentColor],
-                estimatedCost: 0.12,
-                metadata: {
-                    source: currentColor,
-                    target: tonemapTarget,
-                    mode: this._options.tonemapping.mode,
-                    hdr: hdr.enabled,
-                    colorSpace: hdr.outputColorSpace,
-                    exposure: hdr.exposure ?? null,
-                    exposureHistory,
-                },
-            });
-            currentColor = tonemapTarget;
-        }
-
-        for (let i = 0; i < effectsAfter.length; i++) {
-            const effect = effectsAfter[i];
-            const target =
-                i % 2 === 0
-                    ? (pong as RenderResourceName<'post'>)
-                    : (ping as RenderResourceName<'post'>);
-            order = this._pushPass(order, {
-                kind: 'post-process',
-                name: createRenderPassName(`post-process:${effect.name}`),
-                queue: 'post-process',
-                target,
-                inputs: [currentColor],
-                estimatedCost: getRenderPostEffectCost(effect),
-                metadata: {
-                    source: currentColor,
-                    target,
-                    phase: 'after-tonemap',
-                    effect,
-                },
-            });
-            currentColor = target;
-        }
-
-        if (bakeTasks.length > 0) {
-            order = this._pushPass(order, {
-                kind: 'light-bake',
-                name: createRenderPassName('light-bake'),
-                queue: 'async',
-                target: null,
-                inputs: [],
-                estimatedCost: sumRenderBakeTaskCost(bakeTasks),
-                metadata: {
-                    taskIds: Object.freeze(bakeTasks.map((task) => task.id)),
-                    budgetMs:
-                        environment?.lightBaking?.budgetMs ??
-                        this._options.lightBaking.budgetMs,
-                },
-            });
-        }
-
-        order = this._pushPass(order, {
-            kind: 'present',
-            name: createRenderPassName('present'),
-            queue: 'present',
-            target: backBuffer,
-            inputs: [currentColor],
-            estimatedCost: 0.05,
-            metadata: {
-                source: currentColor,
-                destination: backBuffer,
-                colorSpace: hdr.outputColorSpace,
-            },
-        });
-
-        return this._passArena.values() as readonly ResolvedRenderPass[];
-    }
-
-    private _containsAlphaClippedOpaque(): boolean {
-        for (let i = 0; i < this._opaque.length; i++) {
-            if (this._opaque.at(i).material.alphaClipped) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private _limitedProbeView(limit: number): ReadonlyRenderList<RenderReflectionProbe> {
-        if (limit >= this._probeUpdates.length) {
-            return this._probeUpdates;
-        }
-
-        const view = new ReusableList<RenderReflectionProbe>(limit);
-        for (let i = 0; i < limit; i++) {
-            view.push(this._probeUpdates.at(i));
-        }
-        return view;
-    }
-
-    private _pushPass(
-        order: number,
-        config: Omit<MutablePassRecord, 'order' | 'enabled' | 'inputs'> & {
-            readonly inputs: readonly RenderResourceName[];
-        }
-    ): number {
-        const pass = this._passArena.acquire();
-        pass.kind = config.kind;
-        pass.name = config.name;
-        pass.order = order;
-        pass.queue = config.queue;
-        pass.enabled = true;
-        pass.estimatedCost = config.estimatedCost;
-        pass.target = config.target;
-        pass.inputs.length = 0;
-        for (let i = 0; i < config.inputs.length; i++) {
-            pass.inputs[i] = config.inputs[i];
-        }
-        pass.items = config.items;
-        pass.lights = config.lights;
-        pass.probes = config.probes;
-        pass.clearState = config.clearState;
-        pass.metadata = config.metadata;
-        return order + 1;
-    }
-
-    private _acquireTexture(
-        id: RenderResourceName,
-        descriptor: RenderTextureDescriptor,
-        lifetime: RenderResourceLifetime
-    ) {
-        return this._graph.acquireTexture(id, descriptor, lifetime);
     }
 
     private _createStatistics(
@@ -1380,6 +784,10 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         const resources = this._graph.listTextures();
         let transientResources = 0;
         let persistentResources = 0;
+        let postProcessPassCount = 0;
+        let postProcessCost = 0;
+        let bakeTaskCost = 0;
+
         for (const resource of resources) {
             if (resource.lifetime === 'transient') {
                 transientResources += 1;
@@ -1388,11 +796,24 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             }
         }
 
+        for (let i = 0; i < passes.length; i++) {
+            const pass = passes[i]!;
+            if (pass.kind === 'post-process') {
+                postProcessPassCount += 1;
+                postProcessCost += pass.estimatedCost;
+                continue;
+            }
+
+            if (pass.kind === 'light-bake') {
+                bakeTaskCost += pass.estimatedCost;
+            }
+        }
+
         return {
             frame,
             deltaTime,
             passCount: passes.length,
-            postProcessPassCount: passes.filter((pass) => pass.kind === 'post-process').length,
+            postProcessPassCount,
             opaqueCount: this._opaque.length,
             transparentCount: this._transparent.length,
             shadowCasterCount: shadowEnabled ? this._shadowCasters.length : 0,
@@ -1411,13 +832,9 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                 activeLightCount: this._activeLights.length,
                 shadowLightCount: this._shadowLights.length,
                 shadowCasterCount: this._shadowCasters.length,
-                postProcessCost: passes
-                    .filter((pass) => pass.kind === 'post-process')
-                    .reduce((sum, pass) => sum + pass.estimatedCost, 0),
+                postProcessCost,
                 probeUpdates,
-                bakeTaskCost: passes
-                    .filter((pass) => pass.kind === 'light-bake')
-                    .reduce((sum, pass) => sum + pass.estimatedCost, 0),
+                bakeTaskCost,
                 gi,
                 volumetricsEnabled: volumetrics.enabled,
                 shadowEnabled,
