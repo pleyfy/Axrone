@@ -82,6 +82,8 @@ export type { SceneTextureFactoryOptions } from './scene-texture-factory';
 export { SceneTextureFactory } from './scene-texture-factory';
 export type { SceneSnapshotLoaderOptions } from './scene-snapshot-loader';
 export { SceneSnapshotLoader } from './scene-snapshot-loader';
+export type { ResolvedSceneSurface } from './scene-surface-resolver';
+export { resolveSceneSurface } from './scene-surface-resolver';
 export {
     DEFAULT_SCENE_ATTRIBUTE_NAMES,
     SCENE_ATTRIBUTE_LOCATIONS,
