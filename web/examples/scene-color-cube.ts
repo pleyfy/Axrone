@@ -137,7 +137,7 @@ void main() {
         );
 
         const cameraTransform = camera.requireComponent(Transform);
-        cameraTransform.position = new Vec3(0, 0.8, 1.8);
+        cameraTransform.position = new Vec3(0, 0, 2.24);
         cameraTransform.rotation = Quat.fromLookAt(
             cameraTransform.position,
             cubeTransform.position,
