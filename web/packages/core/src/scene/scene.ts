@@ -19,6 +19,7 @@ import {
 import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
 import { Animator } from './components/animator';
 import { Camera, type CameraConfig } from './components/camera';
+import { SceneDrawExecutionContextCache } from './draw-execution-context';
 import { SceneDrawExecutor } from './draw-executor';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { SceneMorphMeshRuntime } from './morph-mesh-runtime';
@@ -435,6 +436,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _cameraFrameCollector = new SceneCameraFrameStateCollector();
     private readonly _renderItemCollector = new SceneRenderItemCollector();
     private readonly _renderFrameState = new SceneRenderFrameState();
+    private readonly _drawExecutionContextCache = new SceneDrawExecutionContextCache();
     private readonly _materialTextureBinder: SceneMaterialTextureBinder;
     private readonly _renderPassPreparer: SceneRenderPassPreparer;
     private readonly _renderStateApplier: SceneRenderStateApplier;
@@ -1540,6 +1542,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     private _render(deltaTime: number): void {
         const renderFrame = this._renderFrameState.begin(this.loop.frame);
+        const viewportWidth = this.canvas.width;
+        const viewportHeight = this.canvas.height;
+        const elapsedSeconds = this.loop.elapsed / 1000;
+        const deltaSeconds = deltaTime / 1000;
+        const frameNumber = this.loop.frame;
 
         const camera = this._selectCamera();
         const lighting = this._collectLighting();
@@ -1551,10 +1558,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
         const cameraFrame = this._cameraFrameCollector.collect(
             camera,
-            this.canvas.width,
-            this.canvas.height
+            viewportWidth,
+            viewportHeight
         );
-        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+        this.gl.viewport(0, 0, viewportWidth, viewportHeight);
 
         for (const renderPass of renderPasses) {
             this._renderPassPreparer.prepare(renderPass, cameraFrame?.camera);
@@ -1563,25 +1570,22 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 continue;
             }
 
-            const viewMatrix = cameraFrame.viewMatrix;
-            const projectionMatrix = cameraFrame.projectionMatrix;
-            const viewProjectionMatrix = cameraFrame.viewProjectionMatrix;
-            const cameraPosition = cameraFrame.position;
+            const drawContext = this._drawExecutionContextCache.prepare({
+                renderPass,
+                cameraFrame,
+                lighting,
+                elapsedSeconds,
+                deltaSeconds,
+                frame: frameNumber,
+                viewportWidth,
+                viewportHeight,
+            });
 
             const renderItems = this._collectRenderItems(renderPass.rendererPassId);
             for (const item of renderItems) {
                 this._drawExecutor.execute(
                     item,
-                    {
-                        renderPass,
-                        cameraFrame,
-                        lighting,
-                        elapsedSeconds: this.loop.elapsed / 1000,
-                        deltaSeconds: deltaTime / 1000,
-                        frame: this.loop.frame,
-                        viewportWidth: this.canvas.width,
-                        viewportHeight: this.canvas.height,
-                    },
+                    drawContext,
                     renderFrame
                 );
             }
