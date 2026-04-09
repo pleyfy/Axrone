@@ -31,6 +31,12 @@ export {
 } from './material-registry';
 export type { SceneMeshRegistrationResult, SceneMeshResource } from './mesh-registry';
 export { cloneSceneMeshDefinition, SceneMeshRegistry } from './mesh-registry';
+export type {
+    SceneResourceRuntimeClearCallbacks,
+    SceneResourceRuntimeOptions,
+    SceneResourceRuntimeSerializationResult,
+} from './scene-resource-runtime';
+export { SceneResourceRuntime } from './scene-resource-runtime';
 export type { SceneSamplerRegistrationResult, SceneSamplerResource } from './sampler-registry';
 export { cloneSceneSamplerDefinition, SceneSamplerRegistry } from './sampler-registry';
 export type { SceneTextureRegistrationResult, SceneTextureResource } from './texture-registry';
