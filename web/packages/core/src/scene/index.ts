@@ -37,6 +37,8 @@ export type { SceneActorLifecycleRunnerOptions } from './actor-lifecycle-runner'
 export { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
 export type { SceneActorRuntimeOptions } from './scene-actor-runtime';
 export { SceneActorRuntime } from './scene-actor-runtime';
+export type { Scene3DActorRuntimeOptions } from './scene-3d-actor-runtime';
+export { Scene3DActorRuntime } from './scene-3d-actor-runtime';
 export type { SceneAssetRuntimeOptions } from './scene-asset-runtime';
 export { SceneAssetRuntime } from './scene-asset-runtime';
 export type { SceneLifecycleRuntimeOptions } from './scene-lifecycle-runtime';

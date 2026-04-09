@@ -8,6 +8,7 @@ import type { System, SystemQuery } from '../component-system/types/system';
 import type { CameraConfig } from './components/camera';
 import type { MeshRendererConfig } from './components/mesh-renderer';
 import { SceneMaterialError } from './errors';
+import { Scene3DActorRuntime } from './scene-3d-actor-runtime';
 import {
     DEFAULT_SCENE_HEIGHT,
     DEFAULT_SCENE_WIDTH,
@@ -84,12 +85,16 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     readonly loop: GameLoop<SceneLoopState>;
 
     private readonly _kernel: SceneRuntimeKernel<R>;
+    private readonly _actors3d: Scene3DActorRuntime<R>;
 
     constructor(options: SceneOptions<R> = {}) {
         this.id = createId('scene');
         this._kernel = new SceneRuntimeKernel({
             sceneId: this.id,
             options,
+        });
+        this._actors3d = new Scene3DActorRuntime({
+            actors: this._kernel.actors,
         });
         this.canvas = this._kernel.canvas;
         this.gl = this._kernel.gl;
@@ -140,7 +145,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         cameraConfig: CameraConfig = {}
     ): Actor<World<RuntimeRegistry<R>>> {
         this._assertNotDisposed();
-        return this._kernel.actors.createCameraActor(actorConfig, cameraConfig);
+        return this._actors3d.createCameraActor(actorConfig, cameraConfig);
     }
 
     createRenderableActor(
@@ -148,7 +153,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         rendererConfig: MeshRendererConfig = {}
     ): Actor<World<RuntimeRegistry<R>>> {
         this._assertNotDisposed();
-        return this._kernel.actors.createRenderableActor(actorConfig, rendererConfig);
+        return this._actors3d.createRenderableActor(actorConfig, rendererConfig);
     }
 
     addSystem<Q extends SystemQuery<RuntimeRegistry<R>>>(

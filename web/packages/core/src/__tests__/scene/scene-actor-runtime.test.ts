@@ -4,8 +4,6 @@ import { World } from '../../component-system/core/world';
 import { createSceneRegistry } from '../../scene';
 import { SceneActorRuntime } from '../../scene/scene-actor-runtime';
 import { SceneComponentCatalog } from '../../scene/component-catalog';
-import { Camera } from '../../scene/components/camera';
-import { MeshRenderer } from '../../scene/components/mesh-renderer';
 
 class PulseComponent extends Component {}
 
@@ -50,18 +48,15 @@ describe('SceneActorRuntime', () => {
         expect(runtime.getRegisteredComponentNames()).toContain('PulseComponent');
     });
 
-    it('creates camera and renderable actors through one actor service', () => {
+    it('creates plain actors through the core actor service boundary', () => {
         const runtime = createActorRuntime();
 
-        const cameraActor = runtime.createCameraActor({ name: 'Camera' }, { primary: true });
-        const renderableActor = runtime.createRenderableActor(
-            { name: 'Renderable' },
-            { meshId: 'mesh', materialId: 'material' }
-        );
+        const actor = runtime.createActor({
+            name: 'PlainActor',
+        });
 
-        expect(cameraActor.getComponent(Camera)?.primary).toBe(true);
-        expect(renderableActor.getComponent(MeshRenderer)?.meshId).toBe('mesh');
-        expect(renderableActor.getComponent(MeshRenderer)?.materialId).toBe('material');
+        expect(actor.name).toBe('PlainActor');
+        expect(actor.started).toBe(true);
     });
 
     it('owns prefab creation and instantiation without leaking catalog details', () => {
