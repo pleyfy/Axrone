@@ -231,7 +231,7 @@ const sceneRemoteGltfExample: SceneExample = {
                 maxDistance: Math.max(64, distance * 1.8),
                 azimuth: 0.52,
                 elevation: 0.16,
-                autoRotateSpeed: 0.12,
+                autoRotateSpeed: 0.06,
             });
 
             const sun = scene.createActor({ name: 'RemoteSun' });
