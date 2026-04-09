@@ -23,6 +23,7 @@ import { Camera, type CameraConfig } from './components/camera';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { SceneComponentCatalog } from './component-catalog';
+import { selectSceneCamera } from './camera-selector';
 import { SceneLightingCollector, type SceneLightingState } from './lighting-collector';
 import { createSceneLoopSystems } from './loop-bridge';
 import type { SceneMaterialResource } from './material-registry';
@@ -1823,28 +1824,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     private _selectCamera(): Camera | undefined {
-        let fallback: Camera | undefined;
-
-        for (const actor of this.world.getAllActors()) {
-            if (!actor.active) {
-                continue;
-            }
-
-            const camera = actor.getComponent(Camera);
-            if (!camera || !camera.enabled) {
-                continue;
-            }
-
-            if (camera.primary) {
-                return camera;
-            }
-
-            if (!fallback) {
-                fallback = camera;
-            }
-        }
-
-        return fallback;
+        return selectSceneCamera(this.world.getAllActors());
     }
 
     private _collectLighting(): SceneLightingState {

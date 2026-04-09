@@ -33,6 +33,7 @@ export type { SceneMeshRegistrationResult, SceneMeshResource } from './mesh-regi
 export { cloneSceneMeshDefinition, SceneMeshRegistry } from './mesh-registry';
 export type { SceneLightingState } from './lighting-collector';
 export { SceneLightingCollector } from './lighting-collector';
+export { selectSceneCamera } from './camera-selector';
 export type { SceneRenderItem } from './render-item-collector';
 export { SceneRenderItemCollector } from './render-item-collector';
 export type {
