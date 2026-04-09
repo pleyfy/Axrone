@@ -79,6 +79,42 @@ describe('SceneRenderPassRegistry', () => {
         expect(registry.getDefinitions()).toEqual([]);
     });
 
+    it('reuses ordered and enabled caches until the registry changes', () => {
+        const registry = new SceneRenderPassRegistry({
+            defaultPassId: 'main',
+            defaultClearColor: new Vec4(0, 0, 0, 1),
+        });
+
+        registry.register({
+            id: 'main',
+        });
+        registry.register({
+            id: 'overlay',
+            enabled: false,
+            order: 2,
+        });
+
+        const firstOrdered = registry.getOrderedResources();
+        const firstEnabled = registry.getEnabledResources();
+        const firstHandles = registry.getHandles();
+        const firstDefinitions = registry.getDefinitions();
+
+        expect(registry.getOrderedResources()).toBe(firstOrdered);
+        expect(registry.getEnabledResources()).toBe(firstEnabled);
+        expect(registry.getHandles()).toBe(firstHandles);
+        expect(registry.getDefinitions()).toBe(firstDefinitions);
+
+        registry.register({
+            id: 'before-overlay',
+            order: 1,
+        });
+
+        expect(registry.getOrderedResources()).not.toBe(firstOrdered);
+        expect(registry.getEnabledResources()).not.toBe(firstEnabled);
+        expect(registry.getHandles()).not.toBe(firstHandles);
+        expect(registry.getDefinitions()).not.toBe(firstDefinitions);
+    });
+
     it('clones render pass definitions without leaking mutable clear colors', () => {
         const definition = {
             id: 'main',

@@ -63,6 +63,10 @@ export class SceneRenderPassRegistry {
     private readonly _definitions = new Map<string, SceneRenderPassDefinition>();
     private readonly _defaultPassId: string;
     private readonly _defaultClearColor: Vec4;
+    private _orderedResourcesCache: readonly SceneRenderPassResource[] | null = null;
+    private _enabledResourcesCache: readonly SceneRenderPassResource[] | null = null;
+    private _handlesCache: readonly SceneRenderPassHandle[] | null = null;
+    private _definitionsCache: readonly SceneRenderPassDefinition[] | null = null;
 
     constructor(options: SceneRenderPassRegistryOptions) {
         this._defaultPassId = options.defaultPassId;
@@ -100,6 +104,7 @@ export class SceneRenderPassRegistry {
 
         this._resources.set(definition.id, resource);
         this._definitions.set(definition.id, cloneSceneRenderPassDefinition(definition));
+        this._invalidateCaches();
         return toHandle(resource);
     }
 
@@ -113,8 +118,13 @@ export class SceneRenderPassRegistry {
     }
 
     getHandles(): readonly SceneRenderPassHandle[] {
-        return this.getOrderedResources()
-            .map((renderPass) => toHandle(renderPass));
+        if (!this._handlesCache) {
+            this._handlesCache = Object.freeze(
+                this.getOrderedResources().map((renderPass) => Object.freeze(toHandle(renderPass)))
+            );
+        }
+
+        return this._handlesCache;
     }
 
     getResources(): readonly SceneRenderPassResource[] {
@@ -122,23 +132,51 @@ export class SceneRenderPassRegistry {
     }
 
     getOrderedResources(): readonly SceneRenderPassResource[] {
-        return [...this._resources.values()].sort(compareRenderPassResources);
+        if (!this._orderedResourcesCache) {
+            this._orderedResourcesCache = Object.freeze(
+                [...this._resources.values()].sort(compareRenderPassResources)
+            );
+        }
+
+        return this._orderedResourcesCache;
     }
 
     getEnabledResources(): readonly SceneRenderPassResource[] {
-        return this.getOrderedResources().filter(
-            (renderPass: SceneRenderPassResource) => renderPass.enabled
-        );
+        if (!this._enabledResourcesCache) {
+            this._enabledResourcesCache = Object.freeze(
+                this.getOrderedResources().filter(
+                    (renderPass: SceneRenderPassResource) => renderPass.enabled
+                )
+            );
+        }
+
+        return this._enabledResourcesCache;
     }
 
     getDefinitions(): readonly SceneRenderPassDefinition[] {
-        return [...this._definitions.values()]
-            .sort(compareRenderPassDefinitions)
-            .map((definition) => cloneSceneRenderPassDefinition(definition));
+        if (!this._definitionsCache) {
+            this._definitionsCache = Object.freeze(
+                [...this._definitions.values()]
+                    .sort(compareRenderPassDefinitions)
+                    .map((definition) =>
+                        Object.freeze(cloneSceneRenderPassDefinition(definition))
+                    )
+            );
+        }
+
+        return this._definitionsCache;
     }
 
     clear(): void {
         this._resources.clear();
         this._definitions.clear();
+        this._invalidateCaches();
+    }
+
+    private _invalidateCaches(): void {
+        this._orderedResourcesCache = null;
+        this._enabledResourcesCache = null;
+        this._handlesCache = null;
+        this._definitionsCache = null;
     }
 }
