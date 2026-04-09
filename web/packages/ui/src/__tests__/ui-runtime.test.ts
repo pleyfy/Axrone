@@ -195,6 +195,43 @@ describe('@axrone/ui runtime', () => {
         }
     });
 
+    it('keeps empty text widgets render-safe and preserves caret output', () => {
+        const runtime = new UIRuntime({ width: 180, height: 80 });
+        runtime.fonts.registerFace(createFontAsset('InputSans'));
+
+        const input = runtime.createWidget({
+            layout: { width: 120, height: 24 },
+            text: {
+                value: 'A',
+                family: 'InputSans',
+                size: 18,
+                caretIndex: 1,
+                caretColor: '#f8fafcff',
+                caretWidth: 2,
+            },
+        });
+
+        runtime.appendChild(runtime.root, input);
+        runtime.commit();
+
+        runtime.updateWidget(input, {
+            text: {
+                value: '',
+                caretIndex: 0,
+                caretColor: '#f8fafcff',
+                caretWidth: 2,
+            },
+        });
+
+        const frame = runtime.commit();
+        const textCommands = frame.commands.filter((entry) => entry.kind === 'text');
+        const caretQuad = frame.commands.find((entry) => entry.kind === 'quad' && entry.width === 2);
+
+        expect(textCommands).toHaveLength(0);
+        expect(caretQuad).toBeDefined();
+        expect(runtime.getTextLayout(input)?.carets[0]?.index).toBe(0);
+    });
+
     it('moves focus with directional and linear navigation', () => {
         const runtime = new UIRuntime({ width: 320, height: 120 });
 

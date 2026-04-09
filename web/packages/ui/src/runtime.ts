@@ -1205,52 +1205,54 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
                 }
             }
             const textLayout = this.resolveTextLayoutForRender(index);
-            if (textLayout && textLayout.glyphs.length > 0) {
+            if (textLayout) {
                 const textStyle = this.texts[index]!;
                 if (textStyle.selectionColor.a > 0) {
                     for (const quad of this.buildSelectionCommands(index, box, textStyle, textLayout, nextClip, zIndex, style.opacity)) {
                         commands.push(quad);
                     }
                 }
-                if (textStyle.shadowColor.a > 0 && (textStyle.shadowOffsetX !== 0 || textStyle.shadowOffsetY !== 0)) {
-                    const shadowCommand: TextRenderCommand = {
+                if (textLayout.glyphs.length > 0) {
+                    if (textStyle.shadowColor.a > 0 && (textStyle.shadowOffsetX !== 0 || textStyle.shadowOffsetY !== 0)) {
+                        const shadowCommand: TextRenderCommand = {
+                            kind: 'text',
+                            widget: index as WidgetId,
+                            x: box.contentX + textStyle.shadowOffsetX,
+                            y: box.contentY + textStyle.shadowOffsetY,
+                            zIndex,
+                            color: textStyle.shadowColor,
+                            outlineColor: TRANSPARENT,
+                            outlineWidth: 0,
+                            edgeSoftness: textStyle.edgeSoftness,
+                            opacity: style.opacity,
+                            clip: nextClip,
+                            layout: textLayout,
+                        };
+                        textCommandCount += 1;
+                        glyphCount += textLayout.glyphs.length;
+                        commands.push(shadowCommand);
+                    }
+                    for (const quad of this.buildLineDecorationCommands(index, box, textStyle, textLayout, nextClip, zIndex, style.opacity)) {
+                        commands.push(quad);
+                    }
+                    const textCommand: TextRenderCommand = {
                         kind: 'text',
                         widget: index as WidgetId,
-                        x: box.contentX + textStyle.shadowOffsetX,
-                        y: box.contentY + textStyle.shadowOffsetY,
+                        x: box.contentX,
+                        y: box.contentY,
                         zIndex,
-                        color: textStyle.shadowColor,
-                        outlineColor: TRANSPARENT,
-                        outlineWidth: 0,
-                        edgeSoftness: textStyle.edgeSoftness,
+                        color: this.texts[index]!.color,
+                        outlineColor: this.texts[index]!.outlineColor,
+                        outlineWidth: this.texts[index]!.outlineWidth,
+                        edgeSoftness: this.texts[index]!.edgeSoftness,
                         opacity: style.opacity,
                         clip: nextClip,
                         layout: textLayout,
                     };
                     textCommandCount += 1;
                     glyphCount += textLayout.glyphs.length;
-                    commands.push(shadowCommand);
+                    commands.push(textCommand);
                 }
-                for (const quad of this.buildLineDecorationCommands(index, box, textStyle, textLayout, nextClip, zIndex, style.opacity)) {
-                    commands.push(quad);
-                }
-                const textCommand: TextRenderCommand = {
-                    kind: 'text',
-                    widget: index as WidgetId,
-                    x: box.contentX,
-                    y: box.contentY,
-                    zIndex,
-                    color: this.texts[index]!.color,
-                    outlineColor: this.texts[index]!.outlineColor,
-                    outlineWidth: this.texts[index]!.outlineWidth,
-                    edgeSoftness: this.texts[index]!.edgeSoftness,
-                    opacity: style.opacity,
-                    clip: nextClip,
-                    layout: textLayout,
-                };
-                textCommandCount += 1;
-                glyphCount += textLayout.glyphs.length;
-                commands.push(textCommand);
                 const caretCommand = this.buildCaretCommand(index, box, textStyle, textLayout, nextClip, zIndex, style.opacity);
                 if (caretCommand) {
                     commands.push(caretCommand);
@@ -1425,6 +1427,9 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     ): QuadRenderCommand[] {
         const commands: QuadRenderCommand[] = [];
         for (const line of layout.lines) {
+            if (line.width <= 0) {
+                continue;
+            }
             if (text.underline && text.underlineColor.a > 0) {
                 commands.push({
                     kind: 'quad',
