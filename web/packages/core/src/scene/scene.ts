@@ -1,6 +1,5 @@
 import { Mat4, Vec3, Vec4 } from '@axrone/numeric';
 import { createBox, createPlane, createSphere } from '../geometry/primitives';
-import type { IGeometryBuffers } from '../geometry/primitives/types';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
 import { Transform } from '../component-system/components/transform';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
@@ -19,10 +18,9 @@ import { MeshRenderer, type MeshRendererConfig } from './components/mesh-rendere
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
 import { SceneComponentCatalog } from './component-catalog';
+import { SceneGeometryMeshBuilder } from './scene-geometry-mesh-builder';
 import { createSceneLoopSystems } from './loop-bridge';
-import type { SceneMeshResource } from './mesh-registry';
 import { SceneMeshFactory } from './scene-mesh-factory';
-import type { SceneShaderResource } from './shader-registry';
 import { SceneShaderFactory } from './scene-shader-factory';
 import { SceneRenderRuntime } from './scene-render-runtime';
 import { SceneResourceRuntime } from './scene-resource-runtime';
@@ -109,26 +107,6 @@ const toVec3 = (
     return new Vec3(fallback.x, fallback.y, fallback.z);
 };
 
-
-const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {
-    switch (name) {
-        case 'position':
-            return 'position';
-        case 'normal':
-            return 'normal';
-        case 'texCoord':
-            return 'uv0';
-        case 'texCoord1':
-            return 'uv1';
-        case 'tangent':
-            return 'tangent';
-        case 'color':
-            return 'color0';
-        default:
-            return null;
-    }
-};
-
 export const createUnlitColorShaderDefinition = (
     id: string = 'Scene/UnlitColor'
 ): SceneShaderDefinition => ({
@@ -172,6 +150,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _resources: SceneResourceRuntime;
     private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
     private readonly _renderRuntime: SceneRenderRuntime;
+    private readonly _geometryMeshBuilder = new SceneGeometryMeshBuilder();
     private readonly _meshFactory: SceneMeshFactory;
     private readonly _shaderFactory: SceneShaderFactory;
     private readonly _textureManager: WebGLTextureManager;
@@ -502,43 +481,49 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         height: number = 1,
         depth: number = 1
     ): SceneMeshHandle {
-        return this._registerGeometryBuffers(
-            id,
-            createBox({
-                width,
-                height,
-                depth,
-                generateNormals: true,
-                generateTexCoords: true,
-                generateTangents: false,
-            })
+        return this.registerMesh(
+            this._geometryMeshBuilder.createDefinition(
+                id,
+                createBox({
+                    width,
+                    height,
+                    depth,
+                    generateNormals: true,
+                    generateTexCoords: true,
+                    generateTangents: false,
+                })
+            )
         );
     }
 
     createPlaneMesh(id: string, width: number = 1, height: number = 1): SceneMeshHandle {
-        return this._registerGeometryBuffers(
-            id,
-            createPlane({
-                width,
-                height,
-                generateNormals: true,
-                generateTexCoords: true,
-                generateTangents: false,
-            })
+        return this.registerMesh(
+            this._geometryMeshBuilder.createDefinition(
+                id,
+                createPlane({
+                    width,
+                    height,
+                    generateNormals: true,
+                    generateTexCoords: true,
+                    generateTangents: false,
+                })
+            )
         );
     }
 
     createSphereMesh(id: string, radius: number = 1, segments: number = 24): SceneMeshHandle {
-        return this._registerGeometryBuffers(
-            id,
-            createSphere({
-                radius,
-                widthSegments: segments,
-                heightSegments: segments,
-                generateNormals: true,
-                generateTexCoords: true,
-                generateTangents: false,
-            })
+        return this.registerMesh(
+            this._geometryMeshBuilder.createDefinition(
+                id,
+                createSphere({
+                    radius,
+                    widthSegments: segments,
+                    heightSegments: segments,
+                    generateNormals: true,
+                    generateTexCoords: true,
+                    generateTangents: false,
+                })
+            )
         );
     }
 
@@ -751,65 +736,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             gl,
             autoCreated,
         };
-    }
-
-    private _registerGeometryBuffers(
-        id: string,
-        geometryBuffers: IGeometryBuffers
-    ): SceneMeshHandle {
-        const attributes = geometryBuffers.layout.attributes
-            .map((attribute) => {
-                const semantic = mapGeometryAttribute(attribute.name);
-                if (!semantic) {
-                    return null;
-                }
-
-                return {
-                    semantic,
-                    componentCount: attribute.size,
-                    offset: attribute.offset,
-                    stride: geometryBuffers.layout.stride,
-                    type: attribute.type,
-                    normalized: attribute.normalized,
-                };
-            })
-            .filter((attribute): attribute is NonNullable<typeof attribute> => attribute !== null);
-
-        const vertexReader = geometryBuffers.vertices.duplicate().rewind();
-        const vertexFloatCount = vertexReader.remaining / 4;
-        const vertexBytes = new Float32Array(vertexFloatCount);
-        for (let index = 0; index < vertexFloatCount; index += 1) {
-            vertexBytes[index] = vertexReader.getFloat32();
-        }
-
-        const indexReader = geometryBuffers.indices.duplicate().rewind();
-        const bytesPerIndex =
-            geometryBuffers.layout.indexCount > 0
-                ? indexReader.remaining / geometryBuffers.layout.indexCount
-                : 0;
-        const indexArray =
-            geometryBuffers.layout.indexCount > 0
-                ? bytesPerIndex === 4
-                    ? new Uint32Array(
-                          Array.from({ length: geometryBuffers.layout.indexCount }, () =>
-                              indexReader.getUint32()
-                          )
-                      )
-                    : new Uint16Array(
-                          Array.from({ length: geometryBuffers.layout.indexCount }, () =>
-                              indexReader.getUint16()
-                          )
-                      )
-                : undefined;
-
-        return this.registerMesh({
-            id,
-            vertices: vertexBytes,
-            indices: indexArray,
-            vertexCount: geometryBuffers.layout.vertexCount,
-            topology: geometryBuffers.layout.primitiveType,
-            attributes,
-        });
     }
 
     private _render(deltaTime: number): void {
