@@ -26,6 +26,7 @@ import { OrbitCameraController } from './components/orbit-camera-controller';
 import { PointLight } from './components/point-light';
 import { SpotLight } from './components/spot-light';
 import { SceneComponentCatalog } from './component-catalog';
+import { createSceneLoopSystems } from './loop-bridge';
 import {
     SceneCanvasError,
     SceneLifecycleError,
@@ -828,36 +829,23 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             this.registerRenderPass(renderPass);
         }
 
-        const loopSystems: readonly GameLoopSystem<SceneLoopState>[] = [
-            {
-                id: 'scene.pre-update',
-                beforeUpdate: (context) => {
-                    this.systems.executePhase(SystemPhase.PreUpdate, context.delta);
-                },
+        const loopSystems: readonly GameLoopSystem<SceneLoopState>[] = createSceneLoopSystems({
+            executePhase: (phase, delta) => {
+                this.systems.executePhase(phase, delta);
             },
-            {
-                id: 'scene.fixed-update',
-                fixedUpdate: (context) => {
-                    this._fixedUpdateActors(context.fixedDelta);
-                },
+            fixedUpdateActors: (delta) => {
+                this._fixedUpdateActors(delta);
             },
-            {
-                id: 'scene.update',
-                update: (context) => {
-                    this._updateActors(context.delta);
-                    this.systems.executePhase(SystemPhase.Update, context.delta);
-                    this._lateUpdateActors(context.delta);
-                    this.systems.executePhase(SystemPhase.PostUpdate, context.delta);
-                },
+            updateActors: (delta) => {
+                this._updateActors(delta);
             },
-            {
-                id: 'scene.render',
-                render: (context) => {
-                    this.systems.executePhase(SystemPhase.Render, context.delta);
-                    this._render(context.delta);
-                },
+            lateUpdateActors: (delta) => {
+                this._lateUpdateActors(delta);
             },
-        ];
+            render: (delta) => {
+                this._render(delta);
+            },
+        });
 
         this.loop = createGameLoop({
             state: { sceneId: this.id },
