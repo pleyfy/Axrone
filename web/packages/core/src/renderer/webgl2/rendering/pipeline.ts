@@ -12,6 +12,12 @@ import {
     type ScheduledRenderBakeTask,
     sumRenderBakeTaskCost,
 } from './render-bake-task-scheduler';
+import {
+    degradeRenderFrame,
+    estimateRenderFrameCost,
+    estimateRenderFrameCostTotals,
+    getRenderPostEffectCost,
+} from './render-frame-budget-manager';
 import { RenderFrameClassifier } from './render-frame-classifier';
 import {
     createRenderPassName,
@@ -256,27 +262,6 @@ const exposureHistoryDescriptor = (): RenderTextureDescriptor => ({
     format: 'r16f',
     usage: ['sampled', 'history'],
 });
-
-const postEffectCost = (effect: ResolvedPostProcessEffect): number => {
-    if (effect.category === 'custom') {
-        return 0.16;
-    }
-
-    switch (effect.name) {
-        case 'taa':
-            return 0.2;
-        case 'depth-of-field':
-            return 0.22;
-        case 'bloom':
-            return 0.18;
-        case 'ssao':
-            return 0.19;
-        case 'fxaa':
-            return 0.09;
-        default:
-            return 0.12;
-    }
-};
 
 const giModeOf = (settings: RenderGlobalIlluminationSettings): RenderGlobalIlluminationMode =>
     settings.mode;
@@ -671,26 +656,38 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
         let bakeTasks = this._selectBakeTasks(frame, input.environment?.lightBaking);
         let postEffects = this._postProcess.resolve(this._options.maxPostProcessPasses);
 
-        const baseEstimatedCost = this._estimateBaseCost(
+        const baseEstimatedCost = estimateRenderFrameCost({
             deltaTime,
-            postEffects.reduce((sum, effect) => sum + postEffectCost(effect), 0),
+            opaqueCount: this._opaque.length,
+            transparentCount: this._transparent.length,
+            activeLightCount: this._activeLights.length,
+            shadowLightCount: this._shadowLights.length,
+            shadowCasterCount: this._shadowCasters.length,
+            postEffects,
             probeUpdates,
-            sumRenderBakeTaskCost(bakeTasks),
+            bakeTasks,
             gi,
-            volumetrics,
-            shadowEnabled
-        );
+            volumetricsEnabled: volumetrics.enabled,
+            shadowEnabled,
+        });
         let degraded = false;
 
         if (this._options.frameBudgetMs > 0 && baseEstimatedCost > this._options.frameBudgetMs) {
-            const degradedState = this._applyDegradeStrategy(
-                baseEstimatedCost,
-                gi,
-                volumetrics,
-                shadowEnabled,
-                probeUpdates,
-                postEffects,
-                bakeTasks
+            const degradedState = degradeRenderFrame(
+                {
+                    frameBudgetMs: this._options.frameBudgetMs,
+                    degradeStrategy: this._options.degradeStrategy,
+                },
+                {
+                    estimatedCost: baseEstimatedCost,
+                    warnings: this._warnings,
+                    gi,
+                    volumetrics,
+                    shadowEnabled,
+                    probeUpdates,
+                    postEffects,
+                    bakeTasks,
+                }
             );
             gi = degradedState.gi;
             volumetrics = degradedState.volumetrics;
@@ -708,9 +705,9 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             input.camera,
             input.environment,
             hdr,
-            gi,
-            volumetrics,
-            shadowEnabled,
+                gi,
+                volumetrics,
+                shadowEnabled,
             probeUpdates,
             postEffects,
             bakeTasks
@@ -837,160 +834,6 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             throttleFrames:
                 settings.throttleFrames ?? this._options.lightBaking.throttleFrames,
         });
-    }
-
-    private _estimateBaseCost(
-        deltaTime: number,
-        postProcessCost: number,
-        probeUpdates: number,
-        bakeTaskCost: number,
-        gi: RenderGlobalIlluminationSettings,
-        volumetrics: NormalizedVolumetricSettings,
-        shadowEnabled: boolean
-    ): number {
-        let cost =
-            0.5 +
-            this._opaque.length * 0.003 +
-            this._transparent.length * 0.004 +
-            this._activeLights.length * 0.06 +
-            Math.min(deltaTime, 0.05) * 0.35;
-
-        if (shadowEnabled) {
-            cost += this._shadowLights.length * 0.24 + this._shadowCasters.length * 0.0015;
-        }
-
-        if (gi.mode === 'ssgi') {
-            cost += 0.55;
-        } else if (gi.mode === 'ddgi') {
-            cost += 0.4;
-        } else if (gi.mode === 'hybrid') {
-            cost += 0.6;
-        }
-
-        if (volumetrics.enabled) {
-            cost += 0.6;
-        }
-
-        cost += postProcessCost;
-        cost += probeUpdates * 0.32;
-        cost += bakeTaskCost;
-        return cost;
-    }
-
-    private _applyDegradeStrategy(
-        estimatedCost: number,
-        gi: RenderGlobalIlluminationSettings,
-        volumetrics: NormalizedVolumetricSettings,
-        shadowEnabled: boolean,
-        probeUpdates: number,
-        postEffects: readonly ResolvedPostProcessEffect[],
-        bakeTasks: readonly ScheduledRenderBakeTask[]
-    ): {
-        readonly gi: RenderGlobalIlluminationSettings;
-        readonly volumetrics: NormalizedVolumetricSettings;
-        readonly shadowEnabled: boolean;
-        readonly probeUpdates: number;
-        readonly postEffects: readonly ResolvedPostProcessEffect[];
-        readonly bakeTasks: readonly ScheduledRenderBakeTask[];
-        readonly degraded: boolean;
-    } {
-        if (this._options.degradeStrategy === 'none') {
-            return {
-                gi,
-                volumetrics,
-                shadowEnabled,
-                probeUpdates,
-                postEffects,
-                bakeTasks,
-                degraded: false,
-            };
-        }
-
-        let degraded = false;
-        let nextGi = gi;
-        let nextVolumetrics = volumetrics;
-        let nextShadowEnabled = shadowEnabled;
-        let nextProbeUpdates = probeUpdates;
-        let nextPostEffects = postEffects;
-        let nextBakeTasks = bakeTasks;
-        let currentCost = estimatedCost;
-
-        const mark = (warning: string, delta: number): void => {
-            degraded = true;
-            currentCost = Math.max(0, currentCost - delta);
-            if (this._warnings.length < 16) {
-                this._warnings.push(warning);
-            }
-        };
-
-        if (currentCost > this._options.frameBudgetMs && nextBakeTasks.length > 0) {
-            mark(
-                'light baking deferred due to frame budget pressure',
-                sumRenderBakeTaskCost(nextBakeTasks)
-            );
-            nextBakeTasks = Object.freeze([]);
-        }
-
-        if (currentCost > this._options.frameBudgetMs && nextProbeUpdates > 1) {
-            const target = this._options.degradeStrategy === 'aggressive' ? 0 : 1;
-            mark('reflection probe updates throttled', (nextProbeUpdates - target) * 0.32);
-            nextProbeUpdates = target;
-        }
-
-        if (currentCost > this._options.frameBudgetMs && nextVolumetrics.enabled) {
-            mark('volumetric effects disabled for frame budget stability', 0.6);
-            nextVolumetrics = {
-                ...nextVolumetrics,
-                enabled: false,
-            };
-        }
-
-        if (
-            currentCost > this._options.frameBudgetMs &&
-            nextGi.mode !== 'disabled' &&
-            (nextGi.mode === 'ssgi' || nextGi.mode === 'hybrid')
-        ) {
-            mark(
-                'realtime GI quality reduced under load',
-                nextGi.mode === 'hybrid' ? 0.45 : 0.55
-            );
-            nextGi = nextGi.mode === 'hybrid' ? nextGi.baked ?? { mode: 'disabled' } : { mode: 'disabled' };
-        }
-
-        if (
-            currentCost > this._options.frameBudgetMs &&
-            nextShadowEnabled &&
-            this._options.degradeStrategy === 'aggressive'
-        ) {
-            mark('shadow pass skipped under aggressive degradation', 0.35);
-            nextShadowEnabled = false;
-        }
-
-        if (currentCost > this._options.frameBudgetMs && nextPostEffects.length > 0) {
-            const keep =
-                this._options.degradeStrategy === 'aggressive'
-                    ? Math.min(2, nextPostEffects.length)
-                    : Math.min(4, nextPostEffects.length);
-            if (keep < nextPostEffects.length) {
-                mark(
-                    'post-process stack truncated to fit budget',
-                    nextPostEffects
-                        .slice(keep)
-                        .reduce((sum, effect) => sum + postEffectCost(effect), 0)
-                );
-                nextPostEffects = Object.freeze(nextPostEffects.slice(0, keep));
-            }
-        }
-
-        return {
-            gi: nextGi,
-            volumetrics: nextVolumetrics,
-            shadowEnabled: nextShadowEnabled,
-            probeUpdates: nextProbeUpdates,
-            postEffects: nextPostEffects,
-            bakeTasks: nextBakeTasks,
-            degraded,
-        };
     }
 
     private _planPasses(
@@ -1371,7 +1214,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                 queue: 'post-process',
                 target,
                 inputs,
-                estimatedCost: postEffectCost(effect),
+                estimatedCost: getRenderPostEffectCost(effect),
                 metadata: {
                     source: currentColor,
                     target: target as RenderResourceName<'post' | 'frame' | 'history'>,
@@ -1424,7 +1267,7 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
                 queue: 'post-process',
                 target,
                 inputs: [currentColor],
-                estimatedCost: postEffectCost(effect),
+                estimatedCost: getRenderPostEffectCost(effect),
                 metadata: {
                     source: currentColor,
                     target,
@@ -1561,19 +1404,24 @@ export class RenderPipeline<TNative = unknown> implements IDisposable {
             transientResourceCount: transientResources,
             persistentResourceCount: persistentResources,
             resourceReuseCount: this._graph.reuseCount,
-            estimatedCost: this._estimateBaseCost(
+            estimatedCost: estimateRenderFrameCostTotals({
                 deltaTime,
-                passes
+                opaqueCount: this._opaque.length,
+                transparentCount: this._transparent.length,
+                activeLightCount: this._activeLights.length,
+                shadowLightCount: this._shadowLights.length,
+                shadowCasterCount: this._shadowCasters.length,
+                postProcessCost: passes
                     .filter((pass) => pass.kind === 'post-process')
                     .reduce((sum, pass) => sum + pass.estimatedCost, 0),
                 probeUpdates,
-                passes
+                bakeTaskCost: passes
                     .filter((pass) => pass.kind === 'light-bake')
                     .reduce((sum, pass) => sum + pass.estimatedCost, 0),
                 gi,
-                volumetrics,
-                shadowEnabled
-            ),
+                volumetricsEnabled: volumetrics.enabled,
+                shadowEnabled,
+            }),
         };
     }
 
