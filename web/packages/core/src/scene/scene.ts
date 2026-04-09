@@ -19,6 +19,7 @@ import {
 import { WebGLTextureManager } from '../renderer/webgl2/texture/manager';
 import { Animator } from './components/animator';
 import { Camera, type CameraConfig } from './components/camera';
+import { SceneDrawExecutor } from './draw-executor';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { SceneMorphMeshRuntime } from './morph-mesh-runtime';
 import { OrbitCameraController } from './components/orbit-camera-controller';
@@ -442,6 +443,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _lightingUniformBinder: SceneLightingUniformBinder;
     private readonly _skinningUniformBinder: SceneSkinningUniformBinder;
     private readonly _morphMeshRuntime: SceneMorphMeshRuntime;
+    private readonly _drawExecutor: SceneDrawExecutor;
     private readonly _textureUniformSetter = (
         shader: SceneShaderResource,
         name: string,
@@ -486,6 +488,21 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             defaultPassId: DEFAULT_RENDER_PASS_ID,
             defaultClearColor: this._defaultClearColor,
             defaultSampler,
+        });
+        this._drawExecutor = new SceneDrawExecutor({
+            gl: this.gl,
+            resources: this._resources,
+            morphMeshRuntime: this._morphMeshRuntime,
+            renderStateApplier: this._renderStateApplier,
+            frameUniformBinder: this._frameUniformBinder,
+            lightingUniformBinder: this._lightingUniformBinder,
+            skinningUniformBinder: this._skinningUniformBinder,
+            materialTextureBinder: this._materialTextureBinder,
+            uniformWriter: this._uniformWriter,
+            textureUniformSetter: this._textureUniformSetter,
+            applyMissingVertexAttributeDefaults: (mesh) => {
+                this._applyMissingVertexAttributeDefaults(mesh);
+            },
         });
 
         this._registry = resolveSceneRegistryFromProfile(options.profile, {
@@ -1553,70 +1570,20 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
             const renderItems = this._collectRenderItems(renderPass.rendererPassId);
             for (const item of renderItems) {
-                if (item.renderer.meshId === null || item.renderer.materialId === null) {
-                    continue;
-                }
-
-                const mesh = this._morphMeshRuntime.resolve(item.renderer, this._resources.meshes);
-                const material = this._resources.materials.get(item.renderer.materialId);
-
-                if (!mesh || !material) {
-                    continue;
-                }
-
-                renderFrame.markActiveRenderer(item.renderer.id);
-
-                const shader = this._resources.shaders.get(material.shaderId);
-                if (!shader) {
-                    continue;
-                }
-
-                const modelMatrix = item.transform.worldMatrix;
-
-                this._renderStateApplier.apply(shader, renderPass);
-                this.gl.useProgram(shader.program);
-                this.gl.bindVertexArray(mesh.vertexArray);
-                this._applyMissingVertexAttributeDefaults(mesh);
-
-                this._frameUniformBinder.apply(shader, {
-                    modelMatrix,
-                    viewMatrix,
-                    projectionMatrix,
-                    viewProjectionMatrix,
-                    cameraPosition,
-                    elapsedSeconds: this.loop.elapsed / 1000,
-                    deltaSeconds: deltaTime / 1000,
-                    frame: this.loop.frame,
-                    viewportWidth: this.canvas.width,
-                    viewportHeight: this.canvas.height,
-                });
-                this._lightingUniformBinder.apply(shader, item.renderer, lighting);
-                this._skinningUniformBinder.apply(shader, item.renderer);
-
-                this._materialTextureBinder.bind(
-                    shader,
-                    material,
-                    this._resources,
-                    this._textureUniformSetter
+                this._drawExecutor.execute(
+                    item,
+                    {
+                        renderPass,
+                        cameraFrame,
+                        lighting,
+                        elapsedSeconds: this.loop.elapsed / 1000,
+                        deltaSeconds: deltaTime / 1000,
+                        frame: this.loop.frame,
+                        viewportWidth: this.canvas.width,
+                        viewportHeight: this.canvas.height,
+                    },
+                    renderFrame
                 );
-
-                for (const [name, value] of material.uniforms) {
-                    this._uniformWriter.write(shader, name, value);
-                }
-
-                for (const [name, value] of item.renderer.getUniformEntries()) {
-                    this._uniformWriter.write(shader, name, value);
-                }
-
-                if (mesh.indexBuffer && mesh.indexType !== null && mesh.indexCount > 0) {
-                    this.gl.drawElements(mesh.mode, mesh.indexCount, mesh.indexType, 0);
-                } else {
-                    this.gl.drawArrays(mesh.mode, 0, mesh.vertexCount);
-                }
-
-                renderFrame.recordDraw(mesh);
-
-                this._materialTextureBinder.unbind();
             }
         }
 
