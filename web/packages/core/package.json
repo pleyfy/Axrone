@@ -19,6 +19,11 @@
             "import": "./dist/scene-runtime/index.mjs",
             "require": "./dist/scene-runtime/index.js"
         },
+        "./scene-2d": {
+            "types": "./dist/scene-2d/index.d.ts",
+            "import": "./dist/scene-2d/index.mjs",
+            "require": "./dist/scene-2d/index.js"
+        },
         "./scene-3d": {
             "types": "./dist/scene-3d/index.d.ts",
             "import": "./dist/scene-3d/index.mjs",
@@ -28,6 +33,11 @@
             "types": "./dist/runtime-profile-core/index.d.ts",
             "import": "./dist/runtime-profile-core/index.mjs",
             "require": "./dist/runtime-profile-core/index.js"
+        },
+        "./runtime-profile-2d": {
+            "types": "./dist/runtime-profile-2d/index.d.ts",
+            "import": "./dist/runtime-profile-2d/index.mjs",
+            "require": "./dist/runtime-profile-2d/index.js"
         },
         "./runtime-profile-3d": {
             "types": "./dist/runtime-profile-3d/index.d.ts",

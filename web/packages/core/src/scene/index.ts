@@ -8,6 +8,7 @@ export type {
 export {
     DEFAULT_SCENE_BUILT_IN_COMPONENTS,
     DEFAULT_SCENE_BUILT_IN_MANIFESTS,
+    SCENE_2D_BUILT_IN_MANIFEST,
     SCENE_3D_BUILT_IN_MANIFEST,
     SCENE_ANIMATION_BUILT_IN_MANIFEST,
     SCENE_CORE_BUILT_IN_MANIFEST,
@@ -25,9 +26,11 @@ export type {
 export {
     CORE_SCENE_RUNTIME_PROFILE_ID,
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,
+    SCENE_2D_RUNTIME_PROFILE_ID,
     SCENE_3D_RUNTIME_PROFILE_ID,
     createSceneManifestRuntimeProfile,
     createSceneRuntimeProfile,
+    get2DSceneRuntimeProfile,
     get3DSceneRuntimeProfile,
     getCoreSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
@@ -49,6 +52,8 @@ export type { SceneRuntimeKernelOptions } from './scene-runtime-kernel';
 export { SceneRuntimeKernel } from './scene-runtime-kernel';
 export { SceneRuntimeFacade } from './scene-runtime-facade';
 export { SceneSnapshotFacade } from './scene-snapshot-facade';
+export { createScene2D } from './scene-2d-factory';
+export { Scene2D } from './scene-2d';
 export {
     DEFAULT_SCENE_AMBIENT_LIGHT,
     DEFAULT_SCENE_CLEAR_COLOR,

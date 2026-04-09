@@ -5,6 +5,11 @@ import {
     getCoreSceneRuntimeProfile,
 } from '../../runtime-profile-core';
 import {
+    SCENE_2D_RUNTIME_PROFILE_ID,
+    get2DSceneRuntimeProfile,
+    scene2DRuntimeProfile,
+} from '../../runtime-profile-2d';
+import {
     SCENE_3D_RUNTIME_PROFILE_ID,
     get3DSceneRuntimeProfile,
     scene3DRuntimeProfile,
@@ -25,6 +30,12 @@ describe('runtime profile entrypoints', () => {
         expect(get3DSceneRuntimeProfile().id).toBe(SCENE_3D_RUNTIME_PROFILE_ID);
         expect(scene3DRuntimeProfile().id).toBe(SCENE_3D_RUNTIME_PROFILE_ID);
         expect(SCENE_3D_RUNTIME_PROFILE_ID).toBe('scene/3d-default');
+    });
+
+    it('exposes the 2d runtime profile from its own entrypoint', () => {
+        expect(get2DSceneRuntimeProfile().id).toBe(SCENE_2D_RUNTIME_PROFILE_ID);
+        expect(scene2DRuntimeProfile().id).toBe(SCENE_2D_RUNTIME_PROFILE_ID);
+        expect(SCENE_2D_RUNTIME_PROFILE_ID).toBe('scene/2d-default');
     });
 
     it('exposes the full runtime profile from its own entrypoint', () => {

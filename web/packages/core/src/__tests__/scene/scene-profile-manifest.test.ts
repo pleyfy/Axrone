@@ -3,7 +3,9 @@ import { Component } from '../../component-system/core/component';
 import {
     CORE_SCENE_RUNTIME_PROFILE_ID,
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,
+    SCENE_2D_RUNTIME_PROFILE_ID,
     createSceneManifestRuntimeProfile,
+    get2DSceneRuntimeProfile,
     get3DSceneRuntimeProfile,
     getCoreSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
@@ -32,6 +34,18 @@ describe('Scene runtime profile manifests', () => {
         expect(profile.id).toBe(DEFAULT_SCENE_RUNTIME_PROFILE_ID);
         expect(registry.Camera).toBeDefined();
         expect(registry.MeshRenderer).toBeDefined();
+    });
+
+    it('keeps the 2d profile limited to cross-cutting and 2d-safe defaults', () => {
+        const profile = get2DSceneRuntimeProfile();
+        const registry = profile.resolveRegistry({});
+
+        expect(profile.id).toBe(SCENE_2D_RUNTIME_PROFILE_ID);
+        expect(registry.Animator).toBeDefined();
+        expect(registry.Camera).toBeDefined();
+        expect('MeshRenderer' in registry).toBe(false);
+        expect('DirectionalLight' in registry).toBe(false);
+        expect('OrbitCameraController' in registry).toBe(false);
     });
 
     it('creates custom manifest profiles that merge external registries', () => {
@@ -85,7 +99,10 @@ describe('Scene runtime profile manifests', () => {
             } as typeof HTMLCanvasElement;
         }
 
-        const canvas = new root.HTMLCanvasElement() as HTMLCanvasElement;
+        const canvas =
+            typeof document !== 'undefined'
+                ? (document.createElement('canvas') as HTMLCanvasElement)
+                : (new root.HTMLCanvasElement() as HTMLCanvasElement);
         const scene = new Scene({
             ...createSceneOptions(scheduler, canvas),
             profile: getCoreSceneRuntimeProfile(),

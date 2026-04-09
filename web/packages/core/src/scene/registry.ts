@@ -73,6 +73,11 @@ export const SCENE_ANIMATION_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
     builtIns: ['Animator'] as const,
 });
 
+export const SCENE_2D_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
+    id: 'scene/2d',
+    builtIns: ['Camera'] as const,
+});
+
 export const SCENE_3D_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
     id: 'scene/3d',
     builtIns: [
