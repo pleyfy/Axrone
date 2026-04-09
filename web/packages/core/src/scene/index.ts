@@ -25,6 +25,10 @@ export {
     normalizeSceneTextureBinding,
     SceneMaterialRegistry,
 } from './material-registry';
+export type { SceneSamplerRegistrationResult, SceneSamplerResource } from './sampler-registry';
+export { cloneSceneSamplerDefinition, SceneSamplerRegistry } from './sampler-registry';
+export type { SceneTextureRegistrationResult, SceneTextureResource } from './texture-registry';
+export { cloneSceneTextureDefinition, SceneTextureRegistry } from './texture-registry';
 export type { SceneRenderPassResource, SceneRenderPassRegistryOptions } from './render-pass-registry';
 export {
     cloneSceneRenderPassDefinition,
