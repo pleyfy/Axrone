@@ -175,6 +175,7 @@ export type {
 
 export {
     SceneCanvasError,
+    SceneCapabilityError,
     SceneError,
     SceneLifecycleError,
     SceneMaterialError,

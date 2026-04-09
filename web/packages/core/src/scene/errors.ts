@@ -47,3 +47,10 @@ export class SceneLifecycleError extends SceneError {
         this.name = 'SceneLifecycleError';
     }
 }
+
+export class SceneCapabilityError extends SceneError {
+    constructor(message: string, cause?: unknown) {
+        super(message, 'SCENE_CAPABILITY_ERROR', cause);
+        this.name = 'SceneCapabilityError';
+    }
+}

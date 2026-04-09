@@ -4,10 +4,13 @@ import {
     CORE_SCENE_RUNTIME_PROFILE_ID,
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,
     SCENE_CORE_BUILT_IN_MANIFEST,
+    Scene,
+    SceneCapabilityError,
     createSceneManifestRuntimeProfile,
     getCoreSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
 } from '../../scene';
+import { ManualScheduler, createSceneOptions } from './test-harness';
 
 class PulseComponent extends Component {}
 
@@ -49,5 +52,26 @@ describe('Scene runtime profile manifests', () => {
 
     it('exposes the documented core profile identifier', () => {
         expect(getCoreSceneRuntimeProfile().id).toBe(CORE_SCENE_RUNTIME_PROFILE_ID);
+    });
+
+    it('fails fast with a capability error when 3d actor helpers are used in a core profile', () => {
+        const scheduler = new ManualScheduler();
+        const canvas = document.createElement('canvas');
+        const scene = new Scene({
+            ...createSceneOptions(scheduler, canvas),
+            profile: getCoreSceneRuntimeProfile(),
+        });
+
+        try {
+            expect(() => scene.createCameraActor({ name: 'Camera' })).toThrow(SceneCapabilityError);
+            expect(() =>
+                scene.createRenderableActor(
+                    { name: 'Mesh' },
+                    { meshId: 'mesh', materialId: 'material' }
+                )
+            ).toThrow(SceneCapabilityError);
+        } finally {
+            scene.dispose();
+        }
     });
 });

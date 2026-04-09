@@ -7,6 +7,7 @@ import type {
 import type { SceneComponentCatalog } from './component-catalog';
 import { Camera, type CameraConfig } from './components/camera';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
+import { SceneCapabilityError } from './errors';
 import { ScenePrefabRuntime } from './scene-prefab-runtime';
 import type {
     ScenePrefabDefinition,
@@ -57,6 +58,10 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
         actorConfig: ActorConfig = {},
         cameraConfig: CameraConfig = {}
     ): Actor<World<SceneRegistry<R>>> {
+        this._requireRegisteredComponent(
+            Camera,
+            "camera actor creation requires the 3D scene capability/profile"
+        );
         const actor = this.createActor(actorConfig);
         actor.addComponent(Camera, cameraConfig);
         return actor;
@@ -66,6 +71,10 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
         actorConfig: ActorConfig = {},
         rendererConfig: MeshRendererConfig = {}
     ): Actor<World<SceneRegistry<R>>> {
+        this._requireRegisteredComponent(
+            MeshRenderer,
+            "renderable actor creation requires the 3D scene capability/profile"
+        );
         const actor = this.createActor(actorConfig);
         actor.addComponent(MeshRenderer, rendererConfig);
         return actor;
@@ -87,5 +96,16 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
 
     destroyAllActors(): void {
         this._prefabs.destroyAllActors();
+    }
+
+    private _requireRegisteredComponent(
+        componentType: ComponentConstructor,
+        message: string
+    ): void {
+        if (this._world.isComponentRegistered(componentType)) {
+            return;
+        }
+
+        throw new SceneCapabilityError(message);
     }
 }
