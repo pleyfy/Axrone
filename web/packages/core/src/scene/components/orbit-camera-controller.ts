@@ -144,9 +144,14 @@ export class OrbitCameraController extends Component {
                 ? Vec3.UP
                 : Vec3.FORWARD
             : this._up;
+        const backward = new Vec3(
+            -normalizedForward.x,
+            -normalizedForward.y,
+            -normalizedForward.z
+        );
 
         transform.position = position;
-        transform.rotation = Quat.fromLookAt(position, this._target, up, new Quat());
+        transform.rotation = Quat.lookRotation(backward, up, new Quat());
     }
 
     override serialize(): Record<string, unknown> {

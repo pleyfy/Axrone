@@ -192,6 +192,7 @@ export const createMockGL = (canvas: HTMLCanvasElement) => {
         enableVertexAttribArray: vi.fn(),
         vertexAttribPointer: vi.fn(),
         vertexAttribIPointer: vi.fn(),
+        vertexAttribI4ui: vi.fn(),
         viewport: vi.fn(),
         clearColor: vi.fn(),
         clearDepth: vi.fn(),

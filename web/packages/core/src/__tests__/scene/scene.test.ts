@@ -485,6 +485,36 @@ void main() {
         scene.dispose();
     });
 
+    it('centers the orbit target in clip space', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const cameraActor = scene.createCameraActor(
+            { name: 'Camera' },
+            { primary: true, fieldOfView: 60 }
+        );
+        const camera = cameraActor.requireComponent(Camera);
+
+        cameraActor.addComponent(OrbitCameraController, {
+            target: [0, 0, 0],
+            distance: 5,
+            azimuth: 0.5,
+            elevation: 0.2,
+        });
+
+        scene.start(0);
+
+        expect(() => scheduler.flush(16)).not.toThrow();
+
+        const clip = camera.getViewProjectionMatrix(1).transformVec4({ x: 0, y: 0, z: 0, w: 1 });
+        const ndcX = clip.x / clip.w;
+        const ndcY = clip.y / clip.w;
+
+        expect(Math.abs(ndcX)).toBeLessThan(1e-5);
+        expect(Math.abs(ndcY)).toBeLessThan(1e-5);
+
+        scene.dispose();
+    });
+
     it('hydrates prefab components after restoring parent links', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(
@@ -798,6 +828,77 @@ void main() {
         expect(jointCountCall?.[1]).toBe(1);
         expect(jointPaletteCall?.[2].length).toBe(16);
         expect(jointPaletteCall?.[2].some((value, index) => ![0, 5, 10, 15].includes(index) && value !== 0)).toBe(true);
+        expect(gl.drawElements).toHaveBeenCalled();
+
+        scene.dispose();
+    });
+
+    it('binds zeroed joint defaults when a shader expects joints but the mesh has none', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+        const gl = scene.gl as unknown as ReturnType<typeof createMockGL>;
+
+        scene.registerShader({
+            id: 'test/joint-defaults',
+            vertexSource: `#version 300 es
+layout(location = 0) in vec3 a_Position;
+layout(location = 9) in uvec4 a_Joints0;
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+void main() {
+    vec3 position = a_Position + vec3(float(a_Joints0.x) * 0.0);
+    gl_Position = u_Projection * u_View * u_Model * vec4(position, 1.0);
+}`,
+            fragmentSource: `#version 300 es
+precision highp float;
+out vec4 o_Color;
+void main() {
+    o_Color = vec4(1.0);
+}`,
+            uniforms: ['u_Model', 'u_View', 'u_Projection'],
+        });
+
+        scene.registerMesh({
+            id: 'joint-default-triangle',
+            vertices: new Float32Array([
+                0, 0, 0,
+                1, 0, 0,
+                0, 1, 0,
+            ]),
+            indices: new Uint16Array([0, 1, 2]),
+            vertexCount: 3,
+            attributes: [
+                {
+                    semantic: 'position',
+                    componentCount: 3,
+                    offset: 0,
+                    stride: 12,
+                    type: gl.FLOAT,
+                },
+            ],
+        });
+
+        scene.createMaterial({
+            id: 'joint-default-material',
+            shaderId: 'test/joint-defaults',
+        });
+
+        const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
+
+        scene.createRenderableActor(
+            { name: 'JointDefaultMesh' },
+            {
+                meshId: 'joint-default-triangle',
+                materialId: 'joint-default-material',
+            }
+        );
+
+        scene.start(0);
+        scheduler.flush(16);
+
+        expect(gl.vertexAttribI4ui).toHaveBeenCalledWith(9, 0, 0, 0, 0);
         expect(gl.drawElements).toHaveBeenCalled();
 
         scene.dispose();

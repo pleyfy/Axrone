@@ -101,6 +101,7 @@ interface MeshResource {
     readonly indexType: number | null;
     readonly topology: SceneMeshTopology;
     readonly mode: number;
+    readonly attributes: ReadonlySet<SceneMeshSemantic>;
 }
 
 interface MorphMeshResourceCache {
@@ -1721,7 +1722,9 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertexBuffer);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, definition.vertices, usage);
 
+        const attributes = new Set<SceneMeshSemantic>();
         for (const attribute of definition.attributes) {
+            attributes.add(attribute.semantic);
             const location = ATTRIBUTE_LOCATIONS[attribute.semantic];
             this.gl.enableVertexAttribArray(location);
             const attributeType = attribute.type ?? this.gl.FLOAT;
@@ -1786,7 +1789,14 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             indexType,
             topology: definition.topology ?? 'triangles',
             mode: mapTopologyToMode(this.gl, definition.topology ?? 'triangles'),
+            attributes,
         };
+    }
+
+    private _applyMissingVertexAttributeDefaults(mesh: MeshResource): void {
+        if (!mesh.attributes.has('joints0') && typeof this.gl.vertexAttribI4ui === 'function') {
+            this.gl.vertexAttribI4ui(ATTRIBUTE_LOCATIONS.joints0, 0, 0, 0, 0);
+        }
     }
 
     private async _createTextureResource(
@@ -2136,6 +2146,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
                 this._applyRenderState(shader, renderPass);
                 this.gl.useProgram(shader.program);
                 this.gl.bindVertexArray(mesh.vertexArray);
+                this._applyMissingVertexAttributeDefaults(mesh);
 
                 this._setUniform(shader, 'u_Model', modelMatrix);
                 this._setUniform(shader, 'u_View', viewMatrix);
