@@ -17,20 +17,13 @@ import { Camera, type CameraConfig } from './components/camera';
 import { MeshRenderer, type MeshRendererConfig } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
+import { SceneAssetRuntime } from './scene-asset-runtime';
 import { SceneComponentCatalog } from './component-catalog';
-import { SceneGeometryMeshBuilder } from './scene-geometry-mesh-builder';
 import { createSceneLoopSystems } from './loop-bridge';
-import { SceneMeshFactory } from './scene-mesh-factory';
-import { SceneShaderFactory } from './scene-shader-factory';
 import { SceneRenderRuntime } from './scene-render-runtime';
-import { SceneResourceRuntime } from './scene-resource-runtime';
 import { SceneSnapshotLoader } from './scene-snapshot-loader';
 import { resolveSceneSurface } from './scene-surface-resolver';
-import { SceneTextureFactory } from './scene-texture-factory';
-import {
-    SceneLifecycleError,
-    SceneMaterialError,
-} from './errors';
+import { SceneLifecycleError, SceneMaterialError } from './errors';
 import { ScenePrefabRuntime } from './scene-prefab-runtime';
 import { resolveSceneRegistryFromProfile } from './profile';
 import type {
@@ -142,15 +135,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     private readonly _registry: RuntimeRegistry<R>;
     private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
-    private readonly _resources: SceneResourceRuntime;
+    private readonly _assets: SceneAssetRuntime;
     private readonly _actorLifecycleRunner: SceneActorLifecycleRunner;
     private readonly _renderRuntime: SceneRenderRuntime;
-    private readonly _geometryMeshBuilder = new SceneGeometryMeshBuilder();
-    private readonly _meshFactory: SceneMeshFactory;
-    private readonly _shaderFactory: SceneShaderFactory;
     private readonly _snapshotLoader: SceneSnapshotLoader;
-    private readonly _textureManager: WebGLTextureManager;
-    private readonly _textureFactory: SceneTextureFactory;
     private readonly _autoCreatedCanvas: boolean;
     private readonly _defaultClearColor: Vec4;
     private readonly _ambientLight: Vec3;
@@ -167,31 +155,27 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this._defaultClearColor = toVec4(options.clearColor);
         const ambientLight = toVec3(options.ambientLight);
         this._ambientLight = ambientLight;
-        this._meshFactory = new SceneMeshFactory({ gl: this.gl });
-        this._shaderFactory = new SceneShaderFactory({ gl: this.gl });
-        this._textureManager = new WebGLTextureManager(this.gl);
-        this._textureFactory = new SceneTextureFactory({
-            textureManager: this._textureManager,
-        });
-        const defaultSampler = this._textureManager.getDefaultSampler(
-            FilterMode.LINEAR,
-            WrapMode.REPEAT
-        );
-        this._resources = new SceneResourceRuntime({
+        this._assets = new SceneAssetRuntime({
+            gl: this.gl,
             defaultPassId: DEFAULT_RENDER_PASS_ID,
             defaultClearColor: this._defaultClearColor,
-            defaultSampler,
+            releaseBaseMesh: (meshId) => {
+                this._renderRuntime.releaseBaseMesh(meshId);
+            },
+            clearRenderRuntime: () => {
+                this._renderRuntime.clear();
+            },
         });
         this._renderRuntime = new SceneRenderRuntime({
             gl: this.gl,
-            resources: this._resources,
+            resources: this._assets.resources,
             ambientLight,
             defaultClearColor: this._defaultClearColor,
             getActors: () => this.world.getAllActors(),
-            createMeshResource: (definition) => this._meshFactory.create(definition),
-            disposeMesh: (mesh) => this._meshFactory.dispose(mesh),
+            createMeshResource: (definition) => this._assets.createMeshResource(definition),
+            disposeMesh: (mesh) => this._assets.disposeMesh(mesh),
             applyMissingVertexAttributeDefaults: (mesh) =>
-                this._meshFactory.applyMissingVertexAttributeDefaults(mesh),
+                this._assets.applyMissingVertexAttributeDefaults(mesh),
         });
 
         this._registry = resolveSceneRegistryFromProfile(options.profile, {
@@ -214,10 +198,10 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             defaultClearColor: this._defaultClearColor,
             clearExisting: () => {
                 this._prefabs.destroyAllActors();
-                this._clearSceneAssets();
+                this._assets.clear();
             },
             clearRenderPasses: () => {
-                this._resources.renderPasses.clear();
+                this._assets.clearRenderPasses();
             },
             registerShader: (shader) => {
                 this.registerShader(shader);
@@ -359,33 +343,31 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerShader(definition: SceneShaderDefinition): SceneShaderHandle {
         this._assertNotDisposed();
-        const resource = this._shaderFactory.create(definition);
-        const result = this._resources.shaders.register(definition, resource);
-        if (result.previous) {
-            this._shaderFactory.delete(result.previous);
-        }
-
-        return result.handle;
+        return this._assets.registerShader(definition);
     }
 
     getShader(id: string): SceneShaderHandle | null {
-        return this._resources.shaders.getHandle(id);
+        return this._assets.getShader(id);
     }
 
     createMaterial(definition: SceneMaterialDefinition): SceneMaterialHandle {
         this._assertNotDisposed();
-        if (!this._resources.shaders.get(definition.shaderId)) {
+        try {
+            return this._assets.createMaterial(definition);
+        } catch (error) {
+            if (error instanceof SceneMaterialError) {
+                throw error;
+            }
             throw new SceneMaterialError(
-                `Cannot create material '${definition.id}' because shader '${definition.shaderId}' is not registered`
+                `Failed to create material '${definition.id}'`,
+                error instanceof Error ? error : undefined
             );
         }
-
-        return this._resources.materials.create(definition);
     }
 
     setMaterialUniform(materialId: string, name: string, value: SceneUniformValue): this {
         this._assertNotDisposed();
-        if (!this._resources.materials.setUniform(materialId, name, value)) {
+        if (!this._assets.setMaterialUniform(materialId, name, value)) {
             throw new SceneMaterialError(`Material '${materialId}' is not registered`);
         }
 
@@ -398,7 +380,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         binding: SceneTextureBindingDefinition
     ): this {
         this._assertNotDisposed();
-        if (!this._resources.materials.setTexture(materialId, name, binding)) {
+        if (!this._assets.setMaterialTexture(materialId, name, binding)) {
             throw new SceneMaterialError(`Material '${materialId}' is not registered`);
         }
 
@@ -406,72 +388,42 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     getMaterial(materialId: string): SceneMaterialHandle | null {
-        return this._resources.materials.getHandle(materialId);
+        return this._assets.getMaterial(materialId);
     }
 
     registerMesh(definition: SceneMeshDefinition): SceneMeshHandle {
         this._assertNotDisposed();
-        this._renderRuntime.releaseBaseMesh(definition.id);
-        const resource = this._meshFactory.create(definition);
-        const result = this._resources.meshes.register(definition, resource);
-        if (result.previous) {
-            this._meshFactory.dispose(result.previous);
-        }
-
-        return result.handle;
+        return this._assets.registerMesh(definition);
     }
 
     getMesh(id: string): SceneMeshHandle | null {
-        return this._resources.meshes.getHandle(id);
+        return this._assets.getMesh(id);
     }
 
     registerSampler(definition: SceneSamplerDefinition): SceneSamplerHandle {
         this._assertNotDisposed();
-        const sampler = this._textureManager.createSampler({
-            minFilter: definition.minFilter ?? FilterMode.LINEAR,
-            magFilter: definition.magFilter ?? FilterMode.LINEAR,
-            wrapS: definition.wrapS ?? WrapMode.REPEAT,
-            wrapT: definition.wrapT ?? WrapMode.REPEAT,
-            wrapR: definition.wrapR,
-            maxAnisotropy: definition.maxAnisotropy,
-        });
-
-        const result = this._resources.samplers.register(definition, {
-            id: definition.id,
-            sampler,
-        });
-        if (result.previous && !result.previous.sampler.isDisposed) {
-            result.previous.sampler.dispose();
-        }
-
-        return result.handle;
+        return this._assets.registerSampler(definition);
     }
 
     getSampler(id: string): SceneSamplerHandle | null {
-        return this._resources.samplers.getHandle(id);
+        return this._assets.getSampler(id);
     }
 
     async registerTexture(definition: SceneTextureDefinition): Promise<SceneTextureHandle> {
         this._assertNotDisposed();
-        const resource = await this._textureFactory.create(definition);
-        const result = this._resources.textures.register(definition, resource);
-        if (result.previous && !result.previous.texture.isDisposed) {
-            result.previous.texture.dispose();
-        }
-
-        return result.handle;
+        return await this._assets.registerTexture(definition);
     }
 
     getTexture(id: string): SceneTextureHandle | null {
-        return this._resources.textures.getHandle(id);
+        return this._assets.getTexture(id);
     }
 
     getTextureResource(id: string): SceneTextureResourceHandle | null {
-        return this._resources.getTextureResourceHandle(id);
+        return this._assets.getTextureResource(id);
     }
 
     getMaterialTextureBindings(materialId: string): readonly SceneMaterialTextureBindingHandle[] {
-        return this._resources.getMaterialTextureBindings(materialId);
+        return this._assets.getMaterialTextureBindings(materialId);
     }
 
     getMaterialTextureBinding(
@@ -490,15 +442,15 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
 
     registerRenderPass(definition: SceneRenderPassDefinition): SceneRenderPassHandle {
         this._assertNotDisposed();
-        return this._resources.renderPasses.register(definition);
+        return this._assets.registerRenderPass(definition);
     }
 
     getRenderPass(id: string): SceneRenderPassHandle | null {
-        return this._resources.renderPasses.getHandle(id);
+        return this._assets.getRenderPass(id);
     }
 
     getRenderPasses(): readonly SceneRenderPassHandle[] {
-        return this._resources.renderPasses.getHandles();
+        return this._assets.getRenderPasses();
     }
 
     createBoxMesh(
@@ -507,50 +459,18 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         height: number = 1,
         depth: number = 1
     ): SceneMeshHandle {
-        return this.registerMesh(
-            this._geometryMeshBuilder.createDefinition(
-                id,
-                createBox({
-                    width,
-                    height,
-                    depth,
-                    generateNormals: true,
-                    generateTexCoords: true,
-                    generateTangents: false,
-                })
-            )
-        );
+        this._assertNotDisposed();
+        return this._assets.createBoxMesh(id, width, height, depth);
     }
 
     createPlaneMesh(id: string, width: number = 1, height: number = 1): SceneMeshHandle {
-        return this.registerMesh(
-            this._geometryMeshBuilder.createDefinition(
-                id,
-                createPlane({
-                    width,
-                    height,
-                    generateNormals: true,
-                    generateTexCoords: true,
-                    generateTangents: false,
-                })
-            )
-        );
+        this._assertNotDisposed();
+        return this._assets.createPlaneMesh(id, width, height);
     }
 
     createSphereMesh(id: string, radius: number = 1, segments: number = 24): SceneMeshHandle {
-        return this.registerMesh(
-            this._geometryMeshBuilder.createDefinition(
-                id,
-                createSphere({
-                    radius,
-                    widthSegments: segments,
-                    heightSegments: segments,
-                    generateNormals: true,
-                    generateTexCoords: true,
-                    generateTangents: false,
-                })
-            )
-        );
+        this._assertNotDisposed();
+        return this._assets.createSphereMesh(id, radius, segments);
     }
 
     createPrefab(
@@ -575,7 +495,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         return {
             version: 1,
             prefab: this.createPrefab(`${this.id}:prefab`),
-            ...this._resources.serializeDefinitions(),
+            ...this._assets.serializeDefinitions(),
         };
     }
 
@@ -646,8 +566,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         } catch (error) {
             throw new SceneLifecycleError('Failed to dispose scene loop', error);
         } finally {
-            this._clearSceneAssets();
-            this._textureManager.dispose();
+            this._assets.dispose();
 
             if (!this.world.isDisposed) {
                 this.world.clear();
@@ -672,28 +591,6 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             deltaSeconds: deltaTime / 1000,
             viewportWidth: this.canvas.width,
             viewportHeight: this.canvas.height,
-        });
-    }
-
-    private _clearSceneAssets(): void {
-        this._renderRuntime.clear();
-        this._resources.clear({
-            deleteProgram: (shader) => {
-                this._shaderFactory.delete(shader);
-            },
-            disposeMesh: (mesh) => {
-                this._meshFactory.dispose(mesh);
-            },
-            disposeSampler: (sampler) => {
-                if (!sampler.sampler.isDisposed) {
-                    sampler.sampler.dispose();
-                }
-            },
-            disposeTexture: (texture) => {
-                if (!texture.texture.isDisposed) {
-                    texture.texture.dispose();
-                }
-            },
         });
     }
 

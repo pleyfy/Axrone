@@ -17,6 +17,8 @@ export {
 } from './profile';
 export type { SceneActorLifecycleRunnerOptions } from './actor-lifecycle-runner';
 export { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
+export type { SceneAssetRuntimeOptions } from './scene-asset-runtime';
+export { SceneAssetRuntime } from './scene-asset-runtime';
 export type { SceneComponentTypeResolver } from './component-catalog';
 export { SceneComponentCatalog, getSceneComponentTypeName } from './component-catalog';
 export { SceneGeometryMeshBuilder } from './scene-geometry-mesh-builder';
