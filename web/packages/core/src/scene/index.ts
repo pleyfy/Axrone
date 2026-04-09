@@ -23,6 +23,15 @@ export type { SceneAssetRuntimeOptions } from './scene-asset-runtime';
 export { SceneAssetRuntime } from './scene-asset-runtime';
 export type { SceneLifecycleRuntimeOptions } from './scene-lifecycle-runtime';
 export { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
+export {
+    DEFAULT_SCENE_AMBIENT_LIGHT,
+    DEFAULT_SCENE_CLEAR_COLOR,
+    DEFAULT_SCENE_HEIGHT,
+    DEFAULT_SCENE_RENDER_PASS_ID,
+    DEFAULT_SCENE_WIDTH,
+    resolveSceneAmbientLight,
+    resolveSceneClearColor,
+} from './scene-runtime-defaults';
 export type {
     SceneSnapshotActorHost,
     SceneSnapshotAssetHost,

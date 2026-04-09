@@ -1,4 +1,4 @@
-import { Vec3, Vec4 } from '@axrone/numeric';
+import { Vec4 } from '@axrone/numeric';
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../game-loop';
 import { Actor, type ActorConfig } from '../component-system/core/actor';
 import { World } from '../component-system/core/world';
@@ -18,6 +18,13 @@ import { SceneSnapshotRuntime } from './scene-snapshot-runtime';
 import { resolveSceneSurface } from './scene-surface-resolver';
 import { SceneMaterialError } from './errors';
 import { resolveSceneRegistryFromProfile } from './profile';
+import {
+    DEFAULT_SCENE_HEIGHT,
+    DEFAULT_SCENE_RENDER_PASS_ID,
+    DEFAULT_SCENE_WIDTH,
+    resolveSceneAmbientLight,
+    resolveSceneClearColor,
+} from './scene-runtime-defaults';
 import type {
     SceneLoopState,
     SceneMaterialDefinition,
@@ -48,44 +55,8 @@ import type {
 
 type RuntimeRegistry<R extends ComponentRegistry> = SceneRegistry<R>;
 
-const DEFAULT_CLEAR_COLOR = new Vec4(0.08, 0.09, 0.11, 1);
-const DEFAULT_AMBIENT_LIGHT = new Vec3(0.08, 0.08, 0.1);
-const DEFAULT_WIDTH = 1280;
-const DEFAULT_HEIGHT = 720;
-const DEFAULT_RENDER_PASS_ID = 'main';
-
 const createId = (prefix: string): string =>
     `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-
-const toVec4 = (
-    value?: Vec4 | readonly [number, number, number, number] | null,
-    fallback: Vec4 = DEFAULT_CLEAR_COLOR
-): Vec4 => {
-    if (value instanceof Vec4) {
-        return new Vec4(value.x, value.y, value.z, value.w);
-    }
-
-    if (Array.isArray(value) && value.length === 4) {
-        return new Vec4(value[0], value[1], value[2], value[3]);
-    }
-
-    return new Vec4(fallback.x, fallback.y, fallback.z, fallback.w);
-};
-
-const toVec3 = (
-    value?: Vec3 | readonly [number, number, number] | null,
-    fallback: Vec3 = DEFAULT_AMBIENT_LIGHT
-): Vec3 => {
-    if (value instanceof Vec3) {
-        return new Vec3(value.x, value.y, value.z);
-    }
-
-    if (Array.isArray(value) && value.length === 3) {
-        return new Vec3(value[0], value[1], value[2]);
-    }
-
-    return new Vec3(fallback.x, fallback.y, fallback.z);
-};
 
 export const createUnlitColorShaderDefinition = (
     id: string = 'Scene/UnlitColor'
@@ -137,11 +108,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         this.canvas = surface.canvas;
         this.gl = surface.gl;
         const pixelRatio = options.pixelRatio ?? globalThis.devicePixelRatio ?? 1;
-        const defaultClearColor = toVec4(options.clearColor);
-        const ambientLight = toVec3(options.ambientLight);
+        const defaultClearColor = resolveSceneClearColor(options.clearColor);
+        const ambientLight = resolveSceneAmbientLight(options.ambientLight);
         this._assets = new SceneAssetRuntime({
             gl: this.gl,
-            defaultPassId: DEFAULT_RENDER_PASS_ID,
+            defaultPassId: DEFAULT_SCENE_RENDER_PASS_ID,
             defaultClearColor,
             releaseBaseMesh: (meshId) => {
                 this._renderRuntime.releaseBaseMesh(meshId);
@@ -178,7 +149,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
         });
         this._snapshots = new SceneSnapshotRuntime({
             sceneId: this.id,
-            defaultRenderPassId: DEFAULT_RENDER_PASS_ID,
+            defaultRenderPassId: DEFAULT_SCENE_RENDER_PASS_ID,
             defaultClearColor,
             actors: this._actors,
             assets: this._assets,
@@ -219,8 +190,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
             loop: this.loop,
             autoCreatedCanvas: surface.autoCreated,
             pixelRatio,
-            defaultWidth: DEFAULT_WIDTH,
-            defaultHeight: DEFAULT_HEIGHT,
+            defaultWidth: DEFAULT_SCENE_WIDTH,
+            defaultHeight: DEFAULT_SCENE_HEIGHT,
             render: (deltaTime) => {
                 this._render(deltaTime);
             },
@@ -483,8 +454,8 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> {
     }
 
     resize(
-        width: number = this.canvas.clientWidth || DEFAULT_WIDTH,
-        height: number = this.canvas.clientHeight || DEFAULT_HEIGHT,
+        width: number = this.canvas.clientWidth || DEFAULT_SCENE_WIDTH,
+        height: number = this.canvas.clientHeight || DEFAULT_SCENE_HEIGHT,
         pixelRatio?: number
     ): this {
         this._lifecycle.resize(width, height, pixelRatio);
