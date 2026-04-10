@@ -3,8 +3,8 @@ import { createBox, createPlane, createSphere } from '../../core/src/geometry/pr
 import {
     FilterMode,
     WrapMode,
-} from '../../core/src/renderer/webgl2/texture/interfaces';
-import { WebGLTextureManager } from '../../core/src/renderer/webgl2/texture/manager';
+    WebGLTextureManager,
+} from '@axrone/render-webgl2';
 import {
     SceneMaterialError,
 } from './errors';

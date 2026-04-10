@@ -1,7 +1,5 @@
-import { World, WorldError, EntityError, ComponentError } from '../../component-system/core/world';
-import { Transform } from '../../component-system/components/transform';
-import { Component } from '../../component-system/core/component';
-import { script } from '../../component-system/decorators/script';
+import { World, WorldError, EntityError, ComponentError } from '@axrone/ecs/component-system/core/world';
+import { Component, script, Transform } from '@axrone/ecs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const flushBehaviorSubject = () => new Promise((resolve) => setTimeout(resolve, 0));

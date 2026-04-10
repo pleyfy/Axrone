@@ -7,15 +7,15 @@ import {
     createComponentId,
     createActorId,
 } from '../../component-system/utils/factory';
-import { Component } from '../../component-system/core/component';
-import { Transform } from '../../component-system/components/transform';
+import { Component } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs';
 import type {
     ComponentRegistry,
     Entity,
     SystemId,
     ComponentId,
     ActorId,
-} from '../../component-system/types/core';
+} from '@axrone/ecs';
 import { describe, expect, it, vi } from 'vitest';
 
 class TestComponent extends Component {

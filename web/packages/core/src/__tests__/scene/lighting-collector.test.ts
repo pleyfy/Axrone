@@ -1,8 +1,8 @@
 import { Vec3 } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
-import { Transform } from '../../component-system/components/transform';
-import { Actor } from '../../component-system/core/actor';
-import { World } from '../../component-system/core/world';
+import { Transform } from '@axrone/ecs';
+import { Actor } from '@axrone/ecs';
+import { World } from '@axrone/ecs';
 import { createSceneRegistry } from '@axrone/scene-3d';
 import { DirectionalLight } from '@axrone/scene-3d';
 import { PointLight } from '@axrone/scene-3d';

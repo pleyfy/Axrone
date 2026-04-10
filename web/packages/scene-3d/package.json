@@ -24,6 +24,7 @@
         "@axrone/ecs": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
         "@axrone/random": "^0.0.1",
+        "@axrone/render-webgl2": "^0.1.0",
         "@axrone/scene-runtime": "^0.1.0",
         "@axrone/utility": "^0.0.1"
     }

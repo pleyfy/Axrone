@@ -1,9 +1,17 @@
 export {
     Component,
+} from './component-system/core/component';
+export {
     script,
     getComponentMetadata,
+    getAllScripts,
+    getDependencyTree,
+    getScriptMetrics,
     setComponentMetadata,
-} from './component-system/core/component';
+    validateAllScripts,
+    clearScriptCaches,
+    __debugScriptSystem,
+} from './component-system/decorators/script';
 export type {
     ComponentConfig,
     ComponentDebug,
@@ -12,6 +20,11 @@ export type {
     ComponentState,
     ComponentValidation,
 } from './component-system/core/component';
+export type {
+    ScriptDecoratorOptions,
+    ScriptMetadata,
+    ValidationResult,
+} from './component-system/decorators/script';
 
 export { Actor, ActorError } from './component-system/core/actor';
 export type {
@@ -51,8 +64,11 @@ export { ECSObservables } from './component-system/observers/ecs-observer';
 
 export { Archetype } from './component-system/archetype/archetype';
 export { OptimizedQueryCache } from './component-system/archetype/query-cache';
+export { ComponentPool } from './component-system/memory/component-pool';
+export type { ComponentPoolConfig } from './component-system/memory/component-pool';
 
 export type {
+    ActorId,
     ArchetypeId,
     ArchetypeSignature,
     BitMask,

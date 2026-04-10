@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
-import { Component } from '../../component-system/core/component';
+import { Component } from '@axrone/ecs';
 import {
     script,
     getComponentMetadata,
@@ -10,7 +10,7 @@ import {
     getScriptMetrics,
     clearScriptCaches,
     __debugScriptSystem,
-} from '../../component-system/decorators/script';
+} from '@axrone/ecs';
 
 @script({
     scriptName: 'TestComponent',

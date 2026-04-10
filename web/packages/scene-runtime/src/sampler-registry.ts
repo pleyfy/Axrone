@@ -1,4 +1,4 @@
-import type { ITextureSampler } from '../../core/src/renderer/webgl2/texture/interfaces';
+import type { ITextureSampler } from '@axrone/render-webgl2';
 import type { SceneSamplerDefinition, SceneSamplerHandle } from './types';
 
 export interface SceneSamplerResource {

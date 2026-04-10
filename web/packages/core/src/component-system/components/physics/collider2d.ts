@@ -1,4 +1,4 @@
-import { Component } from '../../core/component';
+import { Component } from '@axrone/ecs';
 import { Vec2 } from '@axrone/numeric';
 import type { ShapeId, CollisionFilter } from '../../../physics/types';
 import { Rigidbody2D } from './rigidbody2d';

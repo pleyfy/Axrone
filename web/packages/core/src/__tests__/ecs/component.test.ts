@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Component } from '../../component-system/core/component';
-import { World } from '../../component-system/core/world';
+import { Component } from '@axrone/ecs';
+import { World } from '@axrone/ecs';
 
 class TestComponent extends Component {
     value: number = 0;

@@ -1,5 +1,5 @@
 import { Vec4 } from '@axrone/numeric';
-import type { ITextureSampler } from '../../core/src/renderer/webgl2/texture/interfaces';
+import type { ITextureSampler } from '@axrone/render-webgl2';
 import { SceneMaterialRegistry } from './material-registry';
 import { SceneMeshRegistry, type SceneMeshResource } from './mesh-registry';
 import { SceneRenderPassRegistry } from './render-pass-registry';

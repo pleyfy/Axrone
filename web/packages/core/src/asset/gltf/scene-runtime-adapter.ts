@@ -1,5 +1,4 @@
-import type { Actor } from '../../component-system/core/actor';
-import type { ComponentRegistry } from '../../component-system/types/core';
+import type { Actor, ComponentRegistry } from '@axrone/ecs';
 import type { Scene, SceneSnapshotLoadOptions } from '@axrone/scene-3d';
 import type { AssetDatabase } from '../database';
 import type { AssetSelector } from '../types';

@@ -1,4 +1,4 @@
-import type { GameLoop, GameLoopStatus } from '../../core/src/game-loop';
+import type { GameLoop, GameLoopStatus } from '@axrone/game-loop';
 import { SceneLifecycleError } from './errors';
 import type { SceneLoopState } from './types';
 

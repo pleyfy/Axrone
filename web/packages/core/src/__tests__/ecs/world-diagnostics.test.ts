@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WorldDiagnostics } from '../../component-system/core/world-diagnostics';
+import { WorldDiagnostics } from '@axrone/ecs';
 
 describe('WorldDiagnostics', () => {
     it('tracks counters and derives stable metrics snapshots when enabled', () => {

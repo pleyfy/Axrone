@@ -1,4 +1,4 @@
-import type { ITexture } from '../../core/src/renderer/webgl2/texture/interfaces';
+import type { ITexture } from '@axrone/render-webgl2';
 import type { SceneTextureDefinition, SceneTextureHandle } from './types';
 
 export interface SceneTextureResource {

@@ -3,7 +3,7 @@ import type { Actor, ActorConfig } from '@axrone/ecs';
 import type { World } from '@axrone/ecs';
 import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs';
 import type { System, SystemQuery } from '@axrone/ecs';
-import type { GameLoopScheduler, GameLoopStatus } from '../../core/src/game-loop';
+import type { GameLoopScheduler, GameLoopStatus } from '@axrone/game-loop';
 import type { Camera } from './components/camera';
 import type { Animator } from './components/animator';
 import type { DirectionalLight } from './components/directional-light';
@@ -14,7 +14,7 @@ import type { PointLight } from './components/point-light';
 import type { SpotLight } from './components/spot-light';
 import type { Hierarchy } from '@axrone/ecs';
 import type { Transform } from '@axrone/ecs';
-import type { FilterMode, TextureFormat, WrapMode } from '../../core/src/renderer/webgl2/texture/interfaces';
+import type { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type { SceneRuntimeProfile } from './scene-profile';
 
 export type SceneMeshSemantic =

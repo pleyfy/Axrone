@@ -51,7 +51,7 @@ interface SceneDrawExecutorResources {
     readonly textures: {
         get(textureId: string): import('./texture-registry').SceneTextureResource | undefined;
     };
-    resolveSampler(id: string | null): import('../../core/src/renderer/webgl2/texture/interfaces').ITextureSampler;
+    resolveSampler(id: string | null): import('@axrone/render-webgl2').ITextureSampler;
 }
 
 interface SceneDrawExecutorDependencies {

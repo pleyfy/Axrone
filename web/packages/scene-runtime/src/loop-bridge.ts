@@ -1,5 +1,5 @@
 import { SystemPhase } from '@axrone/ecs';
-import type { GameLoopSystem } from '../../core/src/game-loop';
+import type { GameLoopSystem } from '@axrone/game-loop';
 import type { SceneLoopState } from './types';
 
 export interface SceneLoopBridgeHost {

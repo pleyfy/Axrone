@@ -1,4 +1,4 @@
-import { createGameLoop, type GameLoop, type GameLoopSystem } from '../../core/src/game-loop';
+import { createGameLoop, type GameLoop, type GameLoopSystem } from '@axrone/game-loop';
 import { World } from '@axrone/ecs';
 import { SystemManager } from '@axrone/ecs';
 import type { ComponentRegistry } from '@axrone/ecs';

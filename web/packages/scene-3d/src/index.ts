@@ -263,7 +263,7 @@ export {
 	TextureFormat,
 	TextureUsage,
 	WrapMode,
-} from '../../core/src/renderer/webgl2/texture/interfaces';
+} from '@axrone/render-webgl2';
 export { decodeSceneValue, encodeSceneValue } from '../../scene-runtime/src/serialization';
 export { createUnlitColorShaderDefinition } from './scene-default-shaders';
 export { Scene } from './scene';

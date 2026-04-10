@@ -1,4 +1,4 @@
-import { Component, ComponentConfig } from '../../../component-system/core/component';
+import { Component, type ComponentConfig } from '@axrone/ecs';
 
 export interface Vec2 {
     x: number;

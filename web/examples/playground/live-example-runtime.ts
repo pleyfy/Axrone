@@ -1,6 +1,8 @@
 import * as axroneCore from '@axrone/core';
+import * as axroneGameLoop from '@axrone/game-loop';
 import * as axroneNumeric from '@axrone/numeric';
 import * as axroneRandom from '@axrone/random';
+import * as axroneRenderWebGL2 from '@axrone/render-webgl2';
 import * as axroneRuntimeProfile2D from '@axrone/runtime-profile-2d';
 import * as axroneRuntimeProfile3D from '@axrone/runtime-profile-3d';
 import * as axroneRuntimeProfileCore from '@axrone/runtime-profile-core';
@@ -18,8 +20,10 @@ import * as uiExampleHelpers from '../ui/example-helpers';
 
 const supportedModules = {
     '@axrone/core': axroneCore,
+    '@axrone/game-loop': axroneGameLoop,
     '@axrone/numeric': axroneNumeric,
     '@axrone/random': axroneRandom,
+    '@axrone/render-webgl2': axroneRenderWebGL2,
     '@axrone/runtime-profile-2d': axroneRuntimeProfile2D,
     '@axrone/runtime-profile-3d': axroneRuntimeProfile3D,
     '@axrone/runtime-profile-core': axroneRuntimeProfileCore,

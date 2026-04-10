@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Component } from '../../component-system/core/component';
+import { Component } from '@axrone/ecs';
 import {
     CORE_SCENE_RUNTIME_PROFILE_ID,
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,

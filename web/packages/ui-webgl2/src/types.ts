@@ -9,9 +9,9 @@ import type {
     UIFrameSink,
 } from '@axrone/ui';
 import type {
-    GameLoop,
     RenderPipelineBackend,
 } from '@axrone/core';
+import type { GameLoop } from '@axrone/game-loop';
 import type {
     SceneMaterialTextureBindingHandle,
     SceneTextureResourceHandle,

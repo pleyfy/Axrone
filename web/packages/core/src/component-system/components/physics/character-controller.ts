@@ -1,6 +1,6 @@
 import { Vec3, type IVec3Like } from '@axrone/numeric';
 import { script } from '../../decorators';
-import { Component } from '../../core/component';
+import { Component } from '@axrone/ecs';
 import type { Rigidbody3D } from './rigidbody3d';
 import type { BodyId3D, ShapeId3D } from '../../../physics/types/physics-3d';
 import type {

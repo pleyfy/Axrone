@@ -1,4 +1,4 @@
-import type { GameLoop } from '../../core/src/game-loop';
+import type { GameLoop } from '@axrone/game-loop';
 import { Actor, type ActorConfig } from '@axrone/ecs';
 import { World } from '@axrone/ecs';
 import { SystemManager, SystemPhase } from '@axrone/ecs';

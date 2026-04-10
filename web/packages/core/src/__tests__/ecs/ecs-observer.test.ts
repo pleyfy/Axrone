@@ -1,9 +1,9 @@
-import { ECSObservables } from '../../component-system/observers/ecs-observer';
-import type { Entity, ComponentRegistry } from '../../component-system/types/core';
-import { Actor } from '../../component-system/core/actor';
-import { World } from '../../component-system/core/world';
-import { Component } from '../../component-system/core/component';
-import { Transform } from '../../component-system/components/transform';
+import { ECSObservables } from '@axrone/ecs';
+import type { Entity, ComponentRegistry } from '@axrone/ecs';
+import { Actor } from '@axrone/ecs';
+import { World } from '@axrone/ecs';
+import { Component } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));

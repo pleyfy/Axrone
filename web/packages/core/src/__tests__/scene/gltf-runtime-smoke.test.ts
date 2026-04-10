@@ -7,7 +7,7 @@ import {
     type GltfAssetSchema,
     type GltfRootJson,
 } from '../../asset';
-import { Transform } from '../../component-system/components/transform';
+import { Transform } from '@axrone/ecs';
 import {
     createSceneOptions,
     installWebGL2Constants,

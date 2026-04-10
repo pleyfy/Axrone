@@ -1,10 +1,10 @@
-import { SystemManager, SystemPhase } from '../../component-system/systems/system-manager';
-import { World } from '../../component-system/core/world';
-import { Actor } from '../../component-system/core/actor';
-import { Component } from '../../component-system/core/component';
-import { Transform } from '../../component-system/components/transform';
-import type { SystemId } from '../../component-system/types/core';
-import type { System } from '../../component-system/types/system';
+import { SystemManager, SystemPhase } from '@axrone/ecs';
+import { World } from '@axrone/ecs';
+import { Actor } from '@axrone/ecs';
+import { Component } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs';
+import type { SystemId } from '@axrone/ecs';
+import type { System } from '@axrone/ecs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 class TestComponent extends Component {

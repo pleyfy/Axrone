@@ -1,4 +1,4 @@
-import { Component } from '../../core/component';
+import { Component } from '@axrone/ecs';
 import { script } from '../../decorators/script';
 import { Vec2 } from '@axrone/numeric';
 import type { ConstraintId } from '../../../physics/types';

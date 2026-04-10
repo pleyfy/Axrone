@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Actor } from '../../component-system/core/actor';
-import { World } from '../../component-system/core/world';
+import { Actor } from '@axrone/ecs';
+import { World } from '@axrone/ecs';
 import { createSceneRegistry } from '@axrone/scene-3d';
 import { MeshRenderer } from '@axrone/scene-3d';
 import { SceneRenderItemCollector } from '@axrone/scene-3d';

@@ -3,8 +3,8 @@ import {
     TextureFormat,
     TextureUsage,
     type ITexture,
-} from '../../core/src/renderer/webgl2/texture/interfaces';
-import { WebGLTextureManager } from '../../core/src/renderer/webgl2/texture/manager';
+    WebGLTextureManager,
+} from '@axrone/render-webgl2';
 import { SceneMaterialError } from './errors';
 import type { SceneTextureResource } from './texture-registry';
 import type { SceneTextureDefinition } from './types';

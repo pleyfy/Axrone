@@ -1,5 +1,5 @@
-import { ComponentPool } from '../../component-system/memory/component-pool';
-import { Component } from '../../component-system/core/component';
+import { ComponentPool } from '@axrone/ecs';
+import { Component } from '@axrone/ecs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 class TestComponent extends Component {

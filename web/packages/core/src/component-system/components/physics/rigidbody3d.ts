@@ -1,6 +1,6 @@
 import { Vec3, Quat, type IVec3Like, type IQuatLike } from '@axrone/numeric';
 import { script } from '../../decorators';
-import { Component } from '../../core/component';
+import { Component } from '@axrone/ecs';
 import type { BodyId3D, IPhysicsBodyDef3D } from '../../../physics/types/physics-3d';
 import type { PhysicsWorld3D, BodyManager3D } from '../../../physics/core/physics-world-3d';
 import type { BodyType } from '../../../physics/types';

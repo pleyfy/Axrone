@@ -1,7 +1,6 @@
 // for example
 // TODO: develop prod primitive geometric componets
-import { Component } from '../../component-system/core/component';
-import { script } from '../../component-system/decorators/script';
+import { Component, script } from '@axrone/ecs';
 import { IGeometryBuffers } from './types';
 import {
     createSphere,

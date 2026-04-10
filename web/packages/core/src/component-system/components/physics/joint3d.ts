@@ -1,6 +1,6 @@
 import { Vec3, Quat, type IVec3Like, type IQuatLike } from '@axrone/numeric';
 import { script } from '../../decorators';
-import { Component } from '../../core/component';
+import { Component } from '@axrone/ecs';
 import type { Rigidbody3D } from './rigidbody3d';
 import type {
     ConstraintId3D,

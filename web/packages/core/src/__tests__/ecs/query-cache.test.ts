@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { OptimizedQueryCache } from '../../component-system/archetype/query-cache';
-import type { ArchetypeId, BitMask } from '../../component-system/types/core';
+import { OptimizedQueryCache } from '@axrone/ecs';
+import type { ArchetypeId, BitMask } from '@axrone/ecs';
 
 describe('OptimizedQueryCache', () => {
     let cache: OptimizedQueryCache;

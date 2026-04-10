@@ -1,7 +1,14 @@
-import type { ComponentRegistry, Entity, SystemId, ComponentId, ActorId } from '../types/core';
-import type { System, SystemQuery, QueryResult } from '../types/system';
-import { World } from '../core/world';
-import { Actor } from '../core/actor';
+import type {
+    ActorId,
+    ComponentId,
+    ComponentRegistry,
+    Entity,
+    QueryResult,
+    System,
+    SystemId,
+    SystemQuery,
+} from '@axrone/ecs';
+import { Actor, World } from '@axrone/ecs';
 
 export const createWorld = <R extends ComponentRegistry>(registry: R): World<R> => {
     return new World(registry);
