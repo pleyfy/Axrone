@@ -29,6 +29,11 @@ class SingletonComponent extends Component {
     label: string = 'singleton';
 }
 
+@script({ singleton: true })
+class DynamicSingletonComponent extends Component {
+    label: string = 'dynamic-singleton';
+}
+
 describe('World', () => {
     let world: World<any>;
     let registry: any;
@@ -233,6 +238,17 @@ describe('World', () => {
 
             expect(world.getSingletonComponent('SingletonComponent')).toBeUndefined();
             expect(world.getSingletonEntity('SingletonComponent')).toBeUndefined();
+        });
+
+        it('should respect singleton metadata for dynamically registered component types', () => {
+            const otherEntity = world.createEntity();
+
+            world.registerComponentType(DynamicSingletonComponent);
+            world.addComponent(entity, 'DynamicSingletonComponent' as any);
+
+            expect(() =>
+                world.addComponent(otherEntity, 'DynamicSingletonComponent' as any)
+            ).toThrow(ComponentError);
         });
     });
 

@@ -5,6 +5,7 @@ export { Actor } from './actor';
 export { WorldActorRegistry } from './world-actor-registry';
 export { WorldDiagnostics } from './world-diagnostics';
 export { WorldEventRuntime } from './world-event-runtime';
+export { WorldMutationRuntime } from './world-mutation-runtime';
 export { WorldQueryRuntime } from './world-query-runtime';
 export { WorldSingletonRegistry } from './world-singleton-registry';
 export { WorldStorageRuntime } from './world-storage-runtime';

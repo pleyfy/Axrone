@@ -8,12 +8,13 @@ import type { QueryResult } from '../types/system';
 import type { EventKey } from '../../event';
 import type { ECSObservables } from '../observers/ecs-observer';
 import { OptimizedQueryCache } from '../archetype/query-cache';
+import { getComponentMetadata } from '../decorators/script';
 import type { ECSEventMap } from '../types/events';
 import type { Actor } from './actor';
-import { getComponentMetadata } from '../decorators/script';
 import { WorldActorRegistry } from './world-actor-registry';
 import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
 import { WorldEventRuntime } from './world-event-runtime';
+import { WorldMutationRuntime } from './world-mutation-runtime';
 import { WorldQueryRuntime } from './world-query-runtime';
 import { WorldSingletonRegistry } from './world-singleton-registry';
 import { WorldStorageRuntime } from './world-storage-runtime';
@@ -75,6 +76,7 @@ export class World<R extends ComponentRegistry> {
     private readonly _queryRuntime: WorldQueryRuntime<R>;
     private readonly _events: WorldEventRuntime<R>;
     private readonly _actorRegistry = new WorldActorRegistry();
+    private readonly _mutations: WorldMutationRuntime<R>;
     private readonly _singletonRegistry = new WorldSingletonRegistry();
 
     private _state: WorldState = 'initializing';
@@ -113,6 +115,15 @@ export class World<R extends ComponentRegistry> {
                 Object.keys(this._registry),
                 (...components) => this.query(...(components as readonly (keyof R)[]))
             );
+            this._mutations = new WorldMutationRuntime({
+                registry: this._registry,
+                storage: this._storage,
+                actorRegistry: this._actorRegistry,
+                singletonRegistry: this._singletonRegistry,
+                emitEvent: (event, data) => this._safeEmitEvent(event, data),
+                onMutation: () => this._diagnostics.markMutation(),
+                onStructureChange: () => this._invalidateStructureCaches(),
+            });
 
             this._state = 'ready';
         } catch (error) {
@@ -178,11 +189,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         try {
-            const entity = this._storage.createEntity();
-
-            this._diagnostics.markMutation();
-
-            return entity;
+            return this._mutations.createEntity();
         } catch (error) {
             throw new WorldError(
                 'Failed to create entity',
@@ -197,36 +204,7 @@ export class World<R extends ComponentRegistry> {
         this._validateEntity(entity, 'destroyEntity');
 
         try {
-            const removedEntity = this._storage.destroyEntity(entity);
-            if (!removedEntity) {
-                return;
-            }
-
-            const { archetype, removedComponents } = removedEntity;
-
-            // Clear singleton cache for any singleton components being destroyed
-            this._singletonRegistry.clearEntity(entity, Object.keys(removedComponents));
-
-            for (const [componentName, component] of Object.entries(removedComponents)) {
-                try {
-                    const pool = archetype.components.get(componentName);
-                    if (pool && component) {
-                        pool.release(component);
-                    }
-                } catch (error) {
-                    console.warn(
-                        `Failed to release component ${componentName} for entity ${entity}:`,
-                        error
-                    );
-                }
-            }
-
-            const actor = this._actorRegistry.unregister(entity);
-            if (actor) {
-                this._safeEmitEvent('EntityDestroyed', { entity, actor });
-            }
-
-            this._diagnostics.markMutation();
+            this._mutations.destroyEntity(entity);
         } catch (error) {
             throw new EntityError(
                 'Failed to destroy entity',
@@ -247,102 +225,7 @@ export class World<R extends ComponentRegistry> {
         this._validateComponentName(componentName, 'addComponent');
 
         try {
-            const componentConstructor = this._registry[componentName];
-            const metadata =
-                typeof componentConstructor === 'function'
-                    ? getComponentMetadata(componentConstructor as any)
-                    : undefined;
-
-            if (metadata?.singleton) {
-                const existingSingleton = this._singletonRegistry.get(componentName as string);
-                if (existingSingleton) {
-                    if (existingSingleton.entity !== entity) {
-                        throw new ComponentError(
-                            `Singleton component '${String(componentName)}' already exists on entity ${existingSingleton.entity}`,
-                            entity,
-                            String(componentName),
-                            'addComponent'
-                        );
-                    }
-                    return existingSingleton.instance as ComponentInstance<R[K]>;
-                }
-            }
-
-            const currentArchetypeId = this._storage.getEntityArchetypeId(entity);
-            if (!currentArchetypeId) {
-                throw new ComponentError(
-                    'Entity not found',
-                    entity,
-                    String(componentName),
-                    'addComponent'
-                );
-            }
-
-            const currentArchetype = this._storage.getArchetype(currentArchetypeId);
-            if (!currentArchetype) {
-                throw new ComponentError(
-                    'Current archetype not found',
-                    entity,
-                    String(componentName),
-                    'addComponent'
-                );
-            }
-
-            if (currentArchetype.signature.includes(componentName as string)) {
-                const existingComponent = currentArchetype.getComponent(
-                    entity,
-                    componentName as string
-                );
-                if (existingComponent) {
-                    return existingComponent as ComponentInstance<R[K]>;
-                }
-            }
-
-            const {
-                archetype: targetArchetype,
-                created: createdArchetype,
-            } = this._storage.resolveAddComponentArchetype(
-                currentArchetype,
-                componentName as string
-            );
-
-            const pool = targetArchetype.components.get(componentName as string);
-            if (!pool) {
-                throw new ComponentError(
-                    'Component pool not found',
-                    entity,
-                    String(componentName),
-                    'addComponent'
-                );
-            }
-
-            const finalComponent = component || pool.acquire();
-
-            const removedComponents = currentArchetype.removeEntity(entity);
-            removedComponents[componentName as string] = finalComponent;
-            targetArchetype.addEntity(entity, removedComponents);
-            this._storage.setEntityArchetype(entity, targetArchetype.id);
-
-            if (createdArchetype) {
-                this._invalidateStructureCaches();
-            }
-
-            if (metadata?.singleton) {
-                this._singletonRegistry.set(componentName as string, entity, finalComponent);
-            }
-
-            const actor = this._actorRegistry.get(entity);
-            if (actor) {
-                this._safeEmitEvent(`${componentName as string}Added` as any, {
-                    entity,
-                    component: finalComponent,
-                    actor,
-                });
-            }
-
-            this._diagnostics.markMutation();
-
-            return finalComponent;
+            return this._mutations.addComponent(entity, componentName, component);
         } catch (error) {
             throw new ComponentError(
                 'Failed to add component',
@@ -360,68 +243,7 @@ export class World<R extends ComponentRegistry> {
         this._validateComponentName(componentName, 'removeComponent');
 
         try {
-            const currentArchetypeId = this._storage.getEntityArchetypeId(entity);
-            if (!currentArchetypeId) {
-                return;
-            }
-
-            const currentArchetype = this._storage.getArchetype(currentArchetypeId);
-            if (
-                !currentArchetype ||
-                !currentArchetype.signature.includes(componentName as string)
-            ) {
-                return;
-            }
-
-            const {
-                archetype: targetArchetype,
-                created: createdArchetype,
-            } = this._storage.resolveRemoveComponentArchetype(
-                currentArchetype,
-                componentName as string
-            );
-
-            const removedComponents = currentArchetype.removeEntity(entity);
-            const removedComponent = removedComponents[componentName as string];
-            delete removedComponents[componentName as string];
-
-            targetArchetype.addEntity(entity, removedComponents);
-            this._storage.setEntityArchetype(entity, targetArchetype.id);
-
-            if (createdArchetype) {
-                this._invalidateStructureCaches();
-            }
-
-            // Clear singleton cache if this was a singleton component
-            const componentConstructor = this._registry[componentName];
-            const metadata =
-                typeof componentConstructor === 'function'
-                    ? getComponentMetadata(componentConstructor as any)
-                    : undefined;
-
-            if (metadata?.singleton) {
-                this._singletonRegistry.clearComponent(componentName as string, entity);
-            }
-
-            const pool = currentArchetype.components.get(componentName as string);
-            if (pool && removedComponent) {
-                try {
-                    pool.release(removedComponent);
-                } catch (error) {
-                    console.warn(`Failed to release component ${String(componentName)}:`, error);
-                }
-            }
-
-            const actor = this._actorRegistry.get(entity);
-            if (actor) {
-                this._safeEmitEvent(`${componentName as string}Removed` as any, {
-                    entity,
-                    component: removedComponent,
-                    actor,
-                });
-            }
-
-            this._diagnostics.markMutation();
+            this._mutations.removeComponent(entity, componentName);
         } catch (error) {
             throw new ComponentError(
                 'Failed to remove component',
@@ -554,8 +376,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         try {
-            this._actorRegistry.register(entity, actor);
-            this._safeEmitEvent('EntityCreated', { entity, actor });
+            this._mutations.registerActor(entity, actor);
         } catch (error) {
             throw new EntityError(
                 'Failed to register actor',
@@ -571,7 +392,7 @@ export class World<R extends ComponentRegistry> {
             return;
         }
 
-        this._actorRegistry.unregister(entity);
+        this._mutations.unregisterActor(entity);
     }
 
     getActor(entity: Entity): Actor | undefined {
@@ -622,7 +443,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         registry[componentName] = componentType;
-        this._storage.registerComponent(componentName);
+        this._mutations.registerComponentType(componentName, componentType);
         this._events.registerComponent(componentName);
     }
 
