@@ -1,8 +1,7 @@
-import { encodeSceneValue } from '../../scene/serialization';
-import type { MeshRendererSkinConfig } from '../../scene/components/mesh-renderer';
 import { FilterMode, TextureFormat, WrapMode } from '../../renderer/webgl2/texture/interfaces';
 import type { AssetImportDiagnostic, AssetImportResult, AssetImportSource, AssetWriteInput } from '../types';
 import { GltfSchemaError } from './errors';
+import { encodeGltfValue } from './value-serialization';
 import { GltfAccessorRuntime } from './internal/accessor-runtime';
 import type {
     GltfActorSnapshot,
@@ -82,6 +81,12 @@ interface PrefabBuildResult {
     readonly animationKeys: readonly string[];
     readonly materialKeys: readonly string[];
     readonly diagnostics: readonly AssetImportDiagnostic[];
+}
+
+interface GltfSkinBinding {
+    readonly jointNodeIds: readonly string[];
+    readonly skeletonNodeId?: string;
+    readonly inverseBindMatrices?: readonly number[] | Float32Array;
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -424,7 +429,7 @@ const createMeshRendererSnapshot = (
     meshKey: string,
     materialKey: string | undefined,
     morphWeights: readonly number[] | Float32Array | undefined,
-    skin: MeshRendererSkinConfig | undefined
+    skin: GltfSkinBinding | undefined
 ): GltfComponentSnapshot => {
     const skinData = skin
         ? Object.freeze({
@@ -443,7 +448,7 @@ const createMeshRendererSnapshot = (
 
     return Object.freeze({
         type: 'MeshRenderer',
-        data: encodeSceneValue(
+        data: encodeGltfValue(
             Object.freeze({
                 meshId: meshKey,
                 materialId: materialKey ?? null,
@@ -482,7 +487,7 @@ const createMorphWeights = (
     return weights;
 };
 
-const createSkinBinding = (skin: GltfSkinAsset | undefined): MeshRendererSkinConfig | undefined => {
+const createSkinBinding = (skin: GltfSkinAsset | undefined): GltfSkinBinding | undefined => {
     if (!skin) {
         return undefined;
     }
@@ -551,7 +556,7 @@ const createAnimatorSnapshot = (
 
     return Object.freeze({
         type: 'Animator',
-        data: encodeSceneValue(
+        data: encodeGltfValue(
             Object.freeze({
                 clips: Object.freeze(clips),
                 clipId: clips[0]?.id ?? null,
