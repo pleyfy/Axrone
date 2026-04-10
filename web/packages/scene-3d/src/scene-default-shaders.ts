@@ -1,4 +1,4 @@
-import type { SceneShaderDefinition } from '../../scene-runtime/src/types';
+import type { SceneShaderDefinition } from '@axrone/scene-runtime';
 
 export const createUnlitColorShaderDefinition = (
     id: string = 'Scene/UnlitColor'

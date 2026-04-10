@@ -1,7 +1,7 @@
 import type { ComponentRegistry } from '@axrone/ecs';
-import { get2DSceneRuntimeProfile } from '../../scene-runtime/src/scene-profile';
-import { SceneAssetFacade } from '../../scene-runtime/src/scene-asset-facade';
-import type { SceneOptions } from '../../scene-runtime/src/types';
+import type { SceneOptions } from '@axrone/scene-runtime';
+import { get2DSceneRuntimeProfile } from '@axrone/scene-runtime/scene-profile';
+import { SceneAssetFacade } from '@axrone/scene-runtime/scene-facade';
 
 export class Scene2D<R extends ComponentRegistry = Record<string, never>> extends SceneAssetFacade<R> {
     constructor(options: SceneOptions<R> = {}) {

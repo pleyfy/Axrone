@@ -1,11 +1,13 @@
 import type { Actor, ActorConfig } from '@axrone/ecs';
 import type { World } from '@axrone/ecs';
 import type { ComponentRegistry } from '@axrone/ecs';
-import { SceneCapabilityError } from '../../scene-runtime/src/errors';
-import type { SceneRegistry } from '../../scene-runtime/src/types';
-import type { SceneActorRuntime } from '../../scene-runtime/src/scene-actor-runtime';
-import { Camera, type CameraConfig } from '../../scene-runtime/src/components/camera';
-import { MeshRenderer, type MeshRendererConfig } from '../../scene-runtime/src/components/mesh-renderer';
+import {
+    SceneCapabilityError,
+    type SceneActorRuntime,
+    type SceneRegistry,
+} from '@axrone/scene-runtime';
+import { Camera, type CameraConfig } from '@axrone/scene-runtime/scene-facade';
+import { MeshRenderer, type MeshRendererConfig } from '@axrone/scene-runtime/scene-3d-support';
 
 export interface Scene3DActorRuntimeOptions<
     R extends ComponentRegistry = Record<string, never>,

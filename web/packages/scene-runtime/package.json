@@ -23,6 +23,16 @@
             "types": "./dist/scene-profile.d.ts",
             "import": "./dist/scene-profile.mjs",
             "require": "./dist/scene-profile.js"
+        },
+        "./scene-facade": {
+            "types": "./dist/scene-facade.d.ts",
+            "import": "./dist/scene-facade.mjs",
+            "require": "./dist/scene-facade.js"
+        },
+        "./scene-3d-support": {
+            "types": "./dist/scene-3d-support.d.ts",
+            "import": "./dist/scene-3d-support.mjs",
+            "require": "./dist/scene-3d-support.js"
         }
     },
     "scripts": {

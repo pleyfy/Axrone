@@ -1,5 +1,5 @@
 import type { ComponentRegistry } from '@axrone/ecs';
-import type { SceneOptions } from '../../scene-runtime/src/types';
+import type { SceneOptions } from '@axrone/scene-runtime';
 import { Scene2D } from './scene-2d';
 
 export const createScene2D = <R extends ComponentRegistry = Record<string, never>>(
