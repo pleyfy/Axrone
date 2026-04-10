@@ -1,2 +1,1 @@
-export { Archetype } from './archetype';
-export { OptimizedQueryCache } from './query-cache';
+export * from '../../../../ecs/src/component-system/archetype/index';

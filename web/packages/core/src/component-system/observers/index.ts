@@ -1,1 +1,1 @@
-export { ECSObservables } from './ecs-observer';
+export * from '../../../../ecs/src/component-system/observers/index';

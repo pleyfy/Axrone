@@ -1,8 +1,8 @@
-export { Hierarchy } from './hierarchy';
-export { Transform } from './transform';
+export { Hierarchy } from '../../../../ecs/src/component-system/components/hierarchy';
+export { Transform } from '../../../../ecs/src/component-system/components/transform';
 
-import { Hierarchy } from './hierarchy';
-import { Transform } from './transform';
+import { Hierarchy } from '../../../../ecs/src/component-system/components/hierarchy';
+import { Transform } from '../../../../ecs/src/component-system/components/transform';
 (globalThis as any).Hierarchy = Hierarchy;
 (globalThis as any).Transform = Transform;
 

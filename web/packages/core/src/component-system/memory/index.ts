@@ -1,1 +1,1 @@
-export { ComponentPool } from './component-pool';
+export * from '../../../../ecs/src/component-system/memory/index';
