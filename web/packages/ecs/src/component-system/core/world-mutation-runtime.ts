@@ -1,4 +1,4 @@
-import type { EventKey } from '../../../../core/src/event';
+import type { EventKey } from '../../support/event';
 import { getComponentMetadata } from '../decorators/script';
 import type { ComponentConstructor, ComponentInstance, ComponentRegistry, Entity } from '../types/core';
 import type { ECSEventMap } from '../types/events';
@@ -55,7 +55,10 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
 
         const actor = this._options.actorRegistry.unregister(entity);
         if (actor) {
-            this._options.emitEvent('EntityDestroyed', { entity, actor });
+            this._options.emitEvent('EntityDestroyed' as EventKey<ECSEventMap<R>>, {
+                entity,
+                actor,
+            } as ECSEventMap<R>[EventKey<ECSEventMap<R>>]);
         }
 
         this._options.onMutation();
@@ -186,7 +189,10 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
 
     registerActor(entity: Entity, actor: Actor): void {
         this._options.actorRegistry.register(entity, actor);
-        this._options.emitEvent('EntityCreated', { entity, actor });
+        this._options.emitEvent('EntityCreated' as EventKey<ECSEventMap<R>>, {
+            entity,
+            actor,
+        } as ECSEventMap<R>[EventKey<ECSEventMap<R>>]);
     }
 
     unregisterActor(entity: Entity): void {

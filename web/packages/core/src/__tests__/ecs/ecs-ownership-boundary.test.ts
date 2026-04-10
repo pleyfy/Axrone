@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const ecsSrcDir = path.resolve(testDir, '../../../../ecs/src');
-const directCoreComponentSystemImportPattern = /from ['"][^'"]*core\/src\/component-system(?:\/[^'"]*)?['"]/g;
+const directCoreInternalImportPattern = /from ['"][^'"]*core\/src\/(?:component-system|event|observer)(?:\/[^'"]*)?['"]/g;
 
 const collectTypeScriptFiles = (dirPath: string): readonly string[] => {
     const files: string[] = [];
@@ -26,12 +26,12 @@ const collectTypeScriptFiles = (dirPath: string): readonly string[] => {
 };
 
 describe('ecs ownership boundary', () => {
-    it('keeps ecs-owned sources off core component-system internals', () => {
+    it('keeps ecs-owned sources off core internals', () => {
         const directCoreImportFiles = collectTypeScriptFiles(ecsSrcDir)
             .filter((filePath) => {
                 const content = fs.readFileSync(filePath, 'utf8');
-                const hasDirectCoreImport = directCoreComponentSystemImportPattern.test(content);
-                directCoreComponentSystemImportPattern.lastIndex = 0;
+                const hasDirectCoreImport = directCoreInternalImportPattern.test(content);
+                directCoreInternalImportPattern.lastIndex = 0;
                 return hasDirectCoreImport;
             })
             .map((filePath) => path.relative(ecsSrcDir, filePath).replace(/\\/g, '/'))

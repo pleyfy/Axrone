@@ -1,5 +1,5 @@
-import { createSubject, createBehaviorSubject } from '../../../../core/src/observer';
-import type { IObservableSubject } from '../../../../core/src/observer';
+import { createSubject, createBehaviorSubject } from '../../support/observer';
+import type { IObservableSubject } from '../../support/observer';
 import type { Entity, ComponentRegistry } from '../types/core';
 import type { Actor } from '../core/actor';
 

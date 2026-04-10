@@ -1,5 +1,5 @@
-import type { EventKey, IEventEmitter } from '../../../../core/src/event';
-import { createTypedEmitter } from '../../../../core/src/event';
+import type { EventKey, IEventEmitter } from '../../support/event';
+import { createTypedEmitter } from '../../support/event';
 import { ECSObservables } from '../observers/ecs-observer';
 import type { ComponentRegistry } from '../types/core';
 import type { ECSEventMap } from '../types/events';
@@ -62,7 +62,7 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
     }
 
     getEventMetrics<T extends EventKey<ECSEventMap<R>>>(event: T) {
-        return this._eventBus.getMetrics(event);
+        return this._eventBus.getMetrics(String(event));
     }
 
     getAllEventMetrics(): Record<string, unknown> {
