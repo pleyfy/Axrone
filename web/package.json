@@ -17,12 +17,13 @@
         "lint": "lerna run lint --parallel --stream",
         "lint:fix": "lerna run lint:fix --parallel --stream",
         "test": "vitest",
+        "test:architecture": "npm --workspace @axrone/core run test:architecture",
         "test:watch": "vitest --watch",
         "test:ui": "vitest --ui",
         "test:browser": "vitest --config vitest.config.browser.ts",
         "test:webgl": "playwright test --config playwright.config.ts",
         "test:coverage": "vitest --coverage",
-        "test:all": "npm run test && npm run test:browser && npm run test:webgl",
+        "test:all": "npm run test && npm run test:architecture && npm run test:browser && npm run test:webgl",
         "docs": "typedoc"
     },
     "devDependencies": {
