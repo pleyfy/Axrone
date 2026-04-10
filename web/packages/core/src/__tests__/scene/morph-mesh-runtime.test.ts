@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SceneMeshDefinition } from '../../scene/types';
-import type { SceneMeshResource } from '../../scene/mesh-registry';
-import { SceneMorphMeshRuntime } from '../../scene/morph-mesh-runtime';
+import type { SceneMeshDefinition } from '@axrone/scene-3d';
+import type { SceneMeshResource } from '@axrone/scene-3d';
+import { SceneMorphMeshRuntime } from '@axrone/scene-3d';
 
 describe('SceneMorphMeshRuntime', () => {
     it('reuses morph mesh resources and avoids redundant buffer uploads for unchanged weights', () => {

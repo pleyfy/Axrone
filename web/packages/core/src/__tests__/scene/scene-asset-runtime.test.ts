@@ -1,6 +1,6 @@
 import { Vec4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import { SceneAssetRuntime } from '../../scene/scene-asset-runtime';
+import { SceneAssetRuntime } from '@axrone/scene-3d';
 import { createMockGL } from './test-harness';
 
 describe('SceneAssetRuntime', () => {

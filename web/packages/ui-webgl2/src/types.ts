@@ -11,9 +11,11 @@ import type {
 import type {
     GameLoop,
     RenderPipelineBackend,
+} from '@axrone/core';
+import type {
     SceneMaterialTextureBindingHandle,
     SceneTextureResourceHandle,
-} from '@axrone/core';
+} from '@axrone/scene-runtime';
 
 export interface WebGL2UIRendererStatistics {
     readonly drawCalls: number;

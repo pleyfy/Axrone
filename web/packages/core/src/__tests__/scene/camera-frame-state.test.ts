@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { Transform } from '../../component-system/components/transform';
 import { Actor } from '../../component-system/core/actor';
 import { World } from '../../component-system/core/world';
-import { createSceneRegistry } from '../../scene';
-import { Camera } from '../../scene/components/camera';
-import { SceneCameraFrameStateCollector } from '../../scene/camera-frame-state';
+import { createSceneRegistry } from '@axrone/scene-3d';
+import { Camera } from '@axrone/scene-3d';
+import { SceneCameraFrameStateCollector } from '@axrone/scene-3d';
 
 describe('SceneCameraFrameStateCollector', () => {
     it('collects stable camera frame state without reallocating matrices', () => {

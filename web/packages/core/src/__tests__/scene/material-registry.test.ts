@@ -4,7 +4,7 @@ import {
     cloneSceneMaterialDefinition,
     normalizeSceneTextureBinding,
     SceneMaterialRegistry,
-} from '../../scene/material-registry';
+} from '@axrone/scene-3d';
 
 describe('SceneMaterialRegistry', () => {
     it('creates material resources and returns handles', () => {

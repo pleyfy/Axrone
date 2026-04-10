@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPlane } from '../../geometry/primitives';
-import { SceneGeometryMeshBuilder } from '../../scene/scene-geometry-mesh-builder';
+import { SceneGeometryMeshBuilder } from '@axrone/scene-3d';
 
 describe('SceneGeometryMeshBuilder', () => {
     it('builds scene mesh definitions from geometry buffers without temporary index arrays', () => {

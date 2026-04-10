@@ -1,7 +1,7 @@
 import { Vec3, Vec4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import type { SceneRenderPassResource } from '../../scene/render-pass-registry';
-import { SceneRenderRuntime } from '../../scene/scene-render-runtime';
+import type { SceneRenderPassResource } from '@axrone/scene-3d';
+import { SceneRenderRuntime } from '@axrone/scene-3d';
 import { createMockGL } from './test-harness';
 
 const createRenderRuntime = (renderPasses: readonly SceneRenderPassResource[]) => {

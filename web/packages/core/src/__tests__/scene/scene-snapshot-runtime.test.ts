@@ -1,6 +1,6 @@
 import { Vec4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import { SceneSnapshotRuntime } from '../../scene/scene-snapshot-runtime';
+import { SceneSnapshotRuntime } from '@axrone/scene-3d';
 
 describe('SceneSnapshotRuntime', () => {
     it('restores a default render pass through the snapshot boundary', () => {

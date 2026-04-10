@@ -11,19 +11,19 @@ import {
     ManualScheduler,
 } from './test-harness';
 
-let Scene: typeof import('../../scene').Scene;
-let Animator: typeof import('../../scene').Animator;
-let Camera: typeof import('../../scene').Camera;
-let MeshRenderer: typeof import('../../scene').MeshRenderer;
-let DirectionalLight: typeof import('../../scene').DirectionalLight;
-let OrbitCameraController: typeof import('../../scene').OrbitCameraController;
-let PrefabNodeBinding: typeof import('../../scene').PrefabNodeBinding;
-let PointLight: typeof import('../../scene').PointLight;
-let SpotLight: typeof import('../../scene').SpotLight;
-let createSceneRegistry: typeof import('../../scene').createSceneRegistry;
-let createSceneRuntimeProfile: typeof import('../../scene').createSceneRuntimeProfile;
-let SceneComponentCatalog: typeof import('../../scene').SceneComponentCatalog;
-let getSceneComponentTypeName: typeof import('../../scene').getSceneComponentTypeName;
+let Scene: typeof import('@axrone/scene-3d').Scene;
+let Animator: typeof import('@axrone/scene-3d').Animator;
+let Camera: typeof import('@axrone/scene-3d').Camera;
+let MeshRenderer: typeof import('@axrone/scene-3d').MeshRenderer;
+let DirectionalLight: typeof import('@axrone/scene-3d').DirectionalLight;
+let OrbitCameraController: typeof import('@axrone/scene-3d').OrbitCameraController;
+let PrefabNodeBinding: typeof import('@axrone/scene-3d').PrefabNodeBinding;
+let PointLight: typeof import('@axrone/scene-3d').PointLight;
+let SpotLight: typeof import('@axrone/scene-3d').SpotLight;
+let createSceneRegistry: typeof import('@axrone/scene-3d').createSceneRegistry;
+let createSceneRuntimeProfile: typeof import('@axrone/scene-3d').createSceneRuntimeProfile;
+let SceneComponentCatalog: typeof import('@axrone/scene-3d').SceneComponentCatalog;
+let getSceneComponentTypeName: typeof import('@axrone/scene-3d').getSceneComponentTypeName;
 
 class PulseComponent extends Component {
     fixedCalls = 0;
@@ -73,7 +73,7 @@ describe('Scene', () => {
 
     beforeAll(async () => {
         installWebGL2Constants();
-        const sceneModule = await import('../../scene');
+        const sceneModule = await import('@axrone/scene-3d');
         Scene = sceneModule.Scene;
         Animator = sceneModule.Animator;
         Camera = sceneModule.Camera;

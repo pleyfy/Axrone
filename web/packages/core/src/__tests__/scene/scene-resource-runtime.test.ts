@@ -1,10 +1,10 @@
 import { Vec4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import { SceneResourceRuntime } from '../../scene/scene-resource-runtime';
-import type { SceneMeshResource } from '../../scene/mesh-registry';
-import type { SceneSamplerResource } from '../../scene/sampler-registry';
-import type { SceneShaderResource } from '../../scene/shader-registry';
-import type { SceneTextureResource } from '../../scene/texture-registry';
+import { SceneResourceRuntime } from '@axrone/scene-3d';
+import type { SceneMeshResource } from '@axrone/scene-3d';
+import type { SceneSamplerResource } from '@axrone/scene-3d';
+import type { SceneShaderResource } from '@axrone/scene-3d';
+import type { SceneTextureResource } from '@axrone/scene-3d';
 
 const createDefaultSampler = () =>
     ({

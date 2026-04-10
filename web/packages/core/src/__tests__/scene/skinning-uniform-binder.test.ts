@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SceneShaderResource } from '../../scene/shader-registry';
-import { SceneSkinningUniformBinder } from '../../scene/skinning-uniform-binder';
-import type { SceneUniformWriteTarget } from '../../scene/uniform-writer';
+import type { SceneShaderResource } from '@axrone/scene-3d';
+import { SceneSkinningUniformBinder } from '@axrone/scene-3d';
+import type { SceneUniformWriteTarget } from '@axrone/scene-3d';
 
 describe('SceneSkinningUniformBinder', () => {
     it('writes skinning flags and palette only when a valid palette is available', () => {

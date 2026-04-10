@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Actor } from '../../component-system/core/actor';
 import { World } from '../../component-system/core/world';
-import { createSceneRegistry } from '../../scene';
-import { selectSceneCamera } from '../../scene/camera-selector';
-import { Camera } from '../../scene/components/camera';
+import { createSceneRegistry } from '@axrone/scene-3d';
+import { selectSceneCamera } from '@axrone/scene-3d';
+import { Camera } from '@axrone/scene-3d';
 
 describe('selectSceneCamera', () => {
     it('prefers primary enabled cameras on active actors', () => {

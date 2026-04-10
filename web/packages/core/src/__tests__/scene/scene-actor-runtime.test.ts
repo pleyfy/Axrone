@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Component, script } from '../../component-system/core/component';
 import { World } from '../../component-system/core/world';
-import { createSceneRegistry } from '../../scene';
-import { SceneActorRuntime } from '../../scene/scene-actor-runtime';
-import { SceneComponentCatalog } from '../../scene/component-catalog';
+import { createSceneRegistry } from '@axrone/scene-3d';
+import { SceneActorRuntime } from '@axrone/scene-3d';
+import { SceneComponentCatalog } from '@axrone/scene-3d';
 
 class PulseComponent extends Component {}
 

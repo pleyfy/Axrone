@@ -9,9 +9,9 @@ import {
     get3DSceneRuntimeProfile,
     getCoreSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
-} from '../../scene/profile';
-import { SceneCapabilityError } from '../../scene/errors';
-import { SCENE_CORE_BUILT_IN_MANIFEST } from '../../scene/registry';
+} from '@axrone/scene-3d';
+import { SceneCapabilityError } from '@axrone/scene-3d';
+import { SCENE_CORE_BUILT_IN_MANIFEST } from '@axrone/scene-3d';
 import { ManualScheduler, createSceneOptions, installWebGL2Constants } from './test-harness';
 
 class PulseComponent extends Component {}
@@ -80,7 +80,7 @@ describe('Scene runtime profile manifests', () => {
 
     it('fails fast with a capability error when 3d actor helpers are used in a core profile', async () => {
         installWebGL2Constants();
-        const { Scene } = await import('../../scene/scene');
+        const { Scene } = await import('@axrone/scene-3d');
         const scheduler = new ManualScheduler();
         const root = globalThis as typeof globalThis & {
             HTMLCanvasElement?: typeof HTMLCanvasElement;

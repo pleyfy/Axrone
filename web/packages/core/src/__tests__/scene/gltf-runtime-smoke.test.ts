@@ -18,9 +18,9 @@ import {
 const trianglePositions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
 const triangleIndices = new Uint16Array([0, 1, 2]);
 
-let Scene: typeof import('../../scene').Scene;
-let Animator: typeof import('../../scene').Animator;
-let MeshRenderer: typeof import('../../scene').MeshRenderer;
+let Scene: typeof import('@axrone/scene-3d').Scene;
+let Animator: typeof import('@axrone/scene-3d').Animator;
+let MeshRenderer: typeof import('@axrone/scene-3d').MeshRenderer;
 
 const createGlb = (json: GltfRootJson, bin: Uint8Array): Uint8Array => {
     const encoder = new TextEncoder();
@@ -418,7 +418,7 @@ describe('glTF runtime smoke', () => {
 
     beforeAll(async () => {
         installWebGL2Constants();
-        const sceneModule = await import('../../scene');
+        const sceneModule = await import('@axrone/scene-3d');
         Scene = sceneModule.Scene;
         Animator = sceneModule.Animator;
         MeshRenderer = sceneModule.MeshRenderer;

@@ -8,39 +8,4 @@ export default [
     ...createPackageConfig({
         packageDir,
     }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/scene-runtime.ts',
-        outputBasename: 'scene-runtime/index',
-    }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/scene-2d.ts',
-        outputBasename: 'scene-2d/index',
-    }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/scene-3d.ts',
-        outputBasename: 'scene-3d/index',
-    }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/runtime-profile-core.ts',
-        outputBasename: 'runtime-profile-core/index',
-    }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/runtime-profile-2d.ts',
-        outputBasename: 'runtime-profile-2d/index',
-    }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/runtime-profile-3d.ts',
-        outputBasename: 'runtime-profile-3d/index',
-    }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/runtime-profile-full.ts',
-        outputBasename: 'runtime-profile-full/index',
-    }),
 ];

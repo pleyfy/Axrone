@@ -1,16 +1,18 @@
 import {
     AssetDatabase,
-    Camera,
-    DirectionalLight,
-    MeshRenderer,
-    OrbitCameraController,
-    Scene,
     Transform,
     createGltfImporter,
     loadGltfSceneIntoScene,
     type AssetImporter,
     type GltfAssetSchemaLike,
 } from '@axrone/core';
+import {
+    Camera,
+    DirectionalLight,
+    MeshRenderer,
+    OrbitCameraController,
+    Scene,
+} from '@axrone/scene-3d';
 import { Vec3 } from '@axrone/numeric';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveSceneSurface } from '../../scene/scene-surface-resolver';
-import { SceneCanvasError } from '../../scene/errors';
+import { resolveSceneSurface } from '@axrone/scene-3d';
+import { SceneCanvasError } from '@axrone/scene-3d';
 
 describe('resolveSceneSurface', () => {
     it('creates and appends a canvas when the caller provides a canvas factory', () => {

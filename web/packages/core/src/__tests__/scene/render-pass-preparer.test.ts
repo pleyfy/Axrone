@@ -1,7 +1,7 @@
 import { Vec4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import { SceneRenderPassPreparer } from '../../scene/render-pass-preparer';
-import type { SceneRenderPassResource } from '../../scene/render-pass-registry';
+import { SceneRenderPassPreparer } from '@axrone/scene-3d';
+import type { SceneRenderPassResource } from '@axrone/scene-3d';
 
 describe('SceneRenderPassPreparer', () => {
     it('avoids redundant clear state uploads while still clearing each pass', () => {

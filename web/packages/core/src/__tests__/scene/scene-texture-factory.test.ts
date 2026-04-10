@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SceneMaterialError } from '../../scene/errors';
-import { SceneTextureFactory } from '../../scene/scene-texture-factory';
+import { SceneMaterialError } from '@axrone/scene-3d';
+import { SceneTextureFactory } from '@axrone/scene-3d';
 
 describe('SceneTextureFactory', () => {
     it('creates regular textures and generates mipmaps when appropriate', async () => {

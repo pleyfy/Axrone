@@ -1,8 +1,8 @@
 import { Mat4, Vec2, Vec3 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import type { SceneShaderResource } from '../../scene/shader-registry';
-import type { SceneUniformWriteTarget } from '../../scene/uniform-writer';
-import { SceneFrameUniformBinder } from '../../scene/frame-uniform-binder';
+import type { SceneShaderResource } from '@axrone/scene-3d';
+import type { SceneUniformWriteTarget } from '@axrone/scene-3d';
+import { SceneFrameUniformBinder } from '@axrone/scene-3d';
 
 describe('SceneFrameUniformBinder', () => {
     it('reuses MVP and resolution scratch objects while writing built-in uniforms', () => {

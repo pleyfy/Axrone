@@ -1,6 +1,13 @@
 import * as axroneCore from '@axrone/core';
 import * as axroneNumeric from '@axrone/numeric';
 import * as axroneRandom from '@axrone/random';
+import * as axroneRuntimeProfile2D from '@axrone/runtime-profile-2d';
+import * as axroneRuntimeProfile3D from '@axrone/runtime-profile-3d';
+import * as axroneRuntimeProfileCore from '@axrone/runtime-profile-core';
+import * as axroneRuntimeProfileFull from '@axrone/runtime-profile-full';
+import * as axroneScene2D from '@axrone/scene-2d';
+import * as axroneScene3D from '@axrone/scene-3d';
+import * as axroneSceneRuntime from '@axrone/scene-runtime';
 import * as axroneUI from '@axrone/ui';
 import * as axroneUIWebGL2 from '@axrone/ui-webgl2';
 import * as axroneUtility from '@axrone/utility';
@@ -13,6 +20,13 @@ const supportedModules = {
     '@axrone/core': axroneCore,
     '@axrone/numeric': axroneNumeric,
     '@axrone/random': axroneRandom,
+    '@axrone/runtime-profile-2d': axroneRuntimeProfile2D,
+    '@axrone/runtime-profile-3d': axroneRuntimeProfile3D,
+    '@axrone/runtime-profile-core': axroneRuntimeProfileCore,
+    '@axrone/runtime-profile-full': axroneRuntimeProfileFull,
+    '@axrone/scene-2d': axroneScene2D,
+    '@axrone/scene-3d': axroneScene3D,
+    '@axrone/scene-runtime': axroneSceneRuntime,
     '@axrone/ui': axroneUI,
     '@axrone/ui-webgl2': axroneUIWebGL2,
     '@axrone/utility': axroneUtility,

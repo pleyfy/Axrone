@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
     cloneSceneRenderPassDefinition,
     SceneRenderPassRegistry,
-} from '../../scene/render-pass-registry';
+} from '@axrone/scene-3d';
 
 const toVec4Tuple = (
     value: Vec4 | readonly [number, number, number, number] | null | undefined

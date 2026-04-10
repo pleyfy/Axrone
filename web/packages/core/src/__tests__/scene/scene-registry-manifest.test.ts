@@ -5,7 +5,7 @@ import {
     SCENE_CORE_BUILT_IN_MANIFEST,
     createSceneRegistryFromBuiltInManifests,
     resolveSceneBuiltInComponents,
-} from '../../scene';
+} from '@axrone/scene-3d';
 
 describe('SceneRegistry manifests', () => {
     it('resolves manifest-built component sets with stable order and no duplicates', () => {

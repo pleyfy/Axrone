@@ -1,1 +1,0 @@
-export * from '../../../../scene-runtime/src/components/orbit-camera-controller';

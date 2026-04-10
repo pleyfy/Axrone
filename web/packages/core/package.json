@@ -13,41 +13,6 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.mjs",
             "require": "./dist/index.js"
-        },
-        "./scene-runtime": {
-            "types": "./dist/scene-runtime/index.d.ts",
-            "import": "./dist/scene-runtime/index.mjs",
-            "require": "./dist/scene-runtime/index.js"
-        },
-        "./scene-2d": {
-            "types": "./dist/scene-2d/index.d.ts",
-            "import": "./dist/scene-2d/index.mjs",
-            "require": "./dist/scene-2d/index.js"
-        },
-        "./scene-3d": {
-            "types": "./dist/scene-3d/index.d.ts",
-            "import": "./dist/scene-3d/index.mjs",
-            "require": "./dist/scene-3d/index.js"
-        },
-        "./runtime-profile-core": {
-            "types": "./dist/runtime-profile-core/index.d.ts",
-            "import": "./dist/runtime-profile-core/index.mjs",
-            "require": "./dist/runtime-profile-core/index.js"
-        },
-        "./runtime-profile-2d": {
-            "types": "./dist/runtime-profile-2d/index.d.ts",
-            "import": "./dist/runtime-profile-2d/index.mjs",
-            "require": "./dist/runtime-profile-2d/index.js"
-        },
-        "./runtime-profile-3d": {
-            "types": "./dist/runtime-profile-3d/index.d.ts",
-            "import": "./dist/runtime-profile-3d/index.mjs",
-            "require": "./dist/runtime-profile-3d/index.js"
-        },
-        "./runtime-profile-full": {
-            "types": "./dist/runtime-profile-full/index.d.ts",
-            "import": "./dist/runtime-profile-full/index.mjs",
-            "require": "./dist/runtime-profile-full/index.js"
         }
     },
     "scripts": {
@@ -59,11 +24,6 @@
     "dependencies": {
         "@axrone/numeric": "^0.0.1",
         "@axrone/random": "^0.0.1",
-        "@axrone/runtime-profile-2d": "^0.1.0",
-        "@axrone/runtime-profile-3d": "^0.1.0",
-        "@axrone/runtime-profile-core": "^0.1.0",
-        "@axrone/runtime-profile-full": "^0.1.0",
-        "@axrone/scene-2d": "^0.1.0",
         "@axrone/scene-3d": "^0.1.0",
         "@axrone/scene-runtime": "^0.1.0",
         "@axrone/utility": "^0.0.1",

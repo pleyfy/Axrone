@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Actor } from '../../component-system/core/actor';
 import { World } from '../../component-system/core/world';
-import { createSceneRegistry } from '../../scene';
-import { MeshRenderer } from '../../scene/components/mesh-renderer';
-import { SceneRenderItemCollector } from '../../scene/render-item-collector';
+import { createSceneRegistry } from '@axrone/scene-3d';
+import { MeshRenderer } from '@axrone/scene-3d';
+import { SceneRenderItemCollector } from '@axrone/scene-3d';
 
 describe('SceneRenderItemCollector', () => {
     it('filters actors by pass and renderability and sorts by render order', () => {

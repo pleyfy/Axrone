@@ -1,10 +1,12 @@
 import {
+    Transform,
+} from '@axrone/core';
+import {
     Camera,
     MeshRenderer,
     Scene,
-    Transform,
     createUnlitColorShaderDefinition,
-} from '@axrone/core';
+} from '@axrone/scene-3d';
 import { Mat4, Quat, Vec3 } from '@axrone/numeric';
 import * as THREE from 'three';
 

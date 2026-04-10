@@ -1,7 +1,7 @@
 import { Vec4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import { SceneLifecycleError } from '../../scene/errors';
-import { SceneSnapshotLoader } from '../../scene/scene-snapshot-loader';
+import { SceneLifecycleError } from '@axrone/scene-3d';
+import { SceneSnapshotLoader } from '@axrone/scene-3d';
 
 describe('SceneSnapshotLoader', () => {
     it('loads scene assets in deterministic order and restores a fallback pass when needed', async () => {

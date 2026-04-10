@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ITextureSampler } from '../../renderer/webgl2/texture/interfaces';
-import type { SceneMaterialResource } from '../../scene/material-registry';
-import { SceneMaterialTextureBinder } from '../../scene/material-texture-binder';
-import type { SceneShaderResource } from '../../scene/shader-registry';
-import type { SceneTextureResource } from '../../scene/texture-registry';
+import type { SceneMaterialResource } from '@axrone/scene-3d';
+import { SceneMaterialTextureBinder } from '@axrone/scene-3d';
+import type { SceneShaderResource } from '@axrone/scene-3d';
+import type { SceneTextureResource } from '@axrone/scene-3d';
 
 describe('SceneMaterialTextureBinder', () => {
     it('reuses its bound unit buffer while binding and unbinding texture slots', () => {

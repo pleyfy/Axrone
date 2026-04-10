@@ -1,7 +1,7 @@
 import { Mat4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import type { SceneShaderResource } from '../../scene/shader-registry';
-import { SceneUniformWriter } from '../../scene/uniform-writer';
+import type { SceneShaderResource } from '@axrone/scene-3d';
+import { SceneUniformWriter } from '@axrone/scene-3d';
 
 const createShader = (
     entries: readonly [string, WebGLUniformLocation, number | undefined][]

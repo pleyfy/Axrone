@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SceneRenderFrameState } from '../../scene/render-frame-state';
+import { SceneRenderFrameState } from '@axrone/scene-3d';
 
 describe('SceneRenderFrameState', () => {
     it('reuses active renderer tracking and resets counters between frames', () => {

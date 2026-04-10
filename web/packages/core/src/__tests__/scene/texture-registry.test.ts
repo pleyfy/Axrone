@@ -3,7 +3,7 @@ import {
     cloneSceneTextureDefinition,
     SceneTextureRegistry,
     type SceneTextureResource,
-} from '../../scene/texture-registry';
+} from '@axrone/scene-3d';
 
 const createTextureResource = (id: string): SceneTextureResource => ({
     id,

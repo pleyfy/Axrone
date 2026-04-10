@@ -1,1 +1,0 @@
-export * from '../../../scene-2d/src/scene-2d-factory';

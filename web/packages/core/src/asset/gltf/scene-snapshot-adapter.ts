@@ -4,9 +4,7 @@ import type {
     AssetRecord,
     AssetSelector,
 } from '../types';
-import type {
-    SceneSnapshot,
-} from '../../scene';
+import type { SceneSnapshot } from '@axrone/scene-runtime';
 import {
     createGltfTextureDefinitionFromTextureAsset,
     normalizeGltfMaterialDefinition,

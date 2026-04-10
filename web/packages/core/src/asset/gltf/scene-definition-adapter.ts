@@ -5,7 +5,7 @@ import type {
     SceneSamplerDefinition,
     SceneShaderDefinition,
     SceneTextureDefinition,
-} from '../../scene';
+} from '@axrone/scene-runtime';
 import type {
     GltfActorSnapshot,
     GltfComponentSnapshot,

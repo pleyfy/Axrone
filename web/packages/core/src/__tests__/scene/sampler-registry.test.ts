@@ -3,7 +3,7 @@ import {
     cloneSceneSamplerDefinition,
     SceneSamplerRegistry,
     type SceneSamplerResource,
-} from '../../scene/sampler-registry';
+} from '@axrone/scene-3d';
 
 const createSamplerResource = (id: string): SceneSamplerResource => ({
     id,

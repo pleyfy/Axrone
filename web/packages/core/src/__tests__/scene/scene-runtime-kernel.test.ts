@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SceneRuntimeKernel } from '../../scene/scene-runtime-kernel';
+import { SceneRuntimeKernel } from '@axrone/scene-3d';
 import { ManualScheduler, createSceneOptions } from './test-harness';
 
 describe('SceneRuntimeKernel', () => {

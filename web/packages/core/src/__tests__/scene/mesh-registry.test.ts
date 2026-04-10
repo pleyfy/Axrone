@@ -3,7 +3,7 @@ import {
     cloneSceneMeshDefinition,
     SceneMeshRegistry,
     type SceneMeshResource,
-} from '../../scene/mesh-registry';
+} from '@axrone/scene-3d';
 
 const createMeshResource = (id: string): SceneMeshResource => ({
     id,

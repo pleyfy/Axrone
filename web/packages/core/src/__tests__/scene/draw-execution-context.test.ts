@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SceneDrawExecutionContextCache } from '../../scene/draw-execution-context';
+import { SceneDrawExecutionContextCache } from '@axrone/scene-3d';
 
 describe('SceneDrawExecutionContextCache', () => {
     it('reuses a single draw execution context object across updates', () => {

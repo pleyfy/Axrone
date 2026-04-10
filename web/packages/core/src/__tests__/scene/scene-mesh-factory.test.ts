@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SceneMeshFactory } from '../../scene/scene-mesh-factory';
+import { SceneMeshFactory } from '@axrone/scene-3d';
 import { createMockGL } from './test-harness';
 
 describe('SceneMeshFactory', () => {

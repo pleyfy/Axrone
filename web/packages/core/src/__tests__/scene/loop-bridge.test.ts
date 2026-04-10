@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SystemPhase } from '../../component-system/systems/system-manager';
-import { createSceneLoopSystems } from '../../scene/loop-bridge';
+import { createSceneLoopSystems } from '@axrone/scene-3d';
 
 describe('createSceneLoopSystems', () => {
     it('creates the expected scene loop system order', () => {

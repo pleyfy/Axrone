@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SceneRenderStateApplier } from '../../scene/render-state-applier';
-import type { SceneRenderPassResource } from '../../scene/render-pass-registry';
-import type { SceneShaderResource } from '../../scene/shader-registry';
+import { SceneRenderStateApplier } from '@axrone/scene-3d';
+import type { SceneRenderPassResource } from '@axrone/scene-3d';
+import type { SceneShaderResource } from '@axrone/scene-3d';
 
 describe('SceneRenderStateApplier', () => {
     it('avoids redundant WebGL state transitions across draw calls', () => {

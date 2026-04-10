@@ -1,8 +1,8 @@
 import { Mat4, Vec3 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import type { SceneShaderResource } from '../../scene/shader-registry';
-import { SceneDrawExecutor } from '../../scene/draw-executor';
-import { SceneRenderFrameState } from '../../scene/render-frame-state';
+import type { SceneShaderResource } from '@axrone/scene-3d';
+import { SceneDrawExecutor } from '@axrone/scene-3d';
+import { SceneRenderFrameState } from '@axrone/scene-3d';
 
 describe('SceneDrawExecutor', () => {
     it('executes a draw, records frame stats, and binds material overrides', () => {

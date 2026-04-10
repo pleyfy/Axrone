@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { SceneOptions } from '../../scene';
+import type { SceneOptions } from '@axrone/scene-3d';
 
 export const installWebGL2Constants = (): void => {
     const root = globalThis as typeof globalThis & {

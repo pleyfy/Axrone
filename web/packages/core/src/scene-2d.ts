@@ -1,1 +1,0 @@
-export * from '@axrone/scene-2d';

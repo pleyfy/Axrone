@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SceneActorLifecycleRunner } from '../../scene/actor-lifecycle-runner';
+import { SceneActorLifecycleRunner } from '@axrone/scene-3d';
 
 describe('SceneActorLifecycleRunner', () => {
     it('dispatches each phase against the latest actor collection without allocations', () => {

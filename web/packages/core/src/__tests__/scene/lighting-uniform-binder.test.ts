@@ -1,9 +1,9 @@
 import { Vec3 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import type { SceneLightingState } from '../../scene/lighting-collector';
-import { SceneLightingUniformBinder } from '../../scene/lighting-uniform-binder';
-import type { SceneShaderResource } from '../../scene/shader-registry';
-import type { SceneUniformWriteTarget } from '../../scene/uniform-writer';
+import type { SceneLightingState } from '@axrone/scene-3d';
+import { SceneLightingUniformBinder } from '@axrone/scene-3d';
+import type { SceneShaderResource } from '@axrone/scene-3d';
+import type { SceneUniformWriteTarget } from '@axrone/scene-3d';
 
 describe('SceneLightingUniformBinder', () => {
     it('writes zeroed lighting controls when the renderer does not receive lighting', () => {

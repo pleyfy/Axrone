@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../component-system/core/world';
-import { createSceneRegistry } from '../../scene';
-import { Scene3DActorRuntime } from '../../scene/scene-3d-actor-runtime';
-import { SceneActorRuntime } from '../../scene/scene-actor-runtime';
-import { SceneComponentCatalog } from '../../scene/component-catalog';
-import { Camera } from '../../scene/components/camera';
-import { MeshRenderer } from '../../scene/components/mesh-renderer';
-import { SceneCapabilityError } from '../../scene/errors';
+import { createSceneRegistry } from '@axrone/scene-3d';
+import { Scene3DActorRuntime } from '@axrone/scene-3d';
+import { SceneActorRuntime } from '@axrone/scene-3d';
+import { SceneComponentCatalog } from '@axrone/scene-3d';
+import { Camera } from '@axrone/scene-3d';
+import { MeshRenderer } from '@axrone/scene-3d';
+import { SceneCapabilityError } from '@axrone/scene-3d';
 
 const create3DActorRuntime = (registry = createSceneRegistry()) => {
     const world = new World(registry);

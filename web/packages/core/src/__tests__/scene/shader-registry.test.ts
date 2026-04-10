@@ -3,7 +3,7 @@ import {
     cloneSceneShaderDefinition,
     SceneShaderRegistry,
     type SceneShaderResource,
-} from '../../scene/shader-registry';
+} from '@axrone/scene-3d';
 
 const createShaderResource = (id: string): SceneShaderResource => ({
     id,

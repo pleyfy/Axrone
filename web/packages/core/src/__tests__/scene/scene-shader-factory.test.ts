@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SceneShaderFactory } from '../../scene/scene-shader-factory';
-import { SceneShaderError } from '../../scene/errors';
+import { SceneShaderFactory } from '@axrone/scene-3d';
+import { SceneShaderError } from '@axrone/scene-3d';
 import { createMockGL } from './test-harness';
 
 describe('SceneShaderFactory', () => {
