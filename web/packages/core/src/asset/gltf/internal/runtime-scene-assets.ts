@@ -1,11 +1,11 @@
 import { Vec3 } from '@axrone/numeric';
 import { TextureFormat } from '../../../renderer/webgl2/texture/interfaces';
 import type {
-    SceneMaterialDefinition,
-    SceneTextureCompressedLevelDefinition,
-    SceneTextureDefinition,
-    SceneUniformValue,
-} from '../../../scene';
+    GltfMaterialDefinition,
+    GltfTextureCompressedLevelDefinition,
+    GltfTextureDefinition,
+    GltfUniformValue,
+} from '../asset-ir';
 import type { AssetImportDiagnostic } from '../../types';
 import {
     inferTextureFormatFromKtx2,
@@ -68,7 +68,7 @@ const GLTF_TEXTURE_UNIFORM_SPECS: readonly GltfTextureUniformSpec[] = [
     },
 ];
 
-const toSceneTextureMimeType = (texture: GltfTextureAsset): string | undefined => {
+const toGltfTextureMimeType = (texture: GltfTextureAsset): string | undefined => {
     if (texture.payload.mimeType) {
         return texture.payload.mimeType;
     }
@@ -102,7 +102,7 @@ const isRuntimeLoadableImageMimeType = (mimeType: string | undefined): boolean =
 
 const createCompressedLevelDefinitions = (
     levels: readonly GltfTextureMipLevel[]
-): readonly SceneTextureCompressedLevelDefinition[] =>
+): readonly GltfTextureCompressedLevelDefinition[] =>
     Object.freeze(
         [...levels]
             .sort((left, right) => left.level - right.level)
@@ -119,7 +119,7 @@ const createCompressedLevelDefinitions = (
 
 const createFallbackTextureSource = (
     usageHints: readonly GltfTextureUsage[]
-): SceneTextureDefinition['source'] => {
+): GltfTextureDefinition['source'] => {
     const primaryUsage = usageHints[0];
 
     if (primaryUsage === 'normal') {
@@ -154,7 +154,7 @@ const createFallbackTextureSource = (
 const createCompressedRuntimeTextureDefinition = (
     key: string,
     asset: GltfTextureAsset
-): { readonly definition: SceneTextureDefinition; readonly diagnostics: readonly AssetImportDiagnostic[] } | undefined => {
+): { readonly definition: GltfTextureDefinition; readonly diagnostics: readonly AssetImportDiagnostic[] } | undefined => {
     if (asset.payload.kind !== 'compressed') {
         return undefined;
     }
@@ -276,13 +276,13 @@ const createCompressedRuntimeTextureDefinition = (
     };
 };
 
-const cloneUniformValue = (value: SceneUniformValue): SceneUniformValue => {
+const cloneUniformValue = (value: GltfUniformValue): GltfUniformValue => {
     if (ArrayBuffer.isView(value)) {
-        return new (value.constructor as typeof Float32Array)(value as any) as SceneUniformValue;
+        return new (value.constructor as typeof Float32Array)(value as any) as GltfUniformValue;
     }
 
     if (Array.isArray(value)) {
-        return [...value] as SceneUniformValue;
+        return [...value] as GltfUniformValue;
     }
 
     if (value instanceof Vec3) {
@@ -295,8 +295,8 @@ const cloneUniformValue = (value: SceneUniformValue): SceneUniformValue => {
 export const normalizeGltfMaterialDefinition = (
     asset: GltfMaterialAsset,
     key: string
-): SceneMaterialDefinition => {
-    const uniforms: Record<string, SceneUniformValue> = Object.fromEntries(
+): GltfMaterialDefinition => {
+    const uniforms: Record<string, GltfUniformValue> = Object.fromEntries(
         Object.entries(asset.definition.uniforms ?? {}).map(([name, value]) => [
             name,
             cloneUniformValue(value),
@@ -334,11 +334,11 @@ export const normalizeGltfMaterialDefinition = (
     };
 };
 
-export const createSceneTextureDefinitionFromGltfTexture = (
+export const createGltfTextureDefinitionFromTextureAsset = (
     key: string,
     asset: GltfTextureAsset
-): { readonly definition: SceneTextureDefinition; readonly diagnostics: readonly AssetImportDiagnostic[] } => {
-    const mimeType = toSceneTextureMimeType(asset);
+): { readonly definition: GltfTextureDefinition; readonly diagnostics: readonly AssetImportDiagnostic[] } => {
+    const mimeType = toGltfTextureMimeType(asset);
 
     const compressed = createCompressedRuntimeTextureDefinition(key, asset);
     if (compressed) {

@@ -1,6 +1,6 @@
-import type { SceneMeshDefinition } from '../../../scene/types';
 import type { AssetImportDiagnostic } from '../../types';
 import { GltfSchemaError, GltfTopologyError } from '../errors';
+import type { GltfMeshDefinition } from '../asset-ir';
 import type { GltfAccessorJson, GltfMeshBounds, GltfPrimitiveJson } from '../types';
 import { type DecodedAccessor, GltfAccessorRuntime } from './accessor-runtime';
 import { GltfResourceRuntime } from './source-runtime';
@@ -166,7 +166,7 @@ export const collectPrimitiveDiagnostics = (
 
 const mapAttributeSemantic = (
     value: SupportedAttributeSemantic
-): SceneMeshDefinition['attributes'][number]['semantic'] => {
+): GltfMeshDefinition['attributes'][number]['semantic'] => {
     switch (value) {
         case 'POSITION':
             return 'position';
@@ -189,7 +189,7 @@ const mapAttributeSemantic = (
 
 const mapMorphTargetSemantic = (
     value: SupportedMorphTargetSemantic
-): NonNullable<SceneMeshDefinition['morphTargets']>[number]['attributes'][number]['semantic'] => {
+): NonNullable<GltfMeshDefinition['morphTargets']>[number]['attributes'][number]['semantic'] => {
     switch (value) {
         case 'POSITION':
             return 'position';
@@ -672,7 +672,7 @@ export const buildMeshDefinition = async (
     accessors: GltfAccessorRuntime,
     runtime: GltfResourceRuntime
 ): Promise<{
-    readonly definition: SceneMeshDefinition;
+    readonly definition: GltfMeshDefinition;
     readonly bounds?: GltfMeshBounds;
 }> => {
     const resolved = await collectPrimitiveAttributes(primitive, accessors, runtime);
@@ -693,7 +693,7 @@ export const buildMeshDefinition = async (
     });
     const hasIntegerAttributes = attributeLayouts.some((layout) => layout.integer);
     const strideBytes = attributeLayouts.reduce((total, layout) => total + layout.byteLength, 0);
-    const attributes: SceneMeshDefinition['attributes'][number][] = [];
+    const attributes: GltfMeshDefinition['attributes'][number][] = [];
     const vertices = hasIntegerAttributes
         ? (() => {
               const bytes = new Uint8Array(vertexCount * strideBytes);

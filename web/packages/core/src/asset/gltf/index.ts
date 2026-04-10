@@ -62,6 +62,26 @@ export type {
     GltfTextureUsage,
     GltfTranscodeStage,
 } from './types';
+export type {
+    GltfActorSnapshot,
+    GltfComponentSnapshot,
+    GltfMaterialDefinition,
+    GltfMeshDefinition,
+    GltfMeshSemantic,
+    GltfMeshTopology,
+    GltfMorphTargetDefinition,
+    GltfMorphTargetSemantic,
+    GltfPrefabDefinition,
+    GltfSamplerDefinition,
+    GltfSerializedValue,
+    GltfShaderDefinition,
+    GltfTextureBindingDefinition,
+    GltfTextureCompressedLevelDefinition,
+    GltfTextureDefinition,
+    GltfTextureSourceDefinition,
+    GltfUniformValue,
+    GltfVertexAttribute,
+} from './asset-ir';
 
 export {
     GltfAccessorError,

@@ -5,26 +5,30 @@ import type {
     AssetSelector,
 } from '../types';
 import type {
-    SceneMaterialDefinition,
-    SceneMeshDefinition,
-    SceneShaderDefinition,
     SceneSnapshot,
-    SceneTextureDefinition,
 } from '../../scene';
 import {
-    createSceneTextureDefinitionFromGltfTexture,
+    createGltfTextureDefinitionFromTextureAsset,
     normalizeGltfMaterialDefinition,
 } from './internal/runtime-scene-assets';
 import { resolveGltfShaderDefinition } from './internal/runtime-shaders';
+import {
+    adaptGltfMaterialDefinitionToScene,
+    adaptGltfMeshDefinitionToScene,
+    adaptGltfPrefabDefinitionToScene,
+    adaptGltfSamplerDefinitionToScene,
+    adaptGltfShaderDefinitionToScene,
+    adaptGltfTextureDefinitionToScene,
+} from './scene-definition-adapter';
+import type { GltfShaderDefinition } from './asset-ir';
 import type {
     GltfAssetSchemaLike,
     GltfDocumentSceneAsset,
-    GltfPrefabAsset,
 } from './types';
 
 export interface GltfSceneSnapshotOptions {
     readonly sceneIndex?: number;
-    readonly resolveShaderDefinition?: (shaderId: string) => SceneShaderDefinition | undefined;
+    readonly resolveShaderDefinition?: (shaderId: string) => GltfShaderDefinition | undefined;
 }
 
 export interface GltfSceneSnapshotResult {
@@ -53,14 +57,18 @@ export const createGltfSceneSnapshot = (
     });
     const diagnostics: AssetImportDiagnostic[] = [];
     const samplers = new Map<string, SceneSnapshot['samplers'][number]>();
-    const textures = new Map<string, SceneTextureDefinition>();
-    const materials: SceneMaterialDefinition[] = [];
-    const meshes: SceneMeshDefinition[] = [];
-    const shaderDefinitions = new Map<string, SceneShaderDefinition>();
+    const textures = new Map<string, SceneSnapshot['textures'][number]>();
+    const materials: SceneSnapshot['materials'][number][] = [];
+    const meshes: SceneSnapshot['meshes'][number][] = [];
+    const shaderDefinitions = new Map<string, SceneSnapshot['shaders'][number]>();
 
     for (const materialKey of prefab.data.materialKeys) {
         const material = database.require({ key: materialKey, kind: 'gltf.material' });
-        materials.push(normalizeGltfMaterialDefinition(material.data, material.key));
+        materials.push(
+            adaptGltfMaterialDefinitionToScene(
+                normalizeGltfMaterialDefinition(material.data, material.key)
+            )
+        );
 
         const shaderDefinition = resolveGltfShaderDefinition(
             material.data.definition.shaderId,
@@ -71,16 +79,28 @@ export const createGltfSceneSnapshot = (
                 `glTF runtime bridge cannot resolve shader '${material.data.definition.shaderId}' for material '${materialKey}'`
             );
         }
-        shaderDefinitions.set(shaderDefinition.id, shaderDefinition);
+        shaderDefinitions.set(
+            shaderDefinition.id,
+            adaptGltfShaderDefinitionToScene(shaderDefinition)
+        );
 
         for (const textureBinding of Object.values(material.data.textures)) {
+            if (!textureBinding) {
+                continue;
+            }
             const texture = database.require({ key: textureBinding.textureKey, kind: 'gltf.texture' });
             if (!samplers.has(texture.data.sampler.id)) {
-                samplers.set(texture.data.sampler.id, { ...texture.data.sampler });
+                samplers.set(
+                    texture.data.sampler.id,
+                    adaptGltfSamplerDefinitionToScene(texture.data.sampler)
+                );
             }
             if (!textures.has(texture.key)) {
-                const built = createSceneTextureDefinitionFromGltfTexture(texture.key, texture.data);
-                textures.set(texture.key, built.definition);
+                const built = createGltfTextureDefinitionFromTextureAsset(
+                    texture.key,
+                    texture.data
+                );
+                textures.set(texture.key, adaptGltfTextureDefinitionToScene(built.definition));
                 diagnostics.push(...built.diagnostics);
             }
         }
@@ -88,10 +108,7 @@ export const createGltfSceneSnapshot = (
 
     for (const meshKey of prefab.data.meshKeys) {
         const mesh = database.require({ key: meshKey, kind: 'gltf.mesh' });
-        meshes.push({
-            ...mesh.data.definition,
-            id: mesh.key,
-        });
+        meshes.push(adaptGltfMeshDefinitionToScene(mesh.data.definition, mesh.key));
     }
 
     return {
@@ -100,7 +117,7 @@ export const createGltfSceneSnapshot = (
         prefab,
         snapshot: {
             version: 1,
-            prefab: prefab.data.definition,
+            prefab: adaptGltfPrefabDefinitionToScene(prefab.data.definition),
             shaders: [...shaderDefinitions.values()],
             meshes,
             materials,

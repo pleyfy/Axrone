@@ -1,4 +1,4 @@
-import type { SceneShaderDefinition } from '../../../scene';
+import type { GltfShaderDefinition } from '../asset-ir';
 
 const GLTF_SHADER_PBR_ID = 'gltf/pbr';
 const GLTF_SHADER_UNLIT_ID = 'gltf/unlit';
@@ -7,7 +7,7 @@ const MAX_GLTF_LOCAL_LIGHTS = 4;
 
 export const createGltfUnlitShaderDefinition = (
     id: string = GLTF_SHADER_UNLIT_ID
-): SceneShaderDefinition => ({
+): GltfShaderDefinition => ({
     id,
     vertexSource: `#version 300 es
 layout(location = 0) in vec3 a_Position;
@@ -87,7 +87,7 @@ void main() {
 
 export const createGltfPbrShaderDefinition = (
     id: string = GLTF_SHADER_PBR_ID
-): SceneShaderDefinition => ({
+): GltfShaderDefinition => ({
     id,
     vertexSource: `#version 300 es
 layout(location = 0) in vec3 a_Position;
@@ -296,8 +296,8 @@ void main() {
 
 export const resolveGltfShaderDefinition = (
     shaderId: string,
-    resolveShaderDefinition?: (shaderId: string) => SceneShaderDefinition | undefined
-): SceneShaderDefinition | undefined => {
+    resolveShaderDefinition?: (shaderId: string) => GltfShaderDefinition | undefined
+): GltfShaderDefinition | undefined => {
     if (shaderId === GLTF_SHADER_PBR_ID) {
         return createGltfPbrShaderDefinition(shaderId);
     }

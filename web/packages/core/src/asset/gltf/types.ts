@@ -1,4 +1,3 @@
-import type { SceneMaterialDefinition, SceneMeshDefinition, ScenePrefabDefinition, SceneSamplerDefinition } from '../../scene';
 import type { FilterMode, TextureFormat, WrapMode } from '../../renderer/webgl2/texture/interfaces';
 import type {
     AssetCustomSource,
@@ -9,6 +8,12 @@ import type {
     AssetKind,
     AssetSchema,
 } from '../types';
+import type {
+    GltfMaterialDefinition,
+    GltfMeshDefinition,
+    GltfPrefabDefinition,
+    GltfSamplerDefinition,
+} from './asset-ir';
 
 export type GltfAssetKind =
     | 'gltf.document'
@@ -68,7 +73,7 @@ export interface GltfMeshAsset {
     readonly id: string;
     readonly meshIndex: number;
     readonly primitiveIndex: number;
-    readonly definition: SceneMeshDefinition;
+    readonly definition: GltfMeshDefinition;
     readonly bounds?: GltfMeshBounds;
     readonly materialKey?: string;
     readonly extras?: Readonly<Record<string, unknown>>;
@@ -135,7 +140,7 @@ export interface GltfMaterialTextureBinding {
 export interface GltfMaterialAsset {
     readonly id: string;
     readonly materialIndex: number;
-    readonly definition: SceneMaterialDefinition;
+    readonly definition: GltfMaterialDefinition;
     readonly alphaMode: GltfMaterialAlphaMode;
     readonly alphaCutoff: number;
     readonly doubleSided: boolean;
@@ -143,7 +148,7 @@ export interface GltfMaterialAsset {
     readonly textures: Readonly<Partial<Record<GltfTextureUsage, GltfMaterialTextureBinding>>>;
 }
 
-export interface GltfTextureSampler extends SceneSamplerDefinition {
+export interface GltfTextureSampler extends GltfSamplerDefinition {
     readonly minFilter: FilterMode;
     readonly magFilter: FilterMode;
     readonly wrapS: WrapMode;
@@ -210,7 +215,7 @@ export interface GltfTextureAsset {
 export interface GltfPrefabAsset {
     readonly id: string;
     readonly sceneIndex: number;
-    readonly definition: ScenePrefabDefinition;
+    readonly definition: GltfPrefabDefinition;
     readonly rootNodeIds: readonly string[];
     readonly nodeIds: readonly string[];
     readonly meshKeys: readonly string[];

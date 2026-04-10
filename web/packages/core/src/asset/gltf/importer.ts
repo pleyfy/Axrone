@@ -1,15 +1,15 @@
-import type {
-    SceneActorSnapshot,
-    SceneComponentSnapshot,
-    SceneMaterialDefinition,
-    ScenePrefabDefinition,
-} from '../../scene/types';
 import { encodeSceneValue } from '../../scene/serialization';
 import type { MeshRendererSkinConfig } from '../../scene/components/mesh-renderer';
 import { FilterMode, TextureFormat, WrapMode } from '../../renderer/webgl2/texture/interfaces';
 import type { AssetImportDiagnostic, AssetImportResult, AssetImportSource, AssetWriteInput } from '../types';
 import { GltfSchemaError } from './errors';
 import { GltfAccessorRuntime } from './internal/accessor-runtime';
+import type {
+    GltfActorSnapshot,
+    GltfComponentSnapshot,
+    GltfMaterialDefinition,
+    GltfPrefabDefinition,
+} from './asset-ir';
 import {
     basenameOfUri,
     GltfResourceRuntime,
@@ -74,7 +74,7 @@ const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
 ]);
 
 interface PrefabBuildResult {
-    readonly prefab: ScenePrefabDefinition;
+    readonly prefab: GltfPrefabDefinition;
     readonly rootNodeIds: readonly string[];
     readonly nodeIds: readonly string[];
     readonly meshKeys: readonly string[];
@@ -334,7 +334,7 @@ const decomposeNodeTransform = (
     };
 };
 
-const createTransformSnapshot = (node: GltfNodeJson): SceneComponentSnapshot => {
+const createTransformSnapshot = (node: GltfNodeJson): GltfComponentSnapshot => {
     const transform = decomposeNodeTransform(node);
     return Object.freeze({
         type: 'Transform',
@@ -349,7 +349,7 @@ const createTransformSnapshot = (node: GltfNodeJson): SceneComponentSnapshot => 
 const createCameraSnapshot = (
     camera: GltfCameraJson,
     isPrimary: boolean
-): SceneComponentSnapshot => {
+): GltfComponentSnapshot => {
     if (camera.type === 'orthographic') {
         if (!camera.orthographic) {
             throw new GltfSchemaError('Orthographic glTF camera is missing orthographic settings');
@@ -388,7 +388,7 @@ const createCameraSnapshot = (
 const createDirectionalLightSnapshot = (
     light: GltfPunctualLightJson,
     isPrimary: boolean
-): SceneComponentSnapshot =>
+): GltfComponentSnapshot =>
     Object.freeze({
         type: 'DirectionalLight',
         data: Object.freeze({
@@ -398,7 +398,7 @@ const createDirectionalLightSnapshot = (
         }),
     });
 
-const createPointLightSnapshot = (light: GltfPunctualLightJson): SceneComponentSnapshot =>
+const createPointLightSnapshot = (light: GltfPunctualLightJson): GltfComponentSnapshot =>
     Object.freeze({
         type: 'PointLight',
         data: Object.freeze({
@@ -408,7 +408,7 @@ const createPointLightSnapshot = (light: GltfPunctualLightJson): SceneComponentS
         }),
     });
 
-const createSpotLightSnapshot = (light: GltfPunctualLightJson): SceneComponentSnapshot =>
+const createSpotLightSnapshot = (light: GltfPunctualLightJson): GltfComponentSnapshot =>
     Object.freeze({
         type: 'SpotLight',
         data: Object.freeze({
@@ -425,7 +425,7 @@ const createMeshRendererSnapshot = (
     materialKey: string | undefined,
     morphWeights: readonly number[] | Float32Array | undefined,
     skin: MeshRendererSkinConfig | undefined
-): SceneComponentSnapshot => {
+): GltfComponentSnapshot => {
     const skinData = skin
         ? Object.freeze({
               jointNodeIds: Object.freeze([...skin.jointNodeIds]),
@@ -498,7 +498,7 @@ const createSkinBinding = (skin: GltfSkinAsset | undefined): MeshRendererSkinCon
 
 const createAnimatorSnapshot = (
     animations: readonly GltfAnimationClipAsset[]
-): SceneComponentSnapshot | undefined => {
+): GltfComponentSnapshot | undefined => {
     type SerializableTrack = Readonly<{
         targetNodeId: string;
         path: 'translation' | 'rotation' | 'scale' | 'weights';
@@ -654,7 +654,7 @@ const ensureArray = <T>(value: readonly T[] | undefined): readonly T[] => value 
 
 const createDefaultMaterialDefinition = (
     shaderId: string
-): SceneMaterialDefinition =>
+): GltfMaterialDefinition =>
     Object.freeze({
         id: '',
         shaderId,
@@ -675,7 +675,7 @@ const createMaterialDefinition = (
     shaderId: string,
     textureKeys: readonly string[]
 ): {
-    readonly definition: SceneMaterialDefinition;
+    readonly definition: GltfMaterialDefinition;
     readonly textures: Readonly<Record<GltfTextureUsage, GltfMaterialTextureBinding>>;
     readonly alphaMode: GltfMaterialAlphaMode;
     readonly alphaCutoff: number;
@@ -774,8 +774,8 @@ const createActorSnapshot = (
     nodeId: string,
     parentNodeId: string | null,
     name: string,
-    components: readonly SceneComponentSnapshot[]
-): SceneActorSnapshot =>
+    components: readonly GltfComponentSnapshot[]
+): GltfActorSnapshot =>
     Object.freeze({
         nodeId,
         parentNodeId,
@@ -990,7 +990,7 @@ const buildPrefabDefinition = (
         throw new GltfSchemaError(`Missing scene ${sceneIndex}`);
     }
 
-    const actors: SceneActorSnapshot[] = [];
+    const actors: GltfActorSnapshot[] = [];
     const rootNodeIds: string[] = [];
     const nodeIds: string[] = [];
     const meshKeys = new Set<string>();
