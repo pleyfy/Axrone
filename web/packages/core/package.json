@@ -58,6 +58,13 @@
     "dependencies": {
         "@axrone/numeric": "^0.0.1",
         "@axrone/random": "^0.0.1",
+        "@axrone/runtime-profile-2d": "^0.1.0",
+        "@axrone/runtime-profile-3d": "^0.1.0",
+        "@axrone/runtime-profile-core": "^0.1.0",
+        "@axrone/runtime-profile-full": "^0.1.0",
+        "@axrone/scene-2d": "^0.1.0",
+        "@axrone/scene-3d": "^0.1.0",
+        "@axrone/scene-runtime": "^0.1.0",
         "@axrone/utility": "^0.0.1",
         "@loaders.gl/core": "^4.4.1",
         "@loaders.gl/textures": "^4.4.1",

@@ -1,1 +1,89 @@
-export * from '../../core/src/scene-runtime';
+export type {
+	SceneRuntimeBuiltInComponentName,
+	SceneRuntimeBuiltInManifest,
+	SceneRuntimeBuiltInRegistry,
+	SceneRuntimeRegistry,
+} from '../../core/src/scene-runtime-registry';
+export {
+	DEFAULT_SCENE_RUNTIME_BUILT_IN_MANIFESTS,
+	SCENE_RUNTIME_CORE_BUILT_IN_MANIFEST,
+	createSceneRuntimeBuiltInManifest,
+	createSceneRuntimeRegistry,
+	resolveSceneRuntimeBuiltInComponents,
+} from '../../core/src/scene-runtime-registry';
+export type {
+	SceneRuntimeManifestProfileOptions,
+	SceneRuntimeProfile,
+	SceneRuntimeProfileContext,
+} from '../../core/src/scene-runtime-profile';
+export {
+	CORE_SCENE_RUNTIME_PROFILE_ID,
+	createSceneRuntimeProfile,
+	createSceneRuntimeManifestProfile,
+	getCoreSceneRuntimeProfile,
+	getDefaultSceneRuntimeProfile,
+	resolveSceneRuntimeRegistryFromProfile,
+} from '../../core/src/scene-runtime-profile';
+
+export type { SceneActorRuntimeOptions } from '../../core/src/scene/scene-actor-runtime';
+export { SceneActorRuntime } from '../../core/src/scene/scene-actor-runtime';
+export {
+	DEFAULT_SCENE_AMBIENT_LIGHT,
+	DEFAULT_SCENE_CLEAR_COLOR,
+	DEFAULT_SCENE_HEIGHT,
+	DEFAULT_SCENE_RENDER_PASS_ID,
+	DEFAULT_SCENE_WIDTH,
+	resolveSceneAmbientLight,
+	resolveSceneClearColor,
+} from '../../core/src/scene/scene-runtime-defaults';
+export type {
+	SceneSnapshotActorHost,
+	SceneSnapshotAssetHost,
+	SceneSnapshotRuntimeOptions,
+} from '../../core/src/scene/scene-snapshot-runtime';
+export { SceneSnapshotRuntime } from '../../core/src/scene/scene-snapshot-runtime';
+
+export type {
+	SceneBuiltInRegistry,
+	SceneCanvasOptions,
+	SceneClearFlag,
+	SceneLoopState,
+	SceneMaterialDefinition,
+	SceneMaterialHandle,
+	SceneMaterialTextureBindingHandle,
+	SceneMeshDefinition,
+	SceneMeshHandle,
+	SceneMorphTargetAttribute,
+	SceneMorphTargetDefinition,
+	SceneMorphTargetSemantic,
+	SceneMeshSemantic,
+	SceneMeshTopology,
+	SceneOptions,
+	ScenePrefabDefinition,
+	ScenePrefabInstantiateOptions,
+	SceneRegistry,
+	SceneRenderPassDefinition,
+	SceneRenderPassHandle,
+	SceneRenderStats,
+	SceneSamplerDefinition,
+	SceneSamplerHandle,
+	SceneSerializedValue,
+	SceneShaderDefinition,
+	SceneShaderHandle,
+	SceneSnapshot,
+	SceneSnapshotLoadOptions,
+	SceneTextureBindingDefinition,
+	SceneTextureCompressedLevelDefinition,
+	SceneTextureDefinition,
+	SceneTextureHandle,
+	SceneTextureResourceHandle,
+	SceneUniformValue,
+	SceneVertexAttribute,
+} from '../../core/src/scene/types';
+
+export {
+	SceneCanvasError,
+	SceneCapabilityError,
+	SceneError,
+	SceneLifecycleError,
+} from '../../core/src/scene/errors';
