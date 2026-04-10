@@ -298,11 +298,13 @@ export class World<R extends ComponentRegistry> {
                 }
             }
 
-            const newSignature = [...currentArchetype.signature, componentName as string].sort();
             const {
                 archetype: targetArchetype,
                 created: createdArchetype,
-            } = this._storage.getOrCreateArchetype(newSignature);
+            } = this._storage.resolveAddComponentArchetype(
+                currentArchetype,
+                componentName as string
+            );
 
             const pool = targetArchetype.components.get(componentName as string);
             if (!pool) {
@@ -371,13 +373,13 @@ export class World<R extends ComponentRegistry> {
                 return;
             }
 
-            const newSignature = currentArchetype.signature.filter(
-                (name) => name !== (componentName as string)
-            );
             const {
                 archetype: targetArchetype,
                 created: createdArchetype,
-            } = this._storage.getOrCreateArchetype(newSignature);
+            } = this._storage.resolveRemoveComponentArchetype(
+                currentArchetype,
+                componentName as string
+            );
 
             const removedComponents = currentArchetype.removeEntity(entity);
             const removedComponent = removedComponents[componentName as string];

@@ -101,6 +101,20 @@ export class WorldStorageRuntime<R extends ComponentRegistry> {
         return this._archetypes.get(id);
     }
 
+    resolveAddComponentArchetype(
+        currentArchetype: Archetype<R>,
+        componentName: string
+    ): WorldArchetypeResolution<R> {
+        return this._resolveComponentTransition(currentArchetype, 'add', componentName);
+    }
+
+    resolveRemoveComponentArchetype(
+        currentArchetype: Archetype<R>,
+        componentName: string
+    ): WorldArchetypeResolution<R> {
+        return this._resolveComponentTransition(currentArchetype, 'remove', componentName);
+    }
+
     getEntityArchetypeId(entity: Entity): ArchetypeId | undefined {
         return this._entityArchetypes.get(entity);
     }
@@ -191,5 +205,94 @@ export class WorldStorageRuntime<R extends ComponentRegistry> {
         }
 
         return mask;
+    }
+
+    private _resolveComponentTransition(
+        currentArchetype: Archetype<R>,
+        action: 'add' | 'remove',
+        componentName: string
+    ): WorldArchetypeResolution<R> {
+        const edgeKey = `${action}:${componentName}`;
+        const cachedArchetypeId = currentArchetype.edges.get(edgeKey);
+
+        if (cachedArchetypeId) {
+            const cachedArchetype = this._archetypes.get(cachedArchetypeId);
+            if (cachedArchetype) {
+                return { archetype: cachedArchetype, created: false };
+            }
+
+            currentArchetype.edges.delete(edgeKey);
+        }
+
+        const nextSignature =
+            action === 'add'
+                ? this._createAddSignature(currentArchetype.signature, componentName)
+                : this._createRemoveSignature(currentArchetype.signature, componentName);
+        const resolution = this.getOrCreateArchetype(nextSignature);
+
+        currentArchetype.edges.set(edgeKey, resolution.archetype.id);
+        resolution.archetype.edges.set(
+            `${action === 'add' ? 'remove' : 'add'}:${componentName}`,
+            currentArchetype.id
+        );
+
+        return resolution;
+    }
+
+    private _createAddSignature(
+        signature: readonly string[],
+        componentName: string
+    ): readonly string[] {
+        if (signature.length === 0) {
+            return [componentName];
+        }
+
+        const nextSignature = new Array<string>(signature.length + 1);
+        let sourceIndex = 0;
+        let targetIndex = 0;
+        let inserted = false;
+
+        while (sourceIndex < signature.length) {
+            const currentComponent = signature[sourceIndex]!;
+            if (!inserted && componentName < currentComponent) {
+                nextSignature[targetIndex] = componentName;
+                targetIndex += 1;
+                inserted = true;
+            }
+
+            nextSignature[targetIndex] = currentComponent;
+            targetIndex += 1;
+            sourceIndex += 1;
+        }
+
+        if (!inserted) {
+            nextSignature[targetIndex] = componentName;
+        }
+
+        return nextSignature;
+    }
+
+    private _createRemoveSignature(
+        signature: readonly string[],
+        componentName: string
+    ): readonly string[] {
+        if (signature.length <= 1) {
+            return [];
+        }
+
+        const nextSignature = new Array<string>(signature.length - 1);
+        let targetIndex = 0;
+
+        for (let sourceIndex = 0; sourceIndex < signature.length; sourceIndex += 1) {
+            const currentComponent = signature[sourceIndex]!;
+            if (currentComponent === componentName) {
+                continue;
+            }
+
+            nextSignature[targetIndex] = currentComponent;
+            targetIndex += 1;
+        }
+
+        return nextSignature;
     }
 }
