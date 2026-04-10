@@ -7,7 +7,7 @@ import {
     createGltfSceneSnapshot,
     type GltfSceneSnapshotOptions,
     type GltfSceneSnapshotResult,
-} from './runtime';
+} from './scene-snapshot-adapter';
 import type { GltfAssetSchemaLike } from './types';
 
 export interface LoadGltfSceneIntoSceneOptions
