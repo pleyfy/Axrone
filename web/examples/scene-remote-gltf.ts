@@ -5,9 +5,9 @@ import {
 import { Transform } from '@axrone/core';
 import {
     createGltfImporter,
-    loadGltfSceneIntoScene,
     type GltfAssetSchemaLike,
 } from '@axrone/asset-gltf';
+import { loadGltfSceneIntoScene } from '@axrone/scene-runtime-gltf';
 import {
     Camera,
     DirectionalLight,

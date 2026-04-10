@@ -63,6 +63,12 @@ export type {
     GltfTranscodeStage,
 } from './types';
 export type {
+    AssetDatabase,
+    AssetImportDiagnostic,
+    AssetRecord,
+    AssetSelector,
+} from './asset-contract';
+export type {
     GltfActorSnapshot,
     GltfComponentSnapshot,
     GltfMaterialDefinition,
@@ -92,16 +98,6 @@ export {
     GltfTopologyError,
 } from './errors';
 
-export {
-    createGltfPbrShaderDefinition,
-    createGltfSceneSnapshot,
-    createGltfUnlitShaderDefinition,
-} from './runtime';
-export type {
-    LoadGltfSceneIntoSceneOptions,
-    LoadGltfSceneIntoSceneResult,
-} from './scene-runtime-adapter';
-export { loadGltfSceneIntoScene } from './scene-runtime-adapter';
 export {
     createLoadersBasisGltfTextureTranscoder,
     resolveLoadersBasisGltfTextureFormats,

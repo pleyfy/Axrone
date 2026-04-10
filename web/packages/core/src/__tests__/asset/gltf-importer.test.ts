@@ -5,7 +5,6 @@ import {
     AssetDatabase,
 } from '../../asset';
 import {
-    createGltfSceneSnapshot,
     createGltfImporter,
     createGltfTextureTranscodeStage,
     createPassthroughGltfTextureTranscoder,
@@ -13,6 +12,7 @@ import {
     type GltfAssetSchema,
     type GltfRootJson,
 } from '@axrone/asset-gltf';
+import { createGltfSceneSnapshot } from '@axrone/scene-runtime-gltf';
 
 const trianglePositions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
 const triangleIndices = new Uint16Array([0, 1, 2]);

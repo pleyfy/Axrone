@@ -3,7 +3,7 @@ import type {
     RenderFrameResult,
     RenderPipelineBackend,
     ResolvedRenderPass,
-} from '@axrone/core';
+} from '@axrone/render-core';
 import { renderUIFrame } from '@axrone/ui';
 import { WebGL2UIRenderer } from './renderer';
 import type {

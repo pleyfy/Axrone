@@ -5,10 +5,10 @@ import {
 } from '../../asset';
 import {
     createGltfImporter,
-    loadGltfSceneIntoScene,
     type GltfAssetSchema,
     type GltfRootJson,
 } from '@axrone/asset-gltf';
+import { loadGltfSceneIntoScene } from '@axrone/scene-runtime-gltf';
 import { Transform } from '@axrone/ecs';
 import {
     createSceneOptions,

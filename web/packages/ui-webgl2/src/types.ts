@@ -10,7 +10,7 @@ import type {
 } from '@axrone/ui';
 import type {
     RenderPipelineBackend,
-} from '@axrone/core';
+} from '@axrone/render-core';
 import type { GameLoop } from '@axrone/game-loop';
 import type {
     SceneMaterialTextureBindingHandle,

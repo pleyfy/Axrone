@@ -1,22 +1,20 @@
 import { Vec3 } from '@axrone/numeric';
 import { TextureFormat } from '@axrone/render-webgl2';
 import type {
+    AssetImportDiagnostic,
+    GltfMaterialAsset,
     GltfMaterialDefinition,
+    GltfTextureAsset,
     GltfTextureCompressedLevelDefinition,
     GltfTextureDefinition,
+    GltfTextureMipLevel,
+    GltfTextureUsage,
     GltfUniformValue,
-} from '../asset-ir';
-import type { AssetImportDiagnostic } from '../asset-contract';
+} from '@axrone/asset-gltf';
 import {
     inferTextureFormatFromKtx2,
     parseKtx2Texture,
-} from '../internal/ktx2-container';
-import type {
-    GltfMaterialAsset,
-    GltfTextureAsset,
-    GltfTextureMipLevel,
-    GltfTextureUsage,
-} from '../types';
+} from './ktx2-container';
 
 interface GltfTextureUniformSpec {
     readonly usage: GltfTextureUsage;

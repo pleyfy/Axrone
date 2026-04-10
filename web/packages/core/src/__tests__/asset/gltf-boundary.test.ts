@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const gltfDir = path.resolve(testDir, '../../../../asset-gltf/src');
-const allowedSceneImportFiles = new Set([
+const sceneRuntimeGltfDir = path.resolve(testDir, '../../../../scene-runtime-gltf/src');
+const allowedAdapterImportFiles = new Set([
     'scene-definition-adapter.ts',
     'scene-runtime-adapter.ts',
     'scene-snapshot-adapter.ts',
@@ -31,7 +32,7 @@ const collectTypeScriptFiles = (dirPath: string): readonly string[] => {
 };
 
 describe('asset gltf boundary', () => {
-    it('keeps scene imports inside the dedicated adapter layer', () => {
+    it('keeps asset-gltf free of direct scene imports', () => {
         const sceneImportFiles = collectTypeScriptFiles(gltfDir)
             .filter((filePath) => {
                 const content = fs.readFileSync(filePath, 'utf8');
@@ -42,6 +43,20 @@ describe('asset gltf boundary', () => {
             .map((filePath) => path.relative(gltfDir, filePath).replace(/\\/g, '/'))
             .sort((left, right) => left.localeCompare(right));
 
-        expect(sceneImportFiles).toEqual([...allowedSceneImportFiles].sort((left, right) => left.localeCompare(right)));
+        expect(sceneImportFiles).toEqual([]);
+    });
+
+    it('keeps scene imports inside the dedicated scene-runtime-gltf adapter files', () => {
+        const sceneImportFiles = collectTypeScriptFiles(sceneRuntimeGltfDir)
+            .filter((filePath) => {
+                const content = fs.readFileSync(filePath, 'utf8');
+                const hasSceneImport = sceneImportPattern.test(content);
+                sceneImportPattern.lastIndex = 0;
+                return hasSceneImport;
+            })
+            .map((filePath) => path.relative(sceneRuntimeGltfDir, filePath).replace(/\\/g, '/'))
+            .sort((left, right) => left.localeCompare(right));
+
+        expect(sceneImportFiles).toEqual([...allowedAdapterImportFiles].sort((left, right) => left.localeCompare(right)));
     });
 });

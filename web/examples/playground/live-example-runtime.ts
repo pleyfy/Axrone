@@ -9,6 +9,7 @@ import * as axroneRuntimeProfileCore from '@axrone/runtime-profile-core';
 import * as axroneRuntimeProfileFull from '@axrone/runtime-profile-full';
 import * as axroneScene2D from '@axrone/scene-2d';
 import * as axroneScene3D from '@axrone/scene-3d';
+import * as axroneSceneRuntimeGltf from '@axrone/scene-runtime-gltf';
 import * as axroneSceneRuntime from '@axrone/scene-runtime';
 import * as axroneUI from '@axrone/ui';
 import * as axroneUIWebGL2 from '@axrone/ui-webgl2';
@@ -31,6 +32,7 @@ const supportedModules = {
     '@axrone/runtime-profile-full': axroneRuntimeProfileFull,
     '@axrone/scene-2d': axroneScene2D,
     '@axrone/scene-3d': axroneScene3D,
+    '@axrone/scene-runtime-gltf': axroneSceneRuntimeGltf,
     '@axrone/scene-runtime': axroneSceneRuntime,
     '@axrone/ui': axroneUI,
     '@axrone/ui-webgl2': axroneUIWebGL2,

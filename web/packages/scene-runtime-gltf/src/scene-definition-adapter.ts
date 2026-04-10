@@ -1,12 +1,4 @@
 import type {
-    SceneMaterialDefinition,
-    SceneMeshDefinition,
-    ScenePrefabDefinition,
-    SceneSamplerDefinition,
-    SceneShaderDefinition,
-    SceneTextureDefinition,
-} from '@axrone/scene-runtime';
-import type {
     GltfActorSnapshot,
     GltfComponentSnapshot,
     GltfMaterialDefinition,
@@ -15,7 +7,15 @@ import type {
     GltfSamplerDefinition,
     GltfShaderDefinition,
     GltfTextureDefinition,
-} from './asset-ir';
+} from '@axrone/asset-gltf';
+import type {
+    SceneMaterialDefinition,
+    SceneMeshDefinition,
+    ScenePrefabDefinition,
+    SceneSamplerDefinition,
+    SceneShaderDefinition,
+    SceneTextureDefinition,
+} from '@axrone/scene-runtime';
 
 const adaptGltfComponentSnapshotToScene = (
     component: GltfComponentSnapshot

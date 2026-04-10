@@ -1,4 +1,4 @@
-import type { GltfShaderDefinition } from '../asset-ir';
+import type { GltfShaderDefinition } from '@axrone/asset-gltf';
 
 const GLTF_SHADER_PBR_ID = 'gltf/pbr';
 const GLTF_SHADER_UNLIT_ID = 'gltf/unlit';

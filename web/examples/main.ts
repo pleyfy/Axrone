@@ -12,10 +12,8 @@ type ExampleDescriptor = {
     readonly source: string;
 };
 
-type PlaygroundTools = {
-    readonly editorModule: typeof import('./playground/live-editor');
-    readonly compilerModule: typeof import('./playground/live-example-runtime');
-};
+type EditorModule = typeof import('./playground/live-editor');
+type CompilerModule = typeof import('./playground/live-example-runtime');
 
 const moduleLoaders = import.meta.glob('./*.ts') as Record<string, () => Promise<ExampleModule>>;
 const sourceLoaders = import.meta.glob('./*.ts', {
@@ -59,16 +57,17 @@ const resolveExamples = async (): Promise<readonly ExampleDescriptor[]> => {
     });
 };
 
-const loadPlaygroundTools = async (): Promise<PlaygroundTools> => {
-    const [editorModule, compilerModule] = await Promise.all([
-        import('./playground/live-editor'),
-        import('./playground/live-example-runtime'),
-    ]);
+let editorModulePromise: Promise<EditorModule> | undefined;
+let compilerModulePromise: Promise<CompilerModule> | undefined;
 
-    return {
-        editorModule,
-        compilerModule,
-    };
+const getEditorModule = (): Promise<EditorModule> => {
+    editorModulePromise ??= import('./playground/live-editor');
+    return editorModulePromise;
+};
+
+const getCompilerModule = (): Promise<CompilerModule> => {
+    compilerModulePromise ??= import('./playground/live-example-runtime');
+    return compilerModulePromise;
 };
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -209,7 +208,6 @@ const updateAutoRunIndicator = () => {
 };
 
 // State
-const playgroundToolsPromise = loadPlaygroundTools();
 const sourceOverrides = new Map<string, string>();
 
 let currentHandle: ExampleHandle | undefined;
@@ -306,7 +304,10 @@ const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorCo
         return editor;
     }
 
-    const { editorModule, compilerModule } = await playgroundToolsPromise;
+    const [editorModule, compilerModule] = await Promise.all([
+        getEditorModule(),
+        getCompilerModule(),
+    ]);
     editorSupportedImports.textContent = `Supported: ${compilerModule
         .getSupportedPlaygroundImports()
         .join(', ')}`;
@@ -355,7 +356,7 @@ const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorCo
 
 const syncEditorToDescriptor = async (descriptor: ExampleDescriptor) => {
     const liveEditor = await ensureEditor(descriptor);
-    const { compilerModule } = await playgroundToolsPromise;
+    const compilerModule = await getCompilerModule();
     const nextSource = compilerModule.normalizePlaygroundSource(getEffectiveSource(descriptor));
     syncSourceOverride(descriptor, nextSource);
 
@@ -378,20 +379,26 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
         return;
     }
 
-    const liveEditor = await ensureEditor(currentDescriptor);
+    const descriptor = currentDescriptor;
+
     cancelScheduledRun();
 
     const runToken = ++currentRunToken;
-    const { compilerModule } = await playgroundToolsPromise;
-    const source = liveEditor.getValue();
+    const compilerModule = await getCompilerModule();
+    const liveEditor = editor;
+    const source = liveEditor?.getValue() ?? getEffectiveSource(descriptor);
     const normalizedSource = compilerModule.normalizePlaygroundSource(source);
 
     if (normalizedSource !== source) {
-        isApplyingEditorSource = true;
-        liveEditor.setValue(normalizedSource);
-        isApplyingEditorSource = false;
-        syncSourceOverride(currentDescriptor, normalizedSource);
-        updateEditorCaption(currentDescriptor, normalizedSource);
+        if (liveEditor) {
+            isApplyingEditorSource = true;
+            liveEditor.setValue(normalizedSource);
+            isApplyingEditorSource = false;
+        }
+        syncSourceOverride(descriptor, normalizedSource);
+        if (liveEditor) {
+            updateEditorCaption(descriptor, normalizedSource);
+        }
     }
 
     setStatus(reason === 'select' ? 'Preparing scene...' : 'Refreshing scene...', 'loading');
@@ -403,7 +410,7 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
     try {
         const runtimeExample = compilerModule.compileSceneExample(
             normalizedSource,
-            currentDescriptor.path
+            descriptor.path
         );
 
         if (runToken !== currentRunToken) {
@@ -506,8 +513,8 @@ autoRunToggle.addEventListener('change', () => {
 });
 
 // Initialize supported imports display and auto-run indicator
-void playgroundToolsPromise
-    .then(({ compilerModule }) => {
+void getCompilerModule()
+    .then((compilerModule) => {
         editorSupportedImports.textContent = `Supported: ${compilerModule
             .getSupportedPlaygroundImports()
             .join(', ')}`;

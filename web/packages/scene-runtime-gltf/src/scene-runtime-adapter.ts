@@ -1,12 +1,15 @@
 import type { Actor, ComponentRegistry } from '@axrone/ecs';
+import type {
+    AssetDatabase,
+    AssetSelector,
+    GltfAssetSchemaLike,
+} from '@axrone/asset-gltf';
 import type { Scene, SceneSnapshotLoadOptions } from '@axrone/scene-3d';
-import type { AssetDatabase, AssetSelector } from './asset-contract';
 import {
     createGltfSceneSnapshot,
     type GltfSceneSnapshotOptions,
     type GltfSceneSnapshotResult,
 } from './scene-snapshot-adapter';
-import type { GltfAssetSchemaLike } from './types';
 
 export interface LoadGltfSceneIntoSceneOptions
     extends GltfSceneSnapshotOptions,

@@ -3,7 +3,10 @@ import type {
     AssetImportDiagnostic,
     AssetRecord,
     AssetSelector,
-} from './asset-contract';
+    GltfAssetSchemaLike,
+    GltfDocumentSceneAsset,
+    GltfShaderDefinition,
+} from '@axrone/asset-gltf';
 import type { SceneSnapshot } from '@axrone/scene-runtime';
 import {
     createGltfTextureDefinitionFromTextureAsset,
@@ -18,11 +21,6 @@ import {
     adaptGltfShaderDefinitionToScene,
     adaptGltfTextureDefinitionToScene,
 } from './scene-definition-adapter';
-import type { GltfShaderDefinition } from './asset-ir';
-import type {
-    GltfAssetSchemaLike,
-    GltfDocumentSceneAsset,
-} from './types';
 
 export interface GltfSceneSnapshotOptions {
     readonly sceneIndex?: number;
