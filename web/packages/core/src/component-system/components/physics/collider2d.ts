@@ -1,8 +1,7 @@
 import { Component } from '@axrone/ecs';
 import { Vec2 } from '@axrone/numeric';
-import type { ShapeId, CollisionFilter } from '../../../physics/types';
+import type { CollisionFilter, PhysicsWorld2D, ShapeId } from '@axrone/physics';
 import { Rigidbody2D } from './rigidbody2d';
-import type { PhysicsWorld2D } from '../../../physics';
 
 export interface PhysicsMaterial2D {
     friction: number;

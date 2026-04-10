@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PhysicsWorld2D } from '../../physics/core/physics-world';
-import { BodyType, ShapeType } from '../../physics/types';
+import { PhysicsWorld2D } from '@axrone/physics';
+import { BodyType, ShapeType } from '@axrone/physics';
 
 describe('PhysicsWorld2D Integration', () => {
     let world: PhysicsWorld2D;
@@ -656,3 +656,4 @@ describe('PhysicsWorld2D Integration', () => {
         });
     });
 });
+

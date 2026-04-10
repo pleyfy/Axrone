@@ -1,5 +1,5 @@
 import { Vec2, Vec3, IVec2Like, IVec3Like, EPSILON } from '@axrone/numeric';
-import type { IAABB } from '../../geometry/aabb';
+import type { IAABB } from '@axrone/geometry';
 
 export interface IRayIntersection {
     readonly hit: boolean;

@@ -1,4 +1,4 @@
-import type { IVec2Like, IVec3Like } from '@axrone/numeric';
+import type { IQuatLike, IVec2Like, IVec3Like } from '@axrone/numeric';
 import type {
     BodyId,
     ShapeId,
@@ -40,7 +40,7 @@ export interface IPhysicsBodyDef2D {
 export interface IPhysicsBodyDef3D {
     readonly type: BodyType;
     readonly position?: Readonly<IVec3Like>;
-    readonly rotation?: Readonly<IVec3Like>;
+    readonly rotation?: Readonly<IQuatLike>;
     readonly linearVelocity?: Readonly<IVec3Like>;
     readonly angularVelocity?: Readonly<IVec3Like>;
     readonly linearDamping?: number;
@@ -138,10 +138,10 @@ export interface IPhysicsBody3D {
 
     getPosition(): Readonly<IVec3Like>;
     setPosition(position: Readonly<IVec3Like>): void;
-    getRotation(): Readonly<IVec3Like>;
-    setRotation(rotation: Readonly<IVec3Like>): void;
+    getRotation(): Readonly<IQuatLike>;
+    setRotation(rotation: Readonly<IQuatLike>): void;
     getTransform(): ITransform3D;
-    setTransform(position: Readonly<IVec3Like>, rotation: Readonly<IVec3Like>): void;
+    setTransform(position: Readonly<IVec3Like>, rotation: Readonly<IQuatLike>): void;
 
     getLinearVelocity(): Readonly<IVec3Like>;
     setLinearVelocity(velocity: Readonly<IVec3Like>): void;
@@ -199,7 +199,7 @@ export interface ICircleShapeDef extends IShapeDef {
 
 export interface ISphereShapeDef extends IShapeDef {
     readonly radius: number;
-    readonly center?: Readonly<IVec3Like>;
+    readonly center: Readonly<IVec3Like>;
 }
 
 export interface IBoxShapeDef2D extends IShapeDef {
@@ -216,8 +216,8 @@ export interface IBoxShapeDef2D extends IShapeDef {
 
 export interface IBoxShapeDef3D extends IShapeDef {
     readonly halfExtents: Readonly<IVec3Like>;
-    readonly center?: Readonly<IVec3Like>;
-    readonly rotation?: Readonly<IVec3Like>;
+    readonly center: Readonly<IVec3Like>;
+    readonly rotation?: Readonly<IQuatLike>;
 }
 
 export interface ICapsuleShapeDef2D extends IShapeDef {
@@ -230,10 +230,9 @@ export interface ICapsuleShapeDef2D extends IShapeDef {
 }
 
 export interface ICapsuleShapeDef3D extends IShapeDef {
+    readonly p1: Readonly<IVec3Like>;
+    readonly p2: Readonly<IVec3Like>;
     readonly radius: number;
-    readonly height: number;
-    readonly center?: Readonly<IVec3Like>;
-    readonly axis?: 0 | 1 | 2;
 }
 
 export interface IPolygonShapeDef extends IShapeDef {
@@ -250,15 +249,17 @@ export interface ISegmentShapeDef extends IShapeDef {
 }
 
 export interface ICylinderShapeDef extends IShapeDef {
+    readonly center: Readonly<IVec3Like>;
     readonly radius: number;
-    readonly halfHeight: number;
-    readonly center?: Readonly<IVec3Like>;
+    readonly height: number;
+    readonly axis?: 0 | 1 | 2;
 }
 
 export interface IConeShapeDef extends IShapeDef {
+    readonly center: Readonly<IVec3Like>;
     readonly radius: number;
     readonly height: number;
-    readonly center?: Readonly<IVec3Like>;
+    readonly axis?: 0 | 1 | 2;
 }
 
 export interface IShape2D {

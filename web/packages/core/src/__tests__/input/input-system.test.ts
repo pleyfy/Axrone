@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInputSystem, InputContextError } from '../../input';
+import { createInputSystem, InputContextError } from '@axrone/input';
 
 describe('InputSystem', () => {
     it('honors context priority and capture rules', () => {
@@ -1051,3 +1051,4 @@ describe('InputSystem', () => {
         expect(input.read('jump')).toBe(true);
     });
 });
+

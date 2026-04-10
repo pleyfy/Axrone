@@ -1,9 +1,8 @@
 import { Component } from '@axrone/ecs';
 import { script } from '../../decorators/script';
 import { Vec2 } from '@axrone/numeric';
-import type { BodyId, BodyType } from '../../../physics/types';
+import type { BodyId, BodyType, PhysicsWorld2D } from '@axrone/physics';
 import { Transform } from '../transform';
-import type { PhysicsWorld2D } from '../../../physics';
 
 export enum RigidbodyType2D {
     Static = 0,

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ConstraintSolver2D } from '../../physics/core/constraint-solver';
-import { ConstraintManager2D } from '../../physics/core/constraint-manager';
-import { BodyManager2D } from '../../physics/core/body-manager';
-import { BodyType, ConstraintType } from '../../physics/types';
+import { ConstraintSolver2D } from '@axrone/physics';
+import { ConstraintManager2D } from '@axrone/physics';
+import { BodyManager2D } from '@axrone/physics';
+import { BodyType, ConstraintType } from '@axrone/physics';
 
 describe('ConstraintSolver2D', () => {
     let solver: ConstraintSolver2D;
@@ -105,3 +105,4 @@ describe('ConstraintSolver2D', () => {
         });
     });
 });
+

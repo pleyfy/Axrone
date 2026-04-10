@@ -1,5 +1,5 @@
 import { type IVec3Like, Vec3 } from '@axrone/numeric';
-import type { ICapsuleShapeDef3D } from 'packages/core/src/physics/types/physics-3d';
+import type { ICapsuleShapeDef3D } from '@axrone/physics';
 import { script } from '../../decorators';
 import { Collider3D, CapsuleDirection3D, INVALID_SHAPE_ID } from './collider3d';
 

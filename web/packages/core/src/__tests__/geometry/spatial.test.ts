@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Vec2, Vec3 } from '../../../../numeric/src';
-import { QuadTree, Octree } from '../../geometry/spatial';
+import { QuadTree, Octree } from '@axrone/geometry';
 
 describe('Spatial Data Structures', () => {
     describe('QuadTree', () => {
@@ -232,3 +232,4 @@ describe('Spatial Data Structures', () => {
         });
     });
 });
+

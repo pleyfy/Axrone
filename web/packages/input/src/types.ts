@@ -1,5 +1,8 @@
 import type { IEventEmitter } from '@axrone/event';
-import type { IDisposable } from '../types';
+
+export interface IDisposable {
+    dispose(): void;
+}
 
 export type InputDeviceKind = 'keyboard' | 'mouse' | 'touch' | 'gamepad';
 export type InputActionKind = 'button' | 'axis' | 'vector2';
@@ -479,7 +482,9 @@ export interface InputActionSubscriptionOptions {
     readonly phases?: readonly InputActionEventPhase[];
 }
 
-export interface InputActionSubscription extends IDisposable {}
+export interface InputActionSubscription extends IDisposable {
+    readonly isDisposed: boolean;
+}
 
 export type InputActionValues<TSchema extends InputActionSchema> = {
     readonly [TAction in InputActionName<TSchema>]: InputActionValue<TSchema[TAction]>;
@@ -653,6 +658,7 @@ export interface InputRebindingSession<
     TSchema extends InputActionSchema = InputActionSchema,
     TAction extends InputActionName<TSchema> = InputActionName<TSchema>,
 > extends IDisposable {
+    readonly isDisposed: boolean;
     readonly request: Readonly<InputRebindingRequest<TSchema, TAction>>;
     readonly startedAtEpochMs: number;
 }
@@ -751,6 +757,7 @@ export interface InputBrowserTarget {
 }
 
 export interface InputAttachment extends IDisposable {
+    readonly isDisposed: boolean;
     readonly isPointerLocked?: boolean;
     requestPointerLock?(): boolean;
     exitPointerLock?(): boolean;

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Vec2, Vec3 } from '../../../../numeric/src';
-import { AABB2D, AABB3D, AABB, AABBError } from '../../geometry/aabb';
+import { AABB2D, AABB3D, AABB, AABBError } from '@axrone/geometry';
 
 describe('AABB Core Functionality', () => {
     describe('AABB2D Basic Operations', () => {
@@ -261,3 +261,4 @@ describe('AABB Core Functionality', () => {
         });
     });
 });
+

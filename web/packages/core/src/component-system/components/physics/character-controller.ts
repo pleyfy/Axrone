@@ -1,14 +1,18 @@
 import { Vec3, type IVec3Like } from '@axrone/numeric';
 import { script } from '../../decorators';
 import { Component } from '@axrone/ecs';
-import type { Rigidbody3D } from './rigidbody3d';
-import type { BodyId3D, ShapeId3D } from '../../../physics/types/physics-3d';
 import type {
-    PhysicsWorld3D,
+    BodyId3D,
     BodyManager3D,
+    Density,
+    Friction,
+    IRaycastResult3D,
+    PhysicsWorld3D,
+    Restitution,
+    ShapeId3D,
     ShapeManager3D,
-} from '../../../physics/core/physics-world-3d';
-import type { IRaycastResult3D, Friction, Restitution, Density } from '../../../physics/types';
+} from '@axrone/physics';
+import type { Rigidbody3D } from './rigidbody3d';
 
 const enum CollisionFlags {
     None = 0,

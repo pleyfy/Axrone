@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { ContinuousCollisionDetection, Raycaster2D } from '../../physics/core/continuous-collision';
-import { AABB2D } from '../../geometry/aabb';
+import { ContinuousCollisionDetection, Raycaster2D } from '@axrone/physics';
+import { AABB2D } from '@axrone/geometry';
 
 describe('ContinuousCollisionDetection', () => {
     describe('Time of Impact Computation', () => {
@@ -554,3 +554,4 @@ describe('Raycaster2D', () => {
         });
     });
 });
+

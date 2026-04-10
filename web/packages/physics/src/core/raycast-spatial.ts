@@ -1,5 +1,5 @@
 import { Vec3, IVec3Like, EPSILON } from '@axrone/numeric';
-import { Octree } from '../../geometry/spatial';
+import { Octree } from '@axrone/geometry';
 
 const GRID_INITIAL_CAPACITY = 256;
 

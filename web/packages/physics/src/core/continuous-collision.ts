@@ -1,5 +1,5 @@
 import type { IVec2Like } from '@axrone/numeric';
-import { AABB2D } from '../../geometry/aabb';
+import { AABB2D } from '@axrone/geometry';
 import type { BodyId, ShapeId, IRaycastResult2D } from '../types';
 
 interface CCDResult {

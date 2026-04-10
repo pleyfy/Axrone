@@ -1,3 +1,2 @@
-export * from './aabb';
-export * from './spatial';
+export * from '@axrone/geometry';
 export * from './primitives';

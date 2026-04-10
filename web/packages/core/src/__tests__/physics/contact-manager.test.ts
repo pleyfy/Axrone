@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ContactManager2D } from '../../physics/core/contact-manager';
+import { ContactManager2D } from '@axrone/physics';
 
 describe('ContactManager2D', () => {
     let manager: ContactManager2D;
@@ -248,3 +248,4 @@ describe('ContactManager2D', () => {
         });
     });
 });
+

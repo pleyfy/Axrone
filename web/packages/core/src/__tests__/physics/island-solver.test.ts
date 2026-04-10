@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IslandSolver2D } from '../../physics/core/island-solver';
-import { BodyManager2D } from '../../physics/core/body-manager';
-import { ContactManager2D } from '../../physics/core/contact-manager';
-import { ConstraintManager2D } from '../../physics/core/constraint-manager';
-import { BodyType } from '../../physics/types';
+import { IslandSolver2D } from '@axrone/physics';
+import { BodyManager2D } from '@axrone/physics';
+import { ContactManager2D } from '@axrone/physics';
+import { ConstraintManager2D } from '@axrone/physics';
+import { BodyType } from '@axrone/physics';
 
 describe('IslandSolver2D', () => {
     let islandSolver: IslandSolver2D;
@@ -85,3 +85,4 @@ describe('IslandSolver2D', () => {
         });
     });
 });
+

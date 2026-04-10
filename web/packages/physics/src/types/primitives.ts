@@ -1,4 +1,4 @@
-import type { IVec2Like, IVec3Like } from '@axrone/numeric';
+import type { IQuatLike, IVec2Like, IVec3Like } from '@axrone/numeric';
 
 export type PhysicsScalar = number & { readonly __physicsScalarBrand: unique symbol };
 export type Mass = PhysicsScalar & { readonly __massBrand: unique symbol };
@@ -96,7 +96,7 @@ export interface ITransform2D {
 
 export interface ITransform3D {
     readonly position: Readonly<IVec3Like>;
-    readonly rotation: Readonly<IVec3Like>;
+    readonly rotation: Readonly<IQuatLike>;
 }
 
 export interface IVelocity2D {

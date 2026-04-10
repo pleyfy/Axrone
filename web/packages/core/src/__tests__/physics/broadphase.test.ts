@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DynamicAABBTree2D } from '../../physics/core/broadphase';
-import { AABB2D } from '../../geometry/aabb';
+import { DynamicAABBTree2D } from '@axrone/physics';
+import { AABB2D } from '@axrone/geometry';
 
 describe('DynamicAABBTree2D', () => {
     let tree: DynamicAABBTree2D;
@@ -371,3 +371,4 @@ describe('DynamicAABBTree2D', () => {
         });
     });
 });
+

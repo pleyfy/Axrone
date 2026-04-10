@@ -1,4 +1,4 @@
-import { AABB2D } from '../../geometry/aabb';
+import { AABB2D } from '@axrone/geometry';
 import type { ShapeId, BodyId } from '../types';
 import type { IAABBQueryCallback, IQueryFilter } from '../types/world';
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ConstraintManager2D } from '../../physics/core/constraint-manager';
-import { ConstraintType } from '../../physics/types';
+import { ConstraintManager2D } from '@axrone/physics';
+import { ConstraintType } from '@axrone/physics';
 
 describe('ConstraintManager2D', () => {
     let manager: ConstraintManager2D;
@@ -385,3 +385,4 @@ describe('ConstraintManager2D', () => {
         });
     });
 });
+

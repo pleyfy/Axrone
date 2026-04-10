@@ -1,5 +1,5 @@
 import { type IVec3Like, Vec3 } from '@axrone/numeric';
-import type { IConvexHullShapeDef3D } from 'packages/core/src/physics';
+import type { IConvexHullShapeDef3D } from '@axrone/physics';
 import { script } from '../../decorators';
 import { Collider3D, INVALID_SHAPE_ID } from './collider3d';
 

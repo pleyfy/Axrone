@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { BodyManager2D } from '../../physics/core/body-manager';
-import { BodyType } from '../../physics/types';
+import { BodyManager2D } from '@axrone/physics';
+import { BodyType } from '@axrone/physics';
 
 describe('BodyManager2D', () => {
     let manager: BodyManager2D;
@@ -462,3 +462,4 @@ describe('BodyManager2D', () => {
         });
     });
 });
+
