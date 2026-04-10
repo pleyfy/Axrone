@@ -8,6 +8,7 @@ import type {
 import type { QueryResult } from '../types/system';
 import type { EventKey } from '@axrone/ecs-events';
 import { OptimizedQueryCache, WorldQueryRuntime } from '@axrone/ecs-query';
+import { WorldStorageRuntime } from '@axrone/ecs-storage';
 import type { ECSObservables } from '../observers/ecs-observer';
 import { getComponentMetadata } from '../decorators/script';
 import type { ECSEventMap } from '../types/events';
@@ -17,7 +18,6 @@ import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
 import { WorldEventRuntime } from './world-event-runtime';
 import { WorldMutationRuntime } from './world-mutation-runtime';
 import { WorldSingletonRegistry } from './world-singleton-registry';
-import { WorldStorageRuntime } from './world-storage-runtime';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
 export type EntityId = Entity & { readonly __entityBrand: unique symbol };
@@ -71,7 +71,7 @@ interface WorldConfig {
 
 export class World<R extends ComponentRegistry> {
     private readonly _registry: R;
-    private readonly _storage: WorldStorageRuntime<R>;
+    private readonly _storage: WorldStorageRuntime<R, Entity, ArchetypeId>;
     private readonly _queryCache: OptimizedQueryCache<ArchetypeId>;
     private readonly _queryRuntime: WorldQueryRuntime<ArchetypeId>;
     private readonly _events: WorldEventRuntime<R>;
@@ -104,7 +104,7 @@ export class World<R extends ComponentRegistry> {
         this._enableValidation = this._config.enableValidation;
 
         try {
-            this._storage = new WorldStorageRuntime(this._registry);
+            this._storage = new WorldStorageRuntime<R, Entity, ArchetypeId>(this._registry);
             this._queryCache = new OptimizedQueryCache<ArchetypeId>();
             this._queryRuntime = new WorldQueryRuntime({
                 cache: this._queryCache,

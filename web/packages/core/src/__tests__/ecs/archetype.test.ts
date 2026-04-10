@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Archetype } from '@axrone/ecs';
 import { Component } from '@axrone/ecs';
+import { Archetype } from '@axrone/ecs-storage';
 import type {
     ComponentRegistry,
     ArchetypeSignature,

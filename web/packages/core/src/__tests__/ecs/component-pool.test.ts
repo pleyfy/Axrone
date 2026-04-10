@@ -1,5 +1,5 @@
-import { ComponentPool } from '@axrone/ecs';
 import { Component } from '@axrone/ecs';
+import { ComponentPool } from '@axrone/ecs-storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 class TestComponent extends Component {

@@ -1,11 +1,17 @@
 import type { EventKey } from '@axrone/ecs-events';
+import type { WorldStorageRuntime } from '@axrone/ecs-storage';
 import { getComponentMetadata } from '../decorators/script';
-import type { ComponentConstructor, ComponentInstance, ComponentRegistry, Entity } from '../types/core';
+import type {
+    ArchetypeId,
+    ComponentConstructor,
+    ComponentInstance,
+    ComponentRegistry,
+    Entity,
+} from '../types/core';
 import type { ECSEventMap } from '../types/events';
 import type { Actor } from './actor';
 import { WorldActorRegistry } from './world-actor-registry';
 import { WorldSingletonRegistry } from './world-singleton-registry';
-import { WorldStorageRuntime } from './world-storage-runtime';
 
 type WorldMutationEventDispatcher<R extends ComponentRegistry> = <T extends EventKey<ECSEventMap<R>>>(
     event: T,
@@ -14,7 +20,7 @@ type WorldMutationEventDispatcher<R extends ComponentRegistry> = <T extends Even
 
 export interface WorldMutationRuntimeOptions<R extends ComponentRegistry> {
     readonly registry: R;
-    readonly storage: WorldStorageRuntime<R>;
+    readonly storage: WorldStorageRuntime<R, Entity, ArchetypeId>;
     readonly actorRegistry: WorldActorRegistry;
     readonly singletonRegistry: WorldSingletonRegistry;
     readonly emitEvent: WorldMutationEventDispatcher<R>;
