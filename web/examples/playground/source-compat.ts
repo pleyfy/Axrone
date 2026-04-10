@@ -9,6 +9,18 @@ const numericRuntimeExports = new Set([
     'Vec4',
 ]);
 
+const scene3DRuntimeExports = new Set([
+    'Camera',
+    'DirectionalLight',
+    'FilterMode',
+    'MeshRenderer',
+    'OrbitCameraController',
+    'Scene',
+    'TextureFormat',
+    'WrapMode',
+    'createUnlitColorShaderDefinition',
+]);
+
 type ModuleNamespace = Record<string, unknown>;
 
 type ParsedImportSpecifier = {
@@ -17,10 +29,27 @@ type ParsedImportSpecifier = {
     readonly isTypeOnly: boolean;
 };
 
+type CoreImportMigration = {
+    readonly moduleName: string;
+    readonly exportedNames: ReadonlySet<string>;
+};
+
+const coreImportMigrations: readonly CoreImportMigration[] = [
+    {
+        moduleName: '@axrone/numeric',
+        exportedNames: numericRuntimeExports,
+    },
+    {
+        moduleName: '@axrone/scene-3d',
+        exportedNames: scene3DRuntimeExports,
+    },
+];
+
 const coreImportPattern = /import\s*\{([\s\S]*?)\}\s*from\s*['"]@axrone\/core['"]\s*;?/m;
-const numericImportPattern = /import\s*\{([\s\S]*?)\}\s*from\s*['"]@axrone\/numeric['"]\s*;?/m;
 const namedImportPattern = /import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]\s*;?/g;
 const firstImportPattern = /import[\s\S]*?from\s*['"][^'"]+['"]\s*;?/m;
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const parseImportSpecifiers = (clause: string): readonly ParsedImportSpecifier[] =>
     clause
@@ -88,6 +117,57 @@ const findImportInsertionIndex = (source: string, preferredAnchor: string): numb
     return firstImportMatch?.index ?? 0;
 };
 
+const partitionCoreImportSpecifiers = (specifiers: readonly ParsedImportSpecifier[]) => {
+    const migratedSpecifiersByModule = coreImportMigrations
+        .map(({ moduleName, exportedNames }) => ({
+            moduleName,
+            specifiers: specifiers.filter((specifier) => exportedNames.has(specifier.importedName)),
+        }))
+        .filter((migration) => migration.specifiers.length > 0);
+
+    const remainingCoreSpecifiers = specifiers.filter(
+        (specifier) =>
+            !coreImportMigrations.some(({ exportedNames }) => exportedNames.has(specifier.importedName))
+    );
+
+    return {
+        migratedSpecifiersByModule,
+        remainingCoreSpecifiers,
+    };
+};
+
+const upsertNamedImport = (
+    source: string,
+    moduleName: string,
+    specifiers: readonly ParsedImportSpecifier[],
+    preferredAnchor: string
+) => {
+    const importPattern = new RegExp(
+        `import\\s*\\{([\\s\\S]*?)\\}\\s*from\\s*['"]${escapeRegExp(moduleName)}['"]\\s*;?`,
+        'm'
+    );
+    const existingImportMatch = importPattern.exec(source);
+    const nextDeclaration = renderNamedImport(moduleName, specifiers);
+
+    if (existingImportMatch) {
+        return {
+            nextSource: source.replace(existingImportMatch[0], nextDeclaration),
+            insertedDeclaration: nextDeclaration,
+        };
+    }
+
+    const insertionIndex = findImportInsertionIndex(source, preferredAnchor);
+    const prefix = source.slice(0, insertionIndex);
+    const suffix = source.slice(insertionIndex);
+    const needsLeadingNewline = prefix.length > 0 && !prefix.endsWith('\n');
+    const normalizedSuffix = suffix.startsWith('\n') || suffix.length === 0 ? suffix : `\n${suffix}`;
+
+    return {
+        nextSource: `${prefix}${needsLeadingNewline ? '\n' : ''}${nextDeclaration}${normalizedSuffix}`,
+        insertedDeclaration: nextDeclaration,
+    };
+};
+
 export const normalizePlaygroundSource = (source: string): string => {
     const coreImportMatch = coreImportPattern.exec(source);
     if (!coreImportMatch) {
@@ -95,17 +175,12 @@ export const normalizePlaygroundSource = (source: string): string => {
     }
 
     const coreSpecifiers = parseImportSpecifiers(coreImportMatch[1]);
-    const movedNumericSpecifiers = coreSpecifiers.filter(
-        (specifier) => !specifier.isTypeOnly && numericRuntimeExports.has(specifier.importedName)
-    );
+    const { migratedSpecifiersByModule, remainingCoreSpecifiers } =
+        partitionCoreImportSpecifiers(coreSpecifiers);
 
-    if (movedNumericSpecifiers.length === 0) {
+    if (migratedSpecifiersByModule.length === 0) {
         return source;
     }
-
-    const remainingCoreSpecifiers = coreSpecifiers.filter(
-        (specifier) => !movedNumericSpecifiers.includes(specifier)
-    );
 
     let nextSource = source;
     const nextCoreDeclaration = remainingCoreSpecifiers.length
@@ -114,25 +189,26 @@ export const normalizePlaygroundSource = (source: string): string => {
 
     nextSource = nextSource.replace(coreImportMatch[0], nextCoreDeclaration);
 
-    const numericImportMatch = numericImportPattern.exec(nextSource);
-    const existingNumericSpecifiers = numericImportMatch
-        ? parseImportSpecifiers(numericImportMatch[1])
-        : [];
-    const nextNumericDeclaration = renderNamedImport(
-        '@axrone/numeric',
-        mergeImportSpecifiers(existingNumericSpecifiers, movedNumericSpecifiers)
-    );
+    let preferredAnchor = nextCoreDeclaration;
 
-    if (numericImportMatch) {
-        nextSource = nextSource.replace(numericImportMatch[0], nextNumericDeclaration);
-    } else {
-        const insertionIndex = findImportInsertionIndex(nextSource, nextCoreDeclaration);
-        const prefix = nextSource.slice(0, insertionIndex);
-        const suffix = nextSource.slice(insertionIndex);
-        const needsLeadingNewline = prefix.length > 0 && !prefix.endsWith('\n');
-        const normalizedSuffix = suffix.startsWith('\n') || suffix.length === 0 ? suffix : `\n${suffix}`;
+    for (const migration of migratedSpecifiersByModule) {
+        const importPattern = new RegExp(
+            `import\\s*\\{([\\s\\S]*?)\\}\\s*from\\s*['"]${escapeRegExp(migration.moduleName)}['"]\\s*;?`,
+            'm'
+        );
+        const existingImportMatch = importPattern.exec(nextSource);
+        const existingSpecifiers = existingImportMatch
+            ? parseImportSpecifiers(existingImportMatch[1])
+            : [];
+        const { nextSource: updatedSource, insertedDeclaration } = upsertNamedImport(
+            nextSource,
+            migration.moduleName,
+            mergeImportSpecifiers(existingSpecifiers, migration.specifiers),
+            preferredAnchor
+        );
 
-        nextSource = `${prefix}${needsLeadingNewline ? '\n' : ''}${nextNumericDeclaration}${normalizedSuffix}`;
+        nextSource = updatedSource;
+        preferredAnchor = insertedDeclaration;
     }
 
     return nextSource.replace(/\n{3,}/g, '\n\n');
@@ -165,6 +241,13 @@ export const validateSupportedModuleImports = (
             if (moduleName === '@axrone/core' && numericRuntimeExports.has(specifier.importedName)) {
                 diagnostics.push(
                     `Module "${moduleName}" does not export "${specifier.importedName}". Import it from "@axrone/numeric" instead.`
+                );
+                continue;
+            }
+
+            if (moduleName === '@axrone/core' && scene3DRuntimeExports.has(specifier.importedName)) {
+                diagnostics.push(
+                    `Module "${moduleName}" does not export "${specifier.importedName}". Import it from "@axrone/scene-3d" instead.`
                 );
                 continue;
             }
