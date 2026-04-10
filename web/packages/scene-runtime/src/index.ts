@@ -3,19 +3,19 @@ export type {
 	SceneRuntimeBuiltInManifest,
 	SceneRuntimeBuiltInRegistry,
 	SceneRuntimeRegistry,
-} from '../../core/src/scene-runtime-registry';
+} from './scene-runtime-registry';
 export {
 	DEFAULT_SCENE_RUNTIME_BUILT_IN_MANIFESTS,
 	SCENE_RUNTIME_CORE_BUILT_IN_MANIFEST,
 	createSceneRuntimeBuiltInManifest,
 	createSceneRuntimeRegistry,
 	resolveSceneRuntimeBuiltInComponents,
-} from '../../core/src/scene-runtime-registry';
+} from './scene-runtime-registry';
 export type {
 	SceneRuntimeManifestProfileOptions,
 	SceneRuntimeProfile,
 	SceneRuntimeProfileContext,
-} from '../../core/src/scene-runtime-profile';
+} from './scene-runtime-profile';
 export {
 	CORE_SCENE_RUNTIME_PROFILE_ID,
 	createSceneRuntimeProfile,
@@ -23,7 +23,7 @@ export {
 	getCoreSceneRuntimeProfile,
 	getDefaultSceneRuntimeProfile,
 	resolveSceneRuntimeRegistryFromProfile,
-} from '../../core/src/scene-runtime-profile';
+} from './scene-runtime-profile';
 
 export type { SceneActorRuntimeOptions } from '../../core/src/scene/scene-actor-runtime';
 export { SceneActorRuntime } from '../../core/src/scene/scene-actor-runtime';
