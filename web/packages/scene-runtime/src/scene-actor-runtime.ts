@@ -1,9 +1,9 @@
-import { Actor, type ActorConfig } from '../../core/src/component-system/core/actor';
-import { World } from '../../core/src/component-system/core/world';
+import { Actor, type ActorConfig } from '@axrone/ecs';
+import { World } from '@axrone/ecs';
 import type {
     ComponentConstructor,
     ComponentRegistry,
-} from '../../core/src/component-system/types/core';
+} from '@axrone/ecs';
 import type { SceneComponentCatalog } from './component-catalog';
 import { ScenePrefabRuntime } from './scene-prefab-runtime';
 import type {

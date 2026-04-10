@@ -1,4 +1,4 @@
-import type { ComponentRegistry } from '../../core/src/component-system/types/core';
+import type { ComponentRegistry } from '@axrone/ecs';
 import { SceneCanvasError } from './errors';
 import type { SceneOptions } from './types';
 

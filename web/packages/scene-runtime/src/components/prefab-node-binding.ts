@@ -1,5 +1,5 @@
-import { Component } from '../../../core/src/component-system/core/component';
-import { script } from '../../../core/src/component-system/decorators/script';
+import { Component } from '@axrone/ecs';
+import { script } from '@axrone/ecs';
 
 export interface PrefabNodeBindingConfig {
     readonly nodeId?: string;

@@ -1,6 +1,6 @@
 import { Quat, Vec3 } from '@axrone/numeric';
-import type { Actor } from '../../core/src/component-system/core/actor';
-import type { Transform } from '../../core/src/component-system/components/transform';
+import type { Actor } from '@axrone/ecs';
+import type { Transform } from '@axrone/ecs';
 import { DirectionalLight } from './components/directional-light';
 import { PointLight } from './components/point-light';
 import { SpotLight } from './components/spot-light';

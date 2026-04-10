@@ -1,5 +1,5 @@
 {
-    "name": "@axrone/scene-2d",
+    "name": "@axrone/ecs",
     "version": "0.1.0",
     "main": "./dist/index.js",
     "module": "./dist/index.mjs",
@@ -21,10 +21,7 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@axrone/ecs": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
-        "@axrone/random": "^0.0.1",
-        "@axrone/scene-runtime": "^0.1.0",
         "@axrone/utility": "^0.0.1"
     }
 }

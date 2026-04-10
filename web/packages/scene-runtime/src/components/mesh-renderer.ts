@@ -1,7 +1,7 @@
 import { Mat4 } from '@axrone/numeric';
-import { Transform } from '../../../core/src/component-system/components/transform';
-import { Component } from '../../../core/src/component-system/core/component';
-import { script } from '../../../core/src/component-system/decorators/script';
+import { Transform } from '@axrone/ecs';
+import { Component } from '@axrone/ecs';
+import { script } from '@axrone/ecs';
 import type { SceneUniformValue } from '../types';
 import { PrefabNodeBinding } from './prefab-node-binding';
 

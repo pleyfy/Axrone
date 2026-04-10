@@ -1,5 +1,5 @@
-import { Actor } from '../../core/src/component-system/core/actor';
-import type { ComponentRegistry } from '../../core/src/component-system/types/core';
+import { Actor } from '@axrone/ecs';
+import type { ComponentRegistry } from '@axrone/ecs';
 import type {
     SceneOptions,
     ScenePrefabDefinition,

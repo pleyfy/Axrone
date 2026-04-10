@@ -1,6 +1,6 @@
-import type { Actor, ActorConfig } from '../../core/src/component-system/core/actor';
-import type { World } from '../../core/src/component-system/core/world';
-import type { ComponentRegistry } from '../../core/src/component-system/types/core';
+import type { Actor, ActorConfig } from '@axrone/ecs';
+import type { World } from '@axrone/ecs';
+import type { ComponentRegistry } from '@axrone/ecs';
 import { SceneCapabilityError } from '../../scene-runtime/src/errors';
 import type { SceneRegistry } from '../../scene-runtime/src/types';
 import type { SceneActorRuntime } from '../../scene-runtime/src/scene-actor-runtime';

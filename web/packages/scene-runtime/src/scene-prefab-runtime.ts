@@ -1,7 +1,7 @@
-import { Hierarchy } from '../../core/src/component-system/components/hierarchy';
-import { Actor, type ActorConfig } from '../../core/src/component-system/core/actor';
-import { Component } from '../../core/src/component-system/core/component';
-import type { ComponentConstructor } from '../../core/src/component-system/types/core';
+import { Hierarchy } from '@axrone/ecs';
+import { Actor, type ActorConfig } from '@axrone/ecs';
+import { Component } from '@axrone/ecs';
+import type { ComponentConstructor } from '@axrone/ecs';
 import { PrefabNodeBinding } from './components/prefab-node-binding';
 import type { SceneComponentTypeResolver } from './component-catalog';
 import { SceneLifecycleError } from './errors';

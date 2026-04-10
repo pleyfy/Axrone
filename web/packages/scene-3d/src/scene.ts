@@ -1,6 +1,6 @@
-import { Actor, type ActorConfig } from '../../core/src/component-system/core/actor';
-import type { ComponentRegistry } from '../../core/src/component-system/types/core';
-import type { World } from '../../core/src/component-system/core/world';
+import { Actor, type ActorConfig } from '@axrone/ecs';
+import type { ComponentRegistry } from '@axrone/ecs';
+import type { World } from '@axrone/ecs';
 import type { CameraConfig } from '../../scene-runtime/src/components/camera';
 import type { MeshRendererConfig } from '../../scene-runtime/src/components/mesh-renderer';
 import type { SceneOptions, SceneRegistry } from '../../scene-runtime/src/types';

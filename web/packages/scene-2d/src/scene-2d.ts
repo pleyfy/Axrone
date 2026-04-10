@@ -1,4 +1,4 @@
-import type { ComponentRegistry } from '../../core/src/component-system/types/core';
+import type { ComponentRegistry } from '@axrone/ecs';
 import { get2DSceneRuntimeProfile } from '../../scene-runtime/src/scene-profile';
 import { SceneAssetFacade } from '../../scene-runtime/src/scene-asset-facade';
 import type { SceneOptions } from '../../scene-runtime/src/types';

@@ -1,4 +1,4 @@
-import type { ComponentRegistry } from '../../core/src/component-system/types/core';
+import type { ComponentRegistry } from '@axrone/ecs';
 import {
     DEFAULT_SCENE_RUNTIME_BUILT_IN_MANIFESTS,
     SCENE_RUNTIME_CORE_BUILT_IN_MANIFEST,

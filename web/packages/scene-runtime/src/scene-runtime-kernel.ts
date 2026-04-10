@@ -1,7 +1,7 @@
 import { createGameLoop, type GameLoop, type GameLoopSystem } from '../../core/src/game-loop';
-import { World } from '../../core/src/component-system/core/world';
-import { SystemManager } from '../../core/src/component-system/systems/system-manager';
-import type { ComponentRegistry } from '../../core/src/component-system/types/core';
+import { World } from '@axrone/ecs';
+import { SystemManager } from '@axrone/ecs';
+import type { ComponentRegistry } from '@axrone/ecs';
 import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';

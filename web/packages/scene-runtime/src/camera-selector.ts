@@ -1,4 +1,4 @@
-import type { Actor } from '../../core/src/component-system/core/actor';
+import type { Actor } from '@axrone/ecs';
 import { Camera } from './components/camera';
 
 export const selectSceneCamera = (actors: readonly Actor[]): Camera | undefined => {

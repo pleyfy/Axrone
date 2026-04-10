@@ -1,5 +1,5 @@
 import { Vec4 } from '@axrone/numeric';
-import type { Actor } from '../../core/src/component-system/core/actor';
+import type { Actor } from '@axrone/ecs';
 import { SceneLifecycleError } from './errors';
 import type {
     ScenePrefabDefinition,

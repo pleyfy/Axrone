@@ -1,9 +1,9 @@
 import type { GameLoop } from '../../core/src/game-loop';
-import { Actor, type ActorConfig } from '../../core/src/component-system/core/actor';
-import { World } from '../../core/src/component-system/core/world';
-import { SystemManager, SystemPhase } from '../../core/src/component-system/systems/system-manager';
-import type { ComponentConstructor, ComponentRegistry } from '../../core/src/component-system/types/core';
-import type { System, SystemQuery } from '../../core/src/component-system/types/system';
+import { Actor, type ActorConfig } from '@axrone/ecs';
+import { World } from '@axrone/ecs';
+import { SystemManager, SystemPhase } from '@axrone/ecs';
+import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs';
+import type { System, SystemQuery } from '@axrone/ecs';
 import type {
     SceneLoopState,
     SceneOptions,
