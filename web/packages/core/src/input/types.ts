@@ -1,4 +1,4 @@
-import type { IEventEmitter } from '../event';
+import type { IEventEmitter } from '@axrone/event';
 import type { IDisposable } from '../types';
 
 export type InputDeviceKind = 'keyboard' | 'mouse' | 'touch' | 'gamepad';

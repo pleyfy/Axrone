@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { EventEmitter } from '../../event/event-emitter';
-import { EventHandlerError, EventQueueFullError } from '../../event/errors';
-import { EventMap } from '../../event/definition';
+import { EventEmitter, EventHandlerError, EventQueueFullError, type EventMap } from '@axrone/event';
 
 interface TestEvents extends EventMap {
     'test:event': { id: string; data: any };

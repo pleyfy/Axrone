@@ -8,7 +8,7 @@ import {
     ObserverOptions,
     SubjectOptions,
     IObservableSubject,
-} from '../../observer/index';
+} from '@axrone/observer';
 
 describe('Observer Library - Core Functionality', () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;

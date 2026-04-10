@@ -1,5 +1,5 @@
+import { EventEmitter } from '@axrone/event';
 import { DeepPartial } from '@axrone/utility';
-import { EventEmitter } from '../event/event-emitter';
 import { Easing, EasingFunction } from './easing-functions';
 import { Interpolation } from './interpolation';
 import {

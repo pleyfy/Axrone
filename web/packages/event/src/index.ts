@@ -45,6 +45,8 @@ export { EventEmitter } from './event-emitter';
 export { EventGroup } from './event-group';
 
 export { EventScheduler } from './event-scheduler';
+export type { TaskId, SchedulerId, ITaskMetrics, ISchedulerOptions, ISchedulerStats } from './event-scheduler';
+export { TaskPriority, TaskState } from './event-scheduler';
 
 export type {
     EventMapOf,

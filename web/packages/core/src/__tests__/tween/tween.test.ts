@@ -10,9 +10,9 @@ import {
     spring,
     delay,
     waitFor,
-} from '../../tween';
-import { Easing } from '../../tween/easing-functions';
-import { Interpolation } from '../../tween/interpolation';
+    Easing,
+    Interpolation,
+} from '@axrone/tween';
 
 describe('Tween System', () => {
     beforeEach(() => {

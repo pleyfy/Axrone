@@ -1,4 +1,4 @@
-import { EventEmitter } from '../event/event-emitter';
+import { EventEmitter } from '@axrone/event';
 import { TweenCore } from './core';
 import { ITimeline, IGroupable, TimelineOptions, TimelineEventMap, VoidCallback } from './types';
 

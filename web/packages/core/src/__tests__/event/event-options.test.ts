@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EventOptions, DEFAULT_OPTIONS, MEMORY_USAGE_SYMBOLS } from '../../event/definition';
+import { DEFAULT_OPTIONS, MEMORY_USAGE_SYMBOLS, type EventOptions } from '@axrone/event';
 
 describe('EventEmitter - Event Options', () => {
     describe('EventOptions Interface', () => {

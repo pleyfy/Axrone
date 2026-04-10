@@ -3,8 +3,8 @@ import {
     EventScheduler,
     TaskPriority,
     TaskState,
-    ISchedulerOptions,
-} from '../../event/event-scheduler';
+    type ISchedulerOptions,
+} from '@axrone/event';
 
 describe('EventScheduler', () => {
     let scheduler: EventScheduler;

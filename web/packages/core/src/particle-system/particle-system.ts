@@ -15,7 +15,7 @@ import type { ParticleSystemConfiguration, ModuleType } from './core/configurati
 import { ParticleSystemException } from './core/error';
 import { SOAParticleBuffer } from './core/particle-buffer';
 import { UniformSpatialGrid } from './core/spatial-index';
-import { EventEmitter } from '../event';
+import { EventEmitter } from '@axrone/event';
 
 export class ParticleSystem implements IParticleSystem {
     private static _nextSystemId = 1;

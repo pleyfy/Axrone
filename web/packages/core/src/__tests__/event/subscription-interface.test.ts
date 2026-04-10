@@ -3,8 +3,9 @@ import {
     SubscriptionOptions,
     EventMetrics,
     QueuedEvent,
-} from '../../event/interfaces';
-import { EventCallback, EventPriority } from '../../event/definition';
+    type EventCallback,
+    type EventPriority,
+} from '@axrone/event';
 import { describe, expect, it } from 'vitest';
 
 describe('EventEmitter - Subscription Interfaces', () => {

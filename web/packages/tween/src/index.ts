@@ -7,6 +7,8 @@ export * from './chain';
 export * from './spring';
 export * from './system';
 export * from './utils';
+export * from './easing-functions';
+export * from './interpolation';
 export * from './implementations/primitive-tween';
 export * from './implementations/array-tween';
 export * from './implementations/object-tween';

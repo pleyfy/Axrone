@@ -5,7 +5,7 @@ import {
     EventNotFoundError,
     EventQueueFullError,
     EventHandlerError,
-} from '../../event/errors';
+} from '@axrone/event';
 
 describe('EventEmitter - Error Classes', () => {
     describe('Error Inheritance', () => {

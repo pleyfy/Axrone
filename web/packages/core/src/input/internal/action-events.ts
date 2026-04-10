@@ -1,4 +1,4 @@
-import { EventEmitter } from '../../event';
+import { EventEmitter } from '@axrone/event';
 import { InputConfigurationError } from '../errors';
 import type {
     AxisStateStore,

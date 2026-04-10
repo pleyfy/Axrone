@@ -7,8 +7,11 @@ import type {
     IVec3Like,
     IVec4Like,
 } from '@axrone/numeric';
-import { ReadonlyRecord } from '../types';
 import { EasingFunction } from './easing-functions';
+
+type ReadonlyRecord<K extends string | number | symbol, T> = {
+    readonly [P in K]: T;
+};
 
 export type TweenableNumber = number;
 export type TweenableArray = readonly number[];

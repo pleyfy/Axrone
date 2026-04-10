@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createHooks, EventUtils } from '../../event/utility';
-import { EventGroup } from '../../event/event-group';
+import { createHooks, EventGroup, EventUtils } from '@axrone/event';
 import {
     createEmitter,
     createEventProxy,
@@ -11,8 +10,8 @@ import {
     mergeEmitters,
     namespaceEvents,
     TypedEventRegistry,
-} from '../../event/extras';
-import { EventMap } from '../../event/definition';
+    type EventMap,
+} from '@axrone/event';
 
 interface TestEvents extends EventMap {
     'test:event': { id: string; data: any };

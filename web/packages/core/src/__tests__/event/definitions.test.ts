@@ -12,7 +12,7 @@ import {
     DEFAULT_PRIORITY,
     ExtractEventData,
     EventNames,
-} from '../../event/definition';
+} from '@axrone/event';
 
 interface TestUserEvents {
     'user:login': {

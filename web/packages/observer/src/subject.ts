@@ -1,5 +1,5 @@
+import { EventEmitter, IEventEmitter } from '@axrone/event';
 import { PriorityQueue } from '@axrone/utility';
-import { EventEmitter, IEventEmitter } from '../event';
 import {
     ObserverCallback,
     UnobserveFn,

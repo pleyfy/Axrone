@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Mocked } from 'vitest';
-import { IEventEmitter } from '../../event/event-emitter';
 import {
+    type IEventEmitter,
     IEventSubscriber,
     IEventPublisher,
     IEventBuffer,
@@ -9,8 +9,9 @@ import {
     SubscriptionOptions,
     EventMetrics,
     QueuedEvent,
-} from '../../event/interfaces';
-import { EventMap, EventCallback } from '../../event/definition';
+    type EventMap,
+    type EventCallback,
+} from '@axrone/event';
 
 interface TestEvents extends EventMap {
     'test:event': { id: string; data: any };
