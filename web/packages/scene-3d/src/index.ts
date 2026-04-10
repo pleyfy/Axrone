@@ -37,31 +37,32 @@ export {
 	resolveSceneRegistryFromProfile,
 } from '../../scene-runtime/src/scene-profile';
 
-export type { Scene3DActorRuntimeOptions } from '../../core/src/scene/scene-3d-actor-runtime';
-export { Scene3DActorRuntime } from '../../core/src/scene/scene-3d-actor-runtime';
+export type { Scene3DActorRuntimeOptions } from './scene-3d-actor-runtime';
+export { Scene3DActorRuntime } from './scene-3d-actor-runtime';
 
-export type { CameraConfig } from '../../core/src/scene/components/camera';
-export { Camera } from '../../core/src/scene/components/camera';
-export type {
-	MeshRendererConfig,
-	MeshRendererMorphConfig,
-} from '../../core/src/scene/components/mesh-renderer';
-export { MeshRenderer } from '../../core/src/scene/components/mesh-renderer';
-export type { DirectionalLightConfig } from '../../core/src/scene/components/directional-light';
-export { DirectionalLight } from '../../core/src/scene/components/directional-light';
-export type { PointLightConfig } from '../../core/src/scene/components/point-light';
-export { PointLight } from '../../core/src/scene/components/point-light';
-export type { SpotLightConfig } from '../../core/src/scene/components/spot-light';
-export { SpotLight } from '../../core/src/scene/components/spot-light';
-export type { OrbitCameraControllerConfig } from '../../core/src/scene/components/orbit-camera-controller';
-export { OrbitCameraController } from '../../core/src/scene/components/orbit-camera-controller';
 export type {
 	AnimatorClipConfig,
 	AnimatorConfig,
 	AnimatorTrackConfig,
-} from '../../core/src/scene/components/animator';
-export { Animator } from '../../core/src/scene/components/animator';
+} from '../../scene-runtime/src/components/animator';
+export type { CameraConfig } from '../../scene-runtime/src/components/camera';
+export type { DirectionalLightConfig } from '../../scene-runtime/src/components/directional-light';
+export type {
+	MeshRendererConfig,
+	MeshRendererMorphConfig,
+	MeshRendererSkinConfig,
+} from '../../scene-runtime/src/components/mesh-renderer';
+export type { OrbitCameraControllerConfig } from '../../scene-runtime/src/components/orbit-camera-controller';
+export type { PointLightConfig } from '../../scene-runtime/src/components/point-light';
+export type { SpotLightConfig } from '../../scene-runtime/src/components/spot-light';
+export { Animator } from '../../scene-runtime/src/components/animator';
+export { Camera } from '../../scene-runtime/src/components/camera';
+export { DirectionalLight } from '../../scene-runtime/src/components/directional-light';
+export { MeshRenderer } from '../../scene-runtime/src/components/mesh-renderer';
+export { OrbitCameraController } from '../../scene-runtime/src/components/orbit-camera-controller';
+export { PointLight } from '../../scene-runtime/src/components/point-light';
+export { SpotLight } from '../../scene-runtime/src/components/spot-light';
 
-export { createScene } from '../../core/src/scene/scene-factory';
+export { createScene } from './scene-factory';
 export { createUnlitColorShaderDefinition } from '../../core/src/scene/scene-default-shaders';
-export { Scene } from '../../core/src/scene/scene';
+export { Scene } from './scene';

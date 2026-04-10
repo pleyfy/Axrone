@@ -1,14 +1,14 @@
 import { Hierarchy } from '../../core/src/component-system/components/hierarchy';
 import { Transform } from '../../core/src/component-system/components/transform';
 import type { ComponentConstructor, ComponentRegistry } from '../../core/src/component-system/types/core';
-import { Animator } from '../../core/src/scene/components/animator';
-import { Camera } from '../../core/src/scene/components/camera';
-import { DirectionalLight } from '../../core/src/scene/components/directional-light';
-import { MeshRenderer } from '../../core/src/scene/components/mesh-renderer';
-import { OrbitCameraController } from '../../core/src/scene/components/orbit-camera-controller';
-import { PrefabNodeBinding } from '../../core/src/scene/components/prefab-node-binding';
-import { PointLight } from '../../core/src/scene/components/point-light';
-import { SpotLight } from '../../core/src/scene/components/spot-light';
+import { Animator } from './components/animator';
+import { Camera } from './components/camera';
+import { DirectionalLight } from './components/directional-light';
+import { MeshRenderer } from './components/mesh-renderer';
+import { OrbitCameraController } from './components/orbit-camera-controller';
+import { PrefabNodeBinding } from './components/prefab-node-binding';
+import { PointLight } from './components/point-light';
+import { SpotLight } from './components/spot-light';
 import type { SceneBuiltInRegistry, SceneRegistry } from '../../core/src/scene/types';
 
 export type SceneBuiltInComponentName = keyof SceneBuiltInRegistry;

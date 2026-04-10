@@ -36,14 +36,16 @@ export {
 	resolveSceneRegistryFromProfile,
 } from '../../scene-runtime/src/scene-profile';
 
-export type { CameraConfig } from '../../core/src/scene/components/camera';
-export { Camera } from '../../core/src/scene/components/camera';
 export type {
 	AnimatorClipConfig,
 	AnimatorConfig,
 	AnimatorTrackConfig,
-} from '../../core/src/scene/components/animator';
-export { Animator } from '../../core/src/scene/components/animator';
+} from '../../scene-runtime/src/components/animator';
+export type { CameraConfig } from '../../scene-runtime/src/components/camera';
+export {
+	Animator,
+} from '../../scene-runtime/src/components/animator';
+export { Camera } from '../../scene-runtime/src/components/camera';
 
-export { createScene2D } from '../../core/src/scene/scene-2d-factory';
-export { Scene2D } from '../../core/src/scene/scene-2d';
+export { createScene2D } from './scene-2d-factory';
+export { Scene2D } from './scene-2d';

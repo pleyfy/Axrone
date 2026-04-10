@@ -4,7 +4,7 @@ import type {
     ComponentConstructor,
     ComponentRegistry,
 } from '../../core/src/component-system/types/core';
-import { PrefabNodeBinding } from '../../core/src/scene/components/prefab-node-binding';
+import { PrefabNodeBinding } from './components/prefab-node-binding';
 
 export type SceneRuntimeBuiltInComponentName =
     | 'Hierarchy'

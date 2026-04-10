@@ -54,7 +54,6 @@ export {
 	get3DSceneRuntimeProfile,
 	resolveSceneRegistryFromProfile,
 } from './scene-profile';
-
 export type { SceneActorRuntimeOptions } from '../../core/src/scene/scene-actor-runtime';
 export { SceneActorRuntime } from '../../core/src/scene/scene-actor-runtime';
 export {
