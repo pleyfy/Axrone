@@ -1,5 +1,5 @@
 {
-    "name": "@axrone/ecs",
+    "name": "@axrone/ecs-query",
     "version": "0.1.0",
     "main": "./dist/index.js",
     "module": "./dist/index.mjs",
@@ -19,11 +19,5 @@
         "build": "rollup -c rollup.config.mjs",
         "clean": "rimraf dist",
         "test": "vitest run"
-    },
-    "dependencies": {
-        "@axrone/ecs-events": "^0.1.0",
-        "@axrone/ecs-query": "^0.1.0",
-        "@axrone/numeric": "^0.0.1",
-        "@axrone/utility": "^0.0.1"
     }
 }

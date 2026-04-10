@@ -1,4 +1,5 @@
 import type {
+    ArchetypeId,
     ComponentRegistry,
     Entity,
     ComponentInstance,
@@ -6,8 +7,8 @@ import type {
 } from '../types/core';
 import type { QueryResult } from '../types/system';
 import type { EventKey } from '@axrone/ecs-events';
+import { OptimizedQueryCache, WorldQueryRuntime } from '@axrone/ecs-query';
 import type { ECSObservables } from '../observers/ecs-observer';
-import { OptimizedQueryCache } from '../archetype/query-cache';
 import { getComponentMetadata } from '../decorators/script';
 import type { ECSEventMap } from '../types/events';
 import type { Actor } from './actor';
@@ -15,7 +16,6 @@ import { WorldActorRegistry } from './world-actor-registry';
 import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
 import { WorldEventRuntime } from './world-event-runtime';
 import { WorldMutationRuntime } from './world-mutation-runtime';
-import { WorldQueryRuntime } from './world-query-runtime';
 import { WorldSingletonRegistry } from './world-singleton-registry';
 import { WorldStorageRuntime } from './world-storage-runtime';
 
@@ -72,8 +72,8 @@ interface WorldConfig {
 export class World<R extends ComponentRegistry> {
     private readonly _registry: R;
     private readonly _storage: WorldStorageRuntime<R>;
-    private readonly _queryCache: OptimizedQueryCache;
-    private readonly _queryRuntime: WorldQueryRuntime<R>;
+    private readonly _queryCache: OptimizedQueryCache<ArchetypeId>;
+    private readonly _queryRuntime: WorldQueryRuntime<ArchetypeId>;
     private readonly _events: WorldEventRuntime<R>;
     private readonly _actorRegistry = new WorldActorRegistry();
     private readonly _mutations: WorldMutationRuntime<R>;
@@ -105,7 +105,7 @@ export class World<R extends ComponentRegistry> {
 
         try {
             this._storage = new WorldStorageRuntime(this._registry);
-            this._queryCache = new OptimizedQueryCache();
+            this._queryCache = new OptimizedQueryCache<ArchetypeId>();
             this._queryRuntime = new WorldQueryRuntime({
                 cache: this._queryCache,
                 getArchetypes: () => this._storage.getArchetypes(),

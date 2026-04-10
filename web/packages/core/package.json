@@ -19,10 +19,11 @@
         "build": "rollup -c rollup.config.mjs",
         "clean": "rimraf dist",
         "test": "vitest run",
-        "test:architecture": "vitest run --root ../.. packages/core/src/__tests__/asset/gltf-boundary.test.ts packages/core/src/__tests__/ecs/ecs-entry.test.ts packages/core/src/__tests__/ecs/ecs-events-entry.test.ts packages/core/src/__tests__/ecs/ecs-ownership-boundary.test.ts packages/core/src/__tests__/ecs/ecs-events-ownership-boundary.test.ts packages/core/src/__tests__/ecs/ecs-core-consumer-boundary.test.ts packages/core/src/__tests__/ecs/scene-ecs-boundary.test.ts packages/core/src/__tests__/scene/scene-runtime-entry.test.ts packages/core/src/__tests__/scene/scene-runtime-support-boundary.test.ts packages/core/src/__tests__/scene/scene-2d-entry.test.ts packages/core/src/__tests__/scene/scene-3d-entry.test.ts packages/core/src/__tests__/scene/runtime-profile-entry.test.ts"
+        "test:architecture": "vitest run --root ../.. packages/core/src/__tests__/asset/gltf-boundary.test.ts packages/core/src/__tests__/ecs/ecs-entry.test.ts packages/core/src/__tests__/ecs/ecs-events-entry.test.ts packages/core/src/__tests__/ecs/ecs-query-entry.test.ts packages/core/src/__tests__/ecs/ecs-ownership-boundary.test.ts packages/core/src/__tests__/ecs/ecs-events-ownership-boundary.test.ts packages/core/src/__tests__/ecs/ecs-query-ownership-boundary.test.ts packages/core/src/__tests__/ecs/ecs-core-consumer-boundary.test.ts packages/core/src/__tests__/ecs/scene-ecs-boundary.test.ts packages/core/src/__tests__/scene/scene-runtime-entry.test.ts packages/core/src/__tests__/scene/scene-runtime-support-boundary.test.ts packages/core/src/__tests__/scene/scene-2d-entry.test.ts packages/core/src/__tests__/scene/scene-3d-entry.test.ts packages/core/src/__tests__/scene/runtime-profile-entry.test.ts"
     },
     "dependencies": {
         "@axrone/ecs": "^0.1.0",
+        "@axrone/ecs-query": "^0.1.0",
         "@axrone/game-loop": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
         "@axrone/random": "^0.0.1",

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OptimizedQueryCache } from '@axrone/ecs';
-import { WorldQueryRuntime } from '@axrone/ecs';
+import { OptimizedQueryCache, WorldQueryRuntime } from '@axrone/ecs-query';
 
 describe('WorldQueryRuntime', () => {
     it('reuses cached archetype matches for repeated single-component queries', () => {
