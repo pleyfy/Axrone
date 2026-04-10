@@ -1,4 +1,4 @@
-import { WorldEventRuntime as BaseWorldEventRuntime } from '@axrone/ecs-events';
+import { WorldEventRuntime as BaseWorldEventRuntime } from '@axrone/ecs-events/world-event-runtime';
 import { ECSObservables, type ECSComponentChangeEvent, type ECSComponentName, type ECSEntityLifecycleEvent, type ECSReactiveQueryResult } from '../observers/ecs-observer';
 import type { ComponentRegistry } from '../types/core';
 import type { ECSEventMap } from '../types/events';

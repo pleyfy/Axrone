@@ -14,27 +14,17 @@ export class OptimizedQueryCache<TArchetypeId extends string = string>
     readonly queries = new Map<string, readonly TArchetypeId[]>();
     readonly bitQueries = new Map<bigint, readonly TArchetypeId[]>();
 
-    private generation = 0;
-    private readonly queryGenerations = new Map<string, number>();
-
     invalidate(): void {
-        this.generation += 1;
+        this.queries.clear();
+        this.bitQueries.clear();
     }
 
     getQuery(key: string): readonly TArchetypeId[] | undefined {
-        const generation = this.queryGenerations.get(key);
-        if (generation !== this.generation) {
-            this.queries.delete(key);
-            this.queryGenerations.delete(key);
-            return undefined;
-        }
-
         return this.queries.get(key);
     }
 
     setQuery(key: string, archetypes: readonly TArchetypeId[]): void {
         this.queries.set(key, archetypes);
-        this.queryGenerations.set(key, this.generation);
     }
 
     getBitQuery(mask: bigint): readonly TArchetypeId[] | undefined {

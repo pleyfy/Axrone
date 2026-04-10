@@ -1,4 +1,4 @@
-import { ECSObservables as ECSObservablesBase } from '@axrone/ecs-events';
+import { ECSObservables as ECSObservablesBase } from '@axrone/ecs-events/ecs-observer';
 import type { ComponentInstance, ComponentRegistry, Entity } from '../types/core';
 import type { QueryResult } from '../types/system';
 import type { Actor } from '../core/actor';

@@ -1,6 +1,6 @@
 export type {
     WorldQueryArchetype,
-    WorldQueryCache,
     WorldQueryRuntimeOptions,
-} from '@axrone/ecs-query';
-export { WorldQueryRuntime } from '@axrone/ecs-query';
+} from '@axrone/ecs-query/world-query-runtime';
+export type { WorldQueryCache } from '@axrone/ecs-query/query-cache';
+export { WorldQueryRuntime } from '@axrone/ecs-query/world-query-runtime';

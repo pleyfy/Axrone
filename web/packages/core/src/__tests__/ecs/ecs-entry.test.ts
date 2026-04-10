@@ -13,6 +13,8 @@ describe('ecs entry', () => {
         expect(ecs.WorldMutationRuntime).toBeDefined();
         expect(ecs.WorldActorRegistry).toBeDefined();
         expect(ecs.WorldDiagnostics).toBeDefined();
+        expect(ecs.WorldMetricsService).toBeDefined();
+        expect(ecs.WorldQueryExecutionRuntime).toBeDefined();
         expect(ecs.WorldSingletonRegistry).toBeDefined();
         expect(ecs.SystemManager).toBeDefined();
         expect(ecs.SystemPhase).toBeDefined();

@@ -96,7 +96,7 @@ describe('OptimizedQueryCache', () => {
     });
 
     describe('cache invalidation', () => {
-        it('should invalidate string queries on generation change', () => {
+        it('should invalidate string queries on cache invalidation', () => {
             const key = 'Position,Velocity';
             const archetypes: ArchetypeId[] = ['Position|Velocity' as ArchetypeId];
 
@@ -107,14 +107,14 @@ describe('OptimizedQueryCache', () => {
             expect(cache.getQuery(key)).toBeUndefined();
         });
 
-        it('should not affect bit queries during invalidation', () => {
+        it('should invalidate bit queries during invalidation', () => {
             const mask: BitMask = 5n;
             const archetypes: ArchetypeId[] = ['Position|Health' as ArchetypeId];
 
             cache.setBitQuery(mask, archetypes);
             cache.invalidate();
 
-            expect(cache.getBitQuery(mask)).toEqual(archetypes);
+            expect(cache.getBitQuery(mask)).toBeUndefined();
         });
 
         it('should handle multiple invalidations', () => {
@@ -142,8 +142,8 @@ describe('OptimizedQueryCache', () => {
         });
     });
 
-    describe('generation tracking', () => {
-        it('should track query generations correctly', () => {
+    describe('cache lifecycle', () => {
+        it('should allow fresh query caches after invalidation', () => {
             const key1 = 'Position';
             const key2 = 'Velocity';
             const archetypes: ArchetypeId[] = ['Test' as ArchetypeId];
@@ -272,7 +272,7 @@ describe('OptimizedQueryCache', () => {
             cache.invalidate();
 
             expect(cache.getQuery(stringKey)).toBeUndefined();
-            expect(cache.getBitQuery(bitMask)).toEqual(bitArchetypes);
+            expect(cache.getBitQuery(bitMask)).toBeUndefined();
         });
     });
 });

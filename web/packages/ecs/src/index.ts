@@ -43,9 +43,11 @@ export type {
 
 export { WorldActorRegistry } from './component-system/core/world-actor-registry';
 export { WorldDiagnostics } from './component-system/core/world-diagnostics';
+export { WorldMetricsService } from './component-system/core/world-diagnostics';
 export type { WorldMetrics } from './component-system/core/world-diagnostics';
 export { WorldEventRuntime } from './component-system/core/world-event-runtime';
 export { WorldMutationRuntime } from './component-system/core/world-mutation-runtime';
+export { WorldQueryExecutionRuntime } from './component-system/core/world-query-execution-runtime';
 export { WorldQueryRuntime } from './component-system/core/world-query-runtime';
 export { WorldSingletonRegistry } from './component-system/core/world-singleton-registry';
 export { WorldStorageRuntime } from './component-system/core/world-storage-runtime';

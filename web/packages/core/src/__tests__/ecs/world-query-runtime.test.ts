@@ -36,4 +36,18 @@ describe('WorldQueryRuntime', () => {
         expect(first).toBe(second);
         expect(first).toEqual(['A|B']);
     });
+
+    it('hydrates bit-mask cache so repeated queries avoid key normalization work', () => {
+        const cache = new OptimizedQueryCache();
+        const runtime = new WorldQueryRuntime({
+            cache,
+            getArchetypes: () => [{ id: 'A|B', mask: 0b011n }] as any,
+            createBitMask: () => 0b011n,
+        });
+
+        const first = runtime.resolveMatchingArchetypes(['A', 'B']);
+
+        expect(cache.getBitQuery(0b011n)).toBe(first);
+        expect(runtime.resolveMatchingArchetypes(['B', 'A'])).toBe(first);
+    });
 });

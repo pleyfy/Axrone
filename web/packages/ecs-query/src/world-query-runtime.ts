@@ -15,21 +15,27 @@ export class WorldQueryRuntime<TArchetypeId extends string = string> {
     constructor(private readonly _options: WorldQueryRuntimeOptions<TArchetypeId>) {}
 
     resolveMatchingArchetypes(components: readonly string[]): readonly TArchetypeId[] {
-        const queryKey = this._createQueryKey(components);
-        let matchingArchetypes = this._options.cache.getQuery(queryKey);
+        const queryMask = this._options.createBitMask(components);
+        let matchingArchetypes = this._options.cache.getBitQuery(queryMask);
 
         if (!matchingArchetypes) {
-            const queryMask = this._options.createBitMask(components);
-            const resolvedMatches: TArchetypeId[] = [];
+            const queryKey = this._createQueryKey(components);
+            matchingArchetypes = this._options.cache.getQuery(queryKey);
 
-            for (const archetype of this._options.getArchetypes()) {
-                if ((archetype.mask & queryMask) === queryMask) {
-                    resolvedMatches.push(archetype.id);
+            if (!matchingArchetypes) {
+                const resolvedMatches: TArchetypeId[] = [];
+
+                for (const archetype of this._options.getArchetypes()) {
+                    if ((archetype.mask & queryMask) === queryMask) {
+                        resolvedMatches.push(archetype.id);
+                    }
                 }
+
+                matchingArchetypes = resolvedMatches;
+                this._options.cache.setQuery(queryKey, matchingArchetypes);
             }
 
-            matchingArchetypes = resolvedMatches;
-            this._options.cache.setQuery(queryKey, matchingArchetypes);
+            this._options.cache.setBitQuery(queryMask, matchingArchetypes);
         }
 
         return matchingArchetypes;

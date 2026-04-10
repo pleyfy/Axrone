@@ -6,17 +6,19 @@ import type {
     ComponentConstructor,
 } from '../types/core';
 import type { QueryResult } from '../types/system';
-import type { EventKey } from '@axrone/ecs-events';
-import { OptimizedQueryCache, WorldQueryRuntime } from '@axrone/ecs-query';
-import { WorldStorageRuntime } from '@axrone/ecs-storage';
+import type { EventKey } from '@axrone/ecs-events/event';
+import { OptimizedQueryCache } from '@axrone/ecs-query/query-cache';
+import { WorldQueryRuntime } from '@axrone/ecs-query/world-query-runtime';
+import { WorldStorageRuntime } from '@axrone/ecs-storage/world-storage-runtime';
 import type { ECSObservables } from '../observers/ecs-observer';
 import { getComponentMetadata } from '../decorators/script';
 import type { ECSEventMap } from '../types/events';
 import type { Actor } from './actor';
 import { WorldActorRegistry } from './world-actor-registry';
-import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
+import { WorldMetricsService, type WorldMetrics } from './world-diagnostics';
 import { WorldEventRuntime } from './world-event-runtime';
 import { WorldMutationRuntime } from './world-mutation-runtime';
+import { WorldQueryExecutionRuntime } from './world-query-execution-runtime';
 import { WorldSingletonRegistry } from './world-singleton-registry';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
@@ -74,6 +76,7 @@ export class World<R extends ComponentRegistry> {
     private readonly _storage: WorldStorageRuntime<R, Entity, ArchetypeId>;
     private readonly _queryCache: OptimizedQueryCache<ArchetypeId>;
     private readonly _queryRuntime: WorldQueryRuntime<ArchetypeId>;
+    private readonly _queryExecution: WorldQueryExecutionRuntime<R, ArchetypeId>;
     private readonly _events: WorldEventRuntime<R>;
     private readonly _actorRegistry = new WorldActorRegistry();
     private readonly _mutations: WorldMutationRuntime<R>;
@@ -81,7 +84,7 @@ export class World<R extends ComponentRegistry> {
 
     private _state: WorldState = 'initializing';
     private readonly _config: Required<WorldConfig>;
-    private readonly _diagnostics: WorldDiagnostics;
+    private readonly _metricsService: WorldMetricsService;
     private readonly _enableValidation: boolean;
     private _structureBatchDepth = 0;
     private _structureChangedDuringBatch = false;
@@ -100,7 +103,7 @@ export class World<R extends ComponentRegistry> {
         };
 
         this._registry = registry;
-        this._diagnostics = new WorldDiagnostics(this._config.enableMetrics);
+        this._metricsService = new WorldMetricsService(this._config.enableMetrics);
         this._enableValidation = this._config.enableValidation;
 
         try {
@@ -110,6 +113,11 @@ export class World<R extends ComponentRegistry> {
                 cache: this._queryCache,
                 getArchetypes: () => this._storage.getArchetypes(),
                 createBitMask: (components) => this._storage.createBitMask(components),
+            });
+            this._queryExecution = new WorldQueryExecutionRuntime({
+                queryRuntime: this._queryRuntime,
+                getArchetype: (archetypeId) => this._storage.getArchetype(archetypeId),
+                onQueryResolved: () => this._metricsService.recordQuery(),
             });
             this._events = new WorldEventRuntime(
                 Object.keys(this._registry),
@@ -121,7 +129,7 @@ export class World<R extends ComponentRegistry> {
                 actorRegistry: this._actorRegistry,
                 singletonRegistry: this._singletonRegistry,
                 emitEvent: (event, data) => this._safeEmitEvent(event, data),
-                onMutation: () => this._diagnostics.markMutation(),
+                onMutation: () => this._metricsService.markMutation(),
                 onStructureChange: () => this._invalidateStructureCaches(),
             });
 
@@ -153,7 +161,7 @@ export class World<R extends ComponentRegistry> {
     }
 
     get metrics(): Readonly<WorldMetrics> | null {
-        return this._diagnostics.getMetrics({
+        return this._metricsService.getMetrics({
             entityCount: this._storage.entityCount,
             archetypeCount: this._storage.archetypeCount,
             actorCount: this._actorRegistry.size,
@@ -318,46 +326,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         try {
-            this._diagnostics.recordQuery();
-            const matchingArchetypes = this._queryRuntime.resolveMatchingArchetypes(
-                components as readonly string[]
-            );
-
-            const results: QueryResult<R, Q>[] = [];
-
-            for (const archetypeId of matchingArchetypes) {
-                const archetype = this._storage.getArchetype(archetypeId);
-                if (!archetype) {
-                    continue;
-                }
-
-                for (let i = 0; i < archetype.entityCount; i++) {
-                    const entity = archetype.entities[i];
-                    const componentData = {} as { [K in Q[number]]: ComponentInstance<R[K]> };
-
-                    let hasAllComponents = true;
-                    for (const componentName of components) {
-                        const component = archetype.getComponent(entity, componentName as string);
-                        if (component) {
-                            componentData[componentName] = component as ComponentInstance<
-                                R[typeof componentName]
-                            >;
-                        } else {
-                            hasAllComponents = false;
-                            break;
-                        }
-                    }
-
-                    if (hasAllComponents) {
-                        results.push({
-                            entity,
-                            components: componentData,
-                        });
-                    }
-                }
-            }
-
-            return results;
+            return this._queryExecution.execute(...components);
         } catch (error) {
             throw new WorldError(
                 'Query execution failed',
@@ -509,7 +478,7 @@ export class World<R extends ComponentRegistry> {
         this._validateWorldState('emit');
 
         try {
-            this._diagnostics.recordEvent();
+            this._metricsService.recordEvent();
 
             return await this._events.emit(event, data);
         } catch (error) {
@@ -522,7 +491,7 @@ export class World<R extends ComponentRegistry> {
         this._validateWorldState('emitSync');
 
         try {
-            this._diagnostics.recordEvent();
+            this._metricsService.recordEvent();
 
             return this._events.emitSync(event, data);
         } catch (error) {
@@ -686,7 +655,7 @@ export class World<R extends ComponentRegistry> {
         data: ECSEventMap<R>[T]
     ): void {
         this._events.emitSafe(event, data);
-        this._diagnostics.recordEvent();
+        this._metricsService.recordEvent();
     }
 
     private _invalidateStructureCaches(): void {
@@ -705,7 +674,7 @@ export class World<R extends ComponentRegistry> {
     getDebugInfo(): Record<string, any> {
         const storage = this._storage.getDebugInfo();
 
-        return this._diagnostics.getDebugInfo({
+        return this._metricsService.getDebugInfo({
             state: this._state,
             config: this._config,
             entityCount: this.getEntityCount(),
