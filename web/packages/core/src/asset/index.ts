@@ -127,3 +127,8 @@ export {
     isAssetImporter,
 } from './importer';
 export { AssetDatabase, createAssetDatabase, isAssetDatabaseSnapshot } from './database';
+export { createGltfImporter, loadGltfSceneIntoScene } from '@axrone/asset-gltf';
+export type {
+    LoadGltfSceneIntoSceneOptions,
+    LoadGltfSceneIntoSceneResult,
+} from '@axrone/asset-gltf';
