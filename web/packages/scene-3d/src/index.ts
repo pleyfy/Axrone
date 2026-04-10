@@ -20,8 +20,13 @@ export {
 	createSceneRegistry,
 	createSceneRegistryFromBuiltInManifests,
 	resolveSceneBuiltInComponents,
-} from '../../core/src/scene/registry';
+} from '@axrone/scene-runtime';
 
+export type {
+	SceneManifestRuntimeProfileOptions,
+	SceneRuntimeProfile,
+	SceneRuntimeProfileContext,
+} from '../../scene-runtime/src/scene-profile';
 export {
 	DEFAULT_SCENE_RUNTIME_PROFILE_ID,
 	SCENE_3D_RUNTIME_PROFILE_ID,
@@ -30,7 +35,7 @@ export {
 	get3DSceneRuntimeProfile,
 	getDefaultSceneRuntimeProfile,
 	resolveSceneRegistryFromProfile,
-} from '../../core/src/scene/profile';
+} from '../../scene-runtime/src/scene-profile';
 
 export type { Scene3DActorRuntimeOptions } from '../../core/src/scene/scene-3d-actor-runtime';
 export { Scene3DActorRuntime } from '../../core/src/scene/scene-3d-actor-runtime';

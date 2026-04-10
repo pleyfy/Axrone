@@ -19,8 +19,13 @@ export {
 	createSceneRegistry,
 	createSceneRegistryFromBuiltInManifests,
 	resolveSceneBuiltInComponents,
-} from '../../core/src/scene/registry';
+} from '@axrone/scene-runtime';
 
+export type {
+	SceneManifestRuntimeProfileOptions,
+	SceneRuntimeProfile,
+	SceneRuntimeProfileContext,
+} from '../../scene-runtime/src/scene-profile';
 export {
 	CORE_SCENE_RUNTIME_PROFILE_ID,
 	SCENE_2D_RUNTIME_PROFILE_ID,
@@ -29,7 +34,7 @@ export {
 	get2DSceneRuntimeProfile,
 	getCoreSceneRuntimeProfile,
 	resolveSceneRegistryFromProfile,
-} from '../../core/src/scene/profile';
+} from '../../scene-runtime/src/scene-profile';
 
 export type { CameraConfig } from '../../core/src/scene/components/camera';
 export { Camera } from '../../core/src/scene/components/camera';

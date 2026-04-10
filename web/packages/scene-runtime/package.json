@@ -13,6 +13,16 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.mjs",
             "require": "./dist/index.js"
+        },
+        "./scene-registry": {
+            "types": "./dist/scene-registry.d.ts",
+            "import": "./dist/scene-registry.mjs",
+            "require": "./dist/scene-registry.js"
+        },
+        "./scene-profile": {
+            "types": "./dist/scene-profile.d.ts",
+            "import": "./dist/scene-profile.mjs",
+            "require": "./dist/scene-profile.js"
         }
     },
     "scripts": {
