@@ -1,21 +1,20 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import {
+    createWorkspacePackageAliasMap,
+    listWorkspacePackageNames,
+} from './build/workspace-package-aliases.mjs';
 
 const workspaceDir = path.dirname(fileURLToPath(import.meta.url));
+const workspaceAliases = createWorkspacePackageAliasMap(workspaceDir);
+const workspacePackageNames = listWorkspacePackageNames(workspaceDir);
 
 export default defineConfig({
     root: path.resolve(workspaceDir, 'examples'),
     publicDir: false,
     resolve: {
-        alias: {
-            '@axrone/core': path.resolve(workspaceDir, 'packages/core/src'),
-            '@axrone/numeric': path.resolve(workspaceDir, 'packages/numeric/src'),
-            '@axrone/random': path.resolve(workspaceDir, 'packages/random/src'),
-            '@axrone/ui': path.resolve(workspaceDir, 'packages/ui/src'),
-            '@axrone/ui-webgl2': path.resolve(workspaceDir, 'packages/ui-webgl2/src'),
-            '@axrone/utility': path.resolve(workspaceDir, 'packages/utility/src'),
-        },
+        alias: workspaceAliases,
     },
     server: {
         fs: {
@@ -27,14 +26,7 @@ export default defineConfig({
         open: '/index.html',
     },
     optimizeDeps: {
-        exclude: [
-            '@axrone/core',
-            '@axrone/numeric',
-            '@axrone/random',
-            '@axrone/ui',
-            '@axrone/ui-webgl2',
-            '@axrone/utility',
-        ],
+        exclude: workspacePackageNames,
         include: ['monaco-editor'],
     },
     build: {

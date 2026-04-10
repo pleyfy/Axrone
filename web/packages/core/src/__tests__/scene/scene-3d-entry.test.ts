@@ -7,7 +7,7 @@ describe('scene-3d entry', () => {
     });
 
     it('surfaces the 3d facade and 3d capability primitives', async () => {
-        const scene3D = await import('../../scene-3d');
+        const scene3D = await import('@axrone/scene-3d');
 
         expect(scene3D.Scene).toBeDefined();
         expect(scene3D.Camera).toBeDefined();

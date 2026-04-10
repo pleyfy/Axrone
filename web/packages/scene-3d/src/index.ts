@@ -1,0 +1,1 @@
+export * from '../../core/src/scene-3d';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import * as sceneRuntime from '../../scene-runtime';
+import * as sceneRuntime from '@axrone/scene-runtime';
 
 describe('scene-runtime entry', () => {
     it('surfaces core runtime primitives without re-exporting 3d facade types', () => {

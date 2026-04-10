@@ -7,7 +7,7 @@ describe('scene-2d entry', () => {
     });
 
     it('surfaces the 2d facade without 3d-only capability exports', async () => {
-        const scene2D = await import('../../scene-2d');
+        const scene2D = await import('@axrone/scene-2d');
 
         expect(scene2D.Scene2D).toBeDefined();
         expect(scene2D.Camera).toBeDefined();

@@ -3,22 +3,22 @@ import {
     CORE_SCENE_RUNTIME_PROFILE_ID,
     coreSceneRuntimeProfile,
     getCoreSceneRuntimeProfile,
-} from '../../runtime-profile-core';
+} from '@axrone/runtime-profile-core';
 import {
     SCENE_2D_RUNTIME_PROFILE_ID,
     get2DSceneRuntimeProfile,
     scene2DRuntimeProfile,
-} from '../../runtime-profile-2d';
+} from '@axrone/runtime-profile-2d';
 import {
     SCENE_3D_RUNTIME_PROFILE_ID,
     get3DSceneRuntimeProfile,
     scene3DRuntimeProfile,
-} from '../../runtime-profile-3d';
+} from '@axrone/runtime-profile-3d';
 import {
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,
     fullSceneRuntimeProfile,
     getDefaultSceneRuntimeProfile,
-} from '../../runtime-profile-full';
+} from '@axrone/runtime-profile-full';
 
 describe('runtime profile entrypoints', () => {
     it('exposes the core runtime profile from its own entrypoint', () => {
