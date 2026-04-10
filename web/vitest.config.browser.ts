@@ -1,10 +1,10 @@
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createWorkspacePackageAliasMap } from './build/workspace-package-aliases.mjs';
+import { createWorkspacePackageAliasEntries } from './build/workspace-package-aliases.mjs';
 
 const workspaceDir = path.dirname(fileURLToPath(import.meta.url));
-const workspaceAliases = createWorkspacePackageAliasMap(workspaceDir);
+const workspaceAliases = createWorkspacePackageAliasEntries(workspaceDir);
 
 export default defineConfig({
     test: {

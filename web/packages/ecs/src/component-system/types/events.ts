@@ -1,6 +1,6 @@
 import type { ComponentRegistry, ComponentInstance, Entity } from './core';
 import type { Actor } from '../core/actor';
-import type { EventMap } from '../../support/event';
+import type { EventMap } from '@axrone/ecs-events';
 
 export type ComponentChangeEvent<R extends ComponentRegistry> = {
     readonly [K in keyof R as `${string & K}Added`]: {

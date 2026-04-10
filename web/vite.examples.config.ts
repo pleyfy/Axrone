@@ -2,12 +2,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import {
-    createWorkspacePackageAliasMap,
+    createWorkspacePackageAliasEntries,
     listWorkspacePackageNames,
 } from './build/workspace-package-aliases.mjs';
 
 const workspaceDir = path.dirname(fileURLToPath(import.meta.url));
-const workspaceAliases = createWorkspacePackageAliasMap(workspaceDir);
+const workspaceAliases = createWorkspacePackageAliasEntries(workspaceDir);
 const workspacePackageNames = listWorkspacePackageNames(workspaceDir);
 
 export default defineConfig({

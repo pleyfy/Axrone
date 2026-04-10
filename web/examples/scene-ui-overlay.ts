@@ -1,6 +1,6 @@
-import { Transform, Vec3 } from '@axrone/core';
+import { Transform } from '@axrone/core';
 import { Scene, createUnlitColorShaderDefinition } from '@axrone/scene-3d';
-import { Quat } from '@axrone/numeric';
+import { Quat, Vec3 } from '@axrone/numeric';
 import { UIRuntime } from '@axrone/ui';
 import { attachUIOverlayToScene } from '@axrone/ui-webgl2';
 import { bindSceneToContainer } from './example-runtime';

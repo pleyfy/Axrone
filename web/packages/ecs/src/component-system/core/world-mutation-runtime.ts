@@ -1,4 +1,4 @@
-import type { EventKey } from '../../support/event';
+import type { EventKey } from '@axrone/ecs-events';
 import { getComponentMetadata } from '../decorators/script';
 import type { ComponentConstructor, ComponentInstance, ComponentRegistry, Entity } from '../types/core';
 import type { ECSEventMap } from '../types/events';

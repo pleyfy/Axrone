@@ -514,6 +514,26 @@ describe('ECSObservables', () => {
             expect(namedEvents[0].actor.name).toBe('SpecialActor');
         });
 
+        it('should route destroyed name filters through entityDestroyed', () => {
+            const lifecycle = observables.createEntityLifecycle();
+            const destroyedEvents: any[] = [];
+
+            const namedStream = lifecycle.byName('SpecialActor');
+            namedStream.destroyed.addObserver((data) => {
+                destroyedEvents.push(data);
+            });
+
+            const specialActor = new Actor(world, { name: 'SpecialActor' });
+            const normalActor = new Actor(world, { name: 'NormalActor' });
+
+            observables.entityCreated.notify({ entity: 1 as Entity, actor: specialActor });
+            observables.entityDestroyed.notify({ entity: 2 as Entity, actor: normalActor });
+            observables.entityDestroyed.notify({ entity: 3 as Entity, actor: specialActor });
+
+            expect(destroyedEvents).toHaveLength(1);
+            expect(destroyedEvents[0]).toEqual({ entity: 3 as Entity, actor: specialActor });
+        });
+
         it('should filter by actor tag', () => {
             const lifecycle = observables.createEntityLifecycle();
             const taggedEvents: any[] = [];

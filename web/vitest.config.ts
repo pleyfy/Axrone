@@ -1,8 +1,8 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
-import { createWorkspacePackageAliasMap } from './build/workspace-package-aliases.mjs';
+import { createWorkspacePackageAliasEntries } from './build/workspace-package-aliases.mjs';
 
-const workspaceAliases = createWorkspacePackageAliasMap(__dirname);
+const workspaceAliases = createWorkspacePackageAliasEntries(__dirname);
 
 export default defineConfig({
     test: {

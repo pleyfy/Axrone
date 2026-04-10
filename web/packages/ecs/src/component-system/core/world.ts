@@ -5,7 +5,7 @@ import type {
     ComponentConstructor,
 } from '../types/core';
 import type { QueryResult } from '../types/system';
-import type { EventKey } from '../../support/event';
+import type { EventKey } from '@axrone/ecs-events';
 import type { ECSObservables } from '../observers/ecs-observer';
 import { OptimizedQueryCache } from '../archetype/query-cache';
 import { getComponentMetadata } from '../decorators/script';
