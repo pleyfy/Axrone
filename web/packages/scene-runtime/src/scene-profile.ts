@@ -8,7 +8,7 @@ import {
     type SceneBuiltInManifest,
     createSceneRegistryFromBuiltInManifests,
 } from './scene-registry';
-import type { SceneRegistry } from '../../core/src/scene/types';
+import type { SceneRegistry } from './types';
 
 export interface SceneRuntimeProfileContext<
     R extends ComponentRegistry = Record<string, never>,

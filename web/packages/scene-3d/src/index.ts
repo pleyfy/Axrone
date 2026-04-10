@@ -1,15 +1,15 @@
 export * from '@axrone/scene-runtime';
 
-export type { SceneAssetRuntimeOptions } from '../../core/src/scene/scene-asset-runtime';
-export { SceneAssetRuntime } from '../../core/src/scene/scene-asset-runtime';
-export { SceneAssetFacade } from '../../core/src/scene/scene-asset-facade';
-export { SceneLifecycleFacade } from '../../core/src/scene/scene-lifecycle-facade';
-export type { SceneLifecycleRuntimeOptions } from '../../core/src/scene/scene-lifecycle-runtime';
-export { SceneLifecycleRuntime } from '../../core/src/scene/scene-lifecycle-runtime';
-export type { SceneRuntimeKernelOptions } from '../../core/src/scene/scene-runtime-kernel';
-export { SceneRuntimeKernel } from '../../core/src/scene/scene-runtime-kernel';
-export { SceneRuntimeFacade } from '../../core/src/scene/scene-runtime-facade';
-export { SceneSnapshotFacade } from '../../core/src/scene/scene-snapshot-facade';
+export type { SceneAssetRuntimeOptions } from '../../scene-runtime/src/scene-asset-runtime';
+export { SceneAssetRuntime } from '../../scene-runtime/src/scene-asset-runtime';
+export { SceneAssetFacade } from '../../scene-runtime/src/scene-asset-facade';
+export { SceneLifecycleFacade } from '../../scene-runtime/src/scene-lifecycle-facade';
+export type { SceneLifecycleRuntimeOptions } from '../../scene-runtime/src/scene-lifecycle-runtime';
+export { SceneLifecycleRuntime } from '../../scene-runtime/src/scene-lifecycle-runtime';
+export type { SceneRuntimeKernelOptions } from '../../scene-runtime/src/scene-runtime-kernel';
+export { SceneRuntimeKernel } from '../../scene-runtime/src/scene-runtime-kernel';
+export { SceneRuntimeFacade } from '../../scene-runtime/src/scene-runtime-facade';
+export { SceneSnapshotFacade } from '../../scene-runtime/src/scene-snapshot-facade';
 
 export {
 	DEFAULT_SCENE_BUILT_IN_MANIFESTS,
@@ -64,5 +64,5 @@ export { PointLight } from '../../scene-runtime/src/components/point-light';
 export { SpotLight } from '../../scene-runtime/src/components/spot-light';
 
 export { createScene } from './scene-factory';
-export { createUnlitColorShaderDefinition } from '../../core/src/scene/scene-default-shaders';
+export { createUnlitColorShaderDefinition } from './scene-default-shaders';
 export { Scene } from './scene';

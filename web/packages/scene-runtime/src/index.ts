@@ -54,8 +54,8 @@ export {
 	get3DSceneRuntimeProfile,
 	resolveSceneRegistryFromProfile,
 } from './scene-profile';
-export type { SceneActorRuntimeOptions } from '../../core/src/scene/scene-actor-runtime';
-export { SceneActorRuntime } from '../../core/src/scene/scene-actor-runtime';
+export type { SceneActorRuntimeOptions } from './scene-actor-runtime';
+export { SceneActorRuntime } from './scene-actor-runtime';
 export {
 	DEFAULT_SCENE_AMBIENT_LIGHT,
 	DEFAULT_SCENE_CLEAR_COLOR,
@@ -64,13 +64,13 @@ export {
 	DEFAULT_SCENE_WIDTH,
 	resolveSceneAmbientLight,
 	resolveSceneClearColor,
-} from '../../core/src/scene/scene-runtime-defaults';
+} from './scene-runtime-defaults';
 export type {
 	SceneSnapshotActorHost,
 	SceneSnapshotAssetHost,
 	SceneSnapshotRuntimeOptions,
-} from '../../core/src/scene/scene-snapshot-runtime';
-export { SceneSnapshotRuntime } from '../../core/src/scene/scene-snapshot-runtime';
+} from './scene-snapshot-runtime';
+export { SceneSnapshotRuntime } from './scene-snapshot-runtime';
 
 export type {
 	SceneBuiltInRegistry,
@@ -108,11 +108,11 @@ export type {
 	SceneTextureResourceHandle,
 	SceneUniformValue,
 	SceneVertexAttribute,
-} from '../../core/src/scene/types';
+} from './types';
 
 export {
 	SceneCanvasError,
 	SceneCapabilityError,
 	SceneError,
 	SceneLifecycleError,
-} from '../../core/src/scene/errors';
+} from './errors';

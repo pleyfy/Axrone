@@ -1,9 +1,9 @@
 import type { Actor, ActorConfig } from '../../core/src/component-system/core/actor';
 import type { World } from '../../core/src/component-system/core/world';
 import type { ComponentRegistry } from '../../core/src/component-system/types/core';
-import { SceneCapabilityError } from '../../core/src/scene/errors';
-import type { SceneActorRuntime } from '../../core/src/scene/scene-actor-runtime';
-import type { SceneRegistry } from '../../core/src/scene/types';
+import { SceneCapabilityError } from '../../scene-runtime/src/errors';
+import type { SceneRegistry } from '../../scene-runtime/src/types';
+import type { SceneActorRuntime } from '../../scene-runtime/src/scene-actor-runtime';
 import { Camera, type CameraConfig } from '../../scene-runtime/src/components/camera';
 import { MeshRenderer, type MeshRendererConfig } from '../../scene-runtime/src/components/mesh-renderer';
 

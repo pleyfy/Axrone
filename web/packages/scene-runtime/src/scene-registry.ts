@@ -9,7 +9,7 @@ import { OrbitCameraController } from './components/orbit-camera-controller';
 import { PrefabNodeBinding } from './components/prefab-node-binding';
 import { PointLight } from './components/point-light';
 import { SpotLight } from './components/spot-light';
-import type { SceneBuiltInRegistry, SceneRegistry } from '../../core/src/scene/types';
+import type { SceneBuiltInRegistry, SceneRegistry } from './types';
 
 export type SceneBuiltInComponentName = keyof SceneBuiltInRegistry;
 

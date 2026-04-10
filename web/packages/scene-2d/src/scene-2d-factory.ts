@@ -1,5 +1,5 @@
 import type { ComponentRegistry } from '../../core/src/component-system/types/core';
-import type { SceneOptions } from '../../core/src/scene/types';
+import type { SceneOptions } from '../../scene-runtime/src/types';
 import { Scene2D } from './scene-2d';
 
 export const createScene2D = <R extends ComponentRegistry = Record<string, never>>(

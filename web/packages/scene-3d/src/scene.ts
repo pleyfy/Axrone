@@ -1,10 +1,10 @@
 import { Actor, type ActorConfig } from '../../core/src/component-system/core/actor';
 import type { ComponentRegistry } from '../../core/src/component-system/types/core';
 import type { World } from '../../core/src/component-system/core/world';
-import type { CameraConfig } from '../../core/src/scene/components/camera';
-import type { MeshRendererConfig } from '../../core/src/scene/components/mesh-renderer';
-import { SceneAssetFacade } from '../../core/src/scene/scene-asset-facade';
-import type { SceneOptions, SceneRegistry } from '../../core/src/scene/types';
+import type { CameraConfig } from '../../scene-runtime/src/components/camera';
+import type { MeshRendererConfig } from '../../scene-runtime/src/components/mesh-renderer';
+import type { SceneOptions, SceneRegistry } from '../../scene-runtime/src/types';
+import { SceneAssetFacade } from '../../scene-runtime/src/scene-asset-facade';
 import { Scene3DActorRuntime } from './scene-3d-actor-runtime';
 
 export class Scene<R extends ComponentRegistry = Record<string, never>> extends SceneAssetFacade<R> {
