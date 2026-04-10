@@ -4,13 +4,6 @@ import { createPackageConfig } from '../../build/create-package-config.mjs';
 
 const packageDir = path.dirname(fileURLToPath(import.meta.url));
 
-export default [
-    ...createPackageConfig({
-        packageDir,
-    }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/asset/index.ts',
-        outputBasename: 'asset',
-    }),
-];
+export default createPackageConfig({
+    packageDir,
+});

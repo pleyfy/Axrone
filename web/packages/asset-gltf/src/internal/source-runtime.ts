@@ -1,4 +1,4 @@
-import type { AssetImportSource } from '../../types';
+import type { AssetImportSource } from '../asset-contract';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
     GltfContainerError,

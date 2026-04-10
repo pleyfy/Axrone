@@ -7,8 +7,7 @@ import type {
     GltfTextureTranscodeResult,
     GltfTextureTranscoder,
 } from './types';
-import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
-import { TextureFormatInfo } from '../../renderer/webgl2/texture/utils';
+import { TextureFormat, TextureFormatInfo } from '@axrone/render-webgl2';
 
 type BasisParseResult = Awaited<ReturnType<typeof BasisLoader.parse>>;
 type BasisTextureLevel = BasisParseResult[number][number];

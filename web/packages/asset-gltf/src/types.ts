@@ -1,4 +1,4 @@
-import type { FilterMode, TextureFormat, WrapMode } from '../../renderer/webgl2/texture/interfaces';
+import type { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type {
     AssetCustomSource,
     AssetImportDiagnostic,
@@ -7,7 +7,7 @@ import type {
     AssetImporter,
     AssetKind,
     AssetSchema,
-} from '../types';
+} from './asset-contract';
 import type {
     GltfMaterialDefinition,
     GltfMeshDefinition,

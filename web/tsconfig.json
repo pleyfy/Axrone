@@ -15,6 +15,7 @@
         "forceConsistentCasingInFileNames": true,
         "baseUrl": ".",
         "paths": {
+            "@axrone/core/*": ["packages/core/src/*"],
             "@axrone/scene-runtime": ["packages/scene-runtime/src"],
             "@axrone/scene-runtime/*": ["packages/scene-runtime/src/*"],
             "@axrone/ecs/*": ["packages/ecs/src/*"],

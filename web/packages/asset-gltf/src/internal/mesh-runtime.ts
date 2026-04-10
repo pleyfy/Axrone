@@ -1,4 +1,4 @@
-import type { AssetImportDiagnostic } from '../../types';
+import type { AssetImportDiagnostic } from '../asset-contract';
 import { GltfSchemaError, GltfTopologyError } from '../errors';
 import type { GltfMeshDefinition } from '../asset-ir';
 import type { GltfAccessorJson, GltfMeshBounds, GltfPrimitiveJson } from '../types';

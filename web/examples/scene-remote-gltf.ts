@@ -1,11 +1,13 @@
 import {
     AssetDatabase,
-    Transform,
+    type AssetImporter,
+} from '@axrone/core';
+import { Transform } from '@axrone/core';
+import {
     createGltfImporter,
     loadGltfSceneIntoScene,
-    type AssetImporter,
     type GltfAssetSchemaLike,
-} from '@axrone/core';
+} from '@axrone/asset-gltf';
 import {
     Camera,
     DirectionalLight,

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BasisLoader } from '@loaders.gl/textures';
 import {
     AssetDatabase,
+} from '../../asset';
+import {
     createLoadersBasisGltfTextureTranscoder,
     createGltfImporter,
     createGltfTextureTranscodeStage,
@@ -11,7 +13,7 @@ import {
     type GltfAssetSchema,
     type GltfTextureAsset,
     type GltfRootJson,
-} from '../../asset';
+} from '@axrone/asset-gltf';
 import {
     FilterMode,
     TextureFormat,

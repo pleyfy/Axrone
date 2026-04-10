@@ -1,12 +1,12 @@
 import { Vec3 } from '@axrone/numeric';
-import { TextureFormat } from '../../../renderer/webgl2/texture/interfaces';
+import { TextureFormat } from '@axrone/render-webgl2';
 import type {
     GltfMaterialDefinition,
     GltfTextureCompressedLevelDefinition,
     GltfTextureDefinition,
     GltfUniformValue,
 } from '../asset-ir';
-import type { AssetImportDiagnostic } from '../../types';
+import type { AssetImportDiagnostic } from '../asset-contract';
 import {
     inferTextureFormatFromKtx2,
     parseKtx2Texture,

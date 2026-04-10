@@ -1,7 +1,6 @@
 import type { Actor, ComponentRegistry } from '@axrone/ecs';
 import type { Scene, SceneSnapshotLoadOptions } from '@axrone/scene-3d';
-import type { AssetDatabase } from '../database';
-import type { AssetSelector } from '../types';
+import type { AssetDatabase, AssetSelector } from './asset-contract';
 import {
     createGltfSceneSnapshot,
     type GltfSceneSnapshotOptions,

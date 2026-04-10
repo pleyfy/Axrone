@@ -1,9 +1,9 @@
-import type { AssetDatabase } from '../database';
 import type {
+    AssetDatabase,
     AssetImportDiagnostic,
     AssetRecord,
     AssetSelector,
-} from '../types';
+} from './asset-contract';
 import type { SceneSnapshot } from '@axrone/scene-runtime';
 import {
     createGltfTextureDefinitionFromTextureAsset,

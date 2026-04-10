@@ -1,5 +1,10 @@
-import { FilterMode, TextureFormat, WrapMode } from '../../renderer/webgl2/texture/interfaces';
-import type { AssetImportDiagnostic, AssetImportResult, AssetImportSource, AssetWriteInput } from '../types';
+import { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
+import type {
+    AssetImportDiagnostic,
+    AssetImportResult,
+    AssetImportSource,
+    AssetWriteInput,
+} from './asset-contract';
 import { GltfSchemaError } from './errors';
 import { encodeGltfValue } from './value-serialization';
 import { GltfAccessorRuntime } from './internal/accessor-runtime';

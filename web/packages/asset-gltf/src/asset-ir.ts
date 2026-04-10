@@ -1,5 +1,5 @@
 import type { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
-import type { FilterMode, TextureFormat, WrapMode } from '../../renderer/webgl2/texture/interfaces';
+import type { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 
 export type GltfMeshSemantic =
     | 'position'

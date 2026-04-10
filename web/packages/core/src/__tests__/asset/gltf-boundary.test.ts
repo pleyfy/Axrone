@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-const gltfDir = path.resolve(testDir, '../../asset/gltf');
+const gltfDir = path.resolve(testDir, '../../../../asset-gltf/src');
 const allowedSceneImportFiles = new Set([
     'scene-definition-adapter.ts',
     'scene-runtime-adapter.ts',

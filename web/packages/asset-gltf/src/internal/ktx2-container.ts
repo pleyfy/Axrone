@@ -1,4 +1,4 @@
-import { TextureFormat } from '../../../renderer/webgl2/texture/interfaces';
+import { TextureFormat } from '@axrone/render-webgl2';
 import { GltfContainerError } from '../errors';
 import type { GltfTextureMipLevel } from '../types';
 

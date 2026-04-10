@@ -3,6 +3,8 @@ import { MeshoptEncoder } from 'meshoptimizer';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
 import {
     AssetDatabase,
+} from '../../asset';
+import {
     createGltfSceneSnapshot,
     createGltfImporter,
     createGltfTextureTranscodeStage,
@@ -10,7 +12,7 @@ import {
     GltfTextureTranscoderRegistry,
     type GltfAssetSchema,
     type GltfRootJson,
-} from '../../asset';
+} from '@axrone/asset-gltf';
 
 const trianglePositions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
 const triangleIndices = new Uint16Array([0, 1, 2]);

@@ -2,11 +2,13 @@ import { Vec3 } from '@axrone/numeric';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
     AssetDatabase,
+} from '../../asset';
+import {
     createGltfImporter,
     loadGltfSceneIntoScene,
     type GltfAssetSchema,
     type GltfRootJson,
-} from '../../asset';
+} from '@axrone/asset-gltf';
 import { Transform } from '@axrone/ecs';
 import {
     createSceneOptions,
