@@ -286,6 +286,22 @@ describe('World', () => {
             const results = world.query('NonExistentComponent' as any);
             expect(results).toHaveLength(0);
         });
+
+        it('should keep query results correct when reusing existing archetypes', () => {
+            const entity = world.createEntity();
+
+            world.addComponent(entity, 'TestComponent');
+            expect(world.query('TestComponent')).toHaveLength(1);
+
+            world.removeComponent(entity, 'TestComponent');
+            expect(world.query('TestComponent')).toHaveLength(0);
+
+            world.addComponent(entity, 'TestComponent');
+
+            const results = world.query('TestComponent');
+            expect(results).toHaveLength(1);
+            expect(results[0].entity).toBe(entity);
+        });
     });
 
     describe('state management', () => {

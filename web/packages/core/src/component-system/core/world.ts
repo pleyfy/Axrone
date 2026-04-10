@@ -1,16 +1,12 @@
 import type {
     ComponentRegistry,
-    ComponentMask,
     Entity,
-    ArchetypeId,
-    BitMask,
     ComponentInstance,
     ComponentConstructor,
 } from '../types/core';
 import type { QueryResult } from '../types/system';
 import type { EventKey } from '../../event';
 import type { ECSObservables } from '../observers/ecs-observer';
-import { Archetype } from '../archetype/archetype';
 import { OptimizedQueryCache } from '../archetype/query-cache';
 import type { ECSEventMap } from '../types/events';
 import type { Actor } from './actor';
@@ -20,6 +16,7 @@ import { WorldDiagnostics, type WorldMetrics } from './world-diagnostics';
 import { WorldEventRuntime } from './world-event-runtime';
 import { WorldQueryRuntime } from './world-query-runtime';
 import { WorldSingletonRegistry } from './world-singleton-registry';
+import { WorldStorageRuntime } from './world-storage-runtime';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
 export type EntityId = Entity & { readonly __entityBrand: unique symbol };
@@ -73,18 +70,12 @@ interface WorldConfig {
 
 export class World<R extends ComponentRegistry> {
     private readonly _registry: R;
-    private readonly _componentMask: ComponentMask;
-    private readonly _archetypes = new Map<ArchetypeId, Archetype<R>>();
-    private readonly _entityArchetypes = new Map<Entity, ArchetypeId>();
+    private readonly _storage: WorldStorageRuntime<R>;
     private readonly _queryCache: OptimizedQueryCache;
     private readonly _queryRuntime: WorldQueryRuntime<R>;
     private readonly _events: WorldEventRuntime<R>;
     private readonly _actorRegistry = new WorldActorRegistry();
     private readonly _singletonRegistry = new WorldSingletonRegistry();
-
-    private _nextEntityId = 1;
-    private readonly _freeEntities: Entity[] = [];
-    private _emptyArchetypeId: ArchetypeId;
 
     private _state: WorldState = 'initializing';
     private readonly _config: Required<WorldConfig>;
@@ -111,19 +102,17 @@ export class World<R extends ComponentRegistry> {
         this._enableValidation = this._config.enableValidation;
 
         try {
-            this._componentMask = this._createComponentMask();
+            this._storage = new WorldStorageRuntime(this._registry);
             this._queryCache = new OptimizedQueryCache();
             this._queryRuntime = new WorldQueryRuntime({
                 cache: this._queryCache,
-                getArchetypes: () => this._archetypes.values(),
-                createBitMask: (components) => this._createBitMask(components),
+                getArchetypes: () => this._storage.getArchetypes(),
+                createBitMask: (components) => this._storage.createBitMask(components),
             });
             this._events = new WorldEventRuntime(
                 Object.keys(this._registry),
                 (...components) => this.query(...(components as readonly (keyof R)[]))
             );
-
-            this._emptyArchetypeId = this._getOrCreateArchetype([]).id;
 
             this._state = 'ready';
         } catch (error) {
@@ -154,10 +143,10 @@ export class World<R extends ComponentRegistry> {
 
     get metrics(): Readonly<WorldMetrics> | null {
         return this._diagnostics.getMetrics({
-            entityCount: this._entityArchetypes.size,
-            archetypeCount: this._archetypes.size,
+            entityCount: this._storage.entityCount,
+            archetypeCount: this._storage.archetypeCount,
             actorCount: this._actorRegistry.size,
-            freeEntityCount: this._freeEntities.length,
+            freeEntityCount: this._storage.freeEntityCount,
             componentTypes: Object.keys(this._registry),
         });
     }
@@ -181,7 +170,7 @@ export class World<R extends ComponentRegistry> {
     createEntity(): Entity {
         this._validateWorldState('createEntity');
 
-        if (this._entityArchetypes.size >= this._config.maxEntities) {
+        if (this._storage.entityCount >= this._config.maxEntities) {
             throw new WorldError(
                 `Maximum entity limit (${this._config.maxEntities}) reached`,
                 'createEntity'
@@ -189,15 +178,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         try {
-            const entity = this._freeEntities.pop() ?? (this._nextEntityId++ as Entity);
-            const emptyArchetype = this._archetypes.get(this._emptyArchetypeId);
-
-            if (!emptyArchetype) {
-                throw new WorldError('Empty archetype not found', 'createEntity');
-            }
-
-            emptyArchetype.addEntity(entity);
-            this._entityArchetypes.set(entity, this._emptyArchetypeId);
+            const entity = this._storage.createEntity();
 
             this._diagnostics.markMutation();
 
@@ -216,17 +197,12 @@ export class World<R extends ComponentRegistry> {
         this._validateEntity(entity, 'destroyEntity');
 
         try {
-            const archetypeId = this._entityArchetypes.get(entity);
-            if (!archetypeId) {
+            const removedEntity = this._storage.destroyEntity(entity);
+            if (!removedEntity) {
                 return;
             }
 
-            const archetype = this._archetypes.get(archetypeId);
-            if (!archetype) {
-                throw new EntityError('Archetype not found', entity, 'destroyEntity');
-            }
-
-            const removedComponents = archetype.removeEntity(entity);
+            const { archetype, removedComponents } = removedEntity;
 
             // Clear singleton cache for any singleton components being destroyed
             this._singletonRegistry.clearEntity(entity, Object.keys(removedComponents));
@@ -244,9 +220,6 @@ export class World<R extends ComponentRegistry> {
                     );
                 }
             }
-
-            this._entityArchetypes.delete(entity);
-            this._freeEntities.push(entity);
 
             const actor = this._actorRegistry.unregister(entity);
             if (actor) {
@@ -295,7 +268,7 @@ export class World<R extends ComponentRegistry> {
                 }
             }
 
-            const currentArchetypeId = this._entityArchetypes.get(entity);
+            const currentArchetypeId = this._storage.getEntityArchetypeId(entity);
             if (!currentArchetypeId) {
                 throw new ComponentError(
                     'Entity not found',
@@ -305,7 +278,7 @@ export class World<R extends ComponentRegistry> {
                 );
             }
 
-            const currentArchetype = this._archetypes.get(currentArchetypeId);
+            const currentArchetype = this._storage.getArchetype(currentArchetypeId);
             if (!currentArchetype) {
                 throw new ComponentError(
                     'Current archetype not found',
@@ -326,7 +299,10 @@ export class World<R extends ComponentRegistry> {
             }
 
             const newSignature = [...currentArchetype.signature, componentName as string].sort();
-            const targetArchetype = this._getOrCreateArchetype(newSignature);
+            const {
+                archetype: targetArchetype,
+                created: createdArchetype,
+            } = this._storage.getOrCreateArchetype(newSignature);
 
             const pool = targetArchetype.components.get(componentName as string);
             if (!pool) {
@@ -343,9 +319,11 @@ export class World<R extends ComponentRegistry> {
             const removedComponents = currentArchetype.removeEntity(entity);
             removedComponents[componentName as string] = finalComponent;
             targetArchetype.addEntity(entity, removedComponents);
+            this._storage.setEntityArchetype(entity, targetArchetype.id);
 
-            this._entityArchetypes.set(entity, targetArchetype.id);
-            this._invalidateStructureCaches();
+            if (createdArchetype) {
+                this._invalidateStructureCaches();
+            }
 
             if (metadata?.singleton) {
                 this._singletonRegistry.set(componentName as string, entity, finalComponent);
@@ -380,12 +358,12 @@ export class World<R extends ComponentRegistry> {
         this._validateComponentName(componentName, 'removeComponent');
 
         try {
-            const currentArchetypeId = this._entityArchetypes.get(entity);
+            const currentArchetypeId = this._storage.getEntityArchetypeId(entity);
             if (!currentArchetypeId) {
                 return;
             }
 
-            const currentArchetype = this._archetypes.get(currentArchetypeId);
+            const currentArchetype = this._storage.getArchetype(currentArchetypeId);
             if (
                 !currentArchetype ||
                 !currentArchetype.signature.includes(componentName as string)
@@ -396,15 +374,21 @@ export class World<R extends ComponentRegistry> {
             const newSignature = currentArchetype.signature.filter(
                 (name) => name !== (componentName as string)
             );
-            const targetArchetype = this._getOrCreateArchetype(newSignature);
+            const {
+                archetype: targetArchetype,
+                created: createdArchetype,
+            } = this._storage.getOrCreateArchetype(newSignature);
 
             const removedComponents = currentArchetype.removeEntity(entity);
             const removedComponent = removedComponents[componentName as string];
             delete removedComponents[componentName as string];
 
             targetArchetype.addEntity(entity, removedComponents);
-            this._entityArchetypes.set(entity, targetArchetype.id);
-            this._invalidateStructureCaches();
+            this._storage.setEntityArchetype(entity, targetArchetype.id);
+
+            if (createdArchetype) {
+                this._invalidateStructureCaches();
+            }
 
             // Clear singleton cache if this was a singleton component
             const componentConstructor = this._registry[componentName];
@@ -458,17 +442,7 @@ export class World<R extends ComponentRegistry> {
         }
 
         try {
-            const archetypeId = this._entityArchetypes.get(entity);
-            if (!archetypeId) {
-                return undefined;
-            }
-
-            const archetype = this._archetypes.get(archetypeId);
-            if (!archetype) {
-                return undefined;
-            }
-
-            return archetype.getComponent(entity, componentName as string);
+            return this._storage.getComponent(entity, componentName as string);
         } catch (error) {
             if (this._enableValidation) {
                 console.warn(
@@ -528,7 +502,7 @@ export class World<R extends ComponentRegistry> {
             const results: QueryResult<R, Q>[] = [];
 
             for (const archetypeId of matchingArchetypes) {
-                const archetype = this._archetypes.get(archetypeId);
+                const archetype = this._storage.getArchetype(archetypeId);
                 if (!archetype) {
                     continue;
                 }
@@ -604,7 +578,7 @@ export class World<R extends ComponentRegistry> {
 
     getAllEntities(): readonly Entity[] {
         this._validateWorldState('getAllEntities');
-        return Array.from(this._entityArchetypes.keys());
+        return this._storage.getAllEntities();
     }
 
     getAllActors(): readonly Actor[] {
@@ -613,11 +587,11 @@ export class World<R extends ComponentRegistry> {
     }
 
     getEntityCount(): number {
-        return this._entityArchetypes.size;
+        return this._storage.entityCount;
     }
 
     getArchetypeCount(): number {
-        return this._archetypes.size;
+        return this._storage.archetypeCount;
     }
 
     registerComponentType<T extends ComponentConstructor>(componentType: T): void {
@@ -646,9 +620,8 @@ export class World<R extends ComponentRegistry> {
         }
 
         registry[componentName] = componentType;
-        this._componentMask.set(componentName, this._componentMask.size);
+        this._storage.registerComponent(componentName);
         this._events.registerComponent(componentName);
-        this._invalidateStructureCaches();
     }
 
     isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean {
@@ -826,31 +799,10 @@ export class World<R extends ComponentRegistry> {
 
         try {
             this._state = 'disposing';
-
-            const entitiesToDestroy = Array.from(this._entityArchetypes.keys());
-
-            for (const entity of entitiesToDestroy) {
-                try {
-                    const archetypeId = this._entityArchetypes.get(entity);
-                    if (archetypeId) {
-                        const archetype = this._archetypes.get(archetypeId);
-                        if (archetype) {
-                            archetype.removeEntity(entity);
-                        }
-                        this._entityArchetypes.delete(entity);
-                    }
-                } catch (error) {
-                    console.error(`Failed to destroy entity ${entity} during clear:`, error);
-                }
-            }
-
-            this._archetypes.clear();
-            this._entityArchetypes.clear();
             this._actorRegistry.clear();
             this._singletonRegistry.clear();
             this._queryCache.invalidate();
-            this._freeEntities.length = 0;
-            this._nextEntityId = 1;
+            this._storage.reset();
 
             try {
                 this._events.dispose();
@@ -858,66 +810,10 @@ export class World<R extends ComponentRegistry> {
                 console.error('Failed to dispose world event runtime:', error);
             }
 
-            this._emptyArchetypeId = this._getOrCreateArchetype([]).id;
-
             this._state = 'disposed';
         } catch (error) {
             console.error('Failed to clear world:', error);
             this._state = 'disposed';
-        }
-    }
-
-    private _createComponentMask(): ComponentMask {
-        const mask = new Map<string, number>();
-        let bit = 0;
-
-        for (const componentName of Object.keys(this._registry)) {
-            mask.set(componentName, bit++);
-        }
-
-        return mask;
-    }
-
-    private _createBitMask(components: readonly string[]): BitMask {
-        let mask = 0n;
-
-        for (const componentName of components) {
-            const bit = this._componentMask.get(componentName);
-            if (bit !== undefined) {
-                mask |= 1n << BigInt(bit);
-            }
-        }
-
-        return mask;
-    }
-
-    private _getOrCreateArchetype(signature: readonly string[]): Archetype<R> {
-        try {
-            const sortedSignature = signature.slice().sort();
-            const id = (
-                sortedSignature.length === 0 ? 'EMPTY' : sortedSignature.join('|')
-            ) as ArchetypeId;
-
-            let archetype = this._archetypes.get(id);
-            if (!archetype) {
-                const mask = this._createBitMask(sortedSignature);
-                archetype = new Archetype(
-                    sortedSignature,
-                    mask,
-                    this._registry,
-                    this._componentMask
-                );
-                this._archetypes.set(id, archetype);
-                this._invalidateStructureCaches();
-            }
-
-            return archetype;
-        } catch (error) {
-            throw new WorldError(
-                'Failed to get or create archetype',
-                '_getOrCreateArchetype',
-                error instanceof Error ? error : new Error(String(error))
-            );
         }
     }
 
@@ -984,21 +880,18 @@ export class World<R extends ComponentRegistry> {
     }
 
     getDebugInfo(): Record<string, any> {
+        const storage = this._storage.getDebugInfo();
+
         return this._diagnostics.getDebugInfo({
             state: this._state,
             config: this._config,
             entityCount: this.getEntityCount(),
             archetypeCount: this.getArchetypeCount(),
             actorCount: this._actorRegistry.size,
-            freeEntityCount: this._freeEntities.length,
-            nextEntityId: this._nextEntityId,
+            freeEntityCount: storage.freeEntityCount,
+            nextEntityId: storage.nextEntityId,
             componentTypes: Object.keys(this._registry),
-            archetypes: Array.from(this._archetypes.entries()).map(([id, archetype]) => ({
-                id,
-                signature: archetype.signature,
-                entityCount: archetype.entityCount,
-                mask: archetype.mask.toString(2),
-            })),
+            archetypes: storage.archetypes,
         });
     }
 }
