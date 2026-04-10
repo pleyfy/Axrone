@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/core/world-diagnostics';
+export * from '@axrone/ecs/core';

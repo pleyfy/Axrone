@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/memory/component-pool';
+export * from '@axrone/ecs/memory';

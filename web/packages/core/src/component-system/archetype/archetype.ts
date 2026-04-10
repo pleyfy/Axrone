@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/archetype/archetype';
+export * from '@axrone/ecs/archetype';

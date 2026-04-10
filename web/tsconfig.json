@@ -17,6 +17,7 @@
         "paths": {
             "@axrone/scene-runtime": ["packages/scene-runtime/src"],
             "@axrone/scene-runtime/*": ["packages/scene-runtime/src/*"],
+            "@axrone/ecs/*": ["packages/ecs/src/*"],
             "@axrone/ecs-events/*": ["packages/ecs-events/src/*"],
             "@axrone/ecs-query/*": ["packages/ecs-query/src/*"],
             "@axrone/ecs-storage/*": ["packages/ecs-storage/src/*"],

@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/systems/system-manager';
+export * from '@axrone/ecs/systems';

@@ -1,4 +1,4 @@
-import { World, WorldError, EntityError, ComponentError } from '@axrone/ecs/component-system/core/world';
+import { World, WorldError, EntityError, ComponentError } from '@axrone/ecs/world';
 import { Component, script, Transform } from '@axrone/ecs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 

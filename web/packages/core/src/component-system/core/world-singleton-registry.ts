@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/core/world-singleton-registry';
+export * from '@axrone/ecs/core';

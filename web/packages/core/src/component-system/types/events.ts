@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/types/events';
+export * from '@axrone/ecs/types';

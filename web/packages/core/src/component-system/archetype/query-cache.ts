@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/archetype/query-cache';
+export * from '@axrone/ecs/archetype';

@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/components/transform';
+export * from '@axrone/ecs/components';

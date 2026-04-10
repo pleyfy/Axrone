@@ -1,1 +1,1 @@
-export * from '../../../../ecs/src/component-system/core/world-mutation-runtime';
+export * from '@axrone/ecs/core';
