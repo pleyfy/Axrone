@@ -260,6 +260,17 @@ const getEffectiveSource = (descriptor: ExampleDescriptor): string => {
     return sourceOverrides.get(descriptor.path) ?? readPersistedSource(descriptor.path) ?? descriptor.source;
 };
 
+const syncSourceOverride = (descriptor: ExampleDescriptor, source: string) => {
+    if (source === descriptor.source) {
+        sourceOverrides.delete(descriptor.path);
+        clearPersistedSource(descriptor.path);
+        return;
+    }
+
+    sourceOverrides.set(descriptor.path, source);
+    persistSource(descriptor.path, source);
+};
+
 const updateEditorCaption = (descriptor: ExampleDescriptor, source: string) => {
     const displayPath = descriptor.path.replace(/^\.\//, '');
     const isModified = source !== descriptor.source;
@@ -300,9 +311,12 @@ const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorCo
         .getSupportedPlaygroundImports()
         .join(', ')}`;
 
+    const initialSource = compilerModule.normalizePlaygroundSource(getEffectiveSource(descriptor));
+    syncSourceOverride(descriptor, initialSource);
+
     editor = editorModule.createLiveEditor({
         container: editorHost,
-        value: getEffectiveSource(descriptor),
+        value: initialSource,
         path: descriptor.path,
         onChange: () => {
             if (isApplyingEditorSource || !currentDescriptor || !editor) {
@@ -341,7 +355,9 @@ const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorCo
 
 const syncEditorToDescriptor = async (descriptor: ExampleDescriptor) => {
     const liveEditor = await ensureEditor(descriptor);
-    const nextSource = getEffectiveSource(descriptor);
+    const { compilerModule } = await playgroundToolsPromise;
+    const nextSource = compilerModule.normalizePlaygroundSource(getEffectiveSource(descriptor));
+    syncSourceOverride(descriptor, nextSource);
 
     isApplyingEditorSource = true;
     liveEditor.loadSource(nextSource, descriptor.path);
@@ -366,7 +382,17 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
     cancelScheduledRun();
 
     const runToken = ++currentRunToken;
+    const { compilerModule } = await playgroundToolsPromise;
     const source = liveEditor.getValue();
+    const normalizedSource = compilerModule.normalizePlaygroundSource(source);
+
+    if (normalizedSource !== source) {
+        isApplyingEditorSource = true;
+        liveEditor.setValue(normalizedSource);
+        isApplyingEditorSource = false;
+        syncSourceOverride(currentDescriptor, normalizedSource);
+        updateEditorCaption(currentDescriptor, normalizedSource);
+    }
 
     setStatus(reason === 'select' ? 'Preparing scene...' : 'Refreshing scene...', 'loading');
     setEditorStatus(
@@ -375,8 +401,10 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
     );
 
     try {
-        const { compilerModule } = await playgroundToolsPromise;
-        const runtimeExample = compilerModule.compileSceneExample(source, currentDescriptor.path);
+        const runtimeExample = compilerModule.compileSceneExample(
+            normalizedSource,
+            currentDescriptor.path
+        );
 
         if (runToken !== currentRunToken) {
             return;

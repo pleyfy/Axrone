@@ -17,6 +17,7 @@ import ts from 'typescript';
 import * as exampleRuntime from '../example-runtime';
 import type { SceneExample } from '../example-types';
 import * as uiExampleHelpers from '../ui/example-helpers';
+import { normalizePlaygroundSource, validateSupportedModuleImports } from './source-compat';
 
 const supportedModules = {
     '@axrone/core': axroneCore,
@@ -84,8 +85,17 @@ const createRuntimeRequire = () => {
 
 export const getSupportedPlaygroundImports = (): readonly string[] => supportedImports;
 
+export { normalizePlaygroundSource };
+
 export const compileSceneExample = (source: string, fileName = 'live-example.ts'): SceneExample => {
-    const transpileResult = ts.transpileModule(source, {
+    const normalizedSource = normalizePlaygroundSource(source);
+    const importDiagnostics = validateSupportedModuleImports(normalizedSource, supportedModules);
+
+    if (importDiagnostics.length > 0) {
+        throw new Error(importDiagnostics.join('\n'));
+    }
+
+    const transpileResult = ts.transpileModule(normalizedSource, {
         fileName,
         reportDiagnostics: true,
         compilerOptions: {
