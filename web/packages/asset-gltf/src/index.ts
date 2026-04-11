@@ -97,6 +97,11 @@ export {
     GltfSchemaError,
     GltfTopologyError,
 } from './errors';
+export type { ParsedKtx2Texture } from './internal/ktx2-container';
+export {
+    inferTextureFormatFromKtx2,
+    parseKtx2Texture,
+} from './internal/ktx2-container';
 
 export {
     createLoadersBasisGltfTextureTranscoder,

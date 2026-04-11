@@ -1,11 +1,26 @@
 import { IDistribution, IRandomState, RandomResult, DistributionSample } from '../types';
 import { validatePositive } from '../constants';
 import { createEngineFactory } from '../engines';
+import {
+    sampleManyFromDistribution,
+    sampleManyWithDistributionMetadata,
+    sampleWithDistributionMetadata,
+} from '../internal/distribution-sampling';
 
 export class ExponentialDistribution implements IDistribution<number> {
     constructor(private readonly lambda: number = 1) {
         validatePositive(lambda, 'lambda');
     }
+
+    private readonly _createSample = (value: number): DistributionSample<number> => ({
+        value,
+        metadata: {
+            lambda: this.lambda,
+            mean: this.mean(),
+            variance: this.variance(),
+            standardDeviation: this.standardDeviation(),
+        },
+    });
 
     public sample = (state: IRandomState): RandomResult<number> => {
         const engine = createEngineFactory(state.engine)();
@@ -16,56 +31,17 @@ export class ExponentialDistribution implements IDistribution<number> {
         return [value, engine.getState()];
     };
 
-    public sampleMany = (state: IRandomState, count: number): RandomResult<readonly number[]> => {
-        if (count <= 0 || !Number.isInteger(count)) {
-            throw new RangeError('Count must be a positive integer');
-        }
+    public sampleMany = (state: IRandomState, count: number): RandomResult<readonly number[]> =>
+        sampleManyFromDistribution(state, count, this.sample);
 
-        const result: number[] = [];
-        let currentState = state;
-
-        for (let i = 0; i < count; i++) {
-            const [value, nextState] = this.sample(currentState);
-            result.push(value);
-            currentState = nextState;
-        }
-
-        return [result, currentState];
-    };
-
-    public sampleWithMetadata = (state: IRandomState): RandomResult<DistributionSample<number>> => {
-        const [value, nextState] = this.sample(state);
-
-        const sample: DistributionSample<number> = {
-            value,
-            metadata: {
-                lambda: this.lambda,
-                mean: this.mean(),
-                variance: this.variance(),
-                standardDeviation: this.standardDeviation(),
-            },
-        };
-
-        return [sample, nextState];
-    };
+    public sampleWithMetadata = (state: IRandomState): RandomResult<DistributionSample<number>> =>
+        sampleWithDistributionMetadata(state, this.sample, this._createSample);
 
     public sampleManyWithMetadata = (
         state: IRandomState,
         count: number
-    ): RandomResult<readonly DistributionSample<number>[]> => {
-        const [values, nextState] = this.sampleMany(state, count);
-        const samples = values.map((value) => ({
-            value,
-            metadata: {
-                lambda: this.lambda,
-                mean: this.mean(),
-                variance: this.variance(),
-                standardDeviation: this.standardDeviation(),
-            },
-        }));
-
-        return [samples, nextState];
-    };
+    ): RandomResult<readonly DistributionSample<number>[]> =>
+        sampleManyWithDistributionMetadata(state, count, this.sampleMany, this._createSample);
 
     public probability = (x: number): number => {
         if (!Number.isFinite(x)) {

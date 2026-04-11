@@ -14,7 +14,7 @@ import type {
 import {
     inferTextureFormatFromKtx2,
     parseKtx2Texture,
-} from './ktx2-container';
+} from '@axrone/asset-gltf';
 
 interface GltfTextureUniformSpec {
     readonly usage: GltfTextureUsage;
