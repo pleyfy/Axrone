@@ -15,6 +15,12 @@
     "@jridgewell/gen-mapping" "^0.3.5"
     "@jridgewell/trace-mapping" "^0.3.24"
 
+"@axrone/asset-2d@^0.1.0", "@axrone/asset-2d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\asset-2d":
+  version "0.1.0"
+  resolved "file:packages/asset-2d"
+  dependencies:
+    "@axrone/asset-core" "^0.1.0"
+
 "@axrone/asset-core@^0.1.0", "@axrone/asset-core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\asset-core":
   version "0.1.0"
   resolved "file:packages/asset-core"
@@ -78,7 +84,13 @@
     "@axrone/numeric" "^0.0.1"
     "@axrone/utility" "^0.0.1"
 
-"@axrone/input@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\input":
+"@axrone/input-core@^0.1.0", "@axrone/input-core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\input-core":
+  version "0.1.0"
+  resolved "file:packages/input-core"
+  dependencies:
+    "@axrone/input" "^0.1.0"
+
+"@axrone/input@^0.1.0", "@axrone/input@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\input":
   version "0.1.0"
   resolved "file:packages/input"
   dependencies:
@@ -145,6 +157,18 @@
   version "0.0.1"
   resolved "file:packages/random"
 
+"@axrone/render-2d@^0.1.0", "@axrone/render-2d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\render-2d":
+  version "0.1.0"
+  resolved "file:packages/render-2d"
+  dependencies:
+    "@axrone/render-core" "^0.1.0"
+
+"@axrone/render-3d@^0.1.0", "@axrone/render-3d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\render-3d":
+  version "0.1.0"
+  resolved "file:packages/render-3d"
+  dependencies:
+    "@axrone/render-core" "^0.1.0"
+
 "@axrone/render-core@^0.1.0", "@axrone/render-core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\render-core":
   version "0.1.0"
   resolved "file:packages/render-core"
@@ -209,7 +233,7 @@
     "@axrone/scene-runtime" "^0.1.0"
     "@axrone/utility" "^0.0.1"
 
-"@axrone/scene-runtime-gltf@^0.1.0", "@axrone/scene-runtime-gltf@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\scene-runtime-gltf":
+"@axrone/scene-runtime-gltf@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\scene-runtime-gltf":
   version "0.1.0"
   resolved "file:packages/scene-runtime-gltf"
   dependencies:
@@ -1068,7 +1092,7 @@
     yargs "17.7.2"
     yargs-parser "21.1.1"
 
-"@loaders.gl/core@^4.4.1", "@loaders.gl/core@~4.4.0":
+"@loaders.gl/core@~4.4.0":
   version "4.4.1"
   resolved "https://registry.npmjs.org/@loaders.gl/core/-/core-4.4.1.tgz"
   integrity sha512-/s4IuvCCQUepvhjLnmePwQppGko2d1pxRS+sp7lyExU0uiqo5dVsAKaCZ2VnddBkFWgDVb/wvcZUBmv/dWcj0Q==

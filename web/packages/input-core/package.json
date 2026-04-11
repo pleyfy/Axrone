@@ -1,5 +1,5 @@
 {
-    "name": "@axrone/runtime-profile-core",
+    "name": "@axrone/input-core",
     "version": "0.1.0",
     "main": "./dist/index.js",
     "module": "./dist/index.mjs",
@@ -21,7 +21,6 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@axrone/input-core": "^0.1.0",
-        "@axrone/scene-runtime": "^0.1.0"
+        "@axrone/input": "^0.1.0"
     }
 }
