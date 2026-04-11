@@ -36,7 +36,9 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@axrone/core": "^0.1.0",
+        "@axrone/game-loop": "^0.1.0",
+        "@axrone/render-core": "^0.1.0",
+        "@axrone/scene-runtime": "^0.1.0",
         "@axrone/ui": "^0.0.1"
     }
 }

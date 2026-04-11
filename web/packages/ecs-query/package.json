@@ -1,0 +1,33 @@
+{
+    "name": "@axrone/ecs-query",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./query-cache": {
+            "types": "./dist/query-cache.d.ts",
+            "import": "./dist/query-cache.mjs",
+            "require": "./dist/query-cache.js"
+        },
+        "./world-query-runtime": {
+            "types": "./dist/world-query-runtime.d.ts",
+            "import": "./dist/world-query-runtime.mjs",
+            "require": "./dist/world-query-runtime.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    }
+}

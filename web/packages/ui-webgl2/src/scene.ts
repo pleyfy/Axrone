@@ -1,4 +1,4 @@
-import type { GameLoopSystem } from '@axrone/core';
+import type { GameLoopSystem } from '@axrone/game-loop';
 import { renderUIFrame } from '@axrone/ui';
 import { WebGL2UIRenderer } from './renderer';
 import type {

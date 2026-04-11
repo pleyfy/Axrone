@@ -1,0 +1,43 @@
+{
+    "name": "@axrone/ecs-events",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./event": {
+            "types": "./dist/event.d.ts",
+            "import": "./dist/event.mjs",
+            "require": "./dist/event.js"
+        },
+        "./observer": {
+            "types": "./dist/observer.d.ts",
+            "import": "./dist/observer.mjs",
+            "require": "./dist/observer.js"
+        },
+        "./ecs-observer": {
+            "types": "./dist/ecs-observer.d.ts",
+            "import": "./dist/ecs-observer.mjs",
+            "require": "./dist/ecs-observer.js"
+        },
+        "./world-event-runtime": {
+            "types": "./dist/world-event-runtime.d.ts",
+            "import": "./dist/world-event-runtime.mjs",
+            "require": "./dist/world-event-runtime.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    }
+}

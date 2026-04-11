@@ -1,5 +1,8 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
+import { createWorkspacePackageAliasEntries } from './build/workspace-package-aliases.mjs';
+
+const workspaceAliases = createWorkspacePackageAliasEntries(__dirname);
 
 export default defineConfig({
     test: {
@@ -7,6 +10,7 @@ export default defineConfig({
         globals: true,
         setupFiles: ['./vitest.setup.ts'],
         include: [
+            'examples/**/*.{test,spec}.{js,ts}',
             'packages/**/*.{test,spec}.{js,ts}',
             'packages/**/__tests__/**/*.{test,spec}.{js,ts}',
         ],
@@ -17,14 +21,7 @@ export default defineConfig({
         ],
     },
     resolve: {
-        alias: {
-            '@axrone/core': path.resolve(__dirname, 'packages/core/src'),
-            '@axrone/numeric': path.resolve(__dirname, 'packages/numeric/src'),
-            '@axrone/random': path.resolve(__dirname, 'packages/random/src'),
-            '@axrone/ui': path.resolve(__dirname, 'packages/ui/src'),
-            '@axrone/ui-webgl2': path.resolve(__dirname, 'packages/ui-webgl2/src'),
-            '@axrone/utility': path.resolve(__dirname, 'packages/utility/src'),
-        },
+        alias: workspaceAliases,
     },
     esbuild: {
         target: 'es2022',

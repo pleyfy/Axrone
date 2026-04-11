@@ -8,7 +8,7 @@ import {
     isIDistribution,
 } from '../box-muller';
 
-import { rand, RandomEngineType } from '../../../core/src/random';
+import { rand } from '@axrone/random';
 
 // Helper to get a valid random state for tests
 const getTestState = () => rand.getState();

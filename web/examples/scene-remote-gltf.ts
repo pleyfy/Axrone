@@ -1,16 +1,17 @@
+import { AssetDatabase, type AssetImporter } from '@axrone/asset-core';
+import { Transform } from '@axrone/ecs-runtime';
 import {
-    AssetDatabase,
+    createGltfImporter,
+    type GltfAssetSchemaLike,
+} from '@axrone/asset-gltf';
+import { loadGltfSceneIntoScene } from '@axrone/scene-runtime-gltf';
+import {
     Camera,
     DirectionalLight,
     MeshRenderer,
     OrbitCameraController,
     Scene,
-    Transform,
-    createGltfImporter,
-    loadGltfSceneIntoScene,
-    type AssetImporter,
-    type GltfAssetSchemaLike,
-} from '@axrone/core';
+} from '@axrone/scene-3d';
 import { Vec3 } from '@axrone/numeric';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';

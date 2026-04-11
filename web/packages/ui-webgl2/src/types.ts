@@ -9,11 +9,13 @@ import type {
     UIFrameSink,
 } from '@axrone/ui';
 import type {
-    GameLoop,
     RenderPipelineBackend,
+} from '@axrone/render-core';
+import type { GameLoop } from '@axrone/game-loop';
+import type {
     SceneMaterialTextureBindingHandle,
     SceneTextureResourceHandle,
-} from '@axrone/core';
+} from '@axrone/scene-runtime';
 
 export interface WebGL2UIRendererStatistics {
     readonly drawCalls: number;

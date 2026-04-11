@@ -1,0 +1,27 @@
+{
+    "name": "@axrone/observer",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@axrone/event": "^0.1.0",
+        "@axrone/utility": "^0.0.1"
+    }
+}

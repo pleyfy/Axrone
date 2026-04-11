@@ -1,6 +1,22 @@
-import * as axroneCore from '@axrone/core';
+import * as axroneAssetCore from '@axrone/asset-core';
+import * as axroneAssetGltf from '@axrone/asset-gltf';
+import * as axroneEcsRuntime from '@axrone/ecs-runtime';
+import * as axroneGameLoop from '@axrone/game-loop';
+import * as axroneGeometry from '@axrone/geometry';
+import * as axroneInput from '@axrone/input';
 import * as axroneNumeric from '@axrone/numeric';
+import * as axroneParticleSystem from '@axrone/particle-system';
+import * as axronePhysics from '@axrone/physics';
 import * as axroneRandom from '@axrone/random';
+import * as axroneRenderWebGL2 from '@axrone/render-webgl2';
+import * as axroneRuntimeProfile2D from '@axrone/runtime-profile-2d';
+import * as axroneRuntimeProfile3D from '@axrone/runtime-profile-3d';
+import * as axroneRuntimeProfileCore from '@axrone/runtime-profile-core';
+import * as axroneRuntimeProfileFull from '@axrone/runtime-profile-full';
+import * as axroneScene2D from '@axrone/scene-2d';
+import * as axroneScene3D from '@axrone/scene-3d';
+import * as axroneSceneRuntimeGltf from '@axrone/scene-runtime-gltf';
+import * as axroneSceneRuntime from '@axrone/scene-runtime';
 import * as axroneUI from '@axrone/ui';
 import * as axroneUIWebGL2 from '@axrone/ui-webgl2';
 import * as axroneUtility from '@axrone/utility';
@@ -8,11 +24,28 @@ import ts from 'typescript';
 import * as exampleRuntime from '../example-runtime';
 import type { SceneExample } from '../example-types';
 import * as uiExampleHelpers from '../ui/example-helpers';
+import { normalizePlaygroundSource, validateSupportedModuleImports } from './source-compat';
 
 const supportedModules = {
-    '@axrone/core': axroneCore,
+    '@axrone/asset-core': axroneAssetCore,
+    '@axrone/asset-gltf': axroneAssetGltf,
+    '@axrone/ecs-runtime': axroneEcsRuntime,
+    '@axrone/game-loop': axroneGameLoop,
+    '@axrone/geometry': axroneGeometry,
+    '@axrone/input': axroneInput,
     '@axrone/numeric': axroneNumeric,
+    '@axrone/particle-system': axroneParticleSystem,
+    '@axrone/physics': axronePhysics,
     '@axrone/random': axroneRandom,
+    '@axrone/render-webgl2': axroneRenderWebGL2,
+    '@axrone/runtime-profile-2d': axroneRuntimeProfile2D,
+    '@axrone/runtime-profile-3d': axroneRuntimeProfile3D,
+    '@axrone/runtime-profile-core': axroneRuntimeProfileCore,
+    '@axrone/runtime-profile-full': axroneRuntimeProfileFull,
+    '@axrone/scene-2d': axroneScene2D,
+    '@axrone/scene-3d': axroneScene3D,
+    '@axrone/scene-runtime-gltf': axroneSceneRuntimeGltf,
+    '@axrone/scene-runtime': axroneSceneRuntime,
     '@axrone/ui': axroneUI,
     '@axrone/ui-webgl2': axroneUIWebGL2,
     '@axrone/utility': axroneUtility,
@@ -66,8 +99,17 @@ const createRuntimeRequire = () => {
 
 export const getSupportedPlaygroundImports = (): readonly string[] => supportedImports;
 
+export { normalizePlaygroundSource };
+
 export const compileSceneExample = (source: string, fileName = 'live-example.ts'): SceneExample => {
-    const transpileResult = ts.transpileModule(source, {
+    const normalizedSource = normalizePlaygroundSource(source, supportedModules);
+    const importDiagnostics = validateSupportedModuleImports(normalizedSource, supportedModules);
+
+    if (importDiagnostics.length > 0) {
+        throw new Error(importDiagnostics.join('\n'));
+    }
+
+    const transpileResult = ts.transpileModule(normalizedSource, {
         fileName,
         reportDiagnostics: true,
         compilerOptions: {

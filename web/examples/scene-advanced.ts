@@ -1,12 +1,12 @@
+import { Transform } from '@axrone/ecs-runtime';
 import {
     DirectionalLight,
     FilterMode,
     Scene,
     TextureFormat,
-    Transform,
     WrapMode,
     createUnlitColorShaderDefinition,
-} from '@axrone/core';
+} from '@axrone/scene-3d';
 import { Quat, Vec3 } from '@axrone/numeric';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';
