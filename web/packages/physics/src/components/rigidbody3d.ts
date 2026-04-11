@@ -1,13 +1,12 @@
 import { Vec3, Quat, type IVec3Like, type IQuatLike } from '@axrone/numeric';
-import { script } from '../../decorators';
+import { script } from '@axrone/ecs/decorators';
 import { Component } from '@axrone/ecs';
 import type {
     BodyId3D,
-    BodyManager3D,
     BodyType,
     IPhysicsBodyDef3D,
-    PhysicsWorld3D,
-} from '@axrone/physics';
+} from '../types';
+import type { BodyManager3D, PhysicsWorld3D } from '../core/physics-world-3d';
 
 const enum Rigidbody3DType {
     Static = 0,

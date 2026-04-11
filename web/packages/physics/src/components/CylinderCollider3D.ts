@@ -1,6 +1,6 @@
 import { Vec3, type IVec3Like } from '@axrone/numeric';
-import type { ICylinderShapeDef3D } from '@axrone/physics';
-import { script } from '../../decorators';
+import { script } from '@axrone/ecs/decorators';
+import type { ICylinderShapeDef3D } from '../types';
 import { Collider3D, CapsuleDirection3D, INVALID_SHAPE_ID } from './collider3d';
 
 @script({ scriptName: 'CylinderCollider3D' })

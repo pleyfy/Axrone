@@ -1,9 +1,8 @@
 import { Vec3, Quat, type IVec3Like, type IQuatLike } from '@axrone/numeric';
-import { script } from '../../decorators';
+import { script } from '@axrone/ecs/decorators';
 import { Component } from '@axrone/ecs';
 import type {
     ConstraintId3D,
-    ConstraintManager3D,
     Force,
     IConeTwistConstraintDef3D,
     IFixedConstraintDef3D,
@@ -11,9 +10,9 @@ import type {
     IHingeConstraintDef3D,
     ISliderConstraintDef3D,
     ISpringConstraintDef3D,
-    PhysicsWorld3D,
     Torque,
-} from '@axrone/physics';
+} from '../types';
+import type { ConstraintManager3D, PhysicsWorld3D } from '../core/physics-world-3d';
 import type { Rigidbody3D } from './rigidbody3d';
 
 const INVALID_CONSTRAINT_ID = -1 as ConstraintId3D;

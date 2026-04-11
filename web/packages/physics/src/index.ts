@@ -88,3 +88,4 @@ export {
     createPriorityRaycaster3D,
 } from './core/raycast-continuous';
 export type { ITimeOfImpact, ISweepTestQuery } from './core/raycast-continuous';
+export * from './components';

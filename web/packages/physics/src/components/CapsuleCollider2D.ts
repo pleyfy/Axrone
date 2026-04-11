@@ -1,4 +1,4 @@
-import { script } from '../../decorators';
+import { script } from '@axrone/ecs/decorators';
 import { Collider2D } from './collider2d';
 
 @script({

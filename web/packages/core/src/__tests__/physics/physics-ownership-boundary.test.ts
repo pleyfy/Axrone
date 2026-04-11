@@ -7,8 +7,9 @@ const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packagesDir = path.resolve(testDir, '../../../..');
 const physicsSrcDir = path.resolve(packagesDir, 'physics/src');
 const corePhysicsDir = path.resolve(testDir, '../../physics');
+const coreComponentPhysicsDir = path.resolve(testDir, '../../component-system/components/physics');
 const disallowedCoreSourceBypassPattern =
-    /(?:from ['"]|import\(['"])(?:\.\.\/)+core\/src\/(?:input|physics|geometry)(?:\/[^'"]*)?['"]/g;
+    /(?:from ['"]|import\(['"])(?:\.\.\/)+core\/src\/(?:input|physics|geometry|component-system)(?:\/[^'"]*)?['"]/g;
 const disallowedSiblingSourceBypassPattern =
     /(?:from ['"]|import\(['"])(?:\.\.\/)+geometry\/src(?:\/[^'"]*)?['"]/g;
 
@@ -47,11 +48,22 @@ describe('physics ownership boundary', () => {
         expect(violatingFiles).toEqual([]);
     });
 
-    it('leaves core physics as a thin facade only', () => {
-        const files = collectTypeScriptFiles(corePhysicsDir)
-            .map((filePath) => path.relative(corePhysicsDir, filePath).replace(/\\/g, '/'))
-            .sort((left, right) => left.localeCompare(right));
+    it('leaves core compatibility physics surfaces as thin facades only', () => {
+        const compatibilityDirs = [
+            ['physics', corePhysicsDir],
+            ['component-system/components/physics', coreComponentPhysicsDir],
+        ] as const;
 
-        expect(files).toEqual(['index.ts']);
+        const violatingDirs = compatibilityDirs
+            .map(([label, dirPath]) => {
+                const files = collectTypeScriptFiles(dirPath)
+                    .map((filePath) => path.relative(dirPath, filePath).replace(/\\/g, '/'))
+                    .sort((left, right) => left.localeCompare(right));
+
+                return files.length === 1 && files[0] === 'index.ts' ? null : `${label}:${files.join(',')}`;
+            })
+            .filter((value): value is string => value !== null);
+
+        expect(violatingDirs).toEqual([]);
     });
 });

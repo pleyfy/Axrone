@@ -1,7 +1,8 @@
 import { Component } from '@axrone/ecs';
-import { script } from '../../decorators/script';
+import { script } from '@axrone/ecs/decorators';
 import { Vec2 } from '@axrone/numeric';
-import type { ConstraintId, PhysicsWorld2D } from '@axrone/physics';
+import type { ConstraintId } from '../types';
+import type { PhysicsWorld2D } from '../core/physics-world';
 import { Rigidbody2D } from './rigidbody2d';
 
 export abstract class Joint2D extends Component {

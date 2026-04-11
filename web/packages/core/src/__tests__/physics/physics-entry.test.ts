@@ -7,6 +7,9 @@ describe('physics entry', () => {
         expect(physicsPackage.PhysicsWorld3D).toBeDefined();
         expect(physicsPackage.BodyManager2D).toBeDefined();
         expect(physicsPackage.BodyManager3D).toBeDefined();
+        expect(physicsPackage.Rigidbody2D).toBeDefined();
+        expect(physicsPackage.BoxCollider3D).toBeDefined();
+        expect(physicsPackage.CharacterController).toBeDefined();
         expect(physicsPackage.DynamicAABBTree2D).toBeDefined();
         expect(physicsPackage.RaycastSystem3D).toBeDefined();
         expect('InputSystem' in physicsPackage).toBe(false);

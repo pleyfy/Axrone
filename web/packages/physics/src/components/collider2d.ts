@@ -1,6 +1,7 @@
 import { Component } from '@axrone/ecs';
 import { Vec2 } from '@axrone/numeric';
-import type { CollisionFilter, PhysicsWorld2D, ShapeId } from '@axrone/physics';
+import type { CollisionFilter, ShapeId } from '../types';
+import type { PhysicsWorld2D } from '../core/physics-world';
 import { Rigidbody2D } from './rigidbody2d';
 
 export interface PhysicsMaterial2D {

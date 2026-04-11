@@ -4,11 +4,10 @@ import type {
     Density,
     Friction,
     IMaterial,
-    PhysicsWorld3D,
     Restitution,
     ShapeId3D,
-    ShapeManager3D,
-} from '@axrone/physics';
+} from '../types';
+import type { PhysicsWorld3D, ShapeManager3D } from '../core/physics-world-3d';
 import type { Rigidbody3D } from './rigidbody3d';
 
 const enum PhysicMaterialCombine {
