@@ -18,12 +18,18 @@
         "lint:fix": "lerna run lint:fix --parallel --stream",
         "test": "vitest",
         "test:architecture": "vitest run --config vitest.config.architecture.ts",
+        "test:profiles": "vitest run --config vitest.config.architecture.ts tests/architecture/scene-split/runtime-profile-entry.test.ts tests/architecture/scene-split/runtime-profile-smoke.test.ts",
+        "test:render-governance": "vitest run --config vitest.config.architecture.ts tests/architecture/render-split",
+        "test:input-governance": "vitest run --config vitest.config.architecture.ts tests/architecture/input-split",
+        "test:consumer-migration": "vitest run --config vitest.config.architecture.ts tests/architecture/scene-split/core-consumer-migration-boundary.test.ts",
+        "test:hardening": "npm run test:profiles && npm run test:render-governance && npm run test:input-governance && npm run test:consumer-migration",
         "test:watch": "vitest --watch",
         "test:ui": "vitest --ui",
         "test:browser": "vitest run --config vitest.config.browser.ts",
         "test:webgl": "playwright test --config playwright.config.ts",
         "test:coverage": "vitest --coverage",
         "test:all": "npm run test && npm run test:architecture && npm run test:browser && npm run test:webgl",
+        "verify:engine-hardening": "npm run test:hardening && npm run build && npm run examples:build",
         "docs": "typedoc"
     },
     "devDependencies": {

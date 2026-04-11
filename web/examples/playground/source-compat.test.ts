@@ -57,6 +57,22 @@ import { createGltfImporter } from '@axrone/asset-gltf';
 import { Vec3 } from '@axrone/numeric';
 `);
     });
+
+    it('moves input, physics, and render ownership imports out of core when owner modules are supported', () => {
+        const source = `import { InputSystem, RaycastEngine3D, TextureFormat } from '@axrone/core';
+`;
+
+        expect(
+            normalizePlaygroundSource(source, {
+                '@axrone/input': { InputSystem: class InputSystem {} },
+                '@axrone/physics': { RaycastEngine3D: class RaycastEngine3D {} },
+                '@axrone/render-webgl2': { TextureFormat: {} },
+            })
+        ).toBe(`import { InputSystem } from '@axrone/input';
+import { RaycastEngine3D } from '@axrone/physics';
+import { TextureFormat } from '@axrone/render-webgl2';
+`);
+    });
 });
 
 describe('validateSupportedModuleImports', () => {
@@ -99,6 +115,22 @@ describe('validateSupportedModuleImports', () => {
 
         expect(diagnostics).toEqual([
             'Module "@axrone/core" has been removed. Import "createPlane" from "@axrone/geometry" instead.',
+        ]);
+    });
+
+    it('reports dynamically resolved owner guidance for stale core imports', () => {
+        const diagnostics = validateSupportedModuleImports(
+            `import { InputSystem, TextureFormat } from '@axrone/core';`,
+            {
+                '@axrone/core': {},
+                '@axrone/input': { InputSystem: class InputSystem {} },
+                '@axrone/render-webgl2': { TextureFormat: {} },
+            }
+        );
+
+        expect(diagnostics).toEqual([
+            'Module "@axrone/core" has been removed. Import "InputSystem" from "@axrone/input" instead.',
+            'Module "@axrone/core" has been removed. Import "TextureFormat" from "@axrone/render-webgl2" instead.',
         ]);
     });
 });

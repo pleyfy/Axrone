@@ -86,7 +86,22 @@ const assetCoreRuntimeExports = new Set([
     'isAssetImporter',
 ]);
 
+const sceneRuntimeExports = new Set([
+    'Animator',
+    'Camera',
+    'PrefabNodeBinding',
+]);
+
+const renderWebgl2RuntimeExports = new Set([
+    'FilterMode',
+    'TextureDimension',
+    'TextureFormat',
+    'TextureUsage',
+    'WrapMode',
+]);
+
 type ModuleNamespace = Record<string, unknown>;
+type SupportedModules = Readonly<Record<string, ModuleNamespace>>;
 
 type ParsedImportSpecifier = {
     readonly importedName: string;
@@ -99,7 +114,7 @@ type CoreImportMigration = {
     readonly exportedNames: ReadonlySet<string>;
 };
 
-const coreImportMigrations: readonly CoreImportMigration[] = [
+const defaultCoreImportMigrations: readonly CoreImportMigration[] = [
     {
         moduleName: '@axrone/asset-core',
         exportedNames: assetCoreRuntimeExports,
@@ -113,8 +128,29 @@ const coreImportMigrations: readonly CoreImportMigration[] = [
         exportedNames: geometryRuntimeExports,
     },
     {
+        moduleName: '@axrone/input',
+        exportedNames: new Set(['InputSystem', 'createInputSystem']),
+    },
+    {
+        moduleName: '@axrone/physics',
+        exportedNames: new Set([
+            'PhysicsWorld2D',
+            'PhysicsWorld3D',
+            'RaycastEngine2D',
+            'RaycastEngine3D',
+        ]),
+    },
+    {
+        moduleName: '@axrone/render-webgl2',
+        exportedNames: renderWebgl2RuntimeExports,
+    },
+    {
         moduleName: '@axrone/numeric',
         exportedNames: numericRuntimeExports,
+    },
+    {
+        moduleName: '@axrone/scene-runtime',
+        exportedNames: sceneRuntimeExports,
     },
     {
         moduleName: '@axrone/scene-3d',
@@ -122,9 +158,72 @@ const coreImportMigrations: readonly CoreImportMigration[] = [
     },
 ];
 
+const coreImportMigrationPriority = [
+    '@axrone/asset-core',
+    '@axrone/scene-runtime-gltf',
+    '@axrone/ecs-runtime',
+    '@axrone/input',
+    '@axrone/geometry',
+    '@axrone/physics',
+    '@axrone/render-webgl2',
+    '@axrone/numeric',
+    '@axrone/random',
+    '@axrone/game-loop',
+    '@axrone/particle-system',
+    '@axrone/scene-runtime',
+    '@axrone/scene-2d',
+    '@axrone/scene-3d',
+    '@axrone/runtime-profile-core',
+    '@axrone/runtime-profile-2d',
+    '@axrone/runtime-profile-3d',
+    '@axrone/runtime-profile-full',
+    '@axrone/ui-webgl2',
+    '@axrone/ui',
+    '@axrone/utility',
+    '@axrone/asset-gltf',
+] as const;
+
 const coreImportPattern = /import\s*\{([\s\S]*?)\}\s*from\s*['"]@axrone\/core['"]\s*;?/m;
 const namedImportPattern = /import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]\s*;?/g;
 const firstImportPattern = /import[\s\S]*?from\s*['"][^'"]+['"]\s*;?/m;
+
+const buildCoreImportMigrations = (
+    supportedModules?: SupportedModules
+): readonly CoreImportMigration[] => {
+    const migrationSets = new Map<string, Set<string>>();
+
+    for (const migration of defaultCoreImportMigrations) {
+        migrationSets.set(migration.moduleName, new Set(migration.exportedNames));
+    }
+
+    if (supportedModules) {
+        for (const moduleName of coreImportMigrationPriority) {
+            const moduleNamespace = supportedModules[moduleName];
+            if (!moduleNamespace) {
+                continue;
+            }
+
+            const exportedNames = migrationSets.get(moduleName) ?? new Set<string>();
+            for (const exportedName of Object.keys(moduleNamespace)) {
+                exportedNames.add(exportedName);
+            }
+            migrationSets.set(moduleName, exportedNames);
+        }
+    }
+
+    return coreImportMigrationPriority
+        .map((moduleName) => ({
+            moduleName,
+            exportedNames: migrationSets.get(moduleName) ?? new Set<string>(),
+        }))
+        .filter((migration) => migration.exportedNames.size > 0);
+};
+
+const resolveOwnerModule = (
+    importedName: string,
+    migrations: readonly CoreImportMigration[]
+): string | undefined =>
+    migrations.find(({ exportedNames }) => exportedNames.has(importedName))?.moduleName;
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -194,8 +293,11 @@ const findImportInsertionIndex = (source: string, preferredAnchor: string): numb
     return firstImportMatch?.index ?? 0;
 };
 
-const partitionCoreImportSpecifiers = (specifiers: readonly ParsedImportSpecifier[]) => {
-    const migratedSpecifiersByModule = coreImportMigrations
+const partitionCoreImportSpecifiers = (
+    specifiers: readonly ParsedImportSpecifier[],
+    migrations: readonly CoreImportMigration[]
+) => {
+    const migratedSpecifiersByModule = migrations
         .map(({ moduleName, exportedNames }) => ({
             moduleName,
             specifiers: specifiers.filter((specifier) => exportedNames.has(specifier.importedName)),
@@ -204,7 +306,7 @@ const partitionCoreImportSpecifiers = (specifiers: readonly ParsedImportSpecifie
 
     const remainingCoreSpecifiers = specifiers.filter(
         (specifier) =>
-            !coreImportMigrations.some(({ exportedNames }) => exportedNames.has(specifier.importedName))
+            !migrations.some(({ exportedNames }) => exportedNames.has(specifier.importedName))
     );
 
     return {
@@ -245,15 +347,19 @@ const upsertNamedImport = (
     };
 };
 
-export const normalizePlaygroundSource = (source: string): string => {
+export const normalizePlaygroundSource = (
+    source: string,
+    supportedModules?: SupportedModules
+): string => {
     const coreImportMatch = coreImportPattern.exec(source);
     if (!coreImportMatch) {
         return source;
     }
 
+    const migrations = buildCoreImportMigrations(supportedModules);
     const coreSpecifiers = parseImportSpecifiers(coreImportMatch[1]);
     const { migratedSpecifiersByModule, remainingCoreSpecifiers } =
-        partitionCoreImportSpecifiers(coreSpecifiers);
+        partitionCoreImportSpecifiers(coreSpecifiers, migrations);
 
     if (migratedSpecifiersByModule.length === 0) {
         return source;
@@ -293,9 +399,10 @@ export const normalizePlaygroundSource = (source: string): string => {
 
 export const validateSupportedModuleImports = (
     source: string,
-    supportedModules: Readonly<Record<string, ModuleNamespace>>
+    supportedModules: SupportedModules
 ): readonly string[] => {
     const diagnostics: string[] = [];
+    const migrations = buildCoreImportMigrations(supportedModules);
 
     for (const match of source.matchAll(namedImportPattern)) {
         const [, clause, moduleName] = match;
@@ -307,9 +414,7 @@ export const validateSupportedModuleImports = (
             }
 
             if (moduleName === '@axrone/core') {
-                const ownerModule = coreImportMigrations.find(({ exportedNames }) =>
-                    exportedNames.has(specifier.importedName)
-                )?.moduleName;
+                const ownerModule = resolveOwnerModule(specifier.importedName, migrations);
                 if (ownerModule) {
                     diagnostics.push(
                         `Module "${moduleName}" has been removed. Import "${specifier.importedName}" from "${ownerModule}" instead.`

@@ -102,7 +102,7 @@ export const getSupportedPlaygroundImports = (): readonly string[] => supportedI
 export { normalizePlaygroundSource };
 
 export const compileSceneExample = (source: string, fileName = 'live-example.ts'): SceneExample => {
-    const normalizedSource = normalizePlaygroundSource(source);
+    const normalizedSource = normalizePlaygroundSource(source, supportedModules);
     const importDiagnostics = validateSupportedModuleImports(normalizedSource, supportedModules);
 
     if (importDiagnostics.length > 0) {
