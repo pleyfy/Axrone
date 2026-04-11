@@ -2,8 +2,8 @@ export type {
     WorldDebugInfoSnapshot,
     WorldMetrics,
     WorldMetricsSnapshot as WorldDiagnosticsSnapshot,
-} from './world-metrics-service';
+} from '@axrone/ecs-world-support';
 export {
     WorldMetricsService,
     WorldMetricsService as WorldDiagnostics,
-} from './world-metrics-service';
+} from '@axrone/ecs-world-support';

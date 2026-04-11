@@ -44,6 +44,8 @@
             "@axrone/ecs-events/*": ["packages/ecs-events/src/*"],
             "@axrone/ecs-query/*": ["packages/ecs-query/src/*"],
             "@axrone/ecs-storage/*": ["packages/ecs-storage/src/*"],
+            "@axrone/ecs-world-support": ["packages/ecs-world-support/src/index.ts"],
+            "@axrone/ecs-world-support/*": ["packages/ecs-world-support/src/*"],
             "@axrone/tween": ["packages/tween/src/index.ts"],
             "@axrone/tween/*": ["packages/tween/src/*"],
             "@axrone/*": ["packages/*/src"]
