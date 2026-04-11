@@ -1,5 +1,5 @@
 import { Vec4 } from '@axrone/numeric';
-import { createBox, createPlane, createSphere } from '../../core/src/geometry/primitives';
+import { createBox, createPlane, createSphere } from '@axrone/geometry';
 import {
     FilterMode,
     WrapMode,

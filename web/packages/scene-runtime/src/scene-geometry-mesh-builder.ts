@@ -1,4 +1,4 @@
-import type { IGeometryBuffers } from '../../core/src/geometry/primitives/types';
+import type { IGeometryBuffers } from '@axrone/geometry';
 import type { SceneMeshDefinition, SceneMeshSemantic } from './types';
 
 const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {

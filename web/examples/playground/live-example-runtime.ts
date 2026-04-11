@@ -3,6 +3,7 @@ import * as axroneAssetGltf from '@axrone/asset-gltf';
 import * as axroneCore from '@axrone/core';
 import * as axroneEcs from '@axrone/ecs';
 import * as axroneGameLoop from '@axrone/game-loop';
+import * as axroneGeometry from '@axrone/geometry';
 import * as axroneInput from '@axrone/input';
 import * as axroneNumeric from '@axrone/numeric';
 import * as axroneParticleSystem from '@axrone/particle-system';
@@ -32,6 +33,7 @@ const supportedModules = {
     '@axrone/core': axroneCore,
     '@axrone/ecs': axroneEcs,
     '@axrone/game-loop': axroneGameLoop,
+    '@axrone/geometry': axroneGeometry,
     '@axrone/input': axroneInput,
     '@axrone/numeric': axroneNumeric,
     '@axrone/particle-system': axroneParticleSystem,

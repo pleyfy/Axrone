@@ -43,6 +43,7 @@
     "dependencies": {
         "@axrone/ecs": "^0.1.0",
         "@axrone/game-loop": "^0.1.0",
+        "@axrone/geometry": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
         "@axrone/random": "^0.0.1",
         "@axrone/render-webgl2": "^0.1.0",

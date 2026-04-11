@@ -9,6 +9,40 @@ const numericRuntimeExports = new Set([
     'Vec4',
 ]);
 
+const geometryRuntimeExports = new Set([
+    'AABB',
+    'AABB2D',
+    'AABB3D',
+    'AABBError',
+    'GeometryBuilder',
+    'Octree',
+    'QuadTree',
+    'VERTEX_ATTRIBUTES',
+    'createBox',
+    'createCapsule',
+    'createCircle',
+    'createCone',
+    'createCube',
+    'createCylinder',
+    'createGeometryLayout',
+    'createGrid',
+    'createIcosphere',
+    'createPill',
+    'createPlane',
+    'createQuad',
+    'createRing',
+    'createRoundedBox',
+    'createSphere',
+    'createSpring',
+    'createTorus',
+    'createTorusKnot',
+    'createTruncatedCone',
+    'createTube',
+    'createUVSphere',
+    'createVertexAttribute',
+    'getAttributeTypeSize',
+]);
+
 const ecsRuntimeExports = new Set([
     'Actor',
     'Component',
@@ -73,6 +107,10 @@ const coreImportMigrations: readonly CoreImportMigration[] = [
     {
         moduleName: '@axrone/ecs',
         exportedNames: ecsRuntimeExports,
+    },
+    {
+        moduleName: '@axrone/geometry',
+        exportedNames: geometryRuntimeExports,
     },
     {
         moduleName: '@axrone/numeric',

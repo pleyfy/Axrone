@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPlane } from '../../geometry/primitives';
+import { createPlane } from '@axrone/geometry';
 import { SceneGeometryMeshBuilder } from '@axrone/scene-3d';
 
 describe('SceneGeometryMeshBuilder', () => {

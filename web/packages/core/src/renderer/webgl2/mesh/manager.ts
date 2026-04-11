@@ -1,5 +1,5 @@
 import { IBuffer, IBufferFactory, createBufferFactory } from '../buffer';
-import { IGeometryBuffers } from '../../../geometry/primitives/types';
+import { IGeometryBuffers } from '@axrone/geometry';
 import {
     createSphere,
     createBox,
@@ -7,7 +7,7 @@ import {
     createCylinder,
     createCapsule,
     createTorus,
-} from '../../../geometry/primitives';
+} from '@axrone/geometry';
 
 export interface IMeshData {
     readonly id: string;

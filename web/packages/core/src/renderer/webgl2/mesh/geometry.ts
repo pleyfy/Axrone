@@ -14,7 +14,7 @@ import {
     BufferUsage,
     IndexType,
 } from './interfaces';
-import { IGeometryBuffers, IGeometryLayout } from '../../../geometry/primitives/types';
+import { IGeometryBuffers, IGeometryLayout } from '@axrone/geometry';
 import { WebGLVertexBuffer } from './vertex-buffer';
 import { WebGLIndexBuffer } from './index-buffer';
 

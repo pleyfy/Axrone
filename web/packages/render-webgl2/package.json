@@ -21,6 +21,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@axrone/geometry": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
         "@axrone/utility": "^0.0.1"
     }

@@ -44,6 +44,15 @@ import { Transform } from '@axrone/ecs';
 import { createGltfImporter } from '@axrone/asset-gltf';
 `);
     });
+
+    it('moves geometry ownership imports out of core', () => {
+        const source = `import { AABB3D, Vec3, createPlane } from '@axrone/core';
+`;
+
+        expect(normalizePlaygroundSource(source)).toBe(`import { AABB3D, createPlane } from '@axrone/geometry';
+import { Vec3 } from '@axrone/numeric';
+`);
+    });
 });
 
 describe('validateSupportedModuleImports', () => {
@@ -72,6 +81,20 @@ describe('validateSupportedModuleImports', () => {
 
         expect(diagnostics).toEqual([
             'Module "@axrone/core" does not export "Transform". Import it from "@axrone/ecs" instead.',
+        ]);
+    });
+
+    it('reports geometry ownership guidance for stale core imports', () => {
+        const diagnostics = validateSupportedModuleImports(
+            `import { createPlane } from '@axrone/core';`,
+            {
+                '@axrone/core': {},
+                '@axrone/geometry': { createPlane: () => null },
+            }
+        );
+
+        expect(diagnostics).toEqual([
+            'Module "@axrone/core" does not export "createPlane". Import it from "@axrone/geometry" instead.',
         ]);
     });
 });
