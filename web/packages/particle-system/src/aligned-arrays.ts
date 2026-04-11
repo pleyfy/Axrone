@@ -1,5 +1,5 @@
 import { ICloneable } from '@axrone/utility';
-import { IDisposable } from '../types';
+import { IDisposable } from './disposable';
 
 declare const __brand: unique symbol;
 export type Brand<T, K> = T & { [__brand]: K };

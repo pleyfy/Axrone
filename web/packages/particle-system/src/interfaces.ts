@@ -1,5 +1,5 @@
 import { Vec3, IVec3Like, Mat4 } from '@axrone/numeric';
-import { AABB3D } from '../geometry';
+import { AABB3D } from '@axrone/geometry';
 import { MemoryPool, PoolableObject } from '@axrone/utility';
 import {
     ParticleId,

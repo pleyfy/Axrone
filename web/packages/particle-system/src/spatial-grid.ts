@@ -1,4 +1,4 @@
-import { AABB3D } from '../geometry';
+import { AABB3D } from '@axrone/geometry';
 import { MemoryPool } from '@axrone/utility';
 import { Vec3, IVec3Like } from '@axrone/numeric';
 import { ISpatialCell, ISpatialGrid } from './interfaces';

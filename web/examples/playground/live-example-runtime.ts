@@ -5,6 +5,7 @@ import * as axroneEcs from '@axrone/ecs';
 import * as axroneGameLoop from '@axrone/game-loop';
 import * as axroneInput from '@axrone/input';
 import * as axroneNumeric from '@axrone/numeric';
+import * as axroneParticleSystem from '@axrone/particle-system';
 import * as axronePhysics from '@axrone/physics';
 import * as axroneRandom from '@axrone/random';
 import * as axroneRenderWebGL2 from '@axrone/render-webgl2';
@@ -33,6 +34,7 @@ const supportedModules = {
     '@axrone/game-loop': axroneGameLoop,
     '@axrone/input': axroneInput,
     '@axrone/numeric': axroneNumeric,
+    '@axrone/particle-system': axroneParticleSystem,
     '@axrone/physics': axronePhysics,
     '@axrone/random': axroneRandom,
     '@axrone/render-webgl2': axroneRenderWebGL2,

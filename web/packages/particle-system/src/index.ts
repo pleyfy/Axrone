@@ -1,9 +1,16 @@
-export {
+export type {
     ParticleId,
     SystemId,
     EmitterId,
     ModuleId,
     TextureId,
+    Curve,
+    Gradient,
+    Burst,
+    ParticleEvent,
+} from './types';
+
+export {
     EmitterShape,
     SimulationSpace,
     SortMode,
@@ -14,9 +21,8 @@ export {
     CurveMode,
     GradientMode,
     ModuleFlags,
-    Curve,
-    Gradient,
-    Burst,
+    LightingMode,
+    LightAttenuationMode,
 } from './types';
 
 export * from './core';

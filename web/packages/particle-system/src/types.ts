@@ -12,7 +12,7 @@ export type EmitterId = number & { readonly [__EmitterIdBrand]: never };
 export type ModuleId = number & { readonly [__ModuleIdBrand]: never };
 export type TextureId = number & { readonly [__TextureIdBrand]: never };
 
-export const enum EmitterShape {
+export enum EmitterShape {
     Point = 0,
     Sphere = 1,
     Hemisphere = 2,
@@ -26,13 +26,13 @@ export const enum EmitterShape {
     Donut = 10,
 }
 
-export const enum SimulationSpace {
+export enum SimulationSpace {
     Local = 0,
     World = 1,
     Custom = 2,
 }
 
-export const enum SortMode {
+export enum SortMode {
     None = 0,
     Distance = 1,
     OldestFirst = 2,
@@ -40,7 +40,7 @@ export const enum SortMode {
     Custom = 4,
 }
 
-export const enum RenderMode {
+export enum RenderMode {
     Billboard = 0,
     Stretch = 1,
     HorizontalBillboard = 2,
@@ -50,34 +50,34 @@ export const enum RenderMode {
     Ribbon = 6,
 }
 
-export const enum StopAction {
+export enum StopAction {
     None = 0,
     Disable = 1,
     Destroy = 2,
     Callback = 3,
 }
 
-export const enum CullingMode {
+export enum CullingMode {
     Automatic = 0,
     Pause = 1,
     PauseAndCatchup = 2,
     AlwaysSimulate = 3,
 }
 
-export const enum RingBufferMode {
+export enum RingBufferMode {
     Disabled = 0,
     PauseUntilReplaced = 1,
     LoopUntilReplaced = 2,
 }
 
-export const enum CurveMode {
+export enum CurveMode {
     Constant = 0,
     Curve = 1,
     TwoCurves = 2,
     TwoConstants = 3,
 }
 
-export const enum GradientMode {
+export enum GradientMode {
     Color = 0,
     Gradient = 1,
     TwoColors = 2,
@@ -85,7 +85,7 @@ export const enum GradientMode {
     RandomColor = 4,
 }
 
-export const enum ModuleFlags {
+export enum ModuleFlags {
     StartLifetime = 1 << 0,
     StartSpeed = 1 << 1,
     StartSize = 1 << 2,
@@ -138,14 +138,14 @@ export interface ParticleEvent {
     readonly velocity: { readonly x: number; readonly y: number; readonly z: number };
 }
 
-export const enum LightingMode {
+export enum LightingMode {
     None = 0,
     Simple = 1,
     Advanced = 2,
     Volumetric = 3,
 }
 
-export const enum LightAttenuationMode {
+export enum LightAttenuationMode {
     Linear = 0,
     InverseSquare = 1,
     Exponential = 2,
