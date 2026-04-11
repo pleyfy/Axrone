@@ -35,6 +35,7 @@
         "@axrone/event": "^0.1.0",
         "@axrone/geometry": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
+        "@axrone/random": "^0.0.1",
         "@axrone/render-core": "^0.1.0",
         "@axrone/render-webgl2": "^0.1.0",
         "@axrone/scene-3d": "^0.1.0",

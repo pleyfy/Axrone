@@ -2,6 +2,7 @@ import { ForceConfiguration } from '../core/configuration';
 import { IForce } from '../core/interfaces';
 import { IVec3Array, IVec4Array } from '../aligned-arrays';
 import { CurveEvaluator } from '../curve-evaluator';
+import { Random } from '@axrone/random';
 
 export interface IVec3Like {
     x: number;
@@ -102,7 +103,7 @@ export class ForceModule {
         masses: Float32Array,
         count: number,
         deltaTime: number,
-        _random?: { float(): number }
+        random?: Random
     ): void {
         if (this._activeForces.size === 0 || count === 0) return;
 
@@ -141,7 +142,7 @@ export class ForceModule {
         masses: Float32Array,
         count: number,
         deltaTime: number,
-        _random: { float(): number } | undefined,
+        _random: Random | undefined,
         forceIndex: number
     ): void {
         switch (force.type) {
