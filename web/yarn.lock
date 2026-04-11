@@ -103,7 +103,7 @@
     "@axrone/random" "^0.0.1"
     "@axrone/utility" "^0.0.1"
 
-"@axrone/observer@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\observer":
+"@axrone/observer@^0.1.0", "@axrone/observer@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\observer":
   version "0.1.0"
   resolved "file:packages/observer"
   dependencies:
@@ -188,6 +188,11 @@
   version "0.1.0"
   resolved "file:packages/runtime-profile-2d"
   dependencies:
+    "@axrone/asset-2d" "^0.1.0"
+    "@axrone/input-core" "^0.1.0"
+    "@axrone/physics-2d" "^0.1.0"
+    "@axrone/physics-core" "^0.1.0"
+    "@axrone/render-2d" "^0.1.0"
     "@axrone/scene-2d" "^0.1.0"
     "@axrone/scene-runtime" "^0.1.0"
 
@@ -195,6 +200,13 @@
   version "0.1.0"
   resolved "file:packages/runtime-profile-3d"
   dependencies:
+    "@axrone/asset-core" "^0.1.0"
+    "@axrone/asset-gltf" "^0.1.0"
+    "@axrone/input-core" "^0.1.0"
+    "@axrone/physics-3d" "^0.1.0"
+    "@axrone/physics-core" "^0.1.0"
+    "@axrone/render-3d" "^0.1.0"
+    "@axrone/render-webgl2" "^0.1.0"
     "@axrone/scene-3d" "^0.1.0"
     "@axrone/scene-runtime" "^0.1.0"
 
@@ -202,12 +214,23 @@
   version "0.1.0"
   resolved "file:packages/runtime-profile-core"
   dependencies:
+    "@axrone/input-core" "^0.1.0"
     "@axrone/scene-runtime" "^0.1.0"
 
 "@axrone/runtime-profile-full@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\runtime-profile-full":
   version "0.1.0"
   resolved "file:packages/runtime-profile-full"
   dependencies:
+    "@axrone/asset-2d" "^0.1.0"
+    "@axrone/asset-core" "^0.1.0"
+    "@axrone/asset-gltf" "^0.1.0"
+    "@axrone/input-core" "^0.1.0"
+    "@axrone/physics-2d" "^0.1.0"
+    "@axrone/physics-3d" "^0.1.0"
+    "@axrone/physics-core" "^0.1.0"
+    "@axrone/render-2d" "^0.1.0"
+    "@axrone/render-3d" "^0.1.0"
+    "@axrone/render-webgl2" "^0.1.0"
     "@axrone/scene-2d" "^0.1.0"
     "@axrone/scene-3d" "^0.1.0"
     "@axrone/scene-runtime" "^0.1.0"

@@ -49,4 +49,14 @@ describe('ecs-events ownership boundary', () => {
 
         expect(violatingFiles).toEqual([]);
     });
+
+    it('composes shared event and observer packages for generic primitives', () => {
+        const eventBridge = fs.readFileSync(path.resolve(ecsEventsSrcDir, 'event.ts'), 'utf8');
+        const observerBridge = fs.readFileSync(path.resolve(ecsEventsSrcDir, 'observer.ts'), 'utf8');
+
+        expect(eventBridge).toContain("from '@axrone/event'");
+        expect(observerBridge).toContain("from '@axrone/observer'");
+        expect(eventBridge).not.toMatch(/\bclass\s+TypedEventEmitter\b/);
+        expect(observerBridge).not.toMatch(/\bclass\s+BehaviorObservableSubject\b/);
+    });
 });

@@ -39,5 +39,9 @@
         "build": "rollup -c rollup.config.mjs",
         "clean": "rimraf dist",
         "test": "vitest run"
+    },
+    "dependencies": {
+        "@axrone/event": "^0.1.0",
+        "@axrone/observer": "^0.1.0"
     }
 }
