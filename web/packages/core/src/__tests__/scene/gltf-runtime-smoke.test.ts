@@ -9,7 +9,7 @@ import {
     type GltfRootJson,
 } from '@axrone/asset-gltf';
 import { loadGltfSceneIntoScene } from '@axrone/scene-runtime-gltf';
-import { Transform } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs-runtime';
 import {
     createSceneOptions,
     installWebGL2Constants,

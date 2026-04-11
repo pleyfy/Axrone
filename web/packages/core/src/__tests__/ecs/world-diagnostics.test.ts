@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WorldDiagnostics } from '@axrone/ecs';
+import { WorldDiagnostics } from '@axrone/ecs-runtime';
 
 describe('WorldDiagnostics', () => {
     it('tracks counters and derives stable metrics snapshots when enabled', () => {

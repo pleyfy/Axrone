@@ -1,5 +1,5 @@
-import { Component } from '@axrone/ecs';
-import { script } from '@axrone/ecs/decorators';
+import { Component } from '@axrone/ecs-runtime';
+import { script } from '@axrone/ecs-runtime/decorators';
 import { Vec2 } from '@axrone/numeric';
 import type { ConstraintId } from '../types';
 import type { PhysicsWorld2D } from '../core/physics-world';

@@ -12,10 +12,6 @@ const collectTypeScriptFiles = (dirPath: string): readonly string[] => {
     const files: string[] = [];
 
     for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-        if (entry.name === 'component-system') {
-            continue;
-        }
-
         const fullPath = path.resolve(dirPath, entry.name);
         if (entry.isDirectory()) {
             files.push(...collectTypeScriptFiles(fullPath));
@@ -31,7 +27,7 @@ const collectTypeScriptFiles = (dirPath: string): readonly string[] => {
 };
 
 describe('ecs core consumer boundary', () => {
-    it('keeps core consumers off component-system facade internals', () => {
+    it('keeps core consumers off removed component-system source paths', () => {
         const violatingFiles = collectTypeScriptFiles(coreSrcDir)
             .filter((filePath) => {
                 const content = fs.readFileSync(filePath, 'utf8');

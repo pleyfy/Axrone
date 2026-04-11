@@ -1,4 +1,4 @@
-import type { Actor } from '@axrone/ecs';
+import type { Actor } from '@axrone/ecs-runtime';
 
 type SceneActorLifecyclePhase = 'fixedUpdate' | 'update' | 'lateUpdate';
 

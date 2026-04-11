@@ -6,16 +6,16 @@ import {
     createSystemId,
     createComponentId,
     createActorId,
-} from '../../component-system/utils/factory';
-import { Component } from '@axrone/ecs';
-import { Transform } from '@axrone/ecs';
+} from './factory-helpers';
+import { Component } from '@axrone/ecs-runtime';
+import { Transform } from '@axrone/ecs-runtime';
 import type {
     ComponentRegistry,
     Entity,
     SystemId,
     ComponentId,
     ActorId,
-} from '@axrone/ecs';
+} from '@axrone/ecs-runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 class TestComponent extends Component {

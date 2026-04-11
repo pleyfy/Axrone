@@ -1,6 +1,6 @@
-import { Actor, type ActorConfig } from '@axrone/ecs';
-import type { ComponentRegistry } from '@axrone/ecs';
-import type { World } from '@axrone/ecs';
+import { Actor, type ActorConfig } from '@axrone/ecs-runtime';
+import type { ComponentRegistry } from '@axrone/ecs-runtime';
+import type { World } from '@axrone/ecs-runtime';
 import type { SceneOptions, SceneRegistry } from '@axrone/scene-runtime';
 import { getDefaultSceneRuntimeProfile } from '@axrone/scene-runtime/scene-profile';
 import {

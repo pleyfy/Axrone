@@ -105,7 +105,7 @@ const coreImportMigrations: readonly CoreImportMigration[] = [
         exportedNames: assetCoreRuntimeExports,
     },
     {
-        moduleName: '@axrone/ecs',
+        moduleName: '@axrone/ecs-runtime',
         exportedNames: ecsRuntimeExports,
     },
     {

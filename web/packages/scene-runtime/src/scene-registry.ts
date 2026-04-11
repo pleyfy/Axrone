@@ -1,6 +1,6 @@
-import { Hierarchy } from '@axrone/ecs';
-import { Transform } from '@axrone/ecs';
-import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs';
+import { Hierarchy } from '@axrone/ecs-runtime';
+import { Transform } from '@axrone/ecs-runtime';
+import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs-runtime';
 import { Animator } from './components/animator';
 import { Camera } from './components/camera';
 import { DirectionalLight } from './components/directional-light';

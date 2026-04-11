@@ -1,5 +1,5 @@
-import { World, WorldError, EntityError, ComponentError } from '@axrone/ecs/world';
-import { Component, script, Transform } from '@axrone/ecs';
+import { World, WorldError, EntityError, ComponentError } from '@axrone/ecs-runtime/world';
+import { Component, script, Transform } from '@axrone/ecs-runtime';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const flushBehaviorSubject = () => new Promise((resolve) => setTimeout(resolve, 0));

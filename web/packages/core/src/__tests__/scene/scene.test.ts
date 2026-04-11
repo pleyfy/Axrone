@@ -1,8 +1,8 @@
 import { Mat4, Vec3 } from '@axrone/numeric';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Component, script } from '@axrone/ecs';
-import { Hierarchy } from '@axrone/ecs';
-import { Transform } from '@axrone/ecs';
+import { Component, script } from '@axrone/ecs-runtime';
+import { Hierarchy } from '@axrone/ecs-runtime';
+import { Transform } from '@axrone/ecs-runtime';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
 import {
     createMockGL,

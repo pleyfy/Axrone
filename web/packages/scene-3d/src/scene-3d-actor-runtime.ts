@@ -1,6 +1,6 @@
-import type { Actor, ActorConfig } from '@axrone/ecs';
-import type { World } from '@axrone/ecs';
-import type { ComponentRegistry } from '@axrone/ecs';
+import type { Actor, ActorConfig } from '@axrone/ecs-runtime';
+import type { World } from '@axrone/ecs-runtime';
+import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import {
     SceneCapabilityError,
     type SceneActorRuntime,

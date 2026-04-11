@@ -1,5 +1,5 @@
 import { describe, it, beforeEach, afterEach, expect } from 'vitest';
-import { Transform } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs-runtime';
 import { Vec3, Quat, Mat4 } from '../../../../numeric/src';
 
 describe('Transform', () => {

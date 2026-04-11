@@ -1,6 +1,6 @@
-import { Actor, ActorError, ComponentError } from '@axrone/ecs/actor';
-import { Component, Transform, World } from '@axrone/ecs';
-import { createActor } from '../../component-system/utils/factory';
+import { Actor, ActorError, ComponentError } from '@axrone/ecs-runtime/actor';
+import { Component, Transform, World } from '@axrone/ecs-runtime';
+import { createActor } from './factory-helpers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 class TestComponent extends Component {

@@ -1,4 +1,4 @@
-import { Component } from '@axrone/ecs';
+import { Component } from '@axrone/ecs-runtime';
 import { ComponentPool } from '@axrone/ecs-storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 

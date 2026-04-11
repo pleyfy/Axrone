@@ -1,6 +1,6 @@
 import { Vec3, Quat, type IVec3Like, type IQuatLike } from '@axrone/numeric';
-import { script } from '@axrone/ecs/decorators';
-import { Component } from '@axrone/ecs';
+import { script } from '@axrone/ecs-runtime/decorators';
+import { Component } from '@axrone/ecs-runtime';
 import type {
     BodyId3D,
     BodyType,

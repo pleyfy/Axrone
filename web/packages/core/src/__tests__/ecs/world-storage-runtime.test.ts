@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Component } from '@axrone/ecs';
+import { Component } from '@axrone/ecs-runtime';
 import { WorldStorageRuntime } from '@axrone/ecs-storage';
 
 class TestComponent extends Component {}

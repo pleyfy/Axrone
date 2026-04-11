@@ -1,4 +1,4 @@
-import { Component } from '@axrone/ecs';
+import { Component } from '@axrone/ecs-runtime';
 import { Vec2 } from '@axrone/numeric';
 import type { CollisionFilter, ShapeId } from '../types';
 import type { PhysicsWorld2D } from '../core/physics-world';

@@ -40,7 +40,11 @@ const resolveManualChunk = (id: string): string | undefined => {
     if (
         normalizedId.includes('/packages/asset-core/') ||
         normalizedId.includes('/packages/asset-gltf/') ||
-        normalizedId.includes('/packages/ecs/') ||
+        normalizedId.includes('/packages/ecs-runtime/') ||
+        normalizedId.includes('/packages/ecs-events/') ||
+        normalizedId.includes('/packages/ecs-query/') ||
+        normalizedId.includes('/packages/ecs-storage/') ||
+        normalizedId.includes('/packages/ecs-world-support/') ||
         normalizedId.includes('/packages/game-loop/') ||
         normalizedId.includes('/packages/numeric/') ||
         normalizedId.includes('/packages/random/') ||

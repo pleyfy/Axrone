@@ -1,7 +1,7 @@
 import * as axroneAssetCore from '@axrone/asset-core';
 import * as axroneAssetGltf from '@axrone/asset-gltf';
 import * as axroneCore from '@axrone/core';
-import * as axroneEcs from '@axrone/ecs';
+import * as axroneEcsRuntime from '@axrone/ecs-runtime';
 import * as axroneGameLoop from '@axrone/game-loop';
 import * as axroneGeometry from '@axrone/geometry';
 import * as axroneInput from '@axrone/input';
@@ -31,7 +31,7 @@ const supportedModules = {
     '@axrone/asset-core': axroneAssetCore,
     '@axrone/asset-gltf': axroneAssetGltf,
     '@axrone/core': axroneCore,
-    '@axrone/ecs': axroneEcs,
+    '@axrone/ecs-runtime': axroneEcsRuntime,
     '@axrone/game-loop': axroneGameLoop,
     '@axrone/geometry': axroneGeometry,
     '@axrone/input': axroneInput,

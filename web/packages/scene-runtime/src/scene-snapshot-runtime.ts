@@ -1,5 +1,5 @@
 import { Vec4 } from '@axrone/numeric';
-import type { Actor } from '@axrone/ecs';
+import type { Actor } from '@axrone/ecs-runtime';
 import { SceneSnapshotLoader } from './scene-snapshot-loader';
 import type {
     ScenePrefabDefinition,

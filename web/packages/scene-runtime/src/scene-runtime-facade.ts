@@ -1,9 +1,9 @@
 import type { GameLoop } from '@axrone/game-loop';
-import { Actor, type ActorConfig } from '@axrone/ecs';
-import { World } from '@axrone/ecs';
-import { SystemManager, SystemPhase } from '@axrone/ecs';
-import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs';
-import type { System, SystemQuery } from '@axrone/ecs';
+import { Actor, type ActorConfig } from '@axrone/ecs-runtime';
+import { World } from '@axrone/ecs-runtime';
+import { SystemManager, SystemPhase } from '@axrone/ecs-runtime';
+import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs-runtime';
+import type { System, SystemQuery } from '@axrone/ecs-runtime';
 import type {
     SceneLoopState,
     SceneOptions,

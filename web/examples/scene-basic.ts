@@ -1,4 +1,4 @@
-import { Component, Transform, script } from '@axrone/ecs';
+import { Component, Transform, script } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { Scene } from '@axrone/scene-3d';
 import { bindSceneToContainer } from './example-runtime';

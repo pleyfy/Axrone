@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WorldActorRegistry } from '@axrone/ecs';
+import { WorldActorRegistry } from '@axrone/ecs-runtime';
 
 describe('WorldActorRegistry', () => {
     it('reuses cached actor snapshots until the registry structure changes', () => {

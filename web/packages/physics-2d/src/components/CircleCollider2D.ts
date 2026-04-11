@@ -1,4 +1,4 @@
-import { script } from '@axrone/ecs/decorators';
+import { script } from '@axrone/ecs-runtime/decorators';
 import { Collider2D } from './collider2d';
 
 @script({

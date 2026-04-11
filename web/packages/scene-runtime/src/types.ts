@@ -1,8 +1,8 @@
 import type { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
-import type { Actor, ActorConfig } from '@axrone/ecs';
-import type { World } from '@axrone/ecs';
-import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs';
-import type { System, SystemQuery } from '@axrone/ecs';
+import type { Actor, ActorConfig } from '@axrone/ecs-runtime';
+import type { World } from '@axrone/ecs-runtime';
+import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs-runtime';
+import type { System, SystemQuery } from '@axrone/ecs-runtime';
 import type { GameLoopScheduler, GameLoopStatus } from '@axrone/game-loop';
 import type { Camera } from './components/camera';
 import type { Animator } from './components/animator';
@@ -12,8 +12,8 @@ import type { OrbitCameraController } from './components/orbit-camera-controller
 import type { PrefabNodeBinding } from './components/prefab-node-binding';
 import type { PointLight } from './components/point-light';
 import type { SpotLight } from './components/spot-light';
-import type { Hierarchy } from '@axrone/ecs';
-import type { Transform } from '@axrone/ecs';
+import type { Hierarchy } from '@axrone/ecs-runtime';
+import type { Transform } from '@axrone/ecs-runtime';
 import type { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type { SceneRuntimeProfile } from './scene-profile';
 

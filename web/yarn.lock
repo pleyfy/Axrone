@@ -36,8 +36,20 @@
   version "0.1.0"
   resolved "file:packages/core"
   dependencies:
+    "@axrone/asset-core" "^0.1.0"
+    "@axrone/asset-gltf" "^0.1.0"
+    "@axrone/ecs-query" "^0.1.0"
+    "@axrone/ecs-runtime" "^0.1.0"
+    "@axrone/ecs-storage" "^0.1.0"
+    "@axrone/event" "^0.1.0"
+    "@axrone/geometry" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/random" "^0.0.1"
+    "@axrone/render-core" "^0.1.0"
+    "@axrone/render-webgl2" "^0.1.0"
+    "@axrone/scene-3d" "^0.1.0"
+    "@axrone/scene-runtime" "^0.1.0"
+    "@axrone/scene-runtime-gltf" "^0.1.0"
     "@axrone/utility" "^0.0.1"
     "@loaders.gl/core" "^4.4.1"
     "@loaders.gl/textures" "^4.4.1"
@@ -52,21 +64,26 @@
   version "0.1.0"
   resolved "file:packages/ecs-query"
 
+"@axrone/ecs-runtime@^0.1.0", "@axrone/ecs-runtime@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-runtime":
+  version "0.1.0"
+  resolved "file:packages/ecs-runtime"
+  dependencies:
+    "@axrone/ecs-events" "^0.1.0"
+    "@axrone/ecs-query" "^0.1.0"
+    "@axrone/ecs-storage" "^0.1.0"
+    "@axrone/ecs-world-support" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/utility" "^0.0.1"
+
 "@axrone/ecs-storage@^0.1.0", "@axrone/ecs-storage@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-storage":
   version "0.1.0"
   resolved "file:packages/ecs-storage"
   dependencies:
     "@axrone/utility" "^0.0.1"
 
-"@axrone/ecs@^0.1.0", "@axrone/ecs@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs":
+"@axrone/ecs-world-support@^0.1.0", "@axrone/ecs-world-support@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-world-support":
   version "0.1.0"
-  resolved "file:packages/ecs"
-  dependencies:
-    "@axrone/ecs-events" "^0.1.0"
-    "@axrone/ecs-query" "^0.1.0"
-    "@axrone/ecs-storage" "^0.1.0"
-    "@axrone/numeric" "^0.0.1"
-    "@axrone/utility" "^0.0.1"
+  resolved "file:packages/ecs-world-support"
 
 "@axrone/event@^0.1.0", "@axrone/event@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\event":
   version "0.1.0"
@@ -85,7 +102,7 @@
     "@axrone/numeric" "^0.0.1"
     "@axrone/utility" "^0.0.1"
 
-"@axrone/input@^0.1.0", "@axrone/input@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\input":
+"@axrone/input@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\input":
   version "0.1.0"
   resolved "file:packages/input"
   dependencies:
@@ -105,11 +122,21 @@
     "@axrone/event" "^0.1.0"
     "@axrone/utility" "^0.0.1"
 
+"@axrone/particle-system@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\particle-system":
+  version "0.1.0"
+  resolved "file:packages/particle-system"
+  dependencies:
+    "@axrone/event" "^0.1.0"
+    "@axrone/geometry" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/random" "^0.0.1"
+    "@axrone/utility" "^0.0.1"
+
 "@axrone/physics-2d@^0.1.0", "@axrone/physics-2d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\physics-2d":
   version "0.1.0"
   resolved "file:packages/physics-2d"
   dependencies:
-    "@axrone/ecs" "^0.1.0"
+    "@axrone/ecs-runtime" "^0.1.0"
     "@axrone/geometry" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/physics-core" "^0.1.0"
@@ -118,7 +145,7 @@
   version "0.1.0"
   resolved "file:packages/physics-3d"
   dependencies:
-    "@axrone/ecs" "^0.1.0"
+    "@axrone/ecs-runtime" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/physics-core" "^0.1.0"
 
@@ -128,7 +155,7 @@
   dependencies:
     "@axrone/numeric" "^0.0.1"
 
-"@axrone/physics@^0.1.0", "@axrone/physics@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\physics":
+"@axrone/physics@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\physics":
   version "0.1.0"
   resolved "file:packages/physics"
   dependencies:
@@ -152,6 +179,7 @@
   version "0.1.0"
   resolved "file:packages/render-webgl2"
   dependencies:
+    "@axrone/geometry" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/utility" "^0.0.1"
 
@@ -187,7 +215,7 @@
   version "0.1.0"
   resolved "file:packages/scene-2d"
   dependencies:
-    "@axrone/ecs" "^0.1.0"
+    "@axrone/ecs-runtime" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/random" "^0.0.1"
     "@axrone/scene-runtime" "^0.1.0"
@@ -197,7 +225,7 @@
   version "0.1.0"
   resolved "file:packages/scene-3d"
   dependencies:
-    "@axrone/ecs" "^0.1.0"
+    "@axrone/ecs-runtime" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/random" "^0.0.1"
     "@axrone/render-webgl2" "^0.1.0"
@@ -209,7 +237,7 @@
   resolved "file:packages/scene-runtime-gltf"
   dependencies:
     "@axrone/asset-gltf" "^0.1.0"
-    "@axrone/ecs" "^0.1.0"
+    "@axrone/ecs-runtime" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/render-webgl2" "^0.1.0"
     "@axrone/scene-3d" "^0.1.0"
@@ -219,8 +247,9 @@
   version "0.1.0"
   resolved "file:packages/scene-runtime"
   dependencies:
-    "@axrone/ecs" "^0.1.0"
+    "@axrone/ecs-runtime" "^0.1.0"
     "@axrone/game-loop" "^0.1.0"
+    "@axrone/geometry" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/random" "^0.0.1"
     "@axrone/render-webgl2" "^0.1.0"

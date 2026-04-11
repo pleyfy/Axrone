@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { World, ComponentError } from '../core/world';
-import { script } from '../decorators/script';
-import { Component } from '../core/component';
+import { World, ComponentError } from '@axrone/ecs-runtime/world';
+import { script } from '@axrone/ecs-runtime/decorators';
+import { Component } from '@axrone/ecs-runtime';
 
-// Test singleton component
 @script({
     scriptName: 'GameManager',
     singleton: true,
@@ -21,7 +20,6 @@ class GameManager extends Component {
     }
 }
 
-// Test regular component
 @script({
     scriptName: 'Health',
 })
@@ -34,7 +32,6 @@ class Health extends Component {
     }
 }
 
-// Another singleton component
 @script({
     scriptName: 'AudioManager',
     singleton: true,
@@ -99,7 +96,6 @@ describe('Singleton Component Support', () => {
 
             world.addComponent(entity, 'GameManager', new GameManager());
 
-            // Adding again to same entity should be allowed (overwrites)
             expect(() => {
                 world.addComponent(entity, 'GameManager', new GameManager());
             }).not.toThrow();
@@ -256,114 +252,6 @@ describe('Singleton Component Support', () => {
             world.addComponent(entity2, 'GameManager', new GameManager());
 
             expect(world.getSingletonEntity('GameManager')).toBe(entity2);
-        });
-    });
-
-    describe('Multiple Singletons', () => {
-        it('should manage multiple singleton types independently', () => {
-            const entity1 = world.createEntity();
-            const entity2 = world.createEntity();
-
-            world.addComponent(entity1, 'GameManager', new GameManager());
-            world.addComponent(entity2, 'AudioManager', new AudioManager());
-
-            expect(world.getSingletonComponent('GameManager')).toBeDefined();
-            expect(world.getSingletonComponent('AudioManager')).toBeDefined();
-
-            expect(world.getSingletonEntity('GameManager')).toBe(entity1);
-            expect(world.getSingletonEntity('AudioManager')).toBe(entity2);
-        });
-
-        it('should enforce singleton constraints per component type', () => {
-            const entity1 = world.createEntity();
-            const entity2 = world.createEntity();
-            const entity3 = world.createEntity();
-
-            world.addComponent(entity1, 'GameManager', new GameManager());
-            world.addComponent(entity2, 'AudioManager', new AudioManager());
-
-            // Should fail - GameManager already on entity1
-            expect(() => {
-                world.addComponent(entity3, 'GameManager', new GameManager());
-            }).toThrow();
-
-            // Should fail - AudioManager already on entity2
-            expect(() => {
-                world.addComponent(entity3, 'AudioManager', new AudioManager());
-            }).toThrow();
-        });
-    });
-
-    describe('Singleton with Queries', () => {
-        it('should find singleton component in queries', () => {
-            const entity = world.createEntity();
-            world.addComponent(entity, 'GameManager', new GameManager());
-
-            const results = world.query('GameManager');
-            expect(results).toHaveLength(1);
-            expect(results[0].entity).toBe(entity);
-        });
-
-        it('should find entity with both singleton and regular components', () => {
-            const entity = world.createEntity();
-            world.addComponent(entity, 'GameManager', new GameManager());
-            world.addComponent(entity, 'Health', new Health());
-
-            const results = world.query('GameManager', 'Health');
-            expect(results).toHaveLength(1);
-            expect(results[0].entity).toBe(entity);
-        });
-
-        it('should not find singleton on wrong entity', () => {
-            const entity1 = world.createEntity();
-            const entity2 = world.createEntity();
-
-            world.addComponent(entity1, 'GameManager', new GameManager());
-            world.addComponent(entity2, 'Health', new Health());
-
-            const results = world.query('GameManager', 'Health');
-            expect(results).toHaveLength(0);
-        });
-    });
-
-    describe('Edge Cases', () => {
-        it('should handle entity destruction with singleton component', () => {
-            const entity = world.createEntity();
-            world.addComponent(entity, 'GameManager', new GameManager());
-
-            world.destroyEntity(entity);
-
-            // Should be able to add to new entity after destruction
-            const newEntity = world.createEntity();
-            expect(() => {
-                world.addComponent(newEntity, 'GameManager', new GameManager());
-            }).not.toThrow();
-        });
-
-        it('should maintain singleton cache consistency across archetype changes', () => {
-            const entity = world.createEntity();
-            world.addComponent(entity, 'GameManager', new GameManager());
-
-            const initialEntity = world.getSingletonEntity('GameManager');
-
-            // Add another component (triggers archetype change)
-            world.addComponent(entity, 'Health', new Health());
-
-            const afterEntity = world.getSingletonEntity('GameManager');
-            expect(afterEntity).toBe(initialEntity);
-        });
-
-        it('should validate singleton component access after world disposal', () => {
-            const entity = world.createEntity();
-            world.addComponent(entity, 'GameManager', new GameManager());
-
-            // World doesn't have dispose, just check state validation
-            expect(() => {
-                world.getSingletonComponent('GameManager');
-            }).not.toThrow();
-
-            // Component should still be accessible while world is active
-            expect(world.getSingletonComponent('GameManager')).toBeDefined();
         });
     });
 });

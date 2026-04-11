@@ -1,4 +1,4 @@
-import type { Actor } from '@axrone/ecs';
+import type { Actor } from '@axrone/ecs-runtime';
 import { Camera } from './components/camera';
 
 export const selectSceneCamera = (actors: readonly Actor[]): Camera | undefined => {

@@ -1,9 +1,9 @@
-import { ECSObservables } from '@axrone/ecs';
-import type { Entity, ComponentRegistry } from '@axrone/ecs';
-import { Actor } from '@axrone/ecs';
-import { World } from '@axrone/ecs';
-import { Component } from '@axrone/ecs';
-import { Transform } from '@axrone/ecs';
+import { ECSObservables } from '@axrone/ecs-runtime';
+import type { Entity, ComponentRegistry } from '@axrone/ecs-runtime';
+import { Actor } from '@axrone/ecs-runtime';
+import { World } from '@axrone/ecs-runtime';
+import { Component } from '@axrone/ecs-runtime';
+import { Transform } from '@axrone/ecs-runtime';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));

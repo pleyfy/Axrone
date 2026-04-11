@@ -1,5 +1,5 @@
-import { Actor } from '@axrone/ecs';
-import type { ComponentRegistry } from '@axrone/ecs';
+import { Actor } from '@axrone/ecs-runtime';
+import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import type {
     SceneOptions,
     ScenePrefabDefinition,

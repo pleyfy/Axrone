@@ -1,4 +1,4 @@
-import type { ComponentRegistry } from '@axrone/ecs';
+import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import type { SceneOptions } from './types';
 import {
     DEFAULT_SCENE_HEIGHT,

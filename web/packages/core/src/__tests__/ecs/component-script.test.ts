@@ -3,9 +3,9 @@ import {
     script,
     getComponentMetadata,
     setComponentMetadata,
-} from '@axrone/ecs';
-import { Transform } from '@axrone/ecs';
-import type { ComponentMetadata } from '@axrone/ecs';
+} from '@axrone/ecs-runtime';
+import { Transform } from '@axrone/ecs-runtime';
+import type { ComponentMetadata } from '@axrone/ecs-runtime';
 import { afterEach, describe, expect, test } from 'vitest';
 
 class TestDependencyComponent extends Component {

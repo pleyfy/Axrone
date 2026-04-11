@@ -1,4 +1,4 @@
-import { Transform } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs-runtime';
 import {
     Camera,
     MeshRenderer,

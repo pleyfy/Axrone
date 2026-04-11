@@ -40,7 +40,6 @@
             "@axrone/scene-runtime-gltf/*": ["packages/scene-runtime-gltf/src/*"],
             "@axrone/scene-runtime": ["packages/scene-runtime/src"],
             "@axrone/scene-runtime/*": ["packages/scene-runtime/src/*"],
-            "@axrone/ecs/*": ["packages/ecs/src/*"],
             "@axrone/ecs-runtime": ["packages/ecs-runtime/src/index.ts"],
             "@axrone/ecs-runtime/*": ["packages/ecs-runtime/src/*"],
             "@axrone/ecs-events/*": ["packages/ecs-events/src/*"],

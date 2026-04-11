@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-const ecsFacadeComponentSystemDir = path.resolve(testDir, '../../../../ecs/src/component-system');
+const ecsPackageDir = path.resolve(testDir, '../../../../ecs');
 
-describe('ecs facade physical split', () => {
-    it('keeps ecs facade free of a local component-system implementation tree', () => {
-        expect(fs.existsSync(ecsFacadeComponentSystemDir)).toBe(false);
+describe('ecs package removal', () => {
+    it('removes the legacy ecs workspace package', () => {
+        expect(fs.existsSync(ecsPackageDir)).toBe(false);
     });
 });

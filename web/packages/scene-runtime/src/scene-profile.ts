@@ -1,4 +1,4 @@
-import type { ComponentRegistry } from '@axrone/ecs';
+import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import {
     DEFAULT_SCENE_BUILT_IN_MANIFESTS,
     SCENE_2D_BUILT_IN_MANIFEST,

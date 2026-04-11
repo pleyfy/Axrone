@@ -1,5 +1,5 @@
 import { AssetDatabase, type AssetImporter } from '@axrone/asset-core';
-import { Transform } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs-runtime';
 import {
     createGltfImporter,
     type GltfAssetSchemaLike,

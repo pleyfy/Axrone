@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { World } from '@axrone/ecs';
+import { World } from '@axrone/ecs-runtime';
 import { createSceneRegistry } from '@axrone/scene-3d';
 import { Scene3DActorRuntime } from '@axrone/scene-3d';
 import { SceneActorRuntime } from '@axrone/scene-3d';

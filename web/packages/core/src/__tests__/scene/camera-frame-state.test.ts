@@ -1,8 +1,8 @@
 import { Quat, Vec3 } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
-import { Transform } from '@axrone/ecs';
-import { Actor } from '@axrone/ecs';
-import { World } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs-runtime';
+import { Actor } from '@axrone/ecs-runtime';
+import { World } from '@axrone/ecs-runtime';
 import { createSceneRegistry } from '@axrone/scene-3d';
 import { Camera } from '@axrone/scene-3d';
 import { SceneCameraFrameStateCollector } from '@axrone/scene-3d';

@@ -1,6 +1,6 @@
 import { Vec3, type IVec3Like } from '@axrone/numeric';
-import { script } from '@axrone/ecs/decorators';
-import { Component } from '@axrone/ecs';
+import { script } from '@axrone/ecs-runtime/decorators';
+import { Component } from '@axrone/ecs-runtime';
 import type {
     BodyId3D,
     Density,

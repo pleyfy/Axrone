@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SystemPhase } from '@axrone/ecs';
+import { SystemPhase } from '@axrone/ecs-runtime';
 import { createSceneLoopSystems } from '@axrone/scene-3d';
 
 describe('createSceneLoopSystems', () => {

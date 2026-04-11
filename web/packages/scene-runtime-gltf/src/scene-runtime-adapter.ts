@@ -1,4 +1,4 @@
-import type { Actor, ComponentRegistry } from '@axrone/ecs';
+import type { Actor, ComponentRegistry } from '@axrone/ecs-runtime';
 import type {
     AssetDatabase,
     AssetSelector,

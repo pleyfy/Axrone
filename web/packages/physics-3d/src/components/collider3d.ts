@@ -1,5 +1,5 @@
 import { Vec3, Quat, type IVec3Like, type IQuatLike } from '@axrone/numeric';
-import { Component } from '@axrone/ecs';
+import { Component } from '@axrone/ecs-runtime';
 import type {
     Density,
     Friction,

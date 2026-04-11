@@ -1,6 +1,6 @@
-import { Component } from '@axrone/ecs';
-import { Transform } from '@axrone/ecs/components';
-import { script } from '@axrone/ecs/decorators';
+import { Component } from '@axrone/ecs-runtime';
+import { Transform } from '@axrone/ecs-runtime/components';
+import { script } from '@axrone/ecs-runtime/decorators';
 import { Vec2 } from '@axrone/numeric';
 import type { BodyId, BodyType } from '../types';
 import type { PhysicsWorld2D } from '../core/physics-world';

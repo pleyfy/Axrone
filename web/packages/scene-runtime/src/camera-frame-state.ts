@@ -1,5 +1,5 @@
 import { Mat4, Quat, Vec3 } from '@axrone/numeric';
-import { Transform } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs-runtime';
 import { Camera } from './components/camera';
 
 interface MutableSceneCameraFrameState {

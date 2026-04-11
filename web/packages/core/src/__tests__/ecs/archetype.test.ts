@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Component } from '@axrone/ecs';
+import { Component } from '@axrone/ecs-runtime';
 import { Archetype } from '@axrone/ecs-storage';
 import type {
     ComponentRegistry,
     ArchetypeSignature,
     BitMask,
     ComponentMask,
-} from '@axrone/ecs';
+} from '@axrone/ecs-runtime';
 
 class TestComponent extends Component {
     value: number = 0;

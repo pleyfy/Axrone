@@ -1,9 +1,9 @@
-import { Hierarchy } from '@axrone/ecs';
-import { Transform } from '@axrone/ecs';
+import { Hierarchy } from '@axrone/ecs-runtime';
+import { Transform } from '@axrone/ecs-runtime';
 import type {
     ComponentConstructor,
     ComponentRegistry,
-} from '@axrone/ecs';
+} from '@axrone/ecs-runtime';
 import { PrefabNodeBinding } from './components/prefab-node-binding';
 
 export type SceneRuntimeBuiltInComponentName =

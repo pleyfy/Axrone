@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Component } from '@axrone/ecs';
+import { Component } from '@axrone/ecs-runtime';
 import {
     CORE_SCENE_RUNTIME_PROFILE_ID,
     DEFAULT_SCENE_RUNTIME_PROFILE_ID,

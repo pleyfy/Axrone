@@ -7,7 +7,6 @@ const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packagesDir = path.resolve(testDir, '../../../..');
 const observerSrcDir = path.resolve(packagesDir, 'observer/src');
 const coreIndexPath = path.resolve(testDir, '../../index.ts');
-const coreComponentSystemIndexPath = path.resolve(testDir, '../../component-system/index.ts');
 const disallowedCoreSourceBypassPattern =
     /(?:from ['"]|import\(['"])(?:\.\.\/)+core\/src\/(?:event|observer|tween)(?:\/[^'"]*)?['"]/g;
 const disallowedPackageSourceBypassPattern =
@@ -53,7 +52,7 @@ describe('observer ownership boundary', () => {
     });
 
     it('keeps core barrels from re-exporting general observer APIs', () => {
-        const coreBarrelFiles = [coreIndexPath, coreComponentSystemIndexPath];
+        const coreBarrelFiles = [coreIndexPath];
         const violatingFiles = coreBarrelFiles
             .filter((filePath) => {
                 const content = fs.readFileSync(filePath, 'utf8');

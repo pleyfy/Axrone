@@ -1,4 +1,4 @@
-import { SystemPhase } from '@axrone/ecs';
+import { SystemPhase } from '@axrone/ecs-runtime';
 import type { GameLoopSystem } from '@axrone/game-loop';
 import type { SceneLoopState } from './types';
 

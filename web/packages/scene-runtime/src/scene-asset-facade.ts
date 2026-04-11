@@ -1,4 +1,4 @@
-import type { ComponentRegistry } from '@axrone/ecs';
+import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import { SceneMaterialError } from './errors';
 import type {
     SceneMaterialDefinition,

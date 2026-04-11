@@ -1,5 +1,5 @@
-import { getComponentMetadata } from '@axrone/ecs';
-import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs';
+import { getComponentMetadata } from '@axrone/ecs-runtime';
+import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs-runtime';
 
 export const getSceneComponentTypeName = (
     componentType: ComponentConstructor

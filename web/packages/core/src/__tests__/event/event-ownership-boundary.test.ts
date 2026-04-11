@@ -7,7 +7,6 @@ const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packagesDir = path.resolve(testDir, '../../../..');
 const eventSrcDir = path.resolve(packagesDir, 'event/src');
 const coreIndexPath = path.resolve(testDir, '../../index.ts');
-const coreComponentSystemIndexPath = path.resolve(testDir, '../../component-system/index.ts');
 const disallowedCoreSourceBypassPattern =
     /(?:from ['"]|import\(['"])(?:\.\.\/)+core\/src\/(?:event|observer|tween)(?:\/[^'"]*)?['"]/g;
 const disallowedSiblingSourceBypassPattern =
@@ -53,7 +52,7 @@ describe('event ownership boundary', () => {
     });
 
     it('keeps core barrels from re-exporting general event APIs', () => {
-        const coreBarrelFiles = [coreIndexPath, coreComponentSystemIndexPath];
+        const coreBarrelFiles = [coreIndexPath];
         const violatingFiles = coreBarrelFiles
             .filter((filePath) => {
                 const content = fs.readFileSync(filePath, 'utf8');

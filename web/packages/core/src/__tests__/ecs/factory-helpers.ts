@@ -7,8 +7,8 @@ import type {
     System,
     SystemId,
     SystemQuery,
-} from '@axrone/ecs';
-import { Actor, World } from '@axrone/ecs';
+} from '@axrone/ecs-runtime';
+import { Actor, World } from '@axrone/ecs-runtime';
 
 export const createWorld = <R extends ComponentRegistry>(registry: R): World<R> => {
     return new World(registry);

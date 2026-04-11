@@ -1,5 +1,5 @@
-import { Component } from '@axrone/ecs';
-import { script } from '@axrone/ecs';
+import { Component } from '@axrone/ecs-runtime';
+import { script } from '@axrone/ecs-runtime';
 
 export interface PrefabNodeBindingConfig {
     readonly nodeId?: string;

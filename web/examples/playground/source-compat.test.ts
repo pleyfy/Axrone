@@ -11,7 +11,7 @@ const example: SceneExample = {} as SceneExample;
 export default example;
 `;
 
-        expect(normalizePlaygroundSource(source)).toBe(`import { Component, Transform, script } from '@axrone/ecs';
+        expect(normalizePlaygroundSource(source)).toBe(`import { Component, Transform, script } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { Scene } from '@axrone/scene-3d';
 import type { SceneExample } from './example-types';
@@ -28,7 +28,7 @@ import { Quat } from '@axrone/numeric';
 import { DirectionalLight } from '@axrone/scene-3d';
 `;
 
-        expect(normalizePlaygroundSource(source)).toBe(`import { Transform } from '@axrone/ecs';
+        expect(normalizePlaygroundSource(source)).toBe(`import { Transform } from '@axrone/ecs-runtime';
 import { Quat, Vec3 } from '@axrone/numeric';
 import { DirectionalLight, Scene, createUnlitColorShaderDefinition } from '@axrone/scene-3d';
 `);
@@ -39,10 +39,14 @@ import { DirectionalLight, Scene, createUnlitColorShaderDefinition } from '@axro
 import { createGltfImporter } from '@axrone/asset-gltf';
 `;
 
-        expect(normalizePlaygroundSource(source)).toBe(`import { AssetDatabase, type AssetImporter } from '@axrone/asset-core';
-import { Transform } from '@axrone/ecs';
-import { createGltfImporter } from '@axrone/asset-gltf';
-`);
+        expect(normalizePlaygroundSource(source)).toBe(
+            [
+                "import { AssetDatabase, type AssetImporter } from '@axrone/asset-core';",
+                "import { Transform } from '@axrone/ecs-runtime';",
+                "import { createGltfImporter } from '@axrone/asset-gltf';",
+                '',
+            ].join('\n')
+        );
     });
 
     it('moves geometry ownership imports out of core', () => {
@@ -75,12 +79,12 @@ describe('validateSupportedModuleImports', () => {
             `import { Transform } from '@axrone/core';`,
             {
                 '@axrone/core': {},
-                '@axrone/ecs': { Transform: class Transform {} },
+                '@axrone/ecs-runtime': { Transform: class Transform {} },
             }
         );
 
         expect(diagnostics).toEqual([
-            'Module "@axrone/core" does not export "Transform". Import it from "@axrone/ecs" instead.',
+            'Module "@axrone/core" does not export "Transform". Import it from "@axrone/ecs-runtime" instead.',
         ]);
     });
 

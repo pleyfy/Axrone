@@ -1,5 +1,5 @@
 import { Vec3, Vec4 } from '@axrone/numeric';
-import type { Actor } from '@axrone/ecs';
+import type { Actor } from '@axrone/ecs-runtime';
 import { selectSceneCamera } from './camera-selector';
 import { SceneCameraFrameStateCollector } from './camera-frame-state';
 import { SceneDrawExecutionContextCache } from './draw-execution-context';

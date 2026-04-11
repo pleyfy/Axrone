@@ -1,7 +1,7 @@
 import { Vec3 } from '@axrone/numeric';
-import { Transform } from '@axrone/ecs';
-import { Component } from '@axrone/ecs';
-import { script } from '@axrone/ecs';
+import { Transform } from '@axrone/ecs-runtime';
+import { Component } from '@axrone/ecs-runtime';
+import { script } from '@axrone/ecs-runtime';
 
 export interface PointLightConfig {
     readonly color?: Vec3 | readonly [number, number, number];

@@ -1,4 +1,4 @@
-import { Component, type ComponentConfig } from '@axrone/ecs';
+import { Component, type ComponentConfig } from '@axrone/ecs-runtime';
 
 export interface Vec2 {
     x: number;

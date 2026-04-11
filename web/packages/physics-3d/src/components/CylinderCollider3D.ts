@@ -1,5 +1,5 @@
 import { Vec3, type IVec3Like } from '@axrone/numeric';
-import { script } from '@axrone/ecs/decorators';
+import { script } from '@axrone/ecs-runtime/decorators';
 import type { ICylinderShapeDef3D } from '../types';
 import { Collider3D, CapsuleDirection3D, INVALID_SHAPE_ID } from './collider3d';
 

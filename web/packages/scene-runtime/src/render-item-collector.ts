@@ -1,5 +1,5 @@
-import type { Actor } from '@axrone/ecs';
-import { Transform } from '@axrone/ecs';
+import type { Actor } from '@axrone/ecs-runtime';
+import { Transform } from '@axrone/ecs-runtime';
 import { MeshRenderer } from './components/mesh-renderer';
 
 export interface SceneRenderItem {
