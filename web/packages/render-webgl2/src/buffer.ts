@@ -1,4 +1,4 @@
-import { IDisposable } from '../../types';
+import type { IDisposable } from './disposable';
 import type { IBindableTarget } from './interfaces';
 import { BufferPool, ResourceTracker } from './internal/buffer-management';
 
@@ -133,6 +133,23 @@ export class GLError extends Error {
     }
 }
 
+const SharedArrayBufferConstructor =
+    typeof SharedArrayBuffer === 'undefined' ? undefined : SharedArrayBuffer;
+
+const isSharedArrayBuffer = (value: unknown): value is SharedArrayBuffer => {
+    return (
+        SharedArrayBufferConstructor !== undefined && value instanceof SharedArrayBufferConstructor
+    );
+};
+
+const isRawBufferData = (value: unknown): value is ArrayBuffer | SharedArrayBuffer => {
+    return value instanceof ArrayBuffer || isSharedArrayBuffer(value);
+};
+
+const isBufferData = (value: unknown): value is BufferSource | SharedArrayBuffer => {
+    return isRawBufferData(value) || ArrayBuffer.isView(value);
+};
+
 const createGLConstants = <T extends number>(
     gl: WebGL2RenderingContext
 ): Readonly<{
@@ -253,11 +270,7 @@ export class Buffer implements IBuffer {
     public update = <T extends BufferSource>(data: T, offset: number = 0): IBuffer => {
         this.#throwIfDisposed();
 
-        if (
-            !(data instanceof ArrayBuffer) &&
-            !ArrayBuffer.isView(data) &&
-            !(data instanceof SharedArrayBuffer)
-        ) {
+        if (!isBufferData(data)) {
             throw new GLError('Invalid data type for buffer update', 'INVALID_VALUE');
         }
 
@@ -265,10 +278,7 @@ export class Buffer implements IBuffer {
             throw new GLError('Offset cannot be negative', 'INVALID_VALUE');
         }
 
-        const dataSize =
-            data instanceof ArrayBuffer || data instanceof SharedArrayBuffer
-                ? data.byteLength
-                : data.byteLength;
+        const dataSize = data.byteLength;
 
         if (offset + dataSize > this.#byteLength) {
             throw new GLError(
@@ -291,11 +301,7 @@ export class Buffer implements IBuffer {
     ): IBuffer => {
         this.#throwIfDisposed();
 
-        if (
-            !(data instanceof ArrayBuffer) &&
-            !ArrayBuffer.isView(data) &&
-            !(data instanceof SharedArrayBuffer)
-        ) {
+        if (!isBufferData(data)) {
             throw new GLError('Invalid data type for buffer update', 'INVALID_VALUE');
         }
 
@@ -303,10 +309,7 @@ export class Buffer implements IBuffer {
             throw new GLError('Offsets cannot be negative', 'INVALID_VALUE');
         }
 
-        const dataSize =
-            data instanceof ArrayBuffer || data instanceof SharedArrayBuffer
-                ? data.byteLength
-                : data.byteLength;
+        const dataSize = data.byteLength;
 
         const updateLength = length ?? dataSize - srcByteOffset;
 
@@ -326,10 +329,7 @@ export class Buffer implements IBuffer {
 
         this.bind();
 
-        if (data instanceof ArrayBuffer) {
-            const view = new Uint8Array(data, srcByteOffset, updateLength);
-            this.#gl.bufferSubData(this.#target, dstByteOffset, view);
-        } else if (data instanceof SharedArrayBuffer) {
+        if (isRawBufferData(data)) {
             const view = new Uint8Array(data, srcByteOffset, updateLength);
             this.#gl.bufferSubData(this.#target, dstByteOffset, view);
         } else {
@@ -375,19 +375,12 @@ export class Buffer implements IBuffer {
             this.#gl.bufferData(this.#target, dataOrByteSize, effectiveUsage);
             this.#byteLength = dataOrByteSize;
         } else {
-            if (
-                !(dataOrByteSize instanceof ArrayBuffer) &&
-                !ArrayBuffer.isView(dataOrByteSize) &&
-                !(dataOrByteSize instanceof SharedArrayBuffer)
-            ) {
+            if (!isBufferData(dataOrByteSize)) {
                 throw new GLError('Invalid data type for buffer resize', 'INVALID_VALUE');
             }
 
             this.#gl.bufferData(this.#target, dataOrByteSize, effectiveUsage);
-            this.#byteLength =
-                dataOrByteSize instanceof ArrayBuffer || dataOrByteSize instanceof SharedArrayBuffer
-                    ? dataOrByteSize.byteLength
-                    : dataOrByteSize.byteLength;
+            this.#byteLength = dataOrByteSize.byteLength;
         }
 
         this.#usage = effectiveUsage;

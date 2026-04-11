@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createBufferFactory } from '../../renderer/webgl2/buffer';
-import type { IBufferFactory, IBuffer } from '../../renderer/webgl2/buffer';
+import { createBufferFactory } from '@axrone/render-webgl2/buffer';
+import type { IBufferFactory, IBuffer } from '@axrone/render-webgl2/buffer';
 
 describe('WebGL Buffer - Browser Tests', () => {
     let canvas: HTMLCanvasElement;

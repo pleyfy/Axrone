@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { Component, script } from '@axrone/ecs-runtime';
 import { Hierarchy } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
-import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
+import { TextureFormat } from '@axrone/render-webgl2';
 import {
     createMockGL,
     createSceneOptions,

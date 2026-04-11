@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ITextureSampler } from '../../renderer/webgl2/texture/interfaces';
+import type { ITextureSampler } from '@axrone/render-webgl2';
 import type { SceneMaterialResource } from '@axrone/scene-3d';
 import { SceneMaterialTextureBinder } from '@axrone/scene-3d';
 import type { SceneShaderResource } from '@axrone/scene-3d';

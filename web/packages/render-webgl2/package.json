@@ -13,6 +13,41 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.mjs",
             "require": "./dist/index.js"
+        },
+        "./buffer": {
+            "types": "./dist/buffer.d.ts",
+            "import": "./dist/buffer.mjs",
+            "require": "./dist/buffer.js"
+        },
+        "./framebuffer": {
+            "types": "./dist/framebuffer.d.ts",
+            "import": "./dist/framebuffer.mjs",
+            "require": "./dist/framebuffer.js"
+        },
+        "./vao": {
+            "types": "./dist/vao.d.ts",
+            "import": "./dist/vao.mjs",
+            "require": "./dist/vao.js"
+        },
+        "./shader": {
+            "types": "./dist/shader.d.ts",
+            "import": "./dist/shader.mjs",
+            "require": "./dist/shader.js"
+        },
+        "./material": {
+            "types": "./dist/material.d.ts",
+            "import": "./dist/material.mjs",
+            "require": "./dist/material.js"
+        },
+        "./mesh": {
+            "types": "./dist/mesh.d.ts",
+            "import": "./dist/mesh.mjs",
+            "require": "./dist/mesh.js"
+        },
+        "./batch": {
+            "types": "./dist/batch.d.ts",
+            "import": "./dist/batch.mjs",
+            "require": "./dist/batch.js"
         }
     },
     "scripts": {
@@ -21,6 +56,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@axrone/ecs-runtime": "^0.1.0",
         "@axrone/geometry": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
         "@axrone/utility": "^0.0.1"

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BasisLoader } from '@loaders.gl/textures';
 import {
+    FilterMode,
+    TextureFormat,
+    WrapMode,
+} from '@axrone/render-webgl2';
+import {
     AssetDatabase,
 } from '@axrone/asset-core';
 import {
@@ -14,12 +19,6 @@ import {
     type GltfTextureAsset,
     type GltfRootJson,
 } from '@axrone/asset-gltf';
-import {
-    FilterMode,
-    TextureFormat,
-    WrapMode,
-} from '../../renderer/webgl2/texture/interfaces';
-
 vi.mock('@loaders.gl/textures', () => ({
     BASIS_EXTERNAL_LIBRARIES: {
         TRANSCODER: 'basis_transcoder.js',

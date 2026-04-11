@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MeshoptEncoder } from 'meshoptimizer';
-import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
+import { TextureFormat } from '@axrone/render-webgl2';
 import {
     AssetDatabase,
 } from '@axrone/asset-core';

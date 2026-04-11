@@ -1,4 +1,4 @@
-import type { IDisposable } from '../../../types';
+import type { IDisposable } from '../disposable';
 import type {
     ErrorCode,
     GLBufferUsage,

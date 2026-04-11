@@ -1,4 +1,4 @@
-import { IDisposable } from '../../types';
+import type { IDisposable } from './disposable';
 import type { IBindableTarget } from './interfaces';
 
 type Nominal<T, K extends string> = T & { readonly __brand: K };

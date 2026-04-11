@@ -1,6 +1,6 @@
 import { Mat4 } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
-import { RenderPipeline } from '../renderer/webgl2/rendering';
+import { RenderPipeline } from '@axrone/render-core';
 
 const createCamera = () => ({
     id: 'camera:main',
