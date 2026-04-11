@@ -1,1 +1,1 @@
-export * from './component-system/types/index';
+export * from '@axrone/ecs-runtime/types';

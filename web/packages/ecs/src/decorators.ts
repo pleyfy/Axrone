@@ -1,1 +1,1 @@
-export * from './component-system/decorators/index';
+export * from '@axrone/ecs-runtime/decorators';

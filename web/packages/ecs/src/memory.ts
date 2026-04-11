@@ -1,1 +1,1 @@
-export * from './component-system/memory/index';
+export * from '@axrone/ecs-runtime/memory';

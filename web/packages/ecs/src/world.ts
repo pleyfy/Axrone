@@ -1,1 +1,1 @@
-export * from './component-system/core/world';
+export * from '@axrone/ecs-runtime/world';

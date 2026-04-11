@@ -1,1 +1,1 @@
-export * from './component-system/observers/index';
+export * from '@axrone/ecs-runtime/observers';

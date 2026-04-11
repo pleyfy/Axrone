@@ -1,1 +1,1 @@
-export * from './component-system/systems/index';
+export * from '@axrone/ecs-runtime/systems';
