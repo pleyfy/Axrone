@@ -41,7 +41,6 @@
             "@axrone/scene-runtime/*": ["packages/scene-runtime/src/*"],
             "@axrone/ecs-runtime": ["packages/ecs-runtime/src/index.ts"],
             "@axrone/ecs-runtime/*": ["packages/ecs-runtime/src/*"],
-            "@axrone/ecs-events/*": ["packages/ecs-events/src/*"],
             "@axrone/ecs-query/*": ["packages/ecs-query/src/*"],
             "@axrone/ecs-storage/*": ["packages/ecs-storage/src/*"],
             "@axrone/ecs-world-support": ["packages/ecs-world-support/src/index.ts"],

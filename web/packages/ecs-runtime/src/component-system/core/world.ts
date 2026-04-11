@@ -6,7 +6,7 @@ import type {
     ComponentConstructor,
 } from '../types/core';
 import type { QueryResult } from '../types/system';
-import type { EventKey } from '@axrone/ecs-events/event';
+import type { EventKey } from '@axrone/event';
 import { OptimizedQueryCache } from '@axrone/ecs-query/query-cache';
 import { WorldQueryRuntime } from '@axrone/ecs-query/world-query-runtime';
 import { WorldStorageRuntime } from '@axrone/ecs-storage/world-storage-runtime';
