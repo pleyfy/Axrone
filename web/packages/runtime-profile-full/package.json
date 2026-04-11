@@ -1,0 +1,38 @@
+{
+    "name": "@axrone/runtime-profile-full",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@axrone/asset-2d": "^0.1.0",
+        "@axrone/asset-core": "^0.1.0",
+        "@axrone/asset-gltf": "^0.1.0",
+        "@axrone/input-core": "^0.1.0",
+        "@axrone/physics-2d": "^0.1.0",
+        "@axrone/physics-3d": "^0.1.0",
+        "@axrone/physics-core": "^0.1.0",
+        "@axrone/render-2d": "^0.1.0",
+        "@axrone/render-3d": "^0.1.0",
+        "@axrone/render-webgl2": "^0.1.0",
+        "@axrone/scene-2d": "^0.1.0",
+        "@axrone/scene-3d": "^0.1.0",
+        "@axrone/scene-runtime": "^0.1.0"
+    }
+}

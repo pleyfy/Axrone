@@ -1,0 +1,31 @@
+{
+    "name": "@axrone/scene-runtime-gltf",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@axrone/asset-gltf": "^0.1.0",
+        "@axrone/ecs-runtime": "^0.1.0",
+        "@axrone/numeric": "^0.0.1",
+        "@axrone/render-webgl2": "^0.1.0",
+        "@axrone/scene-3d": "^0.1.0",
+        "@axrone/scene-runtime": "^0.1.0"
+    }
+}

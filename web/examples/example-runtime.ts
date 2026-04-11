@@ -1,4 +1,4 @@
-import type { Scene } from '@axrone/core';
+import type { Scene } from '@axrone/scene-3d';
 
 export const bindSceneToContainer = (
     scene: Scene,

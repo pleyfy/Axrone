@@ -8,6 +8,28 @@ import type {
 } from '@axrone/random';
 
 import { Random, rand, NormalDistribution as CoreNormalDistribution } from '@axrone/random';
+import {
+    BoxMullerError,
+    ErrorCodes,
+    createError,
+    validateFinite,
+    validateInRange,
+    validateInteger,
+    validatePositive,
+} from './box-muller-errors';
+import { DefaultRandomGenerator, createDefaultRandomGenerator } from './box-muller-random';
+
+export {
+    BoxMullerError,
+    ErrorCodes,
+    createDefaultRandomGenerator,
+    createError,
+    DefaultRandomGenerator,
+    validateFinite,
+    validateInRange,
+    validateInteger,
+    validatePositive,
+};
 
 export type BoxMullerOptions = {
     readonly mean?: number;
@@ -115,26 +137,6 @@ export class BoxMullerNormalDistribution implements IDistribution<number> {
     public standardDeviation = (): number => this._stdDev;
 }
 
-export class BoxMullerError extends Error {
-    readonly code: (typeof ErrorCodes)[keyof typeof ErrorCodes];
-
-    constructor(code: (typeof ErrorCodes)[keyof typeof ErrorCodes], message: string) {
-        super(message);
-        this.code = code;
-        this.name = 'BoxMullerError';
-
-        Object.setPrototypeOf(this, BoxMullerError.prototype);
-    }
-}
-
-export const ErrorCodes = {
-    INVALID_PARAMETER: 'INVALID_PARAMETER',
-    RUNTIME_ERROR: 'RUNTIME_ERROR',
-    INVALID_STATE: 'INVALID_STATE',
-    INVALID_OPERATION: 'INVALID_OPERATION',
-    PRECISION_ERROR: 'PRECISION_ERROR',
-} as const;
-
 export type PrecisionMode = 'high' | 'standard' | 'low';
 
 export type DistributionMetadata = {
@@ -156,82 +158,6 @@ const INV_SQRT_TWO_PI = 1.0 / SQRT_TWO_PI;
 const LN_2 = Math.log(2);
 const MAX_ITERATIONS = 100;
 const EPSILON = 1e-10;
-
-export const createDefaultRandomGenerator = (): DefaultRandomGenerator =>
-    new DefaultRandomGenerator();
-
-export class DefaultRandomGenerator {
-    private static instance: DefaultRandomGenerator | null = null;
-
-    constructor() {}
-
-    static getInstance(): DefaultRandomGenerator {
-        if (!DefaultRandomGenerator.instance) {
-            DefaultRandomGenerator.instance = new DefaultRandomGenerator();
-        }
-        return DefaultRandomGenerator.instance;
-    }
-
-    next(): number {
-        return Math.random();
-    }
-
-    nextInRange(min: number, max: number): number {
-        return min + Math.random() * (max - min);
-    }
-
-    nextInt(min: number, max: number): number {
-        return Math.floor(min + Math.random() * (max - min + 1));
-    }
-
-    float(): number {
-        return Math.random();
-    }
-
-    floatBetween(min: number, max: number): number {
-        return min + Math.random() * (max - min);
-    }
-
-    int(min: number, max: number): number {
-        return Math.floor(min + Math.random() * (max - min + 1));
-    }
-}
-
-export const createError = (
-    code: (typeof ErrorCodes)[keyof typeof ErrorCodes],
-    message: string
-): BoxMullerError => new BoxMullerError(code, message);
-export const validatePositive = (value: number, name: string): void | never => {
-    if (value <= 0) {
-        throw createError(ErrorCodes.INVALID_PARAMETER, `${name} must be positive`);
-    }
-};
-
-export const validateFinite = (value: number, name: string): void | never => {
-    if (!Number.isFinite(value)) {
-        throw createError(ErrorCodes.INVALID_PARAMETER, `${name} must be finite`);
-    }
-};
-
-export const validateInteger = (value: number, name: string): void | never => {
-    if (!Number.isInteger(value)) {
-        throw createError(ErrorCodes.INVALID_PARAMETER, `${name} must be an integer`);
-    }
-};
-
-export const validateInRange = (
-    value: number,
-    min: number,
-    max: number,
-    name: string
-): void | never => {
-    if (value < min || value > max) {
-        throw createError(
-            ErrorCodes.INVALID_PARAMETER,
-            `${name} must be between ${min} and ${max}`
-        );
-    }
-};
 
 export const BoxMullerTransform = (options: BoxMullerOptions = {}): IDistribution<number> => {
     const mean = options.mean ?? DEFAULT_MEAN;

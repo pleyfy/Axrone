@@ -3,7 +3,15 @@
     "compilerOptions": {
         "moduleResolution": "bundler",
         "noEmit": true,
+        "ignoreDeprecations": "6.0",
         "types": ["vite/client"]
     },
-    "include": ["./**/*.ts"]
+    "include": [
+        "./**/*.ts",
+        "../packages/*/src/**/*.ts",
+        "../packages/random/types.ts"
+    ],
+    "exclude": [
+        "../packages/*/src/**/__tests__/**"
+    ]
 }
