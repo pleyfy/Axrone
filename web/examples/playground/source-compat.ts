@@ -299,19 +299,10 @@ export const validateSupportedModuleImports = (
 
     for (const match of source.matchAll(namedImportPattern)) {
         const [, clause, moduleName] = match;
-        if (!(moduleName in supportedModules)) {
-            continue;
-        }
-
         const specifiers = parseImportSpecifiers(clause);
-        const moduleNamespace = supportedModules[moduleName]!;
 
         for (const specifier of specifiers) {
             if (specifier.isTypeOnly) {
-                continue;
-            }
-
-            if (specifier.importedName in moduleNamespace) {
                 continue;
             }
 
@@ -321,10 +312,24 @@ export const validateSupportedModuleImports = (
                 )?.moduleName;
                 if (ownerModule) {
                     diagnostics.push(
-                        `Module "${moduleName}" does not export "${specifier.importedName}". Import it from "${ownerModule}" instead.`
+                        `Module "${moduleName}" has been removed. Import "${specifier.importedName}" from "${ownerModule}" instead.`
                     );
                     continue;
                 }
+
+                diagnostics.push(
+                    `Module "${moduleName}" has been removed. Import "${specifier.importedName}" from its owner package instead.`
+                );
+                continue;
+            }
+
+            if (!(moduleName in supportedModules)) {
+                continue;
+            }
+
+            const moduleNamespace = supportedModules[moduleName]!;
+            if (specifier.importedName in moduleNamespace) {
+                continue;
             }
 
             diagnostics.push(

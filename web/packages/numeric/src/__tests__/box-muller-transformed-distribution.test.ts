@@ -1,5 +1,5 @@
 import { vi, describe, test, expect, beforeEach } from 'vitest';
-import { DistributionSample } from 'packages/core/src/random';
+import type { DistributionSample } from '@axrone/random';
 import {
     TransformedDistribution,
     BoxMullerNormalDistribution,

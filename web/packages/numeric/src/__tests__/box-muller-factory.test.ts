@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, it } from 'vitest';
 import { BoxMullerFactory, DefaultRandomGenerator, isIDistribution } from '../box-muller';
-import { Random } from '../../../core/src/random';
+import { Random } from '@axrone/random';
 
 describe('BoxMullerFactory', () => {
     let random: Random;

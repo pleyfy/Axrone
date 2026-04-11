@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-const coreSrcDir = path.resolve(testDir, '../../../packages/core/src');
+const corePackageDir = path.resolve(testDir, '../../../packages/core');
 const disallowedFacadeImportPattern =
     /(?:from ['"]|import\(['"])(?:\.{1,2}\/)+[^'"]*component-system\/(?:core|types|decorators|systems|memory|archetype|observers|components\/(?:hierarchy|transform))(?:\/[^'"]*)?['"]/g;
 
@@ -36,17 +36,7 @@ const collectTypeScriptFiles = (dirPath: string): readonly string[] => {
 };
 
 describe('ecs core consumer boundary', () => {
-    it('keeps core consumers off removed component-system source paths', () => {
-        const violatingFiles = collectTypeScriptFiles(coreSrcDir)
-            .filter((filePath) => {
-                const content = fs.readFileSync(filePath, 'utf8');
-                const hasFacadeImport = disallowedFacadeImportPattern.test(content);
-                disallowedFacadeImportPattern.lastIndex = 0;
-                return hasFacadeImport;
-            })
-            .map((filePath) => path.relative(coreSrcDir, filePath).replace(/\\/g, '/'))
-            .sort((left, right) => left.localeCompare(right));
-
-        expect(violatingFiles).toEqual([]);
+    it('removes the legacy core package entirely', () => {
+        expect(fs.existsSync(corePackageDir)).toBe(false);
     });
 });

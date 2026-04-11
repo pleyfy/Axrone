@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import * as core from '@axrone/core';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const corePackageDir = path.resolve(testDir, '../../../packages/core');
 
 describe('core render boundary', () => {
-    it('keeps the core root empty after the physical render split', () => {
-        expect(Object.keys(core)).toEqual([]);
+    it('removes the legacy core package entirely', () => {
+        expect(fs.existsSync(corePackageDir)).toBe(false);
     });
 
     it('does not expose the legacy render buffer subpath', async () => {

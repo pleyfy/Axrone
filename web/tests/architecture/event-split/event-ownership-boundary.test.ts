@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packagesDir = path.resolve(testDir, '../../../packages');
 const eventSrcDir = path.resolve(packagesDir, 'event/src');
-const coreIndexPath = path.resolve(testDir, '../../../packages/core/src/index.ts');
+const corePackageDir = path.resolve(testDir, '../../../packages/core');
 const disallowedCoreSourceBypassPattern =
     /(?:from ['"]|import\(['"])(?:\.\.\/)+core\/src\/(?:event|observer|tween)(?:\/[^'"]*)?['"]/g;
 const disallowedSiblingSourceBypassPattern =
@@ -60,20 +60,7 @@ describe('event ownership boundary', () => {
         expect(violatingFiles).toEqual([]);
     });
 
-    it('keeps core barrels from re-exporting general event APIs', () => {
-        const coreBarrelFiles = [coreIndexPath];
-        const violatingFiles = coreBarrelFiles
-            .filter((filePath) => {
-                const content = fs.readFileSync(filePath, 'utf8');
-                return disallowedCoreEventLeakPatterns.some((pattern) => {
-                    const hasViolation = pattern.test(content);
-                    pattern.lastIndex = 0;
-                    return hasViolation;
-                });
-            })
-            .map((filePath) => path.relative(path.resolve(testDir, '../../..'), filePath).replace(/\\/g, '/'))
-            .sort((left, right) => left.localeCompare(right));
-
-        expect(violatingFiles).toEqual([]);
+    it('removes the legacy core package entirely', () => {
+        expect(fs.existsSync(corePackageDir)).toBe(false);
     });
 });

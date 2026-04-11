@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packagesDir = path.resolve(testDir, '../../../packages');
 const tweenSrcDir = path.resolve(packagesDir, 'tween/src');
-const coreIndexPath = path.resolve(testDir, '../../../packages/core/src/index.ts');
+const corePackageDir = path.resolve(testDir, '../../../packages/core');
 const disallowedCoreSourceBypassPattern =
     /(?:from ['"]|import\(['"])(?:\.\.\/)+core\/src\/(?:event|observer|tween|types)(?:\/[^'"]*)?['"]/g;
 const disallowedPackageSourceBypassPattern =
@@ -48,11 +48,7 @@ describe('tween ownership boundary', () => {
         expect(violatingFiles).toEqual([]);
     });
 
-    it('keeps core root off tween compatibility re-exports', () => {
-        const content = fs.readFileSync(coreIndexPath, 'utf8');
-        const hasViolation = disallowedCoreTweenLeakPattern.test(content);
-        disallowedCoreTweenLeakPattern.lastIndex = 0;
-
-        expect(hasViolation).toBe(false);
+    it('removes the legacy core package entirely', () => {
+        expect(fs.existsSync(corePackageDir)).toBe(false);
     });
 });

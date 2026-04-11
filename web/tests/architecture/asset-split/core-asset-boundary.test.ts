@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import * as core from '@axrone/core';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const corePackageDir = path.resolve(testDir, '../../../packages/core');
 
 describe('core asset boundary', () => {
-    it('does not re-export asset-core primitives from the core root', () => {
-        expect('AssetDatabase' in core).toBe(false);
-        expect('AssetImportPipeline' in core).toBe(false);
-        expect('createAssetDatabase' in core).toBe(false);
-        expect('createAssetImportPipeline' in core).toBe(false);
+    it('removes the legacy core package entirely', () => {
+        expect(fs.existsSync(corePackageDir)).toBe(false);
     });
 
     it('does not expose the legacy asset subpath', async () => {

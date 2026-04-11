@@ -70,7 +70,7 @@ describe('validateSupportedModuleImports', () => {
         );
 
         expect(diagnostics).toEqual([
-            'Module "@axrone/core" does not export "Scene". Import it from "@axrone/scene-3d" instead.',
+            'Module "@axrone/core" has been removed. Import "Scene" from "@axrone/scene-3d" instead.',
         ]);
     });
 
@@ -84,7 +84,7 @@ describe('validateSupportedModuleImports', () => {
         );
 
         expect(diagnostics).toEqual([
-            'Module "@axrone/core" does not export "Transform". Import it from "@axrone/ecs-runtime" instead.',
+            'Module "@axrone/core" has been removed. Import "Transform" from "@axrone/ecs-runtime" instead.',
         ]);
     });
 
@@ -98,7 +98,7 @@ describe('validateSupportedModuleImports', () => {
         );
 
         expect(diagnostics).toEqual([
-            'Module "@axrone/core" does not export "createPlane". Import it from "@axrone/geometry" instead.',
+            'Module "@axrone/core" has been removed. Import "createPlane" from "@axrone/geometry" instead.',
         ]);
     });
 });

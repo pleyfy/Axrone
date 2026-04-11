@@ -17,7 +17,6 @@
         "paths": {
             "@axrone/asset-core": ["packages/asset-core/src/index.ts"],
             "@axrone/asset-core/*": ["packages/asset-core/src/*"],
-            "@axrone/core/*": ["packages/core/src/*"],
             "@axrone/event": ["packages/event/src/index.ts"],
             "@axrone/event/*": ["packages/event/src/*"],
             "@axrone/geometry": ["packages/geometry/src/index.ts"],

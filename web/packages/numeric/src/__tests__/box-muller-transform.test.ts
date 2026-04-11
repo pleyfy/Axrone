@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { BoxMullerTransform } from '../box-muller';
 
-import { rand, RandomEngineType } from '../../../core/src/random';
+import { rand } from '@axrone/random';
 
 const getTestState = () => rand.getState();
 
