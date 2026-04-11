@@ -15,13 +15,86 @@
     "@jridgewell/gen-mapping" "^0.3.5"
     "@jridgewell/trace-mapping" "^0.3.24"
 
-"@axrone/core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\core":
+"@axrone/asset-2d@^0.1.0", "@axrone/asset-2d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\asset-2d":
   version "0.1.0"
-  resolved "file:packages/core"
+  resolved "file:packages/asset-2d"
+  dependencies:
+    "@axrone/asset-core" "^0.1.0"
+
+"@axrone/asset-core@^0.1.0", "@axrone/asset-core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\asset-core":
+  version "0.1.0"
+  resolved "file:packages/asset-core"
+  dependencies:
+    "@axrone/random" "^0.0.1"
+
+"@axrone/asset-gltf@^0.1.0", "@axrone/asset-gltf@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\asset-gltf":
+  version "0.1.0"
+  resolved "file:packages/asset-gltf"
+  dependencies:
+    "@axrone/asset-core" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/render-webgl2" "^0.1.0"
+    "@loaders.gl/textures" "^4.4.1"
+    draco3dgltf "^1.5.7"
+    meshoptimizer "^1.0.1"
+
+"@axrone/ecs-events@^0.1.0", "@axrone/ecs-events@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-events":
+  version "0.1.0"
+  resolved "file:packages/ecs-events"
+
+"@axrone/ecs-query@^0.1.0", "@axrone/ecs-query@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-query":
+  version "0.1.0"
+  resolved "file:packages/ecs-query"
+
+"@axrone/ecs-runtime@^0.1.0", "@axrone/ecs-runtime@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-runtime":
+  version "0.1.0"
+  resolved "file:packages/ecs-runtime"
+  dependencies:
+    "@axrone/ecs-events" "^0.1.0"
+    "@axrone/ecs-query" "^0.1.0"
+    "@axrone/ecs-storage" "^0.1.0"
+    "@axrone/ecs-world-support" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/ecs-storage@^0.1.0", "@axrone/ecs-storage@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-storage":
+  version "0.1.0"
+  resolved "file:packages/ecs-storage"
+  dependencies:
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/ecs-world-support@^0.1.0", "@axrone/ecs-world-support@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-world-support":
+  version "0.1.0"
+  resolved "file:packages/ecs-world-support"
+
+"@axrone/event@^0.1.0", "@axrone/event@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\event":
+  version "0.1.0"
+  resolved "file:packages/event"
+  dependencies:
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/game-loop@^0.1.0", "@axrone/game-loop@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\game-loop":
+  version "0.1.0"
+  resolved "file:packages/game-loop"
+
+"@axrone/geometry@^0.1.0", "@axrone/geometry@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\geometry":
+  version "0.1.0"
+  resolved "file:packages/geometry"
   dependencies:
     "@axrone/numeric" "^0.0.1"
-    "@axrone/random" "^0.0.1"
     "@axrone/utility" "^0.0.1"
+
+"@axrone/input-core@^0.1.0", "@axrone/input-core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\input-core":
+  version "0.1.0"
+  resolved "file:packages/input-core"
+  dependencies:
+    "@axrone/input" "^0.1.0"
+
+"@axrone/input@^0.1.0", "@axrone/input@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\input":
+  version "0.1.0"
+  resolved "file:packages/input"
+  dependencies:
+    "@axrone/event" "^0.1.0"
 
 "@axrone/numeric@^0.0.1", "@axrone/numeric@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\numeric":
   version "0.0.1"
@@ -30,9 +103,179 @@
     "@axrone/random" "^0.0.1"
     "@axrone/utility" "^0.0.1"
 
+"@axrone/observer@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\observer":
+  version "0.1.0"
+  resolved "file:packages/observer"
+  dependencies:
+    "@axrone/event" "^0.1.0"
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/particle-system@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\particle-system":
+  version "0.1.0"
+  resolved "file:packages/particle-system"
+  dependencies:
+    "@axrone/event" "^0.1.0"
+    "@axrone/geometry" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/random" "^0.0.1"
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/physics-2d@^0.1.0", "@axrone/physics-2d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\physics-2d":
+  version "0.1.0"
+  resolved "file:packages/physics-2d"
+  dependencies:
+    "@axrone/ecs-runtime" "^0.1.0"
+    "@axrone/geometry" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/physics-core" "^0.1.0"
+
+"@axrone/physics-3d@^0.1.0", "@axrone/physics-3d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\physics-3d":
+  version "0.1.0"
+  resolved "file:packages/physics-3d"
+  dependencies:
+    "@axrone/ecs-runtime" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/physics-core" "^0.1.0"
+
+"@axrone/physics-core@^0.1.0", "@axrone/physics-core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\physics-core":
+  version "0.1.0"
+  resolved "file:packages/physics-core"
+  dependencies:
+    "@axrone/numeric" "^0.0.1"
+
+"@axrone/physics@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\physics":
+  version "0.1.0"
+  resolved "file:packages/physics"
+  dependencies:
+    "@axrone/geometry" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/physics-2d" "^0.1.0"
+    "@axrone/physics-3d" "^0.1.0"
+    "@axrone/physics-core" "^0.1.0"
+
 "@axrone/random@^0.0.1", "@axrone/random@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\random":
   version "0.0.1"
   resolved "file:packages/random"
+
+"@axrone/render-2d@^0.1.0", "@axrone/render-2d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\render-2d":
+  version "0.1.0"
+  resolved "file:packages/render-2d"
+  dependencies:
+    "@axrone/render-core" "^0.1.0"
+
+"@axrone/render-3d@^0.1.0", "@axrone/render-3d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\render-3d":
+  version "0.1.0"
+  resolved "file:packages/render-3d"
+  dependencies:
+    "@axrone/render-core" "^0.1.0"
+
+"@axrone/render-core@^0.1.0", "@axrone/render-core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\render-core":
+  version "0.1.0"
+  resolved "file:packages/render-core"
+  dependencies:
+    "@axrone/numeric" "^0.0.1"
+
+"@axrone/render-webgl2@^0.1.0", "@axrone/render-webgl2@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\render-webgl2":
+  version "0.1.0"
+  resolved "file:packages/render-webgl2"
+  dependencies:
+    "@axrone/ecs-runtime" "^0.1.0"
+    "@axrone/geometry" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/runtime-profile-2d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\runtime-profile-2d":
+  version "0.1.0"
+  resolved "file:packages/runtime-profile-2d"
+  dependencies:
+    "@axrone/scene-2d" "^0.1.0"
+    "@axrone/scene-runtime" "^0.1.0"
+
+"@axrone/runtime-profile-3d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\runtime-profile-3d":
+  version "0.1.0"
+  resolved "file:packages/runtime-profile-3d"
+  dependencies:
+    "@axrone/scene-3d" "^0.1.0"
+    "@axrone/scene-runtime" "^0.1.0"
+
+"@axrone/runtime-profile-core@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\runtime-profile-core":
+  version "0.1.0"
+  resolved "file:packages/runtime-profile-core"
+  dependencies:
+    "@axrone/scene-runtime" "^0.1.0"
+
+"@axrone/runtime-profile-full@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\runtime-profile-full":
+  version "0.1.0"
+  resolved "file:packages/runtime-profile-full"
+  dependencies:
+    "@axrone/scene-2d" "^0.1.0"
+    "@axrone/scene-3d" "^0.1.0"
+    "@axrone/scene-runtime" "^0.1.0"
+
+"@axrone/scene-2d@^0.1.0", "@axrone/scene-2d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\scene-2d":
+  version "0.1.0"
+  resolved "file:packages/scene-2d"
+  dependencies:
+    "@axrone/ecs-runtime" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/random" "^0.0.1"
+    "@axrone/scene-runtime" "^0.1.0"
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/scene-3d@^0.1.0", "@axrone/scene-3d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\scene-3d":
+  version "0.1.0"
+  resolved "file:packages/scene-3d"
+  dependencies:
+    "@axrone/ecs-runtime" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/random" "^0.0.1"
+    "@axrone/render-webgl2" "^0.1.0"
+    "@axrone/scene-runtime" "^0.1.0"
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/scene-runtime-gltf@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\scene-runtime-gltf":
+  version "0.1.0"
+  resolved "file:packages/scene-runtime-gltf"
+  dependencies:
+    "@axrone/asset-gltf" "^0.1.0"
+    "@axrone/ecs-runtime" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/render-webgl2" "^0.1.0"
+    "@axrone/scene-3d" "^0.1.0"
+    "@axrone/scene-runtime" "^0.1.0"
+
+"@axrone/scene-runtime@^0.1.0", "@axrone/scene-runtime@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\scene-runtime":
+  version "0.1.0"
+  resolved "file:packages/scene-runtime"
+  dependencies:
+    "@axrone/ecs-runtime" "^0.1.0"
+    "@axrone/game-loop" "^0.1.0"
+    "@axrone/geometry" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/random" "^0.0.1"
+    "@axrone/render-webgl2" "^0.1.0"
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/tween@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\tween":
+  version "0.1.0"
+  resolved "file:packages/tween"
+  dependencies:
+    "@axrone/event" "^0.1.0"
+    "@axrone/numeric" "^0.0.1"
+    "@axrone/utility" "^0.0.1"
+
+"@axrone/ui-webgl2@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ui-webgl2":
+  version "0.0.1"
+  resolved "file:packages/ui-webgl2"
+  dependencies:
+    "@axrone/game-loop" "^0.1.0"
+    "@axrone/render-core" "^0.1.0"
+    "@axrone/scene-runtime" "^0.1.0"
+    "@axrone/ui" "^0.0.1"
+
+"@axrone/ui@^0.0.1", "@axrone/ui@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ui":
+  version "0.0.1"
+  resolved "file:packages/ui"
 
 "@axrone/utility@^0.0.1", "@axrone/utility@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\utility":
   version "0.0.1"
@@ -264,7 +507,7 @@
   resolved "https://registry.npmjs.org/@dimforge/rapier3d-compat/-/rapier3d-compat-0.12.0.tgz"
   integrity sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==
 
-"@emnapi/core@^1.1.0", "@emnapi/core@^1.8.1":
+"@emnapi/core@^1.1.0":
   version "1.4.3"
   resolved "https://registry.npmjs.org/@emnapi/core/-/core-1.4.3.tgz"
   integrity sha512-4m62DuCE07lw01soJwPiBGC0nAww0Q+RY70VZ+n49yDIO13yyinhbWCeNnaob0lakDtWQzSdtNWzJeOJt2ma+g==
@@ -272,14 +515,30 @@
     "@emnapi/wasi-threads" "1.0.2"
     tslib "^2.4.0"
 
-"@emnapi/runtime@^1.1.0", "@emnapi/runtime@^1.8.1":
+"@emnapi/core@^1.7.1", "@emnapi/core@^1.8.1":
+  version "1.8.1"
+  dependencies:
+    "@emnapi/wasi-threads" "1.1.0"
+    tslib "^2.4.0"
+
+"@emnapi/runtime@^1.1.0":
   version "1.4.3"
   resolved "https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.4.3.tgz"
   integrity sha512-pBPWdu6MLKROBX05wSNKcNb++m5Er+KQ9QkB+WVM+pW2Kx9hoSrVTnu3BdkI5eBLZoKu/J6mW/B6i6bJB2ytXQ==
   dependencies:
     tslib "^2.4.0"
 
-"@emnapi/wasi-threads@^1.1.0", "@emnapi/wasi-threads@1.0.2":
+"@emnapi/runtime@^1.7.1", "@emnapi/runtime@^1.8.1":
+  version "1.8.1"
+  dependencies:
+    tslib "^2.4.0"
+
+"@emnapi/wasi-threads@^1.1.0", "@emnapi/wasi-threads@1.1.0":
+  version "1.1.0"
+  dependencies:
+    tslib "^2.4.0"
+
+"@emnapi/wasi-threads@1.0.2":
   version "1.0.2"
   resolved "https://registry.npmjs.org/@emnapi/wasi-threads/-/wasi-threads-1.0.2.tgz"
   integrity sha512-5n3nTJblwRi8LlXkJ9eBzu+kZR8Yxcc7ubakyQTFzPMtIhFpUBRbsnc2Dv88IZDIbCDlBiWrknhB4Lsz7mg6BA==
@@ -833,6 +1092,74 @@
     yargs "17.7.2"
     yargs-parser "21.1.1"
 
+"@loaders.gl/core@~4.4.0":
+  version "4.4.1"
+  resolved "https://registry.npmjs.org/@loaders.gl/core/-/core-4.4.1.tgz"
+  integrity sha512-/s4IuvCCQUepvhjLnmePwQppGko2d1pxRS+sp7lyExU0uiqo5dVsAKaCZ2VnddBkFWgDVb/wvcZUBmv/dWcj0Q==
+  dependencies:
+    "@loaders.gl/loader-utils" "4.4.1"
+    "@loaders.gl/schema" "4.4.1"
+    "@loaders.gl/schema-utils" "4.4.1"
+    "@loaders.gl/worker-utils" "4.4.1"
+    "@probe.gl/log" "^4.1.1"
+
+"@loaders.gl/images@4.4.1":
+  version "4.4.1"
+  resolved "https://registry.npmjs.org/@loaders.gl/images/-/images-4.4.1.tgz"
+  integrity sha512-v9A4BliEKGxhLuEbh0Ke8ElUlp04KxpKIknUtXXWoEaszAMTSrHI3YhaL/JdRlHraC1VUF/sjzbSBFkKh7nxJg==
+  dependencies:
+    "@loaders.gl/loader-utils" "4.4.1"
+
+"@loaders.gl/loader-utils@4.4.1":
+  version "4.4.1"
+  resolved "https://registry.npmjs.org/@loaders.gl/loader-utils/-/loader-utils-4.4.1.tgz"
+  integrity sha512-waosL7VtVRfXsNOXtAM3rOjZyNQD0lQBlhuB5/oY+E+lNzYNFlzgiGXiDOwBpcs7dK7kW2Vv8+KcxyIGIyXOtg==
+  dependencies:
+    "@loaders.gl/schema" "4.4.1"
+    "@loaders.gl/worker-utils" "4.4.1"
+    "@probe.gl/log" "^4.1.1"
+    "@probe.gl/stats" "^4.1.1"
+
+"@loaders.gl/schema-utils@4.4.1":
+  version "4.4.1"
+  resolved "https://registry.npmjs.org/@loaders.gl/schema-utils/-/schema-utils-4.4.1.tgz"
+  integrity sha512-4upip2O6MFaWzk68/lnna7P2uRj9NQ8MIk/ff3CLbciP5/9lKl1qyuzObz5JrJRYzfGB6I81vpOn6FSVQ6m6KQ==
+  dependencies:
+    "@loaders.gl/schema" "4.4.1"
+    "@types/geojson" "^7946.0.7"
+    apache-arrow ">= 17.0.0"
+
+"@loaders.gl/schema@4.4.1":
+  version "4.4.1"
+  resolved "https://registry.npmjs.org/@loaders.gl/schema/-/schema-4.4.1.tgz"
+  integrity sha512-s7NjEnyK6jZvJJSWj/mHq+S9mHRHVzIYtFP+C7sMf1gVCQbdkt6OSAMUWRzwPr9+whQNVWjZ9pbLsI/IPW3zvw==
+  dependencies:
+    "@types/geojson" "^7946.0.7"
+    apache-arrow ">= 17.0.0"
+
+"@loaders.gl/textures@^4.4.1":
+  version "4.4.1"
+  resolved "https://registry.npmjs.org/@loaders.gl/textures/-/textures-4.4.1.tgz"
+  integrity sha512-r1//6sO29GOHso+IvXQ3GrvXZ4cl03VWc34XcnXPn3sAV7O96uRGd5xkyx60lMYAl7Jv7qK/smT3z4Mdxdd4aA==
+  dependencies:
+    "@loaders.gl/images" "4.4.1"
+    "@loaders.gl/loader-utils" "4.4.1"
+    "@loaders.gl/schema" "4.4.1"
+    "@loaders.gl/worker-utils" "4.4.1"
+    "@math.gl/types" "^4.1.0"
+    ktx-parse "^0.7.0"
+    texture-compressor "^1.0.2"
+
+"@loaders.gl/worker-utils@4.4.1":
+  version "4.4.1"
+  resolved "https://registry.npmjs.org/@loaders.gl/worker-utils/-/worker-utils-4.4.1.tgz"
+  integrity sha512-ovMyIyj9dlChuHuD64Bel7Mir2UYlmLqlZ9MMzVxzTTLvaudJoNAXi6Disp0ooxwF62ZqjNXXutaSbS6UDeuIg==
+
+"@math.gl/types@^4.1.0":
+  version "4.1.0"
+  resolved "https://registry.npmjs.org/@math.gl/types/-/types-4.1.0.tgz"
+  integrity sha512-clYZdHcmRvMzVK5fjeDkQlHUzXQSNdZ7s4xOqC3nJPgz4C/TZkUecTo9YS4PruZqtDda/ag4erndP0MIn40dGA==
+
 "@mswjs/interceptors@^0.39.1":
   version "0.39.6"
   resolved "https://registry.npmjs.org/@mswjs/interceptors/-/interceptors-0.39.6.tgz"
@@ -845,7 +1172,14 @@
     outvariant "^1.4.3"
     strict-event-emitter "^0.5.1"
 
-"@napi-rs/wasm-runtime@^1.1.1", "@napi-rs/wasm-runtime@0.2.4":
+"@napi-rs/wasm-runtime@^1.1.1":
+  version "1.1.1"
+  dependencies:
+    "@emnapi/core" "^1.7.1"
+    "@emnapi/runtime" "^1.7.1"
+    "@tybys/wasm-util" "^0.10.1"
+
+"@napi-rs/wasm-runtime@0.2.4":
   version "0.2.4"
   resolved "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-0.2.4.tgz"
   integrity sha512-9zESzOO5aDByvhIAsOy9TbpZ0Ur2AJbUI7UT73kcUTS2mxAMHOBaa1st/jAymNoCtvrit99kkzT1FZuXVcgfIQ==
@@ -1199,6 +1533,23 @@
   resolved "https://registry.npmjs.org/@polka/url/-/url-1.0.0-next.29.tgz"
   integrity sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==
 
+"@probe.gl/env@4.1.1":
+  version "4.1.1"
+  resolved "https://registry.npmjs.org/@probe.gl/env/-/env-4.1.1.tgz"
+  integrity sha512-+68seNDMVsEegRB47pFA/Ws1Fjy8agcFYXxzorKToyPcD6zd+gZ5uhwoLd7TzsSw6Ydns//2KEszWn+EnNHTbA==
+
+"@probe.gl/log@^4.1.1":
+  version "4.1.1"
+  resolved "https://registry.npmjs.org/@probe.gl/log/-/log-4.1.1.tgz"
+  integrity sha512-kcZs9BT44pL7hS1OkRGKYRXI/SN9KejUlPD+BY40DguRLzdC5tLG/28WGMyfKdn/51GT4a0p+0P8xvDn1Ez+Kg==
+  dependencies:
+    "@probe.gl/env" "4.1.1"
+
+"@probe.gl/stats@^4.1.1":
+  version "4.1.1"
+  resolved "https://registry.npmjs.org/@probe.gl/stats/-/stats-4.1.1.tgz"
+  integrity sha512-4VpAyMHOqydSvPlEyHwXaE+AkIdR03nX+Qhlxsk2D/IW4OVmDZgIsvJB1cDzyEEtcfKcnaEbfXeiPgejBceT6g==
+
 "@rollup/plugin-commonjs@^28.0.3":
   version "28.0.3"
   resolved "https://registry.npmjs.org/@rollup/plugin-commonjs/-/plugin-commonjs-28.0.3.tgz"
@@ -1344,6 +1695,13 @@
   version "0.27.8"
   resolved "https://registry.npmjs.org/@sinclair/typebox/-/typebox-0.27.8.tgz"
   integrity sha512-+Fj43pSMwJs4KRrH/938Uf+uAELIgVBmQzg/q1YG10djyfA3TnrU8N8XzqCh/okZdszqBQTZf96idMfE5lnwTA==
+
+"@swc/helpers@^0.5.11":
+  version "0.5.21"
+  resolved "https://registry.npmjs.org/@swc/helpers/-/helpers-0.5.21.tgz"
+  integrity sha512-jI/VAmtdjB/RnI8GTnokyX7Ug8c+g+ffD6QRLa6XQewtnGyukKkKSk3wLTM3b5cjt1jNh9x0jfVlagdN2gDKQg==
+  dependencies:
+    tslib "^2.8.0"
 
 "@tailwindcss/node@4.2.2":
   version "4.2.2"
@@ -1496,7 +1854,12 @@
   resolved "https://registry.npmjs.org/@tweenjs/tween.js/-/tween.js-23.1.3.tgz"
   integrity sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==
 
-"@tybys/wasm-util@^0.10.1", "@tybys/wasm-util@^0.9.0":
+"@tybys/wasm-util@^0.10.1":
+  version "0.10.1"
+  dependencies:
+    tslib "^2.4.0"
+
+"@tybys/wasm-util@^0.9.0":
   version "0.9.0"
   resolved "https://registry.npmjs.org/@tybys/wasm-util/-/wasm-util-0.9.0.tgz"
   integrity sha512-6+7nlbMVX/PVDCwaIQ8nTOPveOcFLSt8GcXdx8hD0bt39uWxYT88uXzqTd4fTvqta7oeUJqudepapKNt2DYJFw==
@@ -1507,6 +1870,16 @@
   version "5.0.4"
   resolved "https://registry.npmjs.org/@types/aria-query/-/aria-query-5.0.4.tgz"
   integrity sha512-rfT93uj5s0PRL7EzccGMs3brplhcrghnDoV26NqKhCAS1hVo+WdNsPvE/yb6ilfr5hi2MEk6d5EWJTKdxg8jVw==
+
+"@types/command-line-args@^5.2.3":
+  version "5.2.3"
+  resolved "https://registry.npmjs.org/@types/command-line-args/-/command-line-args-5.2.3.tgz"
+  integrity sha512-uv0aG6R0Y8WHZLTamZwtfsDLVRnOa+n+n5rEvFWL5Na5gZ8V2Teab/duDPFzIIIhs9qizDpcavCusCLJZu62Kw==
+
+"@types/command-line-usage@^5.0.4":
+  version "5.0.4"
+  resolved "https://registry.npmjs.org/@types/command-line-usage/-/command-line-usage-5.0.4.tgz"
+  integrity sha512-BwR5KP3Es/CSht0xqBcUXS3qCAUVXwpRKsV2+arxeb65atasuXG9LykC9Ab10Cw3s2raH92ZqOeILaQbsB2ACg==
 
 "@types/conventional-commits-parser@^5.0.0":
   version "5.0.1"
@@ -1524,6 +1897,11 @@
   version "1.0.7"
   resolved "https://registry.npmjs.org/@types/estree/-/estree-1.0.7.tgz"
   integrity sha512-w28IoSUCJpidD/TGviZwwMJckNESJZXFu7NBZ5YJ4mEUnNraUn9Pm8HSZm/jDF1pDWYKspWE7oVphigUPRakIQ==
+
+"@types/geojson@^7946.0.7":
+  version "7946.0.16"
+  resolved "https://registry.npmjs.org/@types/geojson/-/geojson-7946.0.16.tgz"
+  integrity sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==
 
 "@types/hast@^3.0.4":
   version "3.0.4"
@@ -1558,6 +1936,13 @@
   integrity sha512-u0HuPQwe/dHrItgHHpmw3N2fYCR6x4ivMNbPHRkBVP4CvN+kiRrKHWk3i8tXiO/joPwXLMYvF9TTF0eqgHIuOw==
   dependencies:
     undici-types "~6.21.0"
+
+"@types/node@^24.0.3":
+  version "24.12.2"
+  resolved "https://registry.npmjs.org/@types/node/-/node-24.12.2.tgz"
+  integrity sha512-A1sre26ke7HDIuY/M23nd9gfB+nrmhtYyMINbjI1zHJxYteKR6qSMX56FsmjMcDb3SMcjJg5BiRRgOCC/yBD0g==
+  dependencies:
+    undici-types "~7.16.0"
 
 "@types/normalize-package-data@^2.4.0":
   version "2.4.4"
@@ -1959,10 +2344,32 @@ ansi-styles@^6.2.1:
   resolved "https://registry.npmjs.org/ansi-styles/-/ansi-styles-6.2.1.tgz"
   integrity sha512-bN798gFfQX+viw3R7yrGWRqnrN2oRkEkUjjl4JNn4E8GxxbjtG3FbrEIIY3l8/hrwUwIeCZvi4QuOTP4MErVug==
 
+"apache-arrow@>= 17.0.0":
+  version "21.1.0"
+  resolved "https://registry.npmjs.org/apache-arrow/-/apache-arrow-21.1.0.tgz"
+  integrity sha512-kQrYLxhC+NTVVZ4CCzGF6L/uPVOzJmD1T3XgbiUnP7oTeVFOFgEUu6IKNwCDkpFoBVqDKQivlX4RUFqqnWFlEA==
+  dependencies:
+    "@swc/helpers" "^0.5.11"
+    "@types/command-line-args" "^5.2.3"
+    "@types/command-line-usage" "^5.0.4"
+    "@types/node" "^24.0.3"
+    command-line-args "^6.0.1"
+    command-line-usage "^7.0.1"
+    flatbuffers "^25.1.24"
+    json-bignum "^0.0.3"
+    tslib "^2.6.2"
+
 aproba@2.0.0:
   version "2.0.0"
   resolved "https://registry.npmjs.org/aproba/-/aproba-2.0.0.tgz"
   integrity sha512-lYe4Gx7QT+MKGbDsA+Z+he/Wtef0BiwDOlK/XkBrdfsh9J/jPPXbX0tE9x9cl27Tmu5gg3QUbUrQYa/y+KOHPQ==
+
+argparse@^1.0.10:
+  version "1.0.10"
+  resolved "https://registry.npmjs.org/argparse/-/argparse-1.0.10.tgz"
+  integrity sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg==
+  dependencies:
+    sprintf-js "~1.0.2"
 
 argparse@^1.0.7:
   version "1.0.10"
@@ -1982,6 +2389,11 @@ aria-query@5.3.0:
   integrity sha512-b0P0sZPKtyu8HkeRAfCq0IfURZK+SuwMjY1UXGBU27wpAiTwQAIlq56IbIO+ytk/JjS1fMR14ee5WBBfKi5J6A==
   dependencies:
     dequal "^2.0.3"
+
+array-back@^6.2.2, array-back@^6.2.3:
+  version "6.2.3"
+  resolved "https://registry.npmjs.org/array-back/-/array-back-6.2.3.tgz"
+  integrity sha512-SGDvmg6QTYiTxCBkYVmThcoa67uLl35pyzRHdpCGBOcqFy6BtwnphoFPk7LhJshD+Yk1Kt35WGWeZPTgwR4Fhw==
 
 array-buffer-byte-length@^1.0.1, array-buffer-byte-length@^1.0.2:
   version "1.0.2"
@@ -2295,7 +2707,14 @@ chai@^5.1.2:
     loupe "^3.1.0"
     pathval "^2.0.0"
 
-chalk@^4.0.0, chalk@^4.0.2, chalk@^4.1.0, chalk@^4.1.1:
+chalk-template@^0.4.0:
+  version "0.4.0"
+  resolved "https://registry.npmjs.org/chalk-template/-/chalk-template-0.4.0.tgz"
+  integrity sha512-/ghrgmhfY8RaSdeo43hNXxpoHAtxdbskUHjPpfqUWGttFgycUhYPGx3YZBCnUCvOa7Doivn1IZec3DEGFoMgLg==
+  dependencies:
+    chalk "^4.1.2"
+
+chalk@^4.0.0, chalk@^4.0.2, chalk@^4.1.0, chalk@^4.1.1, chalk@^4.1.2:
   version "4.1.2"
   resolved "https://registry.npmjs.org/chalk/-/chalk-4.1.2.tgz"
   integrity sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==
@@ -2466,6 +2885,26 @@ combined-stream@^1.0.8:
   integrity sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==
   dependencies:
     delayed-stream "~1.0.0"
+
+command-line-args@^6.0.1:
+  version "6.0.2"
+  resolved "https://registry.npmjs.org/command-line-args/-/command-line-args-6.0.2.tgz"
+  integrity sha512-AIjYVxrV9X752LmPDLbVYv8aMCuHPSLZJXEo2qo/xJfv+NYhaZ4sMSF01rM+gHPaMgvPM0l5D/F+Qx+i2WfSmQ==
+  dependencies:
+    array-back "^6.2.3"
+    find-replace "^5.0.2"
+    lodash.camelcase "^4.3.0"
+    typical "^7.3.0"
+
+command-line-usage@^7.0.1:
+  version "7.0.4"
+  resolved "https://registry.npmjs.org/command-line-usage/-/command-line-usage-7.0.4.tgz"
+  integrity sha512-85UdvzTNx/+s5CkSgBm/0hzP80RFHAa7PsfeADE5ezZF3uHz3/Tqj9gIKGT9PTtpycc3Ua64T0oVulGfKxzfqg==
+  dependencies:
+    array-back "^6.2.2"
+    chalk-template "^0.4.0"
+    table-layout "^4.1.1"
+    typical "^7.3.0"
 
 commander@^13.1.0:
   version "13.1.0"
@@ -2882,6 +3321,11 @@ dotenv@~16.4.5:
   version "16.4.7"
   resolved "https://registry.npmjs.org/dotenv/-/dotenv-16.4.7.tgz"
   integrity sha512-47qPchRCykZC03FhkYAhrvwU4xDBFIj1QPqaarj6mdM/hgUzfPHcpkHJOn3mJAufFeeAxAzeGsr5X0M4k6fLZQ==
+
+draco3dgltf@^1.5.7:
+  version "1.5.7"
+  resolved "https://registry.npmjs.org/draco3dgltf/-/draco3dgltf-1.5.7.tgz"
+  integrity sha512-LeqcpmoHIyYUi0z70/H3tMkGj8QhqVxq6FJGPjlzR24BNkQ6jyMheMvFKJBI0dzGZrEOUyQEmZ8axM1xRrbRiw==
 
 dunder-proto@^1.0.0, dunder-proto@^1.0.1:
   version "1.0.1"
@@ -3486,6 +3930,11 @@ find-cache-dir@^3.3.2:
     make-dir "^3.0.2"
     pkg-dir "^4.1.0"
 
+find-replace@^5.0.2:
+  version "5.0.2"
+  resolved "https://registry.npmjs.org/find-replace/-/find-replace-5.0.2.tgz"
+  integrity sha512-Y45BAiE3mz2QsrN2fb5QEtO4qb44NcS7en/0y9PEVsg351HsLeVclP8QPMH79Le9sH3rs5RSwJu99W0WPZO43Q==
+
 find-up@^2.0.0:
   version "2.1.0"
   resolved "https://registry.npmjs.org/find-up/-/find-up-2.1.0.tgz"
@@ -3530,6 +3979,11 @@ flat@^5.0.2:
   version "5.0.2"
   resolved "https://registry.npmjs.org/flat/-/flat-5.0.2.tgz"
   integrity sha512-b6suED+5/3rTpUBdG1gupIl8MPFCAMA0QXwmljLhvCUKcUvdE4gWky9zpuGCcXHOsz4J9wPGNWq6OKpmIzz3hQ==
+
+flatbuffers@^25.1.24:
+  version "25.9.23"
+  resolved "https://registry.npmjs.org/flatbuffers/-/flatbuffers-25.9.23.tgz"
+  integrity sha512-MI1qs7Lo4Syw0EOzUl0xjs2lsoeqFku44KpngfIduHBYvzm8h2+7K8YMQh1JtVVVrUvhLpNwqVi4DERegUJhPQ==
 
 flatted@^3.2.9, flatted@^3.3.1:
   version "3.3.3"
@@ -4088,6 +4542,11 @@ ignore@^5.0.4, ignore@^5.2.0, ignore@^5.3.1:
   version "5.3.2"
   resolved "https://registry.npmjs.org/ignore/-/ignore-5.3.2.tgz"
   integrity sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==
+
+image-size@^0.7.4:
+  version "0.7.5"
+  resolved "https://registry.npmjs.org/image-size/-/image-size-0.7.5.tgz"
+  integrity sha512-Hiyv+mXHfFEP7LzUL/llg9RwFxxY+o9N3JVLIeG5E7iFIFAalxvRU9UZthBdYDEVnzHMgjnKJPPpay5BWf1g9g==
 
 import-fresh@^3.2.1, import-fresh@^3.3.0:
   version "3.3.1"
@@ -4666,6 +5125,11 @@ jsdom@*:
     ws "^8.11.0"
     xml-name-validator "^4.0.0"
 
+json-bignum@^0.0.3:
+  version "0.0.3"
+  resolved "https://registry.npmjs.org/json-bignum/-/json-bignum-0.0.3.tgz"
+  integrity sha512-2WHyXj3OfHSgNyuzDbSxI1w2jgw5gkWSWhS7Qg4bWXx1nLk3jnbwfUeS0PSba3IzpTUWdHxBieELUzXRjQB2zg==
+
 json-buffer@3.0.1:
   version "3.0.1"
   resolved "https://registry.npmjs.org/json-buffer/-/json-buffer-3.0.1.tgz"
@@ -4771,6 +5235,11 @@ kind-of@^6.0.2, kind-of@^6.0.3:
   version "6.0.3"
   resolved "https://registry.npmjs.org/kind-of/-/kind-of-6.0.3.tgz"
   integrity sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==
+
+ktx-parse@^0.7.0:
+  version "0.7.1"
+  resolved "https://registry.npmjs.org/ktx-parse/-/ktx-parse-0.7.1.tgz"
+  integrity sha512-FeA3g56ksdFNwjXJJsc1CCc7co+AJYDp6ipIp878zZ2bU8kWROatLYf39TQEd4/XRSUvBXovQ8gaVKWPXsCLEQ==
 
 lerna@^8.2.2:
   version "8.2.2"
@@ -5292,7 +5761,7 @@ merge2@^1.3.0, merge2@^1.4.1:
   resolved "https://registry.npmjs.org/merge2/-/merge2-1.4.1.tgz"
   integrity sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==
 
-meshoptimizer@~1.0.1:
+meshoptimizer@^1.0.1, meshoptimizer@~1.0.1:
   version "1.0.1"
   resolved "https://registry.npmjs.org/meshoptimizer/-/meshoptimizer-1.0.1.tgz"
   integrity sha512-Vix+QlA1YYT3FwmBBZ+49cE5y/b+pRrcXKqGpS5ouh33d3lSp2PoTpCw19E0cKDFWalembrHnIaZetf27a+W2g==
@@ -7287,6 +7756,14 @@ symbol-tree@^3.2.4:
   resolved "https://registry.npmjs.org/symbol-tree/-/symbol-tree-3.2.4.tgz"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
+table-layout@^4.1.1:
+  version "4.1.1"
+  resolved "https://registry.npmjs.org/table-layout/-/table-layout-4.1.1.tgz"
+  integrity sha512-iK5/YhZxq5GO5z8wb0bY1317uDF3Zjpha0QFFLA8/trAoiLbQD0HUbMesEaxyzUgDxi2QlcbM8IvqOlEjgoXBA==
+  dependencies:
+    array-back "^6.2.2"
+    wordwrapjs "^5.1.0"
+
 tailwindcss@^4.2.2, tailwindcss@4.2.2:
   version "4.2.2"
   resolved "https://registry.npmjs.org/tailwindcss/-/tailwindcss-4.2.2.tgz"
@@ -7353,6 +7830,14 @@ text-extensions@^2.0.0:
   version "2.4.0"
   resolved "https://registry.npmjs.org/text-extensions/-/text-extensions-2.4.0.tgz"
   integrity sha512-te/NtwBwfiNRLf9Ijqx3T0nlqZiQ2XrrtBvu+cLL8ZRrGkO0NHTug8MYFKyoSrv/sHTaSKfilUkizV6XhxMJ3g==
+
+texture-compressor@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.npmjs.org/texture-compressor/-/texture-compressor-1.0.2.tgz"
+  integrity sha512-dStVgoaQ11mA5htJ+RzZ51ZxIZqNOgWKAIvtjLrW1AliQQLCmrDqNzQZ8Jh91YealQ95DXt4MEduLzJmbs6lig==
+  dependencies:
+    argparse "^1.0.10"
+    image-size "^0.7.4"
 
 three@^0.183.2:
   version "0.183.2"
@@ -7485,7 +7970,7 @@ tsconfig-paths@^4.1.2:
     minimist "^1.2.6"
     strip-bom "^3.0.0"
 
-tslib@^2.1.0, tslib@^2.3.0, tslib@^2.4.0, tslib@^2.6.2, tslib@^2.8.1:
+tslib@^2.1.0, tslib@^2.3.0, tslib@^2.4.0, tslib@^2.6.2, tslib@^2.8.0, tslib@^2.8.1:
   version "2.8.1"
   resolved "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz"
   integrity sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==
@@ -7617,6 +8102,11 @@ typedoc@^0.28.2, typedoc@0.28.x:
   resolved "https://registry.npmjs.org/typescript/-/typescript-5.8.3.tgz"
   integrity sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==
 
+typical@^7.3.0:
+  version "7.3.0"
+  resolved "https://registry.npmjs.org/typical/-/typical-7.3.0.tgz"
+  integrity sha512-ya4mg/30vm+DOWfBg4YK3j2WD6TWtRkCbasOJr40CseYENzCUby/7rIvXA99JGsQHeNxLbnXdyLLxKSv3tauFw==
+
 uc.micro@^2.0.0, uc.micro@^2.1.0:
   version "2.1.0"
   resolved "https://registry.npmjs.org/uc.micro/-/uc.micro-2.1.0.tgz"
@@ -7641,6 +8131,11 @@ undici-types@~6.21.0:
   version "6.21.0"
   resolved "https://registry.npmjs.org/undici-types/-/undici-types-6.21.0.tgz"
   integrity sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==
+
+undici-types@~7.16.0:
+  version "7.16.0"
+  resolved "https://registry.npmjs.org/undici-types/-/undici-types-7.16.0.tgz"
+  integrity sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==
 
 unicorn-magic@^0.1.0:
   version "0.1.0"
@@ -7937,6 +8432,11 @@ wordwrap@^1.0.0:
   version "1.0.0"
   resolved "https://registry.npmjs.org/wordwrap/-/wordwrap-1.0.0.tgz"
   integrity sha512-gvVzJFlPycKc5dZN4yPkP8w7Dc37BtP1yczEneOb4uq34pXZcvrtRTmWV8W+Ume+XCxKgbjM+nevkyFPMybd4Q==
+
+wordwrapjs@^5.1.0:
+  version "5.1.1"
+  resolved "https://registry.npmjs.org/wordwrapjs/-/wordwrapjs-5.1.1.tgz"
+  integrity sha512-0yweIbkINJodk27gX9LBGMzyQdBDan3s/dEAiwBOj+Mf0PPyWL6/rikalkv8EeD0E8jm4o5RXEOrFTP3NXbhJg==
 
 "wrap-ansi-cjs@npm:wrap-ansi@^7.0.0":
   version "7.0.0"

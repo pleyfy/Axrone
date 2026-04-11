@@ -1,12 +1,12 @@
+import { Transform } from '@axrone/ecs-runtime';
 import {
     DirectionalLight,
     FilterMode,
     Scene,
     TextureFormat,
-    Transform,
     WrapMode,
     createUnlitColorShaderDefinition,
-} from '@axrone/core';
+} from '@axrone/scene-3d';
 import { Quat, Vec3 } from '@axrone/numeric';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';
@@ -175,12 +175,12 @@ void main() {
         // Create camera with orbit target
         const cameraActor = scene.createCameraActor(
             { name: 'Camera' },
-            { primary: true, fieldOfView: 55 }
+            { primary: true, fieldOfView: 45 }
         );
 
         const cameraTransform = cameraActor.requireComponent(Transform);
         const cameraTarget = new Vec3(0, -0.15, -3);
-        cameraTransform.position = new Vec3(2.1, 1.4, 1.8);
+        cameraTransform.position = new Vec3(0, 0, 5);
         cameraTransform.rotation = Quat.fromLookAt(
             cameraTransform.position,
             cameraTarget,

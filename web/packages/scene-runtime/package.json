@@ -1,0 +1,52 @@
+{
+    "name": "@axrone/scene-runtime",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./scene-registry": {
+            "types": "./dist/scene-registry.d.ts",
+            "import": "./dist/scene-registry.mjs",
+            "require": "./dist/scene-registry.js"
+        },
+        "./scene-profile": {
+            "types": "./dist/scene-profile.d.ts",
+            "import": "./dist/scene-profile.mjs",
+            "require": "./dist/scene-profile.js"
+        },
+        "./scene-facade": {
+            "types": "./dist/scene-facade.d.ts",
+            "import": "./dist/scene-facade.mjs",
+            "require": "./dist/scene-facade.js"
+        },
+        "./scene-3d-support": {
+            "types": "./dist/scene-3d-support.d.ts",
+            "import": "./dist/scene-3d-support.mjs",
+            "require": "./dist/scene-3d-support.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@axrone/ecs-runtime": "^0.1.0",
+        "@axrone/game-loop": "^0.1.0",
+        "@axrone/geometry": "^0.1.0",
+        "@axrone/numeric": "^0.0.1",
+        "@axrone/random": "^0.0.1",
+        "@axrone/render-webgl2": "^0.1.0",
+        "@axrone/utility": "^0.0.1"
+    }
+}

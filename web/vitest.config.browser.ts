@@ -1,4 +1,10 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createWorkspacePackageAliasEntries } from './build/workspace-package-aliases.mjs';
+
+const workspaceDir = path.dirname(fileURLToPath(import.meta.url));
+const workspaceAliases = createWorkspacePackageAliasEntries(workspaceDir);
 
 export default defineConfig({
     test: {
@@ -16,12 +22,7 @@ export default defineConfig({
         ],
     },
     resolve: {
-        alias: {
-            '@axrone/core': './packages/core/src',
-            '@axrone/numeric': './packages/numeric/src',
-            '@axrone/random': './packages/random/src',
-            '@axrone/utility': './packages/utility/src',
-        },
+        alias: workspaceAliases,
     },
     esbuild: {
         target: 'es2022',

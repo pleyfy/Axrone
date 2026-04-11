@@ -1,83 +1,22 @@
 import {
-    IRandomSequence,
     IRandomGenerator,
     IRandomAPI,
     IRandomEngine,
     IRandomState,
     RandomEngineType,
     SeedSource,
-    IDistribution,
-    DistributionSample,
+    IRandomSequence,
 } from './types';
 import { validateNonNegative, validateInteger, validateProbability, hex } from './constants';
 import { createEngineFactory } from './engines';
 import { hashSeedToState } from './seed-utils';
-import {
-    NormalDistribution,
-    ExponentialDistribution,
-    PoissonDistribution,
-    BernoulliDistribution,
-    BinomialDistribution,
-    GeometricDistribution,
-} from './distributions';
-
-class RandomSequence<T> implements IRandomSequence<T> {
-    constructor(
-        private readonly generator: () => T,
-        private readonly random: Random
-    ) {}
-
-    public next = (): T => {
-        return this.generator();
-    };
-
-    public take = (count: number): T[] => {
-        validateNonNegative(count, 'count');
-        validateInteger(count, 'count');
-
-        const result: T[] = [];
-        for (let i = 0; i < count; i++) {
-            result.push(this.generator());
-        }
-        return result;
-    };
-
-    public skip = (count: number): void => {
-        validateNonNegative(count, 'count');
-        validateInteger(count, 'count');
-
-        for (let i = 0; i < count; i++) {
-            this.generator();
-        }
-    };
-
-    public map = <U>(fn: (value: T) => U): IRandomSequence<U> => {
-        return new RandomSequence<U>(() => fn(this.generator()), this.random);
-    };
-
-    public filter = (
-        predicate: (value: T) => boolean,
-        maxAttempts: number = 100
-    ): IRandomSequence<T> => {
-        return new RandomSequence<T>(() => {
-            let attempts = 0;
-            while (attempts < maxAttempts) {
-                const value = this.generator();
-                if (predicate(value)) {
-                    return value;
-                }
-                attempts++;
-            }
-            throw new Error(
-                `RandomSequence.filter: No value matched the predicate after ${maxAttempts} attempts.`
-            );
-        }, this.random);
-    };
-}
+import { RandomDistributionRuntime } from './internal/distribution-runtime';
+import { RandomSequence } from './random-sequence';
 
 export class Random implements IRandomGenerator {
     private engine: IRandomEngine;
     private normalAlgorithm: 'standard' | 'polar' | 'ziggurat' = 'polar';
+    private readonly _distributions: RandomDistributionRuntime;
     private static readonly DEFAULT_CHARSET =
         'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     private static readonly HEX_DIGITS = '0123456789abcdef';
@@ -87,6 +26,11 @@ export class Random implements IRandomGenerator {
         engineType: RandomEngineType = RandomEngineType.XOROSHIRO128_PLUS_PLUS
     ) {
         this.engine = createEngineFactory(engineType)(seed);
+        this._distributions = new RandomDistributionRuntime({
+            getState: () => this.engine.getState(),
+            setState: (state) => this.engine.setState(state),
+            getNormalAlgorithm: () => this.normalAlgorithm,
+        });
     }
 
     public float = (): number => {
@@ -294,220 +238,107 @@ export class Random implements IRandomGenerator {
     };
 
     public sequence = <T>(generator: () => T): IRandomSequence<T> => {
-        return new RandomSequence<T>(generator, this);
+        return new RandomSequence<T>(generator);
     };
 
     public normal = (mean: number = 0, stdDev: number = 1): number => {
-        const distribution = new NormalDistribution(mean, stdDev, this.normalAlgorithm);
-        const [value, nextState] = distribution.sample(this.engine.getState());
-        this.engine.setState(nextState);
-        return value;
+        return this._distributions.normal(mean, stdDev);
     };
 
     public exponential = (lambda: number = 1): number => {
-        return this.distribution(new ExponentialDistribution(lambda));
+        return this._distributions.exponential(lambda);
     };
 
     public poisson = (lambda: number): number => {
-        return this.distribution(new PoissonDistribution(lambda));
+        return this._distributions.poisson(lambda);
     };
 
     public bernoulli = (p: number = 0.5): boolean => {
-        const distribution = new BernoulliDistribution(p);
-        const [value, nextState] = distribution.sample(this.engine.getState());
-        this.engine.setState(nextState);
-        return value;
+        return this._distributions.bernoulli(p);
     };
 
     public binomial = (n: number, p: number): number => {
-        const distribution = new BinomialDistribution(n, p);
-        const [value, nextState] = distribution.sample(this.engine.getState());
-        this.engine.setState(nextState);
-        return value;
+        return this._distributions.binomial(n, p);
     };
 
     public geometric = (p: number): number => {
-        const distribution = new GeometricDistribution(p);
-        const [value, nextState] = distribution.sample(this.engine.getState());
-        this.engine.setState(nextState);
-        return value;
+        return this._distributions.geometric(p);
     };
 
-    public distribution = <T>(distribution: IDistribution<T>): T => {
-        const [value, nextState] = distribution.sample(this.engine.getState());
-        this.engine.setState(nextState);
-        return value;
+    public distribution = <T>(distribution: import('./types').IDistribution<T>): T => {
+        return this._distributions.distribution(distribution);
     };
 
-    public normalWithMetadata = (
-        mean: number = 0,
-        stdDev: number = 1
-    ): DistributionSample<number> => {
-        const distribution = new NormalDistribution(mean, stdDev, this.normalAlgorithm);
-        const [sample, nextState] = distribution.sampleWithMetadata!(this.engine.getState());
-        this.engine.setState(nextState);
-        return sample;
+    public normalWithMetadata = (mean: number = 0, stdDev: number = 1) => {
+        return this._distributions.normalWithMetadata(mean, stdDev);
     };
 
-    public normalMany = (
-        count: number,
-        mean: number = 0,
-        stdDev: number = 1
-    ): readonly number[] => {
-        const distribution = new NormalDistribution(mean, stdDev, this.normalAlgorithm);
-        const [values, nextState] = distribution.sampleMany!(this.engine.getState(), count);
-        this.engine.setState(nextState);
-        return values;
+    public normalMany = (count: number, mean: number = 0, stdDev: number = 1): readonly number[] => {
+        return this._distributions.normalMany(count, mean, stdDev);
     };
 
-    public normalManyWithMetadata = (
-        count: number,
-        mean: number = 0,
-        stdDev: number = 1
-    ): readonly DistributionSample<number>[] => {
-        const distribution = new NormalDistribution(mean, stdDev, this.normalAlgorithm);
-        const [samples, nextState] = distribution.sampleManyWithMetadata!(
-            this.engine.getState(),
-            count
-        );
-        this.engine.setState(nextState);
-        return samples;
+    public normalManyWithMetadata = (count: number, mean: number = 0, stdDev: number = 1) => {
+        return this._distributions.normalManyWithMetadata(count, mean, stdDev);
     };
 
-    public exponentialWithMetadata = (lambda: number = 1): DistributionSample<number> => {
-        const distribution = new ExponentialDistribution(lambda);
-        const [sample, nextState] = distribution.sampleWithMetadata!(this.engine.getState());
-        this.engine.setState(nextState);
-        return sample;
+    public exponentialWithMetadata = (lambda: number = 1) => {
+        return this._distributions.exponentialWithMetadata(lambda);
     };
 
     public exponentialMany = (count: number, lambda: number = 1): readonly number[] => {
-        const distribution = new ExponentialDistribution(lambda);
-        const [values, nextState] = distribution.sampleMany!(this.engine.getState(), count);
-        this.engine.setState(nextState);
-        return values;
+        return this._distributions.exponentialMany(count, lambda);
     };
 
-    public exponentialManyWithMetadata = (
-        count: number,
-        lambda: number = 1
-    ): readonly DistributionSample<number>[] => {
-        const distribution = new ExponentialDistribution(lambda);
-        const [samples, nextState] = distribution.sampleManyWithMetadata!(
-            this.engine.getState(),
-            count
-        );
-        this.engine.setState(nextState);
-        return samples;
+    public exponentialManyWithMetadata = (count: number, lambda: number = 1) => {
+        return this._distributions.exponentialManyWithMetadata(count, lambda);
     };
 
-    public poissonWithMetadata = (lambda: number): DistributionSample<number> => {
-        const distribution = new PoissonDistribution(lambda);
-        const [sample, nextState] = distribution.sampleWithMetadata!(this.engine.getState());
-        this.engine.setState(nextState);
-        return sample;
+    public poissonWithMetadata = (lambda: number) => {
+        return this._distributions.poissonWithMetadata(lambda);
     };
 
     public poissonMany = (count: number, lambda: number): readonly number[] => {
-        const distribution = new PoissonDistribution(lambda);
-        const [values, nextState] = distribution.sampleMany!(this.engine.getState(), count);
-        this.engine.setState(nextState);
-        return values;
+        return this._distributions.poissonMany(count, lambda);
     };
 
-    public poissonManyWithMetadata = (
-        count: number,
-        lambda: number
-    ): readonly DistributionSample<number>[] => {
-        const distribution = new PoissonDistribution(lambda);
-        const [samples, nextState] = distribution.sampleManyWithMetadata!(
-            this.engine.getState(),
-            count
-        );
-        this.engine.setState(nextState);
-        return samples;
+    public poissonManyWithMetadata = (count: number, lambda: number) => {
+        return this._distributions.poissonManyWithMetadata(count, lambda);
     };
 
-    public bernoulliWithMetadata = (p: number = 0.5): DistributionSample<boolean> => {
-        const distribution = new BernoulliDistribution(p);
-        const [sample, nextState] = distribution.sampleWithMetadata!(this.engine.getState());
-        this.engine.setState(nextState);
-        return sample;
+    public bernoulliWithMetadata = (p: number = 0.5) => {
+        return this._distributions.bernoulliWithMetadata(p);
     };
 
     public bernoulliMany = (count: number, p: number = 0.5): readonly boolean[] => {
-        const distribution = new BernoulliDistribution(p);
-        const [values, nextState] = distribution.sampleMany!(this.engine.getState(), count);
-        this.engine.setState(nextState);
-        return values;
+        return this._distributions.bernoulliMany(count, p);
     };
 
-    public bernoulliManyWithMetadata = (
-        count: number,
-        p: number = 0.5
-    ): readonly DistributionSample<boolean>[] => {
-        const distribution = new BernoulliDistribution(p);
-        const [samples, nextState] = distribution.sampleManyWithMetadata!(
-            this.engine.getState(),
-            count
-        );
-        this.engine.setState(nextState);
-        return samples;
+    public bernoulliManyWithMetadata = (count: number, p: number = 0.5) => {
+        return this._distributions.bernoulliManyWithMetadata(count, p);
     };
 
-    public binomialWithMetadata = (n: number, p: number): DistributionSample<number> => {
-        const distribution = new BinomialDistribution(n, p);
-        const [sample, nextState] = distribution.sampleWithMetadata!(this.engine.getState());
-        this.engine.setState(nextState);
-        return sample;
+    public binomialWithMetadata = (n: number, p: number) => {
+        return this._distributions.binomialWithMetadata(n, p);
     };
 
     public binomialMany = (count: number, n: number, p: number): readonly number[] => {
-        const distribution = new BinomialDistribution(n, p);
-        const [values, nextState] = distribution.sampleMany!(this.engine.getState(), count);
-        this.engine.setState(nextState);
-        return values;
+        return this._distributions.binomialMany(count, n, p);
     };
 
-    public binomialManyWithMetadata = (
-        count: number,
-        n: number,
-        p: number
-    ): readonly DistributionSample<number>[] => {
-        const distribution = new BinomialDistribution(n, p);
-        const [samples, nextState] = distribution.sampleManyWithMetadata!(
-            this.engine.getState(),
-            count
-        );
-        this.engine.setState(nextState);
-        return samples;
+    public binomialManyWithMetadata = (count: number, n: number, p: number) => {
+        return this._distributions.binomialManyWithMetadata(count, n, p);
     };
 
-    public geometricWithMetadata = (p: number): DistributionSample<number> => {
-        const distribution = new GeometricDistribution(p);
-        const [sample, nextState] = distribution.sampleWithMetadata!(this.engine.getState());
-        this.engine.setState(nextState);
-        return sample;
+    public geometricWithMetadata = (p: number) => {
+        return this._distributions.geometricWithMetadata(p);
     };
 
     public geometricMany = (count: number, p: number): readonly number[] => {
-        const distribution = new GeometricDistribution(p);
-        const [values, nextState] = distribution.sampleMany!(this.engine.getState(), count);
-        this.engine.setState(nextState);
-        return values;
+        return this._distributions.geometricMany(count, p);
     };
 
-    public geometricManyWithMetadata = (
-        count: number,
-        p: number
-    ): readonly DistributionSample<number>[] => {
-        const distribution = new GeometricDistribution(p);
-        const [samples, nextState] = distribution.sampleManyWithMetadata!(
-            this.engine.getState(),
-            count
-        );
-        this.engine.setState(nextState);
-        return samples;
+    public geometricManyWithMetadata = (count: number, p: number) => {
+        return this._distributions.geometricManyWithMetadata(count, p);
     };
 
     public analyzeSequence = (values: readonly number[]) => {

@@ -1,0 +1,38 @@
+{
+    "name": "@axrone/ecs-world-support",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./actor-registry": {
+            "types": "./dist/actor-registry.d.ts",
+            "import": "./dist/actor-registry.mjs",
+            "require": "./dist/actor-registry.js"
+        },
+        "./singleton-registry": {
+            "types": "./dist/singleton-registry.d.ts",
+            "import": "./dist/singleton-registry.mjs",
+            "require": "./dist/singleton-registry.js"
+        },
+        "./world-metrics-service": {
+            "types": "./dist/world-metrics-service.d.ts",
+            "import": "./dist/world-metrics-service.mjs",
+            "require": "./dist/world-metrics-service.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    }
+}
