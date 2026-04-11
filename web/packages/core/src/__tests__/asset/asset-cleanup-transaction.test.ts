@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssetDatabase } from '../../asset';
+import { AssetDatabase } from '@axrone/asset-core';
 
 interface CleanupAssetSchema {
     readonly text: string;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BasisLoader } from '@loaders.gl/textures';
 import {
     AssetDatabase,
-} from '../../asset';
+} from '@axrone/asset-core';
 import {
     createLoadersBasisGltfTextureTranscoder,
     createGltfImporter,

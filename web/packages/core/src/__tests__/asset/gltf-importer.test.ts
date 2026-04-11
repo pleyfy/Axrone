@@ -3,7 +3,7 @@ import { MeshoptEncoder } from 'meshoptimizer';
 import { TextureFormat } from '../../renderer/webgl2/texture/interfaces';
 import {
     AssetDatabase,
-} from '../../asset';
+} from '@axrone/asset-core';
 import {
     createGltfImporter,
     createGltfTextureTranscodeStage,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssetDatabase, type AssetImporter } from '../../asset';
+import { AssetDatabase, type AssetImporter } from '@axrone/asset-core';
 
 interface SourceIdentityAssetSchema {
     readonly text: string;

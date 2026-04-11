@@ -8,9 +8,4 @@ export default [
     ...createPackageConfig({
         packageDir,
     }),
-    ...createPackageConfig({
-        packageDir,
-        inputRelativePath: 'src/asset/index.ts',
-        outputBasename: 'asset',
-    }),
 ];

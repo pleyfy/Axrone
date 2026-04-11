@@ -5,7 +5,7 @@ import {
     type AssetBinaryStore,
     type AssetBinaryStoreReadRequest,
     type AssetBinaryStoreWriteRequest,
-} from '../../asset';
+} from '@axrone/asset-core';
 
 interface BinaryAssetSchema {
     readonly bytes: Uint8Array;

@@ -4,7 +4,7 @@ import {
     type AssetImporter,
     type AssetImportSource,
     type AssetImportStage,
-} from '../../asset';
+} from '@axrone/asset-core';
 
 interface PipelineAssetSchema {
     readonly text: string;
