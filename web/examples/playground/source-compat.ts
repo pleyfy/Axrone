@@ -9,6 +9,26 @@ const numericRuntimeExports = new Set([
     'Vec4',
 ]);
 
+const ecsRuntimeExports = new Set([
+    'Actor',
+    'Component',
+    'EntityError',
+    'Hierarchy',
+    'Transform',
+    'World',
+    'WorldActorRegistry',
+    'WorldDiagnostics',
+    'WorldError',
+    'WorldEventRuntime',
+    'WorldMetricsService',
+    'WorldMutationRuntime',
+    'WorldQueryExecutionRuntime',
+    'WorldQueryRuntime',
+    'WorldSingletonRegistry',
+    'WorldStorageRuntime',
+    'script',
+]);
+
 const scene3DRuntimeExports = new Set([
     'Camera',
     'DirectionalLight',
@@ -19,6 +39,17 @@ const scene3DRuntimeExports = new Set([
     'TextureFormat',
     'WrapMode',
     'createUnlitColorShaderDefinition',
+]);
+
+const assetCoreRuntimeExports = new Set([
+    'AssetDatabase',
+    'AssetImportPipeline',
+    'AssetImporter',
+    'AssetImporterRegistry',
+    'createAssetDatabase',
+    'createAssetImportPipeline',
+    'isAssetDatabaseSnapshot',
+    'isAssetImporter',
 ]);
 
 type ModuleNamespace = Record<string, unknown>;
@@ -35,6 +66,14 @@ type CoreImportMigration = {
 };
 
 const coreImportMigrations: readonly CoreImportMigration[] = [
+    {
+        moduleName: '@axrone/asset-core',
+        exportedNames: assetCoreRuntimeExports,
+    },
+    {
+        moduleName: '@axrone/ecs',
+        exportedNames: ecsRuntimeExports,
+    },
     {
         moduleName: '@axrone/numeric',
         exportedNames: numericRuntimeExports,
@@ -211,7 +250,7 @@ export const normalizePlaygroundSource = (source: string): string => {
         preferredAnchor = insertedDeclaration;
     }
 
-    return nextSource.replace(/\n{3,}/g, '\n\n');
+    return nextSource.replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n');
 };
 
 export const validateSupportedModuleImports = (
@@ -238,18 +277,16 @@ export const validateSupportedModuleImports = (
                 continue;
             }
 
-            if (moduleName === '@axrone/core' && numericRuntimeExports.has(specifier.importedName)) {
-                diagnostics.push(
-                    `Module "${moduleName}" does not export "${specifier.importedName}". Import it from "@axrone/numeric" instead.`
-                );
-                continue;
-            }
-
-            if (moduleName === '@axrone/core' && scene3DRuntimeExports.has(specifier.importedName)) {
-                diagnostics.push(
-                    `Module "${moduleName}" does not export "${specifier.importedName}". Import it from "@axrone/scene-3d" instead.`
-                );
-                continue;
+            if (moduleName === '@axrone/core') {
+                const ownerModule = coreImportMigrations.find(({ exportedNames }) =>
+                    exportedNames.has(specifier.importedName)
+                )?.moduleName;
+                if (ownerModule) {
+                    diagnostics.push(
+                        `Module "${moduleName}" does not export "${specifier.importedName}". Import it from "${ownerModule}" instead.`
+                    );
+                    continue;
+                }
             }
 
             diagnostics.push(

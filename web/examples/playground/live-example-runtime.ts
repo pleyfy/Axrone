@@ -1,4 +1,7 @@
+import * as axroneAssetCore from '@axrone/asset-core';
+import * as axroneAssetGltf from '@axrone/asset-gltf';
 import * as axroneCore from '@axrone/core';
+import * as axroneEcs from '@axrone/ecs';
 import * as axroneGameLoop from '@axrone/game-loop';
 import * as axroneNumeric from '@axrone/numeric';
 import * as axroneRandom from '@axrone/random';
@@ -21,7 +24,10 @@ import * as uiExampleHelpers from '../ui/example-helpers';
 import { normalizePlaygroundSource, validateSupportedModuleImports } from './source-compat';
 
 const supportedModules = {
+    '@axrone/asset-core': axroneAssetCore,
+    '@axrone/asset-gltf': axroneAssetGltf,
     '@axrone/core': axroneCore,
+    '@axrone/ecs': axroneEcs,
     '@axrone/game-loop': axroneGameLoop,
     '@axrone/numeric': axroneNumeric,
     '@axrone/random': axroneRandom,

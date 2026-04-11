@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { normalizePlaygroundSource, validateSupportedModuleImports } from './source-compat';
 
 describe('normalizePlaygroundSource', () => {
-    it('moves numeric and scene exports from core into owner packages', () => {
+    it('moves ecs, numeric, and scene exports from core into owner packages', () => {
         const source = `import { Component, Scene, Transform, Vec3, script } from '@axrone/core';
 import type { SceneExample } from './example-types';
 
@@ -11,7 +11,7 @@ const example: SceneExample = {} as SceneExample;
 export default example;
 `;
 
-        expect(normalizePlaygroundSource(source)).toBe(`import { Component, Transform, script } from '@axrone/core';
+        expect(normalizePlaygroundSource(source)).toBe(`import { Component, Transform, script } from '@axrone/ecs';
 import { Vec3 } from '@axrone/numeric';
 import { Scene } from '@axrone/scene-3d';
 import type { SceneExample } from './example-types';
@@ -28,9 +28,20 @@ import { Quat } from '@axrone/numeric';
 import { DirectionalLight } from '@axrone/scene-3d';
 `;
 
-        expect(normalizePlaygroundSource(source)).toBe(`import { Transform } from '@axrone/core';
+        expect(normalizePlaygroundSource(source)).toBe(`import { Transform } from '@axrone/ecs';
 import { Quat, Vec3 } from '@axrone/numeric';
 import { DirectionalLight, Scene, createUnlitColorShaderDefinition } from '@axrone/scene-3d';
+`);
+    });
+
+    it('moves asset ownership imports out of core', () => {
+        const source = `import { AssetDatabase, type AssetImporter, Transform } from '@axrone/core';
+import { createGltfImporter } from '@axrone/asset-gltf';
+`;
+
+        expect(normalizePlaygroundSource(source)).toBe(`import { AssetDatabase, type AssetImporter } from '@axrone/asset-core';
+import { Transform } from '@axrone/ecs';
+import { createGltfImporter } from '@axrone/asset-gltf';
 `);
     });
 });
@@ -47,6 +58,20 @@ describe('validateSupportedModuleImports', () => {
 
         expect(diagnostics).toEqual([
             'Module "@axrone/core" does not export "Scene". Import it from "@axrone/scene-3d" instead.',
+        ]);
+    });
+
+    it('reports ecs ownership guidance for stale core imports', () => {
+        const diagnostics = validateSupportedModuleImports(
+            `import { Transform } from '@axrone/core';`,
+            {
+                '@axrone/core': {},
+                '@axrone/ecs': { Transform: class Transform {} },
+            }
+        );
+
+        expect(diagnostics).toEqual([
+            'Module "@axrone/core" does not export "Transform". Import it from "@axrone/ecs" instead.',
         ]);
     });
 });

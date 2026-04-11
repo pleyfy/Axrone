@@ -1,6 +1,4 @@
-import {
-    Transform,
-} from '@axrone/core';
+import { Transform } from '@axrone/ecs';
 import {
     DirectionalLight,
     FilterMode,

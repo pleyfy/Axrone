@@ -1,4 +1,4 @@
-import { Transform } from '@axrone/core';
+import { Transform } from '@axrone/ecs';
 import { Scene, createUnlitColorShaderDefinition } from '@axrone/scene-3d';
 import { Quat, Vec3 } from '@axrone/numeric';
 import { UIRuntime } from '@axrone/ui';
