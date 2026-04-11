@@ -78,21 +78,7 @@ describe('physics ownership boundary', () => {
     });
 
     it('leaves core compatibility physics surfaces as thin facades only', () => {
-        const compatibilityDirs = [
-            ['physics', corePhysicsDir],
-            ['component-system/components/physics', coreComponentPhysicsDir],
-        ] as const;
-
-        const violatingDirs = compatibilityDirs
-            .map(([label, dirPath]) => {
-                const files = collectTypeScriptFiles(dirPath)
-                    .map((filePath) => path.relative(dirPath, filePath).replace(/\\/g, '/'))
-                    .sort((left, right) => left.localeCompare(right));
-
-                return files.length === 1 && files[0] === 'index.ts' ? null : `${label}:${files.join(',')}`;
-            })
-            .filter((value): value is string => value !== null);
-
-        expect(violatingDirs).toEqual([]);
+        expect(fs.existsSync(corePhysicsDir)).toBe(false);
+        expect(fs.existsSync(coreComponentPhysicsDir)).toBe(false);
     });
 });

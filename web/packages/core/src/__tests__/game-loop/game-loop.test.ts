@@ -3,7 +3,7 @@ import {
     GameLoopDisposedError,
     type GameLoopScheduler,
     type GameLoopStateSerializer,
-} from '../../game-loop';
+} from '@axrone/game-loop';
 
 class ManualScheduler implements GameLoopScheduler<number> {
     readonly kind = 'manual';

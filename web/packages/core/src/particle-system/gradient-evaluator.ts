@@ -1,6 +1,6 @@
 import { IGradient } from './interfaces';
 import { IVec4Array } from './aligned-arrays';
-import { Random } from '../random';
+import { SeededRandom } from './seeded-random';
 
 export interface ColorStop {
     readonly time: number;
@@ -303,7 +303,7 @@ export class GradientEvaluator {
             return { x: 1, y: 1, z: 1, w: 1 };
         }
 
-        const random = new Random(randomSeed);
+        const random = new SeededRandom(randomSeed);
         const keyIndex = Math.floor(random.float() * gradient.keyCount) * 5;
 
         return {

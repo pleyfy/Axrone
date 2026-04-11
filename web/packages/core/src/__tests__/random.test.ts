@@ -14,7 +14,7 @@ import {
     GeometricDistribution,
     IRandomAPI,
     IRandomState,
-} from '../random';
+} from '@axrone/random';
 
 describe('Random Core API', () => {
     it('is deterministic for same seed and engine', () => {

@@ -47,11 +47,7 @@ describe('input ownership boundary', () => {
         expect(violatingFiles).toEqual([]);
     });
 
-    it('leaves core input as a thin facade only', () => {
-        const files = collectTypeScriptFiles(coreInputDir)
-            .map((filePath) => path.relative(coreInputDir, filePath).replace(/\\/g, '/'))
-            .sort((left, right) => left.localeCompare(right));
-
-        expect(files).toEqual(['index.ts']);
+    it('removes core input compatibility sources entirely', () => {
+        expect(fs.existsSync(coreInputDir)).toBe(false);
     });
 });

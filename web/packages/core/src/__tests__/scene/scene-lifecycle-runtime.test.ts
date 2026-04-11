@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { GameLoop } from '../../game-loop';
+import type { GameLoop } from '@axrone/game-loop';
 import { SceneLifecycleError } from '@axrone/scene-3d';
 import { SceneLifecycleRuntime } from '@axrone/scene-3d';
 import { createMockGL } from './test-harness';

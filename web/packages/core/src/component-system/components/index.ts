@@ -1,5 +1,4 @@
 export { Hierarchy, Transform } from '@axrone/ecs';
-export * from './physics';
 
 import { Hierarchy, Transform } from '@axrone/ecs';
 

@@ -3,7 +3,9 @@ import * as axroneAssetGltf from '@axrone/asset-gltf';
 import * as axroneCore from '@axrone/core';
 import * as axroneEcs from '@axrone/ecs';
 import * as axroneGameLoop from '@axrone/game-loop';
+import * as axroneInput from '@axrone/input';
 import * as axroneNumeric from '@axrone/numeric';
+import * as axronePhysics from '@axrone/physics';
 import * as axroneRandom from '@axrone/random';
 import * as axroneRenderWebGL2 from '@axrone/render-webgl2';
 import * as axroneRuntimeProfile2D from '@axrone/runtime-profile-2d';
@@ -29,7 +31,9 @@ const supportedModules = {
     '@axrone/core': axroneCore,
     '@axrone/ecs': axroneEcs,
     '@axrone/game-loop': axroneGameLoop,
+    '@axrone/input': axroneInput,
     '@axrone/numeric': axroneNumeric,
+    '@axrone/physics': axronePhysics,
     '@axrone/random': axroneRandom,
     '@axrone/render-webgl2': axroneRenderWebGL2,
     '@axrone/runtime-profile-2d': axroneRuntimeProfile2D,

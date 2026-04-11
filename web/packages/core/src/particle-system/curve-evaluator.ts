@@ -1,5 +1,5 @@
 import { ICurve } from './interfaces';
-import { Random } from '../random';
+import { SeededRandom } from './seeded-random';
 
 interface CurveCache {
     curve: ICurve;
@@ -103,7 +103,7 @@ export class CurveEvaluator {
     }
 
     private static _evaluateRandom(curve: ICurve, randomSeed: number): number {
-        const random = new Random(randomSeed);
+        const random = new SeededRandom(randomSeed);
         return curve.constantMin + (curve.constantMax - curve.constantMin) * random.float();
     }
 
@@ -120,7 +120,7 @@ export class CurveEvaluator {
 
     private static _evaluateRandomCurve(curve: ICurve, time: number, randomSeed: number): number {
         const cache = this._findCacheForCurve(curve);
-        const random = new Random(randomSeed);
+        const random = new SeededRandom(randomSeed);
 
         let min: number;
         let max: number;
@@ -152,7 +152,7 @@ export class CurveEvaluator {
     ): void {
         const range = curve.constantMax - curve.constantMin;
         for (let i = 0; i < count; i++) {
-            const random = new Random(randomSeeds[i]);
+            const random = new SeededRandom(randomSeeds[i]);
             results[i] = curve.constantMin + range * random.float();
         }
     }
@@ -192,7 +192,7 @@ export class CurveEvaluator {
 
         for (let i = 0; i < count; i++) {
             const time = times[i];
-            const random = new Random(randomSeeds[i]);
+            const random = new SeededRandom(randomSeeds[i]);
 
             let min: number;
             let max: number;
