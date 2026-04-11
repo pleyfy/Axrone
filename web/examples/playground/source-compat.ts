@@ -64,14 +64,10 @@ const ecsRuntimeExports = new Set([
 ]);
 
 const scene3DRuntimeExports = new Set([
-    'Camera',
     'DirectionalLight',
-    'FilterMode',
     'MeshRenderer',
     'OrbitCameraController',
     'Scene',
-    'TextureFormat',
-    'WrapMode',
     'createUnlitColorShaderDefinition',
 ]);
 
