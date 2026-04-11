@@ -1,5 +1,5 @@
 {
-    "name": "@axrone/physics",
+    "name": "@axrone/physics-3d",
     "version": "0.1.0",
     "main": "./dist/index.js",
     "module": "./dist/index.mjs",
@@ -21,10 +21,8 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@axrone/geometry": "^0.1.0",
+        "@axrone/ecs": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
-        "@axrone/physics-2d": "^0.1.0",
-        "@axrone/physics-3d": "^0.1.0",
         "@axrone/physics-core": "^0.1.0"
     }
 }
