@@ -99,11 +99,21 @@ export type AnimationCompiledMotion =
           readonly weight: number;
       };
 
-const wrapMotionTime = (normalizedTime: number, duration: number, cycleOffset: number): number => {
+const resolveMotionTime = (
+    normalizedTime: number,
+    duration: number,
+    cycleOffset: number,
+    loop: boolean
+): number => {
     if (duration <= 0) {
         return 0;
     }
-    const wrapped = (normalizedTime + cycleOffset) % 1;
+    const offsetTime = normalizedTime + cycleOffset;
+    if (!loop) {
+        const normalized = Math.max(0, Math.min(1, offsetTime));
+        return normalized * duration;
+    }
+    const wrapped = offsetTime % 1;
     const normalized = wrapped < 0 ? wrapped + 1 : wrapped;
     return normalized * duration;
 };
@@ -309,19 +319,25 @@ export const evaluateMotion = (
     motion: AnimationCompiledMotion,
     normalizedTime: number,
     context: AnimationMotionEvaluationContext,
-    out: AnimationFrame
+    out: AnimationFrame,
+    loop: boolean = true
 ): AnimationFrame => {
     switch (motion.kind) {
         case 'clip': {
             out.reset(context.rig, context.restFrame.curves.values);
-            const time = wrapMotionTime(normalizedTime * motion.timeScale, motion.clip.duration, motion.cycleOffset);
+            const time = resolveMotionTime(
+                normalizedTime * motion.timeScale,
+                motion.clip.duration,
+                motion.cycleOffset,
+                loop
+            );
             return motion.clip.sampleTime(time, out);
         }
         case 'blend1d': {
             const parameterValue = context.parameters.get(motion.parameter);
             const input = typeof parameterValue === 'number' ? parameterValue : parameterValue ? 1 : 0;
             if (motion.children.length === 1 || input <= motion.children[0]!.threshold) {
-                return evaluateMotion(motion.children[0]!.motion, normalizedTime, context, out);
+                return evaluateMotion(motion.children[0]!.motion, normalizedTime, context, out, loop);
             }
             for (let index = 0; index < motion.children.length - 1; index += 1) {
                 const left = motion.children[index]!;
@@ -333,15 +349,16 @@ export const evaluateMotion = (
                     (input - left.threshold) / Math.max(1e-6, right.threshold - left.threshold);
                 const leftFrame = context.scratch.acquire();
                 const rightFrame = context.scratch.acquire();
-                evaluateMotion(left.motion, normalizedTime, context, leftFrame);
-                evaluateMotion(right.motion, normalizedTime, context, rightFrame);
+                evaluateMotion(left.motion, normalizedTime, context, leftFrame, loop);
+                evaluateMotion(right.motion, normalizedTime, context, rightFrame, loop);
                 return blendFrame(out, leftFrame, rightFrame, alpha);
             }
             return evaluateMotion(
                 motion.children[motion.children.length - 1]!.motion,
                 normalizedTime,
                 context,
-                out
+                out,
+                loop
             );
         }
         case 'blend2d': {
@@ -355,7 +372,7 @@ export const evaluateMotion = (
             const frames = new Array<AnimationFrame>(motion.children.length);
             for (let index = 0; index < motion.children.length; index += 1) {
                 const frame = context.scratch.acquire();
-                evaluateMotion(motion.children[index]!.motion, normalizedTime, context, frame);
+                evaluateMotion(motion.children[index]!.motion, normalizedTime, context, frame, loop);
                 frames[index] = frame;
             }
             return blendWeightedFrames(out, frames, weights, context.restFrame);
@@ -370,7 +387,7 @@ export const evaluateMotion = (
                     continue;
                 }
                 const frame = context.scratch.acquire();
-                evaluateMotion(child.motion, normalizedTime, context, frame);
+                evaluateMotion(child.motion, normalizedTime, context, frame, loop);
                 frames.push(frame);
                 weights.push(weight);
             }
@@ -454,8 +471,18 @@ export const extractMotionRootDelta = (
         case 'clip': {
             motion.clip.extractBoneDelta(
                 rootBoneIndex,
-                wrapMotionTime(previousNormalizedTime * motion.timeScale, motion.clip.duration, motion.cycleOffset),
-                wrapMotionTime(currentNormalizedTime * motion.timeScale, motion.clip.duration, motion.cycleOffset),
+                resolveMotionTime(
+                    previousNormalizedTime * motion.timeScale,
+                    motion.clip.duration,
+                    motion.cycleOffset,
+                    loop
+                ),
+                resolveMotionTime(
+                    currentNormalizedTime * motion.timeScale,
+                    motion.clip.duration,
+                    motion.cycleOffset,
+                    loop
+                ),
                 loop,
                 rig,
                 outTranslation,

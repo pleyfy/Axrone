@@ -359,26 +359,32 @@ export const evaluateLayerRuntime = (
     out: AnimationFrame
 ): AnimationFrame => {
     if (!runtime.transition) {
+        const state = machine.states[runtime.currentStateIndex]!;
         return evaluateMotion(
-            machine.states[runtime.currentStateIndex]!.motion,
+            state.motion,
             runtime.currentNormalizedTime,
             context,
-            out
+            out,
+            state.loop
         );
     }
+    const sourceState = machine.states[runtime.transition.sourceStateIndex]!;
+    const targetState = machine.states[runtime.transition.targetStateIndex]!;
     const sourceFrame = context.scratch.acquire();
     const targetFrame = context.scratch.acquire();
     evaluateMotion(
-        machine.states[runtime.transition.sourceStateIndex]!.motion,
+        sourceState.motion,
         runtime.transition.sourceNormalizedTime,
         context,
-        sourceFrame
+        sourceFrame,
+        sourceState.loop
     );
     evaluateMotion(
-        machine.states[runtime.transition.targetStateIndex]!.motion,
+        targetState.motion,
         runtime.transition.targetNormalizedTime,
         context,
-        targetFrame
+        targetFrame,
+        targetState.loop
     );
     return blendFrame(out, sourceFrame, targetFrame, runtime.transition.progress);
 };

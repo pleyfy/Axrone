@@ -123,6 +123,49 @@ describe('Animation stack', () => {
         expect(frame.pose.translations[2]).toBeCloseTo(0);
     });
 
+    it('keeps the last keyframe when a non-looping state seeks to clip end', () => {
+        const controller = new AnimationController({
+            rig: {
+                bones: [{ name: 'hips' }],
+            },
+            clips: [
+                {
+                    id: 'pose',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [0, 0, 0, 1, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            layers: [
+                {
+                    id: 'base',
+                    stateMachine: {
+                        entryState: 'pose',
+                        states: [
+                            {
+                                id: 'pose',
+                                motion: { kind: 'clip', clipId: 'pose' },
+                                loop: false,
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+
+        controller.seek(1);
+        const frame = controller.evaluate();
+
+        expect(frame.pose.translations[0]).toBeCloseTo(1);
+        expect(frame.pose.translations[1]).toBeCloseTo(0);
+        expect(frame.pose.translations[2]).toBeCloseTo(0);
+    });
+
     it('retargets translations with configured scaling', () => {
         const retargeter = new AnimationRetargeter({
             sourceRig: {
