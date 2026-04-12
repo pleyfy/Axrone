@@ -15,6 +15,7 @@ import { SceneRenderPassPreparer } from './render-pass-preparer';
 import { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneResourceRuntime } from './scene-resource-runtime';
 import { SceneSkinningUniformBinder } from './skinning-uniform-binder';
+import { SceneSpriteBatchRuntime } from './sprite-batch-runtime';
 import type { SceneMeshResource } from './mesh-registry';
 import type { SceneMeshDefinition, SceneRenderStats, SceneUniformValue } from './types';
 import { SceneUniformWriter } from './uniform-writer';
@@ -53,6 +54,7 @@ export class SceneRenderRuntime {
     private readonly _skinningUniformBinder: SceneSkinningUniformBinder;
     private readonly _morphMeshRuntime: SceneMorphMeshRuntime;
     private readonly _drawExecutor: SceneDrawExecutor;
+    private readonly _spriteBatchRuntime: SceneSpriteBatchRuntime;
     private readonly _textureUniformSetter = (
         shader: Parameters<SceneUniformWriter['write']>[0],
         name: string,
@@ -90,6 +92,14 @@ export class SceneRenderRuntime {
             uniformWriter: this._uniformWriter,
             textureUniformSetter: this._textureUniformSetter,
             applyMissingVertexAttributeDefaults: _options.applyMissingVertexAttributeDefaults,
+        });
+        this._spriteBatchRuntime = new SceneSpriteBatchRuntime({
+            gl: _options.gl,
+            resources: _options.resources,
+            renderStateApplier: this._renderStateApplier,
+            uniformWriter: this._uniformWriter,
+            materialTextureBinder: this._materialTextureBinder,
+            textureUniformSetter: this._textureUniformSetter,
         });
     }
 
@@ -144,6 +154,13 @@ export class SceneRenderRuntime {
             for (const item of renderItems) {
                 this._drawExecutor.execute(item, drawContext, renderFrame);
             }
+
+            this._spriteBatchRuntime.render({
+                actors,
+                cameraFrame,
+                renderPass,
+                frameState: renderFrame,
+            });
         }
 
         this._options.gl.bindVertexArray(null);
@@ -156,5 +173,6 @@ export class SceneRenderRuntime {
 
     clear(): void {
         this._morphMeshRuntime.clear();
+        this._spriteBatchRuntime.clear();
     }
 }

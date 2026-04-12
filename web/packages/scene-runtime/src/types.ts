@@ -11,6 +11,7 @@ import type { MeshRenderer } from './components/mesh-renderer';
 import type { OrbitCameraController } from './components/orbit-camera-controller';
 import type { PrefabNodeBinding } from './components/prefab-node-binding';
 import type { PointLight } from './components/point-light';
+import type { SpriteRenderer } from './components/sprite-renderer';
 import type { SpotLight } from './components/spot-light';
 import type { Hierarchy } from '@axrone/ecs-runtime';
 import type { Transform } from '@axrone/ecs-runtime';
@@ -325,6 +326,7 @@ export type SceneBuiltInRegistry = {
     readonly PrefabNodeBinding: typeof PrefabNodeBinding;
     readonly Animator: typeof Animator;
     readonly Camera: typeof Camera;
+    readonly SpriteRenderer: typeof SpriteRenderer;
     readonly MeshRenderer: typeof MeshRenderer;
     readonly DirectionalLight: typeof DirectionalLight;
     readonly PointLight: typeof PointLight;

@@ -8,6 +8,7 @@ import { MeshRenderer } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { PrefabNodeBinding } from './components/prefab-node-binding';
 import { PointLight } from './components/point-light';
+import { SpriteRenderer } from './components/sprite-renderer';
 import { SpotLight } from './components/spot-light';
 import type { SceneBuiltInRegistry, SceneRegistry } from './types';
 
@@ -46,6 +47,7 @@ const DEFAULT_SCENE_BUILT_IN_REGISTRY: SceneBuiltInRegistry = Object.freeze({
     PrefabNodeBinding,
     Animator,
     Camera,
+    SpriteRenderer,
     MeshRenderer,
     DirectionalLight,
     PointLight,
@@ -75,7 +77,7 @@ export const SCENE_ANIMATION_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
 
 export const SCENE_2D_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
     id: 'scene/2d',
-    builtIns: ['Camera'] as const,
+    builtIns: ['Camera', 'SpriteRenderer'] as const,
 });
 
 export const SCENE_3D_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
