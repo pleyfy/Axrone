@@ -14,4 +14,5 @@ export * from './rig';
 export * from './skinning';
 export * from './state-machine';
 export * from './streaming';
+export * from './streaming-chunk';
 export * from './types';

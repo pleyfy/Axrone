@@ -11,6 +11,10 @@ import { AnimationCurveLayout, AnimationFrame, AnimationPose, AnimationWorldPose
 import { AnimationRetargeter } from '../retargeting';
 import { AnimationRig } from '../rig';
 import { AnimationClipStreamingScheduler } from '../streaming';
+import {
+    decodeAnimationClipStreamingChunkPayload,
+    encodeAnimationClipStreamingChunkPayload,
+} from '../streaming-chunk';
 
 describe('Animation stack', () => {
     it('extracts root motion while consuming the animated root bone', () => {
@@ -579,6 +583,118 @@ describe('Animation stack', () => {
                 requestedChunkIds: expect.arrayContaining(['walk:virtual:1']),
             })
         );
+    });
+
+    it('decodes and applies streamed clip chunk payloads onto placeholder clips', () => {
+        const rig = new AnimationRig({
+            bones: [{ name: 'root' }],
+        });
+        const curveLayout = new AnimationCurveLayout();
+        const clip = new AnimationClip(
+            {
+                id: 'walk',
+                duration: 1,
+                tracks: [],
+                streaming: {
+                    mode: 'streamed',
+                    sourceUri: 'clips/walk.anim',
+                    chunkDuration: 1,
+                },
+            },
+            rig,
+            curveLayout
+        );
+        const chunk = decodeAnimationClipStreamingChunkPayload(
+            encodeAnimationClipStreamingChunkPayload({
+                version: 1,
+                clipId: 'walk',
+                startTime: 0,
+                endTime: 1,
+                tracks: [
+                    {
+                        target: 'root',
+                        path: 'translation',
+                        times: [0, 1],
+                        values: [0, 0, 0, 1, 0, 0],
+                    },
+                ],
+            })
+        );
+
+        clip.applyStreamingChunk(chunk, { clipId: 'walk', startTime: 0, endTime: 1 });
+        const frame = new AnimationFrame(rig, curveLayout);
+        clip.sampleTime(0.5, frame);
+
+        expect(clip.definition.tracks).toHaveLength(1);
+        expect(frame.pose.translations[0]).toBeCloseTo(0.5, 5);
+        expect(frame.pose.translations[1]).toBeCloseTo(0, 5);
+        expect(frame.pose.translations[2]).toBeCloseTo(0, 5);
+    });
+
+    it('merges sequential streamed chunk payloads into a single clip track timeline', () => {
+        const rig = new AnimationRig({
+            bones: [{ name: 'root' }],
+        });
+        const curveLayout = new AnimationCurveLayout();
+        const clip = new AnimationClip(
+            {
+                id: 'walk',
+                duration: 1,
+                tracks: [],
+                streaming: {
+                    mode: 'streamed',
+                    sourceUri: 'clips/walk.anim',
+                    chunkDuration: 0.5,
+                },
+            },
+            rig,
+            curveLayout
+        );
+
+        clip.applyStreamingChunk(
+            decodeAnimationClipStreamingChunkPayload(
+                encodeAnimationClipStreamingChunkPayload({
+                    version: 1,
+                    clipId: 'walk',
+                    startTime: 0,
+                    endTime: 0.5,
+                    tracks: [
+                        {
+                            target: 'root',
+                            path: 'translation',
+                            times: [0, 0.5],
+                            values: [0, 0, 0, 0.5, 0, 0],
+                        },
+                    ],
+                })
+            ),
+            { clipId: 'walk', startTime: 0, endTime: 0.5 }
+        );
+        clip.applyStreamingChunk(
+            decodeAnimationClipStreamingChunkPayload(
+                encodeAnimationClipStreamingChunkPayload({
+                    version: 1,
+                    clipId: 'walk',
+                    startTime: 0.5,
+                    endTime: 1,
+                    tracks: [
+                        {
+                            target: 'root',
+                            path: 'translation',
+                            times: [0.5, 1],
+                            values: [0.5, 0, 0, 1, 0, 0],
+                        },
+                    ],
+                })
+            ),
+            { clipId: 'walk', startTime: 0.5, endTime: 1 }
+        );
+
+        const frame = new AnimationFrame(rig, curveLayout);
+        clip.sampleTime(0.75, frame);
+
+        expect(clip.definition.tracks[0]?.times).toEqual(new Float32Array([0, 0.5, 1]));
+        expect(frame.pose.translations[0]).toBeCloseTo(0.75, 5);
     });
 
     it('supports motion matching, grounding, and clip optimization helpers', () => {

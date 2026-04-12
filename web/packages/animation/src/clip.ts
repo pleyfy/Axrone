@@ -2,6 +2,11 @@ import { AnimationSamplingError, AnimationValidationError } from './errors';
 import { clamp, quatCopy, quatIdentity, quatInvert, quatMultiply, quatNormalize, quatSlerp, toFloat32Array, vec3Copy, vec3Lerp } from './math';
 import type { AnimationCurveLayout, AnimationFrame } from './pose';
 import type { AnimationRig } from './rig';
+import {
+    applyAnimationClipStreamingChunkDefinition,
+    type AnimationClipStreamingChunkApplicationOptions,
+    type AnimationClipStreamingChunkPayload,
+} from './streaming-chunk';
 import type {
     AnimationClipCompressionDefinition,
     AnimationClipDefinition,
@@ -431,23 +436,40 @@ const sanitizeStreamingDefinition = (
     } satisfies AnimationClipStreamingDefinition);
 };
 
+interface AnimationClipMutableFields {
+    id: string;
+    duration: number;
+    translationTracks: readonly AnimationBoneTrack[];
+    rotationTracks: readonly AnimationBoneTrack[];
+    scaleTracks: readonly AnimationBoneTrack[];
+    curveTracks: readonly AnimationCurveTrack[];
+    events: readonly AnimationClipEventDefinition[];
+    footContacts: readonly AnimationFootContactDefinition[];
+    tags: readonly string[];
+    features: readonly AnimationMotionFeatureDefinition[];
+    compression: AnimationClipCompressionDefinition | null;
+    streaming: AnimationClipStreamingDefinition | null;
+}
+
 export class AnimationClip {
-    readonly id: string;
-    readonly duration: number;
-    readonly translationTracks: readonly AnimationBoneTrack[];
-    readonly rotationTracks: readonly AnimationBoneTrack[];
-    readonly scaleTracks: readonly AnimationBoneTrack[];
-    readonly curveTracks: readonly AnimationCurveTrack[];
-    readonly events: readonly AnimationClipEventDefinition[];
-    readonly footContacts: readonly AnimationFootContactDefinition[];
-    readonly tags: readonly string[];
-    readonly features: readonly AnimationMotionFeatureDefinition[];
-    readonly compression: AnimationClipCompressionDefinition | null;
-    readonly streaming: AnimationClipStreamingDefinition | null;
+    readonly id!: string;
+    readonly duration!: number;
+    readonly translationTracks!: readonly AnimationBoneTrack[];
+    readonly rotationTracks!: readonly AnimationBoneTrack[];
+    readonly scaleTracks!: readonly AnimationBoneTrack[];
+    readonly curveTracks!: readonly AnimationCurveTrack[];
+    readonly events!: readonly AnimationClipEventDefinition[];
+    readonly footContacts!: readonly AnimationFootContactDefinition[];
+    readonly tags!: readonly string[];
+    readonly features!: readonly AnimationMotionFeatureDefinition[];
+    readonly compression!: AnimationClipCompressionDefinition | null;
+    readonly streaming!: AnimationClipStreamingDefinition | null;
 
     private readonly _translationTrackByTarget = new Map<number, AnimationBoneTrack>();
     private readonly _rotationTrackByTarget = new Map<number, AnimationBoneTrack>();
     private readonly _scaleTrackByTarget = new Map<number, AnimationBoneTrack>();
+    private readonly _rig: AnimationRig;
+    private readonly _curveLayout: AnimationCurveLayout;
     private readonly _sampleStartTranslation = new Float32Array(3);
     private readonly _sampleEndTranslation = new Float32Array(3);
     private readonly _sampleStartRotation = new Float32Array(4);
@@ -456,16 +478,39 @@ export class AnimationClip {
     private readonly _sampleMidRotation = new Float32Array(4);
     private readonly _sampleZeroRotation = new Float32Array(4);
     private readonly _inverseQuaternion = new Float32Array(4);
+    private _definition!: AnimationClipDefinition;
 
     constructor(
         definition: AnimationClipDefinition,
         rig: AnimationRig,
         curveLayout: AnimationCurveLayout
     ) {
+        this._rig = rig;
+        this._curveLayout = curveLayout;
+        this._applyDefinition(definition);
+    }
+
+    get definition(): AnimationClipDefinition {
+        return this._definition;
+    }
+
+    applyStreamingChunk(
+        payload: AnimationClipStreamingChunkPayload,
+        options: AnimationClipStreamingChunkApplicationOptions = {}
+    ): this {
+        this._applyDefinition(
+            applyAnimationClipStreamingChunkDefinition(this._definition, payload, {
+                clipId: this.id,
+                ...options,
+            })
+        );
+        return this;
+    }
+
+    private _applyDefinition(definition: AnimationClipDefinition): void {
         if (!definition || typeof definition.id !== 'string' || definition.id.length === 0) {
             throw new AnimationValidationError('Animation clips require a non-empty id');
         }
-        this.id = definition.id;
 
         const translationTracks: AnimationBoneTrack[] = [];
         const rotationTracks: AnimationBoneTrack[] = [];
@@ -475,6 +520,10 @@ export class AnimationClip {
             typeof definition.duration === 'number' && Number.isFinite(definition.duration)
                 ? definition.duration
                 : 0;
+
+        this._translationTrackByTarget.clear();
+        this._rotationTrackByTarget.clear();
+        this._scaleTrackByTarget.clear();
 
         for (let trackIndex = 0; trackIndex < definition.tracks.length; trackIndex += 1) {
             const track = definition.tracks[trackIndex]!;
@@ -487,7 +536,7 @@ export class AnimationClip {
             );
             resolvedDuration = Math.max(resolvedDuration, times[times.length - 1] ?? 0);
             const baseTrack = Object.freeze({
-                targetIndex: track.path === 'weights' ? -1 : rig.indexOfBone(track.target),
+                targetIndex: track.path === 'weights' ? -1 : this._rig.indexOfBone(track.target),
                 interpolation: resolveInterpolationMode(track.interpolation),
                 times,
                 values,
@@ -510,7 +559,7 @@ export class AnimationClip {
                     this._scaleTrackByTarget.set(baseTrack.targetIndex, baseTrack);
                     break;
                 case 'weights': {
-                    const curveBinding = curveLayout.get(track.target);
+                    const curveBinding = this._curveLayout.get(track.target);
                     if (!curveBinding) {
                         throw new AnimationValidationError(
                             `Animation clip '${definition.id}' references unknown curve '${track.target}'`
@@ -535,19 +584,22 @@ export class AnimationClip {
             }
         }
 
-        this.duration = resolvedDuration;
-        this.translationTracks = Object.freeze(translationTracks);
-        this.rotationTracks = Object.freeze(rotationTracks);
-        this.scaleTracks = Object.freeze(scaleTracks);
-        this.curveTracks = Object.freeze(curveTracks);
-        this.events = sanitizeClipEvents(definition.events, this.duration);
-        this.footContacts = sanitizeFootContacts(definition.footContacts, this.duration);
-        this.tags = sanitizeTags(definition.tags);
-        this.features = sanitizeMotionFeatures(definition.features, this.duration);
-        this.compression = definition.compression
+        const mutable = this as unknown as AnimationClipMutableFields;
+        mutable.id = definition.id;
+        mutable.duration = resolvedDuration;
+        mutable.translationTracks = Object.freeze(translationTracks);
+        mutable.rotationTracks = Object.freeze(rotationTracks);
+        mutable.scaleTracks = Object.freeze(scaleTracks);
+        mutable.curveTracks = Object.freeze(curveTracks);
+        mutable.events = sanitizeClipEvents(definition.events, mutable.duration);
+        mutable.footContacts = sanitizeFootContacts(definition.footContacts, mutable.duration);
+        mutable.tags = sanitizeTags(definition.tags);
+        mutable.features = sanitizeMotionFeatures(definition.features, mutable.duration);
+        mutable.compression = definition.compression
             ? Object.freeze({ ...definition.compression })
             : null;
-        this.streaming = sanitizeStreamingDefinition(definition.streaming, this.duration);
+        mutable.streaming = sanitizeStreamingDefinition(definition.streaming, mutable.duration);
+        this._definition = definition;
     }
 
     sampleTime(timeSeconds: number, frame: AnimationFrame): AnimationFrame {
