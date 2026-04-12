@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Color } from '@axrone/numeric';
 import { Render2DSpriteBatchBuilder } from '../sprite-batch-builder';
 
 const identity = Object.freeze([
@@ -18,7 +19,7 @@ describe('Render2DSpriteBatchBuilder', () => {
                 size: { width: 2, height: 4 },
                 anchor: { x: 0.5, y: 0.5 },
                 uvRect: { x: 0, y: 0, width: 1, height: 1 },
-                color: [1, 1, 1, 1],
+                color: new Color(1, 1, 1, 1),
             },
             {
                 source: { kind: 'texture', textureId: 'atlas/a' },
@@ -26,7 +27,7 @@ describe('Render2DSpriteBatchBuilder', () => {
                 size: { width: 1, height: 1 },
                 anchor: { x: 0.5, y: 0.5 },
                 uvRect: { x: 0, y: 0, width: 0.5, height: 0.5 },
-                color: [1, 0.5, 0.25, 1],
+                color: new Color(1, 0.5, 0.25, 1),
             },
             {
                 source: { kind: 'material', materialId: 'mat/b' },
@@ -34,7 +35,7 @@ describe('Render2DSpriteBatchBuilder', () => {
                 size: { width: 1, height: 1 },
                 anchor: { x: 0, y: 0 },
                 uvRect: { x: 0, y: 0, width: 1, height: 1 },
-                color: [0.5, 1, 1, 0.5],
+                color: new Color(0.5, 1, 1, 0.5),
             },
         ]);
 
@@ -64,7 +65,7 @@ describe('Render2DSpriteBatchBuilder', () => {
                 size: { width: 2, height: 2 },
                 anchor: { x: 0.5, y: 0.5 },
                 uvRect: { x: 0, y: 0, width: 1, height: 1 },
-                color: [1, 1, 1, 1],
+                color: Color.WHITE,
             },
         ]);
 
@@ -93,7 +94,7 @@ describe('Render2DSpriteBatchBuilder', () => {
                 size: { width: 1, height: 1 },
                 anchor: { x: 0.5, y: 0.5 },
                 uvRect: { x: 0, y: 0, width: 1, height: 1 },
-                color: [1, 1, 1, 1],
+                color: Color.WHITE,
             },
             {
                 source: { kind: 'texture', textureId: 'atlas/a' },
@@ -101,7 +102,7 @@ describe('Render2DSpriteBatchBuilder', () => {
                 size: { width: 1, height: 1 },
                 anchor: { x: 0.5, y: 0.5 },
                 uvRect: { x: 0, y: 0, width: 1, height: 1 },
-                color: [1, 1, 1, 1],
+                color: Color.WHITE,
             },
         ]);
 

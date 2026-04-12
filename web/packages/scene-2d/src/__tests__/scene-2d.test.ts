@@ -7,6 +7,7 @@ import {
 
 let Scene2D: typeof import('@axrone/scene-2d').Scene2D;
 let Camera: typeof import('@axrone/scene-2d').Camera;
+let Color: typeof import('@axrone/scene-2d').Color;
 let SpriteRenderer: typeof import('@axrone/scene-2d').SpriteRenderer;
 let SceneCapabilityError: typeof import('@axrone/scene-2d').SceneCapabilityError;
 let get2DSceneRuntimeProfile: typeof import('@axrone/scene-2d').get2DSceneRuntimeProfile;
@@ -20,6 +21,7 @@ describe('Scene2D', () => {
         const sceneModule = await import('@axrone/scene-2d');
         Scene2D = sceneModule.Scene2D;
         Camera = sceneModule.Camera;
+        Color = sceneModule.Color;
         SpriteRenderer = sceneModule.SpriteRenderer;
         SceneCapabilityError = sceneModule.SceneCapabilityError;
         get2DSceneRuntimeProfile = sceneModule.get2DSceneRuntimeProfile;
@@ -49,7 +51,12 @@ describe('Scene2D', () => {
         const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
         const spriteActor = scene.createSpriteActor(
             { name: 'Sprite' },
-            { textureId: 'hero', size: [2, 3], anchor: [0.25, 0.75] }
+            {
+                textureId: 'hero',
+                size: [2, 3],
+                anchor: [0.25, 0.75],
+                color: Color.fromHex('#ff8040cc'),
+            }
         );
 
         const camera = cameraActor.getComponent(Camera);
@@ -57,6 +64,11 @@ describe('Scene2D', () => {
 
         expect(camera?.orthographic).toBe(true);
         expect(sprite?.textureId).toBe('hero');
+        expect(sprite?.color).toBeInstanceOf(Color);
+        expect(sprite?.color.r).toBeCloseTo(1);
+        expect(sprite?.color.g).toBeCloseTo(0.5019607843137255);
+        expect(sprite?.color.b).toBeCloseTo(0.25098039215686274);
+        expect(sprite?.color.a).toBeCloseTo(0.8);
         expect(sprite?.size.x).toBe(2);
         expect(sprite?.anchor.y).toBe(0.75);
 

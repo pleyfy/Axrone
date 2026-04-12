@@ -1,3 +1,5 @@
+import type { IColorLike } from '@axrone/numeric';
+
 declare const __render2DColorBrand: unique symbol;
 declare const __render2DTextureReferenceBrand: unique symbol;
 declare const __render2DMaterialReferenceBrand: unique symbol;
@@ -22,7 +24,7 @@ export interface Render2DSizeLike {
 
 export interface Render2DRectLike extends Render2DVec2Like, Render2DSizeLike {}
 
-export type Render2DColorLike = readonly [number, number, number, number];
+export type Render2DColorLike = Readonly<IColorLike>;
 export type Render2DReadonlyMat4Like = ArrayLike<number>;
 
 export interface Render2DSpriteTextureSource {

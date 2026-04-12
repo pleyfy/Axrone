@@ -78,12 +78,7 @@ export class SceneSpriteBatchRuntime {
                 },
                 anchor: item.renderer.anchor,
                 uvRect: item.renderer.uvRect,
-                color: [
-                    item.renderer.color.x,
-                    item.renderer.color.y,
-                    item.renderer.color.z,
-                    item.renderer.color.w,
-                ],
+                color: item.renderer.color,
                 visible: item.renderer.visible,
                 flipX: item.renderer.flipX,
                 flipY: item.renderer.flipY,

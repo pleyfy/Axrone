@@ -54,10 +54,10 @@ const clamp01 = (value: number): number =>
     value <= 0 ? 0 : value >= 1 ? 1 : value;
 
 const packColor = (color: Render2DColorLike): PackedRender2DColor => {
-    const red = Math.round(clamp01(color[0] ?? 1) * 255) & 0xff;
-    const green = Math.round(clamp01(color[1] ?? 1) * 255) & 0xff;
-    const blue = Math.round(clamp01(color[2] ?? 1) * 255) & 0xff;
-    const alpha = Math.round(clamp01(color[3] ?? 1) * 255) & 0xff;
+    const red = Math.round(clamp01(color.r) * 255) & 0xff;
+    const green = Math.round(clamp01(color.g) * 255) & 0xff;
+    const blue = Math.round(clamp01(color.b) * 255) & 0xff;
+    const alpha = Math.round(clamp01(color.a ?? 1) * 255) & 0xff;
     return (red | (green << 8) | (blue << 16) | (alpha << 24)) as PackedRender2DColor;
 };
 
@@ -111,9 +111,10 @@ const validateSubmission = (submission: Render2DSpriteSubmission): void => {
     assertFinite('Sprite uvRect.width', submission.uvRect.width);
     assertFinite('Sprite uvRect.height', submission.uvRect.height);
 
-    if (submission.color.length < 4) {
-        throw new Render2DValidationError('Sprite color must contain 4 channels');
-    }
+    assertFinite('Sprite color.r', submission.color.r);
+    assertFinite('Sprite color.g', submission.color.g);
+    assertFinite('Sprite color.b', submission.color.b);
+    assertFinite('Sprite color.a', submission.color.a ?? 1);
 
     for (let index = 0; index < 16; index += 1) {
         assertFinite(`Sprite worldMatrix[${index}]`, submission.worldMatrix[index] ?? NaN);

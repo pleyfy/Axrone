@@ -1,4 +1,5 @@
-import { Vec2, Vec4 } from '@axrone/numeric';
+import { Color, Vec2 } from '@axrone/numeric';
+import type { IColorLike } from '@axrone/numeric';
 import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
 import type {
@@ -18,7 +19,7 @@ export type SpriteRendererSizeInput =
 export type SpriteRendererRectInput =
     | Render2DRectLike
     | readonly [number, number, number, number];
-export type SpriteRendererColorInput = Vec4 | readonly [number, number, number, number];
+export type SpriteRendererColorInput = Color | Readonly<IColorLike>;
 
 export interface SpriteRendererRectState {
     x: number;
@@ -74,24 +75,19 @@ const toVec2 = (
     return new Vec2(Number(value.x), Number(value.y));
 };
 
-const toVec4 = (
-    value: SpriteRendererColorInput | undefined,
-    fallback: Vec4 = new Vec4(1, 1, 1, 1)
-): Vec4 => {
+const toColor = (
+    value: SpriteRendererColorInput | readonly number[] | undefined,
+    fallback: Color = Color.WHITE
+): Color => {
     if (!value) {
-        return new Vec4(fallback.x, fallback.y, fallback.z, fallback.w);
+        return fallback.clone();
     }
 
-    if (value instanceof Vec4) {
-        return new Vec4(value.x, value.y, value.z, value.w);
+    if (Array.isArray(value)) {
+        return Color.fromArray(value);
     }
 
-    return new Vec4(
-        Number(value[0] ?? fallback.x),
-        Number(value[1] ?? fallback.y),
-        Number(value[2] ?? fallback.z),
-        Number(value[3] ?? fallback.w)
-    );
+    return Color.from(value as Readonly<IColorLike>);
 };
 
 const toRect = (
@@ -134,7 +130,7 @@ export class SpriteRenderer extends Component {
     private _passId: string;
     private readonly _size: Vec2;
     private readonly _anchor: Vec2;
-    private readonly _color: Vec4;
+    private readonly _color: Color;
     private readonly _uvRect: SpriteRendererRectState;
     private _flipX: boolean;
     private _flipY: boolean;
@@ -149,7 +145,7 @@ export class SpriteRenderer extends Component {
         this._passId = config.passId ?? 'main';
         this._size = toVec2(config.size, 1, 1);
         this._anchor = toVec2(config.anchor, 0.5, 0.5);
-        this._color = toVec4(config.color);
+        this._color = toColor(config.color);
         this._uvRect = toRect(config.uvRect);
         this._flipX = config.flipX ?? false;
         this._flipY = config.flipY ?? false;
@@ -223,16 +219,16 @@ export class SpriteRenderer extends Component {
         this._anchor.y = next.y;
     }
 
-    get color(): Vec4 {
+    get color(): Color {
         return this._color;
     }
 
     set color(value: SpriteRendererColorInput) {
-        const next = toVec4(value, this._color);
-        this._color.x = next.x;
-        this._color.y = next.y;
-        this._color.z = next.z;
-        this._color.w = next.w;
+        const next = toColor(value, this._color);
+        this._color.r = next.r;
+        this._color.g = next.g;
+        this._color.b = next.b;
+        this._color.a = next.a;
     }
 
     get uvRect(): SpriteRendererRectState {
@@ -279,11 +275,12 @@ export class SpriteRenderer extends Component {
         return this;
     }
 
-    setColor(r: number, g: number, b: number, a: number = this._color.w): this {
-        this._color.x = r;
-        this._color.y = g;
-        this._color.z = b;
-        this._color.w = a;
+    setColor(value: SpriteRendererColorInput): this {
+        const next = toColor(value, this._color);
+        this._color.r = next.r;
+        this._color.g = next.g;
+        this._color.b = next.b;
+        this._color.a = next.a;
         return this;
     }
 
@@ -305,7 +302,7 @@ export class SpriteRenderer extends Component {
             passId: this._passId,
             size: [this._size.x, this._size.y],
             anchor: [this._anchor.x, this._anchor.y],
-            color: [this._color.x, this._color.y, this._color.z, this._color.w],
+            color: [this._color.r, this._color.g, this._color.b, this._color.a],
             uvRect: [
                 this._uvRect.x,
                 this._uvRect.y,
@@ -342,13 +339,8 @@ export class SpriteRenderer extends Component {
         if (Array.isArray(data.anchor) && data.anchor.length >= 2) {
             this.setAnchor(Number(data.anchor[0]), Number(data.anchor[1]));
         }
-        if (Array.isArray(data.color) && data.color.length >= 4) {
-            this.setColor(
-                Number(data.color[0]),
-                Number(data.color[1]),
-                Number(data.color[2]),
-                Number(data.color[3])
-            );
+        if (data.color) {
+            this.setColor(data.color);
         }
         if (Array.isArray(data.uvRect) && data.uvRect.length >= 4) {
             this.setUVRect(
