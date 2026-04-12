@@ -21,6 +21,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@axrone/animation": "^0.1.0",
         "@axrone/asset-core": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
         "@axrone/render-webgl2": "^0.1.0",

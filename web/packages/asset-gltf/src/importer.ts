@@ -1,5 +1,10 @@
 import { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type {
+    AnimationLayerDefinition,
+    AnimationParameterDefinition,
+    AnimationRootMotionDefinition,
+} from '@axrone/animation';
+import type {
     AssetImportDiagnostic,
     AssetImportResult,
     AssetImportSource,
@@ -27,6 +32,7 @@ import { buildMeshDefinition, collectPrimitiveDiagnostics } from './internal/mes
 import type {
     GltfAccessorJson,
     GltfAnimationClipAsset,
+    GltfAnimationControllerMetadata,
     GltfAssetSchema,
     GltfAssetSchemaLike,
     GltfCameraJson,
@@ -40,6 +46,7 @@ import type {
     GltfMaterialTextureBinding,
     GltfMeshAsset,
     GltfMeshJson,
+    GltfSceneJson,
     GltfSkinAsset,
     GltfNodeJson,
     GltfPunctualLightJson,
@@ -66,6 +73,11 @@ const DEFAULT_MATERIAL_NAME = 'Default Material';
 const DEFAULT_DOCUMENT_NAME = 'glTF Document';
 const MAX_SCENE_LOCAL_LIGHTS = 4;
 const RADIANS_TO_DEGREES = 180 / Math.PI;
+const VALID_ANIMATION_PARAMETER_KINDS = new Set(['float', 'int', 'bool', 'trigger']);
+const VALID_ANIMATION_LAYER_MODES = new Set(['override', 'additive']);
+const VALID_ANIMATION_IK_SOLVERS = new Set(['ccd', 'fabrik']);
+const VALID_ANIMATION_CONDITION_KINDS = new Set(['float', 'int', 'bool', 'trigger']);
+const VALID_ANIMATION_CONDITION_OPERATORS = new Set(['<', '<=', '>', '>=', '==', '!=']);
 const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
     'EXT_meshopt_compression',
     'KHR_draco_mesh_compression',
@@ -85,6 +97,7 @@ interface PrefabBuildResult {
     readonly skinKeys: readonly string[];
     readonly animationKeys: readonly string[];
     readonly materialKeys: readonly string[];
+    readonly animationController?: GltfAnimationControllerMetadata;
     readonly diagnostics: readonly AssetImportDiagnostic[];
 }
 
@@ -99,6 +112,18 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 const isTypedArray = (value: unknown): value is ArrayBufferView =>
     ArrayBuffer.isView(value) && (value instanceof DataView === false);
+
+const isFiniteNumber = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value);
+
+const isBooleanTuple3 = (value: unknown): value is readonly [boolean, boolean, boolean] =>
+    Array.isArray(value) && value.length === 3 && value.every((entry) => typeof entry === 'boolean');
+
+const isNumberTuple3 = (value: unknown): value is readonly [number, number, number] =>
+    Array.isArray(value) && value.length === 3 && value.every((entry) => isFiniteNumber(entry));
+
+const isNumberTuple4 = (value: unknown): value is readonly [number, number, number, number] =>
+    Array.isArray(value) && value.length === 4 && value.every((entry) => isFiniteNumber(entry));
 
 const freezeDeep = <T>(value: T): T => {
     if (value === null || typeof value !== 'object') {
@@ -124,6 +149,569 @@ const freezeDeep = <T>(value: T): T => {
 };
 
 const maybeFreeze = <T>(value: T, enabled: boolean): T => (enabled ? freezeDeep(value) : value);
+
+const cloneSerializableMetadata = (value: unknown): unknown => {
+    if (
+        value === null ||
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+    ) {
+        return value;
+    }
+
+    if (Array.isArray(value)) {
+        return value.map((entry) => cloneSerializableMetadata(entry));
+    }
+
+    if (!isPlainObject(value)) {
+        return undefined;
+    }
+
+    const cloned: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+        const clonedEntry = cloneSerializableMetadata(entry);
+        if (clonedEntry !== undefined) {
+            cloned[key] = clonedEntry;
+        }
+    }
+
+    return cloned;
+};
+
+const createAnimationMetadataDiagnostic = (
+    sceneIndex: number,
+    message: string
+): AssetImportDiagnostic =>
+    Object.freeze({
+        level: 'warning',
+        code: 'gltf.animation.metadata.invalid',
+        message: `Scene ${sceneIndex} animation metadata was ignored: ${message}`,
+    } satisfies AssetImportDiagnostic);
+
+const resolveSceneAnimationMetadataSource = (
+    scene: GltfSceneJson | undefined
+): Record<string, unknown> | undefined => {
+    const extras = scene && isPlainObject(scene.extras) ? scene.extras : undefined;
+    if (!extras) {
+        return undefined;
+    }
+
+    const axrone = isPlainObject(extras.axrone) ? extras.axrone : undefined;
+    const candidates = [
+        axrone?.animationController,
+        axrone?.animation,
+        extras.animationController,
+        extras.animation,
+    ];
+
+    for (let index = 0; index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        if (isPlainObject(candidate)) {
+            return candidate;
+        }
+    }
+
+    return undefined;
+};
+
+const sanitizeAnimationParameters = (
+    value: unknown,
+    sceneIndex: number,
+    diagnostics: AssetImportDiagnostic[],
+    freeze: boolean
+): readonly AnimationParameterDefinition[] | undefined => {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const parameters: AnimationParameterDefinition[] = [];
+    const seenNames = new Set<string>();
+    for (let index = 0; index < value.length; index += 1) {
+        const entry = value[index];
+        if (!isPlainObject(entry)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `parameter ${index} is not an object`)
+            );
+            continue;
+        }
+
+        const name = typeof entry.name === 'string' ? entry.name : null;
+        const kind =
+            typeof entry.kind === 'string' && VALID_ANIMATION_PARAMETER_KINDS.has(entry.kind)
+                ? (entry.kind as AnimationParameterDefinition['kind'])
+                : null;
+        if (!name || !kind || VALID_ANIMATION_PARAMETER_KINDS.has(kind) === false) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(
+                    sceneIndex,
+                    `parameter ${index} must provide a valid name and kind`
+                )
+            );
+            continue;
+        }
+
+        if (seenNames.has(name)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `parameter '${name}' is duplicated`)
+            );
+            continue;
+        }
+
+        const defaultValue = entry.defaultValue;
+        if (
+            defaultValue !== undefined &&
+            ((kind === 'float' || kind === 'int')
+                ? isFiniteNumber(defaultValue) === false
+                : typeof defaultValue !== 'boolean')
+        ) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(
+                    sceneIndex,
+                    `parameter '${name}' has an invalid defaultValue`
+                )
+            );
+            continue;
+        }
+
+        seenNames.add(name);
+        switch (kind) {
+            case 'float':
+            case 'int':
+                parameters.push(
+                    maybeFreeze(
+                        {
+                            name,
+                            kind,
+                            ...(typeof defaultValue === 'number' ? { defaultValue } : {}),
+                        } satisfies AnimationParameterDefinition<string, 'float' | 'int'>,
+                        freeze
+                    )
+                );
+                break;
+            case 'bool':
+            case 'trigger':
+                parameters.push(
+                    maybeFreeze(
+                        {
+                            name,
+                            kind,
+                            ...(typeof defaultValue === 'boolean' ? { defaultValue } : {}),
+                        } satisfies AnimationParameterDefinition<string, 'bool' | 'trigger'>,
+                        freeze
+                    )
+                );
+                break;
+        }
+    }
+
+    return parameters.length > 0 ? Object.freeze(parameters) : undefined;
+};
+
+const validateAnimationParameterReference = (
+    parameter: unknown,
+    parameterNames: ReadonlySet<string>
+): boolean => typeof parameter === 'string' && parameterNames.has(parameter);
+
+const validateAnimationConditionMetadata = (
+    condition: unknown,
+    parameterNames: ReadonlySet<string>
+): boolean => {
+    if (!isPlainObject(condition) || typeof condition.kind !== 'string') {
+        return false;
+    }
+
+    if (VALID_ANIMATION_CONDITION_KINDS.has(condition.kind) === false) {
+        return false;
+    }
+
+    if (!validateAnimationParameterReference(condition.parameter, parameterNames)) {
+        return false;
+    }
+
+    switch (condition.kind) {
+        case 'float':
+        case 'int':
+            return (
+                typeof condition.operator === 'string' &&
+                VALID_ANIMATION_CONDITION_OPERATORS.has(condition.operator) &&
+                isFiniteNumber(condition.value)
+            );
+        case 'bool':
+            return typeof condition.value === 'boolean';
+        case 'trigger':
+            return true;
+        default:
+            return false;
+    }
+};
+
+const validateAnimationMotionMetadata = (
+    motion: unknown,
+    clipIds: ReadonlySet<string>,
+    parameterNames: ReadonlySet<string>
+): boolean => {
+    if (!isPlainObject(motion) || typeof motion.kind !== 'string') {
+        return false;
+    }
+
+    switch (motion.kind) {
+        case 'clip':
+            return typeof motion.clipId === 'string' && clipIds.has(motion.clipId);
+        case 'blend1d':
+            return (
+                validateAnimationParameterReference(motion.parameter, parameterNames) &&
+                Array.isArray(motion.children) &&
+                motion.children.length > 0 &&
+                motion.children.every(
+                    (child) =>
+                        isPlainObject(child) &&
+                        isFiniteNumber(child.threshold) &&
+                        validateAnimationMotionMetadata(child.motion, clipIds, parameterNames)
+                )
+            );
+        case 'blend2d':
+            return (
+                validateAnimationParameterReference(motion.parameterX, parameterNames) &&
+                validateAnimationParameterReference(motion.parameterY, parameterNames) &&
+                Array.isArray(motion.children) &&
+                motion.children.length > 0 &&
+                motion.children.every(
+                    (child) =>
+                        isPlainObject(child) &&
+                        Array.isArray(child.position) &&
+                        child.position.length === 2 &&
+                        child.position.every((entry) => isFiniteNumber(entry)) &&
+                        validateAnimationMotionMetadata(child.motion, clipIds, parameterNames)
+                )
+            );
+        case 'direct':
+            return (
+                Array.isArray(motion.children) &&
+                motion.children.length > 0 &&
+                motion.children.every(
+                    (child) =>
+                        isPlainObject(child) &&
+                        (child.parameter === undefined ||
+                            validateAnimationParameterReference(child.parameter, parameterNames)) &&
+                        (child.weight === undefined || isFiniteNumber(child.weight)) &&
+                        validateAnimationMotionMetadata(child.motion, clipIds, parameterNames)
+                )
+            );
+        case 'additive':
+            return (
+                validateAnimationMotionMetadata(motion.base, clipIds, parameterNames) &&
+                validateAnimationMotionMetadata(motion.additive, clipIds, parameterNames) &&
+                (motion.parameter === undefined ||
+                    validateAnimationParameterReference(motion.parameter, parameterNames)) &&
+                (motion.weight === undefined || isFiniteNumber(motion.weight))
+            );
+        default:
+            return false;
+    }
+};
+
+const validateAnimationStateMachineMetadata = (
+    stateMachine: unknown,
+    clipIds: ReadonlySet<string>,
+    parameterNames: ReadonlySet<string>
+): boolean => {
+    if (
+        !isPlainObject(stateMachine) ||
+        typeof stateMachine.entryState !== 'string' ||
+        !Array.isArray(stateMachine.states)
+    ) {
+        return false;
+    }
+
+    const stateIds = new Set<string>();
+    for (let index = 0; index < stateMachine.states.length; index += 1) {
+        const state = stateMachine.states[index];
+        if (!isPlainObject(state) || typeof state.id !== 'string') {
+            return false;
+        }
+        stateIds.add(state.id);
+    }
+
+    if (!stateIds.has(stateMachine.entryState)) {
+        return false;
+    }
+
+    const validateTransitions = (transitions: unknown): boolean =>
+        transitions === undefined ||
+        (Array.isArray(transitions) &&
+            transitions.every(
+                (transition) =>
+                    isPlainObject(transition) &&
+                    typeof transition.to === 'string' &&
+                    stateIds.has(transition.to) &&
+                    (transition.duration === undefined || isFiniteNumber(transition.duration)) &&
+                    (transition.offset === undefined || isFiniteNumber(transition.offset)) &&
+                    (transition.exitTime === undefined || isFiniteNumber(transition.exitTime)) &&
+                    (transition.fixedDuration === undefined || typeof transition.fixedDuration === 'boolean') &&
+                    (transition.canInterrupt === undefined || typeof transition.canInterrupt === 'boolean') &&
+                    (transition.priority === undefined || isFiniteNumber(transition.priority)) &&
+                    (transition.conditions === undefined ||
+                        (Array.isArray(transition.conditions) &&
+                            transition.conditions.every((condition) =>
+                                validateAnimationConditionMetadata(condition, parameterNames)
+                            )))
+            ));
+
+    return (
+        validateTransitions(stateMachine.anyStateTransitions) &&
+        stateMachine.states.every(
+            (state) =>
+                isPlainObject(state) &&
+                validateAnimationMotionMetadata(state.motion, clipIds, parameterNames) &&
+                (state.speed === undefined || isFiniteNumber(state.speed)) &&
+                (state.loop === undefined || typeof state.loop === 'boolean') &&
+                validateTransitions(state.transitions)
+        )
+    );
+};
+
+const validateAnimationIkLayerMetadata = (
+    value: unknown,
+    boneIds: ReadonlySet<string>
+): boolean => {
+    if (!isPlainObject(value) || typeof value.id !== 'string' || !Array.isArray(value.jobs)) {
+        return false;
+    }
+
+    return value.jobs.every(
+        (job) =>
+            isPlainObject(job) &&
+            typeof job.id === 'string' &&
+            typeof job.solver === 'string' &&
+            VALID_ANIMATION_IK_SOLVERS.has(job.solver) &&
+            typeof job.rootBone === 'string' &&
+            boneIds.has(job.rootBone) &&
+            typeof job.tipBone === 'string' &&
+            boneIds.has(job.tipBone) &&
+            (job.targetBone === undefined ||
+                (typeof job.targetBone === 'string' && boneIds.has(job.targetBone))) &&
+            (job.targetPosition === undefined || isNumberTuple3(job.targetPosition)) &&
+            (job.targetRotation === undefined || isNumberTuple4(job.targetRotation)) &&
+            (job.precision === undefined || isFiniteNumber(job.precision)) &&
+            (job.maxIterations === undefined || isFiniteNumber(job.maxIterations)) &&
+            (job.weight === undefined || isFiniteNumber(job.weight)) &&
+            (job.preserveTipRotation === undefined || typeof job.preserveTipRotation === 'boolean')
+    );
+};
+
+const sanitizeAnimationLayers = (
+    value: unknown,
+    sceneIndex: number,
+    diagnostics: AssetImportDiagnostic[],
+    clipIds: ReadonlySet<string>,
+    parameterNames: ReadonlySet<string>,
+    boneIds: ReadonlySet<string>,
+    freeze: boolean
+): readonly AnimationLayerDefinition[] | undefined => {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const layers: AnimationLayerDefinition[] = [];
+    const seenLayerIds = new Set<string>();
+    for (let index = 0; index < value.length; index += 1) {
+        const entry = value[index];
+        if (!isPlainObject(entry) || typeof entry.id !== 'string') {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer ${index} must provide an id`)
+            );
+            continue;
+        }
+
+        if (seenLayerIds.has(entry.id)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' is duplicated`)
+            );
+            continue;
+        }
+
+        if (
+            entry.mode !== undefined &&
+            (typeof entry.mode !== 'string' || VALID_ANIMATION_LAYER_MODES.has(entry.mode) === false)
+        ) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' has an unsupported mode`)
+            );
+            continue;
+        }
+
+        if (entry.weight !== undefined && isFiniteNumber(entry.weight) === false) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' has an invalid weight`)
+            );
+            continue;
+        }
+
+        if (
+            entry.boneMask !== undefined &&
+            (!Array.isArray(entry.boneMask) ||
+                entry.boneMask.some(
+                    (boneId) => typeof boneId !== 'string' || boneIds.has(boneId) === false
+                ))
+        ) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(
+                    sceneIndex,
+                    `layer '${entry.id}' references unknown bone ids in boneMask`
+                )
+            );
+            continue;
+        }
+
+        if (!validateAnimationStateMachineMetadata(entry.stateMachine, clipIds, parameterNames)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(
+                    sceneIndex,
+                    `layer '${entry.id}' has an invalid state machine`
+                )
+            );
+            continue;
+        }
+
+        if (
+            entry.ikLayers !== undefined &&
+            (!Array.isArray(entry.ikLayers) ||
+                entry.ikLayers.some((ikLayer) => validateAnimationIkLayerMetadata(ikLayer, boneIds) === false))
+        ) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' has invalid IK metadata`)
+            );
+            continue;
+        }
+
+        const cloned = cloneSerializableMetadata(entry);
+        if (!isPlainObject(cloned)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' could not be cloned`)
+            );
+            continue;
+        }
+
+        seenLayerIds.add(entry.id);
+        layers.push(maybeFreeze(cloned as unknown as AnimationLayerDefinition, freeze));
+    }
+
+    return layers.length > 0 ? Object.freeze(layers) : undefined;
+};
+
+const sanitizeAnimationRootMotion = (
+    value: unknown,
+    sceneIndex: number,
+    diagnostics: AssetImportDiagnostic[],
+    boneIds: ReadonlySet<string>,
+    freeze: boolean
+): AnimationRootMotionDefinition | null | undefined => {
+    if (value === null) {
+        return null;
+    }
+
+    if (!isPlainObject(value)) {
+        return undefined;
+    }
+
+    if (typeof value.bone !== 'string' || boneIds.has(value.bone) === false) {
+        diagnostics.push(
+            createAnimationMetadataDiagnostic(
+                sceneIndex,
+                'rootMotion must reference an imported node id'
+            )
+        );
+        return undefined;
+    }
+
+    if (
+        value.projectTranslationAxes !== undefined &&
+        isBooleanTuple3(value.projectTranslationAxes) === false
+    ) {
+        diagnostics.push(
+            createAnimationMetadataDiagnostic(
+                sceneIndex,
+                'rootMotion.projectTranslationAxes must be a boolean tuple of length 3'
+            )
+        );
+        return undefined;
+    }
+
+    if (
+        (value.consume !== undefined && typeof value.consume !== 'boolean') ||
+        (value.extractRotation !== undefined && typeof value.extractRotation !== 'boolean')
+    ) {
+        diagnostics.push(
+            createAnimationMetadataDiagnostic(sceneIndex, 'rootMotion flags must be boolean values')
+        );
+        return undefined;
+    }
+
+    return maybeFreeze(
+        {
+            bone: value.bone,
+            ...(value.consume !== undefined ? { consume: value.consume } : {}),
+            ...(value.projectTranslationAxes !== undefined
+                ? {
+                      projectTranslationAxes: Object.freeze([
+                          ...value.projectTranslationAxes,
+                      ]) as readonly [boolean, boolean, boolean],
+                  }
+                : {}),
+            ...(value.extractRotation !== undefined
+                ? { extractRotation: value.extractRotation }
+                : {}),
+        } satisfies AnimationRootMotionDefinition,
+        freeze
+    );
+};
+
+const resolveSceneAnimationControllerMetadata = (
+    scene: GltfSceneJson | undefined,
+    sceneIndex: number,
+    clipIds: ReadonlySet<string>,
+    boneIds: ReadonlySet<string>,
+    diagnostics: AssetImportDiagnostic[],
+    freeze: boolean
+): GltfAnimationControllerMetadata | undefined => {
+    const source = resolveSceneAnimationMetadataSource(scene);
+    if (!source) {
+        return undefined;
+    }
+
+    const parameters = sanitizeAnimationParameters(source.parameters, sceneIndex, diagnostics, freeze);
+    const parameterNames = new Set(parameters?.map((parameter) => parameter.name) ?? EMPTY_ARRAY);
+    const layers = sanitizeAnimationLayers(
+        source.layers,
+        sceneIndex,
+        diagnostics,
+        clipIds,
+        parameterNames,
+        boneIds,
+        freeze
+    );
+    const rootMotion = sanitizeAnimationRootMotion(
+        source.rootMotion,
+        sceneIndex,
+        diagnostics,
+        boneIds,
+        freeze
+    );
+
+    if (!parameters && !layers && rootMotion === undefined) {
+        return undefined;
+    }
+
+    return maybeFreeze(
+        {
+            ...(parameters ? { parameters } : {}),
+            ...(layers ? { layers } : {}),
+            ...(rootMotion !== undefined ? { rootMotion } : {}),
+        } satisfies GltfAnimationControllerMetadata,
+        freeze
+    );
+};
 
 const sanitizeName = (value: string | undefined, fallback: string): string => {
     const trimmed = value?.trim();
@@ -507,7 +1095,8 @@ const createSkinBinding = (skin: GltfSkinAsset | undefined): GltfSkinBinding | u
 };
 
 const createAnimatorSnapshot = (
-    animations: readonly GltfAnimationClipAsset[]
+    animations: readonly GltfAnimationClipAsset[],
+    metadata: GltfAnimationControllerMetadata | undefined
 ): GltfComponentSnapshot | undefined => {
     type SerializableTrack = Readonly<{
         targetNodeId: string;
@@ -564,6 +1153,9 @@ const createAnimatorSnapshot = (
         data: encodeGltfValue(
             Object.freeze({
                 clips: Object.freeze(clips),
+                ...(metadata?.parameters ? { parameters: metadata.parameters } : {}),
+                ...(metadata?.layers ? { layers: metadata.layers } : {}),
+                ...(metadata && 'rootMotion' in metadata ? { rootMotion: metadata.rootMotion ?? null } : {}),
                 clipId: clips[0]?.id ?? null,
                 playOnStart: true,
                 playing: true,
@@ -1203,7 +1795,16 @@ const buildPrefabDefinition = (
         })
         .filter((animation): animation is GltfAnimationClipAsset => Boolean(animation));
 
-    const animatorComponent = createAnimatorSnapshot(sceneAnimations);
+    const animationController = resolveSceneAnimationControllerMetadata(
+        root.scenes?.[sceneIndex],
+        sceneIndex,
+        new Set(sceneAnimations.map((animation) => animation.id)),
+        importedNodeIds,
+        diagnostics,
+        true
+    );
+
+    const animatorComponent = createAnimatorSnapshot(sceneAnimations, animationController);
     if (animatorComponent) {
         const firstRootActorIndex = actors.findIndex((actor) => actor.parentNodeId === null);
         if (firstRootActorIndex >= 0) {
@@ -1246,6 +1847,7 @@ const buildPrefabDefinition = (
         skinKeys: Object.freeze([...skinKeys]),
         animationKeys: Object.freeze([...animationKeys]),
         materialKeys: Object.freeze([...materialKeys]),
+        ...(animationController ? { animationController } : {}),
         diagnostics: Object.freeze(diagnostics),
     };
 };
@@ -1747,6 +2349,9 @@ export const createGltfImporter = <
                         skinKeys: built.skinKeys,
                         animationKeys: built.animationKeys,
                         materialKeys: built.materialKeys,
+                        ...(built.animationController
+                            ? { animationController: built.animationController }
+                            : {}),
                     },
                     freeze
                 );
@@ -1772,6 +2377,9 @@ export const createGltfImporter = <
                             name: asset.id,
                             prefabKey: key,
                             rootNodeIds: built.rootNodeIds,
+                            ...(built.animationController
+                                ? { animationController: built.animationController }
+                                : {}),
                         } satisfies GltfDocumentSceneAsset,
                         freeze
                     )

@@ -1,3 +1,8 @@
+import type {
+    AnimationLayerDefinition,
+    AnimationParameterDefinition,
+    AnimationRootMotionDefinition,
+} from '@axrone/animation';
 import type { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type {
     AssetCustomSource,
@@ -49,6 +54,7 @@ export interface GltfDocumentSceneAsset {
     readonly name: string;
     readonly prefabKey: string;
     readonly rootNodeIds: readonly string[];
+    readonly animationController?: GltfAnimationControllerMetadata;
 }
 
 export interface GltfDocumentStats {
@@ -110,6 +116,12 @@ export interface GltfAnimationClipAsset {
     readonly animationIndex: number;
     readonly duration: number;
     readonly tracks: readonly GltfAnimationTrackAsset[];
+}
+
+export interface GltfAnimationControllerMetadata {
+    readonly parameters?: readonly AnimationParameterDefinition[];
+    readonly layers?: readonly AnimationLayerDefinition[];
+    readonly rootMotion?: AnimationRootMotionDefinition | null;
 }
 
 export type GltfMaterialAlphaMode = 'OPAQUE' | 'MASK' | 'BLEND';
@@ -222,6 +234,7 @@ export interface GltfPrefabAsset {
     readonly skinKeys: readonly string[];
     readonly animationKeys: readonly string[];
     readonly materialKeys: readonly string[];
+    readonly animationController?: GltfAnimationControllerMetadata;
 }
 
 export interface GltfAssetSchema extends AssetSchema {
@@ -582,6 +595,7 @@ export interface GltfNodeJson {
 export interface GltfSceneJson {
     readonly nodes?: readonly number[];
     readonly name?: string;
+    readonly extras?: Readonly<Record<string, unknown>>;
 }
 
 export interface GltfRootJson {

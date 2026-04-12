@@ -796,6 +796,70 @@ const createRigJson = (): GltfRootJson => ({
     scene: 0,
 });
 
+const createRigJsonWithAnimationMetadata = (): GltfRootJson => {
+    const base = createRigJson();
+    return {
+        ...base,
+        scenes: [
+            {
+                ...base.scenes![0]!,
+                extras: {
+                    axrone: {
+                        animation: {
+                            parameters: [
+                                {
+                                    name: 'speed',
+                                    kind: 'float',
+                                    defaultValue: 0.25,
+                                },
+                            ],
+                            layers: [
+                                {
+                                    id: 'base',
+                                    weight: 1,
+                                    stateMachine: {
+                                        entryState: 'move',
+                                        states: [
+                                            {
+                                                id: 'move',
+                                                motion: {
+                                                    kind: 'clip',
+                                                    clipId: 'Move',
+                                                },
+                                                loop: true,
+                                            },
+                                        ],
+                                    },
+                                    ikLayers: [
+                                        {
+                                            id: 'reach',
+                                            jobs: [
+                                                {
+                                                    id: 'aim',
+                                                    solver: 'ccd',
+                                                    rootBone: 'node/0',
+                                                    tipBone: 'node/1',
+                                                    targetPosition: [1, 0, 0],
+                                                    maxIterations: 8,
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                            rootMotion: {
+                                bone: 'node/1',
+                                consume: true,
+                                projectTranslationAxes: [true, false, false],
+                            },
+                        },
+                    },
+                },
+            },
+        ],
+    };
+};
+
 const createMorphBinaryBlob = (): Uint8Array => {
     const morphPositions = new Float32Array([
         1, 0, 0,
@@ -1364,6 +1428,83 @@ describe('glTF importer', () => {
         expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
             'gltf.animation.weights.runtime-missing'
         );
+    });
+
+    it('emits scene-level animation controller metadata into prefab animator snapshots', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(createRigJsonWithAnimationMetadata(), createRigBinaryBlob()),
+            uri: 'models/rig-metadata.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const scene = receipt.primary.data.scenes[0];
+        const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+        const animator = prefab?.data.definition.actors[0]?.components.find(
+            (component) => component.type === 'Animator'
+        );
+
+        expect(scene?.animationController).toMatchObject({
+            parameters: [
+                expect.objectContaining({
+                    name: 'speed',
+                    kind: 'float',
+                    defaultValue: 0.25,
+                }),
+            ],
+            layers: [
+                expect.objectContaining({
+                    id: 'base',
+                    stateMachine: expect.objectContaining({
+                        entryState: 'move',
+                    }),
+                    ikLayers: [
+                        expect.objectContaining({
+                            id: 'reach',
+                            jobs: [
+                                expect.objectContaining({
+                                    id: 'aim',
+                                    solver: 'ccd',
+                                    rootBone: 'node/0',
+                                    tipBone: 'node/1',
+                                }),
+                            ],
+                        }),
+                    ],
+                }),
+            ],
+            rootMotion: expect.objectContaining({
+                bone: 'node/1',
+                consume: true,
+                projectTranslationAxes: [true, false, false],
+            }),
+        });
+        expect(prefab?.data.animationController).toMatchObject(scene?.animationController ?? {});
+        expect(animator?.data).toMatchObject({
+            parameters: [
+                expect.objectContaining({
+                    name: 'speed',
+                    kind: 'float',
+                }),
+            ],
+            layers: [
+                expect.objectContaining({
+                    id: 'base',
+                    stateMachine: expect.objectContaining({
+                        entryState: 'move',
+                    }),
+                }),
+            ],
+            rootMotion: expect.objectContaining({
+                bone: 'node/1',
+            }),
+            clipId: 'Move',
+            playing: true,
+        });
     });
 
     it('builds scene snapshots that carry imported glTF materials, shaders, and bytes-backed textures', async () => {
