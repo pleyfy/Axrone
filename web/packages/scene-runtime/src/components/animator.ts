@@ -2,14 +2,17 @@ import {
     AnimationController,
     type AnimationClipDefinition,
     type AnimationControllerEvent,
+    type AnimationStreamingSnapshot,
     type AnimationClipEventDefinition,
     type AnimationClipStreamingDefinition,
+    type AnimationClipStreamingRequest,
     type AnimationFrame,
     type AnimationFootContactDefinition,
     type AnimationLayerDefinition,
     type AnimationMotionFeatureDefinition,
     type AnimationParameterDefinition,
     type AnimationClipCompressionDefinition,
+    AnimationClipStreamingScheduler,
     type AnimationRootMotionDefinition,
     type AnimationRootMotionDelta,
     type AnimationTrackDefinition,
@@ -148,6 +151,9 @@ export class Animator extends Component {
     private readonly _resolvedTargets = new Map<string, AnimatorResolvedTarget>();
     private _resolvedInstanceId: string | null = null;
     private _controller: AnimationController | null = null;
+    private _streamingScheduler: AnimationClipStreamingScheduler | null = null;
+    private _streamingSnapshot: AnimationStreamingSnapshot | null = null;
+    private _pendingStreamingRequests: readonly AnimationClipStreamingRequest[] = Object.freeze([]);
     private _controllerDirty = true;
     private _currentClipId: string | null = null;
     private _playOnStart: boolean;
@@ -181,7 +187,10 @@ export class Animator extends Component {
         if (this._controller && this._currentClipId) {
             try {
                 this._controller.play(this._currentClipId);
-                this._applyFrame(this._controller.currentFrame);
+                const streaming = this._syncStreamingState(this._controller);
+                if (!this._isStreamingBlocked(streaming)) {
+                    this._applyFrame(this._controller.currentFrame);
+                }
             } catch {}
         }
     }
@@ -224,8 +233,19 @@ export class Animator extends Component {
         const controller = this._ensureController();
         if (controller) {
             controller.seek(this._time);
-            this._applyFrame(controller.currentFrame);
+            const streaming = this._syncStreamingState(controller);
+            if (!this._isStreamingBlocked(streaming)) {
+                this._applyFrame(controller.currentFrame);
+            }
         }
+    }
+
+    get streaming(): AnimationStreamingSnapshot | null {
+        return this._streamingSnapshot;
+    }
+
+    get pendingStreamingRequests(): readonly AnimationClipStreamingRequest[] {
+        return this._pendingStreamingRequests;
     }
 
     play(clipId: string | null = this._currentClipId ?? this._clipDefinitions[0]?.id ?? null): this {
@@ -244,7 +264,10 @@ export class Animator extends Component {
         if (this._time > 0) {
             controller.seek(this._time);
         }
-        this._applyFrame(controller.currentFrame);
+        const streaming = this._syncStreamingState(controller);
+        if (!this._isStreamingBlocked(streaming)) {
+            this._applyFrame(controller.currentFrame);
+        }
         return this;
     }
 
@@ -265,7 +288,10 @@ export class Animator extends Component {
                     } catch {}
                 }
                 controller.seek(0);
-                this._applyFrame(controller.currentFrame);
+                const streaming = this._syncStreamingState(controller);
+                if (!this._isStreamingBlocked(streaming)) {
+                    this._applyFrame(controller.currentFrame);
+                }
             }
         }
         return this;
@@ -276,11 +302,46 @@ export class Animator extends Component {
         return this;
     }
 
+    markStreamingChunkRequested(clipId: string, chunkIdOrUri: string): this {
+        if (this._streamingScheduler?.markChunkRequested(clipId, chunkIdOrUri)) {
+            this._syncStreamingState(this._controller);
+        }
+        return this;
+    }
+
+    markStreamingChunkLoaded(clipId: string, chunkIdOrUri: string): this {
+        if (this._streamingScheduler?.markChunkLoaded(clipId, chunkIdOrUri)) {
+            const streaming = this._syncStreamingState(this._controller);
+            if (this._controller && !this._isStreamingBlocked(streaming)) {
+                this._applyFrame(this._controller.currentFrame);
+            }
+        }
+        return this;
+    }
+
+    markStreamingChunkFailed(clipId: string, chunkIdOrUri: string, error?: string): this {
+        if (this._streamingScheduler?.markChunkFailed(clipId, chunkIdOrUri, error)) {
+            this._syncStreamingState(this._controller);
+        }
+        return this;
+    }
+
+    resetStreaming(clipId?: string): this {
+        this._streamingScheduler?.reset(clipId);
+        this._streamingSnapshot = null;
+        this._pendingStreamingRequests = Object.freeze([]);
+        return this;
+    }
+
     setFloat(name: string, value: number): this {
         const controller = this._ensureController();
         if (controller) {
             controller.parameters.setFloat(name, value);
-            this._applyFrame(controller.evaluate());
+            const frame = controller.evaluate();
+            const streaming = this._syncStreamingState(controller);
+            if (!this._isStreamingBlocked(streaming)) {
+                this._applyFrame(frame);
+            }
         }
         return this;
     }
@@ -289,7 +350,11 @@ export class Animator extends Component {
         const controller = this._ensureController();
         if (controller) {
             controller.parameters.setInt(name, value);
-            this._applyFrame(controller.evaluate());
+            const frame = controller.evaluate();
+            const streaming = this._syncStreamingState(controller);
+            if (!this._isStreamingBlocked(streaming)) {
+                this._applyFrame(frame);
+            }
         }
         return this;
     }
@@ -298,7 +363,11 @@ export class Animator extends Component {
         const controller = this._ensureController();
         if (controller) {
             controller.parameters.setBool(name, value);
-            this._applyFrame(controller.evaluate());
+            const frame = controller.evaluate();
+            const streaming = this._syncStreamingState(controller);
+            if (!this._isStreamingBlocked(streaming)) {
+                this._applyFrame(frame);
+            }
         }
         return this;
     }
@@ -315,7 +384,10 @@ export class Animator extends Component {
         const controller = this._ensureController();
         if (controller) {
             controller.crossFade(stateId, durationSeconds);
-            this._applyFrame(controller.currentFrame);
+            const streaming = this._syncStreamingState(controller);
+            if (!this._isStreamingBlocked(streaming)) {
+                this._applyFrame(controller.currentFrame);
+            }
         }
         return this;
     }
@@ -339,12 +411,19 @@ export class Animator extends Component {
         if (this._time > 0) {
             controller.seek(this._time);
         }
-        this._applyFrame(controller.currentFrame);
+        const streaming = this._syncStreamingState(controller);
+        if (!this._isStreamingBlocked(streaming)) {
+            this._applyFrame(controller.currentFrame);
+        }
     }
 
     override update(deltaTime: number): void {
         const controller = this._ensureController();
         if (!controller || !this._playing) {
+            return;
+        }
+        const streaming = this._syncStreamingState(controller);
+        if (this._isStreamingBlocked(streaming)) {
             return;
         }
         const deltaSeconds = Math.max(0, deltaTime / 1000) * this._speed;
@@ -353,6 +432,7 @@ export class Animator extends Component {
         this._applyFrame(result.frame);
         this._applyRootMotion(result.rootMotion);
         this._emitAnimationEvents(result.events);
+        this._syncStreamingState(controller);
     }
 
     override serialize(): Record<string, unknown> {
@@ -399,6 +479,9 @@ export class Animator extends Component {
             time: this._time,
             profile: controller?.profile ?? null,
             pendingEvents: controller?.events ?? [],
+            activeClips: controller?.activeClips ?? [],
+            streaming: this._streamingSnapshot,
+            pendingStreamingRequests: this._pendingStreamingRequests,
         };
     }
 
@@ -450,6 +533,9 @@ export class Animator extends Component {
         }
         this._controllerDirty = true;
         this._controller = null;
+        this._streamingScheduler = null;
+        this._streamingSnapshot = null;
+        this._pendingStreamingRequests = Object.freeze([]);
         this._resolvedTargets.clear();
         this._resolvedInstanceId = null;
     }
@@ -512,9 +598,63 @@ export class Animator extends Component {
         if (this._time > 0) {
             this._controller.seek(this._time);
         }
+        this._streamingScheduler = new AnimationClipStreamingScheduler(this._controller.clips);
+        this._streamingSnapshot = null;
+        this._pendingStreamingRequests = Object.freeze([]);
         this._controllerDirty = false;
-        this._applyFrame(this._controller.currentFrame);
+        const streaming = this._syncStreamingState(this._controller);
+        if (!this._isStreamingBlocked(streaming)) {
+            this._applyFrame(this._controller.currentFrame);
+        }
         return this._controller;
+    }
+
+    private _syncStreamingState(controller: AnimationController | null): AnimationStreamingSnapshot | null {
+        if (!controller || !this._streamingScheduler) {
+            this._streamingSnapshot = null;
+            this._pendingStreamingRequests = Object.freeze([]);
+            return null;
+        }
+        const snapshot = this._streamingScheduler.update(controller.activeClips);
+        this._streamingSnapshot = snapshot;
+        this._pendingStreamingRequests = this._collectPendingStreamingRequests(snapshot);
+        if (snapshot.pendingRequests.length > 0) {
+            this._emitStreamingRequests(snapshot.pendingRequests);
+        }
+        return snapshot;
+    }
+
+    private _collectPendingStreamingRequests(
+        snapshot: AnimationStreamingSnapshot
+    ): readonly AnimationClipStreamingRequest[] {
+        return Object.freeze(
+            snapshot.clips.flatMap((clip) =>
+                clip.chunks
+                    .filter((chunk) => chunk.status === 'requested')
+                    .map((chunk) =>
+                        Object.freeze({
+                            clipId: chunk.clipId,
+                            chunkId: chunk.chunkId,
+                            uri: chunk.uri,
+                            startTime: chunk.startTime,
+                            endTime: chunk.endTime,
+                            reason: chunk.lastRequestReason ?? (chunk.active ? 'active' : 'preload'),
+                            priority: clip.priority,
+                            weight: chunk.weight,
+                            ...(chunk.mimeType ? { mimeType: chunk.mimeType } : {}),
+                            ...(typeof chunk.byteOffset === 'number' ? { byteOffset: chunk.byteOffset } : {}),
+                            ...(typeof chunk.byteLength === 'number' ? { byteLength: chunk.byteLength } : {}),
+                        } satisfies AnimationClipStreamingRequest)
+                    )
+            )
+        );
+    }
+
+    private _isStreamingBlocked(snapshot: AnimationStreamingSnapshot | null): boolean {
+        if (!snapshot) {
+            return false;
+        }
+        return snapshot.clips.some((clip) => clip.activeWeight > 0 && clip.ready === false);
     }
 
     private _buildDefaultLayers(): readonly AnimationLayerDefinition[] {
@@ -568,6 +708,35 @@ export class Animator extends Component {
                 ...(event.id ? { id: event.id } : {}),
                 ...(event.payload !== undefined ? { payload: event.payload } : {}),
                 ...(event.tags ? { tags: event.tags } : {}),
+            });
+        }
+    }
+
+    private _emitStreamingRequests(requests: readonly AnimationClipStreamingRequest[]): void {
+        if (requests.length === 0) {
+            return;
+        }
+        const world = this.world as
+            | {
+                  emitSync?: (event: string, data: Record<string, unknown>) => boolean;
+              }
+            | undefined;
+        for (let index = 0; index < requests.length; index += 1) {
+            const request = requests[index]!;
+            world?.emitSync?.('animation:streaming-request', {
+                actorId: this.actor?.id,
+                entity: this.entity,
+                clipId: request.clipId,
+                chunkId: request.chunkId,
+                uri: request.uri,
+                reason: request.reason,
+                priority: request.priority,
+                weight: request.weight,
+                startTime: request.startTime,
+                endTime: request.endTime,
+                ...(request.mimeType ? { mimeType: request.mimeType } : {}),
+                ...(typeof request.byteOffset === 'number' ? { byteOffset: request.byteOffset } : {}),
+                ...(typeof request.byteLength === 'number' ? { byteLength: request.byteLength } : {}),
             });
         }
     }

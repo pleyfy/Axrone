@@ -369,4 +369,75 @@ describe('scene-runtime prefab animation integration', () => {
 
         unsubscribe();
     });
+
+    it('requests streamed animation chunks and blocks playback until the active chunk is loaded', () => {
+        const harness = createPrefabHarness();
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Walk',
+                    duration: 1,
+                    streaming: {
+                        mode: 'streamed',
+                        sourceUri: 'clips/walk.anim',
+                        chunkDuration: 1,
+                        preloadWindow: 0.25,
+                    },
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Walk',
+            playOnStart: true,
+            playing: true,
+            loop: false,
+            speed: 1,
+            time: 0,
+        });
+        const received: Record<string, unknown>[] = [];
+        const unsubscribe = harness.world.on('animation:streaming-request', (event) => {
+            received.push(event as Record<string, unknown>);
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const hip = actors.find((actor) => actor.name === 'Hip');
+        const animator = root?.getComponent(Animator) ?? null;
+
+        harness.lifecycle.update(16);
+
+        expect(received).toEqual([
+            expect.objectContaining({
+                clipId: 'Walk',
+                chunkId: 'Walk:virtual:0',
+                reason: 'active',
+            }),
+        ]);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(1, 5);
+        expect(animator?.getDebugInfo()).toEqual(
+            expect.objectContaining({
+                streaming: expect.objectContaining({
+                    ready: false,
+                }),
+                pendingStreamingRequests: [
+                    expect.objectContaining({
+                        clipId: 'Walk',
+                    }),
+                ],
+            })
+        );
+
+        animator?.markStreamingChunkLoaded('Walk', 'Walk:virtual:0');
+        harness.lifecycle.update(500);
+
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
+
+        unsubscribe();
+    });
 });
