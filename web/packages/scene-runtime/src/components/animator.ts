@@ -1,7 +1,11 @@
 import {
     AnimationController,
+    applyAnimationClipStreamingChunkDefinition,
+    decodeAnimationClipStreamingChunkPayload,
     type AnimationClipDefinition,
     type AnimationControllerEvent,
+    type AnimationClipStreamingChunkApplicationOptions,
+    type AnimationClipStreamingChunkPayload,
     type AnimationStreamingSnapshot,
     type AnimationClipEventDefinition,
     type AnimationClipStreamingDefinition,
@@ -117,7 +121,7 @@ const normalizeClipDefinitions = (
                     ),
                 } satisfies AnimationClipDefinition)
             )
-            .filter((clip) => clip.tracks.length > 0)
+            .filter((clip) => clip.tracks.length > 0 || clip.streaming?.mode === 'streamed')
     );
 
 const cloneSerializable = <T>(value: T): T => {
@@ -313,8 +317,52 @@ export class Animator extends Component {
         if (this._streamingScheduler?.markChunkLoaded(clipId, chunkIdOrUri)) {
             const streaming = this._syncStreamingState(this._controller);
             if (this._controller && !this._isStreamingBlocked(streaming)) {
-                this._applyFrame(this._controller.currentFrame);
+                this._applyFrame(this._controller.evaluate());
             }
+        }
+        return this;
+    }
+
+    applyStreamingChunkBytes(
+        clipId: string,
+        bytes: string | Uint8Array | ArrayBuffer | ArrayBufferView,
+        options: AnimationClipStreamingChunkApplicationOptions = {}
+    ): this {
+        return this.applyStreamingChunkPayload(
+            clipId,
+            decodeAnimationClipStreamingChunkPayload(bytes),
+            options
+        );
+    }
+
+    applyStreamingChunkPayload(
+        clipId: string,
+        payload: AnimationClipStreamingChunkPayload,
+        options: AnimationClipStreamingChunkApplicationOptions = {}
+    ): this {
+        const clipIndex = this._clipDefinitions.findIndex((clip) => clip.id === clipId);
+        if (clipIndex < 0) {
+            return this;
+        }
+
+        const appliedDefinition = applyAnimationClipStreamingChunkDefinition(
+            this._clipDefinitions[clipIndex]!,
+            payload,
+            {
+                clipId,
+                ...options,
+            }
+        );
+        const definitions = [...this._clipDefinitions];
+        definitions[clipIndex] = appliedDefinition;
+        this._clipDefinitions = Object.freeze(definitions);
+
+        const runtimeClip = this._controller?.clips.get(clipId);
+        if (runtimeClip) {
+            runtimeClip.applyStreamingChunk(payload, {
+                clipId,
+                ...options,
+            });
         }
         return this;
     }

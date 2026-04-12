@@ -1,3 +1,4 @@
+import { encodeAnimationClipStreamingChunkPayload } from '@axrone/animation';
 import { World, Transform } from '@axrone/ecs-runtime';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -601,6 +602,61 @@ describe('scene-runtime prefab animation integration', () => {
             })
         );
         expect(loadedBytes).toEqual([new Uint8Array([30, 40, 50])]);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
+
+        bridge.dispose();
+    });
+
+    it('decodes and applies streamed chunk bytes through the default bridge pipeline', async () => {
+        const harness = createPrefabHarness();
+        const bridge = bindAnimationStreamingBridge(harness.world, {
+            resolver: async () =>
+                encodeAnimationClipStreamingChunkPayload({
+                    version: 1,
+                    clipId: 'Walk',
+                    startTime: 0,
+                    endTime: 1,
+                    tracks: [
+                        {
+                            target: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                }),
+        });
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Walk',
+                    duration: 1,
+                    streaming: {
+                        mode: 'streamed',
+                        sourceUri: 'clips/walk.anim',
+                        chunkDuration: 1,
+                        preloadWindow: 0.25,
+                    },
+                    tracks: [],
+                },
+            ],
+            clipId: 'Walk',
+            playOnStart: true,
+            playing: true,
+            loop: false,
+            speed: 1,
+            time: 0,
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const hip = actors.find((actor) => actor.name === 'Hip');
+
+        harness.lifecycle.update(16);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(1, 5);
+
+        await bridge.waitForIdle();
+        harness.lifecycle.update(500);
+
         expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
 
         bridge.dispose();

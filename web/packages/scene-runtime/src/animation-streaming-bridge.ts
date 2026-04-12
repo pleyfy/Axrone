@@ -93,6 +93,7 @@ export interface FetchAnimationStreamingResolverOptions {
 
 export interface AnimationStreamingBridgeOptions {
     readonly resolver?: AnimationStreamingChunkResolver;
+    readonly applyToAnimator?: boolean;
     readonly onChunkLoaded?: (
         chunk: Readonly<ResolvedAnimationStreamingChunk>
     ) => void | Promise<void>;
@@ -386,6 +387,15 @@ export class AnimationStreamingBridge {
                               : {}),
                         ...(typeof chunk.mimeType === 'string' ? { mimeType: chunk.mimeType } : {}),
                     } satisfies ResolvedAnimationStreamingChunk);
+
+                    const applyToAnimator =
+                        this._options.applyToAnimator ?? this._options.onChunkLoaded === undefined;
+                    if (applyToAnimator) {
+                        animator.applyStreamingChunkBytes(request.clipId, payload.bytes, {
+                            startTime: request.startTime,
+                            endTime: request.endTime,
+                        });
+                    }
 
                     await this._options.onChunkLoaded?.(payload);
                     if (controller.signal.aborted || this._disposed) {
