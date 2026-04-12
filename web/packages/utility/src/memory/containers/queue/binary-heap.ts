@@ -5,7 +5,6 @@ import {
     HeapIndex,
     QueueSize,
     BinaryHeapOperations,
-    PriorityQueueOptions,
 } from './types';
 import { createCapacity, createQueueSize, defaultComparator } from './utils';
 

@@ -58,13 +58,6 @@ export type {
     HeapIndex,
     QueueSize,
     Capacity,
-    ReadonlyQueueNode,
-    QueueNode,
-    PriorityQueueOptions,
-    PriorityQueueCore,
-    OptionalOperations,
-    QueryOperations,
-    CapacityOperations,
 } from './memory/containers/queue';
 export type {
     HeapOrder,
