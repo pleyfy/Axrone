@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AnimationBlendGraph } from '../blend-graph';
 import { AnimationClip } from '../clip';
 import { AnimationController } from '../controller';
 import { solvePlanarGrounding } from '../grounding';
@@ -168,6 +169,79 @@ describe('Animation stack', () => {
         expect(frame.pose.translations[0]).toBeCloseTo(1);
         expect(frame.pose.translations[1]).toBeCloseTo(0);
         expect(frame.pose.translations[2]).toBeCloseTo(0);
+    });
+
+    it('builds blend graphs through the fluent authoring API and exposes active clip activity', () => {
+        const motion = AnimationBlendGraph.blend1d('speed')
+            .addChild(0, AnimationBlendGraph.clip('idle'))
+            .addChild(1, AnimationBlendGraph.clip('run'))
+            .build();
+
+        expect(
+            AnimationBlendGraph.validate(motion, {
+                knownClipIds: ['idle', 'run'],
+                knownParameters: ['speed'],
+            })
+        ).toEqual([]);
+
+        const controller = new AnimationController({
+            rig: {
+                bones: [{ name: 'hips' }],
+            },
+            clips: [
+                {
+                    id: 'idle',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [0, 0, 0, 0, 0, 0],
+                        },
+                    ],
+                },
+                {
+                    id: 'run',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [0, 0, 0, 2, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            parameters: [{ name: 'speed', kind: 'float', defaultValue: 0 }],
+            layers: [
+                {
+                    id: 'base',
+                    stateMachine: {
+                        entryState: 'locomotion',
+                        states: [
+                            {
+                                id: 'locomotion',
+                                motion,
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+
+        controller.parameters.setFloat('speed', 1);
+        controller.seek(0.5);
+        const frame = controller.evaluate();
+
+        expect(frame.pose.translations[0]).toBeCloseTo(1);
+        expect(controller.activeClips).toEqual([
+            expect.objectContaining({
+                clipId: 'run',
+                layerId: 'base',
+                stateId: 'locomotion',
+            }),
+        ]);
+        expect(controller.profile.activeClipCount).toBe(1);
     });
 
     it('retargets translations with configured scaling', () => {

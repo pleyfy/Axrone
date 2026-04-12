@@ -13,6 +13,7 @@ import {
 import { AnimationRig } from './rig';
 import {
     commitLayerRuntime,
+    collectLayerClipActivities,
     collectLayerEvents,
     compileStateMachine,
     createLayerRuntime,
@@ -27,6 +28,7 @@ import {
 import { quatCopy } from './math';
 import type {
     AnimationClipDefinition,
+    AnimationControllerClipActivity,
     AnimationControllerEvent,
     AnimationControllerDefinition,
     AnimationControllerProfile,
@@ -48,6 +50,7 @@ export interface AnimationControllerUpdateResult {
     readonly frame: AnimationFrame;
     readonly rootMotion: AnimationRootMotionDelta;
     readonly events: readonly AnimationControllerEvent[];
+    readonly activeClips: readonly AnimationControllerClipActivity[];
     readonly profile: AnimationControllerProfile;
 }
 
@@ -109,9 +112,11 @@ export class AnimationController<
     private readonly _rootMotionConfig: NonNullable<AnimationControllerDefinition['rootMotion']> | null;
     private readonly _rootMotionBoneIndex: number;
     private _events: readonly AnimationControllerEvent[] = Object.freeze([]);
+    private _activeClips: readonly AnimationControllerClipActivity[] = Object.freeze([]);
     private _profile: AnimationControllerProfile = Object.freeze({
         evaluationTimeMs: 0,
         sampledTrackCount: 0,
+        activeClipCount: 0,
         emittedEventCount: 0,
         rootMotionTranslationMagnitude: 0,
         rootMotionRotationW: 1,
@@ -187,6 +192,10 @@ export class AnimationController<
         return this._events;
     }
 
+    get activeClips(): readonly AnimationControllerClipActivity[] {
+        return this._activeClips;
+    }
+
     get profile(): AnimationControllerProfile {
         return this._profile;
     }
@@ -210,6 +219,7 @@ export class AnimationController<
             frame: this.currentFrame,
             rootMotion: this.rootMotion,
             events: this.events,
+            activeClips: this.activeClips,
             profile: this.profile,
         };
     }
@@ -275,6 +285,7 @@ export class AnimationController<
         this._rootMotionTranslation.fill(0);
         quatCopy(this._rootMotionRotation, 0, [0, 0, 0, 1], 0);
         const events: AnimationControllerEvent[] = [];
+        const activeClips: AnimationControllerClipActivity[] = [];
 
         for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
             const layer = this._layers[layerIndex]!;
@@ -351,6 +362,15 @@ export class AnimationController<
                     events
                 );
             }
+
+            collectLayerClipActivities(
+                layer.machine,
+                runtime,
+                this._evaluationContext,
+                layer.id,
+                layerWeight,
+                activeClips
+            );
         }
 
         if (this._rootMotionConfig && this._rootMotionBoneIndex >= 0) {
@@ -393,6 +413,15 @@ export class AnimationController<
                   )
               )
             : Object.freeze([]);
+        this._activeClips = Object.freeze(
+            [...activeClips].sort(
+                (left, right) =>
+                    right.motionWeight - left.motionWeight ||
+                    left.layerId.localeCompare(right.layerId) ||
+                    left.stateId.localeCompare(right.stateId) ||
+                    left.clipId.localeCompare(right.clipId)
+            )
+        );
     }
 
     private _countMotionTracks(motion: AnimationCompiledStateMachine['states'][number]['motion']): number {
@@ -462,6 +491,7 @@ export class AnimationController<
         this._profile = Object.freeze({
             evaluationTimeMs,
             sampledTrackCount,
+            activeClipCount: this._activeClips.length,
             emittedEventCount: this._events.length,
             rootMotionTranslationMagnitude: Math.hypot(
                 this._rootMotionTranslation[0],

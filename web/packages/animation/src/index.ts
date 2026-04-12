@@ -1,4 +1,5 @@
 export * from './brands';
+export * from './blend-graph';
 export * from './clip';
 export * from './controller';
 export * from './errors';

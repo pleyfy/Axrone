@@ -365,6 +365,17 @@ export interface AnimationControllerEvent extends AnimationClipEventOccurrence {
     readonly motionWeight: number;
 }
 
+export interface AnimationControllerClipActivity {
+    readonly clipId: string;
+    readonly layerId: string;
+    readonly stateId: string;
+    readonly layerWeight: number;
+    readonly motionWeight: number;
+    readonly loop: boolean;
+    readonly time: number;
+    readonly normalizedTime: number;
+}
+
 export interface AnimationControllerLayerProfile {
     readonly layerId: string;
     readonly stateId: string;
@@ -377,6 +388,7 @@ export interface AnimationControllerLayerProfile {
 export interface AnimationControllerProfile {
     readonly evaluationTimeMs: number;
     readonly sampledTrackCount: number;
+    readonly activeClipCount: number;
     readonly emittedEventCount: number;
     readonly rootMotionTranslationMagnitude: number;
     readonly rootMotionRotationW: number;

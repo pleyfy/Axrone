@@ -6,6 +6,7 @@ import { applyAdditiveFrame, blendFrame, blendWeightedFrames, AnimationFrame, ty
 import type { AnimationRig } from './rig';
 import { AnimationClip } from './clip';
 import type {
+    AnimationControllerClipActivity,
     AnimationBlendTreeDefinition,
     AnimationControllerEvent,
     AnimationMotionDefinition,
@@ -605,6 +606,187 @@ export const collectMotionEvents = (
                     motion.additive,
                     previousNormalizedTime,
                     currentNormalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * additiveWeight,
+                    out
+                );
+            }
+            return out;
+        }
+        default:
+            throw new AnimationStateMachineError(`Unsupported motion kind '${String((motion as { kind?: unknown }).kind)}'`);
+    }
+};
+
+export const collectMotionClipActivities = (
+    motion: AnimationCompiledMotion,
+    normalizedTime: number,
+    loop: boolean,
+    parameters: AnimationParameterStore,
+    layerId: string,
+    stateId: string,
+    layerWeight: number,
+    motionWeight: number,
+    out: AnimationControllerClipActivity[] = []
+): readonly AnimationControllerClipActivity[] => {
+    const resolvedLayerWeight = Math.max(0, Math.min(1, layerWeight));
+    const resolvedMotionWeight = Math.max(0, motionWeight);
+    if (resolvedLayerWeight <= 0 || resolvedMotionWeight <= 0) {
+        return out;
+    }
+
+    switch (motion.kind) {
+        case 'clip': {
+            const time = resolveMotionTime(
+                normalizedTime * motion.timeScale,
+                motion.clip.duration,
+                motion.cycleOffset,
+                loop
+            );
+            out.push(
+                Object.freeze({
+                    clipId: motion.clip.id,
+                    layerId,
+                    stateId,
+                    layerWeight: resolvedLayerWeight,
+                    motionWeight: resolvedMotionWeight,
+                    loop,
+                    time,
+                    normalizedTime: motion.clip.duration > 0 ? time / motion.clip.duration : 0,
+                } satisfies AnimationControllerClipActivity)
+            );
+            return out;
+        }
+        case 'blend1d': {
+            const parameterValue = parameters.get(motion.parameter);
+            const input = typeof parameterValue === 'number' ? parameterValue : parameterValue ? 1 : 0;
+            if (motion.children.length === 1 || input <= motion.children[0]!.threshold) {
+                return collectMotionClipActivities(
+                    motion.children[0]!.motion,
+                    normalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight,
+                    out
+                );
+            }
+            for (let index = 0; index < motion.children.length - 1; index += 1) {
+                const left = motion.children[index]!;
+                const right = motion.children[index + 1]!;
+                if (input > right.threshold) {
+                    continue;
+                }
+                const alpha = (input - left.threshold) / Math.max(1e-6, right.threshold - left.threshold);
+                collectMotionClipActivities(
+                    left.motion,
+                    normalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * (1 - alpha),
+                    out
+                );
+                collectMotionClipActivities(
+                    right.motion,
+                    normalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * alpha,
+                    out
+                );
+                return out;
+            }
+            return collectMotionClipActivities(
+                motion.children[motion.children.length - 1]!.motion,
+                normalizedTime,
+                loop,
+                parameters,
+                layerId,
+                stateId,
+                resolvedLayerWeight,
+                resolvedMotionWeight,
+                out
+            );
+        }
+        case 'blend2d': {
+            const parameterX = parameters.get(motion.parameterX);
+            const parameterY = parameters.get(motion.parameterY);
+            const weights = resolveBlend2DWeights(
+                typeof parameterX === 'number' ? parameterX : parameterX ? 1 : 0,
+                typeof parameterY === 'number' ? parameterY : parameterY ? 1 : 0,
+                motion.children
+            );
+            for (let index = 0; index < motion.children.length; index += 1) {
+                const childWeight = weights[index] ?? 0;
+                if (childWeight <= 0) {
+                    continue;
+                }
+                collectMotionClipActivities(
+                    motion.children[index]!.motion,
+                    normalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * childWeight,
+                    out
+                );
+            }
+            return out;
+        }
+        case 'direct': {
+            for (let index = 0; index < motion.children.length; index += 1) {
+                const child = motion.children[index]!;
+                const childWeight = resolveDirectChildWeight(parameters, child.parameter, child.weight);
+                if (childWeight <= 0) {
+                    continue;
+                }
+                collectMotionClipActivities(
+                    child.motion,
+                    normalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * childWeight,
+                    out
+                );
+            }
+            return out;
+        }
+        case 'additive': {
+            collectMotionClipActivities(
+                motion.base,
+                normalizedTime,
+                loop,
+                parameters,
+                layerId,
+                stateId,
+                resolvedLayerWeight,
+                resolvedMotionWeight,
+                out
+            );
+            const parameterWeight = motion.parameter ? parameters.get(motion.parameter) : motion.weight;
+            const additiveWeight =
+                typeof parameterWeight === 'number' ? parameterWeight : parameterWeight ? motion.weight : 0;
+            if (additiveWeight > 0) {
+                collectMotionClipActivities(
+                    motion.additive,
+                    normalizedTime,
                     loop,
                     parameters,
                     layerId,
