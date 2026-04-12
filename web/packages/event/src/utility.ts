@@ -2,6 +2,14 @@ import { EventMap, EventKey, EventCallback, UnsubscribeFn, EventPriority } from 
 import { IEventEmitter, EventEmitter } from './event-emitter';
 import { SubscriptionOptions } from './interfaces';
 
+function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
+    return (
+        (typeof value === 'object' || typeof value === 'function') &&
+        value !== null &&
+        typeof (value as PromiseLike<T>).then === 'function'
+    );
+}
+
 export function createHooks<T extends EventMap>(): {
     on: <K extends EventKey<T>>(
         event: K,
@@ -58,43 +66,46 @@ export function createHooks<T extends EventMap>(): {
 export const EventUtils = {
     createKey: <T>(name: string): EventKey<{ [key: string]: T }> => name as any,
 
-    toAsync: <T, R>(fn: (data: T) => R): ((data: T) => Promise<R>) => {
-        return async (data: T) => fn(data);
-    },
+    toAsync: <T, R>(fn: (data: T) => R): ((data: T) => Promise<R>) => (data: T) =>
+        Promise.resolve(fn(data)),
 
     debounce: <T>(callback: EventCallback<T>, wait: number): EventCallback<T> => {
-        let timeout: ReturnType<typeof setTimeout> | null = null;
+        const delay = Math.max(0, wait);
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let lastData: T;
 
         return (data: T) => {
             lastData = data;
 
-            if (timeout !== null) {
-                clearTimeout(timeout);
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
             }
 
-            timeout = setTimeout(() => {
-                timeout = null;
-                callback(lastData);
-            }, wait);
+            timeoutId = setTimeout(() => {
+                timeoutId = undefined;
+                void callback(lastData);
+            }, delay);
         };
     },
 
     throttle: <T>(callback: EventCallback<T>, limit: number): EventCallback<T> => {
-        let inThrottle = false;
-        let lastResult: Promise<void> | void;
+        const duration = Math.max(0, limit);
+        let throttled = false;
+        let lastResult: void | Promise<void>;
 
         return (data: T) => {
-            if (!inThrottle) {
-                inThrottle = true;
+            if (!throttled || duration === 0) {
+                throttled = duration > 0;
                 lastResult = callback(data);
 
-                setTimeout(() => {
-                    inThrottle = false;
-                }, limit);
+                if (duration > 0) {
+                    setTimeout(() => {
+                        throttled = false;
+                    }, duration);
+                }
             }
 
-            return lastResult instanceof Promise ? lastResult : Promise.resolve(lastResult);
+            return lastResult;
         };
     },
 
@@ -103,27 +114,37 @@ export const EventUtils = {
         maxCalls: number,
         timeWindow: number
     ): EventCallback<T> => {
+        const limit = Math.max(0, Math.trunc(maxCalls));
+        const windowSize = Math.max(0, Math.trunc(timeWindow));
         const calls: number[] = [];
+        let head = 0;
 
         return (data: T) => {
-            const now = Date.now();
-
-            while (calls.length > 0 && calls[0] <= now - timeWindow) {
-                calls.shift();
+            if (limit === 0) {
+                return;
             }
 
-            if (calls.length < maxCalls) {
+            const now = Date.now();
+
+            while (head < calls.length && calls[head] <= now - windowSize) {
+                head += 1;
+            }
+
+            if (head > 64 && head * 2 >= calls.length) {
+                calls.splice(0, head);
+                head = 0;
+            }
+
+            if (calls.length - head < limit) {
                 calls.push(now);
                 return callback(data);
             }
-
-            return Promise.resolve();
         };
     },
 
     once: <T>(callback: EventCallback<T>): EventCallback<T> => {
         let called = false;
-        let result: any;
+        let result: void | Promise<void>;
 
         return (data: T) => {
             if (!called) {
@@ -135,9 +156,17 @@ export const EventUtils = {
     },
 
     compose: <T>(...callbacks: EventCallback<T>[]): EventCallback<T> => {
+        if (callbacks.length === 0) {
+            return () => undefined;
+        }
+
+        if (callbacks.length === 1) {
+            return callbacks[0]!;
+        }
+
         return async (data: T) => {
-            for (const callback of callbacks) {
-                await callback(data);
+            for (let index = 0; index < callbacks.length; index++) {
+                await callbacks[index]!(data);
             }
         };
     },
@@ -152,8 +181,7 @@ export const EventUtils = {
 
     map: <T, U>(transform: (data: T) => U, callback: EventCallback<U>): EventCallback<T> => {
         return (data: T) => {
-            const transformed = transform(data);
-            return callback(transformed);
+            return callback(transform(data));
         };
     },
 
@@ -161,9 +189,17 @@ export const EventUtils = {
         callback: EventCallback<T>,
         errorHandler: (error: unknown, data: T) => void
     ): EventCallback<T> => {
-        return async (data: T) => {
+        return (data: T) => {
             try {
-                await callback(data);
+                const result = callback(data);
+
+                if (isPromiseLike<void>(result)) {
+                    return result.catch((error) => {
+                        errorHandler(error, data);
+                    });
+                }
+
+                return result;
             } catch (error) {
                 errorHandler(error, data);
             }
