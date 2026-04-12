@@ -136,6 +136,23 @@ export interface AnimationClipStreamingDefinition {
     readonly preloadWindow?: number;
     readonly priority?: number;
     readonly sourceUri?: string;
+    readonly catalogUri?: string;
+    readonly catalog?: AnimationClipStreamingCatalogDefinition;
+}
+
+export interface AnimationClipStreamingChunkDefinition {
+    readonly id?: string;
+    readonly uri: string;
+    readonly startTime: number;
+    readonly endTime: number;
+    readonly byteOffset?: number;
+    readonly byteLength?: number;
+    readonly mimeType?: string;
+}
+
+export interface AnimationClipStreamingCatalogDefinition {
+    readonly id?: string;
+    readonly chunks: readonly AnimationClipStreamingChunkDefinition[];
 }
 
 export interface AnimationClipDefinition {

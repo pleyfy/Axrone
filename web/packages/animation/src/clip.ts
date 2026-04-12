@@ -12,6 +12,8 @@ import type {
     AnimationInterpolation,
     AnimationMotionFeatureDefinition,
     AnimationTrackDefinition,
+    AnimationClipStreamingCatalogDefinition,
+    AnimationClipStreamingChunkDefinition,
     AnimationClipStreamingDefinition,
 } from './types';
 
@@ -335,6 +337,100 @@ const sanitizeMotionFeatures = (
             .sort((left, right) => left.time - right.time)
     );
 
+const sanitizeStreamingChunks = (
+    chunks: readonly AnimationClipStreamingChunkDefinition[] | undefined,
+    duration: number
+): readonly AnimationClipStreamingChunkDefinition[] | undefined => {
+    if (!Array.isArray(chunks) || chunks.length === 0) {
+        return undefined;
+    }
+
+    const sanitized = chunks
+        .filter(
+            (chunk): chunk is AnimationClipStreamingChunkDefinition =>
+                Boolean(
+                    chunk &&
+                        typeof chunk.uri === 'string' &&
+                        chunk.uri.length > 0 &&
+                        typeof chunk.startTime === 'number' &&
+                        typeof chunk.endTime === 'number' &&
+                        Number.isFinite(chunk.startTime) &&
+                        Number.isFinite(chunk.endTime)
+                )
+        )
+        .map((chunk) => {
+            const startTime = clamp(Math.min(chunk.startTime, chunk.endTime), 0, duration);
+            const endTime = clamp(Math.max(chunk.startTime, chunk.endTime), 0, duration);
+            return Object.freeze({
+                ...(typeof chunk.id === 'string' && chunk.id.length > 0 ? { id: chunk.id } : {}),
+                uri: chunk.uri,
+                startTime,
+                endTime,
+                ...(typeof chunk.byteOffset === 'number' && Number.isFinite(chunk.byteOffset)
+                    ? { byteOffset: Math.max(0, Math.trunc(chunk.byteOffset)) }
+                    : {}),
+                ...(typeof chunk.byteLength === 'number' && Number.isFinite(chunk.byteLength)
+                    ? { byteLength: Math.max(0, Math.trunc(chunk.byteLength)) }
+                    : {}),
+                ...(typeof chunk.mimeType === 'string' && chunk.mimeType.length > 0
+                    ? { mimeType: chunk.mimeType }
+                    : {}),
+            } satisfies AnimationClipStreamingChunkDefinition);
+        })
+        .sort((left, right) => left.startTime - right.startTime || left.endTime - right.endTime);
+
+    return sanitized.length > 0 ? Object.freeze(sanitized) : undefined;
+};
+
+const sanitizeStreamingCatalog = (
+    catalog: AnimationClipStreamingCatalogDefinition | undefined,
+    duration: number
+): AnimationClipStreamingCatalogDefinition | undefined => {
+    if (!catalog) {
+        return undefined;
+    }
+
+    const chunks = sanitizeStreamingChunks(catalog.chunks, duration);
+    if (!chunks) {
+        return undefined;
+    }
+
+    return Object.freeze({
+        ...(typeof catalog.id === 'string' && catalog.id.length > 0 ? { id: catalog.id } : {}),
+        chunks,
+    } satisfies AnimationClipStreamingCatalogDefinition);
+};
+
+const sanitizeStreamingDefinition = (
+    streaming: AnimationClipStreamingDefinition | undefined,
+    duration: number
+): AnimationClipStreamingDefinition | null => {
+    if (!streaming) {
+        return null;
+    }
+
+    const catalog = sanitizeStreamingCatalog(streaming.catalog, duration);
+    return Object.freeze({
+        ...(typeof streaming.mode === 'string' ? { mode: streaming.mode } : {}),
+        ...(typeof streaming.chunkDuration === 'number' && Number.isFinite(streaming.chunkDuration)
+            ? { chunkDuration: Math.max(0, streaming.chunkDuration) }
+            : {}),
+        ...(typeof streaming.preloadWindow === 'number' && Number.isFinite(streaming.preloadWindow)
+            ? { preloadWindow: Math.max(0, streaming.preloadWindow) }
+            : {}),
+        ...(typeof streaming.priority === 'number' && Number.isFinite(streaming.priority)
+            ? { priority: Math.trunc(streaming.priority) }
+            : {}),
+        ...(typeof streaming.sourceUri === 'string' && streaming.sourceUri.length > 0
+            ? { sourceUri: streaming.sourceUri }
+            : {}),
+        ...(typeof streaming.catalogUri === 'string' && streaming.catalogUri.length > 0
+            ? { catalogUri: streaming.catalogUri }
+            : {}),
+        ...(catalog ? { catalog } : {}),
+    } satisfies AnimationClipStreamingDefinition);
+};
+
 export class AnimationClip {
     readonly id: string;
     readonly duration: number;
@@ -451,7 +547,7 @@ export class AnimationClip {
         this.compression = definition.compression
             ? Object.freeze({ ...definition.compression })
             : null;
-        this.streaming = definition.streaming ? Object.freeze({ ...definition.streaming }) : null;
+        this.streaming = sanitizeStreamingDefinition(definition.streaming, this.duration);
     }
 
     sampleTime(timeSeconds: number, frame: AnimationFrame): AnimationFrame {
