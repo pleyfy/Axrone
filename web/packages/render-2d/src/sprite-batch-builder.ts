@@ -3,6 +3,7 @@ import {
     RENDER_2D_SPRITE_VERTEX_STRIDE,
     RENDER_2D_SPRITE_VERTICES_PER_QUAD,
 } from './sprite-shader';
+import { clamp01 } from '@axrone/numeric';
 import { Render2DCapacityError, Render2DValidationError } from './errors';
 import {
     type PackedRender2DColor,
@@ -49,9 +50,6 @@ const growCapacity = (current: number, required: number): number => {
 
     return next;
 };
-
-const clamp01 = (value: number): number =>
-    value <= 0 ? 0 : value >= 1 ? 1 : value;
 
 const packColor = (color: Render2DColorLike): PackedRender2DColor => {
     const red = Math.round(clamp01(color.r) * 255) & 0xff;
