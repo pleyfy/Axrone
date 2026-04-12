@@ -71,6 +71,13 @@ export type {
     PortableAnimationManifestSceneEntry,
 } from './animation-manifest';
 export type {
+    AnimationStreamingChunkResourceOptions,
+    PortableAnimationStreamingChunkRangeDefinition,
+    PortableAnimationStreamingClipBundle,
+    PortableAnimationStreamingClipBundleOptions,
+    PortableAnimationStreamingClipSource,
+} from './animation-streaming';
+export type {
     AssetDatabase,
     AssetImportDiagnostic,
     AssetRecord,
@@ -120,6 +127,11 @@ export {
     createPortableAnimationManifestResource,
     serializePortableAnimationManifest,
 } from './animation-manifest';
+export {
+    createAnimationStreamingChunkResource,
+    createPortableAnimationStreamingClipBundle,
+    DEFAULT_ANIMATION_STREAMING_CHUNK_MIME_TYPE,
+} from './animation-streaming';
 export {
     createGltfImporter,
     createGltfTextureTranscodeStage,
