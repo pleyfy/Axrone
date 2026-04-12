@@ -6,6 +6,7 @@ import {
 } from '@axrone/asset-core';
 import {
     createGltfImporter,
+    createPortableAnimationManifestResource,
     createGltfTextureTranscodeStage,
     createPassthroughGltfTextureTranscoder,
     GltfTextureTranscoderRegistry,
@@ -1178,7 +1179,6 @@ describe('glTF importer', () => {
                     state: {
                         status: 'transcoded',
                         transcoderId: 'test.texture.transcoder',
-                        targetFormat: TextureFormat.BC7_RGBA,
                     },
                     diagnostics: [
                         {
@@ -1674,11 +1674,10 @@ describe('glTF importer', () => {
                         data: createRigBinaryBlob(),
                         mimeType: 'application/octet-stream',
                     },
-                    {
-                        uri: 'rig.animation-manifest.json',
-                        data: JSON.stringify(createPortableRigAnimationManifest()),
-                        mimeType: 'application/json',
-                    },
+                    createPortableAnimationManifestResource(
+                        'rig.animation-manifest.json',
+                        createPortableRigAnimationManifest()
+                    ),
                 ],
             },
             uri: 'models/rig.gltf',
@@ -1830,11 +1829,10 @@ describe('glTF importer', () => {
                         data: createRigBinaryBlob(),
                         mimeType: 'application/octet-stream',
                     },
-                    {
-                        uri: 'rig.animation-manifest.json',
-                        data: JSON.stringify(createPortableRigFeatureExportManifest()),
-                        mimeType: 'application/json',
-                    },
+                    createPortableAnimationManifestResource(
+                        'rig.animation-manifest.json',
+                        createPortableRigFeatureExportManifest()
+                    ),
                 ],
             },
             uri: 'models/rig-feature-export.gltf',

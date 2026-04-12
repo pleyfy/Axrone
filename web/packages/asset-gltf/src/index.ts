@@ -65,6 +65,12 @@ export type {
     GltfTranscodeStage,
 } from './types';
 export type {
+    PortableAnimationClipManifestEntry,
+    PortableAnimationFeatureExportDefinition,
+    PortableAnimationManifest,
+    PortableAnimationManifestSceneEntry,
+} from './animation-manifest';
+export type {
     AssetDatabase,
     AssetImportDiagnostic,
     AssetRecord,
@@ -109,6 +115,11 @@ export {
     createLoadersBasisGltfTextureTranscoder,
     resolveLoadersBasisGltfTextureFormats,
 } from './loaders-texture-transcoder';
+export {
+    createPortableAnimationManifest,
+    createPortableAnimationManifestResource,
+    serializePortableAnimationManifest,
+} from './animation-manifest';
 export {
     createGltfImporter,
     createGltfTextureTranscodeStage,
