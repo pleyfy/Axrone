@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AnimationBlendGraph } from '../blend-graph';
 import { AnimationClip } from '../clip';
+import { AnimationControllerGraph } from '../controller-graph';
 import { AnimationController } from '../controller';
 import { solvePlanarGrounding } from '../grounding';
 import { AnimationIkLayer } from '../ik';
@@ -243,6 +244,132 @@ describe('Animation stack', () => {
             }),
         ]);
         expect(controller.profile.activeClipCount).toBe(1);
+    });
+
+    it('builds controller definitions through the fluent controller graph API', () => {
+        const definition = AnimationControllerGraph.controller({
+            bones: [{ name: 'hips' }],
+        })
+            .addClip({
+                id: 'idle',
+                tracks: [
+                    {
+                        target: 'hips',
+                        path: 'translation',
+                        times: [0, 1],
+                        values: [0, 0, 0, 0, 0, 0],
+                    },
+                ],
+            })
+            .addClip({
+                id: 'run',
+                tracks: [
+                    {
+                        target: 'hips',
+                        path: 'translation',
+                        times: [0, 1],
+                        values: [0, 0, 0, 2, 0, 0],
+                    },
+                ],
+            })
+            .parameter('speed', 'float', 0)
+            .layer(
+                'base',
+                AnimationControllerGraph.machine('idle')
+                    .state('idle', AnimationBlendGraph.clip('idle'), (state) => {
+                        state.transitionTo('run', (transition) => {
+                            transition.withDuration(0.1).whenFloat('speed', '>', 0.5);
+                        });
+                    })
+                    .state('run', AnimationBlendGraph.clip('run'), (state) => {
+                        state.transitionTo('idle', (transition) => {
+                            transition.withDuration(0.1).whenFloat('speed', '<=', 0.5);
+                        });
+                    }),
+                (layer) => {
+                    layer.withWeight(1).withBoneMask(['hips']);
+                }
+            )
+            .withRootMotion({
+                bone: 'hips',
+                consume: true,
+            })
+            .build();
+
+        expect(AnimationControllerGraph.validateController(definition)).toEqual([]);
+
+        const controller = new AnimationController(definition);
+        controller.parameters.setFloat('speed', 1);
+        controller.update(0.25);
+        controller.update(0.25);
+
+        expect(controller.activeClips).toEqual([
+            expect.objectContaining({
+                clipId: 'run',
+                layerId: 'base',
+                stateId: 'run',
+            }),
+        ]);
+    });
+
+    it('validates controller graph references against clips, parameters, and bones', () => {
+        const definition = AnimationControllerGraph.controller({
+            bones: [{ name: 'hips' }],
+        })
+            .addClip({
+                id: 'idle',
+                tracks: [
+                    {
+                        target: 'hips',
+                        path: 'translation',
+                        times: [0, 1],
+                        values: [0, 0, 0, 0, 0, 0],
+                    },
+                ],
+            })
+            .parameter('speed', 'float', 0)
+            .layer(
+                'base',
+                AnimationControllerGraph.machine('idle')
+                    .state(
+                        'idle',
+                        AnimationBlendGraph.blend1d('speed')
+                            .addChild(0, AnimationBlendGraph.clip('idle'))
+                            .addChild(1, AnimationBlendGraph.clip('missing-clip'))
+                    )
+                    .anyState('missing-state', (transition) => {
+                        transition.whenFloat('missing-parameter', '>', 0.1);
+                    }),
+                (layer) => {
+                    layer.withBoneMask(['missing-bone']);
+                }
+            )
+            .withRootMotion({
+                bone: 'missing-bone',
+            })
+            .build();
+
+        const diagnostics = AnimationControllerGraph.validateController(definition);
+
+        expect(diagnostics).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'animation.controller.motion.clip.unknown',
+                }),
+                expect.objectContaining({
+                    code: 'animation.controller.parameter.unknown',
+                }),
+                expect.objectContaining({
+                    code: 'animation.controller.state.unknown',
+                }),
+                expect.objectContaining({
+                    code: 'animation.controller.bone.unknown',
+                }),
+                expect.objectContaining({
+                    code: 'animation.controller.rootMotion.bone.unknown',
+                }),
+            ])
+        );
     });
 
     it('retargets translations with configured scaling', () => {
