@@ -1,4 +1,4 @@
-import { Mat4 } from '@axrone/numeric';
+import { computeSkinningPalette } from '@axrone/animation';
 import { Transform } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
@@ -117,6 +117,8 @@ export class MeshRenderer extends Component {
     private _skin: MeshRendererSkinState | null;
     private _resolvedSkinInstanceId: string | null = null;
     private _resolvedJointTransforms: readonly (Transform | null)[] | null = null;
+    private _resolvedJointWorldMatrices: readonly ArrayLike<number>[] | null = null;
+    private _skinPaletteCache: Float32Array | null = null;
 
     constructor(config: MeshRendererConfig = {}) {
         super();
@@ -233,6 +235,8 @@ export class MeshRenderer extends Component {
         this._skin = normalizeSkin(value);
         this._resolvedSkinInstanceId = null;
         this._resolvedJointTransforms = null;
+        this._resolvedJointWorldMatrices = null;
+        this._skinPaletteCache = null;
     }
 
     get hasSkin(): boolean {
@@ -257,25 +261,20 @@ export class MeshRenderer extends Component {
         if (!jointTransforms) {
             return null;
         }
-
-        const meshInverse = Mat4.invert(meshTransform.worldMatrix);
-        const palette = new Float32Array(jointTransforms.length * 16);
-
-        for (let jointIndex = 0; jointIndex < jointTransforms.length; jointIndex += 1) {
-            const jointTransform = jointTransforms[jointIndex]!;
-            let jointMatrix = Mat4.multiply(meshInverse, jointTransform.worldMatrix);
-
-            if (this._skin.inverseBindMatrices) {
-                jointMatrix = Mat4.multiply(
-                    jointMatrix,
-                    Mat4.fromArray(this._skin.inverseBindMatrices, jointIndex * 16)
-                );
-            }
-
-            palette.set(jointMatrix.data, jointIndex * 16);
+        if (!this._resolvedJointWorldMatrices) {
+            return null;
         }
 
-        return palette;
+        if (!this._skinPaletteCache || this._skinPaletteCache.length !== jointTransforms.length * 16) {
+            this._skinPaletteCache = new Float32Array(jointTransforms.length * 16);
+        }
+
+        return computeSkinningPalette({
+            meshWorldMatrix: meshTransform.worldMatrix.data,
+            jointWorldMatrices: this._resolvedJointWorldMatrices,
+            inverseBindMatrices: this._skin.inverseBindMatrices ?? null,
+            out: this._skinPaletteCache,
+        });
     }
 
     setUniform(name: string, value: SceneUniformValue): this {
@@ -420,8 +419,15 @@ export class MeshRenderer extends Component {
         );
 
         if (this._resolvedJointTransforms.some((entry) => entry === null)) {
+            this._resolvedJointWorldMatrices = null;
             return null;
         }
+
+        this._resolvedJointWorldMatrices = Object.freeze(
+            (this._resolvedJointTransforms as readonly Transform[]).map(
+                (transform) => transform.worldMatrix.data
+            )
+        );
 
         return this._resolvedJointTransforms as readonly Transform[];
     }

@@ -41,6 +41,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@axrone/animation": "^0.1.0",
         "@axrone/ecs-runtime": "^0.1.0",
         "@axrone/game-loop": "^0.1.0",
         "@axrone/geometry": "^0.1.0",
