@@ -330,8 +330,8 @@ export class Animator extends Component {
         const deltaSeconds = Math.max(0, deltaTime / 1000) * this._speed;
         const result = controller.update(deltaSeconds);
         this._time += deltaSeconds;
-        this._applyRootMotion(result.rootMotion);
         this._applyFrame(result.frame);
+        this._applyRootMotion(result.rootMotion);
     }
 
     override serialize(): Record<string, unknown> {
