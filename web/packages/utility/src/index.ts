@@ -40,8 +40,9 @@ export {
     isEqualityComparer,
 } from './comparer/comparer';
 
-export { PriorityQueue } from './memory/containers/queue/priority-queue';
+export { Queue, PriorityQueue } from './memory/containers/queue';
 export type {
+    QueueOptions,
     Comparator,
     HeapIndex,
     QueueSize,
@@ -53,7 +54,7 @@ export type {
     OptionalOperations,
     QueryOperations,
     CapacityOperations,
-} from './memory/containers/queue/priority-queue';
+} from './memory/containers/queue';
 
 export type {
     PoolableObject,
