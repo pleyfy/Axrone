@@ -9,6 +9,7 @@ import { optimizeAnimationClipDefinition } from '../optimization';
 import { AnimationCurveLayout, AnimationFrame, AnimationPose, AnimationWorldPose } from '../pose';
 import { AnimationRetargeter } from '../retargeting';
 import { AnimationRig } from '../rig';
+import { AnimationClipStreamingScheduler } from '../streaming';
 
 describe('Animation stack', () => {
     it('extracts root motion while consuming the animated root bone', () => {
@@ -372,6 +373,85 @@ describe('Animation stack', () => {
                 transitioning: false,
             }),
         ]);
+    });
+
+    it('schedules streamed clip chunks for active playback and preload windows', () => {
+        const rig = new AnimationRig({
+            bones: [{ name: 'root' }],
+        });
+        const clip = new AnimationClip(
+            {
+                id: 'walk',
+                tracks: [
+                    {
+                        target: 'root',
+                        path: 'translation',
+                        times: [0, 1],
+                        values: [0, 0, 0, 1, 0, 0],
+                    },
+                ],
+                streaming: {
+                    mode: 'streamed',
+                    sourceUri: 'clips/walk.anim',
+                    chunkDuration: 0.5,
+                    preloadWindow: 0.3,
+                },
+            },
+            rig,
+            new AnimationCurveLayout()
+        );
+        const scheduler = new AnimationClipStreamingScheduler([clip]);
+
+        let snapshot = scheduler.update([
+            {
+                clipId: 'walk',
+                layerId: 'base',
+                stateId: 'walk',
+                layerWeight: 1,
+                motionWeight: 1,
+                loop: false,
+                time: 0.4,
+                normalizedTime: 0.4,
+            },
+        ]);
+
+        expect(snapshot.ready).toBe(false);
+        expect(snapshot.pendingRequests).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    clipId: 'walk',
+                    chunkId: 'walk:virtual:0',
+                    reason: 'active',
+                }),
+                expect.objectContaining({
+                    clipId: 'walk',
+                    chunkId: 'walk:virtual:1',
+                    reason: 'preload',
+                }),
+            ])
+        );
+
+        scheduler.markChunkLoaded('walk', 'walk:virtual:0');
+        snapshot = scheduler.update([
+            {
+                clipId: 'walk',
+                layerId: 'base',
+                stateId: 'walk',
+                layerWeight: 1,
+                motionWeight: 1,
+                loop: false,
+                time: 0.4,
+                normalizedTime: 0.4,
+            },
+        ]);
+
+        expect(snapshot.ready).toBe(true);
+        expect(snapshot.clips[0]).toEqual(
+            expect.objectContaining({
+                activeChunkIds: ['walk:virtual:0'],
+                requestedChunkIds: expect.arrayContaining(['walk:virtual:1']),
+            })
+        );
     });
 
     it('supports motion matching, grounding, and clip optimization helpers', () => {
