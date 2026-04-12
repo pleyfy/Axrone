@@ -1,0 +1,82 @@
+{
+    "name": "@axrone/animation",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./types": {
+            "types": "./dist/types.d.ts",
+            "import": "./dist/types.mjs",
+            "require": "./dist/types.js"
+        },
+        "./clip": {
+            "types": "./dist/clip.d.ts",
+            "import": "./dist/clip.mjs",
+            "require": "./dist/clip.js"
+        },
+        "./blend-tree": {
+            "types": "./dist/blend-tree.d.ts",
+            "import": "./dist/blend-tree.mjs",
+            "require": "./dist/blend-tree.js"
+        },
+        "./state-machine": {
+            "types": "./dist/state-machine.d.ts",
+            "import": "./dist/state-machine.mjs",
+            "require": "./dist/state-machine.js"
+        },
+        "./retargeting": {
+            "types": "./dist/retargeting.d.ts",
+            "import": "./dist/retargeting.mjs",
+            "require": "./dist/retargeting.js"
+        },
+        "./ik": {
+            "types": "./dist/ik.d.ts",
+            "import": "./dist/ik.mjs",
+            "require": "./dist/ik.js"
+        },
+        "./skinning": {
+            "types": "./dist/skinning.d.ts",
+            "import": "./dist/skinning.mjs",
+            "require": "./dist/skinning.js"
+        },
+        "./controller": {
+            "types": "./dist/controller.d.ts",
+            "import": "./dist/controller.mjs",
+            "require": "./dist/controller.js"
+        },
+        "./pose": {
+            "types": "./dist/pose.d.ts",
+            "import": "./dist/pose.mjs",
+            "require": "./dist/pose.js"
+        },
+        "./rig": {
+            "types": "./dist/rig.d.ts",
+            "import": "./dist/rig.mjs",
+            "require": "./dist/rig.js"
+        },
+        "./errors": {
+            "types": "./dist/errors.d.ts",
+            "import": "./dist/errors.mjs",
+            "require": "./dist/errors.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@axrone/numeric": "^0.0.1",
+        "@axrone/utility": "^0.0.1"
+    }
+}
