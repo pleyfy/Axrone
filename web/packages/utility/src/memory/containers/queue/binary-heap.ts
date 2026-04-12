@@ -9,6 +9,8 @@ import {
 } from './types';
 import { createCapacity, createQueueSize, defaultComparator } from './utils';
 
+export type { Comparator } from './types';
+
 export type HeapOrder = 'min' | 'max';
 
 export type CompareSign = -1 | 0 | 1;
