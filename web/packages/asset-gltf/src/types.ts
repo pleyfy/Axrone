@@ -1,5 +1,10 @@
 import type {
+    AnimationClipCompressionDefinition,
+    AnimationClipEventDefinition,
+    AnimationClipStreamingDefinition,
+    AnimationFootContactDefinition,
     AnimationLayerDefinition,
+    AnimationMotionFeatureDefinition,
     AnimationParameterDefinition,
     AnimationRootMotionDefinition,
 } from '@axrone/animation';
@@ -116,12 +121,29 @@ export interface GltfAnimationClipAsset {
     readonly animationIndex: number;
     readonly duration: number;
     readonly tracks: readonly GltfAnimationTrackAsset[];
+    readonly events?: readonly AnimationClipEventDefinition[];
+    readonly footContacts?: readonly AnimationFootContactDefinition[];
+    readonly tags?: readonly string[];
+    readonly features?: readonly AnimationMotionFeatureDefinition[];
+    readonly compression?: AnimationClipCompressionDefinition;
+    readonly streaming?: AnimationClipStreamingDefinition;
+}
+
+export interface GltfAnimationClipMetadata {
+    readonly id: string;
+    readonly events?: readonly AnimationClipEventDefinition[];
+    readonly footContacts?: readonly AnimationFootContactDefinition[];
+    readonly tags?: readonly string[];
+    readonly features?: readonly AnimationMotionFeatureDefinition[];
+    readonly compression?: AnimationClipCompressionDefinition;
+    readonly streaming?: AnimationClipStreamingDefinition;
 }
 
 export interface GltfAnimationControllerMetadata {
     readonly parameters?: readonly AnimationParameterDefinition[];
     readonly layers?: readonly AnimationLayerDefinition[];
     readonly rootMotion?: AnimationRootMotionDefinition | null;
+    readonly clips?: readonly GltfAnimationClipMetadata[];
 }
 
 export type GltfMaterialAlphaMode = 'OPAQUE' | 'MASK' | 'BLEND';
@@ -595,6 +617,7 @@ export interface GltfNodeJson {
 export interface GltfSceneJson {
     readonly nodes?: readonly number[];
     readonly name?: string;
+    readonly extensions?: Readonly<Record<string, unknown>>;
     readonly extras?: Readonly<Record<string, unknown>>;
 }
 

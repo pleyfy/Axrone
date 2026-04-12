@@ -860,6 +860,86 @@ const createRigJsonWithAnimationMetadata = (): GltfRootJson => {
     };
 };
 
+const createPortableRigAnimationManifest = () => ({
+    controller: {
+        parameters: [
+            {
+                name: 'speed',
+                kind: 'float',
+                defaultValue: 0.5,
+            },
+        ],
+        layers: [
+            {
+                id: 'base',
+                weight: 1,
+                stateMachine: {
+                    entryState: 'move',
+                    states: [
+                        {
+                            id: 'move',
+                            motion: {
+                                kind: 'clip',
+                                clipId: 'Move',
+                            },
+                            loop: true,
+                        },
+                    ],
+                },
+            },
+        ],
+        rootMotion: {
+            bone: 'node/1',
+            consume: true,
+            projectTranslationAxes: [true, false, false],
+        },
+    },
+    clips: [
+        {
+            id: 'Move',
+            tags: ['locomotion'],
+            events: [
+                {
+                    id: 'step',
+                    name: 'footstep',
+                    time: 0.5,
+                    tags: ['sfx'],
+                    payload: {
+                        surface: 'stone',
+                    },
+                },
+            ],
+            footContacts: [
+                {
+                    bone: 'node/1',
+                    startTime: 0,
+                    endTime: 0.5,
+                    lockTranslationAxes: [true, true, true],
+                },
+            ],
+            features: [
+                {
+                    time: 0.5,
+                    trajectoryPosition: [1, 0, 0],
+                    facingDirection: [1, 0, 0],
+                    tags: ['forward'],
+                },
+            ],
+            compression: {
+                codec: 'keyframe-reduced',
+                positionTolerance: 0.001,
+            },
+            streaming: {
+                mode: 'streamed',
+                chunkDuration: 0.25,
+                preloadWindow: 0.5,
+                priority: 2,
+                sourceUri: 'clips/move.bin',
+            },
+        },
+    ],
+});
+
 const createMorphBinaryBlob = (): Uint8Array => {
     const morphPositions = new Float32Array([
         1, 0, 0,
@@ -1504,6 +1584,135 @@ describe('glTF importer', () => {
             }),
             clipId: 'Move',
             playing: true,
+        });
+    });
+
+    it('ingests portable sidecar animation manifests and propagates clip metadata into imported assets', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+        const packageJson: GltfRootJson = {
+            ...createRigJson(),
+            buffers: [
+                {
+                    uri: 'rig.bin',
+                    byteLength: 212,
+                },
+            ],
+        };
+
+        const receipt = await database.import({
+            kind: 'custom',
+            format: 'gltf-package',
+            data: {
+                json: packageJson,
+                resources: [
+                    {
+                        uri: 'rig.bin',
+                        data: createRigBinaryBlob(),
+                        mimeType: 'application/octet-stream',
+                    },
+                    {
+                        uri: 'rig.animation-manifest.json',
+                        data: JSON.stringify(createPortableRigAnimationManifest()),
+                        mimeType: 'application/json',
+                    },
+                ],
+            },
+            uri: 'models/rig.gltf',
+            mimeType: 'model/gltf+json',
+        });
+
+        const scene = receipt.primary.data.scenes[0];
+        const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+        const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
+        const animator = prefab?.data.definition.actors[0]?.components.find(
+            (component) => component.type === 'Animator'
+        );
+
+        expect(animation?.data).toMatchObject({
+            id: 'Move',
+            tags: ['locomotion'],
+            events: [
+                expect.objectContaining({
+                    id: 'step',
+                    name: 'footstep',
+                }),
+            ],
+            footContacts: [
+                expect.objectContaining({
+                    bone: 'node/1',
+                }),
+            ],
+            features: [
+                expect.objectContaining({
+                    trajectoryPosition: [1, 0, 0],
+                }),
+            ],
+            compression: expect.objectContaining({
+                codec: 'keyframe-reduced',
+            }),
+            streaming: expect.objectContaining({
+                mode: 'streamed',
+                sourceUri: 'clips/move.bin',
+            }),
+        });
+        expect(scene?.animationController).toMatchObject({
+            parameters: [
+                expect.objectContaining({
+                    name: 'speed',
+                    kind: 'float',
+                }),
+            ],
+            layers: [
+                expect.objectContaining({
+                    id: 'base',
+                }),
+            ],
+            rootMotion: expect.objectContaining({
+                bone: 'node/1',
+            }),
+            clips: [
+                expect.objectContaining({
+                    id: 'Move',
+                    tags: ['locomotion'],
+                    streaming: expect.objectContaining({
+                        mode: 'streamed',
+                    }),
+                }),
+            ],
+        });
+        expect(prefab?.data.animationController).toMatchObject(scene?.animationController ?? {});
+        expect(animator?.data).toMatchObject({
+            parameters: [
+                expect.objectContaining({
+                    name: 'speed',
+                }),
+            ],
+            layers: [
+                expect.objectContaining({
+                    id: 'base',
+                }),
+            ],
+            clips: [
+                expect.objectContaining({
+                    id: 'Move',
+                    tags: ['locomotion'],
+                    events: [
+                        expect.objectContaining({
+                            name: 'footstep',
+                        }),
+                    ],
+                    footContacts: [
+                        expect.objectContaining({
+                            bone: 'node/1',
+                        }),
+                    ],
+                    streaming: expect.objectContaining({
+                        mode: 'streamed',
+                    }),
+                }),
+            ],
         });
     });
 
