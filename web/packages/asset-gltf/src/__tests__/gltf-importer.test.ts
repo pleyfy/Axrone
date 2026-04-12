@@ -7,6 +7,7 @@ import {
 import {
     createGltfImporter,
     createPortableAnimationManifestResource,
+    createPortableAnimationStreamingClipBundle,
     createGltfTextureTranscodeStage,
     createPassthroughGltfTextureTranscoder,
     GltfTextureTranscoderRegistry,
@@ -1907,6 +1908,120 @@ describe('glTF importer', () => {
                 }),
             ]),
         });
+    });
+
+    it('imports authored portable streamed chunk bundles through the sidecar manifest contract', async () => {
+            const database = new AssetDatabase<GltfAssetSchema>({
+                importers: [createGltfImporter()],
+            });
+            const packageJson: GltfRootJson = {
+                ...createRigJson(),
+                buffers: [
+                    {
+                        uri: 'rig.bin',
+                        byteLength: 212,
+                    },
+                ],
+            };
+            const streamedClip = createPortableAnimationStreamingClipBundle({
+                clip: {
+                    id: 'Move',
+                    duration: 1,
+                    tags: ['stream-authored'],
+                    tracks: [
+                        {
+                            target: 'node/1',
+                            path: 'translation',
+                            interpolation: 'LINEAR',
+                            times: new Float32Array([0, 0.5, 1]),
+                            values: new Float32Array([
+                                0, 0, 0,
+                                0.5, 0, 0,
+                                1, 0, 0,
+                            ]),
+                        },
+                    ],
+                    streaming: {
+                        chunkDuration: 0.5,
+                        preloadWindow: 0.5,
+                        priority: 3,
+                    },
+                },
+                sourceUri: 'clips/move.bin',
+            });
+
+            const receipt = await database.import({
+                kind: 'custom',
+                format: 'gltf-package',
+                data: {
+                    json: packageJson,
+                    resources: [
+                        {
+                            uri: 'rig.bin',
+                            data: createRigBinaryBlob(),
+                            mimeType: 'application/octet-stream',
+                        },
+                        createPortableAnimationManifestResource('rig.animation-manifest.json', {
+                            clips: [streamedClip.clip],
+                        }),
+                        ...streamedClip.resources,
+                    ],
+                },
+                uri: 'models/rig-streamed-bundle.gltf',
+                mimeType: 'model/gltf+json',
+            });
+
+            const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
+            const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+            const animator = prefab?.data.definition.actors[0]?.components.find(
+                (component) => component.type === 'Animator'
+            );
+
+            expect(animation?.data).toMatchObject({
+                id: 'Move',
+                tags: ['stream-authored'],
+                streaming: expect.objectContaining({
+                    mode: 'streamed',
+                    sourceUri: 'clips/move.bin',
+                    chunkDuration: 0.5,
+                    preloadWindow: 0.5,
+                    priority: 3,
+                    catalog: expect.objectContaining({
+                        chunks: [
+                            expect.objectContaining({
+                                uri: 'clips/move.0.bin',
+                                startTime: 0,
+                                endTime: 0.5,
+                            }),
+                            expect.objectContaining({
+                                uri: 'clips/move.1.bin',
+                                startTime: 0.5,
+                                endTime: 1,
+                            }),
+                        ],
+                    }),
+                }),
+            });
+            expect(animator?.data).toMatchObject({
+                clips: expect.arrayContaining([
+                    expect.objectContaining({
+                        id: 'Move',
+                        tags: ['stream-authored'],
+                        streaming: expect.objectContaining({
+                            catalog: expect.objectContaining({
+                                chunks: expect.arrayContaining([
+                                    expect.objectContaining({
+                                        uri: 'clips/move.0.bin',
+                                    }),
+                                    expect.objectContaining({
+                                        uri: 'clips/move.1.bin',
+                                    }),
+                                ]),
+                            }),
+                        }),
+                    }),
+                ]),
+            });
     });
 
     it('builds scene snapshots that carry imported glTF materials, shaders, and bytes-backed textures', async () => {
