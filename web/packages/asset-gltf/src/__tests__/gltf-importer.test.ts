@@ -935,7 +935,69 @@ const createPortableRigAnimationManifest = () => ({
                 preloadWindow: 0.5,
                 priority: 2,
                 sourceUri: 'clips/move.bin',
+                catalog: {
+                    id: 'move-stream',
+                    chunks: [
+                        {
+                            id: 'move-0',
+                            uri: 'clips/move.0.bin',
+                            startTime: 0,
+                            endTime: 0.5,
+                            byteOffset: 0,
+                            byteLength: 128,
+                            mimeType: 'application/octet-stream',
+                        },
+                        {
+                            id: 'move-1',
+                            uri: 'clips/move.1.bin',
+                            startTime: 0.5,
+                            endTime: 1,
+                            byteOffset: 128,
+                            byteLength: 128,
+                            mimeType: 'application/octet-stream',
+                        },
+                    ],
+                },
             },
+        },
+    ],
+});
+
+const createPortableRigFeatureExportManifest = () => ({
+    clips: [
+        {
+            id: 'Move',
+            tags: ['global-locomotion'],
+            featureExport: {
+                rootNodeId: 'node/1',
+                sampleInterval: 0.5,
+                forwardAxis: [0, 0, 1],
+                tags: ['derived'],
+                costBias: 1.5,
+            },
+            streaming: {
+                mode: 'streamed',
+                chunkDuration: 0.5,
+                priority: 1,
+                sourceUri: 'clips/move.bin',
+            },
+        },
+    ],
+    scenes: [
+        {
+            scene: 0,
+            clips: [
+                {
+                    id: 'Move',
+                    tags: ['scene-override'],
+                    streaming: {
+                        mode: 'streamed',
+                        chunkDuration: 0.5,
+                        priority: 7,
+                        sourceUri: 'clips/move-scene.bin',
+                    },
+                },
+            ],
         },
     ],
 });
@@ -1655,6 +1717,19 @@ describe('glTF importer', () => {
             streaming: expect.objectContaining({
                 mode: 'streamed',
                 sourceUri: 'clips/move.bin',
+                catalog: expect.objectContaining({
+                    id: 'move-stream',
+                    chunks: [
+                        expect.objectContaining({
+                            id: 'move-0',
+                            uri: 'clips/move.0.bin',
+                        }),
+                        expect.objectContaining({
+                            id: 'move-1',
+                            uri: 'clips/move.1.bin',
+                        }),
+                    ],
+                }),
             }),
         });
         expect(scene?.animationController).toMatchObject({
@@ -1672,15 +1747,22 @@ describe('glTF importer', () => {
             rootMotion: expect.objectContaining({
                 bone: 'node/1',
             }),
-            clips: [
+            clips: expect.arrayContaining([
                 expect.objectContaining({
                     id: 'Move',
                     tags: ['locomotion'],
                     streaming: expect.objectContaining({
                         mode: 'streamed',
+                        catalog: expect.objectContaining({
+                            chunks: expect.arrayContaining([
+                                expect.objectContaining({
+                                    uri: 'clips/move.0.bin',
+                                }),
+                            ]),
+                        }),
                     }),
                 }),
-            ],
+            ]),
         });
         expect(prefab?.data.animationController).toMatchObject(scene?.animationController ?? {});
         expect(animator?.data).toMatchObject({
@@ -1694,25 +1776,138 @@ describe('glTF importer', () => {
                     id: 'base',
                 }),
             ],
-            clips: [
+            clips: expect.arrayContaining([
                 expect.objectContaining({
                     id: 'Move',
                     tags: ['locomotion'],
-                    events: [
+                    events: expect.arrayContaining([
                         expect.objectContaining({
                             name: 'footstep',
                         }),
-                    ],
-                    footContacts: [
+                    ]),
+                    footContacts: expect.arrayContaining([
                         expect.objectContaining({
                             bone: 'node/1',
                         }),
-                    ],
+                    ]),
                     streaming: expect.objectContaining({
                         mode: 'streamed',
+                        catalog: expect.objectContaining({
+                            chunks: expect.arrayContaining([
+                                expect.objectContaining({
+                                    uri: 'clips/move.0.bin',
+                                }),
+                            ]),
+                        }),
                     }),
                 }),
+            ]),
+        });
+    });
+
+    it('derives motion features from featureExport hints and applies scene-specific clip overrides', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+        const packageJson: GltfRootJson = {
+            ...createRigJson(),
+            buffers: [
+                {
+                    uri: 'rig.bin',
+                    byteLength: 212,
+                },
             ],
+        };
+
+        const receipt = await database.import({
+            kind: 'custom',
+            format: 'gltf-package',
+            data: {
+                json: packageJson,
+                resources: [
+                    {
+                        uri: 'rig.bin',
+                        data: createRigBinaryBlob(),
+                        mimeType: 'application/octet-stream',
+                    },
+                    {
+                        uri: 'rig.animation-manifest.json',
+                        data: JSON.stringify(createPortableRigFeatureExportManifest()),
+                        mimeType: 'application/json',
+                    },
+                ],
+            },
+            uri: 'models/rig-feature-export.gltf',
+            mimeType: 'model/gltf+json',
+        });
+
+        const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
+        const scene = receipt.primary.data.scenes[0];
+        const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
+        const animator = prefab?.data.definition.actors[0]?.components.find(
+            (component) => component.type === 'Animator'
+        );
+
+        expect(animation?.data).toMatchObject({
+            id: 'Move',
+            tags: ['global-locomotion'],
+            features: [
+                expect.objectContaining({
+                    time: 0,
+                    trajectoryPosition: [0, 0, 0],
+                    tags: ['derived'],
+                    costBias: 1.5,
+                }),
+                expect.objectContaining({
+                    time: 0.5,
+                    trajectoryPosition: [0.5, 0, 0],
+                    facingDirection: [1, 0, 0],
+                }),
+                expect.objectContaining({
+                    time: 1,
+                    trajectoryPosition: [1, 0, 0],
+                    facingDirection: [1, 0, 0],
+                }),
+            ],
+            streaming: expect.objectContaining({
+                priority: 1,
+                sourceUri: 'clips/move.bin',
+            }),
+        });
+        expect(scene?.animationController).toMatchObject({
+            clips: expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'Move',
+                    tags: ['scene-override'],
+                    features: expect.arrayContaining([
+                        expect.objectContaining({
+                            trajectoryPosition: [0.5, 0, 0],
+                        }),
+                    ]),
+                    streaming: expect.objectContaining({
+                        priority: 7,
+                        sourceUri: 'clips/move-scene.bin',
+                    }),
+                }),
+            ]),
+        });
+        expect(prefab?.data.animationController).toMatchObject(scene?.animationController ?? {});
+        expect(animator?.data).toMatchObject({
+            clips: expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'Move',
+                    tags: ['scene-override'],
+                    features: expect.arrayContaining([
+                        expect.objectContaining({
+                            time: 1,
+                            trajectoryPosition: [1, 0, 0],
+                        }),
+                    ]),
+                    streaming: expect.objectContaining({
+                        priority: 7,
+                    }),
+                }),
+            ]),
         });
     });
 
