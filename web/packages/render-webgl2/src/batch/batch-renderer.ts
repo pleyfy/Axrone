@@ -110,8 +110,8 @@ export class BatchRenderer implements IBatchRenderer {
 
         this.buildRenderQueue(viewMatrix);
 
-        while (!this.renderQueue.isEmpty) {
-            const job = this.renderQueue.tryDequeue();
+        while (!this.renderQueue.isEmpty()) {
+            const job = this.renderQueue.dequeue();
             if (!job) break;
 
             job.group.render(viewMatrix, projectionMatrix);
