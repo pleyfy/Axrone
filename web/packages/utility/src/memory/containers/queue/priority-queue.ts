@@ -27,7 +27,6 @@ import {
     hasRightChild,
 } from './utils';
 
-import { DynamicArray } from './dynamic-array';
 import { BinaryMinHeap } from './binary-heap';
 import { PriorityQueueNode } from './node';
 

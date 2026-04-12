@@ -41,6 +41,17 @@ export {
 } from './comparer/comparer';
 
 export { Queue, PriorityQueue } from './memory/containers/queue';
+export {
+    BinaryHeap,
+    BinaryMinHeap,
+    createBinaryHeap,
+    isBinaryHeap,
+    HeapError,
+    HeapComparatorError,
+    HeapIndexError,
+    HeapSerializationError,
+    defaultPrimitiveComparator,
+} from './memory/containers/queue/binary-heap';
 export type {
     QueueOptions,
     Comparator,
@@ -55,6 +66,16 @@ export type {
     QueryOperations,
     CapacityOperations,
 } from './memory/containers/queue';
+export type {
+    HeapOrder,
+    CompareSign,
+    HeapPrimitive,
+    HeapSerialized,
+    HeapLike,
+    BinaryHeapOptions,
+    ReadonlyBinaryHeap,
+    Equality,
+} from './memory/containers/queue/binary-heap';
 
 export type {
     PoolableObject,
