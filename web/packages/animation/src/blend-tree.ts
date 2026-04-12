@@ -5,7 +5,11 @@ import { AnimationParameterStore } from './parameters';
 import { applyAdditiveFrame, blendFrame, blendWeightedFrames, AnimationFrame, type AnimationCurveLayout } from './pose';
 import type { AnimationRig } from './rig';
 import { AnimationClip } from './clip';
-import type { AnimationBlendTreeDefinition, AnimationMotionDefinition } from './types';
+import type {
+    AnimationBlendTreeDefinition,
+    AnimationControllerEvent,
+    AnimationMotionDefinition,
+} from './types';
 
 export interface AnimationMotionEvaluationContext {
     readonly rig: AnimationRig;
@@ -402,8 +406,8 @@ export const evaluateMotion = (
         case 'additive': {
             const baseFrame = context.scratch.acquire();
             const additiveFrame = context.scratch.acquire();
-            evaluateMotion(motion.base, normalizedTime, context, baseFrame);
-            evaluateMotion(motion.additive, normalizedTime, context, additiveFrame);
+            evaluateMotion(motion.base, normalizedTime, context, baseFrame, loop);
+            evaluateMotion(motion.additive, normalizedTime, context, additiveFrame, loop);
             const parameterWeight = motion.parameter ? context.parameters.get(motion.parameter) : motion.weight;
             const resolvedWeight =
                 typeof parameterWeight === 'number'
@@ -412,6 +416,205 @@ export const evaluateMotion = (
                       ? motion.weight
                       : 0;
             return applyAdditiveFrame(out, baseFrame, additiveFrame, context.restFrame, resolvedWeight);
+        }
+        default:
+            throw new AnimationStateMachineError(`Unsupported motion kind '${String((motion as { kind?: unknown }).kind)}'`);
+    }
+};
+
+export const collectMotionEvents = (
+    motion: AnimationCompiledMotion,
+    previousNormalizedTime: number,
+    currentNormalizedTime: number,
+    loop: boolean,
+    parameters: AnimationParameterStore,
+    layerId: string,
+    stateId: string,
+    layerWeight: number,
+    motionWeight: number,
+    out: AnimationControllerEvent[] = []
+): readonly AnimationControllerEvent[] => {
+    const resolvedLayerWeight = Math.max(0, Math.min(1, layerWeight));
+    const resolvedMotionWeight = Math.max(0, motionWeight);
+    if (resolvedLayerWeight <= 0 || resolvedMotionWeight <= 0) {
+        return out;
+    }
+
+    switch (motion.kind) {
+        case 'clip': {
+            const hits = motion.clip.collectEvents(
+                resolveMotionTime(
+                    previousNormalizedTime * motion.timeScale,
+                    motion.clip.duration,
+                    motion.cycleOffset,
+                    loop
+                ),
+                resolveMotionTime(
+                    currentNormalizedTime * motion.timeScale,
+                    motion.clip.duration,
+                    motion.cycleOffset,
+                    loop
+                ),
+                loop
+            );
+            for (let index = 0; index < hits.length; index += 1) {
+                const event = hits[index]!;
+                out.push(
+                    Object.freeze({
+                        ...event,
+                        layerId,
+                        stateId,
+                        layerWeight: resolvedLayerWeight,
+                        motionWeight: resolvedMotionWeight,
+                    } satisfies AnimationControllerEvent)
+                );
+            }
+            return out;
+        }
+        case 'blend1d': {
+            const parameterValue = parameters.get(motion.parameter);
+            const input = typeof parameterValue === 'number' ? parameterValue : parameterValue ? 1 : 0;
+            if (motion.children.length === 1 || input <= motion.children[0]!.threshold) {
+                return collectMotionEvents(
+                    motion.children[0]!.motion,
+                    previousNormalizedTime,
+                    currentNormalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight,
+                    out
+                );
+            }
+            for (let index = 0; index < motion.children.length - 1; index += 1) {
+                const left = motion.children[index]!;
+                const right = motion.children[index + 1]!;
+                if (input > right.threshold) {
+                    continue;
+                }
+                const alpha = (input - left.threshold) / Math.max(1e-6, right.threshold - left.threshold);
+                collectMotionEvents(
+                    left.motion,
+                    previousNormalizedTime,
+                    currentNormalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * (1 - alpha),
+                    out
+                );
+                collectMotionEvents(
+                    right.motion,
+                    previousNormalizedTime,
+                    currentNormalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * alpha,
+                    out
+                );
+                return out;
+            }
+            return collectMotionEvents(
+                motion.children[motion.children.length - 1]!.motion,
+                previousNormalizedTime,
+                currentNormalizedTime,
+                loop,
+                parameters,
+                layerId,
+                stateId,
+                resolvedLayerWeight,
+                resolvedMotionWeight,
+                out
+            );
+        }
+        case 'blend2d': {
+            const parameterX = parameters.get(motion.parameterX);
+            const parameterY = parameters.get(motion.parameterY);
+            const weights = resolveBlend2DWeights(
+                typeof parameterX === 'number' ? parameterX : parameterX ? 1 : 0,
+                typeof parameterY === 'number' ? parameterY : parameterY ? 1 : 0,
+                motion.children
+            );
+            for (let index = 0; index < motion.children.length; index += 1) {
+                const childWeight = weights[index] ?? 0;
+                if (childWeight <= 0) {
+                    continue;
+                }
+                collectMotionEvents(
+                    motion.children[index]!.motion,
+                    previousNormalizedTime,
+                    currentNormalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * childWeight,
+                    out
+                );
+            }
+            return out;
+        }
+        case 'direct': {
+            for (let index = 0; index < motion.children.length; index += 1) {
+                const child = motion.children[index]!;
+                const childWeight = resolveDirectChildWeight(parameters, child.parameter, child.weight);
+                if (childWeight <= 0) {
+                    continue;
+                }
+                collectMotionEvents(
+                    child.motion,
+                    previousNormalizedTime,
+                    currentNormalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * childWeight,
+                    out
+                );
+            }
+            return out;
+        }
+        case 'additive': {
+            collectMotionEvents(
+                motion.base,
+                previousNormalizedTime,
+                currentNormalizedTime,
+                loop,
+                parameters,
+                layerId,
+                stateId,
+                resolvedLayerWeight,
+                resolvedMotionWeight,
+                out
+            );
+            const parameterWeight = motion.parameter ? parameters.get(motion.parameter) : motion.weight;
+            const additiveWeight =
+                typeof parameterWeight === 'number' ? parameterWeight : parameterWeight ? motion.weight : 0;
+            if (additiveWeight > 0) {
+                collectMotionEvents(
+                    motion.additive,
+                    previousNormalizedTime,
+                    currentNormalizedTime,
+                    loop,
+                    parameters,
+                    layerId,
+                    stateId,
+                    resolvedLayerWeight,
+                    resolvedMotionWeight * additiveWeight,
+                    out
+                );
+            }
+            return out;
         }
         default:
             throw new AnimationStateMachineError(`Unsupported motion kind '${String((motion as { kind?: unknown }).kind)}'`);

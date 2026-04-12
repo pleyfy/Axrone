@@ -2,7 +2,18 @@ import { AnimationSamplingError, AnimationValidationError } from './errors';
 import { clamp, quatCopy, quatIdentity, quatInvert, quatMultiply, quatNormalize, quatSlerp, toFloat32Array, vec3Copy, vec3Lerp } from './math';
 import type { AnimationCurveLayout, AnimationFrame } from './pose';
 import type { AnimationRig } from './rig';
-import type { AnimationClipDefinition, AnimationInterpolation, AnimationTrackDefinition } from './types';
+import type {
+    AnimationClipCompressionDefinition,
+    AnimationClipDefinition,
+    AnimationClipEventDefinition,
+    AnimationClipEventOccurrence,
+    AnimationFootContactDefinition,
+    AnimationFootContactState,
+    AnimationInterpolation,
+    AnimationMotionFeatureDefinition,
+    AnimationTrackDefinition,
+    AnimationClipStreamingDefinition,
+} from './types';
 
 const enum AnimationInterpolationMode {
     Linear = 0,
@@ -194,6 +205,136 @@ const wrapClipTime = (time: number, duration: number): number => {
     return wrapped < 0 ? wrapped + duration : wrapped;
 };
 
+const cloneMetadataRecord = (
+    value: Readonly<Record<string, unknown>> | null | undefined
+): Readonly<Record<string, unknown>> | null | undefined => {
+    if (value === null || value === undefined) {
+        return value;
+    }
+
+    const cloned: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+        cloned[key] = entry;
+    }
+    return Object.freeze(cloned);
+};
+
+const sanitizeTags = (value: readonly string[] | undefined): readonly string[] =>
+    Object.freeze(
+        [...new Set((value ?? []).filter((entry): entry is string => typeof entry === 'string' && entry.length > 0))]
+    );
+
+const sanitizeClipEvents = (
+    events: readonly AnimationClipEventDefinition[] | undefined,
+    duration: number
+): readonly AnimationClipEventDefinition[] =>
+    Object.freeze(
+        (events ?? [])
+            .filter(
+                (event): event is AnimationClipEventDefinition =>
+                    Boolean(
+                        event &&
+                            typeof event.name === 'string' &&
+                            event.name.length > 0 &&
+                            typeof event.time === 'number' &&
+                            Number.isFinite(event.time)
+                    )
+            )
+            .map((event) =>
+                Object.freeze({
+                    ...(typeof event.id === 'string' && event.id.length > 0 ? { id: event.id } : {}),
+                    name: event.name,
+                    time: clamp(event.time, 0, duration),
+                    ...(event.payload !== undefined
+                        ? { payload: cloneMetadataRecord(event.payload) ?? null }
+                        : {}),
+                    ...(event.tags && event.tags.length > 0 ? { tags: sanitizeTags(event.tags) } : {}),
+                } satisfies AnimationClipEventDefinition)
+            )
+            .sort((left, right) => left.time - right.time)
+    );
+
+const sanitizeFootContacts = (
+    contacts: readonly AnimationFootContactDefinition[] | undefined,
+    duration: number
+): readonly AnimationFootContactDefinition[] =>
+    Object.freeze(
+        (contacts ?? [])
+            .filter(
+                (contact): contact is AnimationFootContactDefinition =>
+                    Boolean(
+                        contact &&
+                            typeof contact.bone === 'string' &&
+                            contact.bone.length > 0 &&
+                            typeof contact.startTime === 'number' &&
+                            typeof contact.endTime === 'number' &&
+                            Number.isFinite(contact.startTime) &&
+                            Number.isFinite(contact.endTime)
+                    )
+            )
+            .map((contact) => {
+                const startTime = clamp(Math.min(contact.startTime, contact.endTime), 0, duration);
+                const endTime = clamp(Math.max(contact.startTime, contact.endTime), 0, duration);
+                return Object.freeze({
+                    bone: contact.bone,
+                    startTime,
+                    endTime,
+                    ...(contact.lockTranslationAxes
+                        ? {
+                              lockTranslationAxes: Object.freeze([
+                                  contact.lockTranslationAxes[0],
+                                  contact.lockTranslationAxes[1],
+                                  contact.lockTranslationAxes[2],
+                              ]) as readonly [boolean, boolean, boolean],
+                          }
+                        : {}),
+                    ...(contact.metadata ? { metadata: cloneMetadataRecord(contact.metadata) ?? {} } : {}),
+                } satisfies AnimationFootContactDefinition);
+            })
+    );
+
+const sanitizeMotionFeatures = (
+    features: readonly AnimationMotionFeatureDefinition[] | undefined,
+    duration: number
+): readonly AnimationMotionFeatureDefinition[] =>
+    Object.freeze(
+        (features ?? [])
+            .filter(
+                (feature): feature is AnimationMotionFeatureDefinition =>
+                    Boolean(feature && typeof feature.time === 'number' && Number.isFinite(feature.time))
+            )
+            .map((feature) =>
+                Object.freeze({
+                    time: clamp(feature.time, 0, duration),
+                    ...(feature.trajectoryPosition
+                        ? {
+                              trajectoryPosition: Object.freeze([
+                                  feature.trajectoryPosition[0],
+                                  feature.trajectoryPosition[1],
+                                  feature.trajectoryPosition[2],
+                              ]) as readonly [number, number, number],
+                          }
+                        : {}),
+                    ...(feature.facingDirection
+                        ? {
+                              facingDirection: Object.freeze([
+                                  feature.facingDirection[0],
+                                  feature.facingDirection[1],
+                                  feature.facingDirection[2],
+                              ]) as readonly [number, number, number],
+                          }
+                        : {}),
+                    ...(feature.tags && feature.tags.length > 0
+                        ? { tags: sanitizeTags(feature.tags) }
+                        : {}),
+                    ...(typeof feature.costBias === 'number' && Number.isFinite(feature.costBias)
+                        ? { costBias: feature.costBias }
+                        : {}),
+                } satisfies AnimationMotionFeatureDefinition)
+            )
+            .sort((left, right) => left.time - right.time)
+    );
+
 export class AnimationClip {
     readonly id: string;
     readonly duration: number;
@@ -201,6 +342,12 @@ export class AnimationClip {
     readonly rotationTracks: readonly AnimationBoneTrack[];
     readonly scaleTracks: readonly AnimationBoneTrack[];
     readonly curveTracks: readonly AnimationCurveTrack[];
+    readonly events: readonly AnimationClipEventDefinition[];
+    readonly footContacts: readonly AnimationFootContactDefinition[];
+    readonly tags: readonly string[];
+    readonly features: readonly AnimationMotionFeatureDefinition[];
+    readonly compression: AnimationClipCompressionDefinition | null;
+    readonly streaming: AnimationClipStreamingDefinition | null;
 
     private readonly _translationTrackByTarget = new Map<number, AnimationBoneTrack>();
     private readonly _rotationTrackByTarget = new Map<number, AnimationBoneTrack>();
@@ -297,6 +444,14 @@ export class AnimationClip {
         this.rotationTracks = Object.freeze(rotationTracks);
         this.scaleTracks = Object.freeze(scaleTracks);
         this.curveTracks = Object.freeze(curveTracks);
+        this.events = sanitizeClipEvents(definition.events, this.duration);
+        this.footContacts = sanitizeFootContacts(definition.footContacts, this.duration);
+        this.tags = sanitizeTags(definition.tags);
+        this.features = sanitizeMotionFeatures(definition.features, this.duration);
+        this.compression = definition.compression
+            ? Object.freeze({ ...definition.compression })
+            : null;
+        this.streaming = definition.streaming ? Object.freeze({ ...definition.streaming }) : null;
     }
 
     sampleTime(timeSeconds: number, frame: AnimationFrame): AnimationFrame {
@@ -330,6 +485,75 @@ export class AnimationClip {
     sampleNormalizedTime(normalizedTime: number, frame: AnimationFrame): AnimationFrame {
         const timeSeconds = clamp(normalizedTime, 0, 1) * this.duration;
         return this.sampleTime(timeSeconds, frame);
+    }
+
+    collectEvents(
+        startTimeSeconds: number,
+        endTimeSeconds: number,
+        loop: boolean,
+        out: AnimationClipEventOccurrence[] = []
+    ): readonly AnimationClipEventOccurrence[] {
+        if (this.events.length === 0 || this.duration <= 0) {
+            return out;
+        }
+
+        const pushRange = (rangeStart: number, rangeEnd: number): void => {
+            for (let index = 0; index < this.events.length; index += 1) {
+                const event = this.events[index]!;
+                if (event.time <= rangeStart || event.time > rangeEnd) {
+                    continue;
+                }
+                out.push(
+                    Object.freeze({
+                        clipId: this.id,
+                        ...(event.id ? { id: event.id } : {}),
+                        name: event.name,
+                        time: event.time,
+                        normalizedTime: this.duration > 0 ? event.time / this.duration : 0,
+                        ...(event.payload !== undefined ? { payload: event.payload } : {}),
+                        ...(event.tags ? { tags: event.tags } : {}),
+                    } satisfies AnimationClipEventOccurrence)
+                );
+            }
+        };
+
+        const start = loop ? wrapClipTime(startTimeSeconds, this.duration) : clamp(startTimeSeconds, 0, this.duration);
+        const end = loop ? wrapClipTime(endTimeSeconds, this.duration) : clamp(endTimeSeconds, 0, this.duration);
+        if (loop && end < start) {
+            pushRange(start, this.duration);
+            pushRange(-Number.EPSILON, end);
+            return out;
+        }
+
+        pushRange(start, end);
+        return out;
+    }
+
+    sampleFootContacts(timeSeconds: number): readonly AnimationFootContactState[] {
+        if (this.footContacts.length === 0 || this.duration <= 0) {
+            return EMPTY_CONTACTS;
+        }
+
+        const sampleTimeValue = clamp(timeSeconds, 0, this.duration);
+        return Object.freeze(
+            this.footContacts.map((contact) => {
+                const active = sampleTimeValue >= contact.startTime && sampleTimeValue <= contact.endTime;
+                const span = Math.max(Number.EPSILON, contact.endTime - contact.startTime);
+                const normalized = clamp((sampleTimeValue - contact.startTime) / span, 0, 1);
+                const ramp = Math.min(normalized, 1 - normalized);
+                const weight = active ? Math.min(1, Math.max(0.25, ramp * 4)) : 0;
+                return Object.freeze({
+                    bone: contact.bone,
+                    active,
+                    weight,
+                    normalizedTime: this.duration > 0 ? sampleTimeValue / this.duration : 0,
+                    ...(contact.lockTranslationAxes
+                        ? { lockTranslationAxes: contact.lockTranslationAxes }
+                        : {}),
+                    ...(contact.metadata ? { metadata: contact.metadata } : {}),
+                } satisfies AnimationFootContactState);
+            })
+        );
     }
 
     sampleBoneTransform(
@@ -463,3 +687,5 @@ export const createAnimationClips = (
     }
     return clips;
 };
+
+const EMPTY_CONTACTS = Object.freeze([]) as readonly AnimationFootContactState[];

@@ -13,6 +13,7 @@ import {
 import { AnimationRig } from './rig';
 import {
     commitLayerRuntime,
+    collectLayerEvents,
     compileStateMachine,
     createLayerRuntime,
     crossFadeLayerState,
@@ -26,7 +27,9 @@ import {
 import { quatCopy } from './math';
 import type {
     AnimationClipDefinition,
+    AnimationControllerEvent,
     AnimationControllerDefinition,
+    AnimationControllerProfile,
     AnimationCurveBindingDefinition,
     AnimationLayerBlendMode,
     AnimationParameterDefinition,
@@ -44,7 +47,14 @@ interface AnimationCompiledLayer {
 export interface AnimationControllerUpdateResult {
     readonly frame: AnimationFrame;
     readonly rootMotion: AnimationRootMotionDelta;
+    readonly events: readonly AnimationControllerEvent[];
+    readonly profile: AnimationControllerProfile;
 }
+
+const now = (): number =>
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
 
 const inferCurveBindings = (
     clips: readonly AnimationClipDefinition[]
@@ -98,6 +108,15 @@ export class AnimationController<
     private readonly _rootMotionRotation = new Float32Array([0, 0, 0, 1]);
     private readonly _rootMotionConfig: NonNullable<AnimationControllerDefinition['rootMotion']> | null;
     private readonly _rootMotionBoneIndex: number;
+    private _events: readonly AnimationControllerEvent[] = Object.freeze([]);
+    private _profile: AnimationControllerProfile = Object.freeze({
+        evaluationTimeMs: 0,
+        sampledTrackCount: 0,
+        emittedEventCount: 0,
+        rootMotionTranslationMagnitude: 0,
+        rootMotionRotationW: 1,
+        activeLayers: Object.freeze([]),
+    });
 
     constructor(definition: AnimationControllerDefinition<TParameters>) {
         this.rig = new AnimationRig(definition.rig);
@@ -164,7 +183,16 @@ export class AnimationController<
         };
     }
 
+    get events(): readonly AnimationControllerEvent[] {
+        return this._events;
+    }
+
+    get profile(): AnimationControllerProfile {
+        return this._profile;
+    }
+
     update(deltaSeconds: number): AnimationControllerUpdateResult {
+        const startTime = now();
         for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
             updateLayerRuntime(
                 this._layers[layerIndex]!.machine,
@@ -177,14 +205,19 @@ export class AnimationController<
         for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
             commitLayerRuntime(this._layerRuntimes[layerIndex]!);
         }
+        this._updateProfile(now() - startTime);
         return {
             frame: this.currentFrame,
             rootMotion: this.rootMotion,
+            events: this.events,
+            profile: this.profile,
         };
     }
 
     evaluate(): AnimationFrame {
+        const startTime = now();
         this._composeCurrentFrame(false);
+        this._updateProfile(now() - startTime);
         return this.currentFrame;
     }
 
@@ -241,6 +274,7 @@ export class AnimationController<
         this.currentFrame.reset(this.rig, this._restFrame.curves.values);
         this._rootMotionTranslation.fill(0);
         quatCopy(this._rootMotionRotation, 0, [0, 0, 0, 1], 0);
+        const events: AnimationControllerEvent[] = [];
 
         for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
             const layer = this._layers[layerIndex]!;
@@ -306,6 +340,17 @@ export class AnimationController<
                     this._rootMotionRotation
                 );
             }
+
+            if (updateRootMotion) {
+                collectLayerEvents(
+                    layer.machine,
+                    runtime,
+                    this._evaluationContext,
+                    layer.id,
+                    layerWeight,
+                    events
+                );
+            }
         }
 
         if (this._rootMotionConfig && this._rootMotionBoneIndex >= 0) {
@@ -337,5 +382,94 @@ export class AnimationController<
                 quatCopy(this._rootMotionRotation, 0, [0, 0, 0, 1], 0);
             }
         }
+
+        this._events = updateRootMotion
+            ? Object.freeze(
+                  [...events].sort(
+                      (left, right) =>
+                          left.time - right.time ||
+                          left.layerId.localeCompare(right.layerId) ||
+                          left.stateId.localeCompare(right.stateId)
+                  )
+              )
+            : Object.freeze([]);
+    }
+
+    private _countMotionTracks(motion: AnimationCompiledStateMachine['states'][number]['motion']): number {
+        switch (motion.kind) {
+            case 'clip':
+                return (
+                    motion.clip.translationTracks.length +
+                    motion.clip.rotationTracks.length +
+                    motion.clip.scaleTracks.length +
+                    motion.clip.curveTracks.length
+                );
+            case 'blend1d':
+            case 'blend2d':
+            case 'direct':
+                return motion.children.reduce(
+                    (sum, child) => sum + this._countMotionTracks(child.motion),
+                    0
+                );
+            case 'additive':
+                return this._countMotionTracks(motion.base) + this._countMotionTracks(motion.additive);
+            default:
+                return 0;
+        }
+    }
+
+    private _updateProfile(evaluationTimeMs: number): void {
+        const activeLayers = this._layers.map((layer, index) => {
+            const runtime = this._layerRuntimes[index]!;
+            if (!runtime.transition) {
+                const state = layer.machine.states[runtime.currentStateIndex]!;
+                return Object.freeze({
+                    layerId: layer.id,
+                    stateId: state.id,
+                    normalizedTime: runtime.currentNormalizedTime,
+                    weight: this._layerWeights[index] ?? 1,
+                    transitioning: false,
+                });
+            }
+
+            const sourceState = layer.machine.states[runtime.transition.sourceStateIndex]!;
+            const targetState = layer.machine.states[runtime.transition.targetStateIndex]!;
+            return Object.freeze({
+                layerId: layer.id,
+                stateId: `${sourceState.id}->${targetState.id}`,
+                normalizedTime: runtime.transition.targetNormalizedTime,
+                weight: this._layerWeights[index] ?? 1,
+                transitioning: true,
+                transitionProgress: runtime.transition.progress,
+            });
+        });
+
+        const sampledTrackCount = this._layers.reduce((sum, layer, index) => {
+            if ((this._layerWeights[index] ?? 0) <= 0) {
+                return sum;
+            }
+            const runtime = this._layerRuntimes[index]!;
+            if (!runtime.transition) {
+                return sum + this._countMotionTracks(layer.machine.states[runtime.currentStateIndex]!.motion);
+            }
+            return (
+                sum +
+                this._countMotionTracks(layer.machine.states[runtime.transition.sourceStateIndex]!.motion) +
+                this._countMotionTracks(layer.machine.states[runtime.transition.targetStateIndex]!.motion)
+            );
+        }, 0);
+
+        this._profile = Object.freeze({
+            evaluationTimeMs,
+            sampledTrackCount,
+            emittedEventCount: this._events.length,
+            rootMotionTranslationMagnitude: Math.hypot(
+                this._rootMotionTranslation[0],
+                this._rootMotionTranslation[1],
+                this._rootMotionTranslation[2]
+            ),
+            rootMotionRotationW: this._rootMotionRotation[3] ?? 1,
+            activeLayers: Object.freeze(activeLayers),
+        });
     }
 }

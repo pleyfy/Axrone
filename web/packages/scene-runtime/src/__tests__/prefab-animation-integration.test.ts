@@ -127,6 +127,7 @@ const createPrefabHarness = () => {
     return {
         actors,
         lifecycle,
+        world,
     };
 };
 
@@ -294,5 +295,78 @@ describe('scene-runtime prefab animation integration', () => {
         expect(tip?.requireComponent(Transform).worldPosition.x).toBeCloseTo(1, 3);
         expect(tip?.requireComponent(Transform).worldPosition.y).toBeCloseTo(1, 3);
         expect(tip?.requireComponent(Transform).worldPosition.z).toBeCloseTo(0, 3);
+    });
+
+    it('emits animation notify events and exposes controller profile debug info', () => {
+        const harness = createPrefabHarness();
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Attack',
+                    duration: 1,
+                    events: [
+                        {
+                            id: 'swing',
+                            name: 'attack:swing',
+                            time: 0.5,
+                            payload: { damage: 18 },
+                            tags: ['combat'],
+                        },
+                    ],
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 2, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Attack',
+            playOnStart: true,
+            playing: true,
+            loop: true,
+            speed: 1,
+            time: 0,
+        });
+        const received: Record<string, unknown>[] = [];
+        const unsubscribe = harness.world.on('animation:notify', (event) => {
+            received.push(event as Record<string, unknown>);
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const animator = root?.getComponent(Animator) ?? null;
+
+        harness.lifecycle.update(750);
+
+        expect(received).toEqual([
+            expect.objectContaining({
+                clipId: 'Attack',
+                layerId: 'base',
+                stateId: 'Attack',
+                name: 'attack:swing',
+                id: 'swing',
+                payload: { damage: 18 },
+                tags: ['combat'],
+            }),
+        ]);
+        expect(animator?.getDebugInfo()).toEqual(
+            expect.objectContaining({
+                clipId: 'Attack',
+                profile: expect.objectContaining({
+                    emittedEventCount: 1,
+                }),
+                pendingEvents: [
+                    expect.objectContaining({
+                        clipId: 'Attack',
+                        name: 'attack:swing',
+                    }),
+                ],
+            })
+        );
+
+        unsubscribe();
     });
 });

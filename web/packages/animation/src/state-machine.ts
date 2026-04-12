@@ -1,4 +1,5 @@
 import { compileMotion, evaluateMotion, extractMotionRootDelta, resolveMotionDuration, type AnimationCompiledMotion, type AnimationMotionEvaluationContext } from './blend-tree';
+import { collectMotionEvents } from './blend-tree';
 import { AnimationStateMachineError, AnimationValidationError } from './errors';
 import { AnimationParameterStore } from './parameters';
 import { blendFrame, type AnimationFrame } from './pose';
@@ -8,6 +9,7 @@ import type {
     AnimationConditionDefinition,
     AnimationStateMachineDefinition,
     AnimationTransitionDefinition,
+    AnimationControllerEvent,
 } from './types';
 
 export interface AnimationCompiledTransition {
@@ -461,6 +463,65 @@ export const extractLayerRootDelta = (
     quatSlerp(outRotation, 0, sourceRotation, 0, targetRotation, 0, runtime.transition.progress);
 }
 
+export const collectLayerEvents = (
+    machine: AnimationCompiledStateMachine,
+    runtime: AnimationLayerRuntime,
+    context: AnimationMotionEvaluationContext,
+    layerId: string,
+    layerWeight: number,
+    out: AnimationControllerEvent[] = []
+): readonly AnimationControllerEvent[] => {
+    if (layerWeight <= 0) {
+        return out;
+    }
+
+    if (!runtime.transition) {
+        const state = machine.states[runtime.currentStateIndex]!;
+        return collectMotionEvents(
+            state.motion,
+            runtime.previousNormalizedTime,
+            runtime.currentNormalizedTime,
+            state.loop,
+            context.parameters,
+            layerId,
+            state.id,
+            layerWeight,
+            1,
+            out
+        );
+    }
+
+    const sourceState = machine.states[runtime.transition.sourceStateIndex]!;
+    const targetState = machine.states[runtime.transition.targetStateIndex]!;
+    const sourceWeight = Math.max(0, 1 - runtime.transition.progress);
+    const targetWeight = Math.max(0, runtime.transition.progress);
+
+    collectMotionEvents(
+        sourceState.motion,
+        runtime.transition.previousSourceNormalizedTime,
+        runtime.transition.sourceNormalizedTime,
+        sourceState.loop,
+        context.parameters,
+        layerId,
+        sourceState.id,
+        layerWeight,
+        sourceWeight,
+        out
+    );
+    collectMotionEvents(
+        targetState.motion,
+        runtime.transition.previousTargetNormalizedTime,
+        runtime.transition.targetNormalizedTime,
+        targetState.loop,
+        context.parameters,
+        layerId,
+        targetState.id,
+        layerWeight,
+        targetWeight,
+        out
+    );
+    return out;
+};
 export const commitLayerRuntime = (runtime: AnimationLayerRuntime): void => {
     if (!runtime.transition || !runtime.transition.complete) {
         return;

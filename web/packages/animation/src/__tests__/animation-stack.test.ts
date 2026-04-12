@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { AnimationClip } from '../clip';
 import { AnimationController } from '../controller';
+import { solvePlanarGrounding } from '../grounding';
 import { AnimationIkLayer } from '../ik';
+import { AnimationMotionMatchDatabase } from '../motion-matching';
+import { optimizeAnimationClipDefinition } from '../optimization';
 import { AnimationCurveLayout, AnimationFrame, AnimationPose, AnimationWorldPose } from '../pose';
 import { AnimationRetargeter } from '../retargeting';
 import { AnimationRig } from '../rig';
@@ -226,5 +230,151 @@ describe('Animation stack', () => {
         expect(worldPose.translations[tipOffset]).toBeCloseTo(0, 3);
         expect(worldPose.translations[tipOffset + 1]).toBeCloseTo(1, 3);
         expect(worldPose.translations[tipOffset + 2]).toBeCloseTo(0, 3);
+    });
+
+    it('collects animation notifies and controller profiling data during updates', () => {
+        const controller = new AnimationController({
+            rig: {
+                bones: [{ name: 'hips' }],
+            },
+            clips: [
+                {
+                    id: 'attack',
+                    events: [
+                        {
+                            id: 'swing',
+                            name: 'attack:swing',
+                            time: 0.5,
+                            payload: { damage: 12 },
+                            tags: ['combat'],
+                        },
+                    ],
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [0, 0, 0, 1, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            layers: [
+                {
+                    id: 'base',
+                    stateMachine: {
+                        entryState: 'attack',
+                        states: [
+                            {
+                                id: 'attack',
+                                motion: { kind: 'clip', clipId: 'attack' },
+                                loop: false,
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+
+        const result = controller.update(0.75);
+
+        expect(result.events).toEqual([
+            expect.objectContaining({
+                clipId: 'attack',
+                layerId: 'base',
+                stateId: 'attack',
+                name: 'attack:swing',
+                id: 'swing',
+                payload: { damage: 12 },
+                tags: ['combat'],
+            }),
+        ]);
+        expect(result.profile.emittedEventCount).toBe(1);
+        expect(result.profile.sampledTrackCount).toBe(1);
+        expect(result.profile.activeLayers).toEqual([
+            expect.objectContaining({
+                layerId: 'base',
+                stateId: 'attack',
+                transitioning: false,
+            }),
+        ]);
+    });
+
+    it('supports motion matching, grounding, and clip optimization helpers', () => {
+        const optimized = optimizeAnimationClipDefinition({
+            id: 'stride',
+            tags: ['locomotion'],
+            features: [
+                {
+                    time: 0.5,
+                    trajectoryPosition: [1, 0, 0],
+                    facingDirection: [1, 0, 0],
+                    tags: ['forward'],
+                },
+            ],
+            footContacts: [
+                {
+                    bone: 'foot',
+                    startTime: 0,
+                    endTime: 0.5,
+                    lockTranslationAxes: [true, true, true],
+                },
+            ],
+            compression: {
+                codec: 'keyframe-reduced',
+                positionTolerance: 1e-3,
+            },
+            tracks: [
+                {
+                    target: 'root',
+                    path: 'translation',
+                    times: [0, 0.5, 1],
+                    values: [0, 0, 0, 0.5, 0, 0, 1, 0, 0],
+                },
+            ],
+        });
+        const database = new AnimationMotionMatchDatabase([
+            optimized,
+            {
+                id: 'turn',
+                tags: ['turn'],
+                features: [
+                    {
+                        time: 0.5,
+                        trajectoryPosition: [0, 0, 1],
+                        facingDirection: [0, 0, 1],
+                    },
+                ],
+                tracks: [
+                    {
+                        target: 'root',
+                        path: 'translation',
+                        times: [0, 1],
+                        values: [0, 0, 0, 0, 0, 1],
+                    },
+                ],
+            },
+        ]);
+        const rig = new AnimationRig({
+            bones: [
+                { name: 'root' },
+                { name: 'foot', parent: 'root' },
+            ],
+        });
+        const clip = new AnimationClip(optimized, rig, new AnimationCurveLayout());
+
+        expect(optimized.tracks[0]?.keyframeCount).toBe(2);
+        expect(
+            database.query({
+                desiredTrajectoryPosition: [1, 0, 0],
+                desiredFacingDirection: [1, 0, 0],
+                requiredTags: ['locomotion'],
+            })[0]
+        ).toEqual(
+            expect.objectContaining({
+                clipId: 'stride',
+            })
+        );
+        expect(solvePlanarGrounding(clip, 0.25, { foot: 0.2 }).rootOffset[1]).toBeCloseTo(-0.2, 5);
     });
 });

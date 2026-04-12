@@ -97,10 +97,76 @@ export type AnimationTrackDefinition =
     | AnimationTrackBase<'scale'>
     | AnimationTrackBase<'weights'>;
 
+export interface AnimationClipEventDefinition {
+    readonly id?: string;
+    readonly name: string;
+    readonly time: number;
+    readonly payload?: Readonly<Record<string, unknown>> | null;
+    readonly tags?: readonly string[];
+}
+
+export interface AnimationFootContactDefinition {
+    readonly bone: string;
+    readonly startTime: number;
+    readonly endTime: number;
+    readonly lockTranslationAxes?: readonly [boolean, boolean, boolean];
+    readonly metadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface AnimationMotionFeatureDefinition {
+    readonly time: number;
+    readonly trajectoryPosition?: AnimationVector3Tuple;
+    readonly facingDirection?: AnimationVector3Tuple;
+    readonly tags?: readonly string[];
+    readonly costBias?: number;
+}
+
+export interface AnimationClipCompressionDefinition {
+    readonly codec?: 'none' | 'keyframe-reduced';
+    readonly positionTolerance?: number;
+    readonly rotationToleranceDegrees?: number;
+    readonly scaleTolerance?: number;
+    readonly curveTolerance?: number;
+    readonly preserveStepTracks?: boolean;
+}
+
+export interface AnimationClipStreamingDefinition {
+    readonly mode?: 'resident' | 'streamed';
+    readonly chunkDuration?: number;
+    readonly preloadWindow?: number;
+    readonly priority?: number;
+    readonly sourceUri?: string;
+}
+
 export interface AnimationClipDefinition {
     readonly id: AnimationClipId | string;
     readonly duration?: number;
     readonly tracks: readonly AnimationTrackDefinition[];
+    readonly events?: readonly AnimationClipEventDefinition[];
+    readonly footContacts?: readonly AnimationFootContactDefinition[];
+    readonly tags?: readonly string[];
+    readonly features?: readonly AnimationMotionFeatureDefinition[];
+    readonly compression?: AnimationClipCompressionDefinition;
+    readonly streaming?: AnimationClipStreamingDefinition;
+}
+
+export interface AnimationClipEventOccurrence {
+    readonly clipId: string;
+    readonly id?: string;
+    readonly name: string;
+    readonly time: number;
+    readonly normalizedTime: number;
+    readonly payload?: Readonly<Record<string, unknown>> | null;
+    readonly tags?: readonly string[];
+}
+
+export interface AnimationFootContactState {
+    readonly bone: string;
+    readonly active: boolean;
+    readonly weight: number;
+    readonly normalizedTime: number;
+    readonly lockTranslationAxes?: readonly [boolean, boolean, boolean];
+    readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
 export interface AnimationRootMotionDefinition {
@@ -275,7 +341,61 @@ export interface AnimationRootMotionDelta {
     readonly rotation: readonly [number, number, number, number];
 }
 
+export interface AnimationControllerEvent extends AnimationClipEventOccurrence {
+    readonly layerId: string;
+    readonly stateId: string;
+    readonly layerWeight: number;
+    readonly motionWeight: number;
+}
+
+export interface AnimationControllerLayerProfile {
+    readonly layerId: string;
+    readonly stateId: string;
+    readonly normalizedTime: number;
+    readonly weight: number;
+    readonly transitioning: boolean;
+    readonly transitionProgress?: number;
+}
+
+export interface AnimationControllerProfile {
+    readonly evaluationTimeMs: number;
+    readonly sampledTrackCount: number;
+    readonly emittedEventCount: number;
+    readonly rootMotionTranslationMagnitude: number;
+    readonly rootMotionRotationW: number;
+    readonly activeLayers: readonly AnimationControllerLayerProfile[];
+}
+
 export interface AnimationIkTarget {
     readonly position: AnimationVector3Tuple;
     readonly rotation?: AnimationQuaternionTuple;
+}
+
+export interface AnimationMotionMatchQuery {
+    readonly requiredTags?: readonly string[];
+    readonly excludedTags?: readonly string[];
+    readonly desiredTrajectoryPosition?: AnimationVector3Tuple;
+    readonly desiredFacingDirection?: AnimationVector3Tuple;
+    readonly currentClipId?: string | null;
+    readonly continuityBias?: number;
+    readonly maxResults?: number;
+}
+
+export interface AnimationMotionMatchResult {
+    readonly clipId: string;
+    readonly time: number;
+    readonly score: number;
+    readonly tags: readonly string[];
+}
+
+export interface AnimationGroundingContactResult {
+    readonly bone: string;
+    readonly weight: number;
+    readonly groundOffset: number;
+    readonly lockTranslationAxes?: readonly [boolean, boolean, boolean];
+}
+
+export interface AnimationGroundingResult {
+    readonly rootOffset: AnimationVector3Tuple;
+    readonly contacts: readonly AnimationGroundingContactResult[];
 }

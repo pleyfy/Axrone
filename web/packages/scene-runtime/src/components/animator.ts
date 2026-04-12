@@ -1,9 +1,15 @@
 import {
     AnimationController,
     type AnimationClipDefinition,
+    type AnimationControllerEvent,
+    type AnimationClipEventDefinition,
+    type AnimationClipStreamingDefinition,
     type AnimationFrame,
+    type AnimationFootContactDefinition,
     type AnimationLayerDefinition,
+    type AnimationMotionFeatureDefinition,
     type AnimationParameterDefinition,
+    type AnimationClipCompressionDefinition,
     type AnimationRootMotionDefinition,
     type AnimationRootMotionDelta,
     type AnimationTrackDefinition,
@@ -31,6 +37,12 @@ export interface AnimatorClipConfig {
     readonly id: string;
     readonly duration?: number;
     readonly tracks: readonly AnimatorTrackConfig[];
+    readonly events?: readonly AnimationClipEventDefinition[];
+    readonly footContacts?: readonly AnimationFootContactDefinition[];
+    readonly tags?: readonly string[];
+    readonly features?: readonly AnimationMotionFeatureDefinition[];
+    readonly compression?: AnimationClipCompressionDefinition;
+    readonly streaming?: AnimationClipStreamingDefinition;
 }
 
 export interface AnimatorConfig {
@@ -87,6 +99,14 @@ const normalizeClipDefinitions = (
                 Object.freeze({
                     id: clip.id,
                     duration: clip.duration,
+                    ...(Array.isArray(clip.events) ? { events: cloneSerializable(clip.events) } : {}),
+                    ...(Array.isArray(clip.footContacts)
+                        ? { footContacts: cloneSerializable(clip.footContacts) }
+                        : {}),
+                    ...(Array.isArray(clip.tags) ? { tags: [...clip.tags] } : {}),
+                    ...(Array.isArray(clip.features) ? { features: cloneSerializable(clip.features) } : {}),
+                    ...(clip.compression ? { compression: cloneSerializable(clip.compression) } : {}),
+                    ...(clip.streaming ? { streaming: cloneSerializable(clip.streaming) } : {}),
                     tracks: Object.freeze(
                         clip.tracks
                             .map((track) => toTrackDefinition(track))
@@ -332,6 +352,7 @@ export class Animator extends Component {
         this._time += deltaSeconds;
         this._applyFrame(result.frame);
         this._applyRootMotion(result.rootMotion);
+        this._emitAnimationEvents(result.events);
     }
 
     override serialize(): Record<string, unknown> {
@@ -339,6 +360,12 @@ export class Animator extends Component {
             clips: this._clipDefinitions.map((clip) => ({
                 id: clip.id,
                 duration: clip.duration,
+                ...(clip.events ? { events: cloneSerializable(clip.events) } : {}),
+                ...(clip.footContacts ? { footContacts: cloneSerializable(clip.footContacts) } : {}),
+                ...(clip.tags ? { tags: [...clip.tags] } : {}),
+                ...(clip.features ? { features: cloneSerializable(clip.features) } : {}),
+                ...(clip.compression ? { compression: cloneSerializable(clip.compression) } : {}),
+                ...(clip.streaming ? { streaming: cloneSerializable(clip.streaming) } : {}),
                 tracks: clip.tracks.map((track) => ({
                     targetNodeId: track.target,
                     path: track.path,
@@ -359,6 +386,19 @@ export class Animator extends Component {
             loop: this._loop,
             speed: this._speed,
             time: this._time,
+        };
+    }
+
+    override getDebugInfo(): Record<string, any> {
+        const controller = this._ensureController();
+        return {
+            clipId: this._currentClipId,
+            playing: this._playing,
+            loop: this._loop,
+            speed: this._speed,
+            time: this._time,
+            profile: controller?.profile ?? null,
+            pendingEvents: controller?.events ?? [],
         };
     }
 
@@ -501,6 +541,35 @@ export class Animator extends Component {
                 },
             } satisfies AnimationLayerDefinition),
         ]);
+    }
+
+    private _emitAnimationEvents(events: readonly AnimationControllerEvent[]): void {
+        if (events.length === 0) {
+            return;
+        }
+        const world = this.world as
+            | {
+                  emitSync?: (event: string, data: Record<string, unknown>) => boolean;
+              }
+            | undefined;
+        for (let index = 0; index < events.length; index += 1) {
+            const event = events[index]!;
+            world?.emitSync?.('animation:notify', {
+                actorId: this.actor?.id,
+                entity: this.entity,
+                clipId: event.clipId,
+                layerId: event.layerId,
+                stateId: event.stateId,
+                name: event.name,
+                time: event.time,
+                normalizedTime: event.normalizedTime,
+                motionWeight: event.motionWeight,
+                layerWeight: event.layerWeight,
+                ...(event.id ? { id: event.id } : {}),
+                ...(event.payload !== undefined ? { payload: event.payload } : {}),
+                ...(event.tags ? { tags: event.tags } : {}),
+            });
+        }
     }
 
     private _rebuildTargetMap(instanceId: string | null): void {
