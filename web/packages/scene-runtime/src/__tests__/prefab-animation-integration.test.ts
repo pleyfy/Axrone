@@ -1,5 +1,9 @@
 import { World, Transform } from '@axrone/ecs-runtime';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import {
+    bindAnimationStreamingBridge,
+    createFetchAnimationStreamingResolver,
+} from '../animation-streaming-bridge';
 import { SceneActorLifecycleRunner } from '../actor-lifecycle-runner';
 import { SceneActorRuntime } from '../scene-actor-runtime';
 import { createSceneRegistry } from '../scene-registry';
@@ -439,5 +443,166 @@ describe('scene-runtime prefab animation integration', () => {
         expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
 
         unsubscribe();
+    });
+
+    it('bridges streamed animation requests through async chunk resolvers', async () => {
+        const harness = createPrefabHarness();
+        const loaded: Record<string, unknown>[] = [];
+        const received: Record<string, unknown>[] = [];
+        const unsubscribe = harness.world.on('animation:streaming-loaded', (event) => {
+            received.push(event as Record<string, unknown>);
+        });
+        const bridge = bindAnimationStreamingBridge(harness.world, {
+            resolver: async (request) => ({
+                bytes: new Uint8Array([1, 2, 3, 4]),
+                mimeType: request.mimeType ?? 'application/octet-stream',
+            }),
+            onChunkLoaded: async (chunk) => {
+                loaded.push({
+                    clipId: chunk.request.clipId,
+                    chunkId: chunk.request.chunkId,
+                    byteLength: chunk.bytes.byteLength,
+                });
+            },
+        });
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Walk',
+                    duration: 1,
+                    streaming: {
+                        mode: 'streamed',
+                        sourceUri: 'clips/walk.anim',
+                        chunkDuration: 1,
+                        preloadWindow: 0.25,
+                    },
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Walk',
+            playOnStart: true,
+            playing: true,
+            loop: false,
+            speed: 1,
+            time: 0,
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const hip = actors.find((actor) => actor.name === 'Hip');
+
+        harness.lifecycle.update(16);
+        await bridge.waitForIdle();
+        harness.lifecycle.update(500);
+
+        expect(loaded).toEqual([
+            {
+                clipId: 'Walk',
+                chunkId: 'Walk:virtual:0',
+                byteLength: 4,
+            },
+        ]);
+        expect(received).toEqual([
+            expect.objectContaining({
+                clipId: 'Walk',
+                chunkId: 'Walk:virtual:0',
+                byteLength: 4,
+            }),
+        ]);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
+
+        bridge.dispose();
+        unsubscribe();
+    });
+
+    it('supports fetch-backed animation chunk loading with byte-range catalogs', async () => {
+        const harness = createPrefabHarness();
+        const loadedBytes: Uint8Array[] = [];
+        const fetch = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            headers: {
+                get(name: string) {
+                    return name.toLowerCase() === 'content-type'
+                        ? 'application/octet-stream'
+                        : null;
+                },
+            },
+            async arrayBuffer() {
+                return new Uint8Array([10, 20, 30, 40, 50, 60]).buffer;
+            },
+        }));
+        const bridge = bindAnimationStreamingBridge(harness.world, {
+            resolver: createFetchAnimationStreamingResolver({ fetch }),
+            onChunkLoaded: (chunk) => {
+                loadedBytes.push(chunk.bytes);
+            },
+        });
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Walk',
+                    duration: 1,
+                    streaming: {
+                        mode: 'streamed',
+                        sourceUri: 'https://cdn.local/clips/walk.anim',
+                        preloadWindow: 0.25,
+                        catalog: {
+                            id: 'walk-catalog',
+                            chunks: [
+                                {
+                                    id: 'walk:chunk:0',
+                                    uri: 'https://cdn.local/clips/walk.anim',
+                                    startTime: 0,
+                                    endTime: 1,
+                                    byteOffset: 2,
+                                    byteLength: 3,
+                                },
+                            ],
+                        },
+                    },
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Walk',
+            playOnStart: true,
+            playing: true,
+            loop: false,
+            speed: 1,
+            time: 0,
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const hip = actors.find((actor) => actor.name === 'Hip');
+
+        harness.lifecycle.update(16);
+        await bridge.waitForIdle();
+        harness.lifecycle.update(500);
+
+        expect(fetch).toHaveBeenCalledWith(
+            'https://cdn.local/clips/walk.anim',
+            expect.objectContaining({
+                headers: expect.objectContaining({
+                    Range: 'bytes=2-4',
+                }),
+            })
+        );
+        expect(loadedBytes).toEqual([new Uint8Array([30, 40, 50])]);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
+
+        bridge.dispose();
     });
 });

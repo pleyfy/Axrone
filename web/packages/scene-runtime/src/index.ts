@@ -56,6 +56,22 @@ export {
 } from './scene-profile';
 export type { SceneActorRuntimeOptions } from './scene-actor-runtime';
 export { SceneActorRuntime } from './scene-actor-runtime';
+export type {
+	AnimationStreamingBridgeOptions,
+	AnimationStreamingBridgeWorld,
+	AnimationStreamingChunkResolveResult,
+	AnimationStreamingChunkResolver,
+	AnimationStreamingRequestEvent,
+	AnimationStreamingResolveContext,
+	FailedAnimationStreamingChunk,
+	FetchAnimationStreamingResolverOptions,
+	ResolvedAnimationStreamingChunk,
+} from './animation-streaming-bridge';
+export {
+	AnimationStreamingBridge,
+	bindAnimationStreamingBridge,
+	createFetchAnimationStreamingResolver,
+} from './animation-streaming-bridge';
 export {
 	DEFAULT_SCENE_AMBIENT_LIGHT,
 	DEFAULT_SCENE_CLEAR_COLOR,
