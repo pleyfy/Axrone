@@ -1,14 +1,16 @@
-import type { Actor } from '@axrone/ecs-runtime';
+import { Transform, type Actor } from '@axrone/ecs-runtime';
 import {
     RENDER_2D_SPRITE_VERTEX_STRIDE,
     Render2DSpriteBatchBuilder,
+    type Render2DRectLike,
     type Render2DSpriteBatchBuildResult,
     type Render2DSpriteBatchRange,
     type Render2DSpriteSource,
     type Render2DSpriteSubmission,
 } from '@axrone/render-2d';
-import { SceneMeshError } from './errors';
 import type { SceneCameraFrameState } from './camera-frame-state';
+import { SpriteMask } from './components/sprite-mask';
+import { SceneMeshError } from './errors';
 import type { SceneMaterialTextureUniformSetter } from './material-texture-binder';
 import type { SceneRenderFrameState } from './render-frame-state';
 import type { SceneRenderPassResource } from './render-pass-registry';
@@ -16,9 +18,95 @@ import type { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneResourceRuntime } from './scene-resource-runtime';
 import { SceneShaderFactory } from './scene-shader-factory';
 import type { SceneShaderResource } from './shader-registry';
-import type { SceneUniformWriteTarget } from './uniform-writer';
 import { createSprite2DShaderDefinition } from './sprite-2d-shader';
 import { SceneSpriteRenderItemCollector } from './sprite-render-item-collector';
+import type { SceneUniformWriteTarget } from './uniform-writer';
+
+const MIN_CLIP_W = 1e-6;
+
+const areClipRectsEqual = (
+    left: Render2DRectLike | null,
+    right: Render2DRectLike | null
+): boolean => {
+    if (!left || !right) {
+        return left == null && right == null;
+    }
+
+    return (
+        left.x === right.x &&
+        left.y === right.y &&
+        left.width === right.width &&
+        left.height === right.height
+    );
+};
+
+const intersectClipRects = (
+    left: Render2DRectLike,
+    right: Render2DRectLike
+): Render2DRectLike | null => {
+    const x = Math.max(left.x, right.x);
+    const y = Math.max(left.y, right.y);
+    const maxX = Math.min(left.x + left.width, right.x + right.width);
+    const maxY = Math.min(left.y + left.height, right.y + right.height);
+    const width = maxX - x;
+    const height = maxY - y;
+
+    if (width <= 0 || height <= 0) {
+        return null;
+    }
+
+    return { x, y, width, height };
+};
+
+const transformWorldPoint = (
+    matrix: ArrayLike<number>,
+    localX: number,
+    localY: number,
+    out: Float32Array
+): Float32Array => {
+    out[0] = (matrix[0] ?? 0) * localX + (matrix[1] ?? 0) * localY + (matrix[3] ?? 0);
+    out[1] = (matrix[4] ?? 0) * localX + (matrix[5] ?? 0) * localY + (matrix[7] ?? 0);
+    out[2] = (matrix[8] ?? 0) * localX + (matrix[9] ?? 0) * localY + (matrix[11] ?? 0);
+    return out;
+};
+
+const projectWorldPoint = (
+    matrix: ArrayLike<number>,
+    worldX: number,
+    worldY: number,
+    worldZ: number,
+    viewportWidth: number,
+    viewportHeight: number,
+    out: Float32Array
+): Float32Array => {
+    const clipX =
+        (matrix[0] ?? 0) * worldX +
+        (matrix[1] ?? 0) * worldY +
+        (matrix[2] ?? 0) * worldZ +
+        (matrix[3] ?? 0);
+    const clipY =
+        (matrix[4] ?? 0) * worldX +
+        (matrix[5] ?? 0) * worldY +
+        (matrix[6] ?? 0) * worldZ +
+        (matrix[7] ?? 0);
+    const clipW =
+        (matrix[12] ?? 0) * worldX +
+        (matrix[13] ?? 0) * worldY +
+        (matrix[14] ?? 0) * worldZ +
+        (matrix[15] ?? 0);
+
+    if (!Number.isFinite(clipW) || Math.abs(clipW) <= MIN_CLIP_W) {
+        out[0] = NaN;
+        out[1] = NaN;
+        return out;
+    }
+
+    const ndcX = clipX / clipW;
+    const ndcY = clipY / clipW;
+    out[0] = (ndcX * 0.5 + 0.5) * viewportWidth;
+    out[1] = (ndcY * 0.5 + 0.5) * viewportHeight;
+    return out;
+};
 
 export interface SceneSpriteBatchRuntimeOptions {
     readonly gl: WebGL2RenderingContext;
@@ -37,6 +125,8 @@ export interface SceneSpriteBatchRuntimeRenderParams {
     readonly cameraFrame: SceneCameraFrameState;
     readonly renderPass: SceneRenderPassResource;
     readonly frameState: SceneRenderFrameState;
+    readonly viewportWidth: number;
+    readonly viewportHeight: number;
 }
 
 export class SceneSpriteBatchRuntime {
@@ -44,10 +134,14 @@ export class SceneSpriteBatchRuntime {
     private readonly _builder = new Render2DSpriteBatchBuilder();
     private readonly _shaderFactory: SceneShaderFactory;
     private readonly _submissions: Render2DSpriteSubmission[] = [];
+    private readonly _worldPointScratch = new Float32Array(3);
+    private readonly _screenPointScratch = new Float32Array(2);
     private _defaultShader: SceneShaderResource | null = null;
     private _vertexArray: WebGLVertexArrayObject | null = null;
     private _vertexBuffer: WebGLBuffer | null = null;
     private _indexBuffer: WebGLBuffer | null = null;
+    private _scissorEnabled = false;
+    private _activeClipRect: Render2DRectLike | null = null;
 
     constructor(private readonly _options: SceneSpriteBatchRuntimeOptions) {
         this._shaderFactory = new SceneShaderFactory({ gl: _options.gl });
@@ -68,6 +162,16 @@ export class SceneSpriteBatchRuntime {
                 continue;
             }
 
+            const clipRect = this._resolveMaskClipRect(
+                item.actor,
+                params.cameraFrame,
+                params.viewportWidth,
+                params.viewportHeight
+            );
+            if (clipRect === null) {
+                continue;
+            }
+
             params.frameState.markActiveRenderer(item.renderer.id);
             this._submissions.push({
                 source,
@@ -79,6 +183,16 @@ export class SceneSpriteBatchRuntime {
                 anchor: item.renderer.anchor,
                 uvRect: item.renderer.uvRect,
                 color: item.renderer.color,
+                clipRect: clipRect ?? undefined,
+                slice: item.renderer.sliceBorder
+                    ? {
+                          sourceSize: {
+                              width: item.renderer.sourceSize.x,
+                              height: item.renderer.sourceSize.y,
+                          },
+                          border: item.renderer.sliceBorder,
+                      }
+                    : undefined,
                 visible: item.renderer.visible,
                 flipX: item.renderer.flipX,
                 flipY: item.renderer.flipY,
@@ -103,9 +217,11 @@ export class SceneSpriteBatchRuntime {
 
         this._options.gl.bindVertexArray(this._vertexArray);
         for (const batch of buildResult.batches) {
+            this._applyClipRect(batch.key.clipRect, params.viewportWidth, params.viewportHeight);
             this._drawBatch(batch, indexType, params);
         }
         this._options.gl.bindVertexArray(null);
+        this._resetClipRect();
     }
 
     clear(): void {
@@ -130,6 +246,7 @@ export class SceneSpriteBatchRuntime {
         }
 
         this._submissions.length = 0;
+        this._resetClipRect();
     }
 
     private _resolveSource(
@@ -330,6 +447,183 @@ export class SceneSpriteBatchRuntime {
         this._options.gl.bindSampler(0, null);
         this._options.gl.activeTexture(this._options.gl.TEXTURE0);
         this._options.gl.bindTexture(this._options.gl.TEXTURE_2D, null);
+    }
+
+    private _resolveMaskClipRect(
+        actor: Actor,
+        cameraFrame: SceneCameraFrameState,
+        viewportWidth: number,
+        viewportHeight: number
+    ): Render2DRectLike | null | undefined {
+        let clipRect: Render2DRectLike | undefined;
+        let current: Actor | undefined = actor;
+
+        while (current) {
+            const mask = current.getComponent(SpriteMask);
+            if (mask?.enabled) {
+                const transform = current.getComponent(Transform);
+                if (!transform) {
+                    return null;
+                }
+
+                const maskClipRect = this._projectMaskClipRect(
+                    transform,
+                    mask,
+                    cameraFrame,
+                    viewportWidth,
+                    viewportHeight
+                );
+                if (!maskClipRect) {
+                    return null;
+                }
+
+                const nextClipRect = clipRect
+                    ? intersectClipRects(clipRect, maskClipRect)
+                    : maskClipRect;
+                if (!nextClipRect) {
+                    return null;
+                }
+
+                clipRect = nextClipRect;
+            }
+
+            current = current.parent;
+        }
+
+        return clipRect;
+    }
+
+    private _projectMaskClipRect(
+        transform: Transform,
+        mask: SpriteMask,
+        cameraFrame: SceneCameraFrameState,
+        viewportWidth: number,
+        viewportHeight: number
+    ): Render2DRectLike | null {
+        if (mask.size.x <= 0 || mask.size.y <= 0) {
+            return null;
+        }
+
+        const worldMatrix = transform.worldMatrix.data;
+        const viewProjectionMatrix = cameraFrame.viewProjectionMatrix.data;
+        const minX = -mask.anchor.x * mask.size.x;
+        const minY = -mask.anchor.y * mask.size.y;
+        const maxX = minX + mask.size.x;
+        const maxY = minY + mask.size.y;
+
+        let screenMinX = Number.POSITIVE_INFINITY;
+        let screenMinY = Number.POSITIVE_INFINITY;
+        let screenMaxX = Number.NEGATIVE_INFINITY;
+        let screenMaxY = Number.NEGATIVE_INFINITY;
+
+        const corners = [
+            [minX, minY],
+            [maxX, minY],
+            [maxX, maxY],
+            [minX, maxY],
+        ] as const;
+
+        for (let index = 0; index < corners.length; index += 1) {
+            const corner = corners[index]!;
+            const worldPoint = transformWorldPoint(
+                worldMatrix,
+                corner[0],
+                corner[1],
+                this._worldPointScratch
+            );
+            const screenPoint = projectWorldPoint(
+                viewProjectionMatrix,
+                worldPoint[0]!,
+                worldPoint[1]!,
+                worldPoint[2]!,
+                viewportWidth,
+                viewportHeight,
+                this._screenPointScratch
+            );
+
+            if (!Number.isFinite(screenPoint[0]) || !Number.isFinite(screenPoint[1])) {
+                return null;
+            }
+
+            screenMinX = Math.min(screenMinX, screenPoint[0]!);
+            screenMinY = Math.min(screenMinY, screenPoint[1]!);
+            screenMaxX = Math.max(screenMaxX, screenPoint[0]!);
+            screenMaxY = Math.max(screenMaxY, screenPoint[1]!);
+        }
+
+        const clipX = Math.max(0, Math.floor(screenMinX));
+        const clipY = Math.max(0, Math.floor(screenMinY));
+        const clipMaxX = Math.min(viewportWidth, Math.ceil(screenMaxX));
+        const clipMaxY = Math.min(viewportHeight, Math.ceil(screenMaxY));
+        const width = clipMaxX - clipX;
+        const height = clipMaxY - clipY;
+
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+
+        return { x: clipX, y: clipY, width, height };
+    }
+
+    private _applyClipRect(
+        clipRect: Render2DRectLike | null,
+        viewportWidth: number,
+        viewportHeight: number
+    ): void {
+        if (!clipRect) {
+            if (this._scissorEnabled) {
+                this._options.gl.disable?.(this._options.gl.SCISSOR_TEST);
+                this._scissorEnabled = false;
+                this._activeClipRect = null;
+            }
+            return;
+        }
+
+        if (!this._scissorEnabled) {
+            this._options.gl.enable?.(this._options.gl.SCISSOR_TEST);
+            this._scissorEnabled = true;
+        }
+
+        const clampedClipRect = {
+            x: Math.max(0, Math.floor(clipRect.x)),
+            y: Math.max(0, Math.floor(clipRect.y)),
+            width: 0,
+            height: 0,
+        };
+        const clipMaxX = Math.min(viewportWidth, Math.ceil(clipRect.x + clipRect.width));
+        const clipMaxY = Math.min(viewportHeight, Math.ceil(clipRect.y + clipRect.height));
+        clampedClipRect.width = Math.max(0, clipMaxX - clampedClipRect.x);
+        clampedClipRect.height = Math.max(0, clipMaxY - clampedClipRect.y);
+
+        if (clampedClipRect.width === 0 || clampedClipRect.height === 0) {
+            if (this._scissorEnabled) {
+                this._options.gl.disable?.(this._options.gl.SCISSOR_TEST);
+                this._scissorEnabled = false;
+            }
+            this._activeClipRect = null;
+            return;
+        }
+
+        if (areClipRectsEqual(this._activeClipRect, clampedClipRect)) {
+            return;
+        }
+
+        this._options.gl.scissor?.(
+            clampedClipRect.x,
+            clampedClipRect.y,
+            clampedClipRect.width,
+            clampedClipRect.height
+        );
+        this._activeClipRect = clampedClipRect;
+    }
+
+    private _resetClipRect(): void {
+        if (this._scissorEnabled) {
+            this._options.gl.disable?.(this._options.gl.SCISSOR_TEST);
+            this._scissorEnabled = false;
+        }
+
+        this._activeClipRect = null;
     }
 
     private _isSpriteShader(shader: SceneShaderResource): boolean {

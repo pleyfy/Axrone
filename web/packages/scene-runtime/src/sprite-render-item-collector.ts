@@ -3,6 +3,7 @@ import { Transform } from '@axrone/ecs-runtime';
 import { SpriteRenderer } from './components/sprite-renderer';
 
 export interface SceneSpriteRenderItem {
+    actor: Actor;
     transform: Transform;
     renderer: SpriteRenderer;
     sequence: number;
@@ -35,11 +36,13 @@ export class SceneSpriteRenderItemCollector {
             }
 
             const item = this._items[count] ?? {
+                actor,
                 transform,
                 renderer,
                 sequence: count,
                 depth: transform.worldPosition.z,
             };
+            item.actor = actor;
             item.transform = transform;
             item.renderer = renderer;
             item.sequence = count;

@@ -327,6 +327,8 @@ export type SceneBuiltInRegistry = {
     readonly Animator: typeof Animator;
     readonly Camera: typeof Camera;
     readonly SpriteRenderer: typeof SpriteRenderer;
+    readonly SpriteAnimator: typeof import('./components/sprite-animator').SpriteAnimator;
+    readonly SpriteMask: typeof import('./components/sprite-mask').SpriteMask;
     readonly MeshRenderer: typeof MeshRenderer;
     readonly DirectionalLight: typeof DirectionalLight;
     readonly PointLight: typeof PointLight;

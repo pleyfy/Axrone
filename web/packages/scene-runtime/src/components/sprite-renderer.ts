@@ -1,7 +1,7 @@
+import type { Asset2DBorderLike, SpriteAtlasFrame } from '@axrone/asset-2d';
+import { Component, script } from '@axrone/ecs-runtime';
 import { Color, Vec2 } from '@axrone/numeric';
 import type { IColorLike } from '@axrone/numeric';
-import { Component } from '@axrone/ecs-runtime';
-import { script } from '@axrone/ecs-runtime';
 import type {
     Render2DRectLike,
     Render2DSizeLike,
@@ -19,6 +19,10 @@ export type SpriteRendererSizeInput =
 export type SpriteRendererRectInput =
     | Render2DRectLike
     | readonly [number, number, number, number];
+export type SpriteRendererBorderInput =
+    | Asset2DBorderLike
+    | readonly [number, number, number, number]
+    | null;
 export type SpriteRendererColorInput = Color | Readonly<IColorLike>;
 
 export interface SpriteRendererRectState {
@@ -26,6 +30,20 @@ export interface SpriteRendererRectState {
     y: number;
     width: number;
     height: number;
+}
+
+export interface SpriteRendererBorderState {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+}
+
+export interface SpriteRendererFrameApplyOptions {
+    readonly preserveSize?: boolean;
+    readonly preserveAnchor?: boolean;
+    readonly preserveSourceSize?: boolean;
+    readonly preserveSliceBorder?: boolean;
 }
 
 export interface SpriteRendererConfig {
@@ -36,9 +54,12 @@ export interface SpriteRendererConfig {
     readonly sortingLayer?: number;
     readonly passId?: string;
     readonly size?: SpriteRendererSizeInput;
+    readonly sourceSize?: SpriteRendererSizeInput;
     readonly anchor?: SpriteRendererVec2Input;
     readonly uvRect?: SpriteRendererRectInput;
     readonly color?: SpriteRendererColorInput;
+    readonly sliceBorder?: SpriteRendererBorderInput;
+    readonly frame?: SpriteAtlasFrame | null;
     readonly flipX?: boolean;
     readonly flipY?: boolean;
 }
@@ -115,6 +136,38 @@ const toRect = (
     };
 };
 
+const toBorder = (
+    value: SpriteRendererBorderInput | undefined,
+    fallback: SpriteRendererBorderState | null = null
+): SpriteRendererBorderState | null => {
+    if (value == null) {
+        return fallback
+            ? {
+                  left: fallback.left,
+                  right: fallback.right,
+                  top: fallback.top,
+                  bottom: fallback.bottom,
+              }
+            : null;
+    }
+
+    if (isTuple4(value)) {
+        return {
+            left: Number(value[0] ?? 0),
+            right: Number(value[1] ?? 0),
+            top: Number(value[2] ?? 0),
+            bottom: Number(value[3] ?? 0),
+        };
+    }
+
+    return {
+        left: Number(value.left),
+        right: Number(value.right),
+        top: Number(value.top),
+        bottom: Number(value.bottom),
+    };
+};
+
 @script({
     scriptName: 'SpriteRenderer',
     priority: 100,
@@ -129,9 +182,11 @@ export class SpriteRenderer extends Component {
     private _sortingLayer: number;
     private _passId: string;
     private readonly _size: Vec2;
+    private readonly _sourceSize: Vec2;
     private readonly _anchor: Vec2;
     private readonly _color: Color;
     private readonly _uvRect: SpriteRendererRectState;
+    private _sliceBorder: SpriteRendererBorderState | null;
     private _flipX: boolean;
     private _flipY: boolean;
 
@@ -144,11 +199,22 @@ export class SpriteRenderer extends Component {
         this._sortingLayer = config.sortingLayer ?? 0;
         this._passId = config.passId ?? 'main';
         this._size = toVec2(config.size, 1, 1);
+        this._sourceSize = toVec2(config.sourceSize ?? config.size, this._size.x, this._size.y);
         this._anchor = toVec2(config.anchor, 0.5, 0.5);
         this._color = toColor(config.color);
         this._uvRect = toRect(config.uvRect);
+        this._sliceBorder = toBorder(config.sliceBorder);
         this._flipX = config.flipX ?? false;
         this._flipY = config.flipY ?? false;
+
+        if (config.frame) {
+            this.applyFrame(config.frame, {
+                preserveSize: config.size !== undefined,
+                preserveAnchor: config.anchor !== undefined,
+                preserveSourceSize: config.sourceSize !== undefined,
+                preserveSliceBorder: config.sliceBorder !== undefined,
+            });
+        }
     }
 
     get textureId(): string | null {
@@ -209,6 +275,16 @@ export class SpriteRenderer extends Component {
         this._size.y = next.y;
     }
 
+    get sourceSize(): Vec2 {
+        return this._sourceSize;
+    }
+
+    set sourceSize(value: SpriteRendererSizeInput) {
+        const next = toVec2(value, this._sourceSize.x, this._sourceSize.y);
+        this._sourceSize.x = next.x;
+        this._sourceSize.y = next.y;
+    }
+
     get anchor(): Vec2 {
         return this._anchor;
     }
@@ -243,6 +319,14 @@ export class SpriteRenderer extends Component {
         this._uvRect.height = next.height;
     }
 
+    get sliceBorder(): SpriteRendererBorderState | null {
+        return this._sliceBorder;
+    }
+
+    set sliceBorder(value: SpriteRendererBorderInput) {
+        this._sliceBorder = toBorder(value);
+    }
+
     get flipX(): boolean {
         return this._flipX;
     }
@@ -263,9 +347,19 @@ export class SpriteRenderer extends Component {
         return Boolean(this._materialId || this._textureId);
     }
 
+    get isNineSlice(): boolean {
+        return this._sliceBorder !== null;
+    }
+
     setSize(width: number, height: number): this {
         this._size.x = width;
         this._size.y = height;
+        return this;
+    }
+
+    setSourceSize(width: number, height: number): this {
+        this._sourceSize.x = width;
+        this._sourceSize.y = height;
         return this;
     }
 
@@ -292,6 +386,42 @@ export class SpriteRenderer extends Component {
         return this;
     }
 
+    setSliceBorder(left: number, right: number, top: number, bottom: number): this {
+        this._sliceBorder = { left, right, top, bottom };
+        return this;
+    }
+
+    clearSliceBorder(): this {
+        this._sliceBorder = null;
+        return this;
+    }
+
+    applyFrame(
+        frame: SpriteAtlasFrame,
+        options: SpriteRendererFrameApplyOptions = {}
+    ): this {
+        this._textureId = frame.textureId;
+        this.setUVRect(frame.uvRect.x, frame.uvRect.y, frame.uvRect.width, frame.uvRect.height);
+
+        if (!options.preserveSize) {
+            this.setSize(frame.sourceSize.width, frame.sourceSize.height);
+        }
+
+        if (!options.preserveSourceSize) {
+            this.setSourceSize(frame.sourceSize.width, frame.sourceSize.height);
+        }
+
+        if (!options.preserveAnchor) {
+            this.setAnchor(frame.pivot.x, frame.pivot.y);
+        }
+
+        if (!options.preserveSliceBorder) {
+            this._sliceBorder = toBorder(frame.sliceBorder);
+        }
+
+        return this;
+    }
+
     override serialize(): Record<string, unknown> {
         return {
             textureId: this._textureId,
@@ -301,6 +431,7 @@ export class SpriteRenderer extends Component {
             sortingLayer: this._sortingLayer,
             passId: this._passId,
             size: [this._size.x, this._size.y],
+            sourceSize: [this._sourceSize.x, this._sourceSize.y],
             anchor: [this._anchor.x, this._anchor.y],
             color: [this._color.r, this._color.g, this._color.b, this._color.a],
             uvRect: [
@@ -309,6 +440,14 @@ export class SpriteRenderer extends Component {
                 this._uvRect.width,
                 this._uvRect.height,
             ],
+            sliceBorder: this._sliceBorder
+                ? [
+                      this._sliceBorder.left,
+                      this._sliceBorder.right,
+                      this._sliceBorder.top,
+                      this._sliceBorder.bottom,
+                  ]
+                : null,
             flipX: this._flipX,
             flipY: this._flipY,
         };
@@ -336,6 +475,9 @@ export class SpriteRenderer extends Component {
         if (Array.isArray(data.size) && data.size.length >= 2) {
             this.setSize(Number(data.size[0]), Number(data.size[1]));
         }
+        if (Array.isArray(data.sourceSize) && data.sourceSize.length >= 2) {
+            this.setSourceSize(Number(data.sourceSize[0]), Number(data.sourceSize[1]));
+        }
         if (Array.isArray(data.anchor) && data.anchor.length >= 2) {
             this.setAnchor(Number(data.anchor[0]), Number(data.anchor[1]));
         }
@@ -349,6 +491,18 @@ export class SpriteRenderer extends Component {
                 Number(data.uvRect[2]),
                 Number(data.uvRect[3])
             );
+        }
+        if (data.sliceBorder === null) {
+            this.clearSliceBorder();
+        } else if (Array.isArray(data.sliceBorder) && data.sliceBorder.length >= 4) {
+            this.setSliceBorder(
+                Number(data.sliceBorder[0]),
+                Number(data.sliceBorder[1]),
+                Number(data.sliceBorder[2]),
+                Number(data.sliceBorder[3])
+            );
+        } else if (data.sliceBorder && typeof data.sliceBorder === 'object') {
+            this.sliceBorder = data.sliceBorder as Asset2DBorderLike;
         }
         if (typeof data.flipX === 'boolean') {
             this._flipX = data.flipX;

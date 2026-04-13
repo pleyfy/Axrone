@@ -160,6 +160,8 @@ export class SceneRenderRuntime {
                 cameraFrame,
                 renderPass,
                 frameState: renderFrame,
+                viewportWidth: params.viewportWidth,
+                viewportHeight: params.viewportHeight,
             });
         }
 
