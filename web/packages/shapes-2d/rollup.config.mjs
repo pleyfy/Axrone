@@ -36,4 +36,14 @@ export default [
         inputRelativePath: 'src/mesh.ts',
         outputBasename: 'mesh',
     }),
+    ...createPackageConfig({
+        packageDir,
+        inputRelativePath: 'src/serialization.ts',
+        outputBasename: 'serialization',
+    }),
+    ...createPackageConfig({
+        packageDir,
+        inputRelativePath: 'src/registry.ts',
+        outputBasename: 'registry',
+    }),
 ];

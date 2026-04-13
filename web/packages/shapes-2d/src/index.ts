@@ -33,6 +33,8 @@ export type {
     ShapePaintInput,
     ShapePointInput,
     ShapeMesh2D,
+    ShapeRegistryOptions,
+    ShapeRegistryStats,
     ShapeStroke,
     ShapeStrokeAlignment,
     ShapeStrokeInput,
@@ -42,6 +44,8 @@ export type {
 export {
     PaintValidationError,
     SHAPES_2D_ERROR_CODE,
+    SerializationError,
+    ShapeRegistryError,
     Shapes2DError,
     ShapeValidationError,
 } from './errors';
@@ -91,3 +95,28 @@ export {
     hitTestShape,
     sampleShapePaint,
 } from './queries';
+export type {
+    SerializedCircleShape,
+    SerializedEllipseShape,
+    SerializedLineShape,
+    SerializedLinearGradientPaint,
+    SerializedPaint,
+    SerializedRadialGradientPaint,
+    SerializedRectangleShape,
+    SerializedShape,
+    SerializedSolidPaint,
+    SerializedStroke,
+    SerializedTriangleShape,
+} from './serialization';
+export {
+    createShapeFingerprint,
+    deserializePaint,
+    deserializeShape,
+    deserializeStroke,
+    serializePaint,
+    serializeShape,
+    serializeStroke,
+    stringifyPaint,
+    stringifyShape,
+} from './serialization';
+export { ShapeRegistry } from './registry';

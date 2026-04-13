@@ -1,4 +1,3 @@
-import { hashString } from './common';
 import {
     buildFillMeshInternal,
     buildStrokeMeshInternal,
@@ -8,18 +7,13 @@ import {
     getShapePerimeter,
     getShapeArea,
 } from './geometry';
+import { createShapeFingerprint } from './serialization';
 import type {
     CompiledShape2D,
     Shape2D,
     ShapeCompileOptions,
-    ShapeFingerprint,
     ShapeMesh2D,
 } from './types';
-
-const createShapeFingerprint = <TShape extends Shape2D>(
-    shape: TShape
-): ShapeFingerprint<TShape['kind']> =>
-    `${shape.kind}:${hashString(JSON.stringify(shape))}` as ShapeFingerprint<TShape['kind']>;
 
 export const buildFillMesh = (
     shape: Shape2D,
