@@ -2,6 +2,7 @@ export type { IColorLike, IVec2Like } from '@axrone/numeric';
 export type {
     CircleShape,
     CircleShapeInput,
+    CompiledShape2D,
     EllipseShape,
     EllipseShapeInput,
     GradientColorSpace,
@@ -22,12 +23,16 @@ export type {
     ShapeAppearanceInput,
     ShapeApproximationOptions,
     ShapeBounds,
+    ShapeCompileOptions,
     ShapeColorInput,
     ShapeId,
     ShapeKind,
+    ShapeFingerprint,
+    ShapeHitTarget,
     ShapePaint,
     ShapePaintInput,
     ShapePointInput,
+    ShapeMesh2D,
     ShapeStroke,
     ShapeStrokeAlignment,
     ShapeStrokeInput,
@@ -50,8 +55,13 @@ export {
     createStroke,
     isLinearGradientPaint,
     isRadialGradientPaint,
+    isGradientPaint,
     isShapePaint,
     isSolidPaint,
+    createGradientLookupTable,
+    createPaintFingerprint,
+    modulatePaintAlpha,
+    samplePaint,
 } from './paint';
 export {
     createCircleShape,
@@ -67,3 +77,17 @@ export {
     isTriangleShape,
     matchShape,
 } from './shape';
+export {
+    buildFillMesh,
+    buildStrokeMesh,
+    compileShape,
+} from './mesh';
+export {
+    containsPoint,
+    getShapeArea,
+    getShapeBounds,
+    getShapeCentroid,
+    getShapePerimeter,
+    hitTestShape,
+    sampleShapePaint,
+} from './queries';

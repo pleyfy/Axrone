@@ -33,6 +33,16 @@
             "types": "./dist/shape.d.ts",
             "import": "./dist/shape.mjs",
             "require": "./dist/shape.js"
+        },
+        "./queries": {
+            "types": "./dist/queries.d.ts",
+            "import": "./dist/queries.mjs",
+            "require": "./dist/queries.js"
+        },
+        "./mesh": {
+            "types": "./dist/mesh.d.ts",
+            "import": "./dist/mesh.mjs",
+            "require": "./dist/mesh.js"
         }
     },
     "scripts": {

@@ -26,4 +26,14 @@ export default [
         inputRelativePath: 'src/shape.ts',
         outputBasename: 'shape',
     }),
+    ...createPackageConfig({
+        packageDir,
+        inputRelativePath: 'src/queries.ts',
+        outputBasename: 'queries',
+    }),
+    ...createPackageConfig({
+        packageDir,
+        inputRelativePath: 'src/mesh.ts',
+        outputBasename: 'mesh',
+    }),
 ];
