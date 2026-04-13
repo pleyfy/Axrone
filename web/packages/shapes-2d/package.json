@@ -1,0 +1,46 @@
+{
+    "name": "@axrone/shapes-2d",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./types": {
+            "types": "./dist/types.d.ts",
+            "import": "./dist/types.mjs",
+            "require": "./dist/types.js"
+        },
+        "./errors": {
+            "types": "./dist/errors.d.ts",
+            "import": "./dist/errors.mjs",
+            "require": "./dist/errors.js"
+        },
+        "./paint": {
+            "types": "./dist/paint.d.ts",
+            "import": "./dist/paint.mjs",
+            "require": "./dist/paint.js"
+        },
+        "./shape": {
+            "types": "./dist/shape.d.ts",
+            "import": "./dist/shape.mjs",
+            "require": "./dist/shape.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@axrone/numeric": "^0.0.1"
+    }
+}
