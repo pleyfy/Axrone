@@ -24,6 +24,7 @@
         "@axrone/animation": "^0.1.0",
         "@axrone/asset-core": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
+        "@axrone/render-core": "^0.1.0",
         "@axrone/render-webgl2": "^0.1.0",
         "@loaders.gl/textures": "^4.4.1",
         "draco3dgltf": "^1.5.7",

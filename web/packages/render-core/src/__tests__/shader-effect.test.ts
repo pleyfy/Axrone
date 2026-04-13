@@ -22,11 +22,21 @@ const createEffect = (): RenderShaderEffectDefinition => ({
             scope: 'camera',
         },
         {
+            name: 'u_LightColors',
+            type: 'vec3',
+            arrayLength: 4,
+            stages: ['fragment'],
+            scope: 'frame',
+        },
+        {
             name: 'u_MainTex',
             type: 'sampler2D',
             stages: ['fragment'],
             scope: 'material',
-            inspector: { control: 'texture' },
+            inspector: {
+                control: 'texture',
+                options: [{ label: 'Main Texture', value: 'u_MainTex' }],
+            },
         },
     ],
     libraries: [
@@ -65,11 +75,16 @@ describe('render shader effect compiler', () => {
     it('builds vertex and fragment sources from a structured effect definition', () => {
         const compiled = compileRenderShaderEffect(createEffect());
 
-        expect(compiled.uniformNames).toEqual(['u_ViewProjection', 'u_MainTex']);
+        expect(compiled.uniformNames).toEqual([
+            'u_ViewProjection',
+            'u_LightColors',
+            'u_MainTex',
+        ]);
         expect(compiled.vertexSource).toContain('layout(location = 0) in vec3 a_Position;');
         expect(compiled.vertexSource).toContain('out vec2 v_UV0;');
         expect(compiled.vertexSource).toContain('out vec3 v_Position;');
         expect(compiled.fragmentSource).toContain('precision highp float;');
+        expect(compiled.fragmentSource).toContain('uniform vec3 u_LightColors[4];');
         expect(compiled.fragmentSource).toContain('uniform sampler2D u_MainTex;');
         expect(compiled.fragmentSource).toContain('vec4 sampleMainTex(vec2 uv) {');
         expect(compiled.fragmentSource).toContain('out vec4 o_Color;');
@@ -89,6 +104,9 @@ describe('render shader effect compiler', () => {
 
         expect(cloned.attributes).toHaveLength(2);
         expect(cloned.properties?.[0]?.stages).toEqual(['vertex']);
+        expect(cloned.properties?.[2]?.inspector?.options).toEqual([
+            { label: 'Main Texture', value: 'u_MainTex' },
+        ]);
         expect(cloned.vertex.main).toHaveLength(3);
         expect(Array.isArray(cloned.libraries?.[0]?.code) ? cloned.libraries[0].code : []).toHaveLength(3);
     });

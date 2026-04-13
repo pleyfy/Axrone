@@ -1,4 +1,5 @@
 import type { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
+import type { RenderShaderEffectDefinition } from '@axrone/render-core';
 import type { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 
 export type GltfMeshSemantic =
@@ -144,6 +145,7 @@ export interface GltfShaderDefinition {
     readonly id: string;
     readonly vertexSource: string;
     readonly fragmentSource: string;
+    readonly effect?: RenderShaderEffectDefinition;
     readonly attributes?: Partial<Record<GltfMeshSemantic, string>>;
     readonly uniforms?: readonly string[];
     readonly depthTest?: boolean;

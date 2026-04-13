@@ -31,19 +31,26 @@ export type RenderShaderSerializableValue =
     | readonly RenderShaderSerializableValue[]
     | { readonly [key: string]: RenderShaderSerializableValue };
 
+export interface RenderShaderInspectorOptionDefinition {
+    readonly label: string;
+    readonly value: string | number | boolean;
+}
+
 export interface RenderShaderInspectorControlDefinition {
     readonly label?: string;
     readonly group?: string;
-    readonly control?: 'auto' | 'color' | 'slider' | 'texture' | 'toggle';
+    readonly control?: 'auto' | 'color' | 'slider' | 'texture' | 'toggle' | 'select';
     readonly min?: number;
     readonly max?: number;
     readonly step?: number;
+    readonly options?: readonly RenderShaderInspectorOptionDefinition[];
     readonly hidden?: boolean;
 }
 
 export interface RenderShaderPropertyDefinition {
     readonly name: string;
     readonly type: RenderShaderValueType;
+    readonly arrayLength?: number;
     readonly stages?: readonly RenderShaderStageName[];
     readonly scope?: 'material' | 'object' | 'camera' | 'frame' | 'system' | 'internal';
     readonly defaultValue?: RenderShaderSerializableValue;
@@ -148,6 +155,12 @@ const cloneInspector = (
               min: value.min,
               max: value.max,
               step: value.step,
+                            options: value.options
+                                    ? value.options.map((option) => ({
+                                                label: option.label,
+                                                value: option.value,
+                                        }))
+                                    : undefined,
               hidden: value.hidden,
           }
         : undefined;
@@ -176,6 +189,7 @@ const cloneProperties = (
     value?.map((entry) => ({
         name: entry.name,
         type: entry.type,
+        arrayLength: entry.arrayLength,
         stages: entry.stages ? [...entry.stages] : undefined,
         scope: entry.scope,
         defaultValue: entry.defaultValue,
@@ -279,7 +293,24 @@ const collectUniformDeclarations = (
             continue;
         }
 
-        const line = `uniform ${property.type} ${property.name};`;
+        const arraySuffix =
+            property.arrayLength !== undefined
+                ? (() => {
+                      if (
+                          Number.isInteger(property.arrayLength) === false ||
+                          property.arrayLength <= 0
+                      ) {
+                          throw new RenderValidationError('INVALID_EFFECT', 'en', {
+                              effectId: effect.id,
+                              property: property.name,
+                              reason: 'invalid-uniform-array-length',
+                          });
+                      }
+
+                      return `[${property.arrayLength}]`;
+                  })()
+                : '';
+        const line = `uniform ${property.type} ${property.name}${arraySuffix};`;
         const previous = declarations.get(property.name);
         if (previous && previous !== line) {
             throw new RenderValidationError('INVALID_EFFECT', 'en', {
