@@ -110,4 +110,80 @@ describe('Render2DSpriteBatchBuilder', () => {
         expect(result.batches[0]?.indexOffset).toBe(0);
         expect(result.batches[1]?.indexOffset).toBe(6);
     });
+
+    it('splits batches when clip rect state changes', () => {
+        const builder = new Render2DSpriteBatchBuilder();
+        const result = builder.build([
+            {
+                source: { kind: 'texture', textureId: 'atlas/a' },
+                worldMatrix: identity,
+                size: { width: 1, height: 1 },
+                anchor: { x: 0.5, y: 0.5 },
+                uvRect: { x: 0, y: 0, width: 1, height: 1 },
+                clipRect: { x: 0, y: 0, width: 64, height: 64 },
+                color: Color.WHITE,
+            },
+            {
+                source: { kind: 'texture', textureId: 'atlas/a' },
+                worldMatrix: identity,
+                size: { width: 1, height: 1 },
+                anchor: { x: 0.5, y: 0.5 },
+                uvRect: { x: 0, y: 0, width: 1, height: 1 },
+                clipRect: { x: 0, y: 0, width: 64, height: 64 },
+                color: Color.WHITE,
+            },
+            {
+                source: { kind: 'texture', textureId: 'atlas/a' },
+                worldMatrix: identity,
+                size: { width: 1, height: 1 },
+                anchor: { x: 0.5, y: 0.5 },
+                uvRect: { x: 0, y: 0, width: 1, height: 1 },
+                clipRect: { x: 32, y: 0, width: 64, height: 64 },
+                color: Color.WHITE,
+            },
+        ]);
+
+        expect(result.batches).toHaveLength(2);
+        expect(result.batches[0]?.quadCount).toBe(2);
+        expect(result.batches[0]?.key.clipRect).toEqual({
+            x: 0,
+            y: 0,
+            width: 64,
+            height: 64,
+        });
+        expect(result.batches[1]?.quadCount).toBe(1);
+    });
+
+    it('emits nine-slice quads from a single sprite submission', () => {
+        const builder = new Render2DSpriteBatchBuilder();
+        const result = builder.build([
+            {
+                source: { kind: 'texture', textureId: 'atlas/panel' },
+                worldMatrix: identity,
+                size: { width: 30, height: 18 },
+                anchor: { x: 0, y: 0 },
+                uvRect: { x: 0.25, y: 0.125, width: 0.5, height: 0.5 },
+                color: Color.WHITE,
+                slice: {
+                    sourceSize: { width: 10, height: 6 },
+                    border: { left: 2, right: 2, top: 1, bottom: 1 },
+                },
+            },
+        ]);
+
+        expect(result.spriteCount).toBe(1);
+        expect(result.quadCount).toBe(9);
+        expect(result.vertexCount).toBe(36);
+        expect(result.indexCount).toBe(54);
+        expect(result.batches[0]?.quadCount).toBe(9);
+
+        const view = new Float32Array(
+            result.vertexData.buffer,
+            result.vertexData.byteOffset,
+            result.vertexData.byteLength / 4
+        );
+
+        expect(view[0]).toBe(0);
+        expect(view[6]).toBe(6);
+    });
 });

@@ -24,8 +24,20 @@ export interface Render2DSizeLike {
 
 export interface Render2DRectLike extends Render2DVec2Like, Render2DSizeLike {}
 
+export interface Render2DBorderLike {
+    readonly left: number;
+    readonly right: number;
+    readonly top: number;
+    readonly bottom: number;
+}
+
 export type Render2DColorLike = Readonly<IColorLike>;
 export type Render2DReadonlyMat4Like = ArrayLike<number>;
+
+export interface Render2DSpriteSlice {
+    readonly sourceSize: Render2DSizeLike;
+    readonly border: Render2DBorderLike;
+}
 
 export interface Render2DSpriteTextureSource {
     readonly kind: 'texture';
@@ -61,6 +73,8 @@ export interface Render2DSpriteSubmission<
     readonly anchor: Render2DVec2Like;
     readonly uvRect: Render2DRectLike;
     readonly color: Render2DColorLike;
+    readonly clipRect?: Render2DRectLike | null;
+    readonly slice?: Render2DSpriteSlice | null;
     readonly visible?: boolean;
     readonly flipX?: boolean;
     readonly flipY?: boolean;
@@ -71,6 +85,7 @@ export interface Render2DSpriteBatchKey<
 > {
     readonly source: TSource;
     readonly sourceKey: Render2DSpriteSourceKey<TSource>;
+    readonly clipRect: Readonly<Render2DRectLike> | null;
 }
 
 export interface Render2DSpriteBatchRange<

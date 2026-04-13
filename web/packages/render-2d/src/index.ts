@@ -14,6 +14,7 @@ export const getRender2DCapability = (): Render2DCapability => RENDER_2D_CAPABIL
 
 export type {
     PackedRender2DColor,
+    Render2DBorderLike,
     Render2DColorLike,
     Render2DMaterialReference,
     Render2DReadonlyMat4Like,
@@ -24,6 +25,7 @@ export type {
     Render2DSpriteBatchKey,
     Render2DSpriteBatchRange,
     Render2DSpriteMaterialSource,
+    Render2DSpriteSlice,
     Render2DSpriteSource,
     Render2DSpriteSourceKey,
     Render2DSpriteSubmission,

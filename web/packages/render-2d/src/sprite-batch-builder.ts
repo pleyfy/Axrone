@@ -1,17 +1,19 @@
+import { clamp01 } from '@axrone/numeric';
 import {
     RENDER_2D_SPRITE_INDICES_PER_QUAD,
     RENDER_2D_SPRITE_VERTEX_STRIDE,
     RENDER_2D_SPRITE_VERTICES_PER_QUAD,
 } from './sprite-shader';
-import { clamp01 } from '@axrone/numeric';
 import { Render2DCapacityError, Render2DValidationError } from './errors';
 import {
     type PackedRender2DColor,
     type Render2DColorLike,
+    type Render2DRectLike,
     type Render2DSpriteBatchBuildResult,
     type Render2DSpriteBatchBuilderOptions,
     type Render2DSpriteBatchKey,
     type Render2DSpriteBatchRange,
+    type Render2DSpriteSlice,
     type Render2DSpriteSource,
     type Render2DSpriteSubmission,
     getRender2DSpriteSourceKey,
@@ -41,6 +43,7 @@ interface MutableRender2DSpriteBatchBuildResult {
 }
 
 const DEFAULT_MAX_BATCH_QUADS = 2048;
+const MIN_QUAD_EXTENT = 1e-6;
 
 const growCapacity = (current: number, required: number): number => {
     let next = Math.max(256, current);
@@ -69,11 +72,21 @@ const cloneSource = <TSource extends Render2DSpriteSource>(source: TSource): TSo
 
     return {
         kind: 'material',
-        materialId: isRender2DSpriteMaterialSource(source)
-            ? source.materialId
-            : '',
+        materialId: isRender2DSpriteMaterialSource(source) ? source.materialId : '',
     } as TSource;
 };
+
+const cloneRect = (
+    value: Render2DRectLike | null | undefined
+): Readonly<Render2DRectLike> | null =>
+    value
+        ? Object.freeze({
+              x: value.x,
+              y: value.y,
+              width: value.width,
+              height: value.height,
+          })
+        : null;
 
 const areSourcesEqual = (
     left: Render2DSpriteSource,
@@ -87,6 +100,22 @@ const areSourcesEqual = (
         ? left.textureId === (right as typeof left).textureId
         : (left as Extract<Render2DSpriteSource, { kind: 'material' }>).materialId ===
               (right as Extract<Render2DSpriteSource, { kind: 'material' }>).materialId;
+};
+
+const areRectsEqual = (
+    left: Render2DRectLike | null | undefined,
+    right: Render2DRectLike | null | undefined
+): boolean => {
+    if (!left || !right) {
+        return left == null && right == null;
+    }
+
+    return (
+        left.x === right.x &&
+        left.y === right.y &&
+        left.width === right.width &&
+        left.height === right.height
+    );
 };
 
 const assertFinite = (label: string, value: number): void => {
@@ -108,11 +137,54 @@ const validateSubmission = (submission: Render2DSpriteSubmission): void => {
     assertFinite('Sprite uvRect.y', submission.uvRect.y);
     assertFinite('Sprite uvRect.width', submission.uvRect.width);
     assertFinite('Sprite uvRect.height', submission.uvRect.height);
-
     assertFinite('Sprite color.r', submission.color.r);
     assertFinite('Sprite color.g', submission.color.g);
     assertFinite('Sprite color.b', submission.color.b);
     assertFinite('Sprite color.a', submission.color.a ?? 1);
+
+    if (submission.clipRect) {
+        assertFinite('Sprite clipRect.x', submission.clipRect.x);
+        assertFinite('Sprite clipRect.y', submission.clipRect.y);
+        assertFinite('Sprite clipRect.width', submission.clipRect.width);
+        assertFinite('Sprite clipRect.height', submission.clipRect.height);
+    }
+
+    if (submission.slice) {
+        assertFinite('Sprite slice source width', submission.slice.sourceSize.width);
+        assertFinite('Sprite slice source height', submission.slice.sourceSize.height);
+        assertFinite('Sprite slice border.left', submission.slice.border.left);
+        assertFinite('Sprite slice border.right', submission.slice.border.right);
+        assertFinite('Sprite slice border.top', submission.slice.border.top);
+        assertFinite('Sprite slice border.bottom', submission.slice.border.bottom);
+
+        if (submission.slice.sourceSize.width <= 0 || submission.slice.sourceSize.height <= 0) {
+            throw new Render2DValidationError(
+                'Sprite slice sourceSize must be greater than zero'
+            );
+        }
+
+        if (
+            submission.slice.border.left < 0 ||
+            submission.slice.border.right < 0 ||
+            submission.slice.border.top < 0 ||
+            submission.slice.border.bottom < 0
+        ) {
+            throw new Render2DValidationError(
+                'Sprite slice borders must be zero or greater'
+            );
+        }
+
+        if (
+            submission.slice.border.left + submission.slice.border.right >
+                submission.slice.sourceSize.width ||
+            submission.slice.border.top + submission.slice.border.bottom >
+                submission.slice.sourceSize.height
+        ) {
+            throw new Render2DValidationError(
+                'Sprite slice borders must fit inside the source size'
+            );
+        }
+    }
 
     for (let index = 0; index < 16; index += 1) {
         assertFinite(`Sprite worldMatrix[${index}]`, submission.worldMatrix[index] ?? NaN);
@@ -125,6 +197,10 @@ const isRenderableSubmission = (submission: Render2DSpriteSubmission): boolean =
     }
 
     if (submission.size.width === 0 || submission.size.height === 0) {
+        return false;
+    }
+
+    if (submission.clipRect && (submission.clipRect.width === 0 || submission.clipRect.height === 0)) {
         return false;
     }
 
@@ -159,24 +235,17 @@ const transformPoint = (
     localY: number,
     out: Float32Array
 ): Float32Array => {
-    out[0] =
-        (matrix[0] ?? 0) * localX +
-        (matrix[1] ?? 0) * localY +
-        (matrix[3] ?? 0);
-    out[1] =
-        (matrix[4] ?? 0) * localX +
-        (matrix[5] ?? 0) * localY +
-        (matrix[7] ?? 0);
-    out[2] =
-        (matrix[8] ?? 0) * localX +
-        (matrix[9] ?? 0) * localY +
-        (matrix[11] ?? 0);
+    out[0] = (matrix[0] ?? 0) * localX + (matrix[1] ?? 0) * localY + (matrix[3] ?? 0);
+    out[1] = (matrix[4] ?? 0) * localX + (matrix[5] ?? 0) * localY + (matrix[7] ?? 0);
+    out[2] = (matrix[8] ?? 0) * localX + (matrix[9] ?? 0) * localY + (matrix[11] ?? 0);
     return out;
 };
 
 export class Render2DSpriteBatchBuilder {
     private readonly _maxBatchQuads: number;
     private readonly _batches: MutableRender2DSpriteBatchRange[] = [];
+    private readonly _renderableSubmissions: Render2DSpriteSubmission[] = [];
+    private readonly _submissionQuadCounts: number[] = [];
     private _vertexBuffer = new ArrayBuffer(0);
     private _vertexBytes = new Uint8Array(0);
     private _vertexFloatView = new Float32Array(0);
@@ -184,6 +253,10 @@ export class Render2DSpriteBatchBuilder {
     private _indexData16 = new Uint16Array(0);
     private _indexData32 = new Uint32Array(0);
     private readonly _pointScratch = new Float32Array(3);
+    private readonly _xEdges = new Float32Array(4);
+    private readonly _yEdges = new Float32Array(4);
+    private readonly _uEdges = new Float32Array(4);
+    private readonly _vEdges = new Float32Array(4);
     private readonly _result: MutableRender2DSpriteBatchBuildResult = {
         vertexStride: RENDER_2D_SPRITE_VERTEX_STRIDE,
         vertexByteLength: 0,
@@ -207,16 +280,31 @@ export class Render2DSpriteBatchBuilder {
     build(
         submissions: readonly Render2DSpriteSubmission[]
     ): Render2DSpriteBatchBuildResult {
+        this._renderableSubmissions.length = 0;
+        this._submissionQuadCounts.length = 0;
+
         let spriteCount = 0;
+        let quadCount = 0;
 
         for (const submission of submissions) {
             validateSubmission(submission);
-            if (isRenderableSubmission(submission)) {
-                spriteCount += 1;
+            if (!isRenderableSubmission(submission)) {
+                continue;
             }
+
+            const submissionQuadCount = this._measureQuadCount(submission);
+            if (submissionQuadCount > this._maxBatchQuads) {
+                throw new Render2DCapacityError(
+                    'Sprite submission exceeds the configured maxBatchQuads limit'
+                );
+            }
+
+            spriteCount += 1;
+            quadCount += submissionQuadCount;
+            this._renderableSubmissions.push(submission);
+            this._submissionQuadCounts.push(submissionQuadCount);
         }
 
-        const quadCount = spriteCount;
         const vertexCount = quadCount * RENDER_2D_SPRITE_VERTICES_PER_QUAD;
         const indexCount = quadCount * RENDER_2D_SPRITE_INDICES_PER_QUAD;
         const useUint32 = vertexCount > 0xffff;
@@ -234,21 +322,28 @@ export class Render2DSpriteBatchBuilder {
         let spriteOffset = 0;
         let batchIndex = -1;
         let lastSource: Render2DSpriteSource | null = null;
+        let lastClipRect: Render2DRectLike | null = null;
 
-        for (const submission of submissions) {
-            if (!isRenderableSubmission(submission)) {
-                continue;
-            }
+        for (
+            let submissionIndex = 0;
+            submissionIndex < this._renderableSubmissions.length;
+            submissionIndex += 1
+        ) {
+            const submission = this._renderableSubmissions[submissionIndex]!;
+            const submissionQuadCount = this._submissionQuadCounts[submissionIndex]!;
+            const submissionClipRect = submission.clipRect ?? null;
 
             if (
                 !lastSource ||
                 !areSourcesEqual(lastSource, submission.source) ||
-                this._batches[batchIndex]!.quadCount >= this._maxBatchQuads
+                !areRectsEqual(lastClipRect, submissionClipRect) ||
+                this._batches[batchIndex]!.quadCount + submissionQuadCount > this._maxBatchQuads
             ) {
                 batchIndex += 1;
                 const key = {
                     source: cloneSource(submission.source),
                     sourceKey: getRender2DSpriteSourceKey(submission.source),
+                    clipRect: cloneRect(submissionClipRect),
                 } satisfies Render2DSpriteBatchKey;
                 this._batches[batchIndex] = {
                     key,
@@ -259,19 +354,19 @@ export class Render2DSpriteBatchBuilder {
                     indexCount: 0,
                 };
                 lastSource = submission.source;
+                lastClipRect = submissionClipRect;
             }
 
             const currentBatch = this._batches[batchIndex]!;
-            this._writeQuad(submission, quadIndex, indexTarget);
+            const quadsWritten = this._writeSubmission(submission, quadIndex, indexTarget);
             currentBatch.spriteCount += 1;
-            currentBatch.quadCount += 1;
-            currentBatch.indexCount += RENDER_2D_SPRITE_INDICES_PER_QUAD;
-            quadIndex += 1;
+            currentBatch.quadCount += quadsWritten;
+            currentBatch.indexCount += quadsWritten * RENDER_2D_SPRITE_INDICES_PER_QUAD;
+            quadIndex += quadsWritten;
             spriteOffset += 1;
         }
 
-        this._result.vertexByteLength =
-            vertexCount * RENDER_2D_SPRITE_VERTEX_STRIDE;
+        this._result.vertexByteLength = vertexCount * RENDER_2D_SPRITE_VERTEX_STRIDE;
         this._result.vertexData = this._vertexBytes.subarray(0, this._result.vertexByteLength);
         this._result.indexData = useUint32
             ? this._indexData32.subarray(0, indexCount)
@@ -318,32 +413,231 @@ export class Render2DSpriteBatchBuilder {
         );
     }
 
-    private _writeQuad(
+    private _measureQuadCount(submission: Render2DSpriteSubmission): number {
+        if (!submission.slice) {
+            return 1;
+        }
+
+        this._resolveSliceLocalEdges(submission, this._xEdges, this._yEdges);
+
+        let count = 0;
+        for (let row = 0; row < 3; row += 1) {
+            const height = this._yEdges[row + 1]! - this._yEdges[row]!;
+            if (height <= MIN_QUAD_EXTENT) {
+                continue;
+            }
+
+            for (let column = 0; column < 3; column += 1) {
+                const width = this._xEdges[column + 1]! - this._xEdges[column]!;
+                if (width > MIN_QUAD_EXTENT) {
+                    count += 1;
+                }
+            }
+        }
+
+        return Math.max(1, count);
+    }
+
+    private _writeSubmission(
         submission: Render2DSpriteSubmission,
         quadIndex: number,
         indexTarget: Uint16Array | Uint32Array
-    ): void {
-        const vertexBase = quadIndex * RENDER_2D_SPRITE_VERTICES_PER_QUAD;
-        const indexBase = quadIndex * RENDER_2D_SPRITE_INDICES_PER_QUAD;
+    ): number {
         const color = packColor(submission.color);
-
         const minX = -submission.anchor.x * submission.size.width;
         const minY = -submission.anchor.y * submission.size.height;
         const maxX = minX + submission.size.width;
         const maxY = minY + submission.size.height;
 
-        let u0 = submission.uvRect.x;
-        let v0 = submission.uvRect.y;
-        let u1 = submission.uvRect.x + submission.uvRect.width;
-        let v1 = submission.uvRect.y + submission.uvRect.height;
+        if (!submission.slice) {
+            let u0 = submission.uvRect.x;
+            let v0 = submission.uvRect.y;
+            let u1 = submission.uvRect.x + submission.uvRect.width;
+            let v1 = submission.uvRect.y + submission.uvRect.height;
 
+            if (submission.flipX) {
+                [u0, u1] = [u1, u0];
+            }
+
+            if (submission.flipY) {
+                [v0, v1] = [v1, v0];
+            }
+
+            this._writeTransformedQuad(
+                submission,
+                quadIndex,
+                indexTarget,
+                minX,
+                minY,
+                maxX,
+                maxY,
+                u0,
+                v0,
+                u1,
+                v1,
+                color
+            );
+            return 1;
+        }
+
+        this._resolveSliceLocalEdges(submission, this._xEdges, this._yEdges);
+        this._resolveSliceUVEdges(submission, this._uEdges, this._vEdges);
+
+        let written = 0;
+        for (let row = 0; row < 3; row += 1) {
+            const localMinY = this._yEdges[row]!;
+            const localMaxY = this._yEdges[row + 1]!;
+            if (localMaxY - localMinY <= MIN_QUAD_EXTENT) {
+                continue;
+            }
+
+            for (let column = 0; column < 3; column += 1) {
+                const localMinX = this._xEdges[column]!;
+                const localMaxX = this._xEdges[column + 1]!;
+                if (localMaxX - localMinX <= MIN_QUAD_EXTENT) {
+                    continue;
+                }
+
+                this._writeTransformedQuad(
+                    submission,
+                    quadIndex + written,
+                    indexTarget,
+                    localMinX,
+                    localMinY,
+                    localMaxX,
+                    localMaxY,
+                    this._uEdges[column]!,
+                    this._vEdges[row + 1]!,
+                    this._uEdges[column + 1]!,
+                    this._vEdges[row]!,
+                    color
+                );
+                written += 1;
+            }
+        }
+
+        return Math.max(1, written);
+    }
+
+    private _resolveSliceLocalEdges(
+        submission: Render2DSpriteSubmission,
+        xEdges: Float32Array,
+        yEdges: Float32Array
+    ): void {
+        const slice = submission.slice as Render2DSpriteSlice;
+        const minX = -submission.anchor.x * submission.size.width;
+        const minY = -submission.anchor.y * submission.size.height;
+
+        this._resolveDisplayAxisEdges(
+            submission.size.width,
+            slice.sourceSize.width,
+            slice.border.left,
+            slice.border.right,
+            minX,
+            xEdges
+        );
+        this._resolveDisplayAxisEdges(
+            submission.size.height,
+            slice.sourceSize.height,
+            slice.border.bottom,
+            slice.border.top,
+            minY,
+            yEdges
+        );
+    }
+
+    private _resolveSliceUVEdges(
+        submission: Render2DSpriteSubmission,
+        uEdges: Float32Array,
+        vEdges: Float32Array
+    ): void {
+        const slice = submission.slice as Render2DSpriteSlice;
+        const uvLeft = submission.uvRect.x;
+        const uvTop = submission.uvRect.y;
+        const uvRight = submission.uvRect.x + submission.uvRect.width;
+        const uvBottom = submission.uvRect.y + submission.uvRect.height;
+        const leftInner =
+            uvLeft + submission.uvRect.width * (slice.border.left / slice.sourceSize.width);
+        const rightInner =
+            uvLeft +
+            submission.uvRect.width *
+                ((slice.sourceSize.width - slice.border.right) / slice.sourceSize.width);
+        const topInner =
+            uvTop + submission.uvRect.height * (slice.border.top / slice.sourceSize.height);
+        const bottomInner =
+            uvTop +
+            submission.uvRect.height *
+                ((slice.sourceSize.height - slice.border.bottom) /
+                    slice.sourceSize.height);
+
+        uEdges[0] = uvLeft;
+        uEdges[1] = leftInner;
+        uEdges[2] = rightInner;
+        uEdges[3] = uvRight;
         if (submission.flipX) {
-            [u0, u1] = [u1, u0];
+            this._reverseEdges(uEdges);
         }
 
+        vEdges[0] = uvBottom;
+        vEdges[1] = bottomInner;
+        vEdges[2] = topInner;
+        vEdges[3] = uvTop;
         if (submission.flipY) {
-            [v0, v1] = [v1, v0];
+            this._reverseEdges(vEdges);
         }
+    }
+
+    private _resolveDisplayAxisEdges(
+        targetSize: number,
+        sourceSize: number,
+        startBorder: number,
+        endBorder: number,
+        offset: number,
+        out: Float32Array
+    ): void {
+        let startSize = (startBorder / sourceSize) * targetSize;
+        let endSize = (endBorder / sourceSize) * targetSize;
+        const totalBorderSize = startSize + endSize;
+
+        if (totalBorderSize > targetSize && totalBorderSize > 0) {
+            const scale = targetSize / totalBorderSize;
+            startSize *= scale;
+            endSize *= scale;
+        }
+
+        const centerSize = Math.max(0, targetSize - startSize - endSize);
+
+        out[0] = offset;
+        out[1] = offset + startSize;
+        out[2] = offset + startSize + centerSize;
+        out[3] = offset + targetSize;
+    }
+
+    private _reverseEdges(edges: Float32Array): void {
+        const first = edges[0]!;
+        const second = edges[1]!;
+        edges[0] = edges[3]!;
+        edges[1] = edges[2]!;
+        edges[2] = second;
+        edges[3] = first;
+    }
+
+    private _writeTransformedQuad(
+        submission: Render2DSpriteSubmission,
+        quadIndex: number,
+        indexTarget: Uint16Array | Uint32Array,
+        minX: number,
+        minY: number,
+        maxX: number,
+        maxY: number,
+        uLeft: number,
+        vTop: number,
+        uRight: number,
+        vBottom: number,
+        color: PackedRender2DColor
+    ): void {
+        const vertexBase = quadIndex * RENDER_2D_SPRITE_VERTICES_PER_QUAD;
+        const indexBase = quadIndex * RENDER_2D_SPRITE_INDICES_PER_QUAD;
 
         const point = transformPoint(submission.worldMatrix, minX, minY, this._pointScratch);
         writeVertex(
@@ -353,8 +647,8 @@ export class Render2DSpriteBatchBuilder {
             point[0]!,
             point[1]!,
             point[2]!,
-            u0,
-            v1,
+            uLeft,
+            vBottom,
             color
         );
 
@@ -366,8 +660,8 @@ export class Render2DSpriteBatchBuilder {
             this._pointScratch[0]!,
             this._pointScratch[1]!,
             this._pointScratch[2]!,
-            u1,
-            v1,
+            uRight,
+            vBottom,
             color
         );
 
@@ -379,8 +673,8 @@ export class Render2DSpriteBatchBuilder {
             this._pointScratch[0]!,
             this._pointScratch[1]!,
             this._pointScratch[2]!,
-            u1,
-            v0,
+            uRight,
+            vTop,
             color
         );
 
@@ -392,8 +686,8 @@ export class Render2DSpriteBatchBuilder {
             this._pointScratch[0]!,
             this._pointScratch[1]!,
             this._pointScratch[2]!,
-            u0,
-            v0,
+            uLeft,
+            vTop,
             color
         );
 
