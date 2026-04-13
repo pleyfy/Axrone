@@ -94,6 +94,7 @@ export type {
 	RenderShaderEffectDefinition,
 	RenderShaderEffectRenderStateDefinition,
 	RenderShaderInspectorControlDefinition,
+	RenderShaderInspectorOptionDefinition,
 	RenderShaderInterfaceDefinition,
 	RenderShaderLibraryDefinition,
 	RenderShaderPropertyDefinition,
@@ -108,6 +109,15 @@ export {
 } from '@axrone/render-core';
 export type { SceneShaderDefinitionFromEffectOptions } from './shader-effect';
 export { createSceneShaderDefinitionFromEffect } from './shader-effect';
+export type {
+	SceneMaterialInspectorControlDefinition,
+	SceneMaterialInspectorControlKind,
+	SceneMaterialInspectorSection,
+} from './material-inspector';
+export {
+	createSceneMaterialInspectorControls,
+	createSceneMaterialInspectorSections,
+} from './material-inspector';
 
 export type {
 	SceneBuiltInRegistry,
