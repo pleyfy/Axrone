@@ -1,6 +1,7 @@
-import type { Actor, ActorConfig, ComponentConstructor } from '@axrone/ecs-runtime';
+import { Transform, type Actor, type ActorConfig, type ComponentConstructor } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
+import { Vec3 } from '@axrone/numeric';
 import {
     SceneCapabilityError,
     type SceneActorRuntime,
@@ -37,11 +38,26 @@ export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, ne
             Camera,
             'camera actor creation requires the 2D scene capability/profile'
         );
+        const isOrthographic = cameraConfig.orthographic ?? true;
         const actor = this._actors.createActor(actorConfig);
         actor.addComponent(Camera, {
-            orthographic: cameraConfig.orthographic ?? true,
             ...cameraConfig,
+            orthographic: isOrthographic,
+            ...(isOrthographic
+                ? {
+                      near: cameraConfig.near ?? -1000,
+                      far: cameraConfig.far ?? 1000,
+                  }
+                : {}),
         });
+
+        if (isOrthographic) {
+            const transform = actor.getComponent(Transform);
+            if (transform) {
+                transform.position = new Vec3(0, 0, 1);
+            }
+        }
+
         return actor;
     }
 

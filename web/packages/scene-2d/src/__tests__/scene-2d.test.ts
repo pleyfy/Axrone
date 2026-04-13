@@ -70,9 +70,13 @@ describe('Scene2D', () => {
         );
 
         const camera = cameraActor.getComponent(Camera);
+        const cameraTransform = cameraActor.getComponent(Transform);
         const sprite = spriteActor.getComponent(SpriteRenderer);
 
         expect(camera?.orthographic).toBe(true);
+        expect(camera?.near).toBe(-1000);
+        expect(camera?.far).toBe(1000);
+        expect(cameraTransform?.position.z).toBe(1);
         expect(sprite?.textureId).toBe('hero');
         expect(sprite?.color).toBeInstanceOf(Color);
         expect(sprite?.color.r).toBeCloseTo(1);

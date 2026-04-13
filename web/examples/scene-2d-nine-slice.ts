@@ -138,7 +138,6 @@ const scene2DNineSliceExample: SceneExample = {
                 clearColor: [0.07, 0.09, 0.14, 1],
             }
         );
-        camera.getComponent(Transform)!.position = new Vec3(0, 0, 10);
 
         const warmPanel = scene.createSpriteActor(
             { name: 'WarmPanel' },
