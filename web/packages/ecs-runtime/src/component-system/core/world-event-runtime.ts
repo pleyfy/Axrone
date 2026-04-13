@@ -1,5 +1,6 @@
 import {
     createTypedEmitter,
+    type EventCallback,
     type EventKey,
     type IEventEmitter,
 } from '@axrone/event';
@@ -13,6 +14,26 @@ import {
 } from '../observers/ecs-observer';
 import type { ComponentRegistry } from '../types/core';
 import type { ECSEventMap } from '../types/events';
+
+type ECSComponentAddedEventKey<
+    R extends ComponentRegistry,
+    K extends ECSComponentName<R>,
+> = Extract<`${string & K}Added`, EventKey<ECSEventMap<R>>>;
+
+type ECSComponentRemovedEventKey<
+    R extends ComponentRegistry,
+    K extends ECSComponentName<R>,
+> = Extract<`${string & K}Removed`, EventKey<ECSEventMap<R>>>;
+
+type EntityCreatedEventKey<R extends ComponentRegistry> = Extract<
+    'EntityCreated',
+    EventKey<ECSEventMap<R>>
+>;
+
+type EntityDestroyedEventKey<R extends ComponentRegistry> = Extract<
+    'EntityDestroyed',
+    EventKey<ECSEventMap<R>>
+>;
 
 type WorldQueryExecutor<R extends ComponentRegistry> = (
     ...components: readonly ECSComponentName<R>[]
@@ -43,18 +64,16 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
 
     on<T extends EventKey<ECSEventMap<R>>>(
         event: T,
-        handler: (data: ECSEventMap<R>[T]) => void
+        handler: EventCallback<ECSEventMap<R>[T]>
     ): () => void {
-        this._trackedEvents.add(String(event));
-        return this._trackDisposer(this._eventBus.on(event, handler));
+        return this._subscribe(event, handler);
     }
 
     once<T extends EventKey<ECSEventMap<R>>>(
         event: T,
-        handler: (data: ECSEventMap<R>[T]) => void
+        handler: EventCallback<ECSEventMap<R>[T]>
     ): () => void {
-        this._trackedEvents.add(String(event));
-        return this._trackDisposer(this._eventBus.once(event, handler));
+        return this._subscribeOnce(event, handler);
     }
 
     async emit<T extends EventKey<ECSEventMap<R>>>(
@@ -94,7 +113,7 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
 
     off<T extends EventKey<ECSEventMap<R>>>(
         event: T,
-        handler?: (data: ECSEventMap<R>[T]) => void
+        handler?: EventCallback<ECSEventMap<R>[T]>
     ): boolean {
         this._trackedEvents.add(String(event));
         return this._eventBus.off(event, handler);
@@ -182,26 +201,16 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
             }
         };
 
-        const reactiveQueryHandler = (() => {
+        const reactiveQueryHandler = () => {
             updateQuery();
-        }) as (data: ECSEventMap<R>[EventKey<ECSEventMap<R>>]) => void;
+        };
 
         for (const componentName of componentNames) {
-            const addedEvent = `${componentName}Added` as EventKey<ECSEventMap<R>>;
-            const removedEvent = `${componentName}Removed` as EventKey<ECSEventMap<R>>;
-
-            this._trackedEvents.add(String(addedEvent));
-            this._trackedEvents.add(String(removedEvent));
-            this._trackDisposer(this._eventBus.on(addedEvent, reactiveQueryHandler));
-            this._trackDisposer(this._eventBus.on(removedEvent, reactiveQueryHandler));
+            this._subscribeReactiveQueryComponent(componentName, reactiveQueryHandler);
         }
 
-        const entityCreatedEvent = 'EntityCreated' as EventKey<ECSEventMap<R>>;
-        const entityDestroyedEvent = 'EntityDestroyed' as EventKey<ECSEventMap<R>>;
-        this._trackedEvents.add(String(entityCreatedEvent));
-        this._trackedEvents.add(String(entityDestroyedEvent));
-        this._trackDisposer(this._eventBus.on(entityCreatedEvent, reactiveQueryHandler));
-        this._trackDisposer(this._eventBus.on(entityDestroyedEvent, reactiveQueryHandler));
+        this._subscribe(this._getEntityCreatedEventKey(), reactiveQueryHandler);
+        this._subscribe(this._getEntityDestroyedEventKey(), reactiveQueryHandler);
 
         updateQuery();
 
@@ -249,14 +258,52 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
         return dispose;
     }
 
+    private _subscribe<T extends EventKey<ECSEventMap<R>>>(
+        event: T,
+        handler: EventCallback<ECSEventMap<R>[T]>
+    ): () => void {
+        this._trackedEvents.add(String(event));
+        return this._trackDisposer(this._eventBus.on(event, handler));
+    }
+
+    private _subscribeOnce<T extends EventKey<ECSEventMap<R>>>(
+        event: T,
+        handler: EventCallback<ECSEventMap<R>[T]>
+    ): () => void {
+        this._trackedEvents.add(String(event));
+        return this._trackDisposer(this._eventBus.once(event, handler));
+    }
+
+    private _getEntityCreatedEventKey(): EntityCreatedEventKey<R> {
+        return 'EntityCreated' as EntityCreatedEventKey<R>;
+    }
+
+    private _getEntityDestroyedEventKey(): EntityDestroyedEventKey<R> {
+        return 'EntityDestroyed' as EntityDestroyedEventKey<R>;
+    }
+
+    private _getAddedEventKey<K extends ECSComponentName<R>>(
+        componentName: K
+    ): ECSComponentAddedEventKey<R, K> {
+        return `${componentName}Added` as ECSComponentAddedEventKey<R, K>;
+    }
+
+    private _getRemovedEventKey<K extends ECSComponentName<R>>(
+        componentName: K
+    ): ECSComponentRemovedEventKey<R, K> {
+        return `${componentName}Removed` as ECSComponentRemovedEventKey<R, K>;
+    }
+
+    private _subscribeReactiveQueryComponent<K extends ECSComponentName<R>>(
+        componentName: K,
+        handler: () => void
+    ): void {
+        this._subscribe(this._getAddedEventKey(componentName), handler);
+        this._subscribe(this._getRemovedEventKey(componentName), handler);
+    }
+
     private _setupEventObserverBridge(componentNames: readonly ECSComponentName<R>[]): void {
-        const entityCreatedEvent = 'EntityCreated' as EventKey<ECSEventMap<R>>;
-        const entityDestroyedEvent = 'EntityDestroyed' as EventKey<ECSEventMap<R>>;
-
-        this._trackedEvents.add(String(entityCreatedEvent));
-        this._trackedEvents.add(String(entityDestroyedEvent));
-
-        this._eventBus.on(entityCreatedEvent, (data) => {
+        this._subscribe(this._getEntityCreatedEventKey(), (data) => {
             this._notifyObservable(
                 this._observables.entityCreated,
                 data as ECSEntityLifecycleEvent,
@@ -264,7 +311,7 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
             );
         });
 
-        this._eventBus.on(entityDestroyedEvent, (data) => {
+        this._subscribe(this._getEntityDestroyedEventKey(), (data) => {
             this._notifyObservable(
                 this._observables.entityDestroyed,
                 data as ECSEntityLifecycleEvent,
@@ -277,19 +324,19 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
         }
     }
 
-    private _registerComponentEventBridge(componentName: ECSComponentName<R>): void {
+    private _registerComponentEventBridge<K extends ECSComponentName<R>>(
+        componentName: K
+    ): void {
         if (this._bridgedComponents.has(componentName)) {
             return;
         }
 
         this._bridgedComponents.add(componentName);
 
-        const addedEvent = `${componentName}Added` as EventKey<ECSEventMap<R>>;
-        const removedEvent = `${componentName}Removed` as EventKey<ECSEventMap<R>>;
-        this._trackedEvents.add(String(addedEvent));
-        this._trackedEvents.add(String(removedEvent));
+        const addedEvent = this._getAddedEventKey(componentName);
+        const removedEvent = this._getRemovedEventKey(componentName);
 
-        this._eventBus.on(addedEvent, (data) => {
+        this._subscribe(addedEvent, (data) => {
             const observables = this._observables.getComponentObservables(componentName);
             this._notifyObservable(
                 observables.added,
@@ -298,7 +345,7 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
             );
         });
 
-        this._eventBus.on(removedEvent, (data) => {
+        this._subscribe(removedEvent, (data) => {
             const observables = this._observables.getComponentObservables(componentName);
             this._notifyObservable(
                 observables.removed,
