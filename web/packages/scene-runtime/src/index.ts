@@ -89,6 +89,27 @@ export type {
 export { SceneSnapshotRuntime } from './scene-snapshot-runtime';
 
 export type {
+	CompiledRenderShaderEffect,
+	RenderShaderAttributeDefinition,
+	RenderShaderEffectDefinition,
+	RenderShaderEffectRenderStateDefinition,
+	RenderShaderInspectorControlDefinition,
+	RenderShaderInterfaceDefinition,
+	RenderShaderLibraryDefinition,
+	RenderShaderPropertyDefinition,
+	RenderShaderSerializableValue,
+	RenderShaderStageDefinition,
+	RenderShaderStageName,
+	RenderShaderValueType,
+} from '@axrone/render-core';
+export {
+	cloneRenderShaderEffectDefinition,
+	compileRenderShaderEffect,
+} from '@axrone/render-core';
+export type { SceneShaderDefinitionFromEffectOptions } from './shader-effect';
+export { createSceneShaderDefinitionFromEffect } from './shader-effect';
+
+export type {
 	SceneBuiltInRegistry,
 	SceneCanvasOptions,
 	SceneClearFlag,

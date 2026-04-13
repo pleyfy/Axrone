@@ -3,6 +3,7 @@ import type {
     SceneShaderDefinition,
     SceneShaderHandle,
 } from './types';
+import { cloneRenderShaderEffectDefinition } from '@axrone/render-core';
 
 export interface SceneShaderResource {
     readonly id: string;
@@ -32,6 +33,9 @@ export const cloneSceneShaderDefinition = (
     ...definition,
     uniforms: definition.uniforms ? [...definition.uniforms] : undefined,
     attributes: definition.attributes ? { ...definition.attributes } : undefined,
+    effect: definition.effect
+        ? cloneRenderShaderEffectDefinition(definition.effect)
+        : undefined,
 });
 
 export class SceneShaderRegistry {

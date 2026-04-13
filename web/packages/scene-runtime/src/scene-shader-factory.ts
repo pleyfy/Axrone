@@ -1,3 +1,4 @@
+import { compileRenderShaderEffect } from '@axrone/render-core';
 import type { SceneMeshSemantic, SceneShaderDefinition } from './types';
 import { SceneShaderError } from './errors';
 import type { SceneShaderResource } from './shader-registry';
@@ -106,6 +107,17 @@ export class SceneShaderFactory {
     constructor(private readonly _options: SceneShaderFactoryOptions) {}
 
     create(definition: SceneShaderDefinition): SceneShaderResource {
+        const compiledEffect = definition.effect
+            ? compileRenderShaderEffect(definition.effect)
+            : null;
+        const vertexSource = definition.vertexSource ?? compiledEffect?.vertexSource;
+        const fragmentSource = definition.fragmentSource ?? compiledEffect?.fragmentSource;
+        if (!vertexSource || !fragmentSource) {
+            throw new SceneShaderError(
+                `Shader definition '${definition.id}' must provide shader sources or an effect definition`
+            );
+        }
+
         const program = this._options.gl.createProgram();
         if (!program) {
             throw new SceneShaderError(`Failed to create shader program '${definition.id}'`);
@@ -118,11 +130,11 @@ export class SceneShaderFactory {
 
         const vertexShader = this._compileShader(
             this._options.gl.VERTEX_SHADER,
-            definition.vertexSource
+            vertexSource
         );
         const fragmentShader = this._compileShader(
             this._options.gl.FRAGMENT_SHADER,
-            definition.fragmentSource
+            fragmentSource
         );
 
         try {
@@ -149,7 +161,8 @@ export class SceneShaderFactory {
             const uniformNames = Array.from(
                 new Set(
                     definition.uniforms ??
-                        extractUniformNames(definition.vertexSource, definition.fragmentSource)
+                        compiledEffect?.uniformNames ??
+                        extractUniformNames(vertexSource, fragmentSource)
                 )
             );
 
@@ -183,8 +196,8 @@ export class SceneShaderFactory {
 
             for (const [uniformName, uniformType] of extractUniformTypeHints(
                 this._options.gl,
-                definition.vertexSource,
-                definition.fragmentSource
+                vertexSource,
+                fragmentSource
             )) {
                 if (!uniformTypes.has(uniformName)) {
                     uniformTypes.set(uniformName, uniformType);
@@ -198,9 +211,10 @@ export class SceneShaderFactory {
                 uniformTypes,
                 uniformNames,
                 attributeNames,
-                depthTest: definition.depthTest ?? true,
-                cull: definition.cull ?? true,
-                blend: definition.blend ?? false,
+                depthTest:
+                    definition.depthTest ?? definition.effect?.renderState?.depthTest ?? true,
+                cull: definition.cull ?? definition.effect?.renderState?.cull ?? true,
+                blend: definition.blend ?? definition.effect?.renderState?.blend ?? false,
             };
         } finally {
             this._options.gl.deleteShader(vertexShader);
