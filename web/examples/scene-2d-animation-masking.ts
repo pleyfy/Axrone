@@ -141,7 +141,7 @@ const scene2DAnimationMaskingExample: SceneExample = {
             ],
         });
 
-        scene.createCameraActor(
+        const camera = scene.createCameraActor(
             { name: 'Scene2DCamera' },
             {
                 primary: true,
@@ -150,6 +150,7 @@ const scene2DAnimationMaskingExample: SceneExample = {
                 clearColor: [0.05, 0.07, 0.11, 1],
             }
         );
+        camera.getComponent(Transform)!.position = new Vec3(0, 0, 10);
 
         const leftMask = scene.createMaskActor(
             { name: 'LeftLaneMask' },

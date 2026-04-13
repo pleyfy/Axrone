@@ -55,15 +55,18 @@ const createNineSliceAtlasTexture = (): number[] => {
             const localX = x - frameOffset;
             const border = localX < 3 || localX >= 15 || y < 3 || y >= 15;
             const corner = (localX < 3 || localX >= 15) && (y < 3 || y >= 15);
+            const highlight = !border && ((localX + y) % 5 === 0 || Math.abs(localX - y) <= 1);
             const warm = frameOffset === 0;
 
             let pixel: readonly [number, number, number, number];
             if (corner) {
-                pixel = warm ? [255, 214, 102, 255] : [125, 211, 252, 255];
+                pixel = warm ? [255, 249, 214, 255] : [230, 246, 255, 255];
             } else if (border) {
-                pixel = warm ? [166, 95, 46, 240] : [30, 64, 175, 240];
+                pixel = warm ? [255, 181, 96, 255] : [88, 170, 255, 255];
+            } else if (highlight) {
+                pixel = warm ? [255, 206, 144, 235] : [152, 214, 255, 235];
             } else {
-                pixel = warm ? [52, 24, 12, 210] : [15, 23, 42, 210];
+                pixel = warm ? [242, 140, 84, 224] : [48, 108, 224, 224];
             }
 
             setPixel(data, width, x, y, pixel);
@@ -114,34 +117,35 @@ const scene2DNineSliceExample: SceneExample = {
                 {
                     id: 'panel/warm',
                     region: { x: 0, y: 0, width: 18, height: 18 },
-                    sourceSize: { width: 3, height: 3 },
-                    sliceBorder: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5 },
+                    sourceSize: { width: 18, height: 18 },
+                    sliceBorder: { left: 3, right: 3, top: 3, bottom: 3 },
                 },
                 {
                     id: 'panel/cool',
                     region: { x: 18, y: 0, width: 18, height: 18 },
-                    sourceSize: { width: 3, height: 3 },
-                    sliceBorder: { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5 },
+                    sourceSize: { width: 18, height: 18 },
+                    sliceBorder: { left: 3, right: 3, top: 3, bottom: 3 },
                 },
             ],
         });
 
-        scene.createCameraActor(
+        const camera = scene.createCameraActor(
             { name: 'Scene2DCamera' },
             {
                 primary: true,
                 orthographic: true,
                 orthographicSize: 5.5,
-                clearColor: [0.04, 0.05, 0.08, 1],
+                clearColor: [0.07, 0.09, 0.14, 1],
             }
         );
+        camera.getComponent(Transform)!.position = new Vec3(0, 0, 10);
 
         const warmPanel = scene.createSpriteActor(
             { name: 'WarmPanel' },
             {
                 frame: atlas.getFrame('panel/warm')!,
                 size: [4.2, 2.8],
-                color: Color.fromHex('#ffd166ff'),
+                color: Color.fromHex('#fff3d4ff'),
             }
         );
         warmPanel.getComponent(Transform)!.position = new Vec3(-3.2, 0.8, 0);
@@ -151,7 +155,7 @@ const scene2DNineSliceExample: SceneExample = {
             {
                 frame: atlas.getFrame('panel/cool')!,
                 size: [5.6, 3.4],
-                color: Color.fromHex('#8ecae6ff'),
+                color: Color.fromHex('#e4f4ffff'),
             }
         );
         coolPanel.getComponent(Transform)!.position = new Vec3(0, -0.1, 0);
@@ -161,7 +165,7 @@ const scene2DNineSliceExample: SceneExample = {
             {
                 frame: atlas.getFrame('panel/warm')!,
                 size: [3.4, 2.2],
-                color: Color.fromHex('#ef476fff'),
+                color: Color.fromHex('#ffd9e7ff'),
             }
         );
         accentPanel.getComponent(Transform)!.position = new Vec3(3.2, 1.1, 0);
