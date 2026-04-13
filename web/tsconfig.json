@@ -41,6 +41,8 @@
             "@axrone/scene-runtime-gltf/*": ["packages/scene-runtime-gltf/src/*"],
             "@axrone/scene-runtime": ["packages/scene-runtime/src"],
             "@axrone/scene-runtime/*": ["packages/scene-runtime/src/*"],
+            "@axrone/shapes-2d": ["packages/shapes-2d/src/index.ts"],
+            "@axrone/shapes-2d/*": ["packages/shapes-2d/src/*"],
             "@axrone/ecs-runtime": ["packages/ecs-runtime/src/index.ts"],
             "@axrone/ecs-runtime/*": ["packages/ecs-runtime/src/*"],
             "@axrone/ecs-query/*": ["packages/ecs-query/src/*"],
