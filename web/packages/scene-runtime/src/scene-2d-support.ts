@@ -1,5 +1,9 @@
 export type {
     Asset2DBorderLike,
+    Asset2DImportKind,
+    Asset2DImportPipelineOptions,
+    Asset2DImportResult,
+    Asset2DImportSchema,
     SpriteAnimationClip,
     SpriteAnimationClipDefinition,
     SpriteAnimationFrame,
@@ -10,9 +14,12 @@ export type {
     SpriteAtlasFrameDefinition,
 } from '@axrone/asset-2d';
 export {
+    createAsset2DImportPipeline,
     createSpriteAtlas,
+    createSpriteAtlasJsonImporter,
     getSpriteAnimationClip,
     getSpriteAtlasFrame,
+    createTexturePackerSpriteAtlasImporter,
     serializeSpriteAtlasDefinition,
 } from '@axrone/asset-2d';
 export type {
@@ -21,6 +28,7 @@ export type {
 export { SpriteAnimator } from './components/sprite-animator';
 export type {
     SpriteMaskConfig,
+    SpriteMaskShape,
     SpriteMaskSizeInput,
     SpriteMaskVec2Input,
 } from './components/sprite-mask';

@@ -34,5 +34,16 @@ export {
     getSpriteAtlasFrame,
     serializeSpriteAtlasDefinition,
 } from './sprite-atlas';
+export type {
+    Asset2DImportKind,
+    Asset2DImportPipelineOptions,
+    Asset2DImportResult,
+    Asset2DImportSchema,
+} from './sprite-atlas-importer';
+export {
+    createAsset2DImportPipeline,
+    createSpriteAtlasJsonImporter,
+    createTexturePackerSpriteAtlasImporter,
+} from './sprite-atlas-importer';
 
 export * from '@axrone/asset-core';
