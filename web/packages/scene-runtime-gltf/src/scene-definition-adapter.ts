@@ -83,6 +83,7 @@ export const adaptGltfShaderDefinitionToScene = (
     definition: GltfShaderDefinition
 ): SceneShaderDefinition => ({
     ...definition,
+    effect: definition.effect,
     attributes: definition.attributes ? { ...definition.attributes } : undefined,
     uniforms: definition.uniforms ? [...definition.uniforms] : undefined,
 });

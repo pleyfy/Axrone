@@ -1,4 +1,6 @@
 export {
+    GLTF_PBR_SHADER_EFFECT,
+    GLTF_UNLIT_SHADER_EFFECT,
     createGltfPbrShaderDefinition,
     createGltfUnlitShaderDefinition,
 } from './internal/runtime-shaders';
