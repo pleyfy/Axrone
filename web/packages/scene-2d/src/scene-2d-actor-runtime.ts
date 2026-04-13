@@ -1,4 +1,4 @@
-import type { Actor, ActorConfig } from '@axrone/ecs-runtime';
+import type { Actor, ActorConfig, ComponentConstructor } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import {
@@ -8,6 +8,10 @@ import {
 } from '@axrone/scene-runtime';
 import { Camera, type CameraConfig } from '@axrone/scene-runtime/scene-facade';
 import {
+    SpriteAnimator,
+    type SpriteAnimatorConfig,
+    SpriteMask,
+    type SpriteMaskConfig,
     SpriteRenderer,
     type SpriteRendererConfig,
 } from '@axrone/scene-runtime/scene-2d-support';
@@ -54,8 +58,40 @@ export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, ne
         return actor;
     }
 
+    createAnimatedSpriteActor(
+        actorConfig: ActorConfig = {},
+        spriteConfig: SpriteRendererConfig = {},
+        animatorConfig: SpriteAnimatorConfig = {}
+    ): Actor<World<SceneRegistry<R>>> {
+        this._requireRegisteredComponent(
+            SpriteRenderer,
+            'animated sprite creation requires the 2D scene capability/profile'
+        );
+        this._requireRegisteredComponent(
+            SpriteAnimator,
+            'animated sprite creation requires the 2D scene capability/profile'
+        );
+        const actor = this._actors.createActor(actorConfig);
+        actor.addComponent(SpriteRenderer, spriteConfig);
+        actor.addComponent(SpriteAnimator, animatorConfig);
+        return actor;
+    }
+
+    createMaskActor(
+        actorConfig: ActorConfig = {},
+        maskConfig: SpriteMaskConfig = {}
+    ): Actor<World<SceneRegistry<R>>> {
+        this._requireRegisteredComponent(
+            SpriteMask,
+            'mask actor creation requires the 2D scene capability/profile'
+        );
+        const actor = this._actors.createActor(actorConfig);
+        actor.addComponent(SpriteMask, maskConfig);
+        return actor;
+    }
+
     private _requireRegisteredComponent(
-        componentType: typeof Camera | typeof SpriteRenderer,
+        componentType: ComponentConstructor,
         message: string
     ): void {
         if (this._actors.isComponentRegistered(componentType)) {

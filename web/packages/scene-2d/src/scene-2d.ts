@@ -4,7 +4,11 @@ import type { SceneOptions } from '@axrone/scene-runtime';
 import { get2DSceneRuntimeProfile } from '@axrone/scene-runtime/scene-profile';
 import { SceneAssetFacade } from '@axrone/scene-runtime/scene-facade';
 import { type CameraConfig } from '@axrone/scene-runtime/scene-facade';
-import { type SpriteRendererConfig } from '@axrone/scene-runtime/scene-2d-support';
+import {
+    type SpriteAnimatorConfig,
+    type SpriteMaskConfig,
+    type SpriteRendererConfig,
+} from '@axrone/scene-runtime/scene-2d-support';
 import { Scene2DActorRuntime } from './scene-2d-actor-runtime';
 
 export class Scene2D<R extends ComponentRegistry = Record<string, never>> extends SceneAssetFacade<R> {
@@ -34,5 +38,26 @@ export class Scene2D<R extends ComponentRegistry = Record<string, never>> extend
     ) {
         this.assertNotDisposed();
         return this._actors2d.createSpriteActor(actorConfig, spriteConfig);
+    }
+
+    createAnimatedSpriteActor(
+        actorConfig: ActorConfig = {},
+        spriteConfig: SpriteRendererConfig = {},
+        animatorConfig: SpriteAnimatorConfig = {}
+    ) {
+        this.assertNotDisposed();
+        return this._actors2d.createAnimatedSpriteActor(
+            actorConfig,
+            spriteConfig,
+            animatorConfig
+        );
+    }
+
+    createMaskActor(
+        actorConfig: ActorConfig = {},
+        maskConfig: SpriteMaskConfig = {}
+    ) {
+        this.assertNotDisposed();
+        return this._actors2d.createMaskActor(actorConfig, maskConfig);
     }
 }
