@@ -9,6 +9,7 @@ import {
     type PackedRender2DColor,
     type Render2DColorLike,
     type Render2DRectLike,
+    type Render2DSpriteMask,
     type Render2DSpriteBatchBuildResult,
     type Render2DSpriteBatchBuilderOptions,
     type Render2DSpriteBatchKey,
@@ -88,6 +89,25 @@ const cloneRect = (
           })
         : null;
 
+const cloneMask = (
+    value: Render2DSpriteMask | null | undefined
+): Readonly<Render2DSpriteMask> | null =>
+    value
+        ? Object.freeze({
+              shape: value.shape,
+              inverseWorldMatrix: Object.freeze(Array.from(value.inverseWorldMatrix, (entry) => Number(entry ?? 0))),
+              size: Object.freeze({
+                  width: value.size.width,
+                  height: value.size.height,
+              }),
+              anchor: Object.freeze({
+                  x: value.anchor.x,
+                  y: value.anchor.y,
+              }),
+              ...(value.cornerRadius !== undefined ? { cornerRadius: value.cornerRadius } : {}),
+          })
+        : null;
+
 const areSourcesEqual = (
     left: Render2DSpriteSource,
     right: Render2DSpriteSource
@@ -115,6 +135,46 @@ const areRectsEqual = (
         left.y === right.y &&
         left.width === right.width &&
         left.height === right.height
+    );
+};
+
+const areMaskMatricesEqual = (
+    left: Render2DSpriteMask['inverseWorldMatrix'] | null | undefined,
+    right: Render2DSpriteMask['inverseWorldMatrix'] | null | undefined
+): boolean => {
+    if (!left || !right) {
+        return left == null && right == null;
+    }
+
+    if (left.length !== right.length) {
+        return false;
+    }
+
+    for (let index = 0; index < left.length; index += 1) {
+        if ((left[index] ?? 0) !== (right[index] ?? 0)) {
+            return false;
+        }
+    }
+
+    return true;
+};
+
+const areMasksEqual = (
+    left: Render2DSpriteMask | null | undefined,
+    right: Render2DSpriteMask | null | undefined
+): boolean => {
+    if (!left || !right) {
+        return left == null && right == null;
+    }
+
+    return (
+        left.shape === right.shape &&
+        areMaskMatricesEqual(left.inverseWorldMatrix, right.inverseWorldMatrix) &&
+        left.size.width === right.size.width &&
+        left.size.height === right.size.height &&
+        left.anchor.x === right.anchor.x &&
+        left.anchor.y === right.anchor.y &&
+        (left.cornerRadius ?? 0) === (right.cornerRadius ?? 0)
     );
 };
 
@@ -183,6 +243,25 @@ const validateSubmission = (submission: Render2DSpriteSubmission): void => {
             throw new Render2DValidationError(
                 'Sprite slice borders must fit inside the source size'
             );
+        }
+    }
+
+    if (submission.mask) {
+        assertFinite('Sprite mask size.width', submission.mask.size.width);
+        assertFinite('Sprite mask size.height', submission.mask.size.height);
+        assertFinite('Sprite mask anchor.x', submission.mask.anchor.x);
+        assertFinite('Sprite mask anchor.y', submission.mask.anchor.y);
+
+        if (submission.mask.size.width <= 0 || submission.mask.size.height <= 0) {
+            throw new Render2DValidationError('Sprite mask size must be greater than zero');
+        }
+
+        if (submission.mask.inverseWorldMatrix.length < 16) {
+            throw new Render2DValidationError('Sprite mask inverse matrix must have 16 values');
+        }
+
+        if (submission.mask.shape === 'rounded-rect') {
+            assertFinite('Sprite mask cornerRadius', submission.mask.cornerRadius ?? 0);
         }
     }
 
@@ -323,6 +402,7 @@ export class Render2DSpriteBatchBuilder {
         let batchIndex = -1;
         let lastSource: Render2DSpriteSource | null = null;
         let lastClipRect: Render2DRectLike | null = null;
+        let lastMask: Render2DSpriteMask | null = null;
 
         for (
             let submissionIndex = 0;
@@ -337,6 +417,7 @@ export class Render2DSpriteBatchBuilder {
                 !lastSource ||
                 !areSourcesEqual(lastSource, submission.source) ||
                 !areRectsEqual(lastClipRect, submissionClipRect) ||
+                !areMasksEqual(lastMask, submission.mask ?? null) ||
                 this._batches[batchIndex]!.quadCount + submissionQuadCount > this._maxBatchQuads
             ) {
                 batchIndex += 1;
@@ -344,6 +425,7 @@ export class Render2DSpriteBatchBuilder {
                     source: cloneSource(submission.source),
                     sourceKey: getRender2DSpriteSourceKey(submission.source),
                     clipRect: cloneRect(submissionClipRect),
+                    mask: cloneMask(submission.mask),
                 } satisfies Render2DSpriteBatchKey;
                 this._batches[batchIndex] = {
                     key,
@@ -355,6 +437,7 @@ export class Render2DSpriteBatchBuilder {
                 };
                 lastSource = submission.source;
                 lastClipRect = submissionClipRect;
+                lastMask = submission.mask ?? null;
             }
 
             const currentBatch = this._batches[batchIndex]!;

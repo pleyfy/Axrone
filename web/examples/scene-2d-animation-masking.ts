@@ -151,9 +151,15 @@ const scene2DAnimationMaskingExample: SceneExample = {
             }
         );
 
-        const leftMask = scene.createMaskActor({ name: 'LeftLaneMask' }, { size: [4.1, 4.6] });
+        const leftMask = scene.createMaskActor(
+            { name: 'LeftLaneMask' },
+            { size: [4.1, 4.6], shape: 'rounded-rect', cornerRadius: 0.48 }
+        );
         leftMask.getComponent(Transform)!.position = new Vec3(-2.6, 0, 0);
-        const rightMask = scene.createMaskActor({ name: 'RightLaneMask' }, { size: [4.1, 4.6] });
+        const rightMask = scene.createMaskActor(
+            { name: 'RightLaneMask' },
+            { size: [4.1, 4.6], shape: 'circle' }
+        );
         rightMask.getComponent(Transform)!.position = new Vec3(2.6, 0, 0);
 
         const animatedTransforms: Transform[] = [];

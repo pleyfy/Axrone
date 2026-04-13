@@ -3,6 +3,7 @@ import {
     RENDER_2D_SPRITE_VERTEX_STRIDE,
     Render2DSpriteBatchBuilder,
     type Render2DRectLike,
+    type Render2DSpriteMask,
     type Render2DSpriteBatchBuildResult,
     type Render2DSpriteBatchRange,
     type Render2DSpriteSource,
@@ -108,6 +109,11 @@ const projectWorldPoint = (
     return out;
 };
 
+interface SceneResolvedSpriteMaskState {
+    readonly clipRect: Render2DRectLike | null;
+    readonly mask: Render2DSpriteMask | null;
+}
+
 export interface SceneSpriteBatchRuntimeOptions {
     readonly gl: WebGL2RenderingContext;
     readonly resources: SceneResourceRuntime;
@@ -142,6 +148,7 @@ export class SceneSpriteBatchRuntime {
     private _indexBuffer: WebGLBuffer | null = null;
     private _scissorEnabled = false;
     private _activeClipRect: Render2DRectLike | null = null;
+    private _activeMask: Render2DSpriteMask | null = null;
 
     constructor(private readonly _options: SceneSpriteBatchRuntimeOptions) {
         this._shaderFactory = new SceneShaderFactory({ gl: _options.gl });
@@ -162,13 +169,13 @@ export class SceneSpriteBatchRuntime {
                 continue;
             }
 
-            const clipRect = this._resolveMaskClipRect(
+            const maskState = this._resolveMaskState(
                 item.actor,
                 params.cameraFrame,
                 params.viewportWidth,
                 params.viewportHeight
             );
-            if (clipRect === null) {
+            if (maskState === null) {
                 continue;
             }
 
@@ -183,7 +190,8 @@ export class SceneSpriteBatchRuntime {
                 anchor: item.renderer.anchor,
                 uvRect: item.renderer.uvRect,
                 color: item.renderer.color,
-                clipRect: clipRect ?? undefined,
+                clipRect: maskState.clipRect ?? undefined,
+                mask: maskState.mask ?? undefined,
                 slice: item.renderer.sliceBorder
                     ? {
                           sourceSize: {
@@ -222,6 +230,7 @@ export class SceneSpriteBatchRuntime {
         }
         this._options.gl.bindVertexArray(null);
         this._resetClipRect();
+        this._resetMaskState();
     }
 
     clear(): void {
@@ -247,6 +256,7 @@ export class SceneSpriteBatchRuntime {
 
         this._submissions.length = 0;
         this._resetClipRect();
+        this._resetMaskState();
     }
 
     private _resolveSource(
@@ -391,6 +401,7 @@ export class SceneSpriteBatchRuntime {
             'u_ViewProjection',
             params.cameraFrame.viewProjectionMatrix
         );
+        this._applyMaskUniforms(shader, batch.key.mask);
         this._options.materialTextureBinder.bind(
             shader,
             material,
@@ -434,6 +445,7 @@ export class SceneSpriteBatchRuntime {
             'u_ViewProjection',
             params.cameraFrame.viewProjectionMatrix
         );
+        this._applyMaskUniforms(shader, batch.key.mask);
         texture.texture.bind(0);
         this._options.resources.resolveSampler(texture.samplerId).bind(0);
         this._options.uniformWriter.write(shader, 'u_MainTex', 0);
@@ -449,13 +461,14 @@ export class SceneSpriteBatchRuntime {
         this._options.gl.bindTexture(this._options.gl.TEXTURE_2D, null);
     }
 
-    private _resolveMaskClipRect(
+    private _resolveMaskState(
         actor: Actor,
         cameraFrame: SceneCameraFrameState,
         viewportWidth: number,
         viewportHeight: number
-    ): Render2DRectLike | null | undefined {
+    ): SceneResolvedSpriteMaskState | null {
         let clipRect: Render2DRectLike | undefined;
+        let shapeMask: Render2DSpriteMask | undefined;
         let current: Actor | undefined = actor;
 
         while (current) {
@@ -485,12 +498,54 @@ export class SceneSpriteBatchRuntime {
                 }
 
                 clipRect = nextClipRect;
+
+                if (!shapeMask && mask.shape !== 'rect') {
+                    shapeMask = this._createMaskState(transform, mask);
+                    if (!shapeMask) {
+                        return null;
+                    }
+                }
             }
 
             current = current.parent;
         }
 
-        return clipRect;
+        return {
+            clipRect: clipRect ?? null,
+            mask: shapeMask ?? null,
+        };
+    }
+
+    private _createMaskState(
+        transform: Transform,
+        mask: SpriteMask
+    ): Render2DSpriteMask | undefined {
+        if (mask.size.x <= 0 || mask.size.y <= 0) {
+            return undefined;
+        }
+
+        const inverseWorldMatrix = transform.worldMatrix.clone().invert().data;
+
+        return {
+            shape: mask.shape === 'circle' ? 'circle' : 'rounded-rect',
+            inverseWorldMatrix: Array.from(inverseWorldMatrix, (entry) => Number(entry ?? 0)),
+            size: {
+                width: mask.size.x,
+                height: mask.size.y,
+            },
+            anchor: {
+                x: mask.anchor.x,
+                y: mask.anchor.y,
+            },
+            ...(mask.cornerRadius !== null && mask.cornerRadius !== undefined
+                ? { cornerRadius: mask.cornerRadius }
+                : {
+                      cornerRadius:
+                          mask.shape === 'rounded-rect'
+                              ? Math.min(mask.size.x, mask.size.y) * 0.125
+                              : undefined,
+                  }),
+        };
     }
 
     private _projectMaskClipRect(
@@ -617,6 +672,36 @@ export class SceneSpriteBatchRuntime {
         this._activeClipRect = clampedClipRect;
     }
 
+    private _applyMaskUniforms(
+        shader: SceneShaderResource,
+        mask: Render2DSpriteMask | null | undefined
+    ): void {
+        if (!mask) {
+            this._options.uniformWriter.write(shader, 'u_MaskShape', 0);
+            this._activeMask = null;
+            return;
+        }
+
+        this._options.uniformWriter.write(
+            shader,
+            'u_MaskShape',
+            mask.shape === 'circle' ? 1 : 2
+        );
+        this._options.uniformWriter.write(
+            shader,
+            'u_MaskWorldToLocal',
+            Array.from(mask.inverseWorldMatrix, (entry) => Number(entry ?? 0))
+        );
+        this._options.uniformWriter.write(shader, 'u_MaskSize', [mask.size.width, mask.size.height]);
+        this._options.uniformWriter.write(shader, 'u_MaskAnchor', [mask.anchor.x, mask.anchor.y]);
+        this._options.uniformWriter.write(
+            shader,
+            'u_MaskCornerRadius',
+            mask.cornerRadius ?? 0
+        );
+        this._activeMask = mask;
+    }
+
     private _resetClipRect(): void {
         if (this._scissorEnabled) {
             this._options.gl.disable?.(this._options.gl.SCISSOR_TEST);
@@ -624,6 +709,10 @@ export class SceneSpriteBatchRuntime {
         }
 
         this._activeClipRect = null;
+    }
+
+    private _resetMaskState(): void {
+        this._activeMask = null;
     }
 
     private _isSpriteShader(shader: SceneShaderResource): boolean {

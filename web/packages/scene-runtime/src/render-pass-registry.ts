@@ -16,6 +16,13 @@ export interface SceneRenderPassResource {
     readonly depthTest?: boolean;
     readonly cull?: boolean;
     readonly blend?: boolean;
+    readonly stencilTest?: boolean;
+    readonly stencilFunc?: number;
+    readonly stencilRef?: number;
+    readonly stencilMask?: number;
+    readonly stencilFail?: number;
+    readonly stencilZFail?: number;
+    readonly stencilZPass?: number;
 }
 
 export interface SceneRenderPassRegistryOptions {
@@ -100,6 +107,13 @@ export class SceneRenderPassRegistry {
             depthTest: definition.depthTest,
             cull: definition.cull,
             blend: definition.blend,
+            stencilTest: definition.stencilTest,
+            stencilFunc: definition.stencilFunc,
+            stencilRef: definition.stencilRef,
+            stencilMask: definition.stencilMask,
+            stencilFail: definition.stencilFail,
+            stencilZFail: definition.stencilZFail,
+            stencilZPass: definition.stencilZPass,
         };
 
         this._resources.set(definition.id, resource);

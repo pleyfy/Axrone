@@ -31,12 +31,22 @@ export interface Render2DBorderLike {
     readonly bottom: number;
 }
 
+export type Render2DSpriteMaskShape = 'circle' | 'rounded-rect';
+
 export type Render2DColorLike = Readonly<IColorLike>;
 export type Render2DReadonlyMat4Like = ArrayLike<number>;
 
 export interface Render2DSpriteSlice {
     readonly sourceSize: Render2DSizeLike;
     readonly border: Render2DBorderLike;
+}
+
+export interface Render2DSpriteMask {
+    readonly shape: Render2DSpriteMaskShape;
+    readonly inverseWorldMatrix: Render2DReadonlyMat4Like;
+    readonly size: Render2DSizeLike;
+    readonly anchor: Render2DVec2Like;
+    readonly cornerRadius?: number;
 }
 
 export interface Render2DSpriteTextureSource {
@@ -75,6 +85,7 @@ export interface Render2DSpriteSubmission<
     readonly color: Render2DColorLike;
     readonly clipRect?: Render2DRectLike | null;
     readonly slice?: Render2DSpriteSlice | null;
+    readonly mask?: Render2DSpriteMask | null;
     readonly visible?: boolean;
     readonly flipX?: boolean;
     readonly flipY?: boolean;
@@ -86,6 +97,7 @@ export interface Render2DSpriteBatchKey<
     readonly source: TSource;
     readonly sourceKey: Render2DSpriteSourceKey<TSource>;
     readonly clipRect: Readonly<Render2DRectLike> | null;
+    readonly mask: Readonly<Render2DSpriteMask> | null;
 }
 
 export interface Render2DSpriteBatchRange<

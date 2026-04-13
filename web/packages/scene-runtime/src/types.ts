@@ -186,6 +186,13 @@ export interface SceneRenderPassDefinition {
     readonly depthTest?: boolean;
     readonly cull?: boolean;
     readonly blend?: boolean;
+    readonly stencilTest?: boolean;
+    readonly stencilFunc?: number;
+    readonly stencilRef?: number;
+    readonly stencilMask?: number;
+    readonly stencilFail?: number;
+    readonly stencilZFail?: number;
+    readonly stencilZPass?: number;
 }
 
 export interface SceneCanvasOptions {

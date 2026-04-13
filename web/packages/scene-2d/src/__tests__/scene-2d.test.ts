@@ -191,9 +191,15 @@ describe('Scene2D', () => {
 
         scene.createCameraActor({ name: 'Camera' }, { primary: true });
 
-        const leftMask = scene.createMaskActor({ name: 'LeftMask' }, { size: [2, 2] });
+        const leftMask = scene.createMaskActor(
+            { name: 'LeftMask' },
+            { size: [2, 2], shape: 'rounded-rect', cornerRadius: 0.35 }
+        );
         leftMask.getComponent(Transform)!.position = new Vec3(-2, 0, 0);
-        const rightMask = scene.createMaskActor({ name: 'RightMask' }, { size: [2, 2] });
+        const rightMask = scene.createMaskActor(
+            { name: 'RightMask' },
+            { size: [2, 2], shape: 'circle' }
+        );
         rightMask.getComponent(Transform)!.position = new Vec3(2, 0, 0);
 
         const leftSprite = scene.createSpriteActor({ name: 'LeftSprite' }, { textureId: 'hero' });
@@ -205,6 +211,8 @@ describe('Scene2D', () => {
         rightSprite.setParent(rightMask);
 
         expect(leftMask.getComponent(SpriteMask)).toBeInstanceOf(SpriteMask);
+        expect(leftMask.getComponent(SpriteMask)?.shape).toBe('rounded-rect');
+        expect(rightMask.getComponent(SpriteMask)?.shape).toBe('circle');
 
         scene.start(0);
         scheduler.flush(16);

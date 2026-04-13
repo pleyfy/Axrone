@@ -20,6 +20,8 @@ export type {
     Render2DReadonlyMat4Like,
     Render2DRectLike,
     Render2DSizeLike,
+    Render2DSpriteMask,
+    Render2DSpriteMaskShape,
     Render2DSpriteBatchBuildResult,
     Render2DSpriteBatchBuilderOptions,
     Render2DSpriteBatchKey,

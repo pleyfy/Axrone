@@ -154,6 +154,66 @@ describe('Render2DSpriteBatchBuilder', () => {
         expect(result.batches[1]?.quadCount).toBe(1);
     });
 
+    it('splits batches when mask state changes', () => {
+        const builder = new Render2DSpriteBatchBuilder();
+        const identityMask = {
+            shape: 'circle' as const,
+            inverseWorldMatrix: [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1,
+            ],
+            size: { width: 32, height: 32 },
+            anchor: { x: 0.5, y: 0.5 },
+        };
+
+        const shiftedMask = {
+            ...identityMask,
+            inverseWorldMatrix: [
+                1, 0, 0, 4,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1,
+            ],
+        };
+
+        const result = builder.build([
+            {
+                source: { kind: 'texture', textureId: 'atlas/a' },
+                worldMatrix: identity,
+                size: { width: 1, height: 1 },
+                anchor: { x: 0.5, y: 0.5 },
+                uvRect: { x: 0, y: 0, width: 1, height: 1 },
+                mask: identityMask,
+                color: Color.WHITE,
+            },
+            {
+                source: { kind: 'texture', textureId: 'atlas/a' },
+                worldMatrix: identity,
+                size: { width: 1, height: 1 },
+                anchor: { x: 0.5, y: 0.5 },
+                uvRect: { x: 0, y: 0, width: 1, height: 1 },
+                mask: identityMask,
+                color: Color.WHITE,
+            },
+            {
+                source: { kind: 'texture', textureId: 'atlas/a' },
+                worldMatrix: identity,
+                size: { width: 1, height: 1 },
+                anchor: { x: 0.5, y: 0.5 },
+                uvRect: { x: 0, y: 0, width: 1, height: 1 },
+                mask: shiftedMask,
+                color: Color.WHITE,
+            },
+        ]);
+
+        expect(result.batches).toHaveLength(2);
+        expect(result.batches[0]?.quadCount).toBe(2);
+        expect(result.batches[0]?.key.mask?.shape).toBe('circle');
+        expect(result.batches[1]?.quadCount).toBe(1);
+    });
+
     it('emits nine-slice quads from a single sprite submission', () => {
         const builder = new Render2DSpriteBatchBuilder();
         const result = builder.build([
