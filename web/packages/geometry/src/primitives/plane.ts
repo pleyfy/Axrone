@@ -118,7 +118,7 @@ const generatePlaneGeometry = (
             const c = ix + 1 + gridX1 * (iy + 1);
             const d = ix + 1 + gridX1 * iy;
 
-            builder.addQuad(a, b, c, d);
+            builder.addQuad(a, d, c, b);
         }
     }
 
@@ -182,8 +182,12 @@ const generateQuadGeometry = (
         );
     }
 
-    builder.addTriangle(0, 1, 2);
-    builder.addTriangle(0, 2, 3);
+    if (orientation === 'xy') {
+        builder.addTriangle(0, 1, 2);
+        builder.addTriangle(0, 2, 3);
+    } else {
+        builder.addQuad(0, 3, 2, 1);
+    }
 
     return builder.build();
 };
@@ -218,7 +222,7 @@ const generateCircleGeometry = (
     }
 
     for (let i = 0; i < segments; i++) {
-        builder.addTriangle(0, i + 1, i + 2);
+        builder.addTriangle(0, i + 2, i + 1);
     }
 
     return builder.build();
@@ -272,7 +276,7 @@ const generateRingGeometry = (
         const c = (i + 1) * 2 + 1;
         const d = (i + 1) * 2;
 
-        builder.addQuad(a, b, c, d);
+        builder.addQuad(a, d, c, b);
     }
 
     return builder.build();
