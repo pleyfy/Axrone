@@ -1030,5 +1030,11 @@ export abstract class Component<
 }
 
 export { script, getComponentMetadata, setComponentMetadata } from '../decorators/script';
+export {
+    property,
+    getComponentPropertyMetadata,
+    getComponentPropertyMetadataByKey,
+    setComponentPropertyMetadata,
+} from '../decorators/property';
 
 export type { ComponentMetrics, ComponentCache };

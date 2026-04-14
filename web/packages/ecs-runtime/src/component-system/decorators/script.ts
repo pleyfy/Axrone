@@ -204,6 +204,7 @@ export function script<T extends ComponentType>(
                 singleton: options.singleton || false,
                 executeInEditMode: options.executeInEditMode || false,
                 priority: options.priority || 0,
+                allowMultiple: options.allowMultiple ?? false,
                 version: options.version,
                 author: options.author,
                 description: options.description,

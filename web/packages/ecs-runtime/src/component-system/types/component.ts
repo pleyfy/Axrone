@@ -8,6 +8,7 @@ export type ComponentMetadata = {
     readonly singleton?: boolean;
     readonly executeInEditMode?: boolean;
     readonly priority?: number;
+    readonly allowMultiple?: boolean;
 };
 
 export interface IComponentPool<T> {
