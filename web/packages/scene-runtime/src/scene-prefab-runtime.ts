@@ -2,6 +2,9 @@ import { Hierarchy } from '@axrone/ecs-runtime';
 import { Actor, type ActorConfig } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import type { ComponentConstructor } from '@axrone/ecs-runtime';
+import { Transform, getComponentPropertyMetadata } from '@axrone/ecs-runtime';
+import type { PropertyMetadata, PropertyTypeId, PropertyTypeReference } from '@axrone/ecs-runtime';
+import { Vec2, Vec3 } from '@axrone/numeric';
 import { PrefabNodeBinding } from './components/prefab-node-binding';
 import type { SceneComponentTypeResolver } from './component-catalog';
 import { SceneLifecycleError } from './errors';
@@ -18,6 +21,208 @@ interface ScenePrefabHost {
     createActor(config: ActorConfig): Actor;
     getAllActors(): readonly Actor[];
 }
+
+const EDITOR_SCRIPT_METADATA_KEYS = new Set([
+    'scriptPath',
+    'className',
+    'scriptName',
+    'executeInEditMode',
+    'propertyValues',
+]);
+
+const hasOwn = (value: object, key: string): boolean =>
+    Object.prototype.hasOwnProperty.call(value, key);
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+
+const asString = (value: unknown, fallback = ''): string =>
+    typeof value === 'string' ? value : fallback;
+
+const asNumber = (value: unknown, fallback = 0): number => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+        const parsed = Number.parseFloat(value);
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
+    }
+
+    return fallback;
+};
+
+const asBoolean = (value: unknown, fallback = false): boolean => {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'string') {
+        if (value === 'true') {
+            return true;
+        }
+
+        if (value === 'false') {
+            return false;
+        }
+    }
+
+    return fallback;
+};
+
+const resolveVec2Fallback = (value: unknown): readonly [number, number] => {
+    if (value instanceof Vec2) {
+        return [value.x, value.y];
+    }
+
+    if (Array.isArray(value)) {
+        return [asNumber(value[0], 0), asNumber(value[1], 0)];
+    }
+
+    const objectValue = asRecord(value);
+    return [asNumber(objectValue.x, 0), asNumber(objectValue.y, 0)];
+};
+
+const resolveVec3Fallback = (value: unknown): readonly [number, number, number] => {
+    if (value instanceof Vec3) {
+        return [value.x, value.y, value.z];
+    }
+
+    if (Array.isArray(value)) {
+        return [asNumber(value[0], 0), asNumber(value[1], 0), asNumber(value[2], 0)];
+    }
+
+    const objectValue = asRecord(value);
+    return [asNumber(objectValue.x, 0), asNumber(objectValue.y, 0), asNumber(objectValue.z, 0)];
+};
+
+const toVec2 = (value: unknown, fallback: unknown): Vec2 => {
+    if (value instanceof Vec2) {
+        return value;
+    }
+
+    const [fallbackX, fallbackY] = resolveVec2Fallback(fallback);
+    if (Array.isArray(value)) {
+        return new Vec2(asNumber(value[0], fallbackX), asNumber(value[1], fallbackY));
+    }
+
+    const objectValue = asRecord(value);
+    return new Vec2(asNumber(objectValue.x, fallbackX), asNumber(objectValue.y, fallbackY));
+};
+
+const toVec3 = (value: unknown, fallback: unknown): Vec3 => {
+    if (value instanceof Vec3) {
+        return value;
+    }
+
+    const [fallbackX, fallbackY, fallbackZ] = resolveVec3Fallback(fallback);
+    if (Array.isArray(value)) {
+        return new Vec3(
+            asNumber(value[0], fallbackX),
+            asNumber(value[1], fallbackY),
+            asNumber(value[2], fallbackZ),
+        );
+    }
+
+    const objectValue = asRecord(value);
+    return new Vec3(
+        asNumber(objectValue.x, fallbackX),
+        asNumber(objectValue.y, fallbackY),
+        asNumber(objectValue.z, fallbackZ),
+    );
+};
+
+const normalizePropertyTypeId = (
+    type: PropertyTypeReference | undefined,
+): PropertyTypeId | undefined => {
+    if (!type) {
+        return undefined;
+    }
+
+    if (type === Actor) {
+        return 'entity';
+    }
+
+    if (type === Transform) {
+        return 'transform';
+    }
+
+    if (type === Boolean) {
+        return 'boolean';
+    }
+
+    if (type === Number) {
+        return 'number';
+    }
+
+    if (type === String) {
+        return 'string';
+    }
+
+    if (type === Vec2) {
+        return 'vec2';
+    }
+
+    if (type === Vec3) {
+        return 'vec3';
+    }
+
+    if (typeof type === 'function') {
+        const name = type.name.toLowerCase();
+        if (name === 'actor' || name === 'entity') {
+            return 'entity';
+        }
+
+        if (name === 'transform') {
+            return 'transform';
+        }
+
+        if (name === 'vec2') {
+            return 'vec2';
+        }
+
+        if (name === 'vec3') {
+            return 'vec3';
+        }
+    }
+
+    if (typeof type !== 'string') {
+        return undefined;
+    }
+
+    switch (type.toLowerCase()) {
+        case 'boolean':
+            return 'boolean';
+        case 'number':
+            return 'number';
+        case 'string':
+        case 'color':
+            return 'string';
+        case 'vec2':
+        case 'vector2':
+            return 'vec2';
+        case 'vec3':
+        case 'vector3':
+            return 'vec3';
+        case 'actor':
+        case 'entity':
+            return 'entity';
+        case 'transform':
+            return 'transform';
+        default:
+            return undefined;
+    }
+};
+
+const isReferenceLike = (value: unknown): boolean => {
+    const objectValue = asRecord(value);
+    const kind = asString(objectValue.kind);
+    return (kind === 'entity' || kind === 'component') && asString(objectValue.target).length > 0;
+};
 
 let prefabInstanceSequence = 1;
 
@@ -101,7 +306,13 @@ export class ScenePrefabRuntime {
 
         for (const pendingHydration of pendingComponentHydration) {
             for (const componentSnapshot of pendingHydration.components) {
-                this._hydrateComponent(pendingHydration.actor, componentSnapshot, options);
+                this._hydrateComponent(
+                    pendingHydration.actor,
+                    componentSnapshot,
+                    options,
+                    createdByNodeId,
+                    createdActors,
+                );
             }
         }
 
@@ -164,7 +375,9 @@ export class ScenePrefabRuntime {
     private _hydrateComponent(
         actor: Actor,
         snapshot: SceneComponentSnapshot,
-        options: ScenePrefabInstantiateOptions
+        options: ScenePrefabInstantiateOptions,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[]
     ): void {
         const componentType = this._host.componentCatalog.get(snapshot.type);
         if (!componentType) {
@@ -184,20 +397,248 @@ export class ScenePrefabRuntime {
             );
 
         const decoded = decodeSceneValue(snapshot.data);
-        if (
-            typeof (component as { deserialize?: (data: Record<string, any>) => void })
-                .deserialize === 'function'
-        ) {
-            (component as { deserialize(data: Record<string, any>): void }).deserialize(
-                (decoded && typeof decoded === 'object' && !Array.isArray(decoded)
-                    ? decoded
-                    : {}) as Record<string, any>
-            );
+        const normalized =
+            decoded && typeof decoded === 'object' && !Array.isArray(decoded)
+                ? this._normalizeComponentData(
+                      componentType,
+                      component,
+                      decoded as Record<string, unknown>,
+                      createdByNodeId,
+                      createdActors,
+                  )
+                : {};
+        const deserialize = (component as {
+            deserialize?: (data: Record<string, any>) => void;
+        }).deserialize;
+        const hasCustomDeserialize =
+            typeof deserialize === 'function' && deserialize !== Component.prototype.deserialize;
+
+        if (hasCustomDeserialize) {
+            deserialize.call(component, normalized as Record<string, any>);
             return;
         }
 
-        if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) {
-            Object.assign(component as object, decoded);
+        if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
+            Object.assign(component as object, normalized);
         }
+    }
+
+    private _normalizeComponentData(
+        componentType: ComponentConstructor,
+        component: Component,
+        decoded: Record<string, unknown>,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): Record<string, unknown> {
+        const propertyMetadata = getComponentPropertyMetadata(componentType as any);
+        if (propertyMetadata.length === 0) {
+            return decoded;
+        }
+
+        const hasPropertyValues = hasOwn(decoded, 'propertyValues') && decoded.propertyValues !== null;
+        const sourceValues = hasPropertyValues ? asRecord(decoded.propertyValues) : decoded;
+        const normalized = hasPropertyValues
+            ? this._stripEditorScriptMetadata(decoded)
+            : { ...decoded };
+        const resolvedPropertyKeys = new Set<string>();
+
+        for (const metadata of propertyMetadata) {
+            if (metadata.serializable === false || !hasOwn(sourceValues, metadata.propertyKey)) {
+                continue;
+            }
+
+            normalized[metadata.propertyKey] = this._resolvePropertyValue(
+                component,
+                metadata,
+                sourceValues[metadata.propertyKey],
+                createdByNodeId,
+                createdActors,
+            );
+            resolvedPropertyKeys.add(metadata.propertyKey);
+        }
+
+        if (hasPropertyValues) {
+            for (const [propertyKey, value] of Object.entries(sourceValues)) {
+                if (resolvedPropertyKeys.has(propertyKey)) {
+                    continue;
+                }
+
+                normalized[propertyKey] = this._resolveFallbackPropertyValue(
+                    component,
+                    propertyKey,
+                    value,
+                    createdByNodeId,
+                    createdActors,
+                );
+            }
+        }
+
+        return normalized;
+    }
+
+    private _stripEditorScriptMetadata(decoded: Record<string, unknown>): Record<string, unknown> {
+        const normalized: Record<string, unknown> = {};
+
+        for (const [key, value] of Object.entries(decoded)) {
+            if (!EDITOR_SCRIPT_METADATA_KEYS.has(key)) {
+                normalized[key] = value;
+            }
+        }
+
+        return normalized;
+    }
+
+    private _resolvePropertyValue(
+        component: Component,
+        metadata: PropertyMetadata,
+        value: unknown,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): unknown {
+        const currentValue = (component as Record<string, unknown>)[metadata.propertyKey];
+        const fallbackValue = currentValue ?? metadata.defaultValue;
+
+        switch (normalizePropertyTypeId(metadata.type)) {
+            case 'boolean':
+                return asBoolean(value, asBoolean(fallbackValue, false));
+            case 'number':
+                return asNumber(value, asNumber(fallbackValue, 0));
+            case 'string':
+                return asString(value, asString(fallbackValue, ''));
+            case 'vec2':
+                return toVec2(value, fallbackValue);
+            case 'vec3':
+                return toVec3(value, fallbackValue);
+            case 'entity':
+                return this._resolveActorReference(value, createdByNodeId, createdActors) ?? null;
+            case 'transform': {
+                const targetActor = this._resolveActorReference(value, createdByNodeId, createdActors);
+                return targetActor?.getComponent(Transform) ?? null;
+            }
+            default:
+                return value;
+        }
+    }
+
+    private _resolveFallbackPropertyValue(
+        component: Component,
+        propertyKey: string,
+        value: unknown,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): unknown {
+        const currentValue = (component as Record<string, unknown>)[propertyKey];
+        const normalizedKey = propertyKey.toLowerCase();
+
+        if (currentValue instanceof Vec2) {
+            return toVec2(value, currentValue);
+        }
+
+        if (currentValue instanceof Vec3) {
+            return toVec3(value, currentValue);
+        }
+
+        if (typeof currentValue === 'number') {
+            return asNumber(value, currentValue);
+        }
+
+        if (typeof currentValue === 'boolean') {
+            return asBoolean(value, currentValue);
+        }
+
+        if (typeof currentValue === 'string') {
+            return asString(value, currentValue);
+        }
+
+        if (normalizedKey.includes('transform')) {
+            return (
+                this._resolveActorReference(value, createdByNodeId, createdActors)?.getComponent(
+                    Transform,
+                ) ?? null
+            );
+        }
+
+        if (isReferenceLike(value) || normalizedKey.includes('actor') || normalizedKey.includes('entity')) {
+            return this._resolveActorReference(value, createdByNodeId, createdActors) ?? null;
+        }
+
+        const objectValue = asRecord(value);
+        if (hasOwn(objectValue, 'x') && hasOwn(objectValue, 'y') && hasOwn(objectValue, 'z')) {
+            return toVec3(value, currentValue);
+        }
+
+        if (hasOwn(objectValue, 'x') && hasOwn(objectValue, 'y')) {
+            return toVec2(value, currentValue);
+        }
+
+        return value;
+    }
+
+    private _resolveActorReference(
+        value: unknown,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): Actor | undefined {
+        if (value instanceof Actor) {
+            return value;
+        }
+
+        if (value instanceof Transform) {
+            return this._findActorByComponentId(value.id, createdActors);
+        }
+
+        if (typeof value === 'string') {
+            return this._findActorByReferenceTarget(value, createdByNodeId, createdActors);
+        }
+
+        const referenceObject = asRecord(value);
+        const referenceKind = asString(referenceObject.kind);
+        const referenceTarget = asString(referenceObject.target);
+
+        if (!referenceTarget) {
+            return undefined;
+        }
+
+        if (referenceKind === 'component') {
+            return this._findActorByComponentId(referenceTarget, createdActors);
+        }
+
+        return this._findActorByReferenceTarget(referenceTarget, createdByNodeId, createdActors);
+    }
+
+    private _findActorByReferenceTarget(
+        target: string,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): Actor | undefined {
+        return (
+            createdByNodeId.get(target) ??
+            createdActors.find((actor) => actor.id === target) ??
+            this._host
+                .getAllActors()
+                .find(
+                    (actor) =>
+                        actor.id === target ||
+                        actor.getComponent(PrefabNodeBinding)?.nodeId === target,
+                )
+        );
+    }
+
+    private _findActorByComponentId(
+        componentId: string,
+        createdActors: readonly Actor[],
+    ): Actor | undefined {
+        const actorSets = [createdActors, this._host.getAllActors()];
+
+        for (const actors of actorSets) {
+            const actor = actors.find((candidate) =>
+                candidate.getAllComponents().some((component) => component.id === componentId),
+            );
+            if (actor) {
+                return actor;
+            }
+        }
+
+        return undefined;
     }
 }
