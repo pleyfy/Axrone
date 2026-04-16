@@ -102,7 +102,7 @@ const generateTorusGeometry = (
             const c = (tubularSegments + 1) * (j - 1) + i;
             const d = (tubularSegments + 1) * j + i;
 
-            builder.addQuad(a, b, c, d);
+            builder.addQuad(a, d, c, b);
         }
     }
 

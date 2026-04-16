@@ -27,7 +27,7 @@ export const createQuad = (
         doubleSided?: boolean;
     } = {}
 ): IGeometryBuffers => {
-    const { orientation = 'xy', doubleSided = true, ...rest } = config;
+    const { orientation = 'xy', doubleSided = false, ...rest } = config;
     const finalConfig = { ...DEFAULT_PLANE_CONFIG, ...rest };
     const builder = GeometryBuilder.create(finalConfig);
     return generateQuadGeometry(builder, finalConfig, orientation, doubleSided);

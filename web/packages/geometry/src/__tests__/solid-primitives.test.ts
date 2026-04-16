@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCapsule, createCylinder, createQuad, createSphere } from '@axrone/geometry';
+import { createCapsule, createCylinder, createQuad, createSphere, createTorus } from '@axrone/geometry';
 
 const VERTEX_STRIDE = 32;
 
@@ -56,6 +56,25 @@ const resolveTriangleArea = (
 	return Math.hypot(normal[0], normal[1], normal[2]) * 0.5;
 };
 
+const resolveTriangleCentroid = (
+	positions: Array<[number, number, number]>,
+	indices: number[],
+	triangleIndex: number,
+): [number, number, number] => {
+	const offset = triangleIndex * 3;
+	const a = positions[indices[offset]!]!;
+	const b = positions[indices[offset + 1]!]!;
+	const c = positions[indices[offset + 2]!]!;
+	return [
+		(a[0] + b[0] + c[0]) / 3,
+		(a[1] + b[1] + c[1]) / 3,
+		(a[2] + b[2] + c[2]) / 3,
+	];
+};
+
+const dot = (a: [number, number, number], b: [number, number, number]): number =>
+	a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
 describe('solid primitive generation', () => {
 	it('builds spheres without degenerate pole triangles', () => {
 		const geometry = createSphere({ widthSegments: 16, heightSegments: 8 });
@@ -93,6 +112,14 @@ describe('solid primitive generation', () => {
 		const indices = readIndices(geometry.indices);
 		const bodyTriangleCount = radialSegments * 2;
 		const hemisphereTriangleCount = radialSegments + (capSegments - 1) * radialSegments * 2;
+
+		for (let triangleIndex = 0; triangleIndex < bodyTriangleCount; triangleIndex += 1) {
+			const normal = resolveTriangleNormal(positions, indices, triangleIndex);
+			const centroid = resolveTriangleCentroid(positions, indices, triangleIndex);
+			const outward = [centroid[0], 0, centroid[2]] as [number, number, number];
+			expect(dot(normal, outward)).toBeGreaterThan(1e-6);
+		}
+
 		const topPoleNormal = resolveTriangleNormal(positions, indices, bodyTriangleCount);
 		const bottomPoleNormal = resolveTriangleNormal(
 			positions,
@@ -104,8 +131,45 @@ describe('solid primitive generation', () => {
 		expect(bottomPoleNormal[1]).toBeLessThan(0);
 	});
 
-	it('builds XY quads with front and back faces', () => {
+	it('winds torus faces outward across the full ring', () => {
+		const radius = 1;
+		const geometry = createTorus({ radius, tube: 0.35, radialSegments: 12, tubularSegments: 24 });
+		const positions = readPositions(geometry.vertices);
+		const indices = readIndices(geometry.indices);
+		const triangleCount = indices.length / 3;
+
+		for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += 1) {
+			const normal = resolveTriangleNormal(positions, indices, triangleIndex);
+			const centroid = resolveTriangleCentroid(positions, indices, triangleIndex);
+			const centerLength = Math.hypot(centroid[0], centroid[2]);
+			const center = [
+				(centroid[0] / centerLength) * radius,
+				0,
+				(centroid[2] / centerLength) * radius,
+			] as [number, number, number];
+			const outward = [
+				centroid[0] - center[0],
+				centroid[1] - center[1],
+				centroid[2] - center[2],
+			] as [number, number, number];
+			expect(dot(normal, outward)).toBeGreaterThan(1e-6);
+		}
+	});
+
+	it('builds XY quads as single-sided by default', () => {
 		const geometry = createQuad({ width: 1, height: 1, orientation: 'xy' });
+		const positions = readPositions(geometry.vertices);
+		const indices = readIndices(geometry.indices);
+		const normals = Array.from({ length: indices.length / 3 }, (_, triangleIndex) =>
+			resolveTriangleNormal(positions, indices, triangleIndex),
+		);
+
+		expect(indices).toHaveLength(6);
+		expect(normals.every((normal) => normal[2] > 0)).toBe(true);
+	});
+
+	it('builds XY quads with front and back faces when requested', () => {
+		const geometry = createQuad({ width: 1, height: 1, orientation: 'xy', doubleSided: true });
 		const positions = readPositions(geometry.vertices);
 		const indices = readIndices(geometry.indices);
 		const normals = Array.from({ length: indices.length / 3 }, (_, triangleIndex) =>

@@ -93,7 +93,7 @@ const generateCylinderBody = (
         const c = startVertex + j + radialSegments + 1;
         const d = startVertex + j + radialSegments + 2;
 
-        builder.addQuad(a, b, d, c);
+        builder.addQuad(a, c, d, b);
     }
 };
 
