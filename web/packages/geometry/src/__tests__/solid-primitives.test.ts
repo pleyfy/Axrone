@@ -75,6 +75,18 @@ const resolveTriangleCentroid = (
 const dot = (a: [number, number, number], b: [number, number, number]): number =>
 	a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
+const hasPosition = (
+	positions: Array<[number, number, number]>,
+	target: [number, number, number],
+	epsilon: number = 1e-6,
+): boolean =>
+	positions.some(
+		(position) =>
+			Math.abs(position[0] - target[0]) <= epsilon &&
+			Math.abs(position[1] - target[1]) <= epsilon &&
+			Math.abs(position[2] - target[2]) <= epsilon,
+	);
+
 describe('solid primitive generation', () => {
 	it('builds spheres without degenerate pole triangles', () => {
 		const geometry = createSphere({ widthSegments: 16, heightSegments: 8 });
@@ -105,13 +117,16 @@ describe('solid primitive generation', () => {
 	});
 
 	it('winds capsule pole fans outward on both ends', () => {
+		const radius = 0.5;
+		const length = 1;
 		const radialSegments = 12;
 		const capSegments = 8;
-		const geometry = createCapsule({ radialSegments, capSegments });
+		const geometry = createCapsule({ radius, length, radialSegments, capSegments });
 		const positions = readPositions(geometry.vertices);
 		const indices = readIndices(geometry.indices);
 		const bodyTriangleCount = radialSegments * 2;
 		const hemisphereTriangleCount = radialSegments + (capSegments - 1) * radialSegments * 2;
+		const halfLength = length * 0.5;
 
 		for (let triangleIndex = 0; triangleIndex < bodyTriangleCount; triangleIndex += 1) {
 			const normal = resolveTriangleNormal(positions, indices, triangleIndex);
@@ -127,6 +142,10 @@ describe('solid primitive generation', () => {
 			bodyTriangleCount + hemisphereTriangleCount,
 		);
 
+		expect(hasPosition(positions, [0, halfLength + radius, 0])).toBe(true);
+		expect(hasPosition(positions, [0, -(halfLength + radius), 0])).toBe(true);
+		expect(hasPosition(positions, [0, halfLength, 0])).toBe(false);
+		expect(hasPosition(positions, [0, -halfLength, 0])).toBe(false);
 		expect(topPoleNormal[1]).toBeGreaterThan(0);
 		expect(bottomPoleNormal[1]).toBeLessThan(0);
 	});
