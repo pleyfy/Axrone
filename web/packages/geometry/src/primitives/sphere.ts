@@ -51,6 +51,7 @@ const generateSphereGeometry = (
 ): IGeometryBuffers => {
     const { radius, widthSegments, heightSegments, phiStart, phiLength, thetaStart, thetaLength } =
         config;
+    const thetaEnd = thetaStart + thetaLength;
 
     const widthStep = 1 / widthSegments;
     const heightStep = 1 / heightSegments;
@@ -106,13 +107,18 @@ const generateSphereGeometry = (
     for (let iy = 0; iy < heightSegments; iy++) {
         for (let ix = 0; ix < widthSegments; ix++) {
             const stride = widthSegments + 1;
-            const a = (iy + 1) * stride + ix;
-            const b = (iy + 1) * stride + ix + 1;
-            const c = iy * stride + ix + 1;
-            const d = iy * stride + ix;
+            const a = iy * stride + ix + 1;
+            const b = iy * stride + ix;
+            const c = (iy + 1) * stride + ix;
+            const d = (iy + 1) * stride + ix + 1;
 
-            if (iy !== 0) builder.addTriangle(a, b, d);
-            if (iy !== heightSegments - 1) builder.addTriangle(b, c, d);
+            if (iy !== 0 || thetaStart > 0) {
+                builder.addTriangle(a, b, d);
+            }
+
+            if (iy !== heightSegments - 1 || thetaEnd < Math.PI) {
+                builder.addTriangle(b, c, d);
+            }
         }
     }
 

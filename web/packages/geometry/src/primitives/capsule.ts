@@ -150,9 +150,9 @@ const generateHemisphere = (
         const b = startVertex + 1 + j + 1;
 
         if (isTop) {
-            builder.addTriangle(center, a, b);
-        } else {
             builder.addTriangle(center, b, a);
+        } else {
+            builder.addTriangle(center, a, b);
         }
     }
 
