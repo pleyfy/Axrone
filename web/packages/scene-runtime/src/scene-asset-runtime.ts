@@ -1,5 +1,14 @@
 import { Vec4 } from '@axrone/numeric';
-import { createBox, createPlane, createSphere } from '@axrone/geometry';
+import {
+    createBox,
+    createCapsule,
+    createCone,
+    createCylinder,
+    createPlane,
+    createQuad,
+    createSphere,
+    createTorus,
+} from '@axrone/geometry';
 import {
     FilterMode,
     WrapMode,
@@ -193,6 +202,121 @@ export class SceneAssetRuntime {
                     radius,
                     widthSegments: segments,
                     heightSegments: segments,
+                    generateNormals: true,
+                    generateTexCoords: true,
+                    generateTangents: false,
+                })
+            )
+        );
+    }
+
+    createQuadMesh(
+        id: string,
+        width: number = 1,
+        height: number = 1,
+        orientation: 'xy' | 'xz' | 'yz' = 'xy'
+    ): SceneMeshHandle {
+        return this.registerMesh(
+            this._geometryMeshBuilder.createDefinition(
+                id,
+                createQuad({
+                    width,
+                    height,
+                    orientation,
+                    generateNormals: true,
+                    generateTexCoords: true,
+                    generateTangents: false,
+                })
+            )
+        );
+    }
+
+    createCylinderMesh(
+        id: string,
+        radiusTop: number = 0.5,
+        radiusBottom: number = 0.5,
+        height: number = 1,
+        radialSegments: number = 24,
+        heightSegments: number = 1
+    ): SceneMeshHandle {
+        return this.registerMesh(
+            this._geometryMeshBuilder.createDefinition(
+                id,
+                createCylinder({
+                    radiusTop,
+                    radiusBottom,
+                    height,
+                    radialSegments,
+                    heightSegments,
+                    generateNormals: true,
+                    generateTexCoords: true,
+                    generateTangents: false,
+                })
+            )
+        );
+    }
+
+    createConeMesh(
+        id: string,
+        radius: number = 0.5,
+        height: number = 1,
+        radialSegments: number = 24,
+        heightSegments: number = 1
+    ): SceneMeshHandle {
+        return this.registerMesh(
+            this._geometryMeshBuilder.createDefinition(
+                id,
+                createCone({
+                    radius,
+                    height,
+                    radialSegments,
+                    heightSegments,
+                    generateNormals: true,
+                    generateTexCoords: true,
+                    generateTangents: false,
+                })
+            )
+        );
+    }
+
+    createCapsuleMesh(
+        id: string,
+        radius: number = 0.5,
+        length: number = 1,
+        capSegments: number = 12,
+        radialSegments: number = 24
+    ): SceneMeshHandle {
+        return this.registerMesh(
+            this._geometryMeshBuilder.createDefinition(
+                id,
+                createCapsule({
+                    radius,
+                    length,
+                    capSegments,
+                    radialSegments,
+                    generateNormals: true,
+                    generateTexCoords: true,
+                    generateTangents: false,
+                })
+            )
+        );
+    }
+
+    createTorusMesh(
+        id: string,
+        radius: number = 0.56,
+        tube: number = 0.18,
+        radialSegments: number = 20,
+        tubularSegments: number = 32
+    ): SceneMeshHandle {
+        return this.registerMesh(
+            this._geometryMeshBuilder.createDefinition(
+                id,
+                createTorus({
+                    radius,
+                    tube,
+                    radialSegments,
+                    tubularSegments,
                     generateNormals: true,
                     generateTexCoords: true,
                     generateTangents: false,

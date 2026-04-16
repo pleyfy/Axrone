@@ -495,7 +495,7 @@ export class ScenePrefabRuntime {
         createdByNodeId: ReadonlyMap<string, Actor>,
         createdActors: readonly Actor[],
     ): unknown {
-        const currentValue = (component as Record<string, unknown>)[metadata.propertyKey];
+        const currentValue = (component as unknown as Record<string, unknown>)[metadata.propertyKey];
         const fallbackValue = currentValue ?? metadata.defaultValue;
 
         switch (normalizePropertyTypeId(metadata.type)) {
@@ -527,7 +527,7 @@ export class ScenePrefabRuntime {
         createdByNodeId: ReadonlyMap<string, Actor>,
         createdActors: readonly Actor[],
     ): unknown {
-        const currentValue = (component as Record<string, unknown>)[propertyKey];
+        const currentValue = (component as unknown as Record<string, unknown>)[propertyKey];
         const normalizedKey = propertyKey.toLowerCase();
 
         if (currentValue instanceof Vec2) {
