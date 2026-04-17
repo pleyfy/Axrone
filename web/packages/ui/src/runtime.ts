@@ -593,6 +593,22 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         return Math.max(0, this.liveCount - 1);
     }
 
+    collectSubtreeWidgetIds(widget: WidgetId): WidgetId[] {
+        const index = this.requireWidget(widget);
+        const widgets: WidgetId[] = [];
+        const stack = [index];
+
+        while (stack.length > 0) {
+            const current = stack.pop()!;
+            widgets.push(current as WidgetId);
+            for (let child = this.lastChild[current]; child !== 0; child = this.previousSibling[child]) {
+                stack.push(child);
+            }
+        }
+
+        return widgets;
+    }
+
     commit(viewport?: Partial<SizeLike>): UIFrame<TPayload> {
         this.ensureActive();
         if (viewport) {

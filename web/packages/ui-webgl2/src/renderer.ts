@@ -19,9 +19,9 @@ import type {
     WebGL2UIRendererStatistics,
 } from './types';
 
-const QUAD_FLOATS_PER_INSTANCE = 19;
-const IMAGE_FLOATS_PER_INSTANCE = 16;
-const TEXT_FLOATS_PER_INSTANCE = 20;
+const QUAD_FLOATS_PER_INSTANCE = 23;
+const IMAGE_FLOATS_PER_INSTANCE = 22;
+const TEXT_FLOATS_PER_INSTANCE = 26;
 
 const QUAD_VERTEX_SOURCE = `#version 300 es
 precision mediump float;
@@ -31,6 +31,8 @@ layout(location = 2) in vec4 a_FillColor;
 layout(location = 3) in vec4 a_BorderColor;
 layout(location = 4) in vec4 a_Radius;
 layout(location = 5) in float a_BorderWidth;
+layout(location = 6) in vec3 a_TransformRow0;
+layout(location = 7) in vec3 a_TransformRow1;
 uniform vec2 u_Viewport;
 out vec2 v_Local;
 out vec2 v_Size;
@@ -40,6 +42,10 @@ out vec4 v_Radius;
 out float v_BorderWidth;
 void main() {
     vec2 pixel = a_Rect.xy + a_Unit * a_Rect.zw;
+    pixel = vec2(
+        a_TransformRow0.x * pixel.x + a_TransformRow0.y * pixel.y + a_TransformRow0.z,
+        a_TransformRow1.x * pixel.x + a_TransformRow1.y * pixel.y + a_TransformRow1.z
+    );
     vec2 ndc = vec2((pixel.x / u_Viewport.x) * 2.0 - 1.0, 1.0 - (pixel.y / u_Viewport.y) * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     v_Local = a_Unit * a_Rect.zw;
@@ -105,6 +111,8 @@ layout(location = 2) in vec4 a_UvRect;
 layout(location = 3) in vec4 a_Color;
 layout(location = 4) in vec4 a_OutlineColor;
 layout(location = 5) in vec4 a_SdfParams;
+layout(location = 6) in vec3 a_TransformRow0;
+layout(location = 7) in vec3 a_TransformRow1;
 uniform vec2 u_Viewport;
 out vec2 v_Uv;
 out vec4 v_Color;
@@ -112,6 +120,10 @@ out vec4 v_OutlineColor;
 out vec4 v_SdfParams;
 void main() {
     vec2 pixel = a_Rect.xy + a_Unit * a_Rect.zw;
+    pixel = vec2(
+        a_TransformRow0.x * pixel.x + a_TransformRow0.y * pixel.y + a_TransformRow0.z,
+        a_TransformRow1.x * pixel.x + a_TransformRow1.y * pixel.y + a_TransformRow1.z
+    );
     vec2 ndc = vec2((pixel.x / u_Viewport.x) * 2.0 - 1.0, 1.0 - (pixel.y / u_Viewport.y) * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     v_Uv = a_UvRect.xy + a_Unit * a_UvRect.zw;
@@ -156,6 +168,8 @@ layout(location = 1) in vec4 a_Rect;
 layout(location = 2) in vec4 a_UvRect;
 layout(location = 3) in vec4 a_Tint;
 layout(location = 4) in vec4 a_Radius;
+layout(location = 5) in vec3 a_TransformRow0;
+layout(location = 6) in vec3 a_TransformRow1;
 uniform vec2 u_Viewport;
 out vec2 v_Local;
 out vec2 v_Size;
@@ -164,6 +178,10 @@ out vec4 v_Tint;
 out vec4 v_Radius;
 void main() {
     vec2 pixel = a_Rect.xy + a_Unit * a_Rect.zw;
+    pixel = vec2(
+        a_TransformRow0.x * pixel.x + a_TransformRow0.y * pixel.y + a_TransformRow0.z,
+        a_TransformRow1.x * pixel.x + a_TransformRow1.y * pixel.y + a_TransformRow1.z
+    );
     vec2 ndc = vec2((pixel.x / u_Viewport.x) * 2.0 - 1.0, 1.0 - (pixel.y / u_Viewport.y) * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     v_Local = a_Unit * a_Rect.zw;
@@ -245,6 +263,8 @@ const blendColor = (
     color: QuadRenderCommand['color'] | TextRenderCommand['color'],
     opacity: number
 ): readonly [number, number, number, number] => [color.r, color.g, color.b, multiplyAlpha(color.a, opacity)];
+
+const IDENTITY_TRANSFORM = [1, 0, 0, 1, 0, 0] as const;
 
 const sameClip = (left: ClipState | null, right: RectLike | null): boolean => {
     if (left === null || right === null) {
@@ -505,6 +525,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.enableVertexAttribArray(5);
         this.gl.vertexAttribPointer(5, 1, this.gl.FLOAT, false, stride, 64);
         this.gl.vertexAttribDivisor(5, 1);
+        this.gl.enableVertexAttribArray(6);
+        this.gl.vertexAttribPointer(6, 3, this.gl.FLOAT, false, stride, 68);
+        this.gl.vertexAttribDivisor(6, 1);
+        this.gl.enableVertexAttribArray(7);
+        this.gl.vertexAttribPointer(7, 3, this.gl.FLOAT, false, stride, 80);
+        this.gl.vertexAttribDivisor(7, 1);
         this.gl.bindVertexArray(null);
     }
 
@@ -528,6 +554,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.enableVertexAttribArray(4);
         this.gl.vertexAttribPointer(4, 4, this.gl.FLOAT, false, stride, 48);
         this.gl.vertexAttribDivisor(4, 1);
+        this.gl.enableVertexAttribArray(5);
+        this.gl.vertexAttribPointer(5, 3, this.gl.FLOAT, false, stride, 64);
+        this.gl.vertexAttribDivisor(5, 1);
+        this.gl.enableVertexAttribArray(6);
+        this.gl.vertexAttribPointer(6, 3, this.gl.FLOAT, false, stride, 76);
+        this.gl.vertexAttribDivisor(6, 1);
         this.gl.bindVertexArray(null);
     }
 
@@ -554,6 +586,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.enableVertexAttribArray(5);
         this.gl.vertexAttribPointer(5, 4, this.gl.FLOAT, false, stride, 64);
         this.gl.vertexAttribDivisor(5, 1);
+        this.gl.enableVertexAttribArray(6);
+        this.gl.vertexAttribPointer(6, 3, this.gl.FLOAT, false, stride, 80);
+        this.gl.vertexAttribDivisor(6, 1);
+        this.gl.enableVertexAttribArray(7);
+        this.gl.vertexAttribPointer(7, 3, this.gl.FLOAT, false, stride, 92);
+        this.gl.vertexAttribDivisor(7, 1);
         this.gl.bindVertexArray(null);
     }
 
@@ -583,8 +621,13 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.quadBatch[base + 14] = command.radius.bottomRight;
         this.quadBatch[base + 15] = command.radius.bottomLeft;
         this.quadBatch[base + 16] = command.borderWidth;
-        this.quadBatch[base + 17] = 0;
-        this.quadBatch[base + 18] = 0;
+        const transform = command.transform ?? IDENTITY_TRANSFORM;
+        this.quadBatch[base + 17] = transform[0];
+        this.quadBatch[base + 18] = transform[1];
+        this.quadBatch[base + 19] = transform[4];
+        this.quadBatch[base + 20] = transform[2];
+        this.quadBatch[base + 21] = transform[3];
+        this.quadBatch[base + 22] = transform[5];
         this.quadCount += 1;
         this.statisticsState.quadCount += 1;
     }
@@ -659,6 +702,13 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.imageBatch[base + 13] = command.radius.topRight;
         this.imageBatch[base + 14] = command.radius.bottomRight;
         this.imageBatch[base + 15] = command.radius.bottomLeft;
+        const transform = command.transform ?? IDENTITY_TRANSFORM;
+        this.imageBatch[base + 16] = transform[0];
+        this.imageBatch[base + 17] = transform[1];
+        this.imageBatch[base + 18] = transform[4];
+        this.imageBatch[base + 19] = transform[2];
+        this.imageBatch[base + 20] = transform[3];
+        this.imageBatch[base + 21] = transform[5];
         this.imageCount += 1;
     }
 
@@ -704,6 +754,13 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.textBatch[base + 17] = entry.distanceRange;
         this.textBatch[base + 18] = command.outlineWidth;
         this.textBatch[base + 19] = command.edgeSoftness;
+        const transform = command.transform ?? IDENTITY_TRANSFORM;
+        this.textBatch[base + 20] = transform[0];
+        this.textBatch[base + 21] = transform[1];
+        this.textBatch[base + 22] = transform[4];
+        this.textBatch[base + 23] = transform[2];
+        this.textBatch[base + 24] = transform[3];
+        this.textBatch[base + 25] = transform[5];
         this.textCount += 1;
         this.statisticsState.glyphCount += 1;
         void page;

@@ -598,12 +598,13 @@ describe('@axrone/ui-webgl2', () => {
 
         const dynamicFloatUploads = gl.bufferData.mock.calls
             .map((call) => call[1])
-            .filter((value): value is Float32Array => value instanceof Float32Array && value.length === 20);
+            .filter((value): value is Float32Array => value instanceof Float32Array && value.length === 26);
 
         expect(dynamicFloatUploads).toHaveLength(1);
         expect(dynamicFloatUploads[0]?.[16]).toBe(1);
         expect(dynamicFloatUploads[0]?.[17]).toBe(6);
         expect(dynamicFloatUploads[0]?.[18]).toBe(1.5);
         expect(dynamicFloatUploads[0]?.[19]).toBe(1.25);
+        expect(Array.from(dynamicFloatUploads[0]?.slice(20, 26) ?? [])).toEqual([1, 0, 0, 0, 1, 0]);
     });
 });

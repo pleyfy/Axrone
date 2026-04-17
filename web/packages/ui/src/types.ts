@@ -188,6 +188,8 @@ export interface LayoutBox extends RectLike {
     readonly contentHeight: number;
 }
 
+export type AffineTransform2D = readonly [number, number, number, number, number, number];
+
 export interface WidgetLayoutInput {
     readonly display?: DisplayMode;
     readonly direction?: Axis;
@@ -732,6 +734,7 @@ export interface QuadRenderCommand {
     readonly radius: CornerRadii;
     readonly opacity: number;
     readonly clip: RectLike | null;
+    readonly transform?: AffineTransform2D;
 }
 
 export interface TextRenderCommand {
@@ -747,6 +750,7 @@ export interface TextRenderCommand {
     readonly opacity: number;
     readonly clip: RectLike | null;
     readonly layout: TextLayoutResult;
+    readonly transform?: AffineTransform2D;
 }
 
 export interface ImageRenderCommand {
@@ -764,6 +768,7 @@ export interface ImageRenderCommand {
     readonly radius: CornerRadii;
     readonly clip: RectLike | null;
     readonly uvRect: UVRect;
+    readonly transform?: AffineTransform2D;
 }
 
 export interface CustomRenderCommand<TPayload = unknown> {
