@@ -57,6 +57,7 @@ export type ColorHexString = `#${string}`;
 export type KerningPairKey = `${number}:${number}`;
 export type UILengthInput = number | 'auto' | 'content' | PercentageString | StretchString | ViewportString;
 export type FontGlyphBitmapFormat = 'alpha8' | 'rgba8' | 'sdf8';
+export type FontBinaryFormat = 'ttf' | 'otf' | 'woff' | 'woff2';
 
 export interface Vec2Like {
     readonly x: number;
@@ -498,7 +499,7 @@ export interface FontGlyphMetric {
     readonly distanceRange?: number;
 }
 
-export interface FontFaceAsset {
+export interface DynamicFontRuntimeInfo {
     readonly family: string;
     readonly face?: string;
     readonly style?: FontStyle;
@@ -509,14 +510,49 @@ export interface FontFaceAsset {
     readonly lineGap?: number;
     readonly unitsPerEm?: number;
     readonly defaultAdvance?: number;
+    readonly fallbackCodePoint?: number;
+    readonly atlas?: FontAtlasOptions;
+}
+
+export interface DynamicFontGlyphRaster {
+    readonly codePoint: number;
+    readonly rasterSize: number;
+    readonly width: number;
+    readonly height: number;
+    readonly data?: ArrayBuffer | ArrayBufferView | null;
+    readonly format?: FontGlyphBitmapFormat;
+    readonly rowStride?: number;
+    readonly distanceRange?: number;
+}
+
+export interface DynamicFontFaceRuntime {
+    readonly info: DynamicFontRuntimeInfo;
+    measureGlyph(codePoint: number): FontGlyphMetric | null;
+    rasterizeGlyph(codePoint: number, pixelSize: number): DynamicFontGlyphRaster | null;
+    getKerning?(leftCodePoint: number, rightCodePoint: number): number;
+    dispose?(): void;
+}
+
+export interface StaticFontFaceAsset extends DynamicFontRuntimeInfo {
+    readonly kind?: 'static';
     readonly glyphs:
         | ReadonlyArray<FontGlyphMetric>
         | ReadonlyMap<number, FontGlyphMetric>
         | Readonly<Record<string, FontGlyphMetric>>;
     readonly kernings?: Readonly<Record<KerningPairKey, number>> | ReadonlyMap<KerningPairKey, number>;
-    readonly fallbackCodePoint?: number;
-    readonly atlas?: FontAtlasOptions;
 }
+
+export interface DynamicFontFaceAsset {
+    readonly kind: 'dynamic';
+    readonly runtime: DynamicFontFaceRuntime;
+    readonly glyphs?:
+        | ReadonlyArray<FontGlyphMetric>
+        | ReadonlyMap<number, FontGlyphMetric>
+        | Readonly<Record<string, FontGlyphMetric>>;
+    readonly kernings?: Readonly<Record<KerningPairKey, number>> | ReadonlyMap<KerningPairKey, number>;
+}
+
+export type FontFaceAsset = StaticFontFaceAsset | DynamicFontFaceAsset;
 
 export interface FontFamilyDefinition {
     readonly name: string;
@@ -535,14 +571,24 @@ export interface FontAssetSourceDescriptor {
     readonly asset: FontFaceAsset;
 }
 
-export interface FontAssetSourceBuffer {
+export interface FontAssetSourceMetadata {
+    readonly family?: string;
+    readonly face?: string;
+    readonly style?: FontStyle;
+    readonly weight?: FontWeight;
+    readonly locale?: string;
+    readonly fallbackCodePoint?: number;
+    readonly atlas?: FontAtlasOptions;
+    readonly contentType?: string;
+}
+
+export interface FontAssetSourceBuffer extends FontAssetSourceMetadata {
     readonly kind: 'buffer';
     readonly data: ArrayBuffer | ArrayBufferView;
-    readonly contentType?: string;
     readonly cacheKey?: string;
 }
 
-export interface FontAssetSourceUrl {
+export interface FontAssetSourceUrl extends FontAssetSourceMetadata {
     readonly kind: 'url';
     readonly url: string;
     readonly headers?: Readonly<Record<string, string>>;
@@ -576,6 +622,18 @@ export interface FontRegistryOptions {
     readonly defaultFamily?: string;
     readonly retry?: RetryPolicy;
     readonly fetch?: typeof globalThis.fetch;
+    readonly dynamicRuntimeFactory?: DynamicFontRuntimeFactory;
+}
+
+export interface DynamicFontRuntimeSource {
+    readonly source: FontAssetSourceBuffer | FontAssetSourceUrl;
+    readonly bytes: ArrayBuffer;
+    readonly format: FontBinaryFormat;
+    readonly cacheKey: string;
+}
+
+export interface DynamicFontRuntimeFactory {
+    create(source: DynamicFontRuntimeSource): Promise<DynamicFontFaceRuntime>;
 }
 
 export interface GlyphAtlasEntry {
@@ -584,6 +642,7 @@ export interface GlyphAtlasEntry {
     readonly pageWidth: number;
     readonly pageHeight: number;
     readonly codePoint: number;
+    readonly rasterSize?: number;
     readonly x: number;
     readonly y: number;
     readonly width: number;

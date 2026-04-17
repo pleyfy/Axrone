@@ -1,10 +1,12 @@
-import {
-    DisposedUIError,
-    FontFaceNotFoundError,
-    FontLoadError,
-} from './errors';
+import { DisposedUIError, FontFaceNotFoundError, FontLoadError } from './errors';
+import { createBrowserDynamicFontRuntimeFactory } from './font-runtime';
 import type {
+    DynamicFontFaceAsset,
+    DynamicFontFaceRuntime,
+    DynamicFontGlyphRaster,
+    DynamicFontRuntimeFactory,
     FontAssetSource,
+    FontBinaryFormat,
     FontFaceAsset,
     FontFaceId,
     FontFaceInfo,
@@ -26,6 +28,7 @@ import type {
     GlyphAtlasPageSnapshot,
     KerningPairKey,
     RetryPolicy,
+    StaticFontFaceAsset,
 } from './types';
 
 const normalizeWeight = (weight: FontWeight | undefined): number => {
@@ -64,6 +67,13 @@ const toByteArray = (value: ArrayBuffer | ArrayBufferView): Uint8Array => {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 };
 
+const toOwnedArrayBuffer = (value: ArrayBuffer | ArrayBufferView): ArrayBuffer => {
+    const bytes = toByteArray(value);
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+};
+
 const wait = async (delayMs: number): Promise<void> =>
     new Promise((resolve) => {
         setTimeout(resolve, delayMs);
@@ -81,12 +91,151 @@ const applyRetryDelay = (policy: RetryPolicy | undefined, attempt: number): numb
     return Math.max(0, Math.round(exponential * factor));
 };
 
+const isDynamicFontFaceAsset = (asset: FontFaceAsset): asset is DynamicFontFaceAsset => asset.kind === 'dynamic';
+
+const createAtlasEntryKey = (codePoint: number, rasterSize?: number): string => `${codePoint}:${rasterSize ?? 0}`;
+
+const detectBinaryFormatFromContentType = (contentType: string | undefined): FontBinaryFormat | null => {
+    if (!contentType) {
+        return null;
+    }
+    const normalized = contentType.toLowerCase();
+    if (normalized.includes('woff2')) {
+        return 'woff2';
+    }
+    if (normalized.includes('woff')) {
+        return 'woff';
+    }
+    if (normalized.includes('font/otf') || normalized.includes('opentype')) {
+        return 'otf';
+    }
+    if (normalized.includes('font/ttf') || normalized.includes('truetype') || normalized.includes('font/sfnt')) {
+        return 'ttf';
+    }
+    return null;
+};
+
+const detectBinaryFormatFromUrl = (url: string): FontBinaryFormat | null => {
+    const normalized = url.toLowerCase().split('#')[0]!.split('?')[0]!;
+    if (normalized.endsWith('.woff2')) {
+        return 'woff2';
+    }
+    if (normalized.endsWith('.woff')) {
+        return 'woff';
+    }
+    if (normalized.endsWith('.otf')) {
+        return 'otf';
+    }
+    if (normalized.endsWith('.ttf')) {
+        return 'ttf';
+    }
+    return null;
+};
+
+const detectBinaryFormatFromBuffer = (bytes: Uint8Array): FontBinaryFormat | null => {
+    if (bytes.byteLength < 4) {
+        return null;
+    }
+    const tag = String.fromCharCode(bytes[0] ?? 0, bytes[1] ?? 0, bytes[2] ?? 0, bytes[3] ?? 0);
+    if (tag === 'wOF2') {
+        return 'woff2';
+    }
+    if (tag === 'wOFF') {
+        return 'woff';
+    }
+    if (tag === 'OTTO') {
+        return 'otf';
+    }
+    const sfnt =
+        (bytes[0] === 0x00 && bytes[1] === 0x01 && bytes[2] === 0x00 && bytes[3] === 0x00) ||
+        tag === 'true' ||
+        tag === 'typ1';
+    return sfnt ? 'ttf' : null;
+};
+
+const detectSourceBinaryFormat = (source: FontAssetSource): FontBinaryFormat | null => {
+    if (source.kind === 'descriptor') {
+        return null;
+    }
+    if (source.contentType) {
+        return detectBinaryFormatFromContentType(source.contentType);
+    }
+    if (source.kind === 'url') {
+        return detectBinaryFormatFromUrl(source.url);
+    }
+    return detectBinaryFormatFromBuffer(toByteArray(source.data));
+};
+
+const normalizeGlyphMap = (
+    glyphs: StaticFontFaceAsset['glyphs'] | DynamicFontFaceAsset['glyphs'] | undefined
+): Map<number, FontGlyphMetric> => {
+    if (!glyphs) {
+        return new Map<number, FontGlyphMetric>();
+    }
+    if (glyphs instanceof Map) {
+        return new Map<number, FontGlyphMetric>(glyphs);
+    }
+    if (Array.isArray(glyphs)) {
+        return new Map<number, FontGlyphMetric>(glyphs.map((metric) => [metric.codePoint, metric]));
+    }
+    return new Map<number, FontGlyphMetric>(Object.values(glyphs).map((metric) => [metric.codePoint, metric]));
+};
+
+const normalizeKerningMap = (
+    kernings: StaticFontFaceAsset['kernings'] | DynamicFontFaceAsset['kernings'] | undefined
+): Map<KerningPairKey, number> => {
+    if (!kernings) {
+        return new Map<KerningPairKey, number>();
+    }
+    if (kernings instanceof Map) {
+        return new Map<KerningPairKey, number>(kernings);
+    }
+    return new Map<KerningPairKey, number>(Object.entries(kernings) as [KerningPairKey, number][]);
+};
+
+const buildSourceKey = (source: FontAssetSource): string => {
+    const metadata = [
+        source.kind !== 'descriptor' ? source.family ?? '' : '',
+        source.kind !== 'descriptor' ? source.face ?? '' : '',
+        source.kind !== 'descriptor' ? normalizeStyle(source.style) : '',
+        source.kind !== 'descriptor' ? normalizeWeight(source.weight) : '',
+        source.kind !== 'descriptor' ? source.locale ?? '' : '',
+    ].join(':');
+    switch (source.kind) {
+        case 'descriptor':
+            return `descriptor:${source.asset.kind ?? 'static'}:${source.asset.kind === 'dynamic' ? source.asset.runtime.info.family : source.asset.family}:${source.asset.kind === 'dynamic' ? source.asset.runtime.info.face ?? 'Regular' : source.asset.face ?? 'Regular'}:${source.asset.kind === 'dynamic' ? normalizeWeight(source.asset.runtime.info.weight) : normalizeWeight(source.asset.weight)}`;
+        case 'buffer':
+            return source.cacheKey ?? `buffer:${toByteArray(source.data).byteLength}:${source.contentType ?? 'application/octet-stream'}:${metadata}`;
+        case 'url':
+            return source.cacheKey ?? `url:${source.url}:${source.contentType ?? ''}:${metadata}`;
+        default:
+            return 'unknown';
+    }
+};
+
+interface GlyphAtlasSource {
+    readonly codePoint: number;
+    readonly rasterSize?: number;
+    readonly width: number;
+    readonly height: number;
+    readonly data?: ArrayBuffer | ArrayBufferView | null;
+    readonly format?: FontGlyphBitmapFormat;
+    readonly rowStride?: number;
+    readonly distanceRange?: number;
+}
+
+interface ResolvedGlyphMetric {
+    readonly codePoint: number;
+    readonly metric: FontGlyphMetric;
+}
+
 interface InternalFontFace {
     readonly id: FontFaceId;
     readonly info: FontFaceInfo;
     readonly glyphs: Map<number, FontGlyphMetric>;
     readonly kernings: Map<KerningPairKey, number>;
     readonly atlas: GlyphAtlas;
+    readonly runtime?: DynamicFontFaceRuntime;
 }
 
 interface InternalFamily {
@@ -103,7 +252,7 @@ interface AtlasPage {
     cursorX: number;
     cursorY: number;
     rowHeight: number;
-    readonly entries: Map<number, GlyphAtlasEntry>;
+    readonly entries: Map<string, GlyphAtlasEntry>;
 }
 
 class GlyphAtlas {
@@ -112,7 +261,7 @@ class GlyphAtlas {
     private readonly height: number;
     private readonly padding: number;
     private readonly pages: AtlasPage[] = [];
-    private readonly entries = new Map<number, GlyphAtlasEntry>();
+    private readonly entries = new Map<string, GlyphAtlasEntry>();
     private nextPageId = 1;
 
     constructor(faceId: FontFaceId, width: number, height: number, padding: number) {
@@ -122,13 +271,18 @@ class GlyphAtlas {
         this.padding = Math.max(0, Math.floor(padding));
     }
 
-    ensure(metric: FontGlyphMetric): GlyphAtlasEntry {
-        const existing = this.entries.get(metric.codePoint);
+    get(codePoint: number, rasterSize?: number): GlyphAtlasEntry | null {
+        return this.entries.get(createAtlasEntryKey(codePoint, rasterSize)) ?? null;
+    }
+
+    ensure(glyph: GlyphAtlasSource): GlyphAtlasEntry {
+        const key = createAtlasEntryKey(glyph.codePoint, glyph.rasterSize);
+        const existing = this.entries.get(key);
         if (existing) {
             return existing;
         }
-        const width = Math.max(1, Math.ceil(metric.width ?? metric.advance));
-        const height = Math.max(1, Math.ceil(metric.height ?? width));
+        const width = Math.max(1, Math.ceil(glyph.width));
+        const height = Math.max(1, Math.ceil(glyph.height));
         const paddedWidth = width + this.padding * 2;
         const paddedHeight = height + this.padding * 2;
         let page = this.pages[this.pages.length - 1];
@@ -145,29 +299,30 @@ class GlyphAtlas {
         }
         const x = page.cursorX + this.padding;
         const y = page.cursorY + this.padding;
-        const format: FontGlyphBitmapFormat = metric.format ?? 'alpha8';
-        const rowStride = metric.rowStride ?? width * (format === 'rgba8' ? 4 : 1);
+        const format: FontGlyphBitmapFormat = glyph.format ?? 'alpha8';
+        const rowStride = glyph.rowStride ?? width * (format === 'rgba8' ? 4 : 1);
         const entry: GlyphAtlasEntry = {
             faceId: this.faceId,
             page: page.id,
             pageWidth: page.width,
             pageHeight: page.height,
-            codePoint: metric.codePoint,
+            codePoint: glyph.codePoint,
+            rasterSize: glyph.rasterSize,
             x,
             y,
             width,
             height,
             format,
             rowStride,
-            distanceRange: metric.distanceRange ?? 1,
+            distanceRange: glyph.distanceRange ?? 1,
             u0: x / page.width,
             v0: y / page.height,
             u1: (x + width) / page.width,
             v1: (y + height) / page.height,
-            data: metric.data ?? null,
+            data: glyph.data ?? null,
         };
-        page.entries.set(metric.codePoint, entry);
-        this.entries.set(metric.codePoint, entry);
+        page.entries.set(key, entry);
+        this.entries.set(key, entry);
         page.cursorX += paddedWidth;
         page.rowHeight = Math.max(page.rowHeight, paddedHeight);
         return entry;
@@ -194,11 +349,12 @@ class GlyphAtlas {
                 cursorX: 0,
                 cursorY: 0,
                 rowHeight: 0,
-                entries: new Map<number, GlyphAtlasEntry>(),
+                entries: new Map<string, GlyphAtlasEntry>(),
             };
             for (const entry of pageSnapshot.entries) {
-                page.entries.set(entry.codePoint, entry);
-                this.entries.set(entry.codePoint, entry);
+                const key = createAtlasEntryKey(entry.codePoint, entry.rasterSize);
+                page.entries.set(key, entry);
+                this.entries.set(key, entry);
                 page.cursorX = Math.max(page.cursorX, entry.x + entry.width + this.padding);
                 page.cursorY = Math.max(page.cursorY, entry.y);
                 page.rowHeight = Math.max(page.rowHeight, entry.height + this.padding * 2);
@@ -223,7 +379,7 @@ class GlyphAtlas {
             cursorX: 0,
             cursorY: 0,
             rowHeight: 0,
-            entries: new Map<number, GlyphAtlasEntry>(),
+            entries: new Map<string, GlyphAtlasEntry>(),
         };
         this.nextPageId += 1;
         this.pages.push(page);
@@ -246,6 +402,70 @@ class DescriptorFontLoader implements FontLoader {
     }
 }
 
+class BinaryFontLoader implements FontLoader {
+    readonly id = 'binary';
+
+    private readonly fetchImpl?: typeof globalThis.fetch;
+    private readonly runtimeFactory: DynamicFontRuntimeFactory;
+
+    constructor(fetchImpl: typeof globalThis.fetch | undefined, runtimeFactory: DynamicFontRuntimeFactory) {
+        this.fetchImpl = fetchImpl;
+        this.runtimeFactory = runtimeFactory;
+    }
+
+    canLoad(source: FontAssetSource): boolean {
+        return source.kind !== 'descriptor' && detectSourceBinaryFormat(source) !== null;
+    }
+
+    async load(source: FontAssetSource, signal?: AbortSignal): Promise<FontFaceAsset> {
+        if (source.kind === 'descriptor') {
+            throw new FontLoadError('BinaryFontLoader only accepts buffer or url sources.');
+        }
+
+        let bytes: ArrayBuffer;
+        let format = detectSourceBinaryFormat(source);
+
+        if (source.kind === 'buffer') {
+            bytes = toOwnedArrayBuffer(source.data);
+            format ??= detectBinaryFormatFromBuffer(new Uint8Array(bytes));
+        } else {
+            if (!this.fetchImpl) {
+                throw new FontLoadError('No fetch implementation is available for URL font sources.');
+            }
+            const response = await this.fetchImpl(source.url, {
+                headers: source.headers,
+                signal,
+            });
+            if (!response.ok) {
+                throw new FontLoadError(`Font request failed with status ${response.status}.`, {
+                    url: source.url,
+                    status: response.status,
+                });
+            }
+            bytes = await response.arrayBuffer();
+            const responseContentType =
+                typeof response.headers?.get === 'function' ? response.headers.get('content-type') ?? undefined : undefined;
+            format ??= detectBinaryFormatFromContentType(responseContentType);
+            format ??= detectBinaryFormatFromUrl(source.url);
+            format ??= detectBinaryFormatFromBuffer(new Uint8Array(bytes));
+        }
+
+        if (!format) {
+            throw new FontLoadError('Unable to determine the binary font format.', { source });
+        }
+
+        return {
+            kind: 'dynamic',
+            runtime: await this.runtimeFactory.create({
+                source,
+                bytes,
+                format,
+                cacheKey: buildSourceKey(source),
+            }),
+        };
+    }
+}
+
 class JsonFontLoader implements FontLoader {
     readonly id = 'json';
     private readonly fetchImpl?: typeof globalThis.fetch;
@@ -255,7 +475,7 @@ class JsonFontLoader implements FontLoader {
     }
 
     canLoad(source: FontAssetSource): boolean {
-        return source.kind === 'buffer' || source.kind === 'url';
+        return source.kind !== 'descriptor' && detectSourceBinaryFormat(source) === null;
     }
 
     async load(source: FontAssetSource, signal?: AbortSignal): Promise<FontFaceAsset> {
@@ -283,7 +503,7 @@ class JsonFontLoader implements FontLoader {
         return this.normalizeParsedAsset(payload);
     }
 
-    private normalizeParsedAsset(payload: Record<string, unknown>): FontFaceAsset {
+    private normalizeParsedAsset(payload: Record<string, unknown>): StaticFontFaceAsset {
         const glyphsValue = payload.glyphs;
         const glyphs = Array.isArray(glyphsValue)
             ? (glyphsValue as FontGlyphMetric[])
@@ -300,7 +520,7 @@ class JsonFontLoader implements FontLoader {
             family: String(payload.family ?? ''),
             face: String(payload.face ?? 'Regular'),
             style: normalizeStyle((payload.style as FontStyle | undefined) ?? 'normal'),
-            weight: normalizeWeight(payload.weight as FontWeight | undefined) as FontFaceAsset['weight'],
+            weight: normalizeWeight(payload.weight as FontWeight | undefined) as StaticFontFaceAsset['weight'],
             locale: String(payload.locale ?? ''),
             ascent: Number(payload.ascent ?? 0),
             descent: Number(payload.descent ?? 0),
@@ -310,55 +530,17 @@ class JsonFontLoader implements FontLoader {
             fallbackCodePoint: Number(payload.fallbackCodePoint ?? 63),
             glyphs,
             kernings,
-            atlas: typeof payload.atlas === 'object' && payload.atlas !== null
-                ? {
-                      width: Number((payload.atlas as Record<string, unknown>).width ?? 1024),
-                      height: Number((payload.atlas as Record<string, unknown>).height ?? 1024),
-                      padding: Number((payload.atlas as Record<string, unknown>).padding ?? 1),
-                  }
-                : undefined,
+            atlas:
+                typeof payload.atlas === 'object' && payload.atlas !== null
+                    ? {
+                          width: Number((payload.atlas as Record<string, unknown>).width ?? 1024),
+                          height: Number((payload.atlas as Record<string, unknown>).height ?? 1024),
+                          padding: Number((payload.atlas as Record<string, unknown>).padding ?? 1),
+                      }
+                    : undefined,
         };
     }
 }
-
-const buildSourceKey = (source: FontAssetSource): string => {
-    switch (source.kind) {
-        case 'descriptor':
-            return `descriptor:${source.asset.family}:${source.asset.face ?? 'Regular'}:${normalizeWeight(source.asset.weight)}`;
-        case 'buffer':
-            return source.cacheKey ?? `buffer:${toByteArray(source.data).byteLength}:${source.contentType ?? 'application/json'}`;
-        case 'url':
-            return source.cacheKey ?? `url:${source.url}`;
-        default:
-            return 'unknown';
-    }
-};
-
-const normalizeGlyphMap = (
-    glyphs: FontFaceAsset['glyphs']
-): Map<number, FontGlyphMetric> => {
-    if (glyphs instanceof Map) {
-        return new Map<number, FontGlyphMetric>(glyphs);
-    }
-    if (Array.isArray(glyphs)) {
-        return new Map<number, FontGlyphMetric>(glyphs.map((metric) => [metric.codePoint, metric]));
-    }
-    return new Map<number, FontGlyphMetric>(
-        Object.values(glyphs).map((metric) => [metric.codePoint, metric])
-    );
-};
-
-const normalizeKerningMap = (
-    kernings: FontFaceAsset['kernings']
-): Map<KerningPairKey, number> => {
-    if (!kernings) {
-        return new Map<KerningPairKey, number>();
-    }
-    if (kernings instanceof Map) {
-        return new Map<KerningPairKey, number>(kernings);
-    }
-    return new Map<KerningPairKey, number>(Object.entries(kernings) as [KerningPairKey, number][]);
-};
 
 export class FontRegistry implements Disposable {
     private readonly familiesByName = new Map<string, InternalFamily>();
@@ -382,7 +564,9 @@ export class FontRegistry implements Disposable {
             fetch: options.fetch,
         };
         this.defaultFamily = options.defaultFamily ?? null;
+        const dynamicRuntimeFactory = options.dynamicRuntimeFactory ?? createBrowserDynamicFontRuntimeFactory();
         this.registerLoader(new DescriptorFontLoader());
+        this.registerLoader(new BinaryFontLoader(options.fetch ?? globalThis.fetch, dynamicRuntimeFactory));
         this.registerLoader(new JsonFontLoader(options.fetch ?? globalThis.fetch));
     }
 
@@ -414,27 +598,28 @@ export class FontRegistry implements Disposable {
 
     registerFace(asset: FontFaceAsset): FontFaceId {
         this.ensureActive();
-        const familyId = this.registerFamily({ name: asset.family });
-        const family = this.familiesByName.get(asset.family)!;
+        const infoSource = isDynamicFontFaceAsset(asset) ? asset.runtime.info : asset;
+        const familyId = this.registerFamily({ name: infoSource.family });
+        const family = this.familiesByName.get(infoSource.family)!;
         const info: FontFaceInfo = {
             id: this.nextFaceId as FontFaceId,
-            family: asset.family,
-            face: asset.face ?? 'Regular',
-            style: normalizeStyle(asset.style),
-            weight: normalizeWeight(asset.weight),
-            locale: asset.locale ?? '',
-            ascent: asset.ascent,
-            descent: asset.descent,
-            lineGap: asset.lineGap ?? 0,
-            unitsPerEm: asset.unitsPerEm ?? 1000,
-            defaultAdvance: asset.defaultAdvance ?? 500,
-            fallbackCodePoint: asset.fallbackCodePoint ?? 63,
+            family: infoSource.family,
+            face: infoSource.face ?? 'Regular',
+            style: normalizeStyle(infoSource.style),
+            weight: normalizeWeight(infoSource.weight),
+            locale: infoSource.locale ?? '',
+            ascent: infoSource.ascent,
+            descent: infoSource.descent,
+            lineGap: infoSource.lineGap ?? 0,
+            unitsPerEm: infoSource.unitsPerEm ?? 1000,
+            defaultAdvance: infoSource.defaultAdvance ?? 500,
+            fallbackCodePoint: infoSource.fallbackCodePoint ?? 63,
         };
         const atlas = new GlyphAtlas(
             info.id,
-            asset.atlas?.width ?? this.options.atlasWidth,
-            asset.atlas?.height ?? this.options.atlasHeight,
-            asset.atlas?.padding ?? this.options.atlasPadding
+            infoSource.atlas?.width ?? this.options.atlasWidth,
+            infoSource.atlas?.height ?? this.options.atlasHeight,
+            infoSource.atlas?.padding ?? this.options.atlasPadding
         );
         const face: InternalFontFace = {
             id: info.id,
@@ -442,12 +627,13 @@ export class FontRegistry implements Disposable {
             glyphs: normalizeGlyphMap(asset.glyphs),
             kernings: normalizeKerningMap(asset.kernings),
             atlas,
+            runtime: isDynamicFontFaceAsset(asset) ? asset.runtime : undefined,
         };
         this.nextFaceId += 1;
         this.facesById.set(info.id as number, face);
         family.faces.push(info.id);
         if (!this.defaultFamily) {
-            this.defaultFamily = asset.family;
+            this.defaultFamily = infoSource.family;
         }
         void familyId;
         return info.id;
@@ -516,17 +702,13 @@ export class FontRegistry implements Disposable {
         return this.facesById.get(faceId as number)?.info ?? null;
     }
 
-    ensureGlyph(faceId: FontFaceId, codePoint: number): GlyphAtlasEntry | null {
+    ensureGlyph(faceId: FontFaceId, codePoint: number, fontSize?: number): GlyphAtlasEntry | null {
         this.ensureActive();
         const face = this.facesById.get(faceId as number);
         if (!face) {
             throw new FontFaceNotFoundError({ faceId });
         }
-        const metric = face.glyphs.get(codePoint) ?? face.glyphs.get(face.info.fallbackCodePoint);
-        if (!metric) {
-            return null;
-        }
-        return face.atlas.ensure(metric);
+        return this.ensureGlyphEntry(face, codePoint, fontSize);
     }
 
     measureGlyph(
@@ -551,20 +733,24 @@ export class FontRegistry implements Disposable {
         if (!face) {
             throw new FontFaceNotFoundError({ faceId });
         }
-        const metric = face.glyphs.get(codePoint) ?? face.glyphs.get(face.info.fallbackCodePoint) ?? null;
-        const kerningKey = nextCodePoint === undefined ? null : `${codePoint}:${nextCodePoint}`;
-        const kerning = kerningKey ? face.kernings.get(kerningKey as KerningPairKey) ?? 0 : 0;
+        const resolved = this.resolveMetricWithFallback(face, codePoint);
+        const nextResolved =
+            nextCodePoint === undefined ? null : this.resolveMetricWithFallback(face, nextCodePoint);
+        const kerning =
+            nextResolved && resolved
+                ? this.resolveKerning(face, resolved.codePoint, nextResolved.codePoint)
+                : 0;
         const scale = fontSize / face.info.unitsPerEm;
-        const width = (metric?.width ?? metric?.advance ?? face.info.defaultAdvance) * scale;
-        const height = (metric?.height ?? face.info.ascent + face.info.descent) * scale;
+        const width = (resolved?.metric.width ?? resolved?.metric.advance ?? face.info.defaultAdvance) * scale;
+        const height = (resolved?.metric.height ?? face.info.ascent + face.info.descent) * scale;
         return {
             faceId,
             codePoint,
-            advance: ((metric?.advance ?? face.info.defaultAdvance) + kerning) * scale,
+            advance: ((resolved?.metric.advance ?? face.info.defaultAdvance) + kerning) * scale,
             width,
             height,
-            metric,
-            atlasEntry: metric ? face.atlas.ensure(metric) : null,
+            metric: resolved?.metric ?? null,
+            atlasEntry: resolved ? this.ensureGlyphEntry(face, resolved.codePoint, fontSize) : null,
         };
     }
 
@@ -612,7 +798,7 @@ export class FontRegistry implements Disposable {
                 family: faceSnapshot.family,
                 face: faceSnapshot.face,
                 style: faceSnapshot.style,
-                weight: faceSnapshot.weight as FontFaceAsset['weight'],
+                weight: faceSnapshot.weight as StaticFontFaceAsset['weight'],
                 locale: faceSnapshot.locale,
                 ascent: faceSnapshot.ascent,
                 descent: faceSnapshot.descent,
@@ -631,6 +817,10 @@ export class FontRegistry implements Disposable {
     }
 
     clear(): void {
+        for (const face of this.facesById.values()) {
+            face.runtime?.dispose?.();
+            face.atlas.clear();
+        }
         this.familiesByName.clear();
         this.facesById.clear();
         this.pendingLoads.clear();
@@ -654,6 +844,91 @@ export class FontRegistry implements Disposable {
         if (this.disposed) {
             throw new DisposedUIError('FontRegistry');
         }
+    }
+
+    private resolveMetric(face: InternalFontFace, codePoint: number): FontGlyphMetric | null {
+        const existing = face.glyphs.get(codePoint);
+        if (existing) {
+            return existing;
+        }
+        const runtimeMetric = face.runtime?.measureGlyph(codePoint) ?? null;
+        if (runtimeMetric) {
+            face.glyphs.set(codePoint, runtimeMetric);
+        }
+        return runtimeMetric;
+    }
+
+    private resolveMetricWithFallback(face: InternalFontFace, codePoint: number): ResolvedGlyphMetric | null {
+        const metric = this.resolveMetric(face, codePoint);
+        if (metric) {
+            return { codePoint, metric };
+        }
+        if (codePoint !== face.info.fallbackCodePoint) {
+            const fallbackMetric = this.resolveMetric(face, face.info.fallbackCodePoint);
+            if (fallbackMetric) {
+                return {
+                    codePoint: face.info.fallbackCodePoint,
+                    metric: fallbackMetric,
+                };
+            }
+        }
+        return null;
+    }
+
+    private resolveKerning(face: InternalFontFace, leftCodePoint: number, rightCodePoint: number): number {
+        const key = `${leftCodePoint}:${rightCodePoint}` as KerningPairKey;
+        const existing = face.kernings.get(key);
+        if (existing !== undefined) {
+            return existing;
+        }
+        const value = face.runtime?.getKerning?.(leftCodePoint, rightCodePoint) ?? 0;
+        face.kernings.set(key, value);
+        return value;
+    }
+
+    private ensureGlyphEntry(face: InternalFontFace, codePoint: number, fontSize?: number): GlyphAtlasEntry | null {
+        const resolved = this.resolveMetricWithFallback(face, codePoint);
+        if (!resolved) {
+            return null;
+        }
+        if (!face.runtime) {
+            const cached = face.atlas.get(resolved.codePoint);
+            if (cached) {
+                return cached;
+            }
+            return face.atlas.ensure({
+                codePoint: resolved.codePoint,
+                width: resolved.metric.width ?? resolved.metric.advance,
+                height: resolved.metric.height ?? resolved.metric.width ?? resolved.metric.advance,
+                data: resolved.metric.data ?? null,
+                format: resolved.metric.format,
+                rowStride: resolved.metric.rowStride,
+                distanceRange: resolved.metric.distanceRange,
+            });
+        }
+        const rasterSize = Math.max(1, Math.round(fontSize ?? 16));
+        const cached = face.atlas.get(resolved.codePoint, rasterSize);
+        if (cached) {
+            return cached;
+        }
+        const raster = face.runtime.rasterizeGlyph(resolved.codePoint, rasterSize);
+        if (!raster) {
+            return null;
+        }
+        return face.atlas.ensure(this.toAtlasGlyph(raster));
+    }
+
+    private toAtlasGlyph(raster: DynamicFontGlyphRaster): GlyphAtlasSource {
+        return {
+            codePoint: raster.codePoint,
+            rasterSize: raster.rasterSize,
+            width: raster.width,
+            height: raster.height,
+            data: raster.data ?? null,
+            format: raster.format,
+            rowStride: raster.rowStride,
+            distanceRange: raster.distanceRange,
+        };
     }
 
     private async loadInternal(source: FontAssetSource, options: FontLoadOptions): Promise<FontFaceId> {
@@ -684,7 +959,12 @@ export class FontRegistry implements Disposable {
 }
 
 export type {
+    DynamicFontFaceAsset,
+    DynamicFontFaceRuntime,
+    DynamicFontGlyphRaster,
+    DynamicFontRuntimeFactory,
     FontAssetSource,
+    FontBinaryFormat,
     FontFaceAsset,
     FontFaceId,
     FontFaceInfo,
@@ -702,4 +982,7 @@ export type {
     GlyphAtlasPageSnapshot,
     KerningPairKey,
     RetryPolicy,
+    StaticFontFaceAsset,
 };
+
+export { createBrowserDynamicFontRuntimeFactory };

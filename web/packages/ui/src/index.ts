@@ -4,6 +4,7 @@ export * from './widget';
 export * from './layout';
 export * from './render';
 export * from './font';
+export * from './font-runtime';
 export * from './text';
 export * from './runtime';
 export * from './controls';
