@@ -1,5 +1,5 @@
 import { DisposedUIError, FontFaceNotFoundError, FontLoadError } from './errors';
-import { createBrowserDynamicFontRuntimeFactory } from './font-runtime';
+import { createBrowserDynamicFontRuntimeFactory, createBrowserSystemFontFaceRuntime } from './font-runtime';
 import type {
     DynamicFontFaceAsset,
     DynamicFontFaceRuntime,
@@ -30,6 +30,18 @@ import type {
     RetryPolicy,
     StaticFontFaceAsset,
 } from './types';
+
+export const AXRONE_DEFAULT_UI_FONT_FAMILY = 'Roboto, "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+
+export interface SystemFontFaceAssetOptions {
+    readonly family: string;
+    readonly cssFamily?: string;
+    readonly face?: string;
+    readonly style?: FontStyle;
+    readonly weight?: FontWeight;
+    readonly locale?: string;
+    readonly fallbackCodePoint?: number;
+}
 
 const normalizeWeight = (weight: FontWeight | undefined): number => {
     switch (weight) {
@@ -958,6 +970,48 @@ export class FontRegistry implements Disposable {
     }
 }
 
+export const createSystemFontFaceAsset = (options: SystemFontFaceAssetOptions): DynamicFontFaceAsset => ({
+    kind: 'dynamic',
+    runtime: createBrowserSystemFontFaceRuntime({
+        family: options.family,
+        cssFamily: options.cssFamily ?? options.family,
+        face: options.face,
+        style: options.style,
+        weight: options.weight,
+        locale: options.locale,
+        fallbackCodePoint: options.fallbackCodePoint,
+    }),
+});
+
+export const createDefaultUIFontAsset = (
+    family = AXRONE_DEFAULT_UI_FONT_FAMILY,
+): DynamicFontFaceAsset =>
+    createSystemFontFaceAsset({
+        family,
+        cssFamily: family,
+    });
+
+export const ensureSystemUIFont = (
+    fonts: Pick<FontRegistry, 'getDefaultFamily' | 'registerFace' | 'resolveFace'>,
+    family: string,
+    cssFamily = family,
+): string => {
+    if (!fonts.resolveFace({ family })) {
+        fonts.registerFace(
+            createSystemFontFaceAsset({
+                family,
+                cssFamily,
+            }),
+        );
+    }
+    return fonts.getDefaultFamily() ?? family;
+};
+
+export const ensureDefaultUIFont = (
+    fonts: Pick<FontRegistry, 'getDefaultFamily' | 'registerFace' | 'resolveFace'>,
+    family = AXRONE_DEFAULT_UI_FONT_FAMILY,
+): string => ensureSystemUIFont(fonts, family, family);
+
 export type {
     DynamicFontFaceAsset,
     DynamicFontFaceRuntime,
@@ -985,4 +1039,4 @@ export type {
     StaticFontFaceAsset,
 };
 
-export { createBrowserDynamicFontRuntimeFactory };
+export { createBrowserDynamicFontRuntimeFactory, createBrowserSystemFontFaceRuntime };

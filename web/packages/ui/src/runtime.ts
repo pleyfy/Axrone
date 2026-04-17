@@ -5,7 +5,7 @@ import {
     WidgetNotFoundError,
     WidgetTreeIntegrityError,
 } from './errors';
-import { FontRegistry } from './font';
+import { FontRegistry, ensureDefaultUIFont } from './font';
 import { UILayoutEngine, compileLayoutInput, normalizeCorners } from './layout';
 import { TextLayoutEngine } from './text';
 import { WidgetRegistry } from './widget';
@@ -398,6 +398,19 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.viewportWidth = Math.max(0, options.width ?? 0);
         this.viewportHeight = Math.max(0, options.height ?? 0);
         this.fonts = options.fonts ?? new FontRegistry(options.fontOptions);
+        if (this.fonts.getDefaultFamily() === null) {
+            try {
+                ensureDefaultUIFont(this.fonts);
+            } catch (error) {
+                if (
+                    !(error instanceof UIError) ||
+                    error.code !== UIErrorCode.FontLoadFailed ||
+                    !error.message.includes('No 2D canvas implementation is available')
+                ) {
+                    throw error;
+                }
+            }
+        }
         this.textEngine =
             options.textEngine ??
             new TextLayoutEngine(this.fonts, { cacheSize: options.textCacheSize, locale: this.locale });

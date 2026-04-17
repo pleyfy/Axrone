@@ -1,26 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FontRegistry, UIRuntime, createRuntimeFrameSource, renderUIFrame } from '../index';
-
-const createFontAsset = (family = 'TestSans') => ({
-    family,
-    face: 'Regular',
-    style: 'normal' as const,
-    weight: 400 as const,
-    ascent: 800,
-    descent: 200,
-    lineGap: 0,
-    unitsPerEm: 1000,
-    defaultAdvance: 500,
-    fallbackCodePoint: 63,
-    glyphs: [32, 63, 65, 66, 67, 68, 69, 72, 76, 79, 87, 97, 100, 101, 103, 104, 108, 111, 114, 116, 8230].map(
-        (codePoint) => ({
-            codePoint,
-            advance: codePoint === 32 ? 250 : 500,
-            width: codePoint === 32 ? 1 : 480,
-            height: codePoint === 32 ? 1 : 720,
-        })
-    ),
-});
+import { createTestFontAsset as createFontAsset } from './test-font';
 
 describe('@axrone/ui runtime', () => {
     it('lays out stacked widgets and emits quad and text commands', () => {

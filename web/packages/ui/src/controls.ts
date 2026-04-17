@@ -1,9 +1,12 @@
-import type { FontRegistry } from './font';
+import {
+    AXRONE_DEFAULT_UI_FONT_FAMILY,
+    createDefaultUIFontAsset,
+    ensureDefaultUIFont,
+} from './font';
 import type { UIRuntime } from './runtime';
 import type {
     AnchorInput,
     ColorInput,
-    FontFaceAsset,
     PercentageString,
     TextBlockInput,
     UIKeyEvent,
@@ -16,67 +19,11 @@ import type {
     WidgetStyleInput,
 } from './types';
 
-export const AXRONE_FALLBACK_UI_FONT_FAMILY = 'AxroneUIFallback';
+export const AXRONE_FALLBACK_UI_FONT_FAMILY = AXRONE_DEFAULT_UI_FONT_FAMILY;
+export const createFallbackUIFontAsset = createDefaultUIFontAsset;
+export const ensureFallbackUIFont = ensureDefaultUIFont;
 
-const FONT_SCALE = 2;
-
-const BASE_GLYPH_PATTERNS = {
-    '?': ['.###.', '...#.', '..#..', '..#..', '..#..', '.....', '..#..'],
-    '!': ['..#..', '..#..', '..#..', '..#..', '..#..', '.....', '..#..'],
-    '*': ['#...#', '.#.#.', '#####', '.#.#.', '#...#', '.....', '.....'],
-    '0': ['.###.', '#...#', '#..##', '#.#.#', '##..#', '#...#', '.###.'],
-    '1': ['..#..', '.##..', '..#..', '..#..', '..#..', '..#..', '.###.'],
-    '2': ['.###.', '#...#', '....#', '...#.', '..#..', '.#...', '#####'],
-    '3': ['####.', '....#', '...#.', '..##.', '....#', '#...#', '.###.'],
-    '4': ['...#.', '..##.', '.#.#.', '#..#.', '#####', '...#.', '...#.'],
-    '5': ['#####', '#....', '####.', '....#', '....#', '#...#', '.###.'],
-    '6': ['.###.', '#...#', '#....', '####.', '#...#', '#...#', '.###.'],
-    '7': ['#####', '....#', '...#.', '..#..', '.#...', '.#...', '.#...'],
-    '8': ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
-    '9': ['.###.', '#...#', '#...#', '.####', '....#', '#...#', '.###.'],
-    A: ['.###.', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
-    B: ['####.', '#...#', '#...#', '####.', '#...#', '#...#', '####.'],
-    C: ['.####', '#....', '#....', '#....', '#....', '#....', '.####'],
-    D: ['####.', '#...#', '#...#', '#...#', '#...#', '#...#', '####.'],
-    E: ['#####', '#....', '#....', '####.', '#....', '#....', '#####'],
-    F: ['#####', '#....', '#....', '####.', '#....', '#....', '#....'],
-    G: ['.####', '#....', '#....', '#.###', '#...#', '#...#', '.###.'],
-    H: ['#...#', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
-    I: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '#####'],
-    J: ['..###', '...#.', '...#.', '...#.', '#..#.', '#..#.', '.##..'],
-    K: ['#...#', '#..#.', '#.#..', '##...', '#.#..', '#..#.', '#...#'],
-    L: ['#....', '#....', '#....', '#....', '#....', '#....', '#####'],
-    M: ['#...#', '##.##', '#.#.#', '#.#.#', '#...#', '#...#', '#...#'],
-    N: ['#...#', '##..#', '##..#', '#.#.#', '#..##', '#..##', '#...#'],
-    O: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
-    P: ['####.', '#...#', '#...#', '####.', '#....', '#....', '#....'],
-    Q: ['.###.', '#...#', '#...#', '#...#', '#.#.#', '#..#.', '.##.#'],
-    R: ['####.', '#...#', '#...#', '####.', '#.#..', '#..#.', '#...#'],
-    S: ['.####', '#....', '#....', '.###.', '....#', '....#', '####.'],
-    T: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'],
-    U: ['#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
-    V: ['#...#', '#...#', '#...#', '#...#', '#...#', '.#.#.', '..#..'],
-    W: ['#...#', '#...#', '#...#', '#.#.#', '#.#.#', '##.##', '#...#'],
-    X: ['#...#', '#...#', '.#.#.', '..#..', '.#.#.', '#...#', '#...#'],
-    Y: ['#...#', '#...#', '.#.#.', '..#..', '..#..', '..#..', '..#..'],
-    Z: ['#####', '....#', '...#.', '..#..', '.#...', '#....', '#####'],
-    ':': ['.....', '..#..', '.....', '.....', '..#..', '.....', '.....'],
-    ';': ['.....', '..#..', '.....', '.....', '..#..', '..#..', '.#...'],
-    ',': ['.....', '.....', '.....', '.....', '..#..', '..#..', '.#...'],
-    '.': ['.....', '.....', '.....', '.....', '.....', '..#..', '.....'],
-    '-': ['.....', '.....', '.....', '#####', '.....', '.....', '.....'],
-    '_': ['.....', '.....', '.....', '.....', '.....', '.....', '#####'],
-    '/': ['....#', '...#.', '...#.', '..#..', '.#...', '.#...', '#....'],
-    '(': ['...#.', '..#..', '.#...', '.#...', '.#...', '..#..', '...#.'],
-    ')': ['.#...', '..#..', '...#.', '...#.', '...#.', '..#..', '.#...'],
-    '[': ['.###.', '.#...', '.#...', '.#...', '.#...', '.#...', '.###.'],
-    ']': ['.###.', '...#.', '...#.', '...#.', '...#.', '...#.', '.###.'],
-    '<': ['....#', '...#.', '..#..', '.#...', '..#..', '...#.', '....#'],
-    '>': ['#....', '.#...', '..#..', '...#.', '..#..', '.#...', '#....'],
-    ' ': ['.....', '.....', '.....', '.....', '.....', '.....', '.....'],
-} as const;
-
-const DEFAULT_SELECTION_COLOR = '#38bdf855';
+const DEFAULT_SELECTION_COLOR = '#2563eb55';
 
 const clamp = (value: number, min: number, max: number): number => {
     if (value < min) {
@@ -86,85 +33,6 @@ const clamp = (value: number, min: number, max: number): number => {
         return max;
     }
     return value;
-};
-
-const scaleGlyphPattern = (rows: readonly string[], scale = FONT_SCALE): Uint8Array => {
-    const sourceHeight = rows.length;
-    const sourceWidth = rows[0]?.length ?? 0;
-    const width = sourceWidth * scale;
-    const height = sourceHeight * scale;
-    const data = new Uint8Array(width * height);
-
-    for (let sourceY = 0; sourceY < sourceHeight; sourceY += 1) {
-        for (let sourceX = 0; sourceX < sourceWidth; sourceX += 1) {
-            const alpha = rows[sourceY]?.[sourceX] === '#' ? 255 : 0;
-            for (let offsetY = 0; offsetY < scale; offsetY += 1) {
-                for (let offsetX = 0; offsetX < scale; offsetX += 1) {
-                    const x = sourceX * scale + offsetX;
-                    const y = sourceY * scale + offsetY;
-                    data[y * width + x] = alpha;
-                }
-            }
-        }
-    }
-
-    return data;
-};
-
-const createGlyphMetric = (character: string, pattern: readonly string[]) => {
-    const data = scaleGlyphPattern(pattern);
-    const isThin = ['.', ',', ':', ';', '!'].includes(character);
-    const isWide = character === 'M' || character === 'W' || character === 'm' || character === 'w';
-    const isSpace = character === ' ';
-
-    return {
-        codePoint: character.charCodeAt(0),
-        advance: isSpace ? 6 : isThin ? 6 : isWide ? 13 : 12,
-        width: isSpace ? 1 : 10,
-        height: isSpace ? 1 : 14,
-        data: isSpace ? undefined : data,
-        format: isSpace ? undefined : ('alpha8' as const),
-        rowStride: isSpace ? undefined : 10,
-    };
-};
-
-export const createFallbackUIFontAsset = (
-    family = AXRONE_FALLBACK_UI_FONT_FAMILY
-): FontFaceAsset => {
-    const glyphs = new Map<number, ReturnType<typeof createGlyphMetric>>();
-
-    for (const [character, pattern] of Object.entries(BASE_GLYPH_PATTERNS)) {
-        const metric = createGlyphMetric(character, pattern);
-        glyphs.set(metric.codePoint, metric);
-        if (/^[A-Z]$/.test(character)) {
-            const lowerMetric = createGlyphMetric(character.toLowerCase(), pattern);
-            glyphs.set(lowerMetric.codePoint, lowerMetric);
-        }
-    }
-
-    return {
-        family,
-        face: 'Regular',
-        style: 'normal',
-        weight: 400,
-        ascent: 14,
-        descent: 4,
-        lineGap: 2,
-        unitsPerEm: 20,
-        defaultAdvance: 12,
-        fallbackCodePoint: '?'.charCodeAt(0),
-        glyphs: [...glyphs.values()],
-    };
-};
-
-export const ensureFallbackUIFont = (
-    fonts: Pick<FontRegistry, 'getDefaultFamily' | 'registerFace' | 'resolveFace'>,
-    family = AXRONE_FALLBACK_UI_FONT_FAMILY
-): string => {
-    if (!fonts.resolveFace({ family })) {
-        fonts.registerFace(createFallbackUIFontAsset(family));
-    }
-    return fonts.getDefaultFamily() ?? family;
 };
 
 export interface UIControlTheme {
@@ -203,26 +71,26 @@ export interface UIControlTheme {
 }
 
 export const defaultUIControlTheme: Readonly<UIControlTheme> = Object.freeze({
-    fontSize: 16,
-    controlHeight: 42,
-    controlRadius: 12,
+    fontSize: 15,
+    controlHeight: 44,
+    controlRadius: 14,
     borderWidth: 1,
-    canvasColor: '#050b16cc',
-    panelColor: '#0b1323dd',
-    surfaceColor: '#162033f0',
-    surfaceRaisedColor: '#22324dff',
-    surfaceHoverColor: '#2a4060ff',
-    surfacePressedColor: '#0f1728ff',
-    surfaceDisabledColor: '#141c2bcc',
-    borderColor: '#ffffff24',
-    borderMutedColor: '#ffffff14',
-    focusColor: '#67e8f9ff',
-    textColor: '#eef4ffff',
-    textMutedColor: '#94a3b8ff',
-    placeholderColor: '#71809aff',
-    accentColor: '#2dd4bfff',
-    accentHoverColor: '#5eead4ff',
-    accentPressedColor: '#14b8a6ff',
+    canvasColor: '#07101dcc',
+    panelColor: '#0d1728dd',
+    surfaceColor: '#132133f2',
+    surfaceRaisedColor: '#1c2d45ff',
+    surfaceHoverColor: '#263d5cff',
+    surfacePressedColor: '#101a2bff',
+    surfaceDisabledColor: '#132033b8',
+    borderColor: '#dbe7ff26',
+    borderMutedColor: '#dbe7ff16',
+    focusColor: '#60a5faff',
+    textColor: '#f8fbffff',
+    textMutedColor: '#8fa1bbff',
+    placeholderColor: '#72839dff',
+    accentColor: '#2563ebff',
+    accentHoverColor: '#3b82f6ff',
+    accentPressedColor: '#1d4ed8ff',
     successColor: '#22c55eff',
     successHoverColor: '#4ade80ff',
     successPressedColor: '#16a34aff',
@@ -502,15 +370,15 @@ const resolveVariantPalette = (
                 idle: theme.accentColor,
                 hover: theme.accentHoverColor,
                 pressed: theme.accentPressedColor,
-                text: '#02110eff',
-                border: '#99f6e4aa',
+                text: '#f8fbffff',
+                border: '#93c5fd88',
             };
         case 'success':
             return {
                 idle: theme.successColor,
                 hover: theme.successHoverColor,
                 pressed: theme.successPressedColor,
-                text: '#03140aff',
+                text: '#f8fbffff',
                 border: '#86efacaa',
             };
         case 'warning':
@@ -526,7 +394,7 @@ const resolveVariantPalette = (
                 idle: theme.dangerColor,
                 hover: theme.dangerHoverColor,
                 pressed: theme.dangerPressedColor,
-                text: '#180505ff',
+                text: '#f8fbffff',
                 border: '#fca5a5aa',
             };
         case 'neutral':
@@ -772,7 +640,7 @@ export const createUIButton = <TRuntime>(
         hovered: false,
         pressed: false,
         focused: false,
-        variant: options.variant ?? 'neutral',
+        variant: options.variant ?? 'primary',
         onPress: options.onPress,
     };
 
@@ -790,8 +658,9 @@ export const createUIButton = <TRuntime>(
         layout: {
             width: 'content',
             height: 'content',
+            minWidth: Math.max(88, Math.round(theme.controlHeight * 2.1)),
             minHeight: theme.controlHeight,
-            padding: [10, 16],
+            padding: [12, 20],
             ...(options.layout ?? {}),
         },
         handlers: {
@@ -887,6 +756,7 @@ export const createUIButton = <TRuntime>(
                 align: 'center',
                 wrap: 'none',
                 overflow: 'ellipsis',
+                weight: baseText.weight ?? 'medium',
                 ...(baseText ?? {}),
                 color: textColor,
             }, textColor),

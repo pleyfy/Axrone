@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    AXRONE_DEFAULT_UI_FONT_FAMILY,
     UIRuntime,
     createUIButton,
     createUICanvas,
@@ -12,12 +13,12 @@ import {
     createUISlider,
     createUIToggle,
     createUIWidget,
-    createFallbackUIFontAsset,
 } from '../index';
+import { createTestFontAsset } from './test-font';
 
 const prepareRuntime = () => {
     const runtime = new UIRuntime({ width: 480, height: 240 });
-    runtime.fonts.registerFace(createFallbackUIFontAsset());
+    runtime.fonts.registerFace(createTestFontAsset(AXRONE_DEFAULT_UI_FONT_FAMILY));
     return runtime;
 };
 
