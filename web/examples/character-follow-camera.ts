@@ -7,6 +7,7 @@ import { Component, Transform, script } from '@axrone/ecs-runtime';
 import { Quat, Vec3 } from '@axrone/numeric';
 import {
     Animator,
+    createUnlitColorShaderDefinition,
     DirectionalLight,
     FilterMode,
     FollowCameraController,
@@ -27,6 +28,14 @@ const COLOR_PALETTE_URL = '/color_palette/color-palette.jpg';
 const CHARACTER_PALETTE_SAMPLER_ID = 'character-demo.palette-sampler';
 const CHARACTER_PALETTE_TEXTURE_ID = 'character-demo.palette-texture';
 const CHARACTER_PALETTE_MATERIAL_ID = 'character-demo.character-palette-material';
+const CHARACTER_REFERENCE_SHADER_ID = 'examples/character-reference';
+const CHARACTER_REFERENCE_MATERIAL_ID = 'character-demo.reference-material';
+const CHARACTER_REFERENCE_BAR_X_MESH_ID = 'character-demo.reference-bar-x';
+const CHARACTER_REFERENCE_BAR_Z_MESH_ID = 'character-demo.reference-bar-z';
+const CHARACTER_TRAIL_MATERIAL_ID = 'character-demo.trail-material';
+const CHARACTER_TRAIL_MESH_ID = 'character-demo.trail-mesh';
+const CHARACTER_TRAIL_POINT_COUNT = 14;
+const CHARACTER_TELEMETRY_SYSTEM_ID = 'character-follow-camera.telemetry';
 
 type SceneActor = ReturnType<Scene['createActor']>;
 
@@ -50,6 +59,7 @@ interface DashboardHandle {
     readonly clipValue: HTMLElement;
     setStatus(next: string, color?: string): void;
     setAnimationState(next: string): void;
+    setMotionTelemetry(position: Readonly<Vec3>, speed: number): void;
     dispose(): void;
 }
 
@@ -74,6 +84,11 @@ const formatClipLabel = (clipId: string | null | undefined): string => {
 
     return normalizeClipName(clipId) === 'iddle' ? 'Idle' : clipId;
 };
+
+const formatWorldPositionLabel = (position: Readonly<Vec3>): string =>
+    `${position.x.toFixed(2)}, ${position.z.toFixed(2)}`;
+
+const formatSpeedLabel = (speed: number): string => `${speed.toFixed(2)} u/s`;
 
 const resolveCharacterClipSet = (animator: Animator | null): CharacterClipSet => {
     const serialized = animator?.serialize() as { clips?: readonly { id?: unknown }[] } | undefined;
@@ -303,6 +318,84 @@ const createGround = (scene: Scene): void => {
     ground.requireComponent(Transform).position = new Vec3(0, -0.01, 0);
 };
 
+const createReferenceMarker = (scene: Scene): void => {
+    const shader = scene.registerShader(
+        createUnlitColorShaderDefinition(CHARACTER_REFERENCE_SHADER_ID)
+    );
+
+    scene.createBoxMesh(CHARACTER_REFERENCE_BAR_X_MESH_ID, 0.72, 0.04, 0.12);
+    scene.createBoxMesh(CHARACTER_REFERENCE_BAR_Z_MESH_ID, 0.12, 0.04, 0.72);
+    scene.createMaterial({
+        id: CHARACTER_REFERENCE_MATERIAL_ID,
+        shaderId: shader.id,
+        uniforms: {
+            u_Color: [0.2, 0.82, 1, 1],
+        },
+    });
+
+    const segments = [
+        {
+            name: 'SpawnMarkerNorth',
+            meshId: CHARACTER_REFERENCE_BAR_X_MESH_ID,
+            position: new Vec3(0, 0.025, 0.42),
+        },
+        {
+            name: 'SpawnMarkerSouth',
+            meshId: CHARACTER_REFERENCE_BAR_X_MESH_ID,
+            position: new Vec3(0, 0.025, -0.42),
+        },
+        {
+            name: 'SpawnMarkerEast',
+            meshId: CHARACTER_REFERENCE_BAR_Z_MESH_ID,
+            position: new Vec3(0.42, 0.025, 0),
+        },
+        {
+            name: 'SpawnMarkerWest',
+            meshId: CHARACTER_REFERENCE_BAR_Z_MESH_ID,
+            position: new Vec3(-0.42, 0.025, 0),
+        },
+    ] as const;
+
+    for (const segment of segments) {
+        const actor = scene.createRenderableActor(
+            { name: segment.name },
+            {
+                meshId: segment.meshId,
+                materialId: CHARACTER_REFERENCE_MATERIAL_ID,
+                receiveLighting: false,
+            }
+        );
+        actor.requireComponent(Transform).position = segment.position.clone();
+    }
+};
+
+const createMotionTrail = (scene: Scene): readonly SceneActor[] => {
+    scene.createSphereMesh(CHARACTER_TRAIL_MESH_ID, 0.09, 12);
+    scene.createMaterial({
+        id: CHARACTER_TRAIL_MATERIAL_ID,
+        shaderId: CHARACTER_REFERENCE_SHADER_ID,
+        uniforms: {
+            u_Color: [1, 0.76, 0.28, 1],
+        },
+    });
+
+    const actors: SceneActor[] = [];
+    for (let index = 0; index < CHARACTER_TRAIL_POINT_COUNT; index += 1) {
+        const actor = scene.createRenderableActor(
+            { name: `MotionTrail${index}` },
+            {
+                meshId: CHARACTER_TRAIL_MESH_ID,
+                materialId: CHARACTER_TRAIL_MATERIAL_ID,
+                receiveLighting: false,
+            }
+        );
+        actor.requireComponent(Transform).position = new Vec3(0, -100 - index, 0);
+        actors.push(actor);
+    }
+
+    return actors;
+};
+
 const createLighting = (scene: Scene): void => {
     const sun = scene.createActor({ name: 'KeyLight' });
     const light = sun.addComponent(DirectionalLight, {
@@ -414,7 +507,7 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
         position: 'absolute',
         top: '20px',
         left: '20px',
-        width: '340px',
+        width: '320px',
         padding: '18px 18px 16px',
         borderRadius: '18px',
         border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -497,12 +590,20 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
 
     const stateValue = createMetric('Animation');
     const clipValue = createMetric('Loaded Clips');
+    const positionValue = createMetric('World XZ');
+    const speedValue = createMetric('Speed');
+
+    positionValue.textContent = '0.00, 0.00';
+    speedValue.textContent = '0.00 u/s';
 
     const instructionList = document.createElement('div');
     instructionList.innerHTML = [
+        'Click preview: focus WASD controls',
         'WASD: camera-relative locomotion',
         'Right Mouse Drag: orbit camera',
         'Mouse Wheel: zoom',
+        'Cyan frame: character spawn reference',
+        'Amber dots: travelled path',
         'Idle/Run clip switching is driven in runtime',
     ].join('<br />');
     Object.assign(instructionList.style, {
@@ -536,7 +637,7 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
         position: 'absolute',
         top: '20px',
         right: '20px',
-        width: '300px',
+        width: '280px',
         padding: '18px',
         borderRadius: '18px',
         border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -581,6 +682,10 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
         },
         setAnimationState(next: string) {
             stateValue.textContent = next;
+        },
+        setMotionTelemetry(position: Readonly<Vec3>, speed: number) {
+            positionValue.textContent = formatWorldPositionLabel(position);
+            speedValue.textContent = formatSpeedLabel(speed);
         },
         dispose() {
             hud.remove();
@@ -708,6 +813,7 @@ class CharacterLocomotionController extends Component {
     private readonly _cameraForward = new Vec3();
     private readonly _cameraRight = new Vec3();
     private _cameraTransform?: Transform;
+    private _inputScopeElement: HTMLElement | null = null;
     private _animator: Animator | null = null;
     private _idleClipId: string | null = null;
     private _moveClipId: string | null = null;
@@ -716,6 +822,11 @@ class CharacterLocomotionController extends Component {
 
     setCameraReference(transform: Transform | undefined): this {
         this._cameraTransform = transform;
+        return this;
+    }
+
+    setInputScopeElement(element: HTMLElement | null | undefined): this {
+        this._inputScopeElement = element ?? null;
         return this;
     }
 
@@ -733,8 +844,15 @@ class CharacterLocomotionController extends Component {
 
     awake(): void {
         const trackedKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
+        const clearPressedKeys = () => {
+            this._pressedKeys.clear();
+        };
         const onKeyDown = (event: KeyboardEvent) => {
             if (!trackedKeys.has(event.code)) {
+                return;
+            }
+
+            if (!this._shouldCaptureKeyboardInput()) {
                 return;
             }
 
@@ -747,16 +865,25 @@ class CharacterLocomotionController extends Component {
                 return;
             }
 
+            if (!this._shouldCaptureKeyboardInput()) {
+                return;
+            }
+
             event.preventDefault();
             this._pressedKeys.delete(event.code);
         };
 
-        globalThis.addEventListener('keydown', onKeyDown, { passive: false });
-        globalThis.addEventListener('keyup', onKeyUp, { passive: false });
+        globalThis.addEventListener('keydown', onKeyDown, { passive: false, capture: true });
+        globalThis.addEventListener('keyup', onKeyUp, { passive: false, capture: true });
+        globalThis.addEventListener('blur', clearPressedKeys);
+        this._inputScopeElement?.addEventListener('blur', clearPressedKeys);
 
         (this as { _cleanupInput?: () => void })._cleanupInput = () => {
-            globalThis.removeEventListener('keydown', onKeyDown);
-            globalThis.removeEventListener('keyup', onKeyUp);
+            globalThis.removeEventListener('keydown', onKeyDown, true);
+            globalThis.removeEventListener('keyup', onKeyUp, true);
+            globalThis.removeEventListener('blur', clearPressedKeys);
+            this._inputScopeElement?.removeEventListener('blur', clearPressedKeys);
+            clearPressedKeys();
         };
     }
 
@@ -853,6 +980,44 @@ class CharacterLocomotionController extends Component {
         return out;
     }
 
+    private _shouldCaptureKeyboardInput(): boolean {
+        const activeElement = document.activeElement;
+        if (!(activeElement instanceof HTMLElement) || activeElement === document.body) {
+            return true;
+        }
+
+        const tagName = activeElement.tagName;
+        if (tagName === 'TEXTAREA' || tagName === 'SELECT' || activeElement.isContentEditable) {
+            return false;
+        }
+
+        if (tagName === 'INPUT') {
+            const input = activeElement as HTMLInputElement;
+            const textLikeTypes = new Set([
+                'text',
+                'search',
+                'email',
+                'password',
+                'tel',
+                'url',
+                'number',
+            ]);
+            if (textLikeTypes.has((input.type || 'text').toLowerCase())) {
+                return false;
+            }
+        }
+
+        if (
+            activeElement.closest('#editor-host') ||
+            activeElement.closest('.monaco-editor') ||
+            activeElement.getAttribute('role') === 'textbox'
+        ) {
+            return false;
+        }
+
+        return true;
+    }
+
     private _transitionTo(clipId: string | null, immediate: boolean): void {
         if (!this._animator || !clipId || clipId === this._activeClipId) {
             return;
@@ -896,7 +1061,10 @@ const characterFollowCameraExample: SceneExample = {
             width: '100%',
             height: '100%',
             cursor: 'grab',
+            outline: 'none',
         });
+        sceneHost.tabIndex = 0;
+        sceneHost.setAttribute('aria-label', 'Character follow camera preview');
 
         shell.appendChild(sceneHost);
         container.appendChild(shell);
@@ -919,6 +1087,8 @@ const characterFollowCameraExample: SceneExample = {
         scene.registerComponent(FollowCameraController);
 
         createGround(scene);
+        createReferenceMarker(scene);
+        const motionTrailActors = createMotionTrail(scene);
         createLighting(scene);
 
         const cleanupResize = bindSceneToContainer(scene, sceneHost, viewportWidth, viewportHeight);
@@ -989,24 +1159,62 @@ const characterFollowCameraExample: SceneExample = {
             const characterRig = characterContainer.requireComponent(Transform);
             const locomotion = characterContainer.addComponent(CharacterLocomotionController);
             locomotion.bindAnimator(animator, clipSet);
+            locomotion.setInputScopeElement(sceneHost);
             locomotion.onStateChanged = (label) => dashboard.setAnimationState(label);
+            dashboard.setMotionTelemetry(characterRig.worldPosition, 0);
 
             const camera = scene.createCameraActor(
                 { name: 'FollowCamera' },
                 { primary: true, fieldOfView: 46, near: 0.1, far: 200 }
             );
             const followCamera = camera.addComponent(FollowCameraController, {
-                distance: 7.8,
+                distance: 8.4,
                 minDistance: 3,
-                maxDistance: 16,
-                azimuth: 0.55,
-                elevation: 0.4,
-                targetOffset: [0, Math.max(1.2, (characterBounds?.size.y ?? 2) * 0.68), 0],
-                positionDamping: 6.5,
-                targetDamping: 9,
+                maxDistance: 11.5,
+                azimuth: 0.62,
+                elevation: 0.44,
+                targetOffset: [0, Math.max(1.28, (characterBounds?.size.y ?? 2) * 0.64), 0],
+                positionDamping: 4.6,
+                targetDamping: 5.2,
             });
             followCamera.setTarget(characterRig);
             locomotion.setCameraReference(camera.requireComponent(Transform));
+
+            const previousTelemetryPosition = characterRig.worldPosition.clone();
+            const lastTrailDropPosition = characterRig.worldPosition.clone();
+            let trailWriteIndex = 0;
+            scene.loop.addSystem({
+                id: CHARACTER_TELEMETRY_SYSTEM_ID,
+                priority: 110,
+                enabled: true,
+                update(context) {
+                    const position = characterRig.worldPosition;
+                    const deltaSeconds = Math.max(1 / 1000, context.delta / 1000);
+                    const deltaX = position.x - previousTelemetryPosition.x;
+                    const deltaY = position.y - previousTelemetryPosition.y;
+                    const deltaZ = position.z - previousTelemetryPosition.z;
+                    const speed = Math.hypot(deltaX, deltaY, deltaZ) / deltaSeconds;
+                    dashboard.setMotionTelemetry(position, speed);
+
+                    const planarTravel = Math.hypot(
+                        position.x - lastTrailDropPosition.x,
+                        position.z - lastTrailDropPosition.z
+                    );
+                    if (speed >= 0.35 && planarTravel >= 0.7) {
+                        motionTrailActors[trailWriteIndex]
+                            .requireComponent(Transform)
+                            .position = new Vec3(position.x, 0.09, position.z);
+                        trailWriteIndex = (trailWriteIndex + 1) % motionTrailActors.length;
+                        lastTrailDropPosition.x = position.x;
+                        lastTrailDropPosition.y = position.y;
+                        lastTrailDropPosition.z = position.z;
+                    }
+
+                    previousTelemetryPosition.x = position.x;
+                    previousTelemetryPosition.y = position.y;
+                    previousTelemetryPosition.z = position.z;
+                },
+            });
 
             let orbiting = false;
             let pointerId = -1;
@@ -1015,6 +1223,7 @@ const characterFollowCameraExample: SceneExample = {
 
             const handlePointerDown = (event: PointerEvent) => {
                 if (event.button !== 2 && event.button !== 1) {
+                    sceneHost.focus({ preventScroll: true });
                     return;
                 }
 
@@ -1022,6 +1231,7 @@ const characterFollowCameraExample: SceneExample = {
                 pointerId = event.pointerId;
                 previousX = event.clientX;
                 previousY = event.clientY;
+                sceneHost.focus({ preventScroll: true });
                 sceneHost.setPointerCapture(event.pointerId);
                 sceneHost.style.cursor = 'grabbing';
                 event.preventDefault();
@@ -1056,7 +1266,7 @@ const characterFollowCameraExample: SceneExample = {
 
             const handleWheel = (event: WheelEvent) => {
                 event.preventDefault();
-                followCamera.zoom(event.deltaY * 0.01);
+                followCamera.zoom(event.deltaY * 0.009);
             };
 
             const handleContextMenu = (event: MouseEvent) => {
@@ -1069,6 +1279,7 @@ const characterFollowCameraExample: SceneExample = {
             sceneHost.addEventListener('pointercancel', endOrbit);
             sceneHost.addEventListener('wheel', handleWheel, { passive: false });
             sceneHost.addEventListener('contextmenu', handleContextMenu);
+            sceneHost.focus({ preventScroll: true });
 
             removeInteractionListeners = () => {
                 sceneHost.removeEventListener('pointerdown', handlePointerDown);
@@ -1083,7 +1294,7 @@ const characterFollowCameraExample: SceneExample = {
             addSlider(dashboard.controlsHost, {
                 label: 'Distance',
                 min: 3,
-                max: 16,
+                max: 11.5,
                 step: 0.1,
                 value: followCamera.distance,
                 format: (value) => value.toFixed(1),
@@ -1134,8 +1345,8 @@ const characterFollowCameraExample: SceneExample = {
             });
             addSlider(dashboard.controlsHost, {
                 label: 'Camera Smoothing',
-                min: 2,
-                max: 20,
+                min: 1,
+                max: 14,
                 step: 0.5,
                 value: followCamera.positionDamping,
                 format: (value) => value.toFixed(1),
@@ -1236,6 +1447,7 @@ const characterFollowCameraExample: SceneExample = {
                     if (deferredDeskPaletteBinding !== null) {
                         globalThis.clearTimeout(deferredDeskPaletteBinding);
                     }
+                    scene.loop.removeSystem(CHARACTER_TELEMETRY_SYSTEM_ID);
                     removeInteractionListeners();
                     cleanupResize();
                     dashboard.dispose();
