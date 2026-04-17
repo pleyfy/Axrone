@@ -8,6 +8,8 @@ import { bindSceneToContainer } from '../example-runtime';
 import type { ExampleHandle } from '../example-types';
 
 export const UI_DEMO_FONT_FAMILY = 'OverlayBitmap';
+export const resolveExampleAssetUrl = (path: string): string =>
+    new URL(path.replace(/^\/+/, ''), document.baseURI).toString();
 
 const GLYPH_PATTERNS = {
     '?': ['.###.', '...#.', '..#..', '..#..', '..#..', '.....', '..#..'],
@@ -466,6 +468,7 @@ export interface UIExampleHostOptions {
     readonly bindInput?: boolean;
     readonly clearColor?: readonly [number, number, number, number];
     readonly cubeColor?: readonly [number, number, number, number];
+    readonly atlasFilter?: 'nearest' | 'linear';
 }
 
 export const createUIExampleHost = async (
@@ -509,7 +512,7 @@ export const createUIExampleHost = async (
         ui: () => runtime.commit({ width: scene.canvas.width, height: scene.canvas.height }),
         priority: -1000,
         renderer: {
-            atlasFilter: 'nearest',
+            atlasFilter: options.atlasFilter ?? 'nearest',
         },
     });
 

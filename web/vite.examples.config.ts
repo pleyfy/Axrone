@@ -65,7 +65,7 @@ const resolveManualChunk = (id: string): string | undefined => {
 
 export default defineConfig({
     root: path.resolve(workspaceDir, 'examples'),
-    publicDir: false,
+    publicDir: path.resolve(workspaceDir, 'examples/public'),
     resolve: {
         alias: workspaceAliases,
     },
