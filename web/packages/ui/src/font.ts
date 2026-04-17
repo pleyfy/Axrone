@@ -432,7 +432,7 @@ class BinaryFontLoader implements FontLoader {
             if (!this.fetchImpl) {
                 throw new FontLoadError('No fetch implementation is available for URL font sources.');
             }
-            const response = await this.fetchImpl(source.url, {
+            const response = await this.fetchImpl.call(globalThis, source.url, {
                 headers: source.headers,
                 signal,
             });
@@ -489,7 +489,7 @@ class JsonFontLoader implements FontLoader {
         if (!this.fetchImpl) {
             throw new FontLoadError('No fetch implementation is available for URL font sources.');
         }
-        const response = await this.fetchImpl(source.url, {
+        const response = await this.fetchImpl.call(globalThis, source.url, {
             headers: source.headers,
             signal,
         });
