@@ -156,6 +156,8 @@ export interface ResolvedLayout {
     readonly direction: Axis;
     readonly gap: number;
     readonly padding: EdgeInsets;
+    readonly contentOffsetX: number;
+    readonly contentOffsetY: number;
     readonly margin: EdgeInsets;
     readonly width: ResolvedLength;
     readonly height: ResolvedLength;
@@ -191,6 +193,8 @@ export interface WidgetLayoutInput {
     readonly direction?: Axis;
     readonly gap?: number;
     readonly padding?: EdgeInput;
+    readonly contentOffsetX?: number;
+    readonly contentOffsetY?: number;
     readonly margin?: EdgeInput;
     readonly width?: UILengthInput;
     readonly height?: UILengthInput;

@@ -205,6 +205,8 @@ export const compileLayoutInput = (input: WidgetLayoutInput | undefined): Resolv
         direction: input?.direction ?? 'column',
         gap: input?.gap ?? 0,
         padding: normalizeEdges(input?.padding),
+        contentOffsetX: input?.contentOffsetX ?? 0,
+        contentOffsetY: input?.contentOffsetY ?? 0,
         margin: normalizeEdges(input?.margin),
         width: compileLength(input?.width),
         height: compileLength(input?.height),
@@ -257,14 +259,16 @@ const createBox = (
     y: number,
     width: number,
     height: number,
-    padding: EdgeInsets
+    padding: EdgeInsets,
+    contentOffsetX: number,
+    contentOffsetY: number
 ): LayoutBox => ({
     x,
     y,
     width,
     height,
-    contentX: x + padding.left,
-    contentY: y + padding.top,
+    contentX: x + padding.left - contentOffsetX,
+    contentY: y + padding.top - contentOffsetY,
     contentWidth: Math.max(0, width - sumHorizontal(padding)),
     contentHeight: Math.max(0, height - sumVertical(padding)),
 });
@@ -409,7 +413,15 @@ export class UILayoutEngine<TNode> {
             width: forcedWidth ?? this.measureNode(adapter, node, availableWidth, availableHeight).width,
             height: forcedHeight ?? this.measureNode(adapter, node, availableWidth, availableHeight).height,
         };
-        const box = createBox(x, y, measured.width, measured.height, layout.padding);
+        const box = createBox(
+            x,
+            y,
+            measured.width,
+            measured.height,
+            layout.padding,
+            layout.contentOffsetX,
+            layout.contentOffsetY
+        );
         adapter.setBox(node, box);
         if (adapter.getFirstChild(node) !== null) {
             if (layout.display === 'overlay') {

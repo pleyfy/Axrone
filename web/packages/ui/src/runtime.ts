@@ -1507,6 +1507,12 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         const target = this.hitTest(event.x, event.y);
         if (event.phase === 'move') {
             this.updateHover(target, event);
+            if (this.pressed) {
+                if (target && this.pressed !== target) {
+                    return this.bubbleEvent(this.pressed as number, event) || this.bubbleEvent(target as number, event);
+                }
+                return this.bubbleEvent((target ?? this.pressed) as number, event);
+            }
             if (target) {
                 return this.bubbleEvent(target as number, event);
             }
@@ -1534,6 +1540,9 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     }
 
     private dispatchKey(event: Readonly<UIKeyEvent>): boolean {
+        if (this.focused && this.bubbleEvent(this.focused as number, event)) {
+            return true;
+        }
         if (event.phase === 'down') {
             if (event.key === 'Tab') {
                 const direction: FocusMoveDirection = event.shiftKey ? 'backward' : 'forward';
@@ -1552,7 +1561,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
                 return this.moveFocus('down') !== null;
             }
         }
-        return this.focused ? this.bubbleEvent(this.focused as number, event) : false;
+        return false;
     }
 
     private dispatchText(event: Readonly<UITextInputEvent>): boolean {
