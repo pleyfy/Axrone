@@ -43,6 +43,11 @@
             "types": "./dist/widget/index.d.ts",
             "import": "./dist/widget/index.mjs",
             "require": "./dist/widget/index.js"
+        },
+        "./controls": {
+            "types": "./dist/controls/index.d.ts",
+            "import": "./dist/controls/index.mjs",
+            "require": "./dist/controls/index.js"
         }
     },
     "scripts": {

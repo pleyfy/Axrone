@@ -6,3 +6,4 @@ export * from './render';
 export * from './font';
 export * from './text';
 export * from './runtime';
+export * from './controls';
