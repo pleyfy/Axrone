@@ -239,7 +239,7 @@ interface TexturePage {
     readonly width: number;
     readonly height: number;
     readonly format: FontGlyphBitmapFormat;
-    readonly uploadedGlyphs: Set<number>;
+    readonly uploadedGlyphs: Set<string>;
 }
 
 const UNIT_QUAD = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
@@ -256,6 +256,8 @@ const toUint8Array = (value: ArrayBuffer | ArrayBufferView): Uint8Array => {
     }
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 };
+
+const createUploadedGlyphKey = (entry: GlyphAtlasEntry): string => `${entry.codePoint}:${entry.rasterSize ?? 0}`;
 
 const multiplyAlpha = (alpha: number, opacity: number): number => alpha * opacity;
 
@@ -899,11 +901,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
                 width: entry.pageWidth,
                 height: entry.pageHeight,
                 format: entry.format,
-                uploadedGlyphs: new Set<number>(),
+                uploadedGlyphs: new Set<string>(),
             };
             this.pages.set(key, page);
         }
-        if (!page.uploadedGlyphs.has(entry.codePoint)) {
+        const glyphKey = createUploadedGlyphKey(entry);
+        if (!page.uploadedGlyphs.has(glyphKey)) {
             if (!entry.data) {
                 return null;
             }
@@ -921,7 +924,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
                 this.gl.UNSIGNED_BYTE,
                 packed
             );
-            page.uploadedGlyphs.add(entry.codePoint);
+            page.uploadedGlyphs.add(glyphKey);
             this.statisticsState.uploadedGlyphCount += 1;
         }
         return page;

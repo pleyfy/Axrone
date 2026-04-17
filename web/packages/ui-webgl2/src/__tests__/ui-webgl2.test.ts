@@ -24,8 +24,6 @@ const createGlyphEntry = (): GlyphAtlasEntry => ({
     faceId: 1 as GlyphAtlasEntry['faceId'],
     page: 1 as GlyphAtlasEntry['page'],
     pageWidth: 64,
-            width: 14,
-            height: 16,
     pageHeight: 64,
     codePoint: 65,
     x: 4,
@@ -606,5 +604,148 @@ describe('@axrone/ui-webgl2', () => {
         expect(dynamicFloatUploads[0]?.[18]).toBe(1.5);
         expect(dynamicFloatUploads[0]?.[19]).toBe(1.25);
         expect(Array.from(dynamicFloatUploads[0]?.slice(20, 26) ?? [])).toEqual([1, 0, 0, 0, 1, 0]);
+    });
+
+    it('uploads distinct raster sizes for the same glyph code point on a shared atlas page', () => {
+        const gl = createMockWebGL2Context();
+        const renderer = new WebGL2UIRenderer({ gl });
+        const smallGlyph: GlyphAtlasEntry = {
+            ...createGlyphEntry(),
+            rasterSize: 18,
+            x: 4,
+            y: 6,
+            width: 12,
+            height: 16,
+            rowStride: 12,
+            u0: 4 / 64,
+            v0: 6 / 64,
+            u1: 16 / 64,
+            v1: 22 / 64,
+            data: new Uint8Array(12 * 16).fill(80),
+        };
+        const largeGlyph: GlyphAtlasEntry = {
+            ...createGlyphEntry(),
+            rasterSize: 32,
+            x: 20,
+            y: 6,
+            width: 20,
+            height: 24,
+            rowStride: 20,
+            u0: 20 / 64,
+            v0: 6 / 64,
+            u1: 40 / 64,
+            v1: 30 / 64,
+            data: new Uint8Array(20 * 24).fill(160),
+        };
+        const frame: UIFrame<never> = {
+            viewportWidth: 160,
+            viewportHeight: 96,
+            metrics: {
+                ...createMetrics(),
+                renderCount: 1,
+                textCommandCount: 1,
+                glyphCount: 2,
+                customCommandCount: 0,
+            },
+            commands: [
+                {
+                    kind: 'text',
+                    widget: 1 as WidgetId,
+                    x: 12,
+                    y: 20,
+                    zIndex: 0,
+                    color: { r: 1, g: 1, b: 1, a: 1 },
+                    outlineColor: { r: 0, g: 0, b: 0, a: 0 },
+                    outlineWidth: 0,
+                    edgeSoftness: 1,
+                    opacity: 1,
+                    clip: null,
+                    layout: {
+                        faceId: smallGlyph.faceId,
+                        width: 32,
+                        height: 24,
+                        lineHeight: 24,
+                        baseline: 18,
+                        lines: [
+                            {
+                                index: 0,
+                                start: 0,
+                                end: 2,
+                                x: 0,
+                                y: 0,
+                                width: 32,
+                                height: 24,
+                                ascent: 18,
+                                descent: 6,
+                                gapCount: 0,
+                            },
+                        ],
+                        clusters: [
+                            {
+                                index: 0,
+                                line: 0,
+                                x: 0,
+                                y: 0,
+                                width: 12,
+                                height: 24,
+                                text: 'A',
+                                whitespace: false,
+                                newline: false,
+                            },
+                            {
+                                index: 1,
+                                line: 0,
+                                x: 12,
+                                y: 0,
+                                width: 20,
+                                height: 24,
+                                text: 'A',
+                                whitespace: false,
+                                newline: false,
+                            },
+                        ],
+                        carets: [
+                            { index: 0, line: 0, x: 0, y: 0, height: 24 },
+                            { index: 1, line: 0, x: 12, y: 0, height: 24 },
+                            { index: 2, line: 0, x: 32, y: 0, height: 24 },
+                        ],
+                        glyphs: [
+                            {
+                                codePoint: 65,
+                                clusterIndex: 0,
+                                x: 0,
+                                y: 4,
+                                advance: 12,
+                                width: 12,
+                                height: 16,
+                                line: 0,
+                                text: 'A',
+                                atlasEntry: smallGlyph,
+                            },
+                            {
+                                codePoint: 65,
+                                clusterIndex: 1,
+                                x: 12,
+                                y: 0,
+                                advance: 20,
+                                width: 20,
+                                height: 24,
+                                line: 0,
+                                text: 'A',
+                                atlasEntry: largeGlyph,
+                            },
+                        ],
+                        truncated: false,
+                        direction: 'ltr',
+                        text: 'AA',
+                    },
+                },
+            ],
+        };
+
+        renderer.render(frame);
+
+        expect(gl.texSubImage2D).toHaveBeenCalledTimes(2);
+        expect(renderer.getStats().uploadedGlyphCount).toBe(2);
     });
 });
