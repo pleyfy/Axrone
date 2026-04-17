@@ -101,7 +101,11 @@ const createRigBinaryBlob = (): Uint8Array => {
     return bytes;
 };
 
-const createRigJson = (): GltfRootJson => ({
+const createRigJson = (
+    options: {
+        readonly material?: NonNullable<GltfRootJson['materials']>[number];
+    } = {}
+): GltfRootJson => ({
     asset: {
         version: '2.0',
         generator: 'vitest',
@@ -207,10 +211,12 @@ const createRigJson = (): GltfRootJson => ({
                         WEIGHTS_0: 2,
                     },
                     indices: 3,
+                    material: options.material ? 0 : undefined,
                 },
             ],
         },
     ],
+    materials: options.material ? [options.material] : undefined,
     nodes: [
         {
             name: 'Joint Root',
@@ -591,10 +597,10 @@ describe('glTF runtime smoke', () => {
             expect(skinningCall?.[1]).toBe(1);
             expect(jointPaletteCall?.[2].length).toBe(16);
             expect(Array.from(jointPaletteCall?.[2] ?? [])).toEqual([
-                1, 0, 0, -0.5,
-                0, 1, 0, 0.25,
+                1, 0, 0, 0,
+                0, 1, 0, 0,
                 0, 0, 1, 0,
-                0, 0, 0, 1,
+                -0.5, 0.25, 0, 1,
             ]);
             expect((gl.drawElements as unknown as { mock: { calls: readonly unknown[][] } }).mock.calls.length).toBeGreaterThan(0);
         } finally {
@@ -675,6 +681,45 @@ describe('glTF runtime smoke', () => {
             expect(renderer?.morphWeights?.[0]).toBeCloseTo(1, 5);
             expect(latestUploadView?.getFloat32(0, true)).toBeCloseTo(1, 5);
             expect((gl.drawElements as unknown as { mock: { calls: readonly unknown[][] } }).mock.calls.length).toBeGreaterThan(0);
+        } finally {
+            scene.dispose();
+        }
+    });
+
+    it('maps double-sided blend materials onto runtime shader variants', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(
+                createRigJson({
+                    material: {
+                        name: 'PreviewMaterial',
+                        alphaMode: 'BLEND',
+                        doubleSided: true,
+                        pbrMetallicRoughness: {
+                            baseColorFactor: [1, 1, 1, 0.5],
+                            metallicFactor: 0,
+                            roughnessFactor: 1,
+                        },
+                    },
+                }),
+                createRigBinaryBlob()
+            ),
+            uri: 'models/rig-material.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+
+        try {
+            const load = await loadGltfSceneIntoScene(scene, database, receipt.primary.reference, {
+                namePrefix: 'Variant ',
+            });
+
+            expect(load.snapshot.materials[0]?.shaderId).toBe('gltf/pbr/blend/double-sided');
         } finally {
             scene.dispose();
         }

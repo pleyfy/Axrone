@@ -30,6 +30,7 @@ const enum AnimationInterpolationMode {
 
 interface AnimationBoneTrack {
     readonly targetIndex: number;
+    readonly path: AnimationTrackDefinition['path'];
     readonly interpolation: AnimationInterpolationMode;
     readonly times: Float32Array;
     readonly values: Float32Array;
@@ -197,6 +198,11 @@ const sampleTrack = (
 
     const leftOffset = frameIndex * track.sampleStride;
     const rightOffset = nextIndex * track.sampleStride;
+    if (track.path === 'rotation' && componentCount === 4) {
+        quatSlerp(out, outOffset, track.values, leftOffset, track.values, rightOffset, alpha);
+        return;
+    }
+
     for (let componentIndex = 0; componentIndex < componentCount; componentIndex += 1) {
         const left = track.values[leftOffset + componentIndex] ?? 0;
         const right = track.values[rightOffset + componentIndex] ?? left;
@@ -537,6 +543,7 @@ export class AnimationClip {
             resolvedDuration = Math.max(resolvedDuration, times[times.length - 1] ?? 0);
             const baseTrack = Object.freeze({
                 targetIndex: track.path === 'weights' ? -1 : this._rig.indexOfBone(track.target),
+                path: track.path,
                 interpolation: resolveInterpolationMode(track.interpolation),
                 times,
                 values,

@@ -177,6 +177,61 @@ describe('Animation stack', () => {
         expect(frame.pose.translations[2]).toBeCloseTo(0);
     });
 
+    it('samples linear rotation tracks with quaternion slerp so antipodal keys do not flip the pose', () => {
+        const controller = new AnimationController({
+            rig: {
+                bones: [{ name: 'hips' }],
+            },
+            clips: [
+                {
+                    id: 'pose',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'rotation',
+                            interpolation: 'LINEAR',
+                            times: [0, 1],
+                            values: [
+                                0,
+                                0,
+                                Math.SQRT1_2,
+                                Math.SQRT1_2,
+                                0,
+                                0,
+                                -Math.SQRT1_2,
+                                -Math.SQRT1_2,
+                            ],
+                        },
+                    ],
+                },
+            ],
+            layers: [
+                {
+                    id: 'base',
+                    stateMachine: {
+                        entryState: 'pose',
+                        states: [
+                            {
+                                id: 'pose',
+                                motion: { kind: 'clip', clipId: 'pose' },
+                                loop: true,
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+
+        controller.seek(0.5);
+        const frame = controller.evaluate();
+        const rotation = frame.pose.rotations.subarray(0, 4);
+        const dot =
+            rotation[2]! * Math.SQRT1_2 +
+            rotation[3]! * Math.SQRT1_2;
+
+        expect(Math.abs(dot)).toBeCloseTo(1, 5);
+    });
+
     it('builds blend graphs through the fluent authoring API and exposes active clip activity', () => {
         const motion = AnimationBlendGraph.blend1d('speed')
             .addChild(0, AnimationBlendGraph.clip('idle'))

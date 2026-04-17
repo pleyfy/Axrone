@@ -15,6 +15,7 @@ import {
     inferTextureFormatFromKtx2,
     parseKtx2Texture,
 } from '@axrone/asset-gltf';
+import { resolveGltfRuntimeShaderId } from './runtime-shaders';
 
 interface GltfTextureUniformSpec {
     readonly usage: GltfTextureUsage;
@@ -327,6 +328,7 @@ export const normalizeGltfMaterialDefinition = (
     return {
         ...asset.definition,
         id: key,
+        shaderId: resolveGltfRuntimeShaderId(asset.definition.shaderId, uniforms),
         uniforms,
         textures: asset.definition.textures ? { ...asset.definition.textures } : undefined,
     };

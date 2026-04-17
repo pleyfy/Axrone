@@ -7,8 +7,12 @@ import {
 
 const GLTF_SHADER_PBR_ID = 'gltf/pbr';
 const GLTF_SHADER_UNLIT_ID = 'gltf/unlit';
+const GLTF_SHADER_DOUBLE_SIDED_SUFFIX = '/double-sided';
+const GLTF_SHADER_BLEND_SUFFIX = '/blend';
 const MAX_GLTF_SKIN_JOINTS = 128;
 const MAX_GLTF_LOCAL_LIGHTS = 4;
+
+type GltfMaterialUniformMap = Readonly<Record<string, unknown>>;
 
 const HIDDEN_INSPECTOR = Object.freeze({ hidden: true } as const);
 const GLTF_ALPHA_MODE_OPTIONS = Object.freeze([
@@ -320,6 +324,49 @@ const createGltfShaderDefinitionFromEffect = (
     };
 };
 
+const normalizeNumericUniform = (value: unknown, fallback: number): number => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    return fallback;
+};
+
+const isGltfBlendAlphaMode = (uniforms: GltfMaterialUniformMap | undefined): boolean =>
+    normalizeNumericUniform(uniforms?._AlphaMode, 0) >= 1.5;
+
+const isGltfDoubleSided = (uniforms: GltfMaterialUniformMap | undefined): boolean =>
+    normalizeNumericUniform(uniforms?._DoubleSided, 0) >= 0.5;
+
+const createVariantShaderId = (
+    baseId: string,
+    options: {
+        readonly blend: boolean;
+        readonly doubleSided: boolean;
+    }
+): string => {
+    let variantId = baseId;
+    if (options.blend) {
+        variantId += GLTF_SHADER_BLEND_SUFFIX;
+    }
+    if (options.doubleSided) {
+        variantId += GLTF_SHADER_DOUBLE_SIDED_SUFFIX;
+    }
+    return variantId;
+};
+
+const resolveVariantRenderState = (uniforms: GltfMaterialUniformMap | undefined): {
+    readonly blend: boolean;
+    readonly cull: boolean;
+} => {
+    const blend = isGltfBlendAlphaMode(uniforms);
+    const doubleSided = isGltfDoubleSided(uniforms);
+    return {
+        blend,
+        cull: !doubleSided,
+    };
+};
+
 const createGltfUnlitShaderEffect = (id: string): RenderShaderEffectDefinition => ({
     format: 'axrone.shader/effect',
     version: 1,
@@ -387,8 +434,8 @@ const createGltfUnlitShaderEffect = (id: string): RenderShaderEffectDefinition =
     },
     renderState: {
         depthTest: true,
-        cull: false,
-        blend: true,
+        cull: true,
+        blend: false,
     },
 });
 
@@ -688,8 +735,8 @@ const createGltfPbrShaderEffect = (id: string): RenderShaderEffectDefinition => 
     },
     renderState: {
         depthTest: true,
-        cull: false,
-        blend: true,
+        cull: true,
+        blend: false,
     },
 });
 
@@ -697,30 +744,66 @@ export const GLTF_UNLIT_SHADER_EFFECT = createGltfUnlitShaderEffect(GLTF_SHADER_
 export const GLTF_PBR_SHADER_EFFECT = createGltfPbrShaderEffect(GLTF_SHADER_PBR_ID);
 
 export const createGltfUnlitShaderDefinition = (
-    id: string = GLTF_SHADER_UNLIT_ID
-): GltfShaderDefinition =>
-    createGltfShaderDefinitionFromEffect(
+    id: string = GLTF_SHADER_UNLIT_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition => {
+    const definition = createGltfShaderDefinitionFromEffect(
         id === GLTF_SHADER_UNLIT_ID ? GLTF_UNLIT_SHADER_EFFECT : createGltfUnlitShaderEffect(id),
         GLTF_UNLIT_ATTRIBUTES
     );
+    const renderState = resolveVariantRenderState(uniforms);
+    return {
+        ...definition,
+        cull: renderState.cull,
+        blend: renderState.blend,
+    };
+};
 
 export const createGltfPbrShaderDefinition = (
-    id: string = GLTF_SHADER_PBR_ID
-): GltfShaderDefinition =>
-    createGltfShaderDefinitionFromEffect(
+    id: string = GLTF_SHADER_PBR_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition => {
+    const definition = createGltfShaderDefinitionFromEffect(
         id === GLTF_SHADER_PBR_ID ? GLTF_PBR_SHADER_EFFECT : createGltfPbrShaderEffect(id),
         GLTF_PBR_ATTRIBUTES
     );
+    const renderState = resolveVariantRenderState(uniforms);
+    return {
+        ...definition,
+        cull: renderState.cull,
+        blend: renderState.blend,
+    };
+};
+
+export const resolveGltfRuntimeShaderId = (
+    shaderId: string,
+    uniforms?: GltfMaterialUniformMap
+): string => {
+    if (shaderId !== GLTF_SHADER_PBR_ID && shaderId !== GLTF_SHADER_UNLIT_ID) {
+        return shaderId;
+    }
+
+    return createVariantShaderId(shaderId, {
+        blend: isGltfBlendAlphaMode(uniforms),
+        doubleSided: isGltfDoubleSided(uniforms),
+    });
+};
 
 export const resolveGltfShaderDefinition = (
     shaderId: string,
     resolveShaderDefinition?: (shaderId: string) => GltfShaderDefinition | undefined
 ): GltfShaderDefinition | undefined => {
-    if (shaderId === GLTF_SHADER_PBR_ID) {
-        return createGltfPbrShaderDefinition(shaderId);
+    if (shaderId.startsWith(GLTF_SHADER_PBR_ID)) {
+        return createGltfPbrShaderDefinition(shaderId, {
+            _AlphaMode: shaderId.includes(GLTF_SHADER_BLEND_SUFFIX) ? 2 : 0,
+            _DoubleSided: shaderId.includes(GLTF_SHADER_DOUBLE_SIDED_SUFFIX) ? 1 : 0,
+        });
     }
-    if (shaderId === GLTF_SHADER_UNLIT_ID) {
-        return createGltfUnlitShaderDefinition(shaderId);
+    if (shaderId.startsWith(GLTF_SHADER_UNLIT_ID)) {
+        return createGltfUnlitShaderDefinition(shaderId, {
+            _AlphaMode: shaderId.includes(GLTF_SHADER_BLEND_SUFFIX) ? 2 : 0,
+            _DoubleSided: shaderId.includes(GLTF_SHADER_DOUBLE_SIDED_SUFFIX) ? 1 : 0,
+        });
     }
     return resolveShaderDefinition?.(shaderId);
 };

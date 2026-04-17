@@ -3,6 +3,7 @@ export {
     GLTF_UNLIT_SHADER_EFFECT,
     createGltfPbrShaderDefinition,
     createGltfUnlitShaderDefinition,
+    resolveGltfRuntimeShaderId,
 } from './internal/runtime-shaders';
 
 export type {

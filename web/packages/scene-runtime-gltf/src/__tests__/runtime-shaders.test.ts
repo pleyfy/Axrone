@@ -4,6 +4,7 @@ import {
     GLTF_UNLIT_SHADER_EFFECT,
     createGltfPbrShaderDefinition,
     createGltfUnlitShaderDefinition,
+    resolveGltfRuntimeShaderId,
 } from '@axrone/scene-runtime-gltf';
 
 describe('scene-runtime glTF shader effects', () => {
@@ -34,5 +35,24 @@ describe('scene-runtime glTF shader effects', () => {
         expect(GLTF_PBR_SHADER_EFFECT.properties?.some((property) => property.name === '_MetallicFactor')).toBe(true);
         expect(GLTF_UNLIT_SHADER_EFFECT.properties?.some((property) => property.name === '_BaseColorTexture')).toBe(true);
         expect(definition.fragmentSource).toContain('uniform int u_LocalLightType[4];');
+        expect(definition.cull).toBe(true);
+        expect(definition.blend).toBe(false);
+    });
+
+    it('derives shader variants from glTF material uniforms', () => {
+        expect(resolveGltfRuntimeShaderId('gltf/pbr')).toBe('gltf/pbr');
+        expect(resolveGltfRuntimeShaderId('gltf/pbr', { _DoubleSided: 1 })).toBe('gltf/pbr/double-sided');
+        expect(resolveGltfRuntimeShaderId('gltf/pbr', { _AlphaMode: 2 })).toBe('gltf/pbr/blend');
+        expect(resolveGltfRuntimeShaderId('gltf/unlit', { _AlphaMode: 2, _DoubleSided: 1 })).toBe(
+            'gltf/unlit/blend/double-sided'
+        );
+
+        const variant = createGltfPbrShaderDefinition('gltf/pbr/blend/double-sided', {
+            _AlphaMode: 2,
+            _DoubleSided: 1,
+        });
+
+        expect(variant.cull).toBe(false);
+        expect(variant.blend).toBe(true);
     });
 });
