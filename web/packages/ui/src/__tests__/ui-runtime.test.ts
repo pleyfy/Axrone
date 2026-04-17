@@ -319,6 +319,60 @@ describe('@axrone/ui runtime', () => {
         fonts.dispose();
     });
 
+    it('calls URL font fetches with a stable global context', async () => {
+        const runtimeFactory = {
+            create: vi.fn(async () => ({
+                info: {
+                    family: 'ContextSans',
+                    face: 'Regular',
+                    style: 'normal' as const,
+                    weight: 400 as const,
+                    locale: '',
+                    ascent: 800,
+                    descent: 200,
+                    lineGap: 0,
+                    unitsPerEm: 1000,
+                    defaultAdvance: 500,
+                    fallbackCodePoint: 63,
+                },
+                measureGlyph: () => null,
+                rasterizeGlyph: () => null,
+                getKerning: () => 0,
+                dispose: vi.fn(),
+            })),
+        };
+        const fetchImpl = vi.fn(function (this: typeof globalThis, url: string) {
+            expect(this).toBe(globalThis);
+            expect(url).toBe('https://example.com/font.ttf');
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                headers: {
+                    get(name: string) {
+                        return name.toLowerCase() === 'content-type' ? 'font/ttf' : null;
+                    },
+                },
+                arrayBuffer: async () =>
+                    new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00]).buffer,
+            } as Response);
+        }) as typeof fetch;
+        const fonts = new FontRegistry({
+            fetch: fetchImpl,
+            dynamicRuntimeFactory: runtimeFactory,
+        });
+
+        const faceId = await fonts.load({
+            kind: 'url',
+            url: 'https://example.com/font.ttf',
+            family: 'ContextSans',
+        });
+
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        expect(runtimeFactory.create).toHaveBeenCalledTimes(1);
+        expect(fonts.getFaceInfo(faceId)?.family).toBe('ContextSans');
+        fonts.dispose();
+    });
+
     it('loads binary font sources through the dynamic runtime pipeline and caches rasterized glyph sizes', async () => {
         const rasterizeGlyph = vi.fn((codePoint: number, rasterSize: number) => ({
             codePoint,
