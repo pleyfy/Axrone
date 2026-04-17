@@ -8,6 +8,7 @@ import type { RenderShaderEffectDefinition } from '@axrone/render-core';
 import type { Camera } from './components/camera';
 import type { Animator } from './components/animator';
 import type { DirectionalLight } from './components/directional-light';
+import type { FollowCameraController } from './components/follow-camera-controller';
 import type { MeshRenderer } from './components/mesh-renderer';
 import type { OrbitCameraController } from './components/orbit-camera-controller';
 import type { PrefabNodeBinding } from './components/prefab-node-binding';
@@ -343,6 +344,7 @@ export type SceneBuiltInRegistry = {
     readonly PointLight: typeof PointLight;
     readonly SpotLight: typeof SpotLight;
     readonly OrbitCameraController: typeof OrbitCameraController;
+    readonly FollowCameraController: typeof FollowCameraController;
 };
 
 export type SceneRegistry<R extends ComponentRegistry = Record<string, never>> = R &

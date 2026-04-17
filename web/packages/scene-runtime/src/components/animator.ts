@@ -431,6 +431,7 @@ export class Animator extends Component {
     crossFade(stateId: string, durationSeconds: number): this {
         const controller = this._ensureController();
         if (controller) {
+            this._currentClipId = stateId;
             controller.crossFade(stateId, durationSeconds);
             const streaming = this._syncStreamingState(controller);
             if (!this._isStreamingBlocked(streaming)) {

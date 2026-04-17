@@ -2536,7 +2536,25 @@ const createSkinAsset = async (
             );
         }
 
-        inverseBindMatrices = decoded.values;
+        inverseBindMatrices = new Float32Array(decoded.values.length);
+        for (let matrixOffset = 0; matrixOffset < decoded.values.length; matrixOffset += 16) {
+            inverseBindMatrices[matrixOffset + 0] = decoded.values[matrixOffset + 0]!;
+            inverseBindMatrices[matrixOffset + 1] = decoded.values[matrixOffset + 4]!;
+            inverseBindMatrices[matrixOffset + 2] = decoded.values[matrixOffset + 8]!;
+            inverseBindMatrices[matrixOffset + 3] = decoded.values[matrixOffset + 12]!;
+            inverseBindMatrices[matrixOffset + 4] = decoded.values[matrixOffset + 1]!;
+            inverseBindMatrices[matrixOffset + 5] = decoded.values[matrixOffset + 5]!;
+            inverseBindMatrices[matrixOffset + 6] = decoded.values[matrixOffset + 9]!;
+            inverseBindMatrices[matrixOffset + 7] = decoded.values[matrixOffset + 13]!;
+            inverseBindMatrices[matrixOffset + 8] = decoded.values[matrixOffset + 2]!;
+            inverseBindMatrices[matrixOffset + 9] = decoded.values[matrixOffset + 6]!;
+            inverseBindMatrices[matrixOffset + 10] = decoded.values[matrixOffset + 10]!;
+            inverseBindMatrices[matrixOffset + 11] = decoded.values[matrixOffset + 14]!;
+            inverseBindMatrices[matrixOffset + 12] = decoded.values[matrixOffset + 3]!;
+            inverseBindMatrices[matrixOffset + 13] = decoded.values[matrixOffset + 7]!;
+            inverseBindMatrices[matrixOffset + 14] = decoded.values[matrixOffset + 11]!;
+            inverseBindMatrices[matrixOffset + 15] = decoded.values[matrixOffset + 15]!;
+        }
     }
 
     return maybeFreeze(

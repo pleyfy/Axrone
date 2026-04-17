@@ -67,7 +67,7 @@ const createRigBinaryBlob = (): Uint8Array => {
         1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
-        0, 0, 0, 1,
+        -0.5, 0.25, 0, 1,
     ]);
     const animationTimes = new Float32Array([0, 1]);
     const animationTranslations = new Float32Array([
@@ -590,6 +590,12 @@ describe('glTF runtime smoke', () => {
 
             expect(skinningCall?.[1]).toBe(1);
             expect(jointPaletteCall?.[2].length).toBe(16);
+            expect(Array.from(jointPaletteCall?.[2] ?? [])).toEqual([
+                1, 0, 0, -0.5,
+                0, 1, 0, 0.25,
+                0, 0, 1, 0,
+                0, 0, 0, 1,
+            ]);
             expect((gl.drawElements as unknown as { mock: { calls: readonly unknown[][] } }).mock.calls.length).toBeGreaterThan(0);
         } finally {
             scene.dispose();

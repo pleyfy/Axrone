@@ -446,6 +446,59 @@ describe('scene-runtime prefab animation integration', () => {
         unsubscribe();
     });
 
+    it('updates animator clip state when cross-fading between prefab-authored clips', () => {
+        const harness = createPrefabHarness();
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Idle',
+                    duration: 1,
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 1, 0, 0],
+                        },
+                    ],
+                },
+                {
+                    id: 'Run',
+                    duration: 1,
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 4, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Idle',
+            playOnStart: true,
+            playing: true,
+            loop: true,
+            speed: 1,
+            time: 0,
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const animator = root?.getComponent(Animator) ?? null;
+
+        expect(animator?.clipId).toBe('Idle');
+
+        animator?.crossFade('Run', 0.15);
+
+        expect(animator?.clipId).toBe('Run');
+        expect(animator?.getDebugInfo()).toEqual(
+            expect.objectContaining({
+                clipId: 'Run',
+            })
+        );
+    });
+
     it('bridges streamed animation requests through async chunk resolvers', async () => {
         const harness = createPrefabHarness();
         const loaded: Record<string, unknown>[] = [];

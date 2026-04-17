@@ -26,6 +26,7 @@ describe('SceneRegistry manifests', () => {
             'PointLight',
             'SpotLight',
             'OrbitCameraController',
+            'FollowCameraController',
             'Animator',
         ]);
     });
