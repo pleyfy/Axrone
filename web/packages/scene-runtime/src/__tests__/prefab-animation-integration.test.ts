@@ -1,5 +1,6 @@
 import { encodeAnimationClipStreamingChunkPayload } from '@axrone/animation';
 import { World, Transform } from '@axrone/ecs-runtime';
+import { Vec3 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
 import {
     bindAnimationStreamingBridge,
@@ -232,6 +233,35 @@ describe('scene-runtime prefab animation integration', () => {
         expect(secondHip?.requireComponent(Transform).position.x).toBeCloseTo(1, 5);
         expect(firstMesh?.getComponent(MeshRenderer)?.getSkinJointMatrixPalette()).not.toBeNull();
         expect(firstMesh?.getComponent(MeshRenderer)?.skinJointCount).toBe(2);
+    });
+
+    it('refreshes cached joint world matrices before computing the skin palette', () => {
+        const harness = createPrefabHarness();
+        const prefab = createAnimatedRigPrefab({
+            clips: [],
+            playOnStart: false,
+            playing: false,
+            loop: true,
+            speed: 1,
+            time: 0,
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const hip = actors.find((actor) => actor.name === 'Hip');
+        const mesh = actors.find((actor) => actor.name === 'Skinned Mesh');
+        const hipTransform = hip?.getComponent(Transform) ?? null;
+        const renderer = mesh?.getComponent(MeshRenderer) ?? null;
+
+        const initialPalette = renderer?.getSkinJointMatrixPalette();
+        expect(initialPalette).not.toBeNull();
+        const initialSnapshot = Array.from(initialPalette ?? []);
+
+        expect(hipTransform).not.toBeNull();
+        hipTransform!.position = new Vec3(2, 0, 0);
+
+        const updatedPalette = renderer?.getSkinJointMatrixPalette();
+        expect(updatedPalette).not.toBeNull();
+        expect(Array.from(updatedPalette ?? [])).not.toEqual(initialSnapshot);
     });
 
     it('applies prefab-authored IK layer metadata through instantiated animators', () => {

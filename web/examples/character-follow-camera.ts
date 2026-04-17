@@ -55,11 +55,12 @@ interface CharacterClipSet {
 
 interface DashboardHandle {
     readonly controlsHost: HTMLElement;
-    readonly stateValue: HTMLElement;
-    readonly clipValue: HTMLElement;
     setStatus(next: string, color?: string): void;
     setAnimationState(next: string): void;
+    setClipSummary(next: string): void;
     setMotionTelemetry(position: Readonly<Vec3>, speed: number): void;
+    setHierarchyRoot(rootTransform: Transform): void;
+    refreshSelection(): void;
     dispose(): void;
 }
 
@@ -89,6 +90,15 @@ const formatWorldPositionLabel = (position: Readonly<Vec3>): string =>
     `${position.x.toFixed(2)}, ${position.z.toFixed(2)}`;
 
 const formatSpeedLabel = (speed: number): string => `${speed.toFixed(2)} u/s`;
+
+const formatDebugVec3 = (value: Readonly<Vec3>): string =>
+    `${value.x.toFixed(3)}, ${value.y.toFixed(3)}, ${value.z.toFixed(3)}`;
+
+const formatDebugQuat = (value: Readonly<Quat>): string =>
+    `${value.x.toFixed(3)}, ${value.y.toFixed(3)}, ${value.z.toFixed(3)}, ${value.w.toFixed(3)}`;
+
+const getActorFromTransform = (transform: Transform | null | undefined): SceneActor | null =>
+    ((transform as unknown as { actor?: SceneActor | undefined })?.actor ?? null);
 
 const resolveCharacterClipSet = (animator: Animator | null): CharacterClipSet => {
     const serialized = animator?.serialize() as { clips?: readonly { id?: unknown }[] } | undefined;
@@ -502,12 +512,13 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
         zIndex: '10',
     });
 
-    const infoPanel = document.createElement('section');
-    Object.assign(infoPanel.style, {
+    const debugPanel = document.createElement('section');
+    Object.assign(debugPanel.style, {
         position: 'absolute',
         top: '20px',
         left: '20px',
-        width: '320px',
+        width: '360px',
+        maxHeight: 'calc(100% - 40px)',
         padding: '18px 18px 16px',
         borderRadius: '18px',
         border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -517,34 +528,28 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
         fontFamily: '"IBM Plex Sans", "Segoe UI", sans-serif',
         boxShadow: '0 24px 48px rgba(0, 0, 0, 0.35)',
         pointerEvents: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px',
     });
 
     const title = document.createElement('div');
-    title.textContent = 'FOLLOW CHARACTER';
+    title.textContent = 'Character Hierarchy';
     Object.assign(title.style, {
         fontSize: '18px',
         fontWeight: '700',
-        letterSpacing: '0.14em',
+        letterSpacing: '0.06em',
         marginBottom: '6px',
     });
 
     const subtitle = document.createElement('div');
-    subtitle.textContent = 'Local glTF import, runtime animation switching, and orbitable follow camera.';
+    subtitle.textContent =
+        'Imported character node tree. Select any node to inspect its live local and world transform values.';
     Object.assign(subtitle.style, {
         fontSize: '12px',
         lineHeight: '1.6',
         color: '#d7d0c4',
-        marginBottom: '14px',
-    });
-
-    const statusValue = document.createElement('div');
-    statusValue.textContent = 'Loading local assets...';
-    Object.assign(statusValue.style, {
-        fontSize: '12px',
-        lineHeight: '1.6',
-        color: '#c9d6df',
-        marginBottom: '14px',
-        whiteSpace: 'pre-wrap',
+        marginBottom: '4px',
     });
 
     const metrics = document.createElement('div');
@@ -552,7 +557,6 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
         display: 'grid',
         gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
         gap: '10px',
-        marginBottom: '14px',
     });
 
     const createMetric = (label: string) => {
@@ -596,41 +600,196 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
     positionValue.textContent = '0.00, 0.00';
     speedValue.textContent = '0.00 u/s';
 
-    const instructionList = document.createElement('div');
-    instructionList.innerHTML = [
-        'Click preview: focus WASD controls',
-        'WASD: camera-relative locomotion',
-        'Right Mouse Drag: orbit camera',
-        'Mouse Wheel: zoom',
-        'Cyan frame: character spawn reference',
-        'Amber dots: travelled path',
-        'Idle/Run clip switching is driven in runtime',
-    ].join('<br />');
-    Object.assign(instructionList.style, {
-        fontSize: '12px',
-        lineHeight: '1.7',
-        color: '#d1d8df',
-        marginBottom: '14px',
+    const treeLabel = document.createElement('div');
+    treeLabel.textContent = 'Nodes';
+    Object.assign(treeLabel.style, {
+        fontSize: '10px',
+        fontWeight: '700',
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase',
+        color: '#96a4b1',
     });
 
-    const palette = document.createElement('img');
-    palette.src = COLOR_PALETTE_URL;
-    palette.alt = 'Palette';
-    Object.assign(palette.style, {
-        display: 'block',
-        width: '100%',
-        height: '82px',
-        objectFit: 'cover',
-        borderRadius: '12px',
+    const hierarchyHost = document.createElement('div');
+    Object.assign(hierarchyHost.style, {
+        minHeight: '220px',
+        maxHeight: '320px',
+        overflow: 'auto',
+        borderRadius: '14px',
         border: '1px solid rgba(255, 255, 255, 0.06)',
+        background: 'rgba(255, 255, 255, 0.03)',
+        padding: '8px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
     });
 
-    infoPanel.appendChild(title);
-    infoPanel.appendChild(subtitle);
-    infoPanel.appendChild(statusValue);
-    infoPanel.appendChild(metrics);
-    infoPanel.appendChild(instructionList);
-    infoPanel.appendChild(palette);
+    const inspectorLabel = document.createElement('div');
+    inspectorLabel.textContent = 'Transform Inspector';
+    Object.assign(inspectorLabel.style, {
+        fontSize: '10px',
+        fontWeight: '700',
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase',
+        color: '#96a4b1',
+    });
+
+    const inspectorHost = document.createElement('div');
+    Object.assign(inspectorHost.style, {
+        borderRadius: '14px',
+        border: '1px solid rgba(255, 255, 255, 0.06)',
+        background: 'rgba(255, 255, 255, 0.03)',
+        padding: '10px 12px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+    });
+
+    const createInspectorRow = (label: string) => {
+        const row = document.createElement('div');
+        Object.assign(row.style, {
+            display: 'grid',
+            gridTemplateColumns: '94px minmax(0, 1fr)',
+            gap: '10px',
+            alignItems: 'start',
+        });
+
+        const labelElement = document.createElement('div');
+        labelElement.textContent = label;
+        Object.assign(labelElement.style, {
+            fontSize: '11px',
+            color: '#a8b1ba',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+        });
+
+        const valueElement = document.createElement('div');
+        valueElement.textContent = 'Pending';
+        Object.assign(valueElement.style, {
+            fontSize: '12px',
+            lineHeight: '1.5',
+            color: '#fff7ec',
+            fontFamily: '"IBM Plex Mono", Consolas, monospace',
+            wordBreak: 'break-word',
+        });
+
+        row.appendChild(labelElement);
+        row.appendChild(valueElement);
+        inspectorHost.appendChild(row);
+
+        return valueElement;
+    };
+
+    const selectedNodeValue = createInspectorRow('Node');
+    const parentNodeValue = createInspectorRow('Parent');
+    const childCountValue = createInspectorRow('Children');
+    const localPositionValue = createInspectorRow('Local Pos');
+    const worldPositionValue = createInspectorRow('World Pos');
+    const localRotationValue = createInspectorRow('Local Rot');
+    const worldRotationValue = createInspectorRow('World Rot');
+    const localScaleValue = createInspectorRow('Local Scale');
+    const worldScaleValue = createInspectorRow('World Scale');
+
+    const statusValue = document.createElement('div');
+    statusValue.textContent = 'Loading local assets...';
+    Object.assign(statusValue.style, {
+        fontSize: '12px',
+        lineHeight: '1.6',
+        color: '#c9d6df',
+        whiteSpace: 'pre-wrap',
+        borderRadius: '12px',
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid rgba(255, 255, 255, 0.06)',
+        padding: '10px 12px',
+        maxHeight: '160px',
+        overflow: 'auto',
+    });
+
+    const treeButtons = new Map<Transform, HTMLButtonElement>();
+    let selectedTransform: Transform | null = null;
+
+    const refreshSelection = () => {
+        if (!selectedTransform) {
+            selectedNodeValue.textContent = 'None';
+            parentNodeValue.textContent = 'None';
+            childCountValue.textContent = '0';
+            localPositionValue.textContent = '0.000, 0.000, 0.000';
+            worldPositionValue.textContent = '0.000, 0.000, 0.000';
+            localRotationValue.textContent = '0.000, 0.000, 0.000, 1.000';
+            worldRotationValue.textContent = '0.000, 0.000, 0.000, 1.000';
+            localScaleValue.textContent = '1.000, 1.000, 1.000';
+            worldScaleValue.textContent = '1.000, 1.000, 1.000';
+            return;
+        }
+
+        const actor = getActorFromTransform(selectedTransform);
+        const parentActor = getActorFromTransform(selectedTransform.parent);
+        selectedNodeValue.textContent = actor?.name ?? 'Unnamed';
+        parentNodeValue.textContent = parentActor?.name ?? 'None';
+        childCountValue.textContent = String(selectedTransform.children.length);
+        localPositionValue.textContent = formatDebugVec3(selectedTransform.position);
+        worldPositionValue.textContent = formatDebugVec3(selectedTransform.worldPosition);
+        localRotationValue.textContent = formatDebugQuat(selectedTransform.rotation);
+        worldRotationValue.textContent = formatDebugQuat(selectedTransform.worldRotation);
+        localScaleValue.textContent = formatDebugVec3(selectedTransform.scale);
+        worldScaleValue.textContent = formatDebugVec3(selectedTransform.worldScale);
+    };
+
+    const syncSelectionStyles = () => {
+        for (const [transform, button] of treeButtons) {
+            const isSelected = transform === selectedTransform;
+            button.style.background = isSelected ? 'rgba(227, 161, 76, 0.22)' : 'transparent';
+            button.style.borderColor = isSelected
+                ? 'rgba(227, 161, 76, 0.55)'
+                : 'rgba(255, 255, 255, 0.04)';
+            button.style.color = isSelected ? '#fff4df' : '#d8e0e7';
+        }
+    };
+
+    const selectTransform = (transform: Transform) => {
+        selectedTransform = transform;
+        syncSelectionStyles();
+        refreshSelection();
+    };
+
+    const appendTransformNode = (transform: Transform, depth: number) => {
+        const actor = getActorFromTransform(transform);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = `${transform.children.length > 0 ? '▾' : '•'} ${actor?.name ?? 'Unnamed Node'}`;
+        Object.assign(button.style, {
+            appearance: 'none',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.04)',
+            borderRadius: '10px',
+            color: '#d8e0e7',
+            cursor: 'pointer',
+            fontFamily: '"IBM Plex Mono", Consolas, monospace',
+            fontSize: '11px',
+            lineHeight: '1.4',
+            padding: `7px 10px 7px ${10 + depth * 16}px`,
+            textAlign: 'left',
+            width: '100%',
+        });
+        button.addEventListener('click', () => {
+            selectTransform(transform);
+        });
+        treeButtons.set(transform, button);
+        hierarchyHost.appendChild(button);
+
+        for (const child of transform.children) {
+            appendTransformNode(child, depth + 1);
+        }
+    };
+
+    debugPanel.appendChild(title);
+    debugPanel.appendChild(subtitle);
+    debugPanel.appendChild(metrics);
+    debugPanel.appendChild(treeLabel);
+    debugPanel.appendChild(hierarchyHost);
+    debugPanel.appendChild(inspectorLabel);
+    debugPanel.appendChild(inspectorHost);
+    debugPanel.appendChild(statusValue);
 
     const controlsPanel = document.createElement('section');
     Object.assign(controlsPanel.style, {
@@ -668,14 +827,14 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
     controlsPanel.appendChild(controlsTitle);
     controlsPanel.appendChild(controlsHost);
 
-    hud.appendChild(infoPanel);
+    hud.appendChild(debugPanel);
     hud.appendChild(controlsPanel);
     container.appendChild(hud);
 
+    refreshSelection();
+
     return {
         controlsHost,
-        stateValue,
-        clipValue,
         setStatus(next: string, color: string = '#c9d6df') {
             statusValue.textContent = next;
             statusValue.style.color = color;
@@ -683,10 +842,20 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
         setAnimationState(next: string) {
             stateValue.textContent = next;
         },
+        setClipSummary(next: string) {
+            clipValue.textContent = next;
+        },
         setMotionTelemetry(position: Readonly<Vec3>, speed: number) {
             positionValue.textContent = formatWorldPositionLabel(position);
             speedValue.textContent = formatSpeedLabel(speed);
         },
+        setHierarchyRoot(rootTransform: Transform) {
+            hierarchyHost.replaceChildren();
+            treeButtons.clear();
+            appendTransformNode(rootTransform, 0);
+            selectTransform(rootTransform);
+        },
+        refreshSelection,
         dispose() {
             hud.remove();
         },
@@ -1150,13 +1319,15 @@ const characterFollowCameraExample: SceneExample = {
                     .map((actor) => actor.getComponent(Animator))
                     .find((component): component is Animator => Boolean(component)) ?? null;
             const clipSet = resolveCharacterClipSet(animator);
-            dashboard.clipValue.textContent =
+            dashboard.setClipSummary(
                 clipSet.ids.length > 0
                     ? clipSet.ids.map((clipId) => formatClipLabel(clipId)).join(', ')
-                    : 'No clips';
+                    : 'No clips'
+            );
             dashboard.setAnimationState(formatClipLabel(clipSet.idle ?? clipSet.run));
 
             const characterRig = characterContainer.requireComponent(Transform);
+            dashboard.setHierarchyRoot(characterRig);
             const locomotion = characterContainer.addComponent(CharacterLocomotionController);
             locomotion.bindAnimator(animator, clipSet);
             locomotion.setInputScopeElement(sceneHost);
@@ -1195,6 +1366,7 @@ const characterFollowCameraExample: SceneExample = {
                     const deltaZ = position.z - previousTelemetryPosition.z;
                     const speed = Math.hypot(deltaX, deltaY, deltaZ) / deltaSeconds;
                     dashboard.setMotionTelemetry(position, speed);
+                    dashboard.refreshSelection();
 
                     const planarTravel = Math.hypot(
                         position.x - lastTrailDropPosition.x,

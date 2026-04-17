@@ -117,7 +117,7 @@ export class MeshRenderer extends Component {
     private _skin: MeshRendererSkinState | null;
     private _resolvedSkinInstanceId: string | null = null;
     private _resolvedJointTransforms: readonly (Transform | null)[] | null = null;
-    private _resolvedJointWorldMatrices: readonly ArrayLike<number>[] | null = null;
+    private _resolvedJointWorldMatrices: ArrayLike<number>[] | null = null;
     private _skinPaletteCache: Float32Array | null = null;
 
     constructor(config: MeshRendererConfig = {}) {
@@ -261,9 +261,8 @@ export class MeshRenderer extends Component {
         if (!jointTransforms) {
             return null;
         }
-        if (!this._resolvedJointWorldMatrices) {
-            return null;
-        }
+
+        const jointWorldMatrices = this._refreshResolvedJointWorldMatrices(jointTransforms);
 
         if (!this._skinPaletteCache || this._skinPaletteCache.length !== jointTransforms.length * 16) {
             this._skinPaletteCache = new Float32Array(jointTransforms.length * 16);
@@ -271,7 +270,7 @@ export class MeshRenderer extends Component {
 
         return computeSkinningPalette({
             meshWorldMatrix: meshTransform.worldMatrix.data,
-            jointWorldMatrices: this._resolvedJointWorldMatrices,
+            jointWorldMatrices: jointWorldMatrices,
             inverseBindMatrices: this._skin.inverseBindMatrices ?? null,
             out: this._skinPaletteCache,
         });
@@ -423,12 +422,24 @@ export class MeshRenderer extends Component {
             return null;
         }
 
-        this._resolvedJointWorldMatrices = Object.freeze(
-            (this._resolvedJointTransforms as readonly Transform[]).map(
-                (transform) => transform.worldMatrix.data
-            )
+        this._resolvedJointWorldMatrices = (this._resolvedJointTransforms as readonly Transform[]).map(
+            (transform) => transform.worldMatrix.data
         );
 
         return this._resolvedJointTransforms as readonly Transform[];
+    }
+
+    private _refreshResolvedJointWorldMatrices(
+        jointTransforms: readonly Transform[]
+    ): readonly ArrayLike<number>[] {
+        if (!this._resolvedJointWorldMatrices || this._resolvedJointWorldMatrices.length !== jointTransforms.length) {
+            this._resolvedJointWorldMatrices = new Array<ArrayLike<number>>(jointTransforms.length);
+        }
+
+        for (let index = 0; index < jointTransforms.length; index += 1) {
+            this._resolvedJointWorldMatrices[index] = jointTransforms[index]!.worldMatrix.data;
+        }
+
+        return this._resolvedJointWorldMatrices;
     }
 }
