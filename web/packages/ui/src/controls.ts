@@ -422,6 +422,9 @@ const resolveTheme = (theme: Partial<UIControlTheme> | undefined): UIControlThem
     ...(theme ?? {}),
 });
 
+const resolveThemeScale = (theme: UIControlTheme): number =>
+	Math.max(theme.controlHeight / defaultUIControlTheme.controlHeight, 0.5);
+
 const resolveParentWidget = <TRuntime>(runtime: UIRuntime<TRuntime>, parent: UIParentTarget): WidgetId => {
     if (parent === null || parent === undefined) {
         return runtime.root;
@@ -934,6 +937,7 @@ export const createUIToggle = <TRuntime>(
     options: UIToggleOptions = {}
 ): UIToggleHandle => {
     const theme = resolveTheme(options.theme);
+    const themeScale = resolveThemeScale(theme);
     const state = {
         checked: options.checked ?? false,
         disabled: options.disabled ?? false,
@@ -945,9 +949,9 @@ export const createUIToggle = <TRuntime>(
         variant: options.variant ?? 'primary',
     };
     const labelPlacement = options.labelPlacement ?? 'right';
-    const trackWidth = 48;
-    const trackHeight = 28;
-    const thumbSize = 22;
+    const trackHeight = Math.max(20, Math.round(theme.controlHeight * 0.68));
+    const trackWidth = Math.max(Math.round(theme.controlHeight * 1.75), Math.round(48 * themeScale));
+    const thumbSize = Math.max(16, Math.round(trackHeight - 6));
 
     let handle: UIToggleHandle;
 
@@ -964,7 +968,7 @@ export const createUIToggle = <TRuntime>(
             display: 'stack',
             direction: 'row',
             alignItems: 'center',
-            gap: 12,
+            gap: Math.max(8, Math.round(theme.controlHeight * 0.24)),
             width: 'content',
             height: 'content',
             ...(options.layout ?? {}),
@@ -1162,6 +1166,7 @@ export const createUIProgressBar = <TRuntime>(
     options: UIProgressBarOptions = {}
 ): UIProgressBarHandle => {
     const theme = resolveTheme(options.theme);
+    const trackHeight = Math.max(8, Math.round(theme.controlHeight * 0.34));
     const range = normalizeRange(options.min ?? 0, options.max ?? 1);
     const state = {
         label: options.label ?? 'Progress',
@@ -1200,7 +1205,7 @@ export const createUIProgressBar = <TRuntime>(
         role: 'custom:progress-track',
         layout: {
             width: '100%',
-            height: 14,
+            height: trackHeight,
             display: 'overlay',
         },
     });
@@ -1291,6 +1296,8 @@ export const createUISlider = <TRuntime>(
     options: UISliderOptions = {}
 ): UISliderHandle => {
     const theme = resolveTheme(options.theme);
+    const trackHeight = Math.max(12, Math.round(theme.controlHeight * 0.48));
+    const thumbSize = Math.max(14, Math.round(trackHeight - 2));
     const range = normalizeRange(options.min ?? 0, options.max ?? 1);
     const state = {
         label: options.label ?? '',
@@ -1334,7 +1341,7 @@ export const createUISlider = <TRuntime>(
         role: 'custom:slider-track',
         layout: {
             width: '100%',
-            height: 20,
+            height: trackHeight,
             display: 'overlay',
         },
     });
@@ -1364,15 +1371,15 @@ export const createUISlider = <TRuntime>(
             },
             inset: { left: 0 },
             width: '0%',
-            height: 6,
+            height: Math.max(4, Math.round(trackHeight * 0.34)),
         },
     });
     const thumb = runtime.createWidget({
         role: 'custom:slider-thumb',
         layout: {
             position: 'absolute',
-            width: 18,
-            height: 18,
+            width: thumbSize,
+            height: thumbSize,
         },
     });
 
@@ -1525,7 +1532,7 @@ export const createUISlider = <TRuntime>(
                 },
                 inset: { left: 0 },
                 width: `${percent}%`,
-                height: 6,
+                height: Math.max(4, Math.round(trackHeight * 0.34)),
             },
             style: {
                 background: state.disabled ? theme.surfaceDisabledColor : palette.idle,
@@ -1537,8 +1544,8 @@ export const createUISlider = <TRuntime>(
         runtime.updateWidget(thumb, {
             layout: {
                 position: 'absolute',
-                width: 18,
-                height: 18,
+                width: thumbSize,
+                height: thumbSize,
                 anchor: {
                     x: percent / 100,
                     y: 0.5,
@@ -2052,6 +2059,7 @@ export const createUIPageView = <TRuntime>(
     options: UIPageViewOptions = {}
 ): UIPageViewHandle => {
     const theme = resolveTheme(options.theme);
+    const indicatorSize = Math.max(8, Math.round(theme.controlHeight * 0.24));
     const state = {
         page: Math.max(0, options.page ?? 0),
         disabled: options.disabled ?? false,
@@ -2113,10 +2121,10 @@ export const createUIPageView = <TRuntime>(
         layout: {
             position: 'absolute',
             anchor: 'bottom',
-            inset: { bottom: 12 },
+            inset: { bottom: Math.max(10, Math.round(theme.controlHeight * 0.28)) },
             display: 'stack',
             direction: 'row',
-            gap: 8,
+            gap: Math.max(6, Math.round(theme.controlHeight * 0.18)),
             justifyContent: 'center',
             alignItems: 'center',
             width: 'content',
@@ -2141,8 +2149,8 @@ export const createUIPageView = <TRuntime>(
                 interactive: true,
                 focus: { focusable: false },
                 layout: {
-                    width: 10,
-                    height: 10,
+                    width: indicatorSize,
+                    height: indicatorSize,
                     shrink: 0,
                 },
                 handlers: {
