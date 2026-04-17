@@ -86,6 +86,17 @@ const syncButtonDisabledState = (button: HTMLButtonElement): void => {
     button.style.cursor = disabled ? 'not-allowed' : 'pointer';
 };
 
+const normalizeWheelDelta = (event: WheelEvent): number => {
+    switch (event.deltaMode) {
+        case WheelEvent.DOM_DELTA_LINE:
+            return event.deltaY * 16;
+        case WheelEvent.DOM_DELTA_PAGE:
+            return event.deltaY * 96;
+        default:
+            return event.deltaY;
+    }
+};
+
 const createPanelButton = (label: string): HTMLButtonElement => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -1000,7 +1011,7 @@ const localGlbViewerExample: SceneExample = {
             if (!file) {
                 panel.setBusy(false);
                 panel.setStatus('Ready. Load a local GLB to inspect clips and preview animation.', 'neutral');
-                panel.setSummary('Auto-orbit camera is active over the empty ground stage.');
+                panel.setSummary('Auto-orbit camera is active over the empty ground stage. Use the mouse wheel to zoom.');
                 panel.setFileLabel('No file loaded yet.');
                 return;
             }
@@ -1134,12 +1145,24 @@ const localGlbViewerExample: SceneExample = {
             }
         });
 
+        const handleWheel = (event: WheelEvent) => {
+            if (!stage) {
+                return;
+            }
+
+            event.preventDefault();
+            stage.orbit.zoom(normalizeWheelDelta(event) * 0.009);
+        };
+
+        sceneHost.addEventListener('wheel', handleWheel, { passive: false });
+
         panel.setSpeed(currentSpeed);
         await rebuildStage(null);
 
         return {
             dispose() {
                 destroyed = true;
+                sceneHost.removeEventListener('wheel', handleWheel);
                 stage?.dispose();
                 panel.dispose();
                 container.replaceChildren();
