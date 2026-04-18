@@ -10,6 +10,10 @@ import type { ExampleHandle } from '../example-types';
 export const UI_DEMO_FONT_FAMILY = 'OverlayBitmap';
 export const resolveExampleAssetUrl = (path: string): string =>
     new URL(path.replace(/^\/+/, ''), document.baseURI).toString();
+export const DRACO_DECODER_WASM_URL = new URL(
+    '../../node_modules/draco3dgltf/draco_decoder_gltf.wasm',
+    import.meta.url
+).toString();
 
 const GLYPH_PATTERNS = {
     '?': ['.###.', '...#.', '..#..', '..#..', '..#..', '.....', '..#..'],

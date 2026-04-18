@@ -314,9 +314,19 @@ export type GltfResourceResolver = (
     request: Readonly<GltfResourceRequest>
 ) => GltfResolvedResource | Promise<GltfResolvedResource | undefined> | undefined;
 
+export interface GltfDracoDecoderOptions {
+    readonly wasmUrl?: string;
+    readonly moduleFactory?: (
+        moduleConfig?: Readonly<{
+            locateFile?: (path: string, scriptDirectory: string) => string;
+        }>
+    ) => Promise<unknown>;
+}
+
 export interface GltfImporterOptions<TSchema extends GltfAssetSchemaLike = GltfAssetSchemaLike> {
     readonly id?: string;
     readonly resourceResolver?: GltfResourceResolver;
+    readonly dracoDecoder?: GltfDracoDecoderOptions;
     readonly materialShaderId?: string;
     readonly textureStageId?: string;
     readonly defaultSamplerId?: string;

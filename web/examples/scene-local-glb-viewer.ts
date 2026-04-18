@@ -19,6 +19,7 @@ import {
 } from '@axrone/scene-runtime-gltf';
 import { bindSceneToContainer } from './example-runtime';
 import type { ExampleContext, SceneExample } from './example-types';
+import { DRACO_DECODER_WASM_URL } from './ui/example-helpers';
 
 const LOCAL_GLTF_GROUND_SHADER_ID = 'examples/local-glb-viewer-ground';
 const LOCAL_GLTF_GROUND_MATERIAL_ID = 'local-glb-viewer.ground-material';
@@ -781,7 +782,11 @@ const createViewerStage = async (sceneHost: HTMLElement): Promise<ViewerStage> =
 
     const database = new AssetDatabase<GltfAssetSchemaLike>({
         importers: [
-            createGltfImporter<GltfAssetSchemaLike>() as AssetImporter<GltfAssetSchemaLike>,
+            createGltfImporter<GltfAssetSchemaLike>({
+                dracoDecoder: {
+                    wasmUrl: DRACO_DECODER_WASM_URL,
+                },
+            }) as AssetImporter<GltfAssetSchemaLike>,
         ],
     });
 

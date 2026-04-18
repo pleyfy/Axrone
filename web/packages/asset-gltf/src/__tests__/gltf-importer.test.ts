@@ -21,12 +21,20 @@ const triangleIndices = new Uint16Array([0, 1, 2]);
 const pngHeaderBytes = new Uint8Array([137, 80, 78, 71]);
 
 let dracoEncoderModulePromise: Promise<any> | undefined;
+let dracoDecoderModulePromise: Promise<any> | undefined;
 
 const loadDracoEncoderModule = async (): Promise<any> => {
     dracoEncoderModulePromise ??= import('draco3dgltf').then((module) =>
         module.createEncoderModule({})
     );
     return dracoEncoderModulePromise;
+};
+
+const loadDracoDecoderModule = async (): Promise<any> => {
+    dracoDecoderModulePromise ??= import('draco3dgltf').then((module) =>
+        module.createDecoderModule({})
+    );
+    return dracoDecoderModulePromise;
 };
 
 const createBinaryBlob = (): Uint8Array => {
@@ -2501,5 +2509,43 @@ describe('glTF importer', () => {
         expect(receipt.diagnostics.map((entry) => entry.code)).not.toContain(
             'gltf.extension.unsupported'
         );
+    });
+
+    it('passes configured Draco wasm resolution into custom decoder module factories', async () => {
+        let locateFile:
+            | ((path: string, scriptDirectory: string) => string)
+            | undefined;
+        let moduleFactoryCallCount = 0;
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [
+                createGltfImporter({
+                    dracoDecoder: {
+                        wasmUrl: '/vendor/draco_decoder_gltf.wasm',
+                        moduleFactory: async (moduleConfig) => {
+                            moduleFactoryCallCount += 1;
+                            locateFile = moduleConfig?.locateFile;
+                            return loadDracoDecoderModule();
+                        },
+                    },
+                }),
+            ],
+        });
+        const compressed = await createDracoCompressedTriangle();
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(compressed.json, compressed.bin),
+            uri: 'models/triangle-draco-configured.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
+        expect(mesh?.data.definition.vertexCount).toBe(3);
+        expect(mesh?.data.definition.indices).toEqual(new Uint16Array([0, 1, 2]));
+        expect(moduleFactoryCallCount).toBe(1);
+        expect(locateFile?.('draco_decoder_gltf.wasm', '/scripts/')).toBe(
+            '/vendor/draco_decoder_gltf.wasm'
+        );
+        expect(locateFile?.('other.js', '/scripts/')).toBe('/scripts/other.js');
     });
 });

@@ -378,7 +378,8 @@ export class GltfResourceRuntime {
     constructor(
         readonly source: NormalizedGltfSource,
         readonly importSource: AssetImportSource,
-        readonly resourceResolver: GltfImporterOptions['resourceResolver']
+        readonly resourceResolver: GltfImporterOptions['resourceResolver'],
+        readonly dracoDecoder: GltfImporterOptions['dracoDecoder']
     ) {}
 
     async resolveBuffer(index: number): Promise<Uint8Array> {

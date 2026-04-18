@@ -17,6 +17,7 @@ export type {
     GltfCameraOrthographicJson,
     GltfCameraPerspectiveJson,
     GltfCompressedTexturePayload,
+    GltfDracoDecoderOptions,
     GltfDracoMeshCompressionExtensionJson,
     GltfDocumentAsset,
     GltfDocumentSceneAsset,

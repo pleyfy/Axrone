@@ -3204,7 +3204,12 @@ export const createGltfImporter = <
             const { source, createSubKey } = context;
             const normalized = normalizeGltfSource(source);
             assertSupportedRequiredExtensions(normalized.json);
-            const runtime = new GltfResourceRuntime(normalized, source, options.resourceResolver);
+            const runtime = new GltfResourceRuntime(
+                normalized,
+                source,
+                options.resourceResolver,
+                options.dracoDecoder
+            );
             const accessors = new GltfAccessorRuntime(runtime);
             const diagnostics: AssetImportDiagnostic[] = [
                 ...collectExtensionDiagnostics(normalized.json),
