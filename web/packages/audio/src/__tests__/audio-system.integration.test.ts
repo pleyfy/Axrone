@@ -135,4 +135,88 @@ describe('AudioSystem integration', () => {
             5
         );
     });
+
+    it('captures pause offsets and resumes from the paused position', async () => {
+        const context = new FakeAudioContext();
+        const buffer = new FakeAudioBuffer(2, 192000, 48000) as unknown as AudioBuffer;
+        const system = createAudioSystem({
+            context: context as unknown as AudioContext,
+            listeners: [{ id: 'main', active: true }],
+            sources: [
+                {
+                    id: 'ambience',
+                    clip: {
+                        kind: 'buffer',
+                        buffer,
+                    },
+                },
+            ],
+        });
+
+        await system.playSource('ambience');
+        context.advance(0.75);
+
+        system.pauseSource('ambience');
+        context.flush();
+
+        expect(system.getSource('ambience')?.playbackState).toBe('paused');
+        expect(system.getSource('ambience')?.currentOffsetSeconds).toBeCloseTo(0.75, 5);
+
+        await system.resumeSource('ambience');
+
+        const resumedNode = context.bufferSourceNodes.at(-1);
+        expect(resumedNode?.startCalls[0]?.offset).toBeCloseTo(0.75, 5);
+        expect(system.getSource('ambience')?.playbackState).toBe('playing');
+    });
+
+    it('cleans up transient sources after scheduled stop reaches ended state', async () => {
+        const context = new FakeAudioContext();
+        const buffer = new FakeAudioBuffer(2, 96000, 48000) as unknown as AudioBuffer;
+        const system = createAudioSystem({
+            context: context as unknown as AudioContext,
+            listeners: [{ id: 'main', active: true }],
+        });
+
+        const handle = await system.play({
+            clip: {
+                kind: 'buffer',
+                buffer,
+            },
+        });
+
+        expect(system.getSource(handle.sourceId)).toBeDefined();
+
+        handle.stop({ when: context.currentTime + 0.5 });
+        context.advance(0.25);
+
+        expect(system.getSource(handle.sourceId)).toBeDefined();
+
+        context.advance(0.25);
+
+        expect(system.getSource(handle.sourceId)).toBeUndefined();
+    });
+
+    it('transitions non-looping playback to stopped when natural duration elapses', async () => {
+        const context = new FakeAudioContext();
+        const buffer = new FakeAudioBuffer(2, 48000, 48000) as unknown as AudioBuffer;
+        const system = createAudioSystem({
+            context: context as unknown as AudioContext,
+            listeners: [{ id: 'main', active: true }],
+            sources: [
+                {
+                    id: 'voice',
+                    clip: {
+                        kind: 'buffer',
+                        buffer,
+                    },
+                },
+            ],
+        });
+
+        await system.playSource('voice');
+        context.advance(1);
+
+        expect(system.getSource('voice')?.playbackState).toBe('stopped');
+        expect(system.getSource('voice')?.currentOffsetSeconds).toBe(0);
+    });
 });

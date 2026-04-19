@@ -98,6 +98,18 @@ export class FakeAudioBuffer {
     }
 }
 
+type ScheduledTime = number | undefined;
+
+const minScheduledTime = (left: ScheduledTime, right: ScheduledTime): ScheduledTime => {
+    if (left === undefined) {
+        return right;
+    }
+    if (right === undefined) {
+        return left;
+    }
+    return Math.min(left, right);
+};
+
 export class FakeBufferSourceNode extends FakeAudioNode {
     buffer: AudioBuffer | null = null;
     loop = false;
@@ -113,20 +125,55 @@ export class FakeBufferSourceNode extends FakeAudioNode {
     }> = [];
     readonly stopCalls: number[] = [];
 
-    constructor() {
+    #scheduledStart?: number;
+    #scheduledNaturalEnd?: number;
+    #scheduledStop?: number;
+    #ended = false;
+
+    constructor(readonly context: FakeAudioContext) {
         super('buffer-source');
     }
 
     start(when = 0, offset = 0, duration?: number): void {
         this.startCalls.push({ when, offset, duration });
+        this.#scheduledStart = when;
+        if (this.loop && duration === undefined) {
+            this.#scheduledNaturalEnd = undefined;
+            return;
+        }
+
+        const resolvedDuration =
+            duration ??
+            Math.max(0, (this.buffer?.duration ?? 0) - offset);
+        this.#scheduledNaturalEnd = when + resolvedDuration;
     }
 
-    stop(when = 0): void {
+    stop(when = this.context.currentTime): void {
         this.stopCalls.push(when);
+        this.#scheduledStop = when;
     }
 
     emitEnded(): void {
+        if (this.#ended) {
+            return;
+        }
+        this.#ended = true;
         this.onended?.();
+    }
+
+    flush(currentTime: number): void {
+        if (this.#ended) {
+            return;
+        }
+
+        const effectiveEnd = minScheduledTime(this.#scheduledNaturalEnd, this.#scheduledStop);
+        if (effectiveEnd === undefined) {
+            return;
+        }
+
+        if (currentTime >= effectiveEnd) {
+            this.emitEnded();
+        }
     }
 }
 
@@ -172,7 +219,7 @@ export class FakeAudioContext {
     }
 
     createBufferSource(): AudioBufferSourceNode {
-        const node = new FakeBufferSourceNode();
+        const node = new FakeBufferSourceNode(this);
         this.bufferSourceNodes.push(node);
         return node as unknown as AudioBufferSourceNode;
     }
@@ -201,6 +248,13 @@ export class FakeAudioContext {
 
     advance(seconds: number): void {
         this.currentTime += seconds;
+        this.flush();
+    }
+
+    flush(): void {
+        for (const node of this.bufferSourceNodes) {
+            node.flush(this.currentTime);
+        }
     }
 }
 

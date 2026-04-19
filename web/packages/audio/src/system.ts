@@ -11,6 +11,7 @@ import { toAudioClipSelector } from './asset';
 import { AudioBusRegistry } from './internal/bus-registry';
 import { AudioClipStore } from './internal/clip-store';
 import { AudioListenerRegistry } from './internal/listener-registry';
+import { AudioPlaybackRuntime } from './internal/playback-runtime';
 import type {
     InternalPlayback,
     InternalSource,
@@ -26,7 +27,6 @@ import {
     resolveContextFactory,
     withRetry,
 } from './internal/shared';
-import { syncPlaybackSpatialState } from './internal/spatial';
 import {
     MASTER_AUDIO_BUS_ID,
     normalizeAudioSnapshotId,
@@ -77,6 +77,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     readonly #clips: AudioClipStore<TSchema>;
     readonly #buses: AudioBusRegistry;
     readonly #listeners = new AudioListenerRegistry();
+    readonly #playbackRuntime: AudioPlaybackRuntime<TSchema>;
     readonly #sources: AudioSourceRegistry<TSchema>;
 
     #playSequence = 0;
@@ -100,6 +101,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             assetResolver: options.assetResolver,
             retryPolicy: options.assetRetryPolicy,
         });
+        this.#playbackRuntime = new AudioPlaybackRuntime<TSchema>(context);
         this.#buses = new AudioBusRegistry({
             context,
             destination: this.destination,
@@ -341,75 +343,19 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             durationSeconds !== undefined ? this.#normalizeTime(durationSeconds) : undefined;
         const sequence = ++this.#playSequence;
 
-        const sourceNode = this.context.createBufferSource();
-        sourceNode.buffer = clip.buffer;
-        sourceNode.loop = source.loop;
-        sourceNode.playbackRate.value = source.playbackRate;
-        sourceNode.detune.value = source.detuneCents;
-        if (clip.loopStartSeconds !== undefined) {
-            sourceNode.loopStart = clip.loopStartSeconds;
-        }
-        if (clip.loopEndSeconds !== undefined) {
-            sourceNode.loopEnd = clip.loopEndSeconds;
-        }
-
-        const gainNode = this.context.createGain();
-        const attenuationNode = this.context.createGain();
-        sourceNode.connect(gainNode);
-        gainNode.connect(attenuationNode);
-
-        let spatialNode: StereoPannerNode | PannerNode | undefined;
-        let outputNode: AudioNode = attenuationNode;
-
-        if (source.spatial?.mode === '3d') {
-            const panner = this.context.createPanner();
-            panner.distanceModel = 'inverse';
-            panner.refDistance = 1;
-            panner.maxDistance = 1000000;
-            panner.rolloffFactor = 0;
-            attenuationNode.connect(panner);
-            outputNode = panner;
-            spatialNode = panner;
-        } else if (typeof this.context.createStereoPanner === 'function') {
-            const stereoPanner = this.context.createStereoPanner();
-            attenuationNode.connect(stereoPanner);
-            outputNode = stereoPanner;
-            spatialNode = stereoPanner;
-        }
-
-        outputNode.connect(bus.gainNode);
-
-        source.active = {
-            sequence,
-            sourceNode,
-            gainNode,
-            attenuationNode,
-            spatialNode,
-            outputNode,
-            clip,
-            durationSeconds: normalizedDuration,
-            startOffsetSeconds: normalizedOffset,
-            startedAtContextTime: normalizedWhen,
-            control: 'playing',
-        };
-        source.playSequence = sequence;
-        source.playbackState = 'playing';
-        source.currentOffsetSeconds = normalizedOffset;
-        source.durationSeconds = clip.durationSeconds;
-
-        this.#syncSource(source);
-        sourceNode.onended = () => {
-            this.#handleEnded(source.id, sequence);
-        };
-
         try {
-            if (normalizedDuration !== undefined && normalizedDuration > 0) {
-                sourceNode.start(normalizedWhen, normalizedOffset, normalizedDuration);
-            } else {
-                sourceNode.start(normalizedWhen, normalizedOffset);
-            }
+            source.active = this.#playbackRuntime.startPlayback(source, {
+                sequence,
+                clip,
+                busNode: bus.gainNode,
+                when: normalizedWhen,
+                offsetSeconds: normalizedOffset,
+                durationSeconds: normalizedDuration,
+                onEnded: () => {
+                    this.#handleEnded(source.id, sequence);
+                },
+            });
         } catch (error) {
-            this.#disposePlayback(source);
             source.playbackState = 'stopped';
             throw new AudioSourceError(
                 'audio.source.play-failed',
@@ -418,6 +364,13 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
                 { cause: error instanceof Error ? error : new Error(String(error)) }
             );
         }
+
+        source.playSequence = sequence;
+        source.playbackState = 'playing';
+        source.currentOffsetSeconds = normalizedOffset;
+        source.durationSeconds = clip.durationSeconds;
+
+        this.#syncSource(source);
 
         this.#status = 'running';
         return this.#createPlaybackHandle(source.id, sequence);
@@ -699,13 +652,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     }
 
     #syncSource(source: InternalSource<TSchema>): void {
-        if (!source.active) {
-            return;
-        }
-
-        source.active.sourceNode.playbackRate.value = source.playbackRate;
-        source.active.sourceNode.detune.value = source.detuneCents;
-        syncPlaybackSpatialState(source.active, source, this.#listeners.activeRuntime());
+        this.#playbackRuntime.syncPlayback(source, this.#listeners.activeRuntime());
     }
 
     #syncAllSources(): void {
@@ -715,8 +662,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     }
 
     #reconnectPlaybackOutput(playback: InternalPlayback<TSchema>, nextBusId: string): void {
-        disconnectNode(playback.outputNode);
-        playback.outputNode.connect(this.#buses.require(nextBusId).gainNode);
+        this.#playbackRuntime.reconnectPlayback(playback, this.#buses.require(nextBusId).gainNode);
     }
 
     #currentOffsetForSource(source: InternalSource<TSchema>): number {
@@ -779,11 +725,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             return;
         }
 
-        source.active.sourceNode.onended = null;
-        disconnectNode(source.active.sourceNode);
-        disconnectNode(source.active.gainNode);
-        disconnectNode(source.active.attenuationNode);
-        disconnectNode(source.active.spatialNode);
+        this.#playbackRuntime.disposePlayback(source.active);
         source.active = undefined;
     }
 
