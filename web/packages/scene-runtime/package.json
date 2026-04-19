@@ -29,6 +29,11 @@
             "import": "./dist/scene-facade.mjs",
             "require": "./dist/scene-facade.js"
         },
+        "./prefab": {
+            "types": "./dist/prefab.d.ts",
+            "import": "./dist/prefab.mjs",
+            "require": "./dist/prefab.js"
+        },
         "./scene-2d-support": {
             "types": "./dist/scene-2d-support.d.ts",
             "import": "./dist/scene-2d-support.mjs",

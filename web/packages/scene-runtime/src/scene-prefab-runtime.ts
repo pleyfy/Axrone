@@ -8,6 +8,8 @@ import { Vec2, Vec3 } from '@axrone/numeric';
 import { PrefabNodeBinding } from './components/prefab-node-binding';
 import type { SceneComponentTypeResolver } from './component-catalog';
 import { SceneLifecycleError } from './errors';
+import { hasScenePrefabComposition } from './scene-prefab-internals';
+import { resolveScenePrefab } from './scene-prefab-workflow';
 import { decodeSceneValue, encodeSceneValue } from './serialization';
 import type {
     SceneActorSnapshot,
@@ -241,7 +243,8 @@ export class ScenePrefabRuntime {
     ): ScenePrefabDefinition {
         return {
             id,
-            actors: actors.map((actor) => this._createActorSnapshot(actor)),
+            kind: 'prefab',
+            actors: actors.map((actor) => this._createActorSnapshot(actor, id)),
         };
     }
 
@@ -249,6 +252,7 @@ export class ScenePrefabRuntime {
         prefab: ScenePrefabDefinition,
         options: ScenePrefabInstantiateOptions = {}
     ): readonly Actor[] {
+        const resolvedPrefab = this._resolvePrefab(prefab, options);
         const createdActors: Actor[] = [];
         const createdByNodeId = new Map<string, Actor>();
         const instanceId = createPrefabInstanceId();
@@ -261,7 +265,7 @@ export class ScenePrefabRuntime {
             readonly parentNodeId?: string | null;
         }> = [];
 
-        for (const actorSnapshot of prefab.actors) {
+        for (const actorSnapshot of resolvedPrefab.actors) {
             const actor = this._host.createActor({
                 name: `${options.namePrefix ?? ''}${actorSnapshot.name}`,
                 layer: actorSnapshot.layer as any,
@@ -316,9 +320,9 @@ export class ScenePrefabRuntime {
             }
         }
 
-        for (let index = 0; index < prefab.actors.length; index += 1) {
+        for (let index = 0; index < resolvedPrefab.actors.length; index += 1) {
             const actor = createdActors[index]!;
-            const actorSnapshot = prefab.actors[index]!;
+            const actorSnapshot = resolvedPrefab.actors[index]!;
 
             actor.start();
             actor.active = actorSnapshot.active;
@@ -334,7 +338,7 @@ export class ScenePrefabRuntime {
         }
     }
 
-    private _createActorSnapshot(actor: Actor): SceneActorSnapshot {
+    private _createActorSnapshot(actor: Actor, prefabId: string): SceneActorSnapshot {
         const binding = actor.getComponent(PrefabNodeBinding);
         const hierarchy = actor.getComponent(Hierarchy);
         const components = actor
@@ -358,6 +362,11 @@ export class ScenePrefabRuntime {
             active: actor.active,
             persistent: actor.persistent,
             pooled: actor.pooled,
+            source: {
+                prefabId,
+                nodeId: binding?.nodeId ?? actor.id,
+                lineage: [prefabId],
+            },
             components,
         };
     }
@@ -367,9 +376,29 @@ export class ScenePrefabRuntime {
         const data = typeof serialize === 'function' ? (serialize.call(component) ?? {}) : {};
 
         return {
+            id: component.id,
             type: this._host.componentCatalog.getName(component.constructor as ComponentConstructor),
             data: encodeSceneValue(data),
         };
+    }
+
+    private _resolvePrefab(
+        prefab: ScenePrefabDefinition,
+        options: ScenePrefabInstantiateOptions,
+    ): ScenePrefabDefinition {
+        if (options.prefabResolver) {
+            return options.prefabResolver.resolvePrefab(prefab, {
+                liveOverrides: options.liveOverrides,
+            }).definition;
+        }
+
+        if (hasScenePrefabComposition(prefab) || (options.liveOverrides?.length ?? 0) > 0) {
+            return resolveScenePrefab(prefab, {
+                liveOverrides: options.liveOverrides,
+            }).definition;
+        }
+
+        return prefab;
     }
 
     private _hydrateComponent(
