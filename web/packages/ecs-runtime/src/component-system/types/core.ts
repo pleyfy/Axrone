@@ -1,3 +1,5 @@
+import type { Component } from '../core/component';
+
 declare const EntityBrand: unique symbol;
 declare const ComponentBrand: unique symbol;
 declare const SystemBrand: unique symbol;
@@ -10,7 +12,7 @@ export type SystemId<T extends string = string> = T & { readonly [SystemBrand]: 
 export type ActorId<T extends string = string> = T & { readonly [ActorBrand]: true };
 export type ArchetypeId = string & { readonly [ArchetypeBrand]: true };
 
-export type ComponentConstructor<T = any> = new (...args: any[]) => T;
+export type ComponentConstructor<T extends Component = Component> = new (...args: any[]) => T;
 export type ComponentInstance<T extends ComponentConstructor> =
     T extends ComponentConstructor<infer U> ? U : never;
 

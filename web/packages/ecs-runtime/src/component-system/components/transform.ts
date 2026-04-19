@@ -2,6 +2,7 @@ import { Component } from '../core/component';
 import { script } from '../decorators/script';
 import { Mat4, Vec3, Quat } from '@axrone/numeric';
 import type { Hierarchy } from './hierarchy';
+import type { ComponentType } from '../types/component';
 
 const WORLD_TRANSLATION_EPSILON = 1e-8;
 
@@ -298,7 +299,7 @@ export class Transform extends Component {
     }
 
     findChildWithComponent<T extends Component>(
-        componentType: new (...args: any[]) => T
+        componentType: ComponentType<T>
     ): Transform | undefined {
         for (const child of this.children) {
             if (child.actor?.hasComponent(componentType)) {
@@ -310,7 +311,7 @@ export class Transform extends Component {
     }
 
     findChildrenWithComponent<T extends Component>(
-        componentType: new (...args: any[]) => T
+        componentType: ComponentType<T>
     ): Transform[] {
         const results: Transform[] = [];
 

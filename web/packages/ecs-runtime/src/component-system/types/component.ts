@@ -1,5 +1,6 @@
 import type { Component } from '../core/component';
 
+// Using any[] for construct signature compatibility - type safety enforced at usage sites via ComponentType<T>
 export type ComponentType<T extends Component = Component> = new (...args: any[]) => T;
 
 export type ComponentMetadata = {

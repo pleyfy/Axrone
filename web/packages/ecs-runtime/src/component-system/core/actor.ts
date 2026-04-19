@@ -8,9 +8,9 @@ import { Transform } from '../components/transform';
 const getComponentTypeName = (componentType: ComponentType): string =>
     getComponentMetadata(componentType)?.scriptName ?? componentType.name;
 
-export interface EventBus {
-    emit(eventType: string, data: any): void;
-    on(eventType: string, handler: (data: any) => void): () => void;
+export interface EventBus<T extends string = string> {
+    emit(eventType: T, data: unknown): void;
+    on(eventType: T, handler: (data: unknown) => void): () => void;
 }
 
 export type ActorState = 'initializing' | 'active' | 'inactive' | 'destroying' | 'destroyed';
@@ -314,7 +314,7 @@ export class Actor<
             throw new ComponentError(
                 'Invalid component type provided',
                 this.id,
-                getComponentTypeName((componentType as any) ?? { name: 'unknown' })
+                getComponentTypeName((componentType as unknown as ComponentType) ?? { name: 'unknown' })
             );
         }
 
@@ -648,8 +648,8 @@ export class Actor<
             const HierarchyClass = this._resolveCoreComponent('Hierarchy', Hierarchy);
             const TransformClass = this._resolveCoreComponent('Transform', Transform);
 
-            this.addComponent(HierarchyClass as any);
-            this.addComponent(TransformClass as any);
+            if (HierarchyClass) this.addComponent(HierarchyClass as ComponentType<Hierarchy>);
+            if (TransformClass) this.addComponent(TransformClass as ComponentType<Transform>);
         } catch (error) {
             console.error(
                 new ComponentError(
@@ -672,33 +672,34 @@ export class Actor<
         }
     }
 
-    private _getHierarchyComponent(): any {
+    private _getHierarchyComponent(): Hierarchy | undefined {
         const HierarchyClass = this._resolveCoreComponent('Hierarchy', Hierarchy, false);
 
         if (!HierarchyClass) {
             return undefined;
         }
 
-        return this.getComponent(HierarchyClass as any);
+        return this.getComponent(HierarchyClass as ComponentType<Hierarchy>);
     }
 
     private _resolveCoreComponent(
         name: 'Hierarchy' | 'Transform',
-        fallback: ComponentType,
+        fallback: ComponentType<Component>,
         ensureRegistered: boolean = true
-    ): ComponentType | undefined {
-        const registryComponent =
-            (this.world as any).registry?.[name] || (globalThis as any)[name] || fallback;
+    ): ComponentType<Component> | undefined {
+        const worldAny = this.world as unknown as { registry?: Record<string, ComponentType<Component>> };
+        const globalAny = globalThis as unknown as { Hierarchy?: ComponentType<Hierarchy>; Transform?: ComponentType<Transform> };
+        const registryComponent = (worldAny.registry?.[name] ?? globalAny[name] ?? fallback) as ComponentType<Component>;
 
         if (!registryComponent) {
             return undefined;
         }
 
-        if (ensureRegistered && !this.world.isComponentRegistered(registryComponent as any)) {
-            this.world.registerComponentType(registryComponent as any);
+        if (ensureRegistered && !this.world.isComponentRegistered(registryComponent)) {
+            this.world.registerComponentType(registryComponent);
         }
 
-        return registryComponent as ComponentType;
+        return registryComponent;
     }
 
     private _getSortedComponents(): Array<[ComponentType, Component]> {
@@ -801,7 +802,7 @@ export class Actor<
         }
     }
 
-    private _emitEvent(eventType: string, data: any): void {
+    private _emitEvent(eventType: string, data: Record<string, unknown>): void {
         try {
             if (this._eventBus && typeof this._eventBus.emit === 'function') {
                 this._eventBus.emit(eventType, {
@@ -822,7 +823,7 @@ export class Actor<
         }
     }
 
-    on(eventType: string, handler: (data: any) => void): () => void {
+    on(eventType: string, handler: (data: unknown) => void): () => void {
         if (!this._eventBus || typeof this._eventBus.on !== 'function') {
             console.warn('Event bus not available');
             return () => {};

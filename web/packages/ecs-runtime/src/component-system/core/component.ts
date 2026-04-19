@@ -2,6 +2,7 @@ import type { Entity } from '../types/core';
 import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
 import type { Actor } from './actor';
+import type { Transform } from '../components/transform';
 import { getComponentMetadata } from '../decorators/script';
 
 const getComponentTypeName = (componentType: ComponentType): string =>
@@ -271,7 +272,7 @@ export abstract class Component<
         };
     }
 
-    get transform(): any {
+    get transform(): Transform | undefined {
         if (!this._enableCaching) {
             return this._getTransformDirect();
         }
@@ -736,13 +737,13 @@ export abstract class Component<
         }
     }
 
-    private _getTransformDirect(): any {
+    private _getTransformDirect(): Transform | undefined {
         if (!this.actor) {
             return undefined;
         }
 
-        const TransformClass =
-            (this.world as any)?.registry?.Transform || (globalThis as any).Transform;
+        const worldAny = this.world as unknown as { registry?: { Transform?: ComponentType<Transform> } } | null;
+        const TransformClass = worldAny?.registry?.Transform ?? (globalThis as unknown as { Transform?: ComponentType<Transform> }).Transform;
 
         if (TransformClass) {
             return this.actor.getComponent(TransformClass);
@@ -825,7 +826,7 @@ export abstract class Component<
 
         if (typeof lifecycleMethod === 'function') {
             try {
-                (lifecycleMethod as any).apply(this, args);
+                (lifecycleMethod as (...args: any[]) => void).apply(this, args);
             } catch (error) {
                 throw new ComponentLifecycleError(
                     `Lifecycle method ${String(method)} failed`,
@@ -882,7 +883,7 @@ export abstract class Component<
         this._cache.lastCacheUpdate = 0;
     }
 
-    private _emitEvent(eventType: string, data: any): void {
+    private _emitEvent(eventType: string, data: Record<string, unknown>): void {
         try {
             const eventBus = (this.world as any)?.eventBus;
             if (eventBus && typeof eventBus.emit === 'function') {
@@ -974,9 +975,9 @@ export abstract class Component<
         this._cleanupTasks.delete(cleanup);
     }
 
-    on(eventType: string, handler: (data: any) => void): () => void {
+    on(eventType: string, handler: (data: unknown) => void): () => void {
         try {
-            const eventBus = (this.world as any)?.eventBus;
+            const eventBus = (this.world as unknown as { eventBus?: { on: (eventType: string, handler: (data: unknown) => void) => () => void } })?.eventBus;
             if (eventBus && typeof eventBus.on === 'function') {
                 const unsubscribe = eventBus.on(eventType, handler);
                 this._eventSubscriptions.add(unsubscribe);
@@ -1012,7 +1013,7 @@ export abstract class Component<
         return result;
     }
 
-    static getInstanceCount<T extends Component>(this: new (...args: any[]) => T): number {
+    static getInstanceCount<T extends Component>(this: new (...args: unknown[]) => T): number {
         const instances = Component._componentInstances.get(this as ComponentType);
         if (!instances) {
             return 0;
