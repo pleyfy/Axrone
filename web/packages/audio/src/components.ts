@@ -4,6 +4,17 @@ import type { Transform } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { toAudioClipSelector } from './asset';
 import {
+    DEFAULT_LISTENER_FORWARD,
+    DEFAULT_LISTENER_POSITION,
+    DEFAULT_LISTENER_UP,
+    DEFAULT_SOURCE_ORIENTATION,
+    DEFAULT_SOURCE_POSITION,
+    cloneMetadata,
+    isFiniteNumber,
+    normalizeVector3,
+} from './internal/shared';
+import { cloneSpatialization } from './internal/spatial';
+import {
     MASTER_AUDIO_BUS_ID,
     cloneAudioVector3,
     normalizeAudioBusId,
@@ -24,56 +35,6 @@ import type {
     AudioStopOptions,
     AudioVector3,
 } from './types';
-
-const cloneMetadata = (
-    value: Readonly<Record<string, AudioJsonValue>> | undefined
-): Readonly<Record<string, AudioJsonValue>> => Object.freeze({ ...(value ?? {}) });
-
-const isFiniteNumber = (value: unknown): value is number =>
-    typeof value === 'number' && Number.isFinite(value);
-
-const ensureVector = (value: AudioVector3 | undefined, fallback: AudioVector3): AudioVector3 => {
-    const next = cloneAudioVector3(value, fallback);
-    if (!isFiniteNumber(next.x) || !isFiniteNumber(next.y) || !isFiniteNumber(next.z)) {
-        throw new TypeError('Audio vector components must be finite');
-    }
-
-    return next;
-};
-
-const cloneSpatialization = (
-    value: AudioSpatialization | undefined
-): AudioSpatialization | undefined => {
-    if (!value) {
-        return undefined;
-    }
-
-    if (value.mode === '2d') {
-        return {
-            mode: '2d',
-            position: value.position ? cloneAudioVector3(value.position) : undefined,
-            pan: value.pan,
-            attenuation: value.attenuation ? { ...value.attenuation } : undefined,
-        };
-    }
-
-    return {
-        mode: '3d',
-        position: value.position ? cloneAudioVector3(value.position) : undefined,
-        orientation: value.orientation ? cloneAudioVector3(value.orientation) : undefined,
-        attenuation: value.attenuation ? { ...value.attenuation } : undefined,
-        panningModel: value.panningModel,
-        coneInnerAngle: value.coneInnerAngle,
-        coneOuterAngle: value.coneOuterAngle,
-        coneOuterGain: value.coneOuterGain,
-    };
-};
-
-const DEFAULT_LISTENER_POSITION = Object.freeze({ x: 0, y: 0, z: 0 });
-const DEFAULT_LISTENER_FORWARD = Object.freeze({ x: 0, y: 0, z: -1 });
-const DEFAULT_LISTENER_UP = Object.freeze({ x: 0, y: 1, z: 0 });
-const DEFAULT_SOURCE_POSITION = Object.freeze({ x: 0, y: 0, z: 0 });
-const DEFAULT_SOURCE_ORIENTATION = Object.freeze({ x: 0, y: 0, z: -1 });
 
 export interface AudioListenerComponentConfig extends ComponentConfig {
     readonly listenerId?: AudioListenerId | string;
@@ -98,9 +59,9 @@ export class AudioListenerComponent extends Component<AudioListenerComponentConf
         super(config);
         this._listenerId = normalizeAudioListenerId(config.listenerId ?? 'default');
         this._active = config.active ?? true;
-        this._position = ensureVector(config.position, DEFAULT_LISTENER_POSITION);
-        this._forward = ensureVector(config.forward, DEFAULT_LISTENER_FORWARD);
-        this._up = ensureVector(config.up, DEFAULT_LISTENER_UP);
+        this._position = normalizeVector3(config.position, DEFAULT_LISTENER_POSITION);
+        this._forward = normalizeVector3(config.forward, DEFAULT_LISTENER_FORWARD);
+        this._up = normalizeVector3(config.up, DEFAULT_LISTENER_UP);
         this._useTransform = config.useTransform ?? true;
         this._metadata = cloneMetadata(config.metadata);
     }
@@ -134,7 +95,7 @@ export class AudioListenerComponent extends Component<AudioListenerComponentConf
     }
 
     set position(value: AudioVector3) {
-        this._position = ensureVector(value, DEFAULT_LISTENER_POSITION);
+        this._position = normalizeVector3(value, DEFAULT_LISTENER_POSITION);
     }
 
     get forward(): AudioVector3 {
@@ -142,7 +103,7 @@ export class AudioListenerComponent extends Component<AudioListenerComponentConf
     }
 
     set forward(value: AudioVector3) {
-        this._forward = ensureVector(value, DEFAULT_LISTENER_FORWARD);
+        this._forward = normalizeVector3(value, DEFAULT_LISTENER_FORWARD);
     }
 
     get up(): AudioVector3 {
@@ -150,7 +111,7 @@ export class AudioListenerComponent extends Component<AudioListenerComponentConf
     }
 
     set up(value: AudioVector3) {
-        this._up = ensureVector(value, DEFAULT_LISTENER_UP);
+        this._up = normalizeVector3(value, DEFAULT_LISTENER_UP);
     }
 
     get metadata(): Readonly<Record<string, AudioJsonValue>> {

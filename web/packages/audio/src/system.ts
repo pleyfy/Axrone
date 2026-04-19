@@ -1,6 +1,4 @@
-import type { AssetRecord } from '@axrone/asset-core';
 import {
-    AudioAssetError,
     AudioBusError,
     AudioConfigurationError,
     DEFAULT_AUDIO_MESSAGE_RESOLVER,
@@ -9,36 +7,53 @@ import {
     AudioListenerError,
     AudioSnapshotError,
     AudioSourceError,
-    AudioUnavailableError,
     resolveAudioMessage,
 } from './errors';
-import { isAudioClipAssetData, toAudioClipSelector } from './asset';
+import { toAudioClipSelector } from './asset';
+import { AudioClipStore } from './internal/clip-store';
+import type {
+    InternalBus,
+    InternalListener,
+    InternalSource,
+} from './internal/runtime';
+import {
+    DEFAULT_LISTENER_FORWARD,
+    DEFAULT_LISTENER_POSITION,
+    DEFAULT_LISTENER_UP,
+    clamp,
+    cloneMetadata,
+    disconnectNode,
+    effectivePlaybackRate,
+    hasOwnKeys,
+    isFiniteNumber,
+    isObject,
+    normalizeVector3,
+    resolveContextFactory,
+    setParamValue,
+    withRetry,
+} from './internal/shared';
+import {
+    cloneSpatialization,
+    syncAudioListenerToContext,
+    syncPlaybackSpatialState,
+} from './internal/spatial';
 import {
     MASTER_AUDIO_BUS_ID,
-    cloneAudioVector3,
-    isAudioClipAssetRecord,
     normalizeAudioBusId,
     normalizeAudioClipId,
     normalizeAudioListenerId,
     normalizeAudioSnapshotId,
     normalizeAudioSourceId,
 } from './reference';
-import { AudioListenerComponent, AudioSourceComponent } from './components';
 import type {
-    Audio3DSpatialization,
-    AudioAssetResolver,
     AudioAssetSchema,
     AudioBusDefinition,
     AudioBusId,
     AudioBusPatch,
     AudioBusState,
-    AudioClipAssetData,
-    AudioClipAssetSelector,
     AudioClipId,
     AudioClipInput,
     AudioClipRecord,
-    AudioClipSelector,
-    AudioJsonValue,
     AudioListenerDescriptor,
     AudioListenerId,
     AudioListenerPatch,
@@ -48,259 +63,20 @@ import type {
     AudioMixerSnapshot,
     AudioPlaybackHandle,
     AudioRestoreOptions,
-    AudioRetryContext,
     AudioRetryPolicy,
     AudioSnapshotTransitionOptions,
-    AudioSourceComponentCommand,
     AudioSourceDefinition,
     AudioSourceId,
     AudioSourcePatch,
     AudioSourcePlayRequest,
     AudioSourceState,
-    AudioSpatialAttenuation,
-    AudioSpatialization,
     AudioStopOptions,
     AudioSystemOptions,
     AudioSystemSnapshot,
     AudioSystemStatus,
-    AudioVector3,
 } from './types';
 
-interface InternalBus {
-    readonly id: AudioBusId;
-    parentId?: AudioBusId;
-    readonly gainNode: GainNode;
-    readonly panNode?: StereoPannerNode;
-    readonly outputNode: AudioNode;
-    readonly childIds: Set<AudioBusId>;
-    volume: number;
-    mute: boolean;
-    pan: number;
-    metadata: Readonly<Record<string, AudioJsonValue>>;
-}
-
-interface InternalListener {
-    readonly id: AudioListenerId;
-    active: boolean;
-    enabled: boolean;
-    position: AudioVector3;
-    forward: AudioVector3;
-    up: AudioVector3;
-    metadata: Readonly<Record<string, AudioJsonValue>>;
-}
-
-interface InternalPlayback<TSchema extends AudioAssetSchema = AudioAssetSchema> {
-    readonly sequence: number;
-    readonly sourceNode: AudioBufferSourceNode;
-    readonly gainNode: GainNode;
-    readonly attenuationNode: GainNode;
-    readonly spatialNode?: StereoPannerNode | PannerNode;
-    readonly outputNode: AudioNode;
-    readonly clip: AudioClipRecord<TSchema>;
-    readonly durationSeconds?: number;
-    readonly startOffsetSeconds: number;
-    readonly startedAtContextTime: number;
-    control: 'playing' | 'pausing' | 'stopping';
-}
-
-interface InternalSource<TSchema extends AudioAssetSchema = AudioAssetSchema> {
-    readonly id: AudioSourceId;
-    busId: AudioBusId;
-    clip?: AudioClipSelector<TSchema>;
-    volume: number;
-    muted: boolean;
-    loop: boolean;
-    autoplay: boolean;
-    playbackRate: number;
-    detuneCents: number;
-    pan: number;
-    spatial?: AudioSpatialization;
-    startOffsetSeconds: number;
-    metadata: Readonly<Record<string, AudioJsonValue>>;
-    playbackState: AudioSourceState<TSchema>['playbackState'];
-    currentOffsetSeconds: number;
-    durationSeconds?: number;
-    playSequence: number;
-    active?: InternalPlayback<TSchema>;
-}
-
-const DEFAULT_LISTENER_POSITION = Object.freeze({ x: 0, y: 0, z: 0 });
-const DEFAULT_LISTENER_FORWARD = Object.freeze({ x: 0, y: 0, z: -1 });
-const DEFAULT_LISTENER_UP = Object.freeze({ x: 0, y: 1, z: 0 });
-const DEFAULT_ATTENUATION = Object.freeze({
-    model: 'inverse',
-    refDistance: 1,
-    maxDistance: 10000,
-    rolloffFactor: 1,
-    minGain: 0,
-} satisfies Required<AudioSpatialAttenuation>);
-
-const isObject = (value: unknown): value is Record<PropertyKey, unknown> =>
-    typeof value === 'object' && value !== null;
-
-const cloneMetadata = (
-    value: Readonly<Record<string, AudioJsonValue>> | undefined
-): Readonly<Record<string, AudioJsonValue>> => Object.freeze({ ...(value ?? {}) });
-
-const clamp = (value: number, min: number, max: number): number =>
-    Math.min(max, Math.max(min, value));
-
-const isFiniteNumber = (value: unknown): value is number =>
-    typeof value === 'number' && Number.isFinite(value);
-
-const effectivePlaybackRate = (playbackRate: number, detuneCents: number): number =>
-    playbackRate * 2 ** (detuneCents / 1200);
-
-const normalizeVector3 = (value: AudioVector3 | undefined, fallback: AudioVector3): AudioVector3 => {
-    const next = cloneAudioVector3(value, fallback);
-    if (!isFiniteNumber(next.x) || !isFiniteNumber(next.y) || !isFiniteNumber(next.z)) {
-        throw new TypeError('Audio vector values must be finite');
-    }
-
-    return next;
-};
-
-const cloneSpatialization = (
-    value: AudioSpatialization | undefined
-): AudioSpatialization | undefined => {
-    if (!value) {
-        return undefined;
-    }
-
-    if (value.mode === '2d') {
-        return {
-            mode: '2d',
-            position: value.position ? cloneAudioVector3(value.position) : undefined,
-            pan: value.pan,
-            attenuation: value.attenuation ? { ...value.attenuation } : undefined,
-        };
-    }
-
-    return {
-        mode: '3d',
-        position: value.position ? cloneAudioVector3(value.position) : undefined,
-        orientation: value.orientation ? cloneAudioVector3(value.orientation) : undefined,
-        attenuation: value.attenuation ? { ...value.attenuation } : undefined,
-        panningModel: value.panningModel,
-        coneInnerAngle: value.coneInnerAngle,
-        coneOuterAngle: value.coneOuterAngle,
-        coneOuterGain: value.coneOuterGain,
-    };
-};
-
-const normalizeAttenuation = (
-    value: AudioSpatialAttenuation | undefined
-): Required<AudioSpatialAttenuation> => ({
-    model: value?.model ?? DEFAULT_ATTENUATION.model,
-    refDistance: isFiniteNumber(value?.refDistance) ? Math.max(0.0001, value!.refDistance!) : DEFAULT_ATTENUATION.refDistance,
-    maxDistance: isFiniteNumber(value?.maxDistance) ? Math.max(0.0001, value!.maxDistance!) : DEFAULT_ATTENUATION.maxDistance,
-    rolloffFactor: isFiniteNumber(value?.rolloffFactor) ? Math.max(0, value!.rolloffFactor!) : DEFAULT_ATTENUATION.rolloffFactor,
-    minGain: isFiniteNumber(value?.minGain) ? clamp(value!.minGain!, 0, 1) : DEFAULT_ATTENUATION.minGain,
-});
-
-const attenuationGainForDistance = (distance: number, value: AudioSpatialAttenuation | undefined): number => {
-    const attenuation = normalizeAttenuation(value);
-    const ref = attenuation.refDistance;
-    const max = Math.max(ref, attenuation.maxDistance);
-    const rolloff = attenuation.rolloffFactor;
-
-    let gain = 1;
-    switch (attenuation.model) {
-        case 'none':
-            gain = 1;
-            break;
-        case 'linear':
-            if (distance <= ref) {
-                gain = 1;
-            } else if (distance >= max) {
-                gain = attenuation.minGain;
-            } else {
-                gain = 1 - rolloff * ((distance - ref) / (max - ref));
-            }
-            break;
-        case 'exponential':
-            gain = distance <= ref ? 1 : (distance / ref) ** -rolloff;
-            break;
-        case 'inverse':
-        default:
-            gain = distance <= ref ? 1 : ref / (ref + rolloff * (distance - ref));
-            break;
-    }
-
-    return clamp(gain, attenuation.minGain, 1);
-};
-
-const distance2D = (from: AudioVector3, to: AudioVector3): number => {
-    const dx = from.x - to.x;
-    const dy = from.y - to.y;
-    return Math.sqrt(dx * dx + dy * dy);
-};
-
-const distance3D = (from: AudioVector3, to: AudioVector3): number => {
-    const dx = from.x - to.x;
-    const dy = from.y - to.y;
-    const dz = from.z - to.z;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
-};
-
-const effectivePanFor2D = (
-    source: AudioVector3,
-    listener: AudioVector3,
-    pan: number,
-    attenuation: AudioSpatialAttenuation | undefined
-): number => {
-    const normalized = normalizeAttenuation(attenuation);
-    const span = Math.max(normalized.refDistance, normalized.maxDistance, 1);
-    return clamp(pan + (source.x - listener.x) / span, -1, 1);
-};
-
-const resolveContextFactory = (): (() => AudioContext) => {
-    const GlobalAudioContext =
-        (globalThis as { AudioContext?: typeof AudioContext }).AudioContext ??
-        (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
-    if (!GlobalAudioContext) {
-        throw new AudioUnavailableError('No AudioContext implementation is available');
-    }
-
-    return () => new GlobalAudioContext();
-};
-
-const sleep = async (ms: number): Promise<void> => {
-    if (ms <= 0) {
-        return;
-    }
-
-    await new Promise<void>((resolve) => {
-        setTimeout(resolve, ms);
-    });
-};
-
-const disconnectNode = (node: AudioNode | undefined): void => {
-    if (!node) {
-        return;
-    }
-
-    try {
-        node.disconnect();
-    } catch {}
-};
-
-const setParamValue = (
-    param: AudioParam,
-    value: number,
-    atTime: number,
-    durationSeconds = 0
-): void => {
-    param.cancelScheduledValues(atTime);
-    if (durationSeconds > 0) {
-        param.setValueAtTime(param.value, atTime);
-        param.linearRampToValueAtTime(value, atTime + durationSeconds);
-        return;
-    }
-
-    param.setValueAtTime(value, atTime);
-};
+type AudioPatchToDefinition<TDefinition extends object> = Partial<TDefinition>;
 
 export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     readonly context: AudioContext;
@@ -308,21 +84,15 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     readonly #messageResolver: AudioMessageResolver;
     readonly #locale: string;
-    readonly #assetDatabase?: AudioSystemOptions<TSchema>['assetDatabase'];
-    readonly #assetResolver?: AudioAssetResolver<TSchema>;
     readonly #autoResume: boolean;
     readonly #resumeRetryPolicy?: AudioRetryPolicy<TSchema>;
-    readonly #assetRetryPolicy?: AudioRetryPolicy<TSchema>;
     readonly #ownsContext: boolean;
+    readonly #clips: AudioClipStore<TSchema>;
     readonly #buses = new Map<AudioBusId, InternalBus>();
     readonly #listeners = new Map<AudioListenerId, InternalListener>();
     readonly #sources = new Map<AudioSourceId, InternalSource<TSchema>>();
-    readonly #registeredClips = new Map<AudioClipId, AudioClipSelector<TSchema>>();
-    readonly #clipCache = new Map<string, Promise<AudioClipRecord<TSchema>>>();
-    readonly #bufferCacheKeys = new WeakMap<AudioBuffer, string>();
     readonly #transientSources = new Set<AudioSourceId>();
 
-    #bufferCacheSequence = 0;
     #playSequence = 0;
     #oneShotSequence = 0;
     #activeListenerId?: AudioListenerId;
@@ -337,17 +107,20 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#ownsContext = ownsContext;
         this.#messageResolver = options.messageResolver ?? DEFAULT_AUDIO_MESSAGE_RESOLVER;
         this.#locale = options.locale ?? 'en';
-        this.#assetDatabase = options.assetDatabase;
-        this.#assetResolver = options.assetResolver;
         this.#autoResume = options.autoResume ?? true;
         this.#resumeRetryPolicy = options.resumeRetryPolicy;
-        this.#assetRetryPolicy = options.assetRetryPolicy;
+        this.#clips = new AudioClipStore({
+            context,
+            assetDatabase: options.assetDatabase,
+            assetResolver: options.assetResolver,
+            retryPolicy: options.assetRetryPolicy,
+        });
 
         const master = this.#createBusRuntime({ id: MASTER_AUDIO_BUS_ID });
         this.#buses.set(MASTER_AUDIO_BUS_ID, master);
         this.#connectBus(master);
 
-        if (options.buses && options.buses.length > 0) {
+        if (options.buses?.length) {
             this.#initializeBuses(options.buses);
         }
 
@@ -374,29 +147,24 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         return this.#disposed;
     }
 
+    get activeListener(): AudioListenerState | undefined {
+        const listener = this.#activeListener();
+        return listener ? this.#snapshotListener(listener) : undefined;
+    }
+
     registerClip(id: AudioClipId | string, clip: AudioClipInput<TSchema>): AudioClipId {
         this.#assertNotDisposed();
-        const normalizedId = normalizeAudioClipId(id);
         const selector = toAudioClipSelector(clip);
         if (!selector) {
             throw this.#configurationError({ code: 'audio.invalid-clip', value: clip });
         }
-        this.#registeredClips.set(normalizedId, selector);
-        const cacheKey = this.#clipCacheKeyForSelector({ kind: 'registered', clipId: normalizedId });
-        if (cacheKey) {
-            this.#clipCache.delete(cacheKey);
-        }
-        return normalizedId;
+
+        return this.#clips.register(normalizeAudioClipId(id), selector);
     }
 
     unregisterClip(id: AudioClipId | string): boolean {
         this.#assertNotDisposed();
-        const normalizedId = normalizeAudioClipId(id);
-        const cacheKey = this.#clipCacheKeyForSelector({ kind: 'registered', clipId: normalizedId });
-        if (cacheKey) {
-            this.#clipCache.delete(cacheKey);
-        }
-        return this.#registeredClips.delete(normalizedId);
+        return this.#clips.unregister(id);
     }
 
     async resolveClip(selector: AudioClipInput<TSchema>): Promise<AudioClipRecord<TSchema>> {
@@ -405,26 +173,25 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         if (!normalized) {
             throw this.#configurationError({ code: 'audio.invalid-clip', value: selector });
         }
-        return this.#resolveClipSelector(normalized);
+
+        return this.#clips.resolveSelector(normalized);
     }
 
     upsertBus(definition: AudioBusDefinition): AudioBusState {
         this.#assertNotDisposed();
         const id = normalizeAudioBusId(definition.id);
-        const parentId = definition.parentId === undefined ? undefined : normalizeAudioBusId(definition.parentId);
+        const parentId =
+            definition.parentId === undefined ? undefined : normalizeAudioBusId(definition.parentId);
 
         if (id === MASTER_AUDIO_BUS_ID && parentId !== undefined) {
             throw this.#configurationError({ code: 'audio.invalid-parent-bus', value: parentId });
         }
-
         if (parentId === id) {
-            throw this.#configurationError({ code: 'audio.bus.cycle', busId: id, parentId: parentId });
+            throw this.#configurationError({ code: 'audio.bus.cycle', busId: id, parentId });
         }
-
         if (parentId !== undefined && !this.#buses.has(parentId)) {
             throw new AudioBusError(`Audio bus ${parentId} does not exist`, parentId);
         }
-
         if (parentId && this.#busCreatesCycle(id, parentId)) {
             throw this.#configurationError({ code: 'audio.bus.cycle', busId: id, parentId });
         }
@@ -468,11 +235,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     updateBus(id: AudioBusId | string, patch: AudioBusPatch): AudioBusState {
         return this.upsertBus({
             id,
-            parentId: patch.parentId as AudioBusDefinition['parentId'],
-            volume: patch.volume as AudioBusDefinition['volume'],
-            mute: patch.mute as AudioBusDefinition['mute'],
-            pan: patch.pan as AudioBusDefinition['pan'],
-            metadata: patch.metadata as AudioBusDefinition['metadata'],
+            ...(patch as AudioPatchToDefinition<Omit<AudioBusDefinition, 'id'>>),
         });
     }
 
@@ -489,13 +252,15 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
 
         const fallbackBusId = bus.parentId ?? MASTER_AUDIO_BUS_ID;
+        const fallbackBus = this.#requireBus(fallbackBusId);
+
         for (const childId of bus.childIds) {
             const child = this.#buses.get(childId);
             if (!child) {
                 continue;
             }
             child.parentId = fallbackBusId;
-            this.#buses.get(fallbackBusId)?.childIds.add(childId);
+            fallbackBus.childIds.add(childId);
             this.#connectBus(child);
         }
 
@@ -504,12 +269,14 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
 
         for (const source of this.#sources.values()) {
-            if (source.busId === normalizedId) {
-                source.busId = fallbackBusId;
-                if (source.active) {
-                    disconnectNode(source.active.outputNode);
-                    source.active.outputNode.connect(this.#requireBus(fallbackBusId).gainNode);
-                }
+            if (source.busId !== normalizedId) {
+                continue;
+            }
+
+            source.busId = fallbackBusId;
+            if (source.active) {
+                disconnectNode(source.active.outputNode);
+                source.active.outputNode.connect(fallbackBus.gainNode);
             }
         }
 
@@ -534,6 +301,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#assertNotDisposed();
         const id = normalizeAudioListenerId(descriptor.id ?? 'default');
         let listener = this.#listeners.get(id);
+
         if (!listener) {
             listener = {
                 id,
@@ -567,8 +335,8 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
 
         if (listener.active) {
-            this.setActiveListener(listener.id);
-        } else if (!this.#activeListenerId) {
+            this.#activateListener(listener.id);
+        } else if (this.#activeListenerId === listener.id || !this.#activeListenerId) {
             this.#activeListenerId = this.#findFallbackListenerId();
         }
 
@@ -580,12 +348,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     updateListener(id: AudioListenerId | string, patch: AudioListenerPatch): AudioListenerState {
         return this.upsertListener({
             id,
-            active: patch.active as AudioListenerDescriptor['active'],
-            enabled: patch.enabled as AudioListenerDescriptor['enabled'],
-            position: patch.position as AudioListenerDescriptor['position'],
-            forward: patch.forward as AudioListenerDescriptor['forward'],
-            up: patch.up as AudioListenerDescriptor['up'],
-            metadata: patch.metadata as AudioListenerDescriptor['metadata'],
+            ...(patch as AudioPatchToDefinition<Omit<AudioListenerDescriptor, 'id'>>),
         });
     }
 
@@ -614,21 +377,13 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             throw new AudioListenerError(`Audio listener ${normalizedId} does not exist`, normalizedId);
         }
 
-        for (const candidate of this.#listeners.values()) {
-            candidate.active = candidate.id === normalizedId;
-        }
-        this.#activeListenerId = normalizedId;
+        this.#activateListener(listener.id);
         this.#syncListenerToContext();
         this.#syncAllSources();
     }
 
     getListener(id: AudioListenerId | string): AudioListenerState | undefined {
         const listener = this.#listeners.get(normalizeAudioListenerId(id));
-        return listener ? this.#snapshotListener(listener) : undefined;
-    }
-
-    get activeListener(): AudioListenerState | undefined {
-        const listener = this.#activeListenerId ? this.#listeners.get(this.#activeListenerId) : undefined;
         return listener ? this.#snapshotListener(listener) : undefined;
     }
 
@@ -640,6 +395,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#assertNotDisposed();
         const id = normalizeAudioSourceId(definition.id ?? `source:${this.#sources.size + 1}`);
         let source = this.#sources.get(id);
+
         if (!source) {
             source = {
                 id,
@@ -664,12 +420,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
         if (definition.busId !== undefined) {
             const nextBusId = normalizeAudioBusId(definition.busId);
-            this.#requireBus(nextBusId);
+            const nextBus = this.#requireBus(nextBusId);
             if (source.busId !== nextBusId) {
                 source.busId = nextBusId;
                 if (source.active) {
                     disconnectNode(source.active.outputNode);
-                    source.active.outputNode.connect(this.#requireBus(nextBusId).gainNode);
+                    source.active.outputNode.connect(nextBus.gainNode);
                 }
             }
         }
@@ -715,24 +471,14 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         if (source.autoplay && source.playbackState === 'idle' && source.clip) {
             void this.playSource(source.id).catch(() => undefined);
         }
+
         return this.#snapshotSource(source);
     }
 
     updateSource(id: AudioSourceId | string, patch: AudioSourcePatch<TSchema>): AudioSourceState<TSchema> {
         return this.upsertSource({
             id,
-            busId: patch.busId as AudioSourceDefinition<TSchema>['busId'],
-            clip: patch.clip as AudioSourceDefinition<TSchema>['clip'],
-            volume: patch.volume as AudioSourceDefinition<TSchema>['volume'],
-            muted: patch.muted as AudioSourceDefinition<TSchema>['muted'],
-            loop: patch.loop as AudioSourceDefinition<TSchema>['loop'],
-            autoplay: patch.autoplay as AudioSourceDefinition<TSchema>['autoplay'],
-            playbackRate: patch.playbackRate as AudioSourceDefinition<TSchema>['playbackRate'],
-            detuneCents: patch.detuneCents as AudioSourceDefinition<TSchema>['detuneCents'],
-            pan: patch.pan as AudioSourceDefinition<TSchema>['pan'],
-            spatial: patch.spatial as AudioSourceDefinition<TSchema>['spatial'],
-            startOffsetSeconds: patch.startOffsetSeconds as AudioSourceDefinition<TSchema>['startOffsetSeconds'],
-            metadata: patch.metadata as AudioSourceDefinition<TSchema>['metadata'],
+            ...(patch as AudioPatchToDefinition<Omit<AudioSourceDefinition<TSchema>, 'id'>>),
         });
     }
 
@@ -775,25 +521,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             );
         }
 
-        if (Object.keys(request).length > 0) {
-            const { when, offsetSeconds, durationSeconds, replace, ...patch } = request;
-            if (Object.keys(patch).length > 0) {
-                this.upsertSource({
-                    id: sourceId,
-                    busId: patch.busId as AudioSourceDefinition<TSchema>['busId'],
-                    clip: patch.clip as AudioSourceDefinition<TSchema>['clip'],
-                    volume: patch.volume as AudioSourceDefinition<TSchema>['volume'],
-                    muted: patch.muted as AudioSourceDefinition<TSchema>['muted'],
-                    loop: patch.loop as AudioSourceDefinition<TSchema>['loop'],
-                    autoplay: patch.autoplay as AudioSourceDefinition<TSchema>['autoplay'],
-                    playbackRate: patch.playbackRate as AudioSourceDefinition<TSchema>['playbackRate'],
-                    detuneCents: patch.detuneCents as AudioSourceDefinition<TSchema>['detuneCents'],
-                    pan: patch.pan as AudioSourceDefinition<TSchema>['pan'],
-                    spatial: patch.spatial as AudioSourceDefinition<TSchema>['spatial'],
-                    startOffsetSeconds: patch.startOffsetSeconds as AudioSourceDefinition<TSchema>['startOffsetSeconds'],
-                    metadata: patch.metadata as AudioSourceDefinition<TSchema>['metadata'],
-                });
-            }
+        const { when, offsetSeconds, durationSeconds, replace, ...patch } = request;
+        if (hasOwnKeys(patch)) {
+            this.upsertSource({
+                id: sourceId,
+                ...(patch as AudioPatchToDefinition<Omit<AudioSourceDefinition<TSchema>, 'id'>>),
+            });
         }
 
         if (!source.clip) {
@@ -805,24 +538,23 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
 
         if (source.active) {
-            if (request.replace === false) {
+            if (replace === false) {
                 return this.#createPlaybackHandle(sourceId, source.playSequence);
             }
             this.stopSource(sourceId);
         }
 
-        const clip = await this.#resolveClipSelector(source.clip);
+        const clip = await this.#clips.resolveSelector(source.clip);
         const bus = this.#requireBus(source.busId);
-        const offset = this.#normalizeOffset(
-            request.offsetSeconds ?? source.currentOffsetSeconds,
+        const normalizedOffset = this.#normalizeOffset(
+            offsetSeconds ?? source.currentOffsetSeconds,
             clip,
             source.loop
         );
-        const when = request.when !== undefined ? this.#normalizeTime(request.when) : this.context.currentTime;
-        const durationSeconds =
-            request.durationSeconds !== undefined
-                ? this.#normalizeTime(request.durationSeconds)
-                : undefined;
+        const normalizedWhen =
+            when !== undefined ? this.#normalizeTime(when) : this.context.currentTime;
+        const normalizedDuration =
+            durationSeconds !== undefined ? this.#normalizeTime(durationSeconds) : undefined;
         const sequence = ++this.#playSequence;
 
         const sourceNode = this.context.createBufferSource();
@@ -844,6 +576,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
         let spatialNode: StereoPannerNode | PannerNode | undefined;
         let outputNode: AudioNode = attenuationNode;
+
         if (source.spatial?.mode === '3d') {
             const panner = this.context.createPanner();
             panner.distanceModel = 'inverse';
@@ -870,14 +603,14 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             spatialNode,
             outputNode,
             clip,
-            durationSeconds,
-            startOffsetSeconds: offset,
-            startedAtContextTime: when,
+            durationSeconds: normalizedDuration,
+            startOffsetSeconds: normalizedOffset,
+            startedAtContextTime: normalizedWhen,
             control: 'playing',
         };
         source.playSequence = sequence;
         source.playbackState = 'playing';
-        source.currentOffsetSeconds = offset;
+        source.currentOffsetSeconds = normalizedOffset;
         source.durationSeconds = clip.durationSeconds;
 
         this.#syncSource(source);
@@ -886,10 +619,10 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         };
 
         try {
-            if (durationSeconds !== undefined && durationSeconds > 0) {
-                sourceNode.start(when, offset, durationSeconds);
+            if (normalizedDuration !== undefined && normalizedDuration > 0) {
+                sourceNode.start(normalizedWhen, normalizedOffset, normalizedDuration);
             } else {
-                sourceNode.start(when, offset);
+                sourceNode.start(normalizedWhen, normalizedOffset);
             }
         } catch (error) {
             this.#disposePlayback(source);
@@ -940,7 +673,8 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         if (!source.clip) {
             throw this.#configurationError({ code: 'audio.invalid-clip', value: source.clip });
         }
-        return this.#withRetry(
+
+        return withRetry(
             this.#resumeRetryPolicy,
             (attempt) => ({
                 operation: 'source.resume',
@@ -948,7 +682,11 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
                 sourceId: source.id,
                 clip: source.clip,
             }),
-            async () => this.playSource(source.id, { offsetSeconds: source.currentOffsetSeconds, replace: true })
+            async () =>
+                this.playSource(source.id, {
+                    offsetSeconds: source.currentOffsetSeconds,
+                    replace: true,
+                })
         );
     }
 
@@ -976,12 +714,14 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         return Object.freeze({
             id: id ? normalizeAudioSnapshotId(id) : undefined,
             buses: Object.freeze(
-                [...this.#buses.values()].map((bus) => ({
-                    id: bus.id,
-                    volume: bus.volume,
-                    mute: bus.mute,
-                    pan: bus.pan,
-                }))
+                [...this.#buses.values()].map((bus) =>
+                    Object.freeze({
+                        id: bus.id,
+                        volume: bus.volume,
+                        mute: bus.mute,
+                        pan: bus.pan,
+                    })
+                )
             ),
         });
     }
@@ -995,8 +735,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             throw new AudioSnapshotError('Mixer snapshot is invalid');
         }
 
-        const atTime = options.atTime !== undefined ? this.#normalizeTime(options.atTime) : this.context.currentTime;
-        const duration = options.durationSeconds !== undefined ? this.#normalizeTime(options.durationSeconds) : 0;
+        const atTime =
+            options.atTime !== undefined ? this.#normalizeTime(options.atTime) : this.context.currentTime;
+        const duration =
+            options.durationSeconds !== undefined
+                ? this.#normalizeTime(options.durationSeconds)
+                : 0;
 
         for (const entry of snapshot.buses) {
             const bus = this.#buses.get(normalizeAudioBusId(entry.id));
@@ -1057,8 +801,8 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             }
         }
 
-        if (snapshot.buses.some((bus) => bus.id === MASTER_AUDIO_BUS_ID)) {
-            const master = snapshot.buses.find((bus) => bus.id === MASTER_AUDIO_BUS_ID)!;
+        const master = snapshot.buses.find((bus) => bus.id === MASTER_AUDIO_BUS_ID);
+        if (master) {
             this.upsertBus({
                 id: MASTER_AUDIO_BUS_ID,
                 volume: master.volume,
@@ -1118,7 +862,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     async suspend(): Promise<void> {
         this.#assertNotDisposed();
-        await this.#withRetry(
+        await withRetry(
             this.#resumeRetryPolicy,
             (attempt) => ({ operation: 'context.suspend', attempt }),
             async () => {
@@ -1126,9 +870,13 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
                     await this.context.suspend();
                     this.#status = 'suspended';
                 } catch (error) {
-                    throw new AudioLifecycleError('audio.context.suspend-failed', 'Failed to suspend audio context', {
-                        cause: error instanceof Error ? error : new Error(String(error)),
-                    });
+                    throw new AudioLifecycleError(
+                        'audio.context.suspend-failed',
+                        'Failed to suspend audio context',
+                        {
+                            cause: error instanceof Error ? error : new Error(String(error)),
+                        }
+                    );
                 }
             }
         );
@@ -1136,7 +884,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     async resume(): Promise<void> {
         this.#assertNotDisposed();
-        await this.#withRetry(
+        await withRetry(
             this.#resumeRetryPolicy,
             (attempt) => ({ operation: 'context.resume', attempt }),
             async () => {
@@ -1144,9 +892,13 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
                     await this.context.resume();
                     this.#status = 'running';
                 } catch (error) {
-                    throw new AudioLifecycleError('audio.context.resume-failed', 'Failed to resume audio context', {
-                        cause: error instanceof Error ? error : new Error(String(error)),
-                    });
+                    throw new AudioLifecycleError(
+                        'audio.context.resume-failed',
+                        'Failed to resume audio context',
+                        {
+                            cause: error instanceof Error ? error : new Error(String(error)),
+                        }
+                    );
                 }
             }
         );
@@ -1160,8 +912,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#clearSources();
         this.#clearListeners();
         this.#clearBuses();
-        this.#clipCache.clear();
-        this.#registeredClips.clear();
+        this.#clips.clear();
         this.#disposed = true;
         this.#status = 'disposed';
 
@@ -1257,49 +1008,24 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         return source;
     }
 
-    #syncListenerToContext(): void {
-        const listener = this.#activeListenerId ? this.#listeners.get(this.#activeListenerId) : undefined;
-        const target = listener && listener.enabled ? listener : undefined;
-        const position = target?.position ?? DEFAULT_LISTENER_POSITION;
-        const forward = target?.forward ?? DEFAULT_LISTENER_FORWARD;
-        const up = target?.up ?? DEFAULT_LISTENER_UP;
-        const audioListener = this.context.listener;
+    #activeListener(): InternalListener | undefined {
+        return this.#activeListenerId ? this.#listeners.get(this.#activeListenerId) : undefined;
+    }
 
-        if ('positionX' in audioListener) {
-            audioListener.positionX.value = position.x;
-            audioListener.positionY.value = position.y;
-            audioListener.positionZ.value = position.z;
-            audioListener.forwardX.value = forward.x;
-            audioListener.forwardY.value = forward.y;
-            audioListener.forwardZ.value = forward.z;
-            audioListener.upX.value = up.x;
-            audioListener.upY.value = up.y;
-            audioListener.upZ.value = up.z;
-            return;
+    #audibleListener(): InternalListener | undefined {
+        const listener = this.#activeListener();
+        return listener?.enabled ? listener : undefined;
+    }
+
+    #activateListener(id: AudioListenerId): void {
+        for (const candidate of this.#listeners.values()) {
+            candidate.active = candidate.id === id;
         }
+        this.#activeListenerId = id;
+    }
 
-        (audioListener as AudioListener & {
-            setPosition?: (x: number, y: number, z: number) => void;
-            setOrientation?: (
-                fx: number,
-                fy: number,
-                fz: number,
-                ux: number,
-                uy: number,
-                uz: number
-            ) => void;
-        }).setPosition?.(position.x, position.y, position.z);
-        (audioListener as AudioListener & {
-            setPosition?: (x: number, y: number, z: number) => void;
-            setOrientation?: (
-                fx: number,
-                fy: number,
-                fz: number,
-                ux: number,
-                uy: number,
-                uz: number
-            ) => void;
-        }).setOrientation?.(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+    #syncListenerToContext(): void {
+        syncAudioListenerToContext(this.context.listener, this.#audibleListener());
     }
 
     #syncSource(source: InternalSource<TSchema>): void {
@@ -1307,48 +1033,9 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             return;
         }
 
-        source.active.gainNode.gain.value = source.muted ? 0 : source.volume;
         source.active.sourceNode.playbackRate.value = source.playbackRate;
         source.active.sourceNode.detune.value = source.detuneCents;
-
-        const listener = this.#activeListenerId ? this.#listeners.get(this.#activeListenerId) : undefined;
-        if (!source.spatial) {
-            source.active.attenuationNode.gain.value = 1;
-            if (source.active.spatialNode instanceof StereoPannerNode) {
-                source.active.spatialNode.pan.value = source.pan;
-            }
-            return;
-        }
-
-        if (source.spatial.mode === '2d') {
-            const position = normalizeVector3(source.spatial.position, DEFAULT_LISTENER_POSITION);
-            const listenerPosition = listener?.position ?? DEFAULT_LISTENER_POSITION;
-            source.active.attenuationNode.gain.value = listener?.enabled
-                ? attenuationGainForDistance(distance2D(position, listenerPosition), source.spatial.attenuation)
-                : 1;
-            if (source.active.spatialNode instanceof StereoPannerNode) {
-                source.active.spatialNode.pan.value = effectivePanFor2D(
-                    position,
-                    listenerPosition,
-                    source.pan + (source.spatial.pan ?? 0),
-                    source.spatial.attenuation
-                );
-            }
-            return;
-        }
-
-        const position = normalizeVector3(source.spatial.position, DEFAULT_LISTENER_POSITION);
-        const orientation = normalizeVector3(
-            source.spatial.orientation,
-            DEFAULT_LISTENER_FORWARD
-        );
-        const listenerPosition = listener?.position ?? DEFAULT_LISTENER_POSITION;
-        source.active.attenuationNode.gain.value = listener?.enabled
-            ? attenuationGainForDistance(distance3D(position, listenerPosition), source.spatial.attenuation)
-            : 1;
-        if (source.active.spatialNode instanceof PannerNode) {
-            this.#applyPannerState(source.active.spatialNode, source.spatial, position, orientation);
-        }
+        syncPlaybackSpatialState(source.active, source, this.#activeListener());
     }
 
     #syncAllSources(): void {
@@ -1357,56 +1044,18 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
     }
 
-    #applyPannerState(
-        panner: PannerNode,
-        spatial: Audio3DSpatialization,
-        position: AudioVector3,
-        orientation: AudioVector3
-    ): void {
-        panner.panningModel = spatial.panningModel ?? 'HRTF';
-        panner.distanceModel = 'inverse';
-        panner.refDistance = 1;
-        panner.maxDistance = 1000000;
-        panner.rolloffFactor = 0;
-        panner.coneInnerAngle = spatial.coneInnerAngle ?? 360;
-        panner.coneOuterAngle = spatial.coneOuterAngle ?? 360;
-        panner.coneOuterGain = spatial.coneOuterGain ?? 0;
-
-        if ('positionX' in panner) {
-            panner.positionX.value = position.x;
-            panner.positionY.value = position.y;
-            panner.positionZ.value = position.z;
-            panner.orientationX.value = orientation.x;
-            panner.orientationY.value = orientation.y;
-            panner.orientationZ.value = orientation.z;
-            return;
-        }
-
-        (panner as PannerNode & {
-            setPosition?: (x: number, y: number, z: number) => void;
-            setOrientation?: (x: number, y: number, z: number) => void;
-        }).setPosition?.(position.x, position.y, position.z);
-        (panner as PannerNode & {
-            setPosition?: (x: number, y: number, z: number) => void;
-            setOrientation?: (x: number, y: number, z: number) => void;
-        }).setOrientation?.(orientation.x, orientation.y, orientation.z);
-    }
-
     #currentOffsetForSource(source: InternalSource<TSchema>): number {
         if (!source.active) {
             return source.currentOffsetSeconds;
         }
+
         const elapsed = Math.max(0, this.context.currentTime - source.active.startedAtContextTime);
         const rate = effectivePlaybackRate(source.playbackRate, source.detuneCents);
         const progressed = source.active.startOffsetSeconds + elapsed * rate;
         return this.#normalizeOffset(progressed, source.active.clip, source.loop);
     }
 
-    #normalizeOffset(
-        offsetSeconds: number,
-        clip: AudioClipRecord<TSchema>,
-        loop: boolean
-    ): number {
+    #normalizeOffset(offsetSeconds: number, clip: AudioClipRecord<TSchema>, loop: boolean): number {
         const duration = Math.max(clip.durationSeconds, 0.0001);
         const normalizedOffset = this.#normalizeTime(offsetSeconds);
         if (!loop) {
@@ -1463,211 +1112,6 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         source.active = undefined;
     }
 
-    async #resolveClipSelector(selector: AudioClipSelector<TSchema>): Promise<AudioClipRecord<TSchema>> {
-        const cacheKey = this.#clipCacheKeyForSelector(selector);
-        const useCache = cacheKey !== undefined;
-        if (useCache) {
-            const cached = this.#clipCache.get(cacheKey!);
-            if (cached) {
-                return cached;
-            }
-        }
-
-        const pending = this.#withRetry(
-            this.#assetRetryPolicy,
-            (attempt) => ({ operation: 'asset.resolve', attempt, clip: selector }),
-            async () => this.#decodeClipSelector(selector)
-        );
-        if (useCache) {
-            this.#clipCache.set(cacheKey!, pending);
-        }
-
-        try {
-            return await pending;
-        } catch (error) {
-            if (useCache) {
-                this.#clipCache.delete(cacheKey!);
-            }
-            throw error;
-        }
-    }
-
-    async #decodeClipSelector(selector: AudioClipSelector<TSchema>): Promise<AudioClipRecord<TSchema>> {
-        switch (selector.kind) {
-            case 'registered': {
-                const registered = this.#registeredClips.get(selector.clipId);
-                if (!registered) {
-                    throw new AudioAssetError(`Registered audio clip ${selector.clipId} does not exist`);
-                }
-                return this.#resolveClipSelector(registered);
-            }
-            case 'asset': {
-                const resolved = await this.#resolveAssetClip(selector.selector);
-                if (isAudioClipAssetRecord(resolved)) {
-                    if (!isAudioClipAssetData(resolved.data)) {
-                        throw new AudioAssetError('Resolved asset record does not contain audio clip data');
-                    }
-                    return this.#decodeClipData(selector, resolved.data, resolved.data.metadata);
-                }
-
-                return this.#decodeClipData(selector, resolved, resolved.metadata);
-            }
-            case 'inline':
-                return this.#decodeClipData(selector, selector.clip, selector.clip.metadata);
-            default:
-                throw new AudioAssetError('Unsupported audio clip selector');
-        }
-    }
-
-    async #resolveAssetClip(
-        selector: AudioClipAssetSelector<TSchema>
-    ): Promise<AssetRecord<TSchema> | AudioClipAssetData> {
-        const fromResolver = await this.#assetResolver?.resolveClip(selector);
-        if (fromResolver) {
-            return fromResolver as AssetRecord<TSchema> | AudioClipAssetData;
-        }
-
-        const record = this.#assetDatabase?.get(selector);
-        if (!record) {
-            throw new AudioAssetError(`Audio asset could not be resolved for selector ${JSON.stringify(selector)}`);
-        }
-        return record;
-    }
-
-    async #decodeClipData(
-        selector: AudioClipSelector<TSchema>,
-        data: AudioClipAssetData,
-        metadata?: Readonly<Record<string, AudioJsonValue>>
-    ): Promise<AudioClipRecord<TSchema>> {
-        let buffer: AudioBuffer;
-        switch (data.kind) {
-            case 'buffer':
-                buffer = data.buffer;
-                break;
-            case 'pcm':
-                buffer = this.#createBufferFromPcm(data);
-                break;
-            case 'encoded':
-                buffer = await this.context.decodeAudioData(this.#toArrayBuffer(data.data));
-                break;
-            case 'url': {
-                const response = await fetch(data.url, {
-                    credentials: data.credentials,
-                    headers: data.headers,
-                });
-                if (!response.ok) {
-                    throw new AudioAssetError(`Failed to fetch audio clip ${data.url}`);
-                }
-                buffer = await this.context.decodeAudioData(await response.arrayBuffer());
-                break;
-            }
-            default:
-                throw new AudioAssetError('Unsupported audio clip asset data');
-        }
-
-        return Object.freeze({
-            id: normalizeAudioClipId(this.#clipCacheKeyForSelector(selector) ?? `clip:${++this.#bufferCacheSequence}`),
-            selector,
-            buffer,
-            durationSeconds: buffer.duration,
-            sampleRate: buffer.sampleRate,
-            channelCount: buffer.numberOfChannels,
-            loopStartSeconds: data.loopStartSeconds,
-            loopEndSeconds: data.loopEndSeconds,
-            metadata: cloneMetadata(metadata),
-        });
-    }
-
-    #createBufferFromPcm(data: Extract<AudioClipAssetData, { kind: 'pcm' }>): AudioBuffer {
-        const frameLength = data.channelData[0]?.length ?? 0;
-        const buffer = this.context.createBuffer(data.channelData.length, frameLength, data.sampleRate);
-        data.channelData.forEach((channel, index) => {
-            buffer.copyToChannel(channel, index);
-        });
-        return buffer;
-    }
-
-    #toArrayBuffer(value: ArrayBuffer | ArrayBufferView): ArrayBuffer {
-        if (value instanceof ArrayBuffer) {
-            return value.slice(0);
-        }
-
-        const view = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-        return view.slice().buffer;
-    }
-
-    #clipCacheKeyForSelector(selector: AudioClipSelector<TSchema>): string | undefined {
-        switch (selector.kind) {
-            case 'registered':
-                return `registered:${selector.clipId}`;
-            case 'asset':
-                return this.#assetSelectorCacheKey(selector.selector);
-            case 'inline':
-                switch (selector.clip.kind) {
-                    case 'buffer': {
-                        const cached = this.#bufferCacheKeys.get(selector.clip.buffer);
-                        if (cached) {
-                            return cached;
-                        }
-                        const key = `buffer:${++this.#bufferCacheSequence}`;
-                        this.#bufferCacheKeys.set(selector.clip.buffer, key);
-                        return key;
-                    }
-                    case 'url':
-                        return `url:${selector.clip.url}`;
-                    default:
-                        return undefined;
-                }
-            default:
-                return undefined;
-        }
-    }
-
-    #assetSelectorCacheKey(selector: AudioClipAssetSelector<TSchema>): string {
-        if (typeof selector === 'string') {
-            return `asset:string:${selector}`;
-        }
-        if (isObject(selector) && 'token' in selector && typeof selector.token === 'string') {
-            return `asset:token:${selector.token}`;
-        }
-        if (isObject(selector) && 'id' in selector && 'revision' in selector) {
-            return `asset:record:${String(selector.id)}:${String(selector.revision)}`;
-        }
-        if (isObject(selector) && 'key' in selector && typeof selector.key === 'string') {
-            return `asset:key:${selector.key}:${'kind' in selector ? String(selector.kind ?? '') : ''}`;
-        }
-        return `asset:json:${JSON.stringify(selector)}`;
-    }
-
-    async #withRetry<TResult>(
-        policy: AudioRetryPolicy<TSchema> | undefined,
-        contextFactory: (attempt: number) => AudioRetryContext<TSchema>,
-        operation: () => Promise<TResult>
-    ): Promise<TResult> {
-        const attempts = Math.max(1, policy?.attempts ?? 1);
-        let lastError: unknown;
-
-        for (let attempt = 1; attempt <= attempts; attempt += 1) {
-            try {
-                return await operation();
-            } catch (error) {
-                lastError = error;
-                const context = contextFactory(attempt);
-                const shouldRetry = attempt < attempts && (policy?.shouldRetry?.(error, context) ?? true);
-                if (!shouldRetry) {
-                    throw error;
-                }
-                const backoff =
-                    typeof policy?.backoffMs === 'function'
-                        ? policy.backoffMs(attempt)
-                        : (policy?.backoffMs ?? 0);
-                await sleep(backoff);
-            }
-        }
-
-        throw lastError;
-    }
-
     #normalizeGain(value: number, code: 'audio.invalid-gain' | 'audio.invalid-distance'): number {
         if (!isFiniteNumber(value) || value < 0) {
             throw this.#configurationError({ code, value });
@@ -1714,9 +1158,9 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             id: listener.id,
             active: listener.active,
             enabled: listener.enabled,
-            position: cloneAudioVector3(listener.position),
-            forward: cloneAudioVector3(listener.forward),
-            up: cloneAudioVector3(listener.up),
+            position: normalizeVector3(listener.position, DEFAULT_LISTENER_POSITION),
+            forward: normalizeVector3(listener.forward, DEFAULT_LISTENER_FORWARD),
+            up: normalizeVector3(listener.up, DEFAULT_LISTENER_UP),
             metadata: listener.metadata,
         });
     }
@@ -1737,7 +1181,9 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             startOffsetSeconds: source.startOffsetSeconds,
             metadata: source.metadata,
             playbackState: source.playbackState,
-            currentOffsetSeconds: source.active ? this.#currentOffsetForSource(source) : source.currentOffsetSeconds,
+            currentOffsetSeconds: source.active
+                ? this.#currentOffsetForSource(source)
+                : source.currentOffsetSeconds,
             durationSeconds: source.durationSeconds,
             playSequence: source.playSequence,
         });
@@ -1769,13 +1215,15 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     }
 
     #findFallbackListenerId(): AudioListenerId | undefined {
+        let fallbackId: AudioListenerId | undefined;
         for (const listener of this.#listeners.values()) {
-            if (listener.enabled) {
-                listener.active = true;
-                return listener.id;
+            const shouldActivate = fallbackId === undefined && listener.enabled;
+            listener.active = shouldActivate;
+            if (shouldActivate) {
+                fallbackId = listener.id;
             }
         }
-        return undefined;
+        return fallbackId;
     }
 
     #clearSources(): void {
@@ -1793,7 +1241,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     }
 
     #clearBuses(): void {
-        for (const [id, bus] of this.#buses) {
+        for (const [id, bus] of [...this.#buses]) {
             if (id === MASTER_AUDIO_BUS_ID) {
                 bus.childIds.clear();
                 bus.parentId = undefined;
@@ -1813,7 +1261,10 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     }
 
     #configurationError(descriptor: AudioMessageDescriptor): AudioConfigurationError {
-        return new AudioConfigurationError(descriptor.code as any, resolveAudioMessage(descriptor, this.#locale, this.#messageResolver));
+        return new AudioConfigurationError(
+            descriptor.code as never,
+            resolveAudioMessage(descriptor, this.#locale, this.#messageResolver)
+        );
     }
 
     #assertNotDisposed(): void {
@@ -1852,73 +1303,3 @@ export const isAudioSystemSnapshot = <TSchema extends AudioAssetSchema = AudioAs
     Array.isArray(value.buses) &&
     Array.isArray(value.listeners) &&
     Array.isArray(value.sources);
-
-export class AudioComponentBinder<TSchema extends AudioAssetSchema = AudioAssetSchema> {
-    readonly #listeners = new Set<AudioListenerComponent>();
-    readonly #sources = new Set<AudioSourceComponent<TSchema>>();
-
-    constructor(readonly system: AudioSystem<TSchema>) {}
-
-    attachListener(component: AudioListenerComponent): this {
-        this.#listeners.add(component);
-        return this;
-    }
-
-    detachListener(component: AudioListenerComponent): boolean {
-        return this.#listeners.delete(component);
-    }
-
-    attachSource(component: AudioSourceComponent<TSchema>): this {
-        this.#sources.add(component);
-        return this;
-    }
-
-    detachSource(component: AudioSourceComponent<TSchema>): boolean {
-        return this.#sources.delete(component);
-    }
-
-    clear(): void {
-        this.#listeners.clear();
-        this.#sources.clear();
-    }
-
-    async update(): Promise<void> {
-        for (const listener of this.#listeners) {
-            this.system.upsertListener(listener.toDescriptor());
-            if (listener.active) {
-                this.system.setActiveListener(listener.listenerId);
-            }
-        }
-
-        for (const source of this.#sources) {
-            const state = this.system.upsertSource(source.toDescriptor());
-            source.syncState(state);
-            const commands = source.consumeCommands();
-            for (const command of commands) {
-                await this.#dispatchSourceCommand(source, command);
-            }
-        }
-
-        this.system.refreshSpatialAudio();
-    }
-
-    async #dispatchSourceCommand(
-        component: AudioSourceComponent<TSchema>,
-        command: AudioSourceComponentCommand<TSchema>
-    ): Promise<void> {
-        switch (command.kind) {
-            case 'play':
-                component.syncState(await this.system.playSource(component.sourceId, command.request).then(() => this.system.getSource(component.sourceId)!));
-                break;
-            case 'pause':
-                this.system.pauseSource(component.sourceId);
-                break;
-            case 'resume':
-                component.syncState(await this.system.resumeSource(component.sourceId).then(() => this.system.getSource(component.sourceId)!));
-                break;
-            case 'stop':
-                this.system.stopSource(component.sourceId, command.options);
-                break;
-        }
-    }
-}

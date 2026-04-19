@@ -111,9 +111,10 @@ export {
 } from './components';
 
 export {
-    AudioComponentBinder,
     AudioSystem,
     createAudioSystem,
     isAudioMixerSnapshot,
     isAudioSystemSnapshot,
 } from './system';
+
+export { AudioComponentBinder } from './component-binder';
