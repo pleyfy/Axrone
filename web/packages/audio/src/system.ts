@@ -1,47 +1,34 @@
 import {
-    AudioBusError,
     AudioConfigurationError,
     DEFAULT_AUDIO_MESSAGE_RESOLVER,
     AudioDisposedError,
     AudioLifecycleError,
-    AudioListenerError,
     AudioSnapshotError,
     AudioSourceError,
     resolveAudioMessage,
 } from './errors';
 import { toAudioClipSelector } from './asset';
+import { AudioBusRegistry } from './internal/bus-registry';
 import { AudioClipStore } from './internal/clip-store';
+import { AudioListenerRegistry } from './internal/listener-registry';
 import type {
-    InternalBus,
-    InternalListener,
+    InternalPlayback,
     InternalSource,
 } from './internal/runtime';
+import { AudioSourceRegistry } from './internal/source-registry';
 import {
-    DEFAULT_LISTENER_FORWARD,
-    DEFAULT_LISTENER_POSITION,
-    DEFAULT_LISTENER_UP,
     clamp,
-    cloneMetadata,
     disconnectNode,
     effectivePlaybackRate,
     hasOwnKeys,
     isFiniteNumber,
     isObject,
-    normalizeVector3,
     resolveContextFactory,
-    setParamValue,
     withRetry,
 } from './internal/shared';
-import {
-    cloneSpatialization,
-    syncAudioListenerToContext,
-    syncPlaybackSpatialState,
-} from './internal/spatial';
+import { syncPlaybackSpatialState } from './internal/spatial';
 import {
     MASTER_AUDIO_BUS_ID,
-    normalizeAudioBusId,
-    normalizeAudioClipId,
-    normalizeAudioListenerId,
     normalizeAudioSnapshotId,
     normalizeAudioSourceId,
 } from './reference';
@@ -88,14 +75,11 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     readonly #resumeRetryPolicy?: AudioRetryPolicy<TSchema>;
     readonly #ownsContext: boolean;
     readonly #clips: AudioClipStore<TSchema>;
-    readonly #buses = new Map<AudioBusId, InternalBus>();
-    readonly #listeners = new Map<AudioListenerId, InternalListener>();
-    readonly #sources = new Map<AudioSourceId, InternalSource<TSchema>>();
-    readonly #transientSources = new Set<AudioSourceId>();
+    readonly #buses: AudioBusRegistry;
+    readonly #listeners = new AudioListenerRegistry();
+    readonly #sources: AudioSourceRegistry<TSchema>;
 
     #playSequence = 0;
-    #oneShotSequence = 0;
-    #activeListenerId?: AudioListenerId;
     #status: AudioSystemStatus = 'idle';
     #disposed = false;
 
@@ -109,19 +93,29 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#locale = options.locale ?? 'en';
         this.#autoResume = options.autoResume ?? true;
         this.#resumeRetryPolicy = options.resumeRetryPolicy;
+
         this.#clips = new AudioClipStore({
             context,
             assetDatabase: options.assetDatabase,
             assetResolver: options.assetResolver,
             retryPolicy: options.assetRetryPolicy,
         });
-
-        const master = this.#createBusRuntime({ id: MASTER_AUDIO_BUS_ID });
-        this.#buses.set(MASTER_AUDIO_BUS_ID, master);
-        this.#connectBus(master);
+        this.#buses = new AudioBusRegistry({
+            context,
+            destination: this.destination,
+            createConfigurationError: (descriptor) => this.#configurationError(descriptor),
+            normalizeGain: (value, code) => this.#normalizeGain(value, code),
+            normalizePan: (value) => this.#normalizePan(value),
+        });
+        this.#sources = new AudioSourceRegistry<TSchema>({
+            normalizeGain: (value, code) => this.#normalizeGain(value, code),
+            normalizePan: (value) => this.#normalizePan(value),
+            normalizePlaybackRate: (value) => this.#normalizePlaybackRate(value),
+            normalizeTime: (value) => this.#normalizeTime(value),
+        });
 
         if (options.buses?.length) {
-            this.#initializeBuses(options.buses);
+            this.#buses.initialize(options.buses);
         }
 
         if (options.listeners) {
@@ -148,8 +142,8 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     }
 
     get activeListener(): AudioListenerState | undefined {
-        const listener = this.#activeListener();
-        return listener ? this.#snapshotListener(listener) : undefined;
+        const activeListenerId = this.#listeners.activeListenerId;
+        return activeListenerId ? this.#listeners.get(activeListenerId) : undefined;
     }
 
     registerClip(id: AudioClipId | string, clip: AudioClipInput<TSchema>): AudioClipId {
@@ -159,7 +153,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             throw this.#configurationError({ code: 'audio.invalid-clip', value: clip });
         }
 
-        return this.#clips.register(normalizeAudioClipId(id), selector);
+        return this.#clips.register(id, selector);
     }
 
     unregisterClip(id: AudioClipId | string): boolean {
@@ -179,57 +173,9 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     upsertBus(definition: AudioBusDefinition): AudioBusState {
         this.#assertNotDisposed();
-        const id = normalizeAudioBusId(definition.id);
-        const parentId =
-            definition.parentId === undefined ? undefined : normalizeAudioBusId(definition.parentId);
-
-        if (id === MASTER_AUDIO_BUS_ID && parentId !== undefined) {
-            throw this.#configurationError({ code: 'audio.invalid-parent-bus', value: parentId });
-        }
-        if (parentId === id) {
-            throw this.#configurationError({ code: 'audio.bus.cycle', busId: id, parentId });
-        }
-        if (parentId !== undefined && !this.#buses.has(parentId)) {
-            throw new AudioBusError(`Audio bus ${parentId} does not exist`, parentId);
-        }
-        if (parentId && this.#busCreatesCycle(id, parentId)) {
-            throw this.#configurationError({ code: 'audio.bus.cycle', busId: id, parentId });
-        }
-
-        const isNew = !this.#buses.has(id);
-        let bus = this.#buses.get(id);
-        if (!bus) {
-            bus = this.#createBusRuntime({ id });
-            this.#buses.set(id, bus);
-        }
-
-        if (isNew || bus.parentId !== parentId) {
-            if (bus.parentId) {
-                this.#buses.get(bus.parentId)?.childIds.delete(bus.id);
-            }
-            bus.parentId = parentId;
-            if (parentId) {
-                this.#buses.get(parentId)?.childIds.add(bus.id);
-            }
-            this.#connectBus(bus);
-        }
-
-        if (definition.volume !== undefined) {
-            bus.volume = this.#normalizeGain(definition.volume, 'audio.invalid-gain');
-        }
-        if (definition.mute !== undefined) {
-            bus.mute = definition.mute;
-        }
-        if (definition.pan !== undefined) {
-            bus.pan = this.#normalizePan(definition.pan);
-        }
-        if (definition.metadata !== undefined) {
-            bus.metadata = cloneMetadata(definition.metadata);
-        }
-
-        this.#applyBusState(bus);
+        const state = this.#buses.upsert(definition);
         this.#syncAllSources();
-        return this.#snapshotBus(bus);
+        return state;
     }
 
     updateBus(id: AudioBusId | string, patch: AudioBusPatch): AudioBusState {
@@ -241,108 +187,32 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     removeBus(id: AudioBusId | string): boolean {
         this.#assertNotDisposed();
-        const normalizedId = normalizeAudioBusId(id);
-        if (normalizedId === MASTER_AUDIO_BUS_ID) {
+        const removed = this.#buses.remove(id);
+        if (!removed.removed || !removed.fallbackBusId) {
             return false;
         }
 
-        const bus = this.#buses.get(normalizedId);
-        if (!bus) {
-            return false;
-        }
-
-        const fallbackBusId = bus.parentId ?? MASTER_AUDIO_BUS_ID;
-        const fallbackBus = this.#requireBus(fallbackBusId);
-
-        for (const childId of bus.childIds) {
-            const child = this.#buses.get(childId);
-            if (!child) {
-                continue;
-            }
-            child.parentId = fallbackBusId;
-            fallbackBus.childIds.add(childId);
-            this.#connectBus(child);
-        }
-
-        if (bus.parentId) {
-            this.#buses.get(bus.parentId)?.childIds.delete(normalizedId);
-        }
-
-        for (const source of this.#sources.values()) {
-            if (source.busId !== normalizedId) {
-                continue;
-            }
-
-            source.busId = fallbackBusId;
-            if (source.active) {
-                disconnectNode(source.active.outputNode);
-                source.active.outputNode.connect(fallbackBus.gainNode);
-            }
-        }
-
-        disconnectNode(bus.outputNode);
-        disconnectNode(bus.gainNode);
-        disconnectNode(bus.panNode);
-        this.#buses.delete(normalizedId);
+        this.#sources.reassignBus(id, removed.fallbackBusId, (playback, nextBusId) => {
+            this.#reconnectPlaybackOutput(playback, nextBusId);
+        });
         this.#syncAllSources();
         return true;
     }
 
     getBus(id: AudioBusId | string): AudioBusState | undefined {
-        const bus = this.#buses.get(normalizeAudioBusId(id));
-        return bus ? this.#snapshotBus(bus) : undefined;
+        return this.#buses.get(id);
     }
 
     listBuses(): readonly AudioBusState[] {
-        return Object.freeze([...this.#buses.values()].map((bus) => this.#snapshotBus(bus)));
+        return this.#buses.list();
     }
 
     upsertListener(descriptor: AudioListenerDescriptor): AudioListenerState {
         this.#assertNotDisposed();
-        const id = normalizeAudioListenerId(descriptor.id ?? 'default');
-        let listener = this.#listeners.get(id);
-
-        if (!listener) {
-            listener = {
-                id,
-                active: descriptor.active ?? this.#listeners.size === 0,
-                enabled: descriptor.enabled ?? true,
-                position: normalizeVector3(descriptor.position, DEFAULT_LISTENER_POSITION),
-                forward: normalizeVector3(descriptor.forward, DEFAULT_LISTENER_FORWARD),
-                up: normalizeVector3(descriptor.up, DEFAULT_LISTENER_UP),
-                metadata: cloneMetadata(descriptor.metadata),
-            };
-            this.#listeners.set(id, listener);
-        }
-
-        if (descriptor.active !== undefined) {
-            listener.active = descriptor.active;
-        }
-        if (descriptor.enabled !== undefined) {
-            listener.enabled = descriptor.enabled;
-        }
-        if (descriptor.position !== undefined) {
-            listener.position = normalizeVector3(descriptor.position, DEFAULT_LISTENER_POSITION);
-        }
-        if (descriptor.forward !== undefined) {
-            listener.forward = normalizeVector3(descriptor.forward, DEFAULT_LISTENER_FORWARD);
-        }
-        if (descriptor.up !== undefined) {
-            listener.up = normalizeVector3(descriptor.up, DEFAULT_LISTENER_UP);
-        }
-        if (descriptor.metadata !== undefined) {
-            listener.metadata = cloneMetadata(descriptor.metadata);
-        }
-
-        if (listener.active) {
-            this.#activateListener(listener.id);
-        } else if (this.#activeListenerId === listener.id || !this.#activeListenerId) {
-            this.#activeListenerId = this.#findFallbackListenerId();
-        }
-
+        const state = this.#listeners.upsert(descriptor);
         this.#syncListenerToContext();
         this.#syncAllSources();
-        return this.#snapshotListener(listener);
+        return state;
     }
 
     updateListener(id: AudioListenerId | string, patch: AudioListenerPatch): AudioListenerState {
@@ -354,14 +224,9 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     removeListener(id: AudioListenerId | string): boolean {
         this.#assertNotDisposed();
-        const normalizedId = normalizeAudioListenerId(id);
-        const removed = this.#listeners.delete(normalizedId);
+        const removed = this.#listeners.remove(id);
         if (!removed) {
             return false;
-        }
-
-        if (this.#activeListenerId === normalizedId) {
-            this.#activeListenerId = this.#findFallbackListenerId();
         }
 
         this.#syncListenerToContext();
@@ -371,101 +236,29 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     setActiveListener(id: AudioListenerId | string): void {
         this.#assertNotDisposed();
-        const normalizedId = normalizeAudioListenerId(id);
-        const listener = this.#listeners.get(normalizedId);
-        if (!listener) {
-            throw new AudioListenerError(`Audio listener ${normalizedId} does not exist`, normalizedId);
-        }
-
-        this.#activateListener(listener.id);
+        this.#listeners.setActive(id);
         this.#syncListenerToContext();
         this.#syncAllSources();
     }
 
     getListener(id: AudioListenerId | string): AudioListenerState | undefined {
-        const listener = this.#listeners.get(normalizeAudioListenerId(id));
-        return listener ? this.#snapshotListener(listener) : undefined;
+        return this.#listeners.get(id);
     }
 
     listListeners(): readonly AudioListenerState[] {
-        return Object.freeze([...this.#listeners.values()].map((listener) => this.#snapshotListener(listener)));
+        return this.#listeners.list();
     }
 
     upsertSource(definition: AudioSourceDefinition<TSchema>): AudioSourceState<TSchema> {
         this.#assertNotDisposed();
-        const id = normalizeAudioSourceId(definition.id ?? `source:${this.#sources.size + 1}`);
-        let source = this.#sources.get(id);
-
-        if (!source) {
-            source = {
-                id,
-                busId: normalizeAudioBusId(definition.busId ?? MASTER_AUDIO_BUS_ID),
-                clip: toAudioClipSelector(definition.clip),
-                volume: this.#normalizeGain(definition.volume ?? 1, 'audio.invalid-gain'),
-                muted: definition.muted ?? false,
-                loop: definition.loop ?? false,
-                autoplay: definition.autoplay ?? false,
-                playbackRate: this.#normalizePlaybackRate(definition.playbackRate ?? 1),
-                detuneCents: isFiniteNumber(definition.detuneCents) ? definition.detuneCents : 0,
-                pan: this.#normalizePan(definition.pan ?? 0),
-                spatial: cloneSpatialization(definition.spatial),
-                startOffsetSeconds: this.#normalizeTime(definition.startOffsetSeconds ?? 0),
-                metadata: cloneMetadata(definition.metadata),
-                playbackState: 'idle',
-                currentOffsetSeconds: this.#normalizeTime(definition.startOffsetSeconds ?? 0),
-                playSequence: 0,
-            };
-            this.#sources.set(id, source);
-        }
-
-        if (definition.busId !== undefined) {
-            const nextBusId = normalizeAudioBusId(definition.busId);
-            const nextBus = this.#requireBus(nextBusId);
-            if (source.busId !== nextBusId) {
-                source.busId = nextBusId;
-                if (source.active) {
-                    disconnectNode(source.active.outputNode);
-                    source.active.outputNode.connect(nextBus.gainNode);
-                }
-            }
-        }
-        if (definition.clip !== undefined) {
-            source.clip = toAudioClipSelector(definition.clip);
-        }
-        if (definition.volume !== undefined) {
-            source.volume = this.#normalizeGain(definition.volume, 'audio.invalid-gain');
-        }
-        if (definition.muted !== undefined) {
-            source.muted = definition.muted;
-        }
-        if (definition.loop !== undefined) {
-            source.loop = definition.loop;
-        }
-        if (definition.autoplay !== undefined) {
-            source.autoplay = definition.autoplay;
-        }
-        if (definition.playbackRate !== undefined) {
-            source.playbackRate = this.#normalizePlaybackRate(definition.playbackRate);
-        }
-        if (definition.detuneCents !== undefined && isFiniteNumber(definition.detuneCents)) {
-            source.detuneCents = definition.detuneCents;
-        }
-        if (definition.pan !== undefined) {
-            source.pan = this.#normalizePan(definition.pan);
-        }
-        if (definition.spatial !== undefined) {
-            source.spatial = cloneSpatialization(definition.spatial);
-        }
-        if (definition.startOffsetSeconds !== undefined) {
-            const offset = this.#normalizeTime(definition.startOffsetSeconds);
-            source.startOffsetSeconds = offset;
-            if (!source.active) {
-                source.currentOffsetSeconds = offset;
-            }
-        }
-        if (definition.metadata !== undefined) {
-            source.metadata = cloneMetadata(definition.metadata);
-        }
+        const source = this.#sources.upsert(definition, {
+            requireBus: (id) => {
+                this.#buses.require(id);
+            },
+            reconnectPlaybackOutput: (playback, nextBusId) => {
+                this.#reconnectPlaybackOutput(playback, nextBusId);
+            },
+        });
 
         this.#syncSource(source);
         if (source.autoplay && source.playbackState === 'idle' && source.clip) {
@@ -484,21 +277,19 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     removeSource(id: AudioSourceId | string): boolean {
         this.#assertNotDisposed();
-        const normalizedId = normalizeAudioSourceId(id);
-        const source = this.#sources.get(normalizedId);
+        const source = this.#sources.get(id);
         if (!source) {
             return false;
         }
 
-        this.stopSource(normalizedId);
+        this.stopSource(id);
         this.#disposePlayback(source);
-        this.#transientSources.delete(normalizedId);
-        this.#sources.delete(normalizedId);
+        this.#sources.remove(id);
         return true;
     }
 
     getSource(id: AudioSourceId | string): AudioSourceState<TSchema> | undefined {
-        const source = this.#sources.get(normalizeAudioSourceId(id));
+        const source = this.#sources.get(id);
         return source ? this.#snapshotSource(source) : undefined;
     }
 
@@ -512,14 +303,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     ): Promise<AudioPlaybackHandle> {
         this.#assertNotDisposed();
         const sourceId = normalizeAudioSourceId(id);
-        const source = this.#sources.get(sourceId);
-        if (!source) {
-            throw new AudioSourceError(
-                'audio.source.missing',
-                `Audio source ${sourceId} does not exist`,
-                sourceId
-            );
-        }
+        const source = this.#sources.require(sourceId);
 
         const { when, offsetSeconds, durationSeconds, replace, ...patch } = request;
         if (hasOwnKeys(patch)) {
@@ -545,7 +329,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
 
         const clip = await this.#clips.resolveSelector(source.clip);
-        const bus = this.#requireBus(source.busId);
+        const bus = this.#buses.require(source.busId);
         const normalizedOffset = this.#normalizeOffset(
             offsetSeconds ?? source.currentOffsetSeconds,
             clip,
@@ -642,15 +426,15 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     async play(
         request: AudioSourceDefinition<TSchema> & AudioSourcePlayRequest<TSchema>
     ): Promise<AudioPlaybackHandle> {
-        const id = normalizeAudioSourceId(request.id ?? `oneshot:${++this.#oneShotSequence}`);
-        this.#transientSources.add(id);
+        const id = normalizeAudioSourceId(request.id ?? this.#sources.nextOneShotId());
+        this.#sources.markTransient(id);
         this.upsertSource({ ...request, id, autoplay: false });
         return this.playSource(id, request);
     }
 
     pauseSource(id: AudioSourceId | string): void {
         this.#assertNotDisposed();
-        const source = this.#requireSource(id);
+        const source = this.#sources.require(id);
         if (!source.active) {
             source.playbackState = 'paused';
             return;
@@ -666,7 +450,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     async resumeSource(id: AudioSourceId | string): Promise<AudioPlaybackHandle> {
         this.#assertNotDisposed();
-        const source = this.#requireSource(id);
+        const source = this.#sources.require(id);
         if (source.playbackState === 'playing') {
             return this.#createPlaybackHandle(source.id, source.playSequence);
         }
@@ -692,7 +476,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     stopSource(id: AudioSourceId | string, options: AudioStopOptions = {}): void {
         this.#assertNotDisposed();
-        const source = this.#requireSource(id);
+        const source = this.#sources.require(id);
         source.currentOffsetSeconds = 0;
         source.playbackState = 'stopped';
         if (!source.active) {
@@ -711,19 +495,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     captureMixerSnapshot(id?: string): AudioMixerSnapshot {
         this.#assertNotDisposed();
-        return Object.freeze({
-            id: id ? normalizeAudioSnapshotId(id) : undefined,
-            buses: Object.freeze(
-                [...this.#buses.values()].map((bus) =>
-                    Object.freeze({
-                        id: bus.id,
-                        volume: bus.volume,
-                        mute: bus.mute,
-                        pan: bus.pan,
-                    })
-                )
-            ),
-        });
+        return this.#buses.captureSnapshot(id ? normalizeAudioSnapshotId(id) : undefined);
     }
 
     applyMixerSnapshot(
@@ -737,27 +509,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
         const atTime =
             options.atTime !== undefined ? this.#normalizeTime(options.atTime) : this.context.currentTime;
-        const duration =
+        const durationSeconds =
             options.durationSeconds !== undefined
                 ? this.#normalizeTime(options.durationSeconds)
                 : 0;
 
-        for (const entry of snapshot.buses) {
-            const bus = this.#buses.get(normalizeAudioBusId(entry.id));
-            if (!bus) {
-                continue;
-            }
-            if (entry.volume !== undefined) {
-                bus.volume = this.#normalizeGain(entry.volume, 'audio.invalid-gain');
-            }
-            if (entry.mute !== undefined) {
-                bus.mute = entry.mute;
-            }
-            if (entry.pan !== undefined) {
-                bus.pan = this.#normalizePan(entry.pan);
-            }
-            this.#applyBusState(bus, { atTime, durationSeconds: duration });
-        }
+        this.#buses.applySnapshot(snapshot, { atTime, durationSeconds });
     }
 
     snapshot(): AudioSystemSnapshot<TSchema> {
@@ -766,7 +523,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             version: 1,
             status: this.#status === 'disposed' ? 'idle' : this.#status,
             capturedAtEpochMs: Date.now(),
-            activeListenerId: this.#activeListenerId,
+            activeListenerId: this.#listeners.activeListenerId,
             buses: Object.freeze(this.listBuses()),
             listeners: Object.freeze(this.listListeners()),
             sources: Object.freeze(this.listSources()),
@@ -781,8 +538,8 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
         if (options.clearExisting ?? true) {
             this.#clearSources();
-            this.#clearListeners();
-            this.#clearBuses();
+            this.#listeners.clear();
+            this.#buses.clear();
         }
 
         const additionalBuses = snapshot.buses.filter((bus) => bus.id !== MASTER_AUDIO_BUS_ID);
@@ -836,7 +593,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
                 metadata: source.metadata,
             });
 
-            const restored = this.#requireSource(source.id);
+            const restored = this.#sources.require(source.id);
             restored.playbackState = source.playbackState;
             restored.currentOffsetSeconds = source.currentOffsetSeconds;
             restored.durationSeconds = source.durationSeconds;
@@ -910,8 +667,8 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
 
         this.#clearSources();
-        this.#clearListeners();
-        this.#clearBuses();
+        this.#listeners.clear();
+        this.#buses.clear();
         this.#clips.clear();
         this.#disposed = true;
         this.#status = 'disposed';
@@ -929,103 +686,16 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#syncAllSources();
     }
 
-    #initializeBuses(buses: readonly AudioBusDefinition[]): void {
-        for (const bus of buses) {
-            this.upsertBus({ ...bus, parentId: undefined });
+    #clearSources(): void {
+        for (const source of this.#sources.values()) {
+            this.stopSource(source.id);
+            this.#disposePlayback(source);
         }
-
-        for (const bus of buses) {
-            if (bus.parentId !== undefined) {
-                this.upsertBus({ id: bus.id, parentId: bus.parentId });
-            }
-        }
-    }
-
-    #createBusRuntime(definition: Pick<AudioBusDefinition, 'id' | 'parentId'>): InternalBus {
-        const gainNode = this.context.createGain();
-        const panNode =
-            typeof this.context.createStereoPanner === 'function'
-                ? this.context.createStereoPanner()
-                : undefined;
-        let outputNode: AudioNode = gainNode;
-        if (panNode) {
-            gainNode.connect(panNode);
-            outputNode = panNode;
-        }
-
-        return {
-            id: normalizeAudioBusId(definition.id),
-            parentId: definition.parentId ? normalizeAudioBusId(definition.parentId) : undefined,
-            gainNode,
-            panNode,
-            outputNode,
-            childIds: new Set<AudioBusId>(),
-            volume: 1,
-            mute: false,
-            pan: 0,
-            metadata: Object.freeze({}),
-        };
-    }
-
-    #connectBus(bus: InternalBus): void {
-        disconnectNode(bus.outputNode);
-        const parent = bus.parentId ? this.#buses.get(bus.parentId) : undefined;
-        bus.outputNode.connect(parent?.gainNode ?? this.destination);
-        this.#applyBusState(bus);
-    }
-
-    #applyBusState(
-        bus: InternalBus,
-        options: { atTime?: number; durationSeconds?: number } = {}
-    ): void {
-        const atTime = options.atTime ?? this.context.currentTime;
-        const durationSeconds = options.durationSeconds ?? 0;
-        setParamValue(bus.gainNode.gain, bus.mute ? 0 : bus.volume, atTime, durationSeconds);
-        if (bus.panNode) {
-            setParamValue(bus.panNode.pan, bus.pan, atTime, durationSeconds);
-        }
-    }
-
-    #requireBus(id: AudioBusId | string): InternalBus {
-        const normalizedId = normalizeAudioBusId(id);
-        const bus = this.#buses.get(normalizedId);
-        if (!bus) {
-            throw new AudioBusError(`Audio bus ${normalizedId} does not exist`, normalizedId);
-        }
-        return bus;
-    }
-
-    #requireSource(id: AudioSourceId | string): InternalSource<TSchema> {
-        const normalizedId = normalizeAudioSourceId(id);
-        const source = this.#sources.get(normalizedId);
-        if (!source) {
-            throw new AudioSourceError(
-                'audio.source.missing',
-                `Audio source ${normalizedId} does not exist`,
-                normalizedId
-            );
-        }
-        return source;
-    }
-
-    #activeListener(): InternalListener | undefined {
-        return this.#activeListenerId ? this.#listeners.get(this.#activeListenerId) : undefined;
-    }
-
-    #audibleListener(): InternalListener | undefined {
-        const listener = this.#activeListener();
-        return listener?.enabled ? listener : undefined;
-    }
-
-    #activateListener(id: AudioListenerId): void {
-        for (const candidate of this.#listeners.values()) {
-            candidate.active = candidate.id === id;
-        }
-        this.#activeListenerId = id;
+        this.#sources.clear();
     }
 
     #syncListenerToContext(): void {
-        syncAudioListenerToContext(this.context.listener, this.#audibleListener());
+        this.#listeners.syncToContext(this.context.listener);
     }
 
     #syncSource(source: InternalSource<TSchema>): void {
@@ -1035,13 +705,18 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
         source.active.sourceNode.playbackRate.value = source.playbackRate;
         source.active.sourceNode.detune.value = source.detuneCents;
-        syncPlaybackSpatialState(source.active, source, this.#activeListener());
+        syncPlaybackSpatialState(source.active, source, this.#listeners.activeRuntime());
     }
 
     #syncAllSources(): void {
         for (const source of this.#sources.values()) {
             this.#syncSource(source);
         }
+    }
+
+    #reconnectPlaybackOutput(playback: InternalPlayback<TSchema>, nextBusId: string): void {
+        disconnectNode(playback.outputNode);
+        playback.outputNode.connect(this.#buses.require(nextBusId).gainNode);
     }
 
     #currentOffsetForSource(source: InternalSource<TSchema>): number {
@@ -1086,16 +761,16 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         if (control === 'stopping') {
             source.playbackState = 'stopped';
             source.currentOffsetSeconds = 0;
-            if (this.#transientSources.has(id)) {
-                this.removeSource(id);
+            if (this.#sources.isTransient(id)) {
+                this.#sources.remove(id);
             }
             return;
         }
 
         source.playbackState = 'stopped';
         source.currentOffsetSeconds = source.loop ? source.currentOffsetSeconds : 0;
-        if (this.#transientSources.has(id)) {
-            this.removeSource(id);
+        if (this.#sources.isTransient(id)) {
+            this.#sources.remove(id);
         }
     }
 
@@ -1110,6 +785,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         disconnectNode(source.active.attenuationNode);
         disconnectNode(source.active.spatialNode);
         source.active = undefined;
+    }
+
+    #snapshotSource(source: InternalSource<TSchema>): AudioSourceState<TSchema> {
+        return this.#sources.snapshot(source, (candidate) =>
+            candidate.active ? this.#currentOffsetForSource(candidate) : candidate.currentOffsetSeconds
+        );
     }
 
     #normalizeGain(value: number, code: 'audio.invalid-gain' | 'audio.invalid-distance'): number {
@@ -1138,126 +819,6 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             throw this.#configurationError({ code: 'audio.invalid-time', value });
         }
         return value;
-    }
-
-    #snapshotBus(bus: InternalBus): AudioBusState {
-        return Object.freeze({
-            id: bus.id,
-            parentId: bus.parentId,
-            volume: bus.volume,
-            mute: bus.mute,
-            pan: bus.pan,
-            effectiveGain: this.#effectiveGainForBus(bus.id),
-            childIds: Object.freeze([...bus.childIds]),
-            metadata: bus.metadata,
-        });
-    }
-
-    #snapshotListener(listener: InternalListener): AudioListenerState {
-        return Object.freeze({
-            id: listener.id,
-            active: listener.active,
-            enabled: listener.enabled,
-            position: normalizeVector3(listener.position, DEFAULT_LISTENER_POSITION),
-            forward: normalizeVector3(listener.forward, DEFAULT_LISTENER_FORWARD),
-            up: normalizeVector3(listener.up, DEFAULT_LISTENER_UP),
-            metadata: listener.metadata,
-        });
-    }
-
-    #snapshotSource(source: InternalSource<TSchema>): AudioSourceState<TSchema> {
-        return Object.freeze({
-            id: source.id,
-            busId: source.busId,
-            clip: source.clip,
-            volume: source.volume,
-            muted: source.muted,
-            loop: source.loop,
-            autoplay: source.autoplay,
-            playbackRate: source.playbackRate,
-            detuneCents: source.detuneCents,
-            pan: source.pan,
-            spatial: source.spatial ? cloneSpatialization(source.spatial) : undefined,
-            startOffsetSeconds: source.startOffsetSeconds,
-            metadata: source.metadata,
-            playbackState: source.playbackState,
-            currentOffsetSeconds: source.active
-                ? this.#currentOffsetForSource(source)
-                : source.currentOffsetSeconds,
-            durationSeconds: source.durationSeconds,
-            playSequence: source.playSequence,
-        });
-    }
-
-    #effectiveGainForBus(id: AudioBusId): number {
-        let gain = 1;
-        let current: AudioBusId | undefined = id;
-        while (current) {
-            const bus = this.#buses.get(current);
-            if (!bus) {
-                break;
-            }
-            gain *= bus.mute ? 0 : bus.volume;
-            current = bus.parentId;
-        }
-        return gain;
-    }
-
-    #busCreatesCycle(id: AudioBusId, parentId: AudioBusId): boolean {
-        let current: AudioBusId | undefined = parentId;
-        while (current) {
-            if (current === id) {
-                return true;
-            }
-            current = this.#buses.get(current)?.parentId;
-        }
-        return false;
-    }
-
-    #findFallbackListenerId(): AudioListenerId | undefined {
-        let fallbackId: AudioListenerId | undefined;
-        for (const listener of this.#listeners.values()) {
-            const shouldActivate = fallbackId === undefined && listener.enabled;
-            listener.active = shouldActivate;
-            if (shouldActivate) {
-                fallbackId = listener.id;
-            }
-        }
-        return fallbackId;
-    }
-
-    #clearSources(): void {
-        for (const source of this.#sources.values()) {
-            this.stopSource(source.id);
-            this.#disposePlayback(source);
-        }
-        this.#sources.clear();
-        this.#transientSources.clear();
-    }
-
-    #clearListeners(): void {
-        this.#listeners.clear();
-        this.#activeListenerId = undefined;
-    }
-
-    #clearBuses(): void {
-        for (const [id, bus] of [...this.#buses]) {
-            if (id === MASTER_AUDIO_BUS_ID) {
-                bus.childIds.clear();
-                bus.parentId = undefined;
-                bus.volume = 1;
-                bus.mute = false;
-                bus.pan = 0;
-                bus.metadata = Object.freeze({});
-                this.#connectBus(bus);
-                continue;
-            }
-
-            disconnectNode(bus.outputNode);
-            disconnectNode(bus.gainNode);
-            disconnectNode(bus.panNode);
-            this.#buses.delete(id);
-        }
     }
 
     #configurationError(descriptor: AudioMessageDescriptor): AudioConfigurationError {
