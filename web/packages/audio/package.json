@@ -23,6 +23,7 @@
     "dependencies": {
         "@axrone/asset-core": "^0.1.0",
         "@axrone/ecs-runtime": "^0.1.0",
+        "@axrone/event": "^0.1.0",
         "@axrone/numeric": "^0.0.1"
     }
 }

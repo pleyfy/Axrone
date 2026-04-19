@@ -4,6 +4,7 @@ import type {
     AssetSchema,
     AssetSelector,
 } from '@axrone/asset-core';
+import type { IEventEmitter } from '@axrone/event';
 import type { IVec3Like } from '@axrone/numeric';
 
 type Brand<TValue, TBrand extends string> = TValue & { readonly __audioBrand: TBrand };
@@ -345,6 +346,162 @@ export interface AudioSystemOptions<TSchema extends AudioAssetSchema = AudioAsse
     readonly autoResume?: boolean;
     readonly resumeRetryPolicy?: AudioRetryPolicy<TSchema>;
     readonly assetRetryPolicy?: AudioRetryPolicy<TSchema>;
+}
+
+export type AudioRuntimeEventType =
+    | 'bus:upserted'
+    | 'bus:removed'
+    | 'listener:upserted'
+    | 'listener:removed'
+    | 'listener:activated'
+    | 'source:upserted'
+    | 'source:removed'
+    | 'source:played'
+    | 'source:paused'
+    | 'source:resumed'
+    | 'source:stopped'
+    | 'source:ended'
+    | 'source:error'
+    | 'snapshot:captured'
+    | 'snapshot:restored'
+    | 'system:suspended'
+    | 'system:resumed'
+    | 'system:disposed';
+
+export interface AudioRuntimeEventBase {
+    readonly type: AudioRuntimeEventType;
+    readonly sequence: number;
+    readonly timestamp: number;
+    readonly contextTime: number;
+    readonly systemStatus: AudioSystemStatus;
+}
+
+export interface AudioBusUpsertedEvent extends AudioRuntimeEventBase {
+    readonly type: 'bus:upserted';
+    readonly bus: AudioBusState;
+}
+
+export interface AudioBusRemovedEvent extends AudioRuntimeEventBase {
+    readonly type: 'bus:removed';
+    readonly busId: AudioBusId;
+    readonly fallbackBusId?: AudioBusId;
+}
+
+export interface AudioListenerUpsertedEvent extends AudioRuntimeEventBase {
+    readonly type: 'listener:upserted';
+    readonly listener: AudioListenerState;
+}
+
+export interface AudioListenerRemovedEvent extends AudioRuntimeEventBase {
+    readonly type: 'listener:removed';
+    readonly listenerId: AudioListenerId;
+}
+
+export interface AudioListenerActivatedEvent extends AudioRuntimeEventBase {
+    readonly type: 'listener:activated';
+    readonly listener: AudioListenerState;
+}
+
+export interface AudioSourceStateEvent<
+    TSchema extends AudioAssetSchema = AudioAssetSchema,
+    TType extends
+        | 'source:upserted'
+        | 'source:removed'
+        | 'source:played'
+        | 'source:paused'
+        | 'source:resumed'
+        | 'source:stopped'
+        | 'source:ended' =
+        | 'source:upserted'
+        | 'source:removed'
+        | 'source:played'
+        | 'source:paused'
+        | 'source:resumed'
+        | 'source:stopped'
+        | 'source:ended',
+> extends AudioRuntimeEventBase {
+    readonly type: TType;
+    readonly source: AudioSourceState<TSchema>;
+}
+
+export interface AudioSourceErrorEvent<TSchema extends AudioAssetSchema = AudioAssetSchema>
+    extends AudioRuntimeEventBase {
+    readonly type: 'source:error';
+    readonly operation: 'play' | 'resume';
+    readonly sourceId: AudioSourceId;
+    readonly reason: unknown;
+    readonly source?: AudioSourceState<TSchema>;
+}
+
+export interface AudioSnapshotCapturedEvent extends AudioRuntimeEventBase {
+    readonly type: 'snapshot:captured';
+    readonly snapshotKind: 'mixer' | 'system';
+    readonly snapshotId?: AudioSnapshotId;
+    readonly busCount: number;
+    readonly listenerCount: number;
+    readonly sourceCount: number;
+}
+
+export interface AudioSnapshotRestoredEvent extends AudioRuntimeEventBase {
+    readonly type: 'snapshot:restored';
+    readonly snapshotId?: AudioSnapshotId;
+    readonly busCount: number;
+    readonly listenerCount: number;
+    readonly sourceCount: number;
+    readonly restorePlayback: boolean;
+}
+
+export interface AudioSystemLifecycleEvent extends AudioRuntimeEventBase {
+    readonly type: 'system:suspended' | 'system:resumed' | 'system:disposed';
+}
+
+export type AudioRuntimeEvent<TSchema extends AudioAssetSchema = AudioAssetSchema> =
+    | AudioBusUpsertedEvent
+    | AudioBusRemovedEvent
+    | AudioListenerUpsertedEvent
+    | AudioListenerRemovedEvent
+    | AudioListenerActivatedEvent
+    | AudioSourceStateEvent<TSchema>
+    | AudioSourceErrorEvent<TSchema>
+    | AudioSnapshotCapturedEvent
+    | AudioSnapshotRestoredEvent
+    | AudioSystemLifecycleEvent;
+
+export type AudioRuntimeEventChannel = 'audio:*' | AudioRuntimeEventType;
+
+export type AudioRuntimeEventMap<TSchema extends AudioAssetSchema = AudioAssetSchema> = Readonly<
+    {
+        'audio:*': AudioRuntimeEvent<TSchema>;
+    } & {
+        [TType in AudioRuntimeEventType]: Extract<AudioRuntimeEvent<TSchema>, { readonly type: TType }>;
+    }
+>;
+
+export type AudioEventEmitter<TSchema extends AudioAssetSchema = AudioAssetSchema> =
+    IEventEmitter<AudioRuntimeEventMap<TSchema>>;
+
+export interface AudioDiagnosticsCounters {
+    readonly emittedEventCount: number;
+    readonly busMutationCount: number;
+    readonly listenerMutationCount: number;
+    readonly sourceMutationCount: number;
+    readonly playbackCommandCount: number;
+    readonly playbackCompletionCount: number;
+    readonly playbackErrorCount: number;
+    readonly snapshotOperationCount: number;
+    readonly lifecycleTransitionCount: number;
+}
+
+export interface AudioDiagnosticsSnapshot<TSchema extends AudioAssetSchema = AudioAssetSchema> {
+    readonly capturedAtEpochMs: number;
+    readonly systemStatus: AudioSystemStatus;
+    readonly activeListenerId?: AudioListenerId;
+    readonly busCount: number;
+    readonly listenerCount: number;
+    readonly sourceCount: number;
+    readonly activePlaybackCount: number;
+    readonly counters: AudioDiagnosticsCounters;
+    readonly lastEvent?: AudioRuntimeEvent<TSchema>;
 }
 
 export type AudioSourceComponentCommand<TSchema extends AudioAssetSchema = AudioAssetSchema> =

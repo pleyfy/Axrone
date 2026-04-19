@@ -219,4 +219,89 @@ describe('AudioSystem integration', () => {
         expect(system.getSource('voice')?.playbackState).toBe('stopped');
         expect(system.getSource('voice')?.currentOffsetSeconds).toBe(0);
     });
+
+    it('emits runtime events for playback commands and lifecycle transitions', async () => {
+        const context = new FakeAudioContext();
+        const buffer = new FakeAudioBuffer(2, 96000, 48000) as unknown as AudioBuffer;
+        const system = createAudioSystem({
+            context: context as unknown as AudioContext,
+            listeners: [{ id: 'main', active: true }],
+        });
+        const observed: string[] = [];
+        const playedSourceIds: string[] = [];
+        const unsubscribeAll = system.events.on('audio:*', (event) => {
+            observed.push(event.type);
+        });
+        const unsubscribePlayed = system.events.on('source:played', (event) => {
+            playedSourceIds.push(event.source.id);
+        });
+
+        system.resetDiagnostics();
+        system.upsertBus({ id: 'music' });
+        system.upsertSource({
+            id: 'theme',
+            busId: 'music',
+            clip: {
+                kind: 'buffer',
+                buffer,
+            },
+        });
+        await system.playSource('theme');
+        context.advance(0.25);
+        system.pauseSource('theme');
+        context.flush();
+        await system.resumeSource('theme');
+        system.stopSource('theme');
+        context.flush();
+        await system.suspend();
+        await system.resume();
+
+        unsubscribeAll();
+        unsubscribePlayed();
+
+        expect(playedSourceIds).toEqual(['theme']);
+        expect(observed).toContain('bus:upserted');
+        expect(observed).toContain('source:upserted');
+        expect(observed).toContain('source:played');
+        expect(observed).toContain('source:paused');
+        expect(observed).toContain('source:resumed');
+        expect(observed).toContain('source:stopped');
+        expect(observed).toContain('source:ended');
+        expect(observed).toContain('system:suspended');
+        expect(observed).toContain('system:resumed');
+    });
+
+    it('captures diagnostics counters and the last emitted event snapshot', async () => {
+        const context = new FakeAudioContext();
+        const buffer = new FakeAudioBuffer(2, 48000, 48000) as unknown as AudioBuffer;
+        const system = createAudioSystem({
+            context: context as unknown as AudioContext,
+            listeners: [{ id: 'main', active: true }],
+        });
+
+        system.resetDiagnostics();
+        system.upsertBus({ id: 'sfx' });
+        system.upsertSource({
+            id: 'click',
+            busId: 'sfx',
+            clip: {
+                kind: 'buffer',
+                buffer,
+            },
+        });
+        await system.playSource('click');
+        context.advance(1);
+
+        const diagnostics = system.getDiagnostics();
+
+        expect(diagnostics.busCount).toBe(2);
+        expect(diagnostics.listenerCount).toBe(1);
+        expect(diagnostics.sourceCount).toBe(1);
+        expect(diagnostics.activePlaybackCount).toBe(0);
+        expect(diagnostics.counters.busMutationCount).toBe(1);
+        expect(diagnostics.counters.sourceMutationCount).toBe(1);
+        expect(diagnostics.counters.playbackCommandCount).toBe(1);
+        expect(diagnostics.counters.playbackCompletionCount).toBe(1);
+        expect(diagnostics.lastEvent?.type).toBe('source:ended');
+    });
 });

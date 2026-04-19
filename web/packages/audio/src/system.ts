@@ -11,6 +11,7 @@ import { toAudioClipSelector } from './asset';
 import { AudioBusRegistry } from './internal/bus-registry';
 import { AudioClipStore } from './internal/clip-store';
 import { AudioListenerRegistry } from './internal/listener-registry';
+import { AudioObservabilityRuntime } from './internal/observability';
 import { AudioPlaybackRuntime } from './internal/playback-runtime';
 import type {
     InternalPlayback,
@@ -19,7 +20,6 @@ import type {
 import { AudioSourceRegistry } from './internal/source-registry';
 import {
     clamp,
-    disconnectNode,
     effectivePlaybackRate,
     hasOwnKeys,
     isFiniteNumber,
@@ -29,6 +29,8 @@ import {
 } from './internal/shared';
 import {
     MASTER_AUDIO_BUS_ID,
+    normalizeAudioBusId,
+    normalizeAudioListenerId,
     normalizeAudioSnapshotId,
     normalizeAudioSourceId,
 } from './reference';
@@ -41,6 +43,8 @@ import type {
     AudioClipId,
     AudioClipInput,
     AudioClipRecord,
+    AudioDiagnosticsSnapshot,
+    AudioEventEmitter,
     AudioListenerDescriptor,
     AudioListenerId,
     AudioListenerPatch,
@@ -77,6 +81,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     readonly #clips: AudioClipStore<TSchema>;
     readonly #buses: AudioBusRegistry;
     readonly #listeners = new AudioListenerRegistry();
+    readonly #observability = new AudioObservabilityRuntime<TSchema>();
     readonly #playbackRuntime: AudioPlaybackRuntime<TSchema>;
     readonly #sources: AudioSourceRegistry<TSchema>;
 
@@ -148,6 +153,25 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         return activeListenerId ? this.#listeners.get(activeListenerId) : undefined;
     }
 
+    get events(): AudioEventEmitter<TSchema> {
+        return this.#observability.events;
+    }
+
+    getDiagnostics(): AudioDiagnosticsSnapshot<TSchema> {
+        return this.#observability.snapshot({
+            systemStatus: this.#status,
+            activeListenerId: this.#listeners.activeListenerId,
+            busCount: this.listBuses().length,
+            listenerCount: this.listListeners().length,
+            sourceCount: this.listSources().length,
+            activePlaybackCount: [...this.#sources.values()].filter((source) => !!source.active).length,
+        });
+    }
+
+    resetDiagnostics(): void {
+        this.#observability.reset();
+    }
+
     registerClip(id: AudioClipId | string, clip: AudioClipInput<TSchema>): AudioClipId {
         this.#assertNotDisposed();
         const selector = toAudioClipSelector(clip);
@@ -177,6 +201,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#assertNotDisposed();
         const state = this.#buses.upsert(definition);
         this.#syncAllSources();
+        this.#emit({
+            type: 'bus:upserted',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            bus: state,
+        });
         return state;
     }
 
@@ -198,6 +228,13 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             this.#reconnectPlaybackOutput(playback, nextBusId);
         });
         this.#syncAllSources();
+        this.#emit({
+            type: 'bus:removed',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            busId: this.#coerceBusId(id),
+            fallbackBusId: removed.fallbackBusId,
+        });
         return true;
     }
 
@@ -214,6 +251,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         const state = this.#listeners.upsert(descriptor);
         this.#syncListenerToContext();
         this.#syncAllSources();
+        this.#emit({
+            type: 'listener:upserted',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            listener: state,
+        });
         return state;
     }
 
@@ -233,6 +276,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
         this.#syncListenerToContext();
         this.#syncAllSources();
+        this.#emit({
+            type: 'listener:removed',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            listenerId: this.#coerceListenerId(id),
+        });
         return true;
     }
 
@@ -241,6 +290,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#listeners.setActive(id);
         this.#syncListenerToContext();
         this.#syncAllSources();
+        this.#emit({
+            type: 'listener:activated',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            listener: this.#listeners.get(id)!,
+        });
     }
 
     getListener(id: AudioListenerId | string): AudioListenerState | undefined {
@@ -267,7 +322,14 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             void this.playSource(source.id).catch(() => undefined);
         }
 
-        return this.#snapshotSource(source);
+        const state = this.#snapshotSource(source);
+        this.#emit({
+            type: 'source:upserted',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            source: state,
+        });
+        return state;
     }
 
     updateSource(id: AudioSourceId | string, patch: AudioSourcePatch<TSchema>): AudioSourceState<TSchema> {
@@ -286,7 +348,14 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
         this.stopSource(id);
         this.#disposePlayback(source);
+        const removedState = this.#snapshotSource(source);
         this.#sources.remove(id);
+        this.#emit({
+            type: 'source:removed',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            source: removedState,
+        });
         return true;
     }
 
@@ -302,6 +371,15 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     async playSource(
         id: AudioSourceId | string,
         request: AudioSourcePlayRequest<TSchema> = {}
+    ): Promise<AudioPlaybackHandle> {
+        return this.#playSourceInternal(id, request, 'source:played', 'play');
+    }
+
+    async #playSourceInternal(
+        id: AudioSourceId | string,
+        request: AudioSourcePlayRequest<TSchema>,
+        successEventType: 'source:played' | 'source:resumed',
+        operation: 'play' | 'resume'
     ): Promise<AudioPlaybackHandle> {
         this.#assertNotDisposed();
         const sourceId = normalizeAudioSourceId(id);
@@ -357,6 +435,15 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             });
         } catch (error) {
             source.playbackState = 'stopped';
+            this.#emit({
+                type: 'source:error',
+                contextTime: this.context.currentTime,
+                systemStatus: this.#status,
+                operation,
+                sourceId,
+                reason: error,
+                source: this.getSource(sourceId),
+            });
             throw new AudioSourceError(
                 'audio.source.play-failed',
                 `Failed to play audio source ${sourceId}`,
@@ -371,6 +458,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         source.durationSeconds = clip.durationSeconds;
 
         this.#syncSource(source);
+        this.#emit({
+            type: successEventType,
+            contextTime: this.context.currentTime,
+            systemStatus: 'running',
+            source: this.#snapshotSource(source),
+        });
 
         this.#status = 'running';
         return this.#createPlaybackHandle(source.id, sequence);
@@ -390,12 +483,24 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         const source = this.#sources.require(id);
         if (!source.active) {
             source.playbackState = 'paused';
+            this.#emit({
+                type: 'source:paused',
+                contextTime: this.context.currentTime,
+                systemStatus: this.#status,
+                source: this.#snapshotSource(source),
+            });
             return;
         }
 
         source.currentOffsetSeconds = this.#currentOffsetForSource(source);
         source.playbackState = 'paused';
         source.active.control = 'pausing';
+        this.#emit({
+            type: 'source:paused',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            source: this.#snapshotSource(source),
+        });
         try {
             source.active.sourceNode.stop();
         } catch {}
@@ -420,10 +525,15 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
                 clip: source.clip,
             }),
             async () =>
-                this.playSource(source.id, {
+                this.#playSourceInternal(
+                    source.id,
+                    {
                     offsetSeconds: source.currentOffsetSeconds,
                     replace: true,
-                })
+                    },
+                    'source:resumed',
+                    'resume'
+                )
         );
     }
 
@@ -432,6 +542,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         const source = this.#sources.require(id);
         source.currentOffsetSeconds = 0;
         source.playbackState = 'stopped';
+        this.#emit({
+            type: 'source:stopped',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            source: this.#snapshotSource(source),
+        });
         if (!source.active) {
             return;
         }
@@ -448,7 +564,18 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     captureMixerSnapshot(id?: string): AudioMixerSnapshot {
         this.#assertNotDisposed();
-        return this.#buses.captureSnapshot(id ? normalizeAudioSnapshotId(id) : undefined);
+        const snapshot = this.#buses.captureSnapshot(id ? normalizeAudioSnapshotId(id) : undefined);
+        this.#emit({
+            type: 'snapshot:captured',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            snapshotKind: 'mixer',
+            snapshotId: snapshot.id ? normalizeAudioSnapshotId(snapshot.id) : undefined,
+            busCount: snapshot.buses.length,
+            listenerCount: this.listListeners().length,
+            sourceCount: this.listSources().length,
+        });
+        return snapshot;
     }
 
     applyMixerSnapshot(
@@ -472,7 +599,7 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
     snapshot(): AudioSystemSnapshot<TSchema> {
         this.#assertNotDisposed();
-        return Object.freeze({
+        const snapshot = Object.freeze({
             version: 1,
             status: this.#status === 'disposed' ? 'idle' : this.#status,
             capturedAtEpochMs: Date.now(),
@@ -481,6 +608,17 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             listeners: Object.freeze(this.listListeners()),
             sources: Object.freeze(this.listSources()),
         });
+        this.#emit({
+            type: 'snapshot:captured',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            snapshotKind: 'system',
+            snapshotId: undefined,
+            busCount: snapshot.buses.length,
+            listenerCount: snapshot.listeners.length,
+            sourceCount: snapshot.sources.length,
+        });
+        return snapshot;
     }
 
     async restore(snapshot: AudioSystemSnapshot<TSchema>, options: AudioRestoreOptions = {}): Promise<void> {
@@ -568,6 +706,16 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
 
         this.#status = snapshot.status;
+        this.#emit({
+            type: 'snapshot:restored',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            snapshotId: undefined,
+            busCount: snapshot.buses.length,
+            listenerCount: snapshot.listeners.length,
+            sourceCount: snapshot.sources.length,
+            restorePlayback: options.restorePlayback ?? true,
+        });
     }
 
     async suspend(): Promise<void> {
@@ -579,6 +727,11 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
                 try {
                     await this.context.suspend();
                     this.#status = 'suspended';
+                    this.#emit({
+                        type: 'system:suspended',
+                        contextTime: this.context.currentTime,
+                        systemStatus: this.#status,
+                    });
                 } catch (error) {
                     throw new AudioLifecycleError(
                         'audio.context.suspend-failed',
@@ -601,6 +754,11 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
                 try {
                     await this.context.resume();
                     this.#status = 'running';
+                    this.#emit({
+                        type: 'system:resumed',
+                        contextTime: this.context.currentTime,
+                        systemStatus: this.#status,
+                    });
                 } catch (error) {
                     throw new AudioLifecycleError(
                         'audio.context.resume-failed',
@@ -625,6 +783,11 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#clips.clear();
         this.#disposed = true;
         this.#status = 'disposed';
+        this.#emit({
+            type: 'system:disposed',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+        });
 
         if (this.#ownsContext) {
             try {
@@ -707,6 +870,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         if (control === 'stopping') {
             source.playbackState = 'stopped';
             source.currentOffsetSeconds = 0;
+            this.#emit({
+                type: 'source:ended',
+                contextTime: this.context.currentTime,
+                systemStatus: this.#status,
+                source: this.#snapshotSource(source),
+            });
             if (this.#sources.isTransient(id)) {
                 this.#sources.remove(id);
             }
@@ -715,6 +884,12 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
 
         source.playbackState = 'stopped';
         source.currentOffsetSeconds = source.loop ? source.currentOffsetSeconds : 0;
+        this.#emit({
+            type: 'source:ended',
+            contextTime: this.context.currentTime,
+            systemStatus: this.#status,
+            source: this.#snapshotSource(source),
+        });
         if (this.#sources.isTransient(id)) {
             this.#sources.remove(id);
         }
@@ -768,6 +943,20 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
             descriptor.code as never,
             resolveAudioMessage(descriptor, this.#locale, this.#messageResolver)
         );
+    }
+
+    #emit(
+        event: Parameters<AudioObservabilityRuntime<TSchema>['emit']>[0]
+    ): void {
+        this.#observability.emit(event);
+    }
+
+    #coerceBusId(id: AudioBusId | string): AudioBusId {
+        return normalizeAudioBusId(id);
+    }
+
+    #coerceListenerId(id: AudioListenerId | string): AudioListenerId {
+        return normalizeAudioListenerId(id);
     }
 
     #assertNotDisposed(): void {
