@@ -1,5 +1,5 @@
 import { Vec3 } from '@axrone/numeric';
-import { TextureFormat } from '@axrone/render-webgl2';
+import { ColorSpace, TextureFormat } from '@axrone/render-webgl2';
 import type {
     AssetImportDiagnostic,
     GltfMaterialAsset,
@@ -150,6 +150,13 @@ const createFallbackTextureSource = (
     };
 };
 
+const resolveRuntimeTextureColorSpace = (
+    usageHints: readonly GltfTextureUsage[]
+): ColorSpace =>
+    usageHints.some((usage) => usage === 'baseColor' || usage === 'emissive')
+        ? ColorSpace.SRGB
+        : ColorSpace.LINEAR;
+
 const createCompressedRuntimeTextureDefinition = (
     key: string,
     asset: GltfTextureAsset
@@ -193,6 +200,7 @@ const createCompressedRuntimeTextureDefinition = (
                     samplerId: asset.sampler.id,
                     format: TextureFormat.RGBA8,
                     generateMipmaps: false,
+                    colorSpace: resolveRuntimeTextureColorSpace(asset.usageHints),
                     source: createFallbackTextureSource(asset.usageHints),
                 },
                 diagnostics: [
@@ -244,6 +252,7 @@ const createCompressedRuntimeTextureDefinition = (
                     samplerId: asset.sampler.id,
                     format: TextureFormat.RGBA8,
                     generateMipmaps: false,
+                    colorSpace: resolveRuntimeTextureColorSpace(asset.usageHints),
                     source: createFallbackTextureSource(asset.usageHints),
                 },
                 diagnostics: [
@@ -263,6 +272,7 @@ const createCompressedRuntimeTextureDefinition = (
             samplerId: asset.sampler.id,
             format: runtimeFormat,
             generateMipmaps: false,
+            colorSpace: resolveRuntimeTextureColorSpace(asset.usageHints),
             source: {
                 kind: 'compressed',
                 bytes,
@@ -351,6 +361,7 @@ export const createGltfTextureDefinitionFromTextureAsset = (
                 id: key,
                 samplerId: asset.sampler.id,
                 format: asset.runtimeFormat ?? TextureFormat.RGBA8,
+                colorSpace: resolveRuntimeTextureColorSpace(asset.usageHints),
                 source: {
                     kind: 'bytes',
                     bytes: new Uint8Array(asset.payload.bytes),
@@ -368,6 +379,7 @@ export const createGltfTextureDefinitionFromTextureAsset = (
                 id: key,
                 samplerId: asset.sampler.id,
                 format: asset.runtimeFormat ?? TextureFormat.RGBA8,
+                colorSpace: resolveRuntimeTextureColorSpace(asset.usageHints),
                 source: {
                     kind: 'url',
                     url: asset.payload.uri,
@@ -383,6 +395,7 @@ export const createGltfTextureDefinitionFromTextureAsset = (
             samplerId: asset.sampler.id,
             format: TextureFormat.RGBA8,
             generateMipmaps: false,
+            colorSpace: resolveRuntimeTextureColorSpace(asset.usageHints),
             source: createFallbackTextureSource(asset.usageHints),
         },
         diagnostics: [

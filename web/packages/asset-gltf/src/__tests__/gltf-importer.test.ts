@@ -2077,6 +2077,51 @@ describe('glTF importer', () => {
         );
     });
 
+    it('creates a neutral fallback material for glTF meshes that do not author materials', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+
+        const json = createTriangleJson();
+        delete json.materials;
+        delete json.images;
+        delete json.textures;
+        delete json.samplers;
+        delete json.meshes[0]?.primitives[0]?.material;
+
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(json, createBinaryBlob()),
+            uri: 'models/materialless-triangle.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const material = receipt.assets.find((entry) => entry.kind === 'gltf.material');
+        expect(material?.key).toContain('material/default');
+        expect(material?.data.definition.uniforms).toMatchObject({
+            _BaseColorFactor: [0.84, 0.84, 0.86, 1],
+            _MetallicFactor: 0.04,
+            _RoughnessFactor: 0.94,
+            _AlphaMode: 0,
+            _DoubleSided: 0,
+        });
+
+        const built = createGltfSceneSnapshot(database, receipt.primary.reference);
+        expect(built.snapshot.materials).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: material?.key,
+                    shaderId: 'gltf/pbr',
+                    uniforms: expect.objectContaining({
+                        _BaseColorFactor: [0.84, 0.84, 0.86, 1],
+                        _MetallicFactor: 0.04,
+                        _RoughnessFactor: 0.94,
+                    }),
+                }),
+            ])
+        );
+    });
+
     it('builds scene snapshots that preserve runtime-ready KTX2 textures as compressed scene sources', async () => {
         const binary = createBinaryBlob();
         const ktx2 = createKtx2Texture([

@@ -24,6 +24,8 @@ export interface SceneRenderRuntimeOptions {
     readonly gl: WebGL2RenderingContext;
     readonly resources: SceneResourceRuntime;
     readonly ambientLight: Vec3;
+    readonly skyLight: Vec3;
+    readonly groundLight: Vec3;
     readonly defaultClearColor: Vec4;
     readonly getActors: () => readonly Actor[];
     readonly createMeshResource: (definition: SceneMeshDefinition) => SceneMeshResource;
@@ -111,11 +113,34 @@ export class SceneRenderRuntime {
         };
     }
 
+    private _isBlendedRenderer(renderer: import('./components/mesh-renderer').MeshRenderer, renderPass: import('./render-pass-registry').SceneRenderPassResource): boolean {
+        if (renderer.materialId === null) {
+            return false;
+        }
+
+        const material = this._options.resources.materials.get(renderer.materialId);
+        if (!material) {
+            return false;
+        }
+
+        const shader = this._options.resources.shaders.get(material.shaderId);
+        if (!shader) {
+            return false;
+        }
+
+        return renderPass.blend ?? shader.blend;
+    }
+
     render(params: SceneRenderRuntimeParams): void {
         const renderFrame = this._renderFrameState.begin(params.frame);
         const actors = this._options.getActors();
         const camera = selectSceneCamera(actors);
-        const lighting = this._lightingCollector.collect(actors, this._options.ambientLight);
+        const lighting = this._lightingCollector.collect(
+            actors,
+            this._options.ambientLight,
+            this._options.skyLight,
+            this._options.groundLight
+        );
         const renderPasses = this._options.resources.renderPasses.getEnabledResources();
 
         if (renderPasses.length === 0) {
@@ -149,7 +174,11 @@ export class SceneRenderRuntime {
 
             const renderItems = this._renderItemCollector.collect(
                 actors,
-                renderPass.rendererPassId
+                renderPass.rendererPassId,
+                {
+                    cameraPosition: cameraFrame.position,
+                    isBlended: (renderer) => this._isBlendedRenderer(renderer, renderPass),
+                }
             );
             for (const item of renderItems) {
                 this._drawExecutor.execute(item, drawContext, renderFrame);

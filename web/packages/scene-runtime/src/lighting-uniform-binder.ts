@@ -20,6 +20,12 @@ export class SceneLightingUniformBinder {
             'u_AmbientLight',
             receiveLighting ? lighting.ambient : Vec3.ZERO
         );
+        this._writer.write(shader, 'u_SkyLight', receiveLighting ? lighting.skyLight : Vec3.ZERO);
+        this._writer.write(
+            shader,
+            'u_GroundLight',
+            receiveLighting ? lighting.groundLight : Vec3.ZERO
+        );
         this._writer.write(shader, 'u_LightDirection', lighting.directionalDirection);
         this._writer.write(
             shader,

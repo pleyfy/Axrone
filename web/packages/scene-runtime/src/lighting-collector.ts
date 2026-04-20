@@ -9,6 +9,8 @@ const DEFAULT_LIGHT_DIRECTION = Object.freeze(new Vec3(0, -1, 0));
 
 export interface SceneLightingState {
     readonly ambient: Vec3;
+    readonly skyLight: Vec3;
+    readonly groundLight: Vec3;
     hasDirectional: boolean;
     readonly directionalDirection: Vec3;
     readonly directionalColor: Vec3;
@@ -90,6 +92,8 @@ export class SceneLightingCollector {
         this._localLightOuterConesViews = this._createFloatViews(this._localLightOuterConesBase);
         this._state = {
             ambient: new Vec3(),
+            skyLight: new Vec3(),
+            groundLight: new Vec3(),
             hasDirectional: false,
             directionalDirection: new Vec3(0, -1, 0),
             directionalColor: new Vec3(),
@@ -119,9 +123,14 @@ export class SceneLightingCollector {
         };
     }
 
-    collect(actors: readonly Actor[], ambientBase: Readonly<Vec3>): SceneLightingState {
+    collect(
+        actors: readonly Actor[],
+        ambientBase: Readonly<Vec3>,
+        skyLightBase: Readonly<Vec3>,
+        groundLightBase: Readonly<Vec3>
+    ): SceneLightingState {
         const state = this._state;
-        this._resetState(ambientBase);
+        this._resetState(ambientBase, skyLightBase, groundLightBase);
         let hasFallbackDirectional = false;
 
         for (const actor of actors) {
@@ -174,11 +183,21 @@ export class SceneLightingCollector {
         return state;
     }
 
-    private _resetState(ambientBase: Readonly<Vec3>): void {
+    private _resetState(
+        ambientBase: Readonly<Vec3>,
+        skyLightBase: Readonly<Vec3>,
+        groundLightBase: Readonly<Vec3>
+    ): void {
         const state = this._state;
         state.ambient.x = ambientBase.x;
         state.ambient.y = ambientBase.y;
         state.ambient.z = ambientBase.z;
+        state.skyLight.x = skyLightBase.x;
+        state.skyLight.y = skyLightBase.y;
+        state.skyLight.z = skyLightBase.z;
+        state.groundLight.x = groundLightBase.x;
+        state.groundLight.y = groundLightBase.y;
+        state.groundLight.z = groundLightBase.z;
         state.hasDirectional = false;
         resetVec3(
             state.directionalDirection,

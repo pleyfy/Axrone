@@ -17,7 +17,7 @@ import type { SpriteRenderer } from './components/sprite-renderer';
 import type { SpotLight } from './components/spot-light';
 import type { Hierarchy } from '@axrone/ecs-runtime';
 import type { Transform } from '@axrone/ecs-runtime';
-import type { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
+import type { ColorSpace, FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type { SceneRuntimeProfile } from './scene-profile';
 
 export type SceneMeshSemantic =
@@ -149,6 +149,7 @@ export interface SceneTextureDefinition {
     readonly format?: TextureFormat;
     readonly generateMipmaps?: boolean;
     readonly samplerId?: string;
+    readonly colorSpace?: ColorSpace;
 }
 
 export type SceneTextureBindingDefinition =
@@ -229,6 +230,8 @@ export interface SceneOptions<R extends ComponentRegistry = Record<string, never
     readonly maxSubSteps?: number;
     readonly clearColor?: Vec4 | readonly [number, number, number, number];
     readonly ambientLight?: Vec3 | readonly [number, number, number];
+    readonly skyLight?: Vec3 | readonly [number, number, number];
+    readonly groundLight?: Vec3 | readonly [number, number, number];
     readonly renderPasses?: readonly SceneRenderPassDefinition[];
 }
 

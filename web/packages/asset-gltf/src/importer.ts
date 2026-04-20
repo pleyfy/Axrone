@@ -2347,9 +2347,12 @@ const createDefaultMaterialDefinition = (
         id: '',
         shaderId,
         uniforms: Object.freeze({
-            _BaseColorFactor: Object.freeze([1, 1, 1, 1]),
-            _MetallicFactor: 1,
-            _RoughnessFactor: 1,
+            // Missing glTF materials should fall back to a neutral dielectric surface,
+            // not a fully metallic one, otherwise untextured characters read as black
+            // and skinning/shading artifacts become dramatically overemphasized.
+            _BaseColorFactor: Object.freeze([0.84, 0.84, 0.86, 1]),
+            _MetallicFactor: 0.04,
+            _RoughnessFactor: 0.94,
             _EmissiveFactor: Object.freeze([0, 0, 0]),
             _AlphaMode: 0,
             _AlphaCutoff: 0.5,

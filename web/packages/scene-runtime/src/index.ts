@@ -75,11 +75,15 @@ export {
 export {
 	DEFAULT_SCENE_AMBIENT_LIGHT,
 	DEFAULT_SCENE_CLEAR_COLOR,
+	DEFAULT_SCENE_GROUND_LIGHT,
 	DEFAULT_SCENE_HEIGHT,
 	DEFAULT_SCENE_RENDER_PASS_ID,
+	DEFAULT_SCENE_SKY_LIGHT,
 	DEFAULT_SCENE_WIDTH,
 	resolveSceneAmbientLight,
 	resolveSceneClearColor,
+	resolveSceneGroundLight,
+	resolveSceneSkyLight,
 } from './scene-runtime-defaults';
 export type {
 	SceneSnapshotActorHost,
