@@ -44,4 +44,28 @@ describe('SceneCameraFrameStateCollector', () => {
 
         expect(collector.collect(undefined, 1280, 720)).toBeNull();
     });
+
+    it('uses horizontal field of view when requested by the camera', () => {
+        const world = new World(createSceneRegistry());
+        const collector = new SceneCameraFrameStateCollector();
+        const horizontalActor = new Actor(world);
+        const verticalActor = new Actor(world);
+        const horizontalCamera = horizontalActor.addComponent(Camera, {
+            fieldOfView: 90,
+            fieldOfViewAxis: 'horizontal',
+        });
+        const verticalCamera = verticalActor.addComponent(Camera, {
+            fieldOfView: 90,
+            fieldOfViewAxis: 'vertical',
+        });
+
+        const horizontalState = collector.collect(horizontalCamera, 1920, 1080);
+
+        expect(horizontalState?.projectionMatrix.equals(horizontalCamera.getProjectionMatrix(1920 / 1080))).toBe(
+            true
+        );
+        expect(
+            horizontalCamera.getProjectionMatrix(1920 / 1080).equals(verticalCamera.getProjectionMatrix(1920 / 1080))
+        ).toBe(false);
+    });
 });

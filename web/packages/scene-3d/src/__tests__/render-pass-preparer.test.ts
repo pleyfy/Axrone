@@ -68,4 +68,36 @@ describe('SceneRenderPassPreparer', () => {
         expect(gl.clearColor).toHaveBeenCalledWith(0.8, 0.7, 0.6, 1);
         expect(gl.clearDepth).toHaveBeenCalledWith(0.5);
     });
+
+    it('narrows pass clear flags using camera clear settings', () => {
+        const gl = {
+            COLOR_BUFFER_BIT: 1,
+            DEPTH_BUFFER_BIT: 2,
+            clearColor: vi.fn(),
+            clearDepth: vi.fn(),
+            clear: vi.fn(),
+        } as unknown as WebGL2RenderingContext;
+
+        const preparer = new SceneRenderPassPreparer(gl, new Vec4(0.1, 0.2, 0.3, 1));
+        preparer.prepare(
+            {
+                id: 'main',
+                order: 0,
+                rendererPassId: 'main',
+                enabled: true,
+                clearFlags: ['color', 'depth'],
+                clearColor: null,
+                clearDepth: null,
+            },
+            {
+                clearFlags: ['depth'],
+                clearDepth: 0.25,
+                clearColor: new Vec4(0.8, 0.7, 0.6, 1),
+            } as any
+        );
+
+        expect(gl.clearColor).not.toHaveBeenCalled();
+        expect(gl.clearDepth).toHaveBeenCalledWith(0.25);
+        expect(gl.clear).toHaveBeenCalledWith(2);
+    });
 });
