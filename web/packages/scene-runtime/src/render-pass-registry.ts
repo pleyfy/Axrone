@@ -9,6 +9,7 @@ export interface SceneRenderPassResource {
     readonly id: string;
     readonly order: number;
     readonly rendererPassId: string;
+    readonly materialPassId: string | null;
     readonly enabled: boolean;
     readonly clearFlags: readonly SceneClearFlag[];
     readonly clearColor: Vec4 | null;
@@ -39,6 +40,7 @@ const toHandle = (renderPass: SceneRenderPassResource): SceneRenderPassHandle =>
     id: renderPass.id,
     order: renderPass.order,
     rendererPassId: renderPass.rendererPassId,
+    materialPassId: renderPass.materialPassId,
     enabled: renderPass.enabled,
 });
 
@@ -89,6 +91,7 @@ export class SceneRenderPassRegistry {
             id: definition.id,
             order: definition.order ?? this._resources.size,
             rendererPassId: definition.rendererPassId ?? definition.id,
+            materialPassId: definition.materialPassId ?? null,
             enabled: definition.enabled ?? true,
             clearFlags:
                 definition.clearFlags ??

@@ -7,6 +7,7 @@ import { SceneDrawExecutor } from './draw-executor';
 import { SceneFrameUniformBinder } from './frame-uniform-binder';
 import { SceneLightingCollector } from './lighting-collector';
 import { SceneLightingUniformBinder } from './lighting-uniform-binder';
+import { resolveSceneMaterialPass } from './material-registry';
 import { SceneMaterialTextureBinder } from './material-texture-binder';
 import { SceneMorphMeshRuntime } from './morph-mesh-runtime';
 import { SceneRenderFrameState } from './render-frame-state';
@@ -123,12 +124,17 @@ export class SceneRenderRuntime {
             return false;
         }
 
+        const materialPass = resolveSceneMaterialPass(material, renderPass.materialPassId);
+        if (renderPass.materialPassId !== null && !materialPass) {
+            return false;
+        }
+
         const shader = this._options.resources.shaders.get(material.shaderId);
         if (!shader) {
             return false;
         }
 
-        return renderPass.blend ?? shader.blend;
+        return this._renderStateApplier.resolveBlendEnabled(shader, renderPass, materialPass);
     }
 
     render(params: SceneRenderRuntimeParams): void {

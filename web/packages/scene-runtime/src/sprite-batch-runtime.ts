@@ -12,6 +12,7 @@ import {
 import type { SceneCameraFrameState } from './camera-frame-state';
 import { SpriteMask } from './components/sprite-mask';
 import { SceneMeshError } from './errors';
+import { resolveSceneMaterialPass } from './material-registry';
 import type { SceneMaterialTextureUniformSetter } from './material-texture-binder';
 import type { SceneRenderFrameState } from './render-frame-state';
 import type { SceneRenderPassResource } from './render-pass-registry';
@@ -117,7 +118,10 @@ interface SceneResolvedSpriteMaskState {
 export interface SceneSpriteBatchRuntimeOptions {
     readonly gl: WebGL2RenderingContext;
     readonly resources: SceneResourceRuntime;
-    readonly renderStateApplier: Pick<SceneRenderStateApplier, 'apply'>;
+    readonly renderStateApplier: Pick<
+        SceneRenderStateApplier,
+        'apply' | 'resolvePrimitiveMode' | 'resolvePrimitiveTopology'
+    >;
     readonly uniformWriter: SceneUniformWriteTarget;
     readonly materialTextureBinder: Pick<
         import('./material-texture-binder').SceneMaterialTextureBinder,
@@ -389,12 +393,17 @@ export class SceneSpriteBatchRuntime {
             return;
         }
 
+        const materialPass = resolveSceneMaterialPass(material, params.renderPass.materialPassId);
+        if (params.renderPass.materialPassId !== null && !materialPass) {
+            return;
+        }
+
         const shader = this._options.resources.shaders.get(material.shaderId);
         if (!shader || !this._isSpriteShader(shader)) {
             return;
         }
 
-        this._options.renderStateApplier.apply(shader, params.renderPass);
+        this._options.renderStateApplier.apply(shader, params.renderPass, materialPass);
         this._options.gl.useProgram(shader.program);
         this._options.uniformWriter.write(
             shader,
@@ -414,12 +423,23 @@ export class SceneSpriteBatchRuntime {
         }
 
         this._options.gl.drawElements(
-            this._options.gl.TRIANGLES,
+            this._options.renderStateApplier.resolvePrimitiveMode(
+                this._options.gl.TRIANGLES,
+                materialPass
+            ),
             batch.indexCount,
             indexType,
             batch.indexOffset * this._resolveIndexByteSize(indexType)
         );
-        params.frameState.recordTriangles(batch.quadCount * 2);
+        params.frameState.recordDraw({
+            topology: materialPass?.primitive
+                ? this._options.renderStateApplier.resolvePrimitiveTopology(
+                      materialPass.primitive
+                  )
+                : 'triangles',
+            indexCount: batch.indexCount,
+            vertexCount: 0,
+        });
         this._options.materialTextureBinder.unbind();
     }
 
@@ -438,7 +458,7 @@ export class SceneSpriteBatchRuntime {
             return;
         }
 
-        this._options.renderStateApplier.apply(shader, params.renderPass);
+        this._options.renderStateApplier.apply(shader, params.renderPass, null);
         this._options.gl.useProgram(shader.program);
         this._options.uniformWriter.write(
             shader,
@@ -455,7 +475,11 @@ export class SceneSpriteBatchRuntime {
             indexType,
             batch.indexOffset * this._resolveIndexByteSize(indexType)
         );
-        params.frameState.recordTriangles(batch.quadCount * 2);
+        params.frameState.recordDraw({
+            topology: 'triangles',
+            indexCount: batch.indexCount,
+            vertexCount: 0,
+        });
         this._options.gl.bindSampler(0, null);
         this._options.gl.activeTexture(this._options.gl.TEXTURE0);
         this._options.gl.bindTexture(this._options.gl.TEXTURE_2D, null);

@@ -1,7 +1,13 @@
 import { cloneTextureBinding, decodeSceneValue, encodeSceneValue } from './serialization';
 import type {
+    SceneMaterialBlendStateDefinition,
+    SceneMaterialBlendTargetStateDefinition,
     SceneMaterialDefinition,
+    SceneMaterialDepthStencilStateDefinition,
     SceneMaterialHandle,
+    SceneMaterialPassDefinition,
+    SceneMaterialRasterizerStateDefinition,
+    SceneMaterialStencilFaceStateDefinition,
     SceneTextureBindingDefinition,
     SceneUniformValue,
 } from './types';
@@ -23,9 +29,79 @@ export interface SceneMaterialResource {
     readonly shaderId: string;
     readonly uniforms: Map<string, SceneUniformValue>;
     readonly textureBindings: Map<string, SceneMaterialTextureBinding>;
+    readonly passes: readonly SceneMaterialPassDefinition[];
 }
 
 const cloneSceneValue = <T>(value: T): T => decodeSceneValue(encodeSceneValue(value)) as T;
+
+const cloneStencilFaceStateDefinition = (
+    definition: SceneMaterialStencilFaceStateDefinition | undefined
+): SceneMaterialStencilFaceStateDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+          }
+        : undefined;
+
+const cloneRasterizerStateDefinition = (
+    definition: SceneMaterialRasterizerStateDefinition | undefined
+): SceneMaterialRasterizerStateDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+          }
+        : undefined;
+
+const cloneDepthStencilStateDefinition = (
+    definition: SceneMaterialDepthStencilStateDefinition | undefined
+): SceneMaterialDepthStencilStateDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+              front: cloneStencilFaceStateDefinition(definition.front),
+              back: cloneStencilFaceStateDefinition(definition.back),
+          }
+        : undefined;
+
+const cloneBlendTargetStateDefinition = (
+    definition: SceneMaterialBlendTargetStateDefinition
+): SceneMaterialBlendTargetStateDefinition => ({
+    ...definition,
+    colorWriteMask: definition.colorWriteMask
+        ? ([...definition.colorWriteMask] as readonly [boolean, boolean, boolean, boolean])
+        : undefined,
+});
+
+const cloneBlendStateDefinition = (
+    definition: SceneMaterialBlendStateDefinition | undefined
+): SceneMaterialBlendStateDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+              blendColor: definition.blendColor
+                  ? ([...definition.blendColor] as readonly [number, number, number, number])
+                  : undefined,
+              targets: definition.targets
+                  ? Object.freeze(definition.targets.map(cloneBlendTargetStateDefinition))
+                  : undefined,
+          }
+        : undefined;
+
+const cloneSceneMaterialPassDefinition = (
+    definition: SceneMaterialPassDefinition
+): SceneMaterialPassDefinition => ({
+    ...definition,
+    rasterizerState: cloneRasterizerStateDefinition(definition.rasterizerState),
+    depthStencilState: cloneDepthStencilStateDefinition(definition.depthStencilState),
+    blendState: cloneBlendStateDefinition(definition.blendState),
+});
+
+const cloneSceneMaterialPassDefinitions = (
+    definitions: readonly SceneMaterialPassDefinition[] | undefined
+): readonly SceneMaterialPassDefinition[] | undefined =>
+    definitions
+        ? Object.freeze(definitions.map(cloneSceneMaterialPassDefinition))
+        : undefined;
 
 const compareTextureBindings = (
     left: readonly [string, SceneMaterialTextureBinding],
@@ -40,6 +116,7 @@ const toHandle = (material: SceneMaterialResource): SceneMaterialHandle => ({
     id: material.id,
     shaderId: material.shaderId,
     textureBindings: [...material.textureBindings.keys()],
+    passIds: material.passes.map((pass) => pass.id),
 });
 
 const createTextureSlots = (
@@ -110,7 +187,19 @@ export const cloneSceneMaterialDefinition = (
               ])
           )
         : undefined,
+    passes: cloneSceneMaterialPassDefinitions(definition.passes),
 });
+
+export const resolveSceneMaterialPass = (
+    material: Pick<SceneMaterialResource, 'passes'>,
+    materialPassId: string | null | undefined
+): SceneMaterialPassDefinition | null => {
+    if (materialPassId === null || materialPassId === undefined) {
+        return material.passes[0] ?? null;
+    }
+
+    return material.passes.find((pass) => pass.id === materialPassId) ?? null;
+};
 
 export class SceneMaterialRegistry {
     private readonly _resources = new Map<string, SceneMaterialResource>();
@@ -133,6 +222,7 @@ export class SceneMaterialRegistry {
                     normalizeSceneTextureBinding(binding),
                 ])
             ),
+            passes: cloneSceneMaterialPassDefinitions(definition.passes) ?? Object.freeze([]),
         };
 
         this._resources.set(resource.id, resource);

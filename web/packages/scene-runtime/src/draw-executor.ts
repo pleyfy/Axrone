@@ -1,6 +1,9 @@
 import type { SceneCameraFrameState } from './camera-frame-state';
 import type { SceneLightingState } from './lighting-collector';
-import type { SceneMaterialResource } from './material-registry';
+import {
+    resolveSceneMaterialPass,
+    type SceneMaterialResource,
+} from './material-registry';
 import type { SceneMeshResource } from './mesh-registry';
 import type { SceneMorphMeshRuntime } from './morph-mesh-runtime';
 import type { SceneRenderFrameState } from './render-frame-state';
@@ -58,7 +61,10 @@ interface SceneDrawExecutorDependencies {
     readonly gl: WebGL2RenderingContext;
     readonly resources: SceneDrawExecutorResources;
     readonly morphMeshRuntime: Pick<SceneMorphMeshRuntime, 'resolve'>;
-    readonly renderStateApplier: Pick<SceneRenderStateApplier, 'apply'>;
+    readonly renderStateApplier: Pick<
+        SceneRenderStateApplier,
+        'apply' | 'resolvePrimitiveMode' | 'resolvePrimitiveTopology'
+    >;
     readonly frameUniformBinder: Pick<SceneFrameUniformBinder, 'apply'>;
     readonly lightingUniformBinder: Pick<SceneLightingUniformBinder, 'apply'>;
     readonly skinningUniformBinder: Pick<SceneSkinningUniformBinder, 'apply'>;
@@ -90,6 +96,11 @@ export class SceneDrawExecutor {
             return;
         }
 
+        const materialPass = resolveSceneMaterialPass(material, context.renderPass.materialPassId);
+        if (context.renderPass.materialPassId !== null && !materialPass) {
+            return;
+        }
+
         frameState.markActiveRenderer(item.renderer.id);
 
         const shader = this._dependencies.resources.shaders.get(material.shaderId);
@@ -97,7 +108,7 @@ export class SceneDrawExecutor {
             return;
         }
 
-        this._dependencies.renderStateApplier.apply(shader, context.renderPass);
+        this._dependencies.renderStateApplier.apply(shader, context.renderPass, materialPass);
         this._dependencies.gl.useProgram(shader.program);
         this._dependencies.gl.bindVertexArray(mesh.vertexArray);
         this._dependencies.applyMissingVertexAttributeDefaults(mesh);
@@ -136,13 +147,26 @@ export class SceneDrawExecutor {
             );
         }
 
+        const primitiveMode = this._dependencies.renderStateApplier.resolvePrimitiveMode(
+            mesh.mode,
+            materialPass
+        );
+
         if (mesh.indexBuffer && mesh.indexType !== null && mesh.indexCount > 0) {
-            this._dependencies.gl.drawElements(mesh.mode, mesh.indexCount, mesh.indexType, 0);
+            this._dependencies.gl.drawElements(primitiveMode, mesh.indexCount, mesh.indexType, 0);
         } else {
-            this._dependencies.gl.drawArrays(mesh.mode, 0, mesh.vertexCount);
+            this._dependencies.gl.drawArrays(primitiveMode, 0, mesh.vertexCount);
         }
 
-        frameState.recordDraw(mesh);
+        frameState.recordDraw({
+            topology: materialPass?.primitive
+                ? this._dependencies.renderStateApplier.resolvePrimitiveTopology(
+                      materialPass.primitive
+                  )
+                : mesh.topology,
+            indexCount: mesh.indexCount,
+            vertexCount: mesh.vertexCount,
+        });
         this._dependencies.materialTextureBinder.unbind();
     }
 }

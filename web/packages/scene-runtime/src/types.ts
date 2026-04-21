@@ -160,6 +160,114 @@ export type SceneTextureBindingDefinition =
           readonly unit?: number;
       };
 
+export type SceneMaterialPassPrimitive = 'triangle-list' | 'line-list' | 'point-list';
+export type SceneMaterialPolygonMode = 'fill' | 'line' | 'point';
+export type SceneMaterialShadeModel = 'gouraud' | 'flat';
+export type SceneMaterialCullMode = 'none' | 'front' | 'back';
+export type SceneMaterialFrontFace = 'ccw' | 'cw';
+export type SceneMaterialCompareFunction =
+    | 'never'
+    | 'less'
+    | 'equal'
+    | 'lequal'
+    | 'greater'
+    | 'notequal'
+    | 'gequal'
+    | 'always';
+export type SceneMaterialStencilOperation =
+    | 'keep'
+    | 'zero'
+    | 'replace'
+    | 'invert'
+    | 'incr'
+    | 'incr-wrap'
+    | 'decr'
+    | 'decr-wrap';
+export type SceneMaterialBlendFactor =
+    | 'zero'
+    | 'one'
+    | 'src-color'
+    | 'one-minus-src-color'
+    | 'dst-color'
+    | 'one-minus-dst-color'
+    | 'src-alpha'
+    | 'one-minus-src-alpha'
+    | 'dst-alpha'
+    | 'one-minus-dst-alpha'
+    | 'constant-color'
+    | 'one-minus-constant-color'
+    | 'constant-alpha'
+    | 'one-minus-constant-alpha'
+    | 'src-alpha-saturate';
+export type SceneMaterialBlendOperation =
+    | 'add'
+    | 'subtract'
+    | 'reverse-subtract'
+    | 'min'
+    | 'max';
+
+export interface SceneMaterialStencilFaceStateDefinition {
+    readonly stencilTest?: boolean;
+    readonly stencilFunc?: SceneMaterialCompareFunction;
+    readonly stencilReadMask?: number;
+    readonly stencilWriteMask?: number;
+    readonly stencilFailOp?: SceneMaterialStencilOperation;
+    readonly stencilZFailOp?: SceneMaterialStencilOperation;
+    readonly stencilPassOp?: SceneMaterialStencilOperation;
+    readonly stencilRef?: number;
+}
+
+export interface SceneMaterialRasterizerStateDefinition {
+    readonly discard?: boolean;
+    readonly polygonMode?: SceneMaterialPolygonMode;
+    readonly shadeModel?: SceneMaterialShadeModel;
+    readonly cullMode?: SceneMaterialCullMode;
+    readonly frontFace?: SceneMaterialFrontFace;
+    readonly depthBias?: number;
+    readonly depthBiasClamp?: number;
+    readonly depthBiasSlopeScale?: number;
+    readonly depthClip?: boolean;
+    readonly multisample?: boolean;
+    readonly lineWidth?: number;
+}
+
+export interface SceneMaterialDepthStencilStateDefinition {
+    readonly depthTest?: boolean;
+    readonly depthWrite?: boolean;
+    readonly depthFunc?: SceneMaterialCompareFunction;
+    readonly front?: SceneMaterialStencilFaceStateDefinition;
+    readonly back?: SceneMaterialStencilFaceStateDefinition;
+}
+
+export interface SceneMaterialBlendTargetStateDefinition {
+    readonly blend?: boolean;
+    readonly srcColorFactor?: SceneMaterialBlendFactor;
+    readonly dstColorFactor?: SceneMaterialBlendFactor;
+    readonly colorOp?: SceneMaterialBlendOperation;
+    readonly srcAlphaFactor?: SceneMaterialBlendFactor;
+    readonly dstAlphaFactor?: SceneMaterialBlendFactor;
+    readonly alphaOp?: SceneMaterialBlendOperation;
+    readonly colorWriteMask?: readonly [boolean, boolean, boolean, boolean];
+}
+
+export interface SceneMaterialBlendStateDefinition {
+    readonly alphaToCoverage?: boolean;
+    readonly independentBlend?: boolean;
+    readonly blendColor?: readonly [number, number, number, number];
+    readonly targets?: readonly SceneMaterialBlendTargetStateDefinition[];
+}
+
+export interface SceneMaterialPassDefinition {
+    readonly id: string;
+    readonly phase?: string;
+    readonly priority?: number;
+    readonly primitive?: SceneMaterialPassPrimitive;
+    readonly stage?: string;
+    readonly rasterizerState?: SceneMaterialRasterizerStateDefinition;
+    readonly depthStencilState?: SceneMaterialDepthStencilStateDefinition;
+    readonly blendState?: SceneMaterialBlendStateDefinition;
+}
+
 export interface SceneShaderDefinition {
     readonly id: string;
     readonly vertexSource?: string;
@@ -177,6 +285,7 @@ export interface SceneMaterialDefinition {
     readonly shaderId: string;
     readonly uniforms?: Readonly<Record<string, SceneUniformValue>>;
     readonly textures?: Readonly<Record<string, SceneTextureBindingDefinition>>;
+    readonly passes?: readonly SceneMaterialPassDefinition[];
 }
 
 export interface SceneRenderPassDefinition {
@@ -184,6 +293,7 @@ export interface SceneRenderPassDefinition {
     readonly order?: number;
     readonly enabled?: boolean;
     readonly rendererPassId?: string;
+    readonly materialPassId?: string;
     readonly clearFlags?: readonly SceneClearFlag[];
     readonly clearColor?: Vec4 | readonly [number, number, number, number] | null;
     readonly clearDepth?: number | null;
@@ -251,6 +361,7 @@ export interface SceneMaterialHandle {
     readonly id: string;
     readonly shaderId: string;
     readonly textureBindings: readonly string[];
+    readonly passIds: readonly string[];
 }
 
 export interface SceneTextureHandle {
@@ -285,6 +396,7 @@ export interface SceneRenderPassHandle {
     readonly id: string;
     readonly order: number;
     readonly rendererPassId: string;
+    readonly materialPassId: string | null;
     readonly enabled: boolean;
 }
 
