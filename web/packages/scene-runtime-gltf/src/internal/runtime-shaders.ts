@@ -4,6 +4,11 @@ import {
     type RenderShaderEffectDefinition,
     type RenderShaderPropertyDefinition,
 } from '@axrone/scene-runtime';
+import type {
+    SceneMaterialPassDefinition,
+    SceneMaterialSurfaceDefinition,
+    SceneMaterialSurfaceFeaturesDefinition,
+} from '@axrone/scene-runtime';
 
 const GLTF_SHADER_PBR_ID = 'gltf/pbr';
 const GLTF_SHADER_UNLIT_ID = 'gltf/unlit';
@@ -337,6 +342,162 @@ const isGltfBlendAlphaMode = (uniforms: GltfMaterialUniformMap | undefined): boo
 
 const isGltfDoubleSided = (uniforms: GltfMaterialUniformMap | undefined): boolean =>
     normalizeNumericUniform(uniforms?._DoubleSided, 0) >= 0.5;
+
+export const createGltfRuntimeSurfaceFeatures = (
+    shaderId: string,
+    uniforms?: GltfMaterialUniformMap
+): SceneMaterialSurfaceFeaturesDefinition => {
+    const unlit = shaderId.startsWith(GLTF_SHADER_UNLIT_ID);
+
+    return {
+        useVertexColor: false,
+        hasSecondUv: normalizeNumericUniform(uniforms?._BaseColorTexture_TexCoord, 0) === 1 ||
+            normalizeNumericUniform(uniforms?._MetallicRoughnessTexture_TexCoord, 0) === 1 ||
+            normalizeNumericUniform(uniforms?._NormalTexture_TexCoord, 0) === 1 ||
+            normalizeNumericUniform(uniforms?._OcclusionTexture_TexCoord, 0) === 1 ||
+            normalizeNumericUniform(uniforms?._EmissiveTexture_TexCoord, 0) === 1,
+        useNormalMap: !unlit && normalizeNumericUniform(uniforms?._NormalTexture_TexCoord, -1) >= 0,
+        useTwoSided: isGltfDoubleSided(uniforms),
+        useAlbedoMap: normalizeNumericUniform(uniforms?._BaseColorTexture_TexCoord, -1) >= 0,
+        usePbrMap: false,
+        useMetallicRoughnessMap:
+            !unlit && normalizeNumericUniform(uniforms?._MetallicRoughnessTexture_TexCoord, -1) >= 0,
+        useOcclusionMap: !unlit && normalizeNumericUniform(uniforms?._OcclusionTexture_TexCoord, -1) >= 0,
+        useEmissiveMap: !unlit && normalizeNumericUniform(uniforms?._EmissiveTexture_TexCoord, -1) >= 0,
+        useAlphaTest: normalizeNumericUniform(uniforms?._AlphaMode, 0) >= 0.5 && normalizeNumericUniform(uniforms?._AlphaMode, 0) < 1.5,
+    };
+};
+
+export const createGltfRuntimeSurfaceDefinition = (
+    shaderId: string,
+    uniforms?: GltfMaterialUniformMap
+): SceneMaterialSurfaceDefinition => ({
+    shadingModel: shaderId.startsWith(GLTF_SHADER_UNLIT_ID) ? 'unlit' : 'pbr',
+    alphaMode:
+        normalizeNumericUniform(uniforms?._AlphaMode, 0) >= 1.5
+            ? 'blend'
+            : normalizeNumericUniform(uniforms?._AlphaMode, 0) >= 0.5
+              ? 'mask'
+              : 'opaque',
+    alphaCutoff: normalizeNumericUniform(uniforms?._AlphaCutoff, 0.5),
+    pbrUvSet: 0,
+    features: createGltfRuntimeSurfaceFeatures(shaderId, uniforms),
+    tilingOffset: [1, 1, 0, 0],
+    albedo: Array.isArray(uniforms?._BaseColorFactor)
+        ? [
+              Number((uniforms?._BaseColorFactor as readonly unknown[])[0] ?? 1),
+              Number((uniforms?._BaseColorFactor as readonly unknown[])[1] ?? 1),
+              Number((uniforms?._BaseColorFactor as readonly unknown[])[2] ?? 1),
+              Number((uniforms?._BaseColorFactor as readonly unknown[])[3] ?? 1),
+          ]
+        : [1, 1, 1, 1],
+    normalScale: normalizeNumericUniform(uniforms?._NormalTexture_Scale, 1),
+    occlusion: normalizeNumericUniform(uniforms?._OcclusionTexture_Strength, 1),
+    roughness: normalizeNumericUniform(uniforms?._RoughnessFactor, 1),
+    metallic: normalizeNumericUniform(uniforms?._MetallicFactor, 1),
+    specularIntensity: 1,
+    emissive: Array.isArray(uniforms?._EmissiveFactor)
+        ? [
+              Number((uniforms?._EmissiveFactor as readonly unknown[])[0] ?? 0),
+              Number((uniforms?._EmissiveFactor as readonly unknown[])[1] ?? 0),
+              Number((uniforms?._EmissiveFactor as readonly unknown[])[2] ?? 0),
+          ]
+        : [0, 0, 0],
+    emissiveScale: [1, 1, 1],
+});
+
+export const createGltfRuntimeMaterialPasses = (
+    uniforms?: GltfMaterialUniformMap
+): readonly SceneMaterialPassDefinition[] => {
+    const alphaMode = normalizeNumericUniform(uniforms?._AlphaMode, 0);
+    const blendEnabled = alphaMode >= 1.5;
+    const alphaTestEnabled = alphaMode >= 0.5 && alphaMode < 1.5;
+    const doubleSided = isGltfDoubleSided(uniforms);
+    const cullMode = doubleSided ? 'none' : 'back';
+
+    return Object.freeze([
+        {
+            id: 'main',
+            phase: 'default',
+            primitive: 'triangle-list',
+            rasterizerState: {
+                cullMode,
+                frontFace: 'ccw',
+            },
+            depthStencilState: {
+                depthTest: true,
+                depthWrite: !blendEnabled,
+                depthFunc: 'less',
+            },
+            blendState: {
+                targets: [
+                    {
+                        blend: blendEnabled,
+                        srcColorFactor: 'src-alpha',
+                        dstColorFactor: 'one-minus-src-alpha',
+                        colorOp: 'add',
+                        srcAlphaFactor: 'one',
+                        dstAlphaFactor: 'one-minus-src-alpha',
+                        alphaOp: 'add',
+                    },
+                ],
+            },
+        },
+        {
+            id: 'forward-add',
+            phase: 'forward-add',
+            primitive: 'triangle-list',
+            rasterizerState: {
+                cullMode,
+                frontFace: 'ccw',
+            },
+            depthStencilState: {
+                depthTest: true,
+                depthWrite: false,
+                depthFunc: 'lequal',
+            },
+            blendState: {
+                targets: [
+                    {
+                        blend: true,
+                        srcColorFactor: 'one',
+                        dstColorFactor: 'one',
+                        colorOp: 'add',
+                        srcAlphaFactor: 'one',
+                        dstAlphaFactor: 'one',
+                        alphaOp: 'add',
+                    },
+                ],
+            },
+        },
+        {
+            id: 'shadow-caster',
+            phase: 'shadow-caster',
+            primitive: 'triangle-list',
+            rasterizerState: {
+                cullMode,
+                frontFace: 'ccw',
+            },
+            depthStencilState: {
+                depthTest: true,
+                depthWrite: true,
+                depthFunc: 'less',
+            },
+            blendState: {
+                targets: [
+                    {
+                        blend: false,
+                    },
+                ],
+            },
+            ...(alphaTestEnabled
+                ? {
+                      priority: 1,
+                  }
+                : {}),
+        },
+    ]);
+};
 
 const createVariantShaderId = (
     baseId: string,

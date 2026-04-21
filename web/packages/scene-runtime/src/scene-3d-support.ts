@@ -26,6 +26,7 @@ export type {
     SceneMaterialTextureSlot,
 } from './material-registry';
 export {
+    cloneSceneMaterialSurfaceDefinition,
     cloneSceneMaterialDefinition,
     normalizeSceneTextureBinding,
     SceneMaterialRegistry,

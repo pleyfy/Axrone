@@ -7,6 +7,9 @@ import type {
     SceneMaterialHandle,
     SceneMaterialPassDefinition,
     SceneMaterialRasterizerStateDefinition,
+    SceneMaterialSurfaceDefinition,
+    SceneMaterialSurfaceFeaturesDefinition,
+    SceneMaterialSurfaceTextureBindingDefinition,
     SceneMaterialStencilFaceStateDefinition,
     SceneTextureBindingDefinition,
     SceneUniformValue,
@@ -29,10 +32,68 @@ export interface SceneMaterialResource {
     readonly shaderId: string;
     readonly uniforms: Map<string, SceneUniformValue>;
     readonly textureBindings: Map<string, SceneMaterialTextureBinding>;
+    readonly surface: SceneMaterialSurfaceDefinition | null;
     readonly passes: readonly SceneMaterialPassDefinition[];
 }
 
 const cloneSceneValue = <T>(value: T): T => decodeSceneValue(encodeSceneValue(value)) as T;
+
+const cloneSurfaceFeaturesDefinition = (
+    definition: SceneMaterialSurfaceFeaturesDefinition | undefined
+): SceneMaterialSurfaceFeaturesDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+          }
+        : undefined;
+
+const cloneSurfaceTextureBindingDefinition = (
+    definition: SceneMaterialSurfaceTextureBindingDefinition | undefined
+): SceneMaterialSurfaceTextureBindingDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+              scale: definition.scale
+                  ? ([...definition.scale] as readonly [number, number])
+                  : undefined,
+              offset: definition.offset
+                  ? ([...definition.offset] as readonly [number, number])
+                  : undefined,
+          }
+        : undefined;
+
+export const cloneSceneMaterialSurfaceDefinition = (
+    definition: SceneMaterialSurfaceDefinition | undefined
+): SceneMaterialSurfaceDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+              features: cloneSurfaceFeaturesDefinition(definition.features),
+              tilingOffset: definition.tilingOffset
+                  ? ([...definition.tilingOffset] as readonly [number, number, number, number])
+                  : undefined,
+              albedo: definition.albedo
+                  ? ([...definition.albedo] as readonly [number, number, number, number])
+                  : undefined,
+              albedoScale: definition.albedoScale
+                  ? ([...definition.albedoScale] as readonly [number, number, number])
+                  : undefined,
+              emissive: definition.emissive
+                  ? ([...definition.emissive] as readonly [number, number, number])
+                  : undefined,
+              emissiveScale: definition.emissiveScale
+                  ? ([...definition.emissiveScale] as readonly [number, number, number])
+                  : undefined,
+              albedoMap: cloneSurfaceTextureBindingDefinition(definition.albedoMap),
+              normalMap: cloneSurfaceTextureBindingDefinition(definition.normalMap),
+              pbrMap: cloneSurfaceTextureBindingDefinition(definition.pbrMap),
+              metallicRoughnessMap: cloneSurfaceTextureBindingDefinition(
+                  definition.metallicRoughnessMap
+              ),
+              occlusionMap: cloneSurfaceTextureBindingDefinition(definition.occlusionMap),
+              emissiveMap: cloneSurfaceTextureBindingDefinition(definition.emissiveMap),
+          }
+        : undefined;
 
 const cloneStencilFaceStateDefinition = (
     definition: SceneMaterialStencilFaceStateDefinition | undefined
@@ -187,6 +248,7 @@ export const cloneSceneMaterialDefinition = (
               ])
           )
         : undefined,
+    surface: cloneSceneMaterialSurfaceDefinition(definition.surface),
     passes: cloneSceneMaterialPassDefinitions(definition.passes),
 });
 
@@ -222,6 +284,7 @@ export class SceneMaterialRegistry {
                     normalizeSceneTextureBinding(binding),
                 ])
             ),
+            surface: cloneSceneMaterialSurfaceDefinition(definition.surface) ?? null,
             passes: cloneSceneMaterialPassDefinitions(definition.passes) ?? Object.freeze([]),
         };
 

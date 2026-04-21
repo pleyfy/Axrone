@@ -3,6 +3,7 @@ import {
     GLTF_PBR_SHADER_EFFECT,
     GLTF_UNLIT_SHADER_EFFECT,
     createGltfPbrShaderDefinition,
+    createGltfRuntimeSurfaceDefinition,
     createGltfUnlitShaderDefinition,
     resolveGltfRuntimeShaderId,
 } from '@axrone/scene-runtime-gltf';
@@ -54,5 +55,43 @@ describe('scene-runtime glTF shader effects', () => {
 
         expect(variant.cull).toBe(false);
         expect(variant.blend).toBe(true);
+    });
+
+    it('derives a runtime surface contract from glTF uniforms', () => {
+        const surface = createGltfRuntimeSurfaceDefinition('gltf/pbr', {
+            _AlphaMode: 1,
+            _AlphaCutoff: 0.33,
+            _DoubleSided: 1,
+            _BaseColorFactor: [0.8, 0.7, 0.6, 1],
+            _BaseColorTexture_TexCoord: 1,
+            _MetallicFactor: 0.4,
+            _RoughnessFactor: 0.2,
+            _NormalTexture_TexCoord: 0,
+            _NormalTexture_Scale: 1.5,
+            _OcclusionTexture_TexCoord: 0,
+            _OcclusionTexture_Strength: 0.75,
+            _EmissiveFactor: [0.1, 0.2, 0.3],
+            _EmissiveTexture_TexCoord: 0,
+        });
+
+        expect(surface).toMatchObject({
+            shadingModel: 'pbr',
+            alphaMode: 'mask',
+            alphaCutoff: 0.33,
+            metallic: 0.4,
+            roughness: 0.2,
+            normalScale: 1.5,
+            occlusion: 0.75,
+            emissive: [0.1, 0.2, 0.3],
+            features: {
+                useTwoSided: true,
+                useAlbedoMap: true,
+                useNormalMap: true,
+                useOcclusionMap: true,
+                useEmissiveMap: true,
+                useAlphaTest: true,
+                hasSecondUv: true,
+            },
+        });
     });
 });

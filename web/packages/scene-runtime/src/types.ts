@@ -160,6 +160,57 @@ export type SceneTextureBindingDefinition =
           readonly unit?: number;
       };
 
+export type SceneMaterialShadingModel = 'unlit' | 'pbr';
+export type SceneMaterialAlphaMode = 'opaque' | 'mask' | 'blend';
+export type SceneMaterialUvSet = 0 | 1;
+
+export interface SceneMaterialSurfaceFeaturesDefinition {
+    readonly useVertexColor?: boolean;
+    readonly hasSecondUv?: boolean;
+    readonly useNormalMap?: boolean;
+    readonly useTwoSided?: boolean;
+    readonly useAlbedoMap?: boolean;
+    readonly usePbrMap?: boolean;
+    readonly useMetallicRoughnessMap?: boolean;
+    readonly useOcclusionMap?: boolean;
+    readonly useEmissiveMap?: boolean;
+    readonly useAlphaTest?: boolean;
+}
+
+export interface SceneMaterialSurfaceTextureBindingDefinition {
+    readonly textureId?: string | null;
+    readonly samplerId?: string;
+    readonly unit?: number;
+    readonly texCoord?: SceneMaterialUvSet;
+    readonly scale?: readonly [number, number];
+    readonly offset?: readonly [number, number];
+    readonly rotation?: number;
+}
+
+export interface SceneMaterialSurfaceDefinition {
+    readonly shadingModel?: SceneMaterialShadingModel;
+    readonly alphaMode?: SceneMaterialAlphaMode;
+    readonly alphaCutoff?: number;
+    readonly pbrUvSet?: SceneMaterialUvSet;
+    readonly features?: SceneMaterialSurfaceFeaturesDefinition;
+    readonly tilingOffset?: readonly [number, number, number, number];
+    readonly albedo?: readonly [number, number, number, number];
+    readonly albedoScale?: readonly [number, number, number];
+    readonly normalScale?: number;
+    readonly occlusion?: number;
+    readonly roughness?: number;
+    readonly metallic?: number;
+    readonly specularIntensity?: number;
+    readonly emissive?: readonly [number, number, number];
+    readonly emissiveScale?: readonly [number, number, number];
+    readonly albedoMap?: SceneMaterialSurfaceTextureBindingDefinition;
+    readonly normalMap?: SceneMaterialSurfaceTextureBindingDefinition;
+    readonly pbrMap?: SceneMaterialSurfaceTextureBindingDefinition;
+    readonly metallicRoughnessMap?: SceneMaterialSurfaceTextureBindingDefinition;
+    readonly occlusionMap?: SceneMaterialSurfaceTextureBindingDefinition;
+    readonly emissiveMap?: SceneMaterialSurfaceTextureBindingDefinition;
+}
+
 export type SceneMaterialPassPrimitive = 'triangle-list' | 'line-list' | 'point-list';
 export type SceneMaterialPolygonMode = 'fill' | 'line' | 'point';
 export type SceneMaterialShadeModel = 'gouraud' | 'flat';
@@ -285,6 +336,7 @@ export interface SceneMaterialDefinition {
     readonly shaderId: string;
     readonly uniforms?: Readonly<Record<string, SceneUniformValue>>;
     readonly textures?: Readonly<Record<string, SceneTextureBindingDefinition>>;
+    readonly surface?: SceneMaterialSurfaceDefinition;
     readonly passes?: readonly SceneMaterialPassDefinition[];
 }
 
