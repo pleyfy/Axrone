@@ -1,6 +1,7 @@
 import { Actor, type ActorConfig } from '@axrone/ecs-runtime';
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
+import type { TextureFormat } from '@axrone/render-webgl2';
 import type { SceneOptions, SceneRegistry } from '@axrone/scene-runtime';
 import { getDefaultSceneRuntimeProfile } from '@axrone/scene-runtime/scene-profile';
 import {
@@ -37,5 +38,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> extends 
     ): Actor<World<SceneRegistry<R>>> {
         this.assertNotDisposed();
         return this._actors3d.createRenderableActor(actorConfig, rendererConfig);
+    }
+
+    getSupportedCompressedTextureFormats(
+        preferredFormats?: readonly TextureFormat[]
+    ): readonly TextureFormat[] {
+        return super.getSupportedCompressedTextureFormats(preferredFormats);
     }
 }
