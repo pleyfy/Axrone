@@ -204,7 +204,7 @@ export class SceneAssetRuntime {
                     heightSegments: segments,
                     generateNormals: true,
                     generateTexCoords: true,
-                    generateTangents: false,
+                    generateTangents: true,
                 })
             )
         );

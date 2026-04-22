@@ -70,7 +70,7 @@ export class MeshManager {
             heightSegments: segments,
             generateNormals: true,
             generateTexCoords: true,
-            generateTangents: false,
+            generateTangents: true,
         });
         return this.createMeshFromGeometry(id, geometryBuffers);
     }
