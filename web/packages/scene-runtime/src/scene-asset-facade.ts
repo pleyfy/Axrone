@@ -1,4 +1,5 @@
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
+import type { TextureFormat } from '@axrone/render-webgl2';
 import { SceneMaterialError } from './errors';
 import type {
     SceneMaterialDefinition,
@@ -108,6 +109,13 @@ export class SceneAssetFacade<
 
     getTextureResource(id: string): SceneTextureResourceHandle | null {
         return this._kernel.assets.getTextureResource(id);
+    }
+
+    getSupportedCompressedTextureFormats(
+        preferredFormats?: readonly TextureFormat[]
+    ): readonly TextureFormat[] {
+        this.assertNotDisposed();
+        return this._kernel.assets.getSupportedCompressedTextureFormats(preferredFormats);
     }
 
     getMaterialTextureBindings(materialId: string): readonly SceneMaterialTextureBindingHandle[] {

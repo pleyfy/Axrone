@@ -109,6 +109,32 @@ describe('Scene', () => {
         scene.dispose();
     });
 
+    it('reports compressed texture formats supported by the active preview context', () => {
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+		const gl = scene.gl as unknown as ReturnType<typeof createMockGL>;
+		const getExtension = gl.getExtension;
+
+		gl.getExtension = vi.fn((name: string) =>
+			name === 'WEBGL_compressed_texture_astc' || name === 'EXT_texture_compression_bptc'
+				? {}
+				: null,
+		) as typeof gl.getExtension;
+
+        try {
+            expect(
+                scene.getSupportedCompressedTextureFormats([
+                    TextureFormat.ASTC_4x4,
+                    TextureFormat.BC7_RGBA,
+                ])
+            ).toEqual([TextureFormat.ASTC_4x4, TextureFormat.BC7_RGBA]);
+        } finally {
+			gl.getExtension = getExtension;
+		}
+
+        scene.dispose();
+    });
+
     it('builds the default scene registry and merges custom components', () => {
         const registry = createSceneRegistry({
             registry: {

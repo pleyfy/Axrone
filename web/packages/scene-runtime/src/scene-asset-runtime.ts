@@ -11,6 +11,8 @@ import {
 } from '@axrone/geometry';
 import {
     FilterMode,
+    TextureFormat,
+    TextureFormatInfo,
     WrapMode,
     WebGLTextureManager,
 } from '@axrone/render-webgl2';
@@ -366,6 +368,15 @@ export class SceneAssetRuntime {
 
     getTextureResource(id: string): SceneTextureResourceHandle | null {
         return this.resources.getTextureResourceHandle(id);
+    }
+
+    getSupportedCompressedTextureFormats(
+        preferredFormats?: readonly TextureFormat[]
+    ): readonly TextureFormat[] {
+        return TextureFormatInfo.getContextSupportedCompressedFormats(
+            this._options.gl,
+            preferredFormats
+        );
     }
 
     registerRenderPass(definition: SceneRenderPassDefinition): SceneRenderPassHandle {
