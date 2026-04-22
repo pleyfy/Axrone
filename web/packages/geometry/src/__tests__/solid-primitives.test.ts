@@ -19,6 +19,22 @@ const readPositions = (
 	return positions;
 };
 
+const readNormals = (
+	vertices: { toUint8Array(): Uint8Array },
+): Array<[number, number, number]> => {
+	const bytes = vertices.toUint8Array();
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	const normals: Array<[number, number, number]> = [];
+	for (let offset = 0; offset < bytes.byteLength; offset += VERTEX_STRIDE) {
+		normals.push([
+			view.getFloat32(offset + 12, false),
+			view.getFloat32(offset + 16, false),
+			view.getFloat32(offset + 20, false),
+		]);
+	}
+	return normals;
+};
+
 const readIndices = (indices: { toUint8Array(): Uint8Array }): number[] => {
 	const bytes = indices.toUint8Array();
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -96,6 +112,31 @@ describe('solid primitive generation', () => {
 
 		for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += 1) {
 			expect(resolveTriangleArea(positions, indices, triangleIndex)).toBeGreaterThan(1e-6);
+		}
+	});
+
+	it('preserves authored sphere normals across the duplicated UV seam', () => {
+		const widthSegments = 16;
+		const heightSegments = 8;
+		const geometry = createSphere({ widthSegments, heightSegments });
+		const positions = readPositions(geometry.vertices);
+		const normals = readNormals(geometry.vertices);
+		const stride = widthSegments + 1;
+
+		for (let lat = 1; lat < heightSegments; lat += 1) {
+			const seamStart = lat * stride;
+			const seamEnd = seamStart + widthSegments;
+			const leftPosition = positions[seamStart]!;
+			const rightPosition = positions[seamEnd]!;
+			const leftNormal = normals[seamStart]!;
+			const rightNormal = normals[seamEnd]!;
+
+			expect(Math.abs(leftPosition[0] - rightPosition[0])).toBeLessThan(1e-6);
+			expect(Math.abs(leftPosition[1] - rightPosition[1])).toBeLessThan(1e-6);
+			expect(Math.abs(leftPosition[2] - rightPosition[2])).toBeLessThan(1e-6);
+			expect(Math.abs(leftNormal[0] - rightNormal[0])).toBeLessThan(1e-5);
+			expect(Math.abs(leftNormal[1] - rightNormal[1])).toBeLessThan(1e-5);
+			expect(Math.abs(leftNormal[2] - rightNormal[2])).toBeLessThan(1e-5);
 		}
 	});
 

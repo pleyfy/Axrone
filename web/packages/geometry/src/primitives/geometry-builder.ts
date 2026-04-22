@@ -173,7 +173,7 @@ export class GeometryBuilder<TConfig extends IPrimitiveConfig = IPrimitiveConfig
     }
 
     build(): IGeometryBuffers {
-        if (this._config.generateNormals) {
+        if (this._config.generateNormals && this._vertices.some((vertex) => !vertex.normal)) {
             this.computeNormals();
         }
 
