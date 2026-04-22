@@ -208,6 +208,9 @@ describe('scene-runtime prefab animation integration', () => {
             loop: true,
             speed: 1,
             time: 0,
+            applyRootMotion: true,
+            updateMode: 'Animate Physics',
+            cullingMode: 'Cull Update Transforms',
         });
 
         const firstInstance = harness.actors.instantiatePrefab(prefab, { namePrefix: 'A ' });
@@ -233,6 +236,67 @@ describe('scene-runtime prefab animation integration', () => {
         expect(secondHip?.requireComponent(Transform).position.x).toBeCloseTo(1, 5);
         expect(firstMesh?.getComponent(MeshRenderer)?.getSkinJointMatrixPalette()).not.toBeNull();
         expect(firstMesh?.getComponent(MeshRenderer)?.skinJointCount).toBe(2);
+        expect(firstAnimator?.serialize()).toMatchObject({
+            applyRootMotion: true,
+            updateMode: 'Animate Physics',
+            cullingMode: 'Cull Update Transforms',
+        });
+    });
+
+    it('keeps root motion disabled while preserving runtime animator metadata when applyRootMotion is false', () => {
+        const harness = createPrefabHarness();
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Walk',
+                    duration: 1,
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            rootMotion: {
+                bone: 'node/1',
+                consume: true,
+                projectTranslationAxes: [true, false, false],
+            },
+            clipId: 'Walk',
+            playOnStart: true,
+            playing: true,
+            loop: true,
+            speed: 1,
+            time: 0,
+            applyRootMotion: false,
+            updateMode: 'Unscaled Time',
+            cullingMode: 'Cull Completely',
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const hip = actors.find((actor) => actor.name === 'Hip');
+        const animator = root?.getComponent(Animator) ?? null;
+
+        harness.lifecycle.update(500);
+
+        expect(root?.requireComponent(Transform).position.x).toBeCloseTo(0, 5);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
+        expect(animator?.serialize()).toMatchObject({
+            applyRootMotion: false,
+            updateMode: 'Unscaled Time',
+            cullingMode: 'Cull Completely',
+        });
+        expect(animator?.getDebugInfo()).toEqual(
+            expect.objectContaining({
+                applyRootMotion: false,
+                updateMode: 'Unscaled Time',
+                cullingMode: 'Cull Completely',
+            })
+        );
     });
 
     it('refreshes cached joint world matrices before computing the skin palette', () => {

@@ -52,6 +52,31 @@ export interface AnimatorClipConfig {
     readonly streaming?: AnimationClipStreamingDefinition;
 }
 
+export type AnimatorUpdateMode = 'Normal' | 'Animate Physics' | 'Unscaled Time';
+export type AnimatorCullingMode = 'Always Animate' | 'Cull Update Transforms' | 'Cull Completely';
+
+const ANIMATOR_UPDATE_MODES = new Set<AnimatorUpdateMode>([
+    'Normal',
+    'Animate Physics',
+    'Unscaled Time',
+]);
+
+const ANIMATOR_CULLING_MODES = new Set<AnimatorCullingMode>([
+    'Always Animate',
+    'Cull Update Transforms',
+    'Cull Completely',
+]);
+
+const normalizeAnimatorUpdateMode = (value: unknown): AnimatorUpdateMode =>
+    typeof value === 'string' && ANIMATOR_UPDATE_MODES.has(value as AnimatorUpdateMode)
+        ? (value as AnimatorUpdateMode)
+        : 'Normal';
+
+const normalizeAnimatorCullingMode = (value: unknown): AnimatorCullingMode =>
+    typeof value === 'string' && ANIMATOR_CULLING_MODES.has(value as AnimatorCullingMode)
+        ? (value as AnimatorCullingMode)
+        : 'Cull Update Transforms';
+
 export interface AnimatorConfig {
     readonly clips?: readonly AnimatorClipConfig[];
     readonly parameters?: readonly AnimationParameterDefinition[];
@@ -63,6 +88,9 @@ export interface AnimatorConfig {
     readonly loop?: boolean;
     readonly speed?: number;
     readonly time?: number;
+    readonly applyRootMotion?: boolean;
+    readonly updateMode?: AnimatorUpdateMode;
+    readonly cullingMode?: AnimatorCullingMode;
 }
 
 interface AnimatorResolvedTarget {
@@ -165,6 +193,9 @@ export class Animator extends Component {
     private _loop: boolean;
     private _speed: number;
     private _time: number;
+    private _applyRootMotionEnabled: boolean;
+    private _updateMode: AnimatorUpdateMode;
+    private _cullingMode: AnimatorCullingMode;
     private readonly _tempVec3 = new Vec3();
     private readonly _tempQuat = new Quat();
 
@@ -175,6 +206,9 @@ export class Animator extends Component {
         this._loop = config.loop ?? true;
         this._speed = Number.isFinite(config.speed ?? 1) ? config.speed ?? 1 : 1;
         this._time = Number.isFinite(config.time ?? 0) ? Math.max(0, config.time ?? 0) : 0;
+        this._applyRootMotionEnabled = config.applyRootMotion ?? true;
+        this._updateMode = normalizeAnimatorUpdateMode(config.updateMode);
+        this._cullingMode = normalizeAnimatorCullingMode(config.cullingMode);
         this._applyConfig(config);
     }
 
@@ -242,6 +276,38 @@ export class Animator extends Component {
                 this._applyFrame(controller.currentFrame);
             }
         }
+    }
+
+    get applyRootMotion(): boolean {
+        return this._applyRootMotionEnabled;
+    }
+
+    set applyRootMotion(value: boolean) {
+        if (this._applyRootMotionEnabled === value) {
+            return;
+        }
+        this._applyRootMotionEnabled = value;
+        this._controllerDirty = true;
+        this._controller = null;
+        this._streamingScheduler = null;
+        this._streamingSnapshot = null;
+        this._pendingStreamingRequests = Object.freeze([]);
+    }
+
+    get updateMode(): AnimatorUpdateMode {
+        return this._updateMode;
+    }
+
+    set updateMode(value: AnimatorUpdateMode) {
+        this._updateMode = normalizeAnimatorUpdateMode(value);
+    }
+
+    get cullingMode(): AnimatorCullingMode {
+        return this._cullingMode;
+    }
+
+    set cullingMode(value: AnimatorCullingMode) {
+        this._cullingMode = normalizeAnimatorCullingMode(value);
     }
 
     get streaming(): AnimationStreamingSnapshot | null {
@@ -479,7 +545,9 @@ export class Animator extends Component {
         const result = controller.update(deltaSeconds);
         this._time += deltaSeconds;
         this._applyFrame(result.frame);
-        this._applyRootMotion(result.rootMotion);
+        if (this._applyRootMotionEnabled) {
+            this._applyRootMotion(result.rootMotion);
+        }
         this._emitAnimationEvents(result.events);
         this._syncStreamingState(controller);
     }
@@ -515,6 +583,9 @@ export class Animator extends Component {
             loop: this._loop,
             speed: this._speed,
             time: this._time,
+            applyRootMotion: this._applyRootMotionEnabled,
+            updateMode: this._updateMode,
+            cullingMode: this._cullingMode,
         };
     }
 
@@ -526,6 +597,9 @@ export class Animator extends Component {
             loop: this._loop,
             speed: this._speed,
             time: this._time,
+            applyRootMotion: this._applyRootMotionEnabled,
+            updateMode: this._updateMode,
+            cullingMode: this._cullingMode,
             profile: controller?.profile ?? null,
             pendingEvents: controller?.events ?? [],
             activeClips: controller?.activeClips ?? [],
@@ -550,6 +624,12 @@ export class Animator extends Component {
             loop: typeof data.loop === 'boolean' ? data.loop : undefined,
             speed: typeof data.speed === 'number' ? data.speed : undefined,
             time: typeof data.time === 'number' ? data.time : undefined,
+            applyRootMotion: typeof data.applyRootMotion === 'boolean' ? data.applyRootMotion : undefined,
+            updateMode: typeof data.updateMode === 'string' ? normalizeAnimatorUpdateMode(data.updateMode) : undefined,
+            cullingMode:
+                typeof data.cullingMode === 'string'
+                    ? normalizeAnimatorCullingMode(data.cullingMode)
+                    : undefined,
         });
     }
 
@@ -570,6 +650,15 @@ export class Animator extends Component {
         this._loop = config.loop ?? this._loop;
         this._speed = Number.isFinite(config.speed ?? this._speed) ? config.speed ?? this._speed : 1;
         this._time = Number.isFinite(config.time ?? this._time) ? Math.max(0, config.time ?? this._time) : 0;
+        this._applyRootMotionEnabled = config.applyRootMotion ?? this._applyRootMotionEnabled;
+        this._updateMode =
+            config.updateMode !== undefined
+                ? normalizeAnimatorUpdateMode(config.updateMode)
+                : this._updateMode;
+        this._cullingMode =
+            config.cullingMode !== undefined
+                ? normalizeAnimatorCullingMode(config.cullingMode)
+                : this._cullingMode;
         const fallbackClipId = this._clipDefinitions[0]?.id ?? null;
         this._currentClipId =
             typeof config.clipId === 'string' && this._clipDefinitions.some((clip) => clip.id === config.clipId)
@@ -637,7 +726,7 @@ export class Animator extends Component {
             clips: this._clipDefinitions,
             parameters: this._parameterDefinitions,
             layers,
-            rootMotion: this._rootMotion,
+            rootMotion: this._applyRootMotionEnabled ? this._rootMotion : null,
         });
         if (this._currentClipId) {
             try {
