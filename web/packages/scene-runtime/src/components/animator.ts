@@ -99,6 +99,8 @@ interface AnimatorResolvedTarget {
     readonly parentNodeId?: string | null;
 }
 
+type AnimatorEvaluationMode = 'apply' | 'update-only' | 'skip';
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && Array.isArray(value) === false;
 
@@ -533,23 +535,19 @@ export class Animator extends Component {
     }
 
     override update(deltaTime: number): void {
-        const controller = this._ensureController();
-        if (!controller || !this._playing) {
+        if (this._updateMode === 'Animate Physics') {
             return;
         }
-        const streaming = this._syncStreamingState(controller);
-        if (this._isStreamingBlocked(streaming)) {
+
+        this._stepAnimation(deltaTime);
+    }
+
+    override fixedUpdate(deltaTime: number): void {
+        if (this._updateMode !== 'Animate Physics') {
             return;
         }
-        const deltaSeconds = Math.max(0, deltaTime / 1000) * this._speed;
-        const result = controller.update(deltaSeconds);
-        this._time += deltaSeconds;
-        this._applyFrame(result.frame);
-        if (this._applyRootMotionEnabled) {
-            this._applyRootMotion(result.rootMotion);
-        }
-        this._emitAnimationEvents(result.events);
-        this._syncStreamingState(controller);
+
+        this._stepAnimation(deltaTime);
     }
 
     override serialize(): Record<string, unknown> {
@@ -819,6 +817,80 @@ export class Animator extends Component {
                 },
             } satisfies AnimationLayerDefinition),
         ]);
+    }
+
+    private _stepAnimation(deltaTime: number): void {
+        const controller = this._ensureController();
+        if (!controller || !this._playing) {
+            return;
+        }
+
+        const evaluationMode = this._resolveEvaluationMode();
+        if (evaluationMode === 'skip') {
+            return;
+        }
+
+        const streaming = this._syncStreamingState(controller);
+        if (this._isStreamingBlocked(streaming)) {
+            return;
+        }
+
+        const deltaSeconds = Math.max(0, deltaTime / 1000) * this._speed;
+        const result = controller.update(deltaSeconds);
+        this._time += deltaSeconds;
+
+        if (evaluationMode === 'apply') {
+            this._applyFrame(result.frame);
+            if (this._applyRootMotionEnabled) {
+                this._applyRootMotion(result.rootMotion);
+            }
+        }
+
+        this._emitAnimationEvents(result.events);
+        this._syncStreamingState(controller);
+    }
+
+    private _resolveEvaluationMode(): AnimatorEvaluationMode {
+        if (this._cullingMode === 'Always Animate') {
+            return 'apply';
+        }
+
+        if (this._hasVisibleRendererInHierarchy()) {
+            return 'apply';
+        }
+
+        return this._cullingMode === 'Cull Completely' ? 'skip' : 'update-only';
+    }
+
+    private _hasVisibleRendererInHierarchy(): boolean {
+        const rootActor = this.actor;
+        if (!rootActor) {
+            return true;
+        }
+
+        const stack = [rootActor];
+        let hasRenderer = false;
+
+        while (stack.length > 0) {
+            const actor = stack.pop();
+            if (!actor) {
+                continue;
+            }
+
+            const meshRenderer = actor.getComponent(MeshRenderer) as MeshRenderer | undefined;
+            if (meshRenderer) {
+                hasRenderer = true;
+                if (meshRenderer.visible) {
+                    return true;
+                }
+            }
+
+            for (let index = 0; index < actor.children.length; index += 1) {
+                stack.push(actor.children[index]!);
+            }
+        }
+
+        return hasRenderer === false;
     }
 
     private _emitAnimationEvents(events: readonly AnimationControllerEvent[]): void {

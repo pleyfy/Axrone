@@ -228,7 +228,7 @@ describe('scene-runtime prefab animation integration', () => {
         firstAnimator?.setFloat('speed', 0.5);
         secondAnimator?.setFloat('speed', 0);
 
-        harness.lifecycle.update(500);
+        harness.lifecycle.fixedUpdate(500);
 
         expect(firstRoot?.requireComponent(Transform).position.x).toBeCloseTo(0.5, 5);
         expect(secondRoot?.requireComponent(Transform).position.x).toBeCloseTo(0, 5);
@@ -297,6 +297,145 @@ describe('scene-runtime prefab animation integration', () => {
                 cullingMode: 'Cull Completely',
             })
         );
+    });
+
+    it('updates animate-physics animators only during fixedUpdate', () => {
+        const harness = createPrefabHarness();
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Walk',
+                    duration: 1,
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Walk',
+            playOnStart: true,
+            playing: true,
+            loop: true,
+            speed: 1,
+            time: 0,
+            updateMode: 'Animate Physics',
+            cullingMode: 'Always Animate',
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const hip = actors.find((actor) => actor.name === 'Hip');
+        const animator = root?.getComponent(Animator) ?? null;
+
+        harness.lifecycle.update(500);
+
+        expect(animator?.time).toBeCloseTo(0, 5);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(1, 5);
+
+        harness.lifecycle.fixedUpdate(500);
+
+        expect(animator?.time).toBeCloseTo(0.5, 5);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
+    });
+
+    it('skips animator advancement completely when cull completely has no visible renderer', () => {
+        const harness = createPrefabHarness();
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Walk',
+                    duration: 1,
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Walk',
+            playOnStart: true,
+            playing: true,
+            loop: false,
+            speed: 1,
+            time: 0,
+            cullingMode: 'Cull Completely',
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const hip = actors.find((actor) => actor.name === 'Hip');
+        const mesh = actors.find((actor) => actor.name === 'Skinned Mesh');
+        const animator = root?.getComponent(Animator) ?? null;
+        const renderer = mesh?.getComponent(MeshRenderer) ?? null;
+
+        expect(renderer).not.toBeNull();
+        renderer!.visible = false;
+
+        harness.lifecycle.update(500);
+
+        expect(animator?.time).toBeCloseTo(0, 5);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(1, 5);
+
+        renderer!.visible = true;
+        harness.lifecycle.update(500);
+
+        expect(animator?.time).toBeCloseTo(0.5, 5);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(2, 5);
+    });
+
+    it('continues animator time without writing transforms when cull update transforms has no visible renderer', () => {
+        const harness = createPrefabHarness();
+        const prefab = createAnimatedRigPrefab({
+            clips: [
+                {
+                    id: 'Walk',
+                    duration: 1,
+                    tracks: [
+                        {
+                            targetNodeId: 'node/1',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            clipId: 'Walk',
+            playOnStart: true,
+            playing: true,
+            loop: false,
+            speed: 1,
+            time: 0,
+            cullingMode: 'Cull Update Transforms',
+        });
+
+        const actors = harness.actors.instantiatePrefab(prefab);
+        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const hip = actors.find((actor) => actor.name === 'Hip');
+        const mesh = actors.find((actor) => actor.name === 'Skinned Mesh');
+        const animator = root?.getComponent(Animator) ?? null;
+        const renderer = mesh?.getComponent(MeshRenderer) ?? null;
+
+        expect(renderer).not.toBeNull();
+        renderer!.visible = false;
+
+        harness.lifecycle.update(500);
+
+        expect(animator?.time).toBeCloseTo(0.5, 5);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(1, 5);
+
+        renderer!.visible = true;
+        harness.lifecycle.update(500);
+
+        expect(animator?.time).toBeCloseTo(1, 5);
+        expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(3, 5);
     });
 
     it('refreshes cached joint world matrices before computing the skin palette', () => {
