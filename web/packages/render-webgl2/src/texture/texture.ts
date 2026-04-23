@@ -62,7 +62,7 @@ export class WebGLTexture implements ITexture {
         this.colorSpace = options.colorSpace || ColorSpace.LINEAR;
         this.label = options.label || null;
 
-        const formatInfo = TextureFormatInfo.getFormatInfo(this.format);
+        const formatInfo = TextureFormatInfo.getFormatInfo(this.format, this.colorSpace);
         this.isCompressed = formatInfo.compressed;
         this.bytesPerPixel = formatInfo.bytesPerPixel;
         this.totalMemoryUsage = TextureUtils.calculateMemoryUsage(
@@ -295,7 +295,10 @@ export class WebGLTexture implements ITexture {
     private _initializeStorageWithOptions(options: ITextureCreateOptions): void {
         this.bind();
 
-        const formatInfo = TextureFormatInfo.getFormatInfo(options.format);
+        const formatInfo = TextureFormatInfo.getFormatInfo(
+            options.format,
+            options.colorSpace ?? ColorSpace.LINEAR
+        );
 
         try {
             switch (options.dimension) {
@@ -449,7 +452,7 @@ export class WebGLTexture implements ITexture {
         height: number,
         depth: number
     ): void {
-        const formatInfo = TextureFormatInfo.getFormatInfo(this.format);
+        const formatInfo = TextureFormatInfo.getFormatInfo(this.format, this.colorSpace);
 
         if (data === null) {
             return;
