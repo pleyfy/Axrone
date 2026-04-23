@@ -119,6 +119,197 @@ const createAnimatedRigPrefab = (
     ],
 });
 
+const createSiblingAnimatorPrefab = (): ScenePrefabDefinition => ({
+    id: 'prefab/sibling-animators',
+    actors: [
+        {
+            nodeId: 'character-a',
+            parentNodeId: null,
+            name: 'Character A',
+            layer: 0,
+            tag: 'default',
+            active: true,
+            persistent: false,
+            pooled: false,
+            components: [
+                createPrefabComponent('Transform', {
+                    position: [-1, 0, 0],
+                    rotation: [0, 0, 0, 1],
+                    scale: [1, 1, 1],
+                }),
+                createPrefabComponent('Animator', {
+                    clipId: 'Idle',
+                    playOnStart: true,
+                    playing: true,
+                    loop: true,
+                    clips: [
+                        {
+                            id: 'Idle',
+                            duration: 1,
+                            tracks: [
+                                {
+                                    targetNodeId: 'character-a/bone',
+                                    path: 'translation',
+                                    times: [0, 1],
+                                    values: [0, 0, 0, 0, 2, 0],
+                                },
+                            ],
+                        },
+                    ],
+                }),
+            ],
+        },
+        {
+            nodeId: 'character-a/bone',
+            parentNodeId: 'character-a',
+            name: 'Character A Bone',
+            layer: 0,
+            tag: 'default',
+            active: true,
+            persistent: false,
+            pooled: false,
+            components: [
+                createPrefabComponent('Transform', {
+                    position: [0, 0, 0],
+                    rotation: [0, 0, 0, 1],
+                    scale: [1, 1, 1],
+                }),
+            ],
+        },
+        {
+            nodeId: 'character-b',
+            parentNodeId: null,
+            name: 'Character B',
+            layer: 0,
+            tag: 'default',
+            active: true,
+            persistent: false,
+            pooled: false,
+            components: [
+                createPrefabComponent('Transform', {
+                    position: [1, 0, 0],
+                    rotation: [0, 0, 0, 1],
+                    scale: [1, 1, 1],
+                }),
+                createPrefabComponent('Animator', {
+                    clipId: 'Idle',
+                    playOnStart: true,
+                    playing: true,
+                    loop: true,
+                    clips: [
+                        {
+                            id: 'Idle',
+                            duration: 1,
+                            tracks: [
+                                {
+                                    targetNodeId: 'character-b/bone',
+                                    path: 'translation',
+                                    times: [0, 1],
+                                    values: [0, 0, 0, 0, 2, 0],
+                                },
+                            ],
+                        },
+                    ],
+                }),
+            ],
+        },
+        {
+            nodeId: 'character-b/bone',
+            parentNodeId: 'character-b',
+            name: 'Character B Bone',
+            layer: 0,
+            tag: 'default',
+            active: true,
+            persistent: false,
+            pooled: false,
+            components: [
+                createPrefabComponent('Transform', {
+                    position: [0, 0, 0],
+                    rotation: [0, 0, 0, 1],
+                    scale: [1, 1, 1],
+                }),
+            ],
+        },
+    ],
+});
+
+const createWrappedChildRootAnimatorPrefab = (): ScenePrefabDefinition => ({
+    id: 'prefab/wrapped-child-root-animator',
+    actors: [
+        {
+            nodeId: 'wrapper',
+            parentNodeId: null,
+            name: 'Wrapper',
+            layer: 0,
+            tag: 'default',
+            active: true,
+            persistent: false,
+            pooled: false,
+            components: [
+                createPrefabComponent('Transform', {
+                    position: [0, 0, 0],
+                    rotation: [0, 0, 0, 1],
+                    scale: [1, 1, 1],
+                }),
+            ],
+        },
+        {
+            nodeId: 'armature',
+            parentNodeId: 'wrapper',
+            name: 'Armature',
+            layer: 0,
+            tag: 'default',
+            active: true,
+            persistent: false,
+            pooled: false,
+            components: [
+                createPrefabComponent('Transform', {
+                    position: [0, 0, 0],
+                    rotation: [0, 0, 0, 1],
+                    scale: [1, 1, 1],
+                }),
+                createPrefabComponent('Animator', {
+                    clipId: 'Idle',
+                    playOnStart: true,
+                    playing: true,
+                    loop: true,
+                    clips: [
+                        {
+                            id: 'Idle',
+                            duration: 1,
+                            tracks: [
+                                {
+                                    targetNodeId: 'armature/bone',
+                                    path: 'translation',
+                                    times: [0, 1],
+                                    values: [0, 0, 0, 0, 2, 0],
+                                },
+                            ],
+                        },
+                    ],
+                }),
+            ],
+        },
+        {
+            nodeId: 'armature/bone',
+            parentNodeId: 'armature',
+            name: 'Armature Bone',
+            layer: 0,
+            tag: 'default',
+            active: true,
+            persistent: false,
+            pooled: false,
+            components: [
+                createPrefabComponent('Transform', {
+                    position: [0, 0, 0],
+                    rotation: [0, 0, 0, 1],
+                    scale: [1, 1, 1],
+                }),
+            ],
+        },
+    ],
+});
+
 const createPrefabHarness = () => {
     const registry = createSceneRegistry();
     const world = new World(registry);
@@ -241,6 +432,34 @@ describe('scene-runtime prefab animation integration', () => {
             updateMode: 'Animate Physics',
             cullingMode: 'Cull Update Transforms',
         });
+    });
+
+    it('keeps sibling animators in the same prefab instance scoped to their own subtree', () => {
+        const harness = createPrefabHarness();
+        const actors = harness.actors.instantiatePrefab(createSiblingAnimatorPrefab());
+
+        harness.lifecycle.update(16);
+        harness.lifecycle.update(500);
+
+        const characterABone = actors.find((actor) => actor.name === 'Character A Bone');
+        const characterBBone = actors.find((actor) => actor.name === 'Character B Bone');
+        const characterABoneY = characterABone?.requireComponent(Transform).position.y ?? 0;
+        const characterBBoneY = characterBBone?.requireComponent(Transform).position.y ?? 0;
+
+        expect(characterABoneY).toBeGreaterThan(0.9);
+        expect(characterBBoneY).toBeGreaterThan(0.9);
+        expect(characterABoneY).toBeCloseTo(characterBBoneY, 5);
+    });
+
+    it('supports animators mounted on child roots without inheriting wrapper parents into the rig', () => {
+        const harness = createPrefabHarness();
+        const actors = harness.actors.instantiatePrefab(createWrappedChildRootAnimatorPrefab());
+
+        harness.lifecycle.update(16);
+        harness.lifecycle.update(500);
+
+        const armatureBone = actors.find((actor) => actor.name === 'Armature Bone');
+        expect(armatureBone?.requireComponent(Transform).position.y).toBeGreaterThan(0.9);
     });
 
     it('keeps root motion disabled while preserving runtime animator metadata when applyRootMotion is false', () => {

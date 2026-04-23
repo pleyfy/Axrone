@@ -954,16 +954,49 @@ export class Animator extends Component {
     private _rebuildTargetMap(instanceId: string | null): void {
         this._resolvedTargets.clear();
         this._resolvedInstanceId = instanceId;
-        const actors =
-            (this.world as {
-                getAllActors?: () => readonly {
-                    parent?: { getComponent: (type: unknown) => unknown } | null;
-                    getComponent: (type: unknown) => unknown;
-                }[];
-            } | undefined)?.getAllActors?.() ?? [];
+        const resolvedTargets: Array<{
+            readonly actor: {
+                parent?: { getComponent: (type: unknown) => unknown } | null;
+                children: readonly unknown[];
+                getComponent: (type: unknown) => unknown;
+            };
+            readonly nodeId: string;
+            readonly binding: PrefabNodeBinding;
+            readonly transform?: Transform;
+            readonly meshRenderer?: MeshRenderer;
+        }> = [];
+        const rootActor = this.actor as
+            | {
+                  parent?: { getComponent: (type: unknown) => unknown } | null;
+                  children: readonly {
+                      parent?: { getComponent: (type: unknown) => unknown } | null;
+                      children: readonly unknown[];
+                      getComponent: (type: unknown) => unknown;
+                  }[];
+                  getComponent: (type: unknown) => unknown;
+              }
+            | undefined;
+        const actors = rootActor
+            ? [rootActor]
+            : ((this.world as {
+                  getAllActors?: () => readonly {
+                      parent?: { getComponent: (type: unknown) => unknown } | null;
+                      children: readonly unknown[];
+                      getComponent: (type: unknown) => unknown;
+                  }[];
+              } | undefined)?.getAllActors?.() ?? []);
+        const stack = [...actors];
 
-        for (let actorIndex = 0; actorIndex < actors.length; actorIndex += 1) {
-            const actor = actors[actorIndex]!;
+        while (stack.length > 0) {
+            const actor = stack.pop()!;
+            for (let childIndex = 0; childIndex < actor.children.length; childIndex += 1) {
+                stack.push(actor.children[childIndex] as {
+                    parent?: { getComponent: (type: unknown) => unknown } | null;
+                    children: readonly unknown[];
+                    getComponent: (type: unknown) => unknown;
+                });
+            }
+
             const binding = actor.getComponent(PrefabNodeBinding) as PrefabNodeBinding | undefined;
             if (!binding || binding.nodeId === null) {
                 continue;
@@ -976,18 +1009,37 @@ export class Animator extends Component {
             if (!transform && !meshRenderer) {
                 continue;
             }
-            const parentBinding = actor.parent?.getComponent(PrefabNodeBinding) as
+            resolvedTargets.push(
+                Object.freeze({
+                    actor,
+                    nodeId: binding.nodeId,
+                    binding,
+                    ...(transform ? { transform } : {}),
+                    ...(meshRenderer ? { meshRenderer } : {}),
+                })
+            );
+        }
+
+        const resolvedNodeIds = new Set(
+            resolvedTargets.map((entry) => entry.binding.nodeId).filter((nodeId): nodeId is string => Boolean(nodeId))
+        );
+
+        for (let targetIndex = 0; targetIndex < resolvedTargets.length; targetIndex += 1) {
+            const target = resolvedTargets[targetIndex]!;
+            const parentBinding = target.actor.parent?.getComponent(PrefabNodeBinding) as
                 | PrefabNodeBinding
                 | undefined;
             const parentNodeId =
-                parentBinding && (!instanceId || parentBinding.instanceId === instanceId)
+                parentBinding &&
+                resolvedNodeIds.has(parentBinding.nodeId ?? '') &&
+                (!instanceId || parentBinding.instanceId === instanceId)
                     ? parentBinding.nodeId
                     : null;
             this._resolvedTargets.set(
-                binding.nodeId,
+                target.nodeId,
                 Object.freeze({
-                    ...(transform ? { transform } : {}),
-                    ...(meshRenderer ? { meshRenderer } : {}),
+                    ...(target.transform ? { transform: target.transform } : {}),
+                    ...(target.meshRenderer ? { meshRenderer: target.meshRenderer } : {}),
                     parentNodeId,
                 })
             );
