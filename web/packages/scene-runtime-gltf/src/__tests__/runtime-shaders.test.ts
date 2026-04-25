@@ -19,6 +19,8 @@ describe('scene-runtime glTF shader effects', () => {
                 ?.control
         ).toBe('select');
         expect(definition.fragmentSource).toContain('uniform vec4 _BaseColorFactor;');
+        expect(definition.fragmentSource).toContain('vec3 linearToSrgb(vec3 color)');
+        expect(definition.fragmentSource).toContain('o_Color = vec4(linearToSrgb(baseColor.rgb), baseColor.a);');
     });
 
     it('builds the built-in pbr shader from structured effect metadata with uniform arrays', () => {

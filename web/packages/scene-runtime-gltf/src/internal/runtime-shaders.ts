@@ -262,6 +262,18 @@ const GLTF_SHADER_LIBRARIES = Object.freeze([
         ],
     },
     {
+        id: 'gltf.color-space',
+        code: [
+            'vec3 linearToSrgb(vec3 color) {',
+            '    vec3 clamped = clamp(color, vec3(0.0), vec3(1.0));',
+            '    vec3 cutoff = step(vec3(0.0031308), clamped);',
+            '    vec3 lower = clamped * 12.92;',
+            '    vec3 higher = 1.055 * pow(clamped, vec3(1.0 / 2.4)) - 0.055;',
+            '    return mix(lower, higher, cutoff);',
+            '}',
+        ],
+    },
+    {
         id: 'gltf.pbr-lighting',
         code: [
             'vec3 resolveNormal() {',
@@ -576,7 +588,7 @@ const createGltfUnlitShaderEffect = (id: string): RenderShaderEffectDefinition =
     fragment: {
         precision: 'highp',
         outputs: [{ name: 'o_Color', type: 'vec4' }],
-        includes: ['gltf.uv'],
+        includes: ['gltf.uv', 'gltf.color-space'],
         main: [
             'vec4 baseColor = _BaseColorFactor;',
             'if (_BaseColorTexture_TexCoord >= 0) {',
@@ -590,7 +602,7 @@ const createGltfUnlitShaderEffect = (id: string): RenderShaderEffectDefinition =
             'if (alphaMode == 0 || alphaMode == 1) {',
             '    baseColor.a = 1.0;',
             '}',
-            'o_Color = baseColor;',
+            'o_Color = vec4(linearToSrgb(baseColor.rgb), baseColor.a);',
         ],
     },
     renderState: {
