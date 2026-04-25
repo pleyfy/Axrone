@@ -1,7 +1,16 @@
 export * from './types';
 export * from './errors';
 export * from './widget';
-export * from './layout';
+export {
+    UILayoutEngine,
+    compileLength,
+    compileLayoutInput,
+    normalizeAnchor,
+    normalizeCorners,
+    normalizeEdges,
+    resolveLength,
+} from './layout';
+export type { LayoutTreeAdapter } from './layout';
 export * from './render';
 export * from './font';
 export * from './font-runtime';
