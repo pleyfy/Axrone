@@ -1,4 +1,19 @@
 import { FontLoadError } from './errors';
+import {
+    METRIC_EM_SIZE,
+    buildCanvasFont,
+    codePointToString,
+    createCanvasContext,
+    createRuntimeInfo,
+    getBoundingHeight,
+    getBoundingWidth,
+    normalizeStyleToken,
+    normalizeWeightToken,
+    quantizeRasterSize,
+    quoteFontFamilyToken,
+    resizeCanvas,
+} from './font-runtime/internals';
+import type { CanvasLike, CanvasRenderingContext2DLike } from './font-runtime/internals';
 import type {
     DynamicFontFaceRuntime,
     DynamicFontGlyphRaster,
@@ -10,14 +25,7 @@ import type {
     FontWeight,
 } from './types';
 
-const METRIC_EM_SIZE = 1000;
-const MIN_RASTER_SIZE = 8;
-const MAX_RASTER_SIZE = 256;
-
 let nextRuntimeId = 1;
-
-type CanvasLike = HTMLCanvasElement | OffscreenCanvas;
-type CanvasRenderingContext2DLike = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 export interface BrowserSystemFontFaceRuntimeOptions {
     readonly family: string;
@@ -29,120 +37,6 @@ export interface BrowserSystemFontFaceRuntimeOptions {
     readonly fallbackCodePoint?: number;
     readonly atlas?: DynamicFontRuntimeInfo['atlas'];
 }
-
-const normalizeWeightToken = (weight: FontWeight | undefined): string => {
-    if (weight === undefined) {
-        return '400';
-    }
-    return String(weight);
-};
-
-const normalizeStyleToken = (style: FontStyle | undefined): string => style ?? 'normal';
-
-const createCanvasContext = (): { canvas: CanvasLike; context: CanvasRenderingContext2DLike } => {
-    if (typeof OffscreenCanvas !== 'undefined') {
-        const canvas = new OffscreenCanvas(1, 1);
-        const context = canvas.getContext('2d');
-        if (context) {
-            return { canvas, context };
-        }
-    }
-    if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        if (context) {
-            return { canvas, context };
-        }
-    }
-    throw new FontLoadError('No 2D canvas implementation is available for dynamic font rasterization.');
-};
-
-const resizeCanvas = (canvas: CanvasLike, width: number, height: number): void => {
-    canvas.width = Math.max(1, Math.ceil(width));
-    canvas.height = Math.max(1, Math.ceil(height));
-};
-
-const codePointToString = (codePoint: number): string => String.fromCodePoint(codePoint);
-
-const getBoundingWidth = (metrics: TextMetrics, fallbackAdvance: number): number => {
-    const left = metrics.actualBoundingBoxLeft ?? 0;
-    const right = metrics.actualBoundingBoxRight ?? 0;
-    const bounded = left + right;
-    return bounded > 0 ? bounded : Math.max(1, fallbackAdvance);
-};
-
-const getBoundingHeight = (metrics: TextMetrics, fallbackSize: number): number => {
-    const ascent = metrics.actualBoundingBoxAscent ?? 0;
-    const descent = metrics.actualBoundingBoxDescent ?? 0;
-    const bounded = ascent + descent;
-    return bounded > 0 ? bounded : Math.max(1, fallbackSize);
-};
-
-const quantizeRasterSize = (fontSize: number): number =>
-    Math.max(MIN_RASTER_SIZE, Math.min(MAX_RASTER_SIZE, Math.round(fontSize)));
-
-const quoteFontFamilyToken = (family: string): string => {
-    const trimmed = family.trim();
-    if (trimmed.length === 0) {
-        return 'sans-serif';
-    }
-    if (trimmed.includes(',') || trimmed.includes('"') || trimmed.includes("'")) {
-        return trimmed;
-    }
-    return /\s/u.test(trimmed) ? `"${trimmed}"` : trimmed;
-};
-
-const buildCanvasFont = (
-    fontSize: number,
-    familyToken: string,
-    style: FontStyle | undefined,
-    weight: FontWeight | undefined,
-): string =>
-    `${normalizeStyleToken(style)} ${normalizeWeightToken(weight)} ${fontSize}px ${familyToken}`;
-
-const createRuntimeInfo = (
-    metricContext: CanvasRenderingContext2DLike,
-    familyToken: string,
-    source: {
-        readonly family: string;
-        readonly face?: string;
-        readonly style?: FontStyle;
-        readonly weight?: FontWeight;
-        readonly locale?: string;
-        readonly fallbackCodePoint?: number;
-        readonly atlas?: DynamicFontRuntimeInfo['atlas'];
-    },
-): DynamicFontRuntimeInfo => {
-    const sample = 'Hg';
-    metricContext.font = buildCanvasFont(METRIC_EM_SIZE, familyToken, source.style, source.weight);
-    const sampleMetrics = metricContext.measureText(sample);
-    const ascent = Math.max(1, Math.ceil(sampleMetrics.actualBoundingBoxAscent ?? METRIC_EM_SIZE * 0.8));
-    const descent = Math.max(1, Math.ceil(sampleMetrics.actualBoundingBoxDescent ?? METRIC_EM_SIZE * 0.2));
-    const lineGap = Math.max(
-        0,
-        Math.ceil(
-            (sampleMetrics.fontBoundingBoxAscent ?? ascent) +
-                (sampleMetrics.fontBoundingBoxDescent ?? descent) -
-                ascent -
-                descent,
-        ),
-    );
-
-    return {
-        family: source.family,
-        face: source.face ?? 'Regular',
-        style: source.style ?? 'normal',
-        weight: source.weight ?? 400,
-        locale: source.locale ?? '',
-        ascent,
-        descent,
-        lineGap,
-        unitsPerEm: METRIC_EM_SIZE,
-        defaultAdvance: Math.max(1, Math.ceil(sampleMetrics.width / Math.max(1, sample.length))),
-        fallbackCodePoint: source.fallbackCodePoint ?? 63,
-        atlas: source.atlas,
-    };
-};
 
 interface CachedGlyphMetric {
     readonly metric: FontGlyphMetric;
