@@ -6,16 +6,22 @@ import {
     WidgetTreeIntegrityError,
 } from './errors';
 import { FontRegistry, ensureDefaultUIFont } from './font';
-import { UILayoutEngine, compileLayoutInput, normalizeCorners } from './layout';
+import { UILayoutEngine, compileLayoutInput } from './layout';
+import { NodeFlag } from './runtime/node-flags';
 import {
-    BLACK,
+    type StoredWidgetRecord,
+    compileWidgetFocus,
+    compileWidgetImage,
+    compileWidgetStyle,
+    compileWidgetText,
+    normalizeWidgetRecord,
+} from './runtime/records';
+import {
     EMPTY_FOCUS_INPUT,
     EMPTY_LAYOUT_INPUT,
     EMPTY_RECORD_OBJECT,
     EMPTY_STYLE_INPUT,
     TRANSPARENT,
-    WHITE,
-    clamp,
     cloneData,
     intersectRect,
     intersectsPoint,
@@ -26,10 +32,6 @@ import {
     mergeProps,
     mergeStyleInput,
     mergeTextInput,
-    normalizeColor,
-    normalizeIndex,
-    normalizeUvRect,
-    normalizeWeight,
 } from './runtime/internals';
 import { TextLayoutEngine } from './text';
 import { WidgetRegistry } from './widget';
@@ -42,7 +44,6 @@ import type {
     ImageRenderCommand,
     LayoutBox,
     QuadRenderCommand,
-    ReadonlyColor,
     RenderCommand,
     ResolvedFocusPolicy,
     ResolvedWidgetImage,
@@ -50,7 +51,6 @@ import type {
     ResolvedTextBlock,
     ResolvedWidgetStyle,
     SizeLike,
-    TextBlockInput,
     TextLayoutResult,
     TextRenderCommand,
     UIFrame,
@@ -63,13 +63,10 @@ import type {
     WidgetEventContext,
     WidgetEventHandlers,
     WidgetFocusChangeEvent,
-    WidgetFocusPolicyInput,
-    WidgetImageInput,
     WidgetId,
     WidgetKey,
     WidgetLayoutInput,
     WidgetPatch,
-    WidgetRole,
     WidgetSerializableKey,
     WidgetSnapshot,
     WidgetStyleInput,
@@ -87,37 +84,13 @@ export interface UIRuntimeOptions<TPayload = unknown> {
     readonly textCacheSize?: number;
 }
 
-interface StoredWidgetRecord<TPayload> {
-    readonly role: WidgetRole;
-    readonly controller: string | null;
-    readonly key?: WidgetKey;
-    readonly props: Readonly<Record<string, unknown>>;
-    readonly enabled: boolean;
-    readonly interactive: boolean;
-    readonly layoutInput: WidgetLayoutInput;
-    readonly styleInput: WidgetStyleInput;
-    readonly textInput: TextBlockInput | null;
-    readonly imageInput: WidgetImageInput | null;
-    readonly focusInput: WidgetFocusPolicyInput;
-    readonly handlers: WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>> | null;
-}
-
-const enum NodeFlag {
-    Allocated = 1 << 0,
-    Visible = 1 << 1,
-    Interactive = 1 << 2,
-    Enabled = 1 << 3,
-    Focusable = 1 << 4,
-    TextDirty = 1 << 5,
-}
-
 export class UIRuntime<TPayload = unknown> implements Disposable {
     readonly fonts: FontRegistry;
     readonly textEngine: TextLayoutEngine;
     readonly registry: WidgetRegistry<UIRuntime<TPayload>, TPayload>;
 
     private readonly layoutEngine = new UILayoutEngine<WidgetId>();
-    private records: Array<StoredWidgetRecord<TPayload> | null> = [];
+    private records: Array<StoredWidgetRecord<UIRuntime<TPayload>> | null> = [];
     private layouts: Array<ResolvedLayout | null> = [];
     private styles: Array<ResolvedWidgetStyle | null> = [];
     private texts: Array<ResolvedTextBlock | null> = [];
@@ -183,7 +156,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.registry = options.registry ?? new WidgetRegistry<UIRuntime<TPayload>, TPayload>();
         const rootId = this.allocate();
         this.rootId = rootId as WidgetId;
-        this.records[rootId] = this.normalizeRecord({
+        this.records[rootId] = normalizeWidgetRecord({
             role: 'root',
             layout: {
                 display: 'overlay',
@@ -226,7 +199,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     ): WidgetId {
         this.ensureActive();
         const id = this.allocate();
-        this.records[id] = this.normalizeRecord(config as WidgetConfig<Record<string, unknown>, UIRuntime<TPayload>>);
+        this.records[id] = normalizeWidgetRecord(config as WidgetConfig<Record<string, unknown>, UIRuntime<TPayload>>);
         this.applyRecord(id, null, null, true);
         return id as WidgetId;
     }
@@ -300,7 +273,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         }
         const previousController = current.controller;
         const previousProps = current.props;
-        const merged: StoredWidgetRecord<TPayload> = {
+        const merged: StoredWidgetRecord<UIRuntime<TPayload>> = {
             role: patch.role ?? current.role,
             controller: patch.controller ?? current.controller,
             key: patch.key ?? current.key,
@@ -503,7 +476,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.locale = snapshot.locale;
         this.clear();
         const rootSnapshot = snapshot.root;
-        this.records[this.rootId] = this.normalizeRecord({
+        this.records[this.rootId] = normalizeWidgetRecord({
             role: rootSnapshot.role,
             controller: rootSnapshot.controller,
             key: rootSnapshot.key ?? undefined,
@@ -543,25 +516,6 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         }
     }
 
-    private normalizeRecord(
-        config: WidgetConfig<Record<string, unknown>, UIRuntime<TPayload>>
-    ): StoredWidgetRecord<TPayload> {
-        return {
-            role: config.role ?? 'container',
-            controller: config.controller ?? null,
-            key: config.key,
-            props: cloneData(config.props ?? EMPTY_RECORD_OBJECT),
-            enabled: config.enabled ?? true,
-            interactive: config.interactive ?? false,
-            layoutInput: cloneData(config.layout ?? EMPTY_LAYOUT_INPUT),
-            styleInput: cloneData(config.style ?? EMPTY_STYLE_INPUT),
-            textInput: cloneData(config.text ?? null),
-            imageInput: cloneData(config.image ?? null),
-            focusInput: cloneData(config.focus ?? EMPTY_FOCUS_INPUT),
-            handlers: (config.handlers as WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>>) ?? null,
-        };
-    }
-
     private applyRecord(
         index: number,
         previousProps: Readonly<Record<string, unknown>> | null,
@@ -579,10 +533,14 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             this.states[index] = undefined;
         }
         this.layouts[index] = compileLayoutInput(record.layoutInput);
-        this.styles[index] = this.compileStyle(record.styleInput);
-        this.texts[index] = this.compileText(record.textInput, this.styles[index]!.color);
-        this.images[index] = this.compileImage(record.imageInput);
-        this.focuses[index] = this.compileFocus(record.focusInput, record.interactive);
+        this.styles[index] = compileWidgetStyle(record.styleInput);
+        this.texts[index] = compileWidgetText(record.textInput, {
+            defaultFamily: this.fonts.getDefaultFamily(),
+            locale: this.locale,
+            fallbackColor: this.styles[index]!.color,
+        });
+        this.images[index] = compileWidgetImage(record.imageInput);
+        this.focuses[index] = compileWidgetFocus(record.focusInput, record.interactive);
         this.textLayouts[index] = null;
         this.textLayoutWidths[index] = Number.NaN;
         this.updateFlags(index);
@@ -594,100 +552,6 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         }
         this.layoutDirty = true;
         this.focusDirty = true;
-    }
-
-    private compileStyle(input: WidgetStyleInput): ResolvedWidgetStyle {
-        return {
-            visible: input.visible ?? true,
-            opacity: clamp(input.opacity ?? 1, 0, 1),
-            clip: input.clip ?? false,
-            background: normalizeColor(input.background, TRANSPARENT),
-            borderColor: normalizeColor(input.borderColor, TRANSPARENT),
-            borderWidth: Math.max(0, input.borderWidth ?? 0),
-            radius: normalizeCorners(input.radius),
-            color: normalizeColor(input.color, BLACK),
-        };
-    }
-
-    private compileText(input: TextBlockInput | null, fallbackColor: ReadonlyColor): ResolvedTextBlock | null {
-        if (!input) {
-            return null;
-        }
-        return {
-            value: input.value,
-            family: input.family ?? this.fonts.getDefaultFamily() ?? '',
-            size: Math.max(1, input.size ?? 16),
-            weight: normalizeWeight(input.weight),
-            style: input.style ?? 'normal',
-            locale: input.locale ?? this.locale,
-            direction: input.direction ?? 'auto',
-            lineHeight: Math.max(0, input.lineHeight ?? 0),
-            letterSpacing: input.letterSpacing ?? 0,
-            wrap: input.wrap ?? 'word',
-            overflow: input.overflow ?? 'clip',
-            maxLines: Math.max(1, Math.floor(input.maxLines ?? Number.MAX_SAFE_INTEGER)),
-            align: input.align ?? 'start',
-            color: normalizeColor(input.color, fallbackColor),
-            outlineColor: normalizeColor(input.outlineColor, TRANSPARENT),
-            outlineWidth: Math.max(0, input.outlineWidth ?? 0),
-            edgeSoftness: Math.max(0.5, input.edgeSoftness ?? 1),
-            shadowColor: normalizeColor(input.shadowColor, TRANSPARENT),
-            shadowOffsetX: input.shadowOffsetX ?? 0,
-            shadowOffsetY: input.shadowOffsetY ?? 0,
-            underline: input.underline ?? false,
-            underlineColor: normalizeColor(input.underlineColor, TRANSPARENT),
-            underlineThickness: Math.max(1, input.underlineThickness ?? 1),
-            underlineOffset: input.underlineOffset ?? 1,
-            strikeThrough: input.strikeThrough ?? false,
-            strikeThroughColor: normalizeColor(input.strikeThroughColor, TRANSPARENT),
-            strikeThroughThickness: Math.max(1, input.strikeThroughThickness ?? 1),
-            selectionStart: normalizeIndex(input.selectionStart),
-            selectionEnd: normalizeIndex(input.selectionEnd),
-            selectionColor: normalizeColor(input.selectionColor, TRANSPARENT),
-            caretIndex: normalizeIndex(input.caretIndex),
-            caretColor: normalizeColor(input.caretColor, TRANSPARENT),
-            caretWidth: Math.max(1, input.caretWidth ?? 1),
-            caretInset: Math.max(0, input.caretInset ?? 1),
-        };
-    }
-
-    private compileImage(input: WidgetImageInput | null): ResolvedWidgetImage | null {
-        if (!input) {
-            return null;
-        }
-        const source = input.source.kind === 'material'
-            ? {
-                  kind: 'material' as const,
-                  materialId: input.source.materialId,
-                  textureBinding: input.source.textureBinding,
-                  width: Math.max(1, input.source.width),
-                  height: Math.max(1, input.source.height),
-              }
-            : {
-                  kind: 'texture' as const,
-                  resourceId: input.source.resourceId,
-                  width: Math.max(1, input.source.width),
-                  height: Math.max(1, input.source.height),
-              };
-        return {
-            source,
-            fit: input.fit ?? 'fill',
-            alignX: clamp(input.alignX ?? 0.5, 0, 1),
-            alignY: clamp(input.alignY ?? 0.5, 0, 1),
-            sampling: input.sampling ?? 'linear',
-            tint: normalizeColor(input.tint, WHITE),
-            uvRect: normalizeUvRect(input.uvRect),
-        };
-    }
-
-    private compileFocus(input: WidgetFocusPolicyInput, interactive: boolean): ResolvedFocusPolicy {
-        return {
-            focusable: input.focusable ?? interactive,
-            tabIndex: input.tabIndex ?? 0,
-            scope: input.scope ?? false,
-            cycle: input.cycle ?? false,
-            order: input.order ?? 0,
-        };
     }
 
     private updateFlags(index: number): void {
