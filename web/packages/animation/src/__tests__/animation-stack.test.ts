@@ -134,6 +134,209 @@ describe('Animation stack', () => {
         expect(frame.pose.translations[2]).toBeCloseTo(0);
     });
 
+    it('evaluates a 2D blend tree from controller parameters', () => {
+        const controller = new AnimationController({
+            rig: {
+                bones: [{ name: 'hips' }],
+            },
+            clips: [
+                {
+                    id: 'idle',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [0, 0, 0, 0, 0, 0],
+                        },
+                    ],
+                },
+                {
+                    id: 'run',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [2, 0, 0, 2, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            parameters: [
+                { name: 'moveX', kind: 'float', defaultValue: 0 },
+                { name: 'moveY', kind: 'float', defaultValue: 0 },
+            ],
+            layers: [
+                {
+                    id: 'base',
+                    stateMachine: {
+                        entryState: 'locomotion',
+                        states: [
+                            {
+                                id: 'locomotion',
+                                motion: {
+                                    kind: 'blend2d',
+                                    parameterX: 'moveX',
+                                    parameterY: 'moveY',
+                                    children: [
+                                        {
+                                            position: [0, 0],
+                                            motion: { kind: 'clip', clipId: 'idle' },
+                                        },
+                                        {
+                                            position: [1, 1],
+                                            motion: { kind: 'clip', clipId: 'run' },
+                                        },
+                                    ],
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+
+        controller.seek(0.5);
+        controller.parameters.setFloat('moveX', 1);
+        controller.parameters.setFloat('moveY', 1);
+        const frame = controller.evaluate();
+
+        expect(frame.pose.translations[0]).toBeCloseTo(2);
+        expect(frame.pose.translations[1]).toBeCloseTo(0);
+        expect(frame.pose.translations[2]).toBeCloseTo(0);
+    });
+
+    it('evaluates a direct blend tree from controller parameters', () => {
+        const controller = new AnimationController({
+            rig: {
+                bones: [{ name: 'hips' }],
+            },
+            clips: [
+                {
+                    id: 'idle',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 1, 0, 0],
+                        },
+                    ],
+                },
+                {
+                    id: 'attack',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [3, 0, 0, 3, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            parameters: [
+                { name: 'idleWeight', kind: 'float', defaultValue: 0 },
+                { name: 'attackWeight', kind: 'float', defaultValue: 0 },
+            ],
+            layers: [
+                {
+                    id: 'base',
+                    stateMachine: {
+                        entryState: 'mix',
+                        states: [
+                            {
+                                id: 'mix',
+                                motion: {
+                                    kind: 'direct',
+                                    children: [
+                                        {
+                                            parameter: 'idleWeight',
+                                            motion: { kind: 'clip', clipId: 'idle' },
+                                        },
+                                        {
+                                            parameter: 'attackWeight',
+                                            motion: { kind: 'clip', clipId: 'attack' },
+                                        },
+                                    ],
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+
+        controller.parameters.setFloat('idleWeight', 0);
+        controller.parameters.setFloat('attackWeight', 1);
+        const frame = controller.evaluate();
+
+        expect(frame.pose.translations[0]).toBeCloseTo(3);
+        expect(frame.pose.translations[1]).toBeCloseTo(0);
+        expect(frame.pose.translations[2]).toBeCloseTo(0);
+    });
+
+    it('evaluates an additive blend tree from controller parameters', () => {
+        const controller = new AnimationController({
+            rig: {
+                bones: [{ name: 'hips' }],
+            },
+            clips: [
+                {
+                    id: 'base',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [1, 0, 0, 1, 0, 0],
+                        },
+                    ],
+                },
+                {
+                    id: 'offset',
+                    tracks: [
+                        {
+                            target: 'hips',
+                            path: 'translation',
+                            times: [0, 1],
+                            values: [2, 0, 0, 2, 0, 0],
+                        },
+                    ],
+                },
+            ],
+            parameters: [{ name: 'intensity', kind: 'float', defaultValue: 0 }],
+            layers: [
+                {
+                    id: 'base',
+                    stateMachine: {
+                        entryState: 'aim',
+                        states: [
+                            {
+                                id: 'aim',
+                                motion: {
+                                    kind: 'additive',
+                                    base: { kind: 'clip', clipId: 'base' },
+                                    additive: { kind: 'clip', clipId: 'offset' },
+                                    parameter: 'intensity',
+                                    weight: 1,
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+
+        controller.parameters.setFloat('intensity', 0.5);
+        const frame = controller.evaluate();
+
+        expect(frame.pose.translations[0]).toBeCloseTo(2);
+        expect(frame.pose.translations[1]).toBeCloseTo(0);
+        expect(frame.pose.translations[2]).toBeCloseTo(0);
+    });
+
     it('keeps the last keyframe when a non-looping state seeks to clip end', () => {
         const controller = new AnimationController({
             rig: {
