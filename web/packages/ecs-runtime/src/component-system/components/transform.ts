@@ -18,6 +18,7 @@ const WORLD_TRANSLATION_EPSILON = 1e-8;
     validateDependencies: true,
     enableMetrics: true,
     enableCaching: true,
+    trackInstances: false,
 })
 export class Transform extends Component {
     private _position: Vec3 = Vec3.ZERO.clone();
@@ -586,9 +587,6 @@ export class Transform extends Component {
 
     private markWorldDirty(): void {
         this._worldDirty = true;
-        this._worldPosition = undefined;
-        this._worldRotation = undefined;
-        this._worldScale = undefined;
 
         for (const child of this.children) {
             child.markWorldDirty();

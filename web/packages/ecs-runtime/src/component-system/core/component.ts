@@ -98,6 +98,7 @@ export interface ComponentConfig {
     readonly executeInEditMode?: boolean;
     readonly enableMetrics?: boolean;
     readonly enableCaching?: boolean;
+    readonly trackInstances?: boolean;
     readonly validateOnUpdate?: boolean;
     readonly autoSerialize?: boolean;
 }
@@ -132,6 +133,7 @@ export abstract class Component<
     private _totalUpdateTime: number = 0;
     private readonly _enableMetrics: boolean;
     private readonly _enableCaching: boolean;
+    private readonly _trackInstances: boolean;
     private readonly _validateOnUpdate: boolean;
     private readonly _autoSerialize: boolean;
 
@@ -153,6 +155,10 @@ export abstract class Component<
         this._executeInEditMode = config.executeInEditMode ?? false;
         this._enableMetrics = config.enableMetrics ?? false;
         this._enableCaching = config.enableCaching ?? true;
+        this._trackInstances =
+            config.trackInstances ??
+            getComponentMetadata(this.constructor as ComponentType)?.trackInstances ??
+            true;
         this._validateOnUpdate = config.validateOnUpdate ?? false;
         this._autoSerialize = config.autoSerialize ?? false;
 
@@ -161,7 +167,9 @@ export abstract class Component<
             lastCacheUpdate: 0,
         };
 
-        this._registerInstance();
+        if (this._trackInstances) {
+            this._registerInstance();
+        }
 
         this._initialize();
     }

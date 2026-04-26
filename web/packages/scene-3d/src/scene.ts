@@ -9,7 +9,11 @@ import {
     type CameraConfig,
 } from '@axrone/scene-runtime/scene-facade';
 import { type MeshRendererConfig } from '@axrone/scene-runtime/scene-3d-support';
-import { Scene3DActorRuntime } from './scene-3d-actor-runtime';
+import {
+    Scene3DActorRuntime,
+    type SceneRenderableActorCreateOptions,
+    type SceneRenderableActorInstance,
+} from './scene-3d-actor-runtime';
 
 export class Scene<R extends ComponentRegistry = Record<string, never>> extends SceneAssetFacade<R> {
     private readonly _actors3d: Scene3DActorRuntime<R>;
@@ -38,6 +42,13 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> extends 
     ): Actor<World<SceneRegistry<R>>> {
         this.assertNotDisposed();
         return this._actors3d.createRenderableActor(actorConfig, rendererConfig);
+    }
+
+    createRenderableActors(
+        configs: readonly SceneRenderableActorCreateOptions[]
+    ): readonly SceneRenderableActorInstance<R>[] {
+        this.assertNotDisposed();
+        return this._actors3d.createRenderableActors(configs);
     }
 
     getSupportedCompressedTextureFormats(

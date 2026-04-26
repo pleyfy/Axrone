@@ -205,6 +205,7 @@ export function script<T extends ComponentType>(
                 executeInEditMode: options.executeInEditMode || false,
                 priority: options.priority || 0,
                 allowMultiple: options.allowMultiple ?? false,
+                trackInstances: options.trackInstances ?? true,
                 version: options.version,
                 author: options.author,
                 description: options.description,

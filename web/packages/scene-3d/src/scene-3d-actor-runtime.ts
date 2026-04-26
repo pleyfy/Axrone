@@ -1,4 +1,4 @@
-import type { Actor, ActorConfig } from '@axrone/ecs-runtime';
+import { Transform, type Actor, type ActorConfig } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import {
@@ -13,6 +13,19 @@ export interface Scene3DActorRuntimeOptions<
     R extends ComponentRegistry = Record<string, never>,
 > {
     readonly actors: SceneActorRuntime<R>;
+}
+
+export interface SceneRenderableActorCreateOptions {
+    readonly actorConfig?: ActorConfig;
+    readonly rendererConfig?: MeshRendererConfig;
+}
+
+export interface SceneRenderableActorInstance<
+    R extends ComponentRegistry = Record<string, never>,
+> {
+    readonly actor: Actor<World<SceneRegistry<R>>>;
+    readonly transform: Transform;
+    readonly renderer: MeshRenderer;
 }
 
 export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, never>> {
@@ -46,6 +59,28 @@ export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, ne
         const actor = this._actors.createActor(actorConfig);
         actor.addComponent(MeshRenderer, rendererConfig);
         return actor;
+    }
+
+    createRenderableActors(
+        configs: readonly SceneRenderableActorCreateOptions[]
+    ): readonly SceneRenderableActorInstance<R>[] {
+        this._requireRegisteredComponent(
+            MeshRenderer,
+            'renderable actor creation requires the 3D scene capability/profile'
+        );
+
+        return this._actors.runInStructureBatch(() => {
+            const created: SceneRenderableActorInstance<R>[] = [];
+
+            for (const config of configs) {
+                const actor = this._actors.createActor(config.actorConfig ?? {});
+                const renderer = actor.addComponent(MeshRenderer, config.rendererConfig ?? {});
+                const transform = actor.requireComponent(Transform);
+                created.push({ actor, transform, renderer });
+            }
+
+            return created;
+        });
     }
 
     private _requireRegisteredComponent(

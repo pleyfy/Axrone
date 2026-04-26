@@ -139,13 +139,13 @@ export class SceneDrawExecutor {
             this._dependencies.uniformWriter.write(shader, name, value);
         }
 
-        for (const [name, value] of item.renderer.getUniformEntries()) {
+        item.renderer.forEachUniformEntry((name, value) => {
             this._dependencies.uniformWriter.write(
                 shader,
                 name,
                 value as SceneUniformValue | null | undefined
             );
-        }
+        });
 
         const primitiveMode =
             this._dependencies.renderStateApplier.resolvePrimitiveMode?.(

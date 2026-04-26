@@ -1,11 +1,11 @@
 import { Transform } from '@axrone/ecs-runtime';
+import { createSphere } from '@axrone/geometry';
 import {
-    Camera,
-    MeshRenderer,
     Scene,
+    SceneGeometryMeshBuilder,
     createUnlitColorShaderDefinition,
 } from '@axrone/scene-3d';
-import { Mat4, Quat, Vec3 } from '@axrone/numeric';
+import { Quat, Vec3 } from '@axrone/numeric';
 import * as THREE from 'three';
 
 type WorkloadType = 'draw-call' | 'triangle' | 'mixed';
@@ -28,6 +28,8 @@ type EngineStats = {
     readonly frameTimes: number[];
     drawCalls: number;
     triangles: number;
+    setupBuildTimeMs: number;
+    firstRenderTimeMs: number;
     setupTimeMs: number;
 };
 
@@ -65,6 +67,8 @@ type BenchmarkSnapshot = {
             frameCount: number;
             drawCalls: number;
             triangles: number;
+            setupBuildTimeMs: number;
+            firstRenderTimeMs: number;
             setupTimeMs: number;
         };
         three: {
@@ -73,6 +77,8 @@ type BenchmarkSnapshot = {
             frameCount: number;
             drawCalls: number;
             triangles: number;
+            setupBuildTimeMs: number;
+            firstRenderTimeMs: number;
             setupTimeMs: number;
         };
     };
@@ -121,6 +127,10 @@ const ui = {
     threeDraws: byId<HTMLElement>('three-draws'),
     axroneTris: byId<HTMLElement>('axrone-tris'),
     threeTris: byId<HTMLElement>('three-tris'),
+    axroneSetupBuild: byId<HTMLElement>('axrone-setup-build'),
+    threeSetupBuild: byId<HTMLElement>('three-setup-build'),
+    axroneFirstRender: byId<HTMLElement>('axrone-first-render'),
+    threeFirstRender: byId<HTMLElement>('three-first-render'),
     axroneSetup: byId<HTMLElement>('axrone-setup'),
     threeSetup: byId<HTMLElement>('three-setup'),
     fpsWinner: byId<HTMLElement>('fps-winner'),
@@ -301,18 +311,28 @@ const applyThreeStyleOrbitPose = (
     position: Readonly<Vec3>,
     target: Readonly<Vec3>,
     threeCamera: THREE.PerspectiveCamera,
-    transform: Transform
+    transform: Transform,
+    rotationScratch: Quat
 ): void => {
     threeCamera.position.set(position.x, position.y, position.z);
     threeCamera.lookAt(target.x, target.y, target.z);
-    transform.position = new Vec3(position.x, position.y, position.z);
-    transform.rotation = new Quat(
-        threeCamera.quaternion.x,
-        threeCamera.quaternion.y,
-        threeCamera.quaternion.z,
-        threeCamera.quaternion.w
-    );
+    transform.position = position as Vec3;
+    rotationScratch.x = threeCamera.quaternion.x;
+    rotationScratch.y = threeCamera.quaternion.y;
+    rotationScratch.z = threeCamera.quaternion.z;
+    rotationScratch.w = threeCamera.quaternion.w;
+    transform.rotation = rotationScratch;
 };
+
+const setVec3 = (target: Vec3, x: number, y: number, z: number): Vec3 => {
+    target.x = x;
+    target.y = y;
+    target.z = z;
+    return target;
+};
+
+const setQuatFromEuler = (target: Quat, x: number, y: number, z: number): Quat =>
+    Quat.fromEuler(x, y, z, target);
 
 const resizeCanvas = (
     canvas: HTMLCanvasElement,
@@ -356,57 +376,86 @@ const createAxroneRuntime = (
         },
     });
 
-    const boxMesh = scene.createBoxMesh('benchmark/box', 1, 1, 1);
-    const sphereMesh = scene.createSphereMesh('benchmark/sphere', 0.65, 16);
+    const meshBuilder = new SceneGeometryMeshBuilder();
+    const needsBoxMesh = descriptors.some((descriptor) => descriptor.kind === 'box');
+    const needsSphereMesh = descriptors.some((descriptor) => descriptor.kind === 'sphere');
+    const boxMesh = needsBoxMesh ? scene.createBoxMesh('benchmark/box', 1, 1, 1) : null;
+    const sphereMesh = needsSphereMesh
+        ? scene.registerMesh(
+              meshBuilder.createDefinition(
+                  'benchmark/sphere',
+                  createSphere({
+                      radius: 0.65,
+                      widthSegments: 16,
+                      heightSegments: 16,
+                      generateNormals: true,
+                      generateTexCoords: true,
+                      generateTangents: false,
+                  })
+              )
+          )
+        : null;
     const cameraActor = scene.createCameraActor({ autoStart: false }, { primary: true, fieldOfView: 58 });
-    const cameraComponent = cameraActor.requireComponent(Camera);
     const cameraTransform = cameraActor.requireComponent(Transform);
     const orbit = computeSceneOrbit(descriptors);
     const orbitCameraReference = new THREE.PerspectiveCamera(58, 1, 0.1, 1000);
-    let currentCameraPosition = new Vec3(
+    const currentCameraPosition = new Vec3(
         orbit.target.x + orbit.radius,
         orbit.target.y + orbit.height,
         orbit.target.z
     );
-
-    cameraComponent.getViewMatrix = () =>
-        Mat4.lookAt(currentCameraPosition, orbit.target, Vec3.UP, new Mat4());
+    const cameraRotationScratch = new Quat();
+    const positionScratch = new Vec3();
+    const rotationScratch = new Quat();
 
     const renderables: { readonly transform: Transform; readonly descriptor: WorkloadDescriptor }[] = [];
     const sphereScale = new Vec3(0.72, 0.72, 0.72);
     const boxScale = new Vec3(0.84, 0.84, 0.84);
+    const sharedActorConfig = Object.freeze({ autoStart: false });
 
-    scene.world.batchStructureChanges(() => {
-        for (const descriptor of descriptors) {
-            const actor = scene.createRenderableActor(
-                { autoStart: false },
-                {
-                    meshId: descriptor.kind === 'sphere' ? sphereMesh.id : boxMesh.id,
-                    materialId: 'benchmark/material',
-                }
-            );
+    const createdRenderables = scene.createRenderableActors(
+        descriptors.map((descriptor) => ({
+            actorConfig: sharedActorConfig,
+            rendererConfig: {
+                meshId:
+                    descriptor.kind === 'sphere'
+                        ? (sphereMesh?.id ?? 'benchmark/sphere')
+                        : (boxMesh?.id ?? 'benchmark/box'),
+                materialId: 'benchmark/material',
+            },
+        }))
+    );
 
-            const transform = actor.requireComponent(Transform);
-            transform.position = descriptor.basePosition;
-            transform.scale = descriptor.kind === 'sphere' ? sphereScale : boxScale;
-
-            const renderer = actor.getComponent(MeshRenderer);
-            renderer?.setUniform('u_Color', [
+    for (let index = 0; index < descriptors.length; index += 1) {
+        const descriptor = descriptors[index]!;
+        const created = createdRenderables[index]!;
+        const transform = created.transform;
+        transform.position = descriptor.basePosition;
+        transform.scale = descriptor.kind === 'sphere' ? sphereScale : boxScale;
+        created.renderer.setUniform('u_Color', [
                 descriptor.color[0],
                 descriptor.color[1],
                 descriptor.color[2],
                 1,
             ]);
+        renderables.push({ transform, descriptor });
+    }
 
-            renderables.push({ transform, descriptor });
-        }
-    });
+    applyThreeStyleOrbitPose(
+        currentCameraPosition,
+        orbit.target,
+        orbitCameraReference,
+        cameraTransform,
+        cameraRotationScratch
+    );
 
     const stats: EngineStats = {
         frameCount: 0,
         frameTimes: [],
         drawCalls: 0,
         triangles: 0,
+        setupBuildTimeMs: 0,
+        firstRenderTimeMs: 0,
         setupTimeMs: 0,
     };
     const syncMetrics = () => {
@@ -423,7 +472,8 @@ const createAxroneRuntime = (
             enabled: true,
             execute: (_entities, deltaTime) => {
                 const elapsed = scene.loop.elapsed;
-                currentCameraPosition = new Vec3(
+                setVec3(
+                    currentCameraPosition,
                     orbit.target.x + Math.cos(elapsed * 0.00017) * orbit.radius,
                     orbit.target.y + orbit.height,
                     orbit.target.z + Math.sin(elapsed * 0.00017) * orbit.radius
@@ -432,18 +482,21 @@ const createAxroneRuntime = (
                     currentCameraPosition,
                     orbit.target,
                     orbitCameraReference,
-                    cameraTransform
+                    cameraTransform,
+                    cameraRotationScratch
                 );
 
                 for (const { transform, descriptor } of renderables) {
-                    transform.position = new Vec3(
+                    transform.position = setVec3(
+                        positionScratch,
                         descriptor.basePosition.x,
                         descriptor.basePosition.y +
                             Math.sin(elapsed * descriptor.bobSpeed + descriptor.bobPhase) *
                                 descriptor.bobAmplitude,
                         descriptor.basePosition.z
                     );
-                    transform.rotation = Quat.fromEuler(
+                    transform.rotation = setQuatFromEuler(
+                        rotationScratch,
                         elapsed * descriptor.spin.x,
                         elapsed * descriptor.spin.y,
                         elapsed * descriptor.spin.z
@@ -459,9 +512,13 @@ const createAxroneRuntime = (
         }
     );
 
+    const buildCompletedAt = performance.now();
     scene.renderNow();
     syncMetrics();
-    stats.setupTimeMs = performance.now() - setupStartedAt;
+    const firstRenderCompletedAt = performance.now();
+    stats.setupBuildTimeMs = buildCompletedAt - setupStartedAt;
+    stats.firstRenderTimeMs = firstRenderCompletedAt - buildCompletedAt;
+    stats.setupTimeMs = firstRenderCompletedAt - setupStartedAt;
 
     return {
         stats,
@@ -496,6 +553,8 @@ const createThreeRuntime = (
         frameTimes: [],
         drawCalls: 0,
         triangles: 0,
+        setupBuildTimeMs: 0,
+        firstRenderTimeMs: 0,
         setupTimeMs: 0,
     };
     const syncMetrics = () => {
@@ -554,6 +613,13 @@ const createThreeRuntime = (
     let logicalElapsed = 0;
     const orbit = computeSceneOrbit(descriptors);
 
+    camera.position.set(
+        orbit.target.x + orbit.radius,
+        orbit.target.y + orbit.height,
+        orbit.target.z
+    );
+    camera.lookAt(orbit.target.x, orbit.target.y, orbit.target.z);
+
     const frame = (timestamp: number) => {
         if (paused) {
             return;
@@ -596,9 +662,13 @@ const createThreeRuntime = (
         rafId = requestAnimationFrame(frame);
     };
 
+    const buildCompletedAt = performance.now();
     renderer.render(scene, camera);
     syncMetrics();
-    stats.setupTimeMs = performance.now() - setupStartedAt;
+    const firstRenderCompletedAt = performance.now();
+    stats.setupBuildTimeMs = buildCompletedAt - setupStartedAt;
+    stats.firstRenderTimeMs = firstRenderCompletedAt - buildCompletedAt;
+    stats.setupTimeMs = firstRenderCompletedAt - setupStartedAt;
 
     return {
         stats,
@@ -712,6 +782,18 @@ const refreshMetrics = () => {
     ui.threeDraws.textContent = threeStats ? formatNumber(threeStats.drawCalls) : '0';
     ui.axroneTris.textContent = axroneStats ? formatNumber(axroneStats.triangles) : '0';
     ui.threeTris.textContent = threeStats ? formatNumber(threeStats.triangles) : '0';
+    ui.axroneSetupBuild.textContent = axroneStats
+        ? `${axroneStats.setupBuildTimeMs.toFixed(1)} ms`
+        : '0 ms';
+    ui.threeSetupBuild.textContent = threeStats
+        ? `${threeStats.setupBuildTimeMs.toFixed(1)} ms`
+        : '0 ms';
+    ui.axroneFirstRender.textContent = axroneStats
+        ? `${axroneStats.firstRenderTimeMs.toFixed(1)} ms`
+        : '0 ms';
+    ui.threeFirstRender.textContent = threeStats
+        ? `${threeStats.firstRenderTimeMs.toFixed(1)} ms`
+        : '0 ms';
     ui.axroneSetup.textContent = axroneStats ? `${axroneStats.setupTimeMs.toFixed(1)} ms` : '0 ms';
     ui.threeSetup.textContent = threeStats ? `${threeStats.setupTimeMs.toFixed(1)} ms` : '0 ms';
 
@@ -744,6 +826,8 @@ const computeEngineSummary = (stats: EngineStats | null | undefined) => {
         frameCount: stats?.frameCount ?? 0,
         drawCalls: stats?.drawCalls ?? 0,
         triangles: stats?.triangles ?? 0,
+        setupBuildTimeMs: round(stats?.setupBuildTimeMs ?? 0, 2),
+        firstRenderTimeMs: round(stats?.firstRenderTimeMs ?? 0, 2),
         setupTimeMs: round(stats?.setupTimeMs ?? 0, 2),
     };
 };

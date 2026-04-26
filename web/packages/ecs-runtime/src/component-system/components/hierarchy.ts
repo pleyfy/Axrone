@@ -16,6 +16,7 @@ import type { Transform } from './transform';
     validateDependencies: true,
     enableMetrics: true,
     enableCaching: true,
+    trackInstances: false,
 })
 export class Hierarchy extends Component {
     private _parent?: Hierarchy;

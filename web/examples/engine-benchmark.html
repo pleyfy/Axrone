@@ -604,11 +604,27 @@
 
                     <div class="detail-list">
                         <div class="detail-row">
-                            <span>Axrone setup time</span>
+                            <span>Axrone build time</span>
+                            <strong id="axrone-setup-build">0 ms</strong>
+                        </div>
+                        <div class="detail-row">
+                            <span>Axrone first render</span>
+                            <strong id="axrone-first-render">0 ms</strong>
+                        </div>
+                        <div class="detail-row">
+                            <span>Axrone total setup</span>
                             <strong id="axrone-setup">0 ms</strong>
                         </div>
                         <div class="detail-row">
-                            <span>Three.js setup time</span>
+                            <span>Three.js build time</span>
+                            <strong id="three-setup-build">0 ms</strong>
+                        </div>
+                        <div class="detail-row">
+                            <span>Three.js first render</span>
+                            <strong id="three-first-render">0 ms</strong>
+                        </div>
+                        <div class="detail-row">
+                            <span>Three.js total setup</span>
                             <strong id="three-setup">0 ms</strong>
                         </div>
                         <div class="detail-row">
@@ -627,6 +643,7 @@
                             <li>Both engines receive the same deterministic object descriptors.</li>
                             <li>Motion field, camera path and color assignment are matched.</li>
                             <li>Materials are intentionally unlit to reduce shading noise.</li>
+                            <li>Setup is split into scene build and first render for clearer startup analysis.</li>
                             <li>Axrone draw submissions are inferred from current scene source behavior.</li>
                             <li>Three.js draw submissions and triangles come from renderer frame stats.</li>
                             <li>Use the same browser session for relative comparison, not absolute marketing claims.</li>

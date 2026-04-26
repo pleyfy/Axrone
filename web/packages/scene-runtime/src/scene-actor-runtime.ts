@@ -47,6 +47,10 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
         return this._world.getRegisteredComponentNames();
     }
 
+    runInStructureBatch<T>(callback: () => T): T {
+        return this._world.batchStructureChanges(callback);
+    }
+
     createActor(config: ActorConfig = {}): Actor<World<SceneRegistry<R>>> {
         return new Actor(this._world, config);
     }

@@ -103,6 +103,7 @@ const areEqualWeights = (
     priority: 100,
     executeInEditMode: true,
     singleton: false,
+    trackInstances: false,
 })
 export class MeshRenderer extends Component {
     private _meshId: string | null;
@@ -287,6 +288,12 @@ export class MeshRenderer extends Component {
 
     clearUniforms(): void {
         this._uniformOverrides.clear();
+    }
+
+    forEachUniformEntry(visitor: (name: string, value: SceneUniformValue) => void): void {
+        for (const [name, value] of this._uniformOverrides) {
+            visitor(name, value);
+        }
     }
 
     getUniformEntries(): readonly (readonly [string, SceneUniformValue])[] {
