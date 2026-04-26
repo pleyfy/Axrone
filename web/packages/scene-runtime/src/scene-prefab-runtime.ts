@@ -448,8 +448,52 @@ export class ScenePrefabRuntime {
         }
 
         if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
-            Object.assign(component as object, normalized);
+            this._assignHydratedProperties(component, normalized);
         }
+    }
+
+    private _assignHydratedProperties(
+        component: Component,
+        values: Record<string, unknown>
+    ): void {
+        const target = component as unknown as Record<string, unknown>;
+
+        for (const [propertyKey, value] of Object.entries(values)) {
+            if (propertyKey === 'id') {
+                continue;
+            }
+
+            const descriptor =
+                this._findPropertyDescriptor(component, propertyKey) ??
+                Object.getOwnPropertyDescriptor(target, propertyKey);
+            if (
+                descriptor &&
+                ('writable' in descriptor
+                    ? descriptor.writable === false
+                    : descriptor.set === undefined)
+            ) {
+                continue;
+            }
+
+            target[propertyKey] = value;
+        }
+    }
+
+    private _findPropertyDescriptor(
+        component: Component,
+        propertyKey: string
+    ): PropertyDescriptor | undefined {
+        let prototype = Object.getPrototypeOf(component);
+
+        while (prototype && prototype !== Object.prototype) {
+            const descriptor = Object.getOwnPropertyDescriptor(prototype, propertyKey);
+            if (descriptor) {
+                return descriptor;
+            }
+            prototype = Object.getPrototypeOf(prototype);
+        }
+
+        return undefined;
     }
 
     private _normalizeComponentData(

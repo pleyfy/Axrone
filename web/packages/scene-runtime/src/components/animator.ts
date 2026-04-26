@@ -685,7 +685,17 @@ export class Animator extends Component {
         this._rebuildTargetMap(instanceId);
         if (this._clipDefinitions.length === 0 || this._resolvedTargets.size === 0) {
             this._controller = null;
-            this._controllerDirty = false;
+            this._controllerDirty = this._clipDefinitions.length > 0;
+            return null;
+        }
+
+        if (
+            this._getRequiredRigTargetNodeIds().some(
+                (targetNodeId) => !this._resolvedTargets.has(targetNodeId)
+            )
+        ) {
+            this._controller = null;
+            this._controllerDirty = true;
             return null;
         }
 
@@ -951,10 +961,93 @@ export class Animator extends Component {
         }
     }
 
+    private _getRequiredTargetNodeIds(): readonly string[] {
+        const nodeIds = new Set<string>();
+
+        for (const clip of this._clipDefinitions) {
+            for (const track of clip.tracks) {
+                if (typeof track.target === 'string' && track.target.length > 0) {
+                    nodeIds.add(track.target);
+                }
+            }
+        }
+
+        if (typeof this._rootMotion?.bone === 'string' && this._rootMotion.bone.length > 0) {
+            nodeIds.add(this._rootMotion.bone);
+        }
+
+        for (const layer of this._layerDefinitions ?? []) {
+            for (const boneName of layer.boneMask ?? []) {
+                if (typeof boneName === 'string' && boneName.length > 0) {
+                    nodeIds.add(boneName);
+                }
+            }
+
+            for (const ikLayer of layer.ikLayers ?? []) {
+                for (const job of ikLayer.jobs ?? []) {
+                    nodeIds.add(job.rootBone);
+                    nodeIds.add(job.tipBone);
+                    if (typeof job.targetBone === 'string' && job.targetBone.length > 0) {
+                        nodeIds.add(job.targetBone);
+                    }
+                }
+            }
+        }
+
+        return Object.freeze([...nodeIds]);
+    }
+
+    private _getRequiredRigTargetNodeIds(): readonly string[] {
+        const nodeIds = new Set<string>();
+
+        for (const clip of this._clipDefinitions) {
+            for (const track of clip.tracks) {
+                if (
+                    track.path !== 'weights' &&
+                    typeof track.target === 'string' &&
+                    track.target.length > 0
+                ) {
+                    nodeIds.add(track.target);
+                }
+            }
+        }
+
+        if (typeof this._rootMotion?.bone === 'string' && this._rootMotion.bone.length > 0) {
+            nodeIds.add(this._rootMotion.bone);
+        }
+
+        for (const layer of this._layerDefinitions ?? []) {
+            for (const boneName of layer.boneMask ?? []) {
+                if (typeof boneName === 'string' && boneName.length > 0) {
+                    nodeIds.add(boneName);
+                }
+            }
+
+            for (const ikLayer of layer.ikLayers ?? []) {
+                for (const job of ikLayer.jobs ?? []) {
+                    nodeIds.add(job.rootBone);
+                    nodeIds.add(job.tipBone);
+                    if (typeof job.targetBone === 'string' && job.targetBone.length > 0) {
+                        nodeIds.add(job.targetBone);
+                    }
+                }
+            }
+        }
+
+        return Object.freeze([...nodeIds]);
+    }
+
     private _rebuildTargetMap(instanceId: string | null): void {
         this._resolvedTargets.clear();
         this._resolvedInstanceId = instanceId;
-        const resolvedTargets: Array<{
+        type TargetActor = {
+            parent?: { getComponent: (type: unknown) => unknown } | null;
+            children: readonly TargetActor[];
+            getComponent: (type: unknown) => unknown;
+        };
+        const collectTargets = (
+            actors: readonly TargetActor[],
+        ): Array<{
             readonly actor: {
                 parent?: { getComponent: (type: unknown) => unknown } | null;
                 children: readonly unknown[];
@@ -964,61 +1057,61 @@ export class Animator extends Component {
             readonly binding: PrefabNodeBinding;
             readonly transform?: Transform;
             readonly meshRenderer?: MeshRenderer;
-        }> = [];
-        const rootActor = this.actor as
-            | {
-                  parent?: { getComponent: (type: unknown) => unknown } | null;
-                  children: readonly {
-                      parent?: { getComponent: (type: unknown) => unknown } | null;
-                      children: readonly unknown[];
-                      getComponent: (type: unknown) => unknown;
-                  }[];
-                  getComponent: (type: unknown) => unknown;
-              }
-            | undefined;
-        const actors = rootActor
-            ? [rootActor]
-            : ((this.world as {
-                  getAllActors?: () => readonly {
-                      parent?: { getComponent: (type: unknown) => unknown } | null;
-                      children: readonly unknown[];
-                      getComponent: (type: unknown) => unknown;
-                  }[];
-              } | undefined)?.getAllActors?.() ?? []);
-        const stack = [...actors];
+        }> => {
+            const targets: Array<{
+                readonly actor: TargetActor;
+                readonly nodeId: string;
+                readonly binding: PrefabNodeBinding;
+                readonly transform?: Transform;
+                readonly meshRenderer?: MeshRenderer;
+            }> = [];
+            const stack = [...actors];
 
-        while (stack.length > 0) {
-            const actor = stack.pop()!;
-            for (let childIndex = 0; childIndex < actor.children.length; childIndex += 1) {
-                stack.push(actor.children[childIndex] as {
-                    parent?: { getComponent: (type: unknown) => unknown } | null;
-                    children: readonly unknown[];
-                    getComponent: (type: unknown) => unknown;
-                });
+            while (stack.length > 0) {
+                const actor = stack.pop()!;
+                for (let childIndex = 0; childIndex < actor.children.length; childIndex += 1) {
+                    stack.push(actor.children[childIndex]!);
+                }
+
+                const binding = actor.getComponent(PrefabNodeBinding) as PrefabNodeBinding | undefined;
+                if (!binding || binding.nodeId === null) {
+                    continue;
+                }
+                if (instanceId && binding.instanceId !== instanceId) {
+                    continue;
+                }
+                const transform = actor.getComponent(Transform) as Transform | undefined;
+                const meshRenderer = actor.getComponent(MeshRenderer) as MeshRenderer | undefined;
+                if (!transform && !meshRenderer) {
+                    continue;
+                }
+                targets.push(
+                    Object.freeze({
+                        actor,
+                        nodeId: binding.nodeId,
+                        binding,
+                        ...(transform ? { transform } : {}),
+                        ...(meshRenderer ? { meshRenderer } : {}),
+                    })
+                );
             }
 
-            const binding = actor.getComponent(PrefabNodeBinding) as PrefabNodeBinding | undefined;
-            if (!binding || binding.nodeId === null) {
-                continue;
-            }
-            if (instanceId && binding.instanceId !== instanceId) {
-                continue;
-            }
-            const transform = actor.getComponent(Transform) as Transform | undefined;
-            const meshRenderer = actor.getComponent(MeshRenderer) as MeshRenderer | undefined;
-            if (!transform && !meshRenderer) {
-                continue;
-            }
-            resolvedTargets.push(
-                Object.freeze({
-                    actor,
-                    nodeId: binding.nodeId,
-                    binding,
-                    ...(transform ? { transform } : {}),
-                    ...(meshRenderer ? { meshRenderer } : {}),
-                })
-            );
-        }
+            return targets;
+        };
+        const rootActor = this.actor as TargetActor | undefined;
+        const allActors =
+            (this.world as { getAllActors?: () => readonly TargetActor[] } | undefined)
+                ?.getAllActors?.() ?? [];
+        const rootTargets = rootActor ? collectTargets([rootActor]) : [];
+        const rootTargetNodeIds = new Set(rootTargets.map((target) => target.nodeId));
+        const requiresInstanceFallback =
+            Boolean(instanceId) &&
+            rootTargets.length > 0 &&
+            this._getRequiredTargetNodeIds().some((targetNodeId) => !rootTargetNodeIds.has(targetNodeId));
+        const resolvedTargets =
+            requiresInstanceFallback || rootTargets.length === 0
+                ? collectTargets(allActors)
+                : rootTargets;
 
         const resolvedNodeIds = new Set(
             resolvedTargets.map((entry) => entry.binding.nodeId).filter((nodeId): nodeId is string => Boolean(nodeId))

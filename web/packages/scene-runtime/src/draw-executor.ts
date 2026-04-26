@@ -97,7 +97,7 @@ export class SceneDrawExecutor {
         }
 
         const materialPass = resolveSceneMaterialPass(material, context.renderPass.materialPassId);
-        if (context.renderPass.materialPassId !== null && !materialPass) {
+        if (context.renderPass.materialPassId != null && !materialPass) {
             return;
         }
 
@@ -147,10 +147,11 @@ export class SceneDrawExecutor {
             );
         }
 
-        const primitiveMode = this._dependencies.renderStateApplier.resolvePrimitiveMode(
-            mesh.mode,
-            materialPass
-        );
+        const primitiveMode =
+            this._dependencies.renderStateApplier.resolvePrimitiveMode?.(
+                mesh.mode,
+                materialPass
+            ) ?? mesh.mode;
 
         if (mesh.indexBuffer && mesh.indexType !== null && mesh.indexCount > 0) {
             this._dependencies.gl.drawElements(primitiveMode, mesh.indexCount, mesh.indexType, 0);
@@ -160,9 +161,9 @@ export class SceneDrawExecutor {
 
         frameState.recordDraw({
             topology: materialPass?.primitive
-                ? this._dependencies.renderStateApplier.resolvePrimitiveTopology(
+                ? (this._dependencies.renderStateApplier.resolvePrimitiveTopology?.(
                       materialPass.primitive
-                  )
+                  ) ?? mesh.topology)
                 : mesh.topology,
             indexCount: mesh.indexCount,
             vertexCount: mesh.vertexCount,

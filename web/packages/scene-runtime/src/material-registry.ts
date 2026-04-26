@@ -256,11 +256,13 @@ export const resolveSceneMaterialPass = (
     material: Pick<SceneMaterialResource, 'passes'>,
     materialPassId: string | null | undefined
 ): SceneMaterialPassDefinition | null => {
+    const passes = material.passes ?? [];
+
     if (materialPassId === null || materialPassId === undefined) {
-        return material.passes[0] ?? null;
+        return passes[0] ?? null;
     }
 
-    return material.passes.find((pass) => pass.id === materialPassId) ?? null;
+    return passes.find((pass) => pass.id === materialPassId) ?? null;
 };
 
 export class SceneMaterialRegistry {

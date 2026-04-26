@@ -126,8 +126,8 @@ export class SceneLightingCollector {
     collect(
         actors: readonly Actor[],
         ambientBase: Readonly<Vec3>,
-        skyLightBase: Readonly<Vec3>,
-        groundLightBase: Readonly<Vec3>
+        skyLightBase: Readonly<Vec3> = Vec3.ZERO,
+        groundLightBase: Readonly<Vec3> = Vec3.ZERO
     ): SceneLightingState {
         const state = this._state;
         this._resetState(ambientBase, skyLightBase, groundLightBase);

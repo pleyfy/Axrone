@@ -224,23 +224,29 @@ export class SceneTextureFactory {
                 break;
             }
             case 'bytes': {
-                const image = await this._loadImageFromBytes(
+                const image = await this._loadImageSourceFromBytes(
                     definition.source.bytes,
                     definition.source.mimeType,
                     definition.source.uri
                 );
-                texture = this._options.textureManager.createTexture(
-                    {
-                        width: image.width,
-                        height: image.height,
-                        format,
-                        colorSpace: definition.colorSpace,
-                        dimension: TextureDimension.TEXTURE_2D,
-                        usage: TextureUsage.STATIC,
-                        mipLevels: mipLevelsFor(image.width, image.height),
-                    },
-                    image
-                );
+                try {
+                    texture = this._options.textureManager.createTexture(
+                        {
+                            width: image.width,
+                            height: image.height,
+                            format,
+                            colorSpace: definition.colorSpace,
+                            dimension: TextureDimension.TEXTURE_2D,
+                            usage: TextureUsage.STATIC,
+                            mipLevels: mipLevelsFor(image.width, image.height),
+                        },
+                        image
+                    );
+                } finally {
+                    if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) {
+                        image.close();
+                    }
+                }
                 break;
             }
             case 'compressed': {
@@ -340,13 +346,12 @@ export class SceneTextureFactory {
         }
 
         const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-        const blobBytes = new Uint8Array(data);
-        const blob = new Blob([blobBytes.buffer], { type: mimeType });
+        const blob = new Blob([data], { type: mimeType });
         const canCreateObjectUrl =
             typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
         const objectUrl = canCreateObjectUrl
             ? URL.createObjectURL(blob)
-            : `data:${mimeType};base64,${encodeBase64(blobBytes)}`;
+            : `data:${mimeType};base64,${encodeBase64(data)}`;
 
         try {
             return await this._loadImage(objectUrl);
@@ -355,5 +360,24 @@ export class SceneTextureFactory {
                 URL.revokeObjectURL(objectUrl);
             }
         }
+    }
+
+    private async _loadImageSourceFromBytes(
+        bytes: readonly number[] | Uint8Array,
+        mimeType: string,
+        uri?: string
+    ): Promise<HTMLImageElement | ImageBitmap> {
+        if (mimeType.startsWith('image/') === false) {
+            throw new SceneMaterialError(
+                `Cannot decode texture bytes${uri ? ` for '${uri}'` : ''} because mime type '${mimeType}' is not an image`
+            );
+        }
+
+        const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        if (typeof createImageBitmap === 'function') {
+            return await createImageBitmap(new Blob([data], { type: mimeType }));
+        }
+
+        return await this._loadImageFromBytes(data, mimeType, uri);
     }
 }
