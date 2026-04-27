@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MemoryPool, MemoryPoolError, PoolableObject } from './../../../memory/pool/mempool';
+import { MemoryPool, MemoryPoolError, PoolableObject } from './../../pool/mempool';
 
 describe('MemoryPool', () => {
     class TestObject implements PoolableObject {

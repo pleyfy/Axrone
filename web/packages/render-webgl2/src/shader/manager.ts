@@ -1,4 +1,4 @@
-import { ObjectPool } from '@axrone/utility';
+import { ObjectPool } from '@axrone/memory';
 import {
     IShaderManager,
     IShaderConfiguration,

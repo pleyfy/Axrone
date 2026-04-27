@@ -25,6 +25,8 @@
             "@axrone/geometry/*": ["packages/geometry/src/*"],
             "@axrone/input": ["packages/input/src/index.ts"],
             "@axrone/input/*": ["packages/input/src/*"],
+            "@axrone/memory": ["packages/memory/src/index.ts"],
+            "@axrone/memory/*": ["packages/memory/src/*"],
             "@axrone/observer": ["packages/observer/src/index.ts"],
             "@axrone/observer/*": ["packages/observer/src/*"],
             "@axrone/physics": ["packages/physics/src/index.ts"],

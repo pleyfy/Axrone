@@ -8,7 +8,7 @@ import {
 } from './interfaces';
 
 import { getWebGLType, getShaderDataTypeComponentCount } from './utils';
-import { ByteBuffer } from '@axrone/utility';
+import { ByteBuffer } from '@axrone/memory';
 import { Mat4, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 
 class UniformUploader {

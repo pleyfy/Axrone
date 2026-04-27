@@ -1,13 +1,12 @@
 {
-    "name": "@axrone/geometry",
-    "version": "0.1.0",
+    "name": "@axrone/memory",
+    "version": "0.0.1",
     "main": "./dist/index.js",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.ts",
     "files": [
         "dist"
     ],
-    "sideEffects": false,
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
@@ -20,9 +19,8 @@
         "clean": "rimraf dist",
         "test": "vitest run"
     },
-    "dependencies": {
-        "@axrone/memory": "^0.0.1",
-        "@axrone/numeric": "^0.0.1",
-        "@axrone/utility": "^0.0.1"
-    }
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "description": ""
 }

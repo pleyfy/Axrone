@@ -4,7 +4,7 @@ import {
     TypedArrayPool as UtilityTypedArrayPool,
     TypedArrayPools,
     PoolableTypedArray,
-} from '@axrone/utility';
+} from '@axrone/memory';
 
 export class ParticleMemoryManager implements IMemoryManager {
     private readonly _alignedManager: AlignedMemoryManager;

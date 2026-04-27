@@ -7,7 +7,7 @@ import {
     PriorityQueueSerializationError,
     createPriorityQueue,
     isPriorityQueue,
-} from '../../memory/containers/queue/priority-queue';
+} from '../containers/queue/priority-queue';
 
 describe('PriorityQueue', () => {
     it('dequeues highest priority items first in default max order', () => {

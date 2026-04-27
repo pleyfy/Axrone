@@ -5,7 +5,7 @@ import {
     ReadOnlyBufferError,
     BufferAlignmentError,
     InvalidMarkError,
-} from '../../memory/buffering';
+} from '../../buffering';
 
 describe('ByteBuffer core — professional tests', () => {
     it('allocates with a positive capacity and rounds to power of two', () => {

@@ -1,4 +1,4 @@
-import { ObjectPool } from '@axrone/utility';
+import { ObjectPool } from '@axrone/memory';
 import { AnimationStateMachineError, AnimationValidationError } from './errors';
 import { quatDot, quatIdentity, quatMultiply, quatNormalize, quatSlerp } from './math';
 import { AnimationParameterStore } from './parameters';

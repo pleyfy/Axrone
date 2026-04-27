@@ -1,4 +1,4 @@
-import { Queue } from '@axrone/utility';
+import { Queue } from '@axrone/memory';
 import { performance } from './performance';
 
 declare const __taskBrand: unique symbol;

@@ -1,4 +1,4 @@
-import { ByteBuffer, BufferView } from '../../memory/buffering';
+import { ByteBuffer, BufferView } from '../../buffering';
 
 describe('BufferView — professional tests', () => {
     it('creates typed views and reports capacity/position/limit correctly', () => {

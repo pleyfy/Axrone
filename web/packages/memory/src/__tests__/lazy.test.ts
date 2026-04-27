@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { create, fromValue, tryLazy, ILazy } from '../../memory/lazy';
+import { create, fromValue, tryLazy, ILazy } from '../lazy';
 
 describe('Lazy', () => {
     it('should evaluate lazily and cache the result', () => {

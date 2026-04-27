@@ -1,4 +1,4 @@
-import { BufferPool, BufferPoolOptions } from '../../memory/buffering';
+import { BufferPool, BufferPoolOptions } from '../../buffering';
 
 describe('Professional BufferPool', () => {
     let pool: BufferPool;

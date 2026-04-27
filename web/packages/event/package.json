@@ -21,6 +21,6 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@axrone/utility": "^0.0.1"
+        "@axrone/memory": "^0.0.1"
     }
 }

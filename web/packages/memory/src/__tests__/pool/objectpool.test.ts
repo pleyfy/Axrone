@@ -1,5 +1,5 @@
-import { ObjectPool, ObjectPoolOptions, PoolableWrapper } from '../../../memory/pool/object-pool';
-import { MemoryPoolErrorCode } from '../../../memory/pool/mempool';
+import { ObjectPool, ObjectPoolOptions, PoolableWrapper } from '../../pool/object-pool';
+import { MemoryPoolErrorCode } from '../../pool/mempool';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('ObjectPool', () => {

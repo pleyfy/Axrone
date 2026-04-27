@@ -1,5 +1,5 @@
 import { clamp as numericClamp, Mat4, Quat, Vec3 } from '@axrone/numeric';
-import { ObjectPool } from '@axrone/utility';
+import { ObjectPool } from '@axrone/memory';
 
 export const ANIMATION_EPSILON = 1e-6;
 

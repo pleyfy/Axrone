@@ -30,7 +30,7 @@ import {
     SHADER_KEYWORDS,
 } from './utils';
 
-import { ByteBuffer } from '@axrone/utility';
+import { ByteBuffer } from '@axrone/memory';
 
 class ShaderSourceGenerator {
     private readonly includeCache = new Map<string, string>();

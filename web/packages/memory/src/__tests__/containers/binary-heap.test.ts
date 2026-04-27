@@ -1,11 +1,11 @@
-import { BinaryMinHeap } from '../../../memory/containers/queue/binary-heap';
+import { BinaryMinHeap } from '../../containers/queue/binary-heap';
 import {
     createCapacity,
     createQueueSize,
     defaultComparator,
     numericComparator,
-} from '../../../memory/containers/queue/utils';
-import { EmptyQueueError } from '../../../memory/containers/queue/errors';
+} from '../../containers/queue/utils';
+import { EmptyQueueError } from '../../containers/queue/errors';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 describe('BinaryMinHeap', () => {

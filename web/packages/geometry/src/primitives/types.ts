@@ -1,5 +1,5 @@
 import { IVec3Like } from '@axrone/numeric';
-import { ByteBuffer } from '@axrone/utility';
+import { ByteBuffer } from '@axrone/memory';
 
 declare const __geometryBrand: unique symbol;
 declare const __vertexAttributeBrand: unique symbol;

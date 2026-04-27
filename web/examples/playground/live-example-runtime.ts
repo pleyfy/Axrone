@@ -4,6 +4,7 @@ import * as axroneEcsRuntime from '@axrone/ecs-runtime';
 import * as axroneGameLoop from '@axrone/game-loop';
 import * as axroneGeometry from '@axrone/geometry';
 import * as axroneInput from '@axrone/input';
+import * as axroneMemory from '@axrone/memory';
 import * as axroneNumeric from '@axrone/numeric';
 import * as axroneParticleSystem from '@axrone/particle-system';
 import * as axronePhysics from '@axrone/physics';
@@ -33,6 +34,7 @@ const supportedModules = {
     '@axrone/game-loop': axroneGameLoop,
     '@axrone/geometry': axroneGeometry,
     '@axrone/input': axroneInput,
+    '@axrone/memory': axroneMemory,
     '@axrone/numeric': axroneNumeric,
     '@axrone/particle-system': axroneParticleSystem,
     '@axrone/physics': axronePhysics,

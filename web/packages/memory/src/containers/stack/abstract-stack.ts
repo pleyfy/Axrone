@@ -1,7 +1,7 @@
 import { StackIntegrityError } from './errors';
 import { StackMemoryPool as MemoryPool } from './pool-adapter';
 import { StackIterator } from './stack-iterator';
-import { createStackSize, __variance, createStackCapacity } from './stack';
+import { createStackSize, __variance, createStackCapacity } from './stack-core';
 import { ReadonlyStackInterface, StackConfiguration } from './interfaces';
 import { StackSize, StackNode, StackCapacity, StackResult, NodeId } from './types';
 

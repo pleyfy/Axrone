@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BinaryHeap, createBinaryHeap, isBinaryHeap } from '../../../memory/containers/queue/binary-heap';
+import { BinaryHeap, createBinaryHeap, isBinaryHeap } from '../../containers/queue/binary-heap';
 
 describe('BinaryHeap', () => {
     it('should build min and max heaps with the expected ordering', () => {

@@ -5,7 +5,7 @@ import {
     InvalidCapacityError,
     createCapacity,
     createQueueSize,
-} from '../../../memory/containers/queue';
+} from '../../containers/queue';
 
 describe('Queue', () => {
     describe('Constructor', () => {

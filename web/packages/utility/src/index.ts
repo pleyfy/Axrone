@@ -1,4 +1,11 @@
-export type { Primitive, TypedArray, TypedArrayConstructor, Builtin, BuiltinObject } from './types';
+export type {
+    Primitive,
+    TypedArray,
+    TypedArrayConstructor,
+    Builtin,
+    BuiltinObject,
+    DeepReadonly,
+} from './types';
 
 export type {
     CompareResult,
@@ -40,52 +47,10 @@ export {
     isEqualityComparer,
 } from './comparer/comparer';
 
-export { Queue, PriorityQueue } from './memory/containers/queue';
-export {
-    BinaryHeap,
-    BinaryMinHeap,
-    createBinaryHeap,
-    isBinaryHeap,
-    HeapError,
-    HeapComparatorError,
-    HeapIndexError,
-    HeapSerializationError,
-    defaultPrimitiveComparator,
-} from './memory/containers/queue/binary-heap';
-export type {
-    QueueOptions,
-    Comparator,
-    HeapIndex,
-    QueueSize,
-    Capacity,
-} from './memory/containers/queue';
-export type {
-    HeapOrder,
-    CompareSign,
-    HeapPrimitive,
-    HeapSerialized,
-    HeapLike,
-    BinaryHeapOptions,
-    ReadonlyBinaryHeap,
-    Equality,
-} from './memory/containers/queue/binary-heap';
-
-export type {
-    PoolableObject,
-    PoolObjectStatus,
-    PoolExpansionStrategy,
-    PoolAllocationStrategy,
-    PoolEvictionPolicy,
-    MemoryPoolOptions,
-    PoolPerformanceMetrics,
-    MemoryPoolOperations,
-    AsyncMemoryPoolOperations,
-} from './memory/pool/mempool';
-
 export type { ICloneable } from './clone/cloner';
-
-export * from './memory/buffering';
-export * from './memory/pool/index';
+export { cloneData, deepClone } from './clone/deep-clone';
+export type { Disposable, IDisposable } from './disposable';
+export { deepFreeze } from './freeze';
 
 export type {
     SingletonKey,

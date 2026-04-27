@@ -1,5 +1,5 @@
 import { Vec3, IVec3Like, EPSILON } from '@axrone/numeric';
-import { ByteBuffer } from '@axrone/utility';
+import { ByteBuffer } from '@axrone/memory';
 import {
     IGeometryBuffers,
     IGeometryLayout,

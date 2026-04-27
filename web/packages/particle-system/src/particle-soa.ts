@@ -2,7 +2,7 @@ import { Vec3, IVec3Like } from '@axrone/numeric';
 import { ParticleId } from './types';
 import { IParticleSOA } from './interfaces';
 import { ParticleMemoryManager } from './core/memory';
-import { TypedArrayPools, PoolableTypedArray } from '@axrone/utility';
+import { TypedArrayPools, PoolableTypedArray } from '@axrone/memory';
 
 export interface ParticleSOAStats {
     capacity: number;
