@@ -1,9 +1,5 @@
 import { Vec4 } from '@axrone/numeric';
-import type {
-    SceneClearFlag,
-    SceneRenderPassDefinition,
-    SceneRenderPassHandle,
-} from './types';
+import type { SceneClearFlag, SceneRenderPassDefinition, SceneRenderPassHandle } from './types';
 
 export interface SceneRenderPassResource {
     readonly id: string;
@@ -32,9 +28,7 @@ export interface SceneRenderPassRegistryOptions {
 }
 
 const cloneVec4 = (value: Vec4 | readonly [number, number, number, number]): Vec4 =>
-    value instanceof Vec4
-        ? new Vec4(value.x, value.y, value.z, value.w)
-        : new Vec4(value[0], value[1], value[2], value[3]);
+    value instanceof Vec4 ? Vec4.from(value) : Vec4.fromArray(value);
 
 const toHandle = (renderPass: SceneRenderPassResource): SceneRenderPassHandle => ({
     id: renderPass.id,
@@ -175,9 +169,7 @@ export class SceneRenderPassRegistry {
             this._definitionsCache = Object.freeze(
                 [...this._definitions.values()]
                     .sort(compareRenderPassDefinitions)
-                    .map((definition) =>
-                        Object.freeze(cloneSceneRenderPassDefinition(definition))
-                    )
+                    .map((definition) => Object.freeze(cloneSceneRenderPassDefinition(definition)))
             );
         }
 

@@ -33,13 +33,16 @@
   resolved "file:packages/asset-core"
   dependencies:
     "@axrone/random" "^0.0.1"
+    "@axrone/utility" "^0.0.1"
 
 "@axrone/asset-gltf@^0.1.0", "@axrone/asset-gltf@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\asset-gltf":
   version "0.1.0"
   resolved "file:packages/asset-gltf"
   dependencies:
+    "@axrone/animation" "^0.1.0"
     "@axrone/asset-core" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
+    "@axrone/render-core" "^0.1.0"
     "@axrone/render-webgl2" "^0.1.0"
     "@loaders.gl/textures" "^4.4.1"
     draco3dgltf "^1.5.7"
@@ -82,7 +85,7 @@
   version "0.1.0"
   resolved "file:packages/ecs-storage"
   dependencies:
-    "@axrone/utility" "^0.0.1"
+    "@axrone/memory" "^0.0.1"
 
 "@axrone/ecs-world-support@^0.1.0", "@axrone/ecs-world-support@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\ecs-world-support":
   version "0.1.0"
@@ -92,16 +95,19 @@
   version "0.1.0"
   resolved "file:packages/event"
   dependencies:
-    "@axrone/utility" "^0.0.1"
+    "@axrone/memory" "^0.0.1"
 
 "@axrone/game-loop@^0.1.0", "@axrone/game-loop@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\game-loop":
   version "0.1.0"
   resolved "file:packages/game-loop"
+  dependencies:
+    "@axrone/utility" "^0.0.1"
 
 "@axrone/geometry@^0.1.0", "@axrone/geometry@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\geometry":
   version "0.1.0"
   resolved "file:packages/geometry"
   dependencies:
+    "@axrone/memory" "^0.0.1"
     "@axrone/numeric" "^0.0.1"
     "@axrone/utility" "^0.0.1"
 
@@ -116,6 +122,7 @@
   resolved "file:packages/input"
   dependencies:
     "@axrone/event" "^0.1.0"
+    "@axrone/utility" "^0.0.1"
 
 "@axrone/memory@^0.0.1", "@axrone/memory@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\memory":
   version "0.0.1"
@@ -141,6 +148,7 @@
   dependencies:
     "@axrone/event" "^0.1.0"
     "@axrone/geometry" "^0.1.0"
+    "@axrone/memory" "^0.0.1"
     "@axrone/numeric" "^0.0.1"
     "@axrone/random" "^0.0.1"
     "@axrone/utility" "^0.0.1"
@@ -186,6 +194,7 @@
   version "0.1.0"
   resolved "file:packages/render-2d"
   dependencies:
+    "@axrone/numeric" "^0.0.1"
     "@axrone/render-core" "^0.1.0"
 
 "@axrone/render-3d@^0.1.0", "@axrone/render-3d@file:E:\\Workspace\\code_training\\gnew\\Arone-Project\\Axrone\\web\\packages\\render-3d":
@@ -206,6 +215,7 @@
   dependencies:
     "@axrone/ecs-runtime" "^0.1.0"
     "@axrone/geometry" "^0.1.0"
+    "@axrone/memory" "^0.0.1"
     "@axrone/numeric" "^0.0.1"
     "@axrone/utility" "^0.0.1"
 
@@ -296,11 +306,15 @@
   version "0.1.0"
   resolved "file:packages/scene-runtime"
   dependencies:
+    "@axrone/animation" "^0.1.0"
+    "@axrone/asset-2d" "^0.1.0"
     "@axrone/ecs-runtime" "^0.1.0"
     "@axrone/game-loop" "^0.1.0"
     "@axrone/geometry" "^0.1.0"
     "@axrone/numeric" "^0.0.1"
     "@axrone/random" "^0.0.1"
+    "@axrone/render-2d" "^0.1.0"
+    "@axrone/render-core" "^0.1.0"
     "@axrone/render-webgl2" "^0.1.0"
     "@axrone/utility" "^0.0.1"
 

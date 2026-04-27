@@ -1,4 +1,6 @@
-export type Brand<T, TTag extends string> = T & { readonly __brand: TTag };
+import type { Brand } from '@axrone/utility';
+
+export type { Brand };
 
 export type AnimationRigId = Brand<string, 'AnimationRigId'>;
 export type AnimationClipId = Brand<string, 'AnimationClipId'>;

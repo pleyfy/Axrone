@@ -20,7 +20,10 @@ export interface CameraConfig {
 }
 
 const DEFAULT_CLEAR_COLOR = new Vec4(0.08, 0.09, 0.11, 1);
-const DEFAULT_CLEAR_FLAGS = Object.freeze(['color', 'depth'] as const satisfies readonly SceneClearFlag[]);
+const DEFAULT_CLEAR_FLAGS = Object.freeze([
+    'color',
+    'depth',
+] as const satisfies readonly SceneClearFlag[]);
 
 const normalizeFieldOfViewAxis = (value: unknown): CameraFieldOfViewAxis =>
     typeof value === 'string' && value.trim().toLowerCase() === 'horizontal'
@@ -58,19 +61,14 @@ export const resolveCameraVerticalFieldOfViewRadians = (
 
 const toVec4 = (value?: Vec4 | readonly [number, number, number, number]): Vec4 => {
     if (value instanceof Vec4) {
-        return new Vec4(value.x, value.y, value.z, value.w);
+        return Vec4.from(value);
     }
 
     if (Array.isArray(value) && value.length === 4) {
-        return new Vec4(value[0], value[1], value[2], value[3]);
+        return Vec4.fromArray(value);
     }
 
-    return new Vec4(
-        DEFAULT_CLEAR_COLOR.x,
-        DEFAULT_CLEAR_COLOR.y,
-        DEFAULT_CLEAR_COLOR.z,
-        DEFAULT_CLEAR_COLOR.w
-    );
+    return Vec4.from(DEFAULT_CLEAR_COLOR);
 };
 
 @script({
@@ -290,12 +288,7 @@ export class Camera extends Component {
             this._clearDepth = data.clearDepth;
         }
         if (Array.isArray(data.clearColor) && data.clearColor.length === 4) {
-            this._clearColor = new Vec4(
-                Number(data.clearColor[0]),
-                Number(data.clearColor[1]),
-                Number(data.clearColor[2]),
-                Number(data.clearColor[3])
-            );
+            this._clearColor = Vec4.fromArray(data.clearColor);
         }
     }
 }

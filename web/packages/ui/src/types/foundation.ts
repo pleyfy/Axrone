@@ -1,4 +1,4 @@
-export type Brand<TValue, TBrand extends string> = TValue & { readonly __brand: TBrand };
+import type { Brand } from '@axrone/utility';
 
 export type WidgetId = Brand<number, 'WidgetId'>;
 export type FontFaceId = Brand<number, 'FontFaceId'>;
@@ -55,7 +55,13 @@ export type StretchString = `stretch:${number}`;
 export type ViewportString = `viewport:${number}`;
 export type ColorHexString = `#${string}`;
 export type KerningPairKey = `${number}:${number}`;
-export type UILengthInput = number | 'auto' | 'content' | PercentageString | StretchString | ViewportString;
+export type UILengthInput =
+    | number
+    | 'auto'
+    | 'content'
+    | PercentageString
+    | StretchString
+    | ViewportString;
 export type FontGlyphBitmapFormat = 'alpha8' | 'rgba8' | 'sdf8';
 export type FontBinaryFormat = 'ttf' | 'otf' | 'woff' | 'woff2';
 

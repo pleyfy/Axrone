@@ -54,5 +54,8 @@
         "build": "rollup -c rollup.config.mjs",
         "clean": "rimraf dist",
         "test": "vitest run --config vitest.config.ts"
+    },
+    "dependencies": {
+        "@axrone/utility": "^0.0.1"
     }
 }

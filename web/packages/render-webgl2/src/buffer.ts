@@ -1,8 +1,7 @@
 import type { IDisposable } from './disposable';
 import type { IBindableTarget } from './interfaces';
 import { BufferPool, ResourceTracker } from './internal/buffer-management';
-
-type Nominal<T, K extends string> = T & { readonly __brand: K };
+import type { Brand } from '@axrone/utility';
 
 export type GLBufferTarget =
     | WebGL2RenderingContext['ARRAY_BUFFER']
@@ -25,7 +24,7 @@ export type GLBufferUsage =
     | WebGL2RenderingContext['DYNAMIC_COPY']
     | WebGL2RenderingContext['STREAM_COPY'];
 
-export type BufferId = Nominal<WebGLBuffer, 'BufferId'>;
+export type BufferId = Brand<WebGLBuffer, 'BufferId'>;
 
 export interface BufferOptions {
     readonly initialData?: BufferSource | null;

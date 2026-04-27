@@ -26,11 +26,11 @@ const toVec3 = (
     fallback: Vec3 = Vec3.ZERO
 ): Vec3 => {
     if (value instanceof Vec3) {
-        return new Vec3(value.x, value.y, value.z);
+        return Vec3.from(value);
     }
 
     if (Array.isArray(value) && value.length === 3) {
-        return new Vec3(value[0], value[1], value[2]);
+        return Vec3.fromArray(value);
     }
 
     return fallback.clone();
@@ -223,11 +223,7 @@ export class FollowCameraController extends Component {
     override serialize(): Record<string, unknown> {
         return {
             target: [this._target.x, this._target.y, this._target.z],
-            targetOffset: [
-                this._targetOffset.x,
-                this._targetOffset.y,
-                this._targetOffset.z,
-            ],
+            targetOffset: [this._targetOffset.x, this._targetOffset.y, this._targetOffset.z],
             up: [this._up.x, this._up.y, this._up.z],
             distance: this._distance,
             minDistance: this._minDistance,
@@ -241,25 +237,15 @@ export class FollowCameraController extends Component {
 
     override deserialize(data: Record<string, any>): void {
         if (Array.isArray(data.target) && data.target.length === 3) {
-            this._target = new Vec3(
-                Number(data.target[0]),
-                Number(data.target[1]),
-                Number(data.target[2])
-            );
+            this._target = Vec3.fromArray(data.target);
         }
 
         if (Array.isArray(data.targetOffset) && data.targetOffset.length === 3) {
-            this._targetOffset = new Vec3(
-                Number(data.targetOffset[0]),
-                Number(data.targetOffset[1]),
-                Number(data.targetOffset[2])
-            );
+            this._targetOffset = Vec3.fromArray(data.targetOffset);
         }
 
         if (Array.isArray(data.up) && data.up.length === 3) {
-            this._up = normalizeUpVector(
-                new Vec3(Number(data.up[0]), Number(data.up[1]), Number(data.up[2]))
-            );
+            this._up = normalizeUpVector(Vec3.fromArray(data.up));
         }
 
         if (typeof data.minDistance === 'number') {

@@ -2,9 +2,28 @@ export type {
     Primitive,
     TypedArray,
     TypedArrayConstructor,
+    NumericTypedArray,
+    NumericTypedArrayConstructor,
     Builtin,
     BuiltinObject,
     DeepReadonly,
+    DeepMutable,
+    JsonPrimitive,
+    JsonObject,
+    JsonArray,
+    JsonValue,
+    Brand,
+    Nominal,
+    Opaque,
+    MaybePromise,
+    Constructor,
+    AbstractConstructor,
+    ArrayElement,
+    NonEmptyReadonlyArray,
+    Mutable,
+    ReadonlyTuple2,
+    ReadonlyTuple3,
+    ReadonlyTuple4,
 } from './types';
 
 export type {
@@ -69,8 +88,6 @@ export type {
     SingletonDisposer,
     ScopeDisposer,
     ExtractSingletonType,
-    Constructor,
-    AbstractConstructor,
 } from './singleton';
 
 export {

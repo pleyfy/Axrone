@@ -1,7 +1,13 @@
 import type { GameLoopSystemError } from './errors';
-import type { DeepReadonly } from '@axrone/utility';
+import type { DeepReadonly, JsonValue } from '@axrone/utility';
 
-export type { DeepReadonly };
+export type {
+    DeepReadonly,
+    JsonArray,
+    JsonObject,
+    JsonPrimitive,
+    JsonValue,
+} from '@axrone/utility';
 
 export type GameLoopStatus = 'idle' | 'running' | 'paused' | 'stopped' | 'disposed';
 export type GameLoopErrorPolicy = 'throw' | 'pause' | 'stop' | 'continue';
@@ -12,16 +18,6 @@ export type GameLoopFramePhase =
     | 'render'
     | 'after-frame';
 export type GameLoopFailurePhase = GameLoopFramePhase | 'dispose';
-
-export type JsonPrimitive = string | number | boolean | null;
-
-export interface JsonObject {
-    readonly [key: string]: JsonValue;
-}
-
-export interface JsonArray extends ReadonlyArray<JsonValue> {}
-
-export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 
 export type GameLoopValidationMessageCode =
     | `loop.invalid-${

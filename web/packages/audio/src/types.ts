@@ -1,11 +1,16 @@
 import type { AssetDatabase, AssetRecord, AssetSchema, AssetSelector } from '@axrone/asset-core';
 import type { IEventEmitter } from '@axrone/event';
 import type { IVec3Like } from '@axrone/numeric';
-import type { DeepReadonly } from '@axrone/utility';
+import type {
+    Brand,
+    DeepReadonly,
+    JsonArray,
+    JsonObject,
+    JsonPrimitive,
+    JsonValue,
+} from '@axrone/utility';
 
 export type { DeepReadonly };
-
-type Brand<TValue, TBrand extends string> = TValue & { readonly __audioBrand: TBrand };
 
 export type AudioBusId = Brand<string, 'AudioBusId'>;
 export type AudioClipId = Brand<string, 'AudioClipId'>;
@@ -13,14 +18,10 @@ export type AudioListenerId = Brand<string, 'AudioListenerId'>;
 export type AudioSourceId = Brand<string, 'AudioSourceId'>;
 export type AudioSnapshotId = Brand<string, 'AudioSnapshotId'>;
 
-export interface AudioJsonObject {
-    readonly [key: string]: AudioJsonValue;
-}
-
-export interface AudioJsonArray extends ReadonlyArray<AudioJsonValue> {}
-
-export type AudioJsonPrimitive = string | number | boolean | null;
-export type AudioJsonValue = AudioJsonPrimitive | AudioJsonObject | AudioJsonArray;
+export type AudioJsonPrimitive = JsonPrimitive;
+export type AudioJsonObject = JsonObject;
+export type AudioJsonArray = JsonArray;
+export type AudioJsonValue = JsonValue;
 
 export type AudioPatch<T> = T extends (...args: never[]) => unknown
     ? never

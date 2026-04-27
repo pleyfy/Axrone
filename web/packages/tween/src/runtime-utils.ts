@@ -1,10 +1,7 @@
-import type { TypedArray } from '@axrone/utility';
+import type { NumericTypedArray, NumericTypedArrayConstructor } from '@axrone/utility';
 
-export type TweenTypedArray = Exclude<TypedArray, BigInt64Array | BigUint64Array>;
-
-export type TweenTypedArrayConstructor = new (
-    source: number | ArrayLike<number>
-) => TweenTypedArray;
+export type TweenTypedArray = NumericTypedArray;
+export type TweenTypedArrayConstructor = NumericTypedArrayConstructor;
 
 export const isTweenTypedArray = (value: unknown): value is TweenTypedArray =>
     ArrayBuffer.isView(value) &&

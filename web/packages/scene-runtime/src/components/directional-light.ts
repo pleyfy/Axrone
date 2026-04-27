@@ -15,11 +15,11 @@ const toVec3 = (
     fallback: Vec3 = Vec3.ONE
 ): Vec3 => {
     if (value instanceof Vec3) {
-        return new Vec3(value.x, value.y, value.z);
+        return Vec3.from(value);
     }
 
     if (Array.isArray(value) && value.length === 3) {
-        return new Vec3(value[0], value[1], value[2]);
+        return Vec3.fromArray(value);
     }
 
     return fallback.clone();
@@ -98,18 +98,10 @@ export class DirectionalLight extends Component {
 
     override deserialize(data: Record<string, any>): void {
         if (Array.isArray(data.color) && data.color.length === 3) {
-            this._color = new Vec3(
-                Number(data.color[0]),
-                Number(data.color[1]),
-                Number(data.color[2])
-            );
+            this._color = Vec3.fromArray(data.color);
         }
         if (Array.isArray(data.ambientColor) && data.ambientColor.length === 3) {
-            this._ambientColor = new Vec3(
-                Number(data.ambientColor[0]),
-                Number(data.ambientColor[1]),
-                Number(data.ambientColor[2])
-            );
+            this._ambientColor = Vec3.fromArray(data.ambientColor);
         }
         if (typeof data.intensity === 'number') {
             this._intensity = data.intensity;
