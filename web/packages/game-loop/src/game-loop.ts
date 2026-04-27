@@ -9,10 +9,10 @@ import {
     type GameLoopSystemRunnerRuntime,
 } from './game-loop-system-runner';
 import { createAnimationFrameScheduler, isGameLoopScheduler } from './scheduler';
+import type { DeepReadonly } from '@axrone/utility';
 import type {
     AfterFrameContext,
     BeforeUpdateContext,
-    DeepReadonly,
     FixedUpdateContext,
     GameLoopContextBase,
     GameLoopController,

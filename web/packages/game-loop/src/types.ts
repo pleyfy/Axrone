@@ -2,7 +2,6 @@ import type { GameLoopSystemError } from './errors';
 import type { DeepReadonly, JsonValue } from '@axrone/utility';
 
 export type {
-    DeepReadonly,
     JsonArray,
     JsonObject,
     JsonPrimitive,

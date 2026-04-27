@@ -62,7 +62,6 @@ export type {
     AudioValidationMessageCode,
     AudioVector3,
     AudioRuntimeMessageCode,
-    DeepReadonly,
 } from './types';
 
 export {

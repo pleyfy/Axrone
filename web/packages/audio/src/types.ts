@@ -3,14 +3,11 @@ import type { IEventEmitter } from '@axrone/event';
 import type { IVec3Like } from '@axrone/numeric';
 import type {
     Brand,
-    DeepReadonly,
     JsonArray,
     JsonObject,
     JsonPrimitive,
     JsonValue,
 } from '@axrone/utility';
-
-export type { DeepReadonly };
 
 export type AudioBusId = Brand<string, 'AudioBusId'>;
 export type AudioClipId = Brand<string, 'AudioClipId'>;
