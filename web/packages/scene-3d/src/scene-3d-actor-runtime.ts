@@ -62,7 +62,8 @@ export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, ne
     }
 
     createRenderableActors(
-        configs: readonly SceneRenderableActorCreateOptions[]
+        configs: readonly SceneRenderableActorCreateOptions[],
+        profiling?: Record<string, number>
     ): readonly SceneRenderableActorInstance<R>[] {
         this._requireRegisteredComponent(
             MeshRenderer,
@@ -70,13 +71,30 @@ export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, ne
         );
 
         return this._actors.runInStructureBatch(() => {
-            const created: SceneRenderableActorInstance<R>[] = [];
+            const actors = this._actors.createActorsWithComponents(
+                configs.map((config) => ({
+                    actorConfig: config.actorConfig ?? {},
+                    components: [
+                        {
+                            type: MeshRenderer,
+                            args: [config.rendererConfig ?? {}],
+                        },
+                    ],
+                })),
+                profiling
+            );
 
-            for (const config of configs) {
-                const actor = this._actors.createActor(config.actorConfig ?? {});
-                const renderer = actor.addComponent(MeshRenderer, config.rendererConfig ?? {});
+            const startedAt = profiling ? performance.now() : 0;
+            const created = actors.map((actor) => {
+                const renderer = actor.requireComponent(MeshRenderer);
                 const transform = actor.requireComponent(Transform);
-                created.push({ actor, transform, renderer });
+
+                return { actor, transform, renderer };
+            });
+
+            if (profiling) {
+                profiling.resolveHotRefsMs =
+                    (profiling.resolveHotRefsMs ?? 0) + (performance.now() - startedAt);
             }
 
             return created;

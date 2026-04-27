@@ -61,6 +61,19 @@ export interface ActorConfig {
     readonly autoStart?: boolean;
 }
 
+interface ActorPreloadedComponentEntry {
+    readonly componentType: ComponentType<Component>;
+    readonly component: Component;
+    readonly componentName?: string;
+    readonly metadata?: ComponentMetadata;
+}
+
+interface ActorInternalConfig extends ActorConfig {
+    readonly entity?: Entity;
+    readonly skipCoreComponents?: boolean;
+    readonly preloadedComponents?: readonly ActorPreloadedComponentEntry[];
+}
+
 export class Actor<
     TWorld extends World<any> = World<any>,
     TComponents extends readonly ComponentType[] = readonly ComponentType[],
@@ -100,8 +113,10 @@ export class Actor<
             throw new ActorError('Invalid world instance provided', '' as ActorId, 'constructor');
         }
 
+        const internalConfig = config as ActorInternalConfig;
+
         this.world = world;
-        this.entity = world.createEntity();
+        this.entity = internalConfig.entity ?? world.createEntity();
         this.creationTime = performance.now();
 
         this._name = config.name ?? 'Actor';
@@ -118,7 +133,13 @@ export class Actor<
         try {
             world.registerActor(this.entity, this);
 
-            this._initializeCoreComponents();
+            if (internalConfig.preloadedComponents?.length) {
+                this._initializePreloadedComponents(internalConfig.preloadedComponents);
+            }
+
+            if (!internalConfig.skipCoreComponents) {
+                this._initializeCoreComponents();
+            }
 
             this._state = 'active';
 
@@ -147,6 +168,30 @@ export class Actor<
         componentType: ComponentType<T>
     ): ComponentMetadata | undefined {
         return Actor._componentMetadataMap.get(componentType);
+    }
+
+    static createWithComponents<
+        TWorld extends World<any> = World<any>,
+    >(
+        world: TWorld,
+        config: ActorConfig,
+        components: readonly ActorPreloadedComponentEntry[]
+    ): Actor<TWorld> {
+        const componentMap: Record<string, Component> = {};
+
+        for (const entry of components) {
+            componentMap[entry.componentName ?? getComponentTypeName(entry.componentType)] =
+                entry.component;
+        }
+
+        const entity = world.createEntityWithComponents(componentMap);
+
+        return new Actor(world, {
+            ...config,
+            entity,
+            skipCoreComponents: true,
+            preloadedComponents: components,
+        } as ActorConfig) as Actor<TWorld>;
     }
 
     get name(): string {
@@ -659,6 +704,82 @@ export class Actor<
                     error instanceof Error ? error : new Error(String(error))
                 )
             );
+        }
+    }
+
+    private _initializePreloadedComponents(
+        entries: readonly ActorPreloadedComponentEntry[]
+    ): void {
+        const finalizeEntries: Array<{
+            readonly component: Component;
+            readonly componentName: string;
+            readonly runAwake: boolean;
+            readonly runStart: boolean;
+            readonly runEnable: boolean;
+        }> = [];
+        const emitComponentAdded = !!(this._eventBus && typeof this._eventBus.emit === 'function');
+
+        for (const entry of entries) {
+            const metadata = entry.metadata ?? this._getComponentMetadata(entry.componentType);
+            const componentName = entry.componentName ?? getComponentTypeName(entry.componentType);
+
+            if (metadata?.dependencies && metadata.dependencies.length > 0) {
+                throw new ComponentError(
+                    'Preloaded component fast path does not support dependencies',
+                    this.id,
+                    componentName
+                );
+            }
+
+            if (this._components.has(entry.componentType)) {
+                throw new ComponentError(
+                    'Component already exists and is not singleton',
+                    this.id,
+                    componentName
+                );
+            }
+
+            (entry.component as any).entity = this.entity;
+            (entry.component as any).actor = this;
+            (entry.component as any).world = this.world;
+
+            this._components.set(entry.componentType, entry.component);
+            this._componentPriorities.set(entry.componentType, metadata?.priority ?? 0);
+
+            const runAwake = typeof entry.component.awake === 'function';
+            const runStart = this._started && typeof entry.component.start === 'function';
+            const runEnable = this._active && typeof entry.component.onEnable === 'function';
+
+            if (runAwake || runStart || runEnable || emitComponentAdded) {
+                finalizeEntries.push({
+                    component: entry.component,
+                    componentName,
+                    runAwake,
+                    runStart,
+                    runEnable,
+                });
+            }
+        }
+
+        for (const entry of finalizeEntries) {
+            if (entry.runAwake) {
+                this._executeComponentLifecycle(entry.component, 'awake');
+            }
+
+            if (entry.runStart) {
+                this._executeComponentLifecycle(entry.component, 'start');
+            }
+
+            if (entry.runEnable) {
+                this._executeComponentLifecycle(entry.component, 'onEnable');
+            }
+
+            if (emitComponentAdded) {
+                this._emitEvent('actor:componentAdded', {
+                    componentType: entry.componentName,
+                    component: entry.component,
+                });
+            }
         }
     }
 

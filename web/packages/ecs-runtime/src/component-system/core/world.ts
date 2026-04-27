@@ -207,6 +207,31 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
+    createEntityWithComponents(components: Record<string, unknown>): Entity {
+        this._validateWorldState('createEntityWithComponents');
+
+        if (this._storage.entityCount >= this._config.maxEntities) {
+            throw new WorldError(
+                `Maximum entity limit (${this._config.maxEntities}) reached`,
+                'createEntityWithComponents'
+            );
+        }
+
+        for (const componentName of Object.keys(components)) {
+            this._validateComponentName(componentName as keyof R, 'createEntityWithComponents');
+        }
+
+        try {
+            return this._mutations.createEntityWithComponents(components);
+        } catch (error) {
+            throw new WorldError(
+                'Failed to create entity with components',
+                'createEntityWithComponents',
+                error instanceof Error ? error : new Error(String(error))
+            );
+        }
+    }
+
     destroyEntity(entity: Entity): void {
         this._validateWorldState('destroyEntity');
         this._validateEntity(entity, 'destroyEntity');

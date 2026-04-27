@@ -45,10 +45,11 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> extends 
     }
 
     createRenderableActors(
-        configs: readonly SceneRenderableActorCreateOptions[]
+        configs: readonly SceneRenderableActorCreateOptions[],
+        profiling?: Record<string, number>
     ): readonly SceneRenderableActorInstance<R>[] {
         this.assertNotDisposed();
-        return this._actors3d.createRenderableActors(configs);
+        return this._actors3d.createRenderableActors(configs, profiling);
     }
 
     getSupportedCompressedTextureFormats(

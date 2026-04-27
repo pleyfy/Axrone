@@ -43,6 +43,25 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
         return entity;
     }
 
+    createEntityWithComponents(components: Record<string, unknown>): Entity {
+        const entries = Object.entries(components).filter(([, component]) => component !== undefined);
+
+        if (entries.length === 0) {
+            return this.createEntity();
+        }
+
+        const resolution = this._options.storage.createEntityWithComponents(
+            Object.fromEntries(entries)
+        );
+
+        if (resolution.createdArchetype) {
+            this._options.onStructureChange();
+        }
+
+        this._options.onMutation();
+        return resolution.entity;
+    }
+
     destroyEntity(entity: Entity): void {
         const removedEntity = this._options.storage.destroyEntity(entity);
         if (!removedEntity) {
