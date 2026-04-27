@@ -140,11 +140,11 @@ export abstract class Component<
     private readonly _cache: ComponentCache;
     private readonly _cacheTimeout: number = 1000;
 
-    private readonly _eventSubscriptions = new Set<() => void>();
-    private readonly _cleanupTasks = new Set<() => void>();
+    private _eventSubscriptions?: Set<() => void>;
+    private _cleanupTasks?: Set<() => void>;
 
-    private readonly _dependencies = new Map<ComponentType, Component>();
-    private readonly _dependents = new Set<WeakRef<Component>>();
+    private _dependencies?: Map<ComponentType, Component>;
+    private _dependents?: Set<WeakRef<Component>>;
 
     constructor(config: TConfig = {} as TConfig) {
         this._creationTime = performance.now();
@@ -353,10 +353,10 @@ export abstract class Component<
 
         const component = this.actor.addComponent(componentType, ...args);
 
-        this._dependencies.set(componentType, component);
+        this._getDependencies().set(componentType, component);
 
         if (component instanceof Component) {
-            component._dependents.add(new WeakRef(this));
+            component._getDependents().add(new WeakRef(this));
         }
 
         this._clearCache();
@@ -371,7 +371,7 @@ export abstract class Component<
 
         const component = this.getComponent(componentType);
         if (component instanceof Component) {
-            for (const dependentRef of component._dependents) {
+            for (const dependentRef of component._dependents ?? []) {
                 const dependent = dependentRef.deref();
                 if (dependent && dependent !== this) {
                     throw new ComponentError(
@@ -384,7 +384,7 @@ export abstract class Component<
         }
 
         this.actor.removeComponent(componentType);
-        this._dependencies.delete(componentType);
+        this._dependencies?.delete(componentType);
         this._clearCache();
     }
 
@@ -669,8 +669,8 @@ export abstract class Component<
             entity: this.entity,
             actor: this.actor?.id,
             world: this.world ? 'attached' : 'detached',
-            dependencies: Array.from(this._dependencies.keys()).map((type) => type.name),
-            dependents: Array.from(this._dependents)
+            dependencies: Array.from(this._dependencies?.keys() ?? []).map((type) => type.name),
+            dependents: Array.from(this._dependents ?? [])
                 .map((ref) => ref.deref()?.constructor.name)
                 .filter(Boolean),
             metrics: this.metrics,
@@ -727,6 +727,38 @@ export abstract class Component<
         }
 
         return this._cache.componentCache;
+    }
+
+    private _getCleanupTasks(): Set<() => void> {
+        if (!this._cleanupTasks) {
+            this._cleanupTasks = new Set();
+        }
+
+        return this._cleanupTasks;
+    }
+
+    private _getEventSubscriptions(): Set<() => void> {
+        if (!this._eventSubscriptions) {
+            this._eventSubscriptions = new Set();
+        }
+
+        return this._eventSubscriptions;
+    }
+
+    private _getDependencies(): Map<ComponentType, Component> {
+        if (!this._dependencies) {
+            this._dependencies = new Map();
+        }
+
+        return this._dependencies;
+    }
+
+    private _getDependents(): Set<WeakRef<Component>> {
+        if (!this._dependents) {
+            this._dependents = new Set();
+        }
+
+        return this._dependents;
     }
 
     private _getActorCache(): Map<ComponentType, WeakRef<Actor>[]> {
@@ -868,11 +900,11 @@ export abstract class Component<
             size += (this._cache.componentCache?.size ?? 0) * 50;
             size += (this._cache.actorCache?.size ?? 0) * 100;
 
-            size += this._dependencies.size * 50;
-            size += this._dependents.size * 50;
+            size += (this._dependencies?.size ?? 0) * 50;
+            size += (this._dependents?.size ?? 0) * 50;
 
-            size += this._eventSubscriptions.size * 30;
-            size += this._cleanupTasks.size * 30;
+            size += (this._eventSubscriptions?.size ?? 0) * 30;
+            size += (this._cleanupTasks?.size ?? 0) * 30;
 
             return size;
         } catch (error) {
@@ -911,7 +943,7 @@ export abstract class Component<
 
     private _cleanup(): void {
         try {
-            for (const cleanup of this._cleanupTasks) {
+            for (const cleanup of this._cleanupTasks ?? []) {
                 try {
                     cleanup();
                 } catch (error) {
@@ -919,7 +951,7 @@ export abstract class Component<
                 }
             }
 
-            for (const unsubscribe of this._eventSubscriptions) {
+            for (const unsubscribe of this._eventSubscriptions ?? []) {
                 try {
                     unsubscribe();
                 } catch (error) {
@@ -927,20 +959,24 @@ export abstract class Component<
                 }
             }
 
-            this._dependencies.clear();
+            this._dependencies?.clear();
 
-            for (const dependentRef of this._dependents) {
+            for (const dependentRef of this._dependents ?? []) {
                 const dependent = dependentRef.deref();
                 if (dependent) {
-                    dependent._dependencies.delete(this.constructor as ComponentType);
+                    dependent._dependencies?.delete(this.constructor as ComponentType);
                 }
             }
-            this._dependents.clear();
+            this._dependents?.clear();
 
             this._clearCache();
 
-            this._cleanupTasks.clear();
-            this._eventSubscriptions.clear();
+            this._cleanupTasks?.clear();
+            this._eventSubscriptions?.clear();
+            this._cleanupTasks = undefined;
+            this._eventSubscriptions = undefined;
+            this._dependencies = undefined;
+            this._dependents = undefined;
         } catch (error) {
             console.error(
                 `Component cleanup failed for ${this.constructor.name}:${this._id}:`,
@@ -961,10 +997,14 @@ export abstract class Component<
 
         this._clearCache();
 
-        this._eventSubscriptions.clear();
-        this._cleanupTasks.clear();
-        this._dependencies.clear();
-        this._dependents.clear();
+        this._eventSubscriptions?.clear();
+        this._cleanupTasks?.clear();
+        this._dependencies?.clear();
+        this._dependents?.clear();
+        this._eventSubscriptions = undefined;
+        this._cleanupTasks = undefined;
+        this._dependencies = undefined;
+        this._dependents = undefined;
 
         this.entity = undefined;
         this.actor = undefined;
@@ -975,12 +1015,12 @@ export abstract class Component<
 
     addCleanupTask(cleanup: () => void): void {
         if (typeof cleanup === 'function') {
-            this._cleanupTasks.add(cleanup);
+            this._getCleanupTasks().add(cleanup);
         }
     }
 
     removeCleanupTask(cleanup: () => void): void {
-        this._cleanupTasks.delete(cleanup);
+        this._cleanupTasks?.delete(cleanup);
     }
 
     on(eventType: string, handler: (data: unknown) => void): () => void {
@@ -988,7 +1028,7 @@ export abstract class Component<
             const eventBus = (this.world as unknown as { eventBus?: { on: (eventType: string, handler: (data: unknown) => void) => () => void } })?.eventBus;
             if (eventBus && typeof eventBus.on === 'function') {
                 const unsubscribe = eventBus.on(eventType, handler);
-                this._eventSubscriptions.add(unsubscribe);
+                this._getEventSubscriptions().add(unsubscribe);
                 return unsubscribe;
             }
         } catch (error) {

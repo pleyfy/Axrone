@@ -25,6 +25,7 @@
         "test:duplicate-governance": "node ./scripts/duplicate-governance.mjs",
         "test:hardening": "npm run test:profiles && npm run test:render-governance && npm run test:input-governance && npm run test:consumer-migration && npm run test:duplicate-governance",
         "test:runtime-profile-governance": "node ./scripts/runtime-profile-governance.mjs",
+        "test:engine-benchmark-governance": "node ./scripts/engine-benchmark-governance.mjs",
         "test:watch": "vitest --watch",
         "test:ui": "vitest --ui",
         "test:browser": "vitest run --config vitest.config.browser.ts",
@@ -35,7 +36,7 @@
         "test:coverage": "vitest --coverage",
         "test:all": "npm run test && npm run test:architecture && npm run test:browser && npm run test:webgl",
         "ci:engine-hardening": "npm run test:architecture && npm run verify:engine-hardening",
-        "verify:engine-hardening": "npm run test:hardening && npm run build && npm run test:runtime-profile-governance && npm run examples:build",
+        "verify:engine-hardening": "npm run test:hardening && npm run build && npm run test:runtime-profile-governance && npm run test:engine-benchmark-governance -- --refresh --headless && npm run examples:build",
         "docs": "typedoc"
     },
     "devDependencies": {
