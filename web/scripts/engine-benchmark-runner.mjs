@@ -275,6 +275,59 @@ const closeServer = async (server) => {
     }
 };
 
+const waitForBenchmarkApi = async (page, baseUrl) => {
+    const errors = [];
+    const recordError = (message) => {
+        if (typeof message !== 'string' || message.length === 0) {
+            return;
+        }
+
+        errors.push(message);
+        if (errors.length > 10) {
+            errors.shift();
+        }
+    };
+    const handleConsole = (message) => {
+        if (message.type() === 'error') {
+            recordError(message.text());
+        }
+    };
+    const handlePageError = (error) => {
+        recordError(error instanceof Error ? error.stack ?? error.message : String(error));
+    };
+
+    page.on('console', handleConsole);
+    page.on('pageerror', handlePageError);
+
+    try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            await page.goto(benchmarkPageUrl(baseUrl), {
+                waitUntil: 'domcontentloaded',
+                timeout: DEFAULT_TIMEOUT_MS,
+            });
+
+            try {
+                await page.waitForFunction(
+                    () => Boolean(window.__AXRONE_ENGINE_BENCHMARK__),
+                    undefined,
+                    { timeout: DEFAULT_TIMEOUT_MS }
+                );
+                return;
+            } catch (error) {
+                if (attempt === 1) {
+                    const detail = errors.length > 0 ? ` Recent page errors: ${errors.join(' | ')}` : '';
+                    throw new Error(
+                        `Benchmark automation API did not become available at ${benchmarkPageUrl(baseUrl)} within ${DEFAULT_TIMEOUT_MS} ms.${detail}`,
+                    );
+                }
+            }
+        }
+    } finally {
+        page.off('console', handleConsole);
+        page.off('pageerror', handlePageError);
+    }
+};
+
 const runSingleBenchmark = async (browser, baseUrl, scenario) => {
     const context = await browser.newContext({
         viewport: DEFAULT_VIEWPORT,
@@ -284,15 +337,7 @@ const runSingleBenchmark = async (browser, baseUrl, scenario) => {
     const page = await context.newPage();
 
     try {
-        await page.goto(benchmarkPageUrl(baseUrl), {
-            waitUntil: 'domcontentloaded',
-            timeout: DEFAULT_TIMEOUT_MS,
-        });
-        await page.waitForFunction(
-            () => Boolean(window.__AXRONE_ENGINE_BENCHMARK__),
-            undefined,
-            { timeout: DEFAULT_TIMEOUT_MS }
-        );
+        await waitForBenchmarkApi(page, baseUrl);
 
         return await page.evaluate(async (payload) => {
             const api = window.__AXRONE_ENGINE_BENCHMARK__;
@@ -534,10 +579,7 @@ try {
             const page = await context.newPage();
 
             try {
-                await page.goto(benchmarkPageUrl(baseUrl), {
-                    waitUntil: 'domcontentloaded',
-                    timeout: DEFAULT_TIMEOUT_MS,
-                });
+                await waitForBenchmarkApi(page, baseUrl);
                 browserVersion = probeBrowser.version();
                 userAgent = await page.evaluate(() => navigator.userAgent);
             } finally {
