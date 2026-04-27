@@ -124,6 +124,7 @@ Options:
   --url=http://...          Reuse an existing benchmark page instead of starting Vite
   --headless                Run Chromium headless
     --reuseBrowser            Reuse one browser across scenarios instead of isolating each scenario
+    --isolateRuns             Launch a fresh browser per warmup/measured run
   --keepServer              Leave the spawned Vite server running after completion
   --output=.tmp/benchmarks/engine-benchmark-report.json
   --help                    Show this help
@@ -144,6 +145,7 @@ const { values: cli } = parseArgs({
         output: { type: 'string' },
         headless: { type: 'boolean' },
         reuseBrowser: { type: 'boolean' },
+        isolateRuns: { type: 'boolean' },
         keepServer: { type: 'boolean' },
         help: { type: 'boolean' },
     },
@@ -175,8 +177,13 @@ const options = {
     output: path.resolve(workspaceDir, cli.output ?? '.tmp/benchmarks/engine-benchmark-report.json'),
     headless: Boolean(cli.headless),
     reuseBrowser: Boolean(cli.reuseBrowser),
+    isolateRuns: Boolean(cli.isolateRuns),
     keepServer: Boolean(cli.keepServer),
 };
+
+if (options.reuseBrowser && options.isolateRuns) {
+    fail('reuseBrowser and isolateRuns cannot be used together.');
+}
 
 if (options.iterations <= 0) {
     fail('iterations must be greater than zero.');
@@ -494,6 +501,20 @@ try {
 
         return launchBrowser();
     };
+    const runWithBrowser = async (callback) => {
+        if (options.isolateRuns) {
+            const isolatedBrowser = await launchBrowser();
+
+            try {
+                return await callback(isolatedBrowser);
+            } finally {
+                await isolatedBrowser.close();
+            }
+        }
+
+        const scenarioBrowser = await getScenarioBrowser();
+        return callback(scenarioBrowser);
+    };
 
     let browserVersion = '';
     let userAgent = '';
@@ -501,22 +522,28 @@ try {
     const scenarioReports = [];
 
     for (const scenario of scenarios) {
-        const scenarioBrowser = await getScenarioBrowser();
+        await runWithBrowser(async (probeBrowser) => {
+            if (browserVersion && userAgent) {
+                return;
+            }
 
-        if (!browserVersion || !userAgent) {
-            const context = await scenarioBrowser.newContext({
+            const context = await probeBrowser.newContext({
                 viewport: DEFAULT_VIEWPORT,
                 deviceScaleFactor: 1,
             });
             const page = await context.newPage();
-            await page.goto(benchmarkPageUrl(baseUrl), {
-                waitUntil: 'domcontentloaded',
-                timeout: DEFAULT_TIMEOUT_MS,
-            });
-            browserVersion = scenarioBrowser.version();
-            userAgent = await page.evaluate(() => navigator.userAgent);
-            await context.close();
-        }
+
+            try {
+                await page.goto(benchmarkPageUrl(baseUrl), {
+                    waitUntil: 'domcontentloaded',
+                    timeout: DEFAULT_TIMEOUT_MS,
+                });
+                browserVersion = probeBrowser.version();
+                userAgent = await page.evaluate(() => navigator.userAgent);
+            } finally {
+                await context.close();
+            }
+        });
 
         console.log(
             `Running ${scenario.workload} / ${scenario.comparisonMode} / ${scenario.objectCount} objects (${options.warmup} warmup + ${options.iterations} measured)`
@@ -524,12 +551,16 @@ try {
 
         try {
             for (let warmupIndex = 0; warmupIndex < options.warmup; warmupIndex += 1) {
-                await runSingleBenchmark(scenarioBrowser, baseUrl, scenario);
+                await runWithBrowser((benchmarkBrowser) =>
+                    runSingleBenchmark(benchmarkBrowser, baseUrl, scenario)
+                );
             }
 
             const measuredRuns = [];
             for (let runIndex = 0; runIndex < options.iterations; runIndex += 1) {
-                const snapshot = await runSingleBenchmark(scenarioBrowser, baseUrl, scenario);
+                const snapshot = await runWithBrowser((benchmarkBrowser) =>
+                    runSingleBenchmark(benchmarkBrowser, baseUrl, scenario)
+                );
                 measuredRuns.push(snapshot);
             }
 
@@ -541,7 +572,7 @@ try {
             scenarioReports.push(scenarioReport);
             printScenarioSummary(scenarioReport);
         } finally {
-            if (!options.reuseBrowser) {
+            if (!options.reuseBrowser && !options.isolateRuns) {
                 await scenarioBrowser.close();
             }
         }
@@ -565,6 +596,7 @@ try {
             workloads: options.workloads,
             comparisonModes: options.comparisonModes,
             objectCounts: options.objectCounts,
+            isolateRuns: options.isolateRuns,
             baseUrl,
         },
         scenarios: scenarioReports,
