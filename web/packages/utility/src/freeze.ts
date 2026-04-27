@@ -1,5 +1,9 @@
 import type { DeepReadonly } from './types';
 
+const isArrayBufferLike = (value: object): value is ArrayBuffer | SharedArrayBuffer =>
+    value instanceof ArrayBuffer ||
+    (typeof SharedArrayBuffer !== 'undefined' && value instanceof SharedArrayBuffer);
+
 export const deepFreeze = <TValue>(
     value: TValue,
     seen = new WeakSet<object>()
@@ -9,6 +13,10 @@ export const deepFreeze = <TValue>(
     }
 
     const target = value as object;
+    if (isArrayBufferLike(target) || ArrayBuffer.isView(target)) {
+        return value as DeepReadonly<TValue>;
+    }
+
     if (seen.has(target)) {
         return value as DeepReadonly<TValue>;
     }

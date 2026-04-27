@@ -34,6 +34,7 @@ import {
     stripExtension,
     type NormalizedGltfSource,
 } from './internal/source-runtime';
+import { deepFreeze } from '@axrone/utility';
 import { buildMeshDefinition, collectPrimitiveDiagnostics } from './internal/mesh-runtime';
 import type {
     GltfAccessorJson,
@@ -155,9 +156,6 @@ interface GltfAnimationClipMetadataSourceIndex {
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
     value !== null && typeof value === 'object' && Array.isArray(value) === false;
 
-const isTypedArray = (value: unknown): value is ArrayBufferView =>
-    ArrayBuffer.isView(value) && (value instanceof DataView === false);
-
 const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
 
@@ -170,30 +168,8 @@ const isNumberTuple3 = (value: unknown): value is readonly [number, number, numb
 const isNumberTuple4 = (value: unknown): value is readonly [number, number, number, number] =>
     Array.isArray(value) && value.length === 4 && value.every((entry) => isFiniteNumber(entry));
 
-const freezeDeep = <T>(value: T): T => {
-    if (value === null || typeof value !== 'object') {
-        return value;
-    }
-
-    if (value instanceof ArrayBuffer || isTypedArray(value) || value instanceof DataView) {
-        return value;
-    }
-
-    if (Array.isArray(value)) {
-        for (const item of value) {
-            freezeDeep(item);
-        }
-        return Object.freeze(value) as T;
-    }
-
-    for (const nested of Object.values(value as Record<string, unknown>)) {
-        freezeDeep(nested);
-    }
-
-    return Object.freeze(value);
-};
-
-const maybeFreeze = <T>(value: T, enabled: boolean): T => (enabled ? freezeDeep(value) : value);
+const maybeFreeze = <T>(value: T, enabled: boolean): T =>
+    (enabled ? (deepFreeze(value) as T) : value);
 
 const cloneSerializableMetadata = (value: unknown): unknown => {
     if (
