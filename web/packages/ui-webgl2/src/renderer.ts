@@ -303,21 +303,36 @@ const sameClip = (left: ClipState | null, right: RectLike | null): boolean => {
     );
 };
 
-const readGLParameter = <TValue>(
+function readGLParameter<TValue>(
+    gl: WebGL2RenderingContext,
+    parameter: number,
+    fallback: undefined
+): TValue | undefined;
+function readGLParameter<TValue>(
+    gl: WebGL2RenderingContext,
+    parameter: number,
+    fallback: null
+): TValue | null;
+function readGLParameter<TValue>(
     gl: WebGL2RenderingContext,
     parameter: number,
     fallback: TValue
-): TValue => {
+): TValue;
+function readGLParameter<TValue>(
+    gl: WebGL2RenderingContext,
+    parameter: number,
+    fallback: TValue | null | undefined
+): TValue | null | undefined {
     if (typeof gl.getParameter !== 'function') {
         return fallback;
     }
 
     try {
-        return (gl.getParameter(parameter) as TValue) ?? fallback;
+        return (gl.getParameter(parameter) as TValue | null | undefined) ?? fallback;
     } catch {
         return fallback;
     }
-};
+}
 
 const readGLEnabled = (
     gl: WebGL2RenderingContext,
@@ -365,13 +380,13 @@ const captureGLTextureUnitState = (
 };
 
 const captureGLState = (gl: WebGL2RenderingContext): WebGL2UIRenderStateSnapshot => {
-    const activeTexture = readGLParameter<number>(gl, gl.ACTIVE_TEXTURE, undefined as number | undefined);
+    const activeTexture = readGLParameter<number>(gl, gl.ACTIVE_TEXTURE, undefined);
     const viewport = readGLParameter<Int32Array | readonly number[]>(gl, gl.VIEWPORT, null);
     const scissorBox = readGLParameter<Int32Array | readonly number[]>(gl, gl.SCISSOR_BOX, null);
-    const blendSrcRgb = readGLParameter<number>(gl, gl.BLEND_SRC_RGB, undefined as number | undefined);
-    const blendDstRgb = readGLParameter<number>(gl, gl.BLEND_DST_RGB, undefined as number | undefined);
-    const blendSrcAlpha = readGLParameter<number>(gl, gl.BLEND_SRC_ALPHA, undefined as number | undefined);
-    const blendDstAlpha = readGLParameter<number>(gl, gl.BLEND_DST_ALPHA, undefined as number | undefined);
+    const blendSrcRgb = readGLParameter<number>(gl, gl.BLEND_SRC_RGB, undefined);
+    const blendDstRgb = readGLParameter<number>(gl, gl.BLEND_DST_RGB, undefined);
+    const blendSrcAlpha = readGLParameter<number>(gl, gl.BLEND_SRC_ALPHA, undefined);
+    const blendDstAlpha = readGLParameter<number>(gl, gl.BLEND_DST_ALPHA, undefined);
 
     return {
         viewport:
@@ -402,7 +417,7 @@ const captureGLState = (gl: WebGL2RenderingContext): WebGL2UIRenderStateSnapshot
             gl.ARRAY_BUFFER_BINDING,
             undefined,
         ),
-        unpackAlignment: readGLParameter<number>(gl, gl.UNPACK_ALIGNMENT, undefined as number | undefined),
+        unpackAlignment: readGLParameter<number>(gl, gl.UNPACK_ALIGNMENT, undefined),
         cullFaceEnabled: readGLEnabled(gl, gl.CULL_FACE),
         depthTestEnabled: readGLEnabled(gl, gl.DEPTH_TEST),
         blendEnabled: readGLEnabled(gl, gl.BLEND),

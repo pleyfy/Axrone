@@ -7,6 +7,11 @@ import type {
     IPhysicsBodyDef3D,
 } from '../types';
 import type { BodyManager3D, PhysicsWorld3D } from '../core/physics-world-3d';
+import {
+    syncTransformWorldPose,
+    syncTransformWorldPosition,
+    syncTransformWorldRotation,
+} from '../core/transform-sync';
 
 const enum Rigidbody3DType {
     Static = 0,
@@ -276,9 +281,7 @@ export class Rigidbody3D extends Component {
     set position(value: IVec3Like) {
         if (!this._bodyManager || this._bodyId === -1) return;
         this._bodyManager.setPosition(this._bodyId, value);
-        if (this.transform) {
-            this.transform.worldPosition = Vec3.from(value);
-        }
+        syncTransformWorldPosition(this.transform, value);
     }
 
     get rotation(): Readonly<IQuatLike> {
@@ -291,9 +294,7 @@ export class Rigidbody3D extends Component {
     set rotation(value: IQuatLike) {
         if (!this._bodyManager || this._bodyId === -1) return;
         this._bodyManager.setRotation(this._bodyId, value);
-        if (this.transform) {
-            this.transform.worldRotation = Quat.from(value);
-        }
+        syncTransformWorldRotation(this.transform, value);
     }
 
     get centerOfMass(): Readonly<Vec3> {
@@ -683,11 +684,9 @@ export class Rigidbody3D extends Component {
             const alpha = 0.5;
             const lerpedPos = Vec3.lerp(this._previousPosition, pos, alpha);
             const slerpedRot = Quat.slerp(this._previousRotation, rot, alpha);
-            this.transform.worldPosition = Vec3.from(lerpedPos);
-            this.transform.worldRotation = Quat.from(slerpedRot);
+            syncTransformWorldPose(this.transform, lerpedPos, slerpedRot);
         } else {
-            this.transform.worldPosition = Vec3.from(pos);
-            this.transform.worldRotation = Quat.from(rot);
+            syncTransformWorldPose(this.transform, pos, rot);
         }
     }
 
