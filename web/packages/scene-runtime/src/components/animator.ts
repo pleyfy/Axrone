@@ -22,7 +22,7 @@ import {
     type AnimationTrackDefinition,
 } from '@axrone/animation';
 import { Quat, Vec3 } from '@axrone/numeric';
-import { cloneSerializable } from '@axrone/utility';
+import { cloneSerializable, isRecord } from '@axrone/utility';
 import { Transform } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
@@ -101,9 +101,6 @@ interface AnimatorResolvedTarget {
 }
 
 type AnimatorEvaluationMode = 'apply' | 'update-only' | 'skip';
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null && Array.isArray(value) === false;
 
 const toTrackDefinition = (track: AnimatorTrackConfig): AnimationTrackDefinition => {
     const target =

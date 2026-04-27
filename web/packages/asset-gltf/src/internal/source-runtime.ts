@@ -1,4 +1,5 @@
 import type { AssetImportSource } from '../asset-contract';
+import { isPlainObject } from '@axrone/utility';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
     GltfContainerError,
@@ -30,9 +31,6 @@ export interface NormalizedGltfSource {
     readonly binChunk?: Uint8Array;
     readonly resources: ReadonlyMap<string, GltfResolvedResource>;
 }
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object' && Array.isArray(value) === false;
 
 const toUint8Array = (value: string | ArrayBuffer | ArrayBufferView | Uint8Array): Uint8Array => {
     if (typeof value === 'string') {

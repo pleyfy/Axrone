@@ -20,6 +20,9 @@ import type {
     InputVector2,
     InputVector2State,
 } from '../types';
+import { isRecord } from '@axrone/utility';
+
+export { isRecord };
 
 export const INPUT_SNAPSHOT_VERSION = 1 as const;
 export const EPSILON = 1e-6;
@@ -359,9 +362,6 @@ export interface InternalActionEventDescriptor {
     readonly trigger: InputActionEventTrigger;
     readonly context?: InputContextId;
 }
-
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object';
 
 export const isEventTargetLike = (
     value: unknown

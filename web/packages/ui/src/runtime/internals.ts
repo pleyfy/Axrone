@@ -11,6 +11,7 @@ import type {
     WidgetPatch,
     WidgetStyleInput,
 } from '../types';
+import { isPlainObject } from '@axrone/utility';
 
 export const EMPTY_RECORD_OBJECT: Readonly<Record<string, unknown>> = Object.freeze({});
 export const EMPTY_LAYOUT_INPUT: WidgetLayoutInput = Object.freeze({});
@@ -28,14 +29,6 @@ export const clamp = (value: number, min: number, max: number): number => {
         return max;
     }
     return value;
-};
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-    if (value === null || typeof value !== 'object') {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 };
 
 const isColorLike = (

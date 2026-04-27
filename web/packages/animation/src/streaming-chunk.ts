@@ -1,4 +1,5 @@
 import { AnimationValidationError } from './errors';
+import { isRecord } from '@axrone/utility';
 import type { AnimationClipDefinition, AnimationTrackDefinition } from './types';
 
 export type AnimationClipStreamingChunkMergeMode = 'replace-range' | 'replace-all';
@@ -26,9 +27,6 @@ interface AnimationTrackSampleFrame {
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null && Array.isArray(value) === false;
 
 const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);

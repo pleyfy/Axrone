@@ -2,6 +2,7 @@ import {
     AssetSnapshotError,
     resolveAssetMessage,
 } from '../errors';
+import { isPlainObject, isRecord } from '@axrone/utility';
 import type {
     AssetBinaryCodec,
     AssetBinaryPersistenceOptions,
@@ -35,18 +36,6 @@ const BASE64_CODES = (() => {
 
     return table;
 })();
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object';
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-    if (!isRecord(value)) {
-        return false;
-    }
-
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-};
 
 export const isAssetJsonValue = (value: unknown): value is AssetJsonValue => {
     if (

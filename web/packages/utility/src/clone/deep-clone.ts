@@ -1,13 +1,5 @@
 import type { TypedArray } from '../types';
-
-const isPlainObject = (value: unknown): value is Record<PropertyKey, unknown> => {
-    if (value === null || typeof value !== 'object') {
-        return false;
-    }
-
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-};
+import { isPlainObject } from '../object';
 
 export const deepClone = <TValue>(value: TValue, seen = new WeakMap<object, unknown>()): TValue => {
     if (value === null || typeof value !== 'object') {

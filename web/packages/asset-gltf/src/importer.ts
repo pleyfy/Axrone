@@ -34,7 +34,7 @@ import {
     stripExtension,
     type NormalizedGltfSource,
 } from './internal/source-runtime';
-import { deepFreeze } from '@axrone/utility';
+import { deepFreeze, isPlainObject } from '@axrone/utility';
 import { buildMeshDefinition, collectPrimitiveDiagnostics } from './internal/mesh-runtime';
 import type {
     GltfAccessorJson,
@@ -152,9 +152,6 @@ interface GltfAnimationClipMetadataSourceIndex {
     readonly byId: ReadonlyMap<string, GltfAnimationClipMetadataSource>;
     readonly byAnimationIndex: ReadonlyMap<number, GltfAnimationClipMetadataSource>;
 }
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object' && Array.isArray(value) === false;
 
 const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);

@@ -1,11 +1,9 @@
 import type { TypedArray } from '../types';
+import { isRecord } from '../object';
 
 export interface CloneSerializableOptions {
     readonly freeze?: boolean;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object' && Array.isArray(value) === false;
 
 const cloneArrayBufferView = <TValue extends ArrayBufferView>(value: TValue): TValue => {
     if (value instanceof DataView) {
