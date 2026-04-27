@@ -68,7 +68,9 @@ export {
 } from './comparer/comparer';
 
 export type { ICloneable } from './clone/cloner';
+export type { CloneSerializableOptions } from './clone/serializable-clone';
 export { cloneData, deepClone } from './clone/deep-clone';
+export { cloneSerializable } from './clone/serializable-clone';
 export type { Disposable, IDisposable } from './disposable';
 export { deepFreeze } from './freeze';
 

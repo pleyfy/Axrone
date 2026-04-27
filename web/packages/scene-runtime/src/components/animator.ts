@@ -22,6 +22,7 @@ import {
     type AnimationTrackDefinition,
 } from '@axrone/animation';
 import { Quat, Vec3 } from '@axrone/numeric';
+import { cloneSerializable } from '@axrone/utility';
 import { Transform } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
@@ -153,23 +154,6 @@ const normalizeClipDefinitions = (
             )
             .filter((clip) => clip.tracks.length > 0 || clip.streaming?.mode === 'streamed')
     );
-
-const cloneSerializable = <T>(value: T): T => {
-    if (Array.isArray(value)) {
-        return value.map((entry) => cloneSerializable(entry)) as T;
-    }
-    if (value instanceof Float32Array) {
-        return new Float32Array(value) as T;
-    }
-    if (!isRecord(value)) {
-        return value;
-    }
-    const cloned: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) {
-        cloned[key] = cloneSerializable(entry);
-    }
-    return cloned as T;
-};
 
 @script({
     scriptName: 'Animator',

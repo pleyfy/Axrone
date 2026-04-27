@@ -3,6 +3,7 @@ import type {
     GltfAnimationControllerMetadata,
     GltfPackageResourceInput,
 } from './types';
+import { cloneSerializable } from '@axrone/utility';
 
 export interface PortableAnimationFeatureExportDefinition {
     readonly rootNodeId?: string;
@@ -34,28 +35,10 @@ export interface PortableAnimationManifest {
     readonly clips?: readonly PortableAnimationClipManifestEntry[];
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object' && Array.isArray(value) === false;
-
 const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
 
-const cloneSerializable = <T>(value: T): T => {
-    if (Array.isArray(value)) {
-        return Object.freeze(value.map((entry) => cloneSerializable(entry))) as T;
-    }
-    if (value instanceof Float32Array) {
-        return new Float32Array(value) as T;
-    }
-    if (!isRecord(value)) {
-        return value;
-    }
-    const cloned: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) {
-        cloned[key] = cloneSerializable(entry);
-    }
-    return Object.freeze(cloned) as T;
-};
+const cloneFrozenSerializable = <T>(value: T): T => cloneSerializable(value, { freeze: true });
 
 const cloneStringArray = (value: readonly string[] | undefined): readonly string[] | undefined => {
     if (!Array.isArray(value)) {
@@ -117,12 +100,12 @@ const cloneClipMetadata = (
         ...(typeof clip.id === 'string' && clip.id.length > 0 ? { id: clip.id } : {}),
         ...(typeof clip.clipId === 'string' && clip.clipId.length > 0 ? { clipId: clip.clipId } : {}),
         ...(isFiniteNumber(clip.animationIndex) ? { animationIndex: Math.max(0, Math.trunc(clip.animationIndex)) } : {}),
-        ...(clip.events ? { events: cloneSerializable(clip.events) } : {}),
-        ...(clip.footContacts ? { footContacts: cloneSerializable(clip.footContacts) } : {}),
+        ...(clip.events ? { events: cloneFrozenSerializable(clip.events) } : {}),
+        ...(clip.footContacts ? { footContacts: cloneFrozenSerializable(clip.footContacts) } : {}),
         ...(cloneStringArray(clip.tags) ? { tags: cloneStringArray(clip.tags) } : {}),
-        ...(clip.features ? { features: cloneSerializable(clip.features) } : {}),
-        ...(clip.compression ? { compression: cloneSerializable(clip.compression) } : {}),
-        ...(clip.streaming ? { streaming: cloneSerializable(clip.streaming) } : {}),
+        ...(clip.features ? { features: cloneFrozenSerializable(clip.features) } : {}),
+        ...(clip.compression ? { compression: cloneFrozenSerializable(clip.compression) } : {}),
+        ...(clip.streaming ? { streaming: cloneFrozenSerializable(clip.streaming) } : {}),
         ...(featureExport ? { featureExport } : {}),
     } satisfies PortableAnimationClipManifestEntry;
     return cloned.id || cloned.clipId || cloned.animationIndex !== undefined ? Object.freeze(cloned) : undefined;
@@ -153,9 +136,11 @@ const cloneControllerMetadata = (
           )
         : undefined;
     const cloned = {
-        ...(controller.parameters ? { parameters: cloneSerializable(controller.parameters) } : {}),
-        ...(controller.layers ? { layers: cloneSerializable(controller.layers) } : {}),
-        ...(controller.rootMotion !== undefined ? { rootMotion: cloneSerializable(controller.rootMotion) } : {}),
+        ...(controller.parameters ? { parameters: cloneFrozenSerializable(controller.parameters) } : {}),
+        ...(controller.layers ? { layers: cloneFrozenSerializable(controller.layers) } : {}),
+        ...(controller.rootMotion !== undefined
+            ? { rootMotion: cloneFrozenSerializable(controller.rootMotion) }
+            : {}),
         ...(clips && clips.length > 0 ? { clips } : {}),
     } satisfies GltfAnimationControllerMetadata;
     return Object.keys(cloned).length > 0 ? Object.freeze(cloned) : undefined;
