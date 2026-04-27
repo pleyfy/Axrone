@@ -7,6 +7,7 @@ export type {
     Builtin,
     BuiltinObject,
     DeepReadonly,
+    DeepReadonlyPartial,
     DeepMutable,
     JsonPrimitive,
     JsonObject,

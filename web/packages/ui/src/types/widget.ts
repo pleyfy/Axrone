@@ -12,6 +12,7 @@ import type {
     WidgetKey,
     WidgetRole,
 } from './foundation';
+import type { DeepReadonlyPartial } from '@axrone/utility';
 import type { ColorInput, CornerInput, CornerRadii, ReadonlyColor, WidgetLayoutInput } from './layout';
 
 export interface WidgetStyleInput {
@@ -260,14 +261,6 @@ export interface WidgetConfig<
     readonly focus?: WidgetFocusPolicyInput;
     readonly handlers?: WidgetEventHandlers<TProps, TRuntime>;
 }
-
-export type DeepReadonlyPartial<TValue> = TValue extends readonly (infer TElement)[]
-    ? readonly DeepReadonlyPartial<TElement>[]
-    : TValue extends (...args: never[]) => unknown
-      ? TValue
-      : TValue extends object
-        ? { readonly [TKey in keyof TValue]?: DeepReadonlyPartial<TValue[TKey]> }
-        : TValue;
 
 export type WidgetPatch<
     TProps extends Record<string, unknown> = Record<string, never>,

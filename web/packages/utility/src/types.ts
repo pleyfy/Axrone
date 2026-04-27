@@ -124,6 +124,14 @@ export type DeepReadonly<T> = T extends (...args: never[]) => unknown
               ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
               : T;
 
+export type DeepReadonlyPartial<TValue> = TValue extends readonly (infer TElement)[]
+    ? readonly DeepReadonlyPartial<TElement>[]
+    : TValue extends (...args: never[]) => unknown
+      ? TValue
+      : TValue extends object
+        ? { readonly [TKey in keyof TValue]?: DeepReadonlyPartial<TValue[TKey]> }
+        : TValue;
+
 export type DeepMutable<T> = T extends (...args: never[]) => unknown
     ? T
     : T extends Primitive
