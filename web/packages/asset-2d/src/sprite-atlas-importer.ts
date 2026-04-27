@@ -1,4 +1,5 @@
 import { AssetImportPipeline, type AssetImportPipelineOptions, type AssetImportSource, type AssetImporter, type AssetImportResult } from '@axrone/asset-core';
+import { isPlainObject } from '@axrone/utility';
 import {
     createSpriteAtlas,
     serializeSpriteAtlasDefinition,
@@ -64,9 +65,6 @@ interface TexturePackerAtlasPayload {
     readonly frames: Readonly<Record<string, TexturePackerAtlasFrameEntry>>;
     readonly meta?: TexturePackerAtlasMeta;
 }
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object' && Array.isArray(value) === false;
 
 const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
@@ -262,7 +260,6 @@ export const createSpriteAtlasJsonImporter = (): AssetImporter<Asset2DImportSche
     priority: 20,
     sourceKinds: ['json', 'text'],
     extensions: ['spriteatlas.json', 'atlas.json', 'json'],
-    mimeTypes: ['application/json', 'text/json', 'text/plain'],
     canImport: ({ source }) => {
         try {
             return isCanonicalSpriteAtlasPayload(readJsonLikeSource(source));
@@ -298,7 +295,6 @@ export const createTexturePackerSpriteAtlasImporter = (): AssetImporter<Asset2DI
     priority: 10,
     sourceKinds: ['json', 'text'],
     extensions: ['json'],
-    mimeTypes: ['application/json', 'text/json', 'text/plain'],
     canImport: ({ source }) => {
         try {
             const payload = readJsonLikeSource(source);

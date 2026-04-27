@@ -5,6 +5,7 @@ import {
     type AssetImportSource,
     type AssetImporter,
 } from '@axrone/asset-core';
+import { isPlainObject } from '@axrone/utility';
 import {
     cloneRenderShaderEffectDefinition,
     compileRenderShaderEffect,
@@ -82,9 +83,6 @@ const INTERFACE_INTERPOLATIONS = new Set<
     NonNullable<RenderShaderInterfaceDefinition['interpolation']>
 >(['flat', 'smooth']);
 const INSPECTOR_GROUP_FALLBACK = 'Properties';
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object' && Array.isArray(value) === false;
 
 const isShaderSerializableValue = (value: unknown): value is RenderShaderSerializableValue => {
     if (
