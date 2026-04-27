@@ -8,6 +8,98 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDir = path.resolve(scriptDir, '..');
 const packagesDir = path.resolve(workspaceDir, 'packages');
 
+const readPackageJson = (packageDir) => {
+    const packageJsonPath = path.resolve(packagesDir, packageDir, 'package.json');
+    return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+};
+
+const resolveImportTarget = (exportTarget) => {
+    if (typeof exportTarget === 'string') {
+        return exportTarget;
+    }
+
+    if (!exportTarget || typeof exportTarget !== 'object' || Array.isArray(exportTarget)) {
+        return null;
+    }
+
+    if (typeof exportTarget.import === 'string') {
+        return exportTarget.import;
+    }
+
+    if (typeof exportTarget.default === 'string') {
+        return exportTarget.default;
+    }
+
+    if (typeof exportTarget.require === 'string') {
+        return exportTarget.require;
+    }
+
+    for (const nestedTarget of Object.values(exportTarget)) {
+        const resolvedTarget = resolveImportTarget(nestedTarget);
+        if (resolvedTarget) {
+            return resolvedTarget;
+        }
+    }
+
+    return null;
+};
+
+const createWorkspaceImportMap = () => {
+    const importMap = {};
+
+    for (const entry of fs.readdirSync(packagesDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) {
+            continue;
+        }
+
+        const packageDir = entry.name;
+        const packageRoot = path.resolve(packagesDir, packageDir);
+        const packageJson = readPackageJson(packageDir);
+        const packageName = packageJson.name;
+
+        if (typeof packageName !== 'string' || !packageName.startsWith('@axrone/')) {
+            continue;
+        }
+
+        const addImportTarget = (specifier, relativeTarget) => {
+            if (typeof relativeTarget !== 'string') {
+                return;
+            }
+
+            const absoluteTarget = path.resolve(packageRoot, relativeTarget);
+            if (!fs.existsSync(absoluteTarget)) {
+                return;
+            }
+
+            importMap[specifier] = pathToFileURL(absoluteTarget).href;
+        };
+
+        const exportsField = packageJson.exports;
+        if (exportsField && typeof exportsField === 'object' && !Array.isArray(exportsField)) {
+            addImportTarget(
+                packageName,
+                resolveImportTarget(exportsField['.']) ?? packageJson.module ?? packageJson.main,
+            );
+
+            for (const [subpath, exportTarget] of Object.entries(exportsField)) {
+                if (!subpath.startsWith('./')) {
+                    continue;
+                }
+
+                addImportTarget(`${packageName}/${subpath.slice(2)}`, resolveImportTarget(exportTarget));
+            }
+
+            continue;
+        }
+
+        addImportTarget(packageName, packageJson.module ?? packageJson.main ?? './dist/index.mjs');
+    }
+
+    return importMap;
+};
+
+const workspaceImportMap = createWorkspaceImportMap();
+
 const runtimeProfileBudgets = [
     {
         packageDir: 'runtime-profile-core',
@@ -76,8 +168,7 @@ const runtimeProfileBudgets = [
 ];
 
 const readDependencyKeys = (packageDir) => {
-    const packageJsonPath = path.resolve(packagesDir, packageDir, 'package.json');
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const packageJson = readPackageJson(packageDir);
     return Object.keys(packageJson.dependencies ?? {}).sort((left, right) =>
         left.localeCompare(right),
     );
@@ -97,7 +188,24 @@ const resolveEntryPath = (packageDir) => {
 const measureColdImport = (entryPath) => {
     const moduleUrl = pathToFileURL(entryPath).href;
     const childScript = `
+        import { registerHooks } from 'node:module';
         import { performance } from 'node:perf_hooks';
+
+        const workspaceImportMap = ${JSON.stringify(workspaceImportMap)};
+
+        registerHooks({
+            resolve(specifier, context, nextResolve) {
+                const resolvedUrl = workspaceImportMap[specifier];
+                if (typeof resolvedUrl === 'string') {
+                    return {
+                        shortCircuit: true,
+                        url: resolvedUrl,
+                    };
+                }
+
+                return nextResolve(specifier, context);
+            },
+        });
 
         let nextWebGl2Constant = 0x2000;
 
