@@ -7,6 +7,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDir = path.resolve(scriptDir, '..');
 const packagesDir = path.resolve(workspaceDir, 'packages');
+const runtimeProfileSampleCount = Math.max(
+    1,
+    Number.parseInt(process.env.AXRONE_RUNTIME_PROFILE_SAMPLES ?? '3', 10) || 3,
+);
 
 const readPackageJson = (packageDir) => {
     const packageJsonPath = path.resolve(packagesDir, packageDir, 'package.json');
@@ -235,7 +239,8 @@ const measureColdImport = (entryPath) => {
         const startupMs = performance.now() - startedAt;
         const heapDeltaKb = (process.memoryUsage().heapUsed - beforeHeapUsed) / 1024;
 
-        console.log(JSON.stringify({ startupMs, heapDeltaKb }));
+        process.stdout.write(JSON.stringify({ startupMs, heapDeltaKb }) + '\\n');
+        process.exit(0);
     `;
 
     const result = spawnSync(process.execPath, ['--input-type=module', '--eval', childScript], {
@@ -251,6 +256,17 @@ const measureColdImport = (entryPath) => {
     return JSON.parse(result.stdout.trim());
 };
 
+const calculateMedian = (values) => {
+    const sortedValues = [...values].sort((left, right) => left - right);
+    const middleIndex = Math.floor(sortedValues.length / 2);
+
+    if (sortedValues.length % 2 === 0) {
+        return (sortedValues[middleIndex - 1] + sortedValues[middleIndex]) / 2;
+    }
+
+    return sortedValues[middleIndex];
+};
+
 const formatNumber = (value) => value.toFixed(2).padStart(8, ' ');
 
 const reportRows = [];
@@ -260,14 +276,19 @@ for (const profile of runtimeProfileBudgets) {
     const entryPath = resolveEntryPath(profile.packageDir);
     const entryBytes = fs.statSync(entryPath).size;
     const dependencyKeys = readDependencyKeys(profile.packageDir);
-    const coldImport = measureColdImport(entryPath);
+    const coldImportSamples = Array.from({ length: runtimeProfileSampleCount }, () =>
+        measureColdImport(entryPath),
+    );
+    const startupMs = calculateMedian(coldImportSamples.map((sample) => sample.startupMs));
+    const heapDeltaKb = calculateMedian(coldImportSamples.map((sample) => sample.heapDeltaKb));
 
     reportRows.push({
         packageName: profile.packageName,
         entryBytes,
-        startupMs: coldImport.startupMs,
-        heapDeltaKb: coldImport.heapDeltaKb,
+        startupMs,
+        heapDeltaKb,
         dependencyCount: dependencyKeys.length,
+        sampleCount: runtimeProfileSampleCount,
     });
 
     if (entryBytes > profile.maxEntryBytes) {
@@ -276,15 +297,15 @@ for (const profile of runtimeProfileBudgets) {
         );
     }
 
-    if (coldImport.startupMs > profile.maxStartupMs) {
+    if (startupMs > profile.maxStartupMs) {
         failures.push(
-            `${profile.packageName} cold startup ${coldImport.startupMs.toFixed(2)} ms exceeds budget ${profile.maxStartupMs} ms.`,
+            `${profile.packageName} median cold startup ${startupMs.toFixed(2)} ms exceeds budget ${profile.maxStartupMs} ms across ${runtimeProfileSampleCount} samples.`,
         );
     }
 
-    if (coldImport.heapDeltaKb > profile.maxHeapDeltaKb) {
+    if (heapDeltaKb > profile.maxHeapDeltaKb) {
         failures.push(
-            `${profile.packageName} heap delta ${coldImport.heapDeltaKb.toFixed(2)} KB exceeds budget ${profile.maxHeapDeltaKb} KB.`,
+            `${profile.packageName} median heap delta ${heapDeltaKb.toFixed(2)} KB exceeds budget ${profile.maxHeapDeltaKb} KB across ${runtimeProfileSampleCount} samples.`,
         );
     }
 
@@ -301,8 +322,8 @@ for (const profile of runtimeProfileBudgets) {
     }
 }
 
-console.log('Runtime profile governance report');
-console.log('Package'.padEnd(32) + 'Entry'.padStart(8) + '  ' + 'Startup'.padStart(10) + '  ' + 'Heap'.padStart(10) + '  ' + 'Deps'.padStart(6));
+console.log(`Runtime profile governance report (${runtimeProfileSampleCount} cold-import samples, medians shown)`);
+console.log('Package'.padEnd(32) + 'Entry'.padStart(8) + '  ' + 'Startup'.padStart(10) + '  ' + 'Heap'.padStart(10) + '  ' + 'Deps'.padStart(6) + '  ' + 'Runs'.padStart(6));
 for (const row of reportRows) {
     console.log(
         row.packageName.padEnd(32) +
@@ -312,7 +333,9 @@ for (const row of reportRows) {
             '  ' +
             formatNumber(row.heapDeltaKb) +
             '  ' +
-            String(row.dependencyCount).padStart(6),
+            String(row.dependencyCount).padStart(6) +
+            '  ' +
+            String(row.sampleCount).padStart(6),
     );
 }
 
