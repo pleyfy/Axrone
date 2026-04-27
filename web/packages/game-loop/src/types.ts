@@ -1,4 +1,7 @@
 import type { GameLoopSystemError } from './errors';
+import type { DeepReadonly } from '@axrone/utility';
+
+export type { DeepReadonly };
 
 export type GameLoopStatus = 'idle' | 'running' | 'paused' | 'stopped' | 'disposed';
 export type GameLoopErrorPolicy = 'throw' | 'pause' | 'stop' | 'continue';
@@ -19,16 +22,6 @@ export interface JsonObject {
 export interface JsonArray extends ReadonlyArray<JsonValue> {}
 
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
-
-export type DeepReadonly<T> = T extends (...args: never[]) => unknown
-    ? T
-    : T extends JsonPrimitive
-      ? T
-      : T extends ReadonlyArray<infer TItem>
-        ? readonly DeepReadonly<TItem>[]
-        : T extends object
-          ? { readonly [TKey in keyof T]: DeepReadonly<T[TKey]> }
-          : T;
 
 export type GameLoopValidationMessageCode =
     | `loop.invalid-${

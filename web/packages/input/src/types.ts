@@ -1,8 +1,7 @@
 import type { IEventEmitter } from '@axrone/event';
+import type { Disposable } from '@axrone/utility';
 
-export interface IDisposable {
-    dispose(): void;
-}
+export type IDisposable = Disposable;
 
 export type InputDeviceKind = 'keyboard' | 'mouse' | 'touch' | 'gamepad';
 export type InputActionKind = 'button' | 'axis' | 'vector2';
@@ -156,12 +155,10 @@ export type MouseMotionControlPath = `mouse/move/${'x' | 'y'}`;
 export type MouseWheelControlPath = `mouse/wheel/${'x' | 'y' | 'z'}`;
 export type MousePositionControlPath = `mouse/position/${'x' | 'y'}`;
 export type TouchContactControlPath = `touch/contact/${InputTouchSelectorToken}`;
-export type TouchPositionControlPath =
-    `touch/position/${'x' | 'y'}/${InputTouchSelectorToken}`;
+export type TouchPositionControlPath = `touch/position/${'x' | 'y'}/${InputTouchSelectorToken}`;
 export type TouchDeltaControlPath = `touch/delta/${'x' | 'y'}/${InputTouchSelectorToken}`;
 export type TouchAggregateControlPath = 'touch/pinch' | 'touch/count';
-export type GamepadButtonControlPath =
-    `gamepad/${InputGamepadSelectorToken}/button/${number}`;
+export type GamepadButtonControlPath = `gamepad/${InputGamepadSelectorToken}/button/${number}`;
 export type GamepadAxisControlPath = `gamepad/${InputGamepadSelectorToken}/axis/${number}`;
 export type GamepadConnectionControlPath = `gamepad/${InputGamepadSelectorToken}/connected`;
 export type GamepadSemanticButtonName =
@@ -330,15 +327,16 @@ export type InputScalarBinding = InputControlBinding | InputAxisCompositeBinding
 export type InputVector2Binding = InputDirectionalBinding | InputDualAxisBinding;
 export type InputBinding = InputScalarBinding | InputVector2Binding;
 
-export type InputBindingSlotFor<TBinding extends InputBinding> = TBinding extends InputControlBinding
-    ? 'control'
-    : TBinding extends InputAxisCompositeBinding
-      ? 'negative' | 'positive'
-      : TBinding extends InputDirectionalBinding
-        ? 'up' | 'down' | 'left' | 'right'
-        : TBinding extends InputDualAxisBinding
-          ? 'x' | 'y'
-          : never;
+export type InputBindingSlotFor<TBinding extends InputBinding> =
+    TBinding extends InputControlBinding
+        ? 'control'
+        : TBinding extends InputAxisCompositeBinding
+          ? 'negative' | 'positive'
+          : TBinding extends InputDirectionalBinding
+            ? 'up' | 'down' | 'left' | 'right'
+            : TBinding extends InputDualAxisBinding
+              ? 'x' | 'y'
+              : never;
 
 export type InputBindingSlot = InputBindingSlotFor<InputBinding>;
 
@@ -491,9 +489,7 @@ export type InputActionValues<TSchema extends InputActionSchema> = {
 };
 
 export type InputActionStates<TSchema extends InputActionSchema> = {
-    readonly [TAction in InputActionName<TSchema>]: InputActionStateForDefinition<
-        TSchema[TAction]
-    >;
+    readonly [TAction in InputActionName<TSchema>]: InputActionStateForDefinition<TSchema[TAction]>;
 };
 
 export interface InputKeyboardSourceEvent {

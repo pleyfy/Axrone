@@ -1,4 +1,1 @@
-export interface IDisposable {
-    dispose(): void;
-    readonly isDisposed: boolean;
-}
+export type { IDisposable } from '@axrone/utility';

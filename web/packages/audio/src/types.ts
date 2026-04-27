@@ -1,11 +1,9 @@
-import type {
-    AssetDatabase,
-    AssetRecord,
-    AssetSchema,
-    AssetSelector,
-} from '@axrone/asset-core';
+import type { AssetDatabase, AssetRecord, AssetSchema, AssetSelector } from '@axrone/asset-core';
 import type { IEventEmitter } from '@axrone/event';
 import type { IVec3Like } from '@axrone/numeric';
+import type { DeepReadonly } from '@axrone/utility';
+
+export type { DeepReadonly };
 
 type Brand<TValue, TBrand extends string> = TValue & { readonly __audioBrand: TBrand };
 
@@ -23,16 +21,6 @@ export interface AudioJsonArray extends ReadonlyArray<AudioJsonValue> {}
 
 export type AudioJsonPrimitive = string | number | boolean | null;
 export type AudioJsonValue = AudioJsonPrimitive | AudioJsonObject | AudioJsonArray;
-
-export type DeepReadonly<T> = T extends (...args: never[]) => unknown
-    ? T
-    : T extends AudioJsonPrimitive
-      ? T
-      : T extends ReadonlyArray<infer TItem>
-        ? readonly DeepReadonly<TItem>[]
-        : T extends object
-          ? { readonly [TKey in keyof T]: DeepReadonly<T[TKey]> }
-          : T;
 
 export type AudioPatch<T> = T extends (...args: never[]) => unknown
     ? never
@@ -473,12 +461,16 @@ export type AudioRuntimeEventMap<TSchema extends AudioAssetSchema = AudioAssetSc
     {
         'audio:*': AudioRuntimeEvent<TSchema>;
     } & {
-        [TType in AudioRuntimeEventType]: Extract<AudioRuntimeEvent<TSchema>, { readonly type: TType }>;
+        [TType in AudioRuntimeEventType]: Extract<
+            AudioRuntimeEvent<TSchema>,
+            { readonly type: TType }
+        >;
     }
 >;
 
-export type AudioEventEmitter<TSchema extends AudioAssetSchema = AudioAssetSchema> =
-    IEventEmitter<AudioRuntimeEventMap<TSchema>>;
+export type AudioEventEmitter<TSchema extends AudioAssetSchema = AudioAssetSchema> = IEventEmitter<
+    AudioRuntimeEventMap<TSchema>
+>;
 
 export interface AudioDiagnosticsCounters {
     readonly emittedEventCount: number;
