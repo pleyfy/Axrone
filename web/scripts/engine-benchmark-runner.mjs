@@ -11,6 +11,8 @@ const VALID_COMPARISON_MODES = ['no-culling', 'three-culling'];
 const DEFAULT_OBJECT_COUNTS = [2600, 19600];
 const DEFAULT_VIEWPORT = { width: 1600, height: 900 };
 const DEFAULT_TIMEOUT_MS = 120000;
+const MIN_UNSTABLE_METRIC_MEDIAN_MS = 5;
+const MIN_UNSTABLE_METRIC_SPAN_MS = 10;
 
 const metricNames = [
     'averageFps',
@@ -226,11 +228,16 @@ const startExamplesServer = async () => {
     );
 
     const output = [];
+    let ready = false;
     const pushOutput = (chunk) => {
         const text = chunk.toString();
         output.push(text);
         if (output.length > 30) {
             output.shift();
+        }
+
+        if (text.includes('ready in') || text.includes('Local:')) {
+            ready = true;
         }
     };
 
@@ -241,16 +248,37 @@ const startExamplesServer = async () => {
     const deadline = Date.now() + 30_000;
 
     while (Date.now() < deadline) {
+        const combinedOutput = output.join('');
+
         if (server.exitCode !== null) {
-            fail(`Examples server exited early: ${output.join('').trim() || 'unknown error'}`);
+            fail(`Examples server exited early: ${combinedOutput.trim() || 'unknown error'}`);
         }
 
-        try {
-            const response = await fetch(benchmarkPageUrl(url), { cache: 'no-store' });
-            if (response.ok) {
-                return { server, url };
+        if (
+            combinedOutput.includes('Port ') &&
+            combinedOutput.includes(' is already in use')
+        ) {
+            server.kill('SIGTERM');
+            fail(`Examples server could not claim ${url}: ${combinedOutput.trim()}`);
+        }
+
+        if (ready) {
+            try {
+                const response = await fetch(benchmarkPageUrl(url), { cache: 'no-store' });
+                if (response.ok) {
+                    return { server, url };
+                }
+            } catch (error) {}
+        } else {
+            try {
+                const response = await fetch(benchmarkPageUrl(url), { cache: 'no-store' });
+                if (response.ok) {
+                    // Another process is already serving this port. Wait for the spawned Vite
+                    // process to prove ownership or fail explicitly instead of attaching to it.
+                }
             }
-        } catch (error) {}
+            catch (error) {}
+        }
 
         await delay(250);
     }
@@ -400,7 +428,11 @@ const collectUnstableMetrics = (engineSummary, engineName) => {
 
         if (
             metricSummary.coefficientOfVariationPct >= 25 &&
-            metricSummary.maxOverMedianRatio >= 2.5
+            metricSummary.maxOverMedianRatio >= 2.5 &&
+            (
+                metricSummary.median >= MIN_UNSTABLE_METRIC_MEDIAN_MS ||
+                metricSummary.max - metricSummary.min >= MIN_UNSTABLE_METRIC_SPAN_MS
+            )
         ) {
             warnings.push({
                 engine: engineName,
