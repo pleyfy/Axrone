@@ -1,3 +1,4 @@
+import type { EventMap } from '@axrone/event';
 import type { Vec3, IVec3Like } from '@axrone/numeric';
 import type { ParticleId, SystemId, ModuleId, EmitterId, TextureId } from '../types';
 import type {
@@ -189,12 +190,12 @@ export interface IParticleSystem extends ILifecycle, IUpdatable {
     killParticle(particleId: ParticleId): boolean;
     killAllParticles(): void;
 
-    addEventListener<K extends keyof ParticleSystemEventMap>(
+    addEventListener<K extends ParticleSystemEventType>(
         type: K,
         listener: (event: ParticleSystemEventMap[K]) => void
     ): void;
 
-    removeEventListener<K extends keyof ParticleSystemEventMap>(
+    removeEventListener<K extends ParticleSystemEventType>(
         type: K,
         listener: (event: ParticleSystemEventMap[K]) => void
     ): void;
@@ -232,11 +233,13 @@ export interface ParticleCollisionEvent extends ParticleEvent {
     readonly impulse: number;
 }
 
-export interface ParticleSystemEventMap {
+export interface ParticleSystemEventMap extends EventMap {
     readonly birth: ParticleBirthEvent;
     readonly death: ParticleDeathEvent;
     readonly collision: ParticleCollisionEvent;
 }
+
+export type ParticleSystemEventType = Extract<keyof ParticleSystemEventMap, string>;
 
 export interface IMemoryManager {
     allocate(size: number, alignment?: number): ArrayBuffer | null;
