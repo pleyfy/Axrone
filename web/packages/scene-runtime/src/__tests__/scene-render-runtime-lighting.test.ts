@@ -128,11 +128,11 @@ const createSceneShader = (
         uniformLocations: new Map(locationEntries),
         uniformTypes: new Map([
             ['u_ReceiveLighting', gl.BOOL],
-            ['u_LightColor', gl.FLOAT_VEC3],
-            ['u_LightIntensity', gl.FLOAT],
-            ['u_LocalLightCount', gl.INT],
-            ['u_LocalLightType', gl.INT],
-            ['u_LocalLightPosition', gl.FLOAT_VEC3],
+            ['u_DirectionalLightCount', gl.INT],
+            ['u_DirectionalLightColor', gl.FLOAT_VEC3],
+            ['u_DirectionalLightIntensity', gl.FLOAT],
+            ['u_PointLightCount', gl.INT],
+            ['u_PointLightPosition', gl.FLOAT_VEC3],
         ]),
         uniformNames: [...uniformNames],
         attributeNames: { position: 'a_Position' },
@@ -238,11 +238,11 @@ describe('SceneRenderRuntime lighting integration', () => {
         };
         const shader = createSceneShader(gl, [
             'u_ReceiveLighting',
-            'u_LightColor',
-            'u_LightIntensity',
-            'u_LocalLightCount',
-            'u_LocalLightType',
-            'u_LocalLightPosition',
+            'u_DirectionalLightCount',
+            'u_DirectionalLightColor',
+            'u_DirectionalLightIntensity',
+            'u_PointLightCount',
+            'u_PointLightPosition',
         ]);
         const resources = {
             materials: {
@@ -288,16 +288,16 @@ describe('SceneRenderRuntime lighting integration', () => {
             viewportHeight: 360,
         });
 
-        const lightColor = uniformWrites.get('u_LightColor') as number[];
+        const directionalLightColor = uniformWrites.get('u_DirectionalLightColor') as number[];
 
         expect(uniformWrites.get('u_ReceiveLighting')).toBe(1);
-        expect(lightColor[0]).toBeCloseTo(0.9);
-        expect(lightColor[1]).toBeCloseTo(0.8);
-        expect(lightColor[2]).toBeCloseTo(0.7);
-        expect(uniformWrites.get('u_LightIntensity')).toBe(3);
-        expect(uniformWrites.get('u_LocalLightCount')).toBe(2);
-        expect(uniformWrites.get('u_LocalLightType')).toEqual([0, 0]);
-        expect((uniformWrites.get('u_LocalLightPosition') as number[]).slice(0, 6)).toEqual([
+        expect(uniformWrites.get('u_DirectionalLightCount')).toBe(1);
+        expect(directionalLightColor[0]).toBeCloseTo(0.9);
+        expect(directionalLightColor[1]).toBeCloseTo(0.8);
+        expect(directionalLightColor[2]).toBeCloseTo(0.7);
+        expect(uniformWrites.get('u_DirectionalLightIntensity')).toEqual([3]);
+        expect(uniformWrites.get('u_PointLightCount')).toBe(2);
+        expect((uniformWrites.get('u_PointLightPosition') as number[]).slice(0, 6)).toEqual([
             1, 0, 0,
             20, 0, 0,
         ]);
