@@ -1,4 +1,5 @@
 import { Quat, Vec3 } from '@axrone/numeric';
+import { createSpotLightDefinition } from '@axrone/lighting';
 import { Transform } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
@@ -26,6 +27,8 @@ const toVec3 = (
     return fallback.clone();
 };
 
+const clampCosine = (value: number): number => Math.min(1, Math.max(-1, value));
+
 @script({
     scriptName: 'SpotLight',
     priority: 675,
@@ -41,11 +44,12 @@ export class SpotLight extends Component {
 
     constructor(config: SpotLightConfig = {}) {
         super();
-        this._color = toVec3(config.color, Vec3.ONE);
-        this._intensity = config.intensity ?? 1;
-        this._range = config.range ?? 8;
-        this._innerConeAngle = config.innerConeAngle ?? Math.PI / 8;
-        this._outerConeAngle = config.outerConeAngle ?? Math.PI / 4;
+        this._color = Vec3.ONE.clone();
+        this._intensity = 1;
+        this._range = 8;
+        this._innerConeAngle = Math.PI / 8;
+        this._outerConeAngle = Math.PI / 4;
+        this._applyConfig(config);
     }
 
     get color(): Vec3 {
@@ -53,7 +57,7 @@ export class SpotLight extends Component {
     }
 
     set color(value: Vec3 | readonly [number, number, number]) {
-        this._color = toVec3(value, Vec3.ONE);
+        this._applyConfig({ color: value });
     }
 
     get intensity(): number {
@@ -61,7 +65,7 @@ export class SpotLight extends Component {
     }
 
     set intensity(value: number) {
-        this._intensity = value;
+        this._applyConfig({ intensity: value });
     }
 
     get range(): number {
@@ -69,7 +73,7 @@ export class SpotLight extends Component {
     }
 
     set range(value: number) {
-        this._range = value;
+        this._applyConfig({ range: value });
     }
 
     get innerConeAngle(): number {
@@ -77,7 +81,7 @@ export class SpotLight extends Component {
     }
 
     set innerConeAngle(value: number) {
-        this._innerConeAngle = value;
+        this._applyConfig({ innerConeAngle: value });
     }
 
     get outerConeAngle(): number {
@@ -85,7 +89,7 @@ export class SpotLight extends Component {
     }
 
     set outerConeAngle(value: number) {
-        this._outerConeAngle = value;
+        this._applyConfig({ outerConeAngle: value });
     }
 
     getWorldPosition(): Vec3 {
@@ -118,20 +122,38 @@ export class SpotLight extends Component {
     }
 
     override deserialize(data: Record<string, any>): void {
-        if (Array.isArray(data.color) && data.color.length === 3) {
-            this._color = Vec3.fromArray(data.color);
-        }
-        if (typeof data.intensity === 'number') {
-            this._intensity = data.intensity;
-        }
-        if (typeof data.range === 'number') {
-            this._range = data.range;
-        }
-        if (typeof data.innerConeAngle === 'number') {
-            this._innerConeAngle = data.innerConeAngle;
-        }
-        if (typeof data.outerConeAngle === 'number') {
-            this._outerConeAngle = data.outerConeAngle;
-        }
+        const color =
+            Array.isArray(data.color) && data.color.length === 3
+                ? ([data.color[0], data.color[1], data.color[2]] as const)
+                : undefined;
+        const patch: SpotLightConfig = {
+            ...(color ? { color } : {}),
+            ...(typeof data.intensity === 'number' ? { intensity: data.intensity } : {}),
+            ...(typeof data.range === 'number' ? { range: data.range } : {}),
+            ...(typeof data.innerConeAngle === 'number' ? { innerConeAngle: data.innerConeAngle } : {}),
+            ...(typeof data.outerConeAngle === 'number' ? { outerConeAngle: data.outerConeAngle } : {}),
+        };
+
+        this._applyConfig(patch);
+    }
+
+    private _applyConfig(config: SpotLightConfig): void {
+        const definition = createSpotLightDefinition(
+            {
+                color: config.color ?? this._color,
+                intensity: config.intensity ?? this._intensity,
+                range: config.range ?? this._range,
+                coneMode: 'angle',
+                innerConeAngle: config.innerConeAngle ?? this._innerConeAngle,
+                outerConeAngle: config.outerConeAngle ?? this._outerConeAngle,
+            },
+            'scene-runtime:spot-light'
+        );
+
+        this._color = Vec3.from(definition.color);
+        this._intensity = definition.intensity;
+        this._range = definition.range;
+        this._innerConeAngle = Math.acos(clampCosine(definition.innerConeCosine));
+        this._outerConeAngle = Math.acos(clampCosine(definition.outerConeCosine));
     }
 }

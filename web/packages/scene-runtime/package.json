@@ -56,6 +56,7 @@
         "@axrone/ecs-runtime": "^0.1.0",
         "@axrone/game-loop": "^0.1.0",
         "@axrone/geometry": "^0.1.0",
+        "@axrone/lighting": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
         "@axrone/render-2d": "^0.1.0",
         "@axrone/render-core": "^0.1.0",

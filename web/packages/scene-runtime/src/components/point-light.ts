@@ -1,4 +1,5 @@
 import { Vec3 } from '@axrone/numeric';
+import { createPointLightDefinition } from '@axrone/lighting';
 import { Transform } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
@@ -37,9 +38,10 @@ export class PointLight extends Component {
 
     constructor(config: PointLightConfig = {}) {
         super();
-        this._color = toVec3(config.color, Vec3.ONE);
-        this._intensity = config.intensity ?? 1;
-        this._range = config.range ?? 8;
+        this._color = Vec3.ONE.clone();
+        this._intensity = 1;
+        this._range = 8;
+        this._applyConfig(config);
     }
 
     get color(): Vec3 {
@@ -47,7 +49,7 @@ export class PointLight extends Component {
     }
 
     set color(value: Vec3 | readonly [number, number, number]) {
-        this._color = toVec3(value, Vec3.ONE);
+        this._applyConfig({ color: value });
     }
 
     get intensity(): number {
@@ -55,7 +57,7 @@ export class PointLight extends Component {
     }
 
     set intensity(value: number) {
-        this._intensity = value;
+        this._applyConfig({ intensity: value });
     }
 
     get range(): number {
@@ -63,7 +65,7 @@ export class PointLight extends Component {
     }
 
     set range(value: number) {
-        this._range = value;
+        this._applyConfig({ range: value });
     }
 
     getWorldPosition(): Vec3 {
@@ -84,14 +86,31 @@ export class PointLight extends Component {
     }
 
     override deserialize(data: Record<string, any>): void {
-        if (Array.isArray(data.color) && data.color.length === 3) {
-            this._color = Vec3.fromArray(data.color);
-        }
-        if (typeof data.intensity === 'number') {
-            this._intensity = data.intensity;
-        }
-        if (typeof data.range === 'number') {
-            this._range = data.range;
-        }
+        const color =
+            Array.isArray(data.color) && data.color.length === 3
+                ? ([data.color[0], data.color[1], data.color[2]] as const)
+                : undefined;
+        const patch: PointLightConfig = {
+            ...(color ? { color } : {}),
+            ...(typeof data.intensity === 'number' ? { intensity: data.intensity } : {}),
+            ...(typeof data.range === 'number' ? { range: data.range } : {}),
+        };
+
+        this._applyConfig(patch);
+    }
+
+    private _applyConfig(config: PointLightConfig): void {
+        const definition = createPointLightDefinition(
+            {
+                color: config.color ?? this._color,
+                intensity: config.intensity ?? this._intensity,
+                range: config.range ?? this._range,
+            },
+            'scene-runtime:point-light'
+        );
+
+        this._color = Vec3.from(definition.color);
+        this._intensity = definition.intensity;
+        this._range = definition.range;
     }
 }

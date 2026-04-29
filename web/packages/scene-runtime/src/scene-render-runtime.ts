@@ -1,5 +1,5 @@
 import { Vec3, Vec4 } from '@axrone/numeric';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { Actor, Transform } from '@axrone/ecs-runtime';
 import { selectSceneCamera } from './camera-selector';
 import { SceneCameraFrameStateCollector } from './camera-frame-state';
 import { SceneDrawExecutionContextCache } from './draw-execution-context';
@@ -145,7 +145,8 @@ export class SceneRenderRuntime {
             actors,
             this._options.ambientLight,
             this._options.skyLight,
-            this._options.groundLight
+            this._options.groundLight,
+            (camera?.transform as Transform | undefined)?.worldPosition
         );
         const renderPasses = this._options.resources.renderPasses.getEnabledResources();
 

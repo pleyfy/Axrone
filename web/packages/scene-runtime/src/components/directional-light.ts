@@ -1,4 +1,5 @@
 import { Quat, Vec3 } from '@axrone/numeric';
+import { createDirectionalLightDefinition } from '@axrone/lighting';
 import { Transform } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
@@ -25,6 +26,8 @@ const toVec3 = (
     return fallback.clone();
 };
 
+const DEFAULT_AMBIENT_COLOR = Object.freeze(new Vec3(0.06, 0.06, 0.08));
+
 @script({
     scriptName: 'DirectionalLight',
     priority: 700,
@@ -39,10 +42,11 @@ export class DirectionalLight extends Component {
 
     constructor(config: DirectionalLightConfig = {}) {
         super();
-        this._color = toVec3(config.color, Vec3.ONE);
-        this._ambientColor = toVec3(config.ambientColor, new Vec3(0.06, 0.06, 0.08));
-        this._intensity = config.intensity ?? 1;
-        this._primary = config.primary ?? false;
+        this._color = Vec3.ONE.clone();
+        this._ambientColor = Vec3.from(DEFAULT_AMBIENT_COLOR);
+        this._intensity = 1;
+        this._primary = false;
+        this._applyConfig(config);
     }
 
     get color(): Vec3 {
@@ -50,7 +54,7 @@ export class DirectionalLight extends Component {
     }
 
     set color(value: Vec3 | readonly [number, number, number]) {
-        this._color = toVec3(value, Vec3.ONE);
+        this._applyConfig({ color: value });
     }
 
     get ambientColor(): Vec3 {
@@ -58,7 +62,7 @@ export class DirectionalLight extends Component {
     }
 
     set ambientColor(value: Vec3 | readonly [number, number, number]) {
-        this._ambientColor = toVec3(value, new Vec3(0.06, 0.06, 0.08));
+        this._applyConfig({ ambientColor: value });
     }
 
     get intensity(): number {
@@ -66,7 +70,7 @@ export class DirectionalLight extends Component {
     }
 
     set intensity(value: number) {
-        this._intensity = value;
+        this._applyConfig({ intensity: value });
     }
 
     get primary(): boolean {
@@ -74,7 +78,7 @@ export class DirectionalLight extends Component {
     }
 
     set primary(value: boolean) {
-        this._primary = value;
+        this._applyConfig({ primary: value });
     }
 
     getDirection(): Vec3 {
@@ -97,17 +101,37 @@ export class DirectionalLight extends Component {
     }
 
     override deserialize(data: Record<string, any>): void {
-        if (Array.isArray(data.color) && data.color.length === 3) {
-            this._color = Vec3.fromArray(data.color);
-        }
-        if (Array.isArray(data.ambientColor) && data.ambientColor.length === 3) {
-            this._ambientColor = Vec3.fromArray(data.ambientColor);
-        }
-        if (typeof data.intensity === 'number') {
-            this._intensity = data.intensity;
-        }
-        if (typeof data.primary === 'boolean') {
-            this._primary = data.primary;
-        }
+        const color =
+            Array.isArray(data.color) && data.color.length === 3
+                ? ([data.color[0], data.color[1], data.color[2]] as const)
+                : undefined;
+        const ambientColor =
+            Array.isArray(data.ambientColor) && data.ambientColor.length === 3
+                ? ([data.ambientColor[0], data.ambientColor[1], data.ambientColor[2]] as const)
+                : undefined;
+        const patch: DirectionalLightConfig = {
+            ...(color ? { color } : {}),
+            ...(ambientColor ? { ambientColor } : {}),
+            ...(typeof data.intensity === 'number' ? { intensity: data.intensity } : {}),
+            ...(typeof data.primary === 'boolean' ? { primary: data.primary } : {}),
+        };
+
+        this._applyConfig(patch);
+    }
+
+    private _applyConfig(config: DirectionalLightConfig): void {
+        const definition = createDirectionalLightDefinition(
+            {
+                color: config.color ?? this._color,
+                ambient: config.ambientColor ?? this._ambientColor,
+                intensity: config.intensity ?? this._intensity,
+            },
+            'scene-runtime:directional-light'
+        );
+
+        this._color = Vec3.from(definition.color);
+        this._ambientColor = Vec3.from(definition.ambient);
+        this._intensity = definition.intensity;
+        this._primary = config.primary ?? this._primary;
     }
 }
