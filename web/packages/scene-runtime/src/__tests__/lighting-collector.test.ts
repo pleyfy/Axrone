@@ -10,7 +10,7 @@ import { createSceneRegistry } from '../scene-registry';
 const createWorld = (): World => new World(createSceneRegistry());
 
 describe('SceneLightingCollector', () => {
-    it('preserves the legacy lighting surface while reusing cached local-light views', () => {
+    it('reuses the cached modern lighting selection while preserving per-kind light buffers', () => {
         const world = createWorld();
         const collector = new SceneLightingCollector(4);
 
@@ -56,17 +56,20 @@ describe('SceneLightingCollector', () => {
         );
 
         expect(second).toBe(first);
-        expect(second.localLightPositions).toBe(first.localLightPositions);
-        expect(second.localLightTypes).toBe(first.localLightTypes);
-        expect(second.ambient.x).toBeCloseTo(0.15);
-        expect(second.ambient.y).toBeCloseTo(0.24);
-        expect(second.ambient.z).toBeCloseTo(0.33);
-        expect(second.pointCount).toBe(1);
-        expect(second.spotCount).toBe(1);
-        expect(second.localLightCount).toBe(2);
-        expect([...second.localLightTypes.slice(0, 2)].sort((left, right) => left - right)).toEqual([0, 1]);
-        expect(second.pointLightRange).toBe(9);
-        expect(second.spotLightOuterCone).toBeCloseTo(0.5);
+        expect(second.pointPositions).toBe(first.pointPositions);
+        expect(second.localLightKinds).toBe(first.localLightKinds);
+        expect(second.environment.ambient.x).toBeCloseTo(0.1);
+        expect(second.environment.ambient.y).toBeCloseTo(0.2);
+        expect(second.environment.ambient.z).toBeCloseTo(0.3);
+        expect(second.stats.selectedDirectionalCount).toBe(1);
+        expect(second.stats.selectedPointCount).toBe(1);
+        expect(second.stats.selectedSpotCount).toBe(1);
+        expect(second.stats.selectedLocalLightCount).toBe(2);
+        expect(second.directionalAmbientColors[0]).toBeCloseTo(0.05);
+        expect(second.directionalAmbientColors[1]).toBeCloseTo(0.04);
+        expect(second.directionalAmbientColors[2]).toBeCloseTo(0.03);
+        expect(second.pointRanges[0]).toBe(9);
+        expect(second.spotOuterConeCosines[0]).toBeCloseTo(Math.cos(0.5));
     });
 
     it('prefers primary directional lights over fallback directional lights', () => {
@@ -89,13 +92,13 @@ describe('SceneLightingCollector', () => {
 
         const lighting = collector.collect(world.getAllActors(), Vec3.ZERO);
 
-        expect(lighting.hasDirectional).toBe(true);
-        expect(lighting.directionalColor.x).toBe(0);
-        expect(lighting.directionalColor.y).toBe(1);
-        expect(lighting.directionalIntensity).toBe(4);
+        expect(lighting.stats.selectedDirectionalCount).toBe(1);
+        expect(lighting.directionalColors[0]).toBe(0);
+        expect(lighting.directionalColors[1]).toBe(1);
+        expect(lighting.directionalIntensities[0]).toBe(4);
     });
 
-    it('uses camera influence when choosing local lights for the legacy render path', () => {
+    it('uses camera influence when choosing modern local and point-light selections', () => {
         const world = createWorld();
         const collector = new SceneLightingCollector(1);
 
@@ -117,14 +120,15 @@ describe('SceneLightingCollector', () => {
 
         const lighting = collector.collect(world.getAllActors(), Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO);
 
-        expect(lighting.localLightCount).toBe(1);
+        expect(lighting.stats.selectedLocalLightCount).toBe(1);
+        expect(lighting.stats.selectedPointCount).toBe(1);
         expect([...lighting.localLightPositions.slice(0, 3)]).toEqual([1, 0, 0]);
-        expect(lighting.pointCount).toBe(1);
-        expect(lighting.pointLightColor.x).toBe(0);
-        expect(lighting.pointLightColor.y).toBe(1);
+        expect([...lighting.pointPositions.slice(0, 3)]).toEqual([1, 0, 0]);
+        expect(lighting.pointColors[0]).toBe(0);
+        expect(lighting.pointColors[1]).toBe(1);
     });
 
-    it('keeps legacy spot cone angles and removes stale lights when components disable', () => {
+    it('keeps cosine spot cones and removes stale lights when components disable', () => {
         const world = createWorld();
         const collector = new SceneLightingCollector(2);
 
@@ -140,20 +144,21 @@ describe('SceneLightingCollector', () => {
 
         const first = collector.collect(world.getAllActors(), Vec3.ZERO);
 
-        expect(first.localLightCount).toBe(1);
-        expect(first.localLightTypes[0]).toBe(1);
-        expect(first.localLightInnerCones[0]).toBeCloseTo(0.2);
-        expect(first.localLightOuterCones[0]).toBeCloseTo(0.6);
-        expect(first.spotLightInnerCone).toBeCloseTo(0.2);
-        expect(first.spotLightOuterCone).toBeCloseTo(0.6);
+        expect(first.stats.selectedLocalLightCount).toBe(1);
+        expect(first.stats.selectedSpotCount).toBe(1);
+        expect(first.localLightInnerConeCosines[0]).toBeCloseTo(Math.cos(0.2));
+        expect(first.localLightOuterConeCosines[0]).toBeCloseTo(Math.cos(0.6));
+        expect(first.spotInnerConeCosines[0]).toBeCloseTo(Math.cos(0.2));
+        expect(first.spotOuterConeCosines[0]).toBeCloseTo(Math.cos(0.6));
 
         spotLight.enabled = false;
 
         const second = collector.collect(world.getAllActors(), Vec3.ZERO);
 
-        expect(second.localLightCount).toBe(0);
-        expect(second.spotCount).toBe(0);
-        expect(second.spotLightIntensity).toBe(0);
-        expect(second.spotLightOuterCone).toBe(0);
+        expect(second.stats.totalSpotCount).toBe(0);
+        expect(second.stats.selectedLocalLightCount).toBe(0);
+        expect(second.stats.selectedSpotCount).toBe(0);
+        expect(second.spotIntensities[0]).toBe(0);
+        expect(second.spotOuterConeCosines[0]).toBe(0);
     });
 });
