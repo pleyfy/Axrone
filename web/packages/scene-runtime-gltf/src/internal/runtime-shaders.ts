@@ -1,5 +1,9 @@
 import type { GltfMeshSemantic, GltfShaderDefinition } from '@axrone/asset-gltf';
 import {
+    createLegacyLightingUniformLayout,
+    LEGACY_LIGHTING_LOCAL_LIGHT_TYPES,
+} from '@axrone/lighting';
+import {
     createSceneShaderDefinitionFromEffect,
     type RenderShaderEffectDefinition,
     type RenderShaderPropertyDefinition,
@@ -15,7 +19,9 @@ const GLTF_SHADER_UNLIT_ID = 'gltf/unlit';
 const GLTF_SHADER_DOUBLE_SIDED_SUFFIX = '/double-sided';
 const GLTF_SHADER_BLEND_SUFFIX = '/blend';
 const MAX_GLTF_SKIN_JOINTS = 128;
-const MAX_GLTF_LOCAL_LIGHTS = 4;
+const GLTF_LEGACY_LIGHTING_LAYOUT = createLegacyLightingUniformLayout({ maxLocalLights: 4 });
+const GLTF_LEGACY_LIGHTING_UNIFORMS = GLTF_LEGACY_LIGHTING_LAYOUT.names;
+const MAX_GLTF_LOCAL_LIGHTS = GLTF_LEGACY_LIGHTING_LAYOUT.maxLocalLights;
 
 type GltfMaterialUniformMap = Readonly<Record<string, unknown>>;
 
@@ -25,6 +31,16 @@ const GLTF_ALPHA_MODE_OPTIONS = Object.freeze([
     { label: 'Mask', value: 1 },
     { label: 'Blend', value: 2 },
 ] as const);
+
+const createLegacyLightingProperties = (): readonly RenderShaderPropertyDefinition[] =>
+    GLTF_LEGACY_LIGHTING_LAYOUT.properties.map((property) => ({
+        name: property.name,
+        type: property.type,
+        ...(property.arrayLength !== undefined ? { arrayLength: property.arrayLength } : {}),
+        stages: ['fragment'],
+        scope: property.scope,
+        inspector: HIDDEN_INSPECTOR,
+    }));
 
 const GLTF_UNLIT_ATTRIBUTES = Object.freeze({
     position: 'a_Position',
@@ -634,126 +650,7 @@ const createGltfPbrShaderEffect = (id: string): RenderShaderEffectDefinition => 
     ],
     properties: [
         ...createSharedObjectProperties(),
-        {
-            name: 'u_ReceiveLighting',
-            type: 'bool',
-            stages: ['fragment'],
-            scope: 'system',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_AmbientLight',
-            type: 'vec3',
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_SkyLight',
-            type: 'vec3',
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_GroundLight',
-            type: 'vec3',
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LightDirection',
-            type: 'vec3',
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LightColor',
-            type: 'vec3',
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LightIntensity',
-            type: 'float',
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightCount',
-            type: 'int',
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightType',
-            type: 'int',
-            arrayLength: MAX_GLTF_LOCAL_LIGHTS,
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightPosition',
-            type: 'vec3',
-            arrayLength: MAX_GLTF_LOCAL_LIGHTS,
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightDirection',
-            type: 'vec3',
-            arrayLength: MAX_GLTF_LOCAL_LIGHTS,
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightColor',
-            type: 'vec3',
-            arrayLength: MAX_GLTF_LOCAL_LIGHTS,
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightIntensity',
-            type: 'float',
-            arrayLength: MAX_GLTF_LOCAL_LIGHTS,
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightRange',
-            type: 'float',
-            arrayLength: MAX_GLTF_LOCAL_LIGHTS,
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightInnerCone',
-            type: 'float',
-            arrayLength: MAX_GLTF_LOCAL_LIGHTS,
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
-        {
-            name: 'u_LocalLightOuterCone',
-            type: 'float',
-            arrayLength: MAX_GLTF_LOCAL_LIGHTS,
-            stages: ['fragment'],
-            scope: 'frame',
-            inspector: HIDDEN_INSPECTOR,
-        },
+        ...createLegacyLightingProperties(),
         {
             name: 'u_CameraPosition',
             type: 'vec3',
@@ -886,23 +783,23 @@ const createGltfPbrShaderEffect = (id: string): RenderShaderEffectDefinition => 
             'float roughness = clamp(_RoughnessFactor * mrSample.g, 0.04, 1.0);',
             'float metallic = clamp(_MetallicFactor * mrSample.b, 0.0, 1.0);',
             'float hemiFactor = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);',
-            'vec3 ambient = mix(u_GroundLight, u_SkyLight, hemiFactor) + (u_AmbientLight * 0.45);',
+            `vec3 ambient = mix(${GLTF_LEGACY_LIGHTING_UNIFORMS.groundLight}, ${GLTF_LEGACY_LIGHTING_UNIFORMS.skyLight}, hemiFactor) + (${GLTF_LEGACY_LIGHTING_UNIFORMS.ambientLight} * 0.45);`,
             'vec3 lighting = baseColor.rgb * ambient;',
             '',
-            'if (u_ReceiveLighting) {',
-            '    lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, normalize(-u_LightDirection), u_LightColor, u_LightIntensity);',
+            `if (${GLTF_LEGACY_LIGHTING_UNIFORMS.receiveLighting}) {`,
+            `    lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, normalize(-${GLTF_LEGACY_LIGHTING_UNIFORMS.lightDirection}), ${GLTF_LEGACY_LIGHTING_UNIFORMS.lightColor}, ${GLTF_LEGACY_LIGHTING_UNIFORMS.lightIntensity});`,
             `    for (int index = 0; index < ${MAX_GLTF_LOCAL_LIGHTS}; index += 1) {`,
-            '        if (index >= u_LocalLightCount) {',
+            `        if (index >= ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightCount}) {`,
             '            break;',
             '        }',
-            '        vec3 toLight = u_LocalLightPosition[index] - v_WorldPosition;',
+            `        vec3 toLight = ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightPosition}[index] - v_WorldPosition;`,
             '        float distanceToLight = length(toLight);',
             '        vec3 lightDir = distanceToLight > 0.0 ? toLight / distanceToLight : vec3(0.0, 1.0, 0.0);',
-            '        float attenuation = rangeAttenuation(distanceToLight, u_LocalLightRange[index]);',
-            '        if (u_LocalLightType[index] == 1) {',
-            '            attenuation *= spotAttenuation(lightDir, u_LocalLightDirection[index], u_LocalLightInnerCone[index], u_LocalLightOuterCone[index]);',
+            `        float attenuation = rangeAttenuation(distanceToLight, ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightRange}[index]);`,
+            `        if (${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightType}[index] == ${LEGACY_LIGHTING_LOCAL_LIGHT_TYPES.spot}) {`,
+            `            attenuation *= spotAttenuation(lightDir, ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightDirection}[index], ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightInnerCone}[index], ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightOuterCone}[index]);`,
             '        }',
-            '        lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, lightDir, u_LocalLightColor[index], u_LocalLightIntensity[index] * attenuation);',
+            `        lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, lightDir, ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightColor}[index], ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightIntensity}[index] * attenuation);`,
             '    }',
             '}',
             '',
