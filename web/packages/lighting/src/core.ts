@@ -6,7 +6,13 @@ export * from './guards';
 export {
     DEFAULT_LIGHTING_CAPACITY,
     DEFAULT_LIGHTING_ENVIRONMENT,
+    applyDirectionalLightPatch,
+    applyPointLightPatch,
+    applySpotLightPatch,
+    createDirectionalLightDefinition,
     createLightingEnvironment,
+    createPointLightDefinition,
+    createSpotLightDefinition,
     resolveLightingCapacity,
 } from './validation';
 export { LightingRig } from './rig';
