@@ -35,9 +35,14 @@ describe('scene-runtime glTF shader effects', () => {
             definition.effect?.properties?.find((property) => property.name === 'u_LocalLightType')
                 ?.arrayLength
         ).toBe(4);
+        expect(
+            definition.effect?.properties?.find((property) => property.name === 'u_PointLightCount')
+                ?.type
+        ).toBe('int');
         expect(GLTF_PBR_SHADER_EFFECT.properties?.some((property) => property.name === '_MetallicFactor')).toBe(true);
         expect(GLTF_UNLIT_SHADER_EFFECT.properties?.some((property) => property.name === '_BaseColorTexture')).toBe(true);
         expect(definition.fragmentSource).toContain('uniform int u_LocalLightType[4];');
+        expect(definition.fragmentSource).toContain('uniform int u_PointLightCount;');
         expect(definition.cull).toBe(true);
         expect(definition.blend).toBe(false);
     });
