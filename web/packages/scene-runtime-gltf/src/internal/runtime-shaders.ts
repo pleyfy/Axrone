@@ -1,8 +1,5 @@
 import type { GltfMeshSemantic, GltfShaderDefinition } from '@axrone/asset-gltf';
-import {
-    createLegacyLightingUniformLayout,
-    LEGACY_LIGHTING_LOCAL_LIGHT_TYPES,
-} from '@axrone/lighting';
+import { createLightingUniformLayout } from '@axrone/lighting';
 import {
     createSceneShaderDefinitionFromEffect,
     type RenderShaderEffectDefinition,
@@ -19,9 +16,16 @@ const GLTF_SHADER_UNLIT_ID = 'gltf/unlit';
 const GLTF_SHADER_DOUBLE_SIDED_SUFFIX = '/double-sided';
 const GLTF_SHADER_BLEND_SUFFIX = '/blend';
 const MAX_GLTF_SKIN_JOINTS = 128;
-const GLTF_LEGACY_LIGHTING_LAYOUT = createLegacyLightingUniformLayout({ maxLocalLights: 4 });
-const GLTF_LEGACY_LIGHTING_UNIFORMS = GLTF_LEGACY_LIGHTING_LAYOUT.names;
-const MAX_GLTF_LOCAL_LIGHTS = GLTF_LEGACY_LIGHTING_LAYOUT.maxLocalLights;
+const GLTF_LIGHTING_LAYOUT = createLightingUniformLayout({
+    maxDirectionalLights: 1,
+    maxPointLights: 4,
+    maxSpotLights: 4,
+    maxLocalLights: 4,
+});
+const GLTF_LIGHTING_UNIFORMS = GLTF_LIGHTING_LAYOUT.names;
+const MAX_GLTF_DIRECTIONAL_LIGHTS = GLTF_LIGHTING_LAYOUT.capacity.maxDirectionalLights;
+const MAX_GLTF_POINT_LIGHTS = GLTF_LIGHTING_LAYOUT.capacity.maxPointLights;
+const MAX_GLTF_SPOT_LIGHTS = GLTF_LIGHTING_LAYOUT.capacity.maxSpotLights;
 
 type GltfMaterialUniformMap = Readonly<Record<string, unknown>>;
 
@@ -32,8 +36,15 @@ const GLTF_ALPHA_MODE_OPTIONS = Object.freeze([
     { label: 'Blend', value: 2 },
 ] as const);
 
-const createLegacyLightingProperties = (): readonly RenderShaderPropertyDefinition[] =>
-    GLTF_LEGACY_LIGHTING_LAYOUT.properties.map((property) => ({
+const createLightingProperties = (): readonly RenderShaderPropertyDefinition[] =>
+    GLTF_LIGHTING_LAYOUT.properties
+        .filter(
+            (property) =>
+                property.name !== 'u_Exposure' &&
+                property.name !== 'u_Gamma' &&
+                !property.name.startsWith('u_Local')
+        )
+        .map((property) => ({
         name: property.name,
         type: property.type,
         ...(property.arrayLength !== undefined ? { arrayLength: property.arrayLength } : {}),
@@ -314,11 +325,9 @@ const GLTF_SHADER_LIBRARIES = Object.freeze([
             '    return atten * atten;',
             '}',
             '',
-            'float spotAttenuation(vec3 lightDir, vec3 spotDir, float innerCone, float outerCone) {',
+            'float spotAttenuation(vec3 lightDir, vec3 spotDir, float innerConeCosine, float outerConeCosine) {',
             '    float cd = dot(normalize(-lightDir), normalize(spotDir));',
-            '    float inner = cos(innerCone);',
-            '    float outer = cos(outerCone);',
-            '    return smoothstep(outer, inner, cd);',
+            '    return smoothstep(outerConeCosine, innerConeCosine, cd);',
             '}',
             '',
             'vec3 evaluateLight(vec3 normal, vec3 viewDir, vec3 albedo, float metallic, float roughness, vec3 lightDir, vec3 lightColor, float intensity) {',
@@ -650,7 +659,14 @@ const createGltfPbrShaderEffect = (id: string): RenderShaderEffectDefinition => 
     ],
     properties: [
         ...createSharedObjectProperties(),
-        ...createLegacyLightingProperties(),
+        {
+            name: 'u_ReceiveLighting',
+            type: 'bool',
+            stages: ['fragment'],
+            scope: 'system',
+            inspector: HIDDEN_INSPECTOR,
+        },
+        ...createLightingProperties(),
         {
             name: 'u_CameraPosition',
             type: 'vec3',
@@ -783,24 +799,41 @@ const createGltfPbrShaderEffect = (id: string): RenderShaderEffectDefinition => 
             'float roughness = clamp(_RoughnessFactor * mrSample.g, 0.04, 1.0);',
             'float metallic = clamp(_MetallicFactor * mrSample.b, 0.0, 1.0);',
             'float hemiFactor = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);',
-            `vec3 ambient = mix(${GLTF_LEGACY_LIGHTING_UNIFORMS.groundLight}, ${GLTF_LEGACY_LIGHTING_UNIFORMS.skyLight}, hemiFactor) + (${GLTF_LEGACY_LIGHTING_UNIFORMS.ambientLight} * 0.45);`,
-            'vec3 lighting = baseColor.rgb * ambient;',
+            `vec3 ambient = mix(${GLTF_LIGHTING_UNIFORMS.groundLight}, ${GLTF_LIGHTING_UNIFORMS.skyLight}, hemiFactor) + (${GLTF_LIGHTING_UNIFORMS.ambientLight} * 0.45);`,
+            'vec3 lighting = vec3(0.0);',
             '',
-            `if (${GLTF_LEGACY_LIGHTING_UNIFORMS.receiveLighting}) {`,
-            `    lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, normalize(-${GLTF_LEGACY_LIGHTING_UNIFORMS.lightDirection}), ${GLTF_LEGACY_LIGHTING_UNIFORMS.lightColor}, ${GLTF_LEGACY_LIGHTING_UNIFORMS.lightIntensity});`,
-            `    for (int index = 0; index < ${MAX_GLTF_LOCAL_LIGHTS}; index += 1) {`,
-            `        if (index >= ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightCount}) {`,
+            'if (u_ReceiveLighting) {',
+            `    for (int index = 0; index < ${MAX_GLTF_DIRECTIONAL_LIGHTS}; index += 1) {`,
+            `        if (index >= ${GLTF_LIGHTING_UNIFORMS.directionalLightCount}) {`,
             '            break;',
             '        }',
-            `        vec3 toLight = ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightPosition}[index] - v_WorldPosition;`,
+            `        ambient += ${GLTF_LIGHTING_UNIFORMS.directionalLightAmbientColor}[index];`,
+            `        lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, normalize(-${GLTF_LIGHTING_UNIFORMS.directionalLightDirection}[index]), ${GLTF_LIGHTING_UNIFORMS.directionalLightColor}[index], ${GLTF_LIGHTING_UNIFORMS.directionalLightIntensity}[index]);`,
+            '    }',
+            '    lighting += baseColor.rgb * ambient;',
+            `    for (int index = 0; index < ${MAX_GLTF_POINT_LIGHTS}; index += 1) {`,
+            `        if (index >= ${GLTF_LIGHTING_UNIFORMS.pointLightCount}) {`,
+            '            break;',
+            '        }',
+            `        vec3 toLight = ${GLTF_LIGHTING_UNIFORMS.pointLightPosition}[index] - v_WorldPosition;`,
             '        float distanceToLight = length(toLight);',
             '        vec3 lightDir = distanceToLight > 0.0 ? toLight / distanceToLight : vec3(0.0, 1.0, 0.0);',
-            `        float attenuation = rangeAttenuation(distanceToLight, ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightRange}[index]);`,
-            `        if (${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightType}[index] == ${LEGACY_LIGHTING_LOCAL_LIGHT_TYPES.spot}) {`,
-            `            attenuation *= spotAttenuation(lightDir, ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightDirection}[index], ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightInnerCone}[index], ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightOuterCone}[index]);`,
-            '        }',
-            `        lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, lightDir, ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightColor}[index], ${GLTF_LEGACY_LIGHTING_UNIFORMS.localLightIntensity}[index] * attenuation);`,
+            `        float attenuation = rangeAttenuation(distanceToLight, ${GLTF_LIGHTING_UNIFORMS.pointLightRange}[index]);`,
+            `        lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, lightDir, ${GLTF_LIGHTING_UNIFORMS.pointLightColor}[index], ${GLTF_LIGHTING_UNIFORMS.pointLightIntensity}[index] * attenuation);`,
             '    }',
+            `    for (int index = 0; index < ${MAX_GLTF_SPOT_LIGHTS}; index += 1) {`,
+            `        if (index >= ${GLTF_LIGHTING_UNIFORMS.spotLightCount}) {`,
+            '            break;',
+            '        }',
+            `        vec3 toLight = ${GLTF_LIGHTING_UNIFORMS.spotLightPosition}[index] - v_WorldPosition;`,
+            '        float distanceToLight = length(toLight);',
+            '        vec3 lightDir = distanceToLight > 0.0 ? toLight / distanceToLight : vec3(0.0, 1.0, 0.0);',
+            `        float attenuation = rangeAttenuation(distanceToLight, ${GLTF_LIGHTING_UNIFORMS.spotLightRange}[index]);`,
+            `        attenuation *= spotAttenuation(lightDir, ${GLTF_LIGHTING_UNIFORMS.spotLightDirection}[index], ${GLTF_LIGHTING_UNIFORMS.spotLightInnerConeCosine}[index], ${GLTF_LIGHTING_UNIFORMS.spotLightOuterConeCosine}[index]);`,
+            `        lighting += evaluateLight(normal, viewDir, baseColor.rgb, metallic, roughness, lightDir, ${GLTF_LIGHTING_UNIFORMS.spotLightColor}[index], ${GLTF_LIGHTING_UNIFORMS.spotLightIntensity}[index] * attenuation);`,
+            '    }',
+            '} else {',
+            '    lighting = baseColor.rgb * ambient;',
             '}',
             '',
             'if (_OcclusionTexture_TexCoord >= 0) {',

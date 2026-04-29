@@ -32,17 +32,28 @@ describe('scene-runtime glTF shader effects', () => {
                 ?.arrayLength
         ).toBe(128);
         expect(
-            definition.effect?.properties?.find((property) => property.name === 'u_LocalLightType')
+            definition.effect?.properties?.find((property) => property.name === 'u_DirectionalLightDirection')
+                ?.arrayLength
+        ).toBe(1);
+        expect(
+            definition.effect?.properties?.find((property) => property.name === 'u_PointLightPosition')
+                ?.arrayLength
+        ).toBe(4);
+        expect(
+            definition.effect?.properties?.find((property) => property.name === 'u_SpotLightInnerConeCosine')
                 ?.arrayLength
         ).toBe(4);
         expect(
             definition.effect?.properties?.find((property) => property.name === 'u_PointLightCount')
                 ?.type
         ).toBe('int');
+        expect(definition.effect?.properties?.some((property) => property.name === 'u_LocalLightType')).toBe(false);
         expect(GLTF_PBR_SHADER_EFFECT.properties?.some((property) => property.name === '_MetallicFactor')).toBe(true);
         expect(GLTF_UNLIT_SHADER_EFFECT.properties?.some((property) => property.name === '_BaseColorTexture')).toBe(true);
-        expect(definition.fragmentSource).toContain('uniform int u_LocalLightType[4];');
+        expect(definition.fragmentSource).toContain('uniform vec3 u_DirectionalLightDirection[1];');
         expect(definition.fragmentSource).toContain('uniform int u_PointLightCount;');
+        expect(definition.fragmentSource).toContain('uniform float u_SpotLightInnerConeCosine[4];');
+        expect(definition.fragmentSource).not.toContain('u_LocalLightType');
         expect(definition.cull).toBe(true);
         expect(definition.blend).toBe(false);
     });
