@@ -10,12 +10,9 @@ export {
     createLightingUniformLayout,
     createLightingUniformValueMap,
 } from './uniform-layout';
-export {
-    createLegacyLightingUniformLayout,
-    LEGACY_LIGHTING_LOCAL_LIGHT_TYPES,
-    writeLegacyLightingUniformValues,
-} from './legacy-uniform-contract';
 export type {
+    LightingUniformProperty,
+    LightingUniformPropertyType,
     LightingShaderDefines,
     LightingUniformField,
     LightingUniformLayout,
@@ -24,12 +21,3 @@ export type {
     LightingUniformValue,
     LightingUniformValueMap,
 } from './uniform-layout';
-export type {
-    LegacyLightingUniformField,
-    LegacyLightingUniformLayout,
-    LegacyLightingUniformName,
-    LegacyLightingUniformNames,
-    LegacyLightingUniformProperty,
-    LegacyLightingUniformSource,
-    LegacyLightingUniformValue,
-} from './legacy-uniform-contract';

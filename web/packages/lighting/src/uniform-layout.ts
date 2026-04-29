@@ -43,6 +43,15 @@ export type LightingUniformNames = {
     readonly [TField in LightingUniformField as Uncapitalize<TField>]: LightingUniformName<TField>;
 };
 
+export type LightingUniformPropertyType = 'vec3' | 'float' | 'int';
+
+export interface LightingUniformProperty<TField extends LightingUniformField = LightingUniformField> {
+    readonly name: LightingUniformName<TField>;
+    readonly type: LightingUniformPropertyType;
+    readonly scope: 'frame';
+    readonly arrayLength?: number;
+}
+
 export interface LightingShaderDefines {
     readonly AXRONE_LIGHTING_MAX_DIRECTIONAL_LIGHTS: string;
     readonly AXRONE_LIGHTING_MAX_POINT_LIGHTS: string;
@@ -54,6 +63,7 @@ export interface LightingUniformLayout {
     readonly capacity: Readonly<LightingCapacity>;
     readonly names: LightingUniformNames;
     readonly defines: LightingShaderDefines;
+    readonly properties: readonly LightingUniformProperty[];
 }
 
 export type LightingUniformValue<TField extends LightingUniformField> =
@@ -110,6 +120,160 @@ const NAMES: LightingUniformNames = Object.freeze({
     localLightOuterConeCosine: 'u_LocalLightOuterConeCosine',
 });
 
+const createLightingUniformProperties = (
+    capacity: Readonly<LightingCapacity>
+): readonly LightingUniformProperty[] => {
+    return Object.freeze([
+        { name: NAMES.ambientLight, type: 'vec3', scope: 'frame' },
+        { name: NAMES.skyLight, type: 'vec3', scope: 'frame' },
+        { name: NAMES.groundLight, type: 'vec3', scope: 'frame' },
+        { name: NAMES.exposure, type: 'float', scope: 'frame' },
+        { name: NAMES.gamma, type: 'float', scope: 'frame' },
+        { name: NAMES.directionalLightCount, type: 'int', scope: 'frame' },
+        {
+            name: NAMES.directionalLightDirection,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxDirectionalLights,
+        },
+        {
+            name: NAMES.directionalLightColor,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxDirectionalLights,
+        },
+        {
+            name: NAMES.directionalLightAmbientColor,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxDirectionalLights,
+        },
+        {
+            name: NAMES.directionalLightIntensity,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxDirectionalLights,
+        },
+        { name: NAMES.pointLightCount, type: 'int', scope: 'frame' },
+        {
+            name: NAMES.pointLightPosition,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxPointLights,
+        },
+        {
+            name: NAMES.pointLightColor,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxPointLights,
+        },
+        {
+            name: NAMES.pointLightIntensity,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxPointLights,
+        },
+        {
+            name: NAMES.pointLightRange,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxPointLights,
+        },
+        { name: NAMES.spotLightCount, type: 'int', scope: 'frame' },
+        {
+            name: NAMES.spotLightPosition,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxSpotLights,
+        },
+        {
+            name: NAMES.spotLightDirection,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxSpotLights,
+        },
+        {
+            name: NAMES.spotLightColor,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxSpotLights,
+        },
+        {
+            name: NAMES.spotLightIntensity,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxSpotLights,
+        },
+        {
+            name: NAMES.spotLightRange,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxSpotLights,
+        },
+        {
+            name: NAMES.spotLightInnerConeCosine,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxSpotLights,
+        },
+        {
+            name: NAMES.spotLightOuterConeCosine,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxSpotLights,
+        },
+        { name: NAMES.localLightCount, type: 'int', scope: 'frame' },
+        {
+            name: NAMES.localLightKind,
+            type: 'int',
+            scope: 'frame',
+            arrayLength: capacity.maxLocalLights,
+        },
+        {
+            name: NAMES.localLightPosition,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxLocalLights,
+        },
+        {
+            name: NAMES.localLightDirection,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxLocalLights,
+        },
+        {
+            name: NAMES.localLightColor,
+            type: 'vec3',
+            scope: 'frame',
+            arrayLength: capacity.maxLocalLights,
+        },
+        {
+            name: NAMES.localLightIntensity,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxLocalLights,
+        },
+        {
+            name: NAMES.localLightRange,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxLocalLights,
+        },
+        {
+            name: NAMES.localLightInnerConeCosine,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxLocalLights,
+        },
+        {
+            name: NAMES.localLightOuterConeCosine,
+            type: 'float',
+            scope: 'frame',
+            arrayLength: capacity.maxLocalLights,
+        },
+    ]);
+};
+
 export const createLightingUniformLayout = (
     capacity: Partial<LightingCapacity> = {}
 ): LightingUniformLayout => {
@@ -124,6 +288,7 @@ export const createLightingUniformLayout = (
             AXRONE_LIGHTING_MAX_SPOT_LIGHTS: String(resolvedCapacity.maxSpotLights),
             AXRONE_LIGHTING_MAX_LOCAL_LIGHTS: String(resolvedCapacity.maxLocalLights),
         }),
+        properties: createLightingUniformProperties(resolvedCapacity),
     });
 };
 
