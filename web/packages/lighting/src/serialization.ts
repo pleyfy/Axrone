@@ -115,6 +115,27 @@ export const safeDeserializeLightingRig = (input: unknown): LightingParseResult 
         return { ok: false, issues: Object.freeze(issues) };
     }
 
+    if (input.version !== undefined) {
+        if (typeof input.version !== 'number' || !Number.isFinite(input.version)) {
+            pushIssue(issues, '$.version', 'lighting.parse.version', 'version must be a finite number');
+        } else if (input.version !== LightingDocumentVersion) {
+            pushIssue(
+                issues,
+                '$.version',
+                'lighting.parse.version',
+                `Unsupported lighting document version: ${input.version}`
+            );
+        }
+    }
+
+    if (input.rigId !== undefined && typeof input.rigId !== 'string') {
+        pushIssue(issues, '$.rigId', 'lighting.parse.rig-id', 'rigId must be a string');
+    }
+
+    if (input.environment !== undefined && !isObjectRecord(input.environment)) {
+        pushIssue(issues, '$.environment', 'lighting.parse.environment', 'environment must be an object');
+    }
+
     const environment = isObjectRecord(input.environment) ? input.environment : undefined;
     const rig = new LightingRig({
         id: typeof input.rigId === 'string' ? input.rigId : undefined,
