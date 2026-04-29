@@ -1,5 +1,6 @@
 import { Quat, Vec3 } from '@axrone/numeric';
 import {
+    LEGACY_LIGHTING_LOCAL_LIGHT_TYPES,
     LightKind as LightingLightKind,
     LightingFrameResolver,
     LightingRig,
@@ -17,8 +18,6 @@ const DEFAULT_POINT_LIGHT_RANGE = 8;
 const DEFAULT_SPOT_LIGHT_RANGE = 8;
 const DEFAULT_LIGHT_ATTENUATION = 2;
 const PRIMARY_DIRECTIONAL_PRIORITY = 1_000_000;
-const LEGACY_POINT_LIGHT_TYPE = 0;
-const LEGACY_SPOT_LIGHT_TYPE = 1;
 const LIGHTING_POINT_LIGHT_TYPE = LightTypeCode[LightingLightKind.Point];
 const LIGHTING_SPOT_LIGHT_TYPE = LightTypeCode[LightingLightKind.Spot];
 const EPSILON = 1e-6;
@@ -480,7 +479,7 @@ export class SceneLightingCollector {
             const localType = selection.localLightKinds[index] ?? 0;
 
             if (localType === LIGHTING_SPOT_LIGHT_TYPE) {
-                this._legacyLocalLightTypesBase[index] = LEGACY_SPOT_LIGHT_TYPE;
+                this._legacyLocalLightTypesBase[index] = LEGACY_LIGHTING_LOCAL_LIGHT_TYPES.spot;
                 this._legacyLocalLightInnerConesBase[index] = angleFromCosine(
                     selection.localLightInnerConeCosines[index] ?? 0
                 );
@@ -508,7 +507,9 @@ export class SceneLightingCollector {
             }
 
             this._legacyLocalLightTypesBase[index] =
-                localType === LIGHTING_POINT_LIGHT_TYPE ? LEGACY_POINT_LIGHT_TYPE : 0;
+                localType === LIGHTING_POINT_LIGHT_TYPE
+                    ? LEGACY_LIGHTING_LOCAL_LIGHT_TYPES.point
+                    : 0;
 
             if (localType === LIGHTING_POINT_LIGHT_TYPE) {
                 state.pointCount += 1;
