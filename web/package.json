@@ -3,6 +3,7 @@
     "version": "0.0.1",
     "private": true,
     "type": "module",
+    "packageManager": "yarn@1.22.22",
     "workspaces": [
         "packages/*"
     ],
@@ -24,7 +25,7 @@
         "test:consumer-migration": "vitest run --config vitest.config.architecture.ts tests/architecture/scene-split/core-consumer-migration-boundary.test.ts",
         "test:duplicate-governance": "node ./scripts/duplicate-governance.mjs",
         "test:utility-governance": "node ./scripts/utility-governance.mjs",
-        "test:hardening": "npm run test:profiles && npm run test:render-governance && npm run test:input-governance && npm run test:consumer-migration && npm run test:duplicate-governance && npm run test:utility-governance",
+        "test:hardening": "yarn test:profiles && yarn test:render-governance && yarn test:input-governance && yarn test:consumer-migration && yarn test:duplicate-governance && yarn test:utility-governance",
         "test:runtime-profile-governance": "node ./scripts/runtime-profile-governance.mjs",
         "test:engine-benchmark-governance": "node ./scripts/engine-benchmark-governance.mjs",
         "test:watch": "vitest --watch",
@@ -35,9 +36,9 @@
         "bench:engine:quick": "node ./scripts/engine-benchmark-runner.mjs --iterations=3 --warmup=1 --durationSec=5 --objectCounts=2600 --comparisonModes=no-culling",
         "bench:engine:startup": "node ./scripts/engine-benchmark-runner.mjs --iterations=3 --warmup=1 --durationSec=5 --objectCounts=19600 --comparisonModes=no-culling --isolateRuns",
         "test:coverage": "vitest --coverage",
-        "test:all": "npm run test && npm run test:architecture && npm run test:browser && npm run test:webgl",
-        "ci:engine-hardening": "npm run test:architecture && npm run verify:engine-hardening",
-        "verify:engine-hardening": "npm run test:hardening && npm run build && npm run test:runtime-profile-governance && npm run test:engine-benchmark-governance -- --refresh --headless --strictStability && npm run examples:build",
+        "test:all": "yarn test && yarn test:architecture && yarn test:browser && yarn test:webgl",
+        "ci:engine-hardening": "yarn test:architecture && yarn verify:engine-hardening",
+        "verify:engine-hardening": "yarn test:hardening && yarn build && yarn test:runtime-profile-governance && yarn test:engine-benchmark-governance -- --refresh --headless --strictStability && yarn examples:build",
         "docs": "typedoc"
     },
     "devDependencies": {
@@ -58,6 +59,7 @@
         "eslint": "^9.24.0",
         "eslint-config-prettier": "^10.1.2",
         "eslint-plugin-import": "^2.31.0",
+        "eslint-plugin-vitest": "^0.5.4",
         "happy-dom": "^15.11.7",
         "husky": "^9.1.7",
         "jscpd": "^4.0.9",

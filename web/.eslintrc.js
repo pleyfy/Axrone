@@ -8,11 +8,11 @@ module.exports = {
             jsx: true,
         },
     },
-    plugins: ['@typescript-eslint', 'jest', 'import'],
+    plugins: ['@typescript-eslint', 'vitest', 'import'],
     extends: [
         'eslint:recommended',
         'plugin:@typescript-eslint/recommended',
-        'plugin:jest/recommended',
+        'plugin:vitest/recommended',
         'plugin:import/errors',
         'plugin:import/warnings',
         'plugin:import/typescript',

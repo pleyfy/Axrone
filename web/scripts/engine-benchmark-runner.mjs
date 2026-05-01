@@ -215,7 +215,7 @@ const benchmarkPageUrl = (baseUrl) => `${baseUrl.replace(/\/$/, '')}/engine-benc
 
 const startExamplesServer = async () => {
     if (!fs.existsSync(viteBinPath)) {
-        fail('Missing local Vite binary. Run npm install in Axrone/web before starting benchmark automation.');
+        fail('Missing local Vite binary. Run yarn install in Axrone/web before starting benchmark automation.');
     }
 
     const server = spawn(

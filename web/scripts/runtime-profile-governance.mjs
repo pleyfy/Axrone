@@ -182,7 +182,7 @@ const resolveEntryPath = (packageDir) => {
     const entryPath = path.resolve(packagesDir, packageDir, 'dist', 'index.mjs');
     if (!fs.existsSync(entryPath)) {
         throw new Error(
-            `Missing built entry for ${packageDir}. Run \"npm run build\" before runtime-profile governance.`,
+            `Missing built entry for ${packageDir}. Run "yarn build" before runtime-profile governance.`,
         );
     }
 
