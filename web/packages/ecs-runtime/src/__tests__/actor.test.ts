@@ -144,6 +144,29 @@ describe('Actor', () => {
                 new Actor(null as any);
             }).toThrow(ActorError);
         });
+
+        it('should initialize preloaded components through the fast path', () => {
+            const preloadedActor = Actor.createWithComponents(world, { autoStart: false }, [
+                {
+                    componentType: Transform,
+                    component: new Transform(),
+                },
+                {
+                    componentType: TestComponent,
+                    component: new TestComponent(10, 'preloaded'),
+                },
+            ]);
+
+            expect(preloadedActor.getComponent(Transform)).toBeInstanceOf(Transform);
+            expect(preloadedActor.getComponent(TestComponent)?.value).toBe(1);
+            expect(preloadedActor.getComponent(TestComponent)?.name).toBe('preloaded');
+
+            preloadedActor.start();
+
+            expect(preloadedActor.getComponent(TestComponent)?.value).toBe(2);
+
+            preloadedActor.destroy();
+        });
     });
 
     describe('component management', () => {

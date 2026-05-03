@@ -1,11 +1,10 @@
 import type { IDisposable } from './disposable';
 import type { IBindableTarget } from './interfaces';
+import type { Brand } from '@axrone/utility';
 
-type Nominal<T, K extends string> = T & { readonly __brand: K };
-
-export type FramebufferId = Nominal<WebGLFramebuffer, 'FramebufferId'>;
-export type RenderbufferId = Nominal<WebGLRenderbuffer, 'RenderbufferId'>;
-export type TextureId = Nominal<WebGLTexture, 'TextureId'>;
+export type FramebufferId = Brand<WebGLFramebuffer, 'FramebufferId'>;
+export type RenderbufferId = Brand<WebGLRenderbuffer, 'RenderbufferId'>;
+export type TextureId = Brand<WebGLTexture, 'TextureId'>;
 
 export type GLTextureTarget =
     | WebGL2RenderingContext['TEXTURE_2D']

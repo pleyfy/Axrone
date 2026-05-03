@@ -29,6 +29,16 @@
             "import": "./dist/scene-facade.mjs",
             "require": "./dist/scene-facade.js"
         },
+        "./prefab": {
+            "types": "./dist/prefab.d.ts",
+            "import": "./dist/prefab.mjs",
+            "require": "./dist/prefab.js"
+        },
+        "./scene-2d-support": {
+            "types": "./dist/scene-2d-support.d.ts",
+            "import": "./dist/scene-2d-support.mjs",
+            "require": "./dist/scene-2d-support.js"
+        },
         "./scene-3d-support": {
             "types": "./dist/scene-3d-support.d.ts",
             "import": "./dist/scene-3d-support.mjs",
@@ -41,10 +51,15 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@axrone/animation": "^0.1.0",
+        "@axrone/asset-2d": "^0.1.0",
         "@axrone/ecs-runtime": "^0.1.0",
         "@axrone/game-loop": "^0.1.0",
         "@axrone/geometry": "^0.1.0",
+        "@axrone/lighting": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
+        "@axrone/render-2d": "^0.1.0",
+        "@axrone/render-core": "^0.1.0",
         "@axrone/random": "^0.0.1",
         "@axrone/render-webgl2": "^0.1.0",
         "@axrone/utility": "^0.0.1"

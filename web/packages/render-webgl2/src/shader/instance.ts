@@ -8,7 +8,7 @@ import {
 } from './interfaces';
 
 import { getWebGLType, getShaderDataTypeComponentCount } from './utils';
-import { ByteBuffer } from '@axrone/utility';
+import { ByteBuffer } from '@axrone/memory';
 import { Mat4, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 
 class UniformUploader {
@@ -331,6 +331,42 @@ export class ShaderInstance implements IShaderInstance {
                 gl.enable(gl.BLEND);
                 this.setBlendMode(gl, state.blendMode);
             }
+        }
+
+        if (state.stencilTest !== undefined) {
+            if (state.stencilTest) {
+                gl.enable(gl.STENCIL_TEST);
+            } else {
+                gl.disable(gl.STENCIL_TEST);
+            }
+        }
+
+        if (state.stencilMask !== undefined) {
+            gl.stencilMask(state.stencilMask);
+        }
+
+        if (
+            state.stencilFunc !== undefined ||
+            state.stencilRef !== undefined ||
+            state.stencilMask !== undefined
+        ) {
+            gl.stencilFunc(
+                state.stencilFunc ?? gl.ALWAYS,
+                state.stencilRef ?? 0,
+                state.stencilMask ?? 0xff
+            );
+        }
+
+        if (
+            state.stencilFail !== undefined ||
+            state.stencilZFail !== undefined ||
+            state.stencilZPass !== undefined
+        ) {
+            gl.stencilOp(
+                state.stencilFail ?? gl.KEEP,
+                state.stencilZFail ?? gl.KEEP,
+                state.stencilZPass ?? gl.KEEP
+            );
         }
 
         if (state.colorWrite) {

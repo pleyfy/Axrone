@@ -8,12 +8,18 @@ import {
     QueuedEvent,
 } from './interfaces';
 
+interface TrackedSubscription {
+    readonly event: string;
+    readonly callback: EventCallback<any>;
+}
+
 export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
     readonly #emitter: IEventEmitter<T>;
     readonly #subscriptions: Set<symbol> = new Set();
+    readonly #tracked = new Map<symbol, TrackedSubscription>();
 
     constructor(baseEmitter?: IEventEmitter<T>) {
-        this.#emitter = baseEmitter || new EventEmitter<T>();
+        this.#emitter = baseEmitter ?? new EventEmitter<T>();
     }
 
     get maxListeners(): number {
@@ -29,22 +35,15 @@ export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
         callback: EventCallback<T[K]>,
         options?: SubscriptionOptions
     ): UnsubscribeFn {
-        const unsubscribe = this.#emitter.on(event, callback, options);
-        const subscription = this.#emitter
-            .getSubscriptions(event)
-            .find((s) => s.callback === callback);
+        const [subscriptionId] = this.#emitter.batchSubscribe(event, [callback], options);
 
-        if (subscription) {
-            this.#subscriptions.add(subscription.id);
+        if (!subscriptionId) {
+            return () => false;
         }
 
-        return () => {
-            const result = unsubscribe();
-            if (subscription) {
-                this.#subscriptions.delete(subscription.id);
-            }
-            return result;
-        };
+        this.#trackSubscription(subscriptionId, String(event), callback);
+
+        return () => this.#unsubscribeTracked(subscriptionId);
     }
 
     once<K extends EventKey<T>>(
@@ -52,56 +51,47 @@ export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
         callback: EventCallback<T[K]>,
         options?: Omit<SubscriptionOptions, 'once'>
     ): UnsubscribeFn {
-        const unsubscribe = this.#emitter.once(event, callback, options);
-        const subscription = this.#emitter
-            .getSubscriptions(event)
-            .find((s) => s.callback === callback);
-
-        if (subscription) {
-            this.#subscriptions.add(subscription.id);
-        }
-
-        const wrappedUnsubscribe = () => {
-            const result = unsubscribe();
-            if (subscription) {
-                this.#subscriptions.delete(subscription.id);
-            }
-            return result;
-        };
-
+        let subscriptionId: symbol | undefined;
         const wrappedCallback: EventCallback<T[K]> = (data) => {
-            if (subscription) {
-                this.#subscriptions.delete(subscription.id);
+            if (subscriptionId) {
+                this.#untrackSubscription(subscriptionId);
             }
             return callback(data);
         };
 
-        return wrappedUnsubscribe;
+        const [trackedId] = this.#emitter.batchSubscribe(event, [wrappedCallback], {
+            ...options,
+            once: true,
+        });
+
+        if (!trackedId) {
+            return () => false;
+        }
+
+        subscriptionId = trackedId;
+        this.#trackSubscription(trackedId, String(event), callback);
+
+        return () => this.#unsubscribeTracked(trackedId);
     }
 
     off<K extends EventKey<T>>(event: K, callback?: EventCallback<T[K]>): boolean {
-        if (callback) {
-            const subscription = this.#emitter
-                .getSubscriptions(event)
-                .find((s) => s.callback === callback);
-            if (subscription) {
-                this.#subscriptions.delete(subscription.id);
-            }
-        } else {
-            for (const subscription of this.#emitter.getSubscriptions(event)) {
-                this.#subscriptions.delete(subscription.id);
-            }
+        const ids = this.#collectSubscriptionIds(String(event), callback);
+
+        if (ids.length === 0) {
+            return false;
         }
 
-        return this.#emitter.off(event, callback);
+        let removed = false;
+
+        for (const subscriptionId of ids) {
+            removed = this.#unsubscribeTracked(subscriptionId) || removed;
+        }
+
+        return removed;
     }
 
     offById(subscriptionId: symbol): boolean {
-        const result = this.#emitter.offById(subscriptionId);
-        if (result) {
-            this.#subscriptions.delete(subscriptionId);
-        }
-        return result;
+        return this.#unsubscribeTracked(subscriptionId);
     }
 
     pipe<K extends EventKey<T>>(
@@ -109,9 +99,8 @@ export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
         emitter: IEventPublisher<any>,
         targetEvent?: string
     ): UnsubscribeFn {
-        return this.on(
-            event,
-            (data) => void emitter.emit((targetEvent as any) || (event as any), data)
+        return this.on(event, (data) =>
+            emitter.emit((targetEvent ?? (event as string)) as any, data).then(() => undefined)
         );
     }
 
@@ -131,36 +120,60 @@ export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
         return this.#emitter.emitSync(event, data, options);
     }
 
-    emitBatch<K extends EventKey<T>>(
-        events: Array<{ event: K; data: T[K]; priority?: EventPriority }>
-    ): Promise<boolean[]> {
+    emitBatch(events: Parameters<IEventEmitter<T>['emitBatch']>[0]): Promise<boolean[]> {
         return this.#emitter.emitBatch(events);
     }
 
     has<K extends EventKey<T>>(event: K): boolean {
-        return this.#emitter.has(event);
+        return this.listenerCount(event) > 0;
     }
 
     listenerCount<K extends EventKey<T>>(event: K): number {
-        return this.#emitter.listenerCount(event);
+        return this.#collectSubscriptionIds(String(event)).length;
     }
 
     listenerCountAll(): number {
-        return this.#emitter.listenerCountAll();
+        this.#pruneStaleSubscriptions();
+        return this.#subscriptions.size;
     }
 
     eventNames(): EventKey<T>[] {
-        return this.#emitter.eventNames();
+        this.#pruneStaleSubscriptions();
+
+        const names = new Set<EventKey<T>>();
+
+        for (const tracked of this.#tracked.values()) {
+            names.add(tracked.event as EventKey<T>);
+        }
+
+        return Array.from(names);
     }
 
     getSubscriptions<K extends EventKey<T>>(event: K): ReadonlyArray<Subscription<T[K]>> {
-        return this.#emitter.getSubscriptions(event).filter((s) => this.#subscriptions.has(s.id));
+        const activeIds = new Set(this.#collectSubscriptionIds(String(event)));
+        if (activeIds.size === 0) {
+            return [];
+        }
+
+        return this.#emitter.getSubscriptions(event).flatMap((subscription) => {
+            if (!activeIds.has(subscription.id)) {
+                return [];
+            }
+
+            const tracked = this.#tracked.get(subscription.id);
+
+            return [
+                {
+                    ...subscription,
+                    callback: (tracked?.callback ?? subscription.callback) as EventCallback<T[K]>,
+                },
+            ];
+        });
     }
 
     hasSubscription(subscriptionId: symbol): boolean {
-        return (
-            this.#subscriptions.has(subscriptionId) && this.#emitter.hasSubscription(subscriptionId)
-        );
+        this.#pruneStaleSubscriptions();
+        return this.#subscriptions.has(subscriptionId);
     }
 
     getMetrics<K extends EventKey<T>>(event: K): EventMetrics {
@@ -171,8 +184,10 @@ export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
         return this.#emitter.getMemoryUsage();
     }
 
-    getQueuedEvents<K extends EventKey<T>>(event?: K): ReadonlyArray<QueuedEvent> {
-        return this.#emitter.getQueuedEvents(event);
+    getQueuedEvents<K extends EventKey<T>>(event: K): ReadonlyArray<QueuedEvent<T[K]>>;
+    getQueuedEvents(): ReadonlyArray<QueuedEvent<T[EventKey<T>]>>;
+    getQueuedEvents<K extends EventKey<T>>(event?: K): ReadonlyArray<QueuedEvent<any>> {
+        return event ? this.#emitter.getQueuedEvents(event) : this.#emitter.getQueuedEvents();
     }
 
     getPendingCount<K extends EventKey<T>>(event?: K): number {
@@ -200,15 +215,12 @@ export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
     }
 
     removeAllListeners<K extends EventKey<T>>(event?: K): this {
-        if (event) {
-            for (const subscription of this.#emitter.getSubscriptions(event)) {
-                this.#subscriptions.delete(subscription.id);
-            }
-        } else {
-            this.#subscriptions.clear();
+        const ids = this.#collectSubscriptionIds(event ? String(event) : undefined);
+
+        for (const subscriptionId of ids) {
+            this.#unsubscribeTracked(subscriptionId);
         }
 
-        this.#emitter.removeAllListeners(event);
         return this;
     }
 
@@ -219,18 +231,25 @@ export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
     ): ReadonlyArray<symbol> {
         const ids = this.#emitter.batchSubscribe(event, callbacks, options);
 
-        for (const id of ids) {
-            this.#subscriptions.add(id);
+        for (let index = 0; index < ids.length; index++) {
+            const id = ids[index]!;
+            const callback = callbacks[index];
+
+            if (callback) {
+                this.#trackSubscription(id, String(event), callback);
+            }
         }
 
         return ids;
     }
 
     batchUnsubscribe(subscriptionIds: ReadonlyArray<symbol>): number {
-        const count = this.#emitter.batchUnsubscribe(subscriptionIds);
+        let count = 0;
 
-        for (const id of subscriptionIds) {
-            this.#subscriptions.delete(id);
+        for (const subscriptionId of subscriptionIds) {
+            if (this.#unsubscribeTracked(subscriptionId)) {
+                count += 1;
+            }
         }
 
         return count;
@@ -253,9 +272,54 @@ export class EventGroup<T extends EventMap> implements IEventEmitter<T> {
     }
 
     dispose(): void {
+        this.removeAllListeners();
+    }
+
+    #trackSubscription(id: symbol, event: string, callback: EventCallback<any>): void {
+        this.#subscriptions.add(id);
+        this.#tracked.set(id, { event, callback });
+    }
+
+    #untrackSubscription(id: symbol): void {
+        this.#subscriptions.delete(id);
+        this.#tracked.delete(id);
+    }
+
+    #unsubscribeTracked(id: symbol): boolean {
+        const wasTracked = this.#subscriptions.has(id);
+        const removed = wasTracked ? this.#emitter.offById(id) : false;
+        this.#untrackSubscription(id);
+        return removed;
+    }
+
+    #pruneStaleSubscriptions(): void {
         for (const id of this.#subscriptions) {
-            this.#emitter.offById(id);
+            if (!this.#emitter.hasSubscription(id)) {
+                this.#untrackSubscription(id);
+            }
         }
-        this.#subscriptions.clear();
+    }
+
+    #collectSubscriptionIds(
+        event?: string,
+        callback?: EventCallback<any>
+    ): symbol[] {
+        this.#pruneStaleSubscriptions();
+
+        const ids: symbol[] = [];
+
+        for (const [id, tracked] of this.#tracked.entries()) {
+            if (event !== undefined && tracked.event !== event) {
+                continue;
+            }
+
+            if (callback !== undefined && tracked.callback !== callback) {
+                continue;
+            }
+
+            ids.push(id);
+        }
+
+        return ids;
     }
 }

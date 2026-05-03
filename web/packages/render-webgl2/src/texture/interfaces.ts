@@ -1,5 +1,5 @@
 import { Vec2, Vec3, Vec4 } from '@axrone/numeric';
-import { ByteBuffer } from '@axrone/utility';
+import { ByteBuffer } from '@axrone/memory';
 import type { IBindableTarget } from '../interfaces';
 
 export const enum TextureDimension {

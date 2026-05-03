@@ -90,4 +90,28 @@ describe('SceneAssetRuntime', () => {
         expect(runtime.getTexture('texture')).toBeNull();
         expect(runtime.getRenderPasses()).toHaveLength(0);
     });
+
+    it('registers built-in primitive mesh helpers beyond box plane and sphere', () => {
+        const canvas = document.createElement('canvas');
+        const gl = createMockGL(canvas);
+        const runtime = new SceneAssetRuntime({
+            gl,
+            defaultPassId: 'main',
+            defaultClearColor: new Vec4(0.1, 0.2, 0.3, 1),
+            releaseBaseMesh: vi.fn(),
+            clearRenderRuntime: vi.fn(),
+        });
+
+        runtime.createCapsuleMesh('capsule');
+        runtime.createConeMesh('cone');
+        runtime.createCylinderMesh('cylinder');
+        runtime.createQuadMesh('quad');
+        runtime.createTorusMesh('torus');
+
+        expect(runtime.getMesh('capsule')).not.toBeNull();
+        expect(runtime.getMesh('cone')).not.toBeNull();
+        expect(runtime.getMesh('cylinder')).not.toBeNull();
+        expect(runtime.getMesh('quad')).not.toBeNull();
+        expect(runtime.getMesh('torus')).not.toBeNull();
+    });
 });

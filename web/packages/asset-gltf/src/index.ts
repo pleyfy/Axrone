@@ -3,8 +3,10 @@ export type {
     GltfAnimationClipAsset,
     GltfAnimationChannelJson,
     GltfAnimationChannelTargetJson,
+    GltfAnimationClipMetadata,
     GltfAnimationJson,
     GltfAnimationSamplerJson,
+    GltfAnimationControllerMetadata,
     GltfAnimationTrackAsset,
     GltfAssetKind,
     GltfAssetSchema,
@@ -15,6 +17,7 @@ export type {
     GltfCameraOrthographicJson,
     GltfCameraPerspectiveJson,
     GltfCompressedTexturePayload,
+    GltfDracoDecoderOptions,
     GltfDracoMeshCompressionExtensionJson,
     GltfDocumentAsset,
     GltfDocumentSceneAsset,
@@ -63,6 +66,19 @@ export type {
     GltfTranscodeStage,
 } from './types';
 export type {
+    PortableAnimationClipManifestEntry,
+    PortableAnimationFeatureExportDefinition,
+    PortableAnimationManifest,
+    PortableAnimationManifestSceneEntry,
+} from './animation-manifest';
+export type {
+    AnimationStreamingChunkResourceOptions,
+    PortableAnimationStreamingChunkRangeDefinition,
+    PortableAnimationStreamingClipBundle,
+    PortableAnimationStreamingClipBundleOptions,
+    PortableAnimationStreamingClipSource,
+} from './animation-streaming';
+export type {
     AssetDatabase,
     AssetImportDiagnostic,
     AssetRecord,
@@ -97,11 +113,26 @@ export {
     GltfSchemaError,
     GltfTopologyError,
 } from './errors';
+export type { ParsedKtx2Texture } from './internal/ktx2-container';
+export {
+    inferTextureFormatFromKtx2,
+    parseKtx2Texture,
+} from './internal/ktx2-container';
 
 export {
     createLoadersBasisGltfTextureTranscoder,
     resolveLoadersBasisGltfTextureFormats,
 } from './loaders-texture-transcoder';
+export {
+    createPortableAnimationManifest,
+    createPortableAnimationManifestResource,
+    serializePortableAnimationManifest,
+} from './animation-manifest';
+export {
+    createAnimationStreamingChunkResource,
+    createPortableAnimationStreamingClipBundle,
+    DEFAULT_ANIMATION_STREAMING_CHUNK_MIME_TYPE,
+} from './animation-streaming';
 export {
     createGltfImporter,
     createGltfTextureTranscodeStage,

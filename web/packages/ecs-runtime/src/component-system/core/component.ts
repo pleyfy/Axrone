@@ -2,6 +2,7 @@ import type { Entity } from '../types/core';
 import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
 import type { Actor } from './actor';
+import type { Transform } from '../components/transform';
 import { getComponentMetadata } from '../decorators/script';
 
 const getComponentTypeName = (componentType: ComponentType): string =>
@@ -97,6 +98,7 @@ export interface ComponentConfig {
     readonly executeInEditMode?: boolean;
     readonly enableMetrics?: boolean;
     readonly enableCaching?: boolean;
+    readonly trackInstances?: boolean;
     readonly validateOnUpdate?: boolean;
     readonly autoSerialize?: boolean;
 }
@@ -131,17 +133,18 @@ export abstract class Component<
     private _totalUpdateTime: number = 0;
     private readonly _enableMetrics: boolean;
     private readonly _enableCaching: boolean;
+    private readonly _trackInstances: boolean;
     private readonly _validateOnUpdate: boolean;
     private readonly _autoSerialize: boolean;
 
     private readonly _cache: ComponentCache;
     private readonly _cacheTimeout: number = 1000;
 
-    private readonly _eventSubscriptions = new Set<() => void>();
-    private readonly _cleanupTasks = new Set<() => void>();
+    private _eventSubscriptions?: Set<() => void>;
+    private _cleanupTasks?: Set<() => void>;
 
-    private readonly _dependencies = new Map<ComponentType, Component>();
-    private readonly _dependents = new Set<WeakRef<Component>>();
+    private _dependencies?: Map<ComponentType, Component>;
+    private _dependents?: Set<WeakRef<Component>>;
 
     constructor(config: TConfig = {} as TConfig) {
         this._creationTime = performance.now();
@@ -152,6 +155,10 @@ export abstract class Component<
         this._executeInEditMode = config.executeInEditMode ?? false;
         this._enableMetrics = config.enableMetrics ?? false;
         this._enableCaching = config.enableCaching ?? true;
+        this._trackInstances =
+            config.trackInstances ??
+            getComponentMetadata(this.constructor as ComponentType)?.trackInstances ??
+            true;
         this._validateOnUpdate = config.validateOnUpdate ?? false;
         this._autoSerialize = config.autoSerialize ?? false;
 
@@ -160,7 +167,9 @@ export abstract class Component<
             lastCacheUpdate: 0,
         };
 
-        this._registerInstance();
+        if (this._trackInstances) {
+            this._registerInstance();
+        }
 
         this._initialize();
     }
@@ -271,7 +280,7 @@ export abstract class Component<
         };
     }
 
-    get transform(): any {
+    get transform(): Transform | undefined {
         if (!this._enableCaching) {
             return this._getTransformDirect();
         }
@@ -344,10 +353,10 @@ export abstract class Component<
 
         const component = this.actor.addComponent(componentType, ...args);
 
-        this._dependencies.set(componentType, component);
+        this._getDependencies().set(componentType, component);
 
         if (component instanceof Component) {
-            component._dependents.add(new WeakRef(this));
+            component._getDependents().add(new WeakRef(this));
         }
 
         this._clearCache();
@@ -362,7 +371,7 @@ export abstract class Component<
 
         const component = this.getComponent(componentType);
         if (component instanceof Component) {
-            for (const dependentRef of component._dependents) {
+            for (const dependentRef of component._dependents ?? []) {
                 const dependent = dependentRef.deref();
                 if (dependent && dependent !== this) {
                     throw new ComponentError(
@@ -375,7 +384,7 @@ export abstract class Component<
         }
 
         this.actor.removeComponent(componentType);
-        this._dependencies.delete(componentType);
+        this._dependencies?.delete(componentType);
         this._clearCache();
     }
 
@@ -660,8 +669,8 @@ export abstract class Component<
             entity: this.entity,
             actor: this.actor?.id,
             world: this.world ? 'attached' : 'detached',
-            dependencies: Array.from(this._dependencies.keys()).map((type) => type.name),
-            dependents: Array.from(this._dependents)
+            dependencies: Array.from(this._dependencies?.keys() ?? []).map((type) => type.name),
+            dependents: Array.from(this._dependents ?? [])
                 .map((ref) => ref.deref()?.constructor.name)
                 .filter(Boolean),
             metrics: this.metrics,
@@ -720,6 +729,38 @@ export abstract class Component<
         return this._cache.componentCache;
     }
 
+    private _getCleanupTasks(): Set<() => void> {
+        if (!this._cleanupTasks) {
+            this._cleanupTasks = new Set();
+        }
+
+        return this._cleanupTasks;
+    }
+
+    private _getEventSubscriptions(): Set<() => void> {
+        if (!this._eventSubscriptions) {
+            this._eventSubscriptions = new Set();
+        }
+
+        return this._eventSubscriptions;
+    }
+
+    private _getDependencies(): Map<ComponentType, Component> {
+        if (!this._dependencies) {
+            this._dependencies = new Map();
+        }
+
+        return this._dependencies;
+    }
+
+    private _getDependents(): Set<WeakRef<Component>> {
+        if (!this._dependents) {
+            this._dependents = new Set();
+        }
+
+        return this._dependents;
+    }
+
     private _getActorCache(): Map<ComponentType, WeakRef<Actor>[]> {
         if (!this._cache.actorCache) {
             this._cache.actorCache = new Map();
@@ -736,13 +777,13 @@ export abstract class Component<
         }
     }
 
-    private _getTransformDirect(): any {
+    private _getTransformDirect(): Transform | undefined {
         if (!this.actor) {
             return undefined;
         }
 
-        const TransformClass =
-            (this.world as any)?.registry?.Transform || (globalThis as any).Transform;
+        const worldAny = this.world as unknown as { registry?: { Transform?: ComponentType<Transform> } } | null;
+        const TransformClass = worldAny?.registry?.Transform ?? (globalThis as unknown as { Transform?: ComponentType<Transform> }).Transform;
 
         if (TransformClass) {
             return this.actor.getComponent(TransformClass);
@@ -825,7 +866,7 @@ export abstract class Component<
 
         if (typeof lifecycleMethod === 'function') {
             try {
-                (lifecycleMethod as any).apply(this, args);
+                (lifecycleMethod as (...args: any[]) => void).apply(this, args);
             } catch (error) {
                 throw new ComponentLifecycleError(
                     `Lifecycle method ${String(method)} failed`,
@@ -859,11 +900,11 @@ export abstract class Component<
             size += (this._cache.componentCache?.size ?? 0) * 50;
             size += (this._cache.actorCache?.size ?? 0) * 100;
 
-            size += this._dependencies.size * 50;
-            size += this._dependents.size * 50;
+            size += (this._dependencies?.size ?? 0) * 50;
+            size += (this._dependents?.size ?? 0) * 50;
 
-            size += this._eventSubscriptions.size * 30;
-            size += this._cleanupTasks.size * 30;
+            size += (this._eventSubscriptions?.size ?? 0) * 30;
+            size += (this._cleanupTasks?.size ?? 0) * 30;
 
             return size;
         } catch (error) {
@@ -882,7 +923,7 @@ export abstract class Component<
         this._cache.lastCacheUpdate = 0;
     }
 
-    private _emitEvent(eventType: string, data: any): void {
+    private _emitEvent(eventType: string, data: Record<string, unknown>): void {
         try {
             const eventBus = (this.world as any)?.eventBus;
             if (eventBus && typeof eventBus.emit === 'function') {
@@ -902,7 +943,7 @@ export abstract class Component<
 
     private _cleanup(): void {
         try {
-            for (const cleanup of this._cleanupTasks) {
+            for (const cleanup of this._cleanupTasks ?? []) {
                 try {
                     cleanup();
                 } catch (error) {
@@ -910,7 +951,7 @@ export abstract class Component<
                 }
             }
 
-            for (const unsubscribe of this._eventSubscriptions) {
+            for (const unsubscribe of this._eventSubscriptions ?? []) {
                 try {
                     unsubscribe();
                 } catch (error) {
@@ -918,20 +959,24 @@ export abstract class Component<
                 }
             }
 
-            this._dependencies.clear();
+            this._dependencies?.clear();
 
-            for (const dependentRef of this._dependents) {
+            for (const dependentRef of this._dependents ?? []) {
                 const dependent = dependentRef.deref();
                 if (dependent) {
-                    dependent._dependencies.delete(this.constructor as ComponentType);
+                    dependent._dependencies?.delete(this.constructor as ComponentType);
                 }
             }
-            this._dependents.clear();
+            this._dependents?.clear();
 
             this._clearCache();
 
-            this._cleanupTasks.clear();
-            this._eventSubscriptions.clear();
+            this._cleanupTasks?.clear();
+            this._eventSubscriptions?.clear();
+            this._cleanupTasks = undefined;
+            this._eventSubscriptions = undefined;
+            this._dependencies = undefined;
+            this._dependents = undefined;
         } catch (error) {
             console.error(
                 `Component cleanup failed for ${this.constructor.name}:${this._id}:`,
@@ -952,10 +997,14 @@ export abstract class Component<
 
         this._clearCache();
 
-        this._eventSubscriptions.clear();
-        this._cleanupTasks.clear();
-        this._dependencies.clear();
-        this._dependents.clear();
+        this._eventSubscriptions?.clear();
+        this._cleanupTasks?.clear();
+        this._dependencies?.clear();
+        this._dependents?.clear();
+        this._eventSubscriptions = undefined;
+        this._cleanupTasks = undefined;
+        this._dependencies = undefined;
+        this._dependents = undefined;
 
         this.entity = undefined;
         this.actor = undefined;
@@ -966,20 +1015,20 @@ export abstract class Component<
 
     addCleanupTask(cleanup: () => void): void {
         if (typeof cleanup === 'function') {
-            this._cleanupTasks.add(cleanup);
+            this._getCleanupTasks().add(cleanup);
         }
     }
 
     removeCleanupTask(cleanup: () => void): void {
-        this._cleanupTasks.delete(cleanup);
+        this._cleanupTasks?.delete(cleanup);
     }
 
-    on(eventType: string, handler: (data: any) => void): () => void {
+    on(eventType: string, handler: (data: unknown) => void): () => void {
         try {
-            const eventBus = (this.world as any)?.eventBus;
+            const eventBus = (this.world as unknown as { eventBus?: { on: (eventType: string, handler: (data: unknown) => void) => () => void } })?.eventBus;
             if (eventBus && typeof eventBus.on === 'function') {
                 const unsubscribe = eventBus.on(eventType, handler);
-                this._eventSubscriptions.add(unsubscribe);
+                this._getEventSubscriptions().add(unsubscribe);
                 return unsubscribe;
             }
         } catch (error) {
@@ -1012,7 +1061,7 @@ export abstract class Component<
         return result;
     }
 
-    static getInstanceCount<T extends Component>(this: new (...args: any[]) => T): number {
+    static getInstanceCount<T extends Component>(this: new (...args: unknown[]) => T): number {
         const instances = Component._componentInstances.get(this as ComponentType);
         if (!instances) {
             return 0;
@@ -1030,5 +1079,11 @@ export abstract class Component<
 }
 
 export { script, getComponentMetadata, setComponentMetadata } from '../decorators/script';
+export {
+    property,
+    getComponentPropertyMetadata,
+    getComponentPropertyMetadataByKey,
+    setComponentPropertyMetadata,
+} from '../decorators/property';
 
 export type { ComponentMetrics, ComponentCache };

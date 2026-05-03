@@ -1,5 +1,5 @@
 import { Mat4 } from '@axrone/numeric';
-import { ObjectPool } from '@axrone/utility';
+import { ObjectPool } from '@axrone/memory';
 import { IBatchable, IBatchGroup } from './interfaces';
 import { IMaterialInstance } from '../shader/interfaces';
 import { IBuffer, createBufferFactory } from '../buffer';

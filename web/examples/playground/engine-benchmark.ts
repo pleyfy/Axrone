@@ -1,11 +1,11 @@
 import { Transform } from '@axrone/ecs-runtime';
+import { createSphere } from '@axrone/geometry';
 import {
-    Camera,
-    MeshRenderer,
     Scene,
+    SceneGeometryMeshBuilder,
     createUnlitColorShaderDefinition,
 } from '@axrone/scene-3d';
-import { Mat4, Quat, Vec3 } from '@axrone/numeric';
+import { Quat, Vec3 } from '@axrone/numeric';
 import * as THREE from 'three';
 
 type WorkloadType = 'draw-call' | 'triangle' | 'mixed';
@@ -28,7 +28,24 @@ type EngineStats = {
     readonly frameTimes: number[];
     drawCalls: number;
     triangles: number;
+    setupBuildTimeMs: number;
+    firstRenderTimeMs: number;
     setupTimeMs: number;
+    readonly buildPhases: Record<string, number>;
+};
+
+type BuildPhaseBreakdown = Readonly<Record<string, number>>;
+
+type EngineSummary = {
+    averageFps: number;
+    p95FrameTimeMs: number;
+    frameCount: number;
+    drawCalls: number;
+    triangles: number;
+    setupBuildTimeMs: number;
+    firstRenderTimeMs: number;
+    setupTimeMs: number;
+    buildPhases: BuildPhaseBreakdown;
 };
 
 type BenchmarkRuntime = {
@@ -59,22 +76,8 @@ type BenchmarkSnapshot = {
         threeTriangles: 'renderer.info.render.triangles';
     };
     engines: {
-        axrone: {
-            averageFps: number;
-            p95FrameTimeMs: number;
-            frameCount: number;
-            drawCalls: number;
-            triangles: number;
-            setupTimeMs: number;
-        };
-        three: {
-            averageFps: number;
-            p95FrameTimeMs: number;
-            frameCount: number;
-            drawCalls: number;
-            triangles: number;
-            setupTimeMs: number;
-        };
+        axrone: EngineSummary;
+        three: EngineSummary;
     };
     winners: {
         fps: string;
@@ -82,6 +85,34 @@ type BenchmarkSnapshot = {
         drawCalls: string;
         triangles: string;
     };
+};
+
+type BenchmarkRunOptions = {
+    workload?: WorkloadType;
+    comparisonMode?: ComparisonMode;
+    objectCount?: number;
+    durationMs?: number;
+    durationSeconds?: number;
+};
+
+type BenchmarkRunRequest = BenchmarkRunOptions & {
+    timeoutMs?: number;
+};
+
+type BenchmarkCompletionWaiter = {
+    resolve(snapshot: BenchmarkSnapshot): void;
+    reject(error: Error): void;
+    timeoutId: number | null;
+};
+
+type BenchmarkAutomationApi = {
+    configure(options?: BenchmarkRunOptions): BenchmarkSnapshot;
+    start(options?: BenchmarkRunOptions): BenchmarkSnapshot;
+    stop(): BenchmarkSnapshot;
+    reset(): BenchmarkSnapshot;
+    getSnapshot(): BenchmarkSnapshot;
+    waitForCompletion(timeoutMs?: number): Promise<BenchmarkSnapshot>;
+    runOnce(options?: BenchmarkRunRequest): Promise<BenchmarkSnapshot>;
 };
 
 const byId = <T extends HTMLElement>(id: string): T => {
@@ -121,6 +152,10 @@ const ui = {
     threeDraws: byId<HTMLElement>('three-draws'),
     axroneTris: byId<HTMLElement>('axrone-tris'),
     threeTris: byId<HTMLElement>('three-tris'),
+    axroneSetupBuild: byId<HTMLElement>('axrone-setup-build'),
+    threeSetupBuild: byId<HTMLElement>('three-setup-build'),
+    axroneFirstRender: byId<HTMLElement>('axrone-first-render'),
+    threeFirstRender: byId<HTMLElement>('three-first-render'),
     axroneSetup: byId<HTMLElement>('axrone-setup'),
     threeSetup: byId<HTMLElement>('three-setup'),
     fpsWinner: byId<HTMLElement>('fps-winner'),
@@ -173,6 +208,7 @@ const state = {
         | null,
     axrone: null as BenchmarkRuntime | null,
     three: null as BenchmarkRuntime | null,
+    completionWaiters: [] as BenchmarkCompletionWaiter[],
 };
 
 const mean = (values: readonly number[]): number =>
@@ -190,6 +226,40 @@ const percentile = (values: readonly number[], ratio: number): number => {
 
 const formatNumber = (value: number): string => value.toLocaleString('en-US');
 const round = (value: number, digits = 2): number => Number(value.toFixed(digits));
+
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+const capturePhase = <T>(buildPhases: Record<string, number>, phaseName: string, action: () => T): T => {
+    const startedAt = performance.now();
+
+    try {
+        return action();
+    } finally {
+        buildPhases[phaseName] = (buildPhases[phaseName] ?? 0) + (performance.now() - startedAt);
+    }
+};
+
+const roundBuildPhases = (
+    buildPhases: Record<string, number> | null | undefined
+): BuildPhaseBreakdown => {
+    if (!buildPhases) {
+        return {};
+    }
+
+    return Object.fromEntries(
+        Object.entries(buildPhases)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([phaseName, duration]) => [phaseName, round(duration, 2)])
+    );
+};
+
+const snapRangeValue = (input: HTMLInputElement, rawValue: number): string => {
+    const min = Number(input.min || 0);
+    const max = Number(input.max || min);
+    const step = Number(input.step || 1) || 1;
+    const snapped = min + Math.round((rawValue - min) / step) * step;
+    return String(clamp(snapped, min, max));
+};
 
 const colorFromIndex = (index: number, count: number): readonly [number, number, number] => {
     const hue = (index / Math.max(1, count)) * 0.82;
@@ -301,18 +371,28 @@ const applyThreeStyleOrbitPose = (
     position: Readonly<Vec3>,
     target: Readonly<Vec3>,
     threeCamera: THREE.PerspectiveCamera,
-    transform: Transform
+    transform: Transform,
+    rotationScratch: Quat
 ): void => {
     threeCamera.position.set(position.x, position.y, position.z);
     threeCamera.lookAt(target.x, target.y, target.z);
-    transform.position = new Vec3(position.x, position.y, position.z);
-    transform.rotation = new Quat(
-        threeCamera.quaternion.x,
-        threeCamera.quaternion.y,
-        threeCamera.quaternion.z,
-        threeCamera.quaternion.w
-    );
+    transform.position = position as Vec3;
+    rotationScratch.x = threeCamera.quaternion.x;
+    rotationScratch.y = threeCamera.quaternion.y;
+    rotationScratch.z = threeCamera.quaternion.z;
+    rotationScratch.w = threeCamera.quaternion.w;
+    transform.rotation = rotationScratch;
 };
+
+const setVec3 = (target: Vec3, x: number, y: number, z: number): Vec3 => {
+    target.x = x;
+    target.y = y;
+    target.z = z;
+    return target;
+};
+
+const setQuatFromEuler = (target: Quat, x: number, y: number, z: number): Quat =>
+    Quat.fromEuler(x, y, z, target);
 
 const resizeCanvas = (
     canvas: HTMLCanvasElement,
@@ -335,71 +415,119 @@ const createAxroneRuntime = (
     resizeCanvas(canvas, host);
 
     const setupStartedAt = performance.now();
-    const scene = new Scene({
-        canvas,
-        width: host.clientWidth,
-        height: host.clientHeight,
-        pixelRatio: Math.min(devicePixelRatio || 1, 2),
-        worldConfig: {
-            enableValidation: false,
-        },
-        autoStart: false,
-        clearColor: [0.03, 0.06, 0.1, 1],
+    const buildPhases: Record<string, number> = {};
+    const scene = capturePhase(buildPhases, 'sceneSetupMs', () =>
+        new Scene({
+            canvas,
+            width: host.clientWidth,
+            height: host.clientHeight,
+            pixelRatio: Math.min(devicePixelRatio || 1, 2),
+            worldConfig: {
+                enableValidation: false,
+            },
+            autoStart: false,
+            clearColor: [0.03, 0.06, 0.1, 1],
+        })
+    );
+
+    capturePhase(buildPhases, 'materialSetupMs', () => {
+        scene.registerShader(createUnlitColorShaderDefinition('benchmark/unlit-color'));
+        scene.createMaterial({
+            id: 'benchmark/material',
+            shaderId: 'benchmark/unlit-color',
+            uniforms: {
+                u_Color: [1, 1, 1, 1],
+            },
+        });
     });
 
-    scene.registerShader(createUnlitColorShaderDefinition('benchmark/unlit-color'));
-    scene.createMaterial({
-        id: 'benchmark/material',
-        shaderId: 'benchmark/unlit-color',
-        uniforms: {
-            u_Color: [1, 1, 1, 1],
-        },
+    const { boxMesh, sphereMesh } = capturePhase(buildPhases, 'meshSetupMs', () => {
+        const meshBuilder = new SceneGeometryMeshBuilder();
+        const needsBoxMesh = descriptors.some((descriptor) => descriptor.kind === 'box');
+        const needsSphereMesh = descriptors.some((descriptor) => descriptor.kind === 'sphere');
+
+        return {
+            boxMesh: needsBoxMesh ? scene.createBoxMesh('benchmark/box', 1, 1, 1) : null,
+            sphereMesh: needsSphereMesh
+                ? scene.registerMesh(
+                      meshBuilder.createDefinition(
+                          'benchmark/sphere',
+                          createSphere({
+                              radius: 0.65,
+                              widthSegments: 16,
+                              heightSegments: 16,
+                              generateNormals: true,
+                              generateTexCoords: true,
+                              generateTangents: false,
+                          })
+                      )
+                  )
+                : null,
+        };
     });
 
-    const boxMesh = scene.createBoxMesh('benchmark/box', 1, 1, 1);
-    const sphereMesh = scene.createSphereMesh('benchmark/sphere', 0.65, 16);
-    const cameraActor = scene.createCameraActor({ autoStart: false }, { primary: true, fieldOfView: 58 });
-    const cameraComponent = cameraActor.requireComponent(Camera);
+    const cameraActor = capturePhase(buildPhases, 'cameraSetupMs', () =>
+        scene.createCameraActor({ autoStart: false }, { primary: true, fieldOfView: 58 })
+    );
     const cameraTransform = cameraActor.requireComponent(Transform);
-    const orbit = computeSceneOrbit(descriptors);
+    const orbit = capturePhase(buildPhases, 'cameraFramingMs', () => computeSceneOrbit(descriptors));
     const orbitCameraReference = new THREE.PerspectiveCamera(58, 1, 0.1, 1000);
-    let currentCameraPosition = new Vec3(
+    const currentCameraPosition = new Vec3(
         orbit.target.x + orbit.radius,
         orbit.target.y + orbit.height,
         orbit.target.z
     );
-
-    cameraComponent.getViewMatrix = () =>
-        Mat4.lookAt(currentCameraPosition, orbit.target, Vec3.UP, new Mat4());
+    const cameraRotationScratch = new Quat();
+    const positionScratch = new Vec3();
+    const rotationScratch = new Quat();
 
     const renderables: { readonly transform: Transform; readonly descriptor: WorkloadDescriptor }[] = [];
     const sphereScale = new Vec3(0.72, 0.72, 0.72);
     const boxScale = new Vec3(0.84, 0.84, 0.84);
+    const sharedActorConfig = Object.freeze({ autoStart: false });
 
-    scene.world.batchStructureChanges(() => {
-        for (const descriptor of descriptors) {
-            const actor = scene.createRenderableActor(
-                { autoStart: false },
-                {
-                    meshId: descriptor.kind === 'sphere' ? sphereMesh.id : boxMesh.id,
-                    materialId: 'benchmark/material',
-                }
-            );
+    const renderableConfigs = capturePhase(buildPhases, 'renderableConfigMs', () =>
+        descriptors.map((descriptor) => ({
+            actorConfig: sharedActorConfig,
+            rendererConfig: {
+                meshId:
+                    descriptor.kind === 'sphere'
+                        ? (sphereMesh?.id ?? 'benchmark/sphere')
+                        : (boxMesh?.id ?? 'benchmark/box'),
+                materialId: 'benchmark/material',
+            },
+        }))
+    );
 
-            const transform = actor.requireComponent(Transform);
+    const createdRenderables = capturePhase(buildPhases, 'renderableCreateMs', () =>
+        scene.createRenderableActors(renderableConfigs, buildPhases)
+    );
+
+    capturePhase(buildPhases, 'renderableInitMs', () => {
+        for (let index = 0; index < descriptors.length; index += 1) {
+            const descriptor = descriptors[index]!;
+            const created = createdRenderables[index]!;
+            const transform = created.transform;
             transform.position = descriptor.basePosition;
             transform.scale = descriptor.kind === 'sphere' ? sphereScale : boxScale;
-
-            const renderer = actor.getComponent(MeshRenderer);
-            renderer?.setUniform('u_Color', [
+            created.renderer.setUniform('u_Color', [
                 descriptor.color[0],
                 descriptor.color[1],
                 descriptor.color[2],
                 1,
             ]);
-
             renderables.push({ transform, descriptor });
         }
+    });
+
+    capturePhase(buildPhases, 'cameraPoseApplyMs', () => {
+        applyThreeStyleOrbitPose(
+            currentCameraPosition,
+            orbit.target,
+            orbitCameraReference,
+            cameraTransform,
+            cameraRotationScratch
+        );
     });
 
     const stats: EngineStats = {
@@ -407,7 +535,10 @@ const createAxroneRuntime = (
         frameTimes: [],
         drawCalls: 0,
         triangles: 0,
+        setupBuildTimeMs: 0,
+        firstRenderTimeMs: 0,
         setupTimeMs: 0,
+        buildPhases,
     };
     const syncMetrics = () => {
         const renderStats = scene.renderStats;
@@ -415,53 +546,63 @@ const createAxroneRuntime = (
         stats.triangles = renderStats.trianglesSubmitted;
     };
 
-    scene.addSystem(
-        {
-            id: 'benchmark/update',
-            query: ['Transform'] as const,
-            priority: 0,
-            enabled: true,
-            execute: (_entities, deltaTime) => {
-                const elapsed = scene.loop.elapsed;
-                currentCameraPosition = new Vec3(
-                    orbit.target.x + Math.cos(elapsed * 0.00017) * orbit.radius,
-                    orbit.target.y + orbit.height,
-                    orbit.target.z + Math.sin(elapsed * 0.00017) * orbit.radius
-                );
-                applyThreeStyleOrbitPose(
-                    currentCameraPosition,
-                    orbit.target,
-                    orbitCameraReference,
-                    cameraTransform
-                );
-
-                for (const { transform, descriptor } of renderables) {
-                    transform.position = new Vec3(
-                        descriptor.basePosition.x,
-                        descriptor.basePosition.y +
-                            Math.sin(elapsed * descriptor.bobSpeed + descriptor.bobPhase) *
-                                descriptor.bobAmplitude,
-                        descriptor.basePosition.z
+    capturePhase(buildPhases, 'systemSetupMs', () => {
+        scene.addSystem(
+            {
+                id: 'benchmark/update',
+                query: ['Transform'] as const,
+                priority: 0,
+                enabled: true,
+                execute: (_entities, deltaTime) => {
+                    const elapsed = scene.loop.elapsed;
+                    setVec3(
+                        currentCameraPosition,
+                        orbit.target.x + Math.cos(elapsed * 0.00017) * orbit.radius,
+                        orbit.target.y + orbit.height,
+                        orbit.target.z + Math.sin(elapsed * 0.00017) * orbit.radius
                     );
-                    transform.rotation = Quat.fromEuler(
-                        elapsed * descriptor.spin.x,
-                        elapsed * descriptor.spin.y,
-                        elapsed * descriptor.spin.z
+                    applyThreeStyleOrbitPose(
+                        currentCameraPosition,
+                        orbit.target,
+                        orbitCameraReference,
+                        cameraTransform,
+                        cameraRotationScratch
                     );
-                }
 
-                if (deltaTime > 0) {
-                    stats.frameTimes.push(deltaTime);
-                }
+                    for (const { transform, descriptor } of renderables) {
+                        transform.position = setVec3(
+                            positionScratch,
+                            descriptor.basePosition.x,
+                            descriptor.basePosition.y +
+                                Math.sin(elapsed * descriptor.bobSpeed + descriptor.bobPhase) *
+                                    descriptor.bobAmplitude,
+                            descriptor.basePosition.z
+                        );
+                        transform.rotation = setQuatFromEuler(
+                            rotationScratch,
+                            elapsed * descriptor.spin.x,
+                            elapsed * descriptor.spin.y,
+                            elapsed * descriptor.spin.z
+                        );
+                    }
 
-                stats.frameCount += 1;
-            },
-        }
-    );
+                    if (deltaTime > 0) {
+                        stats.frameTimes.push(deltaTime);
+                    }
 
+                    stats.frameCount += 1;
+                },
+            }
+        );
+    });
+
+    const buildCompletedAt = performance.now();
     scene.renderNow();
     syncMetrics();
-    stats.setupTimeMs = performance.now() - setupStartedAt;
+    const firstRenderCompletedAt = performance.now();
+    stats.setupBuildTimeMs = buildCompletedAt - setupStartedAt;
+    stats.firstRenderTimeMs = firstRenderCompletedAt - buildCompletedAt;
+    stats.setupTimeMs = firstRenderCompletedAt - setupStartedAt;
 
     return {
         stats,
@@ -496,7 +637,10 @@ const createThreeRuntime = (
         frameTimes: [],
         drawCalls: 0,
         triangles: 0,
+        setupBuildTimeMs: 0,
+        firstRenderTimeMs: 0,
         setupTimeMs: 0,
+        buildPhases: {},
     };
     const syncMetrics = () => {
         stats.drawCalls = renderer.info.render.calls;
@@ -504,55 +648,77 @@ const createThreeRuntime = (
     };
 
     const setupStartedAt = performance.now();
-    const renderer = new THREE.WebGLRenderer({
-        canvas,
-        antialias: false,
-        alpha: false,
-        powerPreference: 'high-performance',
+    const renderer = capturePhase(stats.buildPhases, 'rendererSetupMs', () => {
+        const createdRenderer = new THREE.WebGLRenderer({
+            canvas,
+            antialias: false,
+            alpha: false,
+            powerPreference: 'high-performance',
+        });
+        createdRenderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+        createdRenderer.setSize(host.clientWidth, host.clientHeight, false);
+        return createdRenderer;
     });
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-    renderer.setSize(host.clientWidth, host.clientHeight, false);
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050b14);
+    const scene = capturePhase(stats.buildPhases, 'sceneSetupMs', () => {
+        const createdScene = new THREE.Scene();
+        createdScene.background = new THREE.Color(0x050b14);
+        return createdScene;
+    });
 
-    const camera = new THREE.PerspectiveCamera(
-        58,
-        host.clientWidth / Math.max(1, host.clientHeight),
-        0.1,
-        1000
-    );
-    scene.add(camera);
+    const camera = capturePhase(stats.buildPhases, 'cameraSetupMs', () => {
+        const createdCamera = new THREE.PerspectiveCamera(
+            58,
+            host.clientWidth / Math.max(1, host.clientHeight),
+            0.1,
+            1000
+        );
+        scene.add(createdCamera);
+        return createdCamera;
+    });
 
-    const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const sphereGeometry = new THREE.SphereGeometry(0.65, 16, 16);
+    const { boxGeometry, sphereGeometry } = capturePhase(stats.buildPhases, 'geometrySetupMs', () => ({
+        boxGeometry: new THREE.BoxGeometry(1, 1, 1),
+        sphereGeometry: new THREE.SphereGeometry(0.65, 16, 16),
+    }));
     const objects: { readonly mesh: THREE.Mesh; readonly descriptor: WorkloadDescriptor }[] = [];
 
-    for (const descriptor of descriptors) {
-        const material = new THREE.MeshBasicMaterial({
-            color: new THREE.Color(...descriptor.color),
-        });
-        const mesh = new THREE.Mesh(
-            descriptor.kind === 'sphere' ? sphereGeometry : boxGeometry,
-            material
-        );
+    capturePhase(stats.buildPhases, 'objectCreateMs', () => {
+        for (const descriptor of descriptors) {
+            const material = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(...descriptor.color),
+            });
+            const mesh = new THREE.Mesh(
+                descriptor.kind === 'sphere' ? sphereGeometry : boxGeometry,
+                material
+            );
 
-        mesh.position.set(
-            descriptor.basePosition.x,
-            descriptor.basePosition.y,
-            descriptor.basePosition.z
-        );
-        mesh.scale.setScalar(descriptor.scale);
-        mesh.frustumCulled = comparisonMode === 'three-culling';
-        scene.add(mesh);
-        objects.push({ mesh, descriptor });
-    }
+            mesh.position.set(
+                descriptor.basePosition.x,
+                descriptor.basePosition.y,
+                descriptor.basePosition.z
+            );
+            mesh.scale.setScalar(descriptor.scale);
+            mesh.frustumCulled = comparisonMode === 'three-culling';
+            scene.add(mesh);
+            objects.push({ mesh, descriptor });
+        }
+    });
 
     let rafId = 0;
     let previousFrameTime = 0;
     let paused = true;
     let logicalElapsed = 0;
-    const orbit = computeSceneOrbit(descriptors);
+    const orbit = capturePhase(stats.buildPhases, 'cameraFramingMs', () => computeSceneOrbit(descriptors));
+
+    capturePhase(stats.buildPhases, 'cameraPoseApplyMs', () => {
+        camera.position.set(
+            orbit.target.x + orbit.radius,
+            orbit.target.y + orbit.height,
+            orbit.target.z
+        );
+        camera.lookAt(orbit.target.x, orbit.target.y, orbit.target.z);
+    });
 
     const frame = (timestamp: number) => {
         if (paused) {
@@ -596,9 +762,13 @@ const createThreeRuntime = (
         rafId = requestAnimationFrame(frame);
     };
 
+    const buildCompletedAt = performance.now();
     renderer.render(scene, camera);
     syncMetrics();
-    stats.setupTimeMs = performance.now() - setupStartedAt;
+    const firstRenderCompletedAt = performance.now();
+    stats.setupBuildTimeMs = buildCompletedAt - setupStartedAt;
+    stats.firstRenderTimeMs = firstRenderCompletedAt - buildCompletedAt;
+    stats.setupTimeMs = firstRenderCompletedAt - setupStartedAt;
 
     return {
         stats,
@@ -712,6 +882,18 @@ const refreshMetrics = () => {
     ui.threeDraws.textContent = threeStats ? formatNumber(threeStats.drawCalls) : '0';
     ui.axroneTris.textContent = axroneStats ? formatNumber(axroneStats.triangles) : '0';
     ui.threeTris.textContent = threeStats ? formatNumber(threeStats.triangles) : '0';
+    ui.axroneSetupBuild.textContent = axroneStats
+        ? `${axroneStats.setupBuildTimeMs.toFixed(1)} ms`
+        : '0 ms';
+    ui.threeSetupBuild.textContent = threeStats
+        ? `${threeStats.setupBuildTimeMs.toFixed(1)} ms`
+        : '0 ms';
+    ui.axroneFirstRender.textContent = axroneStats
+        ? `${axroneStats.firstRenderTimeMs.toFixed(1)} ms`
+        : '0 ms';
+    ui.threeFirstRender.textContent = threeStats
+        ? `${threeStats.firstRenderTimeMs.toFixed(1)} ms`
+        : '0 ms';
     ui.axroneSetup.textContent = axroneStats ? `${axroneStats.setupTimeMs.toFixed(1)} ms` : '0 ms';
     ui.threeSetup.textContent = threeStats ? `${threeStats.setupTimeMs.toFixed(1)} ms` : '0 ms';
 
@@ -733,7 +915,7 @@ const refreshMetrics = () => {
     );
 };
 
-const computeEngineSummary = (stats: EngineStats | null | undefined) => {
+const computeEngineSummary = (stats: EngineStats | null | undefined): EngineSummary => {
     const avgFrame = stats ? mean(stats.frameTimes) : 0;
     const fps = avgFrame > 0 ? 1000 / avgFrame : 0;
     const p95 = stats ? percentile(stats.frameTimes, 0.95) : 0;
@@ -744,7 +926,10 @@ const computeEngineSummary = (stats: EngineStats | null | undefined) => {
         frameCount: stats?.frameCount ?? 0,
         drawCalls: stats?.drawCalls ?? 0,
         triangles: stats?.triangles ?? 0,
+        setupBuildTimeMs: round(stats?.setupBuildTimeMs ?? 0, 2),
+        firstRenderTimeMs: round(stats?.firstRenderTimeMs ?? 0, 2),
         setupTimeMs: round(stats?.setupTimeMs ?? 0, 2),
+        buildPhases: roundBuildPhases(stats?.buildPhases),
     };
 };
 
@@ -806,6 +991,57 @@ const createBenchmarkSnapshot = (): BenchmarkSnapshot => {
     };
 };
 
+const resolveCompletionWaiters = (snapshot: BenchmarkSnapshot) => {
+    const waiters = state.completionWaiters.splice(0, state.completionWaiters.length);
+
+    for (const waiter of waiters) {
+        if (waiter.timeoutId !== null) {
+            clearTimeout(waiter.timeoutId);
+        }
+        waiter.resolve(snapshot);
+    }
+};
+
+const rejectCompletionWaiters = (error: Error) => {
+    const waiters = state.completionWaiters.splice(0, state.completionWaiters.length);
+
+    for (const waiter of waiters) {
+        if (waiter.timeoutId !== null) {
+            clearTimeout(waiter.timeoutId);
+        }
+        waiter.reject(error);
+    }
+};
+
+const waitForBenchmarkCompletion = (
+    timeoutMs = Math.max(state.durationMs + 15_000, 30_000)
+): Promise<BenchmarkSnapshot> => {
+    if (!state.running) {
+        return Promise.resolve(createBenchmarkSnapshot());
+    }
+
+    return new Promise<BenchmarkSnapshot>((resolve, reject) => {
+        const waiter: BenchmarkCompletionWaiter = {
+            resolve,
+            reject,
+            timeoutId: null,
+        };
+
+        if (timeoutMs > 0) {
+            waiter.timeoutId = window.setTimeout(() => {
+                const index = state.completionWaiters.indexOf(waiter);
+                if (index >= 0) {
+                    state.completionWaiters.splice(index, 1);
+                }
+
+                reject(new Error(`Benchmark timed out after ${timeoutMs} ms.`));
+            }, timeoutMs);
+        }
+
+        state.completionWaiters.push(waiter);
+    });
+};
+
 const copyText = async (value: string) => {
     if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(value);
@@ -823,9 +1059,9 @@ const copyText = async (value: string) => {
     document.body.removeChild(textarea);
 };
 
-const stopBenchmark = (reason: 'manual' | 'completed') => {
+const stopBenchmark = (reason: 'manual' | 'completed'): BenchmarkSnapshot => {
     if (!state.running) {
-        return;
+        return createBenchmarkSnapshot();
     }
 
     state.running = false;
@@ -845,6 +1081,10 @@ const stopBenchmark = (reason: 'manual' | 'completed') => {
         reason === 'completed' ? 'Benchmark completed' : 'Benchmark stopped';
     ui.summaryCopy.textContent =
         'Interpret the result as a workload-specific comparison. Draw-call heavy scenes and triangle-heavy scenes can favor different renderer architectures.';
+
+    const snapshot = createBenchmarkSnapshot();
+    resolveCompletionWaiters(snapshot);
+    return snapshot;
 };
 
 const monitor = (timestamp: number) => {
@@ -864,7 +1104,36 @@ const monitor = (timestamp: number) => {
     state.monitorRaf = requestAnimationFrame(monitor);
 };
 
-const startBenchmark = () => {
+const applyBenchmarkRunOptions = (options: BenchmarkRunOptions = {}) => {
+    if (options.workload) {
+        ui.workload.value = options.workload;
+    }
+
+    if (options.comparisonMode) {
+        ui.comparisonMode.value = options.comparisonMode;
+    }
+
+    if (typeof options.objectCount === 'number' && Number.isFinite(options.objectCount)) {
+        ui.objectCount.value = snapRangeValue(ui.objectCount, options.objectCount);
+    }
+
+    const durationSeconds =
+        typeof options.durationMs === 'number' && Number.isFinite(options.durationMs)
+            ? options.durationMs / 1000
+            : options.durationSeconds;
+    if (typeof durationSeconds === 'number' && Number.isFinite(durationSeconds)) {
+        ui.duration.value = snapRangeValue(ui.duration, durationSeconds);
+    }
+
+    syncControls();
+};
+
+const startBenchmark = (options: BenchmarkRunOptions = {}) => {
+    if (state.running) {
+        stopBenchmark('manual');
+    }
+
+    applyBenchmarkRunOptions(options);
     teardownRuntimes();
     ui.errorText.textContent = '';
     ui.errorText.className = '';
@@ -902,6 +1171,8 @@ const startBenchmark = () => {
     setRunningUi();
     refreshMetrics();
     state.monitorRaf = requestAnimationFrame(monitor);
+
+    return createBenchmarkSnapshot();
 };
 
 const resetBenchmark = () => {
@@ -982,6 +1253,7 @@ ui.startButton.addEventListener('click', () => {
         ui.summaryTitle.textContent = 'Benchmark setup failed';
         ui.summaryCopy.textContent =
             'Check the error line and verify WebGL2 support plus local package resolution.';
+        rejectCompletionWaiters(error instanceof Error ? error : new Error(String(error)));
     }
 });
 
@@ -1008,3 +1280,24 @@ window.addEventListener('resize', handleResize);
 
 syncControls();
 resetBenchmark();
+
+(window as Window & { __AXRONE_ENGINE_BENCHMARK__?: BenchmarkAutomationApi }).__AXRONE_ENGINE_BENCHMARK__ = {
+    configure: (options = {}) => {
+        applyBenchmarkRunOptions(options);
+        refreshMetrics();
+        return createBenchmarkSnapshot();
+    },
+    start: (options = {}) => startBenchmark(options),
+    stop: () => stopBenchmark('manual'),
+    reset: () => {
+        resetBenchmark();
+        return createBenchmarkSnapshot();
+    },
+    getSnapshot: () => createBenchmarkSnapshot(),
+    waitForCompletion: (timeoutMs?: number) => waitForBenchmarkCompletion(timeoutMs),
+    runOnce: async (options = {}) => {
+        const { timeoutMs, ...runOptions } = options;
+        startBenchmark(runOptions);
+        return waitForBenchmarkCompletion(timeoutMs ?? Math.max(state.durationMs + 15_000, 30_000));
+    },
+};

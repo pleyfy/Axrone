@@ -22,12 +22,15 @@ export const createPlane = (config: Partial<IPlaneConfig> = {}): IGeometryBuffer
 };
 
 export const createQuad = (
-    config: Partial<IPlaneConfig> & { orientation?: 'xy' | 'xz' | 'yz' } = {}
+    config: Partial<IPlaneConfig> & {
+        orientation?: 'xy' | 'xz' | 'yz';
+        doubleSided?: boolean;
+    } = {}
 ): IGeometryBuffers => {
-    const { orientation = 'xy', ...rest } = config;
+    const { orientation = 'xy', doubleSided = false, ...rest } = config;
     const finalConfig = { ...DEFAULT_PLANE_CONFIG, ...rest };
     const builder = GeometryBuilder.create(finalConfig);
-    return generateQuadGeometry(builder, finalConfig, orientation);
+    return generateQuadGeometry(builder, finalConfig, orientation, doubleSided);
 };
 
 export const createCircle = (
@@ -118,7 +121,7 @@ const generatePlaneGeometry = (
             const c = ix + 1 + gridX1 * (iy + 1);
             const d = ix + 1 + gridX1 * iy;
 
-            builder.addQuad(a, b, c, d);
+            builder.addQuad(a, d, c, b);
         }
     }
 
@@ -128,7 +131,8 @@ const generatePlaneGeometry = (
 const generateQuadGeometry = (
     builder: GeometryBuilder,
     config: Required<IPlaneConfig>,
-    orientation: 'xy' | 'xz' | 'yz'
+    orientation: 'xy' | 'xz' | 'yz',
+    doubleSided: boolean
 ): IGeometryBuffers => {
     const { width, height } = config;
     const halfWidth = width / 2;
@@ -182,8 +186,36 @@ const generateQuadGeometry = (
         );
     }
 
-    builder.addTriangle(0, 1, 2);
-    builder.addTriangle(0, 2, 3);
+    if (orientation === 'xy') {
+        builder.addTriangle(0, 1, 2);
+        builder.addTriangle(0, 2, 3);
+    } else {
+        builder.addQuad(0, 3, 2, 1);
+    }
+
+    if (!doubleSided) {
+        return builder.build();
+    }
+
+    const backNormal = config.generateNormals
+        ? Vec3.create(-normal.x, -normal.y, -normal.z)
+        : undefined;
+    const backStart = builder.vertexCount;
+
+    for (let i = 0; i < 4; i++) {
+        builder.addVertex(
+            positions[i],
+            backNormal,
+            config.generateTexCoords ? texCoords[i] : undefined
+        );
+    }
+
+    if (orientation === 'xy') {
+        builder.addTriangle(backStart, backStart + 2, backStart + 1);
+        builder.addTriangle(backStart, backStart + 3, backStart + 2);
+    } else {
+        builder.addQuad(backStart, backStart + 1, backStart + 2, backStart + 3);
+    }
 
     return builder.build();
 };
@@ -218,7 +250,7 @@ const generateCircleGeometry = (
     }
 
     for (let i = 0; i < segments; i++) {
-        builder.addTriangle(0, i + 1, i + 2);
+        builder.addTriangle(0, i + 2, i + 1);
     }
 
     return builder.build();
@@ -272,7 +304,7 @@ const generateRingGeometry = (
         const c = (i + 1) * 2 + 1;
         const d = (i + 1) * 2;
 
-        builder.addQuad(a, b, c, d);
+        builder.addQuad(a, d, c, b);
     }
 
     return builder.build();

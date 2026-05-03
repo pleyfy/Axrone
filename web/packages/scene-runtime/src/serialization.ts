@@ -110,27 +110,13 @@ export const decodeSceneValue = (value: SceneSerializedValue): unknown => {
 
         switch (encodedType) {
             case 'Vec2':
-                return new Vec2(Number(encodedValue[0]), Number(encodedValue[1]));
+                return Vec2.fromArray(encodedValue);
             case 'Vec3':
-                return new Vec3(
-                    Number(encodedValue[0]),
-                    Number(encodedValue[1]),
-                    Number(encodedValue[2])
-                );
+                return Vec3.fromArray(encodedValue);
             case 'Vec4':
-                return new Vec4(
-                    Number(encodedValue[0]),
-                    Number(encodedValue[1]),
-                    Number(encodedValue[2]),
-                    Number(encodedValue[3])
-                );
+                return Vec4.fromArray(encodedValue);
             case 'Quat':
-                return new Quat(
-                    Number(encodedValue[0]),
-                    Number(encodedValue[1]),
-                    Number(encodedValue[2]),
-                    Number(encodedValue[3])
-                );
+                return Quat.fromArray(encodedValue);
             case 'Mat4':
                 return new Mat4(encodedValue.map((entry) => Number(entry)));
             case 'Float32Array':
@@ -280,38 +266,38 @@ export const deserializeMeshDefinition = (value: SceneSerializedValue): SceneMes
                               ? Object.freeze(
                                     targetObject.attributes.map(
                                         (attribute: SceneSerializedValue) => {
-                                        if (
-                                            attribute === null ||
-                                            Array.isArray(attribute) ||
-                                            typeof attribute !== 'object'
-                                        ) {
-                                            throw new Error(
-                                                'Invalid serialized mesh morph target attribute'
-                                            );
+                                            if (
+                                                attribute === null ||
+                                                Array.isArray(attribute) ||
+                                                typeof attribute !== 'object'
+                                            ) {
+                                                throw new Error(
+                                                    'Invalid serialized mesh morph target attribute'
+                                                );
+                                            }
+
+                                            const attributeObject = attribute as Record<
+                                                string,
+                                                SceneSerializedValue
+                                            >;
+
+                                            return {
+                                                semantic: String(
+                                                    attributeObject.semantic
+                                                ) as NonNullable<
+                                                    SceneMeshDefinition['morphTargets']
+                                                >[number]['attributes'][number]['semantic'],
+                                                componentCount: 3 as const,
+                                                values: new Float32Array(
+                                                    Array.isArray(attributeObject.values)
+                                                        ? attributeObject.values.map(
+                                                              (entry: SceneSerializedValue) =>
+                                                                  Number(entry)
+                                                          )
+                                                        : []
+                                                ),
+                                            };
                                         }
-
-                                        const attributeObject = attribute as Record<
-                                            string,
-                                            SceneSerializedValue
-                                        >;
-
-                                        return {
-                                            semantic: String(
-                                                attributeObject.semantic
-                                            ) as NonNullable<
-                                                SceneMeshDefinition['morphTargets']
-                                            >[number]['attributes'][number]['semantic'],
-                                            componentCount: 3 as const,
-                                            values: new Float32Array(
-                                                Array.isArray(attributeObject.values)
-                                                    ? attributeObject.values.map(
-                                                          (entry: SceneSerializedValue) =>
-                                                              Number(entry)
-                                                      )
-                                                    : []
-                                            ),
-                                        };
-                                    }
                                     )
                                 )
                               : Object.freeze([]),
@@ -347,9 +333,7 @@ export const deserializeMeshDefinition = (value: SceneSerializedValue): SceneMes
                               ? attribute.normalized
                               : undefined,
                       integer:
-                          typeof attribute.integer === 'boolean'
-                              ? attribute.integer
-                              : undefined,
+                          typeof attribute.integer === 'boolean' ? attribute.integer : undefined,
                   };
               })
             : [],

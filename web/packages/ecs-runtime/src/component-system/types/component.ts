@@ -1,5 +1,6 @@
 import type { Component } from '../core/component';
 
+// Using any[] for construct signature compatibility - type safety enforced at usage sites via ComponentType<T>
 export type ComponentType<T extends Component = Component> = new (...args: any[]) => T;
 
 export type ComponentMetadata = {
@@ -8,6 +9,8 @@ export type ComponentMetadata = {
     readonly singleton?: boolean;
     readonly executeInEditMode?: boolean;
     readonly priority?: number;
+    readonly allowMultiple?: boolean;
+    readonly trackInstances?: boolean;
 };
 
 export interface IComponentPool<T> {

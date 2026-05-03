@@ -1,143 +1,148 @@
-import { ObserverCallback, ObserverId, NotificationData } from './definition';
+import { NotificationData, ObserverCallback, ObserverId, SubjectId } from './definition';
+
+const captureStack = (target: object, ctor: Function): void => {
+    (
+        Error as typeof Error & {
+            captureStackTrace?: (instance: object, constructor: Function) => void;
+        }
+    ).captureStackTrace?.(target, ctor);
+};
+
+const normalizeError = (error: unknown): Error =>
+    error instanceof Error ? error : new Error(typeof error === 'string' ? error : String(error));
 
 export class BaseObserverError extends Error {
-    public readonly code: string;
-    public readonly timestamp: number;
+    readonly code: string;
+    readonly timestamp: number;
 
     constructor(message: string, code: string = 'OBSERVER_ERROR') {
         super(message);
-        this.name = 'BaseObserverError';
+        this.name = new.target.name;
         this.code = code;
         this.timestamp = Date.now();
-
-        (
-            Error as typeof Error & { captureStackTrace?: (target: object, ctor: Function) => void }
-        ).captureStackTrace?.(this, this.constructor);
+        Object.setPrototypeOf(this, new.target.prototype);
+        captureStack(this, new.target);
     }
 }
 
 export class ObserverError extends BaseObserverError {
     constructor(message: string, code: string = 'OBSERVER_ERROR') {
         super(message, code);
-        this.name = 'ObserverError';
     }
 }
 
 export class SubjectError extends BaseObserverError {
-    public readonly subjectId?: symbol;
+    readonly subjectId?: SubjectId;
 
-    constructor(message: string, subjectId?: symbol, code: string = 'SUBJECT_ERROR') {
+    constructor(message: string, subjectId?: SubjectId, code: string = 'SUBJECT_ERROR') {
         super(message, code);
-        this.name = 'SubjectError';
         this.subjectId = subjectId;
     }
 }
 
 export class ObserverNotFoundError extends ObserverError {
-    public readonly observerId?: ObserverId;
+    readonly observerId?: ObserverId;
 
     constructor(observerId?: ObserverId) {
-        const message = observerId
-            ? `Observer with ID ${String(observerId)} not found`
-            : 'Observer not found';
-        super(message, 'OBSERVER_NOT_FOUND');
-        this.name = 'ObserverNotFoundError';
+        super(
+            observerId
+                ? `Observer with ID ${String(observerId)} not found`
+                : 'Observer not found',
+            'OBSERVER_NOT_FOUND'
+        );
         this.observerId = observerId;
     }
 }
 
 export class SubjectCompletedError extends SubjectError {
-    constructor(subjectId?: symbol) {
+    constructor(subjectId?: SubjectId) {
         super('Cannot operate on completed subject', subjectId, 'SUBJECT_COMPLETED');
-        this.name = 'SubjectCompletedError';
     }
 }
 
 export class SubjectDisposedError extends SubjectError {
-    constructor(subjectId?: symbol) {
+    constructor(subjectId?: SubjectId) {
         super('Cannot operate on disposed subject', subjectId, 'SUBJECT_DISPOSED');
-        this.name = 'SubjectDisposedError';
     }
 }
 
 export class MaxObserversExceededError extends SubjectError {
-    public readonly maxObservers: number;
-    public readonly currentCount: number;
+    readonly maxObservers: number;
+    readonly currentCount: number;
 
-    constructor(maxObservers: number, currentCount: number, subjectId?: symbol) {
+    constructor(maxObservers: number, currentCount: number, subjectId?: SubjectId) {
         super(
             `Maximum number of observers exceeded. Max: ${maxObservers}, Current: ${currentCount}`,
             subjectId,
             'MAX_OBSERVERS_EXCEEDED'
         );
-        this.name = 'MaxObserversExceededError';
         this.maxObservers = maxObservers;
         this.currentCount = currentCount;
     }
 }
 
 export class ObserverExecutionError extends ObserverError {
-    public readonly observerId: ObserverId;
-    public readonly originalError: Error;
-    public readonly notificationData: NotificationData;
+    readonly observerId: ObserverId;
+    readonly originalError: Error;
+    readonly notificationData: NotificationData;
 
     constructor(observerId: ObserverId, originalError: Error, notificationData: NotificationData) {
         super(`Observer execution failed: ${originalError.message}`, 'OBSERVER_EXECUTION_ERROR');
-        this.name = 'ObserverExecutionError';
         this.observerId = observerId;
         this.originalError = originalError;
         this.notificationData = notificationData;
+        (this as { cause?: Error }).cause = originalError;
     }
 }
 
 export class ValidationError extends SubjectError {
-    public readonly invalidData: any;
+    readonly invalidData: unknown;
 
-    constructor(message: string, invalidData: any, subjectId?: symbol) {
+    constructor(message: string, invalidData: unknown, subjectId?: SubjectId) {
         super(message, subjectId, 'VALIDATION_ERROR');
-        this.name = 'ValidationError';
         this.invalidData = invalidData;
     }
 }
 
 export class ConcurrencyLimitError extends SubjectError {
-    public readonly limit: number;
-    public readonly current: number;
+    readonly limit: number;
+    readonly current: number;
 
-    constructor(limit: number, current: number, subjectId?: symbol) {
+    constructor(limit: number, current: number, subjectId?: SubjectId) {
         super(
             `Concurrency limit exceeded. Limit: ${limit}, Current: ${current}`,
             subjectId,
             'CONCURRENCY_LIMIT_ERROR'
         );
-        this.name = 'ConcurrencyLimitError';
         this.limit = limit;
         this.current = current;
     }
 }
 
 export class FilterError extends ObserverError {
-    public readonly filterFunction: Function;
-    public readonly originalError: Error;
+    readonly filterFunction: Function;
+    readonly originalError: Error;
 
-    constructor(originalError: Error, filterFunction: Function) {
-        super(`Observer filter execution failed: ${originalError.message}`, 'FILTER_ERROR');
-        this.name = 'FilterError';
+    constructor(originalError: unknown, filterFunction: ObserverCallback<any> | Function) {
+        const normalized = normalizeError(originalError);
+        super(`Observer filter execution failed: ${normalized.message}`, 'FILTER_ERROR');
         this.filterFunction = filterFunction;
-        this.originalError = originalError;
+        this.originalError = normalized;
+        (this as { cause?: Error }).cause = normalized;
     }
 }
 
 export class TransformError extends ObserverError {
-    public readonly transformFunction: Function;
-    public readonly originalError: Error;
-    public readonly inputData: any;
+    readonly transformFunction: Function;
+    readonly originalError: Error;
+    readonly inputData: unknown;
 
-    constructor(originalError: Error, transformFunction: Function, inputData: any) {
-        super(`Observer transform execution failed: ${originalError.message}`, 'TRANSFORM_ERROR');
-        this.name = 'TransformError';
+    constructor(originalError: unknown, transformFunction: Function, inputData: unknown) {
+        const normalized = normalizeError(originalError);
+        super(`Observer transform execution failed: ${normalized.message}`, 'TRANSFORM_ERROR');
         this.transformFunction = transformFunction;
-        this.originalError = originalError;
+        this.originalError = normalized;
         this.inputData = inputData;
+        (this as { cause?: Error }).cause = normalized;
     }
 }

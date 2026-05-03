@@ -1,4 +1,5 @@
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
+import type { TextureFormat } from '@axrone/render-webgl2';
 import { SceneMaterialError } from './errors';
 import type {
     SceneMaterialDefinition,
@@ -110,6 +111,13 @@ export class SceneAssetFacade<
         return this._kernel.assets.getTextureResource(id);
     }
 
+    getSupportedCompressedTextureFormats(
+        preferredFormats?: readonly TextureFormat[]
+    ): readonly TextureFormat[] {
+        this.assertNotDisposed();
+        return this._kernel.assets.getSupportedCompressedTextureFormats(preferredFormats);
+    }
+
     getMaterialTextureBindings(materialId: string): readonly SceneMaterialTextureBindingHandle[] {
         return this._kernel.assets.getMaterialTextureBindings(materialId);
     }
@@ -152,5 +160,85 @@ export class SceneAssetFacade<
     createSphereMesh(id: string, radius: number = 1, segments: number = 24): SceneMeshHandle {
         this.assertNotDisposed();
         return this._kernel.assets.createSphereMesh(id, radius, segments);
+    }
+
+    createQuadMesh(
+        id: string,
+        width: number = 1,
+        height: number = 1,
+        orientation: 'xy' | 'xz' | 'yz' = 'xy'
+    ): SceneMeshHandle {
+        this.assertNotDisposed();
+        return this._kernel.assets.createQuadMesh(id, width, height, orientation);
+    }
+
+    createCylinderMesh(
+        id: string,
+        radiusTop: number = 0.5,
+        radiusBottom: number = 0.5,
+        height: number = 1,
+        radialSegments: number = 24,
+        heightSegments: number = 1
+    ): SceneMeshHandle {
+        this.assertNotDisposed();
+        return this._kernel.assets.createCylinderMesh(
+            id,
+            radiusTop,
+            radiusBottom,
+            height,
+            radialSegments,
+            heightSegments
+        );
+    }
+
+    createConeMesh(
+        id: string,
+        radius: number = 0.5,
+        height: number = 1,
+        radialSegments: number = 24,
+        heightSegments: number = 1
+    ): SceneMeshHandle {
+        this.assertNotDisposed();
+        return this._kernel.assets.createConeMesh(
+            id,
+            radius,
+            height,
+            radialSegments,
+            heightSegments
+        );
+    }
+
+    createCapsuleMesh(
+        id: string,
+        radius: number = 0.5,
+        length: number = 1,
+        capSegments: number = 12,
+        radialSegments: number = 24
+    ): SceneMeshHandle {
+        this.assertNotDisposed();
+        return this._kernel.assets.createCapsuleMesh(
+            id,
+            radius,
+            length,
+            capSegments,
+            radialSegments
+        );
+    }
+
+    createTorusMesh(
+        id: string,
+        radius: number = 0.56,
+        tube: number = 0.18,
+        radialSegments: number = 20,
+        tubularSegments: number = 32
+    ): SceneMeshHandle {
+        this.assertNotDisposed();
+        return this._kernel.assets.createTorusMesh(
+            id,
+            radius,
+            tube,
+            radialSegments,
+            tubularSegments
+        );
     }
 }

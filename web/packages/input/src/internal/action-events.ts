@@ -1,4 +1,4 @@
-import { EventEmitter } from '@axrone/event';
+import { createTypedEmitter } from '@axrone/event';
 import { InputConfigurationError } from '../errors';
 import type {
     AxisStateStore,
@@ -38,9 +38,7 @@ export interface InputActionEventsRuntime<TSchema extends InputActionSchema = In
 }
 
 export const createActionEventEmitter = <TSchema extends InputActionSchema>(): InputActionEventEmitter<TSchema> =>
-    new EventEmitter<InputActionEventMap<TSchema>>({
-        maxListeners: Infinity,
-    });
+    createTypedEmitter<InputActionEventMap<TSchema>>();
 
 export const subscribeActionListener = <TSchema extends InputActionSchema>(
     runtime: InputActionEventsRuntime<TSchema>,

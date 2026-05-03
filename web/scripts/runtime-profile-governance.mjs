@@ -7,6 +7,102 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDir = path.resolve(scriptDir, '..');
 const packagesDir = path.resolve(workspaceDir, 'packages');
+const runtimeProfileSampleCount = Math.max(
+    1,
+    Number.parseInt(process.env.AXRONE_RUNTIME_PROFILE_SAMPLES ?? '3', 10) || 3,
+);
+
+const readPackageJson = (packageDir) => {
+    const packageJsonPath = path.resolve(packagesDir, packageDir, 'package.json');
+    return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+};
+
+const resolveImportTarget = (exportTarget) => {
+    if (typeof exportTarget === 'string') {
+        return exportTarget;
+    }
+
+    if (!exportTarget || typeof exportTarget !== 'object' || Array.isArray(exportTarget)) {
+        return null;
+    }
+
+    if (typeof exportTarget.import === 'string') {
+        return exportTarget.import;
+    }
+
+    if (typeof exportTarget.default === 'string') {
+        return exportTarget.default;
+    }
+
+    if (typeof exportTarget.require === 'string') {
+        return exportTarget.require;
+    }
+
+    for (const nestedTarget of Object.values(exportTarget)) {
+        const resolvedTarget = resolveImportTarget(nestedTarget);
+        if (resolvedTarget) {
+            return resolvedTarget;
+        }
+    }
+
+    return null;
+};
+
+const createWorkspaceImportMap = () => {
+    const importMap = {};
+
+    for (const entry of fs.readdirSync(packagesDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) {
+            continue;
+        }
+
+        const packageDir = entry.name;
+        const packageRoot = path.resolve(packagesDir, packageDir);
+        const packageJson = readPackageJson(packageDir);
+        const packageName = packageJson.name;
+
+        if (typeof packageName !== 'string' || !packageName.startsWith('@axrone/')) {
+            continue;
+        }
+
+        const addImportTarget = (specifier, relativeTarget) => {
+            if (typeof relativeTarget !== 'string') {
+                return;
+            }
+
+            const absoluteTarget = path.resolve(packageRoot, relativeTarget);
+            if (!fs.existsSync(absoluteTarget)) {
+                return;
+            }
+
+            importMap[specifier] = pathToFileURL(absoluteTarget).href;
+        };
+
+        const exportsField = packageJson.exports;
+        if (exportsField && typeof exportsField === 'object' && !Array.isArray(exportsField)) {
+            addImportTarget(
+                packageName,
+                resolveImportTarget(exportsField['.']) ?? packageJson.module ?? packageJson.main,
+            );
+
+            for (const [subpath, exportTarget] of Object.entries(exportsField)) {
+                if (!subpath.startsWith('./')) {
+                    continue;
+                }
+
+                addImportTarget(`${packageName}/${subpath.slice(2)}`, resolveImportTarget(exportTarget));
+            }
+
+            continue;
+        }
+
+        addImportTarget(packageName, packageJson.module ?? packageJson.main ?? './dist/index.mjs');
+    }
+
+    return importMap;
+};
+
+const workspaceImportMap = createWorkspaceImportMap();
 
 const runtimeProfileBudgets = [
     {
@@ -76,8 +172,7 @@ const runtimeProfileBudgets = [
 ];
 
 const readDependencyKeys = (packageDir) => {
-    const packageJsonPath = path.resolve(packagesDir, packageDir, 'package.json');
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const packageJson = readPackageJson(packageDir);
     return Object.keys(packageJson.dependencies ?? {}).sort((left, right) =>
         left.localeCompare(right),
     );
@@ -87,7 +182,7 @@ const resolveEntryPath = (packageDir) => {
     const entryPath = path.resolve(packagesDir, packageDir, 'dist', 'index.mjs');
     if (!fs.existsSync(entryPath)) {
         throw new Error(
-            `Missing built entry for ${packageDir}. Run \"npm run build\" before runtime-profile governance.`,
+            `Missing built entry for ${packageDir}. Run "yarn build" before runtime-profile governance.`,
         );
     }
 
@@ -97,7 +192,24 @@ const resolveEntryPath = (packageDir) => {
 const measureColdImport = (entryPath) => {
     const moduleUrl = pathToFileURL(entryPath).href;
     const childScript = `
+        import { registerHooks } from 'node:module';
         import { performance } from 'node:perf_hooks';
+
+        const workspaceImportMap = ${JSON.stringify(workspaceImportMap)};
+
+        registerHooks({
+            resolve(specifier, context, nextResolve) {
+                const resolvedUrl = workspaceImportMap[specifier];
+                if (typeof resolvedUrl === 'string') {
+                    return {
+                        shortCircuit: true,
+                        url: resolvedUrl,
+                    };
+                }
+
+                return nextResolve(specifier, context);
+            },
+        });
 
         let nextWebGl2Constant = 0x2000;
 
@@ -127,7 +239,8 @@ const measureColdImport = (entryPath) => {
         const startupMs = performance.now() - startedAt;
         const heapDeltaKb = (process.memoryUsage().heapUsed - beforeHeapUsed) / 1024;
 
-        console.log(JSON.stringify({ startupMs, heapDeltaKb }));
+        process.stdout.write(JSON.stringify({ startupMs, heapDeltaKb }) + '\\n');
+        process.exit(0);
     `;
 
     const result = spawnSync(process.execPath, ['--input-type=module', '--eval', childScript], {
@@ -143,6 +256,17 @@ const measureColdImport = (entryPath) => {
     return JSON.parse(result.stdout.trim());
 };
 
+const calculateMedian = (values) => {
+    const sortedValues = [...values].sort((left, right) => left - right);
+    const middleIndex = Math.floor(sortedValues.length / 2);
+
+    if (sortedValues.length % 2 === 0) {
+        return (sortedValues[middleIndex - 1] + sortedValues[middleIndex]) / 2;
+    }
+
+    return sortedValues[middleIndex];
+};
+
 const formatNumber = (value) => value.toFixed(2).padStart(8, ' ');
 
 const reportRows = [];
@@ -152,14 +276,19 @@ for (const profile of runtimeProfileBudgets) {
     const entryPath = resolveEntryPath(profile.packageDir);
     const entryBytes = fs.statSync(entryPath).size;
     const dependencyKeys = readDependencyKeys(profile.packageDir);
-    const coldImport = measureColdImport(entryPath);
+    const coldImportSamples = Array.from({ length: runtimeProfileSampleCount }, () =>
+        measureColdImport(entryPath),
+    );
+    const startupMs = calculateMedian(coldImportSamples.map((sample) => sample.startupMs));
+    const heapDeltaKb = calculateMedian(coldImportSamples.map((sample) => sample.heapDeltaKb));
 
     reportRows.push({
         packageName: profile.packageName,
         entryBytes,
-        startupMs: coldImport.startupMs,
-        heapDeltaKb: coldImport.heapDeltaKb,
+        startupMs,
+        heapDeltaKb,
         dependencyCount: dependencyKeys.length,
+        sampleCount: runtimeProfileSampleCount,
     });
 
     if (entryBytes > profile.maxEntryBytes) {
@@ -168,15 +297,15 @@ for (const profile of runtimeProfileBudgets) {
         );
     }
 
-    if (coldImport.startupMs > profile.maxStartupMs) {
+    if (startupMs > profile.maxStartupMs) {
         failures.push(
-            `${profile.packageName} cold startup ${coldImport.startupMs.toFixed(2)} ms exceeds budget ${profile.maxStartupMs} ms.`,
+            `${profile.packageName} median cold startup ${startupMs.toFixed(2)} ms exceeds budget ${profile.maxStartupMs} ms across ${runtimeProfileSampleCount} samples.`,
         );
     }
 
-    if (coldImport.heapDeltaKb > profile.maxHeapDeltaKb) {
+    if (heapDeltaKb > profile.maxHeapDeltaKb) {
         failures.push(
-            `${profile.packageName} heap delta ${coldImport.heapDeltaKb.toFixed(2)} KB exceeds budget ${profile.maxHeapDeltaKb} KB.`,
+            `${profile.packageName} median heap delta ${heapDeltaKb.toFixed(2)} KB exceeds budget ${profile.maxHeapDeltaKb} KB across ${runtimeProfileSampleCount} samples.`,
         );
     }
 
@@ -193,8 +322,8 @@ for (const profile of runtimeProfileBudgets) {
     }
 }
 
-console.log('Runtime profile governance report');
-console.log('Package'.padEnd(32) + 'Entry'.padStart(8) + '  ' + 'Startup'.padStart(10) + '  ' + 'Heap'.padStart(10) + '  ' + 'Deps'.padStart(6));
+console.log(`Runtime profile governance report (${runtimeProfileSampleCount} cold-import samples, medians shown)`);
+console.log('Package'.padEnd(32) + 'Entry'.padStart(8) + '  ' + 'Startup'.padStart(10) + '  ' + 'Heap'.padStart(10) + '  ' + 'Deps'.padStart(6) + '  ' + 'Runs'.padStart(6));
 for (const row of reportRows) {
     console.log(
         row.packageName.padEnd(32) +
@@ -204,7 +333,9 @@ for (const row of reportRows) {
             '  ' +
             formatNumber(row.heapDeltaKb) +
             '  ' +
-            String(row.dependencyCount).padStart(6),
+            String(row.dependencyCount).padStart(6) +
+            '  ' +
+            String(row.sampleCount).padStart(6),
     );
 }
 

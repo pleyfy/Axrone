@@ -1,144 +1,347 @@
 import {
     ObserverCallback,
-    UnobserveFn,
-    ObserverId,
-    SubjectId,
     ObserverOptions,
+    SubjectId,
     IObservableSubject,
+    UnobserveFn,
 } from './definition';
-import { IObserverChain, ISubjectGroup, IObserverConnection } from './interfaces';
-import { Subject } from './subject';
 import { createSubject } from './factory';
+import { IObserverChain, IObserverConnection, ISubjectGroup } from './interfaces';
+
+type TimeoutHandle = ReturnType<typeof setTimeout>;
+
+type FilterOperation = {
+    readonly type: 'filter';
+    readonly predicate: (data: unknown, subject: IObservableSubject<any>) => boolean;
+};
+
+type MapOperation = {
+    readonly type: 'map';
+    readonly transform: (data: unknown, subject: IObservableSubject<any>) => unknown;
+};
+
+type DebounceOperation = {
+    readonly type: 'debounce';
+    readonly ms: number;
+};
+
+type ThrottleOperation = {
+    readonly type: 'throttle';
+    readonly ms: number;
+};
+
+type BufferOperation = {
+    readonly type: 'buffer';
+    readonly maxSize: number;
+    readonly flushIntervalMs: number;
+};
+
+type TakeOperation = {
+    readonly type: 'take';
+    readonly count: number;
+};
+
+type TakeUntilOperation = {
+    readonly type: 'takeUntil';
+    readonly predicate: (data: unknown, subject: IObservableSubject<any>) => boolean;
+};
+
+type ChainOperation =
+    | FilterOperation
+    | MapOperation
+    | DebounceOperation
+    | ThrottleOperation
+    | BufferOperation
+    | TakeOperation
+    | TakeUntilOperation;
+
+const isPromiseLike = <T = unknown>(value: unknown): value is PromiseLike<T> =>
+    typeof value === 'object' &&
+    value !== null &&
+    'then' in value &&
+    typeof (value as PromiseLike<T>).then === 'function';
+
+const attachCleanup = <T>(subject: IObservableSubject<T>, cleanup: () => void): IObservableSubject<T> => {
+    const originalDispose = subject.dispose.bind(subject);
+    let cleaned = false;
+
+    subject.dispose = () => {
+        if (!cleaned) {
+            cleaned = true;
+            cleanup();
+        }
+
+        originalDispose();
+    };
+
+    return subject;
+};
 
 export class ObserverChain<T = any> implements IObserverChain<T> {
-    readonly #subject: IObservableSubject<T>;
-    readonly #operations: Array<{
-        type: 'filter' | 'map' | 'debounce' | 'throttle' | 'buffer' | 'take' | 'takeUntil';
-        fn?: Function;
-        value?: any;
-    }> = [];
+    readonly #subject: IObservableSubject<any>;
+    readonly #operations: ChainOperation[] = [];
 
     constructor(subject: IObservableSubject<T>) {
-        this.#subject = subject;
+        this.#subject = subject as IObservableSubject<any>;
     }
 
     filter(predicate: (data: T, subject: IObservableSubject<T>) => boolean): IObserverChain<T> {
-        this.#operations.push({ type: 'filter', fn: predicate });
+        this.#operations.push({
+            type: 'filter',
+            predicate: predicate as FilterOperation['predicate'],
+        });
         return this;
     }
 
     map<U>(transform: (data: T, subject: IObservableSubject<T>) => U): IObserverChain<U> {
-        this.#operations.push({ type: 'map', fn: transform });
-        return this as any;
+        this.#operations.push({
+            type: 'map',
+            transform: transform as MapOperation['transform'],
+        });
+        return this as unknown as IObserverChain<U>;
     }
 
     debounce(ms: number): IObserverChain<T> {
-        this.#operations.push({ type: 'debounce', value: ms });
+        this.#operations.push({
+            type: 'debounce',
+            ms: Math.max(0, Math.floor(ms)),
+        });
         return this;
     }
 
     throttle(ms: number): IObserverChain<T> {
-        this.#operations.push({ type: 'throttle', value: ms });
+        this.#operations.push({
+            type: 'throttle',
+            ms: Math.max(0, Math.floor(ms)),
+        });
         return this;
     }
 
     buffer(maxSize: number, flushIntervalMs: number): IObserverChain<T[]> {
-        this.#operations.push({ type: 'buffer', value: { maxSize, flushIntervalMs } });
-        return this as any;
+        this.#operations.push({
+            type: 'buffer',
+            maxSize: Math.max(1, Math.floor(maxSize)),
+            flushIntervalMs: Math.max(1, Math.floor(flushIntervalMs)),
+        });
+        return this as unknown as IObserverChain<T[]>;
     }
 
     take(count: number): IObserverChain<T> {
-        this.#operations.push({ type: 'take', value: count });
+        this.#operations.push({
+            type: 'take',
+            count: Math.max(0, Math.floor(count)),
+        });
         return this;
     }
 
     takeUntil(predicate: (data: T, subject: IObservableSubject<T>) => boolean): IObserverChain<T> {
-        this.#operations.push({ type: 'takeUntil', fn: predicate });
+        this.#operations.push({
+            type: 'takeUntil',
+            predicate: predicate as TakeUntilOperation['predicate'],
+        });
         return this;
     }
 
     subscribe(callback: ObserverCallback<T>): UnobserveFn {
-        const options: Partial<ObserverOptions> = {};
-        let transformFn: Function | undefined;
-        let filterFn: Function | undefined;
-        let takeCount = 0;
-        let takeUntilFn: Function | undefined;
+        const operations = this.#operations.slice();
+        const debounceTimers = new Map<number, TimeoutHandle>();
+        const throttleTimes = new Map<number, number>();
+        const takeRemaining = new Map<number, number>();
+        const bufferStates = new Map<
+            number,
+            {
+                values: unknown[];
+                stopAfter: boolean;
+                timer?: TimeoutHandle;
+            }
+        >();
+        let active = true;
+        let unsubscribe: UnobserveFn | undefined;
 
-        for (const op of this.#operations) {
-            switch (op.type) {
-                case 'filter':
-                    filterFn = this.#combineFilters(filterFn, op.fn!);
-                    break;
-                case 'map':
-                    transformFn = this.#combineTransforms(transformFn, op.fn!);
-                    break;
-                case 'debounce':
-                    (options as any).debounceMs = op.value;
-                    break;
-                case 'throttle':
-                    (options as any).throttleMs = op.value;
-                    break;
-                case 'buffer':
-                    (options as any).buffering = {
-                        enabled: true,
-                        maxSize: op.value.maxSize,
-                        flushIntervalMs: op.value.flushIntervalMs,
-                    };
-                    break;
-                case 'take':
-                    takeCount = op.value;
-                    break;
-                case 'takeUntil':
-                    takeUntilFn = op.fn!;
-                    break;
+        for (let index = 0; index < operations.length; index++) {
+            const operation = operations[index];
+            if (operation?.type === 'take') {
+                takeRemaining.set(index, operation.count);
+            } else if (operation?.type === 'buffer') {
+                bufferStates.set(index, {
+                    values: [],
+                    stopAfter: false,
+                });
             }
         }
 
-        if (filterFn) {
-            (options as any).filter = filterFn;
-        }
+        const cleanup = (): void => {
+            for (const timer of debounceTimers.values()) {
+                clearTimeout(timer);
+            }
 
-        if (transformFn) {
-            (options as any).transform = transformFn;
-        }
+            debounceTimers.clear();
 
-        let wrappedCallback = callback;
-        let callCount = 0;
-        let unsubscribe: UnobserveFn | undefined;
+            for (const state of bufferStates.values()) {
+                if (state.timer) {
+                    clearTimeout(state.timer);
+                    state.timer = undefined;
+                }
+                state.values.length = 0;
+                state.stopAfter = false;
+            }
 
-        if (takeCount > 0 || takeUntilFn) {
-            wrappedCallback = (data: T, subject: IObservableSubject<T>) => {
-                callCount++;
+            bufferStates.clear();
+            throttleTimes.clear();
+        };
 
-                if (takeUntilFn && takeUntilFn(data, subject)) {
-                    unsubscribe?.();
+        const stop = (): boolean => {
+            if (!active) {
+                return false;
+            }
+
+            active = false;
+            cleanup();
+            const release = unsubscribe;
+            unsubscribe = undefined;
+            return release ? release() : false;
+        };
+
+        const finalize = (
+            value: unknown,
+            subject: IObservableSubject<any>,
+            stopAfter: boolean
+        ): void => {
+            try {
+                const result = (callback as ObserverCallback<any>)(value, subject);
+                if (isPromiseLike(result)) {
+                    void Promise.resolve(result).catch(() => undefined);
+                }
+            } finally {
+                if (stopAfter) {
+                    stop();
+                }
+            }
+        };
+
+        const process = (
+            index: number,
+            value: unknown,
+            subject: IObservableSubject<any>,
+            stopAfter: boolean
+        ): void => {
+            if (!active) {
+                return;
+            }
+
+            if (index >= operations.length) {
+                finalize(value, subject, stopAfter);
+                return;
+            }
+
+            const operation = operations[index];
+            if (!operation) {
+                finalize(value, subject, stopAfter);
+                return;
+            }
+
+            switch (operation.type) {
+                case 'filter':
+                    if (!operation.predicate(value, subject)) {
+                        return;
+                    }
+                    process(index + 1, value, subject, stopAfter);
+                    return;
+
+                case 'map':
+                    process(index + 1, operation.transform(value, subject), subject, stopAfter);
+                    return;
+
+                case 'debounce': {
+                    const existingTimer = debounceTimers.get(index);
+                    if (existingTimer) {
+                        clearTimeout(existingTimer);
+                    }
+
+                    const timer = setTimeout(() => {
+                        debounceTimers.delete(index);
+                        process(index + 1, value, subject, stopAfter);
+                    }, operation.ms);
+
+                    debounceTimers.set(index, timer);
                     return;
                 }
 
-                callback(data, subject);
+                case 'throttle': {
+                    const now = Date.now();
+                    const lastExecution = throttleTimes.get(index) ?? 0;
+                    if (now - lastExecution < operation.ms) {
+                        return;
+                    }
 
-                if (takeCount > 0 && callCount >= takeCount) {
-                    unsubscribe?.();
+                    throttleTimes.set(index, now);
+                    process(index + 1, value, subject, stopAfter);
+                    return;
                 }
-            };
-        }
 
-        unsubscribe = this.#subject.addObserver(wrappedCallback, options);
-        return unsubscribe;
-    }
+                case 'buffer': {
+                    const state = bufferStates.get(index);
+                    if (!state) {
+                        return;
+                    }
 
-    #combineFilters(existing: Function | undefined, newFilter: Function): Function {
-        if (!existing) return newFilter;
-        return (data: any, subject: any) => existing(data, subject) && newFilter(data, subject);
-    }
+                    state.values.push(value);
+                    state.stopAfter = state.stopAfter || stopAfter;
 
-    #combineTransforms(existing: Function | undefined, newTransform: Function): Function {
-        if (!existing) return newTransform;
-        return async (data: any, subject: any) => {
-            const result = existing(data, subject);
-            const intermediate = result instanceof Promise ? await result : result;
-            return newTransform(intermediate, subject);
+                    const flush = (): void => {
+                        if (!active || state.values.length === 0) {
+                            return;
+                        }
+
+                        const batch = state.values.slice();
+                        const nextStopAfter = state.stopAfter;
+                        state.values.length = 0;
+                        state.stopAfter = false;
+                        if (state.timer) {
+                            clearTimeout(state.timer);
+                            state.timer = undefined;
+                        }
+                        process(index + 1, batch, subject, nextStopAfter);
+                    };
+
+                    if (state.values.length >= operation.maxSize) {
+                        flush();
+                        return;
+                    }
+
+                    if (!state.timer) {
+                        state.timer = setTimeout(flush, operation.flushIntervalMs);
+                    }
+                    return;
+                }
+
+                case 'take': {
+                    const remaining = takeRemaining.get(index) ?? 0;
+                    if (remaining <= 0) {
+                        stop();
+                        return;
+                    }
+
+                    takeRemaining.set(index, remaining - 1);
+                    process(index + 1, value, subject, stopAfter || remaining === 1);
+                    return;
+                }
+
+                case 'takeUntil':
+                    if (operation.predicate(value, subject)) {
+                        stop();
+                        return;
+                    }
+                    process(index + 1, value, subject, stopAfter);
+                    return;
+            }
         };
+
+        unsubscribe = this.#subject.addObserver((data, subject) => {
+            process(0, data, subject, false);
+        });
+
+        return stop;
     }
 }
 
@@ -146,7 +349,7 @@ export class SubjectGroup<T = any> implements ISubjectGroup<T> {
     readonly #subjects = new Map<SubjectId, IObservableSubject<T>>();
 
     get subjects(): ReadonlyArray<IObservableSubject<T>> {
-        return Array.from(this.#subjects.values());
+        return [...this.#subjects.values()];
     }
 
     add(subject: IObservableSubject<T>): void {
@@ -162,74 +365,66 @@ export class SubjectGroup<T = any> implements ISubjectGroup<T> {
     }
 
     async notifyAll(data: T): Promise<boolean[]> {
-        const promises = Array.from(this.#subjects.values()).map((subject) => subject.notify(data));
-        return Promise.all(promises);
+        return Promise.all([...this.#subjects.values()].map((subject) => subject.notify(data)));
     }
 
     notifyAllSync(data: T): boolean[] {
-        return Array.from(this.#subjects.values()).map((subject) => subject.notifySync(data));
+        return [...this.#subjects.values()].map((subject) => subject.notifySync(data));
     }
 
     async completeAll(): Promise<void> {
-        const promises = Array.from(this.#subjects.values()).map((subject) => subject.complete());
-        await Promise.all(promises);
+        await Promise.all([...this.#subjects.values()].map((subject) => subject.complete()));
     }
 
     disposeAll(): void {
         for (const subject of this.#subjects.values()) {
             subject.dispose();
         }
+
         this.#subjects.clear();
     }
 
-    addObserver(observer: ObserverCallback<T>, options?: ObserverOptions): UnobserveFn[] {
-        const unsubscribers = Array.from(this.#subjects.values()).map((subject) =>
-            subject.addObserver(observer, options)
-        );
-
-        return unsubscribers;
+    addObserver(observer: ObserverCallback<T>, options?: ObserverOptions<T>): UnobserveFn[] {
+        return [...this.#subjects.values()].map((subject) => subject.addObserver(observer, options));
     }
 
     merge(): IObservableSubject<T> {
-        const mergedSubject = createSubject<T>();
-        const unsubscribers: UnobserveFn[] = [];
+        const merged = createSubject<T>();
+        const unsubs = [...this.#subjects.values()].map((subject) =>
+            subject.addObserver((data) => {
+                void merged.notify(data).catch(() => undefined);
+            })
+        );
 
-        for (const subject of this.#subjects.values()) {
-            const unsubscribe = subject.addObserver((data) => {
-                mergedSubject.notify(data);
-            });
-            unsubscribers.push(unsubscribe);
-        }
-
-        const originalDispose = mergedSubject.dispose.bind(mergedSubject);
-        mergedSubject.dispose = () => {
-            unsubscribers.forEach((unsub) => unsub());
-            originalDispose();
-        };
-
-        return mergedSubject;
+        return attachCleanup(merged, () => {
+            for (const unsubscribe of unsubs) {
+                unsubscribe();
+            }
+        });
     }
 
     combineLatest(): IObservableSubject<T[]> {
-        const combinedSubject = createSubject<T[]>();
-        const latestValues = new Map<SubjectId, T>();
-        const hasEmitted = new Set<SubjectId>();
-
-        for (const subject of this.#subjects.values()) {
+        const combined = createSubject<T[]>();
+        const subjects = [...this.#subjects.values()];
+        const latest = new Map<SubjectId, T>();
+        const emitted = new Set<SubjectId>();
+        const unsubs = subjects.map((subject) =>
             subject.addObserver((data) => {
-                latestValues.set(subject.id, data);
-                hasEmitted.add(subject.id);
+                latest.set(subject.id, data);
+                emitted.add(subject.id);
 
-                if (hasEmitted.size === this.#subjects.size) {
-                    const values = Array.from(this.#subjects.values()).map(
-                        (s) => latestValues.get(s.id)!
-                    );
-                    combinedSubject.notify(values);
+                if (emitted.size === subjects.length) {
+                    const values = subjects.map((entry) => latest.get(entry.id) as T);
+                    void combined.notify(values).catch(() => undefined);
                 }
-            });
-        }
+            })
+        );
 
-        return combinedSubject;
+        return attachCleanup(combined, () => {
+            for (const unsubscribe of unsubs) {
+                unsubscribe();
+            }
+        });
     }
 }
 
@@ -240,7 +435,7 @@ export class ObserverConnection<TSource = any, TTarget = any>
     readonly target: IObservableSubject<TTarget>;
     readonly transform?: (data: TSource) => TTarget | Promise<TTarget>;
     #unsubscribe?: UnobserveFn;
-    #isConnected = false;
+    #connected = false;
 
     constructor(
         source: IObservableSubject<TSource>,
@@ -253,34 +448,35 @@ export class ObserverConnection<TSource = any, TTarget = any>
     }
 
     get isConnected(): boolean {
-        return this.#isConnected;
+        return this.#connected;
     }
 
     connect(): void {
-        if (this.#isConnected) {
+        if (this.#connected) {
             return;
         }
 
         this.#unsubscribe = this.source.addObserver(async (data) => {
             try {
-                const transformedData = this.transform ? await this.transform(data) : (data as any);
-                await this.target.notify(transformedData);
+                const next = this.transform ? await this.transform(data) : (data as unknown as TTarget);
+                await this.target.notify(next);
             } catch (error) {
-                await this.target.error(error as Error);
+                await this.target.error(error instanceof Error ? error : new Error(String(error)));
             }
         });
 
-        this.#isConnected = true;
+        this.#connected = true;
     }
 
     disconnect(): void {
-        if (!this.#isConnected || !this.#unsubscribe) {
+        if (!this.#connected) {
             return;
         }
 
-        this.#unsubscribe();
+        this.#connected = false;
+        const unsubscribe = this.#unsubscribe;
         this.#unsubscribe = undefined;
-        this.#isConnected = false;
+        unsubscribe?.();
     }
 
     dispose(): void {
@@ -313,9 +509,17 @@ export function pipe<T, U>(
     transform: (data: T) => U | Promise<U>
 ): IObservableSubject<U> {
     const target = createSubject<U>();
-    const connection = connect(source, target, transform);
-    connection.connect();
-    return target;
+    const unsubscribe = source.addObserver(async (data) => {
+        try {
+            await target.notify(await transform(data));
+        } catch (error) {
+            await target.error(error instanceof Error ? error : new Error(String(error)));
+        }
+    });
+
+    return attachCleanup(target, () => {
+        unsubscribe();
+    });
 }
 
 export function merge<T>(...subjects: IObservableSubject<T>[]): IObservableSubject<T> {
@@ -330,7 +534,16 @@ export function filter<T>(
     source: IObservableSubject<T>,
     predicate: (data: T) => boolean
 ): IObservableSubject<T> {
-    return pipe(source, (data) => (predicate(data) ? data : (undefined as any)));
+    const target = createSubject<T>();
+    const unsubscribe = source.addObserver((data) => {
+        if (predicate(data)) {
+            void target.notify(data).catch(() => undefined);
+        }
+    });
+
+    return attachCleanup(target, () => {
+        unsubscribe();
+    });
 }
 
 export function map<T, U>(
@@ -342,29 +555,42 @@ export function map<T, U>(
 
 export function debounce<T>(source: IObservableSubject<T>, ms: number): IObservableSubject<T> {
     const target = createSubject<T>();
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timer: TimeoutHandle | undefined;
+    const unsubscribe = source.addObserver((data) => {
+        if (timer) {
+            clearTimeout(timer);
+        }
 
-    source.addObserver((data) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-            target.notify(data);
-        }, ms);
+        timer = setTimeout(() => {
+            timer = undefined;
+            void target.notify(data).catch(() => undefined);
+        }, Math.max(0, Math.floor(ms)));
     });
 
-    return target;
+    return attachCleanup(target, () => {
+        if (timer) {
+            clearTimeout(timer);
+            timer = undefined;
+        }
+        unsubscribe();
+    });
 }
 
 export function throttle<T>(source: IObservableSubject<T>, ms: number): IObservableSubject<T> {
     const target = createSubject<T>();
+    const interval = Math.max(0, Math.floor(ms));
     let lastEmission = 0;
-
-    source.addObserver((data) => {
+    const unsubscribe = source.addObserver((data) => {
         const now = Date.now();
-        if (now - lastEmission >= ms) {
-            lastEmission = now;
-            target.notify(data);
+        if (now - lastEmission < interval) {
+            return;
         }
+
+        lastEmission = now;
+        void target.notify(data).catch(() => undefined);
     });
 
-    return target;
+    return attachCleanup(target, () => {
+        unsubscribe();
+    });
 }

@@ -8,9 +8,9 @@ import { Transform } from '../components/transform';
 const getComponentTypeName = (componentType: ComponentType): string =>
     getComponentMetadata(componentType)?.scriptName ?? componentType.name;
 
-export interface EventBus {
-    emit(eventType: string, data: any): void;
-    on(eventType: string, handler: (data: any) => void): () => void;
+export interface EventBus<T extends string = string> {
+    emit(eventType: T, data: unknown): void;
+    on(eventType: T, handler: (data: unknown) => void): () => void;
 }
 
 export type ActorState = 'initializing' | 'active' | 'inactive' | 'destroying' | 'destroyed';
@@ -61,6 +61,19 @@ export interface ActorConfig {
     readonly autoStart?: boolean;
 }
 
+interface ActorPreloadedComponentEntry {
+    readonly componentType: ComponentType<Component>;
+    readonly component: Component;
+    readonly componentName?: string;
+    readonly metadata?: ComponentMetadata;
+}
+
+interface ActorInternalConfig extends ActorConfig {
+    readonly entity?: Entity;
+    readonly skipCoreComponents?: boolean;
+    readonly preloadedComponents?: readonly ActorPreloadedComponentEntry[];
+}
+
 export class Actor<
     TWorld extends World<any> = World<any>,
     TComponents extends readonly ComponentType[] = readonly ComponentType[],
@@ -100,8 +113,10 @@ export class Actor<
             throw new ActorError('Invalid world instance provided', '' as ActorId, 'constructor');
         }
 
+        const internalConfig = config as ActorInternalConfig;
+
         this.world = world;
-        this.entity = world.createEntity();
+        this.entity = internalConfig.entity ?? world.createEntity();
         this.creationTime = performance.now();
 
         this._name = config.name ?? 'Actor';
@@ -118,7 +133,13 @@ export class Actor<
         try {
             world.registerActor(this.entity, this);
 
-            this._initializeCoreComponents();
+            if (internalConfig.preloadedComponents?.length) {
+                this._initializePreloadedComponents(internalConfig.preloadedComponents);
+            }
+
+            if (!internalConfig.skipCoreComponents) {
+                this._initializeCoreComponents();
+            }
 
             this._state = 'active';
 
@@ -147,6 +168,30 @@ export class Actor<
         componentType: ComponentType<T>
     ): ComponentMetadata | undefined {
         return Actor._componentMetadataMap.get(componentType);
+    }
+
+    static createWithComponents<
+        TWorld extends World<any> = World<any>,
+    >(
+        world: TWorld,
+        config: ActorConfig,
+        components: readonly ActorPreloadedComponentEntry[]
+    ): Actor<TWorld> {
+        const componentMap: Record<string, Component> = {};
+
+        for (const entry of components) {
+            componentMap[entry.componentName ?? getComponentTypeName(entry.componentType)] =
+                entry.component;
+        }
+
+        const entity = world.createEntityWithComponents(componentMap);
+
+        return new Actor(world, {
+            ...config,
+            entity,
+            skipCoreComponents: true,
+            preloadedComponents: components,
+        } as ActorConfig) as Actor<TWorld>;
     }
 
     get name(): string {
@@ -314,7 +359,7 @@ export class Actor<
             throw new ComponentError(
                 'Invalid component type provided',
                 this.id,
-                getComponentTypeName((componentType as any) ?? { name: 'unknown' })
+                getComponentTypeName((componentType as unknown as ComponentType) ?? { name: 'unknown' })
             );
         }
 
@@ -648,8 +693,8 @@ export class Actor<
             const HierarchyClass = this._resolveCoreComponent('Hierarchy', Hierarchy);
             const TransformClass = this._resolveCoreComponent('Transform', Transform);
 
-            this.addComponent(HierarchyClass as any);
-            this.addComponent(TransformClass as any);
+            if (HierarchyClass) this.addComponent(HierarchyClass as ComponentType<Hierarchy>);
+            if (TransformClass) this.addComponent(TransformClass as ComponentType<Transform>);
         } catch (error) {
             console.error(
                 new ComponentError(
@@ -659,6 +704,82 @@ export class Actor<
                     error instanceof Error ? error : new Error(String(error))
                 )
             );
+        }
+    }
+
+    private _initializePreloadedComponents(
+        entries: readonly ActorPreloadedComponentEntry[]
+    ): void {
+        const finalizeEntries: Array<{
+            readonly component: Component;
+            readonly componentName: string;
+            readonly runAwake: boolean;
+            readonly runStart: boolean;
+            readonly runEnable: boolean;
+        }> = [];
+        const emitComponentAdded = !!(this._eventBus && typeof this._eventBus.emit === 'function');
+
+        for (const entry of entries) {
+            const metadata = entry.metadata ?? this._getComponentMetadata(entry.componentType);
+            const componentName = entry.componentName ?? getComponentTypeName(entry.componentType);
+
+            if (metadata?.dependencies && metadata.dependencies.length > 0) {
+                throw new ComponentError(
+                    'Preloaded component fast path does not support dependencies',
+                    this.id,
+                    componentName
+                );
+            }
+
+            if (this._components.has(entry.componentType)) {
+                throw new ComponentError(
+                    'Component already exists and is not singleton',
+                    this.id,
+                    componentName
+                );
+            }
+
+            (entry.component as any).entity = this.entity;
+            (entry.component as any).actor = this;
+            (entry.component as any).world = this.world;
+
+            this._components.set(entry.componentType, entry.component);
+            this._componentPriorities.set(entry.componentType, metadata?.priority ?? 0);
+
+            const runAwake = typeof entry.component.awake === 'function';
+            const runStart = this._started && typeof entry.component.start === 'function';
+            const runEnable = this._active && typeof entry.component.onEnable === 'function';
+
+            if (runAwake || runStart || runEnable || emitComponentAdded) {
+                finalizeEntries.push({
+                    component: entry.component,
+                    componentName,
+                    runAwake,
+                    runStart,
+                    runEnable,
+                });
+            }
+        }
+
+        for (const entry of finalizeEntries) {
+            if (entry.runAwake) {
+                this._executeComponentLifecycle(entry.component, 'awake');
+            }
+
+            if (entry.runStart) {
+                this._executeComponentLifecycle(entry.component, 'start');
+            }
+
+            if (entry.runEnable) {
+                this._executeComponentLifecycle(entry.component, 'onEnable');
+            }
+
+            if (emitComponentAdded) {
+                this._emitEvent('actor:componentAdded', {
+                    componentType: entry.componentName,
+                    component: entry.component,
+                });
+            }
         }
     }
 
@@ -672,33 +793,34 @@ export class Actor<
         }
     }
 
-    private _getHierarchyComponent(): any {
+    private _getHierarchyComponent(): Hierarchy | undefined {
         const HierarchyClass = this._resolveCoreComponent('Hierarchy', Hierarchy, false);
 
         if (!HierarchyClass) {
             return undefined;
         }
 
-        return this.getComponent(HierarchyClass as any);
+        return this.getComponent(HierarchyClass as ComponentType<Hierarchy>);
     }
 
     private _resolveCoreComponent(
         name: 'Hierarchy' | 'Transform',
-        fallback: ComponentType,
+        fallback: ComponentType<Component>,
         ensureRegistered: boolean = true
-    ): ComponentType | undefined {
-        const registryComponent =
-            (this.world as any).registry?.[name] || (globalThis as any)[name] || fallback;
+    ): ComponentType<Component> | undefined {
+        const worldAny = this.world as unknown as { registry?: Record<string, ComponentType<Component>> };
+        const globalAny = globalThis as unknown as { Hierarchy?: ComponentType<Hierarchy>; Transform?: ComponentType<Transform> };
+        const registryComponent = (worldAny.registry?.[name] ?? globalAny[name] ?? fallback) as ComponentType<Component>;
 
         if (!registryComponent) {
             return undefined;
         }
 
-        if (ensureRegistered && !this.world.isComponentRegistered(registryComponent as any)) {
-            this.world.registerComponentType(registryComponent as any);
+        if (ensureRegistered && !this.world.isComponentRegistered(registryComponent)) {
+            this.world.registerComponentType(registryComponent);
         }
 
-        return registryComponent as ComponentType;
+        return registryComponent;
     }
 
     private _getSortedComponents(): Array<[ComponentType, Component]> {
@@ -801,7 +923,7 @@ export class Actor<
         }
     }
 
-    private _emitEvent(eventType: string, data: any): void {
+    private _emitEvent(eventType: string, data: Record<string, unknown>): void {
         try {
             if (this._eventBus && typeof this._eventBus.emit === 'function') {
                 this._eventBus.emit(eventType, {
@@ -822,7 +944,7 @@ export class Actor<
         }
     }
 
-    on(eventType: string, handler: (data: any) => void): () => void {
+    on(eventType: string, handler: (data: unknown) => void): () => void {
         if (!this._eventBus || typeof this._eventBus.on !== 'function') {
             console.warn('Event bus not available');
             return () => {};

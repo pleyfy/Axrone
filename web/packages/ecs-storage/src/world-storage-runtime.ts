@@ -12,6 +12,15 @@ export interface WorldDestroyedEntity<
     readonly removedComponents: Record<string, any>;
 }
 
+export interface WorldCreatedEntity<
+    TEntity extends number = number,
+    TArchetypeId extends string = string,
+> {
+    readonly entity: TEntity;
+    readonly archetypeId: TArchetypeId;
+    readonly createdArchetype: boolean;
+}
+
 export interface WorldStorageDebugInfo<
     R extends StorageComponentRegistry,
     TEntity extends number = number,
@@ -66,6 +75,22 @@ export class WorldStorageRuntime<
 
         emptyArchetype.addEntity(entity);
         return entity;
+    }
+
+    createEntityWithComponents(
+        components: Record<string, any>
+    ): WorldCreatedEntity<TEntity, TArchetypeId> {
+        const { entity } = this._entityStore.createEntity();
+        const resolution = this._archetypeStore.getOrCreateArchetype(Object.keys(components));
+
+        resolution.archetype.addEntity(entity, components);
+        this._entityStore.setEntityArchetype(entity, resolution.archetype.id);
+
+        return {
+            entity,
+            archetypeId: resolution.archetype.id,
+            createdArchetype: resolution.created,
+        };
     }
 
     destroyEntity(entity: TEntity): WorldDestroyedEntity<R, TEntity, TArchetypeId> | undefined {

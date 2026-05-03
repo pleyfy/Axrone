@@ -26,6 +26,7 @@ export type {
     SceneMaterialTextureSlot,
 } from './material-registry';
 export {
+    cloneSceneMaterialSurfaceDefinition,
     cloneSceneMaterialDefinition,
     normalizeSceneTextureBinding,
     SceneMaterialRegistry,
@@ -134,6 +135,8 @@ export { SceneRenderRuntime } from './scene-render-runtime';
 
 export type { DirectionalLightConfig } from './components/directional-light';
 export { DirectionalLight } from './components/directional-light';
+export type { FollowCameraControllerConfig } from './components/follow-camera-controller';
+export { FollowCameraController } from './components/follow-camera-controller';
 export type {
     MeshRendererConfig,
     MeshRendererMorphConfig,

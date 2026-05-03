@@ -1,4 +1,6 @@
-type BrandedNumber<T extends string> = number & { readonly __brand: T };
+import type { Brand } from '@axrone/utility';
+
+type BrandedNumber<T extends string> = Brand<number, T>;
 
 type FiniteNumber = BrandedNumber<'finite'>;
 

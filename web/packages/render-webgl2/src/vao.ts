@@ -1,14 +1,7 @@
-declare const __brand: unique symbol;
-declare const __nominal: unique symbol;
-declare const __phantom: unique symbol;
-
 import { IVec2Like, IVec3Like, IVec4Like } from '@axrone/numeric';
-import { TypedArray, ObjectPool, ByteBuffer } from '@axrone/utility';
+import { ObjectPool, ByteBuffer } from '@axrone/memory';
+import type { Brand, TypedArray } from '@axrone/utility';
 import { createBufferFactory, IBuffer, IBufferFactory } from './buffer';
-
-type Brand<T, K extends PropertyKey> = T & { readonly [__brand]: K };
-type Nominal<T, K extends PropertyKey> = T & { readonly [__nominal]: K };
-type Phantom<T, K extends PropertyKey> = T & { readonly [__phantom]: K };
 
 type GLContext = Brand<WebGL2RenderingContext, 'GLContext'>;
 type GLBuffer = IBuffer;

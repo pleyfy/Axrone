@@ -120,4 +120,41 @@ describe('SceneShaderRegistry', () => {
         expect(cloned.uniforms).toEqual(['u_Model']);
         expect(cloned.attributes?.position).toBe('a_Position');
     });
+
+    it('clones shader effect metadata without leaking nested mutations', () => {
+        const definition = {
+            id: 'effect-basic',
+            effect: {
+                format: 'axrone.shader/effect' as const,
+                version: 1 as const,
+                id: 'effect-basic',
+                properties: [
+                    {
+                        name: 'u_Color',
+                        type: 'vec4' as const,
+                        scope: 'material' as const,
+                        inspector: {
+                            control: 'color' as const,
+                        },
+                    },
+                ],
+                vertex: {
+                    main: ['gl_Position = vec4(1.0);'],
+                },
+                fragment: {
+                    precision: 'highp' as const,
+                    outputs: [{ name: 'o_Color', type: 'vec4' as const }],
+                    main: ['o_Color = u_Color;'],
+                },
+            },
+        };
+
+        const cloned = cloneSceneShaderDefinition(definition);
+        const mutableDefinition = definition as any;
+        mutableDefinition.effect.properties[0].inspector.control = 'slider';
+        mutableDefinition.effect.vertex.main.push('gl_Position = vec4(0.0);');
+
+        expect(cloned.effect?.properties?.[0]?.inspector?.control).toBe('color');
+        expect(cloned.effect?.vertex.main).toEqual(['gl_Position = vec4(1.0);']);
+    });
 });

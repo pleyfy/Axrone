@@ -1,4 +1,4 @@
-import { ObjectPool, type ObjectPoolOptions } from '@axrone/utility';
+import { ObjectPool, type ObjectPoolOptions } from '@axrone/memory';
 import type { StorageComponentConstructor, StorageComponentPool } from './types';
 
 export interface ComponentPoolConfig<T = any> {

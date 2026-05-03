@@ -23,11 +23,11 @@ const toVec3 = (
     fallback: Vec3 = Vec3.ZERO
 ): Vec3 => {
     if (value instanceof Vec3) {
-        return new Vec3(value.x, value.y, value.z);
+        return Vec3.from(value);
     }
 
     if (Array.isArray(value) && value.length === 3) {
-        return new Vec3(value[0], value[1], value[2]);
+        return Vec3.fromArray(value);
     }
 
     return fallback.clone();
@@ -66,7 +66,10 @@ export class OrbitCameraController extends Component {
         this._up = normalizeUpVector(toVec3(config.up, Vec3.UP));
         this._minDistance = Math.max(ORBIT_MIN_DISTANCE, config.minDistance ?? 1);
         this._maxDistance = Math.max(this._minDistance, config.maxDistance ?? 64);
-        this._distance = Math.min(this._maxDistance, Math.max(this._minDistance, config.distance ?? 6));
+        this._distance = Math.min(
+            this._maxDistance,
+            Math.max(this._minDistance, config.distance ?? 6)
+        );
         this._azimuth = config.azimuth ?? 0;
         this._elevation = clampElevation(config.elevation ?? 0.35);
         this._autoRotateSpeed = config.autoRotateSpeed ?? 0;
@@ -139,16 +142,13 @@ export class OrbitCameraController extends Component {
         }
 
         const normalizedForward = Vec3.normalize(forward, new Vec3());
-        const up = Math.abs(Vec3.dot(normalizedForward, this._up)) >= ORBIT_PARALLEL_DOT_THRESHOLD
-            ? Math.abs(normalizedForward.y) < ORBIT_PARALLEL_DOT_THRESHOLD
-                ? Vec3.UP
-                : Vec3.FORWARD
-            : this._up;
-        const backward = new Vec3(
-            -normalizedForward.x,
-            -normalizedForward.y,
-            -normalizedForward.z
-        );
+        const up =
+            Math.abs(Vec3.dot(normalizedForward, this._up)) >= ORBIT_PARALLEL_DOT_THRESHOLD
+                ? Math.abs(normalizedForward.y) < ORBIT_PARALLEL_DOT_THRESHOLD
+                    ? Vec3.UP
+                    : Vec3.FORWARD
+                : this._up;
+        const backward = new Vec3(-normalizedForward.x, -normalizedForward.y, -normalizedForward.z);
 
         transform.position = position;
         transform.rotation = Quat.lookRotation(backward, up, new Quat());
@@ -169,17 +169,11 @@ export class OrbitCameraController extends Component {
 
     override deserialize(data: Record<string, any>): void {
         if (Array.isArray(data.target) && data.target.length === 3) {
-            this._target = new Vec3(
-                Number(data.target[0]),
-                Number(data.target[1]),
-                Number(data.target[2])
-            );
+            this._target = Vec3.fromArray(data.target);
         }
 
         if (Array.isArray(data.up) && data.up.length === 3) {
-            this._up = normalizeUpVector(
-                new Vec3(Number(data.up[0]), Number(data.up[1]), Number(data.up[2]))
-            );
+            this._up = normalizeUpVector(Vec3.fromArray(data.up));
         }
 
         if (typeof data.minDistance === 'number') {

@@ -1,4 +1,4 @@
-import type { EventKey } from '@axrone/ecs-events/event';
+import type { EventKey } from '@axrone/event';
 import type { WorldStorageRuntime } from '@axrone/ecs-storage/world-storage-runtime';
 import { getComponentMetadata } from '../decorators/script';
 import type {
@@ -41,6 +41,25 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
         const entity = this._options.storage.createEntity();
         this._options.onMutation();
         return entity;
+    }
+
+    createEntityWithComponents(components: Record<string, unknown>): Entity {
+        const entries = Object.entries(components).filter(([, component]) => component !== undefined);
+
+        if (entries.length === 0) {
+            return this.createEntity();
+        }
+
+        const resolution = this._options.storage.createEntityWithComponents(
+            Object.fromEntries(entries)
+        );
+
+        if (resolution.createdArchetype) {
+            this._options.onStructureChange();
+        }
+
+        this._options.onMutation();
+        return resolution.entity;
     }
 
     destroyEntity(entity: Entity): void {

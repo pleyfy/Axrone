@@ -3,15 +3,20 @@ export {
 } from './component-system/core/component';
 export {
     script,
+    property,
     getComponentMetadata,
+    getComponentPropertyMetadata,
+    getComponentPropertyMetadataByKey,
     getAllScripts,
     getDependencyTree,
     getScriptMetrics,
     setComponentMetadata,
+    setComponentPropertyMetadata,
     validateAllScripts,
     clearScriptCaches,
+    clearComponentPropertyMetadataCaches,
     __debugScriptSystem,
-} from './component-system/decorators/script';
+} from './component-system/decorators';
 export type {
     ComponentConfig,
     ComponentDebug,
@@ -24,7 +29,11 @@ export type {
     ScriptDecoratorOptions,
     ScriptMetadata,
     ValidationResult,
-} from './component-system/decorators/script';
+    PropertyMetadata,
+    PropertyDecoratorOptions,
+    PropertyTypeId,
+    PropertyTypeReference,
+} from './component-system/decorators';
 
 export { Actor, ActorError } from './component-system/core/actor';
 export type {

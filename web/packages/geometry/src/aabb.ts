@@ -1,7 +1,7 @@
 import { IVec2Like, IVec3Like, Vec2, Vec3, Mat4, IMat4Like, EPSILON } from '@axrone/numeric';
 import { ICloneable, Equatable } from '@axrone/utility';
+import type { Brand } from '@axrone/utility';
 
-export type Brand<K, T> = K & { readonly __brand: T };
 export type Radians = Brand<number, 'Radians'>;
 export type Degrees = Brand<number, 'Degrees'>;
 

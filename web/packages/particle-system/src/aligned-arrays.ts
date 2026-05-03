@@ -1,8 +1,10 @@
 import { ICloneable } from '@axrone/utility';
+import type {
+    Brand,
+    NumericTypedArray as TypedArray,
+    NumericTypedArrayConstructor as TypedArrayConstructor,
+} from '@axrone/utility';
 import { IDisposable } from './disposable';
-
-declare const __brand: unique symbol;
-export type Brand<T, K> = T & { [__brand]: K };
 
 export type Alignment = 16 | 32 | 64;
 export type ComponentCount = 2 | 3 | 4;
@@ -11,20 +13,6 @@ export type VectorType = 'vec2' | 'vec3' | 'vec4';
 export type AlignedArrayBuffer = Brand<ArrayBuffer, 'AlignedBuffer'>;
 export type VectorIndex = Brand<number, 'VectorIndex'>;
 export type ComponentIndex = Brand<number, 'ComponentIndex'>;
-
-export interface TypedArrayConstructor {
-    new (buffer: ArrayBufferLike, byteOffset?: number, length?: number): TypedArray;
-    new (length: number): TypedArray;
-    readonly BYTES_PER_ELEMENT: number;
-}
-
-export interface TypedArray extends ArrayBufferView {
-    readonly length: number;
-    [index: number]: number;
-    set(array: ArrayLike<number>, offset?: number): void;
-    subarray(begin?: number, end?: number): TypedArray;
-    fill(value: number, start?: number, end?: number): void;
-}
 
 export class AlignedArrayError extends Error {
     readonly code: string;

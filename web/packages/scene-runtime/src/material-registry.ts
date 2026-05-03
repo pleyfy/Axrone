@@ -1,7 +1,16 @@
 import { cloneTextureBinding, decodeSceneValue, encodeSceneValue } from './serialization';
 import type {
+    SceneMaterialBlendStateDefinition,
+    SceneMaterialBlendTargetStateDefinition,
     SceneMaterialDefinition,
+    SceneMaterialDepthStencilStateDefinition,
     SceneMaterialHandle,
+    SceneMaterialPassDefinition,
+    SceneMaterialRasterizerStateDefinition,
+    SceneMaterialSurfaceDefinition,
+    SceneMaterialSurfaceFeaturesDefinition,
+    SceneMaterialSurfaceTextureBindingDefinition,
+    SceneMaterialStencilFaceStateDefinition,
     SceneTextureBindingDefinition,
     SceneUniformValue,
 } from './types';
@@ -23,9 +32,137 @@ export interface SceneMaterialResource {
     readonly shaderId: string;
     readonly uniforms: Map<string, SceneUniformValue>;
     readonly textureBindings: Map<string, SceneMaterialTextureBinding>;
+    readonly surface: SceneMaterialSurfaceDefinition | null;
+    readonly passes: readonly SceneMaterialPassDefinition[];
 }
 
 const cloneSceneValue = <T>(value: T): T => decodeSceneValue(encodeSceneValue(value)) as T;
+
+const cloneSurfaceFeaturesDefinition = (
+    definition: SceneMaterialSurfaceFeaturesDefinition | undefined
+): SceneMaterialSurfaceFeaturesDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+          }
+        : undefined;
+
+const cloneSurfaceTextureBindingDefinition = (
+    definition: SceneMaterialSurfaceTextureBindingDefinition | undefined
+): SceneMaterialSurfaceTextureBindingDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+              scale: definition.scale
+                  ? ([...definition.scale] as readonly [number, number])
+                  : undefined,
+              offset: definition.offset
+                  ? ([...definition.offset] as readonly [number, number])
+                  : undefined,
+          }
+        : undefined;
+
+export const cloneSceneMaterialSurfaceDefinition = (
+    definition: SceneMaterialSurfaceDefinition | undefined
+): SceneMaterialSurfaceDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+              features: cloneSurfaceFeaturesDefinition(definition.features),
+              tilingOffset: definition.tilingOffset
+                  ? ([...definition.tilingOffset] as readonly [number, number, number, number])
+                  : undefined,
+              albedo: definition.albedo
+                  ? ([...definition.albedo] as readonly [number, number, number, number])
+                  : undefined,
+              albedoScale: definition.albedoScale
+                  ? ([...definition.albedoScale] as readonly [number, number, number])
+                  : undefined,
+              emissive: definition.emissive
+                  ? ([...definition.emissive] as readonly [number, number, number])
+                  : undefined,
+              emissiveScale: definition.emissiveScale
+                  ? ([...definition.emissiveScale] as readonly [number, number, number])
+                  : undefined,
+              albedoMap: cloneSurfaceTextureBindingDefinition(definition.albedoMap),
+              normalMap: cloneSurfaceTextureBindingDefinition(definition.normalMap),
+              pbrMap: cloneSurfaceTextureBindingDefinition(definition.pbrMap),
+              metallicRoughnessMap: cloneSurfaceTextureBindingDefinition(
+                  definition.metallicRoughnessMap
+              ),
+              occlusionMap: cloneSurfaceTextureBindingDefinition(definition.occlusionMap),
+              emissiveMap: cloneSurfaceTextureBindingDefinition(definition.emissiveMap),
+          }
+        : undefined;
+
+const cloneStencilFaceStateDefinition = (
+    definition: SceneMaterialStencilFaceStateDefinition | undefined
+): SceneMaterialStencilFaceStateDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+          }
+        : undefined;
+
+const cloneRasterizerStateDefinition = (
+    definition: SceneMaterialRasterizerStateDefinition | undefined
+): SceneMaterialRasterizerStateDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+          }
+        : undefined;
+
+const cloneDepthStencilStateDefinition = (
+    definition: SceneMaterialDepthStencilStateDefinition | undefined
+): SceneMaterialDepthStencilStateDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+              front: cloneStencilFaceStateDefinition(definition.front),
+              back: cloneStencilFaceStateDefinition(definition.back),
+          }
+        : undefined;
+
+const cloneBlendTargetStateDefinition = (
+    definition: SceneMaterialBlendTargetStateDefinition
+): SceneMaterialBlendTargetStateDefinition => ({
+    ...definition,
+    colorWriteMask: definition.colorWriteMask
+        ? ([...definition.colorWriteMask] as readonly [boolean, boolean, boolean, boolean])
+        : undefined,
+});
+
+const cloneBlendStateDefinition = (
+    definition: SceneMaterialBlendStateDefinition | undefined
+): SceneMaterialBlendStateDefinition | undefined =>
+    definition
+        ? {
+              ...definition,
+              blendColor: definition.blendColor
+                  ? ([...definition.blendColor] as readonly [number, number, number, number])
+                  : undefined,
+              targets: definition.targets
+                  ? Object.freeze(definition.targets.map(cloneBlendTargetStateDefinition))
+                  : undefined,
+          }
+        : undefined;
+
+const cloneSceneMaterialPassDefinition = (
+    definition: SceneMaterialPassDefinition
+): SceneMaterialPassDefinition => ({
+    ...definition,
+    rasterizerState: cloneRasterizerStateDefinition(definition.rasterizerState),
+    depthStencilState: cloneDepthStencilStateDefinition(definition.depthStencilState),
+    blendState: cloneBlendStateDefinition(definition.blendState),
+});
+
+const cloneSceneMaterialPassDefinitions = (
+    definitions: readonly SceneMaterialPassDefinition[] | undefined
+): readonly SceneMaterialPassDefinition[] | undefined =>
+    definitions
+        ? Object.freeze(definitions.map(cloneSceneMaterialPassDefinition))
+        : undefined;
 
 const compareTextureBindings = (
     left: readonly [string, SceneMaterialTextureBinding],
@@ -40,6 +177,7 @@ const toHandle = (material: SceneMaterialResource): SceneMaterialHandle => ({
     id: material.id,
     shaderId: material.shaderId,
     textureBindings: [...material.textureBindings.keys()],
+    passIds: material.passes.map((pass) => pass.id),
 });
 
 const createTextureSlots = (
@@ -110,7 +248,22 @@ export const cloneSceneMaterialDefinition = (
               ])
           )
         : undefined,
+    surface: cloneSceneMaterialSurfaceDefinition(definition.surface),
+    passes: cloneSceneMaterialPassDefinitions(definition.passes),
 });
+
+export const resolveSceneMaterialPass = (
+    material: Pick<SceneMaterialResource, 'passes'>,
+    materialPassId: string | null | undefined
+): SceneMaterialPassDefinition | null => {
+    const passes = material.passes ?? [];
+
+    if (materialPassId === null || materialPassId === undefined) {
+        return passes[0] ?? null;
+    }
+
+    return passes.find((pass) => pass.id === materialPassId) ?? null;
+};
 
 export class SceneMaterialRegistry {
     private readonly _resources = new Map<string, SceneMaterialResource>();
@@ -133,6 +286,8 @@ export class SceneMaterialRegistry {
                     normalizeSceneTextureBinding(binding),
                 ])
             ),
+            surface: cloneSceneMaterialSurfaceDefinition(definition.surface) ?? null,
+            passes: cloneSceneMaterialPassDefinitions(definition.passes) ?? Object.freeze([]),
         };
 
         this._resources.set(resource.id, resource);

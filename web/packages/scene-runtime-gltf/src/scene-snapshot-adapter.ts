@@ -60,19 +60,16 @@ export const createGltfSceneSnapshot = (
 
     for (const materialKey of prefab.data.materialKeys) {
         const material = database.require({ key: materialKey, kind: 'gltf.material' });
-        materials.push(
-            adaptGltfMaterialDefinitionToScene(
-                normalizeGltfMaterialDefinition(material.data, material.key)
-            )
-        );
+        const runtimeMaterialDefinition = normalizeGltfMaterialDefinition(material.data, material.key);
+        materials.push(adaptGltfMaterialDefinitionToScene(runtimeMaterialDefinition));
 
         const shaderDefinition = resolveGltfShaderDefinition(
-            material.data.definition.shaderId,
+            runtimeMaterialDefinition.shaderId,
             options.resolveShaderDefinition
         );
         if (!shaderDefinition) {
             throw new Error(
-                `glTF runtime bridge cannot resolve shader '${material.data.definition.shaderId}' for material '${materialKey}'`
+                `glTF runtime bridge cannot resolve shader '${runtimeMaterialDefinition.shaderId}' for material '${materialKey}'`
             );
         }
         shaderDefinitions.set(

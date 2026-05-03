@@ -1,4 +1,31 @@
-export type { Primitive, TypedArray, TypedArrayConstructor, Builtin, BuiltinObject } from './types';
+export type {
+    Primitive,
+    TypedArray,
+    TypedArrayConstructor,
+    NumericTypedArray,
+    NumericTypedArrayConstructor,
+    Builtin,
+    BuiltinObject,
+    DeepReadonly,
+    DeepReadonlyPartial,
+    DeepMutable,
+    JsonPrimitive,
+    JsonObject,
+    JsonArray,
+    JsonValue,
+    Brand,
+    Nominal,
+    Opaque,
+    MaybePromise,
+    Constructor,
+    AbstractConstructor,
+    ArrayElement,
+    NonEmptyReadonlyArray,
+    Mutable,
+    ReadonlyTuple2,
+    ReadonlyTuple3,
+    ReadonlyTuple4,
+} from './types';
 
 export type {
     CompareResult,
@@ -40,37 +67,13 @@ export {
     isEqualityComparer,
 } from './comparer/comparer';
 
-export { PriorityQueue } from './memory/containers/queue/priority-queue';
-export type {
-    Comparator,
-    HeapIndex,
-    QueueSize,
-    Capacity,
-    ReadonlyQueueNode,
-    QueueNode,
-    PriorityQueueOptions,
-    PriorityQueueCore,
-    OptionalOperations,
-    QueryOperations,
-    CapacityOperations,
-} from './memory/containers/queue/priority-queue';
-
-export type {
-    PoolableObject,
-    PoolObjectStatus,
-    PoolExpansionStrategy,
-    PoolAllocationStrategy,
-    PoolEvictionPolicy,
-    MemoryPoolOptions,
-    PoolPerformanceMetrics,
-    MemoryPoolOperations,
-    AsyncMemoryPoolOperations,
-} from './memory/pool/mempool';
-
 export type { ICloneable } from './clone/cloner';
-
-export * from './memory/buffering';
-export * from './memory/pool/index';
+export type { CloneSerializableOptions } from './clone/serializable-clone';
+export { cloneData, deepClone } from './clone/deep-clone';
+export { cloneSerializable } from './clone/serializable-clone';
+export type { Disposable, IDisposable } from './disposable';
+export { deepFreeze } from './freeze';
+export { isPlainObject, isRecord } from './object';
 
 export type {
     SingletonKey,
@@ -89,8 +92,6 @@ export type {
     SingletonDisposer,
     ScopeDisposer,
     ExtractSingletonType,
-    Constructor,
-    AbstractConstructor,
 } from './singleton';
 
 export {

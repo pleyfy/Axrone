@@ -93,7 +93,7 @@ const generateCylinderBody = (
         const c = startVertex + j + radialSegments + 1;
         const d = startVertex + j + radialSegments + 2;
 
-        builder.addQuad(a, b, d, c);
+        builder.addQuad(a, c, d, b);
     }
 };
 
@@ -107,11 +107,13 @@ const generateHemisphere = (
     config: Required<ICapsuleConfig>
 ): void => {
     const startVertex = builder.vertexCount;
+    const poleY = center.y + radius * (isTop ? 1 : -1);
+    const polePosition = Vec3.create(center.x, poleY, center.z);
 
-    const centerNormal = config.generateNormals ? Vec3.create(0, isTop ? 1 : -1, 0) : undefined;
-    const centerTexCoord = config.generateTexCoords ? { u: 0.5, v: isTop ? 0 : 1 } : undefined;
+    const poleNormal = config.generateNormals ? Vec3.create(0, isTop ? 1 : -1, 0) : undefined;
+    const poleTexCoord = config.generateTexCoords ? { u: 0.5, v: isTop ? 0 : 1 } : undefined;
 
-    builder.addVertex(center, centerNormal, centerTexCoord);
+    builder.addVertex(polePosition, poleNormal, poleTexCoord);
 
     for (let i = 1; i <= capSegments; i++) {
         const phi = (i / capSegments) * Math.PI * 0.5;
@@ -145,14 +147,14 @@ const generateHemisphere = (
     }
 
     for (let j = 0; j < radialSegments; j++) {
-        const center = startVertex;
+        const pole = startVertex;
         const a = startVertex + 1 + j;
         const b = startVertex + 1 + j + 1;
 
         if (isTop) {
-            builder.addTriangle(center, a, b);
+            builder.addTriangle(pole, b, a);
         } else {
-            builder.addTriangle(center, b, a);
+            builder.addTriangle(pole, a, b);
         }
     }
 

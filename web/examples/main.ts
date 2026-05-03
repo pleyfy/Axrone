@@ -24,6 +24,47 @@ const sourceLoaders = import.meta.glob('./*.ts', {
 const ignoredModules = new Set(['./main.ts', './example-types.ts', './example-runtime.ts']);
 const sourceStoragePrefix = 'axrone:examples:source:';
 
+interface PersistedExampleSource {
+    readonly version: 1;
+    readonly baseHash: string;
+    readonly source: string;
+}
+
+const hashSource = (source: string): string => {
+    let hash = 2166136261;
+
+    for (let index = 0; index < source.length; index += 1) {
+        hash ^= source.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+
+    return (hash >>> 0).toString(16).padStart(8, '0');
+};
+
+const parsePersistedExampleSource = (
+    value: string | null
+): PersistedExampleSource | undefined => {
+    if (!value) {
+        return undefined;
+    }
+
+    try {
+        const parsed = JSON.parse(value) as Partial<PersistedExampleSource>;
+
+        if (
+            parsed.version !== 1 ||
+            typeof parsed.baseHash !== 'string' ||
+            typeof parsed.source !== 'string'
+        ) {
+            return undefined;
+        }
+
+        return parsed as PersistedExampleSource;
+    } catch {
+        return undefined;
+    }
+};
+
 const resolveExamples = async (): Promise<readonly ExampleDescriptor[]> => {
     const entries = Object.entries(moduleLoaders).filter(([path]) => !ignoredModules.has(path));
     const descriptors = await Promise.all(
@@ -55,6 +96,68 @@ const resolveExamples = async (): Promise<readonly ExampleDescriptor[]> => {
 
         return left.example.title.localeCompare(right.example.title);
     });
+};
+
+const normalizeExamplePath = (value: string): string =>
+    value.replace(/\\/g, '/').split('?')[0]!.replace(/^\.?\//, '').replace(/^\//, '');
+
+const toRawExampleUrl = (path: string): string => {
+    const normalizedPath = path.replace(/^\.\//, '');
+    const url = new URL(normalizedPath, import.meta.url);
+    url.searchParams.set('raw', '');
+    url.searchParams.set('t', String(Date.now()));
+    return url.toString();
+};
+
+const fetchLatestDescriptorSource = async (
+    descriptor: ExampleDescriptor
+): Promise<string | undefined> => {
+    try {
+        const rawModule = (await import(
+            /* @vite-ignore */ toRawExampleUrl(descriptor.path)
+        )) as { default?: unknown };
+
+        if (typeof rawModule.default !== 'string') {
+            return undefined;
+        }
+
+        return rawModule.default;
+    } catch {
+        return undefined;
+    }
+};
+
+const loadLatestDescriptorSource = async (descriptor: ExampleDescriptor): Promise<string> => {
+    const fetchedSource = await fetchLatestDescriptorSource(descriptor);
+    if (fetchedSource !== undefined) {
+        return fetchedSource;
+    }
+
+    const sourceLoader = sourceLoaders[descriptor.path];
+    if (!sourceLoader) {
+        return descriptor.source;
+    }
+
+    try {
+        return await sourceLoader();
+    } catch {
+        return descriptor.source;
+    }
+};
+
+const refreshDescriptorSource = async (
+    descriptor: ExampleDescriptor
+): Promise<ExampleDescriptor> => {
+    const latestSource = await loadLatestDescriptorSource(descriptor);
+
+    if (latestSource === descriptor.source) {
+        return descriptor;
+    }
+
+    return {
+        ...descriptor,
+        source: latestSource,
+    };
 };
 
 let editorModulePromise: Promise<EditorModule> | undefined;
@@ -183,6 +286,7 @@ const editorPanel = app.querySelector<HTMLElement>('.editor-panel');
 if (
     !exampleSelect ||
     !host ||
+    !status ||
     !editorHost ||
     !editorCaption ||
     !editorStatus ||
@@ -215,8 +319,9 @@ let currentDescriptor: ExampleDescriptor | undefined;
 let currentRunToken = 0;
 let isApplyingEditorSource = false;
 let autoRun = true; // Default to enabled
-let rerunTimer: number | undefined;
+let rerunTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
 let editor: LiveEditorController | undefined;
+let editorPromise: Promise<LiveEditorController> | undefined;
 
 // Status Helpers
 const setStatus = (message: string, mode: 'loading' | 'ready' | 'error' = 'ready') => {
@@ -230,17 +335,39 @@ const setEditorStatus = (message: string, mode: 'loading' | 'ready' | 'error' = 
 };
 
 // Local Storage Helpers
-const readPersistedSource = (path: string): string | undefined => {
+const readPersistedSource = (descriptor: ExampleDescriptor): string | undefined => {
     try {
-        return globalThis.localStorage.getItem(`${sourceStoragePrefix}${path}`) ?? undefined;
+        const storageKey = `${sourceStoragePrefix}${descriptor.path}`;
+        const payload = parsePersistedExampleSource(globalThis.localStorage.getItem(storageKey));
+
+        if (!payload) {
+            globalThis.localStorage.removeItem(storageKey);
+            return undefined;
+        }
+
+        if (payload.baseHash !== hashSource(descriptor.source)) {
+            globalThis.localStorage.removeItem(storageKey);
+            return undefined;
+        }
+
+        return payload.source;
     } catch {
         return undefined;
     }
 };
 
-const persistSource = (path: string, source: string) => {
+const persistSource = (descriptor: ExampleDescriptor, source: string) => {
     try {
-        globalThis.localStorage.setItem(`${sourceStoragePrefix}${path}`, source);
+        const payload: PersistedExampleSource = {
+            version: 1,
+            baseHash: hashSource(descriptor.source),
+            source,
+        };
+
+        globalThis.localStorage.setItem(
+            `${sourceStoragePrefix}${descriptor.path}`,
+            JSON.stringify(payload)
+        );
     } catch {
         // Ignore environments where local storage is unavailable.
     }
@@ -255,7 +382,7 @@ const clearPersistedSource = (path: string) => {
 };
 
 const getEffectiveSource = (descriptor: ExampleDescriptor): string => {
-    return sourceOverrides.get(descriptor.path) ?? readPersistedSource(descriptor.path) ?? descriptor.source;
+    return sourceOverrides.get(descriptor.path) ?? readPersistedSource(descriptor) ?? descriptor.source;
 };
 
 const syncSourceOverride = (descriptor: ExampleDescriptor, source: string) => {
@@ -266,7 +393,7 @@ const syncSourceOverride = (descriptor: ExampleDescriptor, source: string) => {
     }
 
     sourceOverrides.set(descriptor.path, source);
-    persistSource(descriptor.path, source);
+    persistSource(descriptor, source);
 };
 
 const updateEditorCaption = (descriptor: ExampleDescriptor, source: string) => {
@@ -304,54 +431,68 @@ const ensureEditor = async (descriptor: ExampleDescriptor): Promise<LiveEditorCo
         return editor;
     }
 
-    const [editorModule, compilerModule] = await Promise.all([
-        getEditorModule(),
-        getCompilerModule(),
-    ]);
-    editorSupportedImports.textContent = `Supported: ${compilerModule
-        .getSupportedPlaygroundImports()
-        .join(', ')}`;
+    if (editorPromise) {
+        return editorPromise;
+    }
 
-    const initialSource = compilerModule.normalizePlaygroundSource(getEffectiveSource(descriptor));
-    syncSourceOverride(descriptor, initialSource);
+    editorPromise = (async () => {
+        const [editorModule, compilerModule] = await Promise.all([
+            getEditorModule(),
+            getCompilerModule(),
+        ]);
+        editorSupportedImports.textContent = `Supported: ${compilerModule
+            .getSupportedPlaygroundImports()
+            .join(', ')}`;
 
-    editor = editorModule.createLiveEditor({
-        container: editorHost,
-        value: initialSource,
-        path: descriptor.path,
-        onChange: () => {
-            if (isApplyingEditorSource || !currentDescriptor || !editor) {
-                return;
-            }
+        const initialSource = compilerModule.normalizePlaygroundSource(
+            getEffectiveSource(descriptor)
+        );
+        syncSourceOverride(descriptor, initialSource);
 
-            const nextSource = editor.getValue();
+        const createdEditor = editorModule.createLiveEditor({
+            container: editorHost,
+            value: initialSource,
+            path: descriptor.path,
+            onChange: () => {
+                if (isApplyingEditorSource || !currentDescriptor || !editor) {
+                    return;
+                }
 
-            if (nextSource === currentDescriptor.source) {
-                sourceOverrides.delete(currentDescriptor.path);
-                clearPersistedSource(currentDescriptor.path);
-            } else {
-                sourceOverrides.set(currentDescriptor.path, nextSource);
-                persistSource(currentDescriptor.path, nextSource);
-            }
+                const nextSource = editor.getValue();
 
-            updateEditorCaption(currentDescriptor, nextSource);
+                if (nextSource === currentDescriptor.source) {
+                    sourceOverrides.delete(currentDescriptor.path);
+                    clearPersistedSource(currentDescriptor.path);
+                } else {
+                    sourceOverrides.set(currentDescriptor.path, nextSource);
+                    persistSource(currentDescriptor, nextSource);
+                }
 
-            if (!autoRun) {
-                setEditorStatus('Changes pending. Use Run to refresh.', 'ready');
-                return;
-            }
+                updateEditorCaption(currentDescriptor, nextSource);
 
-            // Debounce: Wait 500ms after last keystroke before refreshing
-            cancelScheduledRun();
-            setEditorStatus('Typing... refreshing soon', 'loading');
-            rerunTimer = globalThis.setTimeout(() => {
-                rerunTimer = undefined;
-                void runCurrentSource('live');
-            }, 500);
-        },
-    });
+                if (!autoRun) {
+                    setEditorStatus('Changes pending. Use Run to refresh.', 'ready');
+                    return;
+                }
 
-    return editor;
+                cancelScheduledRun();
+                setEditorStatus('Typing... refreshing soon', 'loading');
+                rerunTimer = globalThis.setTimeout(() => {
+                    rerunTimer = undefined;
+                    void runCurrentSource('live');
+                }, 500);
+            },
+        });
+
+        editor = createdEditor;
+        return createdEditor;
+    })();
+
+    try {
+        return await editorPromise;
+    } finally {
+        editorPromise = undefined;
+    }
 };
 
 const syncEditorToDescriptor = async (descriptor: ExampleDescriptor) => {
@@ -374,18 +515,55 @@ const syncEditorToDescriptor = async (descriptor: ExampleDescriptor) => {
     liveEditor.focus();
 };
 
+const syncLatestDescriptorToEditor = async (
+    descriptor: ExampleDescriptor,
+    liveEditor: LiveEditorController
+): Promise<ExampleDescriptor> => {
+    const refreshedDescriptor = await refreshDescriptorSource(descriptor);
+
+    if (refreshedDescriptor === descriptor) {
+        return descriptor;
+    }
+
+    const compilerModule = await getCompilerModule();
+    const nextSource = compilerModule.normalizePlaygroundSource(
+        getEffectiveSource(refreshedDescriptor)
+    );
+
+    currentDescriptor = refreshedDescriptor;
+    isApplyingEditorSource = true;
+    liveEditor.setValue(nextSource);
+    isApplyingEditorSource = false;
+    syncSourceOverride(refreshedDescriptor, nextSource);
+    updateEditorCaption(refreshedDescriptor, nextSource);
+
+    return refreshedDescriptor;
+};
+
+const shouldPreservePlaygroundEdits = (descriptor: ExampleDescriptor): boolean =>
+    sourceOverrides.has(descriptor.path);
+
 const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
     if (!currentDescriptor) {
         return;
     }
 
-    const descriptor = currentDescriptor;
+    let descriptor = currentDescriptor;
 
     cancelScheduledRun();
 
     const runToken = ++currentRunToken;
     const compilerModule = await getCompilerModule();
     const liveEditor = editor;
+
+    if (
+        liveEditor &&
+        !sourceOverrides.has(descriptor.path) &&
+        liveEditor.getValue() === descriptor.source
+    ) {
+        descriptor = await syncLatestDescriptorToEditor(descriptor, liveEditor);
+    }
+
     const source = liveEditor?.getValue() ?? getEffectiveSource(descriptor);
     const normalizedSource = compilerModule.normalizePlaygroundSource(source);
 
@@ -448,21 +626,26 @@ const runCurrentSource = async (reason: 'select' | 'manual' | 'live') => {
 };
 
 const selectExample = async (descriptor: ExampleDescriptor) => {
-    if (currentDescriptor?.path === descriptor.path) {
+    const nextDescriptor = await refreshDescriptorSource(descriptor);
+
+    if (
+        currentDescriptor?.path === nextDescriptor.path &&
+        currentDescriptor.source === nextDescriptor.source
+    ) {
         return;
     }
 
     currentRunToken += 1;
     cancelScheduledRun();
-    currentDescriptor = descriptor;
-    exampleSelect.value = descriptor.example.id;
+    currentDescriptor = nextDescriptor;
+    exampleSelect.value = nextDescriptor.example.id;
 
     setStatus('Loading example...', 'loading');
 
     try {
-        await syncEditorToDescriptor(descriptor);
+        await syncEditorToDescriptor(nextDescriptor);
         await runCurrentSource('select');
-        location.hash = descriptor.example.id;
+        location.hash = nextDescriptor.example.id;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setStatus(message, 'error');
@@ -470,31 +653,76 @@ const selectExample = async (descriptor: ExampleDescriptor) => {
     }
 };
 
+if (import.meta.hot) {
+    import.meta.hot.on('vite:afterUpdate', (payload: { updates: Array<{ path: string }> }) => {
+        void (async () => {
+            if (!currentDescriptor || !editor || shouldPreservePlaygroundEdits(currentDescriptor)) {
+                return;
+            }
+
+            const currentPath = normalizeExamplePath(currentDescriptor.path);
+            const touchesCurrentExample = payload.updates.some((update) =>
+                normalizeExamplePath(update.path).endsWith(currentPath)
+            );
+
+            if (!touchesCurrentExample) {
+                return;
+            }
+
+            const compilerModule = await getCompilerModule();
+            const refreshedDescriptor = await refreshDescriptorSource(currentDescriptor);
+            if (refreshedDescriptor.source === currentDescriptor.source) {
+                return;
+            }
+
+            currentDescriptor = refreshedDescriptor;
+            const nextSource = compilerModule.normalizePlaygroundSource(refreshedDescriptor.source);
+            isApplyingEditorSource = true;
+            editor.setValue(nextSource);
+            isApplyingEditorSource = false;
+            syncSourceOverride(refreshedDescriptor, nextSource);
+            updateEditorCaption(refreshedDescriptor, nextSource);
+
+            if (!autoRun) {
+                setEditorStatus('Source updated from disk. Click Run to refresh.', 'ready');
+                return;
+            }
+
+            await runCurrentSource('live');
+        })();
+    });
+}
+
 // Event Listeners
 runButton.addEventListener('click', () => {
     void runCurrentSource('manual');
 });
 
 resetButton.addEventListener('click', () => {
-    if (!currentDescriptor || !editor) {
-        return;
-    }
+    void (async () => {
+        if (!currentDescriptor || !editor) {
+            return;
+        }
 
-    sourceOverrides.delete(currentDescriptor.path);
-    clearPersistedSource(currentDescriptor.path);
+        const latestDescriptor = await refreshDescriptorSource(currentDescriptor);
+        currentDescriptor = latestDescriptor;
 
-    isApplyingEditorSource = true;
-    editor.setValue(currentDescriptor.source);
-    isApplyingEditorSource = false;
+        sourceOverrides.delete(latestDescriptor.path);
+        clearPersistedSource(latestDescriptor.path);
 
-    updateEditorCaption(currentDescriptor, currentDescriptor.source);
+        isApplyingEditorSource = true;
+        editor.setValue(latestDescriptor.source);
+        isApplyingEditorSource = false;
 
-    if (!autoRun) {
-        setEditorStatus('Source reset. Click Run to refresh.', 'ready');
-        return;
-    }
+        updateEditorCaption(latestDescriptor, latestDescriptor.source);
 
-    void runCurrentSource('manual');
+        if (!autoRun) {
+            setEditorStatus('Source reset. Click Run to refresh.', 'ready');
+            return;
+        }
+
+        await runCurrentSource('manual');
+    })();
 });
 
 autoRunToggle.addEventListener('change', () => {

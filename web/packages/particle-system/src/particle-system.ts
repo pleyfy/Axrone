@@ -7,6 +7,7 @@ import type {
     IParticleData,
     ISpatialIndex,
     ParticleSystemEventMap,
+    ParticleSystemEventType,
     ParticleBirthEvent,
     ParticleDeathEvent,
     ParticleCollisionEvent,
@@ -308,14 +309,14 @@ export class ParticleSystem implements IParticleSystem {
         }
     }
 
-    addEventListener<K extends keyof ParticleSystemEventMap>(
+    addEventListener<K extends ParticleSystemEventType>(
         type: K,
         listener: (event: ParticleSystemEventMap[K]) => void
     ): void {
         this._eventEmitter.on(type, listener);
     }
 
-    removeEventListener<K extends keyof ParticleSystemEventMap>(
+    removeEventListener<K extends ParticleSystemEventType>(
         type: K,
         listener: (event: ParticleSystemEventMap[K]) => void
     ): void {

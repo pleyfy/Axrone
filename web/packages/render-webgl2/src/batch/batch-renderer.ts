@@ -1,5 +1,5 @@
 import { Mat4 } from '@axrone/numeric';
-import { PriorityQueue } from '@axrone/utility';
+import { PriorityQueue } from '@axrone/memory';
 import { IBatchable, IBatchRenderer, BatchConfiguration } from './interfaces';
 import { IMaterialInstance } from '../shader/interfaces';
 import { BatchGroup } from './batch-group';
@@ -110,8 +110,8 @@ export class BatchRenderer implements IBatchRenderer {
 
         this.buildRenderQueue(viewMatrix);
 
-        while (!this.renderQueue.isEmpty) {
-            const job = this.renderQueue.tryDequeue();
+        while (!this.renderQueue.isEmpty()) {
+            const job = this.renderQueue.dequeue();
             if (!job) break;
 
             job.group.render(viewMatrix, projectionMatrix);

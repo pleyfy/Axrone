@@ -1,5 +1,9 @@
 import { IDistribution, IRandomState, RandomResult, DistributionSample } from '../types';
 import { createEngineFactory } from '../engines';
+import {
+    sampleManyWithDistributionMetadata,
+    sampleWithDistributionMetadata,
+} from '../internal/distribution-sampling';
 
 const ZIGGURAT_N = 128;
 const ZIG_X: Float64Array = new Float64Array(ZIGGURAT_N + 1);
@@ -45,6 +49,17 @@ export class NormalDistribution implements IDistribution<number> {
             );
         }
     }
+
+    private readonly _createSample = (value: number): DistributionSample<number> => ({
+        value,
+        zscore: (value - this._mean) / this._stdDev,
+        metadata: {
+            algorithm: this.algorithm,
+            mean: this._mean,
+            standardDeviation: this._stdDev,
+            variance: this._stdDev * this._stdDev,
+        },
+    });
 
     public sample = (state: IRandomState): RandomResult<number> => {
         const standardNormal = this.generateStandardNormal(state);
@@ -117,42 +132,14 @@ export class NormalDistribution implements IDistribution<number> {
         return [result, currentState];
     };
 
-    public sampleWithMetadata = (state: IRandomState): RandomResult<DistributionSample<number>> => {
-        const [value, nextState] = this.sample(state);
-        const zscore = (value - this._mean) / this._stdDev;
-
-        const sample: DistributionSample<number> = {
-            value,
-            zscore,
-            metadata: {
-                algorithm: this.algorithm,
-                mean: this._mean,
-                standardDeviation: this._stdDev,
-                variance: this._stdDev * this._stdDev,
-            },
-        };
-
-        return [sample, nextState];
-    };
+    public sampleWithMetadata = (state: IRandomState): RandomResult<DistributionSample<number>> =>
+        sampleWithDistributionMetadata(state, this.sample, this._createSample);
 
     public sampleManyWithMetadata = (
         state: IRandomState,
         count: number
-    ): RandomResult<readonly DistributionSample<number>[]> => {
-        const [values, nextState] = this.sampleMany(state, count);
-        const samples = values.map((value) => ({
-            value,
-            zscore: (value - this._mean) / this._stdDev,
-            metadata: {
-                algorithm: this.algorithm,
-                mean: this._mean,
-                standardDeviation: this._stdDev,
-                variance: this._stdDev * this._stdDev,
-            },
-        }));
-
-        return [samples, nextState];
-    };
+    ): RandomResult<readonly DistributionSample<number>[]> =>
+        sampleManyWithDistributionMetadata(state, count, this.sampleMany, this._createSample);
 
     public probability = (x: number): number => {
         if (!Number.isFinite(x)) {

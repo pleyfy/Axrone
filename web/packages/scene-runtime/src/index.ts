@@ -56,14 +56,34 @@ export {
 } from './scene-profile';
 export type { SceneActorRuntimeOptions } from './scene-actor-runtime';
 export { SceneActorRuntime } from './scene-actor-runtime';
+export type {
+	AnimationStreamingBridgeOptions,
+	AnimationStreamingBridgeWorld,
+	AnimationStreamingChunkResolveResult,
+	AnimationStreamingChunkResolver,
+	AnimationStreamingRequestEvent,
+	AnimationStreamingResolveContext,
+	FailedAnimationStreamingChunk,
+	FetchAnimationStreamingResolverOptions,
+	ResolvedAnimationStreamingChunk,
+} from './animation-streaming-bridge';
+export {
+	AnimationStreamingBridge,
+	bindAnimationStreamingBridge,
+	createFetchAnimationStreamingResolver,
+} from './animation-streaming-bridge';
 export {
 	DEFAULT_SCENE_AMBIENT_LIGHT,
 	DEFAULT_SCENE_CLEAR_COLOR,
+	DEFAULT_SCENE_GROUND_LIGHT,
 	DEFAULT_SCENE_HEIGHT,
 	DEFAULT_SCENE_RENDER_PASS_ID,
+	DEFAULT_SCENE_SKY_LIGHT,
 	DEFAULT_SCENE_WIDTH,
 	resolveSceneAmbientLight,
 	resolveSceneClearColor,
+	resolveSceneGroundLight,
+	resolveSceneSkyLight,
 } from './scene-runtime-defaults';
 export type {
 	SceneSnapshotActorHost,
@@ -73,12 +93,74 @@ export type {
 export { SceneSnapshotRuntime } from './scene-snapshot-runtime';
 
 export type {
+	CompiledRenderShaderEffect,
+	RenderShaderAttributeDefinition,
+	RenderShaderEffectDefinition,
+	RenderShaderEffectRenderStateDefinition,
+	RenderShaderInspectorControlDefinition,
+	RenderShaderInspectorOptionDefinition,
+	RenderShaderInterfaceDefinition,
+	RenderShaderLibraryDefinition,
+	RenderShaderPropertyDefinition,
+	RenderShaderSerializableValue,
+	RenderShaderStageDefinition,
+	RenderShaderStageName,
+	RenderShaderValueType,
+} from '@axrone/render-core';
+export {
+	cloneRenderShaderEffectDefinition,
+	compileRenderShaderEffect,
+} from '@axrone/render-core';
+export type { SceneShaderDefinitionFromEffectOptions } from './shader-effect';
+export { createSceneShaderDefinitionFromEffect } from './shader-effect';
+export type {
+	SceneMaterialInspectorControlDefinition,
+	SceneMaterialInspectorControlKind,
+	SceneMaterialInspectorSection,
+} from './material-inspector';
+export {
+	createSceneMaterialInspectorControls,
+	createSceneMaterialInspectorSections,
+} from './material-inspector';
+export type {
+	ResolveScenePrefabOptions,
+	ScenePrefabWorkflowOptions,
+} from './scene-prefab-workflow';
+export {
+	createScenePrefabWorkflow,
+	resolveScenePrefab,
+	ScenePrefabWorkflow,
+} from './scene-prefab-workflow';
+export {
+	applyScenePrefabOverrides,
+} from './scene-prefab-operations';
+export {
+	diffScenePrefabDefinitions,
+	mergeScenePrefabDefinitions,
+} from './scene-prefab-diff';
+export {
+	createScenePrefabComponentSelector,
+	createScenePrefabScopedNodeId,
+	findScenePrefabComponentIndex,
+	getScenePrefabComponentSelectorKey,
+	hasScenePrefabComposition,
+	serializeScenePrefabPropertyPath,
+} from './scene-prefab-internals';
+
+export type {
 	SceneBuiltInRegistry,
 	SceneCanvasOptions,
 	SceneClearFlag,
 	SceneLoopState,
+	SceneMaterialAlphaMode,
 	SceneMaterialDefinition,
 	SceneMaterialHandle,
+	SceneMaterialPassDefinition,
+	SceneMaterialPassPrimitive,
+	SceneMaterialSurfaceDefinition,
+	SceneMaterialSurfaceFeaturesDefinition,
+	SceneMaterialSurfaceTextureBindingDefinition,
+	SceneMaterialShadingModel,
 	SceneMaterialTextureBindingHandle,
 	SceneMeshDefinition,
 	SceneMeshHandle,
@@ -88,8 +170,37 @@ export type {
 	SceneMeshSemantic,
 	SceneMeshTopology,
 	SceneOptions,
+	ScenePrefabActorField,
+	ScenePrefabActorFieldValue,
+	ScenePrefabComponentId,
+	ScenePrefabComponentSelector,
+	ScenePrefabConflict,
+	ScenePrefabConflictBaseValue,
+	ScenePrefabConflictPolicy,
+	ScenePrefabConflictResolution,
+	ScenePrefabConflictResolver,
 	ScenePrefabDefinition,
+	ScenePrefabDiffResult,
+	ScenePrefabId,
 	ScenePrefabInstantiateOptions,
+	ScenePrefabInstanceId,
+	ScenePrefabMergeDefinitionResult,
+	ScenePrefabMergeOptions,
+	ScenePrefabMergeResult,
+	ScenePrefabMetadata,
+	ScenePrefabNestedInstance,
+	ScenePrefabNodeId,
+	ScenePrefabNodeSource,
+	ScenePrefabOverrideOperation,
+	ScenePrefabPropertyPath,
+	ScenePrefabPropertyPathSegment,
+	ScenePrefabPropertyPathString,
+	ScenePrefabReference,
+	ScenePrefabRegistrySource,
+	ScenePrefabResolveOptions,
+	ScenePrefabResolvedDefinition,
+	ScenePrefabResolutionResult,
+	ScenePrefabResolver,
 	SceneRegistry,
 	SceneRenderPassDefinition,
 	SceneRenderPassHandle,
@@ -115,4 +226,8 @@ export {
 	SceneCapabilityError,
 	SceneError,
 	SceneLifecycleError,
+	ScenePrefabConflictError,
+	ScenePrefabError,
+	ScenePrefabResolutionError,
+	ScenePrefabValidationError,
 } from './errors';

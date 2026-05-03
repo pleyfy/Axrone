@@ -138,6 +138,26 @@ describe('Component', () => {
             expect(comp.priority).toBe(0);
         });
 
+        it('should lazily allocate optional support collections', () => {
+            const comp = new TestComponent();
+            const raw = comp as any;
+
+            expect(raw._cleanupTasks).toBeUndefined();
+            expect(raw._eventSubscriptions).toBeUndefined();
+            expect(raw._dependencies).toBeUndefined();
+            expect(raw._dependents).toBeUndefined();
+
+            const cleanup = vi.fn();
+            comp.addCleanupTask(cleanup);
+
+            expect(raw._cleanupTasks).toBeInstanceOf(Set);
+            expect(raw._eventSubscriptions).toBeUndefined();
+            expect(raw._dependencies).toBeUndefined();
+            expect(raw._dependents).toBeUndefined();
+
+            comp._internalDestroy();
+        });
+
         it('should initialize with custom configuration', () => {
             const comp = new TestComponent(10, 'custom');
 

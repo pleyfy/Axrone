@@ -76,11 +76,12 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@axrone/ecs-events": "^0.1.0",
         "@axrone/ecs-query": "^0.1.0",
         "@axrone/ecs-storage": "^0.1.0",
         "@axrone/ecs-world-support": "^0.1.0",
+        "@axrone/event": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
+        "@axrone/observer": "^0.1.0",
         "@axrone/utility": "^0.0.1"
     }
 }

@@ -1,6 +1,7 @@
 import { Vec4 } from '@axrone/numeric';
 import type { Camera } from './components/camera';
 import type { SceneRenderPassResource } from './render-pass-registry';
+import type { SceneClearFlag } from './types';
 
 const isSameVec4 = (
     left: Vec4 | null | undefined,
@@ -16,6 +17,12 @@ const isSameVec4 = (
         left.z === right.z &&
         left.w === right.w);
 
+const resolveClearFlags = (
+    renderPassClearFlags: readonly SceneClearFlag[],
+    cameraClearFlags?: readonly SceneClearFlag[]
+): readonly SceneClearFlag[] =>
+    cameraClearFlags ? renderPassClearFlags.filter((flag) => cameraClearFlags.includes(flag)) : renderPassClearFlags;
+
 export class SceneRenderPassPreparer {
     private _clearColor: Vec4 | null = null;
     private _clearDepth: number | null = null;
@@ -26,7 +33,7 @@ export class SceneRenderPassPreparer {
     ) {}
 
     prepare(renderPass: SceneRenderPassResource, camera?: Camera): void {
-        const clearFlags = renderPass.clearFlags;
+        const clearFlags = resolveClearFlags(renderPass.clearFlags, camera?.clearFlags);
         let mask = 0;
 
         if (clearFlags.includes('color')) {
