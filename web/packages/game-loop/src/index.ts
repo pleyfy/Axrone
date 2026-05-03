@@ -1,7 +1,6 @@
 export type {
     AfterFrameContext,
     BeforeUpdateContext,
-    DeepReadonly,
     FixedUpdateContext,
     GameLoopContextBase,
     GameLoopController,

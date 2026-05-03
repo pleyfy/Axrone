@@ -2,6 +2,7 @@ import { Component } from '../core/component';
 import { script } from '../decorators/script';
 import type { Actor } from '../core/actor';
 import type { Entity } from '../types/core';
+import type { Transform } from './transform';
 
 @script({
     scriptName: 'Hierarchy',
@@ -15,6 +16,7 @@ import type { Entity } from '../types/core';
     validateDependencies: true,
     enableMetrics: true,
     enableCaching: true,
+    trackInstances: false,
 })
 export class Hierarchy extends Component {
     private _parent?: Hierarchy;
@@ -224,13 +226,13 @@ export class Hierarchy extends Component {
         });
     }
 
-    private _getTransform(): any {
+    private _getTransform(): Transform | undefined {
         if (!this.actor) {
             return undefined;
         }
 
-        const TransformClass =
-            (this.world as any)?.registry?.Transform || (globalThis as any).Transform;
+        const worldAny = this.world as unknown as { registry?: { Transform?: typeof Transform } } | null;
+        const TransformClass = worldAny?.registry?.Transform ?? (globalThis as unknown as { Transform?: typeof Transform }).Transform;
 
         if (!TransformClass) {
             return undefined;

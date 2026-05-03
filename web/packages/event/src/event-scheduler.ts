@@ -1,4 +1,5 @@
-import { PriorityQueue } from '@axrone/utility';
+import { Queue } from '@axrone/memory';
+import { performance } from './performance';
 
 declare const __taskBrand: unique symbol;
 declare const __schedulerBrand: unique symbol;
@@ -69,7 +70,62 @@ interface ITask<T = unknown> {
     readonly maxRetries: number;
     startedAt?: number;
     timeoutId?: ReturnType<typeof setTimeout>;
-    promise?: Promise<T>;
+    state: TaskState;
+}
+
+interface MutableTaskMetrics {
+    id: TaskId;
+    priority: TaskPriority;
+    state: TaskState;
+    queuedAt: number;
+    startedAt?: number;
+    completedAt?: number;
+    executionTime?: number;
+    retryCount: number;
+}
+
+const TASK_PRIORITY_ORDER = [
+    TaskPriority.IMMEDIATE,
+    TaskPriority.HIGH,
+    TaskPriority.NORMAL,
+    TaskPriority.LOW,
+    TaskPriority.IDLE,
+] as const;
+
+function normalizePositiveInteger(value: number | undefined, fallback: number): number {
+    if (value === Infinity) {
+        return Infinity;
+    }
+
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return fallback;
+    }
+
+    return Math.max(1, Math.trunc(value));
+}
+
+function normalizeConcurrencyLimit(value: number | undefined, fallback: number): number {
+    if (value === Infinity || fallback === Infinity) {
+        return value === undefined ? fallback : value;
+    }
+
+    return normalizePositiveInteger(value, fallback);
+}
+
+function normalizeDuration(value: number | undefined, fallback: number): number {
+    if (value === Infinity) {
+        return 0;
+    }
+
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return fallback;
+    }
+
+    return Math.max(0, Math.trunc(value));
+}
+
+function toError(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error));
 }
 
 export class EventScheduler {
@@ -84,11 +140,20 @@ export class EventScheduler {
     private readonly gcIntervalMs: number;
     private readonly name: string;
 
-    private readonly taskQueue = new PriorityQueue<ITask<any>, TaskPriority>();
+    private readonly taskQueues: Record<TaskPriority, Queue<ITask<any>>> = {
+        [TaskPriority.IMMEDIATE]: new Queue<ITask<any>>(),
+        [TaskPriority.HIGH]: new Queue<ITask<any>>(),
+        [TaskPriority.NORMAL]: new Queue<ITask<any>>(),
+        [TaskPriority.LOW]: new Queue<ITask<any>>(),
+        [TaskPriority.IDLE]: new Queue<ITask<any>>(),
+    };
     private readonly activeTasks = new Map<TaskId, ITask<any>>();
-    private readonly taskMetrics = new Map<TaskId, ITaskMetrics>();
+    private readonly taskMetrics = new Map<TaskId, MutableTaskMetrics>();
+    private readonly drainWaiters: Array<() => void> = [];
 
     private taskIdCounter = 0;
+    private queuedCountValue = 0;
+    private delayedRetryCount = 0;
     private completedCount = 0;
     private failedCount = 0;
     private totalExecutionTime = 0;
@@ -101,14 +166,14 @@ export class EventScheduler {
     constructor(options: ISchedulerOptions = {}) {
         this.id =
             `scheduler_${Date.now()}_${Math.random().toString(36).substring(2, 11)}` as SchedulerId;
-        this.concurrencyLimit = Math.max(1, options.concurrencyLimit ?? Infinity);
-        this.maxQueueSize = Math.max(1, options.maxQueueSize ?? 10000);
+        this.concurrencyLimit = normalizeConcurrencyLimit(options.concurrencyLimit, Infinity);
+        this.maxQueueSize = normalizePositiveInteger(options.maxQueueSize, 10000);
         this.enableMetrics = options.enableMetrics ?? true;
         this.enableRetries = options.enableRetries ?? false;
-        this.maxRetries = Math.max(0, options.maxRetries ?? 3);
-        this.retryDelay = Math.max(0, options.retryDelay ?? 1000);
-        this.taskTimeout = Math.max(0, options.taskTimeout ?? 30000);
-        this.gcIntervalMs = Math.max(1000, options.gcIntervalMs ?? 60000);
+        this.maxRetries = Math.max(0, Math.trunc(options.maxRetries ?? 3));
+        this.retryDelay = normalizeDuration(options.retryDelay, 1000);
+        this.taskTimeout = normalizeDuration(options.taskTimeout, 30000);
+        this.gcIntervalMs = Math.max(1000, normalizeDuration(options.gcIntervalMs, 60000));
         this.name = options.name ?? `EventScheduler-${this.id}`;
 
         if (this.gcIntervalMs > 0) {
@@ -121,11 +186,11 @@ export class EventScheduler {
     }
 
     get queuedCount(): number {
-        return this.taskQueue.size as unknown as number;
+        return this.queuedCountValue;
     }
 
     get isAtCapacity(): boolean {
-        return (this.taskQueue.size as unknown as number) >= this.maxQueueSize;
+        return this.queuedCountValue >= this.maxQueueSize;
     }
 
     get disposed(): boolean {
@@ -166,9 +231,8 @@ export class EventScheduler {
             timeout: timeout ?? this.taskTimeout,
             retryCount: 0,
             maxRetries: this.enableRetries ? this.maxRetries : 0,
+            state: TaskState.PENDING,
         };
-
-        (task as any).promise = promise;
 
         promise.catch(() => {});
 
@@ -183,13 +247,16 @@ export class EventScheduler {
         }
 
         try {
-            this.taskQueue.enqueue(task, priority);
+            if (this.activeCount < this.concurrencyLimit && this.queuedCountValue === 0) {
+                this.executeTask(task);
+            } else {
+                this.enqueueTask(task);
+                this.processQueue();
+            }
         } catch (error) {
             _reject(new Error('Failed to enqueue task'));
             return promise;
         }
-
-        this.processQueue();
 
         return promise;
     }
@@ -211,17 +278,13 @@ export class EventScheduler {
     }
 
     async drain(): Promise<void> {
-        if (this.isDisposed) return;
-
-        while (this.activeCount > 0 || this.queuedCount > 0) {
-            await new Promise((resolve) => {
-                if (this.activeCount === 0 && this.queuedCount === 0) {
-                    resolve(void 0);
-                } else {
-                    setTimeout(resolve, 1);
-                }
-            });
+        if (this.isDisposed || this.isIdle()) {
+            return;
         }
+
+        await new Promise<void>((resolve) => {
+            this.drainWaiters.push(resolve);
+        });
     }
 
     getStats(): ISchedulerStats {
@@ -244,11 +307,12 @@ export class EventScheduler {
     }
 
     getTaskMetrics(taskId: TaskId): ITaskMetrics | null {
-        return this.taskMetrics.get(taskId) ?? null;
+        const metrics = this.taskMetrics.get(taskId);
+        return metrics ? { ...metrics } : null;
     }
 
     getAllTaskMetrics(): ReadonlyArray<ITaskMetrics> {
-        return Array.from(this.taskMetrics.values());
+        return Array.from(this.taskMetrics.values(), (metrics) => ({ ...metrics }));
     }
 
     clearMetrics(): void {
@@ -271,25 +335,35 @@ export class EventScheduler {
         }
 
         this.activeTasks.forEach((task) => {
+            task.state = TaskState.CANCELLED;
             if (task.timeoutId) {
                 clearTimeout(task.timeoutId);
             }
             try {
                 task.reject(new Error('Scheduler disposed'));
-            } catch (error) {}
+            } catch {}
         });
 
-        while (!this.taskQueue.isEmpty) {
-            const task = this.taskQueue.tryDequeue();
-            if (task) {
+        for (const priority of TASK_PRIORITY_ORDER) {
+            const queue = this.taskQueues[priority];
+            for (;;) {
+                const task = queue.tryDequeue();
+                if (!task) {
+                    break;
+                }
+
+                task.state = TaskState.CANCELLED;
                 try {
                     task.reject(new Error('Scheduler disposed'));
-                } catch (error) {}
+                } catch {}
             }
         }
 
+        this.queuedCountValue = 0;
+        this.delayedRetryCount = 0;
         this.activeTasks.clear();
         this.taskMetrics.clear();
+        this.resolveDrainWaiters();
     }
 
     async gracefulDispose(): Promise<void> {
@@ -304,16 +378,19 @@ export class EventScheduler {
         if (this.isDisposed) return;
 
         while (this.activeCount < this.concurrencyLimit) {
-            const task = this.taskQueue.tryDequeue();
+            const task = this.dequeueTask();
             if (!task) break;
 
             this.executeTask(task);
         }
+
+        this.resolveDrainWaitersIfIdle();
     }
 
     private async executeTask<T>(task: ITask<T>): Promise<void> {
         const now = performance.now();
         task.startedAt = now;
+        task.state = TaskState.RUNNING;
 
         this.activeTasks.set(task.id, task);
 
@@ -335,18 +412,24 @@ export class EventScheduler {
             const result = await task.fn();
             this.handleTaskSuccess(task, result, now);
         } catch (error) {
-            this.handleTaskError(task, error as Error, now);
+            this.handleTaskError(task, toError(error), now);
         }
     }
 
     private handleTaskSuccess<T>(task: ITask<T>, result: T, startTime: number): void {
+        if (!this.activeTasks.has(task.id) || task.state !== TaskState.RUNNING) {
+            return;
+        }
+
         const executionTime = performance.now() - startTime;
 
         if (task.timeoutId) {
             clearTimeout(task.timeoutId);
+            task.timeoutId = undefined;
         }
 
         this.activeTasks.delete(task.id);
+        task.state = TaskState.COMPLETED;
         this.completedCount++;
         this.totalExecutionTime += executionTime;
         this.throughputCounter++;
@@ -365,40 +448,58 @@ export class EventScheduler {
     }
 
     private handleTaskError<T>(task: ITask<T>, error: Error, startTime: number): void {
+        if (!this.activeTasks.has(task.id) || task.state !== TaskState.RUNNING) {
+            return;
+        }
+
         const executionTime = performance.now() - startTime;
 
         if (task.timeoutId) {
             clearTimeout(task.timeoutId);
+            task.timeoutId = undefined;
         }
 
         this.activeTasks.delete(task.id);
 
         if (this.enableRetries && task.retryCount < task.maxRetries) {
             task.retryCount++;
+            task.state = TaskState.PENDING;
 
             if (this.enableMetrics) {
                 const metrics = this.taskMetrics.get(task.id);
                 if (metrics) {
-                    (metrics as any).retryCount = task.retryCount;
+                    metrics.retryCount = task.retryCount;
+                    metrics.state = TaskState.PENDING;
                 }
             }
 
+            this.delayedRetryCount++;
             setTimeout(() => {
-                if (!this.isDisposed && !this.isAtCapacity) {
-                    try {
-                        this.taskQueue.enqueue(task, task.priority);
-                        this.processQueue();
-                    } catch {
-                        task.reject(error);
-                    }
-                } else {
+                this.delayedRetryCount--;
+
+                if (this.isDisposed) {
                     task.reject(error);
+                    this.resolveDrainWaitersIfIdle();
+                    return;
+                }
+
+                if (this.activeCount < this.concurrencyLimit && this.queuedCountValue === 0) {
+                    this.executeTask(task);
+                    return;
+                }
+
+                if (this.isAtCapacity) {
+                    task.reject(error);
+                } else {
+                    this.enqueueTask(task);
+                    this.processQueue();
                 }
             }, this.retryDelay);
 
             return;
         }
 
+        task.state = TaskState.FAILED;
         this.failedCount++;
         this.totalExecutionTime += executionTime;
         this.throughputCounter++;
@@ -406,9 +507,9 @@ export class EventScheduler {
         if (this.enableMetrics) {
             const metrics = this.taskMetrics.get(task.id);
             if (metrics) {
-                (metrics as any).state = TaskState.FAILED;
-                (metrics as any).completedAt = performance.now();
-                (metrics as any).executionTime = executionTime;
+                metrics.state = TaskState.FAILED;
+                metrics.completedAt = performance.now();
+                metrics.executionTime = executionTime;
             }
         }
 
@@ -456,13 +557,52 @@ export class EventScheduler {
     }
 
     private calculateMemoryUsage(): number {
-        const taskSize = 200;
-        const metricsSize = 100;
+        const taskSize = 160;
+        const metricsSize = 80;
 
         return (
             this.activeTasks.size * taskSize +
-            this.taskQueue.size * taskSize +
+            this.queuedCountValue * taskSize +
+            this.delayedRetryCount * 32 +
             this.taskMetrics.size * metricsSize
         );
+    }
+
+    private enqueueTask(task: ITask<any>): void {
+        this.taskQueues[task.priority].enqueue(task);
+        this.queuedCountValue++;
+    }
+
+    private dequeueTask(): ITask<any> | undefined {
+        for (const priority of TASK_PRIORITY_ORDER) {
+            const task = this.taskQueues[priority].tryDequeue();
+            if (task) {
+                this.queuedCountValue--;
+                return task;
+            }
+        }
+
+        return undefined;
+    }
+
+    private isIdle(): boolean {
+        return this.activeTasks.size === 0 && this.queuedCountValue === 0 && this.delayedRetryCount === 0;
+    }
+
+    private resolveDrainWaitersIfIdle(): void {
+        if (this.isIdle()) {
+            this.resolveDrainWaiters();
+        }
+    }
+
+    private resolveDrainWaiters(): void {
+        if (this.drainWaiters.length === 0) {
+            return;
+        }
+
+        const waiters = this.drainWaiters.splice(0, this.drainWaiters.length);
+        for (const resolve of waiters) {
+            resolve();
+        }
     }
 }

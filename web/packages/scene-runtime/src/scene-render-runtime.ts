@@ -1,5 +1,5 @@
 import { Vec3, Vec4 } from '@axrone/numeric';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { Actor, Transform } from '@axrone/ecs-runtime';
 import { selectSceneCamera } from './camera-selector';
 import { SceneCameraFrameStateCollector } from './camera-frame-state';
 import { SceneDrawExecutionContextCache } from './draw-execution-context';
@@ -7,6 +7,7 @@ import { SceneDrawExecutor } from './draw-executor';
 import { SceneFrameUniformBinder } from './frame-uniform-binder';
 import { SceneLightingCollector } from './lighting-collector';
 import { SceneLightingUniformBinder } from './lighting-uniform-binder';
+import { resolveSceneMaterialPass } from './material-registry';
 import { SceneMaterialTextureBinder } from './material-texture-binder';
 import { SceneMorphMeshRuntime } from './morph-mesh-runtime';
 import { SceneRenderFrameState } from './render-frame-state';
@@ -15,6 +16,7 @@ import { SceneRenderPassPreparer } from './render-pass-preparer';
 import { SceneRenderStateApplier } from './render-state-applier';
 import type { SceneResourceRuntime } from './scene-resource-runtime';
 import { SceneSkinningUniformBinder } from './skinning-uniform-binder';
+import { SceneSpriteBatchRuntime } from './sprite-batch-runtime';
 import type { SceneMeshResource } from './mesh-registry';
 import type { SceneMeshDefinition, SceneRenderStats, SceneUniformValue } from './types';
 import { SceneUniformWriter } from './uniform-writer';
@@ -23,6 +25,8 @@ export interface SceneRenderRuntimeOptions {
     readonly gl: WebGL2RenderingContext;
     readonly resources: SceneResourceRuntime;
     readonly ambientLight: Vec3;
+    readonly skyLight: Vec3;
+    readonly groundLight: Vec3;
     readonly defaultClearColor: Vec4;
     readonly getActors: () => readonly Actor[];
     readonly createMeshResource: (definition: SceneMeshDefinition) => SceneMeshResource;
@@ -53,6 +57,7 @@ export class SceneRenderRuntime {
     private readonly _skinningUniformBinder: SceneSkinningUniformBinder;
     private readonly _morphMeshRuntime: SceneMorphMeshRuntime;
     private readonly _drawExecutor: SceneDrawExecutor;
+    private readonly _spriteBatchRuntime: SceneSpriteBatchRuntime;
     private readonly _textureUniformSetter = (
         shader: Parameters<SceneUniformWriter['write']>[0],
         name: string,
@@ -91,6 +96,14 @@ export class SceneRenderRuntime {
             textureUniformSetter: this._textureUniformSetter,
             applyMissingVertexAttributeDefaults: _options.applyMissingVertexAttributeDefaults,
         });
+        this._spriteBatchRuntime = new SceneSpriteBatchRuntime({
+            gl: _options.gl,
+            resources: _options.resources,
+            renderStateApplier: this._renderStateApplier,
+            uniformWriter: this._uniformWriter,
+            materialTextureBinder: this._materialTextureBinder,
+            textureUniformSetter: this._textureUniformSetter,
+        });
     }
 
     get stats(): SceneRenderStats {
@@ -101,11 +114,40 @@ export class SceneRenderRuntime {
         };
     }
 
+    private _isBlendedRenderer(renderer: import('./components/mesh-renderer').MeshRenderer, renderPass: import('./render-pass-registry').SceneRenderPassResource): boolean {
+        if (renderer.materialId === null) {
+            return false;
+        }
+
+        const material = this._options.resources.materials.get(renderer.materialId);
+        if (!material) {
+            return false;
+        }
+
+        const materialPass = resolveSceneMaterialPass(material, renderPass.materialPassId);
+        if (renderPass.materialPassId !== null && !materialPass) {
+            return false;
+        }
+
+        const shader = this._options.resources.shaders.get(material.shaderId);
+        if (!shader) {
+            return false;
+        }
+
+        return this._renderStateApplier.resolveBlendEnabled(shader, renderPass, materialPass);
+    }
+
     render(params: SceneRenderRuntimeParams): void {
         const renderFrame = this._renderFrameState.begin(params.frame);
         const actors = this._options.getActors();
         const camera = selectSceneCamera(actors);
-        const lighting = this._lightingCollector.collect(actors, this._options.ambientLight);
+        const lighting = this._lightingCollector.collect(
+            actors,
+            this._options.ambientLight,
+            this._options.skyLight,
+            this._options.groundLight,
+            (camera?.transform as Transform | undefined)?.worldPosition
+        );
         const renderPasses = this._options.resources.renderPasses.getEnabledResources();
 
         if (renderPasses.length === 0) {
@@ -139,11 +181,24 @@ export class SceneRenderRuntime {
 
             const renderItems = this._renderItemCollector.collect(
                 actors,
-                renderPass.rendererPassId
+                renderPass.rendererPassId,
+                {
+                    cameraPosition: cameraFrame.position,
+                    isBlended: (renderer) => this._isBlendedRenderer(renderer, renderPass),
+                }
             );
             for (const item of renderItems) {
                 this._drawExecutor.execute(item, drawContext, renderFrame);
             }
+
+            this._spriteBatchRuntime.render({
+                actors,
+                cameraFrame,
+                renderPass,
+                frameState: renderFrame,
+                viewportWidth: params.viewportWidth,
+                viewportHeight: params.viewportHeight,
+            });
         }
 
         this._options.gl.bindVertexArray(null);
@@ -156,5 +211,6 @@ export class SceneRenderRuntime {
 
     clear(): void {
         this._morphMeshRuntime.clear();
+        this._spriteBatchRuntime.clear();
     }
 }

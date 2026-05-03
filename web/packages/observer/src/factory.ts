@@ -1,54 +1,50 @@
 import {
+    mergeObserverOptions,
+    mergeSubjectOptions,
+    normalizeObserverOptions,
     ObserverCallback,
-    ObserverId,
-    SubjectId,
     ObserverOptions,
     SubjectOptions,
     IObservableSubject,
     IObserver,
-    UnobserveFn,
-    DEFAULT_OBSERVER_OPTIONS,
 } from './definition';
-import { IObservableFactory, IObserverRegistry, IMemoryManager } from './interfaces';
-import { Subject } from './subject';
-import { ObserverRegistry } from './registry';
+import { IObservableFactory, IMemoryManager, IObserverRegistry } from './interfaces';
 import { MemoryManager } from './memory-manager';
+import { ObserverRegistry } from './registry';
+import { AsyncSubject, BehaviorSubject, ReplaySubject, Subject } from './subject';
 
 class ObserverImpl<T = any> implements IObserver<T> {
-    readonly id: ObserverId;
+    readonly id = Symbol('Observer');
     readonly callback: ObserverCallback<T>;
-    readonly options: Required<ObserverOptions>;
-    readonly createdAt: number;
-    readonly executionCount: number;
-    readonly lastExecuted?: number;
-    readonly isActive: boolean;
+    readonly options: IObserver<T>['options'];
+    readonly createdAt = Date.now();
+    readonly executionCount = 0;
+    readonly lastExecuted = undefined;
+    readonly isActive = true;
 
-    constructor(callback: ObserverCallback<T>, options: ObserverOptions = {}) {
-        this.id = Symbol('Observer');
+    constructor(callback: ObserverCallback<T>, options: ObserverOptions<T> = {}) {
         this.callback = callback;
-        this.options = { ...DEFAULT_OBSERVER_OPTIONS, ...options } as Required<ObserverOptions>;
-        this.createdAt = Date.now();
-        this.executionCount = 0;
-        this.isActive = true;
+        this.options = normalizeObserverOptions(options);
     }
 }
 
 export class ObservableFactory implements IObservableFactory {
     readonly #memoryManager: IMemoryManager;
-    readonly #defaultSubjectOptions: SubjectOptions;
-    readonly #defaultObserverOptions: ObserverOptions;
+    readonly #ownsMemoryManager: boolean;
+    readonly #defaultSubjectOptions: SubjectOptions<any>;
+    readonly #defaultObserverOptions: ObserverOptions<any>;
 
     constructor(
         options: {
-            defaultSubjectOptions?: SubjectOptions;
-            defaultObserverOptions?: ObserverOptions;
+            defaultSubjectOptions?: SubjectOptions<any>;
+            defaultObserverOptions?: ObserverOptions<any>;
             enableMemoryTracking?: boolean;
             memoryManager?: IMemoryManager;
         } = {}
     ) {
         this.#defaultSubjectOptions = options.defaultSubjectOptions ?? {};
         this.#defaultObserverOptions = options.defaultObserverOptions ?? {};
-
+        this.#ownsMemoryManager = options.memoryManager === undefined;
         this.#memoryManager =
             options.memoryManager ??
             new MemoryManager({
@@ -56,17 +52,21 @@ export class ObservableFactory implements IObservableFactory {
             });
     }
 
-    createSubject<T>(options: SubjectOptions = {}): IObservableSubject<T> {
-        const mergedOptions = { ...this.#defaultSubjectOptions, ...options };
+    createSubject<T>(options: SubjectOptions<T> = {}): IObservableSubject<T> {
+        const mergedOptions = mergeSubjectOptions<T>(
+            this.#defaultSubjectOptions as SubjectOptions<T>,
+            options
+        );
         const subject = new Subject<T>(mergedOptions);
-
         this.#memoryManager.trackSubject(subject);
-
         return subject;
     }
 
-    createObserver<T>(callback: ObserverCallback<T>, options: ObserverOptions = {}): IObserver<T> {
-        const mergedOptions = { ...this.#defaultObserverOptions, ...options };
+    createObserver<T>(callback: ObserverCallback<T>, options: ObserverOptions<T> = {}): IObserver<T> {
+        const mergedOptions = mergeObserverOptions<T>(
+            this.#defaultObserverOptions as ObserverOptions<T>,
+            options
+        );
         return new ObserverImpl<T>(callback, mergedOptions);
     }
 
@@ -80,34 +80,43 @@ export class ObservableFactory implements IObservableFactory {
         return new ObserverRegistry({
             enableMemoryTracking: options.enableMemoryTracking ?? true,
             memoryManager: this.#memoryManager,
+            disposeMemoryManager: false,
         });
     }
 
-    createBehaviorSubject<T>(initialValue: T, options: SubjectOptions = {}): BehaviorSubject<T> {
-        return new BehaviorSubject<T>(initialValue, options);
+    createBehaviorSubject<T>(initialValue: T, options: SubjectOptions<T> = {}): BehaviorSubject<T> {
+        return new BehaviorSubject<T>(
+            initialValue,
+            mergeSubjectOptions<T>(this.#defaultSubjectOptions as SubjectOptions<T>, options)
+        );
     }
 
     createReplaySubject<T>(
         bufferSize: number = 10,
-        options: SubjectOptions = {}
+        options: SubjectOptions<T> = {}
     ): ReplaySubject<T> {
-        const replayOptions: SubjectOptions = {
-            ...options,
-            replay: {
-                enabled: true,
-                bufferSize,
-                ...options.replay,
-            },
-        };
-        return new ReplaySubject<T>(replayOptions);
+        return new ReplaySubject<T>(
+            mergeSubjectOptions<T>(this.#defaultSubjectOptions as SubjectOptions<T>, {
+                ...options,
+                replay: {
+                    enabled: true,
+                    bufferSize,
+                    ...options.replay,
+                },
+            })
+        );
     }
 
-    createAsyncSubject<T>(options: SubjectOptions = {}): AsyncSubject<T> {
-        return new AsyncSubject<T>(options);
+    createAsyncSubject<T>(options: SubjectOptions<T> = {}): AsyncSubject<T> {
+        return new AsyncSubject<T>(
+            mergeSubjectOptions<T>(this.#defaultSubjectOptions as SubjectOptions<T>, options)
+        );
     }
 
     dispose(): void {
-        this.#memoryManager.dispose();
+        if (this.#ownsMemoryManager) {
+            this.#memoryManager.dispose();
+        }
     }
 
     getMemoryUsage() {
@@ -119,114 +128,21 @@ export class ObservableFactory implements IObservableFactory {
     }
 }
 
-export class BehaviorSubject<T> extends Subject<T> {
-    #currentValue: T;
-    #hasValue = true;
-
-    constructor(initialValue: T, options: SubjectOptions = {}) {
-        super(options);
-        this.#currentValue = initialValue;
-    }
-
-    get value(): T {
-        if (!this.#hasValue) {
-            throw new Error('BehaviorSubject has no current value');
-        }
-        return this.#currentValue;
-    }
-
-    async notify(data: T): Promise<boolean> {
-        this.#currentValue = data;
-        this.#hasValue = true;
-        return super.notify(data);
-    }
-
-    notifySync(data: T): boolean {
-        this.#currentValue = data;
-        this.#hasValue = true;
-        return super.notifySync(data);
-    }
-
-    addObserver(callback: ObserverCallback<T>, options: ObserverOptions = {}) {
-        const unsubscribe = super.addObserver(callback, options);
-
-        if (this.#hasValue) {
-            setTimeout(() => {
-                callback(this.#currentValue, this);
-            }, 0);
-        }
-
-        return unsubscribe;
-    }
-}
-
-export class ReplaySubject<T> extends Subject<T> {
-    constructor(options: SubjectOptions = {}) {
-        const replayOptions: SubjectOptions = {
-            ...options,
-            replay: {
-                enabled: true,
-                bufferSize: 10,
-                ...options.replay,
-            },
-        };
-        super(replayOptions);
-    }
-
-    addObserver(callback: ObserverCallback<T>, options: ObserverOptions = {}): UnobserveFn {
-        const replayOptions: ObserverOptions = {
-            ...options,
-            replay: {
-                enabled: true,
-                bufferSize: this.options.replay.bufferSize,
-                ...options.replay,
-            },
-        };
-        return super.addObserver(callback, replayOptions);
-    }
-}
-
-export class AsyncSubject<T> extends Subject<T> {
-    #lastValue?: T;
-    #hasValue = false;
-
-    async notify(data: T): Promise<boolean> {
-        this.#lastValue = data;
-        this.#hasValue = true;
-        return true;
-    }
-
-    notifySync(data: T): boolean {
-        this.#lastValue = data;
-        this.#hasValue = true;
-        return true;
-    }
-
-    async complete(): Promise<void> {
-        if (this.#hasValue && this.#lastValue !== undefined) {
-            await super.notify(this.#lastValue);
-        }
-
-        (this as any).isCompleted = true;
-        (this as any).metrics.completedAt = Date.now();
-    }
-}
-
 export const observableFactory = new ObservableFactory();
 
-export const createSubject = <T>(options?: SubjectOptions) =>
+export const createSubject = <T>(options?: SubjectOptions<T>) =>
     observableFactory.createSubject<T>(options);
 
-export const createBehaviorSubject = <T>(initialValue: T, options?: SubjectOptions) =>
+export const createBehaviorSubject = <T>(initialValue: T, options?: SubjectOptions<T>) =>
     observableFactory.createBehaviorSubject<T>(initialValue, options);
 
-export const createReplaySubject = <T>(bufferSize?: number, options?: SubjectOptions) =>
+export const createReplaySubject = <T>(bufferSize?: number, options?: SubjectOptions<T>) =>
     observableFactory.createReplaySubject<T>(bufferSize, options);
 
-export const createAsyncSubject = <T>(options?: SubjectOptions) =>
+export const createAsyncSubject = <T>(options?: SubjectOptions<T>) =>
     observableFactory.createAsyncSubject<T>(options);
 
-export const createObserver = <T>(callback: ObserverCallback<T>, options?: ObserverOptions) =>
+export const createObserver = <T>(callback: ObserverCallback<T>, options?: ObserverOptions<T>) =>
     observableFactory.createObserver<T>(callback, options);
 
 export const createRegistry = (options?: Parameters<ObservableFactory['createRegistry']>[0]) =>

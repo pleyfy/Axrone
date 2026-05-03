@@ -23,6 +23,7 @@
     "dependencies": {
         "@axrone/asset-gltf": "^0.1.0",
         "@axrone/ecs-runtime": "^0.1.0",
+        "@axrone/lighting": "^0.1.0",
         "@axrone/numeric": "^0.0.1",
         "@axrone/render-webgl2": "^0.1.0",
         "@axrone/scene-3d": "^0.1.0",

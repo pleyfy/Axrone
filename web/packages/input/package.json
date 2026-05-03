@@ -21,6 +21,7 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@axrone/event": "^0.1.0"
+        "@axrone/event": "^0.1.0",
+        "@axrone/utility": "^0.0.1"
     }
 }

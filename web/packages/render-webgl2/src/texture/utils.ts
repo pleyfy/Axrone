@@ -446,7 +446,15 @@ export class TextureFormatInfo {
         ...COMPRESSED_FORMAT_DATABASE,
     ]);
 
-    public static getFormatInfo(format: TextureFormat): FormatInfo {
+    private static readonly SRGB_INTERNAL_FORMAT_OVERRIDES = new Map<TextureFormat, number>([
+        [TextureFormat.RGB8, WebGL2RenderingContext.SRGB8],
+        [TextureFormat.RGBA8, WebGL2RenderingContext.SRGB8_ALPHA8],
+    ]);
+
+    public static getFormatInfo(
+        format: TextureFormat,
+        colorSpace: ColorSpace = ColorSpace.LINEAR
+    ): FormatInfo {
         const info = this.formatDatabase.get(format);
         if (!info) {
             throw new TextureError(
@@ -454,7 +462,21 @@ export class TextureFormatInfo {
                 TextureErrorCode.UNSUPPORTED_FORMAT
             );
         }
-        return info;
+
+        if (colorSpace !== ColorSpace.SRGB || info.compressed || info.depth || info.integer) {
+            return info;
+        }
+
+        const srgbInternalFormat = this.SRGB_INTERNAL_FORMAT_OVERRIDES.get(format);
+        if (srgbInternalFormat === undefined) {
+            return info;
+        }
+
+        return {
+            ...info,
+            internalFormat: srgbInternalFormat,
+            srgb: true,
+        };
     }
 
     public static getBytesPerPixel(format: TextureFormat): number {

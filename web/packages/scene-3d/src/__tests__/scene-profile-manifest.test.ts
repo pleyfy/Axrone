@@ -43,6 +43,7 @@ describe('Scene runtime profile manifests', () => {
         expect(profile.id).toBe(SCENE_2D_RUNTIME_PROFILE_ID);
         expect(registry.Animator).toBeDefined();
         expect(registry.Camera).toBeDefined();
+        expect(registry.SpriteRenderer).toBeDefined();
         expect('MeshRenderer' in registry).toBe(false);
         expect('DirectionalLight' in registry).toBe(false);
         expect('OrbitCameraController' in registry).toBe(false);

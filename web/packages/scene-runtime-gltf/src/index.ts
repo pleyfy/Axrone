@@ -1,6 +1,12 @@
 export {
+    GLTF_PBR_SHADER_EFFECT,
+    GLTF_UNLIT_SHADER_EFFECT,
     createGltfPbrShaderDefinition,
+    createGltfRuntimeMaterialPasses,
+    createGltfRuntimeSurfaceDefinition,
+    createGltfRuntimeSurfaceFeatures,
     createGltfUnlitShaderDefinition,
+    resolveGltfRuntimeShaderId,
 } from './internal/runtime-shaders';
 
 export type {

@@ -1,18 +1,18 @@
 import {
     ObserverCallback,
-    UnobserveFn,
+    ObserverEmission,
     ObserverId,
-    SubjectId,
     ObserverOptions,
+    SubjectId,
     SubjectOptions,
     NotificationData,
-    NotificationType,
     IObservableSubject,
     IObserver,
+    UnobserveFn,
 } from './definition';
 
 export interface IObserverSubscription<T = any> extends IObserver<T> {
-    readonly subject: IObservableSubject<T>;
+    readonly subject: IObservableSubject<any>;
     readonly priority: number;
     readonly isDebounced: boolean;
     readonly isThrottled: boolean;
@@ -23,15 +23,15 @@ export interface IObserverSubscription<T = any> extends IObserver<T> {
 }
 
 export interface IObserverRegistry {
-    register<T>(
+    register<T, TOptions extends ObserverOptions<T, any> | undefined = undefined>(
         subject: IObservableSubject<T>,
-        observer: ObserverCallback<T>,
-        options?: ObserverOptions
+        observer: ObserverCallback<ObserverEmission<T, TOptions>>,
+        options?: TOptions
     ): ObserverId;
 
     unregister(observerId: ObserverId): boolean;
 
-    unregisterByCallback<T>(subject: IObservableSubject<T>, observer: ObserverCallback<T>): boolean;
+    unregisterByCallback<T>(subject: IObservableSubject<T>, observer: ObserverCallback<any>): boolean;
 
     getObserver(observerId: ObserverId): IObserverSubscription | undefined;
 
@@ -100,7 +100,7 @@ export interface IReplayBuffer<T = any> {
     getLast(count: number): ReadonlyArray<T>;
     clear(): void;
     size(): number;
-    maxSize: number;
+    readonly maxSize: number;
 }
 
 export interface IObserverScheduler {
@@ -183,21 +183,19 @@ export interface IMemoryManager {
 export interface IObserverValidator {
     validateData<T>(data: T, validator?: (data: T) => boolean): boolean;
     validateObserver(observer: ObserverCallback<any>): boolean;
-    validateOptions(options: ObserverOptions): boolean;
-    validateSubjectOptions(options: SubjectOptions): boolean;
+    validateOptions(options: ObserverOptions<any, any>): boolean;
+    validateSubjectOptions(options: SubjectOptions<any>): boolean;
 }
 
 export interface IObservableFactory {
-    createSubject<T>(options?: SubjectOptions): IObservableSubject<T>;
-    createObserver<T>(callback: ObserverCallback<T>, options?: ObserverOptions): IObserver<T>;
+    createSubject<T>(options?: SubjectOptions<T>): IObservableSubject<T>;
+    createObserver<T>(callback: ObserverCallback<T>, options?: ObserverOptions<T>): IObserver<T>;
     createRegistry(options?: {
         maxSubjects?: number;
         enableMetrics?: boolean;
         enableMemoryTracking?: boolean;
     }): IObserverRegistry;
 }
-
-// Advanced interfaces for enterprise features
 
 export interface IObserverChain<T = any> {
     filter(predicate: (data: T, subject: IObservableSubject<T>) => boolean): IObserverChain<T>;
@@ -219,7 +217,7 @@ export interface ISubjectGroup<T = any> {
     notifyAllSync(data: T): boolean[];
     completeAll(): Promise<void>;
     disposeAll(): void;
-    addObserver(observer: ObserverCallback<T>, options?: ObserverOptions): UnobserveFn[];
+    addObserver(observer: ObserverCallback<T>, options?: ObserverOptions<T>): UnobserveFn[];
     merge(): IObservableSubject<T>;
     combineLatest(): IObservableSubject<T[]>;
 }

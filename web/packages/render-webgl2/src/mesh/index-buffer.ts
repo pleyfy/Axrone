@@ -6,7 +6,7 @@ import {
     IndexType,
     BufferUsage,
 } from './interfaces';
-import { ByteBuffer } from '@axrone/utility';
+import { ByteBuffer } from '@axrone/memory';
 
 export class WebGLIndexBuffer implements IIndexBuffer {
     private readonly gl: WebGL2RenderingContext;

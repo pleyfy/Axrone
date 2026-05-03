@@ -8,6 +8,22 @@ export type { SceneRuntimeKernelOptions } from './scene-runtime-kernel';
 export { SceneRuntimeKernel } from './scene-runtime-kernel';
 export { SceneRuntimeFacade } from './scene-runtime-facade';
 export { SceneSnapshotFacade } from './scene-snapshot-facade';
+export type {
+    AnimationStreamingBridgeOptions,
+    AnimationStreamingBridgeWorld,
+    AnimationStreamingChunkResolveResult,
+    AnimationStreamingChunkResolver,
+    AnimationStreamingRequestEvent,
+    AnimationStreamingResolveContext,
+    FailedAnimationStreamingChunk,
+    FetchAnimationStreamingResolverOptions,
+    ResolvedAnimationStreamingChunk,
+} from './animation-streaming-bridge';
+export {
+    AnimationStreamingBridge,
+    bindAnimationStreamingBridge,
+    createFetchAnimationStreamingResolver,
+} from './animation-streaming-bridge';
 
 export type {
     AnimatorClipConfig,

@@ -1,5 +1,6 @@
 export * from '@axrone/scene-runtime';
 export * from '@axrone/scene-runtime/scene-facade';
+export * from '@axrone/scene-runtime/scene-2d-support';
 
 export {
 	SCENE_2D_BUILT_IN_MANIFEST,

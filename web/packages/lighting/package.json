@@ -1,0 +1,42 @@
+{
+    "name": "@axrone/lighting",
+    "version": "0.1.0",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./core": {
+            "types": "./dist/core/index.d.ts",
+            "import": "./dist/core/index.mjs",
+            "require": "./dist/core/index.js"
+        },
+        "./frame": {
+            "types": "./dist/frame/index.d.ts",
+            "import": "./dist/frame/index.mjs",
+            "require": "./dist/frame/index.js"
+        },
+        "./serialization": {
+            "types": "./dist/serialization/index.d.ts",
+            "import": "./dist/serialization/index.mjs",
+            "require": "./dist/serialization/index.js"
+        }
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run --config vitest.config.ts"
+    },
+    "dependencies": {
+        "@axrone/numeric": "^0.0.1",
+        "@axrone/utility": "^0.0.1"
+    }
+}

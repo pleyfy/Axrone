@@ -1,7 +1,12 @@
 import type { AssetImportDiagnostic } from '../asset-contract';
 import { GltfSchemaError, GltfTopologyError } from '../errors';
 import type { GltfMeshDefinition } from '../asset-ir';
-import type { GltfAccessorJson, GltfMeshBounds, GltfPrimitiveJson } from '../types';
+import type {
+    GltfAccessorJson,
+    GltfDracoDecoderOptions,
+    GltfMeshBounds,
+    GltfPrimitiveJson,
+} from '../types';
 import { type DecodedAccessor, GltfAccessorRuntime } from './accessor-runtime';
 import { GltfResourceRuntime } from './source-runtime';
 
@@ -53,7 +58,13 @@ interface ResolvedPrimitiveGeometry {
     readonly topologyMode: 0 | 1 | 2 | 3 | 4 | 5 | 6;
 }
 
+type DracoDecoderModuleFactory = NonNullable<GltfDracoDecoderOptions['moduleFactory']>;
+type DracoDecoderModuleConfig = Parameters<DracoDecoderModuleFactory>[0];
+
 let dracoDecoderModulePromise: Promise<any> | undefined;
+let browserDracoDecoderModuleFactoryPromise: Promise<DracoDecoderModuleFactory> | undefined;
+const dracoDecoderModulePromisesByWasmUrl = new Map<string, Promise<any>>();
+const dracoDecoderModulePromisesByFactory = new WeakMap<DracoDecoderModuleFactory, Promise<any>>();
 
 const isSupportedAttributeSemantic = (value: string): value is SupportedAttributeSemantic =>
     (SUPPORTED_ATTRIBUTE_SEMANTICS as readonly string[]).includes(value);
@@ -61,11 +72,105 @@ const isSupportedAttributeSemantic = (value: string): value is SupportedAttribut
 const isSupportedMorphTargetSemantic = (value: string): value is SupportedMorphTargetSemantic =>
     (SUPPORTED_MORPH_TARGET_SEMANTICS as readonly string[]).includes(value);
 
-const loadDracoDecoderModule = async (): Promise<any> => {
+const createDracoDecoderModuleConfig = (
+    options: GltfDracoDecoderOptions | undefined
+): DracoDecoderModuleConfig | undefined => {
+    if (!options?.wasmUrl) {
+        return undefined;
+    }
+
+    return {
+        locateFile: (path: string, scriptDirectory: string) =>
+            path === 'draco_decoder_gltf.wasm'
+                ? options.wasmUrl!
+                : `${scriptDirectory}${path}`,
+    };
+};
+
+const isLikelyHtmlWasmResponseError = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error);
+    return (
+        message.includes('WebAssembly.instantiate(): expected magic word 00 61 73 6d') &&
+        message.includes('found 3c 21 64 6f')
+    );
+};
+
+const withDracoDecoderHint = (
+    error: unknown,
+    options: GltfDracoDecoderOptions | undefined
+): never => {
+    if (!options?.wasmUrl && isLikelyHtmlWasmResponseError(error)) {
+        throw new Error(
+            'Failed to initialize the browser Draco decoder because the wasm request resolved to HTML instead of draco_decoder_gltf.wasm. Configure createGltfImporter({ dracoDecoder: { wasmUrl } }) for browser imports that use KHR_draco_mesh_compression.',
+            {
+                cause: error instanceof Error ? error : undefined,
+            }
+        );
+    }
+
+    throw error;
+};
+
+const loadBrowserDracoDecoderModuleFactory = async (): Promise<DracoDecoderModuleFactory> => {
+    browserDracoDecoderModuleFactoryPromise ??= import(
+        'draco3dgltf/draco_decoder_gltf_nodejs.js'
+    ).then((module) => {
+        const candidate =
+            (module as { default?: unknown }).default ??
+            (module as { DracoDecoderModule?: unknown }).DracoDecoderModule;
+        if (typeof candidate !== 'function') {
+            throw new Error('draco3dgltf browser decoder module factory could not be resolved');
+        }
+        return candidate as DracoDecoderModuleFactory;
+    });
+
+    return browserDracoDecoderModuleFactoryPromise;
+};
+
+const loadConfiguredDracoDecoderModule = async (
+    options: GltfDracoDecoderOptions
+): Promise<any> => {
+    const moduleFactory = options.moduleFactory ?? (await loadBrowserDracoDecoderModuleFactory());
+    const cacheKey = options.wasmUrl;
+
+    if (cacheKey) {
+        const cached = dracoDecoderModulePromisesByWasmUrl.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+    } else {
+        const cached = dracoDecoderModulePromisesByFactory.get(moduleFactory);
+        if (cached) {
+            return cached;
+        }
+    }
+
+    const promise = Promise.resolve(moduleFactory(createDracoDecoderModuleConfig(options))).catch(
+        (error) => withDracoDecoderHint(error, options)
+    );
+
+    if (cacheKey) {
+        dracoDecoderModulePromisesByWasmUrl.set(cacheKey, promise);
+    } else {
+        dracoDecoderModulePromisesByFactory.set(moduleFactory, promise);
+    }
+
+    return promise;
+};
+
+const loadDracoDecoderModule = async (runtime: GltfResourceRuntime): Promise<any> => {
+    if (runtime.dracoDecoder?.moduleFactory || runtime.dracoDecoder?.wasmUrl) {
+        return loadConfiguredDracoDecoderModule(runtime.dracoDecoder);
+    }
+
     dracoDecoderModulePromise ??= import('draco3dgltf').then((module) =>
         module.createDecoderModule({})
     );
-    return dracoDecoderModulePromise;
+    try {
+        return await dracoDecoderModulePromise;
+    } catch (error) {
+        return withDracoDecoderHint(error, runtime.dracoDecoder);
+    }
 };
 
 const accessorComponentCount = (type: GltfAccessorJson['type']): number => {
@@ -288,7 +393,7 @@ const decodeDracoPrimitive = async (
     }
 
     const compressedBytes = await runtime.resolveBufferView(extension.bufferView);
-    const decoderModule = await loadDracoDecoderModule();
+    const decoderModule = await loadDracoDecoderModule(runtime);
     const decoderBuffer = new decoderModule.DecoderBuffer();
     const decoder = new decoderModule.Decoder();
     const mesh = new decoderModule.Mesh();

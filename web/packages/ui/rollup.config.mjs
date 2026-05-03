@@ -36,4 +36,9 @@ export default [
         inputRelativePath: 'src/widget.ts',
         outputBasename: 'widget/index',
     }),
+    ...createPackageConfig({
+        packageDir,
+        inputRelativePath: 'src/controls.ts',
+        outputBasename: 'controls/index',
+    }),
 ];

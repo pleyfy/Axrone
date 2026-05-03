@@ -2,6 +2,7 @@ import {
     getBytes,
     isTypedArrayView,
 } from './snapshot-serialization';
+import { isRecord } from '@axrone/utility';
 import {
     asAssetFingerprint,
     asAssetId,
@@ -25,9 +26,6 @@ import type {
 
 const EMPTY_STRING_ARRAY = Object.freeze([]) as readonly string[];
 const EMPTY_PROPERTIES = Object.freeze({}) as Readonly<Record<string, AssetJsonValue>>;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object';
 
 export const uniqueStrings = (values: readonly string[]): readonly string[] => {
     if (values.length === 0) {

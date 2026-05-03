@@ -89,4 +89,51 @@ describe('SceneSnapshotLoader', () => {
             } as any)
         ).rejects.toThrowError(SceneLifecycleError);
     });
+
+    it('starts independent texture registrations concurrently before material creation', async () => {
+        const calls: string[] = [];
+        let slowTextureStarted = false;
+        const loader = new SceneSnapshotLoader({
+            defaultRenderPassId: 'main',
+            defaultClearColor: new Vec4(0, 0, 0, 1),
+            clearExisting: vi.fn(),
+            clearRenderPasses: vi.fn(),
+            registerShader: vi.fn(),
+            registerMesh: vi.fn(),
+            registerSampler: vi.fn(),
+            registerTexture: vi.fn(async (texture) => {
+                calls.push(`start:${texture.id}`);
+                if (texture.id === 'slow') {
+                    slowTextureStarted = true;
+                    await new Promise((resolve) => setTimeout(resolve, 20));
+                }
+                if (texture.id === 'fast') {
+                    expect(slowTextureStarted).toBe(true);
+                }
+                calls.push(`done:${texture.id}`);
+            }),
+            registerRenderPass: vi.fn(),
+            createMaterial: (material) => {
+                calls.push(`material:${material.id}`);
+            },
+            instantiatePrefab: vi.fn(() => []),
+        });
+
+        await loader.load({
+            version: 1,
+            prefab: { id: 'prefab', actors: [] },
+            shaders: [],
+            meshes: [],
+            samplers: [],
+            textures: [
+                { id: 'slow', source: { kind: 'color', color: [1, 1, 1, 1] } },
+                { id: 'fast', source: { kind: 'color', color: [1, 1, 1, 1] } },
+            ],
+            renderPasses: [],
+            materials: [{ id: 'material', shaderId: 'shader' }],
+        } as any);
+
+        expect(calls.slice(0, 2)).toEqual(['start:slow', 'start:fast']);
+        expect(calls.at(-1)).toBe('material:material');
+    });
 });

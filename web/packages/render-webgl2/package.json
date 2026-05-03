@@ -58,6 +58,7 @@
     "dependencies": {
         "@axrone/ecs-runtime": "^0.1.0",
         "@axrone/geometry": "^0.1.0",
+        "@axrone/memory": "^0.0.1",
         "@axrone/numeric": "^0.0.1",
         "@axrone/utility": "^0.0.1"
     }

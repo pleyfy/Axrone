@@ -1,99 +1,108 @@
-// Core types and interfaces
 export type {
-    ObserverCallback,
-    UnobserveFn,
-    ObserverId,
-    SubjectId,
-    ObservationPriority,
     NotificationData,
     NotificationType,
+    ObservationPriority,
+    ObserverBufferingOptions,
+    ObserverCallback,
+    ObserverEmission,
+    ObserverErrorHandling,
     ObserverFilter,
-    ObserverTransform,
+    ObserverId,
     ObserverOptions,
+    ObserverReplayOptions,
+    ObserverTransform,
+    SubjectConcurrencyOptions,
+    SubjectId,
+    SubjectMemoryManagementOptions,
     SubjectOptions,
+    SubjectReplayOptions,
+    SubjectValidationOptions,
     IObservableSubject,
     IObserver,
+    UnobserveFn,
 } from './definition';
 
 export {
+    createNotificationData,
+    createObserverId,
+    createSubjectId,
     DEFAULT_OBSERVER_OPTIONS,
     DEFAULT_SUBJECT_OPTIONS,
-    PRIORITY_VALUES,
+    mergeObserverOptions,
+    mergeSubjectOptions,
+    normalizeObserverOptions,
+    normalizeSubjectOptions,
     OBSERVER_MEMORY_SYMBOLS,
+    PRIORITY_VALUES,
+    isValidNotificationType,
     isValidObserver,
     isValidPriority,
-    isValidNotificationType,
 } from './definition';
 
-// Error classes
 export {
     BaseObserverError,
+    ConcurrencyLimitError,
+    FilterError,
+    MaxObserversExceededError,
     ObserverError,
-    SubjectError,
+    ObserverExecutionError,
     ObserverNotFoundError,
     SubjectCompletedError,
     SubjectDisposedError,
-    MaxObserversExceededError,
-    ObserverExecutionError,
-    ValidationError,
-    ConcurrencyLimitError,
-    FilterError,
+    SubjectError,
     TransformError,
+    ValidationError,
 } from './errors';
 
-// Interfaces
 export type {
-    IObserverSubscription,
-    IObserverRegistry,
-    ISubjectLifecycle,
-    IObserverMetrics,
-    ISubjectMetrics,
-    IObserverBuffer,
-    IReplayBuffer,
-    IObserverScheduler,
-    IObserverDebouncer,
-    IObserverThrottler,
-    IObserverFilterEngine,
     IMemoryManager,
-    IObserverValidator,
     IObservableFactory,
+    IObserverBuffer,
     IObserverChain,
-    ISubjectGroup,
     IObserverConnection,
+    IObserverDebouncer,
+    IObserverFilterEngine,
+    IObserverMetrics,
+    IObserverRegistry,
+    IObserverScheduler,
+    IObserverSubscription,
+    IObserverThrottler,
+    IObserverValidator,
+    IReplayBuffer,
+    ISubjectGroup,
+    ISubjectLifecycle,
+    ISubjectMetrics,
 } from './interfaces';
 
 export type { ISubject } from './subject';
-export { Subject } from './subject';
-export { ObserverRegistry } from './registry';
+export { AsyncSubject, BehaviorSubject, ReplaySubject, Subject } from './subject';
 export { MemoryManager } from './memory-manager';
+export { ObserverRegistry } from './registry';
 
 export {
     ObservableFactory,
-    BehaviorSubject,
-    ReplaySubject,
-    AsyncSubject,
-    observableFactory,
-    createSubject,
-    createBehaviorSubject,
-    createReplaySubject,
     createAsyncSubject,
+    createBehaviorSubject,
     createObserver,
     createRegistry,
+    createReplaySubject,
+    createSubject,
+    observableFactory,
 } from './factory';
 
 export {
     ObserverChain,
-    SubjectGroup,
     ObserverConnection,
+    SubjectGroup,
     chain,
-    group,
-    connect,
-    pipe,
-    merge,
     combineLatest,
-    filter,
-    map,
+    connect,
     debounce,
+    filter,
+    group,
+    map,
+    merge,
+    pipe,
     throttle,
 } from './operators';
 
@@ -101,20 +110,43 @@ import type {
     IObservableSubject,
     IObserver,
     ObserverCallback,
-    UnobserveFn,
     ObserverOptions,
     SubjectOptions,
+    UnobserveFn,
+} from './definition';
+import {
+    mergeObserverOptions,
+    mergeSubjectOptions,
+    normalizeObserverOptions,
+    normalizeSubjectOptions,
+    DEFAULT_OBSERVER_OPTIONS,
+    DEFAULT_SUBJECT_OPTIONS,
 } from './definition';
 import { createSubject } from './factory';
-import { DEFAULT_OBSERVER_OPTIONS, DEFAULT_SUBJECT_OPTIONS } from './definition';
+
+const attachCleanup = <T>(subject: IObservableSubject<T>, cleanup: () => void): IObservableSubject<T> => {
+    const originalDispose = subject.dispose.bind(subject);
+    let cleaned = false;
+
+    subject.dispose = () => {
+        if (!cleaned) {
+            cleaned = true;
+            cleanup();
+        }
+
+        originalDispose();
+    };
+
+    return subject;
+};
 
 export function isObservableSubject(value: unknown): value is IObservableSubject {
     return (
         value !== null &&
         typeof value === 'object' &&
-        typeof (value as any).notify === 'function' &&
-        typeof (value as any).addObserver === 'function' &&
-        typeof (value as any).dispose === 'function' &&
+        typeof (value as IObservableSubject).notify === 'function' &&
+        typeof (value as IObservableSubject).addObserver === 'function' &&
+        typeof (value as IObservableSubject).dispose === 'function' &&
         'id' in value
     );
 }
@@ -123,58 +155,68 @@ export function isObserver(value: unknown): value is IObserver {
     return (
         value !== null &&
         typeof value === 'object' &&
-        typeof (value as any).callback === 'function' &&
+        typeof (value as IObserver).callback === 'function' &&
         'id' in value &&
         'createdAt' in value
     );
 }
 
 export class ObserverUtils {
-    static createTypedSubject<T extends Record<string, any>>(): {
+    static createTypedSubject<T extends Record<PropertyKey, any>>(): {
         [K in keyof T]: IObservableSubject<T[K]>;
     } {
-        return new Proxy({} as any, {
-            get(target, prop) {
-                if (typeof prop === 'string' && !(prop in target)) {
-                    target[prop] = createSubject();
+        return new Proxy({} as { [K in keyof T]?: IObservableSubject<T[K]> }, {
+            get(target, key: keyof T) {
+                if (!(key in target)) {
+                    target[key] = createSubject<T[typeof key]>();
                 }
-                return target[prop];
+                return target[key];
             },
-        });
+        }) as {
+            [K in keyof T]: IObservableSubject<T[K]>;
+        };
     }
 
     static fromPromise<T>(promise: Promise<T>): IObservableSubject<T> {
         const subject = createSubject<T>();
-        promise
-            .then((value) => {
-                subject.notify(value);
-                subject.complete();
+
+        void promise
+            .then(async (value) => {
+                await subject.notify(value);
+                await subject.complete();
             })
-            .catch((error) => {
-                subject.error(error);
+            .catch(async (error) => {
+                await subject.error(error instanceof Error ? error : new Error(String(error)));
             });
+
         return subject;
     }
 
-    static fromArray<T>(array: T[], intervalMs: number = 0): IObservableSubject<T> {
+    static fromArray<T>(array: readonly T[], intervalMs: number = 0): IObservableSubject<T> {
         const subject = createSubject<T>();
 
-        if (intervalMs === 0) {
-            array.forEach((item) => subject.notifySync(item));
-            subject.complete();
-        } else {
-            let index = 0;
-            const interval = setInterval(() => {
-                if (index < array.length) {
-                    subject.notify(array[index++]);
-                } else {
-                    clearInterval(interval);
-                    subject.complete();
-                }
-            }, intervalMs);
+        if (intervalMs <= 0) {
+            for (const item of array) {
+                subject.notifySync(item);
+            }
+            void subject.complete();
+            return subject;
         }
 
-        return subject;
+        let index = 0;
+        const interval = setInterval(() => {
+            if (index >= array.length) {
+                clearInterval(interval);
+                void subject.complete();
+                return;
+            }
+
+            void subject.notify(array[index++]).catch(() => undefined);
+        }, Math.max(1, Math.floor(intervalMs)));
+
+        return attachCleanup(subject, () => {
+            clearInterval(interval);
+        });
     }
 
     static fromEvent<T = Event>(
@@ -183,108 +225,92 @@ export class ObserverUtils {
         options?: AddEventListenerOptions
     ): IObservableSubject<T> {
         const subject = createSubject<T>();
-
         const handler = (event: Event) => {
-            subject.notify(event as T);
+            void subject.notify(event as T).catch(() => undefined);
         };
 
         target.addEventListener(eventName, handler, options);
 
-        const originalDispose = subject.dispose.bind(subject);
-        subject.dispose = () => {
+        return attachCleanup(subject, () => {
             target.removeEventListener(eventName, handler, options);
-            originalDispose();
-        };
-
-        return subject;
+        });
     }
 
     static interval(intervalMs: number): IObservableSubject<number> {
         const subject = createSubject<number>();
-        let count = 0;
+        let current = 0;
+        const interval = setInterval(() => {
+            void subject.notify(current++).catch(() => undefined);
+        }, Math.max(1, Math.floor(intervalMs)));
 
-        const intervalId = setInterval(() => {
-            subject.notify(count++);
-        }, intervalMs);
-
-        const originalDispose = subject.dispose.bind(subject);
-        subject.dispose = () => {
-            clearInterval(intervalId);
-            originalDispose();
-        };
-
-        return subject;
+        return attachCleanup(subject, () => {
+            clearInterval(interval);
+        });
     }
 
     static timer(delayMs: number, intervalMs?: number): IObservableSubject<number> {
         const subject = createSubject<number>();
-        let count = 0;
+        let current = 0;
+        let interval: ReturnType<typeof setInterval> | undefined;
 
-        const timeoutId = setTimeout(() => {
-            subject.notify(count++);
+        const timeout = setTimeout(() => {
+            void subject.notify(current++).catch(() => undefined);
 
-            if (intervalMs !== undefined) {
-                const intervalId = setInterval(() => {
-                    subject.notify(count++);
-                }, intervalMs);
-
-                const originalDispose = subject.dispose.bind(subject);
-                subject.dispose = () => {
-                    clearInterval(intervalId);
-                    originalDispose();
-                };
-            } else {
-                subject.complete();
+            if (intervalMs === undefined) {
+                void subject.complete();
+                return;
             }
-        }, delayMs);
 
-        const originalDispose = subject.dispose.bind(subject);
-        subject.dispose = () => {
-            clearTimeout(timeoutId);
-            originalDispose();
-        };
+            interval = setInterval(() => {
+                void subject.notify(current++).catch(() => undefined);
+            }, Math.max(1, Math.floor(intervalMs)));
+        }, Math.max(0, Math.floor(delayMs)));
 
-        return subject;
+        return attachCleanup(subject, () => {
+            clearTimeout(timeout);
+            if (interval) {
+                clearInterval(interval);
+            }
+        });
     }
 
     static defer<T>(factory: () => IObservableSubject<T>): IObservableSubject<T> {
         const subject = createSubject<T>();
         let source: IObservableSubject<T> | undefined;
-        let unsubscribe: UnobserveFn | undefined;
+        let sourceUnsubscribe: UnobserveFn | undefined;
+
+        const ensureSource = (): void => {
+            if (source) {
+                return;
+            }
+
+            source = factory();
+            sourceUnsubscribe = source.addObserver((data) => {
+                void subject.notify(data).catch(() => undefined);
+            });
+        };
 
         const originalAddObserver = subject.addObserver.bind(subject);
-        subject.addObserver = (callback, options) => {
-            if (!source) {
-                source = factory();
-                unsubscribe = source.addObserver((data) => {
-                    subject.notify(data);
-                });
-            }
+        subject.addObserver = ((callback: ObserverCallback<T>, options?: ObserverOptions<T>) => {
+            ensureSource();
             return originalAddObserver(callback, options);
-        };
+        }) as IObservableSubject<T>['addObserver'];
 
-        const originalDispose = subject.dispose.bind(subject);
-        subject.dispose = () => {
-            if (unsubscribe) {
-                unsubscribe();
-            }
-            if (source) {
-                source.dispose();
-            }
-            originalDispose();
-        };
-
-        return subject;
+        return attachCleanup(subject, () => {
+            sourceUnsubscribe?.();
+            source?.dispose();
+        });
     }
 }
 
 export class ObserverConfig {
-    private static instance: ObserverConfig;
+    private static instance?: ObserverConfig;
+
     private config = {
-        defaultObserverOptions: DEFAULT_OBSERVER_OPTIONS,
-        defaultSubjectOptions: DEFAULT_SUBJECT_OPTIONS,
+        defaultObserverOptions: normalizeObserverOptions(DEFAULT_OBSERVER_OPTIONS),
+        defaultSubjectOptions: normalizeSubjectOptions(DEFAULT_SUBJECT_OPTIONS),
         enableGlobalErrorHandling: true,
-        globalErrorHandler: (error: Error, context: any) => {
+        globalErrorHandler: (error: Error, context: unknown) => {
             console.error('Observer Error:', error, context);
         },
         enableMemoryTracking: true,
@@ -295,18 +321,23 @@ export class ObserverConfig {
         if (!ObserverConfig.instance) {
             ObserverConfig.instance = new ObserverConfig();
         }
+
         return ObserverConfig.instance;
     }
 
     setDefaultObserverOptions(options: Partial<ObserverOptions>): void {
-        this.config.defaultObserverOptions = { ...this.config.defaultObserverOptions, ...options };
+        this.config.defaultObserverOptions = normalizeObserverOptions(
+            mergeObserverOptions(this.config.defaultObserverOptions, options)
+        );
     }
 
     setDefaultSubjectOptions(options: Partial<SubjectOptions>): void {
-        this.config.defaultSubjectOptions = { ...this.config.defaultSubjectOptions, ...options };
+        this.config.defaultSubjectOptions = normalizeSubjectOptions(
+            mergeSubjectOptions(this.config.defaultSubjectOptions, options)
+        );
     }
 
-    setGlobalErrorHandler(handler: (error: Error, context: any) => void): void {
+    setGlobalErrorHandler(handler: (error: Error, context: unknown) => void): void {
         this.config.globalErrorHandler = handler;
     }
 
@@ -323,7 +354,14 @@ export class ObserverConfig {
     }
 
     getConfig() {
-        return { ...this.config };
+        return {
+            defaultObserverOptions: this.config.defaultObserverOptions,
+            defaultSubjectOptions: this.config.defaultSubjectOptions,
+            enableGlobalErrorHandling: this.config.enableGlobalErrorHandling,
+            globalErrorHandler: this.config.globalErrorHandler,
+            enableMemoryTracking: this.config.enableMemoryTracking,
+            enablePerformanceTracking: this.config.enablePerformanceTracking,
+        };
     }
 }
 

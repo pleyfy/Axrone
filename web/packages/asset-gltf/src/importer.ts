@@ -1,5 +1,16 @@
 import { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type {
+    AnimationClipCompressionDefinition,
+    AnimationClipEventDefinition,
+    AnimationClipStreamingCatalogDefinition,
+    AnimationClipStreamingDefinition,
+    AnimationFootContactDefinition,
+    AnimationLayerDefinition,
+    AnimationMotionFeatureDefinition,
+    AnimationParameterDefinition,
+    AnimationRootMotionDefinition,
+} from '@axrone/animation';
+import type {
     AssetImportDiagnostic,
     AssetImportResult,
     AssetImportSource,
@@ -23,10 +34,13 @@ import {
     stripExtension,
     type NormalizedGltfSource,
 } from './internal/source-runtime';
+import { deepFreeze, isPlainObject } from '@axrone/utility';
 import { buildMeshDefinition, collectPrimitiveDiagnostics } from './internal/mesh-runtime';
 import type {
     GltfAccessorJson,
     GltfAnimationClipAsset,
+    GltfAnimationClipMetadata,
+    GltfAnimationControllerMetadata,
     GltfAssetSchema,
     GltfAssetSchemaLike,
     GltfCameraJson,
@@ -40,6 +54,7 @@ import type {
     GltfMaterialTextureBinding,
     GltfMeshAsset,
     GltfMeshJson,
+    GltfSceneJson,
     GltfSkinAsset,
     GltfNodeJson,
     GltfPunctualLightJson,
@@ -66,6 +81,17 @@ const DEFAULT_MATERIAL_NAME = 'Default Material';
 const DEFAULT_DOCUMENT_NAME = 'glTF Document';
 const MAX_SCENE_LOCAL_LIGHTS = 4;
 const RADIANS_TO_DEGREES = 180 / Math.PI;
+const VALID_ANIMATION_PARAMETER_KINDS = new Set(['float', 'int', 'bool', 'trigger']);
+const VALID_ANIMATION_LAYER_MODES = new Set(['override', 'additive']);
+const VALID_ANIMATION_IK_SOLVERS = new Set(['ccd', 'fabrik']);
+const VALID_ANIMATION_CONDITION_KINDS = new Set(['float', 'int', 'bool', 'trigger']);
+const VALID_ANIMATION_CONDITION_OPERATORS = new Set(['<', '<=', '>', '>=', '==', '!=']);
+const ANIMATION_MANIFEST_RESOURCE_NAMES = Object.freeze([
+    'animation-manifest.json',
+    'animations.manifest.json',
+    'animation-controller.json',
+    'animations.json',
+]);
 const SUPPORTED_GLTF_EXTENSIONS = new Set<string>([
     'EXT_meshopt_compression',
     'KHR_draco_mesh_compression',
@@ -85,6 +111,7 @@ interface PrefabBuildResult {
     readonly skinKeys: readonly string[];
     readonly animationKeys: readonly string[];
     readonly materialKeys: readonly string[];
+    readonly animationController?: GltfAnimationControllerMetadata;
     readonly diagnostics: readonly AssetImportDiagnostic[];
 }
 
@@ -94,36 +121,1639 @@ interface GltfSkinBinding {
     readonly inverseBindMatrices?: readonly number[] | Float32Array;
 }
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object' && Array.isArray(value) === false;
+interface PortableAnimationManifestSceneEntry {
+    readonly scene?: number;
+    readonly sceneName?: string;
+    readonly controller?: Record<string, unknown>;
+    readonly clips?: readonly Record<string, unknown>[];
+}
 
-const isTypedArray = (value: unknown): value is ArrayBufferView =>
-    ArrayBuffer.isView(value) && (value instanceof DataView === false);
+interface PortableAnimationManifest {
+    readonly controller?: Record<string, unknown>;
+    readonly scenes?: readonly PortableAnimationManifestSceneEntry[];
+    readonly clips?: readonly Record<string, unknown>[];
+}
 
-const freezeDeep = <T>(value: T): T => {
-    if (value === null || typeof value !== 'object') {
-        return value;
-    }
+interface PortableAnimationFeatureExportDefinition {
+    readonly rootNodeId?: string;
+    readonly rootNodeIndex?: number;
+    readonly sampleInterval?: number;
+    readonly sampleTimes?: readonly number[];
+    readonly forwardAxis?: readonly [number, number, number];
+    readonly tags?: readonly string[];
+    readonly costBias?: number;
+}
 
-    if (value instanceof ArrayBuffer || isTypedArray(value) || value instanceof DataView) {
+interface GltfAnimationClipMetadataSource extends Omit<GltfAnimationClipMetadata, 'id'> {
+    readonly featureExport?: PortableAnimationFeatureExportDefinition;
+}
+
+interface GltfAnimationClipMetadataSourceIndex {
+    readonly byId: ReadonlyMap<string, GltfAnimationClipMetadataSource>;
+    readonly byAnimationIndex: ReadonlyMap<number, GltfAnimationClipMetadataSource>;
+}
+
+const isFiniteNumber = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value);
+
+const isBooleanTuple3 = (value: unknown): value is readonly [boolean, boolean, boolean] =>
+    Array.isArray(value) && value.length === 3 && value.every((entry) => typeof entry === 'boolean');
+
+const isNumberTuple3 = (value: unknown): value is readonly [number, number, number] =>
+    Array.isArray(value) && value.length === 3 && value.every((entry) => isFiniteNumber(entry));
+
+const isNumberTuple4 = (value: unknown): value is readonly [number, number, number, number] =>
+    Array.isArray(value) && value.length === 4 && value.every((entry) => isFiniteNumber(entry));
+
+const maybeFreeze = <T>(value: T, enabled: boolean): T =>
+    (enabled ? (deepFreeze(value) as T) : value);
+
+const cloneSerializableMetadata = (value: unknown): unknown => {
+    if (
+        value === null ||
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+    ) {
         return value;
     }
 
     if (Array.isArray(value)) {
-        for (const item of value) {
-            freezeDeep(item);
+        return value.map((entry) => cloneSerializableMetadata(entry));
+    }
+
+    if (!isPlainObject(value)) {
+        return undefined;
+    }
+
+    const cloned: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+        const clonedEntry = cloneSerializableMetadata(entry);
+        if (clonedEntry !== undefined) {
+            cloned[key] = clonedEntry;
         }
-        return Object.freeze(value) as T;
     }
 
-    for (const nested of Object.values(value as Record<string, unknown>)) {
-        freezeDeep(nested);
-    }
-
-    return Object.freeze(value);
+    return cloned;
 };
 
-const maybeFreeze = <T>(value: T, enabled: boolean): T => (enabled ? freezeDeep(value) : value);
+const createAnimationMetadataDiagnostic = (
+    sceneIndex: number,
+    message: string
+): AssetImportDiagnostic =>
+    Object.freeze({
+        level: 'warning',
+        code: 'gltf.animation.metadata.invalid',
+        message: `Scene ${sceneIndex} animation metadata was ignored: ${message}`,
+    } satisfies AssetImportDiagnostic);
+
+const resolveSceneAnimationMetadataSource = (
+    scene: GltfSceneJson | undefined
+): Record<string, unknown> | undefined => {
+    const extras = scene && isPlainObject(scene.extras) ? scene.extras : undefined;
+    if (!extras) {
+        return undefined;
+    }
+
+    const axrone = isPlainObject(extras.axrone) ? extras.axrone : undefined;
+    const candidates = [
+        axrone?.animationController,
+        axrone?.animation,
+        extras.animationController,
+        extras.animation,
+    ];
+
+    for (let index = 0; index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        if (isPlainObject(candidate)) {
+            return candidate;
+        }
+    }
+
+    return undefined;
+};
+
+const createAnimationManifestDiagnostic = (message: string): AssetImportDiagnostic =>
+    Object.freeze({
+        level: 'warning',
+        code: 'gltf.animation.manifest.invalid',
+        message,
+    } satisfies AssetImportDiagnostic);
+
+const collectAnimationManifestResourceCandidates = (
+    normalized: NormalizedGltfSource
+): readonly string[] => {
+    const sourceStem = stripExtension(basenameOfUri(normalized.sourceUri));
+    return Object.freeze(
+        [...new Set([
+            ...ANIMATION_MANIFEST_RESOURCE_NAMES,
+            ...(sourceStem
+                ? [
+                      `${sourceStem}.animation-manifest.json`,
+                      `${sourceStem}.animations.json`,
+                      `${sourceStem}.animation-controller.json`,
+                  ]
+                : []),
+        ])]
+    );
+};
+
+const resolvePortableAnimationManifest = (
+    normalized: NormalizedGltfSource,
+    diagnostics: AssetImportDiagnostic[]
+): PortableAnimationManifest | undefined => {
+    if (normalized.resources.size === 0) {
+        return undefined;
+    }
+
+    const resources = [...new Map([...normalized.resources.values()].map((resource) => [resource.uri, resource])).values()];
+    const candidates = collectAnimationManifestResourceCandidates(normalized);
+    const candidate =
+        candidates
+            .map((name) => resources.find((resource) => basenameOfUri(resource.uri) === name))
+            .find((resource): resource is (typeof resources)[number] => Boolean(resource)) ??
+        resources.find((resource) => {
+            const name = basenameOfUri(resource.uri)?.toLowerCase();
+            return Boolean(
+                name &&
+                    (name.endsWith('.animation-manifest.json') ||
+                        name.endsWith('.animations.json') ||
+                        name.endsWith('.animation-controller.json'))
+            );
+        });
+
+    if (!candidate) {
+        return undefined;
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(new TextDecoder().decode(candidate.bytes)) as unknown;
+    } catch (error) {
+        diagnostics.push(
+            createAnimationManifestDiagnostic(
+                `Animation manifest '${candidate.uri}' could not be parsed and was ignored`
+            )
+        );
+        return undefined;
+    }
+
+    if (!isPlainObject(parsed)) {
+        diagnostics.push(
+            createAnimationManifestDiagnostic(
+                `Animation manifest '${candidate.uri}' must contain a JSON object`
+            )
+        );
+        return undefined;
+    }
+
+    const directController =
+        'parameters' in parsed || 'layers' in parsed || 'rootMotion' in parsed ? parsed : undefined;
+    const controller = isPlainObject(parsed.controller)
+        ? parsed.controller
+        : isPlainObject(parsed.animationController)
+          ? parsed.animationController
+          : directController;
+    const scenes = Array.isArray(parsed.scenes)
+        ? Object.freeze(
+              parsed.scenes
+                  .filter((entry): entry is Record<string, unknown> => isPlainObject(entry))
+                  .map((entry) =>
+                      Object.freeze({
+                          ...(isFiniteNumber(entry.scene)
+                              ? { scene: Math.max(0, Math.trunc(entry.scene)) }
+                              : {}),
+                          ...(typeof entry.sceneName === 'string'
+                              ? { sceneName: entry.sceneName }
+                              : typeof entry.name === 'string'
+                                ? { sceneName: entry.name }
+                                : {}),
+                          ...(isPlainObject(entry.controller)
+                              ? { controller: entry.controller }
+                              : isPlainObject(entry.animationController)
+                                ? { controller: entry.animationController }
+                                : {}),
+                          ...(Array.isArray(entry.clips)
+                              ? {
+                                    clips: Object.freeze(
+                                        entry.clips.filter(
+                                            (clip): clip is Record<string, unknown> => isPlainObject(clip)
+                                        )
+                                    ),
+                                }
+                              : {}),
+                      } satisfies PortableAnimationManifestSceneEntry)
+                  )
+                  .filter(
+                      (entry) =>
+                          entry.controller !== undefined ||
+                          (Array.isArray(entry.clips) && entry.clips.length > 0)
+                  )
+          )
+        : undefined;
+    const clips = Array.isArray(parsed.clips)
+        ? Object.freeze(parsed.clips.filter((entry): entry is Record<string, unknown> => isPlainObject(entry)))
+        : undefined;
+
+    if (!controller && (!scenes || scenes.length === 0) && (!clips || clips.length === 0)) {
+        diagnostics.push(
+            createAnimationManifestDiagnostic(
+                `Animation manifest '${candidate.uri}' did not contain any usable controller or clip metadata`
+            )
+        );
+        return undefined;
+    }
+
+    return Object.freeze({
+        ...(controller ? { controller } : {}),
+        ...(scenes && scenes.length > 0 ? { scenes } : {}),
+        ...(clips && clips.length > 0 ? { clips } : {}),
+    });
+};
+
+const mergeAnimationMetadataSources = (
+    base: Record<string, unknown> | undefined,
+    override: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined => {
+    if (!base) {
+        return override;
+    }
+    if (!override) {
+        return base;
+    }
+
+    return {
+        ...base,
+        ...override,
+        ...(override.parameters !== undefined ? { parameters: override.parameters } : {}),
+        ...(override.layers !== undefined ? { layers: override.layers } : {}),
+        ...(override.rootMotion !== undefined ? { rootMotion: override.rootMotion } : {}),
+    };
+};
+
+const resolvePortableAnimationManifestSceneEntry = (
+    manifest: PortableAnimationManifest | undefined,
+    scene: GltfSceneJson | undefined,
+    sceneIndex: number
+): PortableAnimationManifestSceneEntry | undefined => {
+    if (!manifest) {
+        return undefined;
+    }
+
+    const sceneName = typeof scene?.name === 'string' ? scene.name : undefined;
+    return (
+        manifest.scenes?.find((entry) => entry.scene === sceneIndex) ??
+        (sceneName ? manifest.scenes?.find((entry) => entry.sceneName === sceneName) : undefined)
+    );
+};
+
+const resolvePortableSceneAnimationMetadataSource = (
+    manifest: PortableAnimationManifest | undefined,
+    scene: GltfSceneJson | undefined,
+    sceneIndex: number
+): Record<string, unknown> | undefined => {
+    if (!manifest) {
+        return undefined;
+    }
+
+    const sceneEntry = resolvePortableAnimationManifestSceneEntry(manifest, scene, sceneIndex);
+
+    return mergeAnimationMetadataSources(manifest.controller, sceneEntry?.controller);
+};
+
+const sanitizeAnimationTags = (value: unknown): readonly string[] | undefined => {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const tags = [...new Set(value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0))];
+    return tags.length > 0 ? Object.freeze(tags) : undefined;
+};
+
+const sanitizeAnimationClipEvents = (
+    value: unknown,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): readonly AnimationClipEventDefinition[] | undefined => {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const events: AnimationClipEventDefinition[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+        const entry = value[index];
+        if (!isPlainObject(entry) || typeof entry.name !== 'string' || !isFiniteNumber(entry.time)) {
+            diagnostics.push(createDiagnostic(`event ${index} must provide a valid name and time`));
+            continue;
+        }
+
+        const payload = cloneSerializableMetadata(entry.payload);
+        events.push(
+            maybeFreeze(
+                {
+                    ...(typeof entry.id === 'string' && entry.id.length > 0 ? { id: entry.id } : {}),
+                    name: entry.name,
+                    time: Math.max(0, entry.time),
+                    ...(payload !== undefined ? { payload: payload as Readonly<Record<string, unknown>> | null } : {}),
+                    ...(sanitizeAnimationTags(entry.tags) ? { tags: sanitizeAnimationTags(entry.tags) } : {}),
+                } satisfies AnimationClipEventDefinition,
+                freeze
+            )
+        );
+    }
+
+    return events.length > 0 ? Object.freeze(events.sort((left, right) => left.time - right.time)) : undefined;
+};
+
+const sanitizeAnimationFootContacts = (
+    value: unknown,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): readonly AnimationFootContactDefinition[] | undefined => {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const contacts: AnimationFootContactDefinition[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+        const entry = value[index];
+        if (
+            !isPlainObject(entry) ||
+            typeof entry.bone !== 'string' ||
+            !isFiniteNumber(entry.startTime) ||
+            !isFiniteNumber(entry.endTime)
+        ) {
+            diagnostics.push(createDiagnostic(`foot contact ${index} must provide a valid bone, startTime, and endTime`));
+            continue;
+        }
+
+        const metadata = cloneSerializableMetadata(entry.metadata);
+        contacts.push(
+            maybeFreeze(
+                {
+                    bone: entry.bone,
+                    startTime: Math.max(0, Math.min(entry.startTime, entry.endTime)),
+                    endTime: Math.max(0, Math.max(entry.startTime, entry.endTime)),
+                    ...(isBooleanTuple3(entry.lockTranslationAxes)
+                        ? { lockTranslationAxes: Object.freeze([...entry.lockTranslationAxes]) as readonly [boolean, boolean, boolean] }
+                        : {}),
+                    ...(metadata !== undefined ? { metadata: metadata as Readonly<Record<string, unknown>> } : {}),
+                } satisfies AnimationFootContactDefinition,
+                freeze
+            )
+        );
+    }
+
+    return contacts.length > 0 ? Object.freeze(contacts.sort((left, right) => left.startTime - right.startTime)) : undefined;
+};
+
+const sanitizeAnimationMotionFeatures = (
+    value: unknown,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): readonly AnimationMotionFeatureDefinition[] | undefined => {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const features: AnimationMotionFeatureDefinition[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+        const entry = value[index];
+        if (!isPlainObject(entry) || !isFiniteNumber(entry.time)) {
+            diagnostics.push(createDiagnostic(`motion feature ${index} must provide a valid time`));
+            continue;
+        }
+
+        features.push(
+            maybeFreeze(
+                {
+                    time: Math.max(0, entry.time),
+                    ...(isNumberTuple3(entry.trajectoryPosition)
+                        ? { trajectoryPosition: Object.freeze([...entry.trajectoryPosition]) as readonly [number, number, number] }
+                        : {}),
+                    ...(isNumberTuple3(entry.facingDirection)
+                        ? { facingDirection: Object.freeze([...entry.facingDirection]) as readonly [number, number, number] }
+                        : {}),
+                    ...(sanitizeAnimationTags(entry.tags) ? { tags: sanitizeAnimationTags(entry.tags) } : {}),
+                    ...(isFiniteNumber(entry.costBias) ? { costBias: entry.costBias } : {}),
+                } satisfies AnimationMotionFeatureDefinition,
+                freeze
+            )
+        );
+    }
+
+    return features.length > 0 ? Object.freeze(features.sort((left, right) => left.time - right.time)) : undefined;
+};
+
+const sanitizeAnimationClipCompression = (
+    value: unknown,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): AnimationClipCompressionDefinition | undefined => {
+    if (!isPlainObject(value)) {
+        return undefined;
+    }
+
+    if (
+        value.codec !== undefined &&
+        value.codec !== 'none' &&
+        value.codec !== 'keyframe-reduced'
+    ) {
+        diagnostics.push(createDiagnostic('compression codec must be none or keyframe-reduced'));
+        return undefined;
+    }
+
+    const compression = maybeFreeze(
+        {
+            ...(typeof value.codec === 'string' ? { codec: value.codec as AnimationClipCompressionDefinition['codec'] } : {}),
+            ...(isFiniteNumber(value.positionTolerance) ? { positionTolerance: value.positionTolerance } : {}),
+            ...(isFiniteNumber(value.rotationToleranceDegrees)
+                ? { rotationToleranceDegrees: value.rotationToleranceDegrees }
+                : {}),
+            ...(isFiniteNumber(value.scaleTolerance) ? { scaleTolerance: value.scaleTolerance } : {}),
+            ...(isFiniteNumber(value.curveTolerance) ? { curveTolerance: value.curveTolerance } : {}),
+            ...(typeof value.preserveStepTracks === 'boolean'
+                ? { preserveStepTracks: value.preserveStepTracks }
+                : {}),
+        } satisfies AnimationClipCompressionDefinition,
+        freeze
+    );
+
+    return Object.keys(compression).length > 0 ? compression : undefined;
+};
+
+const sanitizeAnimationClipStreaming = (
+    value: unknown,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): AnimationClipStreamingDefinition | undefined => {
+    if (!isPlainObject(value)) {
+        return undefined;
+    }
+
+    if (value.mode !== undefined && value.mode !== 'resident' && value.mode !== 'streamed') {
+        diagnostics.push(createDiagnostic('streaming mode must be resident or streamed'));
+        return undefined;
+    }
+
+    const catalog = isPlainObject(value.catalog)
+        ? (() => {
+              const chunks = Array.isArray(value.catalog.chunks)
+                  ? value.catalog.chunks
+                        .filter((entry): entry is Record<string, unknown> => isPlainObject(entry))
+                        .map((entry) => {
+                            if (
+                                typeof entry.uri !== 'string' ||
+                                !isFiniteNumber(entry.startTime) ||
+                                !isFiniteNumber(entry.endTime)
+                            ) {
+                                diagnostics.push(
+                                    createDiagnostic(
+                                        'streaming catalog chunks must provide uri, startTime, and endTime'
+                                    )
+                                );
+                                return undefined;
+                            }
+
+                            return maybeFreeze(
+                                {
+                                    ...(typeof entry.id === 'string' ? { id: entry.id } : {}),
+                                    uri: entry.uri,
+                                    startTime: Math.max(0, Math.min(entry.startTime, entry.endTime)),
+                                    endTime: Math.max(0, Math.max(entry.startTime, entry.endTime)),
+                                    ...(isFiniteNumber(entry.byteOffset)
+                                        ? { byteOffset: Math.max(0, Math.trunc(entry.byteOffset)) }
+                                        : {}),
+                                    ...(isFiniteNumber(entry.byteLength)
+                                        ? { byteLength: Math.max(0, Math.trunc(entry.byteLength)) }
+                                        : {}),
+                                    ...(typeof entry.mimeType === 'string'
+                                        ? { mimeType: entry.mimeType }
+                                        : {}),
+                                },
+                                freeze
+                            );
+                        })
+                        .filter(
+                            (
+                                entry
+                            ): entry is NonNullable<
+                                AnimationClipStreamingCatalogDefinition['chunks'][number]
+                            > => Boolean(entry)
+                        )
+                  : [];
+
+              if (chunks.length === 0) {
+                  diagnostics.push(createDiagnostic('streaming catalog must provide at least one valid chunk'));
+                  return undefined;
+              }
+
+              return maybeFreeze(
+                  {
+                      ...(typeof value.catalog.id === 'string' ? { id: value.catalog.id } : {}),
+                      chunks: Object.freeze(chunks),
+                  } satisfies AnimationClipStreamingCatalogDefinition,
+                  freeze
+              );
+          })()
+        : undefined;
+
+    const streaming = maybeFreeze(
+        {
+            ...(typeof value.mode === 'string' ? { mode: value.mode as AnimationClipStreamingDefinition['mode'] } : {}),
+            ...(isFiniteNumber(value.chunkDuration) ? { chunkDuration: value.chunkDuration } : {}),
+            ...(isFiniteNumber(value.preloadWindow) ? { preloadWindow: value.preloadWindow } : {}),
+            ...(isFiniteNumber(value.priority) ? { priority: Math.trunc(value.priority) } : {}),
+            ...(typeof value.sourceUri === 'string' ? { sourceUri: value.sourceUri } : {}),
+            ...(typeof value.catalogUri === 'string' ? { catalogUri: value.catalogUri } : {}),
+            ...(catalog ? { catalog } : {}),
+        } satisfies AnimationClipStreamingDefinition,
+        freeze
+    );
+
+    return Object.keys(streaming).length > 0 ? streaming : undefined;
+};
+
+const sanitizeAnimationFeatureExport = (
+    value: unknown,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): PortableAnimationFeatureExportDefinition | undefined => {
+    if (!isPlainObject(value)) {
+        return undefined;
+    }
+
+    if (
+        value.sampleInterval !== undefined &&
+        (!isFiniteNumber(value.sampleInterval) || value.sampleInterval <= 0)
+    ) {
+        diagnostics.push(createDiagnostic('featureExport.sampleInterval must be a positive number'));
+        return undefined;
+    }
+
+    const sampleTimes = Array.isArray(value.sampleTimes)
+        ? Object.freeze(
+              value.sampleTimes
+                  .filter((entry): entry is number => isFiniteNumber(entry))
+                  .map((entry) => Math.max(0, entry))
+          )
+        : undefined;
+    if (value.sampleTimes !== undefined && (!sampleTimes || sampleTimes.length === 0)) {
+        diagnostics.push(createDiagnostic('featureExport.sampleTimes must contain numeric values'));
+        return undefined;
+    }
+
+    const forwardAxis = isNumberTuple3(value.forwardAxis)
+        ? (Object.freeze([...value.forwardAxis]) as readonly [number, number, number])
+        : undefined;
+    if (value.forwardAxis !== undefined && !forwardAxis) {
+        diagnostics.push(createDiagnostic('featureExport.forwardAxis must be a numeric vec3'));
+        return undefined;
+    }
+
+    const config = maybeFreeze(
+        {
+            ...(typeof value.rootNodeId === 'string' ? { rootNodeId: value.rootNodeId } : {}),
+            ...(isFiniteNumber(value.rootNodeIndex)
+                ? { rootNodeIndex: Math.max(0, Math.trunc(value.rootNodeIndex)) }
+                : {}),
+            ...(isFiniteNumber(value.sampleInterval) ? { sampleInterval: value.sampleInterval } : {}),
+            ...(sampleTimes && sampleTimes.length > 0 ? { sampleTimes } : {}),
+            ...(forwardAxis ? { forwardAxis } : {}),
+            ...(sanitizeAnimationTags(value.tags) ? { tags: sanitizeAnimationTags(value.tags) } : {}),
+            ...(isFiniteNumber(value.costBias) ? { costBias: value.costBias } : {}),
+        } satisfies PortableAnimationFeatureExportDefinition,
+        freeze
+    );
+
+    if (Object.keys(config).length === 0) {
+        diagnostics.push(createDiagnostic('featureExport must contain at least one usable field'));
+        return undefined;
+    }
+
+    return config;
+};
+
+const sanitizeAnimationClipMetadataSource = (
+    value: Record<string, unknown>,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): GltfAnimationClipMetadataSource | undefined => {
+    const events = sanitizeAnimationClipEvents(value.events, diagnostics, createDiagnostic, freeze);
+    const footContacts = sanitizeAnimationFootContacts(value.footContacts, diagnostics, createDiagnostic, freeze);
+    const tags = sanitizeAnimationTags(value.tags);
+    const features = sanitizeAnimationMotionFeatures(value.features, diagnostics, createDiagnostic, freeze);
+    const compression = sanitizeAnimationClipCompression(value.compression, diagnostics, createDiagnostic, freeze);
+    const streaming = sanitizeAnimationClipStreaming(value.streaming, diagnostics, createDiagnostic, freeze);
+    const featureExport = sanitizeAnimationFeatureExport(
+        value.featureExport,
+        diagnostics,
+        createDiagnostic,
+        freeze
+    );
+
+    if (!events && !footContacts && !tags && !features && !compression && !streaming && !featureExport) {
+        return undefined;
+    }
+
+    return maybeFreeze(
+        {
+            ...(events ? { events } : {}),
+            ...(footContacts ? { footContacts } : {}),
+            ...(tags ? { tags } : {}),
+            ...(features ? { features } : {}),
+            ...(compression ? { compression } : {}),
+            ...(streaming ? { streaming } : {}),
+            ...(featureExport ? { featureExport } : {}),
+        },
+        freeze
+    );
+};
+
+const mergeClipMetadataSources = (
+    base: GltfAnimationClipMetadataSource | undefined,
+    override: GltfAnimationClipMetadataSource | undefined,
+    freeze: boolean
+): GltfAnimationClipMetadataSource | undefined => {
+    if (!base) {
+        return override;
+    }
+    if (!override) {
+        return base;
+    }
+
+    return maybeFreeze(
+        {
+            ...(override.events ? { events: override.events } : base.events ? { events: base.events } : {}),
+            ...(override.footContacts
+                ? { footContacts: override.footContacts }
+                : base.footContacts
+                  ? { footContacts: base.footContacts }
+                  : {}),
+            ...(override.tags ? { tags: override.tags } : base.tags ? { tags: base.tags } : {}),
+            ...(override.features
+                ? { features: override.features }
+                : base.features
+                  ? { features: base.features }
+                  : {}),
+            ...(override.compression
+                ? { compression: override.compression }
+                : base.compression
+                  ? { compression: base.compression }
+                  : {}),
+            ...(override.streaming
+                ? { streaming: override.streaming }
+                : base.streaming
+                  ? { streaming: base.streaming }
+                  : {}),
+            ...(override.featureExport
+                ? { featureExport: override.featureExport }
+                : base.featureExport
+                  ? { featureExport: base.featureExport }
+                  : {}),
+        } satisfies GltfAnimationClipMetadataSource,
+        freeze
+    );
+};
+
+const resolveAnimationClipMetadataEntries = (
+    entries: readonly Record<string, unknown>[] | undefined,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): GltfAnimationClipMetadataSourceIndex => {
+    const byId = new Map<string, GltfAnimationClipMetadataSource>();
+    const byAnimationIndex = new Map<number, GltfAnimationClipMetadataSource>();
+
+    for (let index = 0; index < (entries?.length ?? 0); index += 1) {
+        const entry = entries![index]!;
+        const clipId =
+            typeof entry.id === 'string'
+                ? entry.id
+                : typeof entry.clipId === 'string'
+                  ? entry.clipId
+                  : undefined;
+        const animationIndex = isFiniteNumber(entry.animationIndex)
+            ? Math.max(0, Math.trunc(entry.animationIndex))
+            : undefined;
+        if (!clipId && animationIndex === undefined) {
+            diagnostics.push(createDiagnostic(`clip entry ${index} must provide an id, clipId, or animationIndex`));
+            continue;
+        }
+
+        const metadata = sanitizeAnimationClipMetadataSource(entry, diagnostics, createDiagnostic, freeze);
+        if (!metadata) {
+            continue;
+        }
+
+        if (clipId) {
+            byId.set(clipId, mergeClipMetadataSources(byId.get(clipId), metadata, freeze) ?? metadata);
+        }
+        if (animationIndex !== undefined) {
+            byAnimationIndex.set(
+                animationIndex,
+                mergeClipMetadataSources(byAnimationIndex.get(animationIndex), metadata, freeze) ?? metadata
+            );
+        }
+    }
+
+    return {
+        byId,
+        byAnimationIndex,
+    };
+};
+
+const resolvePortableAnimationClipMetadataSources = (
+    manifest: PortableAnimationManifest | undefined,
+    diagnostics: AssetImportDiagnostic[],
+    freeze: boolean
+): GltfAnimationClipMetadataSourceIndex =>
+    resolveAnimationClipMetadataEntries(
+        manifest?.clips,
+        diagnostics,
+        (message) => createAnimationManifestDiagnostic(`Animation manifest ${message}`),
+        freeze
+    );
+
+const resolveScenePortableAnimationClipMetadataSources = (
+    manifest: PortableAnimationManifest | undefined,
+    scene: GltfSceneJson | undefined,
+    sceneIndex: number,
+    diagnostics: AssetImportDiagnostic[],
+    freeze: boolean
+): GltfAnimationClipMetadataSourceIndex =>
+    resolveAnimationClipMetadataEntries(
+        resolvePortableAnimationManifestSceneEntry(manifest, scene, sceneIndex)?.clips,
+        diagnostics,
+        (message) => createAnimationMetadataDiagnostic(sceneIndex, `clip override ${message}`),
+        freeze
+    );
+
+const resolveClipMetadataSourceForAnimation = (
+    sources: GltfAnimationClipMetadataSourceIndex,
+    animation: Pick<GltfAnimationClipAsset, 'id' | 'animationIndex'>
+): GltfAnimationClipMetadataSource | undefined =>
+    sources.byId.get(animation.id) ?? sources.byAnimationIndex.get(animation.animationIndex);
+
+const hasClipMetadata = (clip: GltfAnimationClipAsset): boolean =>
+    Boolean(
+        clip.events ||
+            clip.footContacts ||
+            clip.tags ||
+            clip.features ||
+            clip.compression ||
+            clip.streaming
+    );
+
+const toClipMetadata = (
+    clip: GltfAnimationClipAsset,
+    freeze: boolean
+): GltfAnimationClipMetadata | undefined => {
+    if (!hasClipMetadata(clip)) {
+        return undefined;
+    }
+
+    return maybeFreeze(
+        {
+            id: clip.id,
+            ...(clip.events ? { events: clip.events } : {}),
+            ...(clip.footContacts ? { footContacts: clip.footContacts } : {}),
+            ...(clip.tags ? { tags: clip.tags } : {}),
+            ...(clip.features ? { features: clip.features } : {}),
+            ...(clip.compression ? { compression: clip.compression } : {}),
+            ...(clip.streaming ? { streaming: clip.streaming } : {}),
+        } satisfies GltfAnimationClipMetadata,
+        freeze
+    );
+};
+
+const mergeClipMetadata = (
+    clipId: string,
+    base: GltfAnimationClipMetadata | undefined,
+    override: GltfAnimationClipMetadataSource | undefined,
+    freeze: boolean
+): GltfAnimationClipMetadata | undefined => {
+    if (!base && !override) {
+        return undefined;
+    }
+
+    return maybeFreeze(
+        {
+            id: clipId,
+            ...(override?.events ? { events: override.events } : base?.events ? { events: base.events } : {}),
+            ...(override?.footContacts
+                ? { footContacts: override.footContacts }
+                : base?.footContacts
+                  ? { footContacts: base.footContacts }
+                  : {}),
+            ...(override?.tags ? { tags: override.tags } : base?.tags ? { tags: base.tags } : {}),
+            ...(override?.features
+                ? { features: override.features }
+                : base?.features
+                  ? { features: base.features }
+                  : {}),
+            ...(override?.compression
+                ? { compression: override.compression }
+                : base?.compression
+                  ? { compression: base.compression }
+                  : {}),
+            ...(override?.streaming
+                ? { streaming: override.streaming }
+                : base?.streaming
+                  ? { streaming: base.streaming }
+                  : {}),
+        } satisfies GltfAnimationClipMetadata,
+        freeze
+    );
+};
+
+const findAnimationTrackFrameIndex = (times: Float32Array, time: number): number => {
+    if (times.length <= 1 || time <= times[0]!) {
+        return 0;
+    }
+
+    const lastIndex = times.length - 1;
+    if (time >= times[lastIndex]!) {
+        return Math.max(0, lastIndex - 1);
+    }
+
+    let low = 0;
+    let high = lastIndex;
+    while (low <= high) {
+        const mid = (low + high) >> 1;
+        const start = times[mid]!;
+        const end = times[mid + 1] ?? Number.POSITIVE_INFINITY;
+        if (time < start) {
+            high = mid - 1;
+            continue;
+        }
+        if (time >= end) {
+            low = mid + 1;
+            continue;
+        }
+        return mid;
+    }
+
+    return Math.max(0, Math.min(lastIndex - 1, low));
+};
+
+const sampleAnimationTrackValues = (
+    track: GltfAnimationClipAsset['tracks'][number],
+    time: number
+): readonly number[] => {
+    const componentCount = track.valueComponentCount;
+    const frameIndex = findAnimationTrackFrameIndex(track.times, time);
+    const nextIndex = Math.min(track.keyframeCount - 1, frameIndex + 1);
+    const startTime = track.times[frameIndex] ?? 0;
+    const endTime = track.times[nextIndex] ?? startTime;
+    const duration = Math.max(0, endTime - startTime);
+    const alpha = duration > 0 ? Math.max(0, Math.min(1, (time - startTime) / duration)) : 0;
+
+    if (track.interpolation === 'STEP' || frameIndex === nextIndex) {
+        const baseOffset =
+            frameIndex * track.sampleStride + (track.interpolation === 'CUBICSPLINE' ? componentCount : 0);
+        return Object.freeze(
+            Array.from({ length: componentCount }, (_, componentIndex) =>
+                track.values[baseOffset + componentIndex] ?? (componentIndex === 3 ? 1 : 0)
+            )
+        );
+    }
+
+    if (track.interpolation === 'CUBICSPLINE') {
+        const leftBase = frameIndex * track.sampleStride;
+        const rightBase = nextIndex * track.sampleStride;
+        const s = alpha;
+        const s2 = s * s;
+        const s3 = s2 * s;
+        const h00 = 2 * s3 - 3 * s2 + 1;
+        const h10 = s3 - 2 * s2 + s;
+        const h01 = -2 * s3 + 3 * s2;
+        const h11 = s3 - s2;
+        return Object.freeze(
+            Array.from({ length: componentCount }, (_, componentIndex) => {
+                const inTangent = track.values[rightBase + componentIndex] ?? 0;
+                const value0 = track.values[leftBase + componentCount + componentIndex] ?? 0;
+                const outTangent = track.values[leftBase + componentCount * 2 + componentIndex] ?? 0;
+                const value1 = track.values[rightBase + componentCount + componentIndex] ?? 0;
+                return h00 * value0 + h10 * duration * outTangent + h01 * value1 + h11 * duration * inTangent;
+            })
+        );
+    }
+
+    const leftOffset = frameIndex * track.sampleStride;
+    const rightOffset = nextIndex * track.sampleStride;
+    return Object.freeze(
+        Array.from({ length: componentCount }, (_, componentIndex) => {
+            const left = track.values[leftOffset + componentIndex] ?? 0;
+            const right = track.values[rightOffset + componentIndex] ?? left;
+            return left + (right - left) * alpha;
+        })
+    );
+};
+
+const normalizeVector3Tuple = (
+    value: readonly [number, number, number]
+): readonly [number, number, number] => {
+    const length = Math.hypot(value[0], value[1], value[2]);
+    if (length <= Number.EPSILON) {
+        return Object.freeze([0, 0, 1]) as readonly [number, number, number];
+    }
+    return Object.freeze([value[0] / length, value[1] / length, value[2] / length]) as readonly [number, number, number];
+};
+
+const normalizeQuaternionTuple = (
+    value: readonly [number, number, number, number]
+): readonly [number, number, number, number] => {
+    const length = Math.hypot(value[0], value[1], value[2], value[3]);
+    if (length <= Number.EPSILON) {
+        return Object.freeze([0, 0, 0, 1]) as readonly [number, number, number, number];
+    }
+    return Object.freeze([
+        value[0] / length,
+        value[1] / length,
+        value[2] / length,
+        value[3] / length,
+    ]) as readonly [number, number, number, number];
+};
+
+const rotateVectorByQuaternion = (
+    vector: readonly [number, number, number],
+    quaternion: readonly [number, number, number, number]
+): readonly [number, number, number] => {
+    const [x, y, z, w] = normalizeQuaternionTuple(quaternion);
+    const uvX = y * vector[2] - z * vector[1];
+    const uvY = z * vector[0] - x * vector[2];
+    const uvZ = x * vector[1] - y * vector[0];
+    const uuvX = y * uvZ - z * uvY;
+    const uuvY = z * uvX - x * uvZ;
+    const uuvZ = x * uvY - y * uvX;
+    return normalizeVector3Tuple([
+        vector[0] + (uvX * w + uuvX) * 2,
+        vector[1] + (uvY * w + uuvY) * 2,
+        vector[2] + (uvZ * w + uuvZ) * 2,
+    ]);
+};
+
+const resolveFeatureExportSampleTimes = (
+    duration: number,
+    config: PortableAnimationFeatureExportDefinition
+): readonly number[] => {
+    const explicitTimes = config.sampleTimes
+        ? [...new Set(config.sampleTimes.map((entry) => Math.max(0, Math.min(duration, entry))))].sort((left, right) => left - right)
+        : [];
+    if (explicitTimes.length > 0) {
+        return Object.freeze(explicitTimes);
+    }
+
+    const interval =
+        typeof config.sampleInterval === 'number' && Number.isFinite(config.sampleInterval) && config.sampleInterval > 0
+            ? config.sampleInterval
+            : Math.max(duration, 1e-3);
+    const times: number[] = [];
+    for (let time = 0; time < duration; time += interval) {
+        times.push(Math.max(0, Math.min(duration, time)));
+    }
+    if (times.length === 0 || Math.abs((times[times.length - 1] ?? 0) - duration) > 1e-6) {
+        times.push(duration);
+    }
+    return Object.freeze([...new Set(times)].sort((left, right) => left - right));
+};
+
+const resolveFeatureExportTarget = (
+    tracks: readonly GltfAnimationClipAsset['tracks'][number][],
+    config: PortableAnimationFeatureExportDefinition
+): { readonly targetNodeId: string; readonly targetNodeIndex: number } | undefined => {
+    const findTrack = (predicate: (track: GltfAnimationClipAsset['tracks'][number]) => boolean) =>
+        tracks.find((track) => (track.path === 'translation' || track.path === 'rotation') && predicate(track));
+
+    const resolvedTrack =
+        (typeof config.rootNodeId === 'string'
+            ? findTrack((track) => track.targetNodeId === config.rootNodeId)
+            : undefined) ??
+        (typeof config.rootNodeIndex === 'number'
+            ? findTrack((track) => track.targetNodeIndex === config.rootNodeIndex)
+            : undefined) ??
+        tracks.find((track) => track.path === 'translation') ??
+        tracks.find((track) => track.path === 'rotation');
+
+    return resolvedTrack
+        ? {
+              targetNodeId: resolvedTrack.targetNodeId,
+              targetNodeIndex: resolvedTrack.targetNodeIndex,
+          }
+        : undefined;
+};
+
+const exportMotionFeaturesFromTracks = (
+    clipId: string,
+    tracks: readonly GltfAnimationClipAsset['tracks'][number][],
+    duration: number,
+    config: PortableAnimationFeatureExportDefinition,
+    diagnostics: AssetImportDiagnostic[],
+    createDiagnostic: (message: string) => AssetImportDiagnostic,
+    freeze: boolean
+): readonly AnimationMotionFeatureDefinition[] | undefined => {
+    const target = resolveFeatureExportTarget(tracks, config);
+    if (!target) {
+        diagnostics.push(createDiagnostic(`clip '${clipId}' featureExport could not resolve a translation or rotation target`));
+        return undefined;
+    }
+
+    const translationTrack = tracks.find(
+        (track) => track.path === 'translation' && track.targetNodeId === target.targetNodeId
+    );
+    const rotationTrack = tracks.find(
+        (track) => track.path === 'rotation' && track.targetNodeId === target.targetNodeId
+    );
+    if (!translationTrack && !rotationTrack) {
+        diagnostics.push(createDiagnostic(`clip '${clipId}' featureExport target '${target.targetNodeId}' has no usable tracks`));
+        return undefined;
+    }
+
+    const sampleTimes = resolveFeatureExportSampleTimes(duration, config);
+    const forwardAxis = normalizeVector3Tuple(config.forwardAxis ?? [0, 0, 1]);
+    const positions = translationTrack
+        ? sampleTimes.map((time) => {
+              const sample = sampleAnimationTrackValues(translationTrack, time);
+              return Object.freeze([
+                  sample[0] ?? 0,
+                  sample[1] ?? 0,
+                  sample[2] ?? 0,
+              ]) as readonly [number, number, number];
+          })
+        : undefined;
+
+    const fallbackFacing = sampleTimes.map((_, index) => {
+        if (!positions) {
+            return forwardAxis;
+        }
+        const current = positions[index]!;
+        const neighbor = positions[index + 1] ?? positions[index - 1] ?? current;
+        const direction: readonly [number, number, number] =
+            positions[index + 1]
+                ? [neighbor[0] - current[0], neighbor[1] - current[1], neighbor[2] - current[2]]
+                : [current[0] - neighbor[0], current[1] - neighbor[1], current[2] - neighbor[2]];
+        return normalizeVector3Tuple(direction);
+    });
+
+    const features = sampleTimes
+        .map((time, index) => {
+            const rotation = rotationTrack
+                ? (sampleAnimationTrackValues(rotationTrack, time) as readonly [number, number, number, number])
+                : undefined;
+            const facingDirection = rotation ? rotateVectorByQuaternion(forwardAxis, rotation) : fallbackFacing[index]!;
+            const trajectoryPosition = positions?.[index];
+            if (!trajectoryPosition && !facingDirection) {
+                return undefined;
+            }
+
+            return maybeFreeze(
+                {
+                    time,
+                    ...(trajectoryPosition ? { trajectoryPosition } : {}),
+                    ...(facingDirection ? { facingDirection } : {}),
+                    ...(config.tags ? { tags: config.tags } : {}),
+                    ...(typeof config.costBias === 'number' ? { costBias: config.costBias } : {}),
+                } satisfies AnimationMotionFeatureDefinition,
+                freeze
+            );
+        })
+        .filter((feature): feature is AnimationMotionFeatureDefinition => Boolean(feature));
+
+    return features.length > 0 ? Object.freeze(features) : undefined;
+};
+
+const sanitizeAnimationParameters = (
+    value: unknown,
+    sceneIndex: number,
+    diagnostics: AssetImportDiagnostic[],
+    freeze: boolean
+): readonly AnimationParameterDefinition[] | undefined => {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const parameters: AnimationParameterDefinition[] = [];
+    const seenNames = new Set<string>();
+    for (let index = 0; index < value.length; index += 1) {
+        const entry = value[index];
+        if (!isPlainObject(entry)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `parameter ${index} is not an object`)
+            );
+            continue;
+        }
+
+        const name = typeof entry.name === 'string' ? entry.name : null;
+        const kind =
+            typeof entry.kind === 'string' && VALID_ANIMATION_PARAMETER_KINDS.has(entry.kind)
+                ? (entry.kind as AnimationParameterDefinition['kind'])
+                : null;
+        if (!name || !kind || VALID_ANIMATION_PARAMETER_KINDS.has(kind) === false) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(
+                    sceneIndex,
+                    `parameter ${index} must provide a valid name and kind`
+                )
+            );
+            continue;
+        }
+
+        if (seenNames.has(name)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `parameter '${name}' is duplicated`)
+            );
+            continue;
+        }
+
+        const defaultValue = entry.defaultValue;
+        if (
+            defaultValue !== undefined &&
+            ((kind === 'float' || kind === 'int')
+                ? isFiniteNumber(defaultValue) === false
+                : typeof defaultValue !== 'boolean')
+        ) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(
+                    sceneIndex,
+                    `parameter '${name}' has an invalid defaultValue`
+                )
+            );
+            continue;
+        }
+
+        seenNames.add(name);
+        switch (kind) {
+            case 'float':
+            case 'int':
+                parameters.push(
+                    maybeFreeze(
+                        {
+                            name,
+                            kind,
+                            ...(typeof defaultValue === 'number' ? { defaultValue } : {}),
+                        } satisfies AnimationParameterDefinition<string, 'float' | 'int'>,
+                        freeze
+                    )
+                );
+                break;
+            case 'bool':
+            case 'trigger':
+                parameters.push(
+                    maybeFreeze(
+                        {
+                            name,
+                            kind,
+                            ...(typeof defaultValue === 'boolean' ? { defaultValue } : {}),
+                        } satisfies AnimationParameterDefinition<string, 'bool' | 'trigger'>,
+                        freeze
+                    )
+                );
+                break;
+        }
+    }
+
+    return parameters.length > 0 ? Object.freeze(parameters) : undefined;
+};
+
+const validateAnimationParameterReference = (
+    parameter: unknown,
+    parameterNames: ReadonlySet<string>
+): boolean => typeof parameter === 'string' && parameterNames.has(parameter);
+
+const validateAnimationConditionMetadata = (
+    condition: unknown,
+    parameterNames: ReadonlySet<string>
+): boolean => {
+    if (!isPlainObject(condition) || typeof condition.kind !== 'string') {
+        return false;
+    }
+
+    if (VALID_ANIMATION_CONDITION_KINDS.has(condition.kind) === false) {
+        return false;
+    }
+
+    if (!validateAnimationParameterReference(condition.parameter, parameterNames)) {
+        return false;
+    }
+
+    switch (condition.kind) {
+        case 'float':
+        case 'int':
+            return (
+                typeof condition.operator === 'string' &&
+                VALID_ANIMATION_CONDITION_OPERATORS.has(condition.operator) &&
+                isFiniteNumber(condition.value)
+            );
+        case 'bool':
+            return typeof condition.value === 'boolean';
+        case 'trigger':
+            return true;
+        default:
+            return false;
+    }
+};
+
+const validateAnimationMotionMetadata = (
+    motion: unknown,
+    clipIds: ReadonlySet<string>,
+    parameterNames: ReadonlySet<string>
+): boolean => {
+    if (!isPlainObject(motion) || typeof motion.kind !== 'string') {
+        return false;
+    }
+
+    switch (motion.kind) {
+        case 'clip':
+            return typeof motion.clipId === 'string' && clipIds.has(motion.clipId);
+        case 'blend1d':
+            return (
+                validateAnimationParameterReference(motion.parameter, parameterNames) &&
+                Array.isArray(motion.children) &&
+                motion.children.length > 0 &&
+                motion.children.every(
+                    (child) =>
+                        isPlainObject(child) &&
+                        isFiniteNumber(child.threshold) &&
+                        validateAnimationMotionMetadata(child.motion, clipIds, parameterNames)
+                )
+            );
+        case 'blend2d':
+            return (
+                validateAnimationParameterReference(motion.parameterX, parameterNames) &&
+                validateAnimationParameterReference(motion.parameterY, parameterNames) &&
+                Array.isArray(motion.children) &&
+                motion.children.length > 0 &&
+                motion.children.every(
+                    (child) =>
+                        isPlainObject(child) &&
+                        Array.isArray(child.position) &&
+                        child.position.length === 2 &&
+                        child.position.every((entry) => isFiniteNumber(entry)) &&
+                        validateAnimationMotionMetadata(child.motion, clipIds, parameterNames)
+                )
+            );
+        case 'direct':
+            return (
+                Array.isArray(motion.children) &&
+                motion.children.length > 0 &&
+                motion.children.every(
+                    (child) =>
+                        isPlainObject(child) &&
+                        (child.parameter === undefined ||
+                            validateAnimationParameterReference(child.parameter, parameterNames)) &&
+                        (child.weight === undefined || isFiniteNumber(child.weight)) &&
+                        validateAnimationMotionMetadata(child.motion, clipIds, parameterNames)
+                )
+            );
+        case 'additive':
+            return (
+                validateAnimationMotionMetadata(motion.base, clipIds, parameterNames) &&
+                validateAnimationMotionMetadata(motion.additive, clipIds, parameterNames) &&
+                (motion.parameter === undefined ||
+                    validateAnimationParameterReference(motion.parameter, parameterNames)) &&
+                (motion.weight === undefined || isFiniteNumber(motion.weight))
+            );
+        default:
+            return false;
+    }
+};
+
+const validateAnimationStateMachineMetadata = (
+    stateMachine: unknown,
+    clipIds: ReadonlySet<string>,
+    parameterNames: ReadonlySet<string>
+): boolean => {
+    if (
+        !isPlainObject(stateMachine) ||
+        typeof stateMachine.entryState !== 'string' ||
+        !Array.isArray(stateMachine.states)
+    ) {
+        return false;
+    }
+
+    const stateIds = new Set<string>();
+    for (let index = 0; index < stateMachine.states.length; index += 1) {
+        const state = stateMachine.states[index];
+        if (!isPlainObject(state) || typeof state.id !== 'string') {
+            return false;
+        }
+        stateIds.add(state.id);
+    }
+
+    if (!stateIds.has(stateMachine.entryState)) {
+        return false;
+    }
+
+    const validateTransitions = (transitions: unknown): boolean =>
+        transitions === undefined ||
+        (Array.isArray(transitions) &&
+            transitions.every(
+                (transition) =>
+                    isPlainObject(transition) &&
+                    typeof transition.to === 'string' &&
+                    stateIds.has(transition.to) &&
+                    (transition.duration === undefined || isFiniteNumber(transition.duration)) &&
+                    (transition.offset === undefined || isFiniteNumber(transition.offset)) &&
+                    (transition.exitTime === undefined || isFiniteNumber(transition.exitTime)) &&
+                    (transition.fixedDuration === undefined || typeof transition.fixedDuration === 'boolean') &&
+                    (transition.canInterrupt === undefined || typeof transition.canInterrupt === 'boolean') &&
+                    (transition.priority === undefined || isFiniteNumber(transition.priority)) &&
+                    (transition.conditions === undefined ||
+                        (Array.isArray(transition.conditions) &&
+                            transition.conditions.every((condition) =>
+                                validateAnimationConditionMetadata(condition, parameterNames)
+                            )))
+            ));
+
+    return (
+        validateTransitions(stateMachine.anyStateTransitions) &&
+        stateMachine.states.every(
+            (state) =>
+                isPlainObject(state) &&
+                validateAnimationMotionMetadata(state.motion, clipIds, parameterNames) &&
+                (state.speed === undefined || isFiniteNumber(state.speed)) &&
+                (state.loop === undefined || typeof state.loop === 'boolean') &&
+                validateTransitions(state.transitions)
+        )
+    );
+};
+
+const validateAnimationIkLayerMetadata = (
+    value: unknown,
+    boneIds: ReadonlySet<string>
+): boolean => {
+    if (!isPlainObject(value) || typeof value.id !== 'string' || !Array.isArray(value.jobs)) {
+        return false;
+    }
+
+    return value.jobs.every(
+        (job) =>
+            isPlainObject(job) &&
+            typeof job.id === 'string' &&
+            typeof job.solver === 'string' &&
+            VALID_ANIMATION_IK_SOLVERS.has(job.solver) &&
+            typeof job.rootBone === 'string' &&
+            boneIds.has(job.rootBone) &&
+            typeof job.tipBone === 'string' &&
+            boneIds.has(job.tipBone) &&
+            (job.targetBone === undefined ||
+                (typeof job.targetBone === 'string' && boneIds.has(job.targetBone))) &&
+            (job.targetPosition === undefined || isNumberTuple3(job.targetPosition)) &&
+            (job.targetRotation === undefined || isNumberTuple4(job.targetRotation)) &&
+            (job.precision === undefined || isFiniteNumber(job.precision)) &&
+            (job.maxIterations === undefined || isFiniteNumber(job.maxIterations)) &&
+            (job.weight === undefined || isFiniteNumber(job.weight)) &&
+            (job.preserveTipRotation === undefined || typeof job.preserveTipRotation === 'boolean')
+    );
+};
+
+const sanitizeAnimationLayers = (
+    value: unknown,
+    sceneIndex: number,
+    diagnostics: AssetImportDiagnostic[],
+    clipIds: ReadonlySet<string>,
+    parameterNames: ReadonlySet<string>,
+    boneIds: ReadonlySet<string>,
+    freeze: boolean
+): readonly AnimationLayerDefinition[] | undefined => {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+
+    const layers: AnimationLayerDefinition[] = [];
+    const seenLayerIds = new Set<string>();
+    for (let index = 0; index < value.length; index += 1) {
+        const entry = value[index];
+        if (!isPlainObject(entry) || typeof entry.id !== 'string') {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer ${index} must provide an id`)
+            );
+            continue;
+        }
+
+        if (seenLayerIds.has(entry.id)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' is duplicated`)
+            );
+            continue;
+        }
+
+        if (
+            entry.mode !== undefined &&
+            (typeof entry.mode !== 'string' || VALID_ANIMATION_LAYER_MODES.has(entry.mode) === false)
+        ) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' has an unsupported mode`)
+            );
+            continue;
+        }
+
+        if (entry.weight !== undefined && isFiniteNumber(entry.weight) === false) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' has an invalid weight`)
+            );
+            continue;
+        }
+
+        if (
+            entry.boneMask !== undefined &&
+            (!Array.isArray(entry.boneMask) ||
+                entry.boneMask.some(
+                    (boneId) => typeof boneId !== 'string' || boneIds.has(boneId) === false
+                ))
+        ) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(
+                    sceneIndex,
+                    `layer '${entry.id}' references unknown bone ids in boneMask`
+                )
+            );
+            continue;
+        }
+
+        if (!validateAnimationStateMachineMetadata(entry.stateMachine, clipIds, parameterNames)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(
+                    sceneIndex,
+                    `layer '${entry.id}' has an invalid state machine`
+                )
+            );
+            continue;
+        }
+
+        if (
+            entry.ikLayers !== undefined &&
+            (!Array.isArray(entry.ikLayers) ||
+                entry.ikLayers.some((ikLayer) => validateAnimationIkLayerMetadata(ikLayer, boneIds) === false))
+        ) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' has invalid IK metadata`)
+            );
+            continue;
+        }
+
+        const cloned = cloneSerializableMetadata(entry);
+        if (!isPlainObject(cloned)) {
+            diagnostics.push(
+                createAnimationMetadataDiagnostic(sceneIndex, `layer '${entry.id}' could not be cloned`)
+            );
+            continue;
+        }
+
+        seenLayerIds.add(entry.id);
+        layers.push(maybeFreeze(cloned as unknown as AnimationLayerDefinition, freeze));
+    }
+
+    return layers.length > 0 ? Object.freeze(layers) : undefined;
+};
+
+const sanitizeAnimationRootMotion = (
+    value: unknown,
+    sceneIndex: number,
+    diagnostics: AssetImportDiagnostic[],
+    boneIds: ReadonlySet<string>,
+    freeze: boolean
+): AnimationRootMotionDefinition | null | undefined => {
+    if (value === null) {
+        return null;
+    }
+
+    if (!isPlainObject(value)) {
+        return undefined;
+    }
+
+    if (typeof value.bone !== 'string' || boneIds.has(value.bone) === false) {
+        diagnostics.push(
+            createAnimationMetadataDiagnostic(
+                sceneIndex,
+                'rootMotion must reference an imported node id'
+            )
+        );
+        return undefined;
+    }
+
+    if (
+        value.projectTranslationAxes !== undefined &&
+        isBooleanTuple3(value.projectTranslationAxes) === false
+    ) {
+        diagnostics.push(
+            createAnimationMetadataDiagnostic(
+                sceneIndex,
+                'rootMotion.projectTranslationAxes must be a boolean tuple of length 3'
+            )
+        );
+        return undefined;
+    }
+
+    if (
+        (value.consume !== undefined && typeof value.consume !== 'boolean') ||
+        (value.extractRotation !== undefined && typeof value.extractRotation !== 'boolean')
+    ) {
+        diagnostics.push(
+            createAnimationMetadataDiagnostic(sceneIndex, 'rootMotion flags must be boolean values')
+        );
+        return undefined;
+    }
+
+    return maybeFreeze(
+        {
+            bone: value.bone,
+            ...(value.consume !== undefined ? { consume: value.consume } : {}),
+            ...(value.projectTranslationAxes !== undefined
+                ? {
+                      projectTranslationAxes: Object.freeze([
+                          ...value.projectTranslationAxes,
+                      ]) as readonly [boolean, boolean, boolean],
+                  }
+                : {}),
+            ...(value.extractRotation !== undefined
+                ? { extractRotation: value.extractRotation }
+                : {}),
+        } satisfies AnimationRootMotionDefinition,
+        freeze
+    );
+};
+
+const resolveSceneAnimationControllerMetadata = (
+    scene: GltfSceneJson | undefined,
+    sceneIndex: number,
+    clipIds: ReadonlySet<string>,
+    boneIds: ReadonlySet<string>,
+    animations: readonly GltfAnimationClipAsset[],
+    manifest: PortableAnimationManifest | undefined,
+    diagnostics: AssetImportDiagnostic[],
+    freeze: boolean
+): GltfAnimationControllerMetadata | undefined => {
+    const source = mergeAnimationMetadataSources(
+        resolvePortableSceneAnimationMetadataSource(manifest, scene, sceneIndex),
+        resolveSceneAnimationMetadataSource(scene)
+    );
+    const parameters = source
+        ? sanitizeAnimationParameters(source.parameters, sceneIndex, diagnostics, freeze)
+        : undefined;
+    const parameterNames = new Set(parameters?.map((parameter) => parameter.name) ?? EMPTY_ARRAY);
+    const layers = source
+        ? sanitizeAnimationLayers(
+              source.layers,
+              sceneIndex,
+              diagnostics,
+              clipIds,
+              parameterNames,
+              boneIds,
+              freeze
+          )
+        : undefined;
+    const rootMotion = source
+        ? sanitizeAnimationRootMotion(
+              source.rootMotion,
+              sceneIndex,
+              diagnostics,
+              boneIds,
+              freeze
+          )
+        : undefined;
+    const sceneClipMetadataSources = resolveScenePortableAnimationClipMetadataSources(
+        manifest,
+        scene,
+        sceneIndex,
+        diagnostics,
+        freeze
+    );
+    const clips = Object.freeze(
+        animations
+            .map((animation) =>
+                mergeClipMetadata(
+                    animation.id,
+                    toClipMetadata(animation, freeze),
+                    resolveClipMetadataSourceForAnimation(sceneClipMetadataSources, animation),
+                    freeze
+                )
+            )
+            .filter((clip): clip is GltfAnimationClipMetadata => Boolean(clip))
+    );
+
+    if (!parameters && !layers && rootMotion === undefined && clips.length === 0) {
+        return undefined;
+    }
+
+    return maybeFreeze(
+        {
+            ...(parameters ? { parameters } : {}),
+            ...(layers ? { layers } : {}),
+            ...(rootMotion !== undefined ? { rootMotion } : {}),
+            ...(clips.length > 0 ? { clips } : {}),
+        } satisfies GltfAnimationControllerMetadata,
+        freeze
+    );
+};
 
 const sanitizeName = (value: string | undefined, fallback: string): string => {
     const trimmed = value?.trim();
@@ -507,7 +2137,8 @@ const createSkinBinding = (skin: GltfSkinAsset | undefined): GltfSkinBinding | u
 };
 
 const createAnimatorSnapshot = (
-    animations: readonly GltfAnimationClipAsset[]
+    animations: readonly GltfAnimationClipAsset[],
+    metadata: GltfAnimationControllerMetadata | undefined
 ): GltfComponentSnapshot | undefined => {
     type SerializableTrack = Readonly<{
         targetNodeId: string;
@@ -523,11 +2154,22 @@ const createAnimatorSnapshot = (
     type SerializableClip = Readonly<{
         id: string;
         duration: number;
+        events?: readonly AnimationClipEventDefinition[];
+        footContacts?: readonly AnimationFootContactDefinition[];
+        tags?: readonly string[];
+        features?: readonly AnimationMotionFeatureDefinition[];
+        compression?: AnimationClipCompressionDefinition;
+        streaming?: AnimationClipStreamingDefinition;
         tracks: readonly SerializableTrack[];
     }>;
 
+    const clipMetadataById = new Map(
+        (metadata?.clips ?? EMPTY_ARRAY).map((clip) => [clip.id, clip] as const)
+    );
+
     const clips = animations
         .map((clip) => {
+            const clipMetadata = clipMetadataById.get(clip.id) ?? clip;
             const tracks = clip.tracks
                 .map(
                     (track) =>
@@ -550,6 +2192,12 @@ const createAnimatorSnapshot = (
             return Object.freeze({
                 id: clip.id,
                 duration: clip.duration,
+                ...(clipMetadata.events ? { events: clipMetadata.events } : {}),
+                ...(clipMetadata.footContacts ? { footContacts: clipMetadata.footContacts } : {}),
+                ...(clipMetadata.tags ? { tags: clipMetadata.tags } : {}),
+                ...(clipMetadata.features ? { features: clipMetadata.features } : {}),
+                ...(clipMetadata.compression ? { compression: clipMetadata.compression } : {}),
+                ...(clipMetadata.streaming ? { streaming: clipMetadata.streaming } : {}),
                 tracks: Object.freeze(tracks),
             } satisfies SerializableClip);
         })
@@ -564,6 +2212,9 @@ const createAnimatorSnapshot = (
         data: encodeGltfValue(
             Object.freeze({
                 clips: Object.freeze(clips),
+                ...(metadata?.parameters ? { parameters: metadata.parameters } : {}),
+                ...(metadata?.layers ? { layers: metadata.layers } : {}),
+                ...(metadata && 'rootMotion' in metadata ? { rootMotion: metadata.rootMotion ?? null } : {}),
                 clipId: clips[0]?.id ?? null,
                 playOnStart: true,
                 playing: true,
@@ -669,9 +2320,12 @@ const createDefaultMaterialDefinition = (
         id: '',
         shaderId,
         uniforms: Object.freeze({
-            _BaseColorFactor: Object.freeze([1, 1, 1, 1]),
-            _MetallicFactor: 1,
-            _RoughnessFactor: 1,
+            // Missing glTF materials should fall back to a neutral dielectric surface,
+            // not a fully metallic one, otherwise untextured characters read as black
+            // and skinning/shading artifacts become dramatically overemphasized.
+            _BaseColorFactor: Object.freeze([0.84, 0.84, 0.86, 1]),
+            _MetallicFactor: 0.04,
+            _RoughnessFactor: 0.94,
             _EmissiveFactor: Object.freeze([0, 0, 0]),
             _AlphaMode: 0,
             _AlphaCutoff: 0.5,
@@ -858,7 +2512,25 @@ const createSkinAsset = async (
             );
         }
 
-        inverseBindMatrices = decoded.values;
+        inverseBindMatrices = new Float32Array(decoded.values.length);
+        for (let matrixOffset = 0; matrixOffset < decoded.values.length; matrixOffset += 16) {
+            inverseBindMatrices[matrixOffset + 0] = decoded.values[matrixOffset + 0]!;
+            inverseBindMatrices[matrixOffset + 1] = decoded.values[matrixOffset + 4]!;
+            inverseBindMatrices[matrixOffset + 2] = decoded.values[matrixOffset + 8]!;
+            inverseBindMatrices[matrixOffset + 3] = decoded.values[matrixOffset + 12]!;
+            inverseBindMatrices[matrixOffset + 4] = decoded.values[matrixOffset + 1]!;
+            inverseBindMatrices[matrixOffset + 5] = decoded.values[matrixOffset + 5]!;
+            inverseBindMatrices[matrixOffset + 6] = decoded.values[matrixOffset + 9]!;
+            inverseBindMatrices[matrixOffset + 7] = decoded.values[matrixOffset + 13]!;
+            inverseBindMatrices[matrixOffset + 8] = decoded.values[matrixOffset + 2]!;
+            inverseBindMatrices[matrixOffset + 9] = decoded.values[matrixOffset + 6]!;
+            inverseBindMatrices[matrixOffset + 10] = decoded.values[matrixOffset + 10]!;
+            inverseBindMatrices[matrixOffset + 11] = decoded.values[matrixOffset + 14]!;
+            inverseBindMatrices[matrixOffset + 12] = decoded.values[matrixOffset + 3]!;
+            inverseBindMatrices[matrixOffset + 13] = decoded.values[matrixOffset + 7]!;
+            inverseBindMatrices[matrixOffset + 14] = decoded.values[matrixOffset + 11]!;
+            inverseBindMatrices[matrixOffset + 15] = decoded.values[matrixOffset + 15]!;
+        }
     }
 
     return maybeFreeze(
@@ -883,6 +2555,8 @@ const createAnimationClipAsset = async (
     root: GltfRootJson,
     animationIndex: number,
     accessors: GltfAccessorRuntime,
+    clipMetadataSources: GltfAnimationClipMetadataSourceIndex,
+    diagnostics: AssetImportDiagnostic[],
     freeze: boolean
 ): Promise<GltfAnimationClipAsset> => {
     const animation = root.animations?.[animationIndex];
@@ -973,11 +2647,42 @@ const createAnimationClipAsset = async (
         );
     }
 
+    const clipId = sanitizeName(animation.name, `Animation ${animationIndex}`);
+    const clipMetadata =
+        clipMetadataSources.byId.get(clipId) ??
+        clipMetadataSources.byAnimationIndex.get(animationIndex);
+    const exportedFeatures = clipMetadata?.featureExport
+        ? exportMotionFeaturesFromTracks(
+              clipId,
+              Object.freeze(tracks),
+              duration,
+              clipMetadata.featureExport,
+              diagnostics,
+              (message) => createAnimationManifestDiagnostic(message),
+              freeze
+          )
+        : undefined;
+    const features =
+        clipMetadata?.features || exportedFeatures
+            ? Object.freeze(
+                  [
+                      ...(clipMetadata?.features ?? []),
+                      ...(exportedFeatures ?? []),
+                  ].sort((left, right) => left.time - right.time)
+              )
+            : undefined;
+
     return maybeFreeze(
         {
-            id: sanitizeName(animation.name, `Animation ${animationIndex}`),
+            id: clipId,
             animationIndex,
             duration,
+            ...(clipMetadata?.events ? { events: clipMetadata.events } : {}),
+            ...(clipMetadata?.footContacts ? { footContacts: clipMetadata.footContacts } : {}),
+            ...(clipMetadata?.tags ? { tags: clipMetadata.tags } : {}),
+            ...(features ? { features } : {}),
+            ...(clipMetadata?.compression ? { compression: clipMetadata.compression } : {}),
+            ...(clipMetadata?.streaming ? { streaming: clipMetadata.streaming } : {}),
             tracks: Object.freeze(tracks),
         } satisfies GltfAnimationClipAsset,
         freeze
@@ -993,7 +2698,8 @@ const buildPrefabDefinition = (
     skinsByIndex: readonly (GltfSkinAsset | undefined)[],
     skinKeysByIndex: readonly string[],
     animationsByIndex: readonly (GltfAnimationClipAsset | undefined)[],
-    animationKeysByIndex: readonly string[]
+    animationKeysByIndex: readonly string[],
+    manifest: PortableAnimationManifest | undefined
 ): PrefabBuildResult => {
     const scene = root.scenes?.[sceneIndex];
     if (!scene) {
@@ -1203,7 +2909,18 @@ const buildPrefabDefinition = (
         })
         .filter((animation): animation is GltfAnimationClipAsset => Boolean(animation));
 
-    const animatorComponent = createAnimatorSnapshot(sceneAnimations);
+    const animationController = resolveSceneAnimationControllerMetadata(
+        root.scenes?.[sceneIndex],
+        sceneIndex,
+        new Set(sceneAnimations.map((animation) => animation.id)),
+        importedNodeIds,
+        sceneAnimations,
+        manifest,
+        diagnostics,
+        true
+    );
+
+    const animatorComponent = createAnimatorSnapshot(sceneAnimations, animationController);
     if (animatorComponent) {
         const firstRootActorIndex = actors.findIndex((actor) => actor.parentNodeId === null);
         if (firstRootActorIndex >= 0) {
@@ -1246,6 +2963,7 @@ const buildPrefabDefinition = (
         skinKeys: Object.freeze([...skinKeys]),
         animationKeys: Object.freeze([...animationKeys]),
         materialKeys: Object.freeze([...materialKeys]),
+        ...(animationController ? { animationController } : {}),
         diagnostics: Object.freeze(diagnostics),
     };
 };
@@ -1462,18 +3180,29 @@ export const createGltfImporter = <
             const { source, createSubKey } = context;
             const normalized = normalizeGltfSource(source);
             assertSupportedRequiredExtensions(normalized.json);
-            const runtime = new GltfResourceRuntime(normalized, source, options.resourceResolver);
+            const runtime = new GltfResourceRuntime(
+                normalized,
+                source,
+                options.resourceResolver,
+                options.dracoDecoder
+            );
             const accessors = new GltfAccessorRuntime(runtime);
             const diagnostics: AssetImportDiagnostic[] = [
                 ...collectExtensionDiagnostics(normalized.json),
                 ...collectFeatureDiagnostics(normalized.json),
             ];
+            const animationManifest = resolvePortableAnimationManifest(normalized, diagnostics);
             const textureUsageMap = collectTextureUsages(normalized.json);
             const explicitTextures = normalized.json.textures ?? EMPTY_ARRAY;
             const explicitMaterials = normalized.json.materials ?? EMPTY_ARRAY;
             const explicitMeshes = normalized.json.meshes ?? EMPTY_ARRAY;
             const explicitSkins = normalized.json.skins ?? EMPTY_ARRAY;
             const explicitAnimations = normalized.json.animations ?? EMPTY_ARRAY;
+            const clipMetadataSources = resolvePortableAnimationClipMetadataSources(
+                animationManifest,
+                diagnostics,
+                freeze
+            );
             const textureKeys = explicitTextures.map((_, index) =>
                 String(createSubKey(`texture/${index}`))
             );
@@ -1689,6 +3418,8 @@ export const createGltfImporter = <
                     normalized.json,
                     animationIndex,
                     accessors,
+                    clipMetadataSources,
+                    diagnostics,
                     freeze
                 );
                 animationsByIndex[animationIndex] = asset;
@@ -1729,7 +3460,8 @@ export const createGltfImporter = <
                     skinsByIndex,
                     skinKeys,
                     animationsByIndex,
-                    animationKeys
+                    animationKeys,
+                    animationManifest
                 );
                 diagnostics.push(...built.diagnostics);
                 const key = String(createSubKey(`scene/${sceneIndex}/prefab`));
@@ -1747,6 +3479,9 @@ export const createGltfImporter = <
                         skinKeys: built.skinKeys,
                         animationKeys: built.animationKeys,
                         materialKeys: built.materialKeys,
+                        ...(built.animationController
+                            ? { animationController: built.animationController }
+                            : {}),
                     },
                     freeze
                 );
@@ -1772,6 +3507,9 @@ export const createGltfImporter = <
                             name: asset.id,
                             prefabKey: key,
                             rootNodeIds: built.rootNodeIds,
+                            ...(built.animationController
+                                ? { animationController: built.animationController }
+                                : {}),
                         } satisfies GltfDocumentSceneAsset,
                         freeze
                     )

@@ -4,10 +4,14 @@ import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs-runtim
 import { Animator } from './components/animator';
 import { Camera } from './components/camera';
 import { DirectionalLight } from './components/directional-light';
+import { FollowCameraController } from './components/follow-camera-controller';
 import { MeshRenderer } from './components/mesh-renderer';
 import { OrbitCameraController } from './components/orbit-camera-controller';
 import { PrefabNodeBinding } from './components/prefab-node-binding';
 import { PointLight } from './components/point-light';
+import { SpriteAnimator } from './components/sprite-animator';
+import { SpriteMask } from './components/sprite-mask';
+import { SpriteRenderer } from './components/sprite-renderer';
 import { SpotLight } from './components/spot-light';
 import type { SceneBuiltInRegistry, SceneRegistry } from './types';
 
@@ -46,11 +50,15 @@ const DEFAULT_SCENE_BUILT_IN_REGISTRY: SceneBuiltInRegistry = Object.freeze({
     PrefabNodeBinding,
     Animator,
     Camera,
+    SpriteRenderer,
+    SpriteAnimator,
+    SpriteMask,
     MeshRenderer,
     DirectionalLight,
     PointLight,
     SpotLight,
     OrbitCameraController,
+    FollowCameraController,
 });
 
 export const createSceneBuiltInManifest = <
@@ -75,7 +83,7 @@ export const SCENE_ANIMATION_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
 
 export const SCENE_2D_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
     id: 'scene/2d',
-    builtIns: ['Camera'] as const,
+    builtIns: ['Camera', 'SpriteRenderer', 'SpriteAnimator', 'SpriteMask'] as const,
 });
 
 export const SCENE_3D_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
@@ -87,6 +95,7 @@ export const SCENE_3D_BUILT_IN_MANIFEST = createSceneBuiltInManifest({
         'PointLight',
         'SpotLight',
         'OrbitCameraController',
+        'FollowCameraController',
     ] as const,
 });
 

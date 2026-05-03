@@ -54,9 +54,7 @@ export class SceneSnapshotLoader {
             this._options.registerSampler(snapshot.samplers[index]!);
         }
 
-        for (let index = 0; index < snapshot.textures.length; index += 1) {
-            await this._options.registerTexture(snapshot.textures[index]!);
-        }
+        await Promise.all(snapshot.textures.map((texture) => this._options.registerTexture(texture)));
 
         if (options.clearExisting !== false) {
             this._options.clearRenderPasses();

@@ -2,6 +2,8 @@ import { Vec3, Vec4 } from '@axrone/numeric';
 
 export const DEFAULT_SCENE_CLEAR_COLOR = new Vec4(0.08, 0.09, 0.11, 1);
 export const DEFAULT_SCENE_AMBIENT_LIGHT = new Vec3(0.08, 0.08, 0.1);
+export const DEFAULT_SCENE_SKY_LIGHT = new Vec3(0.08, 0.09, 0.11);
+export const DEFAULT_SCENE_GROUND_LIGHT = new Vec3(0.04, 0.04, 0.045);
 export const DEFAULT_SCENE_WIDTH = 1280;
 export const DEFAULT_SCENE_HEIGHT = 720;
 export const DEFAULT_SCENE_RENDER_PASS_ID = 'main';
@@ -11,14 +13,14 @@ export const resolveSceneClearColor = (
     fallback: Vec4 = DEFAULT_SCENE_CLEAR_COLOR
 ): Vec4 => {
     if (value instanceof Vec4) {
-        return new Vec4(value.x, value.y, value.z, value.w);
+        return Vec4.from(value);
     }
 
     if (Array.isArray(value) && value.length === 4) {
-        return new Vec4(value[0], value[1], value[2], value[3]);
+        return Vec4.fromArray(value);
     }
 
-    return new Vec4(fallback.x, fallback.y, fallback.z, fallback.w);
+    return Vec4.from(fallback);
 };
 
 export const resolveSceneAmbientLight = (
@@ -26,12 +28,42 @@ export const resolveSceneAmbientLight = (
     fallback: Vec3 = DEFAULT_SCENE_AMBIENT_LIGHT
 ): Vec3 => {
     if (value instanceof Vec3) {
-        return new Vec3(value.x, value.y, value.z);
+        return Vec3.from(value);
     }
 
     if (Array.isArray(value) && value.length === 3) {
-        return new Vec3(value[0], value[1], value[2]);
+        return Vec3.fromArray(value);
     }
 
-    return new Vec3(fallback.x, fallback.y, fallback.z);
+    return Vec3.from(fallback);
+};
+
+export const resolveSceneSkyLight = (
+    value?: Vec3 | readonly [number, number, number] | null,
+    fallback: Vec3 = DEFAULT_SCENE_SKY_LIGHT
+): Vec3 => {
+    if (value instanceof Vec3) {
+        return Vec3.from(value);
+    }
+
+    if (Array.isArray(value) && value.length === 3) {
+        return Vec3.fromArray(value);
+    }
+
+    return Vec3.from(fallback);
+};
+
+export const resolveSceneGroundLight = (
+    value?: Vec3 | readonly [number, number, number] | null,
+    fallback: Vec3 = DEFAULT_SCENE_GROUND_LIGHT
+): Vec3 => {
+    if (value instanceof Vec3) {
+        return Vec3.from(value);
+    }
+
+    if (Array.isArray(value) && value.length === 3) {
+        return Vec3.fromArray(value);
+    }
+
+    return Vec3.from(fallback);
 };

@@ -18,6 +18,8 @@ import {
     DEFAULT_SCENE_WIDTH,
     resolveSceneAmbientLight,
     resolveSceneClearColor,
+    resolveSceneGroundLight,
+    resolveSceneSkyLight,
 } from './scene-runtime-defaults';
 import { SceneSnapshotRuntime } from './scene-snapshot-runtime';
 
@@ -52,6 +54,8 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
         const pixelRatio = sceneOptions.pixelRatio ?? globalThis.devicePixelRatio ?? 1;
         const defaultClearColor = resolveSceneClearColor(sceneOptions.clearColor);
         const ambientLight = resolveSceneAmbientLight(sceneOptions.ambientLight);
+        const skyLight = resolveSceneSkyLight(sceneOptions.skyLight);
+        const groundLight = resolveSceneGroundLight(sceneOptions.groundLight);
         const registry = resolveSceneRegistryFromProfile(sceneOptions.profile, {
             registry: sceneOptions.registry ?? ({} as R),
         }) as RuntimeRegistry<R>;
@@ -83,6 +87,8 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
             gl: this.gl,
             resources: this.assets.resources,
             ambientLight,
+            skyLight,
+            groundLight,
             defaultClearColor,
             getActors: () => this.world.getAllActors(),
             createMeshResource: (definition) => this.assets.createMeshResource(definition),

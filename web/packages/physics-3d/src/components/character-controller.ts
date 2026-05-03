@@ -10,6 +10,7 @@ import type {
     ShapeId3D,
 } from '../types';
 import type { BodyManager3D, PhysicsWorld3D, ShapeManager3D } from '../core/physics-world-3d';
+import { syncTransformWorldPosition } from '../core/transform-sync';
 import type { Rigidbody3D } from './rigidbody3d';
 
 const enum CollisionFlags {
@@ -157,7 +158,7 @@ export class CharacterController extends Component {
         const position = this._bodyManager.getPosition(this._bodyId);
         const newPos = this._performMove(position, motion);
         this._bodyManager.setPosition(this._bodyId, newPos);
-        if (this.transform) this.transform.worldPosition = Vec3.from(newPos);
+        syncTransformWorldPosition(this.transform, newPos);
         this._updateGroundState();
         return this._collisionFlags;
     }
@@ -196,7 +197,7 @@ export class CharacterController extends Component {
         }
         if (newX !== position.x || newY !== position.y || newZ !== position.z) {
             this._bodyManager.setPosition(this._bodyId, { x: newX, y: newY, z: newZ });
-            if (this.transform) this.transform.worldPosition = new Vec3(newX, newY, newZ);
+            syncTransformWorldPosition(this.transform, { x: newX, y: newY, z: newZ });
             this._velocity.x = (newX - position.x) / deltaTime;
             this._velocity.y = (newY - position.y) / deltaTime;
             this._velocity.z = (newZ - position.z) / deltaTime;

@@ -3,7 +3,7 @@ import { IMemoryManager, IObserverSubscription } from './interfaces';
 
 interface TrackedSubject {
     readonly id: SubjectId;
-    readonly subject: WeakRef<IObservableSubject>;
+    readonly subject: WeakRef<IObservableSubject<any>>;
     readonly createdAt: number;
     lastAccessedAt: number;
 }
@@ -15,11 +15,23 @@ interface TrackedObserver {
     lastAccessedAt: number;
 }
 
+const SUBJECT_OVERHEAD_BYTES = 256;
+const OBSERVER_OVERHEAD_BYTES = 128;
+const BUFFER_ENTRY_BYTES = 32;
+
+const runtimeGc = (): void => {
+    const maybeGc = (globalThis as { gc?: () => void }).gc;
+    if (typeof maybeGc === 'function') {
+        maybeGc();
+    }
+};
+
 export class MemoryManager implements IMemoryManager {
     readonly #trackedSubjects = new Map<SubjectId, TrackedSubject>();
     readonly #trackedObservers = new Map<ObserverId, TrackedObserver>();
     readonly #gcIntervalId?: ReturnType<typeof setInterval>;
     readonly #enableTracking: boolean;
+    readonly #autoGcThresholdMb: number;
     #isDisposed = false;
 
     constructor(
@@ -30,27 +42,27 @@ export class MemoryManager implements IMemoryManager {
         } = {}
     ) {
         this.#enableTracking = options.enableTracking ?? true;
+        this.#autoGcThresholdMb = options.autoGcThresholdMb ?? 50;
 
-        if (this.#enableTracking && (options.gcIntervalMs ?? 60000) > 0) {
+        if (this.#enableTracking && (options.gcIntervalMs ?? 60000) > 0 && typeof WeakRef === 'function') {
             this.#gcIntervalId = setInterval(() => {
-                this.#runAutomaticGc(options.autoGcThresholdMb ?? 50);
+                void this.#runAutomaticGc();
             }, options.gcIntervalMs ?? 60000);
         }
     }
 
     trackSubject(subject: IObservableSubject<any>): void {
-        if (!this.#enableTracking || this.#isDisposed) {
+        if (!this.#enableTracking || this.#isDisposed || typeof WeakRef !== 'function') {
             return;
         }
 
-        const tracked: TrackedSubject = {
+        const now = Date.now();
+        this.#trackedSubjects.set(subject.id, {
             id: subject.id,
             subject: new WeakRef(subject),
-            createdAt: Date.now(),
-            lastAccessedAt: Date.now(),
-        };
-
-        this.#trackedSubjects.set(subject.id, tracked);
+            createdAt: now,
+            lastAccessedAt: now,
+        });
     }
 
     untrackSubject(subjectId: SubjectId): void {
@@ -58,18 +70,17 @@ export class MemoryManager implements IMemoryManager {
     }
 
     trackObserver(observer: IObserverSubscription): void {
-        if (!this.#enableTracking || this.#isDisposed) {
+        if (!this.#enableTracking || this.#isDisposed || typeof WeakRef !== 'function') {
             return;
         }
 
-        const tracked: TrackedObserver = {
+        const now = Date.now();
+        this.#trackedObservers.set(observer.id, {
             id: observer.id,
             observer: new WeakRef(observer),
-            createdAt: Date.now(),
-            lastAccessedAt: Date.now(),
-        };
-
-        this.#trackedObservers.set(observer.id, tracked);
+            createdAt: now,
+            lastAccessedAt: now,
+        });
     }
 
     untrackObserver(observerId: ObserverId): void {
@@ -83,36 +94,44 @@ export class MemoryManager implements IMemoryManager {
         observerBuffers: number;
         totalMemoryBytes: number;
     } {
-        let replayBufferSize = 0;
-        let observerBufferSize = 0;
+        let replayBuffers = 0;
+        let observerBuffers = 0;
         let totalMemoryBytes = 0;
 
         for (const tracked of this.#trackedSubjects.values()) {
             const subject = tracked.subject.deref();
-            if (subject) {
-                tracked.lastAccessedAt = Date.now();
-                const usage = subject.getMemoryUsage();
-                replayBufferSize += usage[OBSERVER_MEMORY_SYMBOLS.replayBuffers.toString()] ?? 0;
-                observerBufferSize +=
-                    usage[OBSERVER_MEMORY_SYMBOLS.observationQueues.toString()] ?? 0;
-
-                totalMemoryBytes += this.#estimateObjectSize(subject);
+            if (!subject) {
+                continue;
             }
+
+            tracked.lastAccessedAt = Date.now();
+            const usage = subject.getMemoryUsage();
+            const replayEntries = usage[OBSERVER_MEMORY_SYMBOLS.replayBuffers.toString()] ?? 0;
+            const observerEntries = usage[OBSERVER_MEMORY_SYMBOLS.observationQueues.toString()] ?? 0;
+
+            replayBuffers += replayEntries;
+            observerBuffers += observerEntries;
+            totalMemoryBytes +=
+                SUBJECT_OVERHEAD_BYTES +
+                replayEntries * BUFFER_ENTRY_BYTES +
+                observerEntries * BUFFER_ENTRY_BYTES;
         }
 
         for (const tracked of this.#trackedObservers.values()) {
             const observer = tracked.observer.deref();
-            if (observer) {
-                tracked.lastAccessedAt = Date.now();
-                totalMemoryBytes += this.#estimateObjectSize(observer);
+            if (!observer) {
+                continue;
             }
+
+            tracked.lastAccessedAt = Date.now();
+            totalMemoryBytes += OBSERVER_OVERHEAD_BYTES;
         }
 
         return {
             subjects: this.#trackedSubjects.size,
             observers: this.#trackedObservers.size,
-            replayBuffers: replayBufferSize,
-            observerBuffers: observerBufferSize,
+            replayBuffers,
+            observerBuffers,
             totalMemoryBytes,
         };
     }
@@ -126,36 +145,34 @@ export class MemoryManager implements IMemoryManager {
             return { subjectsCleared: 0, observersCleared: 0, memoryFreed: 0 };
         }
 
-        const initialMemory = this.getMemoryUsage();
+        const initialMemory = this.getMemoryUsage().totalMemoryBytes;
         let subjectsCleared = 0;
         let observersCleared = 0;
+        const now = Date.now();
+        const idleThresholdMs = 5 * 60 * 1000;
 
-        for (const [subjectId, tracked] of this.#trackedSubjects.entries()) {
+        for (const [subjectId, tracked] of this.#trackedSubjects) {
             const subject = tracked.subject.deref();
             if (!subject) {
                 this.#trackedSubjects.delete(subjectId);
                 subjectsCleared++;
-            } else {
-                const now = Date.now();
-                const inactiveTime = now - tracked.lastAccessedAt;
-                const fiveMinutes = 5 * 60 * 1000;
+                continue;
+            }
 
-                if (
-                    (subject.isCompleted() || !subject.getObserverCount()) &&
-                    inactiveTime > fiveMinutes
-                ) {
-                    try {
-                        subject.dispose();
-                        this.#trackedSubjects.delete(subjectId);
-                        subjectsCleared++;
-                    } catch {
-                        // ignore disposal errors
-                    }
-                }
+            if (
+                (subject.isCompleted() || subject.getObserverCount() === 0) &&
+                now - tracked.lastAccessedAt > idleThresholdMs
+            ) {
+                try {
+                    subject.dispose();
+                } catch {}
+
+                this.#trackedSubjects.delete(subjectId);
+                subjectsCleared++;
             }
         }
 
-        for (const [observerId, tracked] of this.#trackedObservers.entries()) {
+        for (const [observerId, tracked] of this.#trackedObservers) {
             const observer = tracked.observer.deref();
             if (!observer || !observer.isActive) {
                 this.#trackedObservers.delete(observerId);
@@ -163,20 +180,14 @@ export class MemoryManager implements IMemoryManager {
             }
         }
 
-        if (global.gc) {
-            global.gc();
-        }
+        runtimeGc();
 
-        const finalMemory = this.getMemoryUsage();
-        const memoryFreed = Math.max(
-            0,
-            initialMemory.totalMemoryBytes - finalMemory.totalMemoryBytes
-        );
+        const finalMemory = this.getMemoryUsage().totalMemoryBytes;
 
         return {
             subjectsCleared,
             observersCleared,
-            memoryFreed,
+            memoryFreed: Math.max(0, initialMemory - finalMemory),
         };
     }
 
@@ -196,11 +207,11 @@ export class MemoryManager implements IMemoryManager {
     }
 
     getTrackedSubjects(): ReadonlyArray<SubjectId> {
-        return Array.from(this.#trackedSubjects.keys());
+        return [...this.#trackedSubjects.keys()];
     }
 
     getTrackedObservers(): ReadonlyArray<ObserverId> {
-        return Array.from(this.#trackedObservers.keys());
+        return [...this.#trackedObservers.keys()];
     }
 
     getSubjectAccessTime(subjectId: SubjectId): number | undefined {
@@ -220,42 +231,39 @@ export class MemoryManager implements IMemoryManager {
         memoryPressure: 'low' | 'medium' | 'high';
     } {
         let deadSubjects = 0;
+        let deadObservers = 0;
         let inactiveSubjects = 0;
+        let inactiveObservers = 0;
         const now = Date.now();
-        const inactiveThreshold = 10 * 60 * 1000; // 10 minutes
+        const inactivityThreshold = 10 * 60 * 1000;
 
         for (const tracked of this.#trackedSubjects.values()) {
             const subject = tracked.subject.deref();
             if (!subject) {
                 deadSubjects++;
-            } else if (now - tracked.lastAccessedAt > inactiveThreshold) {
+            } else if (now - tracked.lastAccessedAt > inactivityThreshold) {
                 inactiveSubjects++;
             }
         }
-
-        let deadObservers = 0;
-        let inactiveObservers = 0;
 
         for (const tracked of this.#trackedObservers.values()) {
             const observer = tracked.observer.deref();
             if (!observer) {
                 deadObservers++;
-            } else if (now - tracked.lastAccessedAt > inactiveThreshold) {
+            } else if (now - tracked.lastAccessedAt > inactivityThreshold) {
                 inactiveObservers++;
             }
         }
 
         const totalTracked = this.#trackedSubjects.size + this.#trackedObservers.size;
+        const usage = this.getMemoryUsage().totalMemoryBytes / (1024 * 1024);
         const deadRatio = (deadSubjects + deadObservers) / Math.max(1, totalTracked);
-
-        let memoryPressure: 'low' | 'medium' | 'high';
-        if (deadRatio > 0.3) {
-            memoryPressure = 'high';
-        } else if (deadRatio > 0.1) {
-            memoryPressure = 'medium';
-        } else {
-            memoryPressure = 'low';
-        }
+        const memoryPressure: 'low' | 'medium' | 'high' =
+            usage > this.#autoGcThresholdMb || deadRatio > 0.3
+                ? 'high'
+                : usage > this.#autoGcThresholdMb * 0.5 || deadRatio > 0.1
+                  ? 'medium'
+                  : 'low';
 
         return {
             deadSubjects,
@@ -267,62 +275,10 @@ export class MemoryManager implements IMemoryManager {
         };
     }
 
-    async #runAutomaticGc(thresholdMb: number): Promise<void> {
-        const usage = this.getMemoryUsage();
-        const usageMb = usage.totalMemoryBytes / (1024 * 1024);
-
-        if (usageMb > thresholdMb) {
+    async #runAutomaticGc(): Promise<void> {
+        const usageMb = this.getMemoryUsage().totalMemoryBytes / (1024 * 1024);
+        if (usageMb > this.#autoGcThresholdMb) {
             await this.runGarbageCollection();
         }
-    }
-
-    #estimateObjectSize(obj: any): number {
-        let size = 0;
-
-        if (obj === null || obj === undefined) {
-            return 0;
-        }
-
-        switch (typeof obj) {
-            case 'boolean':
-                return 4;
-            case 'number':
-                return 8;
-            case 'string':
-                return obj.length * 2;
-            case 'object':
-                if (obj instanceof Array) {
-                    size = 24;
-                    for (const item of obj) {
-                        size += this.#estimateObjectSize(item);
-                    }
-                } else if (obj instanceof Map) {
-                    size = 32;
-                    for (const [key, value] of obj) {
-                        size += this.#estimateObjectSize(key);
-                        size += this.#estimateObjectSize(value);
-                    }
-                } else if (obj instanceof Set) {
-                    size = 32;
-                    for (const item of obj) {
-                        size += this.#estimateObjectSize(item);
-                    }
-                } else {
-                    size = 16;
-                    for (const key in obj) {
-                        if (obj.hasOwnProperty(key)) {
-                            size += key.length * 2;
-                            size += this.#estimateObjectSize(obj[key]);
-                        }
-                    }
-                }
-                break;
-            case 'function':
-                return 100;
-            default:
-                return 8;
-        }
-
-        return size;
     }
 }

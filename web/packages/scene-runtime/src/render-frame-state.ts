@@ -33,6 +33,11 @@ export class SceneRenderFrameState {
         this._trianglesSubmitted += Math.floor(mesh.vertexCount / 3);
     }
 
+    recordTriangles(triangleCount: number, drawCalls: number = 1): void {
+        this._drawCalls += Math.max(0, Math.floor(drawCalls));
+        this._trianglesSubmitted += Math.max(0, Math.floor(triangleCount));
+    }
+
     get frame(): number {
         return this._frame;
     }

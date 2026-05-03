@@ -14,6 +14,8 @@ describe('SceneLightingUniformBinder', () => {
         const shader = {} as SceneShaderResource;
         const lighting = {
             ambient: new Vec3(0.4, 0.3, 0.2),
+            skyLight: new Vec3(0.5, 0.45, 0.4),
+            groundLight: new Vec3(0.1, 0.08, 0.06),
             hasDirectional: true,
             directionalDirection: new Vec3(0, -1, 0),
             directionalColor: new Vec3(1, 0.8, 0.6),
@@ -46,6 +48,8 @@ describe('SceneLightingUniformBinder', () => {
 
         expect(writer.write).toHaveBeenCalledWith(shader, 'u_ReceiveLighting', false);
         expect(writer.write).toHaveBeenCalledWith(shader, 'u_AmbientLight', Vec3.ZERO);
+    expect(writer.write).toHaveBeenCalledWith(shader, 'u_SkyLight', Vec3.ZERO);
+    expect(writer.write).toHaveBeenCalledWith(shader, 'u_GroundLight', Vec3.ZERO);
         expect(writer.write).toHaveBeenCalledWith(shader, 'u_LightColor', Vec3.ZERO);
         expect(writer.write).toHaveBeenCalledWith(shader, 'u_LightIntensity', 0);
         expect(writer.write).toHaveBeenCalledWith(shader, 'u_PointLightCount', 0);

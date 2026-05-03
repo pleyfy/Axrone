@@ -1,4 +1,5 @@
-type Brand<K, T> = K & { readonly __brand: T };
+import type { Brand } from '../types';
+
 type Epsilon = Brand<number, 'Epsilon'>;
 type ULPsTolerance = Brand<number, 'ULPsTolerance'>;
 

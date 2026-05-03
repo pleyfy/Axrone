@@ -31,12 +31,14 @@ describe('SceneRenderPassRegistry', () => {
             id: 'main',
             order: 0,
             rendererPassId: 'main',
+            materialPassId: null,
             enabled: true,
         });
         expect(overlay).toEqual({
             id: 'overlay',
             order: 1,
             rendererPassId: 'overlay',
+            materialPassId: null,
             enabled: true,
         });
         expect(mainResource?.clearFlags).toEqual(['color', 'depth']);
@@ -70,6 +72,7 @@ describe('SceneRenderPassRegistry', () => {
 
         expect(handles.map((handle) => handle.id)).toEqual(['earlier', 'later']);
         expect(handles[0]?.rendererPassId).toBe('custom');
+        expect(handles[0]?.materialPassId).toBeNull();
         expect(handles[0]?.enabled).toBe(false);
         expect(definitions.map((definition) => definition.id)).toEqual(['earlier', 'later']);
         expect(definitions[1]?.clearFlags).toEqual([]);
@@ -131,5 +134,21 @@ describe('SceneRenderPassRegistry', () => {
         expect(cloned.clearColor instanceof Vec4).toBe(true);
         expect(toVec4Tuple(cloned.clearColor)).toEqual([0.2, 0.3, 0.4, 1]);
         expect(cloned.clearFlags).toEqual(['color', 'depth']);
+    });
+
+    it('stores material pass selectors on render pass resources and handles', () => {
+        const registry = new SceneRenderPassRegistry({
+            defaultPassId: 'main',
+            defaultClearColor: new Vec4(0, 0, 0, 1),
+        });
+
+        const handle = registry.register({
+            id: 'shadow',
+            rendererPassId: 'shadow',
+            materialPassId: 'shadow-caster',
+        });
+
+        expect(handle.materialPassId).toBe('shadow-caster');
+        expect(registry.get('shadow')?.materialPassId).toBe('shadow-caster');
     });
 });

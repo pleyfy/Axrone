@@ -82,11 +82,7 @@ const assetCoreRuntimeExports = new Set([
     'isAssetImporter',
 ]);
 
-const sceneRuntimeExports = new Set([
-    'Animator',
-    'Camera',
-    'PrefabNodeBinding',
-]);
+const sceneRuntimeExports = new Set(['Animator', 'Camera', 'PrefabNodeBinding']);
 
 const renderWebgl2RuntimeExports = new Set([
     'FilterMode',
@@ -162,6 +158,7 @@ const coreImportMigrationPriority = [
     '@axrone/geometry',
     '@axrone/physics',
     '@axrone/render-webgl2',
+    '@axrone/memory',
     '@axrone/numeric',
     '@axrone/random',
     '@axrone/game-loop',
@@ -245,9 +242,7 @@ const parseImportSpecifiers = (clause: string): readonly ParsedImportSpecifier[]
 
 const renderImportSpecifier = (specifier: ParsedImportSpecifier): string => {
     const aliasSuffix =
-        specifier.localName !== specifier.importedName
-            ? ` as ${specifier.localName}`
-            : '';
+        specifier.localName !== specifier.importedName ? ` as ${specifier.localName}` : '';
     return `${specifier.isTypeOnly ? 'type ' : ''}${specifier.importedName}${aliasSuffix}`;
 };
 
@@ -335,7 +330,8 @@ const upsertNamedImport = (
     const prefix = source.slice(0, insertionIndex);
     const suffix = source.slice(insertionIndex);
     const needsLeadingNewline = prefix.length > 0 && !prefix.endsWith('\n');
-    const normalizedSuffix = suffix.startsWith('\n') || suffix.length === 0 ? suffix : `\n${suffix}`;
+    const normalizedSuffix =
+        suffix.startsWith('\n') || suffix.length === 0 ? suffix : `\n${suffix}`;
 
     return {
         nextSource: `${prefix}${needsLeadingNewline ? '\n' : ''}${nextDeclaration}${normalizedSuffix}`,
@@ -354,8 +350,10 @@ export const normalizePlaygroundSource = (
 
     const migrations = buildCoreImportMigrations(supportedModules);
     const coreSpecifiers = parseImportSpecifiers(coreImportMatch[1]);
-    const { migratedSpecifiersByModule, remainingCoreSpecifiers } =
-        partitionCoreImportSpecifiers(coreSpecifiers, migrations);
+    const { migratedSpecifiersByModule, remainingCoreSpecifiers } = partitionCoreImportSpecifiers(
+        coreSpecifiers,
+        migrations
+    );
 
     if (migratedSpecifiersByModule.length === 0) {
         return source;
@@ -433,9 +431,7 @@ export const validateSupportedModuleImports = (
                 continue;
             }
 
-            diagnostics.push(
-                `Module "${moduleName}" does not export "${specifier.importedName}".`
-            );
+            diagnostics.push(`Module "${moduleName}" does not export "${specifier.importedName}".`);
         }
     }
 

@@ -67,7 +67,7 @@ const createRigBinaryBlob = (): Uint8Array => {
         1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
-        0, 0, 0, 1,
+        -0.5, 0.25, 0, 1,
     ]);
     const animationTimes = new Float32Array([0, 1]);
     const animationTranslations = new Float32Array([
@@ -101,7 +101,11 @@ const createRigBinaryBlob = (): Uint8Array => {
     return bytes;
 };
 
-const createRigJson = (): GltfRootJson => ({
+const createRigJson = (
+    options: {
+        readonly material?: NonNullable<GltfRootJson['materials']>[number];
+    } = {}
+): GltfRootJson => ({
     asset: {
         version: '2.0',
         generator: 'vitest',
@@ -207,10 +211,12 @@ const createRigJson = (): GltfRootJson => ({
                         WEIGHTS_0: 2,
                     },
                     indices: 3,
+                    material: options.material ? 0 : undefined,
                 },
             ],
         },
     ],
+    materials: options.material ? [options.material] : undefined,
     nodes: [
         {
             name: 'Joint Root',
@@ -257,6 +263,79 @@ const createRigJson = (): GltfRootJson => ({
     ],
     scene: 0,
 });
+
+const createRigJsonWithAnimationMetadata = (): GltfRootJson => {
+    const base = createRigJson();
+    return {
+        ...base,
+        nodes: [
+            {
+                ...base.nodes![0]!,
+                children: [1],
+            },
+            {
+                ...base.nodes![1]!,
+            },
+        ],
+        scenes: [
+            {
+                ...base.scenes![0]!,
+                extras: {
+                    axrone: {
+                        animation: {
+                            parameters: [
+                                {
+                                    name: 'speed',
+                                    kind: 'float',
+                                    defaultValue: 0.25,
+                                },
+                            ],
+                            layers: [
+                                {
+                                    id: 'base',
+                                    weight: 1,
+                                    stateMachine: {
+                                        entryState: 'move',
+                                        states: [
+                                            {
+                                                id: 'move',
+                                                motion: {
+                                                    kind: 'clip',
+                                                    clipId: 'Move',
+                                                },
+                                                loop: true,
+                                            },
+                                        ],
+                                    },
+                                    ikLayers: [
+                                        {
+                                            id: 'reach',
+                                            jobs: [
+                                                {
+                                                    id: 'aim',
+                                                    solver: 'ccd',
+                                                    rootBone: 'node/1',
+                                                    tipBone: 'node/1',
+                                                    targetPosition: [1, 0, 0],
+                                                    maxIterations: 8,
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                            rootMotion: {
+                                bone: 'node/1',
+                                consume: true,
+                                projectTranslationAxes: [true, false, false],
+                            },
+                        },
+                    },
+                },
+            },
+        ],
+    };
+};
 
 const createMorphBinaryBlob = (): Uint8Array => {
     const morphPositions = new Float32Array([
@@ -517,6 +596,12 @@ describe('glTF runtime smoke', () => {
 
             expect(skinningCall?.[1]).toBe(1);
             expect(jointPaletteCall?.[2].length).toBe(16);
+            expect(Array.from(jointPaletteCall?.[2] ?? [])).toEqual([
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                -0.5, 0.25, 0, 1,
+            ]);
             expect((gl.drawElements as unknown as { mock: { calls: readonly unknown[][] } }).mock.calls.length).toBeGreaterThan(0);
         } finally {
             scene.dispose();
@@ -596,6 +681,144 @@ describe('glTF runtime smoke', () => {
             expect(renderer?.morphWeights?.[0]).toBeCloseTo(1, 5);
             expect(latestUploadView?.getFloat32(0, true)).toBeCloseTo(1, 5);
             expect((gl.drawElements as unknown as { mock: { calls: readonly unknown[][] } }).mock.calls.length).toBeGreaterThan(0);
+        } finally {
+            scene.dispose();
+        }
+    });
+
+    it('maps double-sided blend materials onto runtime shader variants', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(
+                createRigJson({
+                    material: {
+                        name: 'PreviewMaterial',
+                        alphaMode: 'BLEND',
+                        doubleSided: true,
+                        pbrMetallicRoughness: {
+                            baseColorFactor: [1, 1, 1, 0.5],
+                            metallicFactor: 0,
+                            roughnessFactor: 1,
+                        },
+                    },
+                }),
+                createRigBinaryBlob()
+            ),
+            uri: 'models/rig-material.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+
+        try {
+            const load = await loadGltfSceneIntoScene(scene, database, receipt.primary.reference, {
+                namePrefix: 'Variant ',
+            });
+
+            expect(load.snapshot.materials[0]?.shaderId).toBe('gltf/pbr/blend/double-sided');
+        } finally {
+            scene.dispose();
+        }
+    });
+
+    it('preserves animation controller metadata through the glTF runtime bridge', async () => {
+        const database = new AssetDatabase<GltfAssetSchema>({
+            importers: [createGltfImporter()],
+        });
+        const receipt = await database.import({
+            kind: 'bytes',
+            data: createGlb(createRigJsonWithAnimationMetadata(), createRigBinaryBlob()),
+            uri: 'models/rig-animation-metadata.glb',
+            mimeType: 'model/gltf-binary',
+        });
+
+        const canvas = document.createElement('canvas');
+        const scene = new Scene(createSceneOptions(scheduler, canvas));
+
+        try {
+            const load = await loadGltfSceneIntoScene(scene, database, receipt.primary.reference, {
+                namePrefix: 'Meta ',
+            });
+            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
+
+            const rootActor = load.actors.find((actor) => actor.name === 'Meta Joint Root');
+            const animator = rootActor?.getComponent(Animator) ?? null;
+
+            expect(load.scene.animationController).toMatchObject({
+                parameters: [
+                    expect.objectContaining({
+                        name: 'speed',
+                        kind: 'float',
+                        defaultValue: 0.25,
+                    }),
+                ],
+                layers: [
+                    expect.objectContaining({
+                        id: 'base',
+                        stateMachine: expect.objectContaining({
+                            entryState: 'move',
+                        }),
+                        ikLayers: [
+                            expect.objectContaining({
+                                id: 'reach',
+                                jobs: [
+                                    expect.objectContaining({
+                                        id: 'aim',
+                                        solver: 'ccd',
+                                        rootBone: 'node/1',
+                                        tipBone: 'node/1',
+                                    }),
+                                ],
+                            }),
+                        ],
+                    }),
+                ],
+                rootMotion: expect.objectContaining({
+                    bone: 'node/1',
+                    consume: true,
+                    projectTranslationAxes: [true, false, false],
+                }),
+            });
+            expect(load.prefab.data.animationController).toMatchObject(
+                load.scene.animationController ?? {}
+            );
+            expect(animator?.clipId).toBe('Move');
+            expect(animator?.serialize()).toMatchObject({
+                parameters: [
+                    expect.objectContaining({
+                        name: 'speed',
+                        kind: 'float',
+                        defaultValue: 0.25,
+                    }),
+                ],
+                layers: [
+                    expect.objectContaining({
+                        id: 'base',
+                        stateMachine: expect.objectContaining({
+                            entryState: 'move',
+                        }),
+                        ikLayers: [
+                            expect.objectContaining({
+                                id: 'reach',
+                            }),
+                        ],
+                    }),
+                ],
+                rootMotion: expect.objectContaining({
+                    bone: 'node/1',
+                    consume: true,
+                }),
+            });
+
+            scene.start(0);
+            scheduler.flush(500);
+
+            expect(rootActor?.requireComponent(Transform).position.x).toBeGreaterThan(0);
         } finally {
             scene.dispose();
         }

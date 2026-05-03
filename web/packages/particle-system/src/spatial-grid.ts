@@ -1,5 +1,5 @@
 import { AABB3D } from '@axrone/geometry';
-import { MemoryPool } from '@axrone/utility';
+import { MemoryPool } from '@axrone/memory';
 import { Vec3, IVec3Like } from '@axrone/numeric';
 import { ISpatialCell, ISpatialGrid } from './interfaces';
 import { ParticleId } from './types';

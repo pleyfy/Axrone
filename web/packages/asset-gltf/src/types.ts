@@ -1,3 +1,13 @@
+import type {
+    AnimationClipCompressionDefinition,
+    AnimationClipEventDefinition,
+    AnimationClipStreamingDefinition,
+    AnimationFootContactDefinition,
+    AnimationLayerDefinition,
+    AnimationMotionFeatureDefinition,
+    AnimationParameterDefinition,
+    AnimationRootMotionDefinition,
+} from '@axrone/animation';
 import type { FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type {
     AssetCustomSource,
@@ -49,6 +59,7 @@ export interface GltfDocumentSceneAsset {
     readonly name: string;
     readonly prefabKey: string;
     readonly rootNodeIds: readonly string[];
+    readonly animationController?: GltfAnimationControllerMetadata;
 }
 
 export interface GltfDocumentStats {
@@ -110,6 +121,29 @@ export interface GltfAnimationClipAsset {
     readonly animationIndex: number;
     readonly duration: number;
     readonly tracks: readonly GltfAnimationTrackAsset[];
+    readonly events?: readonly AnimationClipEventDefinition[];
+    readonly footContacts?: readonly AnimationFootContactDefinition[];
+    readonly tags?: readonly string[];
+    readonly features?: readonly AnimationMotionFeatureDefinition[];
+    readonly compression?: AnimationClipCompressionDefinition;
+    readonly streaming?: AnimationClipStreamingDefinition;
+}
+
+export interface GltfAnimationClipMetadata {
+    readonly id: string;
+    readonly events?: readonly AnimationClipEventDefinition[];
+    readonly footContacts?: readonly AnimationFootContactDefinition[];
+    readonly tags?: readonly string[];
+    readonly features?: readonly AnimationMotionFeatureDefinition[];
+    readonly compression?: AnimationClipCompressionDefinition;
+    readonly streaming?: AnimationClipStreamingDefinition;
+}
+
+export interface GltfAnimationControllerMetadata {
+    readonly parameters?: readonly AnimationParameterDefinition[];
+    readonly layers?: readonly AnimationLayerDefinition[];
+    readonly rootMotion?: AnimationRootMotionDefinition | null;
+    readonly clips?: readonly GltfAnimationClipMetadata[];
 }
 
 export type GltfMaterialAlphaMode = 'OPAQUE' | 'MASK' | 'BLEND';
@@ -222,6 +256,7 @@ export interface GltfPrefabAsset {
     readonly skinKeys: readonly string[];
     readonly animationKeys: readonly string[];
     readonly materialKeys: readonly string[];
+    readonly animationController?: GltfAnimationControllerMetadata;
 }
 
 export interface GltfAssetSchema extends AssetSchema {
@@ -279,9 +314,19 @@ export type GltfResourceResolver = (
     request: Readonly<GltfResourceRequest>
 ) => GltfResolvedResource | Promise<GltfResolvedResource | undefined> | undefined;
 
+export interface GltfDracoDecoderOptions {
+    readonly wasmUrl?: string;
+    readonly moduleFactory?: (
+        moduleConfig?: Readonly<{
+            locateFile?: (path: string, scriptDirectory: string) => string;
+        }>
+    ) => Promise<unknown>;
+}
+
 export interface GltfImporterOptions<TSchema extends GltfAssetSchemaLike = GltfAssetSchemaLike> {
     readonly id?: string;
     readonly resourceResolver?: GltfResourceResolver;
+    readonly dracoDecoder?: GltfDracoDecoderOptions;
     readonly materialShaderId?: string;
     readonly textureStageId?: string;
     readonly defaultSamplerId?: string;
@@ -582,6 +627,8 @@ export interface GltfNodeJson {
 export interface GltfSceneJson {
     readonly nodes?: readonly number[];
     readonly name?: string;
+    readonly extensions?: Readonly<Record<string, unknown>>;
+    readonly extras?: Readonly<Record<string, unknown>>;
 }
 
 export interface GltfRootJson {

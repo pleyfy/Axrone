@@ -54,11 +54,17 @@ export const adaptGltfMeshDefinitionToScene = (
 
 export const adaptGltfMaterialDefinitionToScene = (
     definition: GltfMaterialDefinition
-): SceneMaterialDefinition => ({
-    ...definition,
-    uniforms: definition.uniforms ? { ...definition.uniforms } : undefined,
-    textures: definition.textures ? { ...definition.textures } : undefined,
-});
+): SceneMaterialDefinition => {
+    const material = definition as GltfMaterialDefinition & Partial<SceneMaterialDefinition>;
+
+    return {
+        ...definition,
+        uniforms: definition.uniforms ? { ...definition.uniforms } : undefined,
+        textures: definition.textures ? { ...definition.textures } : undefined,
+        ...(material.surface ? { surface: material.surface } : {}),
+        ...(material.passes ? { passes: material.passes } : {}),
+    };
+};
 
 export const adaptGltfTextureDefinitionToScene = (
     definition: GltfTextureDefinition
@@ -83,6 +89,7 @@ export const adaptGltfShaderDefinitionToScene = (
     definition: GltfShaderDefinition
 ): SceneShaderDefinition => ({
     ...definition,
+    effect: definition.effect,
     attributes: definition.attributes ? { ...definition.attributes } : undefined,
     uniforms: definition.uniforms ? [...definition.uniforms] : undefined,
 });

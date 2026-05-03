@@ -5,8 +5,34 @@ import {
     WidgetNotFoundError,
     WidgetTreeIntegrityError,
 } from './errors';
-import { FontRegistry } from './font';
-import { UILayoutEngine, compileLayoutInput, normalizeCorners } from './layout';
+import { FontRegistry, ensureDefaultUIFont } from './font';
+import { UILayoutEngine, compileLayoutInput } from './layout';
+import { NodeFlag } from './runtime/node-flags';
+import {
+    type StoredWidgetRecord,
+    compileWidgetFocus,
+    compileWidgetImage,
+    compileWidgetStyle,
+    compileWidgetText,
+    normalizeWidgetRecord,
+} from './runtime/records';
+import {
+    EMPTY_FOCUS_INPUT,
+    EMPTY_LAYOUT_INPUT,
+    EMPTY_RECORD_OBJECT,
+    EMPTY_STYLE_INPUT,
+    TRANSPARENT,
+    cloneData,
+    intersectRect,
+    intersectsPoint,
+    mergeFocusInput,
+    mergeHandlers,
+    mergeImageInput,
+    mergeLayoutInput,
+    mergeProps,
+    mergeStyleInput,
+    mergeTextInput,
+} from './runtime/internals';
 import { TextLayoutEngine } from './text';
 import { WidgetRegistry } from './widget';
 import type {
@@ -18,7 +44,6 @@ import type {
     ImageRenderCommand,
     LayoutBox,
     QuadRenderCommand,
-    ReadonlyColor,
     RenderCommand,
     ResolvedFocusPolicy,
     ResolvedWidgetImage,
@@ -26,7 +51,6 @@ import type {
     ResolvedTextBlock,
     ResolvedWidgetStyle,
     SizeLike,
-    TextBlockInput,
     TextLayoutResult,
     TextRenderCommand,
     UIFrame,
@@ -39,13 +63,10 @@ import type {
     WidgetEventContext,
     WidgetEventHandlers,
     WidgetFocusChangeEvent,
-    WidgetFocusPolicyInput,
-    WidgetImageInput,
     WidgetId,
     WidgetKey,
     WidgetLayoutInput,
     WidgetPatch,
-    WidgetRole,
     WidgetSerializableKey,
     WidgetSnapshot,
     WidgetStyleInput,
@@ -63,295 +84,13 @@ export interface UIRuntimeOptions<TPayload = unknown> {
     readonly textCacheSize?: number;
 }
 
-interface StoredWidgetRecord<TPayload> {
-    readonly role: WidgetRole;
-    readonly controller: string | null;
-    readonly key?: WidgetKey;
-    readonly props: Readonly<Record<string, unknown>>;
-    readonly enabled: boolean;
-    readonly interactive: boolean;
-    readonly layoutInput: WidgetLayoutInput;
-    readonly styleInput: WidgetStyleInput;
-    readonly textInput: TextBlockInput | null;
-    readonly imageInput: WidgetImageInput | null;
-    readonly focusInput: WidgetFocusPolicyInput;
-    readonly handlers: WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>> | null;
-}
-
-const EMPTY_RECORD_OBJECT: Readonly<Record<string, unknown>> = Object.freeze({});
-const EMPTY_LAYOUT_INPUT: WidgetLayoutInput = Object.freeze({});
-const EMPTY_STYLE_INPUT: WidgetStyleInput = Object.freeze({});
-const EMPTY_FOCUS_INPUT: WidgetFocusPolicyInput = Object.freeze({});
-const TRANSPARENT: ReadonlyColor = Object.freeze({ r: 0, g: 0, b: 0, a: 0 });
-const BLACK: ReadonlyColor = Object.freeze({ r: 0, g: 0, b: 0, a: 1 });
-const WHITE: ReadonlyColor = Object.freeze({ r: 1, g: 1, b: 1, a: 1 });
-
-const enum NodeFlag {
-    Allocated = 1 << 0,
-    Visible = 1 << 1,
-    Interactive = 1 << 2,
-    Enabled = 1 << 3,
-    Focusable = 1 << 4,
-    TextDirty = 1 << 5,
-}
-
-const clamp = (value: number, min: number, max: number): number => {
-    if (value < min) {
-        return min;
-    }
-    if (value > max) {
-        return max;
-    }
-    return value;
-};
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-    if (value === null || typeof value !== 'object') {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-};
-
-const isColorLike = (
-    value: ColorInput
-): value is { readonly r: number; readonly g: number; readonly b: number; readonly a?: number } =>
-    typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const cloneData = <TValue>(value: TValue): TValue => {
-    if (value === null || value === undefined) {
-        return value;
-    }
-    if (Array.isArray(value)) {
-        return value.map((entry) => cloneData(entry)) as TValue;
-    }
-    if (isPlainObject(value)) {
-        const clone: Record<string, unknown> = {};
-        for (const [key, entry] of Object.entries(value)) {
-            if (typeof entry === 'function' || typeof entry === 'symbol') {
-                continue;
-            }
-            clone[key] = cloneData(entry);
-        }
-        return clone as TValue;
-    }
-    if (typeof value === 'function' || typeof value === 'symbol') {
-        return undefined as TValue;
-    }
-    return value;
-};
-
-const colorFromNumber = (value: number): ReadonlyColor => ({
-    r: ((value >>> 24) & 0xff) / 255,
-    g: ((value >>> 16) & 0xff) / 255,
-    b: ((value >>> 8) & 0xff) / 255,
-    a: (value & 0xff) / 255,
-});
-
-const colorFromHex = (value: string): ReadonlyColor => {
-    const hex = value.replace('#', '').trim();
-    if (hex.length === 3) {
-        return {
-            r: Number.parseInt(hex[0] + hex[0], 16) / 255,
-            g: Number.parseInt(hex[1] + hex[1], 16) / 255,
-            b: Number.parseInt(hex[2] + hex[2], 16) / 255,
-            a: 1,
-        };
-    }
-    if (hex.length === 6 || hex.length === 8) {
-        return {
-            r: Number.parseInt(hex.slice(0, 2), 16) / 255,
-            g: Number.parseInt(hex.slice(2, 4), 16) / 255,
-            b: Number.parseInt(hex.slice(4, 6), 16) / 255,
-            a: hex.length === 8 ? Number.parseInt(hex.slice(6, 8), 16) / 255 : 1,
-        };
-    }
-    return TRANSPARENT;
-};
-
-const normalizeColor = (input: ColorInput | undefined, fallback: ReadonlyColor): ReadonlyColor => {
-    if (input === undefined) {
-        return fallback;
-    }
-    if (typeof input === 'number') {
-        return colorFromNumber(input >>> 0);
-    }
-    if (typeof input === 'string') {
-        return colorFromHex(input);
-    }
-    if (Array.isArray(input)) {
-        if (input.length === 3) {
-            return { r: input[0], g: input[1], b: input[2], a: 1 };
-        }
-        return { r: input[0], g: input[1], b: input[2], a: input[3] };
-    }
-    if (!isColorLike(input)) {
-        return fallback;
-    }
-    return {
-        r: input.r,
-        g: input.g,
-        b: input.b,
-        a: input.a ?? 1,
-    };
-};
-
-const normalizeWeight = (value: ResolvedTextBlock['weight'] | TextBlockInput['weight']): number => {
-    switch (value) {
-        case 'thin':
-            return 100;
-        case 'extralight':
-            return 200;
-        case 'light':
-            return 300;
-        case 'normal':
-            return 400;
-        case 'medium':
-            return 500;
-        case 'semibold':
-            return 600;
-        case 'bold':
-            return 700;
-        case 'extrabold':
-            return 800;
-        case 'black':
-            return 900;
-        case undefined:
-            return 400;
-        default:
-            return value;
-    }
-};
-
-const mergeLayoutInput = (
-    base: WidgetLayoutInput,
-    patch: WidgetPatch['layout'] | undefined
-): WidgetLayoutInput => {
-    if (!patch) {
-        return base;
-    }
-    return {
-        ...base,
-        ...patch,
-        inset: patch.inset ? { ...(base.inset ?? {}), ...patch.inset } : base.inset,
-        anchor:
-            patch.anchor && isPlainObject(patch.anchor) && isPlainObject(base.anchor)
-                ? { ...base.anchor, ...patch.anchor }
-                : patch.anchor ?? base.anchor,
-    } as WidgetLayoutInput;
-};
-
-const mergeStyleInput = (
-    base: WidgetStyleInput,
-    patch: WidgetPatch['style'] | undefined
-): WidgetStyleInput => ({ ...(base ?? {}), ...(patch ?? {}) }) as WidgetStyleInput;
-
-const mergeTextInput = (
-    base: TextBlockInput | null,
-    patch: WidgetPatch['text'] | undefined
-): TextBlockInput | null => {
-    if (patch === undefined) {
-        return base;
-    }
-    if (patch === null) {
-        return null;
-    }
-    return { ...(base ?? { value: '' }), ...patch } as TextBlockInput;
-};
-
-const mergeImageInput = (
-    base: WidgetImageInput | null,
-    patch: WidgetPatch['image'] | undefined
-): WidgetImageInput | null => {
-    if (patch === undefined) {
-        return base;
-    }
-    if (patch === null) {
-        return null;
-    }
-    const next = patch as WidgetImageInput;
-    return {
-        ...(base ?? {}),
-        ...next,
-        uvRect: next.uvRect ? { ...(base?.uvRect ?? {}), ...next.uvRect } : base?.uvRect,
-    } as WidgetImageInput;
-};
-
-const mergeFocusInput = (
-    base: WidgetFocusPolicyInput,
-    patch: WidgetPatch['focus'] | undefined
-): WidgetFocusPolicyInput => ({ ...(base ?? {}), ...(patch ?? {}) });
-
-const mergeHandlers = <TPayload>(
-    base: WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>> | null,
-    patch: WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>> | undefined
-): WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>> | null => {
-    if (patch === undefined) {
-        return base;
-    }
-    return { ...(base ?? {}), ...patch };
-};
-
-const mergeProps = (
-    base: Readonly<Record<string, unknown>>,
-    patch: Readonly<Record<string, unknown>> | undefined
-): Readonly<Record<string, unknown>> => ({ ...(base ?? EMPTY_RECORD_OBJECT), ...(patch ?? {}) });
-
-const normalizeIndex = (value: number | undefined): number | null => {
-    if (value === undefined || value === null) {
-        return null;
-    }
-    if (!Number.isFinite(value)) {
-        return null;
-    }
-    return Math.max(0, Math.floor(value));
-};
-
-const normalizeUvRect = (input: WidgetImageInput['uvRect']): { readonly x: number; readonly y: number; readonly width: number; readonly height: number } => {
-    const x = clamp(input?.x ?? 0, 0, 1);
-    const y = clamp(input?.y ?? 0, 0, 1);
-    const width = clamp(input?.width ?? 1, 0, 1 - x);
-    const height = clamp(input?.height ?? 1, 0, 1 - y);
-    return { x, y, width, height };
-};
-
-const intersectsPoint = (box: LayoutBox | null, x: number, y: number): boolean => {
-    if (!box) {
-        return false;
-    }
-    return x >= box.x && y >= box.y && x <= box.x + box.width && y <= box.y + box.height;
-};
-
-const intersectRect = (left: LayoutBox | null, right: LayoutBox): LayoutBox | null => {
-    if (!left) {
-        return right;
-    }
-    const x = Math.max(left.x, right.x);
-    const y = Math.max(left.y, right.y);
-    const maxX = Math.min(left.x + left.width, right.x + right.width);
-    const maxY = Math.min(left.y + left.height, right.y + right.height);
-    if (maxX <= x || maxY <= y) {
-        return null;
-    }
-    return {
-        x,
-        y,
-        width: maxX - x,
-        height: maxY - y,
-        contentX: x,
-        contentY: y,
-        contentWidth: maxX - x,
-        contentHeight: maxY - y,
-    };
-};
-
 export class UIRuntime<TPayload = unknown> implements Disposable {
     readonly fonts: FontRegistry;
     readonly textEngine: TextLayoutEngine;
     readonly registry: WidgetRegistry<UIRuntime<TPayload>, TPayload>;
 
     private readonly layoutEngine = new UILayoutEngine<WidgetId>();
-    private records: Array<StoredWidgetRecord<TPayload> | null> = [];
+    private records: Array<StoredWidgetRecord<UIRuntime<TPayload>> | null> = [];
     private layouts: Array<ResolvedLayout | null> = [];
     private styles: Array<ResolvedWidgetStyle | null> = [];
     private texts: Array<ResolvedTextBlock | null> = [];
@@ -398,13 +137,26 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.viewportWidth = Math.max(0, options.width ?? 0);
         this.viewportHeight = Math.max(0, options.height ?? 0);
         this.fonts = options.fonts ?? new FontRegistry(options.fontOptions);
+        if (this.fonts.getDefaultFamily() === null) {
+            try {
+                ensureDefaultUIFont(this.fonts);
+            } catch (error) {
+                if (
+                    !(error instanceof UIError) ||
+                    error.code !== UIErrorCode.FontLoadFailed ||
+                    !error.message.includes('No 2D canvas implementation is available')
+                ) {
+                    throw error;
+                }
+            }
+        }
         this.textEngine =
             options.textEngine ??
             new TextLayoutEngine(this.fonts, { cacheSize: options.textCacheSize, locale: this.locale });
         this.registry = options.registry ?? new WidgetRegistry<UIRuntime<TPayload>, TPayload>();
         const rootId = this.allocate();
         this.rootId = rootId as WidgetId;
-        this.records[rootId] = this.normalizeRecord({
+        this.records[rootId] = normalizeWidgetRecord({
             role: 'root',
             layout: {
                 display: 'overlay',
@@ -447,7 +199,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     ): WidgetId {
         this.ensureActive();
         const id = this.allocate();
-        this.records[id] = this.normalizeRecord(config as WidgetConfig<Record<string, unknown>, UIRuntime<TPayload>>);
+        this.records[id] = normalizeWidgetRecord(config as WidgetConfig<Record<string, unknown>, UIRuntime<TPayload>>);
         this.applyRecord(id, null, null, true);
         return id as WidgetId;
     }
@@ -521,7 +273,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         }
         const previousController = current.controller;
         const previousProps = current.props;
-        const merged: StoredWidgetRecord<TPayload> = {
+        const merged: StoredWidgetRecord<UIRuntime<TPayload>> = {
             role: patch.role ?? current.role,
             controller: patch.controller ?? current.controller,
             key: patch.key ?? current.key,
@@ -591,6 +343,22 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
 
     getWidgetCount(): number {
         return Math.max(0, this.liveCount - 1);
+    }
+
+    collectSubtreeWidgetIds(widget: WidgetId): WidgetId[] {
+        const index = this.requireWidget(widget);
+        const widgets: WidgetId[] = [];
+        const stack = [index];
+
+        while (stack.length > 0) {
+            const current = stack.pop()!;
+            widgets.push(current as WidgetId);
+            for (let child = this.lastChild[current]; child !== 0; child = this.previousSibling[child]) {
+                stack.push(child);
+            }
+        }
+
+        return widgets;
     }
 
     commit(viewport?: Partial<SizeLike>): UIFrame<TPayload> {
@@ -708,7 +476,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.locale = snapshot.locale;
         this.clear();
         const rootSnapshot = snapshot.root;
-        this.records[this.rootId] = this.normalizeRecord({
+        this.records[this.rootId] = normalizeWidgetRecord({
             role: rootSnapshot.role,
             controller: rootSnapshot.controller,
             key: rootSnapshot.key ?? undefined,
@@ -748,25 +516,6 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         }
     }
 
-    private normalizeRecord(
-        config: WidgetConfig<Record<string, unknown>, UIRuntime<TPayload>>
-    ): StoredWidgetRecord<TPayload> {
-        return {
-            role: config.role ?? 'container',
-            controller: config.controller ?? null,
-            key: config.key,
-            props: cloneData(config.props ?? EMPTY_RECORD_OBJECT),
-            enabled: config.enabled ?? true,
-            interactive: config.interactive ?? false,
-            layoutInput: cloneData(config.layout ?? EMPTY_LAYOUT_INPUT),
-            styleInput: cloneData(config.style ?? EMPTY_STYLE_INPUT),
-            textInput: cloneData(config.text ?? null),
-            imageInput: cloneData(config.image ?? null),
-            focusInput: cloneData(config.focus ?? EMPTY_FOCUS_INPUT),
-            handlers: (config.handlers as WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>>) ?? null,
-        };
-    }
-
     private applyRecord(
         index: number,
         previousProps: Readonly<Record<string, unknown>> | null,
@@ -784,10 +533,14 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             this.states[index] = undefined;
         }
         this.layouts[index] = compileLayoutInput(record.layoutInput);
-        this.styles[index] = this.compileStyle(record.styleInput);
-        this.texts[index] = this.compileText(record.textInput, this.styles[index]!.color);
-        this.images[index] = this.compileImage(record.imageInput);
-        this.focuses[index] = this.compileFocus(record.focusInput, record.interactive);
+        this.styles[index] = compileWidgetStyle(record.styleInput);
+        this.texts[index] = compileWidgetText(record.textInput, {
+            defaultFamily: this.fonts.getDefaultFamily(),
+            locale: this.locale,
+            fallbackColor: this.styles[index]!.color,
+        });
+        this.images[index] = compileWidgetImage(record.imageInput);
+        this.focuses[index] = compileWidgetFocus(record.focusInput, record.interactive);
         this.textLayouts[index] = null;
         this.textLayoutWidths[index] = Number.NaN;
         this.updateFlags(index);
@@ -799,100 +552,6 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         }
         this.layoutDirty = true;
         this.focusDirty = true;
-    }
-
-    private compileStyle(input: WidgetStyleInput): ResolvedWidgetStyle {
-        return {
-            visible: input.visible ?? true,
-            opacity: clamp(input.opacity ?? 1, 0, 1),
-            clip: input.clip ?? false,
-            background: normalizeColor(input.background, TRANSPARENT),
-            borderColor: normalizeColor(input.borderColor, TRANSPARENT),
-            borderWidth: Math.max(0, input.borderWidth ?? 0),
-            radius: normalizeCorners(input.radius),
-            color: normalizeColor(input.color, BLACK),
-        };
-    }
-
-    private compileText(input: TextBlockInput | null, fallbackColor: ReadonlyColor): ResolvedTextBlock | null {
-        if (!input) {
-            return null;
-        }
-        return {
-            value: input.value,
-            family: input.family ?? this.fonts.getDefaultFamily() ?? '',
-            size: Math.max(1, input.size ?? 16),
-            weight: normalizeWeight(input.weight),
-            style: input.style ?? 'normal',
-            locale: input.locale ?? this.locale,
-            direction: input.direction ?? 'auto',
-            lineHeight: Math.max(0, input.lineHeight ?? 0),
-            letterSpacing: input.letterSpacing ?? 0,
-            wrap: input.wrap ?? 'word',
-            overflow: input.overflow ?? 'clip',
-            maxLines: Math.max(1, Math.floor(input.maxLines ?? Number.MAX_SAFE_INTEGER)),
-            align: input.align ?? 'start',
-            color: normalizeColor(input.color, fallbackColor),
-            outlineColor: normalizeColor(input.outlineColor, TRANSPARENT),
-            outlineWidth: Math.max(0, input.outlineWidth ?? 0),
-            edgeSoftness: Math.max(0.5, input.edgeSoftness ?? 1),
-            shadowColor: normalizeColor(input.shadowColor, TRANSPARENT),
-            shadowOffsetX: input.shadowOffsetX ?? 0,
-            shadowOffsetY: input.shadowOffsetY ?? 0,
-            underline: input.underline ?? false,
-            underlineColor: normalizeColor(input.underlineColor, TRANSPARENT),
-            underlineThickness: Math.max(1, input.underlineThickness ?? 1),
-            underlineOffset: input.underlineOffset ?? 1,
-            strikeThrough: input.strikeThrough ?? false,
-            strikeThroughColor: normalizeColor(input.strikeThroughColor, TRANSPARENT),
-            strikeThroughThickness: Math.max(1, input.strikeThroughThickness ?? 1),
-            selectionStart: normalizeIndex(input.selectionStart),
-            selectionEnd: normalizeIndex(input.selectionEnd),
-            selectionColor: normalizeColor(input.selectionColor, TRANSPARENT),
-            caretIndex: normalizeIndex(input.caretIndex),
-            caretColor: normalizeColor(input.caretColor, TRANSPARENT),
-            caretWidth: Math.max(1, input.caretWidth ?? 1),
-            caretInset: Math.max(0, input.caretInset ?? 1),
-        };
-    }
-
-    private compileImage(input: WidgetImageInput | null): ResolvedWidgetImage | null {
-        if (!input) {
-            return null;
-        }
-        const source = input.source.kind === 'material'
-            ? {
-                  kind: 'material' as const,
-                  materialId: input.source.materialId,
-                  textureBinding: input.source.textureBinding,
-                  width: Math.max(1, input.source.width),
-                  height: Math.max(1, input.source.height),
-              }
-            : {
-                  kind: 'texture' as const,
-                  resourceId: input.source.resourceId,
-                  width: Math.max(1, input.source.width),
-                  height: Math.max(1, input.source.height),
-              };
-        return {
-            source,
-            fit: input.fit ?? 'fill',
-            alignX: clamp(input.alignX ?? 0.5, 0, 1),
-            alignY: clamp(input.alignY ?? 0.5, 0, 1),
-            sampling: input.sampling ?? 'linear',
-            tint: normalizeColor(input.tint, WHITE),
-            uvRect: normalizeUvRect(input.uvRect),
-        };
-    }
-
-    private compileFocus(input: WidgetFocusPolicyInput, interactive: boolean): ResolvedFocusPolicy {
-        return {
-            focusable: input.focusable ?? interactive,
-            tabIndex: input.tabIndex ?? 0,
-            scope: input.scope ?? false,
-            cycle: input.cycle ?? false,
-            order: input.order ?? 0,
-        };
     }
 
     private updateFlags(index: number): void {
@@ -1507,6 +1166,12 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         const target = this.hitTest(event.x, event.y);
         if (event.phase === 'move') {
             this.updateHover(target, event);
+            if (this.pressed) {
+                if (target && this.pressed !== target) {
+                    return this.bubbleEvent(this.pressed as number, event) || this.bubbleEvent(target as number, event);
+                }
+                return this.bubbleEvent((target ?? this.pressed) as number, event);
+            }
             if (target) {
                 return this.bubbleEvent(target as number, event);
             }
@@ -1534,6 +1199,9 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     }
 
     private dispatchKey(event: Readonly<UIKeyEvent>): boolean {
+        if (this.focused && this.bubbleEvent(this.focused as number, event)) {
+            return true;
+        }
         if (event.phase === 'down') {
             if (event.key === 'Tab') {
                 const direction: FocusMoveDirection = event.shiftKey ? 'backward' : 'forward';
@@ -1552,7 +1220,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
                 return this.moveFocus('down') !== null;
             }
         }
-        return this.focused ? this.bubbleEvent(this.focused as number, event) : false;
+        return false;
     }
 
     private dispatchText(event: Readonly<UITextInputEvent>): boolean {

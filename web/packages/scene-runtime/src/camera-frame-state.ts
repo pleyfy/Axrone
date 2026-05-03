@@ -1,6 +1,6 @@
 import { Mat4, Quat, Vec3 } from '@axrone/numeric';
 import { Transform } from '@axrone/ecs-runtime';
-import { Camera } from './components/camera';
+import { Camera, resolveCameraVerticalFieldOfViewRadians } from './components/camera';
 
 interface MutableSceneCameraFrameState {
     camera: Camera;
@@ -86,7 +86,11 @@ export class SceneCameraFrameStateCollector {
             );
         } else {
             Mat4.perspective(
-                (camera.fieldOfView * Math.PI) / 180,
+                resolveCameraVerticalFieldOfViewRadians(
+                    camera.fieldOfView,
+                    camera.fieldOfViewAxis,
+                    aspectRatio
+                ),
                 aspectRatio,
                 camera.near,
                 camera.far,

@@ -175,9 +175,9 @@ const generateCylinderGeometry = (
             const b = centerIndexStart + 1 + x + 1;
 
             if (top) {
-                builder.addTriangle(c, b, a);
-            } else {
                 builder.addTriangle(c, a, b);
+            } else {
+                builder.addTriangle(c, b, a);
             }
         }
     }

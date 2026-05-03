@@ -19,9 +19,9 @@ import type {
     WebGL2UIRendererStatistics,
 } from './types';
 
-const QUAD_FLOATS_PER_INSTANCE = 19;
-const IMAGE_FLOATS_PER_INSTANCE = 16;
-const TEXT_FLOATS_PER_INSTANCE = 20;
+const QUAD_FLOATS_PER_INSTANCE = 23;
+const IMAGE_FLOATS_PER_INSTANCE = 22;
+const TEXT_FLOATS_PER_INSTANCE = 26;
 
 const QUAD_VERTEX_SOURCE = `#version 300 es
 precision mediump float;
@@ -31,6 +31,8 @@ layout(location = 2) in vec4 a_FillColor;
 layout(location = 3) in vec4 a_BorderColor;
 layout(location = 4) in vec4 a_Radius;
 layout(location = 5) in float a_BorderWidth;
+layout(location = 6) in vec3 a_TransformRow0;
+layout(location = 7) in vec3 a_TransformRow1;
 uniform vec2 u_Viewport;
 out vec2 v_Local;
 out vec2 v_Size;
@@ -40,6 +42,10 @@ out vec4 v_Radius;
 out float v_BorderWidth;
 void main() {
     vec2 pixel = a_Rect.xy + a_Unit * a_Rect.zw;
+    pixel = vec2(
+        a_TransformRow0.x * pixel.x + a_TransformRow0.y * pixel.y + a_TransformRow0.z,
+        a_TransformRow1.x * pixel.x + a_TransformRow1.y * pixel.y + a_TransformRow1.z
+    );
     vec2 ndc = vec2((pixel.x / u_Viewport.x) * 2.0 - 1.0, 1.0 - (pixel.y / u_Viewport.y) * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     v_Local = a_Unit * a_Rect.zw;
@@ -105,6 +111,8 @@ layout(location = 2) in vec4 a_UvRect;
 layout(location = 3) in vec4 a_Color;
 layout(location = 4) in vec4 a_OutlineColor;
 layout(location = 5) in vec4 a_SdfParams;
+layout(location = 6) in vec3 a_TransformRow0;
+layout(location = 7) in vec3 a_TransformRow1;
 uniform vec2 u_Viewport;
 out vec2 v_Uv;
 out vec4 v_Color;
@@ -112,6 +120,10 @@ out vec4 v_OutlineColor;
 out vec4 v_SdfParams;
 void main() {
     vec2 pixel = a_Rect.xy + a_Unit * a_Rect.zw;
+    pixel = vec2(
+        a_TransformRow0.x * pixel.x + a_TransformRow0.y * pixel.y + a_TransformRow0.z,
+        a_TransformRow1.x * pixel.x + a_TransformRow1.y * pixel.y + a_TransformRow1.z
+    );
     vec2 ndc = vec2((pixel.x / u_Viewport.x) * 2.0 - 1.0, 1.0 - (pixel.y / u_Viewport.y) * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     v_Uv = a_UvRect.xy + a_Unit * a_UvRect.zw;
@@ -156,6 +168,8 @@ layout(location = 1) in vec4 a_Rect;
 layout(location = 2) in vec4 a_UvRect;
 layout(location = 3) in vec4 a_Tint;
 layout(location = 4) in vec4 a_Radius;
+layout(location = 5) in vec3 a_TransformRow0;
+layout(location = 6) in vec3 a_TransformRow1;
 uniform vec2 u_Viewport;
 out vec2 v_Local;
 out vec2 v_Size;
@@ -164,6 +178,10 @@ out vec4 v_Tint;
 out vec4 v_Radius;
 void main() {
     vec2 pixel = a_Rect.xy + a_Unit * a_Rect.zw;
+    pixel = vec2(
+        a_TransformRow0.x * pixel.x + a_TransformRow0.y * pixel.y + a_TransformRow0.z,
+        a_TransformRow1.x * pixel.x + a_TransformRow1.y * pixel.y + a_TransformRow1.z
+    );
     vec2 ndc = vec2((pixel.x / u_Viewport.x) * 2.0 - 1.0, 1.0 - (pixel.y / u_Viewport.y) * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     v_Local = a_Unit * a_Rect.zw;
@@ -221,7 +239,30 @@ interface TexturePage {
     readonly width: number;
     readonly height: number;
     readonly format: FontGlyphBitmapFormat;
-    readonly uploadedGlyphs: Set<number>;
+    readonly uploadedGlyphs: Set<string>;
+}
+
+interface WebGL2UICapturedTextureUnitState {
+    readonly textureBinding2D: WebGLTexture | null | undefined;
+    readonly samplerBinding: WebGLSampler | null | undefined;
+}
+
+interface WebGL2UIRenderStateSnapshot {
+    readonly viewport: readonly [number, number, number, number] | null;
+    readonly scissorBox: readonly [number, number, number, number] | null;
+    readonly framebufferBinding: WebGLFramebuffer | null | undefined;
+    readonly currentProgram: WebGLProgram | null | undefined;
+    readonly vertexArrayBinding: WebGLVertexArrayObject | null | undefined;
+    readonly arrayBufferBinding: WebGLBuffer | null | undefined;
+    readonly unpackAlignment: number | undefined;
+    readonly cullFaceEnabled: boolean | undefined;
+    readonly depthTestEnabled: boolean | undefined;
+    readonly blendEnabled: boolean | undefined;
+    readonly scissorTestEnabled: boolean | undefined;
+    readonly blendFunc: readonly [number, number, number, number] | null;
+    readonly activeTexture: number | undefined;
+    readonly unit0: WebGL2UICapturedTextureUnitState;
+    readonly activeUnit: WebGL2UICapturedTextureUnitState;
 }
 
 const UNIT_QUAD = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
@@ -239,12 +280,16 @@ const toUint8Array = (value: ArrayBuffer | ArrayBufferView): Uint8Array => {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 };
 
+const createUploadedGlyphKey = (entry: GlyphAtlasEntry): string => `${entry.codePoint}:${entry.rasterSize ?? 0}`;
+
 const multiplyAlpha = (alpha: number, opacity: number): number => alpha * opacity;
 
 const blendColor = (
     color: QuadRenderCommand['color'] | TextRenderCommand['color'],
     opacity: number
 ): readonly [number, number, number, number] => [color.r, color.g, color.b, multiplyAlpha(color.a, opacity)];
+
+const IDENTITY_TRANSFORM = [1, 0, 0, 1, 0, 0] as const;
 
 const sameClip = (left: ClipState | null, right: RectLike | null): boolean => {
     if (left === null || right === null) {
@@ -256,6 +301,232 @@ const sameClip = (left: ClipState | null, right: RectLike | null): boolean => {
         left.width === right.width &&
         left.height === right.height
     );
+};
+
+function readGLParameter<TValue>(
+    gl: WebGL2RenderingContext,
+    parameter: number,
+    fallback: undefined
+): TValue | undefined;
+function readGLParameter<TValue>(
+    gl: WebGL2RenderingContext,
+    parameter: number,
+    fallback: null
+): TValue | null;
+function readGLParameter<TValue>(
+    gl: WebGL2RenderingContext,
+    parameter: number,
+    fallback: TValue
+): TValue;
+function readGLParameter<TValue>(
+    gl: WebGL2RenderingContext,
+    parameter: number,
+    fallback: TValue | null | undefined
+): TValue | null | undefined {
+    if (typeof gl.getParameter !== 'function') {
+        return fallback;
+    }
+
+    try {
+        return (gl.getParameter(parameter) as TValue | null | undefined) ?? fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+const readGLEnabled = (
+    gl: WebGL2RenderingContext,
+    capability: number,
+    fallback: boolean | undefined = undefined
+): boolean | undefined => {
+    if (typeof gl.isEnabled !== 'function') {
+        return fallback;
+    }
+
+    try {
+        return gl.isEnabled(capability);
+    } catch {
+        return fallback;
+    }
+};
+
+const captureGLTextureUnitState = (
+    gl: WebGL2RenderingContext,
+    unit: number
+): WebGL2UICapturedTextureUnitState => {
+    if (typeof gl.activeTexture !== 'function') {
+        return {
+            textureBinding2D: undefined,
+            samplerBinding: undefined,
+        };
+    }
+
+    const previousUnit = readGLParameter<number>(gl, gl.ACTIVE_TEXTURE, gl.TEXTURE0);
+    gl.activeTexture(unit);
+    const snapshot = {
+        textureBinding2D: readGLParameter<WebGLTexture | null | undefined>(
+            gl,
+            gl.TEXTURE_BINDING_2D,
+            undefined,
+        ),
+        samplerBinding: readGLParameter<WebGLSampler | null | undefined>(
+            gl,
+            gl.SAMPLER_BINDING,
+            undefined,
+        ),
+    };
+    gl.activeTexture(previousUnit);
+    return snapshot;
+};
+
+const captureGLState = (gl: WebGL2RenderingContext): WebGL2UIRenderStateSnapshot => {
+    const activeTexture = readGLParameter<number>(gl, gl.ACTIVE_TEXTURE, undefined);
+    const viewport = readGLParameter<Int32Array | readonly number[]>(gl, gl.VIEWPORT, null);
+    const scissorBox = readGLParameter<Int32Array | readonly number[]>(gl, gl.SCISSOR_BOX, null);
+    const blendSrcRgb = readGLParameter<number>(gl, gl.BLEND_SRC_RGB, undefined);
+    const blendDstRgb = readGLParameter<number>(gl, gl.BLEND_DST_RGB, undefined);
+    const blendSrcAlpha = readGLParameter<number>(gl, gl.BLEND_SRC_ALPHA, undefined);
+    const blendDstAlpha = readGLParameter<number>(gl, gl.BLEND_DST_ALPHA, undefined);
+
+    return {
+        viewport:
+            viewport && viewport.length >= 4
+                ? [viewport[0] ?? 0, viewport[1] ?? 0, viewport[2] ?? 0, viewport[3] ?? 0]
+                : null,
+        scissorBox:
+            scissorBox && scissorBox.length >= 4
+                ? [scissorBox[0] ?? 0, scissorBox[1] ?? 0, scissorBox[2] ?? 0, scissorBox[3] ?? 0]
+                : null,
+        framebufferBinding: readGLParameter<WebGLFramebuffer | null | undefined>(
+            gl,
+            gl.FRAMEBUFFER_BINDING,
+            undefined,
+        ),
+        currentProgram: readGLParameter<WebGLProgram | null | undefined>(
+            gl,
+            gl.CURRENT_PROGRAM,
+            undefined,
+        ),
+        vertexArrayBinding: readGLParameter<WebGLVertexArrayObject | null | undefined>(
+            gl,
+            gl.VERTEX_ARRAY_BINDING,
+            undefined,
+        ),
+        arrayBufferBinding: readGLParameter<WebGLBuffer | null | undefined>(
+            gl,
+            gl.ARRAY_BUFFER_BINDING,
+            undefined,
+        ),
+        unpackAlignment: readGLParameter<number>(gl, gl.UNPACK_ALIGNMENT, undefined),
+        cullFaceEnabled: readGLEnabled(gl, gl.CULL_FACE),
+        depthTestEnabled: readGLEnabled(gl, gl.DEPTH_TEST),
+        blendEnabled: readGLEnabled(gl, gl.BLEND),
+        scissorTestEnabled: readGLEnabled(gl, gl.SCISSOR_TEST),
+        blendFunc:
+            blendSrcRgb !== undefined &&
+            blendDstRgb !== undefined &&
+            blendSrcAlpha !== undefined &&
+            blendDstAlpha !== undefined
+                ? [blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha]
+                : null,
+        activeTexture,
+        unit0: captureGLTextureUnitState(gl, gl.TEXTURE0),
+        activeUnit:
+            activeTexture !== undefined ? captureGLTextureUnitState(gl, activeTexture) : captureGLTextureUnitState(gl, gl.TEXTURE0),
+    };
+};
+
+const restoreGLEnableState = (
+    gl: WebGL2RenderingContext,
+    capability: number,
+    enabled: boolean | undefined
+): void => {
+    if (enabled === undefined) {
+        return;
+    }
+    if (enabled) {
+        gl.enable(capability);
+        return;
+    }
+    gl.disable(capability);
+};
+
+const restoreGLTextureUnitState = (
+    gl: WebGL2RenderingContext,
+    unit: number,
+    snapshot: WebGL2UICapturedTextureUnitState
+): void => {
+    if (typeof gl.activeTexture !== 'function') {
+        return;
+    }
+
+    gl.activeTexture(unit);
+    if (snapshot.textureBinding2D !== undefined) {
+        gl.bindTexture(gl.TEXTURE_2D, snapshot.textureBinding2D ?? null);
+    }
+    if (snapshot.samplerBinding !== undefined) {
+        gl.bindSampler?.(unit - gl.TEXTURE0, snapshot.samplerBinding ?? null);
+    }
+};
+
+const restoreGLState = (
+    gl: WebGL2RenderingContext,
+    snapshot: WebGL2UIRenderStateSnapshot
+): void => {
+    if (snapshot.framebufferBinding !== undefined) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, snapshot.framebufferBinding ?? null);
+    }
+    if (snapshot.viewport !== null) {
+        gl.viewport(
+            snapshot.viewport[0],
+            snapshot.viewport[1],
+            snapshot.viewport[2],
+            snapshot.viewport[3]
+        );
+    }
+    restoreGLEnableState(gl, gl.CULL_FACE, snapshot.cullFaceEnabled);
+    restoreGLEnableState(gl, gl.DEPTH_TEST, snapshot.depthTestEnabled);
+    restoreGLEnableState(gl, gl.BLEND, snapshot.blendEnabled);
+    restoreGLEnableState(gl, gl.SCISSOR_TEST, snapshot.scissorTestEnabled);
+    if (snapshot.scissorTestEnabled && snapshot.scissorBox !== null) {
+        gl.scissor(
+            snapshot.scissorBox[0],
+            snapshot.scissorBox[1],
+            snapshot.scissorBox[2],
+            snapshot.scissorBox[3]
+        );
+    }
+    if (snapshot.blendFunc !== null) {
+        if (typeof gl.blendFuncSeparate === 'function') {
+            gl.blendFuncSeparate(
+                snapshot.blendFunc[0],
+                snapshot.blendFunc[1],
+                snapshot.blendFunc[2],
+                snapshot.blendFunc[3]
+            );
+        } else {
+            gl.blendFunc(snapshot.blendFunc[0], snapshot.blendFunc[1]);
+        }
+    }
+    if (snapshot.currentProgram !== undefined) {
+        gl.useProgram(snapshot.currentProgram ?? null);
+    }
+    if (snapshot.vertexArrayBinding !== undefined) {
+        gl.bindVertexArray(snapshot.vertexArrayBinding ?? null);
+    }
+    if (snapshot.arrayBufferBinding !== undefined) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, snapshot.arrayBufferBinding ?? null);
+    }
+    if (snapshot.unpackAlignment !== undefined) {
+        gl.pixelStorei?.(gl.UNPACK_ALIGNMENT, snapshot.unpackAlignment);
+    }
+    restoreGLTextureUnitState(gl, gl.TEXTURE0, snapshot.unit0);
+    if (snapshot.activeTexture !== undefined && snapshot.activeTexture !== gl.TEXTURE0) {
+        restoreGLTextureUnitState(gl, snapshot.activeTexture, snapshot.activeUnit);
+        gl.activeTexture(snapshot.activeTexture);
+    } else if (snapshot.activeTexture !== undefined) {
+        gl.activeTexture(snapshot.activeTexture);
+    }
 };
 
 const createShader = (gl: WebGL2RenderingContext, type: number, source: string): WebGLShader => {
@@ -389,6 +660,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
 
     render(frame: Readonly<UIFrame<TPayload>>): void {
         this.ensureActive();
+        const previousState = captureGLState(this.gl);
         this.currentFrame = frame as UIFrame<TPayload>;
         this.statisticsState.drawCalls = 0;
         this.statisticsState.quadCount = 0;
@@ -407,52 +679,56 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.activeImageTexture = null;
         this.activeTextPageKey = null;
 
-        this.prepareFrame(frame.viewportWidth, frame.viewportHeight);
+        try {
+            this.prepareFrame(frame.viewportWidth, frame.viewportHeight);
 
-        for (const command of frame.commands) {
-            if (command.kind === 'quad') {
-                this.flushImageBatch(frame.viewportHeight);
-                this.flushTextBatch(frame.viewportHeight);
-                if (!sameClip(this.activeQuadClip, command.clip)) {
-                    this.flushQuadBatch(frame.viewportHeight);
-                    this.activeQuadClip = toClipState(command.clip);
+            for (const command of frame.commands) {
+                if (command.kind === 'quad') {
+                    this.flushImageBatch(frame.viewportHeight);
+                    this.flushTextBatch(frame.viewportHeight);
+                    if (!sameClip(this.activeQuadClip, command.clip)) {
+                        this.flushQuadBatch(frame.viewportHeight);
+                        this.activeQuadClip = toClipState(command.clip);
+                    }
+                    this.pushQuad(command);
+                    continue;
                 }
-                this.pushQuad(command);
-                continue;
-            }
-            if (command.kind === 'image') {
-                this.flushQuadBatch(frame.viewportHeight);
-                this.flushTextBatch(frame.viewportHeight);
-                this.pushImageCommand(command, frame);
-                continue;
-            }
-            if (command.kind === 'text') {
+                if (command.kind === 'image') {
+                    this.flushQuadBatch(frame.viewportHeight);
+                    this.flushTextBatch(frame.viewportHeight);
+                    this.pushImageCommand(command, frame);
+                    continue;
+                }
+                if (command.kind === 'text') {
+                    this.flushQuadBatch(frame.viewportHeight);
+                    this.flushImageBatch(frame.viewportHeight);
+                    this.pushTextCommand(command, frame.viewportHeight);
+                    continue;
+                }
                 this.flushQuadBatch(frame.viewportHeight);
                 this.flushImageBatch(frame.viewportHeight);
-                this.pushTextCommand(command, frame.viewportHeight);
-                continue;
+                this.flushTextBatch(frame.viewportHeight);
+                if (this.customCommandRenderer) {
+                    this.statisticsState.customCommandCount += 1;
+                    this.customCommandRenderer(command as CustomRenderCommand<TPayload>, {
+                        gl: this.gl,
+                        frame,
+                        clip: command.clip,
+                        viewport: {
+                            width: frame.viewportWidth,
+                            height: frame.viewportHeight,
+                        },
+                    });
+                }
             }
+
             this.flushQuadBatch(frame.viewportHeight);
             this.flushImageBatch(frame.viewportHeight);
             this.flushTextBatch(frame.viewportHeight);
-            if (this.customCommandRenderer) {
-                this.statisticsState.customCommandCount += 1;
-                this.customCommandRenderer(command as CustomRenderCommand<TPayload>, {
-                    gl: this.gl,
-                    frame,
-                    clip: command.clip,
-                    viewport: {
-                        width: frame.viewportWidth,
-                        height: frame.viewportHeight,
-                    },
-                });
-            }
+        } finally {
+            this.currentFrame = null;
+            restoreGLState(this.gl, previousState);
         }
-
-        this.flushQuadBatch(frame.viewportHeight);
-        this.flushImageBatch(frame.viewportHeight);
-        this.flushTextBatch(frame.viewportHeight);
-        this.currentFrame = null;
     }
 
     dispose(): void {
@@ -505,6 +781,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.enableVertexAttribArray(5);
         this.gl.vertexAttribPointer(5, 1, this.gl.FLOAT, false, stride, 64);
         this.gl.vertexAttribDivisor(5, 1);
+        this.gl.enableVertexAttribArray(6);
+        this.gl.vertexAttribPointer(6, 3, this.gl.FLOAT, false, stride, 68);
+        this.gl.vertexAttribDivisor(6, 1);
+        this.gl.enableVertexAttribArray(7);
+        this.gl.vertexAttribPointer(7, 3, this.gl.FLOAT, false, stride, 80);
+        this.gl.vertexAttribDivisor(7, 1);
         this.gl.bindVertexArray(null);
     }
 
@@ -528,6 +810,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.enableVertexAttribArray(4);
         this.gl.vertexAttribPointer(4, 4, this.gl.FLOAT, false, stride, 48);
         this.gl.vertexAttribDivisor(4, 1);
+        this.gl.enableVertexAttribArray(5);
+        this.gl.vertexAttribPointer(5, 3, this.gl.FLOAT, false, stride, 64);
+        this.gl.vertexAttribDivisor(5, 1);
+        this.gl.enableVertexAttribArray(6);
+        this.gl.vertexAttribPointer(6, 3, this.gl.FLOAT, false, stride, 76);
+        this.gl.vertexAttribDivisor(6, 1);
         this.gl.bindVertexArray(null);
     }
 
@@ -554,6 +842,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.gl.enableVertexAttribArray(5);
         this.gl.vertexAttribPointer(5, 4, this.gl.FLOAT, false, stride, 64);
         this.gl.vertexAttribDivisor(5, 1);
+        this.gl.enableVertexAttribArray(6);
+        this.gl.vertexAttribPointer(6, 3, this.gl.FLOAT, false, stride, 80);
+        this.gl.vertexAttribDivisor(6, 1);
+        this.gl.enableVertexAttribArray(7);
+        this.gl.vertexAttribPointer(7, 3, this.gl.FLOAT, false, stride, 92);
+        this.gl.vertexAttribDivisor(7, 1);
         this.gl.bindVertexArray(null);
     }
 
@@ -583,8 +877,13 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.quadBatch[base + 14] = command.radius.bottomRight;
         this.quadBatch[base + 15] = command.radius.bottomLeft;
         this.quadBatch[base + 16] = command.borderWidth;
-        this.quadBatch[base + 17] = 0;
-        this.quadBatch[base + 18] = 0;
+        const transform = command.transform ?? IDENTITY_TRANSFORM;
+        this.quadBatch[base + 17] = transform[0];
+        this.quadBatch[base + 18] = transform[1];
+        this.quadBatch[base + 19] = transform[4];
+        this.quadBatch[base + 20] = transform[2];
+        this.quadBatch[base + 21] = transform[3];
+        this.quadBatch[base + 22] = transform[5];
         this.quadCount += 1;
         this.statisticsState.quadCount += 1;
     }
@@ -659,6 +958,13 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.imageBatch[base + 13] = command.radius.topRight;
         this.imageBatch[base + 14] = command.radius.bottomRight;
         this.imageBatch[base + 15] = command.radius.bottomLeft;
+        const transform = command.transform ?? IDENTITY_TRANSFORM;
+        this.imageBatch[base + 16] = transform[0];
+        this.imageBatch[base + 17] = transform[1];
+        this.imageBatch[base + 18] = transform[4];
+        this.imageBatch[base + 19] = transform[2];
+        this.imageBatch[base + 20] = transform[3];
+        this.imageBatch[base + 21] = transform[5];
         this.imageCount += 1;
     }
 
@@ -704,6 +1010,13 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
         this.textBatch[base + 17] = entry.distanceRange;
         this.textBatch[base + 18] = command.outlineWidth;
         this.textBatch[base + 19] = command.edgeSoftness;
+        const transform = command.transform ?? IDENTITY_TRANSFORM;
+        this.textBatch[base + 20] = transform[0];
+        this.textBatch[base + 21] = transform[1];
+        this.textBatch[base + 22] = transform[4];
+        this.textBatch[base + 23] = transform[2];
+        this.textBatch[base + 24] = transform[3];
+        this.textBatch[base + 25] = transform[5];
         this.textCount += 1;
         this.statisticsState.glyphCount += 1;
         void page;
@@ -842,11 +1155,12 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
                 width: entry.pageWidth,
                 height: entry.pageHeight,
                 format: entry.format,
-                uploadedGlyphs: new Set<number>(),
+                uploadedGlyphs: new Set<string>(),
             };
             this.pages.set(key, page);
         }
-        if (!page.uploadedGlyphs.has(entry.codePoint)) {
+        const glyphKey = createUploadedGlyphKey(entry);
+        if (!page.uploadedGlyphs.has(glyphKey)) {
             if (!entry.data) {
                 return null;
             }
@@ -864,7 +1178,7 @@ export class WebGL2UIRenderer<TPayload = unknown> implements UIFrameSink<TPayloa
                 this.gl.UNSIGNED_BYTE,
                 packed
             );
-            page.uploadedGlyphs.add(entry.codePoint);
+            page.uploadedGlyphs.add(glyphKey);
             this.statisticsState.uploadedGlyphCount += 1;
         }
         return page;

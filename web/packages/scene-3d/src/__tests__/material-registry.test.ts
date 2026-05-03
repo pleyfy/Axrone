@@ -24,6 +24,7 @@ describe('SceneMaterialRegistry', () => {
             id: 'mat/basic',
             shaderId: 'shader/basic',
             textureBindings: ['u_MainTex'],
+            passIds: [],
         });
         expect(registry.get('mat/basic')?.textureBindings.get('u_MainTex')).toEqual({
             textureId: 'checker',
@@ -62,6 +63,7 @@ describe('SceneMaterialRegistry', () => {
             id: 'mat/basic',
             shaderId: 'shader/basic',
             textureBindings: ['u_MainTex'],
+            passIds: [],
         });
         expect(registry.getTextureSlots('mat/basic')).toEqual([
             {
@@ -99,6 +101,45 @@ describe('SceneMaterialRegistry', () => {
         expect(cloned.uniforms?.u_Tint).toBeInstanceOf(Vec4);
         expect(cloned.uniforms?.u_Tint).not.toBe(definition.uniforms.u_Tint);
         expect(cloned.textures?.u_MainTex).toBe('checker');
+    });
+
+    it('clones and exposes material pass definitions through handles', () => {
+        const registry = new SceneMaterialRegistry();
+        const definition = {
+            id: 'mat/passes',
+            shaderId: 'shader/basic',
+            passes: [
+                {
+                    id: 'main',
+                    primitive: 'triangle-list' as const,
+                    rasterizerState: {
+                        cullMode: 'back' as const,
+                    },
+                    blendState: {
+                        blendColor: [0.1, 0.2, 0.3, 0.4] as const,
+                        targets: [
+                            {
+                                blend: true,
+                                colorWriteMask: [true, false, true, false] as const,
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+
+        const handle = registry.create(definition);
+        const storedPass = registry.get('mat/passes')?.passes[0];
+        definition.passes[0]!.blendState!.blendColor = [1, 1, 1, 1];
+
+        expect(handle.passIds).toEqual(['main']);
+        expect(storedPass?.blendState?.blendColor).toEqual([0.1, 0.2, 0.3, 0.4]);
+        expect(storedPass?.blendState?.targets?.[0]?.colorWriteMask).toEqual([
+            true,
+            false,
+            true,
+            false,
+        ]);
     });
 
     it('clears stored materials', () => {

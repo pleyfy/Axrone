@@ -43,11 +43,19 @@
             "types": "./dist/widget/index.d.ts",
             "import": "./dist/widget/index.mjs",
             "require": "./dist/widget/index.js"
+        },
+        "./controls": {
+            "types": "./dist/controls/index.d.ts",
+            "import": "./dist/controls/index.mjs",
+            "require": "./dist/controls/index.js"
         }
     },
     "scripts": {
         "build": "rollup -c rollup.config.mjs",
         "clean": "rimraf dist",
-        "test": "vitest run"
+        "test": "vitest run --config vitest.config.ts"
+    },
+    "dependencies": {
+        "@axrone/utility": "^0.0.1"
     }
 }

@@ -1,10 +1,25 @@
+import { DisposedUIError, FontFaceNotFoundError, FontLoadError } from './errors';
+import { createBrowserDynamicFontRuntimeFactory, createBrowserSystemFontFaceRuntime } from './font-runtime';
+import { GlyphAtlas } from './font/atlas';
+import type { GlyphAtlasSource } from './font/atlas';
+import { BinaryFontLoader, DescriptorFontLoader, JsonFontLoader } from './font/loaders';
 import {
-    DisposedUIError,
-    FontFaceNotFoundError,
-    FontLoadError,
-} from './errors';
+    applyRetryDelay,
+    buildSourceKey,
+    isDynamicFontFaceAsset,
+    normalizeGlyphMap,
+    normalizeKerningMap,
+    normalizeStyle,
+    normalizeWeight,
+    wait,
+} from './font/source';
 import type {
+    DynamicFontFaceAsset,
+    DynamicFontFaceRuntime,
+    DynamicFontGlyphRaster,
+    DynamicFontRuntimeFactory,
     FontAssetSource,
+    FontBinaryFormat,
     FontFaceAsset,
     FontFaceId,
     FontFaceInfo,
@@ -22,64 +37,28 @@ import type {
     FontStyle,
     FontWeight,
     GlyphAtlasEntry,
-    GlyphAtlasPageId,
     GlyphAtlasPageSnapshot,
     KerningPairKey,
     RetryPolicy,
+    StaticFontFaceAsset,
 } from './types';
 
-const normalizeWeight = (weight: FontWeight | undefined): number => {
-    switch (weight) {
-        case 'thin':
-            return 100;
-        case 'extralight':
-            return 200;
-        case 'light':
-            return 300;
-        case 'normal':
-            return 400;
-        case 'medium':
-            return 500;
-        case 'semibold':
-            return 600;
-        case 'bold':
-            return 700;
-        case 'extrabold':
-            return 800;
-        case 'black':
-            return 900;
-        case undefined:
-            return 400;
-        default:
-            return weight;
-    }
-};
+export const AXRONE_DEFAULT_UI_FONT_FAMILY = 'Roboto, "Segoe UI", "Helvetica Neue", Arial, sans-serif';
 
-const normalizeStyle = (style: FontStyle | undefined): FontStyle => style ?? 'normal';
+export interface SystemFontFaceAssetOptions {
+    readonly family: string;
+    readonly cssFamily?: string;
+    readonly face?: string;
+    readonly style?: FontStyle;
+    readonly weight?: FontWeight;
+    readonly locale?: string;
+    readonly fallbackCodePoint?: number;
+}
 
-const toByteArray = (value: ArrayBuffer | ArrayBufferView): Uint8Array => {
-    if (value instanceof ArrayBuffer) {
-        return new Uint8Array(value);
-    }
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-};
-
-const wait = async (delayMs: number): Promise<void> =>
-    new Promise((resolve) => {
-        setTimeout(resolve, delayMs);
-    });
-
-const applyRetryDelay = (policy: RetryPolicy | undefined, attempt: number): number => {
-    const base = policy?.baseDelayMs ?? 16;
-    const max = policy?.maxDelayMs ?? 250;
-    const jitter = policy?.jitter ?? 0;
-    const exponential = Math.min(max, base * 2 ** Math.max(0, attempt - 1));
-    if (jitter <= 0) {
-        return exponential;
-    }
-    const factor = 1 + (Math.random() * 2 - 1) * jitter;
-    return Math.max(0, Math.round(exponential * factor));
-};
+interface ResolvedGlyphMetric {
+    readonly codePoint: number;
+    readonly metric: FontGlyphMetric;
+}
 
 interface InternalFontFace {
     readonly id: FontFaceId;
@@ -87,6 +66,7 @@ interface InternalFontFace {
     readonly glyphs: Map<number, FontGlyphMetric>;
     readonly kernings: Map<KerningPairKey, number>;
     readonly atlas: GlyphAtlas;
+    readonly runtime?: DynamicFontFaceRuntime;
 }
 
 interface InternalFamily {
@@ -95,270 +75,6 @@ interface InternalFamily {
     readonly fallbacks: readonly string[];
     readonly faces: FontFaceId[];
 }
-
-interface AtlasPage {
-    readonly id: GlyphAtlasPageId;
-    readonly width: number;
-    readonly height: number;
-    cursorX: number;
-    cursorY: number;
-    rowHeight: number;
-    readonly entries: Map<number, GlyphAtlasEntry>;
-}
-
-class GlyphAtlas {
-    private readonly faceId: FontFaceId;
-    private readonly width: number;
-    private readonly height: number;
-    private readonly padding: number;
-    private readonly pages: AtlasPage[] = [];
-    private readonly entries = new Map<number, GlyphAtlasEntry>();
-    private nextPageId = 1;
-
-    constructor(faceId: FontFaceId, width: number, height: number, padding: number) {
-        this.faceId = faceId;
-        this.width = Math.max(8, Math.floor(width));
-        this.height = Math.max(8, Math.floor(height));
-        this.padding = Math.max(0, Math.floor(padding));
-    }
-
-    ensure(metric: FontGlyphMetric): GlyphAtlasEntry {
-        const existing = this.entries.get(metric.codePoint);
-        if (existing) {
-            return existing;
-        }
-        const width = Math.max(1, Math.ceil(metric.width ?? metric.advance));
-        const height = Math.max(1, Math.ceil(metric.height ?? width));
-        const paddedWidth = width + this.padding * 2;
-        const paddedHeight = height + this.padding * 2;
-        let page = this.pages[this.pages.length - 1];
-        if (!page) {
-            page = this.createPage();
-        }
-        if (page.cursorX + paddedWidth > page.width) {
-            page.cursorX = 0;
-            page.cursorY += page.rowHeight;
-            page.rowHeight = 0;
-        }
-        if (page.cursorY + paddedHeight > page.height) {
-            page = this.createPage();
-        }
-        const x = page.cursorX + this.padding;
-        const y = page.cursorY + this.padding;
-        const format: FontGlyphBitmapFormat = metric.format ?? 'alpha8';
-        const rowStride = metric.rowStride ?? width * (format === 'rgba8' ? 4 : 1);
-        const entry: GlyphAtlasEntry = {
-            faceId: this.faceId,
-            page: page.id,
-            pageWidth: page.width,
-            pageHeight: page.height,
-            codePoint: metric.codePoint,
-            x,
-            y,
-            width,
-            height,
-            format,
-            rowStride,
-            distanceRange: metric.distanceRange ?? 1,
-            u0: x / page.width,
-            v0: y / page.height,
-            u1: (x + width) / page.width,
-            v1: (y + height) / page.height,
-            data: metric.data ?? null,
-        };
-        page.entries.set(metric.codePoint, entry);
-        this.entries.set(metric.codePoint, entry);
-        page.cursorX += paddedWidth;
-        page.rowHeight = Math.max(page.rowHeight, paddedHeight);
-        return entry;
-    }
-
-    snapshot(): readonly GlyphAtlasPageSnapshot[] {
-        return this.pages.map((page) => ({
-            id: page.id as number,
-            width: page.width,
-            height: page.height,
-            entries: [...page.entries.values()],
-        }));
-    }
-
-    restore(pages: readonly GlyphAtlasPageSnapshot[]): void {
-        this.pages.length = 0;
-        this.entries.clear();
-        let maxPageId = 0;
-        for (const pageSnapshot of pages) {
-            const page: AtlasPage = {
-                id: pageSnapshot.id as GlyphAtlasPageId,
-                width: pageSnapshot.width,
-                height: pageSnapshot.height,
-                cursorX: 0,
-                cursorY: 0,
-                rowHeight: 0,
-                entries: new Map<number, GlyphAtlasEntry>(),
-            };
-            for (const entry of pageSnapshot.entries) {
-                page.entries.set(entry.codePoint, entry);
-                this.entries.set(entry.codePoint, entry);
-                page.cursorX = Math.max(page.cursorX, entry.x + entry.width + this.padding);
-                page.cursorY = Math.max(page.cursorY, entry.y);
-                page.rowHeight = Math.max(page.rowHeight, entry.height + this.padding * 2);
-            }
-            this.pages.push(page);
-            maxPageId = Math.max(maxPageId, pageSnapshot.id);
-        }
-        this.nextPageId = maxPageId + 1;
-    }
-
-    clear(): void {
-        this.pages.length = 0;
-        this.entries.clear();
-        this.nextPageId = 1;
-    }
-
-    private createPage(): AtlasPage {
-        const page: AtlasPage = {
-            id: this.nextPageId as GlyphAtlasPageId,
-            width: this.width,
-            height: this.height,
-            cursorX: 0,
-            cursorY: 0,
-            rowHeight: 0,
-            entries: new Map<number, GlyphAtlasEntry>(),
-        };
-        this.nextPageId += 1;
-        this.pages.push(page);
-        return page;
-    }
-}
-
-class DescriptorFontLoader implements FontLoader {
-    readonly id = 'descriptor';
-
-    canLoad(source: FontAssetSource): boolean {
-        return source.kind === 'descriptor';
-    }
-
-    async load(source: FontAssetSource): Promise<FontFaceAsset> {
-        if (source.kind !== 'descriptor') {
-            throw new FontLoadError('DescriptorFontLoader only accepts descriptor sources.');
-        }
-        return source.asset;
-    }
-}
-
-class JsonFontLoader implements FontLoader {
-    readonly id = 'json';
-    private readonly fetchImpl?: typeof globalThis.fetch;
-
-    constructor(fetchImpl?: typeof globalThis.fetch) {
-        this.fetchImpl = fetchImpl;
-    }
-
-    canLoad(source: FontAssetSource): boolean {
-        return source.kind === 'buffer' || source.kind === 'url';
-    }
-
-    async load(source: FontAssetSource, signal?: AbortSignal): Promise<FontFaceAsset> {
-        if (source.kind === 'buffer') {
-            const text = new TextDecoder().decode(toByteArray(source.data));
-            return this.normalizeParsedAsset(JSON.parse(text) as Record<string, unknown>);
-        }
-        if (source.kind !== 'url') {
-            throw new FontLoadError('JsonFontLoader only accepts buffer or url sources.');
-        }
-        if (!this.fetchImpl) {
-            throw new FontLoadError('No fetch implementation is available for URL font sources.');
-        }
-        const response = await this.fetchImpl(source.url, {
-            headers: source.headers,
-            signal,
-        });
-        if (!response.ok) {
-            throw new FontLoadError(`Font request failed with status ${response.status}.`, {
-                url: source.url,
-                status: response.status,
-            });
-        }
-        const payload = (await response.json()) as Record<string, unknown>;
-        return this.normalizeParsedAsset(payload);
-    }
-
-    private normalizeParsedAsset(payload: Record<string, unknown>): FontFaceAsset {
-        const glyphsValue = payload.glyphs;
-        const glyphs = Array.isArray(glyphsValue)
-            ? (glyphsValue as FontGlyphMetric[])
-            : typeof glyphsValue === 'object' && glyphsValue !== null
-              ? Object.values(glyphsValue as Record<string, FontGlyphMetric>)
-              : [];
-        const kerningsValue = payload.kernings;
-        const kernings = kerningsValue instanceof Map
-            ? kerningsValue
-            : typeof kerningsValue === 'object' && kerningsValue !== null
-              ? (kerningsValue as Record<KerningPairKey, number>)
-              : undefined;
-        return {
-            family: String(payload.family ?? ''),
-            face: String(payload.face ?? 'Regular'),
-            style: normalizeStyle((payload.style as FontStyle | undefined) ?? 'normal'),
-            weight: normalizeWeight(payload.weight as FontWeight | undefined) as FontFaceAsset['weight'],
-            locale: String(payload.locale ?? ''),
-            ascent: Number(payload.ascent ?? 0),
-            descent: Number(payload.descent ?? 0),
-            lineGap: Number(payload.lineGap ?? 0),
-            unitsPerEm: Number(payload.unitsPerEm ?? 1000),
-            defaultAdvance: Number(payload.defaultAdvance ?? 500),
-            fallbackCodePoint: Number(payload.fallbackCodePoint ?? 63),
-            glyphs,
-            kernings,
-            atlas: typeof payload.atlas === 'object' && payload.atlas !== null
-                ? {
-                      width: Number((payload.atlas as Record<string, unknown>).width ?? 1024),
-                      height: Number((payload.atlas as Record<string, unknown>).height ?? 1024),
-                      padding: Number((payload.atlas as Record<string, unknown>).padding ?? 1),
-                  }
-                : undefined,
-        };
-    }
-}
-
-const buildSourceKey = (source: FontAssetSource): string => {
-    switch (source.kind) {
-        case 'descriptor':
-            return `descriptor:${source.asset.family}:${source.asset.face ?? 'Regular'}:${normalizeWeight(source.asset.weight)}`;
-        case 'buffer':
-            return source.cacheKey ?? `buffer:${toByteArray(source.data).byteLength}:${source.contentType ?? 'application/json'}`;
-        case 'url':
-            return source.cacheKey ?? `url:${source.url}`;
-        default:
-            return 'unknown';
-    }
-};
-
-const normalizeGlyphMap = (
-    glyphs: FontFaceAsset['glyphs']
-): Map<number, FontGlyphMetric> => {
-    if (glyphs instanceof Map) {
-        return new Map<number, FontGlyphMetric>(glyphs);
-    }
-    if (Array.isArray(glyphs)) {
-        return new Map<number, FontGlyphMetric>(glyphs.map((metric) => [metric.codePoint, metric]));
-    }
-    return new Map<number, FontGlyphMetric>(
-        Object.values(glyphs).map((metric) => [metric.codePoint, metric])
-    );
-};
-
-const normalizeKerningMap = (
-    kernings: FontFaceAsset['kernings']
-): Map<KerningPairKey, number> => {
-    if (!kernings) {
-        return new Map<KerningPairKey, number>();
-    }
-    if (kernings instanceof Map) {
-        return new Map<KerningPairKey, number>(kernings);
-    }
-    return new Map<KerningPairKey, number>(Object.entries(kernings) as [KerningPairKey, number][]);
-};
 
 export class FontRegistry implements Disposable {
     private readonly familiesByName = new Map<string, InternalFamily>();
@@ -382,7 +98,9 @@ export class FontRegistry implements Disposable {
             fetch: options.fetch,
         };
         this.defaultFamily = options.defaultFamily ?? null;
+        const dynamicRuntimeFactory = options.dynamicRuntimeFactory ?? createBrowserDynamicFontRuntimeFactory();
         this.registerLoader(new DescriptorFontLoader());
+        this.registerLoader(new BinaryFontLoader(options.fetch ?? globalThis.fetch, dynamicRuntimeFactory));
         this.registerLoader(new JsonFontLoader(options.fetch ?? globalThis.fetch));
     }
 
@@ -414,27 +132,28 @@ export class FontRegistry implements Disposable {
 
     registerFace(asset: FontFaceAsset): FontFaceId {
         this.ensureActive();
-        const familyId = this.registerFamily({ name: asset.family });
-        const family = this.familiesByName.get(asset.family)!;
+        const infoSource = isDynamicFontFaceAsset(asset) ? asset.runtime.info : asset;
+        const familyId = this.registerFamily({ name: infoSource.family });
+        const family = this.familiesByName.get(infoSource.family)!;
         const info: FontFaceInfo = {
             id: this.nextFaceId as FontFaceId,
-            family: asset.family,
-            face: asset.face ?? 'Regular',
-            style: normalizeStyle(asset.style),
-            weight: normalizeWeight(asset.weight),
-            locale: asset.locale ?? '',
-            ascent: asset.ascent,
-            descent: asset.descent,
-            lineGap: asset.lineGap ?? 0,
-            unitsPerEm: asset.unitsPerEm ?? 1000,
-            defaultAdvance: asset.defaultAdvance ?? 500,
-            fallbackCodePoint: asset.fallbackCodePoint ?? 63,
+            family: infoSource.family,
+            face: infoSource.face ?? 'Regular',
+            style: normalizeStyle(infoSource.style),
+            weight: normalizeWeight(infoSource.weight),
+            locale: infoSource.locale ?? '',
+            ascent: infoSource.ascent,
+            descent: infoSource.descent,
+            lineGap: infoSource.lineGap ?? 0,
+            unitsPerEm: infoSource.unitsPerEm ?? 1000,
+            defaultAdvance: infoSource.defaultAdvance ?? 500,
+            fallbackCodePoint: infoSource.fallbackCodePoint ?? 63,
         };
         const atlas = new GlyphAtlas(
             info.id,
-            asset.atlas?.width ?? this.options.atlasWidth,
-            asset.atlas?.height ?? this.options.atlasHeight,
-            asset.atlas?.padding ?? this.options.atlasPadding
+            infoSource.atlas?.width ?? this.options.atlasWidth,
+            infoSource.atlas?.height ?? this.options.atlasHeight,
+            infoSource.atlas?.padding ?? this.options.atlasPadding
         );
         const face: InternalFontFace = {
             id: info.id,
@@ -442,12 +161,13 @@ export class FontRegistry implements Disposable {
             glyphs: normalizeGlyphMap(asset.glyphs),
             kernings: normalizeKerningMap(asset.kernings),
             atlas,
+            runtime: isDynamicFontFaceAsset(asset) ? asset.runtime : undefined,
         };
         this.nextFaceId += 1;
         this.facesById.set(info.id as number, face);
         family.faces.push(info.id);
         if (!this.defaultFamily) {
-            this.defaultFamily = asset.family;
+            this.defaultFamily = infoSource.family;
         }
         void familyId;
         return info.id;
@@ -516,17 +236,13 @@ export class FontRegistry implements Disposable {
         return this.facesById.get(faceId as number)?.info ?? null;
     }
 
-    ensureGlyph(faceId: FontFaceId, codePoint: number): GlyphAtlasEntry | null {
+    ensureGlyph(faceId: FontFaceId, codePoint: number, fontSize?: number): GlyphAtlasEntry | null {
         this.ensureActive();
         const face = this.facesById.get(faceId as number);
         if (!face) {
             throw new FontFaceNotFoundError({ faceId });
         }
-        const metric = face.glyphs.get(codePoint) ?? face.glyphs.get(face.info.fallbackCodePoint);
-        if (!metric) {
-            return null;
-        }
-        return face.atlas.ensure(metric);
+        return this.ensureGlyphEntry(face, codePoint, fontSize);
     }
 
     measureGlyph(
@@ -551,20 +267,24 @@ export class FontRegistry implements Disposable {
         if (!face) {
             throw new FontFaceNotFoundError({ faceId });
         }
-        const metric = face.glyphs.get(codePoint) ?? face.glyphs.get(face.info.fallbackCodePoint) ?? null;
-        const kerningKey = nextCodePoint === undefined ? null : `${codePoint}:${nextCodePoint}`;
-        const kerning = kerningKey ? face.kernings.get(kerningKey as KerningPairKey) ?? 0 : 0;
+        const resolved = this.resolveMetricWithFallback(face, codePoint);
+        const nextResolved =
+            nextCodePoint === undefined ? null : this.resolveMetricWithFallback(face, nextCodePoint);
+        const kerning =
+            nextResolved && resolved
+                ? this.resolveKerning(face, resolved.codePoint, nextResolved.codePoint)
+                : 0;
         const scale = fontSize / face.info.unitsPerEm;
-        const width = (metric?.width ?? metric?.advance ?? face.info.defaultAdvance) * scale;
-        const height = (metric?.height ?? face.info.ascent + face.info.descent) * scale;
+        const width = (resolved?.metric.width ?? resolved?.metric.advance ?? face.info.defaultAdvance) * scale;
+        const height = (resolved?.metric.height ?? face.info.ascent + face.info.descent) * scale;
         return {
             faceId,
             codePoint,
-            advance: ((metric?.advance ?? face.info.defaultAdvance) + kerning) * scale,
+            advance: ((resolved?.metric.advance ?? face.info.defaultAdvance) + kerning) * scale,
             width,
             height,
-            metric,
-            atlasEntry: metric ? face.atlas.ensure(metric) : null,
+            metric: resolved?.metric ?? null,
+            atlasEntry: resolved ? this.ensureGlyphEntry(face, resolved.codePoint, fontSize) : null,
         };
     }
 
@@ -612,7 +332,7 @@ export class FontRegistry implements Disposable {
                 family: faceSnapshot.family,
                 face: faceSnapshot.face,
                 style: faceSnapshot.style,
-                weight: faceSnapshot.weight as FontFaceAsset['weight'],
+                weight: faceSnapshot.weight as StaticFontFaceAsset['weight'],
                 locale: faceSnapshot.locale,
                 ascent: faceSnapshot.ascent,
                 descent: faceSnapshot.descent,
@@ -631,6 +351,10 @@ export class FontRegistry implements Disposable {
     }
 
     clear(): void {
+        for (const face of this.facesById.values()) {
+            face.runtime?.dispose?.();
+            face.atlas.clear();
+        }
         this.familiesByName.clear();
         this.facesById.clear();
         this.pendingLoads.clear();
@@ -654,6 +378,91 @@ export class FontRegistry implements Disposable {
         if (this.disposed) {
             throw new DisposedUIError('FontRegistry');
         }
+    }
+
+    private resolveMetric(face: InternalFontFace, codePoint: number): FontGlyphMetric | null {
+        const existing = face.glyphs.get(codePoint);
+        if (existing) {
+            return existing;
+        }
+        const runtimeMetric = face.runtime?.measureGlyph(codePoint) ?? null;
+        if (runtimeMetric) {
+            face.glyphs.set(codePoint, runtimeMetric);
+        }
+        return runtimeMetric;
+    }
+
+    private resolveMetricWithFallback(face: InternalFontFace, codePoint: number): ResolvedGlyphMetric | null {
+        const metric = this.resolveMetric(face, codePoint);
+        if (metric) {
+            return { codePoint, metric };
+        }
+        if (codePoint !== face.info.fallbackCodePoint) {
+            const fallbackMetric = this.resolveMetric(face, face.info.fallbackCodePoint);
+            if (fallbackMetric) {
+                return {
+                    codePoint: face.info.fallbackCodePoint,
+                    metric: fallbackMetric,
+                };
+            }
+        }
+        return null;
+    }
+
+    private resolveKerning(face: InternalFontFace, leftCodePoint: number, rightCodePoint: number): number {
+        const key = `${leftCodePoint}:${rightCodePoint}` as KerningPairKey;
+        const existing = face.kernings.get(key);
+        if (existing !== undefined) {
+            return existing;
+        }
+        const value = face.runtime?.getKerning?.(leftCodePoint, rightCodePoint) ?? 0;
+        face.kernings.set(key, value);
+        return value;
+    }
+
+    private ensureGlyphEntry(face: InternalFontFace, codePoint: number, fontSize?: number): GlyphAtlasEntry | null {
+        const resolved = this.resolveMetricWithFallback(face, codePoint);
+        if (!resolved) {
+            return null;
+        }
+        if (!face.runtime) {
+            const cached = face.atlas.get(resolved.codePoint);
+            if (cached) {
+                return cached;
+            }
+            return face.atlas.ensure({
+                codePoint: resolved.codePoint,
+                width: resolved.metric.width ?? resolved.metric.advance,
+                height: resolved.metric.height ?? resolved.metric.width ?? resolved.metric.advance,
+                data: resolved.metric.data ?? null,
+                format: resolved.metric.format,
+                rowStride: resolved.metric.rowStride,
+                distanceRange: resolved.metric.distanceRange,
+            });
+        }
+        const rasterSize = Math.max(1, Math.round(fontSize ?? 16));
+        const cached = face.atlas.get(resolved.codePoint, rasterSize);
+        if (cached) {
+            return cached;
+        }
+        const raster = face.runtime.rasterizeGlyph(resolved.codePoint, rasterSize);
+        if (!raster) {
+            return null;
+        }
+        return face.atlas.ensure(this.toAtlasGlyph(raster));
+    }
+
+    private toAtlasGlyph(raster: DynamicFontGlyphRaster): GlyphAtlasSource {
+        return {
+            codePoint: raster.codePoint,
+            rasterSize: raster.rasterSize,
+            width: raster.width,
+            height: raster.height,
+            data: raster.data ?? null,
+            format: raster.format,
+            rowStride: raster.rowStride,
+            distanceRange: raster.distanceRange,
+        };
     }
 
     private async loadInternal(source: FontAssetSource, options: FontLoadOptions): Promise<FontFaceId> {
@@ -683,8 +492,55 @@ export class FontRegistry implements Disposable {
     }
 }
 
+export const createSystemFontFaceAsset = (options: SystemFontFaceAssetOptions): DynamicFontFaceAsset => ({
+    kind: 'dynamic',
+    runtime: createBrowserSystemFontFaceRuntime({
+        family: options.family,
+        cssFamily: options.cssFamily ?? options.family,
+        face: options.face,
+        style: options.style,
+        weight: options.weight,
+        locale: options.locale,
+        fallbackCodePoint: options.fallbackCodePoint,
+    }),
+});
+
+export const createDefaultUIFontAsset = (
+    family = AXRONE_DEFAULT_UI_FONT_FAMILY,
+): DynamicFontFaceAsset =>
+    createSystemFontFaceAsset({
+        family,
+        cssFamily: family,
+    });
+
+export const ensureSystemUIFont = (
+    fonts: Pick<FontRegistry, 'getDefaultFamily' | 'registerFace' | 'resolveFace'>,
+    family: string,
+    cssFamily = family,
+): string => {
+    if (!fonts.resolveFace({ family })) {
+        fonts.registerFace(
+            createSystemFontFaceAsset({
+                family,
+                cssFamily,
+            }),
+        );
+    }
+    return fonts.getDefaultFamily() ?? family;
+};
+
+export const ensureDefaultUIFont = (
+    fonts: Pick<FontRegistry, 'getDefaultFamily' | 'registerFace' | 'resolveFace'>,
+    family = AXRONE_DEFAULT_UI_FONT_FAMILY,
+): string => ensureSystemUIFont(fonts, family, family);
+
 export type {
+    DynamicFontFaceAsset,
+    DynamicFontFaceRuntime,
+    DynamicFontGlyphRaster,
+    DynamicFontRuntimeFactory,
     FontAssetSource,
+    FontBinaryFormat,
     FontFaceAsset,
     FontFaceId,
     FontFaceInfo,
@@ -702,4 +558,7 @@ export type {
     GlyphAtlasPageSnapshot,
     KerningPairKey,
     RetryPolicy,
+    StaticFontFaceAsset,
 };
+
+export { createBrowserDynamicFontRuntimeFactory, createBrowserSystemFontFaceRuntime };
