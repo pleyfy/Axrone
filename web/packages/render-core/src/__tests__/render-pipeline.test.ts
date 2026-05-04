@@ -1,3 +1,4 @@
+import { Camera3D } from '@axrone/geometry';
 import { Mat4 } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
 import { RenderPipeline } from '@axrone/render-core';
@@ -39,6 +40,55 @@ const createTransparentPrimitive = (id: string = 'transparent') => ({
         castsShadows: false,
     },
 });
+
+const createBoundedPrimitive = (
+    id: string,
+    center: readonly [number, number, number],
+    extents: readonly [number, number, number]
+) => ({
+    id: `primitive:${id}`,
+    meshId: `mesh:${id}`,
+    worldMatrix: new Mat4(),
+    bounds: {
+        center,
+        extents,
+    },
+    material: {
+        id: `material:${id}`,
+        model: 'pbr' as const,
+        renderQueue: 2000,
+        castsShadows: true,
+    },
+});
+
+const createCullingCamera = () => {
+    const camera3D = Camera3D.perspective({
+        id: 'camera:culling',
+        projection: {
+            kind: 'perspective',
+            verticalFieldOfView: Math.PI / 3,
+            aspectRatio: 1,
+            near: 0.1,
+            far: 100,
+        },
+        pose: {
+            position: [0, 0, 0],
+            target: [0, 0, -1],
+        },
+    });
+
+    return {
+        id: 'camera:culling',
+        viewMatrix: Mat4.from(camera3D.viewMatrix),
+        projectionMatrix: Mat4.from(camera3D.projectionMatrix),
+        viewProjectionMatrix: Mat4.from(camera3D.viewProjectionMatrix),
+        camera3D,
+        frustum: camera3D.frustum,
+        position: camera3D.position,
+        near: camera3D.near,
+        far: camera3D.far,
+    };
+};
 
 describe('RenderPipeline', () => {
     it('plans an integrated frame with core rendering features', () => {
@@ -157,6 +207,24 @@ describe('RenderPipeline', () => {
         });
 
         expect(second.statistics.resourceReuseCount).toBeGreaterThan(0);
+    });
+
+    it('culls bounded primitives outside the provided camera frustum', () => {
+        const pipeline = new RenderPipeline();
+
+        const result = pipeline.plan({
+            frame: 1,
+            deltaTime: 1 / 60,
+            viewport: { width: 1024, height: 1024 },
+            camera: createCullingCamera(),
+            primitives: [
+                createBoundedPrimitive('inside', [0, 0, -4], [0.5, 0.5, 0.5]),
+                createBoundedPrimitive('outside', [25, 0, -4], [0.5, 0.5, 0.5]),
+            ],
+        });
+
+        expect(result.statistics.opaqueCount).toBe(1);
+        expect(result.passes.some((pass) => pass.kind === 'opaque')).toBe(true);
     });
 
     it('gracefully degrades optional features under a constrained budget', () => {
