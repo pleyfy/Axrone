@@ -1,9 +1,10 @@
-import { Mat4, Quat, Vec3 } from '@axrone/numeric';
-import { Transform } from '@axrone/ecs-runtime';
-import { Camera, resolveCameraVerticalFieldOfViewRadians } from './components/camera';
+import { type Camera3D, type CameraProjection } from '@axrone/geometry';
+import { Mat4, type IMat4Like, Vec3 } from '@axrone/numeric';
+import { Camera } from './components/camera';
 
 interface MutableSceneCameraFrameState {
     camera: Camera;
+    camera3D: Readonly<Camera3D<CameraProjection>>;
     readonly viewMatrix: Mat4;
     readonly projectionMatrix: Mat4;
     readonly viewProjectionMatrix: Mat4;
@@ -12,7 +13,7 @@ interface MutableSceneCameraFrameState {
 
 export type SceneCameraFrameState = Readonly<MutableSceneCameraFrameState>;
 
-const copyMat4 = (source: Readonly<Mat4>, target: Mat4): Mat4 => {
+const copyMat4 = (source: Readonly<IMat4Like>, target: Mat4): Mat4 => {
     const sourceData = source.data;
     const targetData = target.data;
 
@@ -24,12 +25,9 @@ const copyMat4 = (source: Readonly<Mat4>, target: Mat4): Mat4 => {
 };
 
 export class SceneCameraFrameStateCollector {
-    private readonly _inverseRotation = new Quat();
-    private readonly _inverseTranslation = new Vec3();
-    private readonly _rotationMatrix = new Mat4();
-    private readonly _translationMatrix = new Mat4();
     private readonly _state: MutableSceneCameraFrameState = {
         camera: null as unknown as Camera,
+        camera3D: null as unknown as Readonly<Camera3D<CameraProjection>>,
         viewMatrix: new Mat4(),
         projectionMatrix: new Mat4(),
         viewProjectionMatrix: new Mat4(),
@@ -46,63 +44,16 @@ export class SceneCameraFrameStateCollector {
         }
 
         this._state.camera = camera;
-
-        const transform = camera.transform as Transform | undefined;
-        if (!transform) {
-            copyMat4(Mat4.IDENTITY, this._state.viewMatrix);
-            this._state.position.x = 0;
-            this._state.position.y = 0;
-            this._state.position.z = 0;
-        } else {
-            const worldPosition = transform.worldPosition;
-            const worldRotation = transform.worldRotation;
-
-            this._state.position.x = worldPosition.x;
-            this._state.position.y = worldPosition.y;
-            this._state.position.z = worldPosition.z;
-
-            Quat.inverse(worldRotation, this._inverseRotation);
-            this._inverseTranslation.x = -worldPosition.x;
-            this._inverseTranslation.y = -worldPosition.y;
-            this._inverseTranslation.z = -worldPosition.z;
-
-            Mat4.fromQuaternion(this._inverseRotation, this._rotationMatrix);
-            Mat4.translate(this._inverseTranslation, this._translationMatrix);
-            Mat4.multiply(this._rotationMatrix, this._translationMatrix, this._state.viewMatrix);
-        }
-
         const aspectRatio = viewportWidth / Math.max(1, viewportHeight);
-        if (camera.orthographic) {
-            const halfHeight = camera.orthographicSize;
-            const halfWidth = halfHeight * aspectRatio;
-            Mat4.orthographic(
-                -halfWidth,
-                halfWidth,
-                -halfHeight,
-                halfHeight,
-                camera.near,
-                camera.far,
-                this._state.projectionMatrix
-            );
-        } else {
-            Mat4.perspective(
-                resolveCameraVerticalFieldOfViewRadians(
-                    camera.fieldOfView,
-                    camera.fieldOfViewAxis,
-                    aspectRatio
-                ),
-                aspectRatio,
-                camera.near,
-                camera.far,
-                this._state.projectionMatrix
-            );
-        }
+        const camera3D = camera.getRuntimeCamera(aspectRatio);
+        this._state.camera3D = camera3D;
 
-        Mat4.multiply(
-            this._state.projectionMatrix,
-            this._state.viewMatrix,
-            this._state.viewProjectionMatrix
-        );
+        copyMat4(camera3D.viewMatrix, this._state.viewMatrix);
+        copyMat4(camera3D.projectionMatrix, this._state.projectionMatrix);
+        copyMat4(camera3D.viewProjectionMatrix, this._state.viewProjectionMatrix);
+        this._state.position.x = camera3D.position.x;
+        this._state.position.y = camera3D.position.y;
+        this._state.position.z = camera3D.position.z;
 
         return this._state;
     }
