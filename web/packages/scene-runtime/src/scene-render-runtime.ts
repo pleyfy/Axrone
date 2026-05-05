@@ -183,6 +183,13 @@ export class SceneRenderRuntime {
                 renderPass.rendererPassId,
                 {
                     cameraPosition: cameraFrame.position,
+                    cameraFrustum: cameraFrame.camera3D.frustum,
+                    resolveBounds: (renderer) => {
+                        const meshId = renderer.meshId;
+                        return meshId
+                            ? this._options.resources.meshes.getDefinition(meshId)?.bounds
+                            : undefined;
+                    },
                     isBlended: (renderer) => this._isBlendedRenderer(renderer, renderPass),
                 }
             );
