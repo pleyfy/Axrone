@@ -1,4 +1,5 @@
 import { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
+import { cloneSceneMeshBounds } from './scene-mesh-bounds';
 import type {
     SceneMorphTargetDefinition,
     SceneMeshDefinition,
@@ -164,6 +165,7 @@ export const cloneMeshDefinition = (definition: SceneMeshDefinition): SceneMeshD
         ...definition,
         vertices,
         indices,
+        ...(definition.bounds ? { bounds: cloneSceneMeshBounds(definition.bounds) } : {}),
         attributes: definition.attributes.map((attribute) => ({ ...attribute })),
         ...(definition.morphTargets
             ? { morphTargets: cloneMorphTargets(definition.morphTargets) }
@@ -202,6 +204,19 @@ export const serializeMeshDefinition = (definition: SceneMeshDefinition): SceneS
                       values: [...attribute.values],
                   })),
               }))
+            : null,
+        bounds: definition.bounds
+            ? {
+                  kind: 'sphere',
+                  center: Array.isArray(definition.bounds.center)
+                      ? [...definition.bounds.center]
+                      : [
+                            definition.bounds.center.x,
+                            definition.bounds.center.y,
+                            definition.bounds.center.z,
+                        ],
+                  radius: definition.bounds.radius,
+              }
             : null,
         vertexCount: definition.vertexCount ?? null,
         topology: definition.topology ?? 'triangles',
@@ -249,6 +264,22 @@ export const deserializeMeshDefinition = (value: SceneSerializedValue): SceneMes
         id: String(objectValue.id),
         vertices,
         indices,
+        bounds:
+            objectValue.bounds !== null &&
+            !Array.isArray(objectValue.bounds) &&
+            typeof objectValue.bounds === 'object' &&
+            objectValue.bounds.kind === 'sphere' &&
+            Array.isArray(objectValue.bounds.center)
+                ? {
+                      kind: 'sphere' as const,
+                      center: [
+                          Number(objectValue.bounds.center[0]),
+                          Number(objectValue.bounds.center[1]),
+                          Number(objectValue.bounds.center[2]),
+                      ] as const,
+                      radius: Number(objectValue.bounds.radius),
+                  }
+                : undefined,
         morphTargets: Array.isArray(objectValue.morphTargets)
             ? Object.freeze(
                   objectValue.morphTargets.map((target: SceneSerializedValue) => {

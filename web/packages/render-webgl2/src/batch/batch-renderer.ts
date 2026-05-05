@@ -4,6 +4,8 @@ import { IBatchable, IBatchRenderer, BatchConfiguration } from './interfaces';
 import { IMaterialInstance } from '../shader/interfaces';
 import { BatchGroup } from './batch-group';
 
+const getTranslationZ = (matrix: Mat4): number => matrix.data[11];
+
 interface BatchJob {
     group: BatchGroup;
     priority: number;
@@ -250,9 +252,8 @@ export class BatchRenderer implements IBatchRenderer {
 
         for (const instance of group.instances) {
             if (instance.visible) {
-                const worldPos = instance.worldMatrix.data.slice(12, 15);
-                const viewPos = viewMatrix.multiply(instance.worldMatrix).data.slice(12, 15);
-                totalDepth += viewPos[2];
+                const viewModelMatrix = Mat4.multiply(viewMatrix, instance.worldMatrix);
+                totalDepth += getTranslationZ(viewModelMatrix);
                 count++;
             }
         }
