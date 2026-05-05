@@ -35,6 +35,8 @@ describe('SceneAssetRuntime', () => {
         });
 
         expect(releaseBaseMesh).toHaveBeenCalledWith('mesh');
+        expect(runtime.resources.meshes.getDefinition('mesh')?.bounds?.kind).toBe('sphere');
+        expect(runtime.resources.meshes.getDefinition('mesh')?.bounds?.radius).toBeGreaterThan(0.7);
     });
 
     it('clears runtime-owned GPU resources and render passes through one boundary', async () => {
