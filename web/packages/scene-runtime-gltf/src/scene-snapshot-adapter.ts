@@ -101,7 +101,7 @@ export const createGltfSceneSnapshot = (
 
     for (const meshKey of prefab.data.meshKeys) {
         const mesh = database.require({ key: meshKey, kind: 'gltf.mesh' });
-        meshes.push(adaptGltfMeshDefinitionToScene(mesh.data.definition, mesh.key));
+        meshes.push(adaptGltfMeshDefinitionToScene(mesh.data.definition, mesh.key, mesh.data.bounds));
     }
 
     return {
