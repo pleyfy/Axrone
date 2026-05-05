@@ -16,6 +16,7 @@
         }
     },
     "scripts": {
+        "bench:culling": "tsx --tsconfig ../../tsconfig.json ./bench/camera-culling.bench.ts",
         "build": "rollup -c rollup.config.mjs",
         "clean": "rimraf dist",
         "test": "vitest run"
