@@ -1,4 +1,4 @@
-import type { Mat4 } from '@axrone/numeric';
+import { Vec3, type Mat4 } from '@axrone/numeric';
 import { ReusableList, SortableRenderList, StringKeyCache } from './memory';
 import type {
     ReadonlyRenderList,
@@ -30,9 +30,11 @@ const getX = (value: RenderVec3Ref): number => (Array.isArray(value) ? value[0] 
 const getY = (value: RenderVec3Ref): number => (Array.isArray(value) ? value[1] : asObjectVec3(value).y);
 const getZ = (value: RenderVec3Ref): number => (Array.isArray(value) ? value[2] : asObjectVec3(value).z);
 
-const getTranslationX = (matrix: Mat4): number => matrix.data[12];
-const getTranslationY = (matrix: Mat4): number => matrix.data[13];
-const getTranslationZ = (matrix: Mat4): number => matrix.data[14];
+const getTranslationX = (matrix: Mat4): number => matrix.data[3];
+const getTranslationY = (matrix: Mat4): number => matrix.data[7];
+const getTranslationZ = (matrix: Mat4): number => matrix.data[11];
+
+const resolveCameraFrustum = (camera: RenderCameraState) => camera.frustum ?? camera.camera3D?.frustum;
 
 const layerVisible = (cameraMask: number, primitiveMask: number | undefined): boolean =>
     primitiveMask === undefined || primitiveMask === 0 || (cameraMask & primitiveMask) !== 0;
@@ -110,6 +112,13 @@ const renderQueueFor = (primitive: RenderPrimitiveInstance): number => {
 
 export class RenderFrameClassifier {
     private readonly _strings = new StringKeyCache();
+    private readonly _primitiveFrustumMin = new Vec3();
+    private readonly _primitiveFrustumMax = new Vec3();
+    private readonly _primitiveFrustumBounds = {
+        kind: 'aabb' as const,
+        min: this._primitiveFrustumMin,
+        max: this._primitiveFrustumMax,
+    };
     private readonly _opaque = new SortableRenderList<RenderPrimitiveInstance>(256);
     private readonly _transparent = new SortableRenderList<RenderPrimitiveInstance>(128);
     private readonly _shadowCasters = new SortableRenderList<RenderPrimitiveInstance>(256);
@@ -183,12 +192,17 @@ export class RenderFrameClassifier {
 
     private _classifyPrimitives(input: RenderFrameInput, warnings: ReusableList<string>): void {
         const cameraMask = input.camera.layerMask ?? -1;
+        const frustum = resolveCameraFrustum(input.camera);
         for (const primitive of input.primitives) {
             if (primitive.visible === false) {
                 continue;
             }
 
             if (!layerVisible(cameraMask, primitive.layerMask)) {
+                continue;
+            }
+
+            if (frustum && primitive.bounds && !this._intersectsCameraFrustum(primitive, frustum)) {
                 continue;
             }
 
@@ -225,6 +239,32 @@ export class RenderFrameClassifier {
         this._opaque.sort(OPAQUE_SORT);
         this._transparent.sort(TRANSPARENT_SORT);
         this._shadowCasters.sort(OPAQUE_SORT);
+    }
+
+    private _intersectsCameraFrustum(
+        primitive: RenderPrimitiveInstance,
+        frustum: NonNullable<ReturnType<typeof resolveCameraFrustum>>
+    ): boolean {
+        const bounds = primitive.bounds;
+        if (!bounds) {
+            return true;
+        }
+
+        const centerX = getX(bounds.center);
+        const centerY = getY(bounds.center);
+        const centerZ = getZ(bounds.center);
+        const extentX = getX(bounds.extents);
+        const extentY = getY(bounds.extents);
+        const extentZ = getZ(bounds.extents);
+
+        this._primitiveFrustumMin.x = centerX - extentX;
+        this._primitiveFrustumMin.y = centerY - extentY;
+        this._primitiveFrustumMin.z = centerZ - extentZ;
+        this._primitiveFrustumMax.x = centerX + extentX;
+        this._primitiveFrustumMax.y = centerY + extentY;
+        this._primitiveFrustumMax.z = centerZ + extentZ;
+
+        return frustum.intersectsAabb(this._primitiveFrustumBounds);
     }
 
     private _classifyLights(input: RenderFrameInput): void {

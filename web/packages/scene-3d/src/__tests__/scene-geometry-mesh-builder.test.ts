@@ -20,6 +20,8 @@ describe('SceneGeometryMeshBuilder', () => {
         expect(definition.vertexCount).toBeGreaterThan(0);
         expect(definition.vertices).toBeInstanceOf(Float32Array);
         expect(definition.indices).toBeInstanceOf(Uint16Array);
+        expect(definition.bounds?.kind).toBe('sphere');
+        expect(definition.bounds?.radius).toBeGreaterThan(0.7);
         expect(definition.attributes.map((attribute) => attribute.semantic)).toEqual([
             'position',
             'normal',

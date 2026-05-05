@@ -1,4 +1,5 @@
 import { cloneMeshDefinition } from './serialization';
+import { resolveSceneMeshBounds } from './scene-mesh-bounds';
 import type {
     SceneMeshDefinition,
     SceneMeshHandle,
@@ -47,8 +48,11 @@ export class SceneMeshRegistry {
         resource: SceneMeshResource
     ): SceneMeshRegistrationResult {
         const previous = this._resources.get(resource.id) ?? null;
+        const bounds = resolveSceneMeshBounds(definition);
+        const normalizedDefinition =
+            bounds && !definition.bounds ? { ...definition, bounds } : definition;
         this._resources.set(resource.id, resource);
-        this._definitions.set(resource.id, cloneSceneMeshDefinition(definition));
+        this._definitions.set(resource.id, cloneSceneMeshDefinition(normalizedDefinition));
 
         return {
             handle: toHandle(resource),

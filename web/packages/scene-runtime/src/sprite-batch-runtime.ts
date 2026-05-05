@@ -159,7 +159,9 @@ export class SceneSpriteBatchRuntime {
     }
 
     render(params: SceneSpriteBatchRuntimeRenderParams): void {
-        const items = this._collector.collect(params.actors, params.renderPass.rendererPassId);
+        const items = this._collector.collect(params.actors, params.renderPass.rendererPassId, {
+            cameraFrustum: params.cameraFrame.camera3D.frustum,
+        });
         if (items.length === 0) {
             return;
         }

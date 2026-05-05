@@ -31,11 +31,13 @@ describe('SceneCameraFrameStateCollector', () => {
         expect(second?.projectionMatrix).toBe(first?.projectionMatrix);
         expect(second?.viewProjectionMatrix).toBe(first?.viewProjectionMatrix);
         expect(second?.position).toBe(first?.position);
+        expect(second?.camera3D).toBe(first?.camera3D);
         expect(second?.viewMatrix.equals(camera.getViewMatrix())).toBe(true);
         expect(second?.projectionMatrix.equals(camera.getProjectionMatrix(1920 / 1080))).toBe(true);
         expect(second?.viewProjectionMatrix.equals(camera.getViewProjectionMatrix(1920 / 1080))).toBe(
             true
         );
+        expect(second?.camera3D).toBe(camera.getRuntimeCamera(1920 / 1080));
         expect(second?.position.equals(transform.worldPosition)).toBe(true);
     });
 

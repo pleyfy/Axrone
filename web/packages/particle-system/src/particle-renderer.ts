@@ -1,3 +1,4 @@
+import type { Camera3D, CameraFrustum } from '@axrone/geometry';
 import { IVec4Array, IVec3Array } from './aligned-arrays';
 import { ParticleSOA } from './particle-soa';
 import { SortMode } from './types';
@@ -138,6 +139,18 @@ export interface RenderSettings {
     occlusionCulling: boolean;
 }
 
+type FrustumSource = Float32Array | Readonly<CameraFrustum> | Readonly<Camera3D>;
+
+const isFloat32Array = (value: FrustumSource): value is Float32Array => value instanceof Float32Array;
+
+const isCameraFrustum = (value: FrustumSource): value is Readonly<CameraFrustum> =>
+    typeof value === 'object' && value !== null && 'copyPlane' in value;
+
+const resolveCameraFrustum = (value: FrustumSource): Readonly<CameraFrustum> =>
+    (isCameraFrustum(value) ? value : value.frustum) as Readonly<CameraFrustum>;
+
+const FRUSTUM_PLANE_NAMES = ['left', 'right', 'bottom', 'top', 'near', 'far'] as const;
+
 export class ParticleSystemRenderer {
     private readonly _settings: RenderSettings;
     private readonly _renderBatches: IRenderBatch[] = [];
@@ -213,10 +226,26 @@ export class ParticleSystemRenderer {
         }
     }
 
-    updateFrustum(viewProjectionMatrix: Float32Array): void {
+    updateFrustum(source: FrustumSource): void {
         if (!this._settings.frustumCulling) return;
 
-        this._extractFrustumPlanes(viewProjectionMatrix);
+        if (isFloat32Array(source)) {
+            this._extractFrustumPlanes(source);
+            return;
+        }
+
+        this._copyGeometryFrustum(resolveCameraFrustum(source));
+    }
+
+    private _copyGeometryFrustum(frustum: Readonly<CameraFrustum>): void {
+        for (let planeIndex = 0; planeIndex < FRUSTUM_PLANE_NAMES.length; planeIndex++) {
+            const plane = frustum.copyPlane(FRUSTUM_PLANE_NAMES[planeIndex]);
+            const offset = planeIndex * 4;
+            this._frustumPlanes[offset] = plane[0];
+            this._frustumPlanes[offset + 1] = plane[1];
+            this._frustumPlanes[offset + 2] = plane[2];
+            this._frustumPlanes[offset + 3] = plane[3];
+        }
     }
 
     private _extractFrustumPlanes(matrix: Float32Array): void {

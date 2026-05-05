@@ -1,4 +1,5 @@
 import type { IGeometryBuffers } from '@axrone/geometry';
+import { resolveSceneMeshBounds } from './scene-mesh-bounds';
 import type { SceneMeshDefinition, SceneMeshSemantic } from './types';
 
 const mapGeometryAttribute = (name: string): SceneMeshSemantic | null => {
@@ -74,7 +75,7 @@ export class SceneGeometryMeshBuilder {
             }
         }
 
-        return {
+        const definition: SceneMeshDefinition = {
             id,
             vertices: vertexBytes,
             indices: indexArray,
@@ -82,5 +83,8 @@ export class SceneGeometryMeshBuilder {
             topology: geometryBuffers.layout.primitiveType,
             attributes,
         };
+
+        const bounds = resolveSceneMeshBounds(definition);
+        return bounds ? { ...definition, bounds } : definition;
     }
 }

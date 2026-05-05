@@ -141,24 +141,23 @@ export class SceneRenderRuntime {
         const renderFrame = this._renderFrameState.begin(params.frame);
         const actors = this._options.getActors();
         const camera = selectSceneCamera(actors);
+        const cameraFrame = this._cameraFrameCollector.collect(
+            camera,
+            params.viewportWidth,
+            params.viewportHeight
+        );
         const lighting = this._lightingCollector.collect(
             actors,
             this._options.ambientLight,
             this._options.skyLight,
             this._options.groundLight,
-            (camera?.transform as Transform | undefined)?.worldPosition
+            cameraFrame?.position
         );
         const renderPasses = this._options.resources.renderPasses.getEnabledResources();
 
         if (renderPasses.length === 0) {
             return;
         }
-
-        const cameraFrame = this._cameraFrameCollector.collect(
-            camera,
-            params.viewportWidth,
-            params.viewportHeight
-        );
         this._options.gl.viewport(0, 0, params.viewportWidth, params.viewportHeight);
 
         for (const renderPass of renderPasses) {
@@ -184,6 +183,13 @@ export class SceneRenderRuntime {
                 renderPass.rendererPassId,
                 {
                     cameraPosition: cameraFrame.position,
+                    cameraFrustum: cameraFrame.camera3D.frustum,
+                    resolveBounds: (renderer) => {
+                        const meshId = renderer.meshId;
+                        return meshId
+                            ? this._options.resources.meshes.getDefinition(meshId)?.bounds
+                            : undefined;
+                    },
                     isBlended: (renderer) => this._isBlendedRenderer(renderer, renderPass),
                 }
             );

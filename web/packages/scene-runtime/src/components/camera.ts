@@ -1,4 +1,5 @@
-import { Mat4, Vec3, Vec4 } from '@axrone/numeric';
+import { Camera3D, type CameraProjection } from '@axrone/geometry';
+import { Mat4, Quat, Vec3, Vec4 } from '@axrone/numeric';
 import { Transform } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
@@ -78,6 +79,10 @@ const toVec4 = (value?: Vec4 | readonly [number, number, number, number]): Vec4 
     singleton: false,
 })
 export class Camera extends Component {
+    private readonly _runtimeForward = new Vec3();
+    private readonly _runtimeTarget = new Vec3();
+    private readonly _runtimeUp = new Vec3();
+
     private _primary: boolean;
     private _near: number;
     private _far: number;
@@ -88,6 +93,7 @@ export class Camera extends Component {
     private _clearFlags: SceneClearFlag[];
     private _clearDepth: number;
     private _clearColor: Vec4;
+    private _runtimeCamera: Camera3D<CameraProjection> | null = null;
 
     constructor(config: CameraConfig = {}) {
         super();
@@ -184,59 +190,94 @@ export class Camera extends Component {
     }
 
     getViewMatrix(): Mat4 {
-        const transform = this.transform as Transform | undefined;
-
-        if (!transform) {
-            return Mat4.IDENTITY.clone();
-        }
-
-        const worldPosition = transform.worldPosition;
-        const inverseRotation = transform.worldRotation.clone().inverse();
-        const inverseTranslation = new Vec3(-worldPosition.x, -worldPosition.y, -worldPosition.z);
-
-        return Mat4.multiply(
-            Mat4.fromQuaternion(inverseRotation),
-            Mat4.translate(inverseTranslation)
-        );
+        return Mat4.from(this.getRuntimeCamera(1).viewMatrix);
     }
 
     getProjectionMatrix(aspectRatio: number): Mat4 {
-        if (this._orthographic) {
-            const halfHeight = this._orthographicSize;
-            const halfWidth = halfHeight * aspectRatio;
-            return Mat4.orthographic(
-                -halfWidth,
-                halfWidth,
-                -halfHeight,
-                halfHeight,
-                this._near,
-                this._far
-            );
-        }
-
-        return Mat4.perspective(
-            resolveCameraVerticalFieldOfViewRadians(
-                this._fieldOfView,
-                this._fieldOfViewAxis,
-                aspectRatio
-            ),
-            aspectRatio,
-            this._near,
-            this._far
-        );
+        return Mat4.from(this.getRuntimeCamera(aspectRatio).projectionMatrix);
     }
 
     getViewProjectionMatrix(aspectRatio: number): Mat4 {
-        return Mat4.multiply(this.getProjectionMatrix(aspectRatio), this.getViewMatrix());
+        return Mat4.from(this.getRuntimeCamera(aspectRatio).viewProjectionMatrix);
     }
 
     getWorldPosition(): Vec3 {
+        return Vec3.from(this.getRuntimeCamera(1).position);
+    }
+
+    getRuntimeCamera(aspectRatio: number): Readonly<Camera3D<CameraProjection>> {
+        const safeAspectRatio = Math.max(aspectRatio, 0.001);
+        const projection = this._orthographic
+            ? {
+                  kind: 'orthographic' as const,
+                  left: -this._orthographicSize * safeAspectRatio,
+                  right: this._orthographicSize * safeAspectRatio,
+                  bottom: -this._orthographicSize,
+                  top: this._orthographicSize,
+                  near: this._near,
+                  far: this._far,
+              }
+            : {
+                  kind: 'perspective' as const,
+                  verticalFieldOfView: resolveCameraVerticalFieldOfViewRadians(
+                      this._fieldOfView,
+                      this._fieldOfViewAxis,
+                      safeAspectRatio
+                  ),
+                  aspectRatio: safeAspectRatio,
+                  near: this._near,
+                  far: this._far,
+              };
+
         const transform = this.transform as Transform | undefined;
         if (!transform) {
-            return Vec3.ZERO.clone();
+            this._runtimeTarget.x = 0;
+            this._runtimeTarget.y = 0;
+            this._runtimeTarget.z = -1;
+            this._runtimeUp.x = 0;
+            this._runtimeUp.y = 1;
+            this._runtimeUp.z = 0;
+
+            if (!this._runtimeCamera) {
+                this._runtimeCamera = new Camera3D({
+                    id: `camera:${this.id}`,
+                    projection,
+                    pose: {
+                        position: Vec3.ZERO,
+                        target: this._runtimeTarget,
+                        up: this._runtimeUp,
+                    },
+                });
+            } else {
+                this._runtimeCamera.setProjection(projection);
+                this._runtimeCamera.lookAt(Vec3.ZERO, this._runtimeTarget, this._runtimeUp);
+            }
+
+            return this._runtimeCamera;
         }
 
-        return transform.worldPosition.clone();
+        const worldPosition = transform.worldPosition;
+        const worldRotation = transform.worldRotation;
+        Quat.rotateVector(worldRotation, Vec3.BACK, this._runtimeForward);
+        Quat.rotateVector(worldRotation, Vec3.UP, this._runtimeUp);
+        Vec3.add(worldPosition, this._runtimeForward, this._runtimeTarget);
+
+        if (!this._runtimeCamera) {
+            this._runtimeCamera = new Camera3D({
+                id: `camera:${this.id}`,
+                projection,
+                pose: {
+                    position: worldPosition,
+                    target: this._runtimeTarget,
+                    up: this._runtimeUp,
+                },
+            });
+        } else {
+            this._runtimeCamera.setProjection(projection);
+            this._runtimeCamera.lookAt(worldPosition, this._runtimeTarget, this._runtimeUp);
+        }
+
+        return this._runtimeCamera;
     }
 
     override serialize(): Record<string, unknown> {
