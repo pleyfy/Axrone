@@ -1,3 +1,4 @@
+import type { BoundingSphere } from '@axrone/geometry';
 import type { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
 import type { Actor, ActorConfig } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
@@ -79,6 +80,7 @@ export interface SceneMeshDefinition {
     readonly id: string;
     readonly vertices: BufferSource;
     readonly attributes: readonly SceneVertexAttribute[];
+    readonly bounds?: BoundingSphere;
     readonly morphTargets?: readonly SceneMorphTargetDefinition[];
     readonly indices?: Uint8Array | Uint16Array | Uint32Array;
     readonly vertexCount?: number;
