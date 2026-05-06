@@ -1,4 +1,4 @@
-import { compileSceneProject, getSupportedPlaygroundImports } from '../playground/live-example-runtime';
+import { compileSceneProject } from '../playground/live-example-runtime';
 import { createLiveEditor, type LiveEditorController } from '../playground/live-editor';
 import type { PlaygroundSceneHandle } from '../projects/shared/playground-types';
 import { loadProjectCatalog } from './project-catalog';
@@ -350,7 +350,6 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		shell.projectNameDisplay.textContent = project.name;
 		shell.projectDot.style.background = project.color;
 		shell.languageDisplay.textContent = resolveLanguageLabel(currentFilePath);
-		shell.editorStatus.textContent = `${project.name} · ${currentFilePath}`;
 	};
 
 	const refreshEditorFiles = (): void => {
@@ -434,8 +433,6 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			},
 		});
 	}
-
-	shell.editorSupportedImports.textContent = getSupportedPlaygroundImports().join(', ');
 
 	const nativeConsole = {
 		log: console.log.bind(console),

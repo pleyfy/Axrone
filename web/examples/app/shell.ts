@@ -58,8 +58,6 @@ export type PlaygroundShell = {
 	readonly newProjectCloseButtons: readonly HTMLButtonElement[];
 	readonly newProjectCreateButton: HTMLButtonElement;
 	readonly fullscreenButton: HTMLButtonElement;
-	readonly editorStatus: HTMLParagraphElement;
-	readonly editorSupportedImports: HTMLParagraphElement;
 };
 
 export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
@@ -127,7 +125,6 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 						<div id="editor-panel" class="flex flex-col overflow-hidden" style="flex:1 1 58%;min-width:360px">
 							<div class="editor-tabs-shell flex items-center border-b border-border bg-canvas shrink-0"><div class="flex items-center" id="editor-tabs"></div></div>
 							<div id="monaco-c" class="flex-1"></div>
-							<div class="h-8 border-t border-border bg-canvas-alt px-4 flex items-center justify-between text-[11px]"><p id="editor-status" class="text-ink-2">Editor ready</p><p id="editor-supported-imports" class="truncate text-ink-3"></p></div>
 						</div>
 						<div class="rh" id="ep-resize"></div>
 						<div id="preview-panel" class="flex flex-col overflow-hidden" style="flex:1 1 42%;min-width:320px">
@@ -244,7 +241,5 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 		newProjectCloseButtons: [...root.querySelectorAll<HTMLButtonElement>('[data-modal-close="true"]')],
 		newProjectCreateButton: requireElement(root, '#create-project'),
 		fullscreenButton: requireElement(root, '#fullscreen-button'),
-		editorStatus: requireElement(root, '#editor-status'),
-		editorSupportedImports: requireElement(root, '#editor-supported-imports'),
 	};
 };
