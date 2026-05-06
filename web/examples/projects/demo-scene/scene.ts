@@ -98,7 +98,10 @@ export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle =
 		azimuth: 0.62,
 		elevation: 0.39,
 	});
-	const detachInput = attachOrbitCameraInput(container, orbit);
+	const detachInput = attachOrbitCameraInput(container, orbit, {
+		minElevation: 0.08,
+		maxElevation: 1.25,
+	});
 
 	const grid = createGridOverlay(scene, shaders.grid, {
 		prefix: 'playground/demo',
@@ -108,6 +111,7 @@ export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle =
 		color: DEMO_GRID_MAJOR,
 		gridColor: DEMO_GRID_COLOR,
 		backgroundColor: DEMO_BACKGROUND,
+		backgroundOpacity: 0,
 	});
 	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/demo', length: 5 });
 	axes.setVisible(false);

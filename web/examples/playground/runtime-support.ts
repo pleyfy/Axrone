@@ -97,11 +97,26 @@ export const createSceneStage = (
 export const attachOrbitCameraInput = (
 	host: HTMLElement,
 	orbit: OrbitCameraController,
+	options?: {
+		readonly minElevation?: number;
+		readonly maxElevation?: number;
+	},
 ): (() => void) => {
 	let orbiting = false;
 	let pointerId = -1;
 	let previousX = 0;
 	let previousY = 0;
+
+	const clampElevation = () => {
+		if (options?.minElevation !== undefined && orbit.elevation < options.minElevation) {
+			orbit.elevation = options.minElevation;
+		}
+		if (options?.maxElevation !== undefined && orbit.elevation > options.maxElevation) {
+			orbit.elevation = options.maxElevation;
+		}
+	};
+
+	clampElevation();
 
 	const onPointerDown = (event: PointerEvent) => {
 		if (event.button !== 0) {
@@ -125,6 +140,7 @@ export const attachOrbitCameraInput = (
 		previousX = event.clientX;
 		previousY = event.clientY;
 		orbit.orbit(-deltaX * 0.0125, -deltaY * 0.0095);
+		clampElevation();
 	};
 
 	const endOrbit = (event: PointerEvent) => {
@@ -296,6 +312,7 @@ uniform vec3 u_Color;
 uniform vec3 u_GridColor;
 uniform vec3 u_BackgroundColor;
 uniform float u_GridScale;
+uniform float u_BackgroundOpacity;
 in vec3 v_WorldPosition;
 out vec4 o_Color;
 float gridLine(vec2 coord, float scale) {
@@ -305,7 +322,11 @@ float gridLine(vec2 coord, float scale) {
 void main() {
     float primary = gridLine(v_WorldPosition.xz, u_GridScale);
     float secondary = gridLine(v_WorldPosition.xz, u_GridScale * 5.0);
-    vec3 color = mix(u_BackgroundColor, u_GridColor, primary * 0.65 + secondary * 0.35);
+    float gridMix = primary * 0.65 + secondary * 0.35;
+    if (u_BackgroundOpacity <= 0.001 && gridMix <= 0.001) {
+        discard;
+    }
+    vec3 color = mix(u_BackgroundColor, u_GridColor, gridMix * max(u_BackgroundOpacity, 1.0));
     o_Color = vec4(mix(color, u_Color, secondary), 1.0);
 }`,
 		uniforms: [
@@ -316,6 +337,7 @@ void main() {
 			'u_GridColor',
 			'u_BackgroundColor',
 			'u_GridScale',
+			'u_BackgroundOpacity',
 		],
 	});
 
@@ -333,6 +355,7 @@ export const createGridOverlay = (
 		readonly color?: readonly [number, number, number];
 		readonly gridColor?: readonly [number, number, number];
 		readonly backgroundColor?: readonly [number, number, number];
+		readonly backgroundOpacity?: number;
 	},
 ): ToggleableOverlay => {
 	const meshId = `${options.prefix}/grid-mesh`;
@@ -346,6 +369,7 @@ export const createGridOverlay = (
 			u_GridColor: options.gridColor ?? [0.89, 0.88, 0.84],
 			u_BackgroundColor: options.backgroundColor ?? [0.94, 0.93, 0.91],
 			u_GridScale: options.scale ?? 1,
+			u_BackgroundOpacity: options.backgroundOpacity ?? 1,
 		},
 	});
 	const actor = scene.createRenderableActor(
@@ -353,7 +377,6 @@ export const createGridOverlay = (
 		{ meshId, materialId, receiveLighting: false },
 	);
 	const transform = actor.requireComponent(Transform);
-	transform.rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
 	transform.position = new Vec3(0, options.y ?? 0.01, 0);
 
 	return {
