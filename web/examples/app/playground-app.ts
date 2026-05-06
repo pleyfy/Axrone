@@ -93,16 +93,19 @@ const resolveLanguageLabel = (path: string): string => (path.endsWith('.js') ? '
 
 const renderTemplateCards = (shell: PlaygroundShell, selectedTemplateId: string): void => {
 	const templates = [
-		{ id: 'blank', name: 'Blank Scene', desc: 'Empty Axrone scene with camera and viewport', icon: '◻' },
-		{ id: 'basic', name: 'Basic Scene', desc: 'Axrone cube scene with floor and lighting', icon: '▣' },
+		{ id: 'blank', name: 'Blank Scene', desc: 'Empty Axrone scene with camera and viewport.', accent: '#c2410c', badge: 'AX' },
+		{ id: 'basic', name: 'Basic Scene', desc: 'Starter scene with floor, cube, and default lighting.', accent: '#2563eb', badge: '3D' },
 	];
 
 	shell.newProjectTemplates.innerHTML = templates
 		.map(
 			(template) => `
-				<button type="button" data-template-id="${template.id}" class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${template.id === selectedTemplateId ? 'border-accent bg-accent-s' : 'border-border hover:border-border-s hover:bg-canvas'}">
-					<span class="text-lg leading-none ${template.id === selectedTemplateId ? 'text-accent' : 'text-ink-3'}">${template.icon}</span>
-					<span class="text-left"><span class="text-xs font-semibold ${template.id === selectedTemplateId ? 'text-accent' : 'text-ink'} block">${template.name}</span><span class="text-[11px] text-ink-3 mt-0.5 block">${template.desc}</span></span>
+				<button type="button" data-template-id="${template.id}" class="template-card ${template.id === selectedTemplateId ? 'selected' : ''}" style="--template-accent:${template.accent}">
+					<span class="template-card__icon">${template.badge}</span>
+					<span class="template-card__body">
+						<span class="template-card__title">${template.name}</span>
+						<span class="template-card__desc">${template.desc}</span>
+					</span>
 				</button>
 			`,
 		)
@@ -289,8 +292,8 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 				const selected = project.id === currentProjectId;
 				return `
 					<div class="proj-card ${selected ? 'selected' : ''}" data-project-id="${project.id}">
-						<div class="w-3 h-3 rounded-full shrink-0 mt-0.5" style="background:${project.color}"></div>
-						<div class="flex-1 min-w-0"><div class="flex items-center justify-between"><span class="text-xs font-semibold text-ink">${project.name}</span>${selected ? '<span class="text-accent text-xs font-bold">Active</span>' : ''}</div><span class="text-[11px] text-ink-3 block mt-0.5">${project.description}</span><span class="text-[10px] text-ink-3 mt-1 inline-flex items-center gap-1">${project.files.length} files</span></div>
+						<div class="proj-card__swatch" style="background:${project.color}"></div>
+						<div class="proj-card__body"><div class="proj-card__title-row"><span class="proj-card__title">${project.name}</span>${selected ? '<span class="proj-card__badge">Active</span>' : ''}</div><span class="proj-card__desc">${project.description}</span><span class="proj-card__meta">${project.files.length} files</span></div>
 					</div>
 				`;
 			})
@@ -310,9 +313,9 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			.map((file) => {
 				const active = file.path === currentFilePath;
 				return `
-					<div class="ti${active ? ' active' : ''}" data-file-path="${file.path}">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${active ? '#C2410C' : '#9C958D'}" stroke-width="2" class="shrink-0"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-						<span class="text-xs">${file.path}</span>
+					<div class="explorer-item${active ? ' active' : ''}" data-file-path="${file.path}">
+						<svg class="explorer-item__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${active ? '#C2410C' : '#9C958D'}" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+						<span class="explorer-item__label">${file.path}</span>
 					</div>
 				`;
 			})
@@ -325,10 +328,10 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			.map((tabPath) => {
 				const active = tabPath === currentFilePath;
 				return `
-					<div class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium cursor-pointer border-b-2 ${active ? 'border-accent text-ink bg-surface' : 'border-transparent text-ink-3 bg-canvas hover:text-ink-2'}" data-tab-path="${tabPath}">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${active ? '#C2410C' : '#9C958D'}" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-						<span>${tabPath}</span>
-						<button type="button" class="ml-1 p-0.5 rounded hover:bg-canvas-alt text-ink-3 hover:text-ink-2 transition-colors" data-close-tab="${tabPath}">
+					<div class="editor-tab${active ? ' active' : ''}" data-tab-path="${tabPath}">
+						<svg class="editor-tab__icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${active ? '#C2410C' : '#9C958D'}" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+						<span class="editor-tab__label">${tabPath}</span>
+						<button type="button" class="editor-tab__close" data-close-tab="${tabPath}">
 							<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
 						</button>
 					</div>
@@ -398,11 +401,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		renderProjectList();
 		renderFileTree();
 		renderEditorTabs();
-		projectDropdownOpen = false;
-		shell.projectDropdown.style.opacity = '0';
-		shell.projectDropdown.style.transform = 'translateY(-6px) scale(.97)';
-		shell.projectDropdown.style.pointerEvents = 'none';
-		shell.projectChevron.style.transform = 'rotate(0deg)';
+		setProjectDropdownState(false);
 		void runCurrentProject();
 	};
 
@@ -473,12 +472,16 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		requestAnimationFrame(fpsLoop);
 	};
 
+	const setProjectDropdownState = (open: boolean): void => {
+		projectDropdownOpen = open;
+		shell.projectDropdown.style.opacity = open ? '1' : '0';
+		shell.projectDropdown.style.transform = open ? 'translateY(0) scale(1)' : 'translateY(-6px) scale(.97)';
+		shell.projectDropdown.style.pointerEvents = open ? 'auto' : 'none';
+		shell.projectChevron.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+	};
+
 	const toggleProjectDropdown = (): void => {
-		projectDropdownOpen = !projectDropdownOpen;
-		shell.projectDropdown.style.opacity = projectDropdownOpen ? '1' : '0';
-		shell.projectDropdown.style.transform = projectDropdownOpen ? 'translateY(0) scale(1)' : 'translateY(-6px) scale(.97)';
-		shell.projectDropdown.style.pointerEvents = projectDropdownOpen ? 'auto' : 'none';
-		shell.projectChevron.style.transform = projectDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+		setProjectDropdownState(!projectDropdownOpen);
 	};
 
 	const toggleConsole = (): void => {
@@ -500,6 +503,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 
 	const openNewProjectModal = (): void => {
 		renderTemplateCards(shell, selectedTemplateId);
+		setProjectDropdownState(false);
 		shell.newProjectModal.style.opacity = '1';
 		shell.newProjectModal.style.pointerEvents = 'auto';
 		shell.newProjectCard.style.transform = 'translateY(0) scale(1)';
@@ -725,11 +729,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		if (event.key === 'Escape') {
 			closeNewProjectModal();
 			shell.cameraDropdown.classList.remove('open');
-			projectDropdownOpen = false;
-			shell.projectDropdown.style.opacity = '0';
-			shell.projectDropdown.style.transform = 'translateY(-6px) scale(.97)';
-			shell.projectDropdown.style.pointerEvents = 'none';
-			shell.projectChevron.style.transform = 'rotate(0deg)';
+			setProjectDropdownState(false);
 		}
 	});
 };

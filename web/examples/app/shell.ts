@@ -83,7 +83,7 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
 							</span>
 						</button>
-						<div id="project-dropdown" class="absolute top-full left-0 mt-1.5 w-[320px] bg-surface border border-border rounded-xl shadow-lg z-50 overflow-hidden" style="opacity:0;transform:translateY(-6px) scale(.97);pointer-events:none;transition:opacity .15s,transform .15s">
+						<div id="project-dropdown" class="absolute top-full left-0 mt-2 w-[312px] bg-surface border border-border rounded-xl shadow-lg z-50 overflow-hidden" style="opacity:0;transform:translateY(-6px) scale(.97);pointer-events:none;transition:opacity .15s,transform .15s">
 							<div class="px-3 py-2.5 border-b border-border flex items-center justify-between">
 								<span class="text-[11px] font-semibold text-ink-3 tracking-wider uppercase">Projects</span>
 								<span class="text-[11px] text-ink-3" id="proj-count">0 projects</span>
@@ -110,7 +110,7 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 				</div>
 			</header>
 			<div class="flex-1 flex overflow-hidden">
-				<aside id="sidebar" class="w-[220px] bg-surface border-r border-border flex flex-col shrink-0 overflow-hidden">
+				<aside id="sidebar" class="w-[176px] bg-surface border-r border-border flex flex-col shrink-0 overflow-hidden">
 					<div class="flex items-center justify-between px-3 py-2 border-b border-border">
 						<span class="text-[11px] font-semibold text-ink-3 tracking-wider uppercase">Files</span>
 						<div class="flex items-center gap-0.5">
@@ -124,13 +124,13 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 				<div class="rh" id="sb-resize"></div>
 				<div id="content" class="flex-1 flex flex-col overflow-hidden">
 					<div id="workspace" class="flex-1 flex overflow-hidden">
-						<div id="editor-panel" class="flex-1 flex flex-col overflow-hidden" style="min-width:280px">
-							<div class="flex items-center border-b border-border bg-canvas shrink-0"><div class="flex items-center" id="editor-tabs"></div></div>
+						<div id="editor-panel" class="flex flex-col overflow-hidden" style="flex:1 1 58%;min-width:360px">
+							<div class="editor-tabs-shell flex items-center border-b border-border bg-canvas shrink-0"><div class="flex items-center" id="editor-tabs"></div></div>
 							<div id="monaco-c" class="flex-1"></div>
 							<div class="h-8 border-t border-border bg-canvas-alt px-4 flex items-center justify-between text-[11px]"><p id="editor-status" class="text-ink-2">Editor ready</p><p id="editor-supported-imports" class="truncate text-ink-3"></p></div>
 						</div>
 						<div class="rh" id="ep-resize"></div>
-						<div id="preview-panel" class="flex-1 flex flex-col overflow-hidden" style="min-width:280px">
+						<div id="preview-panel" class="flex flex-col overflow-hidden" style="flex:1 1 42%;min-width:320px">
 							<div class="flex items-center justify-between px-3 py-1.5 border-b border-border bg-canvas shrink-0">
 								<div class="flex items-center gap-2"><span class="text-[11px] font-semibold text-ink-3 tracking-wider uppercase">Preview</span><span class="fps" id="fps">— FPS</span><span class="text-[11px] text-ink-3" id="obj-count"></span></div>
 								<div class="flex items-center gap-0.5"><button id="fullscreen-button" type="button" class="tbtn xs" data-tip="Fullscreen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button></div>
@@ -164,7 +164,32 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 				</div>
 			</div>
 			<footer class="h-[26px] flex items-center justify-between px-4 bg-canvas-alt border-t border-border shrink-0 text-[11px]"><div class="flex items-center gap-3"><div class="flex items-center gap-1.5"><span class="dot id" id="sdot"></span><span class="text-ink-2" id="stxt">Stopped</span></div><div class="w-px h-3 bg-border"></div><span class="text-ink-3" id="lang-display">TypeScript</span></div><div class="flex items-center gap-3"><span class="text-ink-3" id="cpos">Ln 1, Col 1</span><div class="w-px h-3 bg-border"></div><span class="text-ink-3">UTF-8</span><div class="w-px h-3 bg-border"></div><span class="text-ink-3">Spaces: 2</span></div></footer>
-			<div id="new-project-modal" class="fixed inset-0 z-[200] flex items-center justify-center" style="opacity:0;pointer-events:none;transition:opacity .2s"><div class="absolute inset-0 bg-black/20" data-modal-close="true"></div><div id="modal-card" class="relative bg-surface rounded-xl border border-border shadow-xl w-[420px] overflow-hidden" style="transform:translateY(12px) scale(.97);transition:transform .2s"><div class="flex items-center justify-between px-5 py-3.5 border-b border-border"><span class="text-sm font-semibold">Create New Project</span><button type="button" class="tbtn xs" data-modal-close="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="px-5 py-4 space-y-4"><div><label class="text-xs font-medium text-ink-2 block mb-1.5">Project Name</label><input id="np-name" type="text" placeholder="My Awesome Project" class="w-full px-3 py-2 text-sm border border-border rounded-lg bg-canvas focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 placeholder:text-ink-3 transition-all"></div><div><label class="text-xs font-medium text-ink-2 block mb-1.5">Template</label><div class="grid grid-cols-2 gap-2" id="np-templates"></div></div></div><div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-canvas"><button type="button" data-modal-close="true" class="px-4 py-1.5 text-xs font-medium text-ink-2 rounded-lg border border-border hover:bg-canvas-alt transition-colors">Cancel</button><button id="create-project" type="button" class="px-4 py-1.5 text-xs font-medium text-white bg-accent rounded-lg hover:bg-accent-h transition-colors">Create Project</button></div></div></div>
+			<div id="new-project-modal" class="fixed inset-0 z-[200] flex items-center justify-center px-6" style="opacity:0;pointer-events:none;transition:opacity .2s">
+				<div class="new-project-modal__overlay absolute inset-0" data-modal-close="true"></div>
+				<div id="modal-card" class="new-project-modal__card relative bg-surface overflow-hidden" style="transform:translateY(12px) scale(.97);transition:transform .2s">
+					<div class="new-project-modal__header">
+						<div>
+							<p class="new-project-modal__eyebrow">Playground</p>
+							<h2 class="new-project-modal__title">Create New Project</h2>
+						</div>
+						<button type="button" class="tbtn xs" data-modal-close="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+					</div>
+					<div class="new-project-modal__body">
+						<label class="new-project-field">
+							<span class="new-project-field__label">Project Name</span>
+							<input id="np-name" type="text" placeholder="My Awesome Project" class="new-project-field__input">
+						</label>
+						<div class="new-project-field">
+							<span class="new-project-field__label">Template</span>
+							<div class="new-project-templates" id="np-templates"></div>
+						</div>
+					</div>
+					<div class="new-project-modal__footer">
+						<button type="button" data-modal-close="true" class="new-project-button new-project-button--ghost">Cancel</button>
+						<button id="create-project" type="button" class="new-project-button new-project-button--primary">Create Project</button>
+					</div>
+				</div>
+			</div>
 		</div>
 	`;
 
