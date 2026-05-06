@@ -95,19 +95,12 @@ void main() {
 		fragmentSource: `#version 300 es
 precision highp float;
 uniform float u_Opacity;
-uniform float u_Roundness;
 in vec4 v_Color;
 out vec4 o_Color;
 void main() {
-	vec2 centered = gl_PointCoord * 2.0 - 1.0;
-	float radial = dot(centered, centered);
-	if (u_Roundness > 0.5 && radial > 1.0) {
-		discard;
-	}
-	float alphaMask = u_Roundness > 0.5 ? (1.0 - smoothstep(0.35, 1.0, radial)) : 1.0;
-	o_Color = vec4(v_Color.rgb, v_Color.a * u_Opacity * alphaMask);
+	o_Color = vec4(v_Color.rgb, v_Color.a * u_Opacity);
 }`,
-		uniforms: ['u_Model', 'u_View', 'u_Projection', 'u_Resolution', 'u_PointSize', 'u_Opacity', 'u_Roundness'],
+		uniforms: ['u_Model', 'u_View', 'u_Projection', 'u_Resolution', 'u_PointSize', 'u_Opacity'],
 		depthTest: true,
 		cull: false,
 		blend: true,
@@ -139,7 +132,6 @@ void main() {
 		uniforms: {
 			u_PointSize: PARTICLE_POINT_SIZE,
 			u_Opacity: 0.85,
-			u_Roundness: 1,
 		},
 		passes: [particlePass],
 	});
@@ -150,7 +142,6 @@ void main() {
 		uniforms: {
 			u_PointSize: PARTICLE_POINT_SIZE * 1.05,
 			u_Opacity: 0.65,
-			u_Roundness: 0,
 		},
 		passes: [particlePass],
 	});
