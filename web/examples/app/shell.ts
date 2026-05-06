@@ -119,7 +119,7 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 						</div>
 					</div>
 					<div class="sidebar-tree flex-1 overflow-y-auto" id="file-tree"></div>
-					<div class="px-3 py-2 border-t border-border text-[11px] text-ink-3 flex items-center gap-2"><span class="dot on"></span><span id="file-count-text">0 files</span></div>
+					<div class="sidebar-footer border-t border-border text-[11px] text-ink-3 flex items-center gap-2"><span class="dot on"></span><span id="file-count-text">0 files</span></div>
 				</aside>
 				<div class="rh" id="sb-resize"></div>
 				<div id="content" class="flex-1 flex flex-col overflow-hidden">
@@ -163,7 +163,7 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 					</div>
 				</div>
 			</div>
-			<footer class="h-[26px] flex items-center justify-between px-4 bg-canvas-alt border-t border-border shrink-0 text-[11px]"><div class="flex items-center gap-3"><div class="flex items-center gap-1.5"><span class="dot id" id="sdot"></span><span class="text-ink-2" id="stxt">Stopped</span></div><div class="w-px h-3 bg-border"></div><span class="text-ink-3" id="lang-display">TypeScript</span></div><div class="flex items-center gap-3"><span class="text-ink-3" id="cpos">Ln 1, Col 1</span><div class="w-px h-3 bg-border"></div><span class="text-ink-3">UTF-8</span><div class="w-px h-3 bg-border"></div><span class="text-ink-3">Spaces: 2</span></div></footer>
+			<footer class="app-footer h-[26px] flex items-center justify-between bg-canvas-alt border-t border-border shrink-0 text-[11px]"><div class="flex items-center gap-3"><div class="flex items-center gap-1.5"><span class="dot id" id="sdot"></span><span class="text-ink-2" id="stxt">Stopped</span></div><div class="w-px h-3 bg-border"></div><span class="text-ink-3" id="lang-display">TypeScript</span></div><div class="flex items-center gap-3"><span class="text-ink-3" id="cpos">Ln 1, Col 1</span><div class="w-px h-3 bg-border"></div><span class="text-ink-3">UTF-8</span><div class="w-px h-3 bg-border"></div><span class="text-ink-3">Spaces: 2</span></div></footer>
 			<div id="new-project-modal" class="fixed inset-0 z-[200] flex items-center justify-center px-6" style="opacity:0;pointer-events:none;transition:opacity .2s">
 				<div class="new-project-modal__overlay absolute inset-0" data-modal-close="true"></div>
 				<div id="modal-card" class="new-project-modal__card relative bg-surface overflow-hidden" style="transform:translateY(12px) scale(.97);transition:transform .2s">
