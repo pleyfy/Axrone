@@ -1,207 +1,237 @@
-import { createRing, createSphere } from '@axrone/geometry';
-import { Transform } from '@axrone/ecs-runtime';
 import { MeshRenderer, OrbitCameraController } from '@axrone/scene-3d';
+import type { SceneMeshDefinition } from '@axrone/scene-runtime';
 import {
 	attachOrbitCameraInput,
 	createAxesOverlay,
 	createGridOverlay,
-	createMeshBuilder,
 	createPlaygroundHandle,
 	createSceneStage,
 	registerPlaygroundShaders,
 } from '@axrone/playground';
-import { Quat, Vec3 } from '@axrone/numeric';
 import type { PlaygroundSceneHandle } from '../shared/playground-types';
 import {
-	PARTICLE_AMBIENT,
+	PARTICLE_CEILING,
 	PARTICLE_CLEAR_COLOR,
-	PARTICLE_FILL_LIGHT_COLOR,
-	PARTICLE_FILL_LIGHT_DIRECTION,
-	PARTICLE_KEY_LIGHT_COLOR,
-	PARTICLE_KEY_LIGHT_DIRECTION,
-	PARTICLE_SEEDS,
-	type ParticleSeed,
+	PARTICLE_COUNT,
+	PARTICLE_GRID_MAJOR,
+	PARTICLE_GRID_MINOR,
+	PARTICLE_HORIZONTAL_SPAN,
+	PARTICLE_POINT_SIZE,
+	PARTICLE_VERTICAL_SPAN,
+	ParticleEmitter,
+	createParticleColor,
+	type EmittedParticle,
 } from './particle-data';
 
-type ParticleRuntime = {
-	readonly seed: ParticleSeed;
-	readonly transform: Transform;
-	readonly renderer: MeshRenderer;
-	readonly fillMaterialId: string;
-	readonly wireMaterialId: string;
+type ParticleState = EmittedParticle & {
+	readonly color: readonly [number, number, number, number];
+};
+
+const PARTICLE_MESH_ID = 'playground/particles/cloud';
+const PARTICLE_SHADER_ID = 'playground/particles/points';
+const PARTICLE_FILL_MATERIAL_ID = 'playground/particles/fill';
+const PARTICLE_WIRE_MATERIAL_ID = 'playground/particles/wire';
+const PARTICLE_VERTEX_FLOATS = 7;
+const PARTICLE_VERTEX_STRIDE = PARTICLE_VERTEX_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+const GL_DYNAMIC_DRAW = 0x88e8;
+
+const writeParticleVertex = (vertices: Float32Array, index: number, particle: ParticleState): void => {
+	const base = index * PARTICLE_VERTEX_FLOATS;
+	vertices[base] = particle.position.x;
+	vertices[base + 1] = particle.position.y;
+	vertices[base + 2] = particle.position.z;
+	vertices[base + 3] = particle.color[0];
+	vertices[base + 4] = particle.color[1];
+	vertices[base + 5] = particle.color[2];
+	vertices[base + 6] = particle.color[3];
+};
+
+const createParticleMeshDefinition = (vertices: Float32Array): SceneMeshDefinition => ({
+	id: PARTICLE_MESH_ID,
+	vertices,
+	vertexCount: PARTICLE_COUNT,
+	topology: 'points',
+	usage: GL_DYNAMIC_DRAW,
+	attributes: [
+		{ semantic: 'position', componentCount: 3, offset: 0, stride: PARTICLE_VERTEX_STRIDE },
+		{ semantic: 'color0', componentCount: 4, offset: Float32Array.BYTES_PER_ELEMENT * 3, stride: PARTICLE_VERTEX_STRIDE },
+	],
+});
+
+const randomHorizontal = (): number => (Math.random() - 0.5) * PARTICLE_HORIZONTAL_SPAN;
+
+const resetParticlePosition = (particle: ParticleState, y: number): void => {
+	particle.position.x = randomHorizontal();
+	particle.position.y = y;
+	particle.position.z = randomHorizontal();
 };
 
 export const createParticleSystemScene = (container: HTMLElement): PlaygroundSceneHandle => {
 	const stage = createSceneStage(container, {
 		clearColor: PARTICLE_CLEAR_COLOR,
-		ambientLight: [0.05, 0.06, 0.05],
 	});
 	const { scene } = stage;
 	const shaders = registerPlaygroundShaders(scene, 'playground/particles');
-	const meshBuilder = createMeshBuilder();
 
-	scene.registerMesh(
-		meshBuilder.createDefinition(
-			'playground/particles/sphere',
-			createSphere({ radius: 1, widthSegments: 18, heightSegments: 14 }),
-		),
-	);
-	scene.registerMesh(
-		meshBuilder.createDefinition(
-			'playground/particles/ring',
-			createRing({ innerRadius: 0.88, outerRadius: 1.08, segments: 80 }),
-		),
-	);
+	scene.registerShader({
+		id: PARTICLE_SHADER_ID,
+		vertexSource: `#version 300 es
+layout(location = 0) in vec3 a_Position;
+layout(location = 3) in vec4 a_Color0;
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+uniform vec2 u_Resolution;
+uniform float u_PointSize;
+out vec4 v_Color;
+void main() {
+	vec4 worldPosition = u_Model * vec4(a_Position, 1.0);
+	vec4 viewPosition = u_View * worldPosition;
+	float distanceToCamera = max(-viewPosition.z, 0.001);
+	gl_PointSize = max(1.0, u_PointSize * u_Resolution.y * u_Projection[1][1] / distanceToCamera);
+	v_Color = a_Color0;
+	gl_Position = u_Projection * viewPosition;
+}`,
+		fragmentSource: `#version 300 es
+precision highp float;
+uniform float u_Opacity;
+uniform float u_Roundness;
+in vec4 v_Color;
+out vec4 o_Color;
+void main() {
+	vec2 centered = gl_PointCoord * 2.0 - 1.0;
+	float radial = dot(centered, centered);
+	if (u_Roundness > 0.5 && radial > 1.0) {
+		discard;
+	}
+	float alphaMask = u_Roundness > 0.5 ? (1.0 - smoothstep(0.35, 1.0, radial)) : 1.0;
+	o_Color = vec4(v_Color.rgb, v_Color.a * u_Opacity * alphaMask);
+}`,
+		uniforms: ['u_Model', 'u_View', 'u_Projection', 'u_Resolution', 'u_PointSize', 'u_Opacity', 'u_Roundness'],
+		depthTest: true,
+		cull: false,
+		blend: true,
+	});
 
-	const lightingUniforms = {
-		u_AmbientColor: PARTICLE_AMBIENT,
-		u_KeyLightDirection: PARTICLE_KEY_LIGHT_DIRECTION,
-		u_KeyLightColor: PARTICLE_KEY_LIGHT_COLOR,
-		u_FillLightDirection: PARTICLE_FILL_LIGHT_DIRECTION,
-		u_FillLightColor: PARTICLE_FILL_LIGHT_COLOR,
+	const particlePass = {
+		id: 'particle-points',
+		primitive: 'point-list',
+		depthStencilState: {
+			depthTest: true,
+			depthWrite: false,
+		},
+		blendState: {
+			targets: [
+				{
+					blend: true,
+					srcColorFactor: 'src-alpha',
+					dstColorFactor: 'one-minus-src-alpha',
+					srcAlphaFactor: 'one',
+					dstAlphaFactor: 'one-minus-src-alpha',
+				},
+			],
+		},
 	} as const;
 
-	const registerLitMaterial = (
-		id: string,
-		color: readonly [number, number, number, number],
-		shininess: number,
-		polygonMode: 'fill' | 'line',
-	) => {
-		scene.createMaterial({
-			id,
-			shaderId: shaders.lit,
-			uniforms: {
-				u_Color: color,
-				u_Shininess: shininess,
-				...lightingUniforms,
-			},
-			rasterizerState: polygonMode === 'line' ? { polygonMode: 'line', lineWidth: 1 } : undefined,
-		});
-	};
-
-	const registerSolidMaterial = (
-		id: string,
-		color: readonly [number, number, number, number],
-		polygonMode: 'fill' | 'line',
-	) => {
-		scene.createMaterial({
-			id,
-			shaderId: shaders.solid,
-			uniforms: { u_Color: color },
-			rasterizerState: polygonMode === 'line' ? { polygonMode: 'line', lineWidth: 1 } : undefined,
-		});
-	};
-
-	const camera = scene.createCameraActor({ name: 'ParticleCamera' }, { primary: true, fieldOfView: 52 });
-	const orbit = camera.addComponent(OrbitCameraController, {
-		target: [0, 1.15, 0],
-		distance: 8.8,
-		minDistance: 4.8,
-		maxDistance: 16,
-		azimuth: 0.68,
-		elevation: 0.35,
+	scene.createMaterial({
+		id: PARTICLE_FILL_MATERIAL_ID,
+		shaderId: PARTICLE_SHADER_ID,
+		uniforms: {
+			u_PointSize: PARTICLE_POINT_SIZE,
+			u_Opacity: 0.85,
+			u_Roundness: 1,
+		},
+		passes: [particlePass],
 	});
-	const detachInput = attachOrbitCameraInput(container, orbit);
+
+	scene.createMaterial({
+		id: PARTICLE_WIRE_MATERIAL_ID,
+		shaderId: PARTICLE_SHADER_ID,
+		uniforms: {
+			u_PointSize: PARTICLE_POINT_SIZE * 1.05,
+			u_Opacity: 0.65,
+			u_Roundness: 0,
+		},
+		passes: [particlePass],
+	});
+
+	const camera = scene.createCameraActor({ name: 'ParticleCamera' }, { primary: true, fieldOfView: 60 });
+	const orbit = camera.addComponent(OrbitCameraController, {
+		target: [0, 0, 0],
+		distance: 10.7703296143,
+		minDistance: 4,
+		maxDistance: 20,
+		azimuth: 0,
+		elevation: 0.3805063771,
+	});
+	const detachInput = attachOrbitCameraInput(container, orbit, {
+		minElevation: 0.04,
+		maxElevation: 1.35,
+	});
 
 	const grid = createGridOverlay(scene, shaders.grid, {
 		prefix: 'playground/particles',
 		size: 20,
-		scale: 0.7,
-		color: [0.18, 0.22, 0.18],
-		gridColor: [0.82, 0.88, 0.82],
-		backgroundColor: [0.94, 0.95, 0.92],
+		scale: 1,
+		y: 0,
+		color: PARTICLE_GRID_MAJOR,
+		gridColor: PARTICLE_GRID_MINOR,
+		backgroundColor: PARTICLE_CLEAR_COLOR.slice(0, 3),
+		backgroundOpacity: 0,
 	});
-	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/particles', length: 2.6 });
+	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/particles', length: 5 });
+	axes.setVisible(false);
 
-	registerSolidMaterial('playground/particles/core-fill', [0.12, 0.16, 0.14, 1], 'fill');
-	registerSolidMaterial('playground/particles/core-wire', [0.05, 0.08, 0.07, 1], 'line');
+	const emitter = new ParticleEmitter({
+		rate: PARTICLE_COUNT,
+		lifetime: 6,
+		speed: 0.02,
+		spread: 0.04,
+	});
+	const particleStates: ParticleState[] = emitter.emit({ x: 0, y: 0, z: 0 }, PARTICLE_COUNT).map((particle) => ({
+		...particle,
+		color: createParticleColor(),
+	}));
+	const particleVertices = new Float32Array(PARTICLE_COUNT * PARTICLE_VERTEX_FLOATS);
+	for (let index = 0; index < particleStates.length; index += 1) {
+		const particle = particleStates[index]!;
+		resetParticlePosition(particle, Math.random() * PARTICLE_VERTICAL_SPAN);
+		writeParticleVertex(particleVertices, index, particle);
+	}
+	scene.registerMesh(createParticleMeshDefinition(particleVertices));
 
-	const core = scene.createRenderableActor(
-		{ name: 'EmitterCore' },
-		{ meshId: 'playground/particles/sphere', materialId: 'playground/particles/core-fill', receiveLighting: false },
+	const particleActor = scene.createRenderableActor(
+		{ name: 'ParticleCloud' },
+		{ meshId: PARTICLE_MESH_ID, materialId: PARTICLE_FILL_MATERIAL_ID, receiveLighting: false },
 	);
-	const coreTransform = core.requireComponent(Transform);
-	coreTransform.position = new Vec3(0, 1.05, 0);
-	coreTransform.scale = new Vec3(0.42, 0.42, 0.42);
-	const coreRenderer = core.getComponent(MeshRenderer);
-	if (!coreRenderer) {
-		throw new Error('Particle core renderer was not created correctly.');
+	const particleRenderer = particleActor.getComponent(MeshRenderer);
+	if (!particleRenderer) {
+		throw new Error('Particle cloud renderer was not created correctly.');
 	}
 
-	const haloDefinitions = [
-		{ id: 'inner', scale: 1.1, color: [0.19, 0.62, 0.43, 1] as const },
-		{ id: 'mid', scale: 1.55, color: [0.17, 0.46, 0.95, 1] as const },
-		{ id: 'outer', scale: 2.05, color: [0.95, 0.72, 0.21, 1] as const },
-	] as const;
-
-	const haloRenderers: Array<{ renderer: MeshRenderer; fillMaterialId: string; wireMaterialId: string; transform: Transform }> = [];
-	for (const halo of haloDefinitions) {
-		const fillMaterialId = `playground/particles/${halo.id}-fill`;
-		const wireMaterialId = `playground/particles/${halo.id}-wire`;
-		registerSolidMaterial(fillMaterialId, halo.color, 'fill');
-		registerSolidMaterial(wireMaterialId, [0.16, 0.2, 0.18, 1], 'line');
-
-		const actor = scene.createRenderableActor(
-			{ name: `Halo${halo.id}` },
-			{ meshId: 'playground/particles/ring', materialId: fillMaterialId, receiveLighting: false },
-		);
-		const transform = actor.requireComponent(Transform);
-		transform.position = new Vec3(0, 1.02, 0);
-		transform.rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
-		transform.scale = new Vec3(halo.scale, halo.scale, halo.scale);
-		const renderer = actor.getComponent(MeshRenderer);
-		if (!renderer) {
-			throw new Error(`Particle halo renderer setup failed for ${halo.id}.`);
-		}
-		haloRenderers.push({ renderer, fillMaterialId, wireMaterialId, transform });
-	}
-
-	const particles: ParticleRuntime[] = [];
-	for (const seed of PARTICLE_SEEDS) {
-		const fillMaterialId = `playground/particles/${seed.id}-fill`;
-		const wireMaterialId = `playground/particles/${seed.id}-wire`;
-		registerLitMaterial(fillMaterialId, seed.color, 28, 'fill');
-		registerLitMaterial(wireMaterialId, [0.14, 0.16, 0.18, 1], 8, 'line');
-
-		const actor = scene.createRenderableActor(
-			{ name: seed.id },
-			{ meshId: 'playground/particles/sphere', materialId: fillMaterialId },
-		);
-		const transform = actor.requireComponent(Transform);
-		transform.scale = new Vec3(seed.size, seed.size, seed.size);
-		const renderer = actor.getComponent(MeshRenderer);
-		if (!renderer) {
-			throw new Error(`Particle renderer setup failed for ${seed.id}.`);
-		}
-
-		particles.push({ seed, transform, renderer, fillMaterialId, wireMaterialId });
-	}
+	console.log(`Particles: ${PARTICLE_COUNT} active`);
 
 	let playing = true;
 	let frameHandle = 0;
+	let previousTime = 0;
 	const loop = (now: number) => {
-		const time = now * 0.001;
 		if (playing) {
-			coreTransform.scale = new Vec3(
-				0.42 + Math.sin(time * 2.1) * 0.04,
-				0.42 + Math.sin(time * 2.1) * 0.04,
-				0.42 + Math.sin(time * 2.1) * 0.04,
-			);
-			for (const [index, halo] of haloRenderers.entries()) {
-				halo.transform.rotation = Quat.fromEuler(-Math.PI * 0.5, time * (0.2 + index * 0.14), 0);
+			const deltaFrames = previousTime === 0 ? 1 : Math.min((now - previousTime) / 16.6667, 2);
+			for (let index = 0; index < particleStates.length; index += 1) {
+				const particle = particleStates[index]!;
+				particle.position.x += particle.velocity.x * deltaFrames;
+				particle.position.y += particle.velocity.y * deltaFrames;
+				particle.position.z += particle.velocity.z * deltaFrames;
+				particle.life -= (deltaFrames / 60) * 0.75;
+				if (particle.position.y > PARTICLE_CEILING || particle.life <= 0) {
+					resetParticlePosition(particle, 0);
+					particle.life = emitter.lifetime;
+				}
+				writeParticleVertex(particleVertices, index, particle);
 			}
-
-			for (const particle of particles) {
-				const angle = time * particle.seed.speed + particle.seed.phase;
-				const radius = particle.seed.orbitRadius + Math.sin(time * particle.seed.wobble + particle.seed.phase) * 0.22;
-				particle.transform.position = new Vec3(
-					Math.cos(angle) * radius,
-					1.05 + particle.seed.heightOffset + Math.sin(angle * 2.1) * 0.62,
-					Math.sin(angle) * radius,
-				);
-				particle.transform.rotation = Quat.fromEuler(angle, angle * 1.3, 0);
-			}
+			scene.registerMesh(createParticleMeshDefinition(particleVertices));
 		}
+		previousTime = now;
 
 		frameHandle = globalThis.requestAnimationFrame(loop);
 	};
@@ -214,18 +244,12 @@ export const createParticleSystemScene = (container: HTMLElement): PlaygroundSce
 		orbit,
 		overlays: { grid, axes },
 		disposeExtras: [detachInput, () => stage.dispose()],
-		setWireframe(enabled) {
-			coreRenderer.materialId = enabled ? 'playground/particles/core-wire' : 'playground/particles/core-fill';
-			for (const halo of haloRenderers) {
-				halo.renderer.materialId = enabled ? halo.wireMaterialId : halo.fillMaterialId;
-			}
-			for (const particle of particles) {
-				particle.renderer.materialId = enabled ? particle.wireMaterialId : particle.fillMaterialId;
-			}
+		setWireframe(enabled: boolean) {
+			particleRenderer.materialId = enabled ? PARTICLE_WIRE_MATERIAL_ID : PARTICLE_FILL_MATERIAL_ID;
 		},
 		stats: () => ({
-			objectCount: 1 + haloRenderers.length + particles.length + grid.actors.length + axes.actors.length,
-			summary: 'Kinetic emitter field',
+			objectCount: PARTICLE_COUNT,
+			summary: `${PARTICLE_COUNT} active particles`,
 		}),
 	});
 

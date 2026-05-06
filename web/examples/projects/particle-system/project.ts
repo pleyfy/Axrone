@@ -2,7 +2,7 @@ const project = {
 	id: 'particle-system',
 	name: 'Particle System',
 	color: '#15803d',
-	description: 'Stylized kinetic particle field built with animated Axrone scene actors.',
+	description: 'Three.js-style floating particle cloud rebuilt with Axrone point rendering and emitter utilities.',
 	entryFile: 'main.ts',
 	order: 2,
 } as const;
