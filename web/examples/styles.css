@@ -40,6 +40,66 @@ body {
     font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
 }
 
+.app-shell {
+    position: relative;
+    overflow-x: hidden;
+}
+
+.app-header {
+    padding-left: 12px;
+    padding-right: 14px;
+}
+
+.app-header__lead {
+    gap: 12px;
+}
+
+.project-trigger {
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 138px;
+    height: 32px;
+    padding: 0 10px 0 12px;
+}
+
+.project-trigger__label {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.project-dropdown {
+    width: 286px;
+}
+
+.project-dropdown__list {
+    padding: 6px;
+}
+
+.project-dropdown__action {
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.sidebar-panel {
+    width: 184px !important;
+}
+
+.sidebar-header {
+    min-height: 34px;
+    padding: 0 8px 0 10px;
+}
+
+.sidebar-tree {
+    padding: 6px 6px 8px 8px;
+}
+
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -349,7 +409,7 @@ body {
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    padding: 10px 11px;
+    padding: 9px 10px;
     border-radius: 10px;
     cursor: pointer;
     border: 1px solid transparent;
@@ -401,7 +461,7 @@ body {
 
 .proj-card__desc {
     display: -webkit-box;
-    margin-top: 2px;
+    margin-top: 3px;
     overflow: hidden;
     color: #9c958d;
     font-size: 11px;
@@ -414,7 +474,7 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    margin-top: 8px;
+    margin-top: 7px;
     color: #9c958d;
     font-size: 10px;
 }

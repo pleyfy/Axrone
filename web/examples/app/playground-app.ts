@@ -114,6 +114,7 @@ const renderTemplateCards = (shell: PlaygroundShell, selectedTemplateId: string)
 
 export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	const shell = renderPlaygroundShell(root);
+	window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
 	const projects = (await loadProjectCatalog()).map((project) => ({
 		...project,
 		files: cloneFiles(project.files),

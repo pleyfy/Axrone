@@ -64,9 +64,9 @@ export type PlaygroundShell = {
 
 export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 	root.innerHTML = `
-		<div id="app-shell" class="h-full flex flex-col bg-canvas text-ink">
-			<header class="h-11 flex items-center justify-between px-4 bg-surface border-b border-border shrink-0">
-				<div class="flex items-center gap-3">
+		<div id="app-shell" class="app-shell h-full flex flex-col bg-canvas text-ink">
+			<header class="app-header h-11 flex items-center justify-between bg-surface border-b border-border shrink-0">
+				<div class="app-header__lead flex items-center gap-3">
 					<div class="flex items-center justify-center w-7 h-7 bg-accent rounded-md">
 						<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" fill="#fff"/><rect x="9" y="1" width="6" height="6" rx="1" fill="#fff" opacity=".6"/><rect x="1" y="9" width="6" height="6" rx="1" fill="#fff" opacity=".6"/><rect x="9" y="9" width="6" height="6" rx="1" fill="#fff" opacity=".3"/></svg>
 					</div>
@@ -76,21 +76,21 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 					</div>
 					<div class="w-px h-5 bg-border mx-1"></div>
 					<div class="relative" id="proj-switcher">
-						<button id="proj-trigger" type="button" class="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border hover:border-border-s bg-canvas hover:bg-canvas-alt transition-all cursor-pointer group">
+						<button id="proj-trigger" type="button" class="project-trigger flex items-center rounded-md border border-border hover:border-border-s bg-canvas hover:bg-canvas-alt transition-all cursor-pointer group">
 							<span class="w-2 h-2 rounded-full shrink-0" id="proj-dot"></span>
-							<span class="text-xs font-semibold text-ink" id="proj-name-display">Loading</span>
+							<span class="project-trigger__label text-xs font-semibold text-ink" id="proj-name-display">Loading</span>
 							<span id="proj-chevron" class="text-ink-3 transition-transform">
 								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
 							</span>
 						</button>
-						<div id="project-dropdown" class="absolute top-full left-0 mt-2 w-[312px] bg-surface border border-border rounded-xl shadow-lg z-50 overflow-hidden" style="opacity:0;transform:translateY(-6px) scale(.97);pointer-events:none;transition:opacity .15s,transform .15s">
+						<div id="project-dropdown" class="project-dropdown absolute top-full left-0 mt-2 bg-surface border border-border rounded-xl shadow-lg z-50 overflow-hidden" style="opacity:0;transform:translateY(-6px) scale(.97);pointer-events:none;transition:opacity .15s,transform .15s">
 							<div class="px-3 py-2.5 border-b border-border flex items-center justify-between">
 								<span class="text-[11px] font-semibold text-ink-3 tracking-wider uppercase">Projects</span>
 								<span class="text-[11px] text-ink-3" id="proj-count">0 projects</span>
 							</div>
-							<div class="max-h-[320px] overflow-y-auto py-1.5 px-1.5" id="proj-list"></div>
+							<div class="project-dropdown__list max-h-[320px] overflow-y-auto" id="proj-list"></div>
 							<div class="border-t border-border px-1.5 py-1.5">
-								<button id="new-project-open" type="button" class="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs font-medium text-ink-2 hover:bg-canvas-alt hover:text-accent transition-colors">
+								<button id="new-project-open" type="button" class="project-dropdown__action flex items-center gap-2 w-full rounded-lg text-ink-2 hover:bg-canvas-alt hover:text-accent transition-colors">
 									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
 									New Project
 								</button>
@@ -110,15 +110,15 @@ export const renderPlaygroundShell = (root: HTMLElement): PlaygroundShell => {
 				</div>
 			</header>
 			<div class="flex-1 flex overflow-hidden">
-				<aside id="sidebar" class="w-[176px] bg-surface border-r border-border flex flex-col shrink-0 overflow-hidden">
-					<div class="flex items-center justify-between px-3 py-2 border-b border-border">
+				<aside id="sidebar" class="sidebar-panel w-[176px] bg-surface border-r border-border flex flex-col shrink-0 overflow-hidden">
+					<div class="sidebar-header flex items-center justify-between border-b border-border">
 						<span class="text-[11px] font-semibold text-ink-3 tracking-wider uppercase">Files</span>
 						<div class="flex items-center gap-0.5">
 							<button type="button" class="tbtn xs" data-tip="Search"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></button>
 							<button id="toggle-sidebar" type="button" class="tbtn xs" data-tip="Collapse"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button>
 						</div>
 					</div>
-					<div class="flex-1 overflow-y-auto py-1 px-1.5" id="file-tree"></div>
+					<div class="sidebar-tree flex-1 overflow-y-auto" id="file-tree"></div>
 					<div class="px-3 py-2 border-t border-border text-[11px] text-ink-3 flex items-center gap-2"><span class="dot on"></span><span id="file-count-text">0 files</span></div>
 				</aside>
 				<div class="rh" id="sb-resize"></div>
