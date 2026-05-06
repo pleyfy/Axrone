@@ -137,7 +137,6 @@ export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle =
 	boxTransform.position = new Vec3(-2, 0.9, 0);
 	sphereTransform.position = new Vec3(0, 1, 0);
 	knotTransform.position = new Vec3(2, 1.2, 0);
-	floorTransform.rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
 	floorTransform.position = new Vec3(0, 0, 0);
 
 	const boxRenderer = boxActor.getComponent(MeshRenderer);

@@ -4,7 +4,7 @@ import { createDemoScene } from './scene';
 const example: PlaygroundSceneExample = {
 	id: 'demo-scene',
 	title: 'Demo Scene',
-	description: 'Art-directed hero composition recreated with Axrone runtime primitives.',
+	description: 'Three.js-style reference scene with a box, sphere, torus knot, and floor rebuilt on Axrone.',
 	mount({ container }) {
 		return createDemoScene(container);
 	},
