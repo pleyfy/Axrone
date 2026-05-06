@@ -1,4 +1,4 @@
-import { createRing, createSphere, createTorusKnot } from '@axrone/geometry';
+import { createTorusKnot } from '@axrone/geometry';
 import { Transform } from '@axrone/ecs-runtime';
 import { MeshRenderer, OrbitCameraController } from '@axrone/scene-3d';
 import {
@@ -12,46 +12,45 @@ import {
 } from '@axrone/playground';
 import { Quat, Vec3 } from '@axrone/numeric';
 import type { PlaygroundSceneHandle } from '../shared/playground-types';
-import {
-	DEMO_AMBIENT,
-	DEMO_CLEAR_COLOR,
-	DEMO_COLORS,
-	DEMO_FILL_LIGHT_COLOR,
-	DEMO_FILL_LIGHT_DIRECTION,
-	DEMO_KEY_LIGHT_COLOR,
-	DEMO_KEY_LIGHT_DIRECTION,
-} from './palette';
+
+const DEMO_CLEAR_COLOR = [0.941, 0.933, 0.918, 1] as const;
+const DEMO_BACKGROUND = [0.941, 0.933, 0.918] as const;
+const DEMO_GRID_COLOR = [0.886, 0.875, 0.847] as const;
+const DEMO_GRID_MAJOR = [0.816, 0.804, 0.773] as const;
+const DEMO_LINE_COLOR = [0.23, 0.19, 0.16, 1] as const;
+const DEMO_AMBIENT = [0.45, 0.45, 0.45] as const;
+const DEMO_KEY_LIGHT_DIRECTION = [-0.384, -0.768, -0.512] as const;
+const DEMO_KEY_LIGHT_COLOR = [0.85, 0.85, 0.85] as const;
+const DEMO_FILL_LIGHT_DIRECTION = [0.651, -0.391, 0.651] as const;
+const DEMO_FILL_LIGHT_COLOR = [0.299, 0.286, 0.234] as const;
+const DEMO_COLORS = {
+	box: [0.761, 0.255, 0.047, 1] as const,
+	sphere: [0.161, 0.145, 0.141, 1] as const,
+	knot: [0.996, 0.953, 0.78, 1] as const,
+	floor: [0.91, 0.902, 0.882, 1] as const,
+} as const;
 
 export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle => {
 	const stage = createSceneStage(container, {
 		clearColor: DEMO_CLEAR_COLOR,
-		ambientLight: [0.08, 0.08, 0.1],
+		ambientLight: DEMO_AMBIENT,
 	});
 	const { scene } = stage;
 	const shaders = registerPlaygroundShaders(scene, 'playground/demo');
 	const meshBuilder = createMeshBuilder();
+	scene.createBoxMesh('playground/demo/box', 1.4, 1.4, 1.4);
+	scene.createSphereMesh('playground/demo/sphere', 0.8, 32);
+	scene.createPlaneMesh('playground/demo/floor', 30, 30);
 
 	scene.registerMesh(
 		meshBuilder.createDefinition(
-			'playground/demo/torus',
+			'playground/demo/knot',
 			createTorusKnot({
-				radius: 1.08,
-				tube: 0.28,
-				radialSegments: 30,
-				tubularSegments: 192,
+				radius: 0.5,
+				tube: 0.18,
+				radialSegments: 32,
+				tubularSegments: 128,
 			})
-		),
-	);
-	scene.registerMesh(
-		meshBuilder.createDefinition(
-			'playground/demo/orb',
-			createSphere({ radius: 0.7, widthSegments: 28, heightSegments: 20 })
-		),
-	);
-	scene.registerMesh(
-		meshBuilder.createDefinition(
-			'playground/demo/ring',
-			createRing({ innerRadius: 1.38, outerRadius: 1.88, segments: 84 })
 		),
 	);
 
@@ -81,82 +80,92 @@ export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle =
 		});
 	};
 
-	registerLitMaterial('playground/demo/torus-fill', DEMO_COLORS.torus, 22, 'fill');
-	registerLitMaterial('playground/demo/torus-wire', DEMO_COLORS.line, 10, 'line');
-	registerLitMaterial('playground/demo/orb-fill', DEMO_COLORS.orb, 42, 'fill');
-	registerLitMaterial('playground/demo/orb-wire', DEMO_COLORS.line, 10, 'line');
-	registerLitMaterial('playground/demo/ring-fill', DEMO_COLORS.ring, 18, 'fill');
-	registerLitMaterial('playground/demo/ring-wire', DEMO_COLORS.line, 10, 'line');
+	registerLitMaterial('playground/demo/box-fill', DEMO_COLORS.box, 14, 'fill');
+	registerLitMaterial('playground/demo/box-wire', DEMO_LINE_COLOR, 8, 'line');
+	registerLitMaterial('playground/demo/sphere-fill', DEMO_COLORS.sphere, 36, 'fill');
+	registerLitMaterial('playground/demo/sphere-wire', DEMO_LINE_COLOR, 10, 'line');
+	registerLitMaterial('playground/demo/knot-fill', DEMO_COLORS.knot, 18, 'fill');
+	registerLitMaterial('playground/demo/knot-wire', DEMO_LINE_COLOR, 10, 'line');
+	registerLitMaterial('playground/demo/floor-fill', DEMO_COLORS.floor, 5, 'fill');
+	registerLitMaterial('playground/demo/floor-wire', DEMO_LINE_COLOR, 4, 'line');
 
-	const camera = scene.createCameraActor({ name: 'DemoCamera' }, { primary: true, fieldOfView: 54 });
+	const camera = scene.createCameraActor({ name: 'DemoCamera' }, { primary: true, fieldOfView: 60 });
 	const orbit = camera.addComponent(OrbitCameraController, {
-		target: [0, 0.35, 0],
-		distance: 7.8,
-		minDistance: 4.2,
-		maxDistance: 14,
-		azimuth: 0.72,
-		elevation: 0.34,
+		target: [0, 0.5, 0],
+		distance: 9.3,
+		minDistance: 4,
+		maxDistance: 18,
+		azimuth: 0.62,
+		elevation: 0.39,
 	});
 	const detachInput = attachOrbitCameraInput(container, orbit);
 
 	const grid = createGridOverlay(scene, shaders.grid, {
 		prefix: 'playground/demo',
-		size: 24,
-		scale: 0.8,
-		color: DEMO_COLORS.line.slice(0, 3),
-		gridColor: DEMO_COLORS.grid,
-		backgroundColor: DEMO_COLORS.background,
+		size: 30,
+		scale: 1,
+		y: 0.01,
+		color: DEMO_GRID_MAJOR,
+		gridColor: DEMO_GRID_COLOR,
+		backgroundColor: DEMO_BACKGROUND,
 	});
-	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/demo', length: 2.8 });
+	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/demo', length: 5 });
+	axes.setVisible(false);
 
-	const torusActor = scene.createRenderableActor(
-		{ name: 'DemoTorus' },
-		{ meshId: 'playground/demo/torus', materialId: 'playground/demo/torus-fill' },
+	const boxActor = scene.createRenderableActor(
+		{ name: 'DemoBox' },
+		{ meshId: 'playground/demo/box', materialId: 'playground/demo/box-fill' },
 	);
-	const orbActor = scene.createRenderableActor(
-		{ name: 'DemoOrb' },
-		{ meshId: 'playground/demo/orb', materialId: 'playground/demo/orb-fill' },
+	const sphereActor = scene.createRenderableActor(
+		{ name: 'DemoSphere' },
+		{ meshId: 'playground/demo/sphere', materialId: 'playground/demo/sphere-fill' },
 	);
-	const ringActor = scene.createRenderableActor(
-		{ name: 'DemoRing' },
-		{ meshId: 'playground/demo/ring', materialId: 'playground/demo/ring-fill' },
+	const knotActor = scene.createRenderableActor(
+		{ name: 'DemoKnot' },
+		{ meshId: 'playground/demo/knot', materialId: 'playground/demo/knot-fill' },
+	);
+	const floorActor = scene.createRenderableActor(
+		{ name: 'DemoFloor' },
+		{ meshId: 'playground/demo/floor', materialId: 'playground/demo/floor-fill' },
 	);
 
-	const torusTransform = torusActor.requireComponent(Transform);
-	const orbTransform = orbActor.requireComponent(Transform);
-	const ringTransform = ringActor.requireComponent(Transform);
+	const boxTransform = boxActor.requireComponent(Transform);
+	const sphereTransform = sphereActor.requireComponent(Transform);
+	const knotTransform = knotActor.requireComponent(Transform);
+	const floorTransform = floorActor.requireComponent(Transform);
 
-	torusTransform.position = new Vec3(0, 1.35, 0);
-	orbTransform.position = new Vec3(2.1, 1.15, -0.3);
-	ringTransform.position = new Vec3(0, 0.24, 0);
-	ringTransform.rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
+	boxTransform.position = new Vec3(-2, 0.9, 0);
+	sphereTransform.position = new Vec3(0, 1, 0);
+	knotTransform.position = new Vec3(2, 1.2, 0);
+	floorTransform.rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
+	floorTransform.position = new Vec3(0, 0, 0);
 
-	const torusRenderer = torusActor.getComponent(MeshRenderer);
-	const orbRenderer = orbActor.getComponent(MeshRenderer);
-	const ringRenderer = ringActor.getComponent(MeshRenderer);
-	if (!torusRenderer || !orbRenderer || !ringRenderer) {
+	const boxRenderer = boxActor.getComponent(MeshRenderer);
+	const sphereRenderer = sphereActor.getComponent(MeshRenderer);
+	const knotRenderer = knotActor.getComponent(MeshRenderer);
+	const floorRenderer = floorActor.getComponent(MeshRenderer);
+	if (!boxRenderer || !sphereRenderer || !knotRenderer || !floorRenderer) {
 		throw new Error('Demo scene renderers were not created correctly.');
 	}
 
 	const materialPairs = [
-		{ renderer: torusRenderer, fill: 'playground/demo/torus-fill', wire: 'playground/demo/torus-wire' },
-		{ renderer: orbRenderer, fill: 'playground/demo/orb-fill', wire: 'playground/demo/orb-wire' },
-		{ renderer: ringRenderer, fill: 'playground/demo/ring-fill', wire: 'playground/demo/ring-wire' },
+		{ renderer: boxRenderer, fill: 'playground/demo/box-fill', wire: 'playground/demo/box-wire' },
+		{ renderer: sphereRenderer, fill: 'playground/demo/sphere-fill', wire: 'playground/demo/sphere-wire' },
+		{ renderer: knotRenderer, fill: 'playground/demo/knot-fill', wire: 'playground/demo/knot-wire' },
+		{ renderer: floorRenderer, fill: 'playground/demo/floor-fill', wire: 'playground/demo/floor-wire' },
 	] as const;
 
 	let playing = true;
 	let frameHandle = 0;
+	let time = 0;
 	const loop = (now: number) => {
 		if (playing) {
-			const time = now * 0.001;
-			torusTransform.rotation = Quat.fromEuler(Math.sin(time * 0.7) * 0.3, time * 0.72, Math.cos(time * 0.5) * 0.22);
-			orbTransform.position = new Vec3(
-				Math.cos(time * 1.1) * 2.25,
-				1.05 + Math.sin(time * 2.2) * 0.26,
-				Math.sin(time * 0.85) * 1.2,
-			);
-			orbTransform.rotation = Quat.fromEuler(time * 0.8, time * 1.4, 0);
-			ringTransform.rotation = Quat.fromEuler(-Math.PI * 0.5, time * 0.18, 0);
+			time += 0.01;
+			boxTransform.rotation = Quat.fromEuler(time * 0.8, time * 1.2, 0);
+			boxTransform.position = new Vec3(-2, 0.9 + Math.sin(time * 2) * 0.15, 0);
+			sphereTransform.position = new Vec3(0, 1 + Math.sin(time * 2.5 + 1) * 0.1, 0);
+			knotTransform.rotation = Quat.fromEuler(time * 0.6, time, 0);
+			knotTransform.position = new Vec3(2, 1.2 + Math.sin(time * 1.8 + 2) * 0.12, 0);
 		}
 
 		frameHandle = globalThis.requestAnimationFrame(loop);
@@ -170,14 +179,14 @@ export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle =
 		orbit,
 		overlays: { grid, axes },
 		disposeExtras: [detachInput, () => stage.dispose()],
-		setWireframe(enabled) {
+		setWireframe(enabled: boolean) {
 			for (const pair of materialPairs) {
 				pair.renderer.materialId = enabled ? pair.wire : pair.fill;
 			}
 		},
 		stats: () => ({
-			objectCount: 1 + 1 + materialPairs.length + grid.actors.length + axes.actors.length,
-			summary: 'Hero composition',
+			objectCount: 4,
+			summary: '4 objects',
 		}),
 	});
 
