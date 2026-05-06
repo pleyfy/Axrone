@@ -88,7 +88,7 @@ void main() {
 	vec4 worldPosition = u_Model * vec4(a_Position, 1.0);
 	vec4 viewPosition = u_View * worldPosition;
 	float distanceToCamera = max(-viewPosition.z, 0.001);
-	gl_PointSize = max(1.0, u_PointSize * u_Resolution.y * u_Projection[1][1] / distanceToCamera);
+	gl_PointSize = max(1.0, u_PointSize * 0.5 * u_Resolution.y * u_Projection[1][1] / distanceToCamera);
 	v_Color = a_Color0;
 	gl_Position = u_Projection * viewPosition;
 }`,
@@ -103,7 +103,7 @@ void main() {
 		uniforms: ['u_Model', 'u_View', 'u_Projection', 'u_Resolution', 'u_PointSize', 'u_Opacity'],
 		depthTest: true,
 		cull: false,
-		blend: true,
+		blend: false,
 	});
 
 	const particlePass = {
@@ -111,18 +111,7 @@ void main() {
 		primitive: 'point-list',
 		depthStencilState: {
 			depthTest: true,
-			depthWrite: false,
-		},
-		blendState: {
-			targets: [
-				{
-					blend: true,
-					srcColorFactor: 'src-alpha',
-					dstColorFactor: 'one-minus-src-alpha',
-					srcAlphaFactor: 'one',
-					dstAlphaFactor: 'one-minus-src-alpha',
-				},
-			],
+			depthWrite: true,
 		},
 	} as const;
 
@@ -131,7 +120,7 @@ void main() {
 		shaderId: PARTICLE_SHADER_ID,
 		uniforms: {
 			u_PointSize: PARTICLE_POINT_SIZE,
-			u_Opacity: 0.85,
+			u_Opacity: 1,
 		},
 		passes: [particlePass],
 	});
@@ -141,19 +130,19 @@ void main() {
 		shaderId: PARTICLE_SHADER_ID,
 		uniforms: {
 			u_PointSize: PARTICLE_POINT_SIZE * 1.05,
-			u_Opacity: 0.65,
+			u_Opacity: 1,
 		},
 		passes: [particlePass],
 	});
 
 	const camera = scene.createCameraActor({ name: 'ParticleCamera' }, { primary: true, fieldOfView: 60 });
 	const orbit = camera.addComponent(OrbitCameraController, {
-		target: [0, 0, 0],
-		distance: 10.7703296143,
+		target: [0, 3.2, 0],
+		distance: 14.5,
 		minDistance: 4,
-		maxDistance: 20,
+		maxDistance: 24,
 		azimuth: 0,
-		elevation: 0.3805063771,
+		elevation: 0.3,
 	});
 	const detachInput = attachOrbitCameraInput(container, orbit, {
 		minElevation: 0.04,
@@ -176,8 +165,8 @@ void main() {
 	const emitter = new ParticleEmitter({
 		rate: PARTICLE_COUNT,
 		lifetime: 6,
-		speed: 0.02,
-		spread: 0.04,
+		speed: 0.016,
+		spread: 0.028,
 	});
 	const particleStates: ParticleState[] = emitter.emit({ x: 0, y: 0, z: 0 }, PARTICLE_COUNT).map((particle) => ({
 		...particle,
