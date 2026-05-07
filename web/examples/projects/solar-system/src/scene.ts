@@ -266,7 +266,7 @@ void main() {
 		const fillMaterialId = `playground/solar/${planet.id}-fill`;
 		const wireMaterialId = `playground/solar/${planet.id}-wire`;
 		registerPlanetMaterial(fillMaterialId, planet.color, planet.roughness, 'fill');
-		registerSolidMaterial(wireMaterialId, [0.16, 0.28, 0.49, 1], 'line');
+		registerSolidMaterial(wireMaterialId, [0.42, 0.5, 0.62, 1], 'line');
 
 		const orbitFillMaterialId = `playground/solar/${planet.id}-orbit-fill`;
 		const orbitWireMaterialId = `playground/solar/${planet.id}-orbit-wire`;
@@ -282,10 +282,10 @@ void main() {
 				}),
 			),
 		);
-		registerSolidMaterial(orbitFillMaterialId, [0.57, 0.76, 0.98, 0.5], 'fill', {
+		registerSolidMaterial(orbitFillMaterialId, [0.82, 0.9, 0.96, 0.42], 'fill', {
 			doubleSided: true,
 		});
-		registerSolidMaterial(orbitWireMaterialId, [0.33, 0.55, 0.82, 1], 'line', { doubleSided: true });
+		registerSolidMaterial(orbitWireMaterialId, [0.78, 0.87, 0.94, 1], 'line', { doubleSided: true });
 
 		const orbitActor = scene.createRenderableActor(
 			{ name: `${planet.label}OrbitRing` },
@@ -319,7 +319,7 @@ void main() {
 				doubleSided: true,
 				passes: [SATURN_RING_PASS],
 			});
-			registerSolidMaterial(saturnRingWireMaterialId, [0.51, 0.77, 0.98, 1], 'line', { doubleSided: true });
+			registerSolidMaterial(saturnRingWireMaterialId, [0.9, 0.83, 0.63, 1], 'line', { doubleSided: true });
 
 			const saturnRing = scene.createRenderableActor(
 				{ name: `${planet.label}Ring` },
