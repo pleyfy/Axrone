@@ -4,7 +4,7 @@ import { createSolarSystemScene } from './scene';
 const example: PlaygroundSceneExample = {
 	id: 'solar-system',
 	title: 'Solar System',
-	description: 'Animated orbital system recreated with Axrone scene primitives.',
+	description: 'Three.js-style solar system rebuilt with Axrone spheres, orbit rings, and Kepler-inspired motion.',
 	mount({ container }) {
 		return createSolarSystemScene(container);
 	},

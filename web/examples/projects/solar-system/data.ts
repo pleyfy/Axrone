@@ -1,86 +1,194 @@
-export type SolarBodyConfig = {
+export type OrbitalBodyOptions = {
+	readonly mass?: number;
+	readonly semiMajorAxis?: number;
+	readonly eccentricity?: number;
+	readonly period?: number;
+	readonly meanAnomaly?: number;
+};
+
+export type SolarPlanetDefinition = {
 	readonly id: string;
 	readonly label: string;
 	readonly radius: number;
-	readonly orbitRadius: number;
-	readonly orbitSpeed: number;
-	readonly spinSpeed: number;
-	readonly height: number;
+	readonly distance: number;
 	readonly color: readonly [number, number, number, number];
-	readonly tilt?: number;
-	readonly ringScale?: readonly [number, number, number];
-	readonly moon?: {
-		readonly radius: number;
-		readonly orbitRadius: number;
-		readonly orbitSpeed: number;
+	readonly speed: number;
+	readonly tilt: number;
+	readonly roughness: number;
+	readonly eccentricity: number;
+	readonly period: number;
+	readonly meanAnomaly: number;
+	readonly ring?: {
+		readonly innerRadius: number;
+		readonly outerRadius: number;
+		readonly tilt: number;
+		readonly opacity: number;
 		readonly color: readonly [number, number, number, number];
 	};
 };
 
-export const SOLAR_CLEAR_COLOR = [0.89, 0.93, 0.99, 1] as const;
-export const SOLAR_AMBIENT = [0.3, 0.33, 0.41] as const;
-export const SOLAR_KEY_LIGHT_DIRECTION = [0.5, -1, 0.26] as const;
-export const SOLAR_KEY_LIGHT_COLOR = [1, 0.93, 0.84] as const;
-export const SOLAR_FILL_LIGHT_DIRECTION = [-0.62, -0.25, -0.48] as const;
-export const SOLAR_FILL_LIGHT_COLOR = [0.3, 0.45, 0.8] as const;
+const rgbFromHex = (hex: number): readonly [number, number, number] => [
+	((hex >> 16) & 0xff) / 255,
+	((hex >> 8) & 0xff) / 255,
+	(hex & 0xff) / 255,
+] as const;
 
-export const SOLAR_BODIES: readonly SolarBodyConfig[] = [
+const rgbaFromHex = (hex: number, alpha = 1): readonly [number, number, number, number] => [
+	((hex >> 16) & 0xff) / 255,
+	((hex >> 8) & 0xff) / 255,
+	(hex & 0xff) / 255,
+	alpha,
+] as const;
+
+const periodFromSpeed = (speed: number): number => (Math.PI * 2) / (speed * 0.24);
+
+export class OrbitalBody {
+	mass: number;
+	a: number;
+	e: number;
+	period: number;
+	meanAnomaly: number;
+
+	constructor(options: OrbitalBodyOptions = {}) {
+		this.mass = options.mass ?? 1;
+		this.a = options.semiMajorAxis ?? 1;
+		this.e = options.eccentricity ?? 0;
+		this.period = options.period ?? 1;
+		this.meanAnomaly = options.meanAnomaly ?? 0;
+	}
+
+	getPosition(t: number): { x: number; y: number } {
+		const meanAnomaly = this.meanAnomaly + (2 * Math.PI * t) / this.period;
+		const eccentricAnomaly = this.solveKepler(meanAnomaly);
+		const x = this.a * (Math.cos(eccentricAnomaly) - this.e);
+		const y = this.a * Math.sqrt(1 - this.e * this.e) * Math.sin(eccentricAnomaly);
+		return { x, y };
+	}
+
+	solveKepler(meanAnomaly: number, tolerance = 1e-6): number {
+		let eccentricAnomaly = meanAnomaly;
+		for (let iteration = 0; iteration < 20; iteration += 1) {
+			const delta =
+				(eccentricAnomaly - this.e * Math.sin(eccentricAnomaly) - meanAnomaly) /
+				(1 - this.e * Math.cos(eccentricAnomaly));
+			eccentricAnomaly -= delta;
+			if (Math.abs(delta) < tolerance) {
+				break;
+			}
+		}
+		return eccentricAnomaly;
+	}
+}
+
+export const SOLAR_CLEAR_COLOR = rgbaFromHex(0xf0eeea);
+export const SOLAR_AMBIENT_LIGHT = [0.12, 0.12, 0.12] as const;
+export const SOLAR_GRID_MAJOR = rgbFromHex(0xe0ddd7);
+export const SOLAR_GRID_MINOR = rgbFromHex(0xeae8e3);
+export const SOLAR_SUN_COLOR = rgbaFromHex(0xf59e0b);
+export const SOLAR_SUN_WIREFRAME_COLOR = rgbaFromHex(0x8c4b08);
+export const SOLAR_LIGHT_COLOR = rgbFromHex(0xffffff);
+export const SOLAR_LIGHT_INTENSITY = 1.5;
+export const SOLAR_LIGHT_RANGE = 100;
+
+export const SOLAR_PLANETS: readonly SolarPlanetDefinition[] = [
 	{
 		id: 'mercury',
 		label: 'Mercury',
-		radius: 0.2,
-		orbitRadius: 2.2,
-		orbitSpeed: 1.4,
-		spinSpeed: 1.8,
-		height: 0.05,
-		color: [0.64, 0.58, 0.54, 1],
+		radius: 0.35,
+		distance: 7,
+		color: rgbaFromHex(0x9c958d),
+		speed: 4.7,
+		tilt: 0.03,
+		roughness: 0.6,
+		eccentricity: 0.205,
+		period: periodFromSpeed(4.7),
+		meanAnomaly: 0.35,
 	},
 	{
 		id: 'venus',
 		label: 'Venus',
-		radius: 0.32,
-		orbitRadius: 3.05,
-		orbitSpeed: 0.98,
-		spinSpeed: 1.3,
-		height: 0.08,
-		color: [0.89, 0.71, 0.35, 1],
+		radius: 0.6,
+		distance: 10,
+		color: rgbaFromHex(0xd97706),
+		speed: 1.85,
+		tilt: 2.6,
+		roughness: 0.6,
+		eccentricity: 0.007,
+		period: periodFromSpeed(1.85),
+		meanAnomaly: 1.1,
 	},
 	{
 		id: 'earth',
 		label: 'Earth',
-		radius: 0.38,
-		orbitRadius: 4.15,
-		orbitSpeed: 0.78,
-		spinSpeed: 2.4,
-		height: 0.1,
-		color: [0.16, 0.48, 0.93, 1],
-		moon: {
-			radius: 0.11,
-			orbitRadius: 0.72,
-			orbitSpeed: 2.4,
-			color: [0.82, 0.82, 0.84, 1],
-		},
+		radius: 0.65,
+		distance: 14,
+		color: rgbaFromHex(0x2563eb),
+		speed: 1,
+		tilt: 0.41,
+		roughness: 0.6,
+		eccentricity: 0.017,
+		period: periodFromSpeed(1),
+		meanAnomaly: 2.25,
 	},
 	{
 		id: 'mars',
 		label: 'Mars',
-		radius: 0.29,
-		orbitRadius: 5.35,
-		orbitSpeed: 0.62,
-		spinSpeed: 1.6,
-		height: -0.06,
-		color: [0.82, 0.36, 0.2, 1],
+		radius: 0.45,
+		distance: 18,
+		color: rgbaFromHex(0xc2410c),
+		speed: 0.53,
+		tilt: 0.44,
+		roughness: 0.6,
+		eccentricity: 0.093,
+		period: periodFromSpeed(0.53),
+		meanAnomaly: 0.9,
+	},
+	{
+		id: 'jupiter',
+		label: 'Jupiter',
+		radius: 1.6,
+		distance: 25,
+		color: rgbaFromHex(0xb45309),
+		speed: 0.08,
+		tilt: 0.05,
+		roughness: 0.6,
+		eccentricity: 0.049,
+		period: periodFromSpeed(0.08),
+		meanAnomaly: 1.8,
 	},
 	{
 		id: 'saturn',
 		label: 'Saturn',
-		radius: 0.68,
-		orbitRadius: 7.65,
-		orbitSpeed: 0.32,
-		spinSpeed: 1.15,
-		height: 0.16,
-		color: [0.91, 0.78, 0.56, 1],
-		tilt: 0.42,
-		ringScale: [1.8, 1, 1.8],
+		radius: 1.3,
+		distance: 32,
+		color: rgbaFromHex(0xfef3c7),
+		speed: 0.03,
+		tilt: 0.47,
+		roughness: 0.6,
+		eccentricity: 0.056,
+		period: periodFromSpeed(0.03),
+		meanAnomaly: 2.8,
+		ring: {
+			innerRadius: 1.8,
+			outerRadius: 2.8,
+			tilt: Math.PI / 3,
+			opacity: 0.5,
+			color: rgbaFromHex(0xfef3c7, 0.5),
+		},
+	},
+	{
+		id: 'neptune',
+		label: 'Neptune',
+		radius: 1,
+		distance: 40,
+		color: rgbaFromHex(0x1d4ed8),
+		speed: 0.01,
+		tilt: 0.49,
+		roughness: 0.6,
+		eccentricity: 0.009,
+		period: periodFromSpeed(0.01),
+		meanAnomaly: 0.55,
 	},
 ] as const;
+
+console.log('OrbitalBody class loaded');

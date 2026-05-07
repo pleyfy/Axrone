@@ -1,6 +1,6 @@
-import { createRing, createSphere } from '@axrone/geometry';
+import { createRing } from '@axrone/geometry';
 import { Transform } from '@axrone/ecs-runtime';
-import { MeshRenderer, OrbitCameraController } from '@axrone/scene-3d';
+import { MeshRenderer, OrbitCameraController, PointLight } from '@axrone/scene-3d';
 import {
 	attachOrbitCameraInput,
 	createAxesOverlay,
@@ -13,77 +13,175 @@ import {
 import { Quat, Vec3 } from '@axrone/numeric';
 import type { PlaygroundSceneHandle } from '../shared/playground-types';
 import {
-	SOLAR_AMBIENT,
-	SOLAR_BODIES,
+	OrbitalBody,
+	SOLAR_AMBIENT_LIGHT,
 	SOLAR_CLEAR_COLOR,
-	SOLAR_FILL_LIGHT_COLOR,
-	SOLAR_FILL_LIGHT_DIRECTION,
-	SOLAR_KEY_LIGHT_COLOR,
-	SOLAR_KEY_LIGHT_DIRECTION,
-	type SolarBodyConfig,
+	SOLAR_GRID_MAJOR,
+	SOLAR_GRID_MINOR,
+	SOLAR_LIGHT_COLOR,
+	SOLAR_LIGHT_INTENSITY,
+	SOLAR_LIGHT_RANGE,
+	SOLAR_PLANETS,
+	SOLAR_SUN_COLOR,
+	SOLAR_SUN_WIREFRAME_COLOR,
+	type SolarPlanetDefinition,
 } from './data';
 
-type SolarBodyRuntime = {
-	readonly config: SolarBodyConfig;
+type SolarPlanetRuntime = {
+	readonly config: SolarPlanetDefinition;
+	readonly orbital: OrbitalBody;
+	readonly spinOffset: number;
+	readonly orbitOffset: number;
 	readonly planetTransform: Transform;
 	readonly planetRenderer: MeshRenderer;
 	readonly fillMaterialId: string;
 	readonly wireMaterialId: string;
-	readonly ringRenderer?: MeshRenderer;
-	readonly ringFillMaterialId?: string;
-	readonly ringWireMaterialId?: string;
-	readonly moonTransform?: Transform;
-	readonly moonRenderer?: MeshRenderer;
-	readonly moonFillMaterialId?: string;
-	readonly moonWireMaterialId?: string;
-	readonly orbitLineRenderer?: MeshRenderer;
-	readonly orbitLineFillMaterialId?: string;
-	readonly orbitLineWireMaterialId?: string;
+	readonly orbitRenderer: MeshRenderer;
+	readonly orbitFillMaterialId: string;
+	readonly orbitWireMaterialId: string;
+	readonly saturnRingTransform?: Transform;
+	readonly saturnRingRenderer?: MeshRenderer;
+	readonly saturnRingFillMaterialId?: string;
+	readonly saturnRingWireMaterialId?: string;
+};
+
+const SOLAR_SPHERE_MESH_ID = 'playground/solar/sphere';
+const SOLAR_PLANET_SHADER_ID = 'playground/solar/planet-light';
+const SOLAR_SATURN_RING_MESH_ID = 'playground/solar/saturn-ring';
+const OPAQUE_DOUBLE_SIDED_STATE = { cullMode: 'off' as const };
+const SATURN_RING_PASS = {
+	id: 'saturn-ring',
+	primitive: 'triangle-list' as const,
+	rasterizerState: {
+		cullMode: 'off' as const,
+	},
+	depthStencilState: {
+		depthTest: true,
+		depthWrite: false,
+	},
+	blendState: {
+		targets: [
+			{
+				blend: true,
+				srcColorFactor: 'src-alpha' as const,
+				dstColorFactor: 'one-minus-src-alpha' as const,
+				srcAlphaFactor: 'one' as const,
+				dstAlphaFactor: 'one-minus-src-alpha' as const,
+			},
+		],
+	},
 };
 
 export const createSolarSystemScene = (container: HTMLElement): PlaygroundSceneHandle => {
 	const stage = createSceneStage(container, {
 		clearColor: SOLAR_CLEAR_COLOR,
-		ambientLight: [0.05, 0.06, 0.08],
+		ambientLight: SOLAR_AMBIENT_LIGHT,
 	});
 	const { scene } = stage;
 	const shaders = registerPlaygroundShaders(scene, 'playground/solar');
 	const meshBuilder = createMeshBuilder();
 
+	scene.createSphereMesh(SOLAR_SPHERE_MESH_ID, 1, 32, 32);
 	scene.registerMesh(
 		meshBuilder.createDefinition(
-			'playground/solar/sphere',
-			createSphere({ radius: 1, widthSegments: 28, heightSegments: 20 }),
-		),
-	);
-	scene.registerMesh(
-		meshBuilder.createDefinition(
-			'playground/solar/saturn-ring',
-			createRing({ innerRadius: 0.82, outerRadius: 1.16, segments: 88 }),
+			SOLAR_SATURN_RING_MESH_ID,
+			createRing({ innerRadius: 1.8, outerRadius: 2.8, segments: 64 }),
 		),
 	);
 
-	const lightingUniforms = {
-		u_AmbientColor: SOLAR_AMBIENT,
-		u_KeyLightDirection: SOLAR_KEY_LIGHT_DIRECTION,
-		u_KeyLightColor: SOLAR_KEY_LIGHT_COLOR,
-		u_FillLightDirection: SOLAR_FILL_LIGHT_DIRECTION,
-		u_FillLightColor: SOLAR_FILL_LIGHT_COLOR,
-	} as const;
+	scene.registerShader({
+		id: SOLAR_PLANET_SHADER_ID,
+		vertexSource: `#version 300 es
+layout(location = 0) in vec3 a_Position;
+layout(location = 1) in vec3 a_Normal;
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+out vec3 v_WorldPosition;
+out vec3 v_WorldNormal;
+void main() {
+	vec4 worldPosition = u_Model * vec4(a_Position, 1.0);
+	v_WorldPosition = worldPosition.xyz;
+	v_WorldNormal = normalize(mat3(u_Model) * a_Normal);
+	gl_Position = u_Projection * u_View * worldPosition;
+}`,
+		fragmentSource: `#version 300 es
+precision highp float;
+uniform vec4 u_Color;
+uniform float u_Roughness;
+uniform bool u_ReceiveLighting;
+uniform vec3 u_AmbientLight;
+uniform int u_LocalLightCount;
+uniform int u_LocalLightType[4];
+uniform vec3 u_LocalLightPosition[4];
+uniform vec3 u_LocalLightColor[4];
+uniform float u_LocalLightIntensity[4];
+uniform float u_LocalLightRange[4];
+in vec3 v_WorldPosition;
+in vec3 v_WorldNormal;
+out vec4 o_Color;
+void main() {
+	vec3 normal = normalize(v_WorldNormal);
+	vec3 viewDirection = normalize(-v_WorldPosition);
+	vec3 diffuseLighting = vec3(0.0);
+	vec3 specularLighting = vec3(0.0);
+	if (u_ReceiveLighting) {
+		for (int lightIndex = 0; lightIndex < 4; lightIndex++) {
+			if (lightIndex >= u_LocalLightCount) {
+				break;
+			}
+			if (u_LocalLightType[lightIndex] != 0) {
+				continue;
+			}
+			vec3 toLight = u_LocalLightPosition[lightIndex] - v_WorldPosition;
+			float distanceToLight = length(toLight);
+			if (distanceToLight <= 0.0001 || distanceToLight >= u_LocalLightRange[lightIndex]) {
+				continue;
+			}
+			vec3 lightDirection = toLight / distanceToLight;
+			float attenuation = 1.0 - smoothstep(0.0, u_LocalLightRange[lightIndex], distanceToLight);
+			attenuation *= attenuation;
+			float diffuse = max(dot(normal, lightDirection), 0.0);
+			vec3 halfVector = normalize(lightDirection + viewDirection);
+			float shininess = mix(72.0, 12.0, clamp(u_Roughness, 0.0, 1.0));
+			float specular = pow(max(dot(normal, halfVector), 0.0), shininess) * (1.0 - clamp(u_Roughness, 0.0, 1.0)) * 0.35;
+			vec3 lightColor = u_LocalLightColor[lightIndex] * u_LocalLightIntensity[lightIndex] * attenuation;
+			diffuseLighting += lightColor * diffuse;
+			specularLighting += lightColor * specular;
+		}
+	}
+	vec3 shaded = u_Color.rgb * (u_AmbientLight + diffuseLighting) + specularLighting;
+	o_Color = vec4(shaded, u_Color.a);
+}`,
+		uniforms: [
+			'u_Model',
+			'u_View',
+			'u_Projection',
+			'u_Color',
+			'u_Roughness',
+			'u_ReceiveLighting',
+			'u_AmbientLight',
+			'u_LocalLightCount',
+			'u_LocalLightType',
+			'u_LocalLightPosition',
+			'u_LocalLightColor',
+			'u_LocalLightIntensity',
+			'u_LocalLightRange',
+		],
+	});
 
-	const registerLitMaterial = (
+	const registerPlanetMaterial = (
 		id: string,
 		color: readonly [number, number, number, number],
-		shininess: number,
+		roughness: number,
 		polygonMode: 'fill' | 'line',
 	) => {
 		scene.createMaterial({
 			id,
-			shaderId: shaders.lit,
+			shaderId: SOLAR_PLANET_SHADER_ID,
 			uniforms: {
 				u_Color: color,
-				u_Shininess: shininess,
-				...lightingUniforms,
+				u_Roughness: roughness,
 			},
 			rasterizerState: polygonMode === 'line' ? { polygonMode: 'line', lineWidth: 1 } : undefined,
 		});
@@ -93,228 +191,204 @@ export const createSolarSystemScene = (container: HTMLElement): PlaygroundSceneH
 		id: string,
 		color: readonly [number, number, number, number],
 		polygonMode: 'fill' | 'line',
+		options?: {
+			readonly doubleSided?: boolean;
+			readonly passes?: readonly [typeof SATURN_RING_PASS];
+		},
 	) => {
 		scene.createMaterial({
 			id,
 			shaderId: shaders.solid,
 			uniforms: { u_Color: color },
-			rasterizerState: polygonMode === 'line' ? { polygonMode: 'line', lineWidth: 1 } : undefined,
+			rasterizerState:
+				polygonMode === 'line'
+					? {
+						polygonMode: 'line',
+						lineWidth: 1,
+						...(options?.doubleSided ? OPAQUE_DOUBLE_SIDED_STATE : {}),
+					}
+					: options?.doubleSided
+						? OPAQUE_DOUBLE_SIDED_STATE
+						: undefined,
+			...(options?.passes ? { passes: options.passes } : {}),
 		});
 	};
 
-	registerSolidMaterial('playground/solar/sun-fill', [0.98, 0.73, 0.18, 1], 'fill');
-	registerSolidMaterial('playground/solar/sun-wire', [0.29, 0.18, 0.04, 1], 'line');
+	registerSolidMaterial('playground/solar/sun-fill', SOLAR_SUN_COLOR, 'fill');
+	registerSolidMaterial('playground/solar/sun-wire', SOLAR_SUN_WIREFRAME_COLOR, 'line');
 
-	const camera = scene.createCameraActor({ name: 'SolarCamera' }, { primary: true, fieldOfView: 50 });
+	const camera = scene.createCameraActor({ name: 'SolarCamera' }, { primary: true, fieldOfView: 60 });
 	const orbit = camera.addComponent(OrbitCameraController, {
-		target: [0, 0.8, 0],
-		distance: 15.5,
-		minDistance: 7,
-		maxDistance: 28,
-		azimuth: 0.64,
-		elevation: 0.34,
+		target: [0, 0, 0],
+		distance: 55.452682532,
+		minDistance: 12,
+		maxDistance: 120,
+		azimuth: Math.PI * 0.25,
+		elevation: 0.467,
 	});
-	const detachInput = attachOrbitCameraInput(container, orbit);
+	const detachInput = attachOrbitCameraInput(container, orbit, {
+		minElevation: 0.08,
+		maxElevation: 1.25,
+	});
 
 	const grid = createGridOverlay(scene, shaders.grid, {
 		prefix: 'playground/solar',
-		size: 48,
+		size: 80,
 		scale: 2,
-		color: [0.38, 0.43, 0.56],
-		gridColor: [0.84, 0.88, 0.96],
-		backgroundColor: [0.93, 0.95, 0.98],
+		y: 0,
+		color: SOLAR_GRID_MAJOR,
+		gridColor: SOLAR_GRID_MINOR,
+		backgroundColor: SOLAR_CLEAR_COLOR.slice(0, 3),
+		backgroundOpacity: 0,
 	});
-	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/solar', length: 3.4 });
+	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/solar', length: 5 });
+	axes.setVisible(false);
 
 	const sun = scene.createRenderableActor(
 		{ name: 'SolarSun' },
-		{ meshId: 'playground/solar/sphere', materialId: 'playground/solar/sun-fill', receiveLighting: false },
+		{ meshId: SOLAR_SPHERE_MESH_ID, materialId: 'playground/solar/sun-fill', receiveLighting: false },
 	);
 	const sunTransform = sun.requireComponent(Transform);
-	sunTransform.position = new Vec3(0, 1.1, 0);
-	sunTransform.scale = new Vec3(1.6, 1.6, 1.6);
+	sunTransform.scale = new Vec3(3, 3, 3);
 	const sunRenderer = sun.getComponent(MeshRenderer);
 	if (!sunRenderer) {
 		throw new Error('Solar system sun renderer was not created correctly.');
 	}
 
-	const bodyRuntimes: SolarBodyRuntime[] = [];
+	const sunLight = scene.createActor({ name: 'SolarSunLight' });
+	sunLight.addComponent(PointLight, {
+		color: SOLAR_LIGHT_COLOR,
+		intensity: SOLAR_LIGHT_INTENSITY,
+		range: SOLAR_LIGHT_RANGE,
+	});
 
-	for (const body of SOLAR_BODIES) {
-		const fillMaterialId = `playground/solar/${body.id}-fill`;
-		const wireMaterialId = `playground/solar/${body.id}-wire`;
-		registerLitMaterial(fillMaterialId, body.color, 20, 'fill');
-		registerLitMaterial(wireMaterialId, [0.18, 0.2, 0.24, 1], 8, 'line');
+	const planetRuntimes: SolarPlanetRuntime[] = [];
 
-		const orbitFillMaterialId = `playground/solar/${body.id}-orbit-fill`;
-		const orbitWireMaterialId = `playground/solar/${body.id}-orbit-wire`;
-		const orbitMeshId = `playground/solar/${body.id}-orbit-mesh`;
+	for (const planet of SOLAR_PLANETS) {
+		const fillMaterialId = `playground/solar/${planet.id}-fill`;
+		const wireMaterialId = `playground/solar/${planet.id}-wire`;
+		registerPlanetMaterial(fillMaterialId, planet.color, planet.roughness, 'fill');
+		registerSolidMaterial(wireMaterialId, [0.3, 0.26, 0.23, 1], 'line');
+
+		const orbitFillMaterialId = `playground/solar/${planet.id}-orbit-fill`;
+		const orbitWireMaterialId = `playground/solar/${planet.id}-orbit-wire`;
+		const orbitMeshId = `playground/solar/${planet.id}-orbit-mesh`;
+		const orbitThickness = 0.04 / planet.distance;
 		scene.registerMesh(
 			meshBuilder.createDefinition(
 				orbitMeshId,
 				createRing({
-					innerRadius: body.orbitRadius - 0.018,
-					outerRadius: body.orbitRadius + 0.018,
-					segments: 120,
+					innerRadius: 1 - orbitThickness,
+					outerRadius: 1 + orbitThickness,
+					segments: 64,
 				}),
 			),
 		);
-		registerSolidMaterial(orbitFillMaterialId, [0.67, 0.74, 0.88, 1], 'fill');
-		registerSolidMaterial(orbitWireMaterialId, [0.28, 0.33, 0.45, 1], 'line');
+		registerSolidMaterial(orbitFillMaterialId, [0.8784313725, 0.8666666667, 0.8431372549, 1], 'fill', {
+			doubleSided: true,
+		});
+		registerSolidMaterial(orbitWireMaterialId, [0.745, 0.725, 0.69, 1], 'line', { doubleSided: true });
 
 		const orbitActor = scene.createRenderableActor(
-			{ name: `${body.label}OrbitLine` },
+			{ name: `${planet.label}OrbitRing` },
 			{ meshId: orbitMeshId, materialId: orbitFillMaterialId, receiveLighting: false },
 		);
 		const orbitTransform = orbitActor.requireComponent(Transform);
-		orbitTransform.position = new Vec3(0, 0.02, 0);
-		orbitTransform.rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
+		orbitTransform.position = new Vec3(-planet.distance * planet.eccentricity, 0.01, 0);
+		orbitTransform.scale = new Vec3(
+			planet.distance,
+			1,
+			planet.distance * Math.sqrt(1 - planet.eccentricity * planet.eccentricity),
+		);
 
 		const planetActor = scene.createRenderableActor(
-			{ name: body.label },
-			{ meshId: 'playground/solar/sphere', materialId: fillMaterialId },
+			{ name: planet.label },
+			{ meshId: SOLAR_SPHERE_MESH_ID, materialId: fillMaterialId, receiveLighting: true },
 		);
 		const planetTransform = planetActor.requireComponent(Transform);
-		planetTransform.scale = new Vec3(body.radius, body.radius, body.radius);
+		planetTransform.scale = new Vec3(planet.radius, planet.radius, planet.radius);
 
 		const planetRenderer = planetActor.getComponent(MeshRenderer);
-		const orbitLineRenderer = orbitActor.getComponent(MeshRenderer);
-		if (!planetRenderer || !orbitLineRenderer) {
-			throw new Error(`Solar system actor setup failed for ${body.label}.`);
+		const orbitRenderer = orbitActor.getComponent(MeshRenderer);
+		if (!planetRenderer || !orbitRenderer) {
+			throw new Error(`Solar system actor setup failed for ${planet.label}.`);
 		}
 
-		let ringRenderer: MeshRenderer | undefined;
-		let ringFillMaterialId: string | undefined;
-		let ringWireMaterialId: string | undefined;
+		const orbital = new OrbitalBody({
+			semiMajorAxis: planet.distance,
+			eccentricity: planet.eccentricity,
+			period: planet.period,
+			meanAnomaly: planet.meanAnomaly,
+		});
 
-		if (body.ringScale) {
-			ringFillMaterialId = `playground/solar/${body.id}-ring-fill`;
-			ringWireMaterialId = `playground/solar/${body.id}-ring-wire`;
-			registerSolidMaterial(ringFillMaterialId, [0.86, 0.78, 0.64, 1], 'fill');
-			registerSolidMaterial(ringWireMaterialId, [0.27, 0.24, 0.2, 1], 'line');
+		let saturnRingTransform: Transform | undefined;
+		let saturnRingRenderer: MeshRenderer | undefined;
+		let saturnRingFillMaterialId: string | undefined;
+		let saturnRingWireMaterialId: string | undefined;
 
-			const ringActor = scene.createRenderableActor(
-				{ name: `${body.label}Ring` },
-				{ meshId: 'playground/solar/saturn-ring', materialId: ringFillMaterialId, receiveLighting: false },
-			);
-			const ringTransform = ringActor.requireComponent(Transform);
-			ringTransform.scale = new Vec3(body.ringScale[0], body.ringScale[1], body.ringScale[2]);
-			ringTransform.rotation = Quat.fromEuler(-Math.PI * 0.5 + (body.tilt ?? 0), 0, 0);
-			ringRenderer = ringActor.getComponent(MeshRenderer) ?? undefined;
-			bodyRuntimes.push({
-				config: body,
-				planetTransform,
-				planetRenderer,
-				fillMaterialId,
-				wireMaterialId,
-				ringRenderer,
-				ringFillMaterialId,
-				ringWireMaterialId,
-				orbitLineRenderer,
-				orbitLineFillMaterialId: orbitFillMaterialId,
-				orbitLineWireMaterialId: orbitWireMaterialId,
+		if (planet.ring) {
+			saturnRingFillMaterialId = `playground/solar/${planet.id}-ring-fill`;
+			saturnRingWireMaterialId = `playground/solar/${planet.id}-ring-wire`;
+			registerSolidMaterial(saturnRingFillMaterialId, planet.ring.color, 'fill', {
+				doubleSided: true,
+				passes: [SATURN_RING_PASS],
 			});
-			continue;
+			registerSolidMaterial(saturnRingWireMaterialId, [0.72, 0.68, 0.55, 1], 'line', { doubleSided: true });
+
+			const saturnRing = scene.createRenderableActor(
+				{ name: `${planet.label}Ring` },
+				{ meshId: SOLAR_SATURN_RING_MESH_ID, materialId: saturnRingFillMaterialId, receiveLighting: false },
+			);
+			saturnRingTransform = saturnRing.requireComponent(Transform);
+			saturnRingRenderer = saturnRing.getComponent(MeshRenderer) ?? undefined;
 		}
 
-		bodyRuntimes.push({
-			config: body,
+		planetRuntimes.push({
+			config: planet,
+			orbital,
+			spinOffset: planet.meanAnomaly,
+			orbitOffset: planet.meanAnomaly,
 			planetTransform,
 			planetRenderer,
 			fillMaterialId,
 			wireMaterialId,
-			orbitLineRenderer,
-			orbitLineFillMaterialId: orbitFillMaterialId,
-			orbitLineWireMaterialId: orbitWireMaterialId,
+			orbitRenderer,
+			orbitFillMaterialId,
+			orbitWireMaterialId,
+			saturnRingTransform,
+			saturnRingRenderer,
+			saturnRingFillMaterialId,
+			saturnRingWireMaterialId,
 		});
 	}
 
-	for (const runtime of bodyRuntimes) {
-		if (!runtime.config.moon) {
-			continue;
-		}
-
-		const moonFillMaterialId = `playground/solar/${runtime.config.id}-moon-fill`;
-		const moonWireMaterialId = `playground/solar/${runtime.config.id}-moon-wire`;
-		registerLitMaterial(moonFillMaterialId, runtime.config.moon.color, 14, 'fill');
-		registerLitMaterial(moonWireMaterialId, [0.17, 0.18, 0.2, 1], 8, 'line');
-
-		const moon = scene.createRenderableActor(
-			{ name: `${runtime.config.label}Moon` },
-			{ meshId: 'playground/solar/sphere', materialId: moonFillMaterialId },
-		);
-		const moonTransform = moon.requireComponent(Transform);
-		moonTransform.scale = new Vec3(
-			runtime.config.moon.radius,
-			runtime.config.moon.radius,
-			runtime.config.moon.radius,
-		);
-		const moonRenderer = moon.getComponent(MeshRenderer);
-		if (!moonRenderer) {
-			throw new Error(`Solar system moon renderer setup failed for ${runtime.config.label}.`);
-		}
-
-		(runtime as {
-			moonTransform: Transform;
-			moonRenderer: MeshRenderer;
-			moonFillMaterialId: string;
-			moonWireMaterialId: string;
-		}).moonTransform = moonTransform;
-		(runtime as {
-			moonTransform: Transform;
-			moonRenderer: MeshRenderer;
-			moonFillMaterialId: string;
-			moonWireMaterialId: string;
-		}).moonRenderer = moonRenderer;
-		(runtime as {
-			moonTransform: Transform;
-			moonRenderer: MeshRenderer;
-			moonFillMaterialId: string;
-			moonWireMaterialId: string;
-		}).moonFillMaterialId = moonFillMaterialId;
-		(runtime as {
-			moonTransform: Transform;
-			moonRenderer: MeshRenderer;
-			moonFillMaterialId: string;
-			moonWireMaterialId: string;
-		}).moonWireMaterialId = moonWireMaterialId;
-	}
+	console.log(`Solar system: ${planetRuntimes.length} planets`);
 
 	let playing = true;
 	let frameHandle = 0;
+	let elapsed = 0;
+	let previousTime = 0;
 	const loop = (now: number) => {
-		const time = now * 0.001;
+		const deltaSeconds = previousTime === 0 ? 0 : Math.min((now - previousTime) / 1000, 0.05);
 		if (playing) {
-			sunTransform.rotation = Quat.fromEuler(0, time * 0.16, 0);
-			const pulse = 1.6 + Math.sin(time * 1.8) * 0.05;
-			sunTransform.scale = new Vec3(pulse, pulse, pulse);
+			elapsed += deltaSeconds;
+			sunTransform.rotation = Quat.fromEuler(0, elapsed * 0.18, 0);
 
-			for (const runtime of bodyRuntimes) {
-				const angle = time * runtime.config.orbitSpeed + runtime.config.orbitRadius * 0.18;
-				const x = Math.cos(angle) * runtime.config.orbitRadius;
-				const z = Math.sin(angle) * runtime.config.orbitRadius;
-				runtime.planetTransform.position = new Vec3(x, runtime.config.height + 1.1, z);
-				runtime.planetTransform.rotation = Quat.fromEuler(runtime.config.tilt ?? 0, time * runtime.config.spinSpeed, 0);
+			for (const runtime of planetRuntimes) {
+				const orbitPosition = runtime.orbital.getPosition(elapsed);
+				const x = orbitPosition.x;
+				const z = orbitPosition.y;
+				const y = 0;
+				runtime.planetTransform.position = new Vec3(x, y, z);
+				runtime.planetTransform.rotation = Quat.fromEuler(runtime.config.tilt, elapsed * 1.2 + runtime.spinOffset, 0);
 
-				if (runtime.ringRenderer) {
-					const ringTransform = runtime.ringRenderer.transform as Transform | undefined;
-					if (ringTransform) {
-						ringTransform.position = new Vec3(x, runtime.config.height + 1.1, z);
-						ringTransform.rotation = Quat.fromEuler(-Math.PI * 0.5 + (runtime.config.tilt ?? 0), time * 0.45, 0);
-					}
-				}
-
-				if (runtime.moonTransform && runtime.config.moon) {
-					const moonAngle = time * runtime.config.moon.orbitSpeed;
-					runtime.moonTransform.position = new Vec3(
-						x + Math.cos(moonAngle) * runtime.config.moon.orbitRadius,
-						runtime.config.height + 1.1 + Math.sin(moonAngle * 1.7) * 0.12,
-						z + Math.sin(moonAngle) * runtime.config.moon.orbitRadius,
-					);
-					runtime.moonTransform.rotation = Quat.fromEuler(0, time * 2.2, 0);
+				if (runtime.saturnRingTransform) {
+					runtime.saturnRingTransform.position = new Vec3(x, y, z);
+					runtime.saturnRingTransform.rotation = Quat.fromEuler(runtime.config.ring?.tilt ?? 0, 0, 0);
 				}
 			}
 		}
+		previousTime = now;
 
 		frameHandle = globalThis.requestAnimationFrame(loop);
 	};
@@ -327,36 +401,21 @@ export const createSolarSystemScene = (container: HTMLElement): PlaygroundSceneH
 		orbit,
 		overlays: { grid, axes },
 		disposeExtras: [detachInput, () => stage.dispose()],
-		setWireframe(enabled) {
+		setWireframe(enabled: boolean) {
 			sunRenderer.materialId = enabled ? 'playground/solar/sun-wire' : 'playground/solar/sun-fill';
-			for (const runtime of bodyRuntimes) {
+			for (const runtime of planetRuntimes) {
 				runtime.planetRenderer.materialId = enabled ? runtime.wireMaterialId : runtime.fillMaterialId;
-				runtime.orbitLineRenderer?.materialId = enabled
-					? runtime.orbitLineWireMaterialId ?? runtime.orbitLineFillMaterialId ?? null
-					: runtime.orbitLineFillMaterialId ?? runtime.orbitLineWireMaterialId ?? null;
-				if (runtime.ringRenderer) {
-					runtime.ringRenderer.materialId = enabled
-						? runtime.ringWireMaterialId ?? runtime.ringFillMaterialId ?? null
-						: runtime.ringFillMaterialId ?? runtime.ringWireMaterialId ?? null;
-				}
-				if (runtime.moonRenderer) {
-					runtime.moonRenderer.materialId = enabled
-						? runtime.moonWireMaterialId ?? runtime.moonFillMaterialId ?? null
-						: runtime.moonFillMaterialId ?? runtime.moonWireMaterialId ?? null;
+				runtime.orbitRenderer.materialId = enabled ? runtime.orbitWireMaterialId : runtime.orbitFillMaterialId;
+				if (runtime.saturnRingRenderer && runtime.saturnRingFillMaterialId && runtime.saturnRingWireMaterialId) {
+					runtime.saturnRingRenderer.materialId = enabled
+						? runtime.saturnRingWireMaterialId
+						: runtime.saturnRingFillMaterialId;
 				}
 			}
 		},
 		stats: () => ({
-			objectCount:
-				1 +
-				1 +
-				bodyRuntimes.length +
-				bodyRuntimes.filter((runtime) => runtime.ringRenderer).length +
-				bodyRuntimes.filter((runtime) => runtime.moonRenderer).length +
-				bodyRuntimes.length +
-				grid.actors.length +
-				axes.actors.length,
-			summary: 'Orbital layout',
+			objectCount: 1 + planetRuntimes.length,
+			summary: `${planetRuntimes.length} planets`,
 		}),
 	});
 
