@@ -1,190 +1,245 @@
 import * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
+import type { VirtualProjectFile } from '../app/types';
 
 export interface LiveEditorController {
-    getValue(): string;
-    setValue(value: string): void;
-    loadSource(value: string, path: string): void;
-    focus(): void;
-    dispose(): void;
+	getValue(path?: string): string;
+	setValue(path: string, value: string): void;
+	loadFiles(files: readonly VirtualProjectFile[], activePath: string): void;
+	openFile(path: string): void;
+	focus(): void;
+	dispose(): void;
 }
 
 interface CreateLiveEditorOptions {
-    readonly container: HTMLElement;
-    readonly value: string;
-    readonly path: string;
-    readonly onChange: () => void;
+	readonly container: HTMLElement;
+	readonly files: readonly VirtualProjectFile[];
+	readonly activePath: string;
+	readonly onChange: (path: string, value: string) => void;
+	readonly onCursorChange?: (lineNumber: number, column: number) => void;
 }
 
 type MonacoEnvironmentTarget = typeof globalThis & {
-    MonacoEnvironment?: {
-        getWorker(_: string, label: string): Worker;
-    };
+	MonacoEnvironment?: {
+		getWorker(_: string, label: string): Worker;
+	};
+};
+
+type MonacoTypeScriptApi = {
+	typescriptDefaults: {
+		setCompilerOptions(options: Record<string, unknown>): void;
+		setDiagnosticsOptions(options: Record<string, unknown>): void;
+	};
+	ScriptTarget: {
+		ES2022: number;
+	};
+	ModuleKind: {
+		ESNext: number;
+	};
+	ModuleResolutionKind: {
+		NodeJs: number;
+	};
 };
 
 const AXRONE_THEME = 'axrone-playground-light';
 
 let isConfigured = false;
 
-// Track existing models to prevent duplicates
-const existingModels = new Map<string, monaco.editor.ITextModel>();
+const monacoTypeScript = monaco.languages.typescript as unknown as MonacoTypeScriptApi;
 
-const toModelUri = (path: string) => {
-    const normalizedPath = path.replace(/^\.\//, '').replace(/\\/g, '/');
-    return monaco.Uri.parse(`file:///examples/${normalizedPath}`);
+const normalizePath = (value: string): string => value.replace(/^\.\//, '').replace(/\\/g, '/');
+
+const toModelUri = (path: string): monaco.Uri =>
+	monaco.Uri.parse(`file:///examples/${normalizePath(path)}`);
+
+const resolveLanguage = (path: string): string => {
+	if (path.endsWith('.js') || path.endsWith('.jsx')) {
+		return 'javascript';
+	}
+
+	return 'typescript';
 };
 
-const configureMonaco = () => {
-    if (isConfigured) {
-        return;
-    }
+const configureMonaco = (): void => {
+	if (isConfigured) {
+		return;
+	}
 
-    isConfigured = true;
+	isConfigured = true;
 
-    const root = globalThis as MonacoEnvironmentTarget;
-    root.MonacoEnvironment = {
-        getWorker(_: string, label: string) {
-            if (label === 'typescript' || label === 'javascript') {
-                return new tsWorker();
-            }
+	const root = globalThis as MonacoEnvironmentTarget;
+	root.MonacoEnvironment = {
+		getWorker(_: string, label: string): Worker {
+			if (label === 'typescript' || label === 'javascript') {
+				return new tsWorker();
+			}
 
-            return new editorWorker();
-        },
-    };
+			return new editorWorker();
+		},
+	};
 
-    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-        target: monaco.languages.typescript.ScriptTarget.ES2022,
-        module: monaco.languages.typescript.ModuleKind.ESNext,
-        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-        allowNonTsExtensions: true,
-        experimentalDecorators: true,
-        strict: true,
-        noEmit: true,
-        lib: ['dom', 'dom.iterable', 'esnext'],
-    });
+	monacoTypeScript.typescriptDefaults.setCompilerOptions({
+		target: monacoTypeScript.ScriptTarget.ES2022,
+		module: monacoTypeScript.ModuleKind.ESNext,
+		moduleResolution: monacoTypeScript.ModuleResolutionKind.NodeJs,
+		allowNonTsExtensions: true,
+		experimentalDecorators: true,
+		strict: true,
+		noEmit: true,
+		lib: ['dom', 'dom.iterable', 'esnext'],
+	});
 
-    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-        noSemanticValidation: true,
-        noSuggestionDiagnostics: true,
-    });
+	monacoTypeScript.typescriptDefaults.setDiagnosticsOptions({
+		noSemanticValidation: true,
+		noSuggestionDiagnostics: true,
+	});
 
-    monaco.editor.defineTheme(AXRONE_THEME, {
-        base: 'vs',
-        inherit: true,
-        rules: [
-            { token: 'comment', foreground: '8a877f' },
-            { token: 'keyword', foreground: '0f8b8d' },
-            { token: 'string', foreground: 'b8662d' },
-            { token: 'number', foreground: 'b78a19' },
-            { token: 'type.identifier', foreground: '256c87' },
-        ],
-        colors: {
-            'editor.background': '#fffdf9',
-            'editorLineNumber.foreground': '#baaf9e',
-            'editorLineNumber.activeForeground': '#5f625c',
-            'editorCursor.foreground': '#0f8b8d',
-            'editor.selectionBackground': '#d7efec',
-            'editor.inactiveSelectionBackground': '#e9f5f2',
-            'editor.lineHighlightBackground': '#f8f1e7',
-            'editorIndentGuide.background1': '#e8dfd3',
-            'editorIndentGuide.activeBackground1': '#c6b7a4',
-            'editorBracketMatch.background': '#00000000',
-            'editorBracketMatch.border': '#c96f2d',
-        },
-    });
-};
-
-const createModel = (value: string, path: string) => {
-    const uri = toModelUri(path);
-    const uriString = uri.toString();
-
-    // Check if model already exists and dispose it
-    const existingModel = existingModels.get(uriString);
-    if (existingModel) {
-        existingModel.dispose();
-        existingModels.delete(uriString);
-    }
-
-    // Also dispose any model at this URI in Monaco's registry
-    const modelFromRegistry = monaco.editor.getModel(uri);
-    if (modelFromRegistry) {
-        modelFromRegistry.dispose();
-    }
-
-    const newModel = monaco.editor.createModel(value, 'typescript', uri);
-    existingModels.set(uriString, newModel);
-    return newModel;
+	monaco.editor.defineTheme(AXRONE_THEME, {
+		base: 'vs',
+		inherit: true,
+		rules: [
+			{ token: 'comment', foreground: '9c958d', fontStyle: 'italic' },
+			{ token: 'keyword', foreground: 'c2410c' },
+			{ token: 'string', foreground: '15803d' },
+			{ token: 'number', foreground: '2563eb' },
+			{ token: 'type.identifier', foreground: '0d9488' },
+		],
+		colors: {
+			'editor.background': '#ffffff',
+			'editor.foreground': '#1a1816',
+			'editor.lineHighlightBackground': '#f7f6f380',
+			'editor.selectionBackground': '#fff7ed',
+			'editor.inactiveSelectionBackground': '#f0efec',
+			'editorCursor.foreground': '#c2410c',
+			'editorLineNumber.foreground': '#ccc8c0',
+			'editorLineNumber.activeForeground': '#5c5651',
+			'editorIndentGuide.background1': '#e8e5e0',
+			'editorIndentGuide.activeBackground1': '#ccc8c0',
+			'editorBracketMatch.background': '#00000000',
+			'editorBracketMatch.border': '#c2410c40',
+		},
+	});
 };
 
 export const createLiveEditor = ({
-    container,
-    value,
-    path,
-    onChange,
+	container,
+	files,
+	activePath,
+	onChange,
+	onCursorChange,
 }: CreateLiveEditorOptions): LiveEditorController => {
-    configureMonaco();
+	configureMonaco();
 
-    let model = createModel(value, path);
+	const models = new Map<string, monaco.editor.ITextModel>();
+	let currentPath = normalizePath(activePath);
 
-    const editor = monaco.editor.create(container, {
-        model,
-        theme: AXRONE_THEME,
-        automaticLayout: true,
-        minimap: { enabled: false },
-        scrollBeyondLastLine: false,
-        smoothScrolling: true,
-        tabSize: 4,
-        fontSize: 14,
-        lineHeight: 22,
-        fontFamily: 'Cascadia Code, Consolas, monospace',
-        wordWrap: 'off',
-        bracketPairColorization: { enabled: true },
-        renderLineHighlight: 'all',
-        padding: { top: 16, bottom: 16 },
-        overviewRulerBorder: false,
-        scrollbar: {
-            verticalScrollbarSize: 12,
-            horizontalScrollbarSize: 12,
-        },
-    });
+	const ensureModel = (file: VirtualProjectFile): monaco.editor.ITextModel => {
+		const normalizedPath = normalizePath(file.path);
+		const existingModel = models.get(normalizedPath);
+		if (existingModel) {
+			if (existingModel.getValue() !== file.content) {
+				existingModel.setValue(file.content);
+			}
+			return existingModel;
+		}
 
-    const changeSubscription = editor.onDidChangeModelContent(onChange);
+		const model = monaco.editor.createModel(
+			file.content,
+			resolveLanguage(normalizedPath),
+			toModelUri(normalizedPath),
+		);
+		models.set(normalizedPath, model);
+		return model;
+	};
 
-    return {
-        getValue() {
-            return model.getValue();
-        },
-        setValue(nextValue) {
-            if (model.getValue() !== nextValue) {
-                model.setValue(nextValue);
-            }
-        },
-        loadSource(nextValue, nextPath) {
-            const previousModel = model;
-            const uriString = toModelUri(nextPath).toString();
-            
-            // Remove from tracking map
-            existingModels.delete(uriString);
-            
-            // Create new model (which will handle disposal of any existing)
-            model = createModel(nextValue, nextPath);
-            editor.setModel(model);
-            
-            // Dispose old model
-            previousModel.dispose();
-        },
-        focus() {
-            editor.focus();
-        },
-        dispose() {
-            changeSubscription.dispose();
-            editor.dispose();
-            
-            // Remove from tracking and dispose
-            const uriString = toModelUri(path).toString();
-            existingModels.delete(uriString);
-            model.dispose();
-        },
-    };
+	for (const file of files) {
+		ensureModel(file);
+	}
+
+	const editor = monaco.editor.create(container, {
+		model: models.get(currentPath) ?? ensureModel(files[0]!),
+		theme: AXRONE_THEME,
+		automaticLayout: true,
+		minimap: { enabled: false },
+		scrollBeyondLastLine: false,
+		smoothScrolling: true,
+		tabSize: 2,
+		fontSize: 13,
+		lineHeight: 22,
+		fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+		wordWrap: 'off',
+		bracketPairColorization: { enabled: true },
+		renderLineHighlight: 'all',
+		padding: { top: 16, bottom: 16 },
+		overviewRulerBorder: false,
+		scrollbar: {
+			verticalScrollbarSize: 10,
+			horizontalScrollbarSize: 10,
+		},
+	});
+
+	const changeSubscription = editor.onDidChangeModelContent(() => {
+		onChange(currentPath, editor.getValue());
+	});
+
+	const cursorSubscription = editor.onDidChangeCursorPosition((event) => {
+		onCursorChange?.(event.position.lineNumber, event.position.column);
+	});
+
+	return {
+		getValue(path = currentPath) {
+			const model = models.get(normalizePath(path));
+			return model?.getValue() ?? '';
+		},
+		setValue(path, value) {
+			const model = models.get(normalizePath(path));
+			if (model && model.getValue() !== value) {
+				model.setValue(value);
+			}
+		},
+		loadFiles(nextFiles, nextActivePath) {
+			const nextPaths = new Set(nextFiles.map((file) => normalizePath(file.path)));
+
+			for (const [path, model] of models) {
+				if (!nextPaths.has(path)) {
+					model.dispose();
+					models.delete(path);
+				}
+			}
+
+			for (const file of nextFiles) {
+				ensureModel(file);
+			}
+
+			currentPath = normalizePath(nextActivePath);
+			const nextModel = models.get(currentPath);
+			if (nextModel) {
+				editor.setModel(nextModel);
+			}
+		},
+		openFile(path) {
+			const normalizedPath = normalizePath(path);
+			const model = models.get(normalizedPath);
+			if (!model) {
+				return;
+			}
+
+			currentPath = normalizedPath;
+			editor.setModel(model);
+			editor.focus();
+		},
+		focus() {
+			editor.focus();
+		},
+		dispose() {
+			changeSubscription.dispose();
+			cursorSubscription.dispose();
+			editor.dispose();
+			for (const model of models.values()) {
+				model.dispose();
+			}
+			models.clear();
+		},
+	};
 };
