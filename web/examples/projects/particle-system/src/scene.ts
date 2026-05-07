@@ -8,7 +8,7 @@ import {
 	createSceneStage,
 	registerPlaygroundShaders,
 } from '@axrone/playground';
-import type { PlaygroundSceneHandle } from '../shared/playground-types';
+import type { PlaygroundSceneHandle } from '../../shared/playground-types';
 import {
 	PARTICLE_CEILING,
 	PARTICLE_CLEAR_COLOR,
@@ -21,7 +21,7 @@ import {
 	ParticleEmitter,
 	createParticleColor,
 	type EmittedParticle,
-} from './particle-data';
+} from '../assets/particle-data';
 
 type ParticleState = EmittedParticle & {
 	readonly color: readonly [number, number, number, number];
