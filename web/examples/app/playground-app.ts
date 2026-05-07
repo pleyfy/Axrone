@@ -17,6 +17,41 @@ type ConsoleEntry = {
 	readonly message: string;
 	readonly time: string;
 };
+type FileVisualKind =
+	| 'main'
+	| 'scene'
+	| 'data'
+	| 'project'
+	| 'palette'
+	| 'code'
+	| 'json'
+	| 'shader'
+	| 'style'
+	| 'markup'
+	| 'doc'
+	| 'image'
+	| 'audio'
+	| 'video'
+	| 'model'
+	| 'default';
+type FileVisual = {
+	readonly color: string;
+	readonly kind: FileVisualKind;
+};
+type FileTreeFileNode = {
+	readonly kind: 'file';
+	readonly name: string;
+	readonly path: string;
+	readonly order: number;
+};
+type FileTreeFolderNode = {
+	readonly kind: 'folder';
+	readonly name: string;
+	readonly key: string;
+	readonly order: number;
+	readonly children: Map<string, FileTreeNode>;
+};
+type FileTreeNode = FileTreeFileNode | FileTreeFolderNode;
 type RuntimeSession = {
 	readonly projectId: string;
 	readonly handle: PlaygroundSceneHandle;
@@ -56,45 +91,243 @@ const formatTime = (): string =>
 		second: '2-digit',
 	});
 
+const escapeHtml = (value: string): string =>
+	value.replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char] ?? char));
+
 const resolveToneClass = (tone: ConsoleTone): string => {
 	switch (tone) {
 		case 'info':
-			return 'text-info';
+			return 'console-message--info';
 		case 'warn':
-			return 'text-warn';
+			return 'console-message--warn';
 		case 'error':
-			return 'text-err';
+			return 'console-message--error';
 		case 'success':
-			return 'text-ok';
+			return 'console-message--success';
 		default:
-			return 'text-ink-2';
-	}
-};
-
-const resolveToneIcon = (tone: ConsoleTone): string => {
-	switch (tone) {
-		case 'info':
-			return 'i';
-		case 'warn':
-			return '!';
-		case 'error':
-			return 'x';
-		case 'success':
-			return 'v';
-		default:
-			return '>'; 
+			return 'console-message--default';
 	}
 };
 
 const createProjectFilesMap = (files: readonly VirtualProjectFile[]): Record<string, string> =>
 	Object.fromEntries(files.map((file) => [file.path, file.content]));
 
-const resolveLanguageLabel = (path: string): string => (path.endsWith('.js') ? 'JavaScript' : 'TypeScript');
+const resolveLanguageLabel = (path: string): string => {
+	const ext = path.split('.').pop()?.toLowerCase();
+	switch (ext) {
+		case 'js':
+		case 'jsx':
+			return 'JavaScript';
+		case 'json':
+			return 'JSON';
+		case 'glsl':
+		case 'wgsl':
+			return 'Shader';
+		case 'css':
+		case 'scss':
+			return 'Stylesheet';
+		case 'html':
+			return 'HTML';
+		case 'md':
+			return 'Markdown';
+		case 'yaml':
+		case 'yml':
+			return 'YAML';
+		case 'ts':
+		case 'tsx':
+		default:
+			return 'TypeScript';
+	}
+};
+
+const resolveCameraPresetLabel = (preset: PlaygroundCameraPreset): string => {
+	switch (preset) {
+		case 'front':
+			return 'Front';
+		case 'top':
+			return 'Top';
+		case 'right':
+			return 'Right';
+		default:
+			return 'Perspective';
+	}
+};
+
+			return 'Stopped', 'stopped');
+	<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M14.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5L14.5 3z"></path>
+		<path d="M14 3v5h5"></path>
+		${innerMarkup}
+	</svg>
+`;
+
+const createFolderIcon = (size: number): string => `
+	<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M3.5 7.5a2 2 0 0 1 2-2H9l2 2h7.5a2 2 0 0 1 2 2v1.5H3.5z"></path>
+		<path d="M3.5 9h17v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path>
+	</svg>
+`;
+
+const createChevronIcon = (size: number): string => `
+	<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M9 18l6-6-6-6"></path>
+	</svg>
+`;
+
+const renderVisualIcon = (visual: FileVisual, size: number): string => {
+	switch (visual.kind) {
+		case 'main':
+			return createFileIcon(size, '<path d="M10 10.2v5.6l4.6-2.8-4.6-2.8z" fill="currentColor" stroke="none"></path>');
+		case 'scene':
+			return createFileIcon(size, '<rect x="8" y="10.5" width="3" height="3" rx="0.6"></rect><rect x="13" y="10.5" width="3" height="3" rx="0.6"></rect><rect x="8" y="15.2" width="3" height="3" rx="0.6"></rect><rect x="13" y="15.2" width="3" height="3" rx="0.6"></rect>');
+		case 'data':
+			return createFileIcon(size, '<path d="M8 11.2h8"></path><path d="M8 14h8"></path><path d="M8 16.8h5.5"></path>');
+		case 'project':
+			return createFileIcon(size, '<path d="M8 11.5h8"></path><path d="M8 15.5h8"></path><circle cx="10.5" cy="11.5" r="1"></circle><circle cx="13.5" cy="15.5" r="1"></circle>');
+		case 'palette':
+			return createFileIcon(size, '<path d="M12 10.2a3.7 3.7 0 0 0 0 7.4h.9a1.2 1.2 0 0 0 1.05-1.78l-.28-.48a1.1 1.1 0 0 1 .94-1.65H15a2.8 2.8 0 0 0 0-5.6z"></path><circle cx="9.1" cy="12.1" r=".65" fill="currentColor" stroke="none"></circle><circle cx="10.6" cy="10.8" r=".65" fill="currentColor" stroke="none"></circle><circle cx="12.7" cy="10.6" r=".65" fill="currentColor" stroke="none"></circle>');
+		case 'json':
+			return createFileIcon(size, '<path d="M10 10.5c-.9 0-1.5.6-1.5 1.5v.3c0 .6-.3 1-.8 1.2.5.2.8.6.8 1.2v.3c0 .9.6 1.5 1.5 1.5"></path><path d="M14 10.5c.9 0 1.5.6 1.5 1.5v.3c0 .6.3 1 .8 1.2-.5.2-.8.6-.8 1.2v.3c0 .9-.6 1.5-1.5 1.5"></path>');
+		case 'shader':
+			return createFileIcon(size, '<path d="M12 10.1l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"></path>');
+		case 'style':
+			return createFileIcon(size, '<path d="M8.5 16.5c1.1 0 1.8-.7 1.8-1.8 0-.4-.1-.8-.4-1.1l4.9-4.9a1 1 0 0 0-1.4-1.4L8.5 12.2c-.3-.3-.7-.4-1.1-.4-1.1 0-1.8.7-1.8 1.8s.7 1.9 1.8 1.9z"></path><path d="M12.7 8.3l2 2"></path>');
+		case 'markup':
+			return createFileIcon(size, '<path d="M9.5 11.2 7.2 13.5l2.3 2.3"></path><path d="M14.5 11.2l2.3 2.3-2.3 2.3"></path><path d="M12.8 10.6 11.2 16.4"></path>');
+		case 'doc':
+			return createFileIcon(size, '<path d="M8.3 11.2h7.4"></path><path d="M8.3 14h7.4"></path><path d="M8.3 16.8h4.8"></path>');
+		case 'image':
+			return createFileIcon(size, '<circle cx="10" cy="10.7" r="1"></circle><path d="M8 17l3.1-3.1a1 1 0 0 1 1.4 0L16 17"></path><path d="M12.8 15.3l1.2-1.2a1 1 0 0 1 1.4 0l1.6 1.6"></path>');
+		case 'audio':
+			return createFileIcon(size, '<path d="M9 13.8h2.1l2.9-2.3v5.8L11.1 15H9z"></path><path d="M16.2 11.2a3.1 3.1 0 0 1 0 4.6"></path>');
+		case 'video':
+			return createFileIcon(size, '<rect x="8" y="10.5" width="8" height="5.6" rx="1"></rect><path d="M11.3 11.8v3l2.6-1.5-2.6-1.5z" fill="currentColor" stroke="none"></path>');
+		case 'model':
+			return createFileIcon(size, '<path d="M12 10l3.6 2.1v4.2L12 18.4l-3.6-2.1v-4.2z"></path><path d="M12 10v4.2"></path><path d="M8.4 12.1 12 14.2l3.6-2.1"></path>');
+		case 'code':
+			return createFileIcon(size, '<path d="M10 11.2 7.7 13.5 10 15.8"></path><path d="M14 11.2 16.3 13.5 14 15.8"></path>');
+		default:
+			return createFileIcon(size, '<path d="M8.3 11.2h7.4"></path><path d="M8.3 14h7.4"></path>');
+	}
+};
+
+const resolveFileVisual = (path: string): FileVisual => {
+	const fileName = path.split('/').pop()?.toLowerCase() ?? path.toLowerCase();
+	const ext = fileName.split('.').pop()?.toLowerCase();
+
+	if (/^main\./.test(fileName)) {
+		return { kind: 'main', color: '#f59e0b' };
+	}
+	if (/^scene\./.test(fileName)) {
+		return { kind: 'scene', color: '#10b981' };
+	}
+	if (/^project\./.test(fileName)) {
+		return { kind: 'project', color: '#6366f1' };
+	}
+	if (fileName.includes('palette')) {
+		return { kind: 'palette', color: '#8b5cf6' };
+	}
+	if (fileName.includes('data')) {
+		return { kind: 'data', color: '#ec4899' };
+	}
+
+	switch (ext) {
+		case 'ts':
+		case 'tsx':
+			return { kind: 'code', color: '#2563eb' };
+		case 'js':
+		case 'jsx':
+			return { kind: 'code', color: '#f59e0b' };
+		case 'json':
+			return { kind: 'json', color: '#fb923c' };
+		case 'glsl':
+		case 'wgsl':
+			return { kind: 'shader', color: '#06b6d4' };
+		case 'css':
+		case 'scss':
+			return { kind: 'style', color: '#14b8a6' };
+		case 'html':
+			return { kind: 'markup', color: '#f43f5e' };
+		case 'md':
+		case 'txt':
+			return { kind: 'doc', color: '#64748b' };
+		case 'yaml':
+		case 'yml':
+			return { kind: 'project', color: '#6366f1' };
+		case 'png':
+		case 'jpg':
+		case 'jpeg':
+		case 'webp':
+		case 'gif':
+		case 'svg':
+			return { kind: 'image', color: '#22c55e' };
+		case 'mp3':
+		case 'wav':
+		case 'ogg':
+			return { kind: 'audio', color: '#db2777' };
+		case 'mp4':
+		case 'webm':
+			return { kind: 'video', color: '#ef4444' };
+		case 'glb':
+		case 'gltf':
+		case 'fbx':
+		case 'obj':
+			return { kind: 'model', color: '#7c3aed' };
+		default:
+			return { kind: 'default', color: '#94a3b8' };
+	}
+};
+
+const createFolderNode = (name: string, key: string, order: number): FileTreeFolderNode => ({
+	kind: 'folder',
+	name,
+	key,
+	order,
+	children: new Map<string, FileTreeNode>(),
+});
+
+const buildFileTree = (
+	files: readonly VirtualProjectFile[],
+): { readonly root: FileTreeFolderNode; readonly folderCount: number } => {
+	const root = createFolderNode('', '', -1);
+	let folderCount = 0;
+
+	files.forEach((file, order) => {
+		const segments = file.path.split('/').filter(Boolean);
+		if (segments.length === 0) {
+			return;
+		}
+
+		let currentFolder = root;
+		let currentKey = '';
+		for (const segment of segments.slice(0, -1)) {
+			currentKey = currentKey ? `${currentKey}/${segment}` : segment;
+			const childKey = `folder:${segment}`;
+			let child = currentFolder.children.get(childKey);
+			if (!child || child.kind !== 'folder') {
+				child = createFolderNode(segment, currentKey, order);
+				currentFolder.children.set(childKey, child);
+				folderCount += 1;
+			}
+			currentFolder = child;
+		}
+
+		const fileName = segments[segments.length - 1] ?? file.path;
+		currentFolder.children.set(`file:${fileName}`, {
+			kind: 'file',
+			name: fileName,
+			path: file.path,
+			order,
+		});
+	});
+
+	return { root, folderCount };
+};
 
 const renderTemplateCards = (shell: PlaygroundShell, selectedTemplateId: string): void => {
 	const templates = [
-		{ id: 'blank', name: 'Blank Scene', desc: 'Empty Axrone scene with camera and viewport.', accent: '#c2410c', badge: 'AX' },
-		{ id: 'basic', name: 'Basic Scene', desc: 'Starter scene with floor, cube, and default lighting.', accent: '#2563eb', badge: '3D' },
+		{ id: 'blank', name: 'Blank Scene', desc: 'An empty Axrone scene with a camera and viewport.', accent: '#64748b', badge: 'AX' },
+		{ id: 'basic', name: 'Basic Scene', desc: 'A starter scene with floor, cube, and default lighting.', accent: '#2563eb', badge: '3D' },
 	];
 
 	shell.newProjectTemplates.innerHTML = templates
@@ -135,9 +368,24 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	let axesVisible = false;
 	let activeConsoleTab: ConsoleTab = 'console';
 	let selectedTemplateId = 'blank';
+	const collapsedFolders = new Set<string>();
 	const consoleEntries: ConsoleEntry[] = [];
 	const problemEntries: ConsoleEntry[] = [];
 	const outputEntries: ConsoleEntry[] = [];
+	const applyProjectListFilter = (): void => {
+		const query = shell.projectSearchInput.value.trim().toLowerCase();
+		const cards = shell.projectList.querySelectorAll<HTMLElement>('[data-project-search]');
+		let visibleCount = 0;
+		for (const card of cards) {
+			const haystack = card.dataset.projectSearch ?? '';
+			const visible = !query || haystack.includes(query);
+			card.style.display = visible ? '' : 'none';
+			if (visible) {
+				visibleCount += 1;
+			}
+		}
+		shell.projectCount.textContent = `${visibleCount} proje`;
+	};
 
 	const getCurrentProject = (): PlaygroundProjectRecord | undefined =>
 		projects.find((project) => project.id === currentProjectId);
@@ -193,10 +441,9 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		shell.consoleOut.innerHTML = source
 			.map(
 				(entry) => `
-					<div class="ce fi">
-						<span class="text-ink-3 shrink-0">${entry.time}</span>
-						<span class="${resolveToneClass(entry.tone)} shrink-0 font-medium">${resolveToneIcon(entry.tone)}</span>
-						<span class="text-ink break-all">${entry.message.replace(/[&<>]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char] ?? char))}</span>
+					<div class="console-line fi">
+						<span class="console-time">[${entry.time}]</span>
+						<span class="console-message ${resolveToneClass(entry.tone)}">${escapeHtml(entry.message)}</span>
 					</div>
 				`,
 			)
@@ -221,7 +468,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	};
 
 	const updateRuntimeSummary = (): void => {
-		shell.objectCountLabel.textContent = runtimeSession ? `· ${runtimeSession.objectCount} obj` : '';
+		shell.objectCountLabel.textContent = runtimeSession ? String(runtimeSession.objectCount) : '—';
 		shell.ctrlInfo.textContent = runtimeSession?.summary ?? '—';
 	};
 
@@ -231,7 +478,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		updateRuntimeSummary();
 		if (!currentSession) {
 			shell.previewStage.replaceChildren();
-			setStatus('Stopped', 'stopped');
+			setStatus('Durduruldu', 'stopped');
 			return;
 		}
 
@@ -278,7 +525,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			updateRuntimeSummary();
 			shell.ctrlBar.classList.add('visible');
 			appendConsoleEntry(consoleEntries, 'success', `Scene started — ${project.name}`);
-			appendConsoleEntry(outputEntries, 'info', `Mounted ${sceneExample.title}`);
+			appendConsoleEntry(outputEntries, 'info', `${sceneExample.title} loaded.`);
 		} catch (error) {
 			setStatus('Error', 'error');
 			const message = error instanceof Error ? error.message : String(error);
@@ -292,46 +539,89 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			.map((project) => {
 				const selected = project.id === currentProjectId;
 				return `
-					<div class="proj-card ${selected ? 'selected' : ''}" data-project-id="${project.id}">
-						<div class="proj-card__swatch" style="background:${project.color}"></div>
-						<div class="proj-card__body"><div class="proj-card__title-row"><span class="proj-card__title">${project.name}</span>${selected ? '<span class="proj-card__badge">Active</span>' : ''}</div><span class="proj-card__desc">${project.description}</span><span class="proj-card__meta">${project.files.length} files</span></div>
+					<div class="proj-card ${selected ? 'selected' : ''}" data-project-id="${escapeHtml(project.id)}" data-project-search="${escapeHtml(`${project.name} ${project.description}`.toLowerCase())}" style="--project-accent:${project.color}">
+						<div class="proj-card__icon">
+							<span class="proj-card__swatch"></span>
+						</div>
+						<div class="proj-card__body">
+							<div class="proj-card__title-row">
+								<span class="proj-card__title">${escapeHtml(project.name)}</span>
+								${selected ? '<span class="proj-card__badge">Aktif</span>' : ''}
+							</div>
+							<span class="proj-card__desc">${escapeHtml(project.description)}</span>
+							<span class="proj-card__meta">${project.files.length} dosya</span>
+						</div>
 					</div>
 				`;
 			})
 			.join('');
-		shell.projectCount.textContent = `${projects.length} projects`;
+		applyProjectListFilter();
 	};
 
 	const renderFileTree = (): void => {
 		const project = getCurrentProject();
 		if (!project) {
 			shell.fileTree.innerHTML = '';
-			shell.fileCountText.textContent = '0 files';
+			shell.fileCountText.textContent = '0 dosya';
 			return;
 		}
 
-		shell.fileTree.innerHTML = project.files
-			.map((file) => {
-				const active = file.path === currentFilePath;
-				return `
-					<div class="explorer-item${active ? ' active' : ''}" data-file-path="${file.path}">
-						<svg class="explorer-item__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${active ? '#C2410C' : '#9C958D'}" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-						<span class="explorer-item__label">${file.path}</span>
-					</div>
-				`;
-			})
-			.join('');
-		shell.fileCountText.textContent = `${project.files.length} files`;
+		const { root: fileTree, folderCount } = buildFileTree(project.files);
+		const folderContainsActivePath = (folder: FileTreeFolderNode): boolean =>
+			[...folder.children.values()].some((child) =>
+				child.kind === 'file' ? child.path === currentFilePath : folderContainsActivePath(child),
+			);
+		const renderNodes = (nodes: readonly FileTreeNode[], depth: number): string =>
+			nodes
+				.map((node) => {
+					if (node.kind === 'folder') {
+						const hasActiveDescendant = folderContainsActivePath(node);
+						const expanded = hasActiveDescendant || !collapsedFolders.has(node.key);
+						const childrenMarkup = expanded
+							? renderNodes([...node.children.values()], depth + 1)
+							: '';
+						return `
+							<div class="explorer-branch">
+								<button
+									type="button"
+									class="explorer-item explorer-item--folder${hasActiveDescendant ? ' explorer-item--folder-current' : ''}"
+									data-folder-path="${escapeHtml(node.key)}"
+									data-expanded="${expanded ? 'true' : 'false'}"
+									style="--tree-depth:${depth}"
+								>
+									<span class="explorer-item__chevron">${createChevronIcon(10)}</span>
+									<span class="explorer-item__icon explorer-item__icon--folder" style="color:#94a3b8">${createFolderIcon(14)}</span>
+									<span class="explorer-item__label">${escapeHtml(node.name)}</span>
+								</button>
+								${childrenMarkup ? `<div class="explorer-children">${childrenMarkup}</div>` : ''}
+							</div>
+						`;
+					}
+
+					const active = node.path === currentFilePath;
+					const visual = resolveFileVisual(node.path);
+					return `
+						<div class="explorer-item explorer-item--file${active ? ' active' : ''}" data-file-path="${escapeHtml(node.path)}" style="--tree-depth:${depth}">
+							<span class="explorer-item__icon" style="color:${visual.color}">${renderVisualIcon(visual, 14)}</span>
+							<span class="explorer-item__label">${escapeHtml(node.name)}</span>
+						</div>
+					`;
+				})
+				.join('');
+
+		shell.fileTree.innerHTML = renderNodes([...fileTree.children.values()], 0);
+		shell.fileCountText.textContent = folderCount > 0 ? `${project.files.length} files • ${folderCount} folders` : `${project.files.length} files`;
 	};
 
 	const renderEditorTabs = (): void => {
 		shell.editorTabs.innerHTML = openTabs
 			.map((tabPath) => {
 				const active = tabPath === currentFilePath;
+				const visual = resolveFileVisual(tabPath);
 				return `
 					<div class="editor-tab${active ? ' active' : ''}" data-tab-path="${tabPath}">
-						<svg class="editor-tab__icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${active ? '#C2410C' : '#9C958D'}" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-						<span class="editor-tab__label">${tabPath}</span>
+						<span class="editor-tab__icon" style="color:${visual.color}">${renderVisualIcon(visual, 12)}</span>
+						<span class="editor-tab__label">${escapeHtml(tabPath)}</span>
 						<button type="button" class="editor-tab__close" data-close-tab="${tabPath}">
 							<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
 						</button>
@@ -350,6 +640,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		shell.projectNameDisplay.textContent = project.name;
 		shell.projectDot.style.background = project.color;
 		shell.languageDisplay.textContent = resolveLanguageLabel(currentFilePath);
+		shell.breadcrumbLabel.textContent = currentFilePath;
 	};
 
 	const refreshEditorFiles = (): void => {
@@ -463,7 +754,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		fpsState.frames += 1;
 		const now = performance.now();
 		if (now - fpsState.last >= 1000) {
-			shell.fpsLabel.textContent = `${fpsState.frames} FPS`;
+			shell.fpsLabel.textContent = String(fpsState.frames);
 			fpsState.frames = 0;
 			fpsState.last = now;
 		}
@@ -476,6 +767,10 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		shell.projectDropdown.style.transform = open ? 'translateY(0) scale(1)' : 'translateY(-6px) scale(.97)';
 		shell.projectDropdown.style.pointerEvents = open ? 'auto' : 'none';
 		shell.projectChevron.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+		if (open) {
+			applyProjectListFilter();
+			queueMicrotask(() => shell.projectSearchInput.focus());
+		}
 	};
 
 	const toggleProjectDropdown = (): void => {
@@ -558,6 +853,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 
 	const setCameraPreset = (preset: PlaygroundCameraPreset): void => {
 		runtimeSession?.handle.setCameraPreset?.(preset);
+		shell.cameraLabel.textContent = resolveCameraPresetLabel(preset);
 		for (const option of shell.cameraDropdown.querySelectorAll<HTMLElement>('.cam-opt')) {
 			option.classList.toggle('active', option.dataset.cam === preset);
 		}
@@ -660,7 +956,19 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			switchProject(card.dataset.projectId);
 		}
 	});
+	shell.projectSearchInput.addEventListener('input', applyProjectListFilter);
 	shell.fileTree.addEventListener('click', (event) => {
+		const folder = (event.target as HTMLElement).closest<HTMLElement>('[data-folder-path]');
+		if (folder?.dataset.folderPath) {
+			if (collapsedFolders.has(folder.dataset.folderPath)) {
+				collapsedFolders.delete(folder.dataset.folderPath);
+			} else {
+				collapsedFolders.add(folder.dataset.folderPath);
+			}
+			renderFileTree();
+			return;
+		}
+
 		const item = (event.target as HTMLElement).closest<HTMLElement>('[data-file-path]');
 		if (item?.dataset.filePath) {
 			selectFile(item.dataset.filePath);
@@ -713,11 +1021,27 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	renderEditorTabs();
 	renderConsoleOutput();
 	syncProjectHeader();
+	shell.cameraLabel.textContent = resolveCameraPresetLabel('perspective');
 	updateControlState();
 	fpsLoop();
-	appendConsoleEntry(outputEntries, 'info', 'Axrone Playground initialized');
-	appendConsoleEntry(outputEntries, 'log', 'Press Ctrl+Enter to run the current project');
+	appendConsoleEntry(outputEntries, 'info', 'Axrone Playground initialized.');
+	appendConsoleEntry(outputEntries, 'log', 'Press Ctrl+Enter to run the current project.');
 	void runCurrentProject();
+
+	document.addEventListener('click', (event) => {
+		const target = event.target as Node | null;
+		if (!target) {
+			return;
+		}
+
+		if (!shell.projectDropdown.contains(target) && !requireElement(root, '#proj-trigger').contains(target)) {
+			setProjectDropdownState(false);
+		}
+
+		if (!shell.cameraDropdown.contains(target) && !shell.cameraButton.contains(target)) {
+			shell.cameraDropdown.classList.remove('open');
+		}
+	});
 
 	document.addEventListener('keydown', (event) => {
 		if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
