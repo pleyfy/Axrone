@@ -22,9 +22,15 @@ export const PARTICLE_POINT_SIZE = 0.02;
 export const PARTICLE_HORIZONTAL_SPAN = 22;
 export const PARTICLE_VERTICAL_SPAN = 12;
 export const PARTICLE_CEILING = 14;
-export const PARTICLE_CLEAR_COLOR = [0.9411764706, 0.9333333333, 0.9176470588, 1] as const;
-export const PARTICLE_GRID_MAJOR = [0.8784313725, 0.8666666667, 0.8431372549] as const;
-export const PARTICLE_GRID_MINOR = [0.9176470588, 0.9098039216, 0.8901960784] as const;
+export const PARTICLE_CLEAR_COLOR = [0.9254901961, 0.9647058824, 1, 1] as const;
+export const PARTICLE_GRID_MAJOR = [0.6901960784, 0.8, 0.9411764706] as const;
+export const PARTICLE_GRID_MINOR = [0.8235294118, 0.9019607843, 0.9803921569] as const;
+const PARTICLE_PALETTE = [
+	[0.2274509804, 0.6509803922, 1, 1],
+	[0.1411764706, 0.8823529412, 0.9490196078, 1],
+	[0.4196078431, 0.5647058824, 1, 1],
+	[0.7215686275, 0.7882352941, 1, 1],
+] as const;
 
 export class ParticleEmitter {
 	readonly rate: number;
@@ -57,7 +63,8 @@ export class ParticleEmitter {
 }
 
 export const createParticleColor = (): readonly [number, number, number, number] => {
-	return [0.8392156863, 0.4117647059, 0.1529411765, 1] as const;
+	const color = PARTICLE_PALETTE[Math.floor(Math.random() * PARTICLE_PALETTE.length)] ?? PARTICLE_PALETTE[0];
+	return [color[0], color[1], color[2], 0.76 + Math.random() * 0.24] as const;
 };
 
 console.log('ParticleEmitter class loaded');
