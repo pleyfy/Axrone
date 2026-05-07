@@ -80,14 +80,14 @@ export class OrbitalBody {
 	}
 }
 
-export const SOLAR_CLEAR_COLOR = rgbaFromHex(0xf0eeea);
-export const SOLAR_AMBIENT_LIGHT = [0.12, 0.12, 0.12] as const;
-export const SOLAR_GRID_MAJOR = rgbFromHex(0xe0ddd7);
-export const SOLAR_GRID_MINOR = rgbFromHex(0xeae8e3);
-export const SOLAR_SUN_COLOR = rgbaFromHex(0xf59e0b);
-export const SOLAR_SUN_WIREFRAME_COLOR = rgbaFromHex(0x8c4b08);
-export const SOLAR_LIGHT_COLOR = rgbFromHex(0xffffff);
-export const SOLAR_LIGHT_INTENSITY = 1.5;
+export const SOLAR_CLEAR_COLOR = rgbaFromHex(0xe8f4ff);
+export const SOLAR_AMBIENT_LIGHT = [0.18, 0.24, 0.32] as const;
+export const SOLAR_GRID_MAJOR = rgbFromHex(0x8aaee0);
+export const SOLAR_GRID_MINOR = rgbFromHex(0xc7def7);
+export const SOLAR_SUN_COLOR = rgbaFromHex(0xdff6ff);
+export const SOLAR_SUN_WIREFRAME_COLOR = rgbaFromHex(0x5b9bc9);
+export const SOLAR_LIGHT_COLOR = rgbFromHex(0xc9eeff);
+export const SOLAR_LIGHT_INTENSITY = 1.8;
 export const SOLAR_LIGHT_RANGE = 100;
 
 export const SOLAR_PLANETS: readonly SolarPlanetDefinition[] = [
@@ -96,7 +96,7 @@ export const SOLAR_PLANETS: readonly SolarPlanetDefinition[] = [
 		label: 'Mercury',
 		radius: 0.35,
 		distance: 7,
-		color: rgbaFromHex(0x9c958d),
+		color: rgbaFromHex(0x91a7c7),
 		speed: 4.7,
 		tilt: 0.03,
 		roughness: 0.6,
@@ -109,7 +109,7 @@ export const SOLAR_PLANETS: readonly SolarPlanetDefinition[] = [
 		label: 'Venus',
 		radius: 0.6,
 		distance: 10,
-		color: rgbaFromHex(0xd97706),
+		color: rgbaFromHex(0xc8d7ff),
 		speed: 1.85,
 		tilt: 2.6,
 		roughness: 0.6,
@@ -135,7 +135,7 @@ export const SOLAR_PLANETS: readonly SolarPlanetDefinition[] = [
 		label: 'Mars',
 		radius: 0.45,
 		distance: 18,
-		color: rgbaFromHex(0xc2410c),
+		color: rgbaFromHex(0x7d7cff),
 		speed: 0.53,
 		tilt: 0.44,
 		roughness: 0.6,
@@ -148,7 +148,7 @@ export const SOLAR_PLANETS: readonly SolarPlanetDefinition[] = [
 		label: 'Jupiter',
 		radius: 1.6,
 		distance: 25,
-		color: rgbaFromHex(0xb45309),
+		color: rgbaFromHex(0x61c7ff),
 		speed: 0.08,
 		tilt: 0.05,
 		roughness: 0.6,
@@ -161,7 +161,7 @@ export const SOLAR_PLANETS: readonly SolarPlanetDefinition[] = [
 		label: 'Saturn',
 		radius: 1.3,
 		distance: 32,
-		color: rgbaFromHex(0xfef3c7),
+		color: rgbaFromHex(0xdaf4ff),
 		speed: 0.03,
 		tilt: 0.47,
 		roughness: 0.6,
@@ -173,7 +173,7 @@ export const SOLAR_PLANETS: readonly SolarPlanetDefinition[] = [
 			outerRadius: 2.8,
 			tilt: Math.PI / 3,
 			opacity: 0.5,
-			color: rgbaFromHex(0xfef3c7, 0.5),
+			color: rgbaFromHex(0xc9ecff, 0.5),
 		},
 	},
 	{
