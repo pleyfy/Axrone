@@ -1,4 +1,4 @@
-import type { PlaygroundSceneExample } from '../shared/playground-types';
+import type { PlaygroundSceneExample } from '../../shared/playground-types';
 import { createSolarSystemScene } from './scene';
 
 const example: PlaygroundSceneExample = {

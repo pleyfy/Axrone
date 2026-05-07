@@ -11,7 +11,7 @@ import {
 	registerPlaygroundShaders,
 } from '@axrone/playground';
 import { Quat, Vec3 } from '@axrone/numeric';
-import type { PlaygroundSceneHandle } from '../shared/playground-types';
+import type { PlaygroundSceneHandle } from '../../shared/playground-types';
 import {
 	SOLAR_AMBIENT_LIGHT,
 	SOLAR_CLEAR_COLOR,
@@ -24,7 +24,7 @@ import {
 	SOLAR_SUN_COLOR,
 	SOLAR_SUN_WIREFRAME_COLOR,
 	type SolarPlanetDefinition,
-} from './data';
+} from '../assets/data';
 
 type SolarPlanetRuntime = {
 	readonly config: SolarPlanetDefinition;
