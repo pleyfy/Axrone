@@ -11,24 +11,20 @@ import {
 	registerPlaygroundShaders,
 } from '@axrone/playground';
 import { Quat, Vec3 } from '@axrone/numeric';
-import type { PlaygroundSceneHandle } from '../shared/playground-types';
-
-const DEMO_CLEAR_COLOR = [0.941, 0.933, 0.918, 1] as const;
-const DEMO_BACKGROUND = [0.941, 0.933, 0.918] as const;
-const DEMO_GRID_COLOR = [0.886, 0.875, 0.847] as const;
-const DEMO_GRID_MAJOR = [0.816, 0.804, 0.773] as const;
-const DEMO_LINE_COLOR = [0.23, 0.19, 0.16, 1] as const;
-const DEMO_AMBIENT = [0.45, 0.45, 0.45] as const;
-const DEMO_KEY_LIGHT_DIRECTION = [-0.384, -0.768, -0.512] as const;
-const DEMO_KEY_LIGHT_COLOR = [0.85, 0.85, 0.85] as const;
-const DEMO_FILL_LIGHT_DIRECTION = [0.651, -0.391, 0.651] as const;
-const DEMO_FILL_LIGHT_COLOR = [0.299, 0.286, 0.234] as const;
-const DEMO_COLORS = {
-	box: [0.761, 0.255, 0.047, 1] as const,
-	sphere: [0.161, 0.145, 0.141, 1] as const,
-	knot: [0.996, 0.953, 0.78, 1] as const,
-	floor: [0.91, 0.902, 0.882, 1] as const,
-} as const;
+import type { PlaygroundSceneHandle } from '../../shared/playground-types';
+import {
+	DEMO_AMBIENT,
+	DEMO_BACKGROUND,
+	DEMO_CLEAR_COLOR,
+	DEMO_COLORS,
+	DEMO_FILL_LIGHT_COLOR,
+	DEMO_FILL_LIGHT_DIRECTION,
+	DEMO_GRID_COLOR,
+	DEMO_GRID_MAJOR,
+	DEMO_KEY_LIGHT_COLOR,
+	DEMO_KEY_LIGHT_DIRECTION,
+	DEMO_LINE_COLOR,
+} from '../assets/palette';
 
 export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle => {
 	const stage = createSceneStage(container, {
