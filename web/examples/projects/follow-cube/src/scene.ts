@@ -11,16 +11,18 @@ import {
 } from '@axrone/playground';
 import type { PlaygroundCameraPreset, PlaygroundSceneHandle } from '../../shared/playground-types';
 
-const FOLLOW_CLEAR_COLOR = [0.949, 0.941, 0.925, 1] as const;
-const FOLLOW_AMBIENT = [0.39, 0.38, 0.35] as const;
+const FOLLOW_CLEAR_COLOR = [0.929, 0.961, 0.996, 1] as const;
+const FOLLOW_AMBIENT = [0.35, 0.43, 0.52] as const;
 const FOLLOW_KEY_LIGHT_DIRECTION = [-0.46, -0.82, -0.33] as const;
-const FOLLOW_KEY_LIGHT_COLOR = [0.97, 0.92, 0.84] as const;
+const FOLLOW_KEY_LIGHT_COLOR = [0.84, 0.92, 1] as const;
 const FOLLOW_FILL_LIGHT_DIRECTION = [0.58, -0.4, 0.71] as const;
-const FOLLOW_FILL_LIGHT_COLOR = [0.29, 0.32, 0.37] as const;
-const FOLLOW_GRID_PRIMARY = [0.83, 0.8, 0.75] as const;
-const FOLLOW_GRID_SECONDARY = [0.91, 0.89, 0.85] as const;
-const FOLLOW_GRID_BACKGROUND = [0.957, 0.949, 0.937] as const;
-const FOLLOW_LINE_COLOR = [0.18, 0.14, 0.12, 1] as const;
+const FOLLOW_FILL_LIGHT_COLOR = [0.35, 0.56, 0.87] as const;
+const FOLLOW_GRID_PRIMARY = [0.62, 0.76, 0.93] as const;
+const FOLLOW_GRID_SECONDARY = [0.82, 0.9, 0.98] as const;
+const FOLLOW_GRID_BACKGROUND = [0.941, 0.972, 0.996] as const;
+const FOLLOW_LINE_COLOR = [0.12, 0.22, 0.4, 1] as const;
+const FOLLOW_FLOOR_FILL_COLOR = [0.886, 0.929, 0.98, 1] as const;
+const FOLLOW_FLOOR_WIRE_COLOR = [0.325, 0.478, 0.702, 1] as const;
 
 const FOLLOW_PLAYER_SHADER_ID = 'playground/follow-cube/player-shader';
 const FOLLOW_PLAYER_MESH_ID = 'playground/follow-cube/player-mesh';
@@ -219,14 +221,14 @@ vec3 faceColor(vec3 normal) {
 	vec3 absNormal = abs(n);
 
 	if (absNormal.x > absNormal.y && absNormal.x > absNormal.z) {
-		return n.x > 0.0 ? vec3(0.98, 0.73, 0.18) : vec3(0.21, 0.81, 0.49);
+		return n.x > 0.0 ? vec3(0.19, 0.66, 1.0) : vec3(0.15, 0.84, 0.82);
 	}
 
 	if (absNormal.y > absNormal.x && absNormal.y > absNormal.z) {
-		return n.y > 0.0 ? vec3(0.76, 0.38, 0.96) : vec3(0.99, 0.47, 0.73);
+		return n.y > 0.0 ? vec3(0.49, 0.55, 1.0) : vec3(0.58, 0.82, 1.0);
 	}
 
-	return n.z > 0.0 ? vec3(0.95, 0.28, 0.24) : vec3(0.18, 0.67, 0.98);
+	return n.z > 0.0 ? vec3(0.34, 0.75, 0.98) : vec3(0.22, 0.42, 0.94);
 }
 
 void main() {
@@ -278,7 +280,7 @@ void main() {
 		id: FOLLOW_FLOOR_FILL_MATERIAL_ID,
 		shaderId: shaders.lit,
 		uniforms: {
-			u_Color: [0.938, 0.926, 0.902, 1],
+			u_Color: FOLLOW_FLOOR_FILL_COLOR,
 			u_Shininess: 8,
 			...lightingUniforms,
 		},
@@ -286,7 +288,7 @@ void main() {
 	scene.createMaterial({
 		id: FOLLOW_FLOOR_WIRE_MATERIAL_ID,
 		shaderId: shaders.solid,
-		uniforms: { u_Color: [0.39, 0.33, 0.28, 1] },
+		uniforms: { u_Color: FOLLOW_FLOOR_WIRE_COLOR },
 		rasterizerState: { polygonMode: 'line', lineWidth: 1 },
 	});
 
