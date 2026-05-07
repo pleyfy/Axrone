@@ -13,7 +13,6 @@ import {
 import { Quat, Vec3 } from '@axrone/numeric';
 import type { PlaygroundSceneHandle } from '../shared/playground-types';
 import {
-	OrbitalBody,
 	SOLAR_AMBIENT_LIGHT,
 	SOLAR_CLEAR_COLOR,
 	SOLAR_GRID_MAJOR,
@@ -29,9 +28,6 @@ import {
 
 type SolarPlanetRuntime = {
 	readonly config: SolarPlanetDefinition;
-	readonly orbital: OrbitalBody;
-	readonly spinOffset: number;
-	readonly orbitOffset: number;
 	readonly planetTransform: Transform;
 	readonly planetRenderer: MeshRenderer;
 	readonly fillMaterialId: string;
@@ -48,7 +44,9 @@ type SolarPlanetRuntime = {
 const SOLAR_SPHERE_MESH_ID = 'playground/solar/sphere';
 const SOLAR_PLANET_SHADER_ID = 'playground/solar/planet-light';
 const SOLAR_SATURN_RING_MESH_ID = 'playground/solar/saturn-ring';
+const SOLAR_ORBIT_SPEED_SCALE = 0.24;
 const OPAQUE_DOUBLE_SIDED_STATE = { cullMode: 'off' as const };
+const ORBIT_RING_SEGMENTS = 128;
 const SATURN_RING_PASS = {
 	id: 'saturn-ring',
 	primitive: 'triangle-list' as const,
@@ -220,14 +218,14 @@ void main() {
 	const camera = scene.createCameraActor({ name: 'SolarCamera' }, { primary: true, fieldOfView: 60 });
 	const orbit = camera.addComponent(OrbitCameraController, {
 		target: [0, 0, 0],
-		distance: 55.452682532,
+		distance: 52,
 		minDistance: 12,
 		maxDistance: 120,
 		azimuth: Math.PI * 0.25,
-		elevation: 0.467,
+		elevation: 0.92,
 	});
 	const detachInput = attachOrbitCameraInput(container, orbit, {
-		minElevation: 0.08,
+		minElevation: 0.22,
 		maxElevation: 1.25,
 	});
 
@@ -273,33 +271,28 @@ void main() {
 		const orbitFillMaterialId = `playground/solar/${planet.id}-orbit-fill`;
 		const orbitWireMaterialId = `playground/solar/${planet.id}-orbit-wire`;
 		const orbitMeshId = `playground/solar/${planet.id}-orbit-mesh`;
-		const orbitThickness = 0.04 / planet.distance;
+		const orbitThickness = 0.11;
 		scene.registerMesh(
 			meshBuilder.createDefinition(
 				orbitMeshId,
 				createRing({
-					innerRadius: 1 - orbitThickness,
-					outerRadius: 1 + orbitThickness,
-					segments: 64,
+					innerRadius: Math.max(0.01, planet.distance - orbitThickness * 0.5),
+					outerRadius: planet.distance + orbitThickness * 0.5,
+					segments: ORBIT_RING_SEGMENTS,
 				}),
 			),
 		);
-		registerSolidMaterial(orbitFillMaterialId, [0.8784313725, 0.8666666667, 0.8431372549, 1], 'fill', {
+		registerSolidMaterial(orbitFillMaterialId, [0.66, 0.64, 0.6, 0.96], 'fill', {
 			doubleSided: true,
 		});
-		registerSolidMaterial(orbitWireMaterialId, [0.745, 0.725, 0.69, 1], 'line', { doubleSided: true });
+		registerSolidMaterial(orbitWireMaterialId, [0.52, 0.5, 0.47, 1], 'line', { doubleSided: true });
 
 		const orbitActor = scene.createRenderableActor(
 			{ name: `${planet.label}OrbitRing` },
 			{ meshId: orbitMeshId, materialId: orbitFillMaterialId, receiveLighting: false },
 		);
 		const orbitTransform = orbitActor.requireComponent(Transform);
-		orbitTransform.position = new Vec3(-planet.distance * planet.eccentricity, 0.01, 0);
-		orbitTransform.scale = new Vec3(
-			planet.distance,
-			1,
-			planet.distance * Math.sqrt(1 - planet.eccentricity * planet.eccentricity),
-		);
+		orbitTransform.position = new Vec3(0, 0.03, 0);
 
 		const planetActor = scene.createRenderableActor(
 			{ name: planet.label },
@@ -313,13 +306,6 @@ void main() {
 		if (!planetRenderer || !orbitRenderer) {
 			throw new Error(`Solar system actor setup failed for ${planet.label}.`);
 		}
-
-		const orbital = new OrbitalBody({
-			semiMajorAxis: planet.distance,
-			eccentricity: planet.eccentricity,
-			period: planet.period,
-			meanAnomaly: planet.meanAnomaly,
-		});
 
 		let saturnRingTransform: Transform | undefined;
 		let saturnRingRenderer: MeshRenderer | undefined;
@@ -345,9 +331,6 @@ void main() {
 
 		planetRuntimes.push({
 			config: planet,
-			orbital,
-			spinOffset: planet.meanAnomaly,
-			orbitOffset: planet.meanAnomaly,
 			planetTransform,
 			planetRenderer,
 			fillMaterialId,
@@ -375,12 +358,12 @@ void main() {
 			sunTransform.rotation = Quat.fromEuler(0, elapsed * 0.18, 0);
 
 			for (const runtime of planetRuntimes) {
-				const orbitPosition = runtime.orbital.getPosition(elapsed);
-				const x = orbitPosition.x;
-				const z = orbitPosition.y;
+				const angle = runtime.config.meanAnomaly + elapsed * runtime.config.speed * SOLAR_ORBIT_SPEED_SCALE;
+				const x = Math.cos(angle) * runtime.config.distance;
+				const z = Math.sin(angle) * runtime.config.distance;
 				const y = 0;
 				runtime.planetTransform.position = new Vec3(x, y, z);
-				runtime.planetTransform.rotation = Quat.fromEuler(runtime.config.tilt, elapsed * 1.2 + runtime.spinOffset, 0);
+				runtime.planetTransform.rotation = Quat.fromEuler(0, elapsed * 1.2 + runtime.config.meanAnomaly, 0);
 
 				if (runtime.saturnRingTransform) {
 					runtime.saturnRingTransform.position = new Vec3(x, y, z);
