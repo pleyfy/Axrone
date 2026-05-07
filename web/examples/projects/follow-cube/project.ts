@@ -3,7 +3,7 @@ const project = {
 	name: 'Follow Cube Controller',
 	color: '#ea580c',
 	description: 'Legacy follow-cube movement rebuilt for the new Axrone examples playground.',
-	entryFile: 'main.ts',
+	entryFile: 'src/main.ts',
 	order: 3,
 } as const;
 

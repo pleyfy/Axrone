@@ -9,7 +9,7 @@ import {
 	registerPlaygroundShaders,
 	applyCameraPreset,
 } from '@axrone/playground';
-import type { PlaygroundCameraPreset, PlaygroundSceneHandle } from '../shared/playground-types';
+import type { PlaygroundCameraPreset, PlaygroundSceneHandle } from '../../shared/playground-types';
 
 const FOLLOW_CLEAR_COLOR = [0.949, 0.941, 0.925, 1] as const;
 const FOLLOW_AMBIENT = [0.39, 0.38, 0.35] as const;
