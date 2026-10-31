@@ -249,7 +249,8 @@ public sealed class UiDrawList : IUiDrawList
     private static bool IsBounded(UiRenderCommandKind kind) =>
         kind is UiRenderCommandKind.Quad or UiRenderCommandKind.Image or UiRenderCommandKind.Text;
 
-    private static void MergeRun(UiRenderCommand[] source, UiRenderCommand[] target, int left, int mid, int right)    {
+    private static void MergeRun(UiRenderCommand[] source, UiRenderCommand[] target, int left, int mid, int right)
+    {
         int i = left;
         int j = mid;
         int k = left;

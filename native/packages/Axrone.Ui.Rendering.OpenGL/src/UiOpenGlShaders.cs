@@ -1,4 +1,4 @@
-namespace Axrone.Ui.Rendering;
+namespace Axrone.Ui.Rendering.OpenGL;
 
 using Axrone.Render.OpenGL.Native;
 
