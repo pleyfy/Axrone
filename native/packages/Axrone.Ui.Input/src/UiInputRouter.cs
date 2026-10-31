@@ -139,7 +139,6 @@ public sealed class UiInputRouter : IUiInputRouter
         }
 
         DriveComposition(target, in args);
-
         int count = BuildAncestors(target);
         for (int i = 0; i < count; i++)
         {
@@ -195,28 +194,8 @@ public sealed class UiInputRouter : IUiInputRouter
         return new UiInputDispatchResult(false, UiNodeId.Invalid, UiRoutingPhase.Target, true);
     }
 
-    private void DriveComposition(UiNodeId target, in UiTextInputEvent args)
-    {
-        if (_composition is null)
-        {
-            return;
-        }
-
-        ReadOnlySpan<char> text = args.Text;
-        if (args.Composing)
-        {
-            if (_composition.Active != target)
-            {
-                _composition.Begin(target);
-            }
-
-            _composition.Update(text, text.Length);
-        }
-        else if (_composition.Active.IsValid)
-        {
-            _composition.Commit(text);
-        }
-    }
+    private void DriveComposition(UiNodeId target, in UiTextInputEvent args) =>
+        _composition?.Feed(target, in args);
 
     private UiInputDispatchResult RoutePointer(UiNodeId target, in UiPointerEvent args)
     {

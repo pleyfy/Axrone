@@ -74,6 +74,33 @@ public sealed class UiTextComposition : IDisposable
         return _sink.CommitComposition(node, text);
     }
 
+    /// <summary>
+    /// Drives the session from a routed text event: composing events begin (or retarget)
+    /// and update, a non-composing event commits the active session. Returns whether the
+    /// sink accepted the step; plain text with no active composition returns
+    /// <see langword="false"/> and is left to the node's text receiver.
+    /// </summary>
+    public bool Feed(UiNodeId target, in UiTextInputEvent args)
+    {
+        if (!target.IsValid)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> text = args.Text;
+        if (args.Composing)
+        {
+            if (_active != target)
+            {
+                Begin(target);
+            }
+
+            return Update(text, text.Length);
+        }
+
+        return _active.IsValid && Commit(text);
+    }
+
     /// <summary>Cancels the active composition, if any.</summary>
     public void Cancel()
     {
