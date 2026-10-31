@@ -25,6 +25,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../Axrone.Ui/Axrone.Ui.csproj" />
+    <ProjectReference Include="../Axrone.Asset/Axrone.Asset.csproj" />
+    <ProjectReference Include="../Axrone.Hash/Axrone.Hash.csproj" />
   </ItemGroup>
 
   <ItemGroup>
