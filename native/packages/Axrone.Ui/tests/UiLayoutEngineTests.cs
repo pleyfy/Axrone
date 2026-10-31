@@ -473,6 +473,8 @@ internal sealed class LayoutHarness
 
     public FakeContentMeasurer Content { get; } = new();
 
+    public UiTextContentMeasurer TextContent { get; } = new(new FixedTextMeasurer());
+
     public RecordingSink Sink { get; } = new();
 
     public UiLayoutTree Tree { get; private set; } = null!;
@@ -514,7 +516,8 @@ internal sealed class LayoutHarness
         return node;
     }
 
-    public void Freeze() => Tree = new UiLayoutTree(_builder.Build(_info).Nodes, Styles, Content);
+    public void Freeze() =>
+        Tree = new UiLayoutTree(_builder.Build(_info).Nodes, Styles, new HarnessContent(Content, TextContent));
 
     public UiMeasureResult Measure(UiNodeId node) =>
         Engine.Measure(Tree, node, new UiMeasureConstraints(0.0f, 0.0f, 300.0f, 200.0f));
@@ -522,6 +525,22 @@ internal sealed class LayoutHarness
     public void Arrange(UiNodeId node, in Rect bounds) => Engine.Arrange(Tree, node, in bounds, Sink);
 
     public UiNodeId[] ChildrenOf(UiNodeId node) => Tree.Nodes.GetChildren(node).ToArray();
+}
+
+internal sealed class HarnessContent : IUiContentMeasurer
+{
+    private readonly FakeContentMeasurer _boxes;
+    private readonly UiTextContentMeasurer _text;
+
+    public HarnessContent(FakeContentMeasurer boxes, UiTextContentMeasurer text)
+    {
+        _boxes = boxes;
+        _text = text;
+    }
+
+    public bool TryMeasureContent(UiNodeId node, in UiMeasureConstraints constraints, out UiSize size) =>
+        _text.TryMeasureContent(node, in constraints, out size) ||
+        _boxes.TryMeasureContent(node, in constraints, out size);
 }
 
 internal sealed class CountingTree : IUiLayoutTree
