@@ -32,6 +32,13 @@ internal sealed class UiMeasureCache
 
     public bool TryGetInProgress(uint key)
     {
+        // Zero is the empty-slot sentinel, never a node identity; reporting it
+        // as in-progress is what turned invalid identifiers into fake cycles.
+        if (key == 0)
+        {
+            return false;
+        }
+
         int index = Find(key);
         ref Entry entry = ref _entries[index];
         return entry.Key == key && !entry.Complete;
@@ -39,6 +46,12 @@ internal sealed class UiMeasureCache
 
     public bool TryGetComplete(uint key, out UiMeasureResult result)
     {
+        if (key == 0)
+        {
+            result = default;
+            return false;
+        }
+
         int index = Find(key);
         ref Entry entry = ref _entries[index];
         if (entry.Key == key && entry.Complete)
@@ -53,6 +66,11 @@ internal sealed class UiMeasureCache
 
     public void SetInProgress(uint key)
     {
+        if (key == 0)
+        {
+            UiThrowHelper.ThrowInvalidCacheKey();
+        }
+
         int index = Find(key);
         ref Entry entry = ref _entries[index];
         if (entry.Key == key)
@@ -68,6 +86,11 @@ internal sealed class UiMeasureCache
 
     public void Store(uint key, in UiMeasureResult result)
     {
+        if (key == 0)
+        {
+            UiThrowHelper.ThrowInvalidCacheKey();
+        }
+
         int index = Find(key);
         ref Entry entry = ref _entries[index];
         if (entry.Key != key)
