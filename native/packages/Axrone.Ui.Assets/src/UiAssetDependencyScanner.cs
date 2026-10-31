@@ -9,10 +9,25 @@ internal sealed class UiAssetDependencyScanner
 {
     private const string FontMediaType = "font/family";
     private const string MaterialMediaType = "application/x-axrone-material";
+    private const int DefaultMaxResources = 65_536;
 
     private readonly List<UiAssetResource> _resources = [];
     private readonly Dictionary<ulong, int> _indexById = new();
     private readonly Stack<UiNodeId> _pending = new();
+    private readonly int _maxResources;
+
+    /// <summary>Creates a scanner with the default resource bound.</summary>
+    public UiAssetDependencyScanner()
+        : this(DefaultMaxResources)
+    {
+    }
+
+    /// <summary>Creates a scanner with an explicit resource bound.</summary>
+    internal UiAssetDependencyScanner(int maxResources)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxResources, 1);
+        _maxResources = maxResources;
+    }
 
     public IReadOnlyList<UiAssetResource> Resources => _resources;
 
@@ -110,6 +125,15 @@ internal sealed class UiAssetDependencyScanner
                 UiDocumentErrorCode.Malformed,
                 0,
                 "Distinct UI resource paths collide under the same identity.");
+            return false;
+        }
+
+        if (_resources.Count >= _maxResources)
+        {
+            failure = new UiDocumentError(
+                UiDocumentErrorCode.ResourceLimit,
+                0,
+                "UI resource count exceeds the scan limit.");
             return false;
         }
 
