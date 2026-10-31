@@ -80,12 +80,12 @@ public sealed class UiInputRouter : IUiInputRouter
                 return RoutePointer(target, in args);
             case UiPointerPhase.Up:
             case UiPointerPhase.Cancel:
-            {
-                UiInputDispatchResult result = RoutePointer(target, in args);
-                _capture.Release(args.PointerId);
-                _focus.ValidateFocus();
-                return result with { Canceled = args.Phase == UiPointerPhase.Cancel || result.Canceled };
-            }
+                {
+                    UiInputDispatchResult result = RoutePointer(target, in args);
+                    _capture.Release(args.PointerId);
+                    _focus.ValidateFocus();
+                    return result with { Canceled = args.Phase == UiPointerPhase.Cancel || result.Canceled };
+                }
 
             case UiPointerPhase.Enter:
             case UiPointerPhase.Leave:
