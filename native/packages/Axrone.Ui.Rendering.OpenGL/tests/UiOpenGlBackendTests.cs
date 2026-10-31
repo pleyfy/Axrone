@@ -24,6 +24,9 @@ public sealed class UiOpenGlBackendTests
     private static UiRenderCommand Quad(int z = 0) =>
         UiRenderCommand.Quad(new UiNodeId(1), new Rect(0, 0, 10, 10), UiColor.White, z);
 
+    private static UiRenderCommand QuadAt(float x) =>
+        UiRenderCommand.Quad(new UiNodeId(1), new Rect(x, 0, 10, 10), UiColor.White, 0);
+
     private static UiRenderCommand Image(ulong resource) =>
         UiRenderCommand.Image(new UiNodeId(2), new Rect(0, 0, 32, 32), new UiResourceId(resource), new Rect(0, 0, 1, 1), UiColor.White, 0);
 
@@ -259,31 +262,60 @@ public sealed class UiOpenGlBackendTests
     public void ContextLossMakesBackendNotReadyAndRestoreRebuildsResources()
     {
         (MockGLApi api, GLContext context) = CreateContext();
+        UiOpenGlBackendOptions options = new() { QuadCapacity = 2 };
         using (context)
-        using (UiOpenGlBackend backend = new(context))
+        using (UiOpenGlBackend backend = new(context, options))
         using (UiFrameRenderHost host = new(backend))
         {
-            host.Submit(BuildFrame(new UiViewport(100, 100, 1, 0, 0), Quad()));
+            host.Submit(BuildFrame(new UiViewport(100, 100, 1, 0, 0), QuadAt(10)));
             host.Flush();
             backend.FrameCount.Should().Be(1);
+            backend.DrawCalls.Should().Be(1);
+            backend.Instances.Should().Be(1);
+
+            int buffersBefore = CountCalls(api, "GenBuffer() ->");
+            int vaosBefore = CountCalls(api, "GenVertexArray() ->");
             int programsBefore = CountCalls(api, "CreateProgram()");
 
             context.NotifyContextLost();
             backend.IsReady.Should().BeFalse();
 
-            host.Submit(BuildFrame(new UiViewport(100, 100, 1, 0, 0), Quad()));
+            host.Submit(BuildFrame(new UiViewport(100, 100, 1, 0, 0), QuadAt(11)));
             host.Flush();
             backend.FrameCount.Should().Be(1);
             host.SkippedFrames.Should().Be(1);
+            CountCalls(api, "DrawArraysInstanced(").Should().Be(1, "a lost context must not emit draws");
 
             context.NotifyContextRestored();
             backend.IsReady.Should().BeTrue();
 
-            host.Submit(BuildFrame(new UiViewport(100, 100, 1, 0, 0), Quad()));
+            host.Submit(BuildFrame(new UiViewport(100, 100, 1, 0, 0), QuadAt(20), QuadAt(30)));
             host.Flush();
 
+            // Programs, VAOs and the four GL buffers are recreated from scratch.
+            CountCalls(api, "CreateProgram()").Should().Be(programsBefore + 3);
+            CountCalls(api, "GenVertexArray() ->").Should().Be(vaosBefore + 3);
+            CountCalls(api, "GenBuffer() ->").Should().Be(buffersBefore + 4);
+
             backend.FrameCount.Should().Be(2);
-            CountCalls(api, "CreateProgram()").Should().BeGreaterThan(programsBefore);
+            backend.DrawCalls.Should().Be(2);
+            backend.Instances.Should().Be(3);
+            CountCalls(api, "DrawArraysInstanced(").Should().Be(2);
+
+            bool restoredInstancesUploaded = false;
+            foreach (KeyValuePair<uint, byte[]> entry in api.BufferStorage)
+            {
+                byte[] bytes = entry.Value;
+                if (bytes.Length == 2 * 72 &&
+                    BitConverter.ToSingle(bytes, 0) == 20.0f &&
+                    BitConverter.ToSingle(bytes, 72) == 30.0f)
+                {
+                    restoredInstancesUploaded = true;
+                    break;
+                }
+            }
+
+            restoredInstancesUploaded.Should().BeTrue("the rebuilt quad buffer must contain the post-restore instances");
         }
     }
 
