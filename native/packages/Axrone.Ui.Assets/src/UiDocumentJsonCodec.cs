@@ -80,6 +80,11 @@ public sealed class UiDocumentJsonCodec : IUiDocumentCodec, IDisposable
     {
         ThrowIfDisposed();
         document = null;
+        if (data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
+        {
+            data = data[3..];
+        }
+
         if (data.IsEmpty)
         {
             failure = new UiDocumentError(UiDocumentErrorCode.Malformed, 0, "Payload is empty.");
