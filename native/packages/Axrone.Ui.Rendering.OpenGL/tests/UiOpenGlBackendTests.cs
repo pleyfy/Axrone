@@ -1,4 +1,4 @@
-namespace Axrone.Ui.Rendering.Tests;
+namespace Axrone.Ui.Rendering.OpenGL.Tests;
 
 using Axrone.Numeric;
 using Axrone.Render.OpenGL.Context;

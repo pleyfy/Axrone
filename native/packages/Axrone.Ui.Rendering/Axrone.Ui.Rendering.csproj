@@ -11,7 +11,6 @@
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Label="SuppressedRules">
@@ -28,12 +27,12 @@
 
   <ItemGroup Label="PublicApi">
     <InternalsVisibleTo Include="Axrone.Ui.Rendering.Tests" />
+    <InternalsVisibleTo Include="Axrone.Ui.Rendering.OpenGL" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../Axrone.Ui/Axrone.Ui.csproj" />
     <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
-    <ProjectReference Include="../Axrone.Render.OpenGL/Axrone.Render.OpenGL.csproj" />
     <ProjectReference Include="../Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
     <ProjectReference Include="../Axrone.Scene.Rendering/Axrone.Scene.Rendering.csproj" />
   </ItemGroup>
