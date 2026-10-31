@@ -62,6 +62,7 @@ internal static class UiTestDocuments
         builder.Bindings.SetNumber("score", 42);
         builder.Bindings.SetBoolean("paused", true);
         builder.Bindings.SetNull("selected");
+        builder.AssetId = "ui.sample";
 
         return builder.Build(Info());
     }
