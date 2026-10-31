@@ -160,6 +160,9 @@ public readonly record struct UiLayoutStyle
     /// <summary>Inner padding.</summary>
     public UiEdgeInsets Padding { get; init; }
 
+    /// <summary>Uniform border width, painted outside the padding and inside the bounds.</summary>
+    public float BorderWidth { get; init; }
+
     /// <summary>Outer margin.</summary>
     public UiEdgeInsets Margin { get; init; }
 
@@ -229,6 +232,7 @@ public readonly record struct UiLayoutStyle
         Display = UiDisplayMode.Stack,
         Direction = UiAxis.Column,
         Padding = UiEdgeInsets.Zero,
+        BorderWidth = 0.0f,
         Margin = UiEdgeInsets.Zero,
         Width = UiLength.Auto,
         Height = UiLength.Auto,
@@ -315,6 +319,21 @@ public interface IUiLayoutSink
 /// Monomorphized layout policy. Implementations replace the virtual dispatch of
 /// per-node layout with static specialization while the engine drives traversal.
 /// </summary>
+/// <remarks>
+/// The engine resolves this node's own length/min/max style, measures children,
+/// and passes <c>context.Constraints</c> as the content-box extent available to
+/// this node (border-box minus padding and border), with min equal to max when
+/// arranging. <see cref="Measure"/> returns a border-box size; the engine then
+/// overrides explicit width/height styles and clamps min/max.
+/// <para>
+/// <see cref="Arrange"/> writes child rectangles relative to the content-box
+/// origin: main-axis positions include the child's main-axis margins, while the
+/// cross-axis coordinate is the line's cross origin before margins. The engine
+/// applies cross-axis margins, AlignItems/AlignSelf and stretch afterwards.
+/// Absolute children are laid out by the engine and are never passed to the
+/// policy.
+/// </para>
+/// </remarks>
 /// <typeparam name="TSelf">Concrete policy type.</typeparam>
 public interface IUiLayoutPolicy<TSelf> where TSelf : struct, IUiLayoutPolicy<TSelf>
 {
