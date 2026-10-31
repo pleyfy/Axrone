@@ -238,16 +238,29 @@ public sealed class UiAssetDocument : IUiDocument
         return true;
     }
 
-    /// <summary>Reads the material reference of a node.</summary>
-    public bool TryGetMaterial(UiNodeId id, out UiResourceId material)
+    /// <summary>Reads the authored material identifier of a node as UTF-8.</summary>
+    public bool TryGetMaterialUtf8(UiNodeId id, out ReadOnlySpan<byte> material)
     {
         if (!_storage.HasPresence(id, UiNodePresence.Material))
+        {
+            material = ReadOnlySpan<byte>.Empty;
+            return false;
+        }
+
+        material = _storage.GetUtf8(_storage.Materials[(int)id.Value - 1]);
+        return true;
+    }
+
+    /// <summary>Reads the derived numeric resource identity of a node material.</summary>
+    public bool TryGetMaterial(UiNodeId id, out UiResourceId material)
+    {
+        if (!TryGetMaterialUtf8(id, out ReadOnlySpan<byte> utf8) || utf8.IsEmpty)
         {
             material = UiResourceId.Invalid;
             return false;
         }
 
-        material = _storage.Materials[(int)id.Value - 1];
+        material = new UiResourceId(Fnv1a64.Compute(utf8));
         return true;
     }
 

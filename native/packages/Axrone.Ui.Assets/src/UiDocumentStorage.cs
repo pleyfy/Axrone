@@ -76,7 +76,7 @@ internal sealed class UiDocumentStorage : IUiNodeTree
     private UiNodeTextCore[] _texts;
     private UiNodeImageCore[] _images;
     private UiNodeFocus[] _focuses;
-    private UiResourceId[] _materials;
+    private UiStringRef[] _materials;
     private UiStringRef[] _roles;
     private UiStringRef[] _controllers;
     private UiBindingKeyCore[] _keys;
@@ -111,7 +111,7 @@ internal sealed class UiDocumentStorage : IUiNodeTree
         _texts = new UiNodeTextCore[nodes];
         _images = new UiNodeImageCore[nodes];
         _focuses = new UiNodeFocus[nodes];
-        _materials = new UiResourceId[nodes];
+        _materials = new UiStringRef[nodes];
         _roles = new UiStringRef[nodes];
         _controllers = new UiStringRef[nodes];
         _keys = new UiBindingKeyCore[nodes];
@@ -150,7 +150,7 @@ internal sealed class UiDocumentStorage : IUiNodeTree
 
     internal UiNodeFocus[] Focuses => _focuses;
 
-    internal UiResourceId[] Materials => _materials;
+    internal UiStringRef[] Materials => _materials;
 
     internal UiStringRef[] Roles => _roles;
 
@@ -269,7 +269,7 @@ internal sealed class UiDocumentStorage : IUiNodeTree
         _texts[index] = default;
         _images[index] = default;
         _focuses[index] = UiNodeFocus.Default;
-        _materials[index] = UiResourceId.Invalid;
+        _materials[index] = UiStringRef.Empty;
         _roles[index] = UiStringRef.Empty;
         _controllers[index] = UiStringRef.Empty;
         _keys[index] = UiBindingKeyCore.None;
@@ -344,7 +344,7 @@ internal sealed class UiDocumentStorage : IUiNodeTree
         _presence[index] |= UiNodePresence.Focus;
     }
 
-    internal void SetMaterial(UiNodeId id, UiResourceId material)
+    internal void SetMaterial(UiNodeId id, UiStringRef material)
     {
         int index = (int)id.Value - 1;
         _materials[index] = material;

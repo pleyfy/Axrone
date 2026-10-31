@@ -21,7 +21,7 @@ public sealed class UiAssetDocumentBuilder : IUiDocumentBuilder
     private UiNodeText[] _texts = new UiNodeText[MinimumCapacity];
     private UiNodeImage[] _images = new UiNodeImage[MinimumCapacity];
     private UiNodeFocus[] _focuses = new UiNodeFocus[MinimumCapacity];
-    private UiResourceId[] _materials = new UiResourceId[MinimumCapacity];
+    private string?[] _materials = new string?[MinimumCapacity];
     private string?[] _roles = new string?[MinimumCapacity];
     private string?[] _controllers = new string?[MinimumCapacity];
     private UiBindingKey[] _keys = new UiBindingKey[MinimumCapacity];
@@ -74,7 +74,7 @@ public sealed class UiAssetDocumentBuilder : IUiDocumentBuilder
         _texts[index] = UiNodeText.Default;
         _images[index] = UiNodeImage.Default;
         _focuses[index] = UiNodeFocus.Default;
-        _materials[index] = UiResourceId.Invalid;
+        _materials[index] = null;
         _roles[index] = null;
         _controllers[index] = null;
         _keys[index] = UiBindingKey.None;
@@ -342,16 +342,16 @@ public sealed class UiAssetDocumentBuilder : IUiDocumentBuilder
         return true;
     }
 
-    /// <summary>Sets the material reference of a node.</summary>
-    public bool TrySetMaterial(UiNodeId node, UiResourceId material)
+    /// <summary>Sets the authored material identifier of a node.</summary>
+    public bool TrySetMaterial(UiNodeId node, ReadOnlySpan<char> material)
     {
         int index = (int)node.Value - 1;
-        if (!IsLive(index) || !material.IsValid)
+        if (!IsLive(index) || material.IsEmpty)
         {
             return false;
         }
 
-        _materials[index] = material;
+        _materials[index] = new string(material);
         _presence[index] |= UiNodePresence.Material;
         return true;
     }
@@ -455,7 +455,8 @@ public sealed class UiAssetDocumentBuilder : IUiDocumentBuilder
 
         if ((_presence[old] & UiNodePresence.Material) != 0)
         {
-            storage.SetMaterial(created, _materials[old]);
+            _ = storage.TryAppendString(_materials[old].AsSpan(), out UiStringRef material);
+            storage.SetMaterial(created, material);
         }
     }
 

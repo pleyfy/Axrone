@@ -124,7 +124,7 @@ public sealed class UiAssetDocumentBuilderTests
             true,
             true)).Should().BeTrue();
         builder.TrySetFocus(node, new UiNodeFocus(3, 2, true, true, UiColor.White, 1.5f, 2.5f)).Should().BeTrue();
-        builder.TrySetMaterial(node, new UiResourceId(99UL)).Should().BeTrue();
+        builder.TrySetMaterial(node, "mat.overlay".AsSpan()).Should().BeTrue();
         builder.AssetId = "ui.sample";
 
         UiAssetDocument document = builder.Build(UiTestDocuments.Info());
@@ -158,8 +158,10 @@ public sealed class UiAssetDocumentBuilderTests
         focus.TabIndex.Should().Be(3);
         focus.Scope.Should().BeTrue();
 
+        document.TryGetMaterialUtf8(node, out ReadOnlySpan<byte> materialUtf8).Should().BeTrue();
+        System.Text.Encoding.UTF8.GetString(materialUtf8).Should().Be("mat.overlay");
         document.TryGetMaterial(node, out UiResourceId material).Should().BeTrue();
-        material.Should().Be(new UiResourceId(99UL));
+        material.Should().Be(new UiResourceId(Axrone.Asset.Fnv1a64.Compute(materialUtf8)));
     }
 
     [Fact]
@@ -174,7 +176,7 @@ public sealed class UiAssetDocumentBuilderTests
         builder.TrySetText(missing, UiNodeText.Default).Should().BeFalse();
         builder.TrySetImage(missing, UiNodeImage.Default).Should().BeFalse();
         builder.TrySetFocus(missing, UiNodeFocus.Default).Should().BeFalse();
-        builder.TrySetMaterial(missing, new UiResourceId(1UL)).Should().BeFalse();
+        builder.TrySetMaterial(missing, "m".AsSpan()).Should().BeFalse();
         builder.TrySetKey(missing, UiBindingKey.FromString("k")).Should().BeFalse();
     }
 
