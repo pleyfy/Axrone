@@ -33,7 +33,7 @@ public sealed class UiOpenGlBackendTests
     private static UiRenderCommand Text() =>
         UiRenderCommand.Text(new UiNodeId(3), new Rect(10, 20, 100, 20), new UiTextLayoutId(LayoutId), UiColor.White, 0);
 
-    private static (MockGLApi Api, GLContext Context) CreateContext() 
+    private static (MockGLApi Api, GLContext Context) CreateContext()
     {
         MockGLApi api = new();
         return (api, new GLContext(api));
