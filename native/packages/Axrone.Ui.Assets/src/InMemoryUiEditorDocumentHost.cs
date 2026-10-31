@@ -32,7 +32,7 @@ public sealed class InMemoryUiEditorDocumentHost : IUiEditorDocumentHost, IDispo
     public void AddFile(string path, ReadOnlySpan<byte> utf8)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        lock (_gate)
+        using (_gate.EnterScope())
         {
             ThrowIfDisposed();
             ReplaceBytes(path, utf8.ToArray());
@@ -43,7 +43,7 @@ public sealed class InMemoryUiEditorDocumentHost : IUiEditorDocumentHost, IDispo
     public bool ReplaceFile(string path, ReadOnlySpan<byte> utf8)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        lock (_gate)
+        using (_gate.EnterScope())
         {
             ThrowIfDisposed();
             if (!_files.ContainsKey(path))
@@ -60,7 +60,7 @@ public sealed class InMemoryUiEditorDocumentHost : IUiEditorDocumentHost, IDispo
     public bool TryOpen(string path, out IUiDocument? document)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        lock (_gate)
+        using (_gate.EnterScope())
         {
             ThrowIfDisposed();
             document = null;
@@ -90,7 +90,7 @@ public sealed class InMemoryUiEditorDocumentHost : IUiEditorDocumentHost, IDispo
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentException.ThrowIfNullOrEmpty(path);
-        lock (_gate)
+        using (_gate.EnterScope())
         {
             ThrowIfDisposed();
 
@@ -121,7 +121,7 @@ public sealed class InMemoryUiEditorDocumentHost : IUiEditorDocumentHost, IDispo
     /// <inheritdoc/>
     public bool TryReload(UiDocumentId document, out IUiDocument? reloaded)
     {
-        lock (_gate)
+        using (_gate.EnterScope())
         {
             ThrowIfDisposed();
             reloaded = null;
@@ -159,7 +159,7 @@ public sealed class InMemoryUiEditorDocumentHost : IUiEditorDocumentHost, IDispo
     /// <inheritdoc/>
     public void Dispose()
     {
-        lock (_gate)
+        using (_gate.EnterScope())
         {
             if (_disposed)
             {
