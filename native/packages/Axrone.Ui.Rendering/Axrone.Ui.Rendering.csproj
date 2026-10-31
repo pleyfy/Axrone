@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Axrone.Ui.Rendering</RootNamespace>
+    <AssemblyName>Axrone.Ui.Rendering</AssemblyName>
+    <Description>UI rendering contracts for the Axrone engine: draw list, batch keys, glyph atlas, pipelines, render hosts and the Scene.Rendering overlay bridge.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="AotCompatibility">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+  </PropertyGroup>
+
+  <PropertyGroup Label="SuppressedRules">
+    <!-- CA1815: Equals on render commands — commands are tagged payloads
+         consumed by the draw list and batcher, not compared as values. -->
+    <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <!-- CA1028: int-backed wire discriminants — draw/batch payloads stay
+         compact and wire-stable. -->
+    <NoWarn>$(NoWarn);CA1028</NoWarn>
+    <!-- CA1711: UiRenderFlags is a bit-mask enum; the "Flags" suffix names the
+         bitwise semantics the naming rule cannot see. -->
+    <NoWarn>$(NoWarn);CA1711</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Label="PublicApi">
+    <InternalsVisibleTo Include="Axrone.Ui.Rendering.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Axrone.Ui/Axrone.Ui.csproj" />
+    <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
+    <ProjectReference Include="../Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
+    <ProjectReference Include="../Axrone.Scene.Rendering/Axrone.Scene.Rendering.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>

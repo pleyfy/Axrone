@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Axrone.Ui</RootNamespace>
+    <AssemblyName>Axrone.Ui</AssemblyName>
+    <Description>Backend-agnostic UI foundation for the Axrone engine: document nodes, layout policy contracts, style/theme tokens, invalidation and text/font metrics.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="AotCompatibility">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+  </PropertyGroup>
+
+  <PropertyGroup Label="SuppressedRules">
+    <!-- CA1000: Static members on generic types — IUiLayoutPolicy exposes
+         static abstract measure/arrange policies, the whole point of the
+         monomorphized layout contract. -->
+    <NoWarn>$(NoWarn);CA1000</NoWarn>
+    <!-- CA1815: Equals on payload structs — layout and document records are
+         consumed field-wise and never compared as whole values. -->
+    <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <!-- CA1711: UiNodeFlags/UiInvalidationFlags are bit-mask enums; the
+         "Flags" suffix names the bitwise semantics the naming rule cannot see. -->
+    <NoWarn>$(NoWarn);CA1711</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Label="PublicApi">
+    <InternalsVisibleTo Include="Axrone.Ui.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>

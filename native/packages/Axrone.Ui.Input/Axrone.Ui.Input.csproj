@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Axrone.Ui.Input</RootNamespace>
+    <AssemblyName>Axrone.Ui.Input</AssemblyName>
+    <Description>UI input contracts for the Axrone engine: pointer/key/text events, hit testing, focus, pointer capture, event routing and IME.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="AotCompatibility">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+  </PropertyGroup>
+
+  <PropertyGroup Label="SuppressedRules">
+    <!-- CA1815: Equals on input payloads — event records are routed field-wise,
+         never compared as whole values. -->
+    <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <!-- CA1028: uint-backed modifier/button masks mirror the input bit layout. -->
+    <NoWarn>$(NoWarn);CA1028</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Label="PublicApi">
+    <InternalsVisibleTo Include="Axrone.Ui.Input.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Axrone.Ui/Axrone.Ui.csproj" />
+    <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
+    <ProjectReference Include="../Axrone.Geometry/Axrone.Geometry.csproj" />
+    <ProjectReference Include="../Axrone.Input/Axrone.Input.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>
