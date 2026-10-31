@@ -209,19 +209,13 @@ public readonly struct UiFlexLayoutPolicy : IUiLayoutPolicy<UiFlexLayoutPolicy>
                 extraGap = count > 1 ? free / (count - 1) : 0.0f;
                 break;
             case UiJustify.SpaceAround:
-            {
-                float unit = free / count;
-                start = unit * 0.5f;
-                extraGap = unit;
+                extraGap = free / count;
+                start = extraGap * 0.5f;
                 break;
-            }
             case UiJustify.SpaceEvenly:
-            {
-                float unit = free / (count + 1);
-                start = unit;
-                extraGap = unit;
+                extraGap = free / (count + 1);
+                start = extraGap;
                 break;
-            }
             case UiJustify.Start:
             default:
                 break;

@@ -40,6 +40,11 @@ public sealed class UiLayoutEngine<TPolicy> : IUiLayoutEngine
     public UiMeasureResult Measure(IUiLayoutTree tree, UiNodeId node, in UiMeasureConstraints constraints)
     {
         ArgumentNullException.ThrowIfNull(tree);
+        if (!node.IsValid)
+        {
+            UiThrowHelper.ThrowInvalidNodeId(nameof(node));
+        }
+
         if (!tree.TryGetNode(node, out IUiLayoutNode? layoutNode) || layoutNode is null)
         {
             UiThrowHelper.ThrowLayoutTreeMissingNode(node);
@@ -55,6 +60,11 @@ public sealed class UiLayoutEngine<TPolicy> : IUiLayoutEngine
     {
         ArgumentNullException.ThrowIfNull(tree);
         ArgumentNullException.ThrowIfNull(sink);
+        if (!node.IsValid)
+        {
+            UiThrowHelper.ThrowInvalidNodeId(nameof(node));
+        }
+
         if (!tree.TryGetNode(node, out IUiLayoutNode? layoutNode) || layoutNode is null)
         {
             UiThrowHelper.ThrowLayoutTreeMissingNode(node);
@@ -70,6 +80,11 @@ public sealed class UiLayoutEngine<TPolicy> : IUiLayoutEngine
         IUiLayoutNode layoutNode,
         in UiMeasureConstraints constraints)
     {
+        if (!id.IsValid)
+        {
+            UiThrowHelper.ThrowInvalidNodeId(nameof(id));
+        }
+
         uint key = id.Value;
         if (_cache.TryGetInProgress(key))
         {
@@ -166,6 +181,11 @@ public sealed class UiLayoutEngine<TPolicy> : IUiLayoutEngine
         in Rect bounds,
         IUiLayoutSink sink)
     {
+        if (!id.IsValid)
+        {
+            UiThrowHelper.ThrowInvalidNodeId(nameof(id));
+        }
+
         if (++_depth > MaxDepth)
         {
             UiThrowHelper.ThrowInvalidOperation("Layout tree depth exceeds the supported limit.");

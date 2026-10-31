@@ -17,6 +17,16 @@ internal static class UiThrowHelper
 
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowInvalidNodeId(string parameter) =>
+        throw new ArgumentException("The node identifier is invalid.", parameter);
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowInvalidCacheKey() =>
+        throw new ArgumentOutOfRangeException("key", "Measure cache keys must be non-zero node identifiers.");
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static void ThrowLayoutTreeMissingNode(UiNodeId node) =>
         throw new InvalidOperationException($"Layout node {node.Value} is not present in the tree.");
 
