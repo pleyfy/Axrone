@@ -1,5 +1,6 @@
 namespace Axrone.Ui.Input.Tests;
 
+using System.Diagnostics;
 using Axrone.Geometry;
 using Axrone.Numeric;
 using Axrone.Ui;
@@ -236,5 +237,97 @@ public sealed class UiHitTestIndexTests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
         hits.Should().Be(2000);
+    }
+
+    [Fact]
+    public void TwoThousandNodesStayWithinUpdateAndHitBudget()
+    {
+        const int nodeCount = 2000;
+        var index = new UiHitTestIndex(nodeCount);
+        Fill(index, nodeCount);
+        for (int warmup = 0; warmup < 64; warmup++)
+        {
+            index.Update(new UiNodeId((uint)(warmup + 1)), Box(0f, 0f, 10f, 10f));
+            index.TryHitTest(new Vec2(5f, 5f), out _);
+        }
+
+        long probesBefore = index.ProbeCount;
+        long allocationBefore = GC.GetAllocatedBytesForCurrentThread();
+        long start = Stopwatch.GetTimestamp();
+        int updates = 0;
+        int hits = 0;
+        for (int round = 0; round < nodeCount; round++)
+        {
+            var node = new UiNodeId((uint)((round % nodeCount) + 1));
+            if (index.Update(node, Box(0f, 0f, 10f, 10f)))
+            {
+                updates++;
+            }
+
+            if (index.TryHitTest(new Vec2(5f, 5f), out _))
+            {
+                hits++;
+            }
+        }
+
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+        long probes = index.ProbeCount - probesBefore;
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocationBefore;
+
+        updates.Should().Be(nodeCount);
+        hits.Should().Be(nodeCount);
+        probes.Should().BeLessThan(nodeCount * 8L);
+        allocated.Should().Be(0);
+        elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void ClearAndRebuildKeepsEveryNodeAddressable()
+    {
+        const int nodeCount = 2000;
+        var index = new UiHitTestIndex();
+        Fill(index, nodeCount);
+
+        index.Clear();
+        index.Count.Should().Be(0);
+        Fill(index, nodeCount);
+
+        index.Count.Should().Be(nodeCount);
+        for (uint id = 1; id <= nodeCount; id++)
+        {
+            index.Update(new UiNodeId(id), Box(0f, 0f, 10f, 10f)).Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public void RemovingAtScaleKeepsLookupsConsistent()
+    {
+        const int nodeCount = 2000;
+        var index = new UiHitTestIndex(nodeCount);
+        Fill(index, nodeCount);
+
+        int removed = 0;
+        for (uint id = 3; id <= nodeCount; id += 3)
+        {
+            index.Remove(new UiNodeId(id)).Should().BeTrue();
+            removed++;
+        }
+
+        index.Count.Should().Be(nodeCount - removed);
+        for (uint id = 1; id <= nodeCount; id++)
+        {
+            bool expected = id % 3 != 0;
+            index.Update(new UiNodeId(id), Box(0f, 0f, 10f, 10f)).Should().Be(expected);
+        }
+    }
+
+    private static void Fill(UiHitTestIndex index, int nodeCount)
+    {
+        for (uint id = 1; id <= nodeCount; id++)
+        {
+            float x = id % 50 * 4f;
+            float y = id / 50f * 4f;
+            index.Insert(new UiNodeId(id), Box(x, y, x + 8f, y + 8f), (int)id, clips: false);
+        }
     }
 }
