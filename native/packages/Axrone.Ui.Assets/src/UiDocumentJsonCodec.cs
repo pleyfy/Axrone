@@ -31,6 +31,7 @@ public sealed class UiDocumentJsonCodec : IUiDocumentCodec, IDisposable
     private readonly ArrayBufferWriter<byte> _migrationBuffer = new(1024);
     private readonly Utf8StringCache _assetIdCache = new();
     private readonly Utf8StringCache _nameCache = new();
+    private readonly UiDocumentJsonReader? _reader;
 
     private UiDocumentStorage? _live;
     private UiDocumentStorage? _staging;
@@ -66,6 +67,7 @@ public sealed class UiDocumentJsonCodec : IUiDocumentCodec, IDisposable
             _live = new UiDocumentStorage(8, 8, 256);
             _staging = new UiDocumentStorage(8, 8, 256);
             _document = new UiAssetDocument(_live, default, string.Empty);
+            _reader = new UiDocumentJsonReader(_staging);
         }
     }
 
@@ -131,7 +133,16 @@ public sealed class UiDocumentJsonCodec : IUiDocumentCodec, IDisposable
 
         UiDocumentStorage target = _reuseStorage ? _staging! : new UiDocumentStorage(8, 8, 256);
         target.Reset();
-        var reader = new UiDocumentJsonReader(target);
+        UiDocumentJsonReader reader;
+        if (_reuseStorage)
+        {
+            _reader!.Attach(target);
+            reader = _reader;
+        }
+        else
+        {
+            reader = new UiDocumentJsonReader(target);
+        }
         if (!reader.TryParse(data, out UiParsedDocument parsed, out failure))
         {
             return false;

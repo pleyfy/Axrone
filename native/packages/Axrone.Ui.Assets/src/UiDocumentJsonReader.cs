@@ -24,12 +24,15 @@ internal sealed class UiDocumentJsonReader
         AllowTrailingCommas = false,
     };
 
-    private readonly UiDocumentStorage _storage;
+    private UiDocumentStorage _storage;
 
     public UiDocumentJsonReader(UiDocumentStorage storage)
     {
         _storage = storage;
     }
+
+    /// <summary>Retargets the reader at another storage buffer.</summary>
+    internal void Attach(UiDocumentStorage storage) => _storage = storage;
 
     /// <summary>Probes the top-level schema version without decoding payloads.</summary>
     public static bool TryProbeVersion(ReadOnlySpan<byte> data, out int version, out UiDocumentError error)
