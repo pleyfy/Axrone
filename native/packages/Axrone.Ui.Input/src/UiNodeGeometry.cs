@@ -47,8 +47,13 @@ public sealed class UiTreeClipResolver : IUiClipResolver
         var max = new Vec2(float.PositiveInfinity);
         bool found = false;
         UiNodeId current = node;
-        while (_tree.TryGetNode(current, out UiNodeRecord record))
+        for (int depth = 0; depth < UiTreeQuery.MaxTreeDepth; depth++)
         {
+            if (!_tree.TryGetNode(current, out UiNodeRecord record))
+            {
+                break;
+            }
+
             UiNodeId parent = record.Parent;
             if (!parent.IsValid)
             {
@@ -82,13 +87,27 @@ public sealed class UiTreeClipResolver : IUiClipResolver
 internal static class UiTreeQuery
 {
     /// <summary>
+    /// Maximum parent-chain length walked by tree queries. Bounds the walk so a corrupt
+    /// or cyclic parent link terminates instead of spinning; deeper real hierarchies are
+    /// treated as unestablished.
+    /// </summary>
+    internal const int MaxTreeDepth = 512;
+
+    /// <summary>
     /// Whether a node and every ancestor carry <see cref="UiNodeFlags.Visible"/>.
+    /// Returns <see langword="false"/> for unknown nodes and for chains deeper than
+    /// <see cref="MaxTreeDepth"/>.
     /// </summary>
     internal static bool IsEffectivelyVisible(IUiNodeTree tree, UiNodeId node)
     {
         UiNodeId current = node;
-        while (tree.TryGetNode(current, out UiNodeRecord record))
+        for (int depth = 0; depth < MaxTreeDepth; depth++)
         {
+            if (!tree.TryGetNode(current, out UiNodeRecord record))
+            {
+                return false;
+            }
+
             if ((record.Flags & UiNodeFlags.Visible) == 0)
             {
                 return false;
