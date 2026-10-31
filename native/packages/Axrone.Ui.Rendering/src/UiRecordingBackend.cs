@@ -180,7 +180,7 @@ public sealed class UiRecordingBackend : IUiRenderBackend, IDisposable
 }
 
 /// <summary>Headless pipeline handle. Lifetime is explicit and idempotent.</summary>
-public sealed class UiHeadlessPipeline : IUiPipeline
+internal sealed class UiHeadlessPipeline : IUiPipeline
 {
     private int _disposed;
 

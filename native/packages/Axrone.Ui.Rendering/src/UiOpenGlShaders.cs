@@ -10,7 +10,6 @@ internal static class UiGl
     public const uint SrcAlpha = 0x0302;
     public const uint OneMinusSrcAlpha = 0x0303;
     public const uint DstColor = 0x0306;
-    public const uint Blend = 0x0BE2;
     public const uint ScissorTest = 0x0C11;
     public const uint LinkStatus = 0x8B82;
     public const uint SamplerMinFilter = 0x2801;

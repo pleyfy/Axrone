@@ -150,9 +150,6 @@ public sealed class UiInstanceBuffer<T>
     /// <summary>Gets the written instances as a read-only view.</summary>
     public ReadOnlySpan<T> Items => new(_items, 0, _count);
 
-    /// <summary>Gets the full backing span for bulk encoding.</summary>
-    public Span<T> Storage => _items;
-
     /// <summary>Appends one instance, or reports that a flush is required.</summary>
     /// <param name="item">Instance payload.</param>
     /// <returns><see langword="true"/> when stored; <see langword="false"/> when full.</returns>
@@ -166,13 +163,6 @@ public sealed class UiInstanceBuffer<T>
 
         _items[_count++] = item;
         return true;
-    }
-
-    /// <summary>Advances the written count after direct writes through <see cref="Storage"/>.</summary>
-    /// <param name="count">Number of instances written.</param>
-    public void Advance(int count)
-    {
-        _count = count;
     }
 
     /// <summary>Resets the count without touching the backing array.</summary>

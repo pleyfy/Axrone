@@ -2,10 +2,10 @@ namespace Axrone.Ui.Rendering;
 
 /// <summary>Atlas paging policy.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
-public readonly record struct UiGlyphAtlasOptions(int PageWidth, int PageHeight, int Padding, int MaxPages, UiGlyphFormat Format)
+public readonly record struct UiGlyphAtlasOptions(int PageWidth, int PageHeight, int Padding, int MaxPages)
 {
-    /// <summary>Gets the default policy: 1024² SDF pages, one-pixel gaps, four pages.</summary>
-    public static UiGlyphAtlasOptions Default => new(1024, 1024, 1, 4, UiGlyphFormat.Sdf);
+    /// <summary>Gets the default policy: 1024² pages, one-pixel gaps, four pages.</summary>
+    public static UiGlyphAtlasOptions Default => new(1024, 1024, 1, 4);
 }
 
 /// <summary>Raster input for one glyph. The atlas never rasterizes; it packs pixels a font backend produced.</summary>
@@ -137,7 +137,6 @@ public sealed class UiGlyphAtlas : IUiGlyphAtlas, IDisposable
 
         PageWidth = options.PageWidth;
         PageHeight = options.PageHeight;
-        Format = options.Format;
     }
 
     /// <summary>Gets the configured page width.</summary>
@@ -145,9 +144,6 @@ public sealed class UiGlyphAtlas : IUiGlyphAtlas, IDisposable
 
     /// <summary>Gets the configured page height.</summary>
     public int PageHeight { get; }
-
-    /// <summary>Gets the default raster format.</summary>
-    public UiGlyphFormat Format { get; }
 
     /// <summary>Gets how many pages have been evicted since construction.</summary>
     public int EvictionCount => _evictionCount;

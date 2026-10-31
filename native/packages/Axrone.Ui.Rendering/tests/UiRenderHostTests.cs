@@ -54,6 +54,8 @@ public sealed class UiRenderHostTests
         backend.FrameCount.Should().Be(1);
         backend.DrawCallCount.Should().Be(2);
         backend.CommandCount.Should().Be(3);
+        backend.LastFrameCommandCount.Should().Be(3);
+        backend.LastKey.Kind.Should().Be(UiRenderCommandKind.Image);
     }
 
     [Fact]

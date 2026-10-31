@@ -28,9 +28,11 @@ public sealed class UiBatchingTests
     {
         UiBatchGrouper grouper = new([Quad(1), Quad(1), Quad(1)]);
 
+        grouper.Remaining.Should().Be(3);
         grouper.TryNext(out UiBatchKey key, out ReadOnlySpan<UiRenderCommand> run).Should().BeTrue();
         run.Length.Should().Be(3);
         key.Kind.Should().Be(UiRenderCommandKind.Quad);
+        grouper.Remaining.Should().Be(0);
         grouper.TryNext(out _, out _).Should().BeFalse();
     }
 
@@ -158,6 +160,7 @@ public sealed class UiBatchingTests
         UiInstanceBuffer<UiQuadInstance> buffer = new(2);
         UiQuadInstance instance = new(new Rect(0, 0, 1, 1), UiColor.White, UiColor.Black, UiCornerRadii.Zero, 0, 1);
 
+        buffer.Capacity.Should().Be(2);
         buffer.TryAdd(instance).Should().BeTrue();
         buffer.TryAdd(instance).Should().BeTrue();
         buffer.IsFull.Should().BeTrue();

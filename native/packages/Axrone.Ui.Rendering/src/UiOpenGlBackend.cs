@@ -773,7 +773,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
 }
 
 /// <summary>OpenGL pipeline handle. Backend-owned; disposal only marks it invalid.</summary>
-public sealed class UiOpenGlPipeline : IUiPipeline
+internal sealed class UiOpenGlPipeline : IUiPipeline
 {
     private int _disposed;
 

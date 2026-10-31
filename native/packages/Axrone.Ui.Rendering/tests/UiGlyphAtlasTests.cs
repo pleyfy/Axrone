@@ -12,7 +12,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void FirstGlyphIsPlacedAtOriginWithNormalizedUv()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2));
 
         atlas.TryAddGlyph(Raster(65, 16, 8), default, out UiGlyphAtlasEntry entry).Should().BeTrue();
 
@@ -28,7 +28,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void ShelfAdvancesRightAndWrapsToNextRow()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2));
 
         atlas.TryAddGlyph(Raster(65, 32, 8), default, out _);
         atlas.TryAddGlyph(Raster(66, 16, 8), default, out UiGlyphAtlasEntry second);
@@ -43,7 +43,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void PaddingCreatesGapsBetweenGlyphs()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 2, 2, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 2, 2));
 
         atlas.TryAddGlyph(Raster(65, 8, 8), default, out _);
         atlas.TryAddGlyph(Raster(66, 8, 8), default, out UiGlyphAtlasEntry second);
@@ -54,7 +54,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void PageOverflowCreatesSecondPage()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(16, 16, 0, 2, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(16, 16, 0, 2));
 
         atlas.TryAddGlyph(Raster(65, 16, 16), default, out UiGlyphAtlasEntry first).Should().BeTrue();
         atlas.TryAddGlyph(Raster(66, 16, 16), default, out UiGlyphAtlasEntry second).Should().BeTrue();
@@ -71,7 +71,7 @@ public sealed class UiGlyphAtlasTests
     public void DuplicateGlyphIsNotUploadedTwice()
     {
         RecordingUploader uploader = new();
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2, UiGlyphFormat.Alpha8), uploader);
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2), uploader);
         byte[] pixels = new byte[16];
 
         atlas.TryAddGlyph(Raster(65, 4, 4), pixels, out UiGlyphAtlasEntry first).Should().BeTrue();
@@ -86,7 +86,7 @@ public sealed class UiGlyphAtlasTests
     public void UploadReceivesTightlyPackedPixels()
     {
         RecordingUploader uploader = new();
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2, UiGlyphFormat.Alpha8), uploader);
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2), uploader);
         byte[] pixels = new byte[16];
 
         atlas.TryAddGlyph(Raster(65, 4, 4), pixels, out _);
@@ -100,7 +100,7 @@ public sealed class UiGlyphAtlasTests
     public void ShortPixelBufferIsRejected()
     {
         RecordingUploader uploader = new();
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2, UiGlyphFormat.Alpha8), uploader);
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2), uploader);
 
         atlas.TryAddGlyph(Raster(65, 4, 4), new byte[15], out UiGlyphAtlasEntry entry).Should().BeFalse();
 
@@ -112,7 +112,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void OversizeGlyphIsRejectedWithoutAllocatingPage()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(16, 16, 0, 2, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(16, 16, 0, 2));
 
         atlas.TryAddGlyph(Raster(65, 17, 8), default, out _).Should().BeFalse();
         atlas.PageCount.Should().Be(0);
@@ -123,7 +123,7 @@ public sealed class UiGlyphAtlasTests
     {
         RecordingEvictionListener listener = new();
         UiGlyphAtlas atlas = new(
-            new UiGlyphAtlasOptions(8, 8, 0, 2, UiGlyphFormat.Alpha8),
+            new UiGlyphAtlasOptions(8, 8, 0, 2),
             uploader: null,
             evictionListener: listener);
 
@@ -147,7 +147,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void SinglePageAtlasEvictsItselfToMakeRoom()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(8, 8, 0, 1, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(8, 8, 0, 1));
 
         atlas.TryAddGlyph(Raster(65, 8, 8), default, out _);
         atlas.TryAddGlyph(Raster(66, 8, 8), default, out UiGlyphAtlasEntry second).Should().BeTrue();
@@ -161,7 +161,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void LookupIsZeroAllocation()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2));
         atlas.TryAddGlyph(Raster(65, 4, 4), default, out _);
         atlas.TryAddGlyph(Raster(66, 4, 4), default, out _);
 
@@ -194,7 +194,7 @@ public sealed class UiGlyphAtlasTests
     public void DisposeDeletesEveryPageOnce()
     {
         RecordingUploader uploader = new();
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(8, 8, 0, 2, UiGlyphFormat.Alpha8), uploader);
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(8, 8, 0, 2), uploader);
         atlas.TryAddGlyph(Raster(65, 8, 8), default, out _);
         atlas.TryAddGlyph(Raster(66, 8, 8), default, out _);
 
@@ -209,7 +209,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void AddingToDisposedAtlasThrows()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(8, 8, 0, 1, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(8, 8, 0, 1));
         atlas.Dispose();
 
         Action act = () => atlas.TryAddGlyph(Raster(65, 4, 4), default, out _);
@@ -219,9 +219,9 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void InvalidOptionsThrow()
     {
-        Action small = static () => _ = new UiGlyphAtlas(new UiGlyphAtlasOptions(4, 4, 0, 1, UiGlyphFormat.Alpha8));
-        Action pages = static () => _ = new UiGlyphAtlas(new UiGlyphAtlasOptions(64, 64, 0, 0, UiGlyphFormat.Alpha8));
-        Action padding = static () => _ = new UiGlyphAtlas(new UiGlyphAtlasOptions(64, 64, -1, 1, UiGlyphFormat.Alpha8));
+        Action small = static () => _ = new UiGlyphAtlas(new UiGlyphAtlasOptions(4, 4, 0, 1));
+        Action pages = static () => _ = new UiGlyphAtlas(new UiGlyphAtlasOptions(64, 64, 0, 0));
+        Action padding = static () => _ = new UiGlyphAtlas(new UiGlyphAtlasOptions(64, 64, -1, 1));
 
         small.Should().Throw<ArgumentOutOfRangeException>();
         pages.Should().Throw<ArgumentOutOfRangeException>();
@@ -231,7 +231,7 @@ public sealed class UiGlyphAtlasTests
     [Fact]
     public void PageInfoReportsAllocationState()
     {
-        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2, UiGlyphFormat.Alpha8));
+        UiGlyphAtlas atlas = new(new UiGlyphAtlasOptions(64, 64, 0, 2));
         atlas.TryAddGlyph(Raster(65, 16, 16), default, out UiGlyphAtlasEntry first);
         atlas.TryAddGlyph(Raster(66, 16, 16), default, out _);
 
@@ -243,6 +243,24 @@ public sealed class UiGlyphAtlasTests
         info.Texture.IsValid.Should().BeTrue();
 
         atlas.TryGetPage(new UiGlyphAtlasPageId(99), out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void DefaultOptionsAndFormatsAreDocumentedPolicy()
+    {
+        UiGlyphAtlasOptions options = UiGlyphAtlasOptions.Default;
+        options.PageWidth.Should().Be(1024);
+        options.PageHeight.Should().Be(1024);
+        options.Padding.Should().Be(1);
+        options.MaxPages.Should().Be(4);
+
+        UiGlyphAtlas.BytesPerPixel(UiGlyphFormat.Alpha8).Should().Be(1);
+        UiGlyphAtlas.BytesPerPixel(UiGlyphFormat.Sdf).Should().Be(1);
+        UiGlyphAtlas.BytesPerPixel(UiGlyphFormat.Msdf).Should().Be(3);
+        UiGlyphAtlas.BytesPerPixel(UiGlyphFormat.Rgba32).Should().Be(4);
+
+        UiGlyphRaster raster = Raster(65, 4, 4);
+        raster.BytesPerPixel.Should().Be(1);
     }
 
     private sealed class RecordingUploader : IUiGlyphAtlasUploader

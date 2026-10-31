@@ -58,6 +58,8 @@ public sealed class UiDrawListTests
         UiDrawList list = new(8);
         list.PushClip(new Rect(0.0f, 0.0f, 100.0f, 100.0f));
         list.PushClip(new Rect(5.0f, 0.0f, 100.0f, 100.0f));
+        list.HasClip.Should().BeTrue();
+        list.ActiveClip.X.Should().Be(5.0f);
 
         list.Add(Quad(60.0f, 0));
         list.Commands[0].Clip.X.Should().Be(5.0f);

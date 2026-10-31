@@ -138,11 +138,13 @@ public sealed class UiOpenGlBackendTests
     {
         (MockGLApi api, GLContext context) = CreateContext();
         _ = api;
-        FakeTextures textures = new();
         FixedAtlas atlas = new(new UiFontFaceId(1));
+        atlas.Add(65, 11);
         FakeLayouts layouts = new();
-        layouts.Add(LayoutId, new TestLayout(new UiShapedGlyph[] { new(65, 0, 0, 0, 9, 0) }), new UiFontFaceId(1));
+        layouts.Add(LayoutId, new TestLayout(new UiShapedGlyph[] { new(65, 0, 0, 0, 9, 0), new(66, 9, 0, 0, 9, 0) }), new UiFontFaceId(1));
 
+        // The texture source resolves nothing: resident glyphs fall through to a missing page texture.
+        FakeTextures textures = new();
         UiOpenGlBackendOptions options = new() { Textures = textures, GlyphAtlas = atlas, TextLayouts = layouts };
 
         using (context)
@@ -154,6 +156,21 @@ public sealed class UiOpenGlBackendTests
 
             backend.DrawCalls.Should().Be(0);
             backend.MissedGlyphs.Should().Be(1);
+            backend.MissingTextures.Should().Be(1);
+            backend.UnsupportedCommands.Should().Be(0);
+        }
+
+        (MockGLApi bareApi, GLContext bareContext) = CreateContext();
+        _ = bareApi;
+        using (bareContext)
+        using (UiOpenGlBackend backend = new(bareContext, new UiOpenGlBackendOptions()))
+        using (UiFrameRenderHost host = new(backend))
+        {
+            host.Submit(BuildFrame(new UiViewport(200, 100, 1, 0, 0), Text()));
+            host.Flush();
+
+            backend.DrawCalls.Should().Be(0);
+            backend.UnsupportedCommands.Should().Be(1);
         }
     }
 
