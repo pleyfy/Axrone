@@ -17,6 +17,7 @@
     <NoWarn>$(NoWarn);CA1000</NoWarn>
     <NoWarn>$(NoWarn);CA1815</NoWarn>
     <NoWarn>$(NoWarn);CA1711</NoWarn>
+    <NoWarn>$(NoWarn);CA1028</NoWarn>
   </PropertyGroup>
 
   <ItemGroup Label="PublicApi">
