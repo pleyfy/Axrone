@@ -22,6 +22,9 @@ public readonly record struct EventMetadata(
     /// <summary>Whether the bus stamped identity onto this metadata.</summary>
     public bool IsStamped => EventId != Guid.Empty;
 
+    /// <summary>Number of forwarding hops already applied to this envelope.</summary>
+    public int ForwardCount { get; init; }
+
     /// <summary>Returns a copy with the sequence assigned.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EventMetadata WithSequence(long sequence) => this with { Sequence = sequence };
@@ -30,4 +33,8 @@ public readonly record struct EventMetadata(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EventMetadata WithIdentity(Guid eventId, Guid correlationId) =>
         this with { EventId = eventId, CorrelationId = correlationId };
+
+    /// <summary>Returns a copy marked as forwarded once more.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EventMetadata WithForwarded() => this with { ForwardCount = ForwardCount + 1 };
 }

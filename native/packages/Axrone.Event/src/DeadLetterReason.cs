@@ -7,4 +7,7 @@ public enum DeadLetterReason : byte
     DispatchFailure = 1,
     ValidationFailed = 2,
     PoisonMessage = 3,
+    ForwardingLoop = 4,
+    ForwardingBackpressure = 5,
+    ForwardingFailed = 6,
 }

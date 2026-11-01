@@ -1,7 +1,8 @@
 namespace Axrone.Event;
 
 /// <summary>
-/// Registry-backed subscription; dispatch honors <see cref="IsActive"/>, dispose unsubscribes.
+/// Registry-backed subscription; dispatch honors <see cref="IsActive"/> and
+/// <see cref="Priority"/>, dispose unsubscribes.
 /// </summary>
 /// <typeparam name="TEvent">Payload type.</typeparam>
 public sealed class EventSubscription<TEvent> : IEventSubscription
@@ -11,13 +12,29 @@ public sealed class EventSubscription<TEvent> : IEventSubscription
     private int _state = 1;
 
     public Guid SubscriptionId { get; }
+
     public bool IsActive => Volatile.Read(ref _state) == 1;
+
+    /// <summary>Dispatch priority within the owning router.</summary>
+    public EventPriority Priority { get; }
 
     public EventSubscription(
         Action<EventEnvelope<TEvent>, CancellationToken> handler,
         Action<Guid> onDispose)
+        : this(handler, onDispose, EventPriority.Normal)
     {
+    }
+
+    public EventSubscription(
+        Action<EventEnvelope<TEvent>, CancellationToken> handler,
+        Action<Guid> onDispose,
+        EventPriority priority)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        EventPriorityGuard.Validate(priority);
+
         SubscriptionId = Guid.NewGuid();
+        Priority = priority;
         _handler = (envelope, token) =>
         {
             handler(envelope, token);
@@ -29,8 +46,20 @@ public sealed class EventSubscription<TEvent> : IEventSubscription
     public EventSubscription(
         Func<EventEnvelope<TEvent>, CancellationToken, ValueTask> handler,
         Action<Guid> onDispose)
+        : this(handler, onDispose, EventPriority.Normal)
     {
+    }
+
+    public EventSubscription(
+        Func<EventEnvelope<TEvent>, CancellationToken, ValueTask> handler,
+        Action<Guid> onDispose,
+        EventPriority priority)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        EventPriorityGuard.Validate(priority);
+
         SubscriptionId = Guid.NewGuid();
+        Priority = priority;
         _handler = handler;
         _onDispose = onDispose;
     }
