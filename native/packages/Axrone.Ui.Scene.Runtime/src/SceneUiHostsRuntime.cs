@@ -13,13 +13,19 @@ public sealed class SceneUiHostsRuntime : IDisposable
     private readonly SceneRuntime _runtime;
     private readonly SceneUiHostBridge _bridge;
     private readonly ISceneUiHostRenderer? _renderer;
+    private readonly UiHostGlyphAtlasUploader? _atlasUploader;
     private int _disposed;
 
-    internal SceneUiHostsRuntime(SceneRuntime runtime, SceneUiHostBridge bridge, ISceneUiHostRenderer? renderer)
+    internal SceneUiHostsRuntime(
+        SceneRuntime runtime,
+        SceneUiHostBridge bridge,
+        ISceneUiHostRenderer? renderer,
+        UiHostGlyphAtlasUploader? atlasUploader)
     {
         _runtime = runtime;
         _bridge = bridge;
         _renderer = renderer;
+        _atlasUploader = atlasUploader;
     }
 
     /// <summary>Gets the owning scene runtime.</summary>
@@ -170,6 +176,7 @@ public sealed class SceneUiHostsRuntime : IDisposable
     {
         _renderer?.Dispose();
         _bridge.Dispose();
+        _atlasUploader?.Dispose();
     }
 
     internal void DetachAndDispose()

@@ -1,12 +1,17 @@
 namespace Axrone.Ui.Scene.Runtime.Tests;
 
 using System.Buffers;
+using System.IO;
 using Axrone.Numeric;
 using Axrone.Scene;
 using Axrone.Scene.Rendering;
 using Axrone.Scene.Runtime;
+using Axrone.Render.OpenGL.Context;
+using Axrone.Render.OpenGL.Mock;
 using Axrone.Ui.Assets;
 using Axrone.Ui.Rendering;
+using Axrone.Ui.Scene.OpenGL;
+using Axrone.Ui.Text;
 using Axrone.Ui.Scene;
 using FluentAssertions;
 using Xunit;
@@ -14,6 +19,41 @@ using Xunit;
 public sealed class SceneUiHostRuntimeCompositionTests
 {
     private const string AssetId = "UI/hud.ui.json";
+
+    [Fact]
+    public void CompositionOwnsOneUploaderAndDrawsText()
+    {
+        MockGLApi api = new();
+        using GLContext context = new(api);
+        using SceneRuntime runtime = CreateRuntime();
+        using UiFontProvider fonts = CreateFonts(out UiFontFamilyId family, out UiTextStyle style);
+
+        var options = new SceneUiHostRuntimeOptions
+        {
+            Assets = CreateTextTable(),
+            Context = context,
+            HostRuntime = new UiHostRuntimeOptions
+            {
+                Fonts = fonts,
+                DefaultFamily = family,
+                DefaultTextStyle = style,
+            },
+        };
+
+        using SceneUiHostsRuntime hosts = runtime.AttachUiHosts(options);
+        SceneActor actor = AddHost(runtime.World);
+        hosts.Update();
+        hosts.Render().Should().BeTrue();
+
+        SceneUiHostGlRenderer renderer = hosts.Renderer.Should().BeOfType<SceneUiHostGlRenderer>().Subject;
+        renderer.MissedGlyphs.Should().Be(0);
+        renderer.MissingTextures.Should().Be(0);
+        renderer.DrawCalls.Should().BeGreaterThan(0);
+        renderer.LastScreenHosts.Should().Be(1);
+        hosts.Bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        UiFrame frame = host!.BuildFrame(new UiViewport(new UiSize(runtime.ViewportWidth, runtime.ViewportHeight)));
+        frame.Commands.ToArray().Should().Contain(static c => c.Kind == UiRenderCommandKind.Text);
+    }
 
     [Fact]
     public void AttachWiresCodecsBridgeAndRendererOnce()
@@ -89,6 +129,7 @@ public sealed class SceneUiHostRuntimeCompositionTests
 
         attached.Should().BeTrue();
         hosts!.HasRenderer.Should().BeFalse();
+        hosts.Bridge.Text.GlyphUploader.Should().BeNull();
         hosts.Render().Should().BeFalse();
     }
 
@@ -242,6 +283,53 @@ public sealed class SceneUiHostRuntimeCompositionTests
             .Build();
 
         profile.Registry.TryGetDataByType(typeof(SceneUiHost), out _).Should().BeTrue();
+    }
+
+    private static UiFontProvider CreateFonts(out UiFontFamilyId family, out UiTextStyle style)
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Fonts", "kenpixel.ttf");
+        File.Exists(path).Should().BeTrue();
+        UiFontProvider fonts = new();
+        UiFontFaceId face = fonts.RegisterFace(
+            File.ReadAllBytes(path),
+            new UiFontFaceDescriptor("Test", UiFontWeight.Normal, UiFontStyle.Normal),
+            out UiFontError error);
+        face.IsValid.Should().BeTrue(error.ToString());
+        family = UiFontProvider.FromFamilyName("Test");
+        style = new UiTextStyle(face, 16.0f, 20.0f, 0.0f, UiTextWrap.None, UiTextOverflow.Clip, UiTextAlign.Start, UiTextDirection.Ltr, 1);
+        return fonts;
+    }
+
+    private static UiHostAssetTable CreateTextTable()
+    {
+        var builder = new UiAssetDocumentBuilder { AssetId = AssetId };
+        UiNodeId root = builder.CreateNode(UiNodeKind.Root, UiNodeFlags.Visible | UiNodeFlags.Enabled);
+        builder.TrySetLayout(root, UiLayoutStyle.Default with
+        {
+            Width = UiLength.Stretch(1.0f),
+            Height = UiLength.Stretch(1.0f),
+            AlignItems = UiAlign.Stretch,
+        });
+        UiNodeId label = builder.CreateNode(UiNodeKind.Text, UiNodeFlags.Visible | UiNodeFlags.Enabled);
+        builder.TryAppendChild(root, label);
+        builder.TrySetLayout(label, UiLayoutStyle.Default with
+        {
+            Width = UiLength.Px(160.0f),
+            Height = UiLength.Px(24.0f),
+        });
+        builder.TrySetText(label, new UiNodeText("ABV", string.Empty, 16.0f, UiFontWeight.Normal, UiFontStyle.Normal, UiTextWrap.None, UiTextOverflow.Clip, UiTextAlign.Start, UiTextDirection.Ltr, 20.0f, 0.0f, 1));
+
+        UiCanvasConfig canvas = new(1920.0f, 1080.0f, UiCanvasScaleMode.MatchWidthOrHeight, 0.5f, UiEdgeInsets.Zero);
+        UiAssetDocument document = builder.Build(new UiDocumentInfo(new UiDocumentId(1), "text-hud", 1, canvas));
+        ArrayBufferWriter<byte> buffer = new();
+        using (var codec = new UiDocumentJsonCodec(reuseStorage: false))
+        {
+            codec.Write(document, buffer);
+        }
+
+        UiHostAssetTable table = new();
+        table.Add(AssetId, buffer.WrittenSpan);
+        return table;
     }
 
     private static SceneRuntime CreateRuntime() =>

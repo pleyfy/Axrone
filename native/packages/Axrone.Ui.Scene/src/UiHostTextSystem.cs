@@ -40,6 +40,7 @@ public sealed class UiHostTextSystem : IDisposable
     private readonly UiTextStyle _defaultStyle;
     private readonly UiGlyphRasterizer? _rasterizer;
     private readonly UiTextMeasurer? _measurer;
+    private readonly IUiGlyphAtlasUploader? _uploader;
     private readonly UiGlyphAtlas _atlas;
     private readonly Dictionary<UiNodeId, LayoutEntry> _byNode = new();
     private readonly Dictionary<UiTextLayoutId, LayoutEntry> _byId = new();
@@ -54,11 +55,15 @@ public sealed class UiHostTextSystem : IDisposable
         _defaultStyle = options.DefaultTextStyle;
         _rasterizer = _provider is null ? null : new UiGlyphRasterizer(_provider);
         _measurer = _provider is null ? null : new UiTextMeasurer(_provider);
+        _uploader = options.GlyphUploader;
         _atlas = new UiGlyphAtlas(UiGlyphAtlasOptions.Default, options.GlyphUploader);
     }
 
     /// <summary>Gets the shared glyph atlas.</summary>
     public IUiGlyphAtlas GlyphAtlas => _atlas;
+
+    /// <summary>Gets the uploader the atlas was built with, or null for the headless no-op.</summary>
+    public IUiGlyphAtlasUploader? GlyphUploader => _uploader;
 
     /// <summary>Gets the text measurer used by control layout, when fonts exist.</summary>
     public IUiTextMeasurer? Measurer => _measurer;
