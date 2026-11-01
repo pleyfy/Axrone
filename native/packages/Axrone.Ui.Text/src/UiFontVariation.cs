@@ -50,13 +50,48 @@ public readonly record struct UiFontAxis(UiFontAxisTag Tag, float MinValue, floa
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiFontAxisValue(UiFontAxisTag Tag, float Value);
 
+internal static class UiVariationMath
+{
+    public static bool TryAxisFactor(float coordinate, float start, float peak, float end, out float factor)
+    {
+        factor = 1.0f;
+        if (peak == 0.0f || start > peak || peak > end || (start < 0.0f && end > 0.0f))
+        {
+            return true;
+        }
+
+        if (coordinate == peak)
+        {
+            return true;
+        }
+
+        if (coordinate <= start || end <= coordinate)
+        {
+            factor = 0.0f;
+            return false;
+        }
+
+        factor = coordinate < peak
+            ? (coordinate - start) / (peak - start)
+            : (coordinate - end) / (peak - end);
+        return true;
+    }
+}
+
 internal sealed class UiVariationData
 {
-    public UiVariationData(UiFontAxis[] axes, UiAvarData? avar, UiGvarData? gvar)
+    public UiVariationData(
+        UiFontAxis[] axes,
+        UiAvarData? avar,
+        UiGvarData? gvar,
+        UiHvarData? hvar,
+        UiMvarData? mvar)
     {
         Axes = axes;
         Avar = avar;
         Gvar = gvar;
+        Hvar = hvar;
+        Mvar = mvar;
     }
 
     public UiFontAxis[] Axes { get; }
@@ -64,6 +99,10 @@ internal sealed class UiVariationData
     public UiAvarData? Avar { get; }
 
     public UiGvarData? Gvar { get; }
+
+    public UiHvarData? Hvar { get; }
+
+    public UiMvarData? Mvar { get; }
 }
 
 internal sealed class UiAvarData
@@ -219,13 +258,17 @@ internal static class UiVariationParser
         int gvarLength,
         int avarOffset,
         int avarLength,
+        int hvarOffset,
+        int hvarLength,
+        int mvarOffset,
+        int mvarLength,
         int glyphCount,
         out UiVariationData? variation,
         out UiFontError error)
     {
         variation = null;
         error = UiFontError.None;
-        if (fvarOffset < 0 && gvarOffset < 0 && avarOffset < 0)
+        if (fvarOffset < 0 && gvarOffset < 0 && avarOffset < 0 && hvarOffset < 0 && mvarOffset < 0)
         {
             return true;
         }
@@ -254,7 +297,21 @@ internal static class UiVariationParser
             return false;
         }
 
-        variation = new UiVariationData(axes!, avar, gvar);
+        UiHvarData? hvar = null;
+        if (hvarOffset >= 0 &&
+            !UiHvarData.TryParse(data, hvarOffset, hvarLength, axes!.Length, out hvar, out error))
+        {
+            return false;
+        }
+
+        UiMvarData? mvar = null;
+        if (mvarOffset >= 0 &&
+            !UiMvarData.TryParse(data, mvarOffset, mvarLength, axes!.Length, out mvar, out error))
+        {
+            return false;
+        }
+
+        variation = new UiVariationData(axes!, avar, gvar, hvar, mvar);
         return true;
     }
 

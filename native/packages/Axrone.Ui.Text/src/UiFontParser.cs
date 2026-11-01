@@ -18,6 +18,8 @@ internal static class UiFontParser
     private const uint TagFvar = 0x66766172;
     private const uint TagGvar = 0x67766172;
     private const uint TagAvar = 0x61766172;
+    private const uint TagHvar = 0x48564152;
+    private const uint TagMvar = 0x4D564152;
     private const uint TagColr = 0x434F4C52;
     private const uint TagCpal = 0x4350414C;
     private const uint TagFpgm = 0x6670676D;
@@ -97,6 +99,10 @@ internal static class UiFontParser
         int gvarLength = 0;
         int avarOffset = -1;
         int avarLength = 0;
+        int hvarOffset = -1;
+        int hvarLength = 0;
+        int mvarOffset = -1;
+        int mvarLength = 0;
         int colrOffset = -1;
         int colrLength = 0;
         int cpalOffset = -1;
@@ -182,6 +188,14 @@ internal static class UiFontParser
                 case TagAvar when avarOffset < 0:
                     avarOffset = tableOffset;
                     avarLength = tableLength;
+                    break;
+                case TagHvar when hvarOffset < 0:
+                    hvarOffset = tableOffset;
+                    hvarLength = tableLength;
+                    break;
+                case TagMvar when mvarOffset < 0:
+                    mvarOffset = tableOffset;
+                    mvarLength = tableLength;
                     break;
                 case TagColr when colrOffset < 0:
                     colrOffset = tableOffset;
@@ -372,6 +386,10 @@ internal static class UiFontParser
                 gvarLength,
                 avarOffset,
                 avarLength,
+                hvarOffset,
+                hvarLength,
+                mvarOffset,
+                mvarLength,
                 glyphCount,
                 out UiVariationData? variation,
                 out error))

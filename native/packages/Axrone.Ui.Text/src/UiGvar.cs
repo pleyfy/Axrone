@@ -354,28 +354,13 @@ internal sealed class UiGvarData
         float scalar = 1.0f;
         for (int axis = 0; axis < peak.Length; axis++)
         {
-            float peakValue = peak[axis];
-            float lower = start[axis];
-            float upper = end[axis];
-            if (peakValue == 0.0f || lower > peakValue || peakValue > upper || (lower < 0.0f && upper > 0.0f))
-            {
-                continue;
-            }
-
-            float value = axis < coordinates.Length ? coordinates[axis] : 0.0f;
-            if (value == peakValue)
-            {
-                continue;
-            }
-
-            if (value <= lower || upper <= value)
+            float coordinate = axis < coordinates.Length ? coordinates[axis] : 0.0f;
+            if (!UiVariationMath.TryAxisFactor(coordinate, start[axis], peak[axis], end[axis], out float factor))
             {
                 return 0.0f;
             }
 
-            scalar *= value < peakValue
-                ? (value - lower) / (peakValue - lower)
-                : (value - upper) / (peakValue - upper);
+            scalar *= factor;
         }
 
         return scalar;

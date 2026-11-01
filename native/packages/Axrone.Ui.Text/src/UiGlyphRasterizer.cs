@@ -14,15 +14,17 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private readonly int _maxDimension;
     private readonly long _maxPixels;
     private readonly UiTrueTypeHinter _hinter = new();
-    private int _instructionOffset;
-    private int _instructionLength;
-    private bool _topLevelSimple;
+    private int _compositeInstructionOffset;
+    private int _compositeInstructionLength;
+    private bool _topLevelComposite;
+    private float _pixelSize;
 
     private float[] _pointX = new float[256];
     private float[] _pointY = new float[256];
     private bool[] _onCurve = new bool[256];
     private float[] _rawX = new float[256];
     private float[] _rawY = new float[256];
+    private bool[] _rawOnCurve = new bool[256];
     private byte[] _flags = new byte[256];
     private int[] _endPoints = new int[16];
     private int[] _contourEnds = new int[16];
@@ -167,18 +169,19 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         _pointCount = 0;
         _contourCount = 0;
         _edgeCount = 0;
-        _instructionOffset = 0;
-        _instructionLength = 0;
-        _topLevelSimple = false;
+        _compositeInstructionOffset = 0;
+        _compositeInstructionLength = 0;
+        _topLevelComposite = false;
+        _pixelSize = pixelSize;
 
         if (!TryAppendGlyph(fontFace, glyphId, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0, out failure))
         {
             return false;
         }
 
-        if (EnableHinting && _topLevelSimple && _instructionLength > 0 && _pointCount > 0)
+        if (EnableHinting && _topLevelComposite && _compositeInstructionLength > 0 && _pointCount > 0)
         {
-            ReadOnlySpan<byte> instructions = data.Slice(_instructionOffset, _instructionLength);
+            ReadOnlySpan<byte> instructions = data.Slice(_compositeInstructionOffset, _compositeInstructionLength);
             if (!_hinter.TryHintGlyph(
                     fontFace,
                     pixelSize,
@@ -410,7 +413,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         ReadOnlySpan<byte> data = face.Buffer.Span;
         int contours = UiFontFace.ReadI16(data, offset);
         return contours >= 0
-            ? TryAppendSimple(face, glyphId, offset, length, contours, depth, a, b, c, d, dx, dy, out error)
+            ? TryAppendSimple(face, glyphId, offset, length, contours, a, b, c, d, dx, dy, out error)
             : TryAppendComposite(face, glyphId, offset, length, a, b, c, d, dx, dy, depth, out error);
     }
 
@@ -420,7 +423,6 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         int offset,
         int length,
         int contours,
-        int depth,
         float a,
         float b,
         float c,
@@ -483,13 +485,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
 
         int instructionLength = UiFontFace.ReadU16(data, cursor);
         cursor += 2;
-        if (depth == 0)
-        {
-            _instructionOffset = cursor;
-            _instructionLength = instructionLength;
-            _topLevelSimple = true;
-        }
-
+        int instructionOffset = cursor;
         cursor += instructionLength;
         if (cursor > end)
         {
@@ -598,6 +594,35 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             return false;
         }
 
+        if (EnableHinting && instructionLength > 0)
+        {
+            float hintPixelSize = _pixelSize * UniformScale(a, b, c, d);
+            if (hintPixelSize > 0.0f)
+            {
+                EnsureRawCapacity(pointCount);
+                for (int i = 0; i < pointCount; i++)
+                {
+                    _rawOnCurve[i] = (_flags[i] & 0x01) != 0;
+                }
+
+                ReadOnlySpan<byte> instructions = data.Slice(instructionOffset, instructionLength);
+                if (!_hinter.TryHintGlyph(
+                        face,
+                        hintPixelSize,
+                        instructions,
+                        _rawX.AsSpan(0, pointCount),
+                        _rawY.AsSpan(0, pointCount),
+                        _rawOnCurve.AsSpan(0, pointCount),
+                        _endPoints.AsSpan(0, contours),
+                        pointCount,
+                        face.ReadAdvance(data, glyphId),
+                        out error))
+                {
+                    return false;
+                }
+            }
+        }
+
         int baseIndex = _pointCount;
         for (int i = 0; i < pointCount; i++)
         {
@@ -637,6 +662,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         int cursor = offset + 10;
         int componentCount = 0;
         int componentIndex = 0;
+        bool hasInstructions = false;
         bool hasVariation = face.Gvar is not null && face.HasActiveVariation;
         if (hasVariation)
         {
@@ -673,6 +699,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             int flags = UiFontFace.ReadU16(data, cursor);
             int child = UiFontFace.ReadU16(data, cursor + 2);
             cursor += 4;
+            hasInstructions |= (flags & 0x0100) != 0;
 
             int arg1;
             int arg2;
@@ -767,9 +794,35 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
 
             if ((flags & 0x0020) == 0)
             {
-                return true;
+                break;
             }
         }
+
+        if (hasInstructions)
+        {
+            if (cursor + 2 > end)
+            {
+                error = UiFontError.At(UiFontErrorCode.InvalidGlyph, cursor, "Composite instruction length is truncated.");
+                return false;
+            }
+
+            int instructionLength = UiFontFace.ReadU16(data, cursor);
+            cursor += 2;
+            if (cursor + instructionLength > end)
+            {
+                error = UiFontError.At(UiFontErrorCode.InvalidGlyph, cursor, "Composite instructions exceed the glyph record.");
+                return false;
+            }
+
+            if (depth == 0)
+            {
+                _compositeInstructionOffset = cursor;
+                _compositeInstructionLength = instructionLength;
+                _topLevelComposite = true;
+            }
+        }
+
+        return true;
     }
 
     private bool ApplySimpleVariation(UiFontFace face, int glyphId, int pointCount, out UiFontError error)
@@ -1190,6 +1243,12 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
 
     private static float F2Dot14(short value) => value / 16384.0f;
 
+    private static float UniformScale(float a, float b, float c, float d)
+    {
+        float determinant = MathF.Abs((a * d) - (b * c));
+        return MathF.Sqrt(determinant);
+    }
+
     private void EnsureCoverage(int pixels)
     {
         if (_coverage.Length >= pixels)
@@ -1236,6 +1295,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         int capacity = Math.Max(required, _rawX.Length * 2);
         _rawX = new float[capacity];
         _rawY = new float[capacity];
+        _rawOnCurve = new bool[capacity];
         _flags = new byte[capacity];
     }
 
