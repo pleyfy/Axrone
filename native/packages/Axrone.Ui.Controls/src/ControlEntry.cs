@@ -29,6 +29,11 @@ internal struct ControlEntry
     public string[]? Options;
     public IUiListItemSource? Items;
     public IUiTreeSource? Tree;
+    public IUiGridSource? Grid;
+    public int[]? History;
+    public int HistoryCount;
+    public int CrossIndex;
+    public float CrossOffset;
     public int[]? VisibleRows;
     public bool[]? Expanded;
     public float[]? Metrics;

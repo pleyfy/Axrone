@@ -10,7 +10,7 @@ public sealed class ControlCatalogTests
     [Fact]
     public void CatalogCoversEveryKindWithMatchingBehavior()
     {
-        ControlCatalog.Count.Should().Be(24);
+        ControlCatalog.Count.Should().Be(38);
 
         for (int i = 0; i < ControlCatalog.Count; i++)
         {
@@ -20,7 +20,7 @@ public sealed class ControlCatalogTests
             behavior.Kind.Should().Be(kind);
         }
 
-        ControlCatalog.Contains((ControlKind)24).Should().BeFalse();
+        ControlCatalog.Contains((ControlKind)38).Should().BeFalse();
         ControlCatalog.Contains((ControlKind)200).Should().BeFalse();
         ControlCatalog.TryGet((ControlKind)200, out _).Should().BeFalse();
     }
@@ -57,7 +57,7 @@ public sealed class ControlCatalogTests
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
-        hits.Should().Be(1000 * 276);
+        hits.Should().Be(1000 * 703);
     }
 }
 
@@ -201,33 +201,33 @@ public sealed class ControlRuntimeTests
     [Fact]
     public void EveryKindCanBeCreatedMountedAndLaidOut()
     {
-        var images = new TestImageMetrics();
-        images.Set(new UiResourceId(7), 64.0f, 32.0f);
-        var host = new ControlHost(images: images);
-
         for (int i = 0; i < ControlCatalog.Count; i++)
         {
             ControlKind kind = ControlCatalog.GetKind(i);
+            var images = new TestImageMetrics();
+            images.Set(new UiResourceId(7), 64.0f, 32.0f);
+            var host = new ControlHost(images: images);
             var definition = new UiControlDefinition(
-                Text: kind is ControlKind.Dropdown or ControlKind.RadioGroup ? "A\nB\nC" : "Sample",
+                Text: kind is ControlKind.Dropdown or ControlKind.RadioGroup or ControlKind.TabView or
+                    ControlKind.Menu or ControlKind.SegmentedControl or ControlKind.MenuBar or
+                    ControlKind.Breadcrumb
+                    ? "A" + (char)10 + "B" + (char)10 + "C"
+                    : "Sample",
                 Image: new UiResourceId(7),
-                Value: 0.5f,
+                Value: kind == ControlKind.DatePicker ? UiDateCodec.Pack(2026, 3, 15) : 0.5f,
                 MinValue: 0.0f,
                 MaxValue: 1.0f,
-                Step: 0.1f);
+                Step: 0.1f,
+                Grid: kind == ControlKind.DataGrid ? new TestGridSource() : null);
             UiControl control = host.Runtime.CreateControl(kind, in definition);
             host.Runtime.Mount(control).Should().BeTrue($"{kind} should mount");
             host.Runtime.TryGetSnapshot(control, out UiControlSnapshot snapshot).Should().BeTrue();
             snapshot.Kind.Should().Be(kind);
-        }
 
-        host.Layout();
-
-        for (int i = 0; i < ControlCatalog.Count; i++)
-        {
-            UiControl control = host.Runtime.CreateControl(ControlKind.Label, new UiControlDefinition(Text: "probe"));
-            host.Runtime.Mount(control);
-            host.Runtime.DestroyControl(control);
+            host.Layout();
+            host.Runtime.TryGetBounds(control.Node, out Rect bounds).Should().BeTrue($"{kind} should be arranged");
+            bounds.Width.Should().BeGreaterThan(0.0f, $"{kind} should have width");
+            bounds.Height.Should().BeGreaterThanOrEqualTo(0.0f, $"{kind} should have height");
         }
     }
 

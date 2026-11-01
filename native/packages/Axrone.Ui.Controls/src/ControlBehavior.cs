@@ -189,6 +189,20 @@ public static class ControlCatalog
         new StepperBehavior(),
         new RatingBehavior(),
         new SplitPaneBehavior(),
+        new DataGridBehavior(),
+        new DatePickerBehavior(),
+        new ColorPickerBehavior(),
+        new NavigationBarBehavior(),
+        new PageStackBehavior(),
+        new PageViewBehavior(),
+        new PopupBehavior(),
+        new ImageFaceBehavior(),
+        new MenuBarBehavior(),
+        new AccordionBehavior(),
+        new BreadcrumbBehavior(),
+        new ChipBehavior(),
+        new BadgeBehavior(),
+        new SpinnerBehavior(),
     ];
 
     /// <summary>Gets the number of registered control kinds.</summary>

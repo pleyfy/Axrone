@@ -126,13 +126,13 @@ public sealed class UiControlRuntime : IDisposable
 
         int index = AllocateEntry();
         _generations[index]++;
-        bool startsHidden = kind is ControlKind.Tooltip or ControlKind.Toast or ControlKind.Dialog;
+        bool startsHidden = kind is ControlKind.Tooltip or ControlKind.Toast or ControlKind.Dialog or ControlKind.Popup;
         UiNodeFlags flags =
             (startsHidden ? UiNodeFlags.None : UiNodeFlags.Visible) |
             UiNodeFlags.Enabled |
             (behavior.Interactive ? UiNodeFlags.Interactive : UiNodeFlags.None) |
             (behavior.Focusable ? UiNodeFlags.Focusable : UiNodeFlags.None) |
-            (kind == ControlKind.ScrollView ? UiNodeFlags.Clip : UiNodeFlags.None);
+            (kind is ControlKind.ScrollView or ControlKind.PageView ? UiNodeFlags.Clip : UiNodeFlags.None);
         UiNodeId node = _tree.CreateNode(MapNodeKind(kind), flags, new ControlNodeBinding(index, ControlPart.Primary, 0));
         _receivers.Add(node, new ControlInputReceiver(this, node));
 
@@ -160,6 +160,7 @@ public sealed class UiControlRuntime : IDisposable
         entry.Index = definition.SelectedIndex;
         entry.Items = definition.Items;
         entry.Tree = definition.Tree;
+        entry.Grid = definition.Grid;
 
         _layoutStyles.Set(node, behavior.CreateLayoutStyle(in _styleContext));
         behavior.Initialize(this, index, in definition);
@@ -211,6 +212,11 @@ public sealed class UiControlRuntime : IDisposable
         _dirty.Invalidate(new UiInvalidation(entry.Node, UiInvalidationFlags.Layout | UiInvalidationFlags.Render));
         _focus.MarkOrderDirty();
         _hitSyncDirty = true;
+        if (parent.IsValid && TryGetEntry(parent, out int mountedUnder))
+        {
+            ControlCatalog.Get(_entries[mountedUnder].Kind).RefreshSecondary(this, mountedUnder);
+        }
+
         return true;
     }
 
@@ -390,12 +396,13 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         ref ControlEntry entry = ref _entries[indexOfControl];
-        if (entry.Kind is not (ControlKind.Dropdown or ControlKind.RadioGroup))
+        if (entry.Kind is not (ControlKind.Dropdown or ControlKind.RadioGroup or ControlKind.TabView or
+            ControlKind.PageStack or ControlKind.PageView or ControlKind.MenuBar or ControlKind.Breadcrumb))
         {
             return false;
         }
 
-        int maximum = (entry.Options?.Length ?? 0) - 1;
+        int maximum = Math.Max(entry.Options?.Length ?? 0, entry.PageCount) - 1;
         int clamped = maximum < 0 ? 0 : Math.Clamp(index, 0, maximum);
         if (clamped == entry.Index)
         {
@@ -464,7 +471,11 @@ public sealed class UiControlRuntime : IDisposable
             entry.Value,
             entry.Index,
             entry.ScrollOffset,
-            entry.Text);
+            entry.Text)
+        {
+            Column = entry.CrossIndex,
+            HorizontalOffset = entry.CrossOffset,
+        };
         return true;
     }
 
@@ -486,7 +497,8 @@ public sealed class UiControlRuntime : IDisposable
     internal bool SetOpenByIndex(int index, bool open)
     {
         ref ControlEntry entry = ref _entries[index];
-        if (entry.Kind is not (ControlKind.Menu or ControlKind.Tooltip or ControlKind.Dialog or ControlKind.Toast) ||
+        if (entry.Kind is not (ControlKind.Menu or ControlKind.Tooltip or ControlKind.Dialog or ControlKind.Toast or
+            ControlKind.Popup or ControlKind.Spinner) ||
             entry.Open == open)
         {
             return entry.Open == open;
@@ -494,7 +506,7 @@ public sealed class UiControlRuntime : IDisposable
 
         bool wasOpen = entry.Open;
         entry.Open = open;
-        if (entry.Kind is ControlKind.Tooltip or ControlKind.Toast or ControlKind.Dialog)
+        if (entry.Kind is ControlKind.Tooltip or ControlKind.Toast or ControlKind.Dialog or ControlKind.Popup)
         {
             entry.Visible = open;
             UiNodeFlags nodeFlags = _tree.GetFlags(entry.Node);
@@ -541,6 +553,22 @@ public sealed class UiControlRuntime : IDisposable
             }
 
             ref ControlEntry entry = ref _entries[i];
+            if (entry.Kind == ControlKind.Spinner)
+            {
+                if (entry.Open)
+                {
+                    entry.Value += deltaSeconds;
+                    if (entry.Value >= 1.0f)
+                    {
+                        entry.Value -= MathF.Floor(entry.Value);
+                    }
+
+                    InvalidateVisual(i);
+                }
+
+                continue;
+            }
+
             if (entry.Kind != ControlKind.Toast || !entry.Open)
             {
                 continue;
@@ -593,7 +621,8 @@ public sealed class UiControlRuntime : IDisposable
     public bool AddPage(UiControl tab, UiControl page)
     {
         EnsureActive();
-        if (!TryGetEntry(tab, out int index) || _entries[index].Kind != ControlKind.TabView ||
+        if (!TryGetEntry(tab, out int index) ||
+            _entries[index].Kind is not (ControlKind.TabView or ControlKind.PageStack or ControlKind.PageView) ||
             !TryGetEntry(page, out _))
         {
             return false;
@@ -609,6 +638,136 @@ public sealed class UiControlRuntime : IDisposable
         entry.Pages![entry.PageCount++] = page;
         _ = SetVisible(page, entry.PageCount - 1 == entry.Index);
         return true;
+    }
+
+    /// <summary>Reports the inclusive visible column window of a data grid. O(log c) binary search.</summary>
+    public bool TryGetVirtualColumnRange(UiControl control, out int first, out int last)
+    {
+        first = 0;
+        last = -1;
+        if (!TryGetEntry(control, out int index) || _entries[index].Kind != ControlKind.DataGrid ||
+            !_bounds.TryGetValue(_entries[index].Node, out Rect box))
+        {
+            return false;
+        }
+
+        ref ControlEntry entry = ref _entries[index];
+        if (entry.Metrics is not { Length: > 1 } metrics)
+        {
+            return false;
+        }
+
+        int columns = metrics.Length - 1;
+        first = FindColumn(metrics, entry.CrossOffset);
+        last = FindColumn(metrics, entry.CrossOffset + MathF.Max(0.0f, box.Width));
+        last = Math.Clamp(last, first, columns - 1);
+        return true;
+    }
+
+    /// <summary>Pushes a page onto a page stack or page view and shows it.</summary>
+    public bool PushPage(UiControl stack, UiControl page)
+    {
+        EnsureActive();
+        if (!TryGetEntry(stack, out int index) ||
+            _entries[index].Kind is not (ControlKind.PageStack or ControlKind.PageView) ||
+            !TryGetEntry(page, out _))
+        {
+            return false;
+        }
+
+        ref ControlEntry entry = ref _entries[index];
+        entry.Pages ??= new UiControl[4];
+        if (entry.PageCount == entry.Pages.Length)
+        {
+            Array.Resize(ref entry.Pages, Math.Max(entry.PageCount + 1, entry.PageCount * 2));
+        }
+
+        if (entry.Kind == ControlKind.PageStack && entry.PageCount > 0)
+        {
+            entry.History ??= new int[4];
+            if (entry.HistoryCount == entry.History.Length)
+            {
+                Array.Resize(ref entry.History, Math.Max(entry.HistoryCount + 1, entry.HistoryCount * 2));
+            }
+
+            entry.History[entry.HistoryCount++] = entry.Index;
+        }
+
+        entry.Pages![entry.PageCount++] = page;
+        entry.Index = entry.PageCount - 1;
+        ApplyPageVisibility(index);
+        RefreshVisual(index);
+        Emit(index, UiControlEventKind.SelectionChanged, entry.Value, entry.Checked, entry.Index, null);
+        return true;
+    }
+
+    /// <summary>Pops the current page of a page stack back to the previous one.</summary>
+    public bool PopPage(UiControl stack)
+    {
+        EnsureActive();
+        return TryGetEntry(stack, out int index) && PopPageByIndex(index);
+    }
+
+    internal bool PopPageByIndex(int index)
+    {
+        if (_entries[index].Kind != ControlKind.PageStack)
+        {
+            return false;
+        }
+
+        ref ControlEntry entry = ref _entries[index];
+        if (entry.HistoryCount == 0)
+        {
+            return false;
+        }
+
+        entry.Index = Math.Clamp(entry.History![--entry.HistoryCount], 0, Math.Max(0, entry.PageCount - 1));
+        ApplyPageVisibility(index);
+        RefreshVisual(index);
+        Emit(index, UiControlEventKind.Back, entry.Value, entry.Checked, entry.Index, null);
+        Emit(index, UiControlEventKind.SelectionChanged, entry.Value, entry.Checked, entry.Index, null);
+        return true;
+    }
+
+    private void ApplyPageVisibility(int index)
+    {
+        ref ControlEntry entry = ref _entries[index];
+        if (entry.Pages is not UiControl[] pages)
+        {
+            return;
+        }
+
+        for (int i = 0; i < entry.PageCount; i++)
+        {
+            if (pages[i].IsValid)
+            {
+                _ = SetVisible(pages[i], i == entry.Index);
+            }
+        }
+    }
+
+    private static int FindColumn(float[] cumulative, float x)
+    {
+        int low = 0;
+        int high = cumulative.Length - 2;
+        while (low <= high)
+        {
+            int mid = low + ((high - low) >> 1);
+            if (x < cumulative[mid])
+            {
+                high = mid - 1;
+            }
+            else if (x >= cumulative[mid + 1])
+            {
+                low = mid + 1;
+            }
+            else
+            {
+                return mid;
+            }
+        }
+
+        return Math.Clamp(low, 0, cumulative.Length - 2);
     }
 
     /// <summary>Runs layout for dirty subtrees and synchronizes the hit-test index.</summary>
@@ -627,7 +786,34 @@ public sealed class UiControlRuntime : IDisposable
     }
 
     /// <summary>Routes one pointer event through the control tree.</summary>
-    public bool DispatchPointer(in UiPointerEvent args) => _router.Route(in args).Handled;
+    public bool DispatchPointer(in UiPointerEvent args)
+    {
+        UiInputDispatchResult result = _router.Route(in args);
+        if (args.Phase == UiPointerPhase.Down)
+        {
+            ClosePopupsOutside(result.Target);
+        }
+
+        return result.Handled;
+    }
+
+    private void ClosePopupsOutside(UiNodeId target)
+    {
+        for (int i = 0; i < _entryCount; i++)
+        {
+            if (!_live[i])
+            {
+                continue;
+            }
+
+            ref ControlEntry entry = ref _entries[i];
+            if (entry.Kind == ControlKind.Popup && entry.Open &&
+                (!target.IsValid || !IsWithin(target, entry.Node)))
+            {
+                _ = SetOpenByIndex(i, false);
+            }
+        }
+    }
 
     /// <summary>Routes one key event; Tab moves focus when no control consumes it.</summary>
     public bool DispatchKey(in UiKeyEvent args)
@@ -837,6 +1023,7 @@ public sealed class UiControlRuntime : IDisposable
     {
         ControlKind.ListView => entry.Items?.Count ?? 0,
         ControlKind.TreeView => entry.VisibleRows?.Length ?? 0,
+        ControlKind.DataGrid => entry.Grid?.RowCount ?? 0,
         _ => 0,
     };
 
@@ -1210,8 +1397,10 @@ public sealed class UiControlRuntime : IDisposable
         ControlKind.Button => UiNodeKind.Button,
         ControlKind.TextInput => UiNodeKind.Input,
         ControlKind.Panel or ControlKind.ScrollView or ControlKind.RadioGroup or ControlKind.TabView or
-            ControlKind.Dialog or ControlKind.SplitPane => UiNodeKind.Container,
+            ControlKind.Dialog or ControlKind.SplitPane or ControlKind.Popup or ControlKind.PageStack or
+            ControlKind.PageView or ControlKind.Accordion => UiNodeKind.Container,
         ControlKind.TextArea => UiNodeKind.Input,
+        ControlKind.ImageFace => UiNodeKind.Image,
         _ => UiNodeKind.Custom,
     };
 
@@ -1257,7 +1446,7 @@ public sealed class UiControlRuntime : IDisposable
 
             if (owner._tree.TryGetBinding(node, out ControlNodeBinding binding) &&
                 owner.TryResolveEntry(binding.Control, out int index) &&
-                KindOf(in owner._entries[index]) == ControlKind.Image)
+                KindOf(in owner._entries[index]) is ControlKind.Image or ControlKind.ImageFace)
             {
                 size = owner.MeasureImage(in owner._entries[index], in constraints);
                 return true;
