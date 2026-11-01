@@ -31,6 +31,18 @@ public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
     /// <inheritdoc/>
     public void PublishEnvelope<TEvent>(in EventEnvelope<TEvent> envelope) => Router<TEvent>().PublishEnvelope(in envelope);
 
+    /// <summary>Dispatches synchronously on the caller thread through the event-type router.</summary>
+    /// <typeparam name="TEvent">Payload type.</typeparam>
+    /// <param name="message">Payload to dispatch.</param>
+    /// <returns>Active subscriptions invoked.</returns>
+    public int PublishImmediate<TEvent>(in TEvent message) => Router<TEvent>().PublishImmediate(in message);
+
+    /// <summary>Non-blocking immediate dispatch through the event-type router.</summary>
+    /// <typeparam name="TEvent">Payload type.</typeparam>
+    /// <param name="message">Payload to dispatch.</param>
+    /// <returns>Active subscriptions invoked; zero when completed or reentrant.</returns>
+    public int TryPublishImmediate<TEvent>(in TEvent message) => Router<TEvent>().TryPublishImmediate(in message);
+
     /// <inheritdoc/>
     public int PublishBatch<TEvent>(ReadOnlySpan<TEvent> items) => Router<TEvent>().PublishBatch(items);
 
@@ -38,9 +50,27 @@ public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
     public IEventSubscription Subscribe<TEvent>(Action<EventEnvelope<TEvent>, CancellationToken> handler) =>
         Router<TEvent>().Subscribe(handler);
 
+    /// <summary>Subscribes a synchronous handler with an explicit dispatch priority.</summary>
+    /// <typeparam name="TEvent">Payload type.</typeparam>
+    /// <param name="handler">Handler to invoke.</param>
+    /// <param name="priority">Dispatch priority.</param>
+    public IEventSubscription Subscribe<TEvent>(
+        Action<EventEnvelope<TEvent>, CancellationToken> handler,
+        EventPriority priority) =>
+        Router<TEvent>().Subscribe(handler, priority);
+
     /// <inheritdoc/>
     public IEventSubscription SubscribeAsync<TEvent>(Func<EventEnvelope<TEvent>, CancellationToken, ValueTask> handler) =>
         Router<TEvent>().SubscribeAsync(handler);
+
+    /// <summary>Subscribes an asynchronous handler with an explicit dispatch priority.</summary>
+    /// <typeparam name="TEvent">Payload type.</typeparam>
+    /// <param name="handler">Handler to invoke.</param>
+    /// <param name="priority">Dispatch priority.</param>
+    public IEventSubscription SubscribeAsync<TEvent>(
+        Func<EventEnvelope<TEvent>, CancellationToken, ValueTask> handler,
+        EventPriority priority) =>
+        Router<TEvent>().SubscribeAsync(handler, priority);
 
     /// <summary>Returns the router for the event type, creating it on first use.</summary>
     public EventRouter<TEvent> Router<TEvent>()
