@@ -97,6 +97,32 @@ internal sealed class CountingControlSink : IUiControlEventSink
     }
 }
 
+internal sealed class TestListSource : IUiListItemSource
+{
+    public int Count { get; set; }
+}
+
+internal sealed class TestTreeSource : IUiTreeSource
+{
+    public int RootCount => 1;
+
+    public int GetRoot(int index) => 1;
+
+    public int GetChildCount(int node) => node switch
+    {
+        1 => 2,
+        2 => 1,
+        _ => 0,
+    };
+
+    public int GetChild(int node, int childIndex) => node switch
+    {
+        1 => childIndex == 0 ? 2 : 3,
+        2 => 4,
+        _ => 0,
+    };
+}
+
 internal sealed class ControlHost
 {
     public static readonly UiTextStyle DefaultTextStyle = new(
@@ -136,7 +162,9 @@ internal sealed class ControlHost
         UiResourceId image = default,
         float min = 0.0f,
         float max = 1.0f,
-        float step = 0.1f)
+        float step = 0.1f,
+        IUiListItemSource? items = null,
+        IUiTreeSource? tree = null)
     {
         var definition = new UiControlDefinition(
             Text: text,
@@ -146,7 +174,9 @@ internal sealed class ControlHost
             SelectedIndex: index,
             MinValue: min,
             MaxValue: max,
-            Step: step);
+            Step: step,
+            Items: items,
+            Tree: tree);
         return parent.IsValid
             ? Runtime.CreateControl(kind, in definition, parent)
             : Runtime.CreateControl(kind, in definition);
