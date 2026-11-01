@@ -1,5 +1,7 @@
 namespace Axrone.Scene.Rendering.OpenGL;
 
+using Axrone.Render.Core;
+
 /// <summary>Upload counters for one asset-cache synchronization.</summary>
 public readonly record struct SceneGlUploadStats(
     int Shaders,
@@ -17,6 +19,7 @@ public sealed class SceneGlAssetCache : IDisposable
     private readonly GLContext _context;
     private readonly SceneAssetRegistry _assets;
     private readonly Dictionary<SceneAssetId<ShaderAssetTag>, SceneGlShader> _shaders = new();
+    private readonly Dictionary<SceneAssetId<ShaderAssetTag>, SceneGlShader?> _skinnedShaders = new();
     private readonly Dictionary<SceneAssetId<MeshAssetTag>, GLMesh> _meshes = new();
     private readonly Dictionary<SceneAssetId<MeshAssetTag>, SceneMeshDefinition> _meshSources = new();
     private readonly Dictionary<SceneAssetId<MaterialAssetTag>, SceneGlMaterial> _materials = new();
@@ -119,7 +122,29 @@ public sealed class SceneGlAssetCache : IDisposable
         }
 
         _shaders[definition.Id] = shader;
+
+        SceneGlShader? previousSkinned = null;
+        _ = _skinnedShaders.Remove(definition.Id, out previousSkinned);
+        previousSkinned?.Dispose();
+        _skinnedShaders[definition.Id] = CompileSkinnedShader(definition, label);
         return shader;
+    }
+
+    private SceneGlShader? CompileSkinnedShader(SceneShaderDefinition definition, string label)
+    {
+        if (!SkinningShaderInjector.TryInject(definition.VertexSource, out string injected))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new SceneGlShader(_context, label + "-skinned", injected, definition.FragmentSource);
+        }
+        catch (GLShaderException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Uploads and stores a mesh.</summary>
@@ -283,10 +308,20 @@ public sealed class SceneGlAssetCache : IDisposable
         AddTextureSlot(slots, "u_OcclusionMap", 3, definition.Surface.OcclusionMap);
         AddTextureSlot(slots, "u_EmissiveMap", 4, definition.Surface.EmissiveMap);
 
-        var material = new SceneGlMaterial(definition, shader, slots.ToArray());
+        var material = new SceneGlMaterial(
+            definition,
+            shader,
+            slots.ToArray(),
+            TryGetSkinnedShader(definition.ShaderId, out SceneGlShader? skinnedShader) ? skinnedShader : null);
         _materials[definition.Id] = material;
         return material;
     }
+
+    /// <summary>Resolves the skinned vertex variant of an uploaded shader, when one compiled.</summary>
+    public bool TryGetSkinnedShader(
+        SceneAssetId<ShaderAssetTag> id,
+        [NotNullWhen(true)] out SceneGlShader? skinnedShader) =>
+        _skinnedShaders.TryGetValue(id, out skinnedShader);
 
     /// <summary>Resolves an uploaded shader.</summary>
     public bool TryGetShader(SceneAssetId<ShaderAssetTag> id, [NotNullWhen(true)] out SceneGlShader? shader) =>
@@ -499,6 +534,13 @@ public sealed class SceneGlAssetCache : IDisposable
         }
 
         _shaders.Clear();
+
+        foreach (SceneGlShader? skinnedShader in _skinnedShaders.Values)
+        {
+            skinnedShader?.Dispose();
+        }
+
+        _skinnedShaders.Clear();
 
         foreach (GLMesh mesh in _meshes.Values)
         {

@@ -20,7 +20,8 @@ public sealed class SceneGlMaterial
     public SceneGlMaterial(
         SceneMaterialDefinition definition,
         SceneGlShader shader,
-        SceneGlTextureSlot[] textureSlots)
+        SceneGlTextureSlot[] textureSlots,
+        SceneGlShader? skinnedShader = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(shader);
@@ -28,6 +29,7 @@ public sealed class SceneGlMaterial
 
         Definition = definition;
         Shader = shader;
+        SkinnedShader = skinnedShader;
         TextureSlots = textureSlots;
         PrimaryPass = ResolvePrimaryPass(definition.Passes);
         UniformEntries = FlattenUniforms(definition.Uniforms);
@@ -38,6 +40,9 @@ public sealed class SceneGlMaterial
 
     /// <summary>Compiled shader.</summary>
     public SceneGlShader Shader { get; }
+
+    /// <summary>Skinning variant of <see cref="Shader"/>, or null when the material vertex shader cannot be skinned.</summary>
+    public SceneGlShader? SkinnedShader { get; }
 
     /// <summary>Resolved texture slots.</summary>
     public ReadOnlyMemory<SceneGlTextureSlot> TextureSlots { get; }
