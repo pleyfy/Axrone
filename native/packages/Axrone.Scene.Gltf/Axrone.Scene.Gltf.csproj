@@ -19,6 +19,9 @@
     <NoWarn>$(NoWarn);CA1032</NoWarn>
     <!-- CA1815: Equals on transient structs — diagnostics are consumed positionally. -->
     <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <!-- CA1720: Float/Int/Object are the GLSL property and scope terms; renaming
+         them would obscure the shader contract. -->
+    <NoWarn>$(NoWarn);CA1720</NoWarn>
   </PropertyGroup>
 
   <ItemGroup Label="PublicApi">
