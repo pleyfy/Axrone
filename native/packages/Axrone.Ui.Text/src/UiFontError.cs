@@ -66,6 +66,9 @@ public enum UiFontErrorCode
     /// <summary>The code point has no glyph in the resolved face or fallbacks.</summary>
     GlyphNotFound,
 
+    /// <summary>The requested pixel size is not finite or positive.</summary>
+    InvalidPixelSize,
+
     /// <summary>The requested raster size exceeds the implementation limit.</summary>
     RasterTooLarge,
 
