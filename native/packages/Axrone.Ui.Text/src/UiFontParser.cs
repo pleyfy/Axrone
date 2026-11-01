@@ -203,9 +203,7 @@ internal static class UiFontParser
                 cmapOffset,
                 cmapLength,
                 glyphCount,
-                out int cmapFormat,
-                out UiCmapSegment[] segments,
-                out UiCmapGroup[] groups,
+                out UiCmapData? cmapData,
                 out error))
         {
             return false;
@@ -282,9 +280,7 @@ internal static class UiFontParser
             descender,
             lineGap,
             outlineFormat,
-            cmapFormat,
-            segments,
-            groups,
+            cmapData!,
             hmtxOffset,
             numberOfHMetrics,
             kernPairsOffset,
