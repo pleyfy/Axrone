@@ -18,6 +18,9 @@
     <!-- CA1815: Equals on transient structs — frame records are consumed
          positionally. -->
     <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <!-- CA1031: animator/path fault isolation must catch every controller and
+         pose-sink failure so one actor cannot stop the rest of the frame. -->
+    <NoWarn>$(NoWarn);CA1031</NoWarn>
   </PropertyGroup>
 
   <ItemGroup Label="PublicApi">
@@ -25,6 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Axrone.Animation/Axrone.Animation.csproj" />
     <ProjectReference Include="../Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
     <ProjectReference Include="../Axrone.Scene.Assets/Axrone.Scene.Assets.csproj" />
     <ProjectReference Include="../Axrone.Scene.Rendering/Axrone.Scene.Rendering.csproj" />
