@@ -22,6 +22,7 @@ public sealed class UiFontFace
     private readonly UiGposData? _gpos;
     private readonly UiVariationData? _variation;
     private readonly UiColorData? _color;
+    private readonly UiTrueTypeHintData? _hints;
     private readonly float[] _coordinates;
     private readonly int[] _reverseCodePoints;
     private readonly int _hmtxOffset;
@@ -51,6 +52,7 @@ public sealed class UiFontFace
         UiGposData? gpos,
         UiVariationData? variation,
         UiColorData? color,
+        UiTrueTypeHintData? hints,
         int hmtxOffset,
         int numberOfHMetrics,
         int kernPairsOffset,
@@ -77,6 +79,7 @@ public sealed class UiFontFace
         _gpos = gpos;
         _variation = variation;
         _color = color;
+        _hints = hints;
         _coordinates = variation is null ? [] : new float[variation.Axes.Length];
         _hmtxOffset = hmtxOffset;
         _numberOfHMetrics = numberOfHMetrics;
@@ -115,6 +118,8 @@ public sealed class UiFontFace
 
     public int ColorPaletteEntryCount => _color?.PaletteEntryCount ?? 0;
 
+    public bool HasHinting => _hints is not null;
+
     public int Ascender { get; }
 
     public int Descender { get; }
@@ -132,6 +137,8 @@ public sealed class UiFontFace
     internal UiGposData? Gpos => _gpos;
 
     internal UiGvarData? Gvar => _variation?.Gvar;
+
+    internal UiTrueTypeHintData? HintData => _hints;
 
     internal ReadOnlySpan<float> NormalizedCoordinates => _coordinates;
 

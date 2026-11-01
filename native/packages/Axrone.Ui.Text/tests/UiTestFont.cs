@@ -31,6 +31,9 @@ internal static class UiTestFont
     public static byte[] CreateColor(bool corrupt = false) =>
         CreateCore(4, false, 0, color: true, colorCorrupt: corrupt);
 
+    public static byte[] CreateHinted(bool prepYAxis = false) =>
+        CreateCore(4, false, 0, hinted: true, prepYAxis: prepYAxis);
+
     public static byte[] CreateCff2Tagged()
     {
         byte[] font = Create(cff: true);
@@ -56,7 +59,9 @@ internal static class UiTestFont
         bool avar = false,
         bool corruptGvar = false,
         bool color = false,
-        bool colorCorrupt = false)
+        bool colorCorrupt = false,
+        bool hinted = false,
+        bool prepYAxis = false)
     {
         List<byte[]> glyphs =
         [
@@ -121,6 +126,17 @@ internal static class UiTestFont
 
         mappings.Sort(static (left, right) => left.CodePoint.CompareTo(right.CodePoint));
 
+        if (hinted)
+        {
+            glyphs[2] = SimpleGlyphWithInstructions(
+                prepYAxis
+                    ? [0xB0, 0x01, 0x2F]
+                    : [0xB0, 0x00, 0x2B, 0xB0, 0x01, 0x2F],
+                (0, 0),
+                (300, 740),
+                (600, 0));
+        }
+
         List<(int Left, int Right, int Value)> kernPairs =
         [
             (2, 3, -80),
@@ -129,7 +145,23 @@ internal static class UiTestFont
         ];
 
         int metrics = hMetrics <= 0 ? glyphs.Count : hMetrics;
-        return Build(glyphs, Advances, LeftBearings, mappings, kernPairs, metrics, cmapFormat, cff, layout, variation, avar, corruptGvar, color, colorCorrupt);
+        return Build(
+            glyphs,
+            Advances,
+            LeftBearings,
+            mappings,
+            kernPairs,
+            metrics,
+            cmapFormat,
+            cff,
+            layout,
+            variation,
+            avar,
+            corruptGvar,
+            color,
+            colorCorrupt,
+            hinted,
+            prepYAxis);
     }
 
     public static byte[] CreateFallback()
@@ -233,6 +265,51 @@ internal static class UiTestFont
         return [.. data];
     }
 
+    public static byte[] SimpleGlyphWithInstructions(byte[] instructions, params (int X, int Y)[] points)
+    {
+        int xMin = int.MaxValue;
+        int yMin = int.MaxValue;
+        int xMax = int.MinValue;
+        int yMax = int.MinValue;
+        foreach ((int x, int y) in points)
+        {
+            xMin = Math.Min(xMin, x);
+            yMin = Math.Min(yMin, y);
+            xMax = Math.Max(xMax, x);
+            yMax = Math.Max(yMax, y);
+        }
+
+        var data = new List<byte>(32 + instructions.Length);
+        WriteI16(data, 1);
+        WriteI16(data, xMin);
+        WriteI16(data, yMin);
+        WriteI16(data, xMax);
+        WriteI16(data, yMax);
+        WriteU16(data, points.Length - 1);
+        WriteU16(data, instructions.Length);
+        data.AddRange(instructions);
+        for (int i = 0; i < points.Length; i++)
+        {
+            data.Add(0x01);
+        }
+
+        int previous = 0;
+        foreach ((int x, _) in points)
+        {
+            WriteI16(data, x - previous);
+            previous = x;
+        }
+
+        previous = 0;
+        foreach ((_, int y) in points)
+        {
+            WriteI16(data, y - previous);
+            previous = y;
+        }
+
+        return [.. data];
+    }
+
     public static byte[] CompositeGlyph(int glyphId, int dx, int dy, int xMin, int yMin, int xMax, int yMax)
     {
         var data = new List<byte>(18);
@@ -262,7 +339,9 @@ internal static class UiTestFont
         bool avar = false,
         bool corruptGvar = false,
         bool color = false,
-        bool colorCorrupt = false)
+        bool colorCorrupt = false,
+        bool hinted = false,
+        bool prepYAxis = false)
     {
         var tables = new List<(string Tag, byte[] Data)>
         {
@@ -308,6 +387,16 @@ internal static class UiTestFont
         {
             tables.Add(("COLR", BuildColr(colorCorrupt)));
             tables.Add(("CPAL", BuildCpal()));
+        }
+
+        if (hinted)
+        {
+            tables.Add(("fpgm", [0xB0, 0x00, 0x2C, 0x00, 0x2D]));
+            tables.Add(("cvt ", BuildCvt(740)));
+            if (prepYAxis)
+            {
+                tables.Add(("prep", [0x00]));
+            }
         }
 
         tables.Sort(static (left, right) => string.CompareOrdinal(left.Tag, right.Tag));
@@ -746,6 +835,17 @@ internal static class UiTestFont
         data.AddRange([0, 0, 255, 255]);
         data.AddRange([255, 255, 255, 255]);
         data.AddRange([255, 0, 0, 255]);
+        return [.. data];
+    }
+
+    private static byte[] BuildCvt(params int[] values)
+    {
+        var data = new List<byte>(values.Length * 2);
+        foreach (int value in values)
+        {
+            WriteI16(data, value);
+        }
+
         return [.. data];
     }
 

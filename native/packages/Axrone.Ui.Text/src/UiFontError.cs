@@ -40,6 +40,8 @@ public enum UiFontErrorCode
 
     InvalidColor,
 
+    InvalidHinting,
+
     UnsupportedOutlineFormat,
 
     UnsupportedGlyph,

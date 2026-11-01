@@ -13,6 +13,10 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private readonly UiFontProvider _provider;
     private readonly int _maxDimension;
     private readonly long _maxPixels;
+    private readonly UiTrueTypeHinter _hinter = new();
+    private int _instructionOffset;
+    private int _instructionLength;
+    private bool _topLevelSimple;
 
     private float[] _pointX = new float[256];
     private float[] _pointY = new float[256];
@@ -53,6 +57,8 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         _maxDimension = maxDimension;
         _maxPixels = (long)maxDimension * maxDimension;
     }
+
+    public bool EnableHinting { get; set; } = true;
 
     public bool TryRasterize(
         UiFontFaceId face,
@@ -161,10 +167,32 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         _pointCount = 0;
         _contourCount = 0;
         _edgeCount = 0;
+        _instructionOffset = 0;
+        _instructionLength = 0;
+        _topLevelSimple = false;
 
         if (!TryAppendGlyph(fontFace, glyphId, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0, out failure))
         {
             return false;
+        }
+
+        if (EnableHinting && _topLevelSimple && _instructionLength > 0 && _pointCount > 0)
+        {
+            ReadOnlySpan<byte> instructions = data.Slice(_instructionOffset, _instructionLength);
+            if (!_hinter.TryHintGlyph(
+                    fontFace,
+                    pixelSize,
+                    instructions,
+                    _pointX.AsSpan(0, _pointCount),
+                    _pointY.AsSpan(0, _pointCount),
+                    _onCurve.AsSpan(0, _pointCount),
+                    _contourEnds.AsSpan(0, _contourCount),
+                    _pointCount,
+                    fontFace.ReadAdvance(data, glyphId),
+                    out failure))
+            {
+                return false;
+            }
         }
 
         ExpandBounds(scale, ref left, ref right, ref bottom, ref top);
@@ -382,7 +410,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         ReadOnlySpan<byte> data = face.Buffer.Span;
         int contours = UiFontFace.ReadI16(data, offset);
         return contours >= 0
-            ? TryAppendSimple(face, glyphId, offset, length, contours, a, b, c, d, dx, dy, out error)
+            ? TryAppendSimple(face, glyphId, offset, length, contours, depth, a, b, c, d, dx, dy, out error)
             : TryAppendComposite(face, glyphId, offset, length, a, b, c, d, dx, dy, depth, out error);
     }
 
@@ -392,6 +420,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         int offset,
         int length,
         int contours,
+        int depth,
         float a,
         float b,
         float c,
@@ -453,7 +482,15 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         }
 
         int instructionLength = UiFontFace.ReadU16(data, cursor);
-        cursor += 2 + instructionLength;
+        cursor += 2;
+        if (depth == 0)
+        {
+            _instructionOffset = cursor;
+            _instructionLength = instructionLength;
+            _topLevelSimple = true;
+        }
+
+        cursor += instructionLength;
         if (cursor > end)
         {
             error = UiFontError.At(UiFontErrorCode.InvalidGlyph, offset, "Glyph instructions exceed the glyph record.");

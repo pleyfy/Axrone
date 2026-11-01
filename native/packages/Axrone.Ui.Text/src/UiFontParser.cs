@@ -20,6 +20,9 @@ internal static class UiFontParser
     private const uint TagAvar = 0x61766172;
     private const uint TagColr = 0x434F4C52;
     private const uint TagCpal = 0x4350414C;
+    private const uint TagFpgm = 0x6670676D;
+    private const uint TagPrep = 0x70726570;
+    private const uint TagCvt = 0x63767420;
     private const uint SfntTrueType = 0x00010000;
     private const uint SfntOtto = 0x4F54544F;
     private const uint SfntTrue = 0x74727565;
@@ -98,6 +101,12 @@ internal static class UiFontParser
         int colrLength = 0;
         int cpalOffset = -1;
         int cpalLength = 0;
+        int fpgmOffset = -1;
+        int fpgmLength = 0;
+        int prepOffset = -1;
+        int prepLength = 0;
+        int cvtOffset = -1;
+        int cvtLength = 0;
 
         for (int i = 0; i < tableCount; i++)
         {
@@ -181,6 +190,18 @@ internal static class UiFontParser
                 case TagCpal when cpalOffset < 0:
                     cpalOffset = tableOffset;
                     cpalLength = tableLength;
+                    break;
+                case TagFpgm when fpgmOffset < 0:
+                    fpgmOffset = tableOffset;
+                    fpgmLength = tableLength;
+                    break;
+                case TagPrep when prepOffset < 0:
+                    prepOffset = tableOffset;
+                    prepLength = tableLength;
+                    break;
+                case TagCvt when cvtOffset < 0:
+                    cvtOffset = tableOffset;
+                    cvtLength = tableLength;
                     break;
             }
         }
@@ -370,6 +391,23 @@ internal static class UiFontParser
             return false;
         }
 
+        UiTrueTypeHintData? hints = null;
+        if (fpgmOffset >= 0 || prepOffset >= 0 || cvtOffset >= 0)
+        {
+            if (cvtOffset >= 0 && (cvtLength & 1) != 0)
+            {
+                return Fail(out error, UiFontErrorCode.InvalidHinting, cvtOffset, "The cvt table length is not even.");
+            }
+
+            hints = new UiTrueTypeHintData(
+                fpgmOffset < 0 ? 0 : fpgmOffset,
+                fpgmOffset < 0 ? 0 : fpgmLength,
+                prepOffset < 0 ? 0 : prepOffset,
+                prepOffset < 0 ? 0 : prepLength,
+                cvtOffset < 0 ? 0 : cvtOffset,
+                cvtOffset < 0 ? 0 : cvtLength / 2);
+        }
+
         if (!TryValidateChecksums(data, tableCount, out error))
         {
             return false;
@@ -393,6 +431,7 @@ internal static class UiFontParser
             gpos,
             variation,
             color,
+            hints,
             hmtxOffset,
             numberOfHMetrics,
             kernPairsOffset,
