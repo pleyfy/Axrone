@@ -20,16 +20,25 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         layout(location = 0) in vec3 a_Position;
         layout(location = 1) in vec2 a_Uv;
         layout(location = 2) in vec4 a_Color;
+        layout(location = 3) in vec2 a_Local;
+        layout(location = 4) in vec4 a_MaskRect;
+        layout(location = 5) in vec3 a_MaskParams;
 
         uniform mat4 u_ViewProjection;
 
         out vec2 v_Uv;
         out vec4 v_Color;
+        out vec2 v_Local;
+        out vec4 v_MaskRect;
+        out vec3 v_MaskParams;
 
         void main()
         {
             v_Uv = a_Uv;
             v_Color = a_Color;
+            v_Local = a_Local;
+            v_MaskRect = a_MaskRect;
+            v_MaskParams = a_MaskParams;
             gl_Position = vec4(a_Position, 1.0) * u_ViewProjection;
         }
         """;
@@ -38,14 +47,46 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         #version 330 core
         in vec2 v_Uv;
         in vec4 v_Color;
+        in vec2 v_Local;
+        in vec4 v_MaskRect;
+        in vec3 v_MaskParams;
 
         uniform sampler2D u_Texture;
 
         out vec4 fragColor;
 
+        float maskFactor()
+        {
+            if (v_MaskParams.x < 0.5)
+            {
+                return 1.0;
+            }
+
+            vec2 size = max(v_MaskRect.zw, vec2(1e-5));
+            vec2 p = (v_Local - v_MaskRect.xy) / size;
+            float inside;
+            if (v_MaskParams.y < 0.5)
+            {
+                inside = (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0) ? 1.0 : 0.0;
+            }
+            else
+            {
+                vec2 d = (p * 2.0) - 1.0;
+                inside = dot(d, d) <= 1.0 ? 1.0 : 0.0;
+            }
+
+            return v_MaskParams.z > 0.5 ? 1.0 - inside : inside;
+        }
+
         void main()
         {
-            fragColor = texture(u_Texture, v_Uv) * v_Color;
+            float mask = maskFactor();
+            if (mask <= 0.0)
+            {
+                discard;
+            }
+
+            fragColor = texture(u_Texture, v_Uv) * v_Color * mask;
         }
         """;
 
@@ -55,7 +96,10 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
     [
         new VertexAttribute(0, 3, GLConst.Float, false, VertexStride, 0, 0, false),
         new VertexAttribute(1, 2, GLConst.Float, false, VertexStride, 12, 0, false),
-        new VertexAttribute(2, 4, GLConst.Float, false, VertexStride, 20, 0, false)
+        new VertexAttribute(2, 4, GLConst.Float, false, VertexStride, 20, 0, false),
+        new VertexAttribute(3, 2, GLConst.Float, false, VertexStride, 36, 0, false),
+        new VertexAttribute(4, 4, GLConst.Float, false, VertexStride, 44, 0, false),
+        new VertexAttribute(5, 3, GLConst.Float, false, VertexStride, 60, 0, false)
     ];
 
     private readonly GLContext _context;
@@ -260,11 +304,17 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         Vec4 tr = worldMatrix * new Vec4(right, top, 0.0f, 1.0f);
         Vec4 tl = worldMatrix * new Vec4(left, top, 0.0f, 1.0f);
 
+        Vec3 maskParams = new(
+            item.HasMask ? 1.0f : 0.0f,
+            item.MaskKind == SceneSpriteMaskKind.Ellipse ? 1.0f : 0.0f,
+            item.MaskInvert ? 1.0f : 0.0f);
+        Vec4 maskRect = item.HasMask ? item.MaskRect : default;
+
         Span<SpriteVertex> vertices = _vertices.AsSpan(_vertexCount, VerticesPerSprite);
-        vertices[0] = new SpriteVertex(new Vec3(bl.X, bl.Y, bl.Z), new Vec2(u0, v0), item.Color);
-        vertices[1] = new SpriteVertex(new Vec3(br.X, br.Y, br.Z), new Vec2(u1, v0), item.Color);
-        vertices[2] = new SpriteVertex(new Vec3(tr.X, tr.Y, tr.Z), new Vec2(u1, v1), item.Color);
-        vertices[3] = new SpriteVertex(new Vec3(tl.X, tl.Y, tl.Z), new Vec2(u0, v1), item.Color);
+        vertices[0] = new SpriteVertex(new Vec3(bl.X, bl.Y, bl.Z), new Vec2(u0, v0), item.Color, new Vec2(0.0f, 0.0f), maskRect, maskParams);
+        vertices[1] = new SpriteVertex(new Vec3(br.X, br.Y, br.Z), new Vec2(u1, v0), item.Color, new Vec2(1.0f, 0.0f), maskRect, maskParams);
+        vertices[2] = new SpriteVertex(new Vec3(tr.X, tr.Y, tr.Z), new Vec2(u1, v1), item.Color, new Vec2(1.0f, 1.0f), maskRect, maskParams);
+        vertices[3] = new SpriteVertex(new Vec3(tl.X, tl.Y, tl.Z), new Vec2(u0, v1), item.Color, new Vec2(0.0f, 1.0f), maskRect, maskParams);
 
         // Batches restart their vertex base at zero, so indices must be written
         // relative to this batch rather than the global sprite slot.
@@ -320,11 +370,20 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private readonly struct SpriteVertex
     {
-        public SpriteVertex(in Vec3 position, in Vec2 uv, in Vec4 color)
+        public SpriteVertex(
+            in Vec3 position,
+            in Vec2 uv,
+            in Vec4 color,
+            in Vec2 local,
+            in Vec4 maskRect,
+            in Vec3 maskParams)
         {
             Position = position;
             Uv = uv;
             Color = color;
+            Local = local;
+            MaskRect = maskRect;
+            MaskParams = maskParams;
         }
 
         public readonly Vec3 Position;
@@ -332,5 +391,11 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         public readonly Vec2 Uv;
 
         public readonly Vec4 Color;
+
+        public readonly Vec2 Local;
+
+        public readonly Vec4 MaskRect;
+
+        public readonly Vec3 MaskParams;
     }
 }

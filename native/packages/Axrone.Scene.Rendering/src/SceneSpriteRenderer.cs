@@ -136,6 +136,18 @@ public struct SceneSpriteRenderItem
 
     /// <summary>Vertical mirror flag.</summary>
     public bool FlipY;
+
+    /// <summary>Effective mask shape.</summary>
+    public SceneSpriteMaskKind MaskKind;
+
+    /// <summary>Effective mask rect in normalized sprite space.</summary>
+    public Vec4 MaskRect;
+
+    /// <summary>Whether a mask applies to this sprite.</summary>
+    public bool HasMask;
+
+    /// <summary>Whether the mask inside test is inverted.</summary>
+    public bool MaskInvert;
 }
 
 /// <summary>
@@ -228,6 +240,8 @@ public sealed class SceneSpriteItemCollector
                 Grow();
             }
 
+            bool hasMask = SceneSpriteMaskResolver.TryResolve(world, actor, out SceneSpriteMask mask);
+
             ref SceneSpriteRenderItem item = ref _items[_count];
             item.Actor = actor;
             item.TextureId = sprite.TextureId;
@@ -242,6 +256,10 @@ public sealed class SceneSpriteItemCollector
             item.UvRect = sprite.UvRect;
             item.FlipX = sprite.FlipX;
             item.FlipY = sprite.FlipY;
+            item.MaskKind = hasMask ? mask.Kind : SceneSpriteMaskKind.Rect;
+            item.MaskRect = hasMask ? mask.Rect : default;
+            item.HasMask = hasMask;
+            item.MaskInvert = hasMask && mask.Invert;
             _count++;
         }
 

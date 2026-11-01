@@ -13,8 +13,14 @@ public enum SceneRenderableFeatures
     /// <summary>World-space polylines.</summary>
     Line = 1 << 1,
 
+    /// <summary>Fading trail ribbons.</summary>
+    Trail = 1 << 2,
+
+    /// <summary>Sprite clipping masks.</summary>
+    SpriteMask = 1 << 3,
+
     /// <summary>Every optional renderable.</summary>
-    All = Billboard | Line
+    All = Billboard | Line | Trail | SpriteMask
 }
 
 /// <summary>Profile composition helpers for the optional renderable components.</summary>
@@ -43,6 +49,22 @@ public static class SceneRenderableProfileExtensions
                 "LineRenderer",
                 SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
                 priority: 100);
+        }
+
+        if ((features & SceneRenderableFeatures.Trail) != 0)
+        {
+            builder.AddData<SceneTrailRenderer>(
+                "TrailRenderer",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
+        }
+
+        if ((features & SceneRenderableFeatures.SpriteMask) != 0)
+        {
+            builder.AddData<SceneSpriteMask>(
+                "SpriteMask",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 105);
         }
 
         return builder;

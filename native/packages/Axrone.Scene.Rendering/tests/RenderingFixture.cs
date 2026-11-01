@@ -31,6 +31,18 @@ internal static class RenderingFixture
         return profile.CreateWorld();
     }
 
+    public static SceneWorld CreateSpriteRenderableWorld(SceneRenderableFeatures features)
+    {
+        var builder = new SceneProfileBuilder(
+            new SceneProfileId(SceneStringId.FromName("test/sprite-renderables")));
+        SceneProfile profile = builder
+            .AddTransform3D()
+            .AddRendering2D()
+            .AddSceneRenderables(features)
+            .Build();
+        return profile.CreateWorld();
+    }
+
     public static SceneMeshDefinition CreateMesh(
         SceneAssetRegistry assets,
         string name,
