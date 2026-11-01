@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Axrone.Ui.Text</RootNamespace>
+    <AssemblyName>Axrone.Ui.Text</AssemblyName>
+    <Description>Font parsing, glyph metrics, shaping and rich-text layout for the Axrone UI stack.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="AotCompatibility">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+  </PropertyGroup>
+
+  <PropertyGroup Label="SuppressedRules">
+    <NoWarn>$(NoWarn);CA1000</NoWarn>
+    <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <NoWarn>$(NoWarn);CA1711</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Label="PublicApi">
+    <InternalsVisibleTo Include="Axrone.Ui.Text.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Axrone.Ui/Axrone.Ui.csproj" />
+    <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>

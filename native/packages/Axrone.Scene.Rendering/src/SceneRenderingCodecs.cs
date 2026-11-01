@@ -41,6 +41,46 @@ public static class SceneRenderingCodecs
             codecs.Register(new SceneMeshRendererCodec(names));
         }
 
+        if (components.TryGetDataByType(typeof(SceneBillboardRenderer), out _))
+        {
+            codecs.Register(new SceneBillboardRendererCodec(names));
+        }
+
+        if (components.TryGetDataByType(typeof(SceneLineRenderer), out _))
+        {
+            codecs.Register(new SceneLineRendererCodec(names));
+        }
+
+        if (components.TryGetDataByType(typeof(SceneTrailRenderer), out _))
+        {
+            codecs.Register(new SceneTrailRendererCodec(names));
+        }
+
+        if (components.TryGetDataByType(typeof(SceneSpriteMask), out _))
+        {
+            codecs.Register(new SceneSpriteMaskCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneLodGroup), out _))
+        {
+            codecs.Register(new SceneLodGroupCodec(names));
+        }
+
+        if (components.TryGetDataByType(typeof(SceneReflectionProbe), out _))
+        {
+            codecs.Register(new SceneReflectionProbeCodec(names));
+        }
+
+        if (components.TryGetDataByType(typeof(SceneAreaLight), out _))
+        {
+            codecs.Register(new SceneAreaLightCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneInstancedMeshRenderer), out _))
+        {
+            codecs.Register(new SceneInstancedMeshRendererCodec(names));
+        }
+
         if (components.TryGetDataByType(typeof(SceneDirectionalLight), out _))
         {
             codecs.Register(new SceneDirectionalLightCodec());

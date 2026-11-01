@@ -1,0 +1,116 @@
+namespace Axrone.Scene.Rendering;
+
+/// <summary>Optional renderable component groups registered by a profile.</summary>
+[Flags]
+public enum SceneRenderableFeatures
+{
+    /// <summary>No optional renderables.</summary>
+    None = 0,
+
+    /// <summary>Camera-facing billboard quads.</summary>
+    Billboard = 1 << 0,
+
+    /// <summary>World-space polylines.</summary>
+    Line = 1 << 1,
+
+    /// <summary>Fading trail ribbons.</summary>
+    Trail = 1 << 2,
+
+    /// <summary>Sprite clipping masks.</summary>
+    SpriteMask = 1 << 3,
+
+    /// <summary>Distance/screen-radius LOD groups.</summary>
+    LodGroup = 1 << 4,
+
+    /// <summary>Reflection probe volumes.</summary>
+    ReflectionProbe = 1 << 5,
+
+    /// <summary>Rect/disk area lights.</summary>
+    AreaLight = 1 << 6,
+
+    /// <summary>Registry-backed instanced meshes.</summary>
+    InstancedMesh = 1 << 7,
+
+    /// <summary>Every optional renderable.</summary>
+    All = Billboard | Line | Trail | SpriteMask | LodGroup | ReflectionProbe | AreaLight | InstancedMesh
+}
+
+/// <summary>Profile composition helpers for the optional renderable components.</summary>
+public static class SceneRenderableProfileExtensions
+{
+    /// <summary>Registers the selected optional renderable data components.</summary>
+    /// <param name="builder">Profile builder.</param>
+    /// <param name="features">Component groups to register.</param>
+    public static SceneProfileBuilder AddSceneRenderables(
+        this SceneProfileBuilder builder,
+        SceneRenderableFeatures features = SceneRenderableFeatures.All)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        if ((features & SceneRenderableFeatures.Billboard) != 0)
+        {
+            builder.AddData<SceneBillboardRenderer>(
+                "BillboardRenderer",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
+        }
+
+        if ((features & SceneRenderableFeatures.Line) != 0)
+        {
+            builder.AddData<SceneLineRenderer>(
+                "LineRenderer",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
+        }
+
+        if ((features & SceneRenderableFeatures.Trail) != 0)
+        {
+            builder.AddData<SceneTrailRenderer>(
+                "TrailRenderer",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
+        }
+
+        if ((features & SceneRenderableFeatures.SpriteMask) != 0)
+        {
+            builder.AddData<SceneSpriteMask>(
+                "SpriteMask",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 105);
+        }
+
+        if ((features & SceneRenderableFeatures.LodGroup) != 0)
+        {
+            builder.AddData<SceneLodGroup>(
+                "LodGroup",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
+        }
+
+        if ((features & SceneRenderableFeatures.ReflectionProbe) != 0)
+        {
+            builder.AddData<SceneReflectionProbe>(
+                "ReflectionProbe",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 850);
+        }
+
+        if ((features & SceneRenderableFeatures.AreaLight) != 0)
+        {
+            builder.AddData<SceneAreaLight>(
+                "AreaLight",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 800);
+        }
+
+        if ((features & SceneRenderableFeatures.InstancedMesh) != 0)
+        {
+            builder.AddData<SceneInstancedMeshRenderer>(
+                "InstancedMeshRenderer",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
+        }
+
+        return builder;
+    }
+}
