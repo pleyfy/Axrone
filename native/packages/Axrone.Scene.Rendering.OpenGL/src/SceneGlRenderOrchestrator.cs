@@ -16,6 +16,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     private readonly SceneGlParticleBatchRenderer? _particleRenderer;
     private readonly SceneInstanceRegistry? _instances;
     private readonly SceneGlInstancedMeshRenderer? _instancedRenderer;
+    private readonly SceneGlSkinnedMeshRenderer? _skinnedRenderer;
     private readonly bool _hasSpriteComponent;
     private readonly bool _hasInstancedComponent;
     private SceneGlPrimitiveBatchRenderer? _primitiveRenderer;
@@ -34,12 +35,18 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     /// <see cref="ISceneInstancedFrameItemSource"/>, instanced mesh batches are
     /// drawn after sprites in every pass.
     /// </param>
+    /// <param name="bonePalettes">
+    /// Optional palette source; when supplied and the frame source implements
+    /// <see cref="ISceneSkinnedMeshFrameItemSource"/>, skinned batches are drawn
+    /// after LOD meshes.
+    /// </param>
     public SceneGlRenderOrchestrator(
         GLContext context,
         SceneGlAssetCache assets,
         SceneWorld world,
         ISceneParticleSource? particles = null,
-        SceneInstanceRegistry? instances = null)
+        SceneInstanceRegistry? instances = null,
+        ISceneBonePaletteSource? bonePalettes = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assets);
@@ -62,6 +69,11 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
             _instances = instances;
             _instancedRenderer = new SceneGlInstancedMeshRenderer(context, assets);
             _hasInstancedComponent = world.Registry.TryGetDataByType(typeof(SceneInstancedMeshRenderer), out _);
+        }
+
+        if (bonePalettes is not null)
+        {
+            _skinnedRenderer = new SceneGlSkinnedMeshRenderer(context, assets, bonePalettes);
         }
     }
 
@@ -119,6 +131,15 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                 }
             }
 
+            if (_skinnedRenderer is not null && items is ISceneSkinnedMeshFrameItemSource skinnedSource)
+            {
+                ReadOnlySpan<SceneSkinnedMeshRenderItem> skinned = skinnedSource.CollectSkinnedMeshes(pass.Id);
+                if (!skinned.IsEmpty)
+                {
+                    _ = _skinnedRenderer.Render(world, camera, skinned, pass, frameState);
+                }
+            }
+
             if (_hasSpriteComponent)
             {
                 ReadOnlySpan<SceneSpriteRenderItem> sprites = items.CollectSprites(pass.Id);
@@ -163,6 +184,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
 
         _particleRenderer?.Dispose();
         _instancedRenderer?.Dispose();
+        _skinnedRenderer?.Dispose();
         _primitiveRenderer?.Dispose();
         _spriteRenderer.Dispose();
         _disposed = true;

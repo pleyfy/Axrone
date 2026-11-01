@@ -26,7 +26,8 @@ public sealed class SceneGlFrameRenderer : IDisposable
             context,
             _assets,
             runtime.World,
-            runtime.HasParticles ? runtime.Particles : null);
+            runtime.HasParticles ? runtime.Particles : null,
+            bonePalettes: runtime.HasSkinnedMeshes ? runtime.BonePalettes : null);
     }
 
     /// <summary>GPU-side asset cache.</summary>
