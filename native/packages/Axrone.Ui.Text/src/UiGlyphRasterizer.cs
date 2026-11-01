@@ -76,6 +76,48 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             return false;
         }
 
+        return RasterizeGlyphCore(fontFace, glyphId, pixelSize, out bitmap, out failure);
+    }
+
+    public bool TryRasterizeGlyph(
+        UiFontFaceId face,
+        int glyphId,
+        float pixelSize,
+        out UiGlyphBitmap bitmap,
+        out UiFontError failure)
+    {
+        bitmap = default;
+        failure = UiFontError.None;
+        if (!float.IsFinite(pixelSize) || pixelSize <= 0.0f || pixelSize > MaxPixelSize)
+        {
+            failure = UiFontError.At(UiFontErrorCode.InvalidPixelSize, 0, "Pixel size must be finite, positive and within the limit.");
+            return false;
+        }
+
+        if (!_provider.TryGetFace(face, out UiFontFace? fontFace))
+        {
+            failure = UiFontError.At(UiFontErrorCode.FaceNotFound, 0, "The face identity is not registered.");
+            return false;
+        }
+
+        if ((uint)glyphId >= (uint)fontFace.GlyphCount)
+        {
+            failure = UiFontError.At(UiFontErrorCode.GlyphNotFound, 0, "The glyph id is outside the face.");
+            return false;
+        }
+
+        return RasterizeGlyphCore(fontFace, glyphId, pixelSize, out bitmap, out failure);
+    }
+
+    private bool RasterizeGlyphCore(
+        UiFontFace fontFace,
+        int glyphId,
+        float pixelSize,
+        out UiGlyphBitmap bitmap,
+        out UiFontError failure)
+    {
+        bitmap = default;
+        failure = UiFontError.None;
         if (fontFace.OutlineFormat == UiFontOutlineFormat.Cff)
         {
             return TryRasterizeCff(fontFace, glyphId, pixelSize, out bitmap, out failure);

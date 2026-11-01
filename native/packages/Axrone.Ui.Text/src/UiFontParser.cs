@@ -11,6 +11,8 @@ internal static class UiFontParser
     private const uint TagLoca = 0x6C6F6361;
     private const uint TagGlyf = 0x676C7966;
     private const uint TagKern = 0x6B65726E;
+    private const uint TagGsub = 0x47535542;
+    private const uint TagGpos = 0x47504F53;
     private const uint TagCff = 0x43464620;
     private const uint SfntTrueType = 0x00010000;
     private const uint SfntOtto = 0x4F54544F;
@@ -73,6 +75,10 @@ internal static class UiFontParser
         int kernLength = 0;
         int cffOffset = -1;
         int cffLength = 0;
+        int gsubOffset = -1;
+        int gsubLength = 0;
+        int gposOffset = -1;
+        int gposLength = 0;
 
         for (int i = 0; i < tableCount; i++)
         {
@@ -124,6 +130,14 @@ internal static class UiFontParser
                 case TagCff when cffOffset < 0:
                     cffOffset = tableOffset;
                     cffLength = tableLength;
+                    break;
+                case TagGsub when gsubOffset < 0:
+                    gsubOffset = tableOffset;
+                    gsubLength = tableLength;
+                    break;
+                case TagGpos when gposOffset < 0:
+                    gposOffset = tableOffset;
+                    gposLength = tableLength;
                     break;
             }
         }
@@ -262,6 +276,20 @@ internal static class UiFontParser
             return false;
         }
 
+        UiGsubData? gsub = null;
+        if (gsubOffset >= 0 &&
+            !UiOpenTypeLayoutParser.TryParseGsub(data, gsubOffset, gsubLength, glyphCount, out gsub, out error))
+        {
+            return false;
+        }
+
+        UiGposData? gpos = null;
+        if (gposOffset >= 0 &&
+            !UiOpenTypeLayoutParser.TryParseGpos(data, gposOffset, gposLength, glyphCount, out gpos, out error))
+        {
+            return false;
+        }
+
         face = new UiFontFace(
             buffer,
             family,
@@ -276,6 +304,8 @@ internal static class UiFontParser
             outlineFormat,
             cmapData!,
             cff,
+            gsub,
+            gpos,
             hmtxOffset,
             numberOfHMetrics,
             kernPairsOffset,

@@ -18,6 +18,8 @@ public sealed class UiFontFace
     private readonly UiFontBuffer _buffer;
     private readonly UiCmapData _cmap;
     private readonly UiCffParsed? _cff;
+    private readonly UiGsubData? _gsub;
+    private readonly UiGposData? _gpos;
     private readonly int[] _reverseCodePoints;
     private readonly int _hmtxOffset;
     private readonly int _numberOfHMetrics;
@@ -42,6 +44,8 @@ public sealed class UiFontFace
         UiFontOutlineFormat outlineFormat,
         UiCmapData cmap,
         UiCffParsed? cff,
+        UiGsubData? gsub,
+        UiGposData? gpos,
         int hmtxOffset,
         int numberOfHMetrics,
         int kernPairsOffset,
@@ -64,6 +68,8 @@ public sealed class UiFontFace
         OutlineFormat = outlineFormat;
         _cmap = cmap;
         _cff = cff;
+        _gsub = gsub;
+        _gpos = gpos;
         _hmtxOffset = hmtxOffset;
         _numberOfHMetrics = numberOfHMetrics;
         _kernPairsOffset = kernPairsOffset;
@@ -102,6 +108,10 @@ public sealed class UiFontFace
     internal UiFontBuffer Buffer => _buffer;
 
     internal UiCffParsed? Cff => _cff;
+
+    internal UiGsubData? Gsub => _gsub;
+
+    internal UiGposData? Gpos => _gpos;
 
     internal int LocaOffset => _locaOffset;
 

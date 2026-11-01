@@ -2,7 +2,10 @@ namespace Axrone.Ui.Text;
 
 public sealed class UiTextShaper : IUiTextShaper
 {
+    private const int MaxLigatureLookahead = 8;
+
     private readonly UiFontProvider _provider;
+    private UiGlyphRun[] _runs = GC.AllocateArray<UiGlyphRun>(16, pinned: true);
 
     public UiTextShaper(UiFontProvider provider)
     {
@@ -12,124 +15,22 @@ public sealed class UiTextShaper : IUiTextShaper
 
     public int Shape(ReadOnlySpan<char> text, in UiTextStyle style, Span<UiShapedGlyph> destination)
     {
-        if (text.IsEmpty || destination.IsEmpty || style.Size <= 0.0f)
+        int count = ShapeIntoRuns(text, in style);
+        int written = Math.Min(count, destination.Length);
+        for (int i = 0; i < written; i++)
         {
-            return 0;
+            UiGlyphRun run = _runs[i];
+            destination[i] = new UiShapedGlyph(run.CodePoint, run.Cluster, run.X, run.Y, run.Advance, run.SpanIndex);
         }
 
-        if (!_provider.TryGetFace(style.Face, out UiFontFace? primary))
-        {
-            return 0;
-        }
+        return written;
+    }
 
-        float scale = style.Size / primary.UnitsPerEm;
-        UiTextDirection direction = ResolveDirection(style.Direction, text);
-        int written = 0;
-        int index = 0;
-        float pen = 0.0f;
-        UiFontFaceId previousFace = UiFontFaceId.Invalid;
-        int previousCodePoint = -1;
-        int previousGlyphIndex = -1;
-        bool previousIsBase = false;
-
-        while (index < text.Length)
-        {
-            OperationStatus status = Rune.DecodeFromUtf16(text[index..], out Rune rune, out int consumed);
-            if (status != OperationStatus.Done)
-            {
-                index++;
-                continue;
-            }
-
-            int codePoint = rune.Value;
-            int cluster = index;
-            index += consumed;
-
-            if (codePoint == 0x66 &&
-                TryMatchLigature(text, index, out int ligatureCodePoint, out int ligatureExtra))
-            {
-                if (_provider.TryResolveGlyph(primary.Id, ligatureCodePoint, out _, out UiGlyphMetrics ligatureMetrics))
-                {
-                    float ligatureAdvance = (ligatureMetrics.Advance * scale) + style.LetterSpacing;
-                    if (written >= destination.Length)
-                    {
-                        return written;
-                    }
-
-                    destination[written] = new UiShapedGlyph(ligatureCodePoint, cluster, pen, 0.0f, Math.Max(0.0f, ligatureAdvance), 0);
-                    previousGlyphIndex = written;
-                    written++;
-                    pen += Math.Max(0.0f, ligatureAdvance);
-                    index += ligatureExtra;
-                    previousFace = UiFontFaceId.Invalid;
-                    previousCodePoint = -1;
-                    previousIsBase = false;
-                    continue;
-                }
-            }
-
-            if (IsCombiningMark(codePoint))
-            {
-                if (previousIsBase &&
-                    previousGlyphIndex >= 0 &&
-                    written < destination.Length &&
-                    _provider.TryResolveGlyph(primary.Id, codePoint, out _, out UiGlyphMetrics markMetrics))
-                {
-                    UiShapedGlyph baseGlyph = destination[previousGlyphIndex];
-                    float markAdvance = markMetrics.Advance * scale;
-                    float markX = baseGlyph.X + Math.Max(0.0f, ((baseGlyph.Advance - style.LetterSpacing) - markAdvance) * 0.5f);
-                    destination[written] = new UiShapedGlyph(codePoint, cluster, markX, 0.0f, 0.0f, 0);
-                    written++;
-                }
-
-                continue;
-            }
-
-            if (!_provider.TryResolveGlyph(primary.Id, codePoint, out UiFontFaceId resolvedFace, out UiGlyphMetrics metrics))
-            {
-                if (written >= destination.Length)
-                {
-                    return written;
-                }
-
-                destination[written] = new UiShapedGlyph(codePoint, cluster, pen, 0.0f, 0.0f, 0);
-                written++;
-                previousIsBase = false;
-                previousCodePoint = -1;
-                previousFace = UiFontFaceId.Invalid;
-                continue;
-            }
-
-            if (previousIsBase && previousCodePoint >= 0)
-            {
-                pen += _provider.GetKerning(previousFace, previousCodePoint, codePoint) * scale;
-            }
-
-            if (pen < 0.0f)
-            {
-                pen = 0.0f;
-            }
-
-            float advance = Math.Max(0.0f, (metrics.Advance * scale) + style.LetterSpacing);
-            if (written >= destination.Length)
-            {
-                return written;
-            }
-
-            destination[written] = new UiShapedGlyph(codePoint, cluster, pen, 0.0f, advance, 0);
-            previousGlyphIndex = written;
-            written++;
-            pen += advance;
-            previousFace = resolvedFace;
-            previousCodePoint = codePoint;
-            previousIsBase = true;
-        }
-
-        if (direction == UiTextDirection.Rtl && written > 1)
-        {
-            MirrorRun(destination, written);
-        }
-
+    public int ShapeGlyphs(ReadOnlySpan<char> text, in UiTextStyle style, Span<UiGlyphRun> destination)
+    {
+        int count = ShapeIntoRuns(text, in style);
+        int written = Math.Min(count, destination.Length);
+        _runs.AsSpan(0, written).CopyTo(destination);
         return written;
     }
 
@@ -194,20 +95,220 @@ public sealed class UiTextShaper : IUiTextShaper
         return written;
     }
 
-    private static void MirrorRun(Span<UiShapedGlyph> glyphs, int count)
+    private int ShapeIntoRuns(ReadOnlySpan<char> text, in UiTextStyle style)
+    {
+        if (text.IsEmpty || style.Size <= 0.0f)
+        {
+            return 0;
+        }
+
+        if (!_provider.TryGetFace(style.Face, out UiFontFace? primary))
+        {
+            return 0;
+        }
+
+        EnsureRunCapacity(text.Length);
+        UiTextDirection direction = ResolveDirection(style.Direction, text);
+        int written = 0;
+        int index = 0;
+        float pen = 0.0f;
+        UiFontFaceId previousFace = UiFontFaceId.Invalid;
+        int previousGlyph = 0;
+        int previousCodePoint = -1;
+        int previousRun = -1;
+        bool previousIsBase = false;
+        Span<int> following = stackalloc int[MaxLigatureLookahead];
+        Span<int> units = stackalloc int[MaxLigatureLookahead];
+
+        while (index < text.Length)
+        {
+            OperationStatus status = Rune.DecodeFromUtf16(text[index..], out Rune rune, out int consumed);
+            if (status != OperationStatus.Done)
+            {
+                index++;
+                continue;
+            }
+
+            int codePoint = rune.Value;
+            int cluster = index;
+            index += consumed;
+
+            bool hasGlyph = _provider.TryResolveGlyph(primary.Id, codePoint, out UiFontFaceId resolvedFaceId, out UiGlyphMetrics metrics);
+            UiFontFace? resolvedFace = null;
+            int glyphId = 0;
+            if (hasGlyph)
+            {
+                _provider.TryGetFace(resolvedFaceId, out resolvedFace);
+                if (resolvedFace is null || !resolvedFace.TryGetGlyph(codePoint, out glyphId))
+                {
+                    hasGlyph = false;
+                }
+            }
+
+            if (hasGlyph && resolvedFace!.Gsub is { IsEmpty: false } gsub)
+            {
+                int followCount = 0;
+                int lookahead = index;
+                while (followCount < MaxLigatureLookahead && lookahead < text.Length)
+                {
+                    OperationStatus lookStatus = Rune.DecodeFromUtf16(text[lookahead..], out Rune lookRune, out int lookConsumed);
+                    if (lookStatus != OperationStatus.Done || !resolvedFace.TryGetGlyph(lookRune.Value, out int lookGlyph))
+                    {
+                        break;
+                    }
+
+                    following[followCount] = lookGlyph;
+                    units[followCount] = lookConsumed;
+                    followCount++;
+                    lookahead += lookConsumed;
+                }
+
+                if (gsub.TryMatch(glyphId, following[..followCount], out int ligatureGlyph, out int ligatureComponents))
+                {
+                    int extraUnits = 0;
+                    for (int component = 0; component < ligatureComponents - 1 && component < followCount; component++)
+                    {
+                        extraUnits += units[component];
+                    }
+
+                    int ligatureCodePoint = resolvedFace.GetCanonicalCodePoint(ligatureGlyph);
+                    if (ligatureCodePoint < 0)
+                    {
+                        ligatureCodePoint = codePoint;
+                    }
+
+                    float ligatureScale = style.Size / resolvedFace.UnitsPerEm;
+                    float advance = Math.Max(0.0f, (resolvedFace.ReadAdvance(resolvedFace.Buffer.Span, ligatureGlyph) * ligatureScale) + style.LetterSpacing);
+                    _runs[written] = new UiGlyphRun(ligatureGlyph, ligatureCodePoint, cluster, pen, 0.0f, advance, 0, resolvedFaceId);
+                    previousRun = written;
+                    written++;
+                    pen += advance;
+                    index += extraUnits;
+                    previousFace = resolvedFaceId;
+                    previousGlyph = ligatureGlyph;
+                    previousCodePoint = ligatureCodePoint;
+                    previousIsBase = true;
+                    continue;
+                }
+            }
+
+            bool hasGsub = resolvedFace?.Gsub is { IsEmpty: false };
+            if (hasGlyph && !hasGsub && codePoint == 0x66 &&
+                TryMatchLigature(text, index, out int builtInCodePoint, out int builtInExtra))
+            {
+                if (_provider.TryResolveGlyph(primary.Id, builtInCodePoint, out UiFontFaceId builtInFaceId, out UiGlyphMetrics builtInMetrics) &&
+                    _provider.TryGetFace(builtInFaceId, out UiFontFace? builtInFace) &&
+                    builtInFace.TryGetGlyph(builtInCodePoint, out int builtInGlyph))
+                {
+                    float builtInScale = style.Size / builtInFace.UnitsPerEm;
+                    float advance = Math.Max(0.0f, (builtInMetrics.Advance * builtInScale) + style.LetterSpacing);
+                    _runs[written] = new UiGlyphRun(builtInGlyph, builtInCodePoint, cluster, pen, 0.0f, advance, 0, builtInFaceId);
+                    previousRun = written;
+                    written++;
+                    pen += advance;
+                    index += builtInExtra;
+                    previousFace = builtInFaceId;
+                    previousGlyph = builtInGlyph;
+                    previousCodePoint = builtInCodePoint;
+                    previousIsBase = true;
+                    continue;
+                }
+            }
+
+            if (IsCombiningMark(codePoint))
+            {
+                if (hasGlyph && previousIsBase && previousRun >= 0)
+                {
+                    UiGlyphRun baseRun = _runs[previousRun];
+                    float markScale = style.Size / resolvedFace!.UnitsPerEm;
+                    float markAdvance = metrics.Advance * markScale;
+                    float markX = baseRun.X + Math.Max(0.0f, ((baseRun.Advance - style.LetterSpacing) - markAdvance) * 0.5f);
+                    _runs[written] = new UiGlyphRun(glyphId, codePoint, cluster, markX, 0.0f, 0.0f, 0, resolvedFaceId);
+                    written++;
+                }
+
+                continue;
+            }
+
+            if (!hasGlyph)
+            {
+                _runs[written] = new UiGlyphRun(0, codePoint, cluster, pen, 0.0f, 0.0f, 0, UiFontFaceId.Invalid);
+                written++;
+                previousFace = UiFontFaceId.Invalid;
+                previousCodePoint = -1;
+                previousGlyph = 0;
+                previousIsBase = false;
+                previousRun = -1;
+                continue;
+            }
+
+            float scale = style.Size / resolvedFace!.UnitsPerEm;
+            if (previousIsBase && previousFace == resolvedFaceId)
+            {
+                if (resolvedFace.Gpos is { HasPairs: true } gpos)
+                {
+                    pen += gpos.GetKerning(resolvedFace.Buffer.Span, previousGlyph, glyphId) * scale;
+                }
+                else
+                {
+                    pen += resolvedFace.GetKerning(previousCodePoint, codePoint) * scale;
+                }
+            }
+
+            if (pen < 0.0f)
+            {
+                pen = 0.0f;
+            }
+
+            float glyphAdvance = Math.Max(0.0f, (metrics.Advance * scale) + style.LetterSpacing);
+            _runs[written] = new UiGlyphRun(glyphId, codePoint, cluster, pen, 0.0f, glyphAdvance, 0, resolvedFaceId);
+            previousRun = written;
+            written++;
+            pen += glyphAdvance;
+            previousFace = resolvedFaceId;
+            previousGlyph = glyphId;
+            previousCodePoint = codePoint;
+            previousIsBase = true;
+        }
+
+        if (direction == UiTextDirection.Rtl && written > 1)
+        {
+            MirrorRuns(written);
+        }
+
+        return written;
+    }
+
+    private void MirrorRuns(int count)
     {
         for (int left = 0, right = count - 1; left < right; left++, right--)
         {
-            (glyphs[left], glyphs[right]) = (glyphs[right], glyphs[left]);
+            (_runs[left], _runs[right]) = (_runs[right], _runs[left]);
         }
 
         float x = 0.0f;
         for (int i = 0; i < count; i++)
         {
-            UiShapedGlyph glyph = glyphs[i];
-            glyphs[i] = new UiShapedGlyph(glyph.CodePoint, glyph.Cluster, x, glyph.Y, glyph.Advance, glyph.SpanIndex);
-            x += glyph.Advance;
+            UiGlyphRun run = _runs[i];
+            _runs[i] = run with { X = x };
+            x += run.Advance;
         }
+    }
+
+    private void EnsureRunCapacity(int required)
+    {
+        if (_runs.Length >= required)
+        {
+            return;
+        }
+
+        int capacity = _runs.Length;
+        while (capacity < required)
+        {
+            capacity = capacity <= int.MaxValue / 2 ? capacity * 2 : required;
+        }
+
+        _runs = GC.AllocateArray<UiGlyphRun>(capacity, pinned: true);
     }
 
     private static bool TryMatchLigature(
