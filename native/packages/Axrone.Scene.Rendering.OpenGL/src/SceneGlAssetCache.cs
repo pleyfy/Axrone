@@ -20,6 +20,7 @@ public sealed class SceneGlAssetCache : IDisposable
     private readonly SceneAssetRegistry _assets;
     private readonly Dictionary<SceneAssetId<ShaderAssetTag>, SceneGlShader> _shaders = new();
     private readonly Dictionary<SceneAssetId<ShaderAssetTag>, SceneGlShader?> _skinnedShaders = new();
+    private readonly Dictionary<SceneAssetId<ShaderAssetTag>, SkinningShaderDiagnostic> _skinningDiagnostics = new();
     private readonly Dictionary<SceneAssetId<MeshAssetTag>, GLMesh> _meshes = new();
     private readonly Dictionary<SceneAssetId<MeshAssetTag>, SceneMeshDefinition> _meshSources = new();
     private readonly Dictionary<SceneAssetId<MaterialAssetTag>, SceneGlMaterial> _materials = new();
@@ -27,6 +28,7 @@ public sealed class SceneGlAssetCache : IDisposable
     private readonly Dictionary<SceneAssetId<SamplerAssetTag>, GLSampler> _samplers = new();
     private readonly Dictionary<SceneAssetId<TextureAssetTag>, SceneAssetId<SamplerAssetTag>?> _textureSamplers = new();
     private readonly GLSampler _defaultSampler;
+    private int _unskinnableShaderCount;
     private bool _disposed;
 
     /// <summary>Creates a GPU cache over a scene asset registry.</summary>
@@ -126,24 +128,40 @@ public sealed class SceneGlAssetCache : IDisposable
         SceneGlShader? previousSkinned = null;
         _ = _skinnedShaders.Remove(definition.Id, out previousSkinned);
         previousSkinned?.Dispose();
-        _skinnedShaders[definition.Id] = CompileSkinnedShader(definition, label);
+
+        if (_skinningDiagnostics.Remove(definition.Id, out SkinningShaderDiagnostic previousDiagnostic) &&
+            !previousDiagnostic.Skinned)
+        {
+            _unskinnableShaderCount--;
+        }
+
+        (SceneGlShader? skinned, SkinningInjectionFailure failure) = CompileSkinnedShader(definition, label);
+        _skinnedShaders[definition.Id] = skinned;
+        _skinningDiagnostics[definition.Id] = new SkinningShaderDiagnostic(definition.Id, skinned is not null, failure);
+        if (skinned is null)
+        {
+            _unskinnableShaderCount++;
+        }
+
         return shader;
     }
 
-    private SceneGlShader? CompileSkinnedShader(SceneShaderDefinition definition, string label)
+    private (SceneGlShader? Shader, SkinningInjectionFailure Failure) CompileSkinnedShader(
+        SceneShaderDefinition definition,
+        string label)
     {
-        if (!SkinningShaderInjector.TryInject(definition.VertexSource, out string injected))
+        if (!SkinningShaderInjector.TryInject(definition.VertexSource, out string injected, out SkinningInjectionFailure failure))
         {
-            return null;
+            return (null, failure);
         }
 
         try
         {
-            return new SceneGlShader(_context, label + "-skinned", injected, definition.FragmentSource);
+            return (new SceneGlShader(_context, label + "-skinned", injected, definition.FragmentSource), SkinningInjectionFailure.None);
         }
         catch (GLShaderException)
         {
-            return null;
+            return (null, SkinningInjectionFailure.CompilationFailed);
         }
     }
 
@@ -320,8 +338,25 @@ public sealed class SceneGlAssetCache : IDisposable
     /// <summary>Resolves the skinned vertex variant of an uploaded shader, when one compiled.</summary>
     public bool TryGetSkinnedShader(
         SceneAssetId<ShaderAssetTag> id,
-        [NotNullWhen(true)] out SceneGlShader? skinnedShader) =>
-        _skinnedShaders.TryGetValue(id, out skinnedShader);
+        [NotNullWhen(true)] out SceneGlShader? skinnedShader)
+    {
+        if (_skinnedShaders.TryGetValue(id, out skinnedShader) && skinnedShader is not null)
+        {
+            return true;
+        }
+
+        skinnedShader = null;
+        return false;
+    }
+
+    /// <summary>Gets why a shader could not be converted into a skinned variant.</summary>
+    public bool TryGetSkinningDiagnostic(
+        SceneAssetId<ShaderAssetTag> id,
+        out SkinningShaderDiagnostic diagnostic) =>
+        _skinningDiagnostics.TryGetValue(id, out diagnostic);
+
+    /// <summary>Gets the number of uploaded shaders without a skinned variant.</summary>
+    public int UnskinnableShaderCount => _unskinnableShaderCount;
 
     /// <summary>Resolves an uploaded shader.</summary>
     public bool TryGetShader(SceneAssetId<ShaderAssetTag> id, [NotNullWhen(true)] out SceneGlShader? shader) =>
@@ -471,7 +506,7 @@ public sealed class SceneGlAssetCache : IDisposable
             ? found
             : _defaultSampler;
 
-        slots.Add(new SceneGlTextureSlot(uniformName, unit, texture, sampler));
+        slots.Add(new SceneGlTextureSlot(uniformName, value.Unit ?? unit, texture, sampler));
     }
 
     private static void UploadDataTexture(
@@ -541,6 +576,8 @@ public sealed class SceneGlAssetCache : IDisposable
         }
 
         _skinnedShaders.Clear();
+        _skinningDiagnostics.Clear();
+        _unskinnableShaderCount = 0;
 
         foreach (GLMesh mesh in _meshes.Values)
         {
