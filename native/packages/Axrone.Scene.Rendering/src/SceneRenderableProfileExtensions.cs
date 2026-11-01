@@ -31,8 +31,11 @@ public enum SceneRenderableFeatures
     /// <summary>Registry-backed instanced meshes.</summary>
     InstancedMesh = 1 << 7,
 
+    /// <summary>Bone-palette skinned meshes.</summary>
+    SkinnedMesh = 1 << 8,
+
     /// <summary>Every optional renderable.</summary>
-    All = Billboard | Line | Trail | SpriteMask | LodGroup | ReflectionProbe | AreaLight | InstancedMesh
+    All = Billboard | Line | Trail | SpriteMask | LodGroup | ReflectionProbe | AreaLight | InstancedMesh | SkinnedMesh
 }
 
 /// <summary>Profile composition helpers for the optional renderable components.</summary>
@@ -107,6 +110,14 @@ public static class SceneRenderableProfileExtensions
         {
             builder.AddData<SceneInstancedMeshRenderer>(
                 "InstancedMeshRenderer",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
+        }
+
+        if ((features & SceneRenderableFeatures.SkinnedMesh) != 0)
+        {
+            builder.AddData<SceneSkinnedMeshRenderer>(
+                "SkinnedMeshRenderer",
                 SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
                 priority: 100);
         }
