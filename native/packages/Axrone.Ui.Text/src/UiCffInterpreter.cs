@@ -282,441 +282,441 @@ internal static class UiCffInterpreter
                     case 3:
                     case 18:
                     case 23:
-                    {
-                        if (!TakeStemArguments(stack, ref count, ref widthParsed, ref stemCount, out error))
-                        {
-                            return false;
-                        }
-
-                        break;
-                    }
-
-                    case 19:
-                    case 20:
-                    {
-                        if (count > 0)
                         {
                             if (!TakeStemArguments(stack, ref count, ref widthParsed, ref stemCount, out error))
                             {
                                 return false;
                             }
+
+                            break;
                         }
 
-                        int maskBytes = (stemCount + 7) / 8;
-                        if (position + maskBytes > codeEnd)
+                    case 19:
+                    case 20:
                         {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF hint mask is truncated.");
-                        }
+                            if (count > 0)
+                            {
+                                if (!TakeStemArguments(stack, ref count, ref widthParsed, ref stemCount, out error))
+                                {
+                                    return false;
+                                }
+                            }
 
-                        position += maskBytes;
-                        break;
-                    }
+                            int maskBytes = (stemCount + 7) / 8;
+                            if (position + maskBytes > codeEnd)
+                            {
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF hint mask is truncated.");
+                            }
+
+                            position += maskBytes;
+                            break;
+                        }
 
                     case 21:
-                    {
-                        if (!TakeMoveArguments(stack, ref count, 2, ref widthParsed, out error))
                         {
-                            return false;
-                        }
-
-                        x += stack[count - 2];
-                        y += stack[count - 1];
-                        count = 0;
-                        if (!AddMove(path, x, y, ref contourOpen, ref contourStartX, ref contourStartY, out error))
-                        {
-                            return false;
-                        }
-
-                        break;
-                    }
-
-                    case 22:
-                    {
-                        if (!TakeMoveArguments(stack, ref count, 1, ref widthParsed, out error))
-                        {
-                            return false;
-                        }
-
-                        x += stack[count - 1];
-                        count = 0;
-                        if (!AddMove(path, x, y, ref contourOpen, ref contourStartX, ref contourStartY, out error))
-                        {
-                            return false;
-                        }
-
-                        break;
-                    }
-
-                    case 4:
-                    {
-                        if (!TakeMoveArguments(stack, ref count, 1, ref widthParsed, out error))
-                        {
-                            return false;
-                        }
-
-                        y += stack[count - 1];
-                        count = 0;
-                        if (!AddMove(path, x, y, ref contourOpen, ref contourStartX, ref contourStartY, out error))
-                        {
-                            return false;
-                        }
-
-                        break;
-                    }
-
-                    case 5:
-                    {
-                        if ((count & 1) != 0 || count == 0)
-                        {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF rlineto operand count is invalid.");
-                        }
-
-                        for (int i = 0; i < count; i += 2)
-                        {
-                            x += stack[i];
-                            y += stack[i + 1];
-                            if (!AddLine(path, x, y, contourOpen, out error))
+                            if (!TakeMoveArguments(stack, ref count, 2, ref widthParsed, out error))
                             {
                                 return false;
                             }
+
+                            x += stack[count - 2];
+                            y += stack[count - 1];
+                            count = 0;
+                            if (!AddMove(path, x, y, ref contourOpen, ref contourStartX, ref contourStartY, out error))
+                            {
+                                return false;
+                            }
+
+                            break;
                         }
 
-                        count = 0;
-                        break;
-                    }
+                    case 22:
+                        {
+                            if (!TakeMoveArguments(stack, ref count, 1, ref widthParsed, out error))
+                            {
+                                return false;
+                            }
+
+                            x += stack[count - 1];
+                            count = 0;
+                            if (!AddMove(path, x, y, ref contourOpen, ref contourStartX, ref contourStartY, out error))
+                            {
+                                return false;
+                            }
+
+                            break;
+                        }
+
+                    case 4:
+                        {
+                            if (!TakeMoveArguments(stack, ref count, 1, ref widthParsed, out error))
+                            {
+                                return false;
+                            }
+
+                            y += stack[count - 1];
+                            count = 0;
+                            if (!AddMove(path, x, y, ref contourOpen, ref contourStartX, ref contourStartY, out error))
+                            {
+                                return false;
+                            }
+
+                            break;
+                        }
+
+                    case 5:
+                        {
+                            if ((count & 1) != 0 || count == 0)
+                            {
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF rlineto operand count is invalid.");
+                            }
+
+                            for (int i = 0; i < count; i += 2)
+                            {
+                                x += stack[i];
+                                y += stack[i + 1];
+                                if (!AddLine(path, x, y, contourOpen, out error))
+                                {
+                                    return false;
+                                }
+                            }
+
+                            count = 0;
+                            break;
+                        }
 
                     case 6:
                     case 7:
-                    {
-                        if (count == 0)
                         {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF line operand count is invalid.");
+                            if (count == 0)
+                            {
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF line operand count is invalid.");
+                            }
+
+                            bool horizontal = b0 == 6;
+                            for (int i = 0; i < count; i++)
+                            {
+                                if (horizontal)
+                                {
+                                    x += stack[i];
+                                }
+                                else
+                                {
+                                    y += stack[i];
+                                }
+
+                                if (!AddLine(path, x, y, contourOpen, out error))
+                                {
+                                    return false;
+                                }
+
+                                horizontal = !horizontal;
+                            }
+
+                            count = 0;
+                            break;
                         }
-
-                        bool horizontal = b0 == 6;
-                        for (int i = 0; i < count; i++)
-                        {
-                            if (horizontal)
-                            {
-                                x += stack[i];
-                            }
-                            else
-                            {
-                                y += stack[i];
-                            }
-
-                            if (!AddLine(path, x, y, contourOpen, out error))
-                            {
-                                return false;
-                            }
-
-                            horizontal = !horizontal;
-                        }
-
-                        count = 0;
-                        break;
-                    }
 
                     case 8:
-                    {
-                        if (count == 0 || count % 6 != 0)
                         {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF rrcurveto operand count is invalid.");
-                        }
-
-                        for (int i = 0; i < count; i += 6)
-                        {
-                            if (!AddRelativeCubic(path, stack, i, ref x, ref y, contourOpen, out error))
+                            if (count == 0 || count % 6 != 0)
                             {
-                                return false;
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF rrcurveto operand count is invalid.");
                             }
-                        }
 
-                        count = 0;
-                        break;
-                    }
+                            for (int i = 0; i < count; i += 6)
+                            {
+                                if (!AddRelativeCubic(path, stack, i, ref x, ref y, contourOpen, out error))
+                                {
+                                    return false;
+                                }
+                            }
+
+                            count = 0;
+                            break;
+                        }
 
                     case 24:
-                    {
-                        if (count < 8 || (count - 2) % 6 != 0)
                         {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF rcurveline operand count is invalid.");
-                        }
-
-                        int curves = count - 2;
-                        for (int i = 0; i < curves; i += 6)
-                        {
-                            if (!AddRelativeCubic(path, stack, i, ref x, ref y, contourOpen, out error))
+                            if (count < 8 || (count - 2) % 6 != 0)
                             {
-                                return false;
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF rcurveline operand count is invalid.");
                             }
-                        }
 
-                        x += stack[curves];
-                        y += stack[curves + 1];
-                        if (!AddLine(path, x, y, contourOpen, out error))
-                        {
-                            return false;
-                        }
+                            int curves = count - 2;
+                            for (int i = 0; i < curves; i += 6)
+                            {
+                                if (!AddRelativeCubic(path, stack, i, ref x, ref y, contourOpen, out error))
+                                {
+                                    return false;
+                                }
+                            }
 
-                        count = 0;
-                        break;
-                    }
-
-                    case 25:
-                    {
-                        if (count < 8 || (count - 6) % 2 != 0)
-                        {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF rlinecurve operand count is invalid.");
-                        }
-
-                        int lines = count - 6;
-                        for (int i = 0; i < lines; i += 2)
-                        {
-                            x += stack[i];
-                            y += stack[i + 1];
+                            x += stack[curves];
+                            y += stack[curves + 1];
                             if (!AddLine(path, x, y, contourOpen, out error))
                             {
                                 return false;
                             }
+
+                            count = 0;
+                            break;
                         }
 
-                        if (!AddRelativeCubic(path, stack, lines, ref x, ref y, contourOpen, out error))
+                    case 25:
                         {
-                            return false;
-                        }
+                            if (count < 8 || (count - 6) % 2 != 0)
+                            {
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF rlinecurve operand count is invalid.");
+                            }
 
-                        count = 0;
-                        break;
-                    }
+                            int lines = count - 6;
+                            for (int i = 0; i < lines; i += 2)
+                            {
+                                x += stack[i];
+                                y += stack[i + 1];
+                                if (!AddLine(path, x, y, contourOpen, out error))
+                                {
+                                    return false;
+                                }
+                            }
+
+                            if (!AddRelativeCubic(path, stack, lines, ref x, ref y, contourOpen, out error))
+                            {
+                                return false;
+                            }
+
+                            count = 0;
+                            break;
+                        }
 
                     case 26:
-                    {
-                        if (count < 4)
                         {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF vvcurveto operand count is invalid.");
-                        }
-
-                        int index = 0;
-                        double firstDx = 0.0;
-                        if ((count & 3) == 1)
-                        {
-                            firstDx = stack[0];
-                            index = 1;
-                        }
-
-                        while (index + 4 <= count)
-                        {
-                            double dya = stack[index];
-                            double dxb = stack[index + 1];
-                            double dyb = stack[index + 2];
-                            double dyc = stack[index + 3];
-                            double c1x = x + firstDx;
-                            double c1y = y + dya;
-                            double c2x = c1x + dxb;
-                            double c2y = c1y + dyb;
-                            double ex = c2x;
-                            double ey = c2y + dyc;
-                            if (!AddCubic(path, c1x, c1y, c2x, c2y, ex, ey, contourOpen, out error))
+                            if (count < 4)
                             {
-                                return false;
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF vvcurveto operand count is invalid.");
                             }
 
-                            x = ex;
-                            y = ey;
-                            firstDx = 0.0;
-                            index += 4;
-                        }
+                            int index = 0;
+                            double firstDx = 0.0;
+                            if ((count & 3) == 1)
+                            {
+                                firstDx = stack[0];
+                                index = 1;
+                            }
 
-                        count = 0;
-                        break;
-                    }
+                            while (index + 4 <= count)
+                            {
+                                double dya = stack[index];
+                                double dxb = stack[index + 1];
+                                double dyb = stack[index + 2];
+                                double dyc = stack[index + 3];
+                                double c1x = x + firstDx;
+                                double c1y = y + dya;
+                                double c2x = c1x + dxb;
+                                double c2y = c1y + dyb;
+                                double ex = c2x;
+                                double ey = c2y + dyc;
+                                if (!AddCubic(path, c1x, c1y, c2x, c2y, ex, ey, contourOpen, out error))
+                                {
+                                    return false;
+                                }
+
+                                x = ex;
+                                y = ey;
+                                firstDx = 0.0;
+                                index += 4;
+                            }
+
+                            count = 0;
+                            break;
+                        }
 
                     case 27:
-                    {
-                        if (count < 4)
                         {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF hhcurveto operand count is invalid.");
-                        }
-
-                        int index = 0;
-                        double firstDy = 0.0;
-                        if ((count & 3) == 1)
-                        {
-                            firstDy = stack[0];
-                            index = 1;
-                        }
-
-                        while (index + 4 <= count)
-                        {
-                            double dxa = stack[index];
-                            double dxb = stack[index + 1];
-                            double dyb = stack[index + 2];
-                            double dxc = stack[index + 3];
-                            double c1x = x + dxa;
-                            double c1y = y + firstDy;
-                            double c2x = c1x + dxb;
-                            double c2y = c1y + dyb;
-                            double ex = c2x + dxc;
-                            double ey = c2y;
-                            if (!AddCubic(path, c1x, c1y, c2x, c2y, ex, ey, contourOpen, out error))
+                            if (count < 4)
                             {
-                                return false;
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF hhcurveto operand count is invalid.");
                             }
 
-                            x = ex;
-                            y = ey;
-                            firstDy = 0.0;
-                            index += 4;
-                        }
+                            int index = 0;
+                            double firstDy = 0.0;
+                            if ((count & 3) == 1)
+                            {
+                                firstDy = stack[0];
+                                index = 1;
+                            }
 
-                        count = 0;
-                        break;
-                    }
+                            while (index + 4 <= count)
+                            {
+                                double dxa = stack[index];
+                                double dxb = stack[index + 1];
+                                double dyb = stack[index + 2];
+                                double dxc = stack[index + 3];
+                                double c1x = x + dxa;
+                                double c1y = y + firstDy;
+                                double c2x = c1x + dxb;
+                                double c2y = c1y + dyb;
+                                double ex = c2x + dxc;
+                                double ey = c2y;
+                                if (!AddCubic(path, c1x, c1y, c2x, c2y, ex, ey, contourOpen, out error))
+                                {
+                                    return false;
+                                }
+
+                                x = ex;
+                                y = ey;
+                                firstDy = 0.0;
+                                index += 4;
+                            }
+
+                            count = 0;
+                            break;
+                        }
 
                     case 30:
                     case 31:
-                    {
-                        if (count < 4)
                         {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF alternating curve operand count is invalid.");
+                            if (count < 4)
+                            {
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF alternating curve operand count is invalid.");
+                            }
+
+                            int index = 0;
+                            bool horizontal = b0 == 31;
+                            while (index + 4 <= count)
+                            {
+                                double first = stack[index];
+                                double second = stack[index + 1];
+                                double third = stack[index + 2];
+                                double fourth = stack[index + 3];
+                                double c1x;
+                                double c1y;
+                                double c2x;
+                                double c2y;
+                                double ex;
+                                double ey;
+                                if (horizontal)
+                                {
+                                    c1x = x + first;
+                                    c1y = y;
+                                    c2x = c1x + second;
+                                    c2y = c1y + third;
+                                    ex = c2x;
+                                    ey = c2y + fourth;
+                                    if (index + 4 == count - 1)
+                                    {
+                                        ex += stack[count - 1];
+                                    }
+                                }
+                                else
+                                {
+                                    c1x = x;
+                                    c1y = y + first;
+                                    c2x = c1x + second;
+                                    c2y = c1y + third;
+                                    ex = c2x + fourth;
+                                    ey = c2y;
+                                    if (index + 4 == count - 1)
+                                    {
+                                        ey += stack[count - 1];
+                                    }
+                                }
+
+                                if (!AddCubic(path, c1x, c1y, c2x, c2y, ex, ey, contourOpen, out error))
+                                {
+                                    return false;
+                                }
+
+                                x = ex;
+                                y = ey;
+                                horizontal = !horizontal;
+                                index += 4;
+                            }
+
+                            count = 0;
+                            break;
                         }
 
-                        int index = 0;
-                        bool horizontal = b0 == 31;
-                        while (index + 4 <= count)
+                    case 10:
+                    case 29:
                         {
-                            double first = stack[index];
-                            double second = stack[index + 1];
-                            double third = stack[index + 2];
-                            double fourth = stack[index + 3];
-                            double c1x;
-                            double c1y;
-                            double c2x;
-                            double c2y;
-                            double ex;
-                            double ey;
-                            if (horizontal)
+                            if (count == 0)
                             {
-                                c1x = x + first;
-                                c1y = y;
-                                c2x = c1x + second;
-                                c2y = c1y + third;
-                                ex = c2x;
-                                ey = c2y + fourth;
-                                if (index + 4 == count - 1)
-                                {
-                                    ex += stack[count - 1];
-                                }
-                            }
-                            else
-                            {
-                                c1x = x;
-                                c1y = y + first;
-                                c2x = c1x + second;
-                                c2y = c1y + third;
-                                ex = c2x + fourth;
-                                ey = c2y;
-                                if (index + 4 == count - 1)
-                                {
-                                    ey += stack[count - 1];
-                                }
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF subroutine call has no operand.");
                             }
 
-                            if (!AddCubic(path, c1x, c1y, c2x, c2y, ex, ey, contourOpen, out error))
+                            if (callDepth >= MaxCallDepth)
+                            {
+                                return Fail(out error, UiFontErrorCode.UnsupportedGlyph, position, "CFF subroutine depth exceeded.");
+                            }
+
+                            UiCffIndex subrs = b0 == 29 ? globalSubrs : localSubrs;
+                            int subrIndex = (int)Math.Truncate(stack[--count]) + subrs.GetBias();
+                            if (!subrs.TryGetRange(subrIndex, out int subrStart, out int subrEnd))
+                            {
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF subroutine index is out of range.");
+                            }
+
+                            savedPosition[callDepth] = position;
+                            savedEnd[callDepth] = codeEnd;
+                            callDepth++;
+                            position = subrStart;
+                            codeEnd = subrEnd;
+                            break;
+                        }
+
+                    case 11:
+                        {
+                            if (callDepth == 0)
+                            {
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF return without a subroutine call.");
+                            }
+
+                            callDepth--;
+                            position = savedPosition[callDepth];
+                            codeEnd = savedEnd[callDepth];
+                            break;
+                        }
+
+                    case 14:
+                        {
+                            if (count == 4)
+                            {
+                                return Fail(out error, UiFontErrorCode.UnsupportedGlyph, position, "CFF seac endchar is not supported.");
+                            }
+
+                            CloseContour(path, ref contourOpen, out error);
+                            return !error.HasError;
+                        }
+
+                    case 12:
+                        {
+                            if (position >= codeEnd)
+                            {
+                                return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF escaped operator is truncated.");
+                            }
+
+                            int b1 = data[position++];
+                            if (!ExecuteEscape(
+                                    b1,
+                                    stack,
+                                    transient,
+                                    ref count,
+                                    ref x,
+                                    ref y,
+                                    ref contourOpen,
+                                    ref stemCount,
+                                    ref widthParsed,
+                                    path,
+                                    position,
+                                    out error))
                             {
                                 return false;
                             }
 
-                            x = ex;
-                            y = ey;
-                            horizontal = !horizontal;
-                            index += 4;
+                            break;
                         }
-
-                        count = 0;
-                        break;
-                    }
-
-                    case 10:
-                    case 29:
-                    {
-                        if (count == 0)
-                        {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF subroutine call has no operand.");
-                        }
-
-                        if (callDepth >= MaxCallDepth)
-                        {
-                            return Fail(out error, UiFontErrorCode.UnsupportedGlyph, position, "CFF subroutine depth exceeded.");
-                        }
-
-                        UiCffIndex subrs = b0 == 29 ? globalSubrs : localSubrs;
-                        int subrIndex = (int)Math.Truncate(stack[--count]) + subrs.GetBias();
-                        if (!subrs.TryGetRange(subrIndex, out int subrStart, out int subrEnd))
-                        {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF subroutine index is out of range.");
-                        }
-
-                        savedPosition[callDepth] = position;
-                        savedEnd[callDepth] = codeEnd;
-                        callDepth++;
-                        position = subrStart;
-                        codeEnd = subrEnd;
-                        break;
-                    }
-
-                    case 11:
-                    {
-                        if (callDepth == 0)
-                        {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF return without a subroutine call.");
-                        }
-
-                        callDepth--;
-                        position = savedPosition[callDepth];
-                        codeEnd = savedEnd[callDepth];
-                        break;
-                    }
-
-                    case 14:
-                    {
-                        if (count == 4)
-                        {
-                            return Fail(out error, UiFontErrorCode.UnsupportedGlyph, position, "CFF seac endchar is not supported.");
-                        }
-
-                        CloseContour(path, ref contourOpen, out error);
-                        return !error.HasError;
-                    }
-
-                    case 12:
-                    {
-                        if (position >= codeEnd)
-                        {
-                            return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF escaped operator is truncated.");
-                        }
-
-                        int b1 = data[position++];
-                        if (!ExecuteEscape(
-                                b1,
-                                stack,
-                                transient,
-                                ref count,
-                                ref x,
-                                ref y,
-                                ref contourOpen,
-                                ref stemCount,
-                                ref widthParsed,
-                                path,
-                                position,
-                                out error))
-                        {
-                            return false;
-                        }
-
-                        break;
-                    }
 
                     default:
                         return Fail(out error, UiFontErrorCode.UnsupportedGlyph, position, "CFF operator is not supported.");
@@ -841,53 +841,53 @@ internal static class UiCffInterpreter
                 count--;
                 return true;
             case 20:
-            {
-                if (count < 2)
                 {
-                    return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF put operands are missing.");
-                }
+                    if (count < 2)
+                    {
+                        return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF put operands are missing.");
+                    }
 
-                int index = (int)Math.Truncate(stack[count - 1]);
-                double value = stack[count - 2];
-                count -= 2;
-                if ((uint)index < (uint)MaxTransient)
-                {
-                    transient[index] = value;
-                }
+                    int index = (int)Math.Truncate(stack[count - 1]);
+                    double value = stack[count - 2];
+                    count -= 2;
+                    if ((uint)index < (uint)MaxTransient)
+                    {
+                        transient[index] = value;
+                    }
 
-                return true;
-            }
+                    return true;
+                }
             case 21:
-            {
-                if (count < 1)
                 {
-                    return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF get operand is missing.");
-                }
+                    if (count < 1)
+                    {
+                        return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF get operand is missing.");
+                    }
 
-                int index = (int)Math.Truncate(stack[--count]);
-                double value = (uint)index < (uint)MaxTransient ? transient[index] : 0.0;
-                if (count >= MaxStack)
-                {
-                    return Fail(out error, UiFontErrorCode.ResourceLimit, position, "CFF operand stack overflow.");
-                }
+                    int index = (int)Math.Truncate(stack[--count]);
+                    double value = (uint)index < (uint)MaxTransient ? transient[index] : 0.0;
+                    if (count >= MaxStack)
+                    {
+                        return Fail(out error, UiFontErrorCode.ResourceLimit, position, "CFF operand stack overflow.");
+                    }
 
-                stack[count++] = value;
-                return true;
-            }
+                    stack[count++] = value;
+                    return true;
+                }
             case 22:
-            {
-                if (count < 4)
                 {
-                    return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF ifelse operands are missing.");
-                }
+                    if (count < 4)
+                    {
+                        return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF ifelse operands are missing.");
+                    }
 
-                double v2 = stack[--count];
-                double v1 = stack[--count];
-                double s2 = stack[--count];
-                double s1 = stack[--count];
-                stack[count++] = s1 <= s2 ? v1 : v2;
-                return true;
-            }
+                    double v2 = stack[--count];
+                    double v1 = stack[--count];
+                    double s2 = stack[--count];
+                    double s1 = stack[--count];
+                    stack[count++] = s1 <= s2 ? v1 : v2;
+                    return true;
+                }
             case 23:
                 if (count >= MaxStack)
                 {
@@ -918,51 +918,51 @@ internal static class UiCffInterpreter
                 (stack[count - 2], stack[count - 1]) = (stack[count - 1], stack[count - 2]);
                 return true;
             case 29:
-            {
-                if (count < 1)
                 {
-                    return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF index operand is missing.");
-                }
-
-                int index = (int)Math.Truncate(stack[--count]);
-                int source = count - 1 - index;
-                double value = source >= 0 ? stack[source] : 0.0;
-                if (count >= MaxStack)
-                {
-                    return Fail(out error, UiFontErrorCode.ResourceLimit, position, "CFF operand stack overflow.");
-                }
-
-                stack[count++] = value;
-                return true;
-            }
-            case 30:
-            {
-                if (count < 2)
-                {
-                    return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF roll operands are missing.");
-                }
-
-                int n = (int)Math.Truncate(stack[--count]);
-                int j = (int)Math.Truncate(stack[--count]);
-                if (n <= 0 || n > count)
-                {
-                    return true;
-                }
-
-                int shift = ((j % n) + n) % n;
-                for (int s = 0; s < shift; s++)
-                {
-                    double temp = stack[count - 1];
-                    for (int i = count - 1; i > count - n; i--)
+                    if (count < 1)
                     {
-                        stack[i] = stack[i - 1];
+                        return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF index operand is missing.");
                     }
 
-                    stack[count - n] = temp;
-                }
+                    int index = (int)Math.Truncate(stack[--count]);
+                    int source = count - 1 - index;
+                    double value = source >= 0 ? stack[source] : 0.0;
+                    if (count >= MaxStack)
+                    {
+                        return Fail(out error, UiFontErrorCode.ResourceLimit, position, "CFF operand stack overflow.");
+                    }
 
-                return true;
-            }
+                    stack[count++] = value;
+                    return true;
+                }
+            case 30:
+                {
+                    if (count < 2)
+                    {
+                        return Fail(out error, UiFontErrorCode.InvalidCff, position, "CFF roll operands are missing.");
+                    }
+
+                    int n = (int)Math.Truncate(stack[--count]);
+                    int j = (int)Math.Truncate(stack[--count]);
+                    if (n <= 0 || n > count)
+                    {
+                        return true;
+                    }
+
+                    int shift = ((j % n) + n) % n;
+                    for (int s = 0; s < shift; s++)
+                    {
+                        double temp = stack[count - 1];
+                        for (int i = count - 1; i > count - n; i--)
+                        {
+                            stack[i] = stack[i - 1];
+                        }
+
+                        stack[count - n] = temp;
+                    }
+
+                    return true;
+                }
             case 34:
                 return FlexH(stack, ref count, ref x, ref y, ref contourOpen, path, position, out error);
             case 35:
