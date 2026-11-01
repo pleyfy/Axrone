@@ -23,7 +23,9 @@ internal static class UiTestFont
 
     public static byte[] CreateWithLayout() => CreateCore(4, false, 0, layout: true);
 
-    private static byte[] CreateCore(int cmapFormat, bool cff, int hMetrics, bool layout = false)
+    public static byte[] CreateArabic() => CreateCore(12, false, 0, arabic: true);
+
+    private static byte[] CreateCore(int cmapFormat, bool cff, int hMetrics, bool layout = false, bool arabic = false)
     {
         List<byte[]> glyphs =
         [
@@ -55,6 +57,37 @@ internal static class UiTestFont
             (0x2026, 11),
             (0xFB01, 9),
         ];
+
+        if (arabic)
+        {
+            mappings.AddRange(
+            [
+                (0x0028, 2),
+                (0x0029, 3),
+                (0x05D0, 2),
+                (0x05D1, 3),
+                (0x05D2, 4),
+                (0x0627, 2),
+                (0xFE8D, 3),
+                (0xFE8E, 4),
+                (0x0628, 2),
+                (0xFE8F, 3),
+                (0xFE90, 4),
+                (0xFE91, 5),
+                (0xFE92, 6),
+                (0x0644, 2),
+                (0xFEDD, 3),
+                (0xFEDE, 4),
+                (0xFEDF, 5),
+                (0xFEE0, 6),
+                (0x0645, 2),
+                (0xFEE1, 3),
+                (0xFEE2, 4),
+                (0xFEE3, 5),
+                (0xFEE4, 6),
+            ]);
+        }
+
         mappings.Sort(static (left, right) => left.CodePoint.CompareTo(right.CodePoint));
 
         List<(int Left, int Right, int Value)> kernPairs =
