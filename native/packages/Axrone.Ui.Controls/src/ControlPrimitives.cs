@@ -40,6 +40,42 @@ public enum ControlKind : byte
 
     /// <summary>Exclusive option group.</summary>
     RadioGroup = 11,
+
+    /// <summary>Multi-line text editor.</summary>
+    TextArea = 12,
+
+    /// <summary>Tab header strip bound to page controls.</summary>
+    TabView = 13,
+
+    /// <summary>Virtualized single-column list.</summary>
+    ListView = 14,
+
+    /// <summary>Hierarchical list with expand/collapse rows.</summary>
+    TreeView = 15,
+
+    /// <summary>Menu button with an open item list below the header.</summary>
+    Menu = 16,
+
+    /// <summary>Non-interactive text overlay shown on demand.</summary>
+    Tooltip = 17,
+
+    /// <summary>Modal content container closed with Escape.</summary>
+    Dialog = 18,
+
+    /// <summary>Timed transient text overlay.</summary>
+    Toast = 19,
+
+    /// <summary>Equal-width exclusive segment strip.</summary>
+    SegmentedControl = 20,
+
+    /// <summary>Numeric stepper with decrement/increment halves.</summary>
+    Stepper = 21,
+
+    /// <summary>Star rating selector.</summary>
+    Rating = 22,
+
+    /// <summary>Two panes separated by a draggable splitter.</summary>
+    SplitPane = 23,
 }
 
 /// <summary>Resolved control interaction state.</summary>
@@ -102,6 +138,8 @@ public enum UiControlEventKind : byte
 /// <param name="MaxValue">Slider maximum.</param>
 /// <param name="Step">Slider keyboard/step increment.</param>
 /// <param name="TextStyle">Text style override; an invalid face inherits the runtime default.</param>
+/// <param name="Items">Row-count source for <see cref="ControlKind.ListView"/>.</param>
+/// <param name="Tree">Node/child source for <see cref="ControlKind.TreeView"/>.</param>
 public readonly record struct UiControlDefinition(
     string? Text = null,
     UiResourceId Image = default,
@@ -111,7 +149,9 @@ public readonly record struct UiControlDefinition(
     float MinValue = 0.0f,
     float MaxValue = 1.0f,
     float Step = 0.1f,
-    UiTextStyle TextStyle = default);
+    UiTextStyle TextStyle = default,
+    IUiListItemSource? Items = null,
+    IUiTreeSource? Tree = null);
 
 /// <summary>Live handle to one control.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -154,6 +194,29 @@ public readonly record struct UiControlSnapshot(
     int Index,
     float ScrollOffset,
     string? Text);
+
+/// <summary>Row-count source for <see cref="ControlKind.ListView"/>.</summary>
+public interface IUiListItemSource
+{
+    /// <summary>Gets the number of rows.</summary>
+    int Count { get; }
+}
+
+/// <summary>Hierarchy source for <see cref="ControlKind.TreeView"/>; node ids are provider handles.</summary>
+public interface IUiTreeSource
+{
+    /// <summary>Gets the number of root nodes.</summary>
+    int RootCount { get; }
+
+    /// <summary>Gets a root node id by index.</summary>
+    int GetRoot(int index);
+
+    /// <summary>Gets the child count of a node.</summary>
+    int GetChildCount(int node);
+
+    /// <summary>Gets a child node id by index.</summary>
+    int GetChild(int node, int childIndex);
+}
 
 /// <summary>Intrinsic image size source used by <see cref="ControlKind.Image"/> sizing.</summary>
 public interface IUiImageMetrics

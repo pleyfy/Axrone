@@ -14,7 +14,9 @@ internal enum ControlStatus : byte
 /// Mutable per-control record. Fields are grouped by consuming family: text
 /// controls own <see cref="Text"/>/<see cref="TextStyle"/>/<see cref="Caret"/>,
 /// selectors own <see cref="Options"/>/<see cref="Index"/>/<see cref="Open"/>/
-/// <see cref="OptionNodes"/>, range controls own
+/// <see cref="OptionNodes"/>, list controls own <see cref="Items"/>/
+/// <see cref="Tree"/>/<see cref="VisibleRows"/>/<see cref="Expanded"/>,
+/// tab views own <see cref="Pages"/>/<see cref="Metrics"/>, range controls own
 /// <see cref="Value"/>/<see cref="MinValue"/>/<see cref="MaxValue"/>/
 /// <see cref="Step"/>, and scroll views own <see cref="ScrollOffset"/>.
 /// </summary>
@@ -25,6 +27,13 @@ internal struct ControlEntry
     public UiResourceId Image;
     public UiNodeId[]? OptionNodes;
     public string[]? Options;
+    public IUiListItemSource? Items;
+    public IUiTreeSource? Tree;
+    public int[]? VisibleRows;
+    public bool[]? Expanded;
+    public float[]? Metrics;
+    public UiControl[]? Pages;
+    public int PageCount;
     public UiTextStyle TextStyle;
     public string Text;
     public ControlStatus Status;
