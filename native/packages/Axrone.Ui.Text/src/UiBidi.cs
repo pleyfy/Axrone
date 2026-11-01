@@ -16,10 +16,38 @@ internal enum UiBidiClass : byte
     S,
     WS,
     ON,
+    LRE,
+    RLE,
+    LRO,
+    RLO,
+    PDF,
+    LRI,
+    RLI,
+    FSI,
+    PDI,
 }
 
 internal static class UiBidi
 {
+    private const int MaxDepth = 128;
+    private const int MaxBracketDepth = 64;
+
+    private static readonly int[] BracketOpen =
+    [
+        0x0028, 0x005B, 0x007B, 0x00AB, 0x2039, 0x2045, 0x207D, 0x208D,
+        0x2329, 0x3008, 0x300A, 0x300C, 0x300E, 0x3010, 0x3014, 0x3016,
+        0x3018, 0x301A, 0xFE59, 0xFE5B, 0xFE5D, 0xFF08, 0xFF3B, 0xFF5B,
+        0xFF62,
+    ];
+
+    private static readonly int[] BracketClose =
+    [
+        0x0029, 0x005D, 0x007D, 0x00BB, 0x203A, 0x2046, 0x207E, 0x208E,
+        0x232A, 0x3009, 0x300B, 0x300D, 0x300F, 0x3011, 0x3015, 0x3017,
+        0x3019, 0x301B, 0xFE5A, 0xFE5C, 0xFE5E, 0xFF09, 0xFF3D, 0xFF5D,
+        0xFF63,
+    ];
+
     public static byte ResolveBaseLevel(UiTextDirection direction, ReadOnlySpan<int> codepoints)
     {
         if (direction == UiTextDirection.Ltr)
@@ -32,9 +60,31 @@ internal static class UiBidi
             return 1;
         }
 
+        int isolateDepth = 0;
         for (int i = 0; i < codepoints.Length; i++)
         {
             UiBidiClass type = Classify(codepoints[i]);
+            if (type is UiBidiClass.LRI or UiBidiClass.RLI or UiBidiClass.FSI)
+            {
+                isolateDepth++;
+                continue;
+            }
+
+            if (type == UiBidiClass.PDI)
+            {
+                if (isolateDepth > 0)
+                {
+                    isolateDepth--;
+                }
+
+                continue;
+            }
+
+            if (isolateDepth > 0)
+            {
+                continue;
+            }
+
             if (type is UiBidiClass.R or UiBidiClass.AL)
             {
                 return 1;
@@ -69,6 +119,29 @@ internal static class UiBidi
             }
 
             return UiBidiClass.BN;
+        }
+
+        if (codePoint is >= 0x202A and <= 0x202E)
+        {
+            return codePoint switch
+            {
+                0x202A => UiBidiClass.LRE,
+                0x202B => UiBidiClass.RLE,
+                0x202C => UiBidiClass.PDF,
+                0x202D => UiBidiClass.LRO,
+                _ => UiBidiClass.RLO,
+            };
+        }
+
+        if (codePoint is >= 0x2066 and <= 0x2069)
+        {
+            return codePoint switch
+            {
+                0x2066 => UiBidiClass.LRI,
+                0x2067 => UiBidiClass.RLI,
+                0x2068 => UiBidiClass.FSI,
+                _ => UiBidiClass.PDI,
+            };
         }
 
         if (IsTransparentMark(codePoint))
@@ -135,10 +208,8 @@ internal static class UiBidi
             return UiBidiClass.B;
         }
 
-        if ((codePoint >= 0x202A && codePoint <= 0x202E) ||
-            (codePoint >= 0x2066 && codePoint <= 0x2069) ||
-            (codePoint >= 0x200B && codePoint <= 0x200F) ||
-            codePoint == 0xFEFF)
+        if (codePoint == 0x061C || codePoint == 0xFEFF ||
+            (codePoint >= 0x200B && codePoint <= 0x200F))
         {
             return UiBidiClass.BN;
         }
@@ -164,182 +235,122 @@ internal static class UiBidi
         return UiBidiClass.ON;
     }
 
+    public static bool IsBidiControl(int codePoint) =>
+        codePoint is 0x061C or 0x200B or 0x200E or 0x200F or 0xFEFF ||
+        codePoint is >= 0x202A and <= 0x202E ||
+        codePoint is >= 0x2066 and <= 0x2069;
+
     public static void ResolveLevels(
+        ReadOnlySpan<int> codepoints,
+        Span<UiBidiClass> types,
+        Span<byte> levels,
+        byte baseLevel) => Resolve(codepoints, types, levels, baseLevel);
+
+    public static void Resolve(
         ReadOnlySpan<int> codepoints,
         Span<UiBidiClass> types,
         Span<byte> levels,
         byte baseLevel)
     {
         int count = codepoints.Length;
-        for (int i = 0; i < count; i++)
-        {
-            types[i] = Classify(codepoints[i]);
-        }
+        Span<byte> levelStack = stackalloc byte[MaxDepth];
+        Span<bool> overrideActive = stackalloc bool[MaxDepth];
+        Span<bool> overrideLeft = stackalloc bool[MaxDepth];
+        Span<bool> isolateStack = stackalloc bool[MaxDepth];
+        int depth = 0;
+        levelStack[0] = baseLevel;
 
         for (int i = 0; i < count; i++)
         {
-            if (types[i] == UiBidiClass.NSM)
+            UiBidiClass type = Classify(codepoints[i]);
+            types[i] = type;
+            byte currentLevel = levelStack[depth];
+            levels[i] = currentLevel;
+            switch (type)
             {
-                types[i] = i > 0 ? types[i - 1] : UiBidiClass.ON;
-            }
-        }
+                case UiBidiClass.LRE:
+                case UiBidiClass.RLE:
+                case UiBidiClass.LRO:
+                case UiBidiClass.RLO:
+                    {
+                        byte embedded = EmbeddingLevel(currentLevel, type is UiBidiClass.RLE or UiBidiClass.RLO);
+                        if (embedded <= 125 && depth < MaxDepth - 1)
+                        {
+                            depth++;
+                            levelStack[depth] = embedded;
+                            overrideActive[depth] = type is UiBidiClass.LRO or UiBidiClass.RLO;
+                            overrideLeft[depth] = type == UiBidiClass.LRO;
+                            isolateStack[depth] = false;
+                        }
 
-        UiBidiClass lastStrong = baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L;
-        for (int i = 0; i < count; i++)
-        {
-            if (types[i] == UiBidiClass.EN && lastStrong == UiBidiClass.AL)
-            {
-                types[i] = UiBidiClass.AN;
-            }
+                        break;
+                    }
+                case UiBidiClass.LRI:
+                case UiBidiClass.RLI:
+                case UiBidiClass.FSI:
+                    {
+                        bool rtl = type == UiBidiClass.RLI || (type == UiBidiClass.FSI && IsFirstStrongRtl(codepoints, i));
+                        byte isolateLevel = EmbeddingLevel(currentLevel, rtl);
+                        if (isolateLevel <= 125 && depth < MaxDepth - 1)
+                        {
+                            depth++;
+                            levelStack[depth] = isolateLevel;
+                            overrideActive[depth] = false;
+                            overrideLeft[depth] = false;
+                            isolateStack[depth] = true;
+                        }
 
-            if (types[i] is UiBidiClass.L or UiBidiClass.R or UiBidiClass.AL)
-            {
-                lastStrong = types[i];
-            }
-        }
+                        break;
+                    }
+                case UiBidiClass.PDI:
+                    {
+                        int target = depth;
+                        while (target > 0 && !isolateStack[target])
+                        {
+                            target--;
+                        }
 
-        for (int i = 0; i < count; i++)
-        {
-            if (types[i] == UiBidiClass.AL)
-            {
-                types[i] = UiBidiClass.R;
-            }
-        }
+                        depth = target > 0 ? target - 1 : 0;
+                        levels[i] = levelStack[depth];
+                        break;
+                    }
+                case UiBidiClass.PDF:
+                    {
+                        while (depth > 0 && !isolateStack[depth])
+                        {
+                            depth--;
+                        }
 
-        for (int i = 1; i < count - 1; i++)
-        {
-            if (types[i] == UiBidiClass.ES && types[i - 1] == UiBidiClass.EN && types[i + 1] == UiBidiClass.EN)
-            {
-                types[i] = UiBidiClass.EN;
-            }
-            else if (types[i] == UiBidiClass.CS)
-            {
-                if (types[i - 1] == UiBidiClass.EN && types[i + 1] == UiBidiClass.EN)
-                {
-                    types[i] = UiBidiClass.EN;
-                }
-                else if (types[i - 1] == UiBidiClass.AN && types[i + 1] == UiBidiClass.AN)
-                {
-                    types[i] = UiBidiClass.AN;
-                }
-            }
-        }
+                        levels[i] = levelStack[depth];
+                        break;
+                    }
+                case UiBidiClass.B:
+                case UiBidiClass.S:
+                case UiBidiClass.BN:
+                    break;
+                default:
+                    if (overrideActive[depth])
+                    {
+                        types[i] = overrideLeft[depth] ? UiBidiClass.L : UiBidiClass.R;
+                    }
 
-        for (int i = 0; i < count; i++)
-        {
-            if (types[i] != UiBidiClass.ET)
-            {
-                continue;
-            }
-
-            int start = i;
-            while (i < count && types[i] == UiBidiClass.ET)
-            {
-                i++;
-            }
-
-            bool adjacent = (start > 0 && types[start - 1] == UiBidiClass.EN) ||
-                (i < count && types[i] == UiBidiClass.EN);
-            if (adjacent)
-            {
-                for (int e = start; e < i; e++)
-                {
-                    types[e] = UiBidiClass.EN;
-                }
-            }
-        }
-
-        for (int i = 0; i < count; i++)
-        {
-            if (types[i] is UiBidiClass.ES or UiBidiClass.ET or UiBidiClass.CS)
-            {
-                types[i] = UiBidiClass.ON;
-            }
-        }
-
-        lastStrong = baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L;
-        for (int i = 0; i < count; i++)
-        {
-            if (types[i] == UiBidiClass.EN && lastStrong == UiBidiClass.L)
-            {
-                types[i] = UiBidiClass.L;
-            }
-
-            if (types[i] is UiBidiClass.L or UiBidiClass.R)
-            {
-                lastStrong = types[i];
+                    break;
             }
         }
 
         for (int i = 0; i < count; i++)
         {
-            if (types[i] == UiBidiClass.BN)
+            if (types[i] is UiBidiClass.LRE or UiBidiClass.RLE or UiBidiClass.LRO or UiBidiClass.RLO or
+                UiBidiClass.PDF or UiBidiClass.LRI or UiBidiClass.RLI or UiBidiClass.FSI or UiBidiClass.PDI)
             {
-                types[i] = baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L;
+                types[i] = UiBidiClass.BN;
             }
         }
 
-        for (int i = 0; i < count; i++)
-        {
-            if (!IsNeutral(types[i]))
-            {
-                continue;
-            }
-
-            int start = i;
-            while (i < count && IsNeutral(types[i]))
-            {
-                i++;
-            }
-
-            UiBidiClass before = start > 0
-                ? NeutralStrong(types[start - 1], baseLevel)
-                : (baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L);
-            UiBidiClass after = i < count
-                ? NeutralStrong(types[i], baseLevel)
-                : before;
-            if (before == after)
-            {
-                for (int n = start; n < i; n++)
-                {
-                    types[n] = before;
-                }
-            }
-        }
-
-        for (int i = 0; i < count; i++)
-        {
-            if (IsNeutral(types[i]))
-            {
-                types[i] = baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L;
-            }
-        }
-
-        for (int i = 0; i < count; i++)
-        {
-            UiBidiClass type = types[i];
-            byte level = baseLevel;
-            if (baseLevel == 0)
-            {
-                if (type == UiBidiClass.R)
-                {
-                    level = 1;
-                }
-                else if (type is UiBidiClass.EN or UiBidiClass.AN)
-                {
-                    level = 2;
-                }
-            }
-            else
-            {
-                if (type is UiBidiClass.L or UiBidiClass.EN or UiBidiClass.AN)
-                {
-                    level = 2;
-                }
-            }
-
-            levels[i] = level;
-        }
+        ApplyWeakRules(types, baseLevel);
+        ResolveBrackets(codepoints, types, levels, baseLevel);
+        ApplyNeutralRules(types, levels, baseLevel);
+        ApplyImplicitLevels(codepoints, types, levels);
     }
 
     public static void Reorder(Span<int> codepoints, Span<int> clusters, Span<byte> levels)
@@ -414,6 +425,8 @@ internal static class UiBidi
         0x2267 => 0x2266,
         0x22DA => 0x22DB,
         0x22DB => 0x22DA,
+        0x2329 => 0x232A,
+        0x232A => 0x2329,
         0x3008 => 0x3009,
         0x3009 => 0x3008,
         0x300A => 0x300B,
@@ -449,6 +462,452 @@ internal static class UiBidi
         _ => codePoint,
     };
 
+    private static void ApplyWeakRules(Span<UiBidiClass> types, byte baseLevel)
+    {
+        int count = types.Length;
+        UiBidiClass sos = baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L;
+        UiBidiClass previous = sos;
+        for (int i = 0; i < count; i++)
+        {
+            if (types[i] == UiBidiClass.BN)
+            {
+                continue;
+            }
+
+            if (types[i] == UiBidiClass.NSM)
+            {
+                types[i] = previous;
+            }
+
+            previous = types[i];
+        }
+
+        UiBidiClass lastStrong = sos;
+        for (int i = 0; i < count; i++)
+        {
+            UiBidiClass type = types[i];
+            if (type == UiBidiClass.BN)
+            {
+                continue;
+            }
+
+            if (type == UiBidiClass.EN && lastStrong == UiBidiClass.AL)
+            {
+                types[i] = UiBidiClass.AN;
+            }
+
+            if (type is UiBidiClass.L or UiBidiClass.R or UiBidiClass.AL)
+            {
+                lastStrong = type;
+            }
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (types[i] == UiBidiClass.AL)
+            {
+                types[i] = UiBidiClass.R;
+            }
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            UiBidiClass type = types[i];
+            if (type is not (UiBidiClass.ES or UiBidiClass.CS))
+            {
+                continue;
+            }
+
+            UiBidiClass before = PreviousVisible(types, i - 1, sos);
+            UiBidiClass after = NextVisible(types, i, sos);
+            if (type == UiBidiClass.ES && before == UiBidiClass.EN && after == UiBidiClass.EN)
+            {
+                types[i] = UiBidiClass.EN;
+            }
+            else if (type == UiBidiClass.CS)
+            {
+                if (before == UiBidiClass.EN && after == UiBidiClass.EN)
+                {
+                    types[i] = UiBidiClass.EN;
+                }
+                else if (before == UiBidiClass.AN && after == UiBidiClass.AN)
+                {
+                    types[i] = UiBidiClass.AN;
+                }
+            }
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (types[i] != UiBidiClass.ET)
+            {
+                continue;
+            }
+
+            int start = i;
+            int end = i;
+            while (end < count && types[end] == UiBidiClass.ET)
+            {
+                end++;
+            }
+
+            bool adjacent = (start > 0 && PreviousVisible(types, start - 1, sos) == UiBidiClass.EN) ||
+                (end < count && NextVisible(types, end - 1, sos) == UiBidiClass.EN);
+            if (adjacent)
+            {
+                for (int e = start; e < end; e++)
+                {
+                    types[e] = UiBidiClass.EN;
+                }
+            }
+
+            i = end - 1;
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (types[i] is UiBidiClass.ES or UiBidiClass.ET or UiBidiClass.CS)
+            {
+                types[i] = UiBidiClass.ON;
+            }
+        }
+
+        lastStrong = sos;
+        for (int i = 0; i < count; i++)
+        {
+            UiBidiClass type = types[i];
+            if (type == UiBidiClass.BN)
+            {
+                continue;
+            }
+
+            if (type == UiBidiClass.EN && lastStrong == UiBidiClass.L)
+            {
+                types[i] = UiBidiClass.L;
+            }
+
+            if (types[i] is UiBidiClass.L or UiBidiClass.R)
+            {
+                lastStrong = types[i];
+            }
+        }
+    }
+
+    private static void ResolveBrackets(
+        ReadOnlySpan<int> codepoints,
+        Span<UiBidiClass> types,
+        ReadOnlySpan<byte> levels,
+        byte baseLevel)
+    {
+        Span<int> opens = stackalloc int[MaxBracketDepth];
+        Span<int> closes = stackalloc int[MaxBracketDepth];
+        int depth = 0;
+        for (int i = 0; i < codepoints.Length; i++)
+        {
+            if (types[i] == UiBidiClass.BN)
+            {
+                continue;
+            }
+
+            if (TryGetOpenClose(codepoints[i], out int closeCodePoint))
+            {
+                if (depth < MaxBracketDepth)
+                {
+                    opens[depth] = i;
+                    closes[depth] = closeCodePoint;
+                    depth++;
+                }
+
+                continue;
+            }
+
+            if (!TryGetClose(codepoints[i]))
+            {
+                continue;
+            }
+
+            int match = -1;
+            for (int d = depth - 1; d >= 0; d--)
+            {
+                if (closes[d] == codepoints[i])
+                {
+                    match = d;
+                    break;
+                }
+            }
+
+            if (match < 0)
+            {
+                continue;
+            }
+
+            ResolveBracketPair(codepoints, types, levels, baseLevel, opens[match], i);
+            depth = match;
+        }
+    }
+
+    private static void ResolveBracketPair(
+        ReadOnlySpan<int> codepoints,
+        Span<UiBidiClass> types,
+        ReadOnlySpan<byte> levels,
+        byte baseLevel,
+        int open,
+        int close)
+    {
+        UiBidiClass embedding = (levels[open] & 1) == 0 ? UiBidiClass.L : UiBidiClass.R;
+        UiBidiClass opposite = embedding == UiBidiClass.L ? UiBidiClass.R : UiBidiClass.L;
+        bool foundSame = false;
+        bool foundOpposite = false;
+        for (int i = open + 1; i < close; i++)
+        {
+            UiBidiClass type = types[i];
+            if (type is UiBidiClass.L or UiBidiClass.R or UiBidiClass.EN or UiBidiClass.AN)
+            {
+                UiBidiClass direction = type == UiBidiClass.L ? UiBidiClass.L : UiBidiClass.R;
+                if (direction == embedding)
+                {
+                    foundSame = true;
+                }
+                else
+                {
+                    foundOpposite = true;
+                }
+            }
+        }
+
+        UiBidiClass resolved;
+        if (foundOpposite && !foundSame)
+        {
+            resolved = opposite;
+        }
+        else if (foundSame)
+        {
+            resolved = embedding;
+        }
+        else
+        {
+            UiBidiClass before = PreviousStrong(types, open - 1, baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L);
+            resolved = before == opposite ? opposite : embedding;
+        }
+
+        types[open] = resolved;
+        types[close] = resolved;
+    }
+
+    private static void ApplyNeutralRules(Span<UiBidiClass> types, ReadOnlySpan<byte> levels, byte baseLevel)
+    {
+        int count = types.Length;
+        UiBidiClass sos = baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L;
+        for (int i = 0; i < count; i++)
+        {
+            if (!IsNeutral(types[i]))
+            {
+                continue;
+            }
+
+            int start = i;
+            while (i < count && (IsNeutral(types[i]) || types[i] == UiBidiClass.BN))
+            {
+                i++;
+            }
+
+            UiBidiClass before = PreviousStrong(types, start - 1, sos);
+            UiBidiClass after = NextStrong(types, i, sos);
+            bool uniform = before == after;
+            for (int n = start; n < i; n++)
+            {
+                if (!IsNeutral(types[n]))
+                {
+                    continue;
+                }
+
+                types[n] = uniform
+                    ? before
+                    : (levels[n] & 1) == 0
+                        ? UiBidiClass.L
+                        : UiBidiClass.R;
+            }
+        }
+    }
+
+    private static void ApplyImplicitLevels(
+        ReadOnlySpan<int> codepoints,
+        ReadOnlySpan<UiBidiClass> types,
+        Span<byte> levels)
+    {
+        for (int i = 0; i < codepoints.Length; i++)
+        {
+            if (IsBidiControl(codepoints[i]))
+            {
+                continue;
+            }
+
+            int level = levels[i];
+            UiBidiClass type = types[i];
+            if ((level & 1) == 0)
+            {
+                if (type == UiBidiClass.R)
+                {
+                    level++;
+                }
+                else if (type is UiBidiClass.EN or UiBidiClass.AN)
+                {
+                    level += 2;
+                }
+            }
+            else if (type is UiBidiClass.L or UiBidiClass.EN or UiBidiClass.AN)
+            {
+                level++;
+            }
+
+            levels[i] = (byte)Math.Min(level, 255);
+        }
+    }
+
+    private static bool IsFirstStrongRtl(ReadOnlySpan<int> codepoints, int index)
+    {
+        int isolateDepth = 1;
+        for (int i = index + 1; i < codepoints.Length; i++)
+        {
+            UiBidiClass type = Classify(codepoints[i]);
+            if (type is UiBidiClass.LRI or UiBidiClass.RLI or UiBidiClass.FSI)
+            {
+                isolateDepth++;
+                continue;
+            }
+
+            if (type == UiBidiClass.PDI)
+            {
+                isolateDepth--;
+                if (isolateDepth == 0)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (isolateDepth > 1)
+            {
+                continue;
+            }
+
+            if (type is UiBidiClass.R or UiBidiClass.AL)
+            {
+                return true;
+            }
+
+            if (type == UiBidiClass.L)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static byte EmbeddingLevel(byte level, bool rtl) =>
+        rtl ? (byte)((level + 1) | 1) : (byte)((level + 2) & ~1);
+
+    private static bool IsNeutral(UiBidiClass type) =>
+        type is UiBidiClass.B or UiBidiClass.S or UiBidiClass.WS or UiBidiClass.ON;
+
+    private static UiBidiClass PreviousVisible(ReadOnlySpan<UiBidiClass> types, int index, UiBidiClass fallback)
+    {
+        for (int i = index; i >= 0; i--)
+        {
+            if (types[i] != UiBidiClass.BN)
+            {
+                return types[i];
+            }
+        }
+
+        return fallback;
+    }
+
+    private static UiBidiClass NextVisible(ReadOnlySpan<UiBidiClass> types, int index, UiBidiClass fallback)
+    {
+        for (int i = index + 1; i < types.Length; i++)
+        {
+            if (types[i] != UiBidiClass.BN)
+            {
+                return types[i];
+            }
+        }
+
+        return fallback;
+    }
+
+    private static UiBidiClass PreviousStrong(ReadOnlySpan<UiBidiClass> types, int index, UiBidiClass fallback)
+    {
+        for (int i = index; i >= 0; i--)
+        {
+            UiBidiClass type = types[i];
+            if (type == UiBidiClass.BN || IsNeutral(type))
+            {
+                continue;
+            }
+
+            return type switch
+            {
+                UiBidiClass.L => UiBidiClass.L,
+                UiBidiClass.R or UiBidiClass.EN or UiBidiClass.AN => UiBidiClass.R,
+                _ => fallback,
+            };
+        }
+
+        return fallback;
+    }
+
+    private static UiBidiClass NextStrong(ReadOnlySpan<UiBidiClass> types, int index, UiBidiClass fallback)
+    {
+        for (int i = index; i < types.Length; i++)
+        {
+            UiBidiClass type = types[i];
+            if (type == UiBidiClass.BN || IsNeutral(type))
+            {
+                continue;
+            }
+
+            return type switch
+            {
+                UiBidiClass.L => UiBidiClass.L,
+                UiBidiClass.R or UiBidiClass.EN or UiBidiClass.AN => UiBidiClass.R,
+                _ => fallback,
+            };
+        }
+
+        return fallback;
+    }
+
+    private static bool TryGetOpenClose(int codePoint, out int close)
+    {
+        for (int i = 0; i < BracketOpen.Length; i++)
+        {
+            if (BracketOpen[i] == codePoint)
+            {
+                close = BracketClose[i];
+                return true;
+            }
+        }
+
+        close = 0;
+        return false;
+    }
+
+    private static bool TryGetClose(int codePoint)
+    {
+        for (int i = 0; i < BracketClose.Length; i++)
+        {
+            if (BracketClose[i] == codePoint)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsTransparentMark(int codePoint) =>
         (codePoint >= 0x0300 && codePoint <= 0x036F) ||
         (codePoint >= 0x0483 && codePoint <= 0x0489) ||
@@ -468,16 +927,4 @@ internal static class UiBidi
         (codePoint >= 0x1DC0 && codePoint <= 0x1DFF) ||
         (codePoint >= 0x20D0 && codePoint <= 0x20FF) ||
         (codePoint >= 0xFE20 && codePoint <= 0xFE2F);
-
-    private static bool IsNeutral(UiBidiClass type) =>
-        type is UiBidiClass.B or UiBidiClass.S or UiBidiClass.WS or UiBidiClass.ON;
-
-    private static UiBidiClass NeutralStrong(UiBidiClass type, byte baseLevel) => type switch
-    {
-        UiBidiClass.L => UiBidiClass.L,
-        UiBidiClass.R => UiBidiClass.R,
-        UiBidiClass.EN => UiBidiClass.R,
-        UiBidiClass.AN => UiBidiClass.R,
-        _ => baseLevel == 1 ? UiBidiClass.R : UiBidiClass.L,
-    };
 }

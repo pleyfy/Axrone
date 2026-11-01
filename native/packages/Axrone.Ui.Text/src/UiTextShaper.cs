@@ -158,16 +158,35 @@ public sealed class UiTextShaper : IUiTextShaper
             }
         }
 
-        UiBidi.ResolveLevels(codepoints[..count], types[..count], levels[..count], baseLevel);
+        UiBidi.Resolve(codepoints[..count], types[..count], levels[..count], baseLevel);
         for (int i = 0; i < count; i++)
         {
-            if ((levels[i] & 1) != 0)
+            if ((levels[i] & 1) != 0 && !UiBidi.IsBidiControl(codepoints[i]))
             {
                 codepoints[i] = UiBidi.Mirror(codepoints[i]);
             }
         }
 
         UiBidi.Reorder(codepoints[..count], clusters[..count], levels[..count]);
+        int kept = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (UiBidi.IsBidiControl(codepoints[i]))
+            {
+                continue;
+            }
+
+            if (kept != i)
+            {
+                codepoints[kept] = codepoints[i];
+                clusters[kept] = clusters[i];
+                levels[kept] = levels[i];
+            }
+
+            kept++;
+        }
+
+        count = kept;
 
         int written = 0;
         int index = 0;
