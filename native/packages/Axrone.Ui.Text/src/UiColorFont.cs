@@ -90,7 +90,28 @@ internal sealed class UiColorData
         int layerCount = UiFontFace.ReadU16(data, colrOffset + 12);
         if (version > 1)
         {
-            return Fail(out error, colrOffset, "COLR version is not supported.");
+            return Fail(out error, UiFontErrorCode.InvalidColor, colrOffset, "COLR version is not supported.");
+        }
+
+        if (version == 1)
+        {
+            if (colrLength < 34)
+            {
+                return Fail(out error, UiFontErrorCode.InvalidColor, colrOffset, "COLR v1 header is truncated.");
+            }
+
+            if (UiFontFace.ReadU32(data, colrOffset + 14) != 0 ||
+                UiFontFace.ReadU32(data, colrOffset + 18) != 0 ||
+                UiFontFace.ReadU32(data, colrOffset + 22) != 0 ||
+                UiFontFace.ReadU32(data, colrOffset + 26) != 0 ||
+                UiFontFace.ReadU32(data, colrOffset + 30) != 0)
+            {
+                return Fail(
+                    out error,
+                    UiFontErrorCode.UnsupportedColorFormat,
+                    colrOffset + 14,
+                    "COLR v1 paint graphs, transforms and gradients are not supported.");
+            }
         }
 
         long baseEnd = baseOffset + ((long)baseCount * BaseRecordSize);
@@ -127,7 +148,7 @@ internal sealed class UiColorData
         int colorRecordsOffset = (int)UiFontFace.ReadU32(data, cpalOffset + 8);
         if (cpalVersion > 1)
         {
-            return Fail(out error, cpalOffset, "CPAL version is not supported.");
+            return Fail(out error, UiFontErrorCode.InvalidColor, cpalOffset, "CPAL version is not supported.");
         }
 
         long paletteIndicesEnd = 12L + (paletteCount * 2L);
@@ -240,6 +261,12 @@ internal sealed class UiColorData
     private static bool Fail(out UiFontError error, int offset, string message)
     {
         error = UiFontError.At(UiFontErrorCode.InvalidColor, offset, message);
+        return false;
+    }
+
+    private static bool Fail(out UiFontError error, UiFontErrorCode code, int offset, string message)
+    {
+        error = UiFontError.At(code, offset, message);
         return false;
     }
 }

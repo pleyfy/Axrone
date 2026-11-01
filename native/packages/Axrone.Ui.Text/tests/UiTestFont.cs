@@ -28,8 +28,8 @@ internal static class UiTestFont
     public static byte[] CreateVariation(bool avar = false, bool corruptGvar = false) =>
         CreateCore(4, false, 0, variation: true, avar: avar, corruptGvar: corruptGvar);
 
-    public static byte[] CreateColor(bool corrupt = false) =>
-        CreateCore(4, false, 0, color: true, colorCorrupt: corrupt);
+    public static byte[] CreateColor(bool corrupt = false, bool colrV1 = false, bool paintGraph = false) =>
+        CreateCore(4, false, 0, color: true, colorCorrupt: corrupt, colrV1: colrV1, colorPaint: paintGraph);
 
     public static byte[] CreateHinted(
         bool prepYAxis = false,
@@ -92,7 +92,9 @@ internal static class UiTestFont
         bool corruptHvar = false,
         bool corruptMvar = false,
         bool compositeInstructions = false,
-        bool scaledComposite = false)
+        bool scaledComposite = false,
+        bool colrV1 = false,
+        bool colorPaint = false)
     {
         List<byte[]> glyphs =
         [
@@ -215,7 +217,9 @@ internal static class UiTestFont
             corruptHvar,
             corruptMvar,
             compositeInstructions,
-            scaledComposite);
+            scaledComposite,
+            colrV1,
+            colorPaint);
     }
 
     public static byte[] CreateFallback()
@@ -401,7 +405,9 @@ internal static class UiTestFont
         bool corruptHvar = false,
         bool corruptMvar = false,
         bool compositeInstructions = false,
-        bool scaledComposite = false)
+        bool scaledComposite = false,
+        bool colrV1 = false,
+        bool colorPaint = false)
     {
         var tables = new List<(string Tag, byte[] Data)>
         {
@@ -445,7 +451,7 @@ internal static class UiTestFont
 
         if (color)
         {
-            tables.Add(("COLR", BuildColr(colorCorrupt)));
+            tables.Add(("COLR", BuildColr(colorCorrupt, colrV1, colorPaint)));
             tables.Add(("CPAL", BuildCpal()));
         }
 
@@ -873,14 +879,26 @@ internal static class UiTestFont
         return [.. data];
     }
 
-    private static byte[] BuildColr(bool corrupt)
+    private static byte[] BuildColr(bool corrupt, bool v1, bool paintGraph)
     {
-        var data = new List<byte>(32);
-        WriteU16(data, 0);
+        int headerSize = v1 ? 34 : 14;
+        int baseOffset = headerSize;
+        int layerOffset = baseOffset + 6;
+        var data = new List<byte>(layerOffset + 8);
+        WriteU16(data, v1 ? 1 : 0);
         WriteU16(data, 1);
-        WriteU32(data, 14);
-        WriteU32(data, 20);
+        WriteU32(data, (uint)baseOffset);
+        WriteU32(data, (uint)layerOffset);
         WriteU16(data, corrupt ? 1 : 2);
+        if (v1)
+        {
+            WriteU32(data, paintGraph ? (uint)baseOffset : 0);
+            WriteU32(data, 0);
+            WriteU32(data, 0);
+            WriteU32(data, 0);
+            WriteU32(data, 0);
+        }
+
         WriteU16(data, 2);
         WriteU16(data, 0);
         WriteU16(data, 2);
