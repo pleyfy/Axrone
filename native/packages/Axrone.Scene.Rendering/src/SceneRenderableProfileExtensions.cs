@@ -28,8 +28,11 @@ public enum SceneRenderableFeatures
     /// <summary>Rect/disk area lights.</summary>
     AreaLight = 1 << 6,
 
+    /// <summary>Registry-backed instanced meshes.</summary>
+    InstancedMesh = 1 << 7,
+
     /// <summary>Every optional renderable.</summary>
-    All = Billboard | Line | Trail | SpriteMask | LodGroup | ReflectionProbe | AreaLight
+    All = Billboard | Line | Trail | SpriteMask | LodGroup | ReflectionProbe | AreaLight | InstancedMesh
 }
 
 /// <summary>Profile composition helpers for the optional renderable components.</summary>
@@ -98,6 +101,14 @@ public static class SceneRenderableProfileExtensions
                 "AreaLight",
                 SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
                 priority: 800);
+        }
+
+        if ((features & SceneRenderableFeatures.InstancedMesh) != 0)
+        {
+            builder.AddData<SceneInstancedMeshRenderer>(
+                "InstancedMeshRenderer",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
         }
 
         return builder;

@@ -12,7 +12,10 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     private readonly SceneGlSpriteBatchRenderer _spriteRenderer;
     private readonly ISceneParticleSource? _particles;
     private readonly SceneGlParticleBatchRenderer? _particleRenderer;
+    private readonly SceneInstanceRegistry? _instances;
+    private readonly SceneGlInstancedMeshRenderer? _instancedRenderer;
     private readonly bool _hasSpriteComponent;
+    private readonly bool _hasInstancedComponent;
     private bool _disposed;
 
     /// <summary>Creates an orchestrator over an uploaded GPU asset cache.</summary>
@@ -23,11 +26,17 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     /// Optional particle source; when supplied, particle point draws are
     /// interleaved into every blending pass.
     /// </param>
+    /// <param name="instances">
+    /// Optional instance registry; when supplied and the frame source implements
+    /// <see cref="ISceneInstancedFrameItemSource"/>, instanced mesh batches are
+    /// drawn after sprites in every pass.
+    /// </param>
     public SceneGlRenderOrchestrator(
         GLContext context,
         SceneGlAssetCache assets,
         SceneWorld world,
-        ISceneParticleSource? particles = null)
+        ISceneParticleSource? particles = null,
+        SceneInstanceRegistry? instances = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assets);
@@ -41,6 +50,13 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
         {
             _particles = particles;
             _particleRenderer = new SceneGlParticleBatchRenderer(context);
+        }
+
+        if (instances is not null)
+        {
+            _instances = instances;
+            _instancedRenderer = new SceneGlInstancedMeshRenderer(context, assets);
+            _hasInstancedComponent = world.Registry.TryGetDataByType(typeof(SceneInstancedMeshRenderer), out _);
         }
     }
 
@@ -90,6 +106,18 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                 }
             }
 
+            if (_hasInstancedComponent &&
+                _instancedRenderer is not null &&
+                _instances is not null &&
+                items is ISceneInstancedFrameItemSource instancedSource)
+            {
+                ReadOnlySpan<SceneInstancedMeshItem> batches = instancedSource.CollectInstancedMeshes(pass.Id);
+                if (!batches.IsEmpty)
+                {
+                    _ = _instancedRenderer.Render(world, camera, batches, _instances, pass, frameState);
+                }
+            }
+
             RenderParticles(camera, pass, frameState);
 
             passCount++;
@@ -107,6 +135,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
         }
 
         _particleRenderer?.Dispose();
+        _instancedRenderer?.Dispose();
         _spriteRenderer.Dispose();
         _disposed = true;
     }
