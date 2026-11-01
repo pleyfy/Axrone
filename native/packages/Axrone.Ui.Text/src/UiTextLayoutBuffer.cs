@@ -1,10 +1,5 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>
-/// Mutable layout result over a reusable glyph buffer. Shapes and measures the
-/// text, then applies per-line alignment and baseline offsets. The glyph view is
-/// valid until the next <see cref="TryLayout"/>. Not thread-safe.
-/// </summary>
 public sealed class UiTextLayoutBuffer : IUiTextLayout
 {
     private static int s_nextId;
@@ -15,7 +10,6 @@ public sealed class UiTextLayoutBuffer : IUiTextLayout
     private UiTextMetrics _metrics;
     private UiSize _size;
 
-    /// <summary>Creates a layout buffer with a glyph capacity hint.</summary>
     public UiTextLayoutBuffer(UiFontProvider provider, int glyphCapacity = 64)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -25,19 +19,14 @@ public sealed class UiTextLayoutBuffer : IUiTextLayout
         Id = new UiTextLayoutId((uint)(id <= 0 ? 1 : id));
     }
 
-    /// <inheritdoc/>
     public UiTextLayoutId Id { get; }
 
-    /// <inheritdoc/>
     public UiSize Size => _size;
 
-    /// <inheritdoc/>
     public UiTextMetrics Metrics => _metrics;
 
-    /// <inheritdoc/>
     public ReadOnlySpan<UiShapedGlyph> Glyphs => _glyphs.AsSpan(0, _glyphCount);
 
-    /// <summary>Shapes, measures and aligns the text into this buffer.</summary>
     public bool TryLayout(ReadOnlySpan<char> text, in UiTextStyle style, in UiMeasureConstraints constraints)
     {
         _metrics = _measurer.MeasureDetailed(text, in style, in constraints);

@@ -1,22 +1,15 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>
-/// Latin-first text shaper. Applies horizontal kerning, built-in f-ligatures,
-/// combining-mark attachment, fallback faces and a naive right-to-left mirror.
-/// No GSUB/GPOS or full Unicode bidi; those are explicit limits of this type.
-/// </summary>
 public sealed class UiTextShaper : IUiTextShaper
 {
     private readonly UiFontProvider _provider;
 
-    /// <summary>Creates a shaper over a font provider.</summary>
     public UiTextShaper(UiFontProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
         _provider = provider;
     }
 
-    /// <inheritdoc/>
     public int Shape(ReadOnlySpan<char> text, in UiTextStyle style, Span<UiShapedGlyph> destination)
     {
         if (text.IsEmpty || destination.IsEmpty || style.Size <= 0.0f)
@@ -140,10 +133,6 @@ public sealed class UiTextShaper : IUiTextShaper
         return written;
     }
 
-    /// <summary>
-    /// Shapes parsed rich-text runs, resolving face, size and color per run.
-    /// Kerning is not applied across run boundaries.
-    /// </summary>
     public int ShapeRichText(
         ReadOnlySpan<char> text,
         ReadOnlySpan<UiRichTextRun> runs,
