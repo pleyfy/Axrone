@@ -21,6 +21,7 @@ public sealed class UiFontFace
     private readonly UiGsubData? _gsub;
     private readonly UiGposData? _gpos;
     private readonly UiVariationData? _variation;
+    private readonly UiColorData? _color;
     private readonly float[] _coordinates;
     private readonly int[] _reverseCodePoints;
     private readonly int _hmtxOffset;
@@ -49,6 +50,7 @@ public sealed class UiFontFace
         UiGsubData? gsub,
         UiGposData? gpos,
         UiVariationData? variation,
+        UiColorData? color,
         int hmtxOffset,
         int numberOfHMetrics,
         int kernPairsOffset,
@@ -74,6 +76,7 @@ public sealed class UiFontFace
         _gsub = gsub;
         _gpos = gpos;
         _variation = variation;
+        _color = color;
         _coordinates = variation is null ? [] : new float[variation.Axes.Length];
         _hmtxOffset = hmtxOffset;
         _numberOfHMetrics = numberOfHMetrics;
@@ -105,6 +108,12 @@ public sealed class UiFontFace
     public int AxisCount => _variation?.Axes.Length ?? 0;
 
     public bool IsVariable => AxisCount > 0;
+
+    public bool HasColorLayers => _color is not null;
+
+    public int ColorPaletteCount => _color?.PaletteCount ?? 0;
+
+    public int ColorPaletteEntryCount => _color?.PaletteEntryCount ?? 0;
 
     public int Ascender { get; }
 
@@ -270,6 +279,32 @@ public sealed class UiFontFace
     internal int GlyfLength => _glyfLength;
 
     public bool TryGetGlyph(int codePoint, out int glyphId) => TryGetBaseGlyph(codePoint, out glyphId);
+
+    public int GetColorLayers(int codePoint, Span<UiColorLayer> destination)
+    {
+        if (_color is null || !TryGetBaseGlyph(codePoint, out int glyphId))
+        {
+            return 0;
+        }
+
+        return _color.GetLayers(_buffer.Span, glyphId, destination);
+    }
+
+    public int GetColorLayersByGlyph(int glyphId, Span<UiColorLayer> destination)
+    {
+        if (_color is null || (uint)glyphId >= (uint)GlyphCount)
+        {
+            return 0;
+        }
+
+        return _color.GetLayers(_buffer.Span, glyphId, destination);
+    }
+
+    public bool TryGetColor(int paletteIndex, int colorIndex, out uint color)
+    {
+        color = 0;
+        return _color is not null && _color.TryGetPaletteColor(_buffer.Span, paletteIndex, colorIndex, out color);
+    }
 
     public bool TryGetGlyph(int codePoint, int variationSelector, out int glyphId)
     {

@@ -18,6 +18,8 @@ internal static class UiFontParser
     private const uint TagFvar = 0x66766172;
     private const uint TagGvar = 0x67766172;
     private const uint TagAvar = 0x61766172;
+    private const uint TagColr = 0x434F4C52;
+    private const uint TagCpal = 0x4350414C;
     private const uint SfntTrueType = 0x00010000;
     private const uint SfntOtto = 0x4F54544F;
     private const uint SfntTrue = 0x74727565;
@@ -92,6 +94,10 @@ internal static class UiFontParser
         int gvarLength = 0;
         int avarOffset = -1;
         int avarLength = 0;
+        int colrOffset = -1;
+        int colrLength = 0;
+        int cpalOffset = -1;
+        int cpalLength = 0;
 
         for (int i = 0; i < tableCount; i++)
         {
@@ -167,6 +173,14 @@ internal static class UiFontParser
                 case TagAvar when avarOffset < 0:
                     avarOffset = tableOffset;
                     avarLength = tableLength;
+                    break;
+                case TagColr when colrOffset < 0:
+                    colrOffset = tableOffset;
+                    colrLength = tableLength;
+                    break;
+                case TagCpal when cpalOffset < 0:
+                    cpalOffset = tableOffset;
+                    cpalLength = tableLength;
                     break;
             }
         }
@@ -344,6 +358,18 @@ internal static class UiFontParser
             return false;
         }
 
+        if (!UiColorData.TryParse(
+                data,
+                colrOffset,
+                colrLength,
+                cpalOffset,
+                cpalLength,
+                out UiColorData? color,
+                out error))
+        {
+            return false;
+        }
+
         if (!TryValidateChecksums(data, tableCount, out error))
         {
             return false;
@@ -366,6 +392,7 @@ internal static class UiFontParser
             gsub,
             gpos,
             variation,
+            color,
             hmtxOffset,
             numberOfHMetrics,
             kernPairsOffset,

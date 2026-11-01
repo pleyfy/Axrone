@@ -28,6 +28,9 @@ internal static class UiTestFont
     public static byte[] CreateVariation(bool avar = false, bool corruptGvar = false) =>
         CreateCore(4, false, 0, variation: true, avar: avar, corruptGvar: corruptGvar);
 
+    public static byte[] CreateColor(bool corrupt = false) =>
+        CreateCore(4, false, 0, color: true, colorCorrupt: corrupt);
+
     public static byte[] CreateCff2Tagged()
     {
         byte[] font = Create(cff: true);
@@ -51,7 +54,9 @@ internal static class UiTestFont
         bool arabic = false,
         bool variation = false,
         bool avar = false,
-        bool corruptGvar = false)
+        bool corruptGvar = false,
+        bool color = false,
+        bool colorCorrupt = false)
     {
         List<byte[]> glyphs =
         [
@@ -124,7 +129,7 @@ internal static class UiTestFont
         ];
 
         int metrics = hMetrics <= 0 ? glyphs.Count : hMetrics;
-        return Build(glyphs, Advances, LeftBearings, mappings, kernPairs, metrics, cmapFormat, cff, layout, variation, avar, corruptGvar);
+        return Build(glyphs, Advances, LeftBearings, mappings, kernPairs, metrics, cmapFormat, cff, layout, variation, avar, corruptGvar, color, colorCorrupt);
     }
 
     public static byte[] CreateFallback()
@@ -255,7 +260,9 @@ internal static class UiTestFont
         bool layout,
         bool variation = false,
         bool avar = false,
-        bool corruptGvar = false)
+        bool corruptGvar = false,
+        bool color = false,
+        bool colorCorrupt = false)
     {
         var tables = new List<(string Tag, byte[] Data)>
         {
@@ -295,6 +302,12 @@ internal static class UiTestFont
             {
                 tables.Add(("avar", BuildAvar()));
             }
+        }
+
+        if (color)
+        {
+            tables.Add(("COLR", BuildColr(colorCorrupt)));
+            tables.Add(("CPAL", BuildCpal()));
         }
 
         tables.Sort(static (left, right) => string.CompareOrdinal(left.Tag, right.Tag));
@@ -698,6 +711,41 @@ internal static class UiTestFont
             WriteU16(data, offset / 2);
         }
 
+        return [.. data];
+    }
+
+    private static byte[] BuildColr(bool corrupt)
+    {
+        var data = new List<byte>(32);
+        WriteU16(data, 0);
+        WriteU16(data, 1);
+        WriteU32(data, 14);
+        WriteU32(data, 20);
+        WriteU16(data, corrupt ? 1 : 2);
+        WriteU16(data, 2);
+        WriteU16(data, 0);
+        WriteU16(data, 2);
+        WriteU16(data, 2);
+        WriteU16(data, 0);
+        WriteU16(data, 3);
+        WriteU16(data, 1);
+        return [.. data];
+    }
+
+    private static byte[] BuildCpal()
+    {
+        var data = new List<byte>(32);
+        WriteU16(data, 0);
+        WriteU16(data, 2);
+        WriteU16(data, 2);
+        WriteU16(data, 4);
+        WriteU32(data, 16);
+        WriteU16(data, 0);
+        WriteU16(data, 2);
+        data.AddRange([0, 0, 0, 255]);
+        data.AddRange([0, 0, 255, 255]);
+        data.AddRange([255, 255, 255, 255]);
+        data.AddRange([255, 0, 0, 255]);
         return [.. data];
     }
 

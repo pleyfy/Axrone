@@ -38,6 +38,8 @@ public enum UiFontErrorCode
 
     InvalidVariation,
 
+    InvalidColor,
+
     UnsupportedOutlineFormat,
 
     UnsupportedGlyph,
