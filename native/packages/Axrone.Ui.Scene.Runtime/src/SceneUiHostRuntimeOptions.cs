@@ -1,5 +1,7 @@
 namespace Axrone.Ui.Scene.Runtime;
 
+using Axrone.Ui.Scene.OpenGL;
+
 /// <summary>Failure codes for the one-call UI host composition.</summary>
 public enum SceneUiHostComposeError
 {
@@ -38,6 +40,13 @@ public interface ISceneUiHostRendererFactory
 {
     /// <summary>Creates the renderer; return null to fail the attach.</summary>
     ISceneUiHostRenderer? Create(SceneRuntime runtime, SceneUiHostBridge bridge);
+
+    /// <summary>
+    /// Creates the renderer over the composition-owned glyph uploader. The
+    /// default forwards to the context-less overload for custom factories.
+    /// </summary>
+    ISceneUiHostRenderer? Create(SceneRuntime runtime, SceneUiHostBridge bridge, UiHostGlyphAtlasUploader? atlasUploader) =>
+        Create(runtime, bridge);
 }
 
 /// <summary>Default factory over a live GL context.</summary>
@@ -57,6 +66,15 @@ public sealed class SceneUiHostGlRendererFactory : ISceneUiHostRendererFactory
     {
         _ = runtime;
         return new Axrone.Ui.Scene.OpenGL.SceneUiHostGlRenderer(_context, bridge);
+    }
+
+    /// <inheritdoc/>
+    public ISceneUiHostRenderer? Create(SceneRuntime runtime, SceneUiHostBridge bridge, UiHostGlyphAtlasUploader? atlasUploader)
+    {
+        _ = runtime;
+        return atlasUploader is null
+            ? new Axrone.Ui.Scene.OpenGL.SceneUiHostGlRenderer(_context, bridge)
+            : new Axrone.Ui.Scene.OpenGL.SceneUiHostGlRenderer(_context, bridge, atlasUploader);
     }
 }
 

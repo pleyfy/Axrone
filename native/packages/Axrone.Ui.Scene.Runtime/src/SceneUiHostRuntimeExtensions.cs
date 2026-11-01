@@ -80,6 +80,7 @@ public static class SceneUiHostRuntimeExtensions
             }
 
             SceneUiHostBridge? bridge = null;
+            UiHostGlyphAtlasUploader? atlasUploader = null;
             try
             {
                 if (!runtime.Codecs.TryGet("SceneUiHost", out _))
@@ -87,24 +88,33 @@ public static class SceneUiHostRuntimeExtensions
                     SceneUiHostRegistration.RegisterCodecs(runtime.Codecs, runtime.World.Registry);
                 }
 
+                if (options.EnableRendering && options.Context is not null)
+                {
+                    atlasUploader = new UiHostGlyphAtlasUploader(options.Context);
+                }
+
+                UiHostRuntimeOptions hostRuntime = atlasUploader is null
+                    ? options.HostRuntime
+                    : options.HostRuntime with { GlyphUploader = atlasUploader };
+
                 bridge = new SceneUiHostBridge(runtime.World, new SceneUiHostBridgeOptions
                 {
                     Assets = options.Assets,
-                    Runtime = options.HostRuntime,
+                    Runtime = hostRuntime,
                     MaxHosts = options.MaxHosts,
                 });
 
                 ISceneUiHostRenderer? renderer = null;
                 if (options.EnableRendering && factory is not null)
                 {
-                    renderer = factory.Create(runtime, bridge);
+                    renderer = factory.Create(runtime, bridge, atlasUploader);
                     if (renderer is null)
                     {
                         throw new SceneValidationException(SceneErrorCodes.CapabilityMissing, "The renderer factory returned null.");
                     }
                 }
 
-                hosts = new SceneUiHostsRuntime(runtime, bridge, renderer);
+                hosts = new SceneUiHostsRuntime(runtime, bridge, renderer, atlasUploader);
                 s_bindings.Add(runtime, hosts);
                 result = SceneUiHostComposeResult.Ok;
                 return true;
@@ -112,6 +122,7 @@ public static class SceneUiHostRuntimeExtensions
             catch (Exception exception)
             {
                 bridge?.Dispose();
+                atlasUploader?.Dispose();
                 result = new SceneUiHostComposeResult(
                     false,
                     SceneUiHostComposeError.RendererFailed,

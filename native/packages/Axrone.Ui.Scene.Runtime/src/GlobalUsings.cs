@@ -9,3 +9,4 @@ global using Axrone.Render.OpenGL.Context;
 global using Axrone.Scene;
 global using Axrone.Scene.Runtime;
 global using Axrone.Ui.Scene;
+global using Axrone.Ui.Scene.OpenGL;
