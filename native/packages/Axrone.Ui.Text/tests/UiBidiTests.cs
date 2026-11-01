@@ -151,6 +151,181 @@ public sealed class UiBidiTests
         levels[2].Should().Be(2);
     }
 
+    [Fact]
+    public void AppliesRightToLeftOverride()
+    {
+        using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
+        var shaper = new UiTextShaper(provider);
+        var glyphs = new UiShapedGlyph[8];
+
+        int count = shaper.Shape("\u202Eabc\u202C".AsSpan(), Style(face), glyphs);
+
+        count.Should().Be(3);
+        glyphs[0].CodePoint.Should().Be(0x63);
+        glyphs[1].CodePoint.Should().Be(0x62);
+        glyphs[2].CodePoint.Should().Be(0x61);
+        glyphs[0].Cluster.Should().Be(3);
+        glyphs[2].Cluster.Should().Be(1);
+    }
+
+    [Fact]
+    public void AppliesLeftToRightOverrideInsideRtlText()
+    {
+        using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
+        var shaper = new UiTextShaper(provider);
+        var glyphs = new UiShapedGlyph[8];
+
+        int count = shaper.Shape("\u202D\u05D0\u05D1\u202C".AsSpan(), Style(face, UiTextDirection.Rtl), glyphs);
+
+        count.Should().Be(2);
+        glyphs[0].CodePoint.Should().Be(0x05D0);
+        glyphs[1].CodePoint.Should().Be(0x05D1);
+    }
+
+    [Fact]
+    public void ResolvesExplicitEmbeddingLevels()
+    {
+        int[] codepoints = [0x61, 0x202B, 0x62, 0x63, 0x202C];
+        var types = new UiBidiClass[codepoints.Length];
+        var levels = new byte[codepoints.Length];
+
+        UiBidi.Resolve(codepoints, types, levels, 0);
+
+        levels.Should().Equal(0, 0, 2, 2, 0);
+
+        int[] nested = [0x05D0, 0x202A, 0x61, 0x62, 0x202C];
+        var nestedTypes = new UiBidiClass[nested.Length];
+        var nestedLevels = new byte[nested.Length];
+
+        UiBidi.Resolve(nested, nestedTypes, nestedLevels, 1);
+
+        nestedLevels.Should().Equal(1, 1, 2, 2, 1);
+    }
+
+    [Fact]
+    public void AppliesIsolatesAndRemovesControls()
+    {
+        using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
+        var shaper = new UiTextShaper(provider);
+        var glyphs = new UiShapedGlyph[8];
+
+        int count = shaper.Shape("a\u2067\u05D0\u05D1\u2069b".AsSpan(), Style(face), glyphs);
+
+        count.Should().Be(4);
+        glyphs[0].CodePoint.Should().Be(0x61);
+        glyphs[1].CodePoint.Should().Be(0x05D1);
+        glyphs[2].CodePoint.Should().Be(0x05D0);
+        glyphs[3].CodePoint.Should().Be(0x62);
+        glyphs[1].Cluster.Should().Be(3);
+        glyphs[3].Cluster.Should().Be(5);
+
+        count = shaper.Shape("a\u2068\u05D0\u2069b".AsSpan(), Style(face), glyphs);
+        count.Should().Be(3);
+        glyphs[0].CodePoint.Should().Be(0x61);
+        glyphs[1].CodePoint.Should().Be(0x05D0);
+        glyphs[2].CodePoint.Should().Be(0x62);
+
+        count = shaper.Shape("a\u2068b\u2069c".AsSpan(), Style(face), glyphs);
+        count.Should().Be(3);
+        glyphs[0].CodePoint.Should().Be(0x61);
+        glyphs[1].CodePoint.Should().Be(0x62);
+        glyphs[2].CodePoint.Should().Be(0x63);
+    }
+
+    [Fact]
+    public void ResolvesBracketPairs()
+    {
+        int[] rtl = [0x05D0, 0x28, 0x41, 0x29, 0x05D1];
+        var types = new UiBidiClass[rtl.Length];
+        var levels = new byte[rtl.Length];
+
+        UiBidi.Resolve(rtl, types, levels, 1);
+
+        types[1].Should().Be(UiBidiClass.L);
+        types[3].Should().Be(UiBidiClass.L);
+        levels[1].Should().Be(2);
+        levels[3].Should().Be(2);
+
+        int[] ltr = [0x28, 0x05D0, 0x29];
+        var ltrTypes = new UiBidiClass[ltr.Length];
+        var ltrLevels = new byte[ltr.Length];
+
+        UiBidi.Resolve(ltr, ltrTypes, ltrLevels, 0);
+
+        ltrTypes[0].Should().Be(UiBidiClass.R);
+        ltrTypes[2].Should().Be(UiBidiClass.R);
+        ltrLevels[0].Should().Be(1);
+        ltrLevels[2].Should().Be(1);
+    }
+
+    [Fact]
+    public void PreservesArabicJoiningAcrossControls()
+    {
+        using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
+        var shaper = new UiTextShaper(provider);
+        var runs = new UiGlyphRun[8];
+
+        int count = shaper.ShapeGlyphs("\u0628\u202B\u0628\u202C".AsSpan(), Style(face), runs);
+
+        count.Should().Be(2);
+        runs[0].CodePoint.Should().Be(0xFE90);
+        runs[1].CodePoint.Should().Be(0xFE91);
+
+        count = shaper.ShapeGlyphs("\u0628\u200F\u0628".AsSpan(), Style(face), runs);
+
+        count.Should().Be(2);
+        runs[0].CodePoint.Should().Be(0xFE90);
+        runs[1].CodePoint.Should().Be(0xFE91);
+    }
+
+    [Fact]
+    public void HandlesUnmatchedBidiControls()
+    {
+        using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
+        var shaper = new UiTextShaper(provider);
+        var glyphs = new UiShapedGlyph[8];
+
+        int count = shaper.Shape("\u202Cabc\u2069".AsSpan(), Style(face), glyphs);
+
+        count.Should().Be(3);
+        glyphs[0].CodePoint.Should().Be(0x61);
+        glyphs[1].CodePoint.Should().Be(0x62);
+        glyphs[2].CodePoint.Should().Be(0x63);
+    }
+
+    [Fact]
+    public void BidiControlsDoNotAllocateOrChangeDeterminism()
+    {
+        using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
+        var shaper = new UiTextShaper(provider);
+        var glyphs = new UiShapedGlyph[16];
+        UiTextStyle style = Style(face);
+        const string text = "a\u2067\u05D0\u05D1\u2069b\u202Ecd\u202C";
+
+        for (int i = 0; i < 32; i++)
+        {
+            _ = shaper.Shape(text.AsSpan(), style, glyphs);
+        }
+
+        bool shaped = true;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 64; i++)
+        {
+            shaped &= shaper.Shape(text.AsSpan(), style, glyphs) > 0;
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        shaped.Should().BeTrue();
+        allocated.Should().Be(0);
+
+        var first = new UiShapedGlyph[16];
+        var second = new UiShapedGlyph[16];
+        int firstCount = shaper.Shape(text.AsSpan(), style, first);
+        int secondCount = shaper.Shape(text.AsSpan(), style, second);
+        firstCount.Should().Be(secondCount);
+        first.AsSpan(0, firstCount).SequenceEqual(second.AsSpan(0, secondCount)).Should().BeTrue();
+    }
+
     private static UiFontProvider CreateProvider(out UiFontFaceId face)
     {
         var provider = new UiFontProvider();

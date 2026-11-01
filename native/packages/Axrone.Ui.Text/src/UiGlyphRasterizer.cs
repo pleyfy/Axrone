@@ -13,6 +13,10 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private readonly UiFontProvider _provider;
     private readonly int _maxDimension;
     private readonly long _maxPixels;
+    private readonly UiTrueTypeHinter _hinter = new();
+    private int _instructionOffset;
+    private int _instructionLength;
+    private bool _topLevelSimple;
 
     private float[] _pointX = new float[256];
     private float[] _pointY = new float[256];
@@ -30,6 +34,11 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private sbyte[] _hitDirection = new sbyte[512];
     private float[] _coverage = [];
     private byte[] _alpha = [];
+    private float[] _variationX = new float[16];
+    private float[] _variationY = new float[16];
+    private int[] _variationPoints = new int[20];
+    private float[] _variationScratchX = new float[20];
+    private float[] _variationScratchY = new float[20];
     private readonly UiCffPath _cffPath = new();
 
     private int _pointCount;
@@ -48,6 +57,8 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         _maxDimension = maxDimension;
         _maxPixels = (long)maxDimension * maxDimension;
     }
+
+    public bool EnableHinting { get; set; } = true;
 
     public bool TryRasterize(
         UiFontFaceId face,
@@ -152,6 +163,39 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         int right = (int)MathF.Ceiling(xMax * scale) + 1;
         int bottom = (int)MathF.Floor(yMin * scale) - 1;
         int top = (int)MathF.Ceiling(yMax * scale) + 1;
+
+        _pointCount = 0;
+        _contourCount = 0;
+        _edgeCount = 0;
+        _instructionOffset = 0;
+        _instructionLength = 0;
+        _topLevelSimple = false;
+
+        if (!TryAppendGlyph(fontFace, glyphId, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0, out failure))
+        {
+            return false;
+        }
+
+        if (EnableHinting && _topLevelSimple && _instructionLength > 0 && _pointCount > 0)
+        {
+            ReadOnlySpan<byte> instructions = data.Slice(_instructionOffset, _instructionLength);
+            if (!_hinter.TryHintGlyph(
+                    fontFace,
+                    pixelSize,
+                    instructions,
+                    _pointX.AsSpan(0, _pointCount),
+                    _pointY.AsSpan(0, _pointCount),
+                    _onCurve.AsSpan(0, _pointCount),
+                    _contourEnds.AsSpan(0, _contourCount),
+                    _pointCount,
+                    fontFace.ReadAdvance(data, glyphId),
+                    out failure))
+            {
+                return false;
+            }
+        }
+
+        ExpandBounds(scale, ref left, ref right, ref bottom, ref top);
         int width = right - left;
         int height = top - bottom;
         if (width <= 0 || height <= 0)
@@ -163,15 +207,6 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         if (width > _maxDimension || height > _maxDimension || (long)width * height > _maxPixels)
         {
             failure = UiFontError.At(UiFontErrorCode.RasterTooLarge, 0, "The raster dimensions exceed the limit.");
-            return false;
-        }
-
-        _pointCount = 0;
-        _contourCount = 0;
-        _edgeCount = 0;
-
-        if (!TryAppendGlyph(fontFace, glyphId, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0, out failure))
-        {
             return false;
         }
 
@@ -375,15 +410,17 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         ReadOnlySpan<byte> data = face.Buffer.Span;
         int contours = UiFontFace.ReadI16(data, offset);
         return contours >= 0
-            ? TryAppendSimple(face, offset, length, contours, a, b, c, d, dx, dy, out error)
-            : TryAppendComposite(face, offset, length, a, b, c, d, dx, dy, depth, out error);
+            ? TryAppendSimple(face, glyphId, offset, length, contours, depth, a, b, c, d, dx, dy, out error)
+            : TryAppendComposite(face, glyphId, offset, length, a, b, c, d, dx, dy, depth, out error);
     }
 
     private bool TryAppendSimple(
         UiFontFace face,
+        int glyphId,
         int offset,
         int length,
         int contours,
+        int depth,
         float a,
         float b,
         float c,
@@ -445,7 +482,15 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         }
 
         int instructionLength = UiFontFace.ReadU16(data, cursor);
-        cursor += 2 + instructionLength;
+        cursor += 2;
+        if (depth == 0)
+        {
+            _instructionOffset = cursor;
+            _instructionLength = instructionLength;
+            _topLevelSimple = true;
+        }
+
+        cursor += instructionLength;
         if (cursor > end)
         {
             error = UiFontError.At(UiFontErrorCode.InvalidGlyph, offset, "Glyph instructions exceed the glyph record.");
@@ -548,6 +593,11 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
 
         EnsurePointCapacity(_pointCount + pointCount);
         EnsureContourCapacity(_contourCount + contours);
+        if (!ApplySimpleVariation(face, glyphId, pointCount, out error))
+        {
+            return false;
+        }
+
         int baseIndex = _pointCount;
         for (int i = 0; i < pointCount; i++)
         {
@@ -569,6 +619,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
 
     private bool TryAppendComposite(
         UiFontFace face,
+        int glyphId,
         int offset,
         int length,
         float a,
@@ -584,6 +635,33 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         ReadOnlySpan<byte> data = face.Buffer.Span;
         int end = offset + length;
         int cursor = offset + 10;
+        int componentCount = 0;
+        int componentIndex = 0;
+        bool hasVariation = face.Gvar is not null && face.HasActiveVariation;
+        if (hasVariation)
+        {
+            if (!TryCountComponents(face, offset, length, out componentCount, out error))
+            {
+                return false;
+            }
+
+            EnsureVariationCapacity(componentCount + 4);
+            if (!face.Gvar!.TryApplyGlyph(
+                    data,
+                    glyphId,
+                    face.NormalizedCoordinates,
+                    _variationX.AsSpan(0, componentCount),
+                    _variationY.AsSpan(0, componentCount),
+                    _variationPoints,
+                    _variationScratchX,
+                    _variationScratchY,
+                    componentCount,
+                    out error))
+            {
+                return false;
+            }
+        }
+
         while (true)
         {
             if (cursor + 4 > end)
@@ -677,8 +755,11 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             float nb = (b * ca) + (d * cb);
             float nc = (a * cc) + (c * cd);
             float nd = (b * cc) + (d * cd);
-            float ndx = (a * arg1) + (c * arg2) + dx;
-            float ndy = (b * arg1) + (d * arg2) + dy;
+            float offsetX = arg1 + (hasVariation ? _variationX[componentIndex] : 0.0f);
+            float offsetY = arg2 + (hasVariation ? _variationY[componentIndex] : 0.0f);
+            componentIndex++;
+            float ndx = (a * offsetX) + (c * offsetY) + dx;
+            float ndy = (b * offsetX) + (d * offsetY) + dy;
             if (!TryAppendGlyph(face, child, na, nb, nc, nd, ndx, ndy, depth + 1, out error))
             {
                 return false;
@@ -689,6 +770,137 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
                 return true;
             }
         }
+    }
+
+    private bool ApplySimpleVariation(UiFontFace face, int glyphId, int pointCount, out UiFontError error)
+    {
+        error = UiFontError.None;
+        if (face.Gvar is not { } gvar || !face.HasActiveVariation)
+        {
+            return true;
+        }
+
+        EnsureVariationCapacity(pointCount + 4);
+        if (!gvar.TryApplyGlyph(
+                face.Buffer.Span,
+                glyphId,
+                face.NormalizedCoordinates,
+                _variationX.AsSpan(0, pointCount),
+                _variationY.AsSpan(0, pointCount),
+                _variationPoints,
+                _variationScratchX,
+                _variationScratchY,
+                pointCount,
+                out error))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < pointCount; i++)
+        {
+            _rawX[i] += _variationX[i];
+            _rawY[i] += _variationY[i];
+        }
+
+        return true;
+    }
+
+    private static bool TryCountComponents(
+        UiFontFace face,
+        int offset,
+        int length,
+        out int count,
+        out UiFontError error)
+    {
+        count = 0;
+        error = UiFontError.None;
+        ReadOnlySpan<byte> data = face.Buffer.Span;
+        int end = offset + length;
+        int cursor = offset + 10;
+        while (true)
+        {
+            if (cursor + 4 > end)
+            {
+                error = UiFontError.At(UiFontErrorCode.InvalidGlyph, cursor, "Composite component header is truncated.");
+                return false;
+            }
+
+            int flags = UiFontFace.ReadU16(data, cursor);
+            cursor += 4;
+            cursor += (flags & 0x0001) != 0 ? 4 : 2;
+            if ((flags & 0x0008) != 0)
+            {
+                cursor += 2;
+            }
+            else if ((flags & 0x0040) != 0)
+            {
+                cursor += 4;
+            }
+            else if ((flags & 0x0080) != 0)
+            {
+                cursor += 8;
+            }
+
+            if (cursor > end)
+            {
+                error = UiFontError.At(UiFontErrorCode.InvalidGlyph, cursor, "Composite component data is truncated.");
+                return false;
+            }
+
+            count++;
+            if (count > MaxContours)
+            {
+                error = UiFontError.At(UiFontErrorCode.OutlineTooComplex, offset, "Composite component count exceeds the limit.");
+                return false;
+            }
+
+            if ((flags & 0x0020) == 0)
+            {
+                return true;
+            }
+        }
+    }
+
+    private void ExpandBounds(float scale, ref int left, ref int right, ref int bottom, ref int top)
+    {
+        if (_pointCount == 0)
+        {
+            return;
+        }
+
+        float minX = float.MaxValue;
+        float minY = float.MaxValue;
+        float maxX = float.MinValue;
+        float maxY = float.MinValue;
+        for (int i = 0; i < _pointCount; i++)
+        {
+            float x = _pointX[i];
+            float y = _pointY[i];
+            minX = MathF.Min(minX, x);
+            minY = MathF.Min(minY, y);
+            maxX = MathF.Max(maxX, x);
+            maxY = MathF.Max(maxY, y);
+        }
+
+        left = Math.Min(left, (int)MathF.Floor(minX * scale) - 1);
+        right = Math.Max(right, (int)MathF.Ceiling(maxX * scale) + 1);
+        bottom = Math.Min(bottom, (int)MathF.Floor(minY * scale) - 1);
+        top = Math.Max(top, (int)MathF.Ceiling(maxY * scale) + 1);
+    }
+
+    private void EnsureVariationCapacity(int requiredPoints)
+    {
+        if (_variationPoints.Length >= requiredPoints)
+        {
+            return;
+        }
+
+        int capacity = Math.Max(requiredPoints, _variationPoints.Length * 2);
+        _variationPoints = new int[capacity];
+        _variationScratchX = new float[capacity];
+        _variationScratchY = new float[capacity];
+        _variationX = new float[capacity];
+        _variationY = new float[capacity];
     }
 
     private bool Flatten(float scale, int left, int bottom, out UiFontError error)
