@@ -94,6 +94,16 @@
     <Project Path="packages/Axrone.Render.Effects/Axrone.Render.Effects.csproj" />
     <Project Path="packages/Axrone.Render.Effects/tests/Axrone.Render.Effects.Tests.csproj" />
     <Project Path="packages/Axrone.Render.OpenGL.Mock/Axrone.Render.OpenGL.Mock.csproj" />
+    <Project Path="packages/Axrone.Ui/Axrone.Ui.csproj" />
+    <Project Path="packages/Axrone.Ui/tests/Axrone.Ui.Tests.csproj" />
+    <Project Path="packages/Axrone.Ui.Input/Axrone.Ui.Input.csproj" />
+    <Project Path="packages/Axrone.Ui.Input/tests/Axrone.Ui.Input.Tests.csproj" />
+    <Project Path="packages/Axrone.Ui.Rendering/Axrone.Ui.Rendering.csproj" />
+    <Project Path="packages/Axrone.Ui.Rendering/tests/Axrone.Ui.Rendering.Tests.csproj" />
+    <Project Path="packages/Axrone.Ui.Rendering.OpenGL/Axrone.Ui.Rendering.OpenGL.csproj" />
+    <Project Path="packages/Axrone.Ui.Rendering.OpenGL/tests/Axrone.Ui.Rendering.OpenGL.Tests.csproj" />
+    <Project Path="packages/Axrone.Ui.Assets/Axrone.Ui.Assets.csproj" />
+    <Project Path="packages/Axrone.Ui.Assets/tests/Axrone.Ui.Assets.Tests.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="packages/Axrone.AssetGltf/benchmarks/Axrone.AssetGltf.Benchmarks.csproj" />

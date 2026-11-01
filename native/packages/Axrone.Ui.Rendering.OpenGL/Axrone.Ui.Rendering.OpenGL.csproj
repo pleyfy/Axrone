@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Axrone.Ui.Rendering.OpenGL</RootNamespace>
+    <AssemblyName>Axrone.Ui.Rendering.OpenGL</AssemblyName>
+    <Description>OpenGL backend for Axrone UI rendering: instanced quad/image/glyph batchers, GLSL programs and context-restore handling.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="AotCompatibility">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup Label="PublicApi">
+    <InternalsVisibleTo Include="Axrone.Ui.Rendering.OpenGL.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Axrone.Ui.Rendering/Axrone.Ui.Rendering.csproj" />
+    <ProjectReference Include="../Axrone.Render.Core/Axrone.Render.Core.csproj" />
+    <ProjectReference Include="../Axrone.Render.OpenGL/Axrone.Render.OpenGL.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>
