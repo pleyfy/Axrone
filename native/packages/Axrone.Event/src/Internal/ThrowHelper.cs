@@ -97,4 +97,14 @@ public static class ThrowHelper
             priority,
             capacity);
     }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowTimerCapacity(EventPriority priority, int capacity)
+    {
+        throw new EventQueueFullException(
+            $"The {priority} timer table is full ({capacity} timers).",
+            priority,
+            capacity);
+    }
 }
