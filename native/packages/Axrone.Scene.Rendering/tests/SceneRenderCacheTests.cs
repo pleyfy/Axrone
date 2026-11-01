@@ -36,6 +36,7 @@ public sealed class SceneRenderCacheTests
 
         cache.IsValid.Should().BeTrue();
         cache.Count.Should().Be(2);
+        cache.Key.Should().Be(Key(1));
         cache.TryGet(Key(1), out ReadOnlySpan<SceneRenderItem> found).Should().BeTrue();
         found.Length.Should().Be(2);
         found[0].MeshId.Should().Be(items[0].MeshId);

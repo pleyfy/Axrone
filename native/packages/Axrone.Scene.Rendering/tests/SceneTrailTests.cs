@@ -41,6 +41,11 @@ public sealed class SceneTrailTests
         points[0].Position.X.Should().Be(1.0f);
         points[1].Position.X.Should().Be(2.0f);
         points[2].Position.X.Should().Be(3.0f);
+
+        registry.Count.Should().Be(1);
+        registry.Clear();
+        registry.TryGetPointCount(1, out count).Should().BeTrue();
+        count.Should().Be(0);
     }
 
     [Fact]

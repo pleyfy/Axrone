@@ -108,6 +108,10 @@ public sealed class SceneLodTests
         collector.MeshItems.Length.Should().Be(1);
         collector.MeshItems[0].MeshId.Should().Be(item.MeshId);
         collector.MeshItems[0].RenderOrder.Should().Be(3);
+        evaluator.GetLevel(actor).Should().Be(1);
+
+        evaluator.Reset();
+        evaluator.GetLevel(actor).Should().Be(-1);
     }
 
     [Fact]

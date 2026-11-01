@@ -156,6 +156,11 @@ public sealed class SceneLineTests
         polylines.Remove(1).Should().BeTrue();
         polylines.Remove(1).Should().BeFalse();
         polylines.TryGetPoints(1, out _).Should().BeFalse();
+
+        polylines.Register(2, [Vec3.Zero, Vec3.UnitY]);
+        polylines.Count.Should().Be(1);
+        polylines.Clear();
+        polylines.Count.Should().Be(0);
     }
 
     [Fact]

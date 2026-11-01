@@ -43,6 +43,10 @@ public sealed class SceneInstancedMeshTests
 
         registry.Remove(1).Should().BeTrue();
         registry.Remove(1).Should().BeFalse();
+
+        registry.Register(2, [At(0)]);
+        registry.Clear();
+        registry.Count.Should().Be(0);
     }
 
     [Fact]
