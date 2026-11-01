@@ -1,0 +1,13 @@
+global using System;
+global using System.Collections.Generic;
+global using System.Diagnostics.CodeAnalysis;
+global using System.Runtime.CompilerServices;
+global using System.Runtime.InteropServices;
+global using Axrone.Numeric;
+global using Axrone.Scene;
+global using Axrone.Ui;
+global using Axrone.Ui.Assets;
+global using Axrone.Ui.Controls;
+global using Axrone.Ui.Input;
+global using Axrone.Ui.Rendering;
+global using Axrone.Ui.Text;
