@@ -45,17 +45,24 @@ internal static class SkinningShaderInjector
         }
         """;
 
+    /// <summary>Rewrites a material vertex shader into a skinned variant.</summary>
+    public static bool TryInject(string vertexSource, out string injected) =>
+        TryInject(vertexSource, out injected, out _);
+
     /// <summary>
-    /// Rewrites a material vertex shader into a skinned variant.
+    /// Rewrites a material vertex shader into a skinned variant and reports the
+    /// exact incompatibility when the shader cannot be skinned safely.
     /// </summary>
-    /// <param name="vertexSource">Original material vertex source.</param>
-    /// <param name="injected">Rewritten source when the shader is compatible.</param>
-    /// <returns><see langword="false"/> when the shader cannot be skinned safely.</returns>
-    public static bool TryInject(string vertexSource, out string injected)
+    public static bool TryInject(
+        string vertexSource,
+        out string injected,
+        out SkinningInjectionFailure failure)
     {
         injected = vertexSource;
+
         if (string.IsNullOrEmpty(vertexSource))
         {
+            failure = SkinningInjectionFailure.EmptySource;
             return false;
         }
 
@@ -63,16 +70,28 @@ internal static class SkinningShaderInjector
         if (versionEnd < 0 ||
             !vertexSource.AsSpan(0, versionEnd).TrimStart().StartsWith("#version", StringComparison.Ordinal))
         {
+            failure = SkinningInjectionFailure.MissingVersionDirective;
             return false;
         }
 
-        if (!vertexSource.Contains(PositionDeclaration, StringComparison.Ordinal) ||
-            vertexSource.Contains("a_SkinJoints", StringComparison.Ordinal) ||
+        if (!vertexSource.Contains(PositionDeclaration, StringComparison.Ordinal))
+        {
+            failure = SkinningInjectionFailure.MissingPositionAttribute;
+            return false;
+        }
+
+        if (vertexSource.Contains("a_SkinJoints", StringComparison.Ordinal) ||
             vertexSource.Contains("a_SkinWeights", StringComparison.Ordinal) ||
             vertexSource.Contains(BoneTextureUniform, StringComparison.Ordinal) ||
-            vertexSource.Contains("location = 6", StringComparison.Ordinal) ||
-            vertexSource.Contains("location = 7", StringComparison.Ordinal))
+            vertexSource.Contains(BoneCountUniform, StringComparison.Ordinal))
         {
+            failure = SkinningInjectionFailure.ExistingSkinningDeclarations;
+            return false;
+        }
+
+        if (UsesAttributeLocation(vertexSource, 6) || UsesAttributeLocation(vertexSource, 7))
+        {
+            failure = SkinningInjectionFailure.AttributeLocationConflict;
             return false;
         }
 
@@ -80,6 +99,40 @@ internal static class SkinningShaderInjector
         rewritten = rewritten.Replace("a_Position", "ApplySkin(a_Position)", StringComparison.Ordinal);
         rewritten = rewritten.Replace(ProtectedDeclaration, PositionDeclaration, StringComparison.Ordinal);
         injected = rewritten.Insert(versionEnd + 1, Prelude + "\n");
+        failure = SkinningInjectionFailure.None;
         return true;
+    }
+
+    private static bool UsesAttributeLocation(string source, int location)
+    {
+        int index = 0;
+        while ((index = source.IndexOf("location", index, StringComparison.Ordinal)) >= 0)
+        {
+            int cursor = index + "location".Length;
+            while (cursor < source.Length && char.IsWhiteSpace(source[cursor]))
+            {
+                cursor++;
+            }
+
+            if (cursor < source.Length && source[cursor] == '=')
+            {
+                cursor++;
+                while (cursor < source.Length && char.IsWhiteSpace(source[cursor]))
+                {
+                    cursor++;
+                }
+
+                if (cursor < source.Length &&
+                    source[cursor] == (char)('0' + location) &&
+                    (cursor + 1 >= source.Length || !char.IsDigit(source[cursor + 1])))
+                {
+                    return true;
+                }
+            }
+
+            index += "location".Length;
+        }
+
+        return false;
     }
 }

@@ -40,13 +40,15 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     /// <see cref="ISceneSkinnedMeshFrameItemSource"/>, skinned batches are drawn
     /// after LOD meshes.
     /// </param>
+    /// <param name="skinningOptions">Optional skinning configuration; defaults to 256 bones on unit 15.</param>
     public SceneGlRenderOrchestrator(
         GLContext context,
         SceneGlAssetCache assets,
         SceneWorld world,
         ISceneParticleSource? particles = null,
         SceneInstanceRegistry? instances = null,
-        ISceneBonePaletteSource? bonePalettes = null)
+        ISceneBonePaletteSource? bonePalettes = null,
+        SceneSkinningOptions? skinningOptions = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assets);
@@ -73,7 +75,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
 
         if (bonePalettes is not null)
         {
-            _skinnedRenderer = new SceneGlSkinnedMeshRenderer(context, assets, bonePalettes);
+            _skinnedRenderer = new SceneGlSkinnedMeshRenderer(context, assets, bonePalettes, skinningOptions);
         }
     }
 
