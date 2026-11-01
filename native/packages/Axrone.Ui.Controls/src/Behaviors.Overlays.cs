@@ -16,6 +16,7 @@ internal sealed class MenuBehavior : InteractiveBehavior
             Height = UiLength.Px(style.Number(style.Tokens.Height, 36.0f)),
             Padding = new UiEdgeInsets(4.0f, 12.0f, 4.0f, 12.0f),
             AlignItems = UiAlign.Center,
+            AlignSelf = UiAlignSelf.Start,
             ZIndex = 20,
         };
 
@@ -204,6 +205,7 @@ internal sealed class TooltipBehavior : ControlBehavior
             Height = UiLength.Auto,
             Padding = new UiEdgeInsets(6.0f, 10.0f, 6.0f, 10.0f),
             ZIndex = 300,
+            AlignSelf = UiAlignSelf.Start,
         };
 
     public override void Initialize(UiControlRuntime runtime, int index, in UiControlDefinition definition) =>
@@ -228,6 +230,7 @@ internal sealed class ToastBehavior : ControlBehavior
             Height = UiLength.Auto,
             Padding = new UiEdgeInsets(8.0f, 12.0f, 8.0f, 12.0f),
             ZIndex = 300,
+            AlignSelf = UiAlignSelf.Start,
         };
 
     public override void Initialize(UiControlRuntime runtime, int index, in UiControlDefinition definition) =>
