@@ -21,11 +21,14 @@ public interface IEventDispatcher<TEvent>
 /// <param name="Capacity">Slots per priority lane; must be positive.</param>
 public readonly record struct EventSchedulerOptions(int Capacity)
 {
-    /// <summary>1k slots per lane.</summary>
+    /// <summary>Maximum pending timers; must be positive.</summary>
+    public int MaxTimers { get; init; } = 4096;
+
+    /// <summary>1k slots per lane and 4k timers.</summary>
     public static EventSchedulerOptions Default => new(1024);
 }
 
-/// <summary>Raised by <see cref="EventScheduler{TEvent}.Schedule(in EventEnvelope{TEvent}, EventPriority)"/> when a lane is full.</summary>
+/// <summary>Raised when a lane or the timer table is full.</summary>
 public sealed class EventQueueFullException : InvalidOperationException
 {
     /// <summary>Creates a queue-full failure.</summary>
@@ -55,37 +58,51 @@ public sealed class EventQueueFullException : InvalidOperationException
     /// <summary>Lane that rejected the envelope.</summary>
     public EventPriority Priority { get; }
 
-    /// <summary>Configured capacity of the rejecting lane.</summary>
+    /// <summary>Configured capacity of the rejecting lane or timer table.</summary>
     public int Capacity { get; }
 }
 
 /// <summary>
-/// Bounded three-lane priority scheduler with deterministic FIFO order inside each lane.
-/// <see cref="Drain{TDispatcher}"/> pulls in High, Normal, Low order; <see cref="DispatchImmediate{TDispatcher}"/>
-/// drains the same way on the caller thread. Steady-state enqueue/dequeue allocates nothing.
+/// Bounded three-lane priority scheduler with deterministic FIFO order inside each lane and a
+/// pull-based timer table. <see cref="Drain{TDispatcher}"/> pulls in High, Normal, Low order;
+/// <see cref="AdvanceDueTimers"/> moves due timers into those lanes. Steady-state
+/// advance/dequeue allocates nothing.
 /// </summary>
 /// <remarks>
-/// The scheduler transports already stamped envelopes; it never rewrites metadata. Enqueue is
-/// lock-guarded and bounded per lane, so backpressure is explicit through
-/// <see cref="TrySchedule(in EventEnvelope{TEvent}, EventPriority)"/>. Dispatchers may schedule more work
-/// while draining: the outer drain loop observes it, and a nested
-/// <see cref="DispatchImmediate{TDispatcher}"/> returns zero instead of recursing.
+/// Time only advances when the caller invokes <see cref="AdvanceDueTimers"/>; no OS timers are
+/// created. <see cref="TimeProvider"/> supplies the clock, so tests can drive a deterministic
+/// manual provider. Timers due at the same instant are ordered by priority, then creation order.
+/// A full target lane stops the advance without losing timers; they fire on a later advance.
 /// </remarks>
 /// <typeparam name="TEvent">Payload type.</typeparam>
 public sealed class EventScheduler<TEvent>
 {
     private const int LaneCount = 3;
+    private const int TimerStateActive = 0;
+    private const int TimerStatePaused = 1;
+    private const int TimerStateTerminal = 2;
+
+    private static readonly long MaxUtcTicks = DateTimeOffset.MaxValue.UtcTicks;
 
     private readonly ScheduledEvent<TEvent>[][] _lanes;
     private readonly int[] _heads;
     private readonly int[] _tails;
     private readonly int[] _counts;
+    private readonly TimerEntry?[] _timerHeap;
+    private readonly TimerEntry?[] _pausedTimers;
     private readonly int _capacity;
+    private readonly int _maxTimers;
+    private readonly TimeProvider _timeProvider;
     private readonly Lock _gate = new();
 
     private long _sequence;
+    private long _timerSequence;
     private long _scheduled;
     private long _dequeued;
+    private long _firedTimerTicks;
+    private int _timerHeapCount;
+    private int _pausedTimerCount;
+    private int _timerCount;
     private int _completed;
     private int _dispatching;
 
@@ -96,16 +113,32 @@ public sealed class EventScheduler<TEvent>
     {
     }
 
-    /// <summary>Creates a scheduler from options.</summary>
+    /// <summary>Creates a scheduler from options using <see cref="TimeProvider.System"/>.</summary>
     /// <param name="options">Scheduler bounds.</param>
     public EventScheduler(EventSchedulerOptions options)
+        : this(options, TimeProvider.System)
     {
+    }
+
+    /// <summary>Creates a scheduler from options and an explicit clock.</summary>
+    /// <param name="options">Scheduler bounds.</param>
+    /// <param name="timeProvider">Clock used by delay, deadline and recurring timers.</param>
+    public EventScheduler(EventSchedulerOptions options, TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
         if (options.Capacity < 1)
         {
             ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "Capacity must be positive.");
         }
 
+        if (options.MaxTimers < 1)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "MaxTimers must be positive.");
+        }
+
         _capacity = options.Capacity;
+        _maxTimers = options.MaxTimers;
+        _timeProvider = timeProvider;
         _lanes = new ScheduledEvent<TEvent>[LaneCount][];
         for (int lane = 0; lane < LaneCount; lane++)
         {
@@ -115,10 +148,15 @@ public sealed class EventScheduler<TEvent>
         _heads = new int[LaneCount];
         _tails = new int[LaneCount];
         _counts = new int[LaneCount];
+        _timerHeap = new TimerEntry?[_maxTimers];
+        _pausedTimers = new TimerEntry?[_maxTimers];
     }
 
     /// <summary>Slots available per priority lane.</summary>
     public int Capacity => _capacity;
+
+    /// <summary>Maximum pending timers.</summary>
+    public int MaxTimers => _maxTimers;
 
     /// <summary>Queued envelopes across all lanes.</summary>
     public int Count
@@ -134,6 +172,15 @@ public sealed class EventScheduler<TEvent>
             return total;
         }
     }
+
+    /// <summary>Pending timers, including paused timers.</summary>
+    public int TimerCount => Volatile.Read(ref _timerCount);
+
+    /// <summary>Pending paused timers.</summary>
+    public int PausedTimerCount => Volatile.Read(ref _pausedTimerCount);
+
+    /// <summary>Total timer ticks moved into lanes since construction.</summary>
+    public long FiredTimerTicks => Interlocked.Read(ref _firedTimerTicks);
 
     /// <summary>Whether <see cref="Complete"/> stopped further enqueues.</summary>
     public bool IsCompleted => Volatile.Read(ref _completed) != 0;
@@ -167,26 +214,9 @@ public sealed class EventScheduler<TEvent>
             return false;
         }
 
-        int lane = (int)priority;
         lock (_gate)
         {
-            if (Volatile.Read(ref _completed) != 0)
-            {
-                return false;
-            }
-
-            int count = _counts[lane];
-            if (count >= _capacity)
-            {
-                return false;
-            }
-
-            long sequence = ++_sequence;
-            _lanes[lane][_tails[lane]] = new ScheduledEvent<TEvent>(envelope, priority, sequence);
-            _tails[lane] = NextIndex(_tails[lane]);
-            _counts[lane] = count + 1;
-            _scheduled++;
-            return true;
+            return Volatile.Read(ref _completed) == 0 && TryEnqueueLocked(in envelope, priority);
         }
     }
 
@@ -222,6 +252,206 @@ public sealed class EventScheduler<TEvent>
     /// <param name="priority">Lane priority.</param>
     public void Schedule(in TEvent payload, EventPriority priority = EventPriority.Normal) =>
         Schedule(new EventEnvelope<TEvent>(payload), priority);
+
+    /// <summary>Schedules a one-shot timer relative to the current clock.</summary>
+    /// <param name="delay">Delay; negative values fire on the next advance.</param>
+    /// <param name="payload">Payload emitted when the timer fires.</param>
+    /// <param name="priority">Lane priority used when the timer fires.</param>
+    /// <param name="cancellationToken">Cancels the timer and returns an inactive handle.</param>
+    /// <returns>False when completed or the timer table is full.</returns>
+    public EventTimerHandle? TryScheduleDelay(
+        TimeSpan delay,
+        in TEvent payload,
+        EventPriority priority = EventPriority.Normal,
+        CancellationToken cancellationToken = default)
+    {
+        long now = _timeProvider.GetUtcNow().UtcTicks;
+        long dueTicks = AddClamped(now, delay.Ticks > 0 ? delay.Ticks : 0);
+        return TryCreateTimer(
+            dueTicks,
+            intervalTicks: 0,
+            maxTicks: 0,
+            in payload,
+            priority,
+            cancellationToken,
+            out _);
+    }
+
+    /// <summary>Schedules a one-shot timer, throwing when completed or the timer table is full.</summary>
+    /// <param name="delay">Delay; negative values fire on the next advance.</param>
+    /// <param name="payload">Payload emitted when the timer fires.</param>
+    /// <param name="priority">Lane priority used when the timer fires.</param>
+    /// <param name="cancellationToken">Cancels the timer and returns an inactive handle.</param>
+    public EventTimerHandle ScheduleDelay(
+        TimeSpan delay,
+        in TEvent payload,
+        EventPriority priority = EventPriority.Normal,
+        CancellationToken cancellationToken = default)
+    {
+        long now = _timeProvider.GetUtcNow().UtcTicks;
+        long dueTicks = AddClamped(now, delay.Ticks > 0 ? delay.Ticks : 0);
+        return CreateTimerOrThrow(dueTicks, intervalTicks: 0, maxTicks: 0, in payload, priority, cancellationToken);
+    }
+
+    /// <summary>Schedules a one-shot timer at an absolute instant; past instants fire on the next advance.</summary>
+    /// <param name="dueAt">Absolute deadline carried by the configured clock.</param>
+    /// <param name="payload">Payload emitted when the timer fires.</param>
+    /// <param name="priority">Lane priority used when the timer fires.</param>
+    /// <param name="cancellationToken">Cancels the timer and returns an inactive handle.</param>
+    public EventTimerHandle? TryScheduleAt(
+        DateTimeOffset dueAt,
+        in TEvent payload,
+        EventPriority priority = EventPriority.Normal,
+        CancellationToken cancellationToken = default)
+    {
+        long now = _timeProvider.GetUtcNow().UtcTicks;
+        long dueTicks = dueAt.UtcTicks;
+        if (dueTicks < now)
+        {
+            dueTicks = now;
+        }
+
+        return TryCreateTimer(
+            dueTicks,
+            intervalTicks: 0,
+            maxTicks: 0,
+            in payload,
+            priority,
+            cancellationToken,
+            out _);
+    }
+
+    /// <summary>Schedules a one-shot timer, throwing when completed or the timer table is full.</summary>
+    /// <param name="dueAt">Absolute deadline carried by the configured clock.</param>
+    /// <param name="payload">Payload emitted when the timer fires.</param>
+    /// <param name="priority">Lane priority used when the timer fires.</param>
+    /// <param name="cancellationToken">Cancels the timer and returns an inactive handle.</param>
+    public EventTimerHandle ScheduleAt(
+        DateTimeOffset dueAt,
+        in TEvent payload,
+        EventPriority priority = EventPriority.Normal,
+        CancellationToken cancellationToken = default)
+    {
+        long now = _timeProvider.GetUtcNow().UtcTicks;
+        long dueTicks = dueAt.UtcTicks;
+        if (dueTicks < now)
+        {
+            dueTicks = now;
+        }
+
+        return CreateTimerOrThrow(dueTicks, intervalTicks: 0, maxTicks: 0, in payload, priority, cancellationToken);
+    }
+
+    /// <summary>Schedules a fixed-rate recurring timer; missed intervals are emitted on advance.</summary>
+    /// <param name="interval">Recurring interval; must be positive.</param>
+    /// <param name="payload">Payload emitted on every tick.</param>
+    /// <param name="maxTicks">Tick cap; zero or negative means unlimited.</param>
+    /// <param name="priority">Lane priority used when tick events fire.</param>
+    /// <param name="cancellationToken">Cancels the timer and returns an inactive handle.</param>
+    public EventTimerHandle? TryScheduleRecurring(
+        TimeSpan interval,
+        in TEvent payload,
+        int maxTicks = 0,
+        EventPriority priority = EventPriority.Normal,
+        CancellationToken cancellationToken = default)
+    {
+        if (interval <= TimeSpan.Zero)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(interval), "Interval must be positive.");
+        }
+
+        long now = _timeProvider.GetUtcNow().UtcTicks;
+        long dueTicks = AddClamped(now, interval.Ticks);
+        return TryCreateTimer(dueTicks, interval.Ticks, maxTicks, in payload, priority, cancellationToken, out _);
+    }
+
+    /// <summary>Schedules a fixed-rate recurring timer, throwing when completed or the timer table is full.</summary>
+    /// <param name="interval">Recurring interval; must be positive.</param>
+    /// <param name="payload">Payload emitted on every tick.</param>
+    /// <param name="maxTicks">Tick cap; zero or negative means unlimited.</param>
+    /// <param name="priority">Lane priority used when tick events fire.</param>
+    /// <param name="cancellationToken">Cancels the timer and returns an inactive handle.</param>
+    public EventTimerHandle ScheduleRecurring(
+        TimeSpan interval,
+        in TEvent payload,
+        int maxTicks = 0,
+        EventPriority priority = EventPriority.Normal,
+        CancellationToken cancellationToken = default)
+    {
+        if (interval <= TimeSpan.Zero)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(interval), "Interval must be positive.");
+        }
+
+        long now = _timeProvider.GetUtcNow().UtcTicks;
+        long dueTicks = AddClamped(now, interval.Ticks);
+        return CreateTimerOrThrow(dueTicks, interval.Ticks, maxTicks, in payload, priority, cancellationToken);
+    }
+
+    /// <summary>
+    /// Moves every timer due at the current clock instant into its priority lane. Stops when the
+    /// next due timer targets a full lane, leaving it pending instead of dropping it.
+    /// </summary>
+    /// <returns>Number of timer ticks moved into lanes.</returns>
+    public int AdvanceDueTimers()
+    {
+        long now = _timeProvider.GetUtcNow().UtcTicks;
+        lock (_gate)
+        {
+            int fired = 0;
+            while (_timerHeapCount > 0)
+            {
+                TimerEntry top = _timerHeap[0]!;
+                if (top.DueTicks > now)
+                {
+                    break;
+                }
+
+                if (_counts[(int)top.Priority] >= _capacity)
+                {
+                    break;
+                }
+
+                RemoveMinTimerLocked();
+                TryEnqueueLocked(new EventEnvelope<TEvent>(top.Payload), top.Priority);
+                Interlocked.Increment(ref top.FiredCount);
+                _firedTimerTicks++;
+                fired++;
+
+                if (top.IntervalTicks > 0)
+                {
+                    if (top.RemainingLeft > 0)
+                    {
+                        top.RemainingLeft--;
+                    }
+
+                    if (top.RemainingLeft == 0)
+                    {
+                        CompleteTimerLocked(top);
+                    }
+                    else
+                    {
+                        long nextDue = AddClamped(top.DueTicks, top.IntervalTicks);
+                        if (nextDue <= top.DueTicks)
+                        {
+                            CompleteTimerLocked(top);
+                        }
+                        else
+                        {
+                            top.DueTicks = nextDue;
+                            InsertTimerLocked(top);
+                        }
+                    }
+                }
+                else
+                {
+                    CompleteTimerLocked(top);
+                }
+            }
+
+            return fired;
+        }
+    }
 
     /// <summary>Pulls the next envelope in High, Normal, Low order.</summary>
     /// <param name="item">Dequeued item.</param>
@@ -299,8 +529,19 @@ public sealed class EventScheduler<TEvent>
         }
     }
 
-    /// <summary>Stops accepting envelopes; queued work remains available to drain.</summary>
-    public void Complete() => Volatile.Write(ref _completed, 1);
+    /// <summary>Stops accepting envelopes and cancels every pending timer; queued work remains drainable.</summary>
+    public void Complete()
+    {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            ClearTimersLocked();
+        }
+    }
 
     /// <summary>Discards every queued envelope.</summary>
     /// <returns>Number of discarded envelopes.</returns>
@@ -328,6 +569,508 @@ public sealed class EventScheduler<TEvent>
         }
     }
 
+    /// <summary>Discards every pending timer, active or paused.</summary>
+    /// <returns>Number of discarded timers.</returns>
+    public int ClearTimers()
+    {
+        lock (_gate)
+        {
+            return ClearTimersLocked();
+        }
+    }
+
+    [SuppressMessage(
+        "Reliability",
+        "CA2000:Dispose objects before losing scope",
+        Justification = "A created handle is returned to the caller; failed creations return no object.")]
+    private EventTimerHandle CreateTimerOrThrow(
+        long dueTicks,
+        long intervalTicks,
+        int maxTicks,
+        in TEvent payload,
+        EventPriority priority,
+        CancellationToken cancellationToken)
+    {
+        EventTimerHandle? handle = TryCreateTimer(
+            dueTicks,
+            intervalTicks,
+            maxTicks,
+            in payload,
+            priority,
+            cancellationToken,
+            out TimerScheduleStatus status);
+
+        if (handle is not null)
+        {
+            return handle;
+        }
+
+        switch (status)
+        {
+            case TimerScheduleStatus.Cancelled:
+                return EventTimerHandle.Inactive;
+            case TimerScheduleStatus.Completed:
+                ThrowHelper.ThrowEngineTerminated();
+                break;
+            default:
+                ThrowHelper.ThrowTimerCapacity(priority, _maxTimers);
+                break;
+        }
+
+        return EventTimerHandle.Inactive;
+    }
+
+    private EventTimerHandle? TryCreateTimer(
+        long dueTicks,
+        long intervalTicks,
+        int maxTicks,
+        in TEvent payload,
+        EventPriority priority,
+        CancellationToken cancellationToken,
+        out TimerScheduleStatus status)
+    {
+        EventPriorityGuard.Validate(priority);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            status = TimerScheduleStatus.Cancelled;
+            return null;
+        }
+
+        if (Volatile.Read(ref _completed) != 0)
+        {
+            status = TimerScheduleStatus.Completed;
+            return null;
+        }
+
+        TimerEntry entry;
+        lock (_gate)
+        {
+            if (Volatile.Read(ref _completed) != 0)
+            {
+                status = TimerScheduleStatus.Completed;
+                return null;
+            }
+
+            if (_timerCount >= _maxTimers)
+            {
+                status = TimerScheduleStatus.Capacity;
+                return null;
+            }
+
+            entry = new TimerEntry(
+                this,
+                payload,
+                priority,
+                ++_timerSequence,
+                dueTicks,
+                intervalTicks,
+                intervalTicks > 0 && maxTicks > 0 ? maxTicks : intervalTicks > 0 ? -1 : 0);
+            InsertTimerLocked(entry);
+            _timerCount++;
+        }
+
+        if (cancellationToken.CanBeCanceled)
+        {
+            entry.Registration = cancellationToken.Register(
+                static state => ((TimerEntry)state!).CancelFromToken(),
+                entry);
+        }
+
+        status = TimerScheduleStatus.Success;
+        return new EventTimerHandle(entry);
+    }
+
+    private void PauseTimer(TimerEntry entry)
+    {
+        lock (_gate)
+        {
+            if (Volatile.Read(ref entry.State) != TimerStateActive)
+            {
+                return;
+            }
+
+            RemoveTimerLocked(entry);
+            entry.PausedAtTicks = _timeProvider.GetUtcNow().UtcTicks;
+            Volatile.Write(ref entry.State, TimerStatePaused);
+            _pausedTimers[_pausedTimerCount++] = entry;
+        }
+    }
+
+    private void ResumeTimer(TimerEntry entry)
+    {
+        lock (_gate)
+        {
+            if (Volatile.Read(ref entry.State) != TimerStatePaused)
+            {
+                return;
+            }
+
+            int index = IndexOfPausedLocked(entry);
+            if (index >= 0)
+            {
+                RemovePausedAtLocked(index);
+            }
+
+            long now = _timeProvider.GetUtcNow().UtcTicks;
+            long pausedTicks = now - entry.PausedAtTicks;
+            if (pausedTicks > 0)
+            {
+                entry.DueTicks = AddClamped(entry.DueTicks, pausedTicks);
+            }
+
+            Volatile.Write(ref entry.State, TimerStateActive);
+            InsertTimerLocked(entry);
+        }
+    }
+
+    private void CancelTimer(TimerEntry entry)
+    {
+        lock (_gate)
+        {
+            CancelTimerLocked(entry);
+        }
+
+        entry.ReleaseRegistration();
+    }
+
+    private void CancelTimerFromToken(TimerEntry entry)
+    {
+        lock (_gate)
+        {
+            CancelTimerLocked(entry);
+        }
+    }
+
+    private void CancelTimerLocked(TimerEntry entry)
+    {
+        int state = Volatile.Read(ref entry.State);
+        if (state == TimerStateTerminal)
+        {
+            return;
+        }
+
+        if (state == TimerStateActive)
+        {
+            RemoveTimerLocked(entry);
+        }
+        else
+        {
+            int index = IndexOfPausedLocked(entry);
+            if (index >= 0)
+            {
+                RemovePausedAtLocked(index);
+            }
+        }
+
+        Volatile.Write(ref entry.State, TimerStateTerminal);
+        _timerCount--;
+        entry.ReleaseRegistration();
+    }
+
+    private void CompleteTimerLocked(TimerEntry entry)
+    {
+        Volatile.Write(ref entry.State, TimerStateTerminal);
+        _timerCount--;
+        entry.ReleaseRegistration();
+    }
+
+    private int ClearTimersLocked()
+    {
+        int cleared = _timerCount;
+
+        for (int i = 0; i < _timerHeapCount; i++)
+        {
+            TimerEntry entry = _timerHeap[i]!;
+            _timerHeap[i] = null;
+            Volatile.Write(ref entry.State, TimerStateTerminal);
+            entry.ReleaseRegistration();
+        }
+
+        _timerHeapCount = 0;
+
+        for (int i = 0; i < _pausedTimerCount; i++)
+        {
+            TimerEntry entry = _pausedTimers[i]!;
+            _pausedTimers[i] = null;
+            Volatile.Write(ref entry.State, TimerStateTerminal);
+            entry.ReleaseRegistration();
+        }
+
+        _pausedTimerCount = 0;
+        _timerCount = 0;
+        return cleared;
+    }
+
+    private bool TryEnqueueLocked(in EventEnvelope<TEvent> envelope, EventPriority priority)
+    {
+        int lane = (int)priority;
+        int count = _counts[lane];
+        if (count >= _capacity)
+        {
+            return false;
+        }
+
+        long sequence = ++_sequence;
+        _lanes[lane][_tails[lane]] = new ScheduledEvent<TEvent>(envelope, priority, sequence);
+        _tails[lane] = NextIndex(_tails[lane]);
+        _counts[lane] = count + 1;
+        _scheduled++;
+        return true;
+    }
+
+    private void InsertTimerLocked(TimerEntry entry)
+    {
+        int index = _timerHeapCount++;
+        while (index > 0)
+        {
+            int parent = (index - 1) >> 1;
+            if (CompareTimer(_timerHeap[parent]!, entry) <= 0)
+            {
+                break;
+            }
+
+            _timerHeap[index] = _timerHeap[parent];
+            index = parent;
+        }
+
+        _timerHeap[index] = entry;
+    }
+
+    private void RemoveMinTimerLocked()
+    {
+        int lastIndex = --_timerHeapCount;
+        TimerEntry last = _timerHeap[lastIndex]!;
+        _timerHeap[lastIndex] = null;
+
+        if (lastIndex == 0)
+        {
+            return;
+        }
+
+        _timerHeap[0] = last;
+        SiftDownTimerLocked(0);
+    }
+
+    private void RemoveTimerLocked(TimerEntry entry)
+    {
+        int index = IndexOfTimerLocked(entry);
+        if (index < 0)
+        {
+            return;
+        }
+
+        int lastIndex = --_timerHeapCount;
+        TimerEntry last = _timerHeap[lastIndex]!;
+        _timerHeap[lastIndex] = null;
+
+        if (index == lastIndex)
+        {
+            return;
+        }
+
+        _timerHeap[index] = last;
+        if (index > 0 && CompareTimer(last, _timerHeap[(index - 1) >> 1]!) < 0)
+        {
+            SiftUpTimerLocked(index);
+        }
+        else
+        {
+            SiftDownTimerLocked(index);
+        }
+    }
+
+    private int IndexOfTimerLocked(TimerEntry entry)
+    {
+        for (int i = 0; i < _timerHeapCount; i++)
+        {
+            if (ReferenceEquals(_timerHeap[i], entry))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private int IndexOfPausedLocked(TimerEntry entry)
+    {
+        for (int i = 0; i < _pausedTimerCount; i++)
+        {
+            if (ReferenceEquals(_pausedTimers[i], entry))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private void RemovePausedAtLocked(int index)
+    {
+        _pausedTimerCount--;
+        _pausedTimers[index] = _pausedTimers[_pausedTimerCount];
+        _pausedTimers[_pausedTimerCount] = null;
+    }
+
+    private void SiftUpTimerLocked(int index)
+    {
+        TimerEntry entry = _timerHeap[index]!;
+        while (index > 0)
+        {
+            int parent = (index - 1) >> 1;
+            if (CompareTimer(_timerHeap[parent]!, entry) <= 0)
+            {
+                break;
+            }
+
+            _timerHeap[index] = _timerHeap[parent];
+            index = parent;
+        }
+
+        _timerHeap[index] = entry;
+    }
+
+    private void SiftDownTimerLocked(int index)
+    {
+        while (true)
+        {
+            int left = (index << 1) + 1;
+            if (left >= _timerHeapCount)
+            {
+                return;
+            }
+
+            int smallest = left;
+            int right = left + 1;
+            if (right < _timerHeapCount &&
+                CompareTimer(_timerHeap[right]!, _timerHeap[left]!) < 0)
+            {
+                smallest = right;
+            }
+
+            if (CompareTimer(_timerHeap[index]!, _timerHeap[smallest]!) <= 0)
+            {
+                return;
+            }
+
+            (_timerHeap[index], _timerHeap[smallest]) = (_timerHeap[smallest], _timerHeap[index]);
+            index = smallest;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CompareTimer(TimerEntry left, TimerEntry right)
+    {
+        int due = left.DueTicks.CompareTo(right.DueTicks);
+        if (due != 0)
+        {
+            return due;
+        }
+
+        int priority = ((int)left.Priority).CompareTo((int)right.Priority);
+        return priority != 0 ? priority : left.Sequence.CompareTo(right.Sequence);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long AddClamped(long ticks, long delta)
+    {
+        if (delta <= 0 || ticks >= MaxUtcTicks)
+        {
+            return ticks;
+        }
+
+        return delta > MaxUtcTicks - ticks ? MaxUtcTicks : ticks + delta;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int NextIndex(int index) => index + 1 == _capacity ? 0 : index + 1;
+
+    private enum TimerScheduleStatus
+    {
+        Success = 0,
+        Completed = 1,
+        Capacity = 2,
+        Cancelled = 3
+    }
+
+    private sealed class TimerEntry : IEventTimerControl
+    {
+        private readonly EventScheduler<TEvent> _owner;
+        private readonly long _intervalTicks;
+        private readonly EventPriority _priority;
+        private readonly long _sequence;
+        private readonly TEvent _payload;
+        private readonly Guid _id;
+
+        internal long DueTicks;
+        internal long PausedAtTicks;
+        internal int RemainingLeft;
+        internal int FiredCount;
+        internal int State;
+        internal CancellationTokenRegistration Registration;
+
+        public TimerEntry(
+            EventScheduler<TEvent> owner,
+            TEvent payload,
+            EventPriority priority,
+            long sequence,
+            long dueTicks,
+            long intervalTicks,
+            int remainingTicks)
+        {
+            _owner = owner;
+            _payload = payload;
+            _priority = priority;
+            _sequence = sequence;
+            _id = Guid.NewGuid();
+            DueTicks = dueTicks;
+            _intervalTicks = intervalTicks;
+            RemainingLeft = remainingTicks;
+            FiredCount = 0;
+            State = TimerStateActive;
+        }
+
+        internal TEvent Payload => _payload;
+
+        internal EventPriority Priority => _priority;
+
+        internal long Sequence => _sequence;
+
+        internal long IntervalTicks => _intervalTicks;
+
+        public Guid Id => _id;
+
+        public bool IsActive => Volatile.Read(ref State) != TimerStateTerminal;
+
+        public bool IsPaused => Volatile.Read(ref State) == TimerStatePaused;
+
+        public DateTimeOffset DueAt => new(Volatile.Read(ref DueTicks), TimeSpan.Zero);
+
+        public TimeSpan Interval => new(_intervalTicks);
+
+        public int RemainingTicks
+        {
+            get => Volatile.Read(ref RemainingLeft);
+        }
+
+        public int FiredTicks
+        {
+            get => Volatile.Read(ref FiredCount);
+        }
+
+        public void Pause() => _owner.PauseTimer(this);
+
+        public void Resume() => _owner.ResumeTimer(this);
+
+        public void Cancel() => _owner.CancelTimer(this);
+
+        internal void CancelFromToken() => _owner.CancelTimerFromToken(this);
+
+        internal void ReleaseRegistration()
+        {
+            Registration.Unregister();
+            Registration = default;
+        }
+    }
 }
