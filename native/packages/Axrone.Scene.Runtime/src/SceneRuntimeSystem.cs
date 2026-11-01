@@ -64,6 +64,21 @@ public sealed class SceneRuntimeSystem : IGameLoopSystem<SceneRuntimeFrameState>
             _runtime.Particles.SyncSystems();
             _runtime.Particles.Step(stepSeconds);
         }
+
+        if (_runtime.Animators is { } animators)
+        {
+            animators.Step(stepSeconds);
+        }
+
+        if (_runtime.PathAgents is { } pathAgents)
+        {
+            pathAgents.Step(stepSeconds);
+        }
+
+        if (_runtime.Animators is not null || _runtime.PathAgents is not null)
+        {
+            _runtime.World.UpdateTransforms();
+        }
     }
 
     /// <inheritdoc/>

@@ -46,6 +46,10 @@ public sealed class SceneRuntime : IDisposable
         Physics2D = RuntimeProfile.PhysicsBridges.Bridge2D ? new ScenePhysicsBridge2D(World) : null;
         Particles = new SceneParticleBridge3D(World);
         HasParticles = World.Registry.TryGetDataByType(typeof(SceneParticleSystem), out _);
+        HasAnimators = World.Registry.TryGetDataByType(typeof(SceneAnimator), out _);
+        Animators = HasAnimators ? new SceneAnimatorBridge(World) : null;
+        HasPathAgents = World.Registry.TryGetDataByType(typeof(ScenePathAgent), out _);
+        PathAgents = HasPathAgents ? new ScenePathAgentBridge(World) : null;
 
         Frame = new SceneFramePipeline(
             World,
@@ -102,6 +106,18 @@ public sealed class SceneRuntime : IDisposable
 
     /// <summary>Whether the profile registers particle systems.</summary>
     public bool HasParticles { get; }
+
+    /// <summary>Animator bridge; null when the profile does not register animators.</summary>
+    public SceneAnimatorBridge? Animators { get; }
+
+    /// <summary>Whether the profile registers animator components.</summary>
+    public bool HasAnimators { get; }
+
+    /// <summary>Path agent bridge; null when the profile does not register path agents.</summary>
+    public ScenePathAgentBridge? PathAgents { get; }
+
+    /// <summary>Whether the profile registers path agent components.</summary>
+    public bool HasPathAgents { get; }
 
     /// <summary>Viewport width forwarded to the frame planner.</summary>
     public int ViewportWidth
@@ -178,6 +194,8 @@ public sealed class SceneRuntime : IDisposable
         }
 
         Frame.Dispose();
+        PathAgents?.Dispose();
+        Animators?.Dispose();
         Particles.Dispose();
         Physics2D?.Dispose();
         Physics?.Dispose();
