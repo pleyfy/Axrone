@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Axrone.Ui.Scene.Runtime</RootNamespace>
+    <AssemblyName>Axrone.Ui.Scene.Runtime</AssemblyName>
+    <Description>Composition layer that attaches UI host bridging and rendering to an Axrone scene runtime.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="AotCompatibility">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+  </PropertyGroup>
+
+  <PropertyGroup Label="SuppressedRules">
+    <!-- CA1815: compose results are consumed field-wise, not compared. -->
+    <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <!-- CA1031: composition update/render/input isolation must capture any
+         host or renderer failure without taking down the runtime loop. -->
+    <NoWarn>$(NoWarn);CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Label="PublicApi">
+    <InternalsVisibleTo Include="Axrone.Ui.Scene.Runtime.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Axrone.Scene.Runtime/Axrone.Scene.Runtime.csproj" />
+    <ProjectReference Include="../Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
+    <ProjectReference Include="../Axrone.Scene.Rendering/Axrone.Scene.Rendering.csproj" />
+    <ProjectReference Include="../Axrone.Ui.Scene/Axrone.Ui.Scene.csproj" />
+    <ProjectReference Include="../Axrone.Ui.Scene.OpenGL/Axrone.Ui.Scene.OpenGL.csproj" />
+    <ProjectReference Include="../Axrone.Render.OpenGL/Axrone.Render.OpenGL.csproj" />
+    <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>
