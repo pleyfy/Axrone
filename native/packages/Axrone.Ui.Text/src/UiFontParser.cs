@@ -211,6 +211,7 @@ internal static class UiFontParser
 
         UiFontOutlineFormat outlineFormat;
         bool longLoca = locaFormat == 1;
+        UiCffParsed? cff = null;
         if (cffContainer)
         {
             if (cffOffset < 0)
@@ -218,16 +219,9 @@ internal static class UiFontParser
                 return Fail(out error, UiFontErrorCode.MissingTable, 12, "CFF table is missing from an OTTO container.");
             }
 
-            if (cffLength < 4)
+            if (!UiCffParser.TryParse(data, cffOffset, cffLength, glyphCount, out cff, out error))
             {
-                return Fail(out error, UiFontErrorCode.InvalidTableRange, cffOffset, "CFF table is truncated.");
-            }
-
-            int majorVersion = data[cffOffset];
-            int headerSize = data[cffOffset + 2];
-            if (majorVersion != 1 || headerSize < 4 || headerSize > cffLength)
-            {
-                return Fail(out error, UiFontErrorCode.UnsupportedOutlineFormat, cffOffset, "Only CFF version 1 headers are supported.");
+                return false;
             }
 
             outlineFormat = UiFontOutlineFormat.Cff;
@@ -281,6 +275,7 @@ internal static class UiFontParser
             lineGap,
             outlineFormat,
             cmapData!,
+            cff,
             hmtxOffset,
             numberOfHMetrics,
             kernPairsOffset,

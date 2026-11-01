@@ -17,6 +17,7 @@ public sealed class UiFontFace
 {
     private readonly UiFontBuffer _buffer;
     private readonly UiCmapData _cmap;
+    private readonly UiCffParsed? _cff;
     private readonly int[] _reverseCodePoints;
     private readonly int _hmtxOffset;
     private readonly int _numberOfHMetrics;
@@ -40,6 +41,7 @@ public sealed class UiFontFace
         int lineGap,
         UiFontOutlineFormat outlineFormat,
         UiCmapData cmap,
+        UiCffParsed? cff,
         int hmtxOffset,
         int numberOfHMetrics,
         int kernPairsOffset,
@@ -61,6 +63,7 @@ public sealed class UiFontFace
         LineGap = lineGap;
         OutlineFormat = outlineFormat;
         _cmap = cmap;
+        _cff = cff;
         _hmtxOffset = hmtxOffset;
         _numberOfHMetrics = numberOfHMetrics;
         _kernPairsOffset = kernPairsOffset;
@@ -97,6 +100,8 @@ public sealed class UiFontFace
     public UiFontOutlineFormat OutlineFormat { get; }
 
     internal UiFontBuffer Buffer => _buffer;
+
+    internal UiCffParsed? Cff => _cff;
 
     internal int LocaOffset => _locaOffset;
 
@@ -237,9 +242,20 @@ public sealed class UiFontFace
         int width = 0;
         int height = 0;
 
-        if (OutlineFormat == UiFontOutlineFormat.TrueType &&
-            TryGetGlyphRange(glyphId, out int glyphOffset, out int glyphLength) &&
-            glyphLength >= 10)
+        if (_cff is not null)
+        {
+            UiCffGlyphBounds bounds = _cff.GetBounds(glyphId);
+            if (!bounds.IsEmpty)
+            {
+                bearingX = bounds.XMin;
+                bearingY = bounds.YMax;
+                width = bounds.XMax - bounds.XMin;
+                height = bounds.YMax - bounds.YMin;
+            }
+        }
+        else if (OutlineFormat == UiFontOutlineFormat.TrueType &&
+                 TryGetGlyphRange(glyphId, out int glyphOffset, out int glyphLength) &&
+                 glyphLength >= 10)
         {
             int xMin = ReadI16(data, glyphOffset + 2);
             int yMin = ReadI16(data, glyphOffset + 4);

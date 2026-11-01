@@ -30,6 +30,8 @@ public enum UiFontErrorCode
 
     InvalidGlyph,
 
+    InvalidCff,
+
     UnsupportedOutlineFormat,
 
     UnsupportedGlyph,

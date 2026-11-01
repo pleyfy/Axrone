@@ -30,6 +30,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private sbyte[] _hitDirection = new sbyte[512];
     private float[] _coverage = [];
     private byte[] _alpha = [];
+    private readonly UiCffPath _cffPath = new();
 
     private int _pointCount;
     private int _contourCount;
@@ -69,16 +70,15 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             return false;
         }
 
-        if (fontFace.OutlineFormat != UiFontOutlineFormat.TrueType)
-        {
-            failure = UiFontError.At(UiFontErrorCode.UnsupportedOutlineFormat, 0, "Only TrueType glyf outlines can be rasterized.");
-            return false;
-        }
-
         if (!fontFace.TryGetGlyph(codePoint, out int glyphId))
         {
             failure = UiFontError.At(UiFontErrorCode.GlyphNotFound, 0, "The code point has no glyph in the face.");
             return false;
+        }
+
+        if (fontFace.OutlineFormat == UiFontOutlineFormat.Cff)
+        {
+            return TryRasterizeCff(fontFace, glyphId, pixelSize, out bitmap, out failure);
         }
 
         if (!fontFace.TryGetGlyphRange(glyphId, out int glyphOffset, out int glyphLength))
@@ -145,6 +145,164 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         RasterizeEdges(width, height);
         FillAlpha(width, height);
         bitmap = new UiGlyphBitmap(width, height, left, top, advance, _alpha.AsSpan(0, pixels));
+        return true;
+    }
+
+    private bool TryRasterizeCff(
+        UiFontFace face,
+        int glyphId,
+        float pixelSize,
+        out UiGlyphBitmap bitmap,
+        out UiFontError error)
+    {
+        bitmap = default;
+        error = UiFontError.None;
+        UiCffParsed? cff = face.Cff;
+        if (cff is null)
+        {
+            error = UiFontError.At(UiFontErrorCode.InvalidCff, 0, "The face has no parsed CFF data.");
+            return false;
+        }
+
+        float scale = pixelSize / face.UnitsPerEm;
+        float advance = face.ReadAdvance(face.Buffer.Span, glyphId) * scale;
+        UiCffGlyphBounds bounds = cff.GetBounds(glyphId);
+        if (bounds.IsEmpty)
+        {
+            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty);
+            return true;
+        }
+
+        int left = (int)MathF.Floor(bounds.XMin * scale) - 1;
+        int right = (int)MathF.Ceiling(bounds.XMax * scale) + 1;
+        int bottom = (int)MathF.Floor(bounds.YMin * scale) - 1;
+        int top = (int)MathF.Ceiling(bounds.YMax * scale) + 1;
+        int width = right - left;
+        int height = top - bottom;
+        if (width <= 0 || height <= 0)
+        {
+            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty);
+            return true;
+        }
+
+        if (width > _maxDimension || height > _maxDimension || (long)width * height > _maxPixels)
+        {
+            error = UiFontError.At(UiFontErrorCode.RasterTooLarge, 0, "The raster dimensions exceed the limit.");
+            return false;
+        }
+
+        if (!cff.CharStrings.TryGetRange(glyphId, out int charStringStart, out int charStringEnd))
+        {
+            error = UiFontError.At(UiFontErrorCode.InvalidCff, 0, "The CFF charstring range is invalid.");
+            return false;
+        }
+
+        _cffPath.Clear();
+        if (!UiCffInterpreter.TryRun(
+                face.Buffer.Span,
+                charStringStart,
+                charStringEnd,
+                cff.GlobalSubrs,
+                cff.GetLocalSubrs(glyphId),
+                _cffPath,
+                out error))
+        {
+            return false;
+        }
+
+        _edgeCount = 0;
+        if (!FlattenCff(_cffPath, scale, left, bottom, out error))
+        {
+            return false;
+        }
+
+        int pixels = width * height;
+        EnsureCoverage(pixels);
+        EnsureHitCapacity(_edgeCount);
+        _coverage.AsSpan(0, pixels).Clear();
+        RasterizeEdges(width, height);
+        FillAlpha(width, height);
+        bitmap = new UiGlyphBitmap(width, height, left, top, advance, _alpha.AsSpan(0, pixels));
+        return true;
+    }
+
+    private bool FlattenCff(UiCffPath path, float scale, int left, int bottom, out UiFontError error)
+    {
+        error = UiFontError.None;
+        float x = 0.0f;
+        float y = 0.0f;
+        float startX = 0.0f;
+        float startY = 0.0f;
+        ReadOnlySpan<UiCffCommand> commands = path.Commands;
+        for (int i = 0; i < commands.Length; i++)
+        {
+            UiCffCommand command = commands[i];
+            switch (command.Kind)
+            {
+                case UiCffCommandKind.Move:
+                    x = command.X0;
+                    y = command.Y0;
+                    startX = x;
+                    startY = y;
+                    break;
+                case UiCffCommandKind.Line:
+                    if (!AppendLine(x, y, command.X0, command.Y0, scale, left, bottom, out error))
+                    {
+                        return false;
+                    }
+
+                    x = command.X0;
+                    y = command.Y0;
+                    break;
+                case UiCffCommandKind.Cubic:
+                {
+                    float startBezierX = x;
+                    float startBezierY = y;
+                    float control1X = command.X1;
+                    float control1Y = command.Y1;
+                    float control2X = command.X2;
+                    float control2Y = command.Y2;
+                    float endX = command.X0;
+                    float endY = command.Y0;
+                    float previousX = startBezierX;
+                    float previousY = startBezierY;
+                    for (int step = 1; step <= 12; step++)
+                    {
+                        float t = step / 12.0f;
+                        float inverse = 1.0f - t;
+                        float px = (inverse * inverse * inverse * startBezierX) +
+                            (3.0f * inverse * inverse * t * control1X) +
+                            (3.0f * inverse * t * t * control2X) +
+                            (t * t * t * endX);
+                        float py = (inverse * inverse * inverse * startBezierY) +
+                            (3.0f * inverse * inverse * t * control1Y) +
+                            (3.0f * inverse * t * t * control2Y) +
+                            (t * t * t * endY);
+                        if (!AppendLine(previousX, previousY, px, py, scale, left, bottom, out error))
+                        {
+                            return false;
+                        }
+
+                        previousX = px;
+                        previousY = py;
+                    }
+
+                    x = endX;
+                    y = endY;
+                    break;
+                }
+                case UiCffCommandKind.Close:
+                    if (!AppendLine(x, y, startX, startY, scale, left, bottom, out error))
+                    {
+                        return false;
+                    }
+
+                    x = startX;
+                    y = startY;
+                    break;
+            }
+        }
+
         return true;
     }
 
