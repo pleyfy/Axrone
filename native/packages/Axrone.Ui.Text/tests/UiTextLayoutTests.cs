@@ -47,6 +47,26 @@ public sealed class UiTextLayoutTests
     }
 
     [Fact]
+    public void JustifiesAtWordSpaces()
+    {
+        using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
+        var buffer = new UiTextLayoutBuffer(provider);
+        var constraints = new UiMeasureConstraints(0.0f, 0.0f, 1600.0f, float.PositiveInfinity);
+
+        buffer.TryLayout(
+            "A A\nB".AsSpan(),
+            Style(face, UiTextAlign.Justify, wrap: UiTextWrap.Word),
+            constraints).Should().BeTrue();
+
+        buffer.Glyphs.Length.Should().Be(4);
+        buffer.Glyphs[0].X.Should().Be(0.0f);
+        buffer.Glyphs[1].X.Should().Be(600.0f);
+        buffer.Glyphs[2].X.Should().Be(1000.0f);
+        buffer.Glyphs[3].X.Should().Be(0.0f);
+        buffer.Glyphs[3].Y.Should().Be(1100.0f);
+    }
+
+    [Fact]
     public void ExposesSizeMetricsAndIdentity()
     {
         using UiFontProvider provider = CreateProvider(out UiFontFaceId face);

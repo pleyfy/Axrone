@@ -60,16 +60,37 @@ public sealed class UiTextLayoutBuffer : IUiTextLayout
                 lineIndex < lines.Length - 1 &&
                 line.GlyphCount > 1 &&
                 available > line.Width;
-            float extra = justify ? (available - line.Width) / (line.GlyphCount - 1) : 0.0f;
+            int spaceCount = 0;
+            if (justify)
+            {
+                for (int glyphIndex = 0; glyphIndex < line.GlyphCount; glyphIndex++)
+                {
+                    if (shaped[line.StartGlyph + glyphIndex].CodePoint == 0x20)
+                    {
+                        spaceCount++;
+                    }
+                }
+            }
+
+            float remaining = justify ? available - line.Width : 0.0f;
+            float perSpace = justify && spaceCount > 0 ? remaining / spaceCount : 0.0f;
+            float perGlyph = justify && spaceCount == 0 ? remaining / (line.GlyphCount - 1) : 0.0f;
             float offset = justify ? 0.0f : AlignmentOffset(style.Align, available, line.Width);
+            float extraSoFar = 0.0f;
             float y = lineIndex * _metrics.LineHeight;
 
             for (int glyphIndex = 0; glyphIndex < line.GlyphCount; glyphIndex++)
             {
                 UiShapedGlyph glyph = shaped[line.StartGlyph + glyphIndex];
-                float x = (glyph.X - line.StartX) + offset + (extra * glyphIndex);
+                float x = (glyph.X - line.StartX) + offset + extraSoFar;
                 _glyphs[written] = new UiShapedGlyph(glyph.CodePoint, glyph.Cluster, x, y, glyph.Advance, glyph.SpanIndex);
                 written++;
+                if (justify)
+                {
+                    extraSoFar += spaceCount > 0
+                        ? (glyph.CodePoint == 0x20 ? perSpace : 0.0f)
+                        : perGlyph;
+                }
             }
         }
 
