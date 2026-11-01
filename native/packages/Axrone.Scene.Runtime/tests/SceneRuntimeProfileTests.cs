@@ -122,6 +122,65 @@ public sealed class SceneRuntimeProfileTests
     }
 
     [Fact]
+    public void BuiltIn3DProfiles_RegisterAnimatorsPathAgentsAndRenderables()
+    {
+        SceneRuntimeProfile[] profiles =
+        [
+            SceneRuntimeProfiles.ThreeD,
+            SceneRuntimeProfiles.Mixed,
+            SceneRuntimeProfiles.Full
+        ];
+
+        foreach (SceneRuntimeProfile runtimeProfile in profiles)
+        {
+            SceneComponentRegistry registry = runtimeProfile.Profile.Registry;
+            registry.TryGetDataByType(typeof(SceneAnimator), out _).Should().BeTrue();
+            registry.TryGetDataByType(typeof(ScenePathAgent), out _).Should().BeTrue();
+            registry.TryGetDataByType(typeof(SceneBillboardRenderer), out _).Should().BeTrue();
+            registry.TryGetDataByType(typeof(SceneLineRenderer), out _).Should().BeTrue();
+            registry.TryGetDataByType(typeof(SceneTrailRenderer), out _).Should().BeTrue();
+            registry.TryGetDataByType(typeof(SceneLodGroup), out _).Should().BeTrue();
+            registry.TryGetDataByType(typeof(SceneSkinnedMeshRenderer), out _).Should().BeTrue();
+            registry.TryGetDataByType(typeof(SceneInstancedMeshRenderer), out _).Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public void FullProfile_CreatesRuntimeBridges()
+    {
+        using var runtime = new SceneRuntime(new SceneRuntimeOptions
+        {
+            RuntimeProfile = SceneRuntimeProfiles.Full
+        });
+
+        runtime.HasAnimators.Should().BeTrue();
+        runtime.Animators.Should().NotBeNull();
+        runtime.HasPathAgents.Should().BeTrue();
+        runtime.PathAgents.Should().NotBeNull();
+        runtime.HasSkinnedMeshes.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RepeatedComposition_IsIdempotent()
+    {
+        Action build = static () =>
+        {
+            _ = new SceneProfileBuilder(
+                    new SceneProfileId(SceneStringId.FromName("test/idempotent")))
+                .AddTransform3D()
+                .AddAnimators3D()
+                .AddAnimators3D()
+                .AddPathAgents3D()
+                .AddPathAgents3D()
+                .AddSceneRenderables()
+                .AddSceneRenderables()
+                .Build();
+        };
+
+        build.Should().NotThrow();
+    }
+
+    [Fact]
     public void PhysicsBridgeSelection_FollowsProfileFamily()
     {
         SceneRuntimeProfiles.Core.PhysicsBridges.Should().Be(new ScenePhysicsBridgeSelection(true, false));
