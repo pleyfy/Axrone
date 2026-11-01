@@ -2,17 +2,11 @@ namespace Axrone.Ui.Text.Tests;
 
 using System.IO;
 
-/// <summary>
-/// Deterministic minimal TrueType builder used by parser, provider, shaping and
-/// rasterizer tests. Produces real sfnt tables (no external font files needed).
-/// </summary>
 internal static class UiTestFont
 {
     public const int UnitsPerEm = 1000;
     public const int GlyphCount = 12;
 
-    // Glyph ids: 0 notdef, 1 space, 2 A, 3 V, 4 f, 5 i, 6 l, 7 acute, 8 e-acute,
-    // 9 fi, 10 B (composite of A), 11 ellipsis.
     public static readonly int[] Advances = [500, 300, 600, 600, 350, 250, 250, 200, 600, 650, 600, 600];
     public static readonly int[] LeftBearings = [0, 0, 0, 0, 50, 50, 50, 50, 0, 0, 100, 0];
 
