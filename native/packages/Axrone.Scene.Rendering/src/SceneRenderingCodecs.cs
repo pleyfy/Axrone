@@ -41,6 +41,16 @@ public static class SceneRenderingCodecs
             codecs.Register(new SceneMeshRendererCodec(names));
         }
 
+        if (components.TryGetDataByType(typeof(SceneBillboardRenderer), out _))
+        {
+            codecs.Register(new SceneBillboardRendererCodec(names));
+        }
+
+        if (components.TryGetDataByType(typeof(SceneLineRenderer), out _))
+        {
+            codecs.Register(new SceneLineRendererCodec(names));
+        }
+
         if (components.TryGetDataByType(typeof(SceneDirectionalLight), out _))
         {
             codecs.Register(new SceneDirectionalLightCodec());
