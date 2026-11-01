@@ -115,6 +115,22 @@ internal static class UiTestFont
         return File.ReadAllBytes(path);
     }
 
+    public static byte[] CreateWithTableChecksumDamage()
+    {
+        byte[] font = Create();
+        int hmtx = TableOffset(font, "hmtx");
+        font[hmtx + 1] ^= 0x01;
+        return font;
+    }
+
+    public static byte[] CreateWithAdjustmentDamage()
+    {
+        byte[] font = Create();
+        int head = TableOffset(font, "head");
+        font[head + 8] ^= 0x01;
+        return font;
+    }
+
     public static int TableOffset(byte[] font, string tag)
     {
         int record = TableRecord(font, tag);
@@ -266,6 +282,7 @@ internal static class UiTestFont
         }
 
         int cursor = file.Count;
+        int headTableOffset = -1;
         for (int i = 0; i < tableCount; i++)
         {
             while ((cursor & 3) != 0)
@@ -276,6 +293,11 @@ internal static class UiTestFont
 
             (string tag, byte[] data) = tables[i];
             int tableOffset = cursor;
+            if (string.Equals(tag, "head", StringComparison.Ordinal))
+            {
+                headTableOffset = tableOffset;
+            }
+
             file.AddRange(data);
             cursor += data.Length;
 
@@ -286,7 +308,14 @@ internal static class UiTestFont
             PatchU32(file, record + 12, (uint)data.Length);
         }
 
-        return [.. file];
+        byte[] bytes = [.. file];
+        if (headTableOffset >= 0)
+        {
+            uint adjustment = unchecked(0xB1B0AFBAu - Checksum(bytes));
+            PatchU32(bytes, headTableOffset + 8, adjustment);
+        }
+
+        return bytes;
     }
 
     private static byte[] BuildHead()
@@ -715,6 +744,14 @@ internal static class UiTestFont
     }
 
     private static void PatchU32(List<byte> data, int offset, uint value)
+    {
+        data[offset] = (byte)(value >> 24);
+        data[offset + 1] = (byte)(value >> 16);
+        data[offset + 2] = (byte)(value >> 8);
+        data[offset + 3] = (byte)value;
+    }
+
+    private static void PatchU32(byte[] data, int offset, uint value)
     {
         data[offset] = (byte)(value >> 24);
         data[offset + 1] = (byte)(value >> 16);

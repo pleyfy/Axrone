@@ -17,6 +17,7 @@ internal static class UiFontParser
     private const uint SfntTrueType = 0x00010000;
     private const uint SfntOtto = 0x4F54544F;
     private const uint SfntTrue = 0x74727565;
+    private const uint WholeFontChecksum = 0xB1B0AFBA;
 
     public static bool TryParse(
         UiFontBuffer buffer,
@@ -290,6 +291,11 @@ internal static class UiFontParser
             return false;
         }
 
+        if (!TryValidateChecksums(data, tableCount, out error))
+        {
+            return false;
+        }
+
         face = new UiFontFace(
             buffer,
             family,
@@ -321,5 +327,58 @@ internal static class UiFontParser
     {
         error = UiFontError.At(code, offset, message);
         return false;
+    }
+
+    private static bool TryValidateChecksums(ReadOnlySpan<byte> data, int tableCount, out UiFontError error)
+    {
+        error = UiFontError.None;
+        for (int i = 0; i < tableCount; i++)
+        {
+            int record = 12 + (i * 16);
+            uint tag = UiFontFace.ReadU32(data, record);
+            uint expected = UiFontFace.ReadU32(data, record + 4);
+            int offset = (int)UiFontFace.ReadU32(data, record + 8);
+            int length = (int)UiFontFace.ReadU32(data, record + 12);
+            ReadOnlySpan<byte> table = data.Slice(offset, length);
+            uint actual = tag == TagHead && length >= 12
+                ? Checksum(table[..8]) + Checksum(table[12..])
+                : Checksum(table);
+            if (actual != expected)
+            {
+                return Fail(out error, UiFontErrorCode.ChecksumMismatch, record, "A table checksum does not match the directory.");
+            }
+        }
+
+        if (Checksum(data) != WholeFontChecksum)
+        {
+            return Fail(out error, UiFontErrorCode.ChecksumMismatch, 0, "The whole-font checksum is invalid.");
+        }
+
+        return true;
+    }
+
+    private static uint Checksum(ReadOnlySpan<byte> data)
+    {
+        uint sum = 0;
+        int index = 0;
+        for (; index + 4 <= data.Length; index += 4)
+        {
+            sum += (uint)((data[index] << 24) | (data[index + 1] << 16) | (data[index + 2] << 8) | data[index + 3]);
+        }
+
+        if (index < data.Length)
+        {
+            uint last = 0;
+            int shift = 24;
+            for (; index < data.Length; index++)
+            {
+                last |= (uint)data[index] << shift;
+                shift -= 8;
+            }
+
+            sum += last;
+        }
+
+        return sum;
     }
 }

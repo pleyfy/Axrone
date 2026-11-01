@@ -14,6 +14,8 @@ public enum UiFontErrorCode
 
     InvalidTableRange,
 
+    ChecksumMismatch,
+
     InvalidHead,
 
     InvalidMaxp,
