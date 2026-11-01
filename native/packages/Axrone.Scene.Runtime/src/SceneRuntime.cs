@@ -48,6 +48,9 @@ public sealed class SceneRuntime : IDisposable
         HasParticles = World.Registry.TryGetDataByType(typeof(SceneParticleSystem), out _);
         HasAnimators = World.Registry.TryGetDataByType(typeof(SceneAnimator), out _);
         Animators = HasAnimators ? new SceneAnimatorBridge(World) : null;
+        HasSkinnedMeshes = World.Registry.TryGetDataByType(typeof(SceneSkinnedMeshRenderer), out _);
+        BonePalettes = new SceneBonePaletteStore();
+        BonePaletteSink = new SceneBonePalettePoseSink(BonePalettes);
         HasPathAgents = World.Registry.TryGetDataByType(typeof(ScenePathAgent), out _);
         PathAgents = HasPathAgents ? new ScenePathAgentBridge(World) : null;
 
@@ -112,6 +115,15 @@ public sealed class SceneRuntime : IDisposable
 
     /// <summary>Whether the profile registers animator components.</summary>
     public bool HasAnimators { get; }
+
+    /// <summary>Whether the profile registers skinned mesh renderers.</summary>
+    public bool HasSkinnedMeshes { get; }
+
+    /// <summary>Latest world-space bone palettes published by the animator bridge.</summary>
+    public SceneBonePaletteStore BonePalettes { get; }
+
+    /// <summary>Pose sink that forwards animator output into <see cref="BonePalettes"/>.</summary>
+    public SceneBonePalettePoseSink BonePaletteSink { get; }
 
     /// <summary>Path agent bridge; null when the profile does not register path agents.</summary>
     public ScenePathAgentBridge? PathAgents { get; }

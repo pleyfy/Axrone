@@ -54,6 +54,7 @@ public sealed class SceneGlFrameRenderer : IDisposable
         _context.AssertRenderThread();
 
         SceneFramePipeline frame = _runtime.Frame;
+        frame.TimeSeconds = elapsedSeconds;
         if (!frame.Plan(frameIndex))
         {
             return frame.Complete(0);
