@@ -10,7 +10,18 @@ internal static class UiTestFont
     public static readonly int[] Advances = [500, 300, 600, 600, 350, 250, 250, 200, 600, 650, 600, 600];
     public static readonly int[] LeftBearings = [0, 0, 0, 0, 50, 50, 50, 50, 0, 0, 100, 0];
 
-    public static byte[] Create(bool format12 = false, bool cff = false, int hMetrics = 0)
+    public static byte[] Create(bool format12 = false, bool cff = false, int hMetrics = 0) =>
+        CreateCore(format12 ? 12 : 4, cff, hMetrics);
+
+    public static byte[] CreateFormat0() => CreateCore(0, false, 0);
+
+    public static byte[] CreateFormat6() => CreateCore(6, false, 0);
+
+    public static byte[] CreateFormat13() => CreateCore(13, false, 0);
+
+    public static byte[] CreateFormat14() => CreateCore(14, false, 0);
+
+    private static byte[] CreateCore(int cmapFormat, bool cff, int hMetrics)
     {
         List<byte[]> glyphs =
         [
@@ -52,14 +63,14 @@ internal static class UiTestFont
         ];
 
         int metrics = hMetrics <= 0 ? glyphs.Count : hMetrics;
-        return Build(glyphs, Advances, LeftBearings, mappings, kernPairs, metrics, format12, cff);
+        return Build(glyphs, Advances, LeftBearings, mappings, kernPairs, metrics, cmapFormat, cff);
     }
 
     public static byte[] CreateFallback()
     {
         List<byte[]> glyphs = [EmptyGlyph(), BoxGlyph(0, 0, 500, 700)];
         List<(int CodePoint, int GlyphId)> mappings = [(0x5A, 1)];
-        return Build(glyphs, [500, 500], [0, 0], mappings, [], 2, format12: false, cff: false);
+        return Build(glyphs, [500, 500], [0, 0], mappings, [], 2, 4, false);
     }
 
     public static byte[] LoadRealFont()
@@ -162,7 +173,7 @@ internal static class UiTestFont
         List<(int CodePoint, int GlyphId)> mappings,
         List<(int Left, int Right, int Value)> kernPairs,
         int hMetrics,
-        bool format12,
+        int cmapFormat,
         bool cff)
     {
         var tables = new List<(string Tag, byte[] Data)>
@@ -171,7 +182,7 @@ internal static class UiTestFont
             ("hhea", BuildHhea(advances, hMetrics)),
             ("maxp", BuildMaxp(glyphs.Count)),
             ("hmtx", BuildHmtx(advances, bearings, hMetrics, glyphs.Count)),
-            ("cmap", BuildCmap(mappings, format12)),
+            ("cmap", BuildCmap(mappings, cmapFormat)),
         };
 
         if (!cff)
@@ -330,82 +341,219 @@ internal static class UiTestFont
         return [.. data];
     }
 
-    private static byte[] BuildCmap(List<(int CodePoint, int GlyphId)> mappings, bool format12)
+    private static byte[] BuildCmap(List<(int CodePoint, int GlyphId)> mappings, int format)
     {
-        var subtable = new List<byte>(256);
-        if (format12)
+        if (format == 14)
         {
-            var groups = new List<(int Start, int End, int Glyph)>(mappings.Count + 1);
-            foreach ((int codePoint, int glyphId) in mappings)
-            {
-                groups.Add((codePoint, codePoint, glyphId));
-            }
-
-            groups.Add((0x1F600, 0x1F600, 8));
-            groups.Sort(static (left, right) => left.Start.CompareTo(right.Start));
-
-            int length = 16 + (groups.Count * 12);
-            WriteU16(subtable, 12);
-            WriteU16(subtable, 0);
-            WriteU32(subtable, (uint)length);
-            WriteU32(subtable, 0);
-            WriteU32(subtable, (uint)groups.Count);
-            foreach ((int start, int end, int glyph) in groups)
-            {
-                WriteU32(subtable, (uint)start);
-                WriteU32(subtable, (uint)end);
-                WriteU32(subtable, (uint)glyph);
-            }
-        }
-        else
-        {
-            int segmentCount = mappings.Count + 1;
-            int segmentCountX2 = segmentCount * 2;
-            int length = 16 + (segmentCount * 8);
-            int searchRange = 2 * (1 << FloorLog2(segmentCount));
-            int entrySelector = FloorLog2(segmentCount);
-            int rangeShift = segmentCountX2 - searchRange;
-
-            WriteU16(subtable, 4);
-            WriteU16(subtable, length);
-            WriteU16(subtable, 0);
-            WriteU16(subtable, segmentCountX2);
-            WriteU16(subtable, searchRange);
-            WriteU16(subtable, entrySelector);
-            WriteU16(subtable, rangeShift);
-
-            foreach ((int codePoint, _) in mappings)
-            {
-                WriteU16(subtable, codePoint);
-            }
-
-            WriteU16(subtable, 0xFFFF);
-            WriteU16(subtable, 0);
-            foreach ((int codePoint, _) in mappings)
-            {
-                WriteU16(subtable, codePoint);
-            }
-
-            WriteU16(subtable, 0xFFFF);
-            foreach ((int codePoint, int glyphId) in mappings)
-            {
-                WriteI16(subtable, glyphId - codePoint);
-            }
-
-            WriteI16(subtable, 1);
-            for (int i = 0; i < segmentCount; i++)
-            {
-                WriteU16(subtable, 0);
-            }
+            return BuildCmap14(mappings);
         }
 
-        var table = new List<byte>(12 + subtable.Count);
+        byte[] subtable = format switch
+        {
+            0 => BuildFormat0Subtable(mappings),
+            4 => BuildFormat4Subtable(mappings),
+            6 => BuildFormat6Subtable(mappings),
+            12 => BuildFormat12Subtable(mappings),
+            13 => BuildFormat13Subtable(mappings),
+            _ => throw new ArgumentOutOfRangeException(nameof(format)),
+        };
+
+        (int platform, int encoding) = format is 12 or 13 ? (3, 10) : (3, 1);
+        var table = new List<byte>(12 + subtable.Length);
         WriteU16(table, 0);
         WriteU16(table, 1);
-        WriteU16(table, format12 ? 3 : 3);
-        WriteU16(table, format12 ? 10 : 1);
+        WriteU16(table, platform);
+        WriteU16(table, encoding);
         WriteU32(table, 12);
         table.AddRange(subtable);
+        return [.. table];
+    }
+
+    private static byte[] BuildFormat0Subtable(List<(int CodePoint, int GlyphId)> mappings)
+    {
+        var subtable = new List<byte>(262);
+        WriteU16(subtable, 0);
+        WriteU16(subtable, 262);
+        WriteU16(subtable, 0);
+        var glyphs = new byte[256];
+        foreach ((int codePoint, int glyphId) in mappings)
+        {
+            if (codePoint < 256)
+            {
+                glyphs[codePoint] = (byte)glyphId;
+            }
+        }
+
+        foreach (byte glyph in glyphs)
+        {
+            subtable.Add(glyph);
+        }
+
+        return [.. subtable];
+    }
+
+    private static byte[] BuildFormat4Subtable(List<(int CodePoint, int GlyphId)> mappings)
+    {
+        int segmentCount = mappings.Count + 1;
+        int segmentCountX2 = segmentCount * 2;
+        int length = 16 + (segmentCount * 8);
+        int searchRange = 2 * (1 << FloorLog2(segmentCount));
+        int entrySelector = FloorLog2(segmentCount);
+        int rangeShift = segmentCountX2 - searchRange;
+        var subtable = new List<byte>(length);
+        WriteU16(subtable, 4);
+        WriteU16(subtable, length);
+        WriteU16(subtable, 0);
+        WriteU16(subtable, segmentCountX2);
+        WriteU16(subtable, searchRange);
+        WriteU16(subtable, entrySelector);
+        WriteU16(subtable, rangeShift);
+        foreach ((int codePoint, _) in mappings)
+        {
+            WriteU16(subtable, codePoint);
+        }
+
+        WriteU16(subtable, 0xFFFF);
+        WriteU16(subtable, 0);
+        foreach ((int codePoint, _) in mappings)
+        {
+            WriteU16(subtable, codePoint);
+        }
+
+        WriteU16(subtable, 0xFFFF);
+        foreach ((int codePoint, int glyphId) in mappings)
+        {
+            WriteI16(subtable, glyphId - codePoint);
+        }
+
+        WriteI16(subtable, 1);
+        for (int i = 0; i < segmentCount; i++)
+        {
+            WriteU16(subtable, 0);
+        }
+
+        return [.. subtable];
+    }
+
+    private static byte[] BuildFormat6Subtable(List<(int CodePoint, int GlyphId)> mappings)
+    {
+        const int First = 0x20;
+        const int Count = 0x50;
+        var subtable = new List<byte>(10 + (Count * 2));
+        WriteU16(subtable, 6);
+        WriteU16(subtable, 10 + (Count * 2));
+        WriteU16(subtable, 0);
+        WriteU16(subtable, First);
+        WriteU16(subtable, Count);
+        for (int i = 0; i < Count; i++)
+        {
+            int codePoint = First + i;
+            int glyph = 0;
+            foreach ((int mappedCodePoint, int glyphId) in mappings)
+            {
+                if (mappedCodePoint == codePoint)
+                {
+                    glyph = glyphId;
+                    break;
+                }
+            }
+
+            WriteU16(subtable, glyph);
+        }
+
+        return [.. subtable];
+    }
+
+    private static byte[] BuildFormat12Subtable(List<(int CodePoint, int GlyphId)> mappings)
+    {
+        var groups = new List<(int Start, int End, int Glyph)>(mappings.Count + 1);
+        foreach ((int codePoint, int glyphId) in mappings)
+        {
+            groups.Add((codePoint, codePoint, glyphId));
+        }
+
+        groups.Add((0x1F600, 0x1F600, 8));
+        groups.Sort(static (left, right) => left.Start.CompareTo(right.Start));
+        int length = 16 + (groups.Count * 12);
+        var subtable = new List<byte>(length);
+        WriteU16(subtable, 12);
+        WriteU16(subtable, 0);
+        WriteU32(subtable, (uint)length);
+        WriteU32(subtable, 0);
+        WriteU32(subtable, (uint)groups.Count);
+        foreach ((int start, int end, int glyph) in groups)
+        {
+            WriteU32(subtable, (uint)start);
+            WriteU32(subtable, (uint)end);
+            WriteU32(subtable, (uint)glyph);
+        }
+
+        return [.. subtable];
+    }
+
+    private static byte[] BuildFormat13Subtable(List<(int CodePoint, int GlyphId)> mappings)
+    {
+        var groups = new List<(int Start, int End, int Glyph)>(mappings.Count + 1);
+        foreach ((int codePoint, int glyphId) in mappings)
+        {
+            groups.Add((codePoint, codePoint, glyphId));
+        }
+
+        groups.Add((0x60, 0x61, 8));
+        groups.Sort(static (left, right) => left.Start.CompareTo(right.Start));
+        int length = 16 + (groups.Count * 12);
+        var subtable = new List<byte>(length);
+        WriteU16(subtable, 13);
+        WriteU16(subtable, 0);
+        WriteU32(subtable, (uint)length);
+        WriteU32(subtable, 0);
+        WriteU32(subtable, (uint)groups.Count);
+        foreach ((int start, int end, int glyph) in groups)
+        {
+            WriteU32(subtable, (uint)start);
+            WriteU32(subtable, (uint)end);
+            WriteU32(subtable, (uint)glyph);
+        }
+
+        return [.. subtable];
+    }
+
+    private static byte[] BuildCmap14(List<(int CodePoint, int GlyphId)> mappings)
+    {
+        byte[] baseSubtable = BuildFormat4Subtable(mappings);
+        const int HeaderSize = 20;
+        const int UvsLength = 49;
+        const int DefaultOffset = 32;
+        const int NonDefaultOffset = 40;
+        int uvsOffset = HeaderSize + baseSubtable.Length;
+        var uvs = new List<byte>(UvsLength);
+        WriteU16(uvs, 14);
+        WriteU32(uvs, UvsLength);
+        WriteU32(uvs, 2);
+        WriteU24(uvs, 0xFE0F);
+        WriteU32(uvs, DefaultOffset);
+        WriteU32(uvs, NonDefaultOffset);
+        WriteU24(uvs, 0xFE0E);
+        WriteU32(uvs, DefaultOffset);
+        WriteU32(uvs, 0);
+        WriteU32(uvs, 1);
+        WriteU24(uvs, 0x41);
+        uvs.Add(0);
+        WriteU32(uvs, 1);
+        WriteU24(uvs, 0x41);
+        WriteU16(uvs, 3);
+
+        var table = new List<byte>(HeaderSize + baseSubtable.Length + uvs.Count);
+        WriteU16(table, 0);
+        WriteU16(table, 2);
+        WriteU16(table, 3);
+        WriteU16(table, 1);
+        WriteU32(table, HeaderSize);
+        WriteU16(table, 0);
+        WriteU16(table, 5);
+        WriteU32(table, (uint)uvsOffset);
+        table.AddRange(baseSubtable);
+        table.AddRange(uvs);
         return [.. table];
     }
 
@@ -507,6 +655,13 @@ internal static class UiTestFont
     private static void WriteI16(List<byte> data, int value)
     {
         WriteU16(data, value & 0xFFFF);
+    }
+
+    private static void WriteU24(List<byte> data, int value)
+    {
+        data.Add((byte)(value >> 16));
+        data.Add((byte)(value >> 8));
+        data.Add((byte)value);
     }
 
     private static void WriteU32(List<byte> data, uint value)
