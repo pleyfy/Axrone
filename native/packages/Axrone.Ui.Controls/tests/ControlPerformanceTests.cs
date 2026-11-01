@@ -77,6 +77,41 @@ public sealed class ControlAllocationTests
     }
 
     [Fact]
+    public void VirtualizedListDispatchAndRangeDoNotAllocateAfterWarmup()
+    {
+        var sink = new CountingControlSink();
+        var host = new ControlHost(sink);
+        UiControl list = host.Create(ControlKind.ListView, items: new TestListSource { Count = 10000 });
+        host.Runtime.Mount(list);
+        host.Layout();
+        _ = host.Pointer(UiPointerPhase.Down, 10.0f, 10.0f);
+        _ = host.Pointer(UiPointerPhase.Up, 10.0f, 10.0f);
+        for (int warmup = 0; warmup < 128; warmup++)
+        {
+            _ = host.Pointer(UiPointerPhase.Move, 10.0f, 10.0f);
+            _ = host.Key(ControlKeys.Down);
+            _ = host.Runtime.TryGetVirtualRange(list, out _, out _);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int ranges = 0;
+        for (int round = 0; round < 500; round++)
+        {
+            _ = host.Pointer(UiPointerPhase.Move, 10.0f, 10.0f);
+            _ = host.Key(ControlKeys.Down);
+            if (host.Runtime.TryGetVirtualRange(list, out int first, out int last) && first <= last)
+            {
+                ranges++;
+            }
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        allocated.Should().Be(0);
+        ranges.Should().Be(500);
+        sink.Count.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
     public void SnapshotAndNodeLookupsDoNotAllocateAfterWarmup()
     {
         var host = new ControlHost();
