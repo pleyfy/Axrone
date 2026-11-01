@@ -15,6 +15,7 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
     private readonly GLContext _context;
     private readonly SceneUiHostBridge _hosts;
     private readonly UiHostGlyphAtlasUploader _atlasUploader;
+    private readonly bool _ownsAtlasUploader;
     private readonly UiOpenGlBackend _backend;
     private readonly UiFrameRenderHost _renderHost;
     private readonly UiHostWorldQuadRenderer _quad;
@@ -26,13 +27,54 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
     private int _disposed;
 
     /// <summary>Creates a renderer over a GL context and host bridge.</summary>
+    /// <remarks>
+    /// The renderer reuses the bridge's GL uploader when the text atlas was
+    /// built with one; otherwise it creates and owns a private uploader.
+    /// </remarks>
     public SceneUiHostGlRenderer(GLContext context, SceneUiHostBridge hosts)
+        : this(context, hosts, null, uploaderIsExplicit: false)
+    {
+    }
+
+    /// <summary>Creates a renderer over an externally owned glyph atlas uploader.</summary>
+    public SceneUiHostGlRenderer(GLContext context, SceneUiHostBridge hosts, UiHostGlyphAtlasUploader atlasUploader)
+        : this(context, hosts, atlasUploader, uploaderIsExplicit: true)
+    {
+    }
+
+    private SceneUiHostGlRenderer(
+        GLContext context,
+        SceneUiHostBridge hosts,
+        UiHostGlyphAtlasUploader? atlasUploader,
+        bool uploaderIsExplicit)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(hosts);
+
+        if (uploaderIsExplicit && atlasUploader is null)
+        {
+            throw new ArgumentNullException(nameof(atlasUploader));
+        }
+
         _context = context;
         _hosts = hosts;
-        _atlasUploader = new UiHostGlyphAtlasUploader(context);
+
+        if (atlasUploader is not null)
+        {
+            _atlasUploader = atlasUploader;
+            _ownsAtlasUploader = false;
+        }
+        else if (hosts.Text.GlyphUploader is UiHostGlyphAtlasUploader sharedUploader)
+        {
+            _atlasUploader = sharedUploader;
+            _ownsAtlasUploader = false;
+        }
+        else
+        {
+            _atlasUploader = new UiHostGlyphAtlasUploader(context);
+            _ownsAtlasUploader = true;
+        }
+
         _backend = new UiOpenGlBackend(context, new UiOpenGlBackendOptions
         {
             Textures = _atlasUploader,
@@ -54,6 +96,15 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
 
     /// <summary>Gets the number of cached world-space surfaces.</summary>
     public int SurfaceCount => _surfaces.Count;
+
+    /// <summary>Gets the backend's missing-glyph count.</summary>
+    public long MissedGlyphs => _backend.MissedGlyphs;
+
+    /// <summary>Gets the backend's missing-texture count.</summary>
+    public long MissingTextures => _backend.MissingTextures;
+
+    /// <summary>Gets the backend's completed draw-call count.</summary>
+    public long DrawCalls => _backend.DrawCalls;
 
     /// <summary>Gets the pixel size of one cached world-space surface.</summary>
     public bool TryGetSurfaceSize(SceneActor actor, out int width, out int height)
@@ -145,7 +196,10 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
         _quad.Dispose();
         _renderHost.Dispose();
         _backend.Dispose();
-        _atlasUploader.Dispose();
+        if (_ownsAtlasUploader)
+        {
+            _atlasUploader.Dispose();
+        }
     }
 
     private void RenderWorldHost(SceneWorld world, SceneCameraFrame camera, in UiViewport screenViewport, SceneUiHostInstance host)
