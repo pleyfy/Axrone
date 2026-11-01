@@ -6,6 +6,11 @@ public sealed class UiTextShaper : IUiTextShaper
 
     private readonly UiFontProvider _provider;
     private UiGlyphRun[] _runs = GC.AllocateArray<UiGlyphRun>(16, pinned: true);
+    private int[] _bidiCodepoints = GC.AllocateArray<int>(16, pinned: true);
+    private int[] _bidiClusters = GC.AllocateArray<int>(16, pinned: true);
+    private int[] _arabicForms = GC.AllocateArray<int>(16, pinned: true);
+    private byte[] _bidiLevels = new byte[16];
+    private UiBidiClass[] _bidiTypes = new UiBidiClass[16];
 
     public UiTextShaper(UiFontProvider provider)
     {
@@ -108,7 +113,62 @@ public sealed class UiTextShaper : IUiTextShaper
         }
 
         EnsureRunCapacity(text.Length);
-        UiTextDirection direction = ResolveDirection(style.Direction, text);
+        EnsureBidiCapacity(text.Length);
+        Span<int> codepoints = _bidiCodepoints;
+        Span<int> clusters = _bidiClusters;
+        Span<byte> levels = _bidiLevels;
+        Span<UiBidiClass> types = _bidiTypes;
+
+        int count = 0;
+        int position = 0;
+        while (position < text.Length)
+        {
+            OperationStatus status = Rune.DecodeFromUtf16(text[position..], out Rune rune, out int consumed);
+            if (status != OperationStatus.Done)
+            {
+                position++;
+                continue;
+            }
+
+            codepoints[count] = rune.Value;
+            clusters[count] = position;
+            count++;
+            position += consumed;
+        }
+
+        if (count == 0)
+        {
+            return 0;
+        }
+
+        byte baseLevel = UiBidi.ResolveBaseLevel(style.Direction, codepoints[..count]);
+        for (int i = 0; i < count; i++)
+        {
+            _arabicForms[i] = UiArabicJoining.TryGetForm(codepoints[..count], i, out int form) &&
+                _provider.TryResolveGlyph(primary.Id, form, out _, out _)
+                ? form
+                : 0;
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (_arabicForms[i] != 0)
+            {
+                codepoints[i] = _arabicForms[i];
+            }
+        }
+
+        UiBidi.ResolveLevels(codepoints[..count], types[..count], levels[..count], baseLevel);
+        for (int i = 0; i < count; i++)
+        {
+            if ((levels[i] & 1) != 0)
+            {
+                codepoints[i] = UiBidi.Mirror(codepoints[i]);
+            }
+        }
+
+        UiBidi.Reorder(codepoints[..count], clusters[..count], levels[..count]);
+
         int written = 0;
         int index = 0;
         float pen = 0.0f;
@@ -118,20 +178,12 @@ public sealed class UiTextShaper : IUiTextShaper
         int previousRun = -1;
         bool previousIsBase = false;
         Span<int> following = stackalloc int[MaxLigatureLookahead];
-        Span<int> units = stackalloc int[MaxLigatureLookahead];
 
-        while (index < text.Length)
+        while (index < count)
         {
-            OperationStatus status = Rune.DecodeFromUtf16(text[index..], out Rune rune, out int consumed);
-            if (status != OperationStatus.Done)
-            {
-                index++;
-                continue;
-            }
-
-            int codePoint = rune.Value;
-            int cluster = index;
-            index += consumed;
+            int codePoint = codepoints[index];
+            int cluster = clusters[index];
+            index++;
 
             bool hasGlyph = _provider.TryResolveGlyph(primary.Id, codePoint, out UiFontFaceId resolvedFaceId, out UiGlyphMetrics metrics);
             UiFontFace? resolvedFace = null;
@@ -148,29 +200,21 @@ public sealed class UiTextShaper : IUiTextShaper
             if (hasGlyph && resolvedFace!.Gsub is { IsEmpty: false } gsub)
             {
                 int followCount = 0;
-                int lookahead = index;
-                while (followCount < MaxLigatureLookahead && lookahead < text.Length)
+                int look = index;
+                while (followCount < MaxLigatureLookahead && look < count)
                 {
-                    OperationStatus lookStatus = Rune.DecodeFromUtf16(text[lookahead..], out Rune lookRune, out int lookConsumed);
-                    if (lookStatus != OperationStatus.Done || !resolvedFace.TryGetGlyph(lookRune.Value, out int lookGlyph))
+                    if (!resolvedFace.TryGetGlyph(codepoints[look], out int lookGlyph))
                     {
                         break;
                     }
 
                     following[followCount] = lookGlyph;
-                    units[followCount] = lookConsumed;
                     followCount++;
-                    lookahead += lookConsumed;
+                    look++;
                 }
 
-                if (gsub.TryMatch(glyphId, following[..followCount], out int ligatureGlyph, out int ligatureComponents))
+                if (gsub.TryMatch(glyphId, following[..followCount], out int ligatureGlyph, out int components))
                 {
-                    int extraUnits = 0;
-                    for (int component = 0; component < ligatureComponents - 1 && component < followCount; component++)
-                    {
-                        extraUnits += units[component];
-                    }
-
                     int ligatureCodePoint = resolvedFace.GetCanonicalCodePoint(ligatureGlyph);
                     if (ligatureCodePoint < 0)
                     {
@@ -183,7 +227,7 @@ public sealed class UiTextShaper : IUiTextShaper
                     previousRun = written;
                     written++;
                     pen += advance;
-                    index += extraUnits;
+                    index += components - 1;
                     previousFace = resolvedFaceId;
                     previousGlyph = ligatureGlyph;
                     previousCodePoint = ligatureCodePoint;
@@ -194,7 +238,7 @@ public sealed class UiTextShaper : IUiTextShaper
 
             bool hasGsub = resolvedFace?.Gsub is { IsEmpty: false };
             if (hasGlyph && !hasGsub && codePoint == 0x66 &&
-                TryMatchLigature(text, index, out int builtInCodePoint, out int builtInExtra))
+                TryMatchLigature(codepoints[..count], index, out int builtInCodePoint, out int builtInExtra))
             {
                 if (_provider.TryResolveGlyph(primary.Id, builtInCodePoint, out UiFontFaceId builtInFaceId, out UiGlyphMetrics builtInMetrics) &&
                     _provider.TryGetFace(builtInFaceId, out UiFontFace? builtInFace) &&
@@ -271,28 +315,7 @@ public sealed class UiTextShaper : IUiTextShaper
             previousIsBase = true;
         }
 
-        if (direction == UiTextDirection.Rtl && written > 1)
-        {
-            MirrorRuns(written);
-        }
-
         return written;
-    }
-
-    private void MirrorRuns(int count)
-    {
-        for (int left = 0, right = count - 1; left < right; left++, right--)
-        {
-            (_runs[left], _runs[right]) = (_runs[right], _runs[left]);
-        }
-
-        float x = 0.0f;
-        for (int i = 0; i < count; i++)
-        {
-            UiGlyphRun run = _runs[i];
-            _runs[i] = run with { X = x };
-            x += run.Advance;
-        }
     }
 
     private void EnsureRunCapacity(int required)
@@ -311,56 +334,76 @@ public sealed class UiTextShaper : IUiTextShaper
         _runs = GC.AllocateArray<UiGlyphRun>(capacity, pinned: true);
     }
 
+    private void EnsureBidiCapacity(int required)
+    {
+        if (_bidiCodepoints.Length >= required)
+        {
+            return;
+        }
+
+        int capacity = _bidiCodepoints.Length;
+        while (capacity < required)
+        {
+            capacity = capacity <= int.MaxValue / 2 ? capacity * 2 : required;
+        }
+
+        _bidiCodepoints = GC.AllocateArray<int>(capacity, pinned: true);
+        _bidiClusters = GC.AllocateArray<int>(capacity, pinned: true);
+        _arabicForms = GC.AllocateArray<int>(capacity, pinned: true);
+        _bidiLevels = new byte[capacity];
+        _bidiTypes = new UiBidiClass[capacity];
+    }
+
     private static bool TryMatchLigature(
-        ReadOnlySpan<char> text,
+        ReadOnlySpan<int> codepoints,
         int next,
         out int ligatureCodePoint,
-        out int extraUnits)
+        out int extraCodePoints)
     {
         ligatureCodePoint = 0;
-        extraUnits = 0;
-        if (next >= text.Length)
+        extraCodePoints = 0;
+        if (next >= codepoints.Length)
         {
             return false;
         }
 
-        char first = text[next];
+        int first = codepoints[next];
         if (first == 'f')
         {
-            if (next + 1 < text.Length)
+            if (next + 1 < codepoints.Length)
             {
-                char second = text[next + 1];
+                int second = codepoints[next + 1];
                 if (second == 'i')
                 {
                     ligatureCodePoint = 0xFB03;
-                    extraUnits = 2;
+                    extraCodePoints = 2;
                     return true;
                 }
 
                 if (second == 'l')
                 {
                     ligatureCodePoint = 0xFB04;
-                    extraUnits = 2;
+                    extraCodePoints = 2;
                     return true;
                 }
             }
 
             ligatureCodePoint = 0xFB00;
-            extraUnits = 1;
+            extraCodePoints = 1;
             return true;
         }
 
         if (first == 'i')
         {
             ligatureCodePoint = 0xFB01;
-            extraUnits = 1;
+            extraCodePoints = 1;
             return true;
         }
 
         if (first == 'l')
         {
             ligatureCodePoint = 0xFB02;
-            extraUnits = 1;
+            extraCodePoints = 1;
             return true;
         }
 
@@ -377,49 +420,4 @@ public sealed class UiTextShaper : IUiTextShaper
         (codePoint >= 0x1DC0 && codePoint <= 0x1DFF) ||
         (codePoint >= 0x20D0 && codePoint <= 0x20FF) ||
         (codePoint >= 0xFE20 && codePoint <= 0xFE2F);
-
-    private static UiTextDirection ResolveDirection(UiTextDirection requested, ReadOnlySpan<char> text)
-    {
-        if (requested != UiTextDirection.Auto)
-        {
-            return requested;
-        }
-
-        int index = 0;
-        while (index < text.Length)
-        {
-            OperationStatus status = Rune.DecodeFromUtf16(text[index..], out Rune rune, out int consumed);
-            if (status != OperationStatus.Done)
-            {
-                index++;
-                continue;
-            }
-
-            int codePoint = rune.Value;
-            if (IsRightToLeftStrong(codePoint))
-            {
-                return UiTextDirection.Rtl;
-            }
-
-            if (IsLeftToRightStrong(codePoint))
-            {
-                return UiTextDirection.Ltr;
-            }
-
-            index += consumed;
-        }
-
-        return UiTextDirection.Ltr;
-    }
-
-    private static bool IsRightToLeftStrong(int codePoint) =>
-        (codePoint >= 0x0590 && codePoint <= 0x08FF) ||
-        (codePoint >= 0xFB1D && codePoint <= 0xFDFF) ||
-        (codePoint >= 0xFE70 && codePoint <= 0xFEFF) ||
-        (codePoint >= 0x1EE00 && codePoint <= 0x1EEFF);
-
-    private static bool IsLeftToRightStrong(int codePoint) =>
-        (codePoint >= 'A' && codePoint <= 'Z') ||
-        (codePoint >= 'a' && codePoint <= 'z') ||
-        (codePoint >= 0x00C0 && codePoint <= 0x024F);
 }
