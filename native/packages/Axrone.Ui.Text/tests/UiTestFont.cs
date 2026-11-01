@@ -21,7 +21,9 @@ internal static class UiTestFont
 
     public static byte[] CreateFormat14() => CreateCore(14, false, 0);
 
-    private static byte[] CreateCore(int cmapFormat, bool cff, int hMetrics)
+    public static byte[] CreateWithLayout() => CreateCore(4, false, 0, layout: true);
+
+    private static byte[] CreateCore(int cmapFormat, bool cff, int hMetrics, bool layout = false)
     {
         List<byte[]> glyphs =
         [
@@ -63,14 +65,14 @@ internal static class UiTestFont
         ];
 
         int metrics = hMetrics <= 0 ? glyphs.Count : hMetrics;
-        return Build(glyphs, Advances, LeftBearings, mappings, kernPairs, metrics, cmapFormat, cff);
+        return Build(glyphs, Advances, LeftBearings, mappings, kernPairs, metrics, cmapFormat, cff, layout);
     }
 
     public static byte[] CreateFallback()
     {
         List<byte[]> glyphs = [EmptyGlyph(), BoxGlyph(0, 0, 500, 700)];
         List<(int CodePoint, int GlyphId)> mappings = [(0x5A, 1)];
-        return Build(glyphs, [500, 500], [0, 0], mappings, [], 2, 4, false);
+        return Build(glyphs, [500, 500], [0, 0], mappings, [], 2, 4, false, false);
     }
 
     public static byte[] LoadRealFont()
@@ -174,7 +176,8 @@ internal static class UiTestFont
         List<(int Left, int Right, int Value)> kernPairs,
         int hMetrics,
         int cmapFormat,
-        bool cff)
+        bool cff,
+        bool layout)
     {
         var tables = new List<(string Tag, byte[] Data)>
         {
@@ -198,6 +201,12 @@ internal static class UiTestFont
         if (kernPairs.Count > 0)
         {
             tables.Add(("kern", BuildKern(kernPairs)));
+        }
+
+        if (layout)
+        {
+            tables.Add(("GSUB", UiTestLayoutTables.CreateGsub()));
+            tables.Add(("GPOS", UiTestLayoutTables.CreateGpos()));
         }
 
         tables.Sort(static (left, right) => string.CompareOrdinal(left.Tag, right.Tag));
