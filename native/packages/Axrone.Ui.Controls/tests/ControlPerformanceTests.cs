@@ -252,6 +252,103 @@ public sealed class ControlDeterminismTests
     }
 
     [Fact]
+    public void DataGridDispatchAndRangesDoNotAllocateAfterWarmup()
+    {
+        var sink = new CountingControlSink();
+        var host = new ControlHost(sink);
+        UiControl grid = host.Create(ControlKind.DataGrid, grid: new TestGridSource { RowCount = 10000 });
+        host.Runtime.Mount(grid);
+        host.Layout();
+        _ = host.Pointer(UiPointerPhase.Down, 10.0f, 10.0f);
+        _ = host.Pointer(UiPointerPhase.Up, 10.0f, 10.0f);
+        for (int warmup = 0; warmup < 128; warmup++)
+        {
+            _ = host.Pointer(UiPointerPhase.Move, 10.0f, 10.0f);
+            _ = host.Key(ControlKeys.Down);
+            _ = host.Key(ControlKeys.Right);
+            _ = host.Runtime.TryGetVirtualRange(grid, out _, out _);
+            _ = host.Runtime.TryGetVirtualColumnRange(grid, out _, out _);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int ranges = 0;
+        for (int round = 0; round < 500; round++)
+        {
+            _ = host.Pointer(UiPointerPhase.Move, 10.0f, 10.0f);
+            _ = host.Key(ControlKeys.Down);
+            _ = host.Key(ControlKeys.Right);
+            if (host.Runtime.TryGetVirtualRange(grid, out int first, out int last) && first <= last)
+            {
+                ranges++;
+            }
+
+            if (host.Runtime.TryGetVirtualColumnRange(grid, out int firstColumn, out int lastColumn) &&
+                firstColumn <= lastColumn)
+            {
+                ranges++;
+            }
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        allocated.Should().Be(0);
+        ranges.Should().Be(1000);
+        sink.Count.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void CatalogCompletionScriptIsDeterministic()
+    {
+        List<string> first = RunCompletionScript(out Rect[] firstBounds);
+        List<string> second = RunCompletionScript(out Rect[] secondBounds);
+
+        first.Should().NotBeEmpty();
+        first.Should().Equal(second);
+        secondBounds.Should().Equal(firstBounds);
+    }
+
+    private static List<string> RunCompletionScript(out Rect[] bounds)
+    {
+        var events = new RecordingControlSink();
+        var host = new ControlHost(events);
+        UiControl grid = host.Create(ControlKind.DataGrid, grid: new TestGridSource { RowCount = 50 });
+        host.Runtime.Mount(grid);
+        UiControl picker = host.Create(ControlKind.DatePicker, value: UiDateCodec.Pack(2026, 1, 1));
+        host.Runtime.Mount(picker);
+        UiControl stack = host.Runtime.CreateControl(ControlKind.PageStack, default);
+        host.Runtime.Mount(stack);
+        UiControl firstPage = host.Runtime.CreateControl(ControlKind.Panel, default);
+        host.Runtime.Mount(firstPage, stack);
+        UiControl secondPage = host.Runtime.CreateControl(ControlKind.Panel, default);
+        host.Runtime.Mount(secondPage, stack);
+        host.Runtime.AddPage(stack, firstPage);
+        host.Runtime.PushPage(stack, secondPage);
+        host.Layout();
+
+        host.Click(10.0f, 10.0f);
+        host.Key(ControlKeys.Down);
+        host.Key(ControlKeys.Right);
+        host.Click(200.0f, 300.0f);
+        host.Key(ControlKeys.PageDown);
+        host.Click(10.0f, 380.0f);
+        host.Key(ControlKeys.Escape);
+        host.Layout();
+
+        bounds = new Rect[3];
+        host.TryGetBounds(grid, out bounds[0]).Should().BeTrue();
+        host.TryGetBounds(picker, out bounds[1]).Should().BeTrue();
+        host.TryGetBounds(stack, out bounds[2]).Should().BeTrue();
+
+        var lines = new List<string>(events.Events.Count);
+        for (int i = 0; i < events.Events.Count; i++)
+        {
+            UiControlEvent e = events.Events[i];
+            lines.Add($"{e.Kind}|{e.EventKind}|{e.Value:F3}|{e.Checked}|{e.Index}|{e.Text}");
+        }
+
+        return lines;
+    }
+
+    [Fact]
     public void RepeatedClicksProduceStableEventSequences()
     {
         var events = new RecordingControlSink();
