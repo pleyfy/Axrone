@@ -192,6 +192,65 @@ public sealed class ControlDeterminismTests
         secondBounds.Should().Equal(firstBounds);
     }
 
+    private static List<string> RunExtendedScript(out Rect[] bounds)
+    {
+        var events = new RecordingControlSink();
+        var host = new ControlHost(events);
+        UiControl tabs = host.Create(ControlKind.TabView, "A" + (char)10 + "B" + (char)10 + "C");
+        host.Runtime.Mount(tabs);
+        for (int i = 0; i < 3; i++)
+        {
+            UiControl page = host.Runtime.CreateControl(ControlKind.Panel, default);
+            host.Runtime.Mount(page);
+            host.Runtime.AddPage(tabs, page);
+        }
+
+        UiControl list = host.Create(ControlKind.ListView, items: new TestListSource { Count = 50 });
+        host.Runtime.Mount(list);
+        UiControl tree = host.Create(ControlKind.TreeView, tree: new TestTreeSource());
+        host.Runtime.Mount(tree);
+        UiControl split = host.Runtime.CreateControl(ControlKind.SplitPane, default);
+        host.Runtime.Mount(split);
+        host.Runtime.Mount(host.Runtime.CreateControl(ControlKind.Panel, default), split);
+        host.Runtime.Mount(host.Runtime.CreateControl(ControlKind.Panel, default), split);
+        host.Layout();
+
+        host.Click(40.0f, 10.0f);
+        host.Click(10.0f, 70.0f);
+        host.Click(100.0f, 250.0f);
+        host.Key(ControlKeys.Right);
+        host.Pointer(UiPointerPhase.Down, 200.0f, 470.0f);
+        host.Pointer(UiPointerPhase.Move, 300.0f, 470.0f);
+        host.Pointer(UiPointerPhase.Up, 300.0f, 470.0f);
+        host.Layout();
+
+        bounds = new Rect[4];
+        host.TryGetBounds(tabs, out bounds[0]).Should().BeTrue();
+        host.TryGetBounds(list, out bounds[1]).Should().BeTrue();
+        host.TryGetBounds(tree, out bounds[2]).Should().BeTrue();
+        host.TryGetBounds(split, out bounds[3]).Should().BeTrue();
+
+        var lines = new List<string>(events.Events.Count);
+        for (int i = 0; i < events.Events.Count; i++)
+        {
+            UiControlEvent e = events.Events[i];
+            lines.Add($"{e.Kind}|{e.EventKind}|{e.Value:F3}|{e.Checked}|{e.Index}|{e.Text}");
+        }
+
+        return lines;
+    }
+
+    [Fact]
+    public void ExtendedCatalogScriptIsDeterministic()
+    {
+        List<string> first = RunExtendedScript(out Rect[] firstBounds);
+        List<string> second = RunExtendedScript(out Rect[] secondBounds);
+
+        first.Should().NotBeEmpty();
+        first.Should().Equal(second);
+        secondBounds.Should().Equal(firstBounds);
+    }
+
     [Fact]
     public void RepeatedClicksProduceStableEventSequences()
     {
