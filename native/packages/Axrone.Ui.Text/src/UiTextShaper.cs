@@ -140,6 +140,71 @@ public sealed class UiTextShaper : IUiTextShaper
         return written;
     }
 
+    /// <summary>
+    /// Shapes parsed rich-text runs, resolving face, size and color per run.
+    /// Kerning is not applied across run boundaries.
+    /// </summary>
+    public int ShapeRichText(
+        ReadOnlySpan<char> text,
+        ReadOnlySpan<UiRichTextRun> runs,
+        in UiTextStyle baseStyle,
+        UiFontFamilyId family,
+        string? locale,
+        IUiTheme? theme,
+        Span<UiShapedGlyph> destination)
+    {
+        int written = 0;
+        float pen = 0.0f;
+        for (int r = 0; r < runs.Length; r++)
+        {
+            UiRichTextRun run = runs[r];
+            if (run.Length <= 0 || run.Start < 0 || run.Start > text.Length - run.Length)
+            {
+                continue;
+            }
+
+            if (written >= destination.Length)
+            {
+                break;
+            }
+
+            UiRichTextStyle runOverrides = run.Style;
+            _ = UiRichTextStyleResolver.TryResolve(
+                _provider,
+                family,
+                locale,
+                in baseStyle,
+                in runOverrides,
+                theme,
+                out UiTextStyle runStyle,
+                out _,
+                out _);
+
+            int count = Shape(text.Slice(run.Start, run.Length), in runStyle, destination[written..]);
+            for (int i = 0; i < count; i++)
+            {
+                UiShapedGlyph glyph = destination[written + i];
+                destination[written + i] = new UiShapedGlyph(
+                    glyph.CodePoint,
+                    glyph.Cluster + run.Start,
+                    glyph.X + pen,
+                    glyph.Y,
+                    glyph.Advance,
+                    run.SpanIndex);
+            }
+
+            if (count > 0)
+            {
+                UiShapedGlyph last = destination[written + count - 1];
+                pen = last.X + last.Advance;
+            }
+
+            written += count;
+        }
+
+        return written;
+    }
+
     private static void MirrorRun(Span<UiShapedGlyph> glyphs, int count)
     {
         for (int left = 0, right = count - 1; left < right; left++, right--)
