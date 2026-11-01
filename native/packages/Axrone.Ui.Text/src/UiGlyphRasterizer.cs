@@ -255,42 +255,42 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
                     y = command.Y0;
                     break;
                 case UiCffCommandKind.Cubic:
-                {
-                    float startBezierX = x;
-                    float startBezierY = y;
-                    float control1X = command.X1;
-                    float control1Y = command.Y1;
-                    float control2X = command.X2;
-                    float control2Y = command.Y2;
-                    float endX = command.X0;
-                    float endY = command.Y0;
-                    float previousX = startBezierX;
-                    float previousY = startBezierY;
-                    for (int step = 1; step <= 12; step++)
                     {
-                        float t = step / 12.0f;
-                        float inverse = 1.0f - t;
-                        float px = (inverse * inverse * inverse * startBezierX) +
-                            (3.0f * inverse * inverse * t * control1X) +
-                            (3.0f * inverse * t * t * control2X) +
-                            (t * t * t * endX);
-                        float py = (inverse * inverse * inverse * startBezierY) +
-                            (3.0f * inverse * inverse * t * control1Y) +
-                            (3.0f * inverse * t * t * control2Y) +
-                            (t * t * t * endY);
-                        if (!AppendLine(previousX, previousY, px, py, scale, left, bottom, out error))
+                        float startBezierX = x;
+                        float startBezierY = y;
+                        float control1X = command.X1;
+                        float control1Y = command.Y1;
+                        float control2X = command.X2;
+                        float control2Y = command.Y2;
+                        float endX = command.X0;
+                        float endY = command.Y0;
+                        float previousX = startBezierX;
+                        float previousY = startBezierY;
+                        for (int step = 1; step <= 12; step++)
                         {
-                            return false;
+                            float t = step / 12.0f;
+                            float inverse = 1.0f - t;
+                            float px = (inverse * inverse * inverse * startBezierX) +
+                                (3.0f * inverse * inverse * t * control1X) +
+                                (3.0f * inverse * t * t * control2X) +
+                                (t * t * t * endX);
+                            float py = (inverse * inverse * inverse * startBezierY) +
+                                (3.0f * inverse * inverse * t * control1Y) +
+                                (3.0f * inverse * t * t * control2Y) +
+                                (t * t * t * endY);
+                            if (!AppendLine(previousX, previousY, px, py, scale, left, bottom, out error))
+                            {
+                                return false;
+                            }
+
+                            previousX = px;
+                            previousY = py;
                         }
 
-                        previousX = px;
-                        previousY = py;
+                        x = endX;
+                        y = endY;
+                        break;
                     }
-
-                    x = endX;
-                    y = endY;
-                    break;
-                }
                 case UiCffCommandKind.Close:
                     if (!AppendLine(x, y, startX, startY, scale, left, bottom, out error))
                     {
