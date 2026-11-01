@@ -42,7 +42,229 @@ public static class SceneRuntimeCodecs
         {
             codecs.Register(new SceneTerrainChunk3DCodec());
         }
+
+        if (components.TryGetDataByType(typeof(SceneAnimator), out _))
+        {
+            codecs.Register(new SceneAnimatorCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(ScenePathAgent), out _))
+        {
+            codecs.Register(new ScenePathAgentCodec());
+        }
     }
+}
+
+/// <summary>
+/// Versioned JSON codec for <see cref="SceneAnimator"/>. Unknown versions,
+/// non-finite speeds and inconsistent handles are rejected instead of being
+/// silently coerced.
+/// </summary>
+public sealed class SceneAnimatorCodec : SceneDataCodec<SceneAnimator>
+{
+    /// <summary>Payload version written by this codec.</summary>
+    public const int CurrentVersion = 1;
+
+    /// <inheritdoc/>
+    public override void Write(Utf8JsonWriter writer, in SceneAnimator value)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+
+        writer.WriteNumber("version", CurrentVersion);
+        writer.WriteNumber("slot", value.Handle.Slot);
+        writer.WriteNumber("generation", value.Handle.Generation);
+        writer.WriteNumber("speed", value.Speed);
+        writer.WriteBoolean("paused", value.Paused);
+        writer.WriteBoolean("enabled", value.Enabled);
+        writer.WriteBoolean("applyRootMotion", value.ApplyRootMotion);
+        writer.WriteNumber("activeLayer", value.ActiveLayer);
+    }
+
+    /// <inheritdoc/>
+    public override SceneAnimator Read(JsonElement data)
+    {
+        ReadVersion(data, CurrentVersion, "SceneAnimator");
+        int slot = data.TryGetProperty("slot", out JsonElement slotElement) ? slotElement.GetInt32() : -1;
+        uint generation = data.TryGetProperty("generation", out JsonElement generationElement) ? generationElement.GetUInt32() : 0;
+
+        if (slot < -1 || (slot == -1 && generation != 0) || (slot >= 0 && generation == 0))
+        {
+            throw Invalid($"SceneAnimator handle slot {slot} / generation {generation} is inconsistent.");
+        }
+
+        SceneAnimator value = SceneAnimator.Default;
+        value.Handle = new SceneAnimatorHandle(slot, generation);
+
+        if (data.TryGetProperty("speed", out JsonElement speed))
+        {
+            value.Speed = speed.GetSingle();
+        }
+
+        if (data.TryGetProperty("paused", out JsonElement paused))
+        {
+            value.Paused = paused.GetBoolean();
+        }
+
+        if (data.TryGetProperty("enabled", out JsonElement enabled))
+        {
+            value.Enabled = enabled.GetBoolean();
+        }
+
+        if (data.TryGetProperty("applyRootMotion", out JsonElement applyRootMotion))
+        {
+            value.ApplyRootMotion = applyRootMotion.GetBoolean();
+        }
+
+        if (data.TryGetProperty("activeLayer", out JsonElement activeLayer))
+        {
+            value.ActiveLayer = activeLayer.GetInt32();
+        }
+
+        if (!float.IsFinite(value.Speed))
+        {
+            throw Invalid($"SceneAnimator speed {value.Speed} must be finite.");
+        }
+
+        if (value.ActiveLayer < 0)
+        {
+            throw Invalid($"SceneAnimator activeLayer {value.ActiveLayer} must not be negative.");
+        }
+
+        return value;
+    }
+
+    private static int ReadVersion(JsonElement data, int currentVersion, string component)
+    {
+        if (!data.TryGetProperty("version", out JsonElement versionElement))
+        {
+            return currentVersion;
+        }
+
+        if (!versionElement.TryGetInt32(out int version) || version != currentVersion)
+        {
+            throw Invalid($"{component} payload version '{versionElement}' is not supported.");
+        }
+
+        return version;
+    }
+
+    private static SceneValidationException Invalid(string message) =>
+        new(SceneErrorCodes.ValidationInvalid, message);
+}
+
+/// <summary>
+/// Versioned JSON codec for <see cref="ScenePathAgent"/>. Waypoint storage is
+/// bridge-owned runtime state; the payload preserves the path reference and the
+/// steering configuration so a rebound agent resumes deterministically.
+/// </summary>
+public sealed class ScenePathAgentCodec : SceneDataCodec<ScenePathAgent>
+{
+    /// <summary>Payload version written by this codec.</summary>
+    public const int CurrentVersion = 1;
+
+    /// <inheritdoc/>
+    public override void Write(Utf8JsonWriter writer, in ScenePathAgent value)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+
+        writer.WriteNumber("version", CurrentVersion);
+        writer.WriteNumber("slot", value.Path.Slot);
+        writer.WriteNumber("generation", value.Path.Generation);
+        writer.WriteNumber("speed", value.Speed);
+        writer.WriteNumber("arrivalThreshold", value.ArrivalThreshold);
+        writer.WriteNumber("turnRateRadians", value.TurnRateRadians);
+        writer.WriteNumber("avoidanceRadius", value.AvoidanceRadius);
+        writer.WriteBoolean("loop", value.Loop);
+        writer.WriteBoolean("enabled", value.Enabled);
+        writer.WriteNumber("startWaypoint", value.StartWaypoint);
+    }
+
+    /// <inheritdoc/>
+    public override ScenePathAgent Read(JsonElement data)
+    {
+        if (data.TryGetProperty("version", out JsonElement versionElement) &&
+            (!versionElement.TryGetInt32(out int version) || version != CurrentVersion))
+        {
+            throw new SceneValidationException(
+                SceneErrorCodes.ValidationInvalid,
+                $"ScenePathAgent payload version '{versionElement}' is not supported.");
+        }
+
+        int slot = data.TryGetProperty("slot", out JsonElement slotElement) ? slotElement.GetInt32() : -1;
+        uint generation = data.TryGetProperty("generation", out JsonElement generationElement) ? generationElement.GetUInt32() : 0;
+        if (slot < -1 || (slot == -1 && generation != 0) || (slot >= 0 && generation == 0))
+        {
+            throw Invalid($"ScenePathAgent path slot {slot} / generation {generation} is inconsistent.");
+        }
+
+        ScenePathAgent value = ScenePathAgent.Default;
+        value.Path = new ScenePathHandle(slot, generation);
+
+        if (data.TryGetProperty("speed", out JsonElement speed))
+        {
+            value.Speed = speed.GetSingle();
+        }
+
+        if (data.TryGetProperty("arrivalThreshold", out JsonElement arrivalThreshold))
+        {
+            value.ArrivalThreshold = arrivalThreshold.GetSingle();
+        }
+
+        if (data.TryGetProperty("turnRateRadians", out JsonElement turnRate))
+        {
+            value.TurnRateRadians = turnRate.GetSingle();
+        }
+
+        if (data.TryGetProperty("avoidanceRadius", out JsonElement avoidanceRadius))
+        {
+            value.AvoidanceRadius = avoidanceRadius.GetSingle();
+        }
+
+        if (data.TryGetProperty("loop", out JsonElement loop))
+        {
+            value.Loop = loop.GetBoolean();
+        }
+
+        if (data.TryGetProperty("enabled", out JsonElement enabled))
+        {
+            value.Enabled = enabled.GetBoolean();
+        }
+
+        if (data.TryGetProperty("startWaypoint", out JsonElement startWaypoint))
+        {
+            value.StartWaypoint = startWaypoint.GetInt32();
+        }
+
+        if (!float.IsFinite(value.Speed) || value.Speed < 0.0f)
+        {
+            throw Invalid($"ScenePathAgent speed {value.Speed} must be finite and non-negative.");
+        }
+
+        if (!float.IsFinite(value.ArrivalThreshold) || value.ArrivalThreshold < 0.0f)
+        {
+            throw Invalid($"ScenePathAgent arrivalThreshold {value.ArrivalThreshold} must be finite and non-negative.");
+        }
+
+        if (!float.IsFinite(value.TurnRateRadians) || value.TurnRateRadians < 0.0f)
+        {
+            throw Invalid($"ScenePathAgent turnRateRadians {value.TurnRateRadians} must be finite and non-negative.");
+        }
+
+        if (!float.IsFinite(value.AvoidanceRadius) || value.AvoidanceRadius < 0.0f)
+        {
+            throw Invalid($"ScenePathAgent avoidanceRadius {value.AvoidanceRadius} must be finite and non-negative.");
+        }
+
+        if (value.StartWaypoint < 0)
+        {
+            throw Invalid($"ScenePathAgent startWaypoint {value.StartWaypoint} must not be negative.");
+        }
+
+        return value;
+    }
+
+    private static SceneValidationException Invalid(string message) =>
+        new(SceneErrorCodes.ValidationInvalid, message);
 }
 
 /// <summary>JSON codec for <see cref="SceneTerrainChunk3D"/>.</summary>
