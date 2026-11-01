@@ -134,7 +134,7 @@ public sealed class UiTextShaperTests
     }
 
     [Fact]
-    public void MirrorsRtlRuns()
+    public void KeepsLtrRunsInRtlBase()
     {
         using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
         var shaper = new UiTextShaper(provider);
@@ -143,11 +143,11 @@ public sealed class UiTextShaperTests
         int count = shaper.Shape("AB".AsSpan(), Style(face, direction: UiTextDirection.Rtl), glyphs);
 
         count.Should().Be(2);
-        glyphs[0].CodePoint.Should().Be(0x42);
-        glyphs[0].Cluster.Should().Be(1);
+        glyphs[0].CodePoint.Should().Be(0x41);
+        glyphs[0].Cluster.Should().Be(0);
         glyphs[0].X.Should().Be(0.0f);
-        glyphs[1].CodePoint.Should().Be(0x41);
-        glyphs[1].Cluster.Should().Be(0);
+        glyphs[1].CodePoint.Should().Be(0x42);
+        glyphs[1].Cluster.Should().Be(1);
         glyphs[1].X.Should().Be(600.0f);
     }
 

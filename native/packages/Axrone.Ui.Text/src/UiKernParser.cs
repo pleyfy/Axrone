@@ -1,6 +1,5 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>Parses horizontal format-0 kern subtables into a sorted pair range.</summary>
 internal static class UiKernParser
 {
     private const int MaxPairs = 65_536;

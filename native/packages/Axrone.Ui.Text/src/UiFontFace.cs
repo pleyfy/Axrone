@@ -1,33 +1,26 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>Outline container supported by a face.</summary>
 public enum UiFontOutlineFormat
 {
-    /// <summary>TrueType quadratic outlines in glyf/loca.</summary>
     TrueType,
 
-    /// <summary>PostScript Type 2 charstrings in CFF.</summary>
     Cff,
 }
 
-/// <summary>One format-4 cmap segment with a precomputed glyph-array address.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 internal readonly record struct UiCmapSegment(ushort Start, ushort End, short Delta, int GlyphArrayBase);
 
-/// <summary>One format-12 cmap group.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 internal readonly record struct UiCmapGroup(uint Start, uint End, uint StartGlyph);
 
-/// <summary>
-/// Parsed font face. All lookup paths read directly from the immutable font
-/// buffer; metrics are in font units and the caller scales by size / unitsPerEm.
-/// </summary>
 public sealed class UiFontFace
 {
     private readonly UiFontBuffer _buffer;
-    private readonly UiCmapSegment[] _segments;
-    private readonly UiCmapGroup[] _groups;
-    private readonly int _cmapFormat;
+    private readonly UiCmapData _cmap;
+    private readonly UiCffParsed? _cff;
+    private readonly UiGsubData? _gsub;
+    private readonly UiGposData? _gpos;
+    private readonly int[] _reverseCodePoints;
     private readonly int _hmtxOffset;
     private readonly int _numberOfHMetrics;
     private readonly int _kernPairsOffset;
@@ -49,9 +42,10 @@ public sealed class UiFontFace
         int descender,
         int lineGap,
         UiFontOutlineFormat outlineFormat,
-        int cmapFormat,
-        UiCmapSegment[] segments,
-        UiCmapGroup[] groups,
+        UiCmapData cmap,
+        UiCffParsed? cff,
+        UiGsubData? gsub,
+        UiGposData? gpos,
         int hmtxOffset,
         int numberOfHMetrics,
         int kernPairsOffset,
@@ -72,9 +66,10 @@ public sealed class UiFontFace
         Descender = descender;
         LineGap = lineGap;
         OutlineFormat = outlineFormat;
-        _cmapFormat = cmapFormat;
-        _segments = segments;
-        _groups = groups;
+        _cmap = cmap;
+        _cff = cff;
+        _gsub = gsub;
+        _gpos = gpos;
         _hmtxOffset = hmtxOffset;
         _numberOfHMetrics = numberOfHMetrics;
         _kernPairsOffset = kernPairsOffset;
@@ -83,42 +78,40 @@ public sealed class UiFontFace
         _longLoca = longLoca;
         _glyfOffset = glyfOffset;
         _glyfLength = glyfLength;
+        _reverseCodePoints = new int[glyphCount];
+        Array.Fill(_reverseCodePoints, -1);
+        BuildReverseMap();
     }
 
-    /// <summary>Gets the registry-assigned face identity.</summary>
     public UiFontFaceId Id { get; internal set; }
 
-    /// <summary>Gets the family identity.</summary>
     public UiFontFamilyId Family { get; }
 
-    /// <summary>Gets the authored family name.</summary>
     public string FamilyName { get; }
 
-    /// <summary>Gets the face weight.</summary>
     public UiFontWeight Weight { get; }
 
-    /// <summary>Gets the face slant.</summary>
     public UiFontStyle Style { get; }
 
-    /// <summary>Gets design units per em.</summary>
     public int UnitsPerEm { get; }
 
-    /// <summary>Gets the glyph count including .notdef.</summary>
     public int GlyphCount { get; }
 
-    /// <summary>Gets the typographic ascender in font units.</summary>
     public int Ascender { get; }
 
-    /// <summary>Gets the typographic descender in font units.</summary>
     public int Descender { get; }
 
-    /// <summary>Gets the line gap in font units.</summary>
     public int LineGap { get; }
 
-    /// <summary>Gets the outline format.</summary>
     public UiFontOutlineFormat OutlineFormat { get; }
 
     internal UiFontBuffer Buffer => _buffer;
+
+    internal UiCffParsed? Cff => _cff;
+
+    internal UiGsubData? Gsub => _gsub;
+
+    internal UiGposData? Gpos => _gpos;
 
     internal int LocaOffset => _locaOffset;
 
@@ -128,47 +121,122 @@ public sealed class UiFontFace
 
     internal int GlyfLength => _glyfLength;
 
-    /// <summary>Maps a code point to a non-zero glyph id.</summary>
-    public bool TryGetGlyph(int codePoint, out int glyphId)
+    public bool TryGetGlyph(int codePoint, out int glyphId) => TryGetBaseGlyph(codePoint, out glyphId);
+
+    public bool TryGetGlyph(int codePoint, int variationSelector, out int glyphId)
     {
-        glyphId = 0;
-        if (codePoint < 0)
+        if (variationSelector == 0)
         {
-            return false;
+            return TryGetBaseGlyph(codePoint, out glyphId);
         }
 
-        ReadOnlySpan<byte> data = _buffer.Span;
-        uint id;
-        switch (_cmapFormat)
+        if (TryGetVariationGlyph(codePoint, variationSelector, out glyphId, out _))
         {
-            case 4:
-                if (codePoint > 0xFFFF || !TryLookupFormat4(data, (ushort)codePoint, out id))
-                {
-                    return false;
-                }
-
-                break;
-            case 12:
-                if (!TryLookupFormat12((uint)codePoint, out id))
-                {
-                    return false;
-                }
-
-                break;
-            default:
-                return false;
+            return true;
         }
 
-        if (id == 0U || id >= (uint)GlyphCount)
-        {
-            return false;
-        }
-
-        glyphId = (int)id;
-        return true;
+        return TryGetBaseGlyph(codePoint, out glyphId);
     }
 
-    /// <summary>Reads font-unit metrics for a code point.</summary>
+    public bool TryGetVariationGlyph(int codePoint, int variationSelector, out int glyphId, out bool isDefault)
+    {
+        glyphId = 0;
+        isDefault = false;
+        if (codePoint < 0 || variationSelector <= 0)
+        {
+            return false;
+        }
+
+        UiCmapVariation[] variations = _cmap.Variations;
+        int low = 0;
+        int high = variations.Length - 1;
+        UiCmapVariation? variation = null;
+        while (low <= high)
+        {
+            int middle = low + ((high - low) >> 1);
+            UiCmapVariation candidate = variations[middle];
+            if (candidate.Selector < (uint)variationSelector)
+            {
+                low = middle + 1;
+            }
+            else if (candidate.Selector > (uint)variationSelector)
+            {
+                high = middle - 1;
+            }
+            else
+            {
+                variation = candidate;
+                break;
+            }
+        }
+
+        if (variation is null)
+        {
+            return false;
+        }
+
+        UiCmapUvsMapping[] mappings = variation.Mappings;
+        low = 0;
+        high = mappings.Length - 1;
+        while (low <= high)
+        {
+            int middle = low + ((high - low) >> 1);
+            UiCmapUvsMapping mapping = mappings[middle];
+            if (mapping.CodePoint < (uint)codePoint)
+            {
+                low = middle + 1;
+            }
+            else if (mapping.CodePoint > (uint)codePoint)
+            {
+                high = middle - 1;
+            }
+            else
+            {
+                if (mapping.GlyphId == 0 || mapping.GlyphId >= (uint)GlyphCount)
+                {
+                    return false;
+                }
+
+                glyphId = (int)mapping.GlyphId;
+                return true;
+            }
+        }
+
+        UiCmapUvsRange[] ranges = variation.Ranges;
+        low = 0;
+        high = ranges.Length - 1;
+        while (low <= high)
+        {
+            int middle = low + ((high - low) >> 1);
+            UiCmapUvsRange range = ranges[middle];
+            if ((uint)codePoint < range.Start)
+            {
+                high = middle - 1;
+            }
+            else if ((uint)codePoint > range.Start + range.AdditionalCount)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                isDefault = true;
+                return TryGetBaseGlyph(codePoint, out glyphId);
+            }
+        }
+
+        return false;
+    }
+
+    public int GetCanonicalCodePoint(int glyphId)
+    {
+        if ((uint)glyphId >= (uint)GlyphCount)
+        {
+            return -1;
+        }
+
+        return _reverseCodePoints[glyphId];
+    }
+
     public bool TryGetGlyphMetrics(int codePoint, out UiGlyphMetrics metrics)
     {
         metrics = default;
@@ -184,9 +252,20 @@ public sealed class UiFontFace
         int width = 0;
         int height = 0;
 
-        if (OutlineFormat == UiFontOutlineFormat.TrueType &&
-            TryGetGlyphRange(glyphId, out int glyphOffset, out int glyphLength) &&
-            glyphLength >= 10)
+        if (_cff is not null)
+        {
+            UiCffGlyphBounds bounds = _cff.GetBounds(glyphId);
+            if (!bounds.IsEmpty)
+            {
+                bearingX = bounds.XMin;
+                bearingY = bounds.YMax;
+                width = bounds.XMax - bounds.XMin;
+                height = bounds.YMax - bounds.YMin;
+            }
+        }
+        else if (OutlineFormat == UiFontOutlineFormat.TrueType &&
+                 TryGetGlyphRange(glyphId, out int glyphOffset, out int glyphLength) &&
+                 glyphLength >= 10)
         {
             int xMin = ReadI16(data, glyphOffset + 2);
             int yMin = ReadI16(data, glyphOffset + 4);
@@ -202,7 +281,6 @@ public sealed class UiFontFace
         return true;
     }
 
-    /// <summary>Reads the font-unit kerning adjustment for a code point pair.</summary>
     public float GetKerning(int leftCodePoint, int rightCodePoint)
     {
         if (_kernPairCount == 0 ||
@@ -239,7 +317,6 @@ public sealed class UiFontFace
         return 0.0f;
     }
 
-    /// <summary>Gets the byte range of a glyph outline inside glyf.</summary>
     internal bool TryGetGlyphRange(int glyphId, out int offset, out int length)
     {
         offset = 0;
@@ -283,15 +360,79 @@ public sealed class UiFontFace
         return ReadI16(data, offset);
     }
 
+    private bool TryGetBaseGlyph(int codePoint, out int glyphId)
+    {
+        glyphId = 0;
+        if (codePoint < 0)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<byte> data = _buffer.Span;
+        uint id;
+        switch (_cmap.Format)
+        {
+            case 0:
+                if (codePoint >= 256)
+                {
+                    return false;
+                }
+
+                id = data[_cmap.GlyphArrayOffset + codePoint];
+                break;
+            case 4:
+                if (codePoint > 0xFFFF || !TryLookupFormat4(data, (ushort)codePoint, out id))
+                {
+                    return false;
+                }
+
+                break;
+            case 6:
+                int index = codePoint - _cmap.FirstCode;
+                if ((uint)index >= (uint)_cmap.EntryCount)
+                {
+                    return false;
+                }
+
+                id = ReadU16(data, _cmap.GlyphArrayOffset + (index * 2));
+                break;
+            case 12:
+                if (!TryLookupGroups((uint)codePoint, constant: false, out id))
+                {
+                    return false;
+                }
+
+                break;
+            case 13:
+                if (!TryLookupGroups((uint)codePoint, constant: true, out id))
+                {
+                    return false;
+                }
+
+                break;
+            default:
+                return false;
+        }
+
+        if (id == 0U || id >= (uint)GlyphCount)
+        {
+            return false;
+        }
+
+        glyphId = (int)id;
+        return true;
+    }
+
     private bool TryLookupFormat4(ReadOnlySpan<byte> data, ushort codePoint, out uint glyphId)
     {
         glyphId = 0;
+        UiCmapSegment[] segments = _cmap.Segments;
         int low = 0;
-        int high = _segments.Length - 1;
+        int high = segments.Length - 1;
         while (low <= high)
         {
             int middle = low + ((high - low) >> 1);
-            if (_segments[middle].End < codePoint)
+            if (segments[middle].End < codePoint)
             {
                 low = middle + 1;
             }
@@ -301,12 +442,12 @@ public sealed class UiFontFace
             }
         }
 
-        if ((uint)low >= (uint)_segments.Length)
+        if ((uint)low >= (uint)segments.Length)
         {
             return false;
         }
 
-        UiCmapSegment segment = _segments[low];
+        UiCmapSegment segment = segments[low];
         if (codePoint < segment.Start)
         {
             return false;
@@ -324,15 +465,16 @@ public sealed class UiFontFace
         return glyphId != 0;
     }
 
-    private bool TryLookupFormat12(uint codePoint, out uint glyphId)
+    private bool TryLookupGroups(uint codePoint, bool constant, out uint glyphId)
     {
         glyphId = 0;
+        UiCmapGroup[] groups = _cmap.Groups;
         int low = 0;
-        int high = _groups.Length - 1;
+        int high = groups.Length - 1;
         while (low <= high)
         {
             int middle = low + ((high - low) >> 1);
-            UiCmapGroup group = _groups[middle];
+            UiCmapGroup group = groups[middle];
             if (codePoint < group.Start)
             {
                 high = middle - 1;
@@ -343,12 +485,93 @@ public sealed class UiFontFace
             }
             else
             {
-                glyphId = group.StartGlyph + (codePoint - group.Start);
+                glyphId = constant ? group.StartGlyph : group.StartGlyph + (codePoint - group.Start);
                 return glyphId != 0;
             }
         }
 
         return false;
+    }
+
+    private void BuildReverseMap()
+    {
+        switch (_cmap.Format)
+        {
+            case 0:
+                for (int codePoint = 0; codePoint < 256; codePoint++)
+                {
+                    SetReverse(codePoint);
+                }
+
+                break;
+            case 4:
+                for (int codePoint = 0; codePoint <= 0xFFFF; codePoint++)
+                {
+                    SetReverse(codePoint);
+                }
+
+                break;
+            case 6:
+                for (int i = 0; i < _cmap.EntryCount; i++)
+                {
+                    SetReverse(_cmap.FirstCode + i);
+                }
+
+                break;
+            case 12:
+                long budget = 1_000_000;
+                UiCmapGroup[] groups = _cmap.Groups;
+                for (int g = 0; g < groups.Length && budget > 0; g++)
+                {
+                    UiCmapGroup group = groups[g];
+                    int count = (int)Math.Min(group.End - group.Start + 1, (uint)budget);
+                    for (int i = 0; i < count; i++)
+                    {
+                        int glyph = (int)(group.StartGlyph + (uint)i);
+                        if ((uint)glyph < (uint)GlyphCount && _reverseCodePoints[glyph] < 0)
+                        {
+                            _reverseCodePoints[glyph] = (int)(group.Start + (uint)i);
+                        }
+                    }
+
+                    budget -= count;
+                }
+
+                break;
+            case 13:
+                foreach (UiCmapGroup group in _cmap.Groups)
+                {
+                    if ((uint)group.StartGlyph < (uint)GlyphCount &&
+                        _reverseCodePoints[group.StartGlyph] < 0)
+                    {
+                        _reverseCodePoints[group.StartGlyph] = (int)group.Start;
+                    }
+                }
+
+                break;
+        }
+
+        for (int v = 0; v < _cmap.Variations.Length; v++)
+        {
+            UiCmapUvsMapping[] mappings = _cmap.Variations[v].Mappings;
+            for (int i = 0; i < mappings.Length; i++)
+            {
+                UiCmapUvsMapping mapping = mappings[i];
+                if ((uint)mapping.GlyphId < (uint)GlyphCount &&
+                    _reverseCodePoints[mapping.GlyphId] < 0)
+                {
+                    _reverseCodePoints[mapping.GlyphId] = (int)mapping.CodePoint;
+                }
+            }
+        }
+    }
+
+    private void SetReverse(int codePoint)
+    {
+        if (TryGetBaseGlyph(codePoint, out int glyph) && _reverseCodePoints[glyph] < 0)
+        {
+            _reverseCodePoints[glyph] = codePoint;
+        }
     }
 
     internal static ushort ReadU16(ReadOnlySpan<byte> data, int offset) =>

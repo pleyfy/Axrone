@@ -1,11 +1,5 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>
-/// Owns immutable font bytes. The default path copies into a pinned object heap
-/// array so the span handed to the parser and faces never moves; the native path
-/// allocates aligned unmanaged memory for very large fonts. Disposal is
-/// deterministic and idempotent.
-/// </summary>
 public sealed class UiFontBuffer : IDisposable
 {
     private byte[]? _pinned;
@@ -20,7 +14,6 @@ public sealed class UiFontBuffer : IDisposable
         _length = length;
     }
 
-    /// <summary>Gets the buffer byte length.</summary>
     public int Length
     {
         get
@@ -30,7 +23,6 @@ public sealed class UiFontBuffer : IDisposable
         }
     }
 
-    /// <summary>Gets whether the bytes live in unmanaged memory.</summary>
     public bool IsNative
     {
         get
@@ -40,7 +32,6 @@ public sealed class UiFontBuffer : IDisposable
         }
     }
 
-    /// <summary>Gets a read-only view over the font bytes.</summary>
     public unsafe ReadOnlySpan<byte> Span
     {
         get
@@ -52,7 +43,6 @@ public sealed class UiFontBuffer : IDisposable
         }
     }
 
-    /// <summary>Copies font bytes into a pinned object heap array.</summary>
     public static UiFontBuffer FromSpan(ReadOnlySpan<byte> data)
     {
         if (data.IsEmpty)
@@ -65,7 +55,6 @@ public sealed class UiFontBuffer : IDisposable
         return new UiFontBuffer(pinned, IntPtr.Zero, data.Length);
     }
 
-    /// <summary>Copies font bytes into aligned unmanaged memory.</summary>
     public static unsafe UiFontBuffer FromNative(ReadOnlySpan<byte> data)
     {
         if (data.IsEmpty)
@@ -83,14 +72,12 @@ public sealed class UiFontBuffer : IDisposable
         return new UiFontBuffer(null, (IntPtr)memory, data.Length);
     }
 
-    /// <summary>Copies an owned byte array into a pinned object heap buffer.</summary>
     public static UiFontBuffer FromOwned(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
         return FromSpan(data);
     }
 
-    /// <inheritdoc/>
     public unsafe void Dispose()
     {
         if (_disposed)
