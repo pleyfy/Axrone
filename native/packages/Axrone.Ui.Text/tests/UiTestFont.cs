@@ -192,7 +192,7 @@ internal static class UiTestFont
         }
         else
         {
-            tables.Add(("CFF ", [1, 0, 4, 4, 0, 0, 0, 0]));
+            tables.Add(("CFF ", UiTestCffFont.CreateTable()));
         }
 
         if (kernPairs.Count > 0)
