@@ -18,8 +18,8 @@ internal static class UiTestCffFont
             Box(50, 600, 200, 200),
             Box(0, 0, 600, 700),
             Box(0, 0, 650, 700),
-            Box(100, 0, 600, 700),
-            Box(0, 0, 600, 200),
+            FlexGlyph(),
+            HhCurveGlyph(),
         ];
 
         byte[] localSubr = LocalSubr();
@@ -91,6 +91,46 @@ internal static class UiTestCffFont
         AddNumber(data, 300);
         AddNumber(data, 600);
         data.Add(5);
+        data.Add(14);
+        return [.. data];
+    }
+
+    private static byte[] FlexGlyph()
+    {
+        var data = new List<byte>();
+        AddNumber(data, 0);
+        AddNumber(data, 0);
+        data.Add(21);
+        AddNumber(data, 0);
+        AddNumber(data, 0);
+        AddNumber(data, 100);
+        AddNumber(data, 200);
+        AddNumber(data, 100);
+        AddNumber(data, 0);
+        AddNumber(data, 0);
+        AddNumber(data, 0);
+        AddNumber(data, 100);
+        AddNumber(data, -200);
+        AddNumber(data, 100);
+        AddNumber(data, 0);
+        AddNumber(data, 50);
+        data.Add(12);
+        data.Add(35);
+        data.Add(14);
+        return [.. data];
+    }
+
+    private static byte[] HhCurveGlyph()
+    {
+        var data = new List<byte>();
+        AddNumber(data, 0);
+        AddNumber(data, 0);
+        data.Add(21);
+        AddNumber(data, 300);
+        AddNumber(data, 0);
+        AddNumber(data, 300);
+        AddNumber(data, 0);
+        data.Add(27);
         data.Add(14);
         return [.. data];
     }

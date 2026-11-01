@@ -39,6 +39,14 @@ public sealed class UiCffTests
             globalSubr.Width.Should().Be(300.0f);
             globalSubr.Height.Should().Be(400.0f);
 
+            face.TryGetGlyphMetrics(0x42, out UiGlyphMetrics flex).Should().BeTrue();
+            flex.Width.Should().Be(400.0f);
+            flex.Height.Should().Be(200.0f);
+
+            face.TryGetGlyphMetrics(0x2026, out UiGlyphMetrics hhCurve).Should().BeTrue();
+            hhCurve.Width.Should().Be(300.0f);
+            hhCurve.Height.Should().Be(300.0f);
+
             face.TryGetGlyphMetrics(0x20, out UiGlyphMetrics space).Should().BeTrue();
             space.Advance.Should().Be(300.0f);
             space.Width.Should().Be(0.0f);
@@ -51,7 +59,7 @@ public sealed class UiCffTests
     {
         using UiFontProvider provider = CreateProvider(out UiFontFaceId face);
         var rasterizer = new UiGlyphRasterizer(provider);
-        int[] codePoints = [0x41, 0x56, 0x66, 0x69, 0x6C];
+        int[] codePoints = [0x41, 0x56, 0x66, 0x69, 0x6C, 0x42, 0x2026];
 
         foreach (int codePoint in codePoints)
         {
