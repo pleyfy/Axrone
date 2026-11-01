@@ -19,8 +19,14 @@ public enum SceneRenderableFeatures
     /// <summary>Sprite clipping masks.</summary>
     SpriteMask = 1 << 3,
 
+    /// <summary>Distance/screen-radius LOD groups.</summary>
+    LodGroup = 1 << 4,
+
+    /// <summary>Reflection probe volumes.</summary>
+    ReflectionProbe = 1 << 5,
+
     /// <summary>Every optional renderable.</summary>
-    All = Billboard | Line | Trail | SpriteMask
+    All = Billboard | Line | Trail | SpriteMask | LodGroup | ReflectionProbe
 }
 
 /// <summary>Profile composition helpers for the optional renderable components.</summary>
@@ -65,6 +71,22 @@ public static class SceneRenderableProfileExtensions
                 "SpriteMask",
                 SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
                 priority: 105);
+        }
+
+        if ((features & SceneRenderableFeatures.LodGroup) != 0)
+        {
+            builder.AddData<SceneLodGroup>(
+                "LodGroup",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 100);
+        }
+
+        if ((features & SceneRenderableFeatures.ReflectionProbe) != 0)
+        {
+            builder.AddData<SceneReflectionProbe>(
+                "ReflectionProbe",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 850);
         }
 
         return builder;
