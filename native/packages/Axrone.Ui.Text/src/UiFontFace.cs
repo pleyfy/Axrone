@@ -1,27 +1,18 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>Outline container supported by a face.</summary>
 public enum UiFontOutlineFormat
 {
-    /// <summary>TrueType quadratic outlines in glyf/loca.</summary>
     TrueType,
 
-    /// <summary>PostScript Type 2 charstrings in CFF.</summary>
     Cff,
 }
 
-/// <summary>One format-4 cmap segment with a precomputed glyph-array address.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 internal readonly record struct UiCmapSegment(ushort Start, ushort End, short Delta, int GlyphArrayBase);
 
-/// <summary>One format-12 cmap group.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 internal readonly record struct UiCmapGroup(uint Start, uint End, uint StartGlyph);
 
-/// <summary>
-/// Parsed font face. All lookup paths read directly from the immutable font
-/// buffer; metrics are in font units and the caller scales by size / unitsPerEm.
-/// </summary>
 public sealed class UiFontFace
 {
     private readonly UiFontBuffer _buffer;
@@ -85,37 +76,26 @@ public sealed class UiFontFace
         _glyfLength = glyfLength;
     }
 
-    /// <summary>Gets the registry-assigned face identity.</summary>
     public UiFontFaceId Id { get; internal set; }
 
-    /// <summary>Gets the family identity.</summary>
     public UiFontFamilyId Family { get; }
 
-    /// <summary>Gets the authored family name.</summary>
     public string FamilyName { get; }
 
-    /// <summary>Gets the face weight.</summary>
     public UiFontWeight Weight { get; }
 
-    /// <summary>Gets the face slant.</summary>
     public UiFontStyle Style { get; }
 
-    /// <summary>Gets design units per em.</summary>
     public int UnitsPerEm { get; }
 
-    /// <summary>Gets the glyph count including .notdef.</summary>
     public int GlyphCount { get; }
 
-    /// <summary>Gets the typographic ascender in font units.</summary>
     public int Ascender { get; }
 
-    /// <summary>Gets the typographic descender in font units.</summary>
     public int Descender { get; }
 
-    /// <summary>Gets the line gap in font units.</summary>
     public int LineGap { get; }
 
-    /// <summary>Gets the outline format.</summary>
     public UiFontOutlineFormat OutlineFormat { get; }
 
     internal UiFontBuffer Buffer => _buffer;
@@ -128,7 +108,6 @@ public sealed class UiFontFace
 
     internal int GlyfLength => _glyfLength;
 
-    /// <summary>Maps a code point to a non-zero glyph id.</summary>
     public bool TryGetGlyph(int codePoint, out int glyphId)
     {
         glyphId = 0;
@@ -168,7 +147,6 @@ public sealed class UiFontFace
         return true;
     }
 
-    /// <summary>Reads font-unit metrics for a code point.</summary>
     public bool TryGetGlyphMetrics(int codePoint, out UiGlyphMetrics metrics)
     {
         metrics = default;
@@ -202,7 +180,6 @@ public sealed class UiFontFace
         return true;
     }
 
-    /// <summary>Reads the font-unit kerning adjustment for a code point pair.</summary>
     public float GetKerning(int leftCodePoint, int rightCodePoint)
     {
         if (_kernPairCount == 0 ||
@@ -239,7 +216,6 @@ public sealed class UiFontFace
         return 0.0f;
     }
 
-    /// <summary>Gets the byte range of a glyph outline inside glyf.</summary>
     internal bool TryGetGlyphRange(int glyphId, out int offset, out int length)
     {
         offset = 0;

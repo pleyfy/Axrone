@@ -1,11 +1,5 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>
-/// Scanline alpha rasterizer for TrueType glyf outlines. Flattens quadratic
-/// contours, supports translated/scaled composites, and accumulates 4x vertical
-/// supersampled coverage. CFF outlines are rejected. Buffers are reused; warm
-/// rasterizations allocate nothing. Not thread-safe.
-/// </summary>
 public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
 {
     private const int MaxPoints = 8192;
@@ -41,7 +35,6 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private int _contourCount;
     private int _edgeCount;
 
-    /// <summary>Creates a rasterizer over a font provider.</summary>
     public UiGlyphRasterizer(UiFontProvider provider, int maxDimension = 512)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -55,7 +48,6 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         _maxPixels = (long)maxDimension * maxDimension;
     }
 
-    /// <inheritdoc/>
     public bool TryRasterize(
         UiFontFaceId face,
         int codePoint,

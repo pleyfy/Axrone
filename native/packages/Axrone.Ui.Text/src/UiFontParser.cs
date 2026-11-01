@@ -1,10 +1,5 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>
-/// Fail-closed sfnt parser for TrueType and OpenType containers. Reads the
-/// directory, validates every table range, and builds a face whose lookups read
-/// directly from the immutable font buffer.
-/// </summary>
 internal static class UiFontParser
 {
     private const int MaxTables = 512;

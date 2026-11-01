@@ -1,6 +1,5 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>Parses cmap format 4 and format 12 subtables into lookup arrays.</summary>
 internal static class UiCmapParser
 {
     private const int MaxRecords = 64;
