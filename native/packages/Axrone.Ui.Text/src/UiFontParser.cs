@@ -14,6 +14,10 @@ internal static class UiFontParser
     private const uint TagGsub = 0x47535542;
     private const uint TagGpos = 0x47504F53;
     private const uint TagCff = 0x43464620;
+    private const uint TagCff2 = 0x43464632;
+    private const uint TagFvar = 0x66766172;
+    private const uint TagGvar = 0x67766172;
+    private const uint TagAvar = 0x61766172;
     private const uint SfntTrueType = 0x00010000;
     private const uint SfntOtto = 0x4F54544F;
     private const uint SfntTrue = 0x74727565;
@@ -80,6 +84,14 @@ internal static class UiFontParser
         int gsubLength = 0;
         int gposOffset = -1;
         int gposLength = 0;
+        int cff2Offset = -1;
+        int cff2Length = 0;
+        int fvarOffset = -1;
+        int fvarLength = 0;
+        int gvarOffset = -1;
+        int gvarLength = 0;
+        int avarOffset = -1;
+        int avarLength = 0;
 
         for (int i = 0; i < tableCount; i++)
         {
@@ -139,6 +151,22 @@ internal static class UiFontParser
                 case TagGpos when gposOffset < 0:
                     gposOffset = tableOffset;
                     gposLength = tableLength;
+                    break;
+                case TagCff2 when cff2Offset < 0:
+                    cff2Offset = tableOffset;
+                    cff2Length = tableLength;
+                    break;
+                case TagFvar when fvarOffset < 0:
+                    fvarOffset = tableOffset;
+                    fvarLength = tableLength;
+                    break;
+                case TagGvar when gvarOffset < 0:
+                    gvarOffset = tableOffset;
+                    gvarLength = tableLength;
+                    break;
+                case TagAvar when avarOffset < 0:
+                    avarOffset = tableOffset;
+                    avarLength = tableLength;
                     break;
             }
         }
@@ -231,7 +259,17 @@ internal static class UiFontParser
         {
             if (cffOffset < 0)
             {
+                if (cff2Offset >= 0)
+                {
+                    return Fail(out error, UiFontErrorCode.UnsupportedOutlineFormat, cff2Offset, "CFF2 outlines are not supported.");
+                }
+
                 return Fail(out error, UiFontErrorCode.MissingTable, 12, "CFF table is missing from an OTTO container.");
+            }
+
+            if (gvarOffset >= 0 || fvarOffset >= 0)
+            {
+                return Fail(out error, UiFontErrorCode.InvalidVariation, gvarOffset >= 0 ? gvarOffset : fvarOffset, "gvar and fvar require TrueType outlines.");
             }
 
             if (!UiCffParser.TryParse(data, cffOffset, cffLength, glyphCount, out cff, out error))
@@ -291,6 +329,21 @@ internal static class UiFontParser
             return false;
         }
 
+        if (!UiVariationParser.TryParse(
+                data,
+                fvarOffset,
+                fvarLength,
+                gvarOffset,
+                gvarLength,
+                avarOffset,
+                avarLength,
+                glyphCount,
+                out UiVariationData? variation,
+                out error))
+        {
+            return false;
+        }
+
         if (!TryValidateChecksums(data, tableCount, out error))
         {
             return false;
@@ -312,6 +365,7 @@ internal static class UiFontParser
             cff,
             gsub,
             gpos,
+            variation,
             hmtxOffset,
             numberOfHMetrics,
             kernPairsOffset,

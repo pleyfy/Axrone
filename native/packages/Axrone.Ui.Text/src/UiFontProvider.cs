@@ -325,6 +325,21 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         return false;
     }
 
+    public bool SetVariation(UiFontFaceId face, ReadOnlySpan<UiFontAxisValue> values, out UiFontError error)
+    {
+        error = UiFontError.None;
+        if (!TryGetFace(face, out UiFontFace? resolved))
+        {
+            error = UiFontError.At(UiFontErrorCode.FaceNotFound, 0, "The face identity is not registered.");
+            return false;
+        }
+
+        return resolved.SetVariation(values, out error);
+    }
+
+    public bool ClearVariation(UiFontFaceId face) =>
+        TryGetFace(face, out UiFontFace? resolved) && resolved.SetVariation(ReadOnlySpan<UiFontAxisValue>.Empty, out _);
+
     public void Dispose()
     {
         using (_gate.EnterScope())

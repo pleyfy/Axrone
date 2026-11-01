@@ -36,6 +36,8 @@ public enum UiFontErrorCode
 
     InvalidLayout,
 
+    InvalidVariation,
+
     UnsupportedOutlineFormat,
 
     UnsupportedGlyph,

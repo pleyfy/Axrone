@@ -20,6 +20,8 @@ public sealed class UiFontFace
     private readonly UiCffParsed? _cff;
     private readonly UiGsubData? _gsub;
     private readonly UiGposData? _gpos;
+    private readonly UiVariationData? _variation;
+    private readonly float[] _coordinates;
     private readonly int[] _reverseCodePoints;
     private readonly int _hmtxOffset;
     private readonly int _numberOfHMetrics;
@@ -46,6 +48,7 @@ public sealed class UiFontFace
         UiCffParsed? cff,
         UiGsubData? gsub,
         UiGposData? gpos,
+        UiVariationData? variation,
         int hmtxOffset,
         int numberOfHMetrics,
         int kernPairsOffset,
@@ -70,6 +73,8 @@ public sealed class UiFontFace
         _cff = cff;
         _gsub = gsub;
         _gpos = gpos;
+        _variation = variation;
+        _coordinates = variation is null ? [] : new float[variation.Axes.Length];
         _hmtxOffset = hmtxOffset;
         _numberOfHMetrics = numberOfHMetrics;
         _kernPairsOffset = kernPairsOffset;
@@ -97,6 +102,10 @@ public sealed class UiFontFace
 
     public int GlyphCount { get; }
 
+    public int AxisCount => _variation?.Axes.Length ?? 0;
+
+    public bool IsVariable => AxisCount > 0;
+
     public int Ascender { get; }
 
     public int Descender { get; }
@@ -112,6 +121,145 @@ public sealed class UiFontFace
     internal UiGsubData? Gsub => _gsub;
 
     internal UiGposData? Gpos => _gpos;
+
+    internal UiGvarData? Gvar => _variation?.Gvar;
+
+    internal ReadOnlySpan<float> NormalizedCoordinates => _coordinates;
+
+    public bool TryGetAxis(int index, out UiFontAxis axis)
+    {
+        if (_variation is null || (uint)index >= (uint)_variation.Axes.Length)
+        {
+            axis = default;
+            return false;
+        }
+
+        axis = _variation.Axes[index];
+        return true;
+    }
+
+    public int FindAxis(UiFontAxisTag tag)
+    {
+        if (_variation is null || !tag.IsValid)
+        {
+            return -1;
+        }
+
+        UiFontAxis[] axes = _variation.Axes;
+        for (int i = 0; i < axes.Length; i++)
+        {
+            if (axes[i].Tag.Value == tag.Value)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    public bool TryGetNormalizedCoordinate(UiFontAxisTag tag, out float value)
+    {
+        int axis = FindAxis(tag);
+        if (axis < 0)
+        {
+            value = 0.0f;
+            return false;
+        }
+
+        value = _coordinates[axis];
+        return true;
+    }
+
+    internal bool SetVariation(ReadOnlySpan<UiFontAxisValue> values, out UiFontError error)
+    {
+        error = UiFontError.None;
+        if (_variation is null)
+        {
+            if (values.IsEmpty)
+            {
+                return true;
+            }
+
+            error = UiFontError.At(UiFontErrorCode.InvalidVariation, 0, "The face has no variation axes.");
+            return false;
+        }
+
+        if (values.Length > _variation.Axes.Length)
+        {
+            error = UiFontError.At(UiFontErrorCode.InvalidVariation, 0, "The variation value count exceeds the axis count.");
+            return false;
+        }
+
+        Span<float> resolved = stackalloc float[_variation.Axes.Length];
+        resolved.Clear();
+        for (int i = 0; i < values.Length; i++)
+        {
+            UiFontAxisValue value = values[i];
+            int axis = FindAxis(value.Tag);
+            if (axis < 0)
+            {
+                error = UiFontError.At(UiFontErrorCode.InvalidVariation, 0, "A variation axis tag is not present in the face.");
+                return false;
+            }
+
+            if (!float.IsFinite(value.Value))
+            {
+                error = UiFontError.At(UiFontErrorCode.InvalidVariation, 0, "A variation axis value is not finite.");
+                return false;
+            }
+
+            UiFontAxis record = _variation.Axes[axis];
+            float clamped = Math.Clamp(value.Value, record.MinValue, record.MaxValue);
+            float normalized = Normalize(clamped, record);
+            if (_variation.Avar is { } avar)
+            {
+                normalized = avar.Map(axis, normalized);
+            }
+
+            resolved[axis] = normalized;
+        }
+
+        resolved.CopyTo(_coordinates);
+        return true;
+    }
+
+    internal void ClearVariation()
+    {
+        _coordinates.AsSpan().Clear();
+    }
+
+    internal bool HasActiveVariation
+    {
+        get
+        {
+            for (int i = 0; i < _coordinates.Length; i++)
+            {
+                if (_coordinates[i] != 0.0f)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    private static float Normalize(float value, in UiFontAxis axis)
+    {
+        if (value == axis.DefaultValue || axis.MinValue == axis.MaxValue)
+        {
+            return 0.0f;
+        }
+
+        if (value < axis.DefaultValue)
+        {
+            float span = axis.DefaultValue - axis.MinValue;
+            return span <= 0.0f ? 0.0f : (value - axis.DefaultValue) / span;
+        }
+
+        float upperSpan = axis.MaxValue - axis.DefaultValue;
+        return upperSpan <= 0.0f ? 0.0f : (value - axis.DefaultValue) / upperSpan;
+    }
 
     internal int LocaOffset => _locaOffset;
 
