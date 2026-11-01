@@ -28,6 +28,14 @@
     <ProjectReference Include="../../Axrone.Ui.Assets/Axrone.Ui.Assets.csproj" />
     <ProjectReference Include="../../Axrone.Ui.Rendering/Axrone.Ui.Rendering.csproj" />
     <ProjectReference Include="../../Axrone.Ui.Controls/Axrone.Ui.Controls.csproj" />
+    <ProjectReference Include="../../Axrone.Ui.Rendering/Axrone.Ui.Rendering.csproj" />
+    <ProjectReference Include="../../Axrone.Ui.Scene.OpenGL/Axrone.Ui.Scene.OpenGL.csproj" />
+    <ProjectReference Include="../../Axrone.Ui.Text/Axrone.Ui.Text.csproj" />
+    <ProjectReference Include="../../Axrone.Render.OpenGL.Mock/Axrone.Render.OpenGL.Mock.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fonts/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
