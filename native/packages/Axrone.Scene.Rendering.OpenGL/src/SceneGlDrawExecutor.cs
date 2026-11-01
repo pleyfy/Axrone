@@ -7,13 +7,13 @@ namespace Axrone.Scene.Rendering.OpenGL;
 /// </summary>
 public sealed class SceneGlDrawExecutor
 {
-    private const string ModelUniform = "u_Model";
-    private const string ViewUniform = "u_View";
-    private const string ProjectionUniform = "u_Projection";
-    private const string ViewProjectionUniform = "u_ViewProjection";
-    private const string CameraPositionUniform = "u_CameraPosition";
-    private const string ElapsedUniform = "u_Elapsed";
-    private const string ReceiveLightingUniform = "u_ReceiveLighting";
+    internal const string ModelUniform = "u_Model";
+    internal const string ViewUniform = "u_View";
+    internal const string ProjectionUniform = "u_Projection";
+    internal const string ViewProjectionUniform = "u_ViewProjection";
+    internal const string CameraPositionUniform = "u_CameraPosition";
+    internal const string ElapsedUniform = "u_Elapsed";
+    internal const string ReceiveLightingUniform = "u_ReceiveLighting";
     private const string AlbedoUniform = "u_Albedo";
     private const string MetallicUniform = "u_Metallic";
     private const string RoughnessUniform = "u_Roughness";
@@ -115,8 +115,8 @@ public sealed class SceneGlDrawExecutor
             ApplyLighting(shader, in lights);
             ApplyFog(shader, in fog);
             ApplyCustomUniforms(shader, material.UniformEntries.Span);
-            BindTextures(shader, material.TextureSlots.Span);
-            ApplyState(item, material, pass);
+            BindTextures(_context, shader, material.TextureSlots.Span);
+            ApplyState(_context, item.Transparent, material, pass);
 
             int triangles = mesh.Topology == GLConst.Triangles
                 ? (mesh.IndexCount > 0 ? mesh.IndexCount / 3 : mesh.VertexCount / 3)
@@ -169,7 +169,7 @@ public sealed class SceneGlDrawExecutor
         shader.SetVec2(FogRangeUniform, in range);
     }
 
-    private static void ApplySurface(SceneGlShader shader, SceneMaterialSurface surface)
+    internal static void ApplySurface(SceneGlShader shader, SceneMaterialSurface surface)
     {
         Vec4 albedo = surface.Albedo;
         Vec3 emissive = surface.Emissive;
@@ -187,7 +187,7 @@ public sealed class SceneGlDrawExecutor
         shader.SetVec2(OffsetUniform, in offset);
     }
 
-    private static void ApplyLighting(SceneGlShader shader, in LightingValues lights)
+    internal static void ApplyLighting(SceneGlShader shader, in LightingValues lights)
     {
         shader.SetVec3(LightDirectionUniform, in lights.DirectionalDirection);
         shader.SetVec3(LightColorUniform, in lights.DirectionalColor);
@@ -208,7 +208,7 @@ public sealed class SceneGlDrawExecutor
         shader.SetFloat(SpotLightOuterCosUniform, lights.SpotOuterCos);
     }
 
-    private static void ApplyCustomUniforms(SceneGlShader shader, ReadOnlySpan<SceneGlUniformEntry> uniforms)
+    internal static void ApplyCustomUniforms(SceneGlShader shader, ReadOnlySpan<SceneGlUniformEntry> uniforms)
     {
         for (int i = 0; i < uniforms.Length; i++)
         {
@@ -253,41 +253,42 @@ public sealed class SceneGlDrawExecutor
         }
     }
 
-    private void BindTextures(SceneGlShader shader, ReadOnlySpan<SceneGlTextureSlot> slots)
+    internal static void BindTextures(GLContext context, SceneGlShader shader, ReadOnlySpan<SceneGlTextureSlot> slots)
     {
         for (int i = 0; i < slots.Length; i++)
         {
             ref readonly SceneGlTextureSlot slot = ref slots[i];
             uint unit = (uint)slot.Unit;
-            _context.State.BindTexture2D(unit, slot.Texture.Id);
-            _context.State.BindSampler(unit, slot.Sampler.Id);
+            context.State.BindTexture2D(unit, slot.Texture.Id);
+            context.State.BindSampler(unit, slot.Sampler.Id);
             shader.SetInt(slot.UniformName, slot.Unit);
         }
     }
 
-    private void ApplyState(
-        in SceneRenderItem item,
+    internal static void ApplyState(
+        GLContext context,
+        bool transparent,
         SceneGlMaterial material,
         SceneRenderPassDefinition pass)
     {
         SceneMaterialPass? materialPass = material.PrimaryPass;
 
         bool depthTest = materialPass?.DepthTest ?? pass.DepthTest ?? true;
-        bool depthWrite = materialPass?.DepthWrite ?? !item.Transparent;
+        bool depthWrite = materialPass?.DepthWrite ?? !transparent;
         bool cull = materialPass?.Cull ?? pass.Cull ?? true;
         bool blend = materialPass?.Blend ??
             pass.Blend ??
-            (item.Transparent || material.Surface.AlphaMode == SceneMaterialAlphaMode.Blend);
+            (transparent || material.Surface.AlphaMode == SceneMaterialAlphaMode.Blend);
 
-        _context.State.SetDepthTest(depthTest);
-        _context.State.SetDepthMask(depthWrite);
-        _context.State.SetCullFace(cull);
-        _context.State.SetCullMode(GLConst.Back);
-        _context.State.SetBlend(blend);
+        context.State.SetDepthTest(depthTest);
+        context.State.SetDepthMask(depthWrite);
+        context.State.SetCullFace(cull);
+        context.State.SetCullMode(GLConst.Back);
+        context.State.SetBlend(blend);
 
         if (blend)
         {
-            _context.State.SetBlendFuncSeparate(
+            context.State.SetBlendFuncSeparate(
                 GLConst.SrcAlpha,
                 GLConst.OneMinusSrcAlpha,
                 GLConst.One,
@@ -295,7 +296,7 @@ public sealed class SceneGlDrawExecutor
         }
     }
 
-    private static void ExtractLighting(
+    internal static void ExtractLighting(
         LightingSelectionState? lighting,
         out LightingValues values)
     {
@@ -352,7 +353,7 @@ public sealed class SceneGlDrawExecutor
         }
     }
 
-    private struct LightingValues
+    internal struct LightingValues
     {
         public Vec3 Ambient;
         public Vec3 DirectionalDirection;
