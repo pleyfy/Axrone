@@ -71,6 +71,11 @@ public static class SceneRenderingCodecs
             codecs.Register(new SceneReflectionProbeCodec(names));
         }
 
+        if (components.TryGetDataByType(typeof(SceneAreaLight), out _))
+        {
+            codecs.Register(new SceneAreaLightCodec());
+        }
+
         if (components.TryGetDataByType(typeof(SceneDirectionalLight), out _))
         {
             codecs.Register(new SceneDirectionalLightCodec());

@@ -10,6 +10,7 @@ public sealed class SceneLightingCollector : IDisposable
     private const int DirectionalKind = 0;
     private const int PointKind = 1;
     private const int SpotKind = 2;
+    private const int AreaKind = 3;
     private const float PrimaryDirectionalPriority = 1_000_000.0f;
 
     private static readonly Vec3 LocalForward = new(0.0f, 0.0f, -1.0f);
@@ -19,6 +20,8 @@ public sealed class SceneLightingCollector : IDisposable
     private readonly HashSet<LightId> _seen = new();
     private readonly HashSet<LightId> _active = new();
     private readonly List<LightId> _stale = new();
+    private SceneAreaLightRenderItem[] _areaLights = new SceneAreaLightRenderItem[8];
+    private int _areaLightCount;
     private bool _disposed;
 
     /// <summary>Creates a collector with a local-light budget.</summary>
@@ -40,6 +43,12 @@ public sealed class SceneLightingCollector : IDisposable
 
     /// <summary>Backing rig, exposed for diagnostics and custom feeding.</summary>
     public LightingRig Rig => _rig;
+
+    /// <summary>World-space area lights collected for the current frame.</summary>
+    public ReadOnlySpan<SceneAreaLightRenderItem> AreaLights => _areaLights.AsSpan(0, _areaLightCount);
+
+    /// <summary>Number of area lights collected for the current frame.</summary>
+    public int AreaLightCount => _areaLightCount;
 
     /// <summary>Whether the collector has been disposed.</summary>
     public bool IsDisposed => _disposed;
@@ -63,6 +72,7 @@ public sealed class SceneLightingCollector : IDisposable
         }
 
         _seen.Clear();
+        _areaLightCount = 0;
 
         foreach (SceneActor actor in world.Actors)
         {
@@ -87,6 +97,11 @@ public sealed class SceneLightingCollector : IDisposable
             {
                 SyncSpot(world, actor, slot, in spot);
             }
+
+            if (world.TryGetData(actor, out SceneAreaLight area) && area.Enabled)
+            {
+                SyncArea(world, actor, slot, in area);
+            }
         }
 
         RemoveStale();
@@ -105,6 +120,7 @@ public sealed class SceneLightingCollector : IDisposable
         _seen.Clear();
         _active.Clear();
         _stale.Clear();
+        _areaLightCount = 0;
     }
 
     /// <inheritdoc/>
@@ -119,6 +135,7 @@ public sealed class SceneLightingCollector : IDisposable
         _seen.Clear();
         _active.Clear();
         _stale.Clear();
+        _areaLightCount = 0;
         _disposed = true;
     }
 
@@ -205,6 +222,49 @@ public sealed class SceneLightingCollector : IDisposable
             inner,
             outer);
         Sync(in id, in data);
+    }
+
+    private void SyncArea(
+        SceneWorld world,
+        SceneActor actor,
+        int slot,
+        in SceneAreaLight light)
+    {
+        LightId id = MakeId(slot, AreaKind);
+        ulong sequence = MakeSequence(slot, AreaKind);
+        Vec3 position = world.GetWorldPosition3D(actor);
+        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(actor));
+        float footprint = 0.5f * MathF.Max(light.Size.X, light.Size.Y);
+        float range = MathF.Max(light.Range, footprint);
+
+        LightData data = LightData.CreatePoint(
+            id,
+            sequence,
+            in position,
+            in light.Color,
+            new LightIntensity(light.Intensity),
+            LightPriority.Zero,
+            new LightRange(range),
+            new AttenuationFactor(light.Attenuation));
+        Sync(in id, in data);
+
+        if (_areaLightCount == _areaLights.Length)
+        {
+            Array.Resize(ref _areaLights, _areaLights.Length * 2);
+        }
+
+        ref SceneAreaLightRenderItem item = ref _areaLights[_areaLightCount];
+        item.Actor = actor;
+        item.Shape = light.Shape;
+        item.Size = light.Size;
+        item.Position = position;
+        item.Rotation = rotation;
+        item.Color = light.Color;
+        item.Intensity = light.Intensity;
+        item.Range = light.Range;
+        item.Attenuation = light.Attenuation;
+        item.TwoSided = light.TwoSided;
+        _areaLightCount++;
     }
 
     private void Sync(in LightId id, in LightData data)

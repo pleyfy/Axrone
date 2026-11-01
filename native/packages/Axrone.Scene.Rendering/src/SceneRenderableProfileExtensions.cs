@@ -25,8 +25,11 @@ public enum SceneRenderableFeatures
     /// <summary>Reflection probe volumes.</summary>
     ReflectionProbe = 1 << 5,
 
+    /// <summary>Rect/disk area lights.</summary>
+    AreaLight = 1 << 6,
+
     /// <summary>Every optional renderable.</summary>
-    All = Billboard | Line | Trail | SpriteMask | LodGroup | ReflectionProbe
+    All = Billboard | Line | Trail | SpriteMask | LodGroup | ReflectionProbe | AreaLight
 }
 
 /// <summary>Profile composition helpers for the optional renderable components.</summary>
@@ -87,6 +90,14 @@ public static class SceneRenderableProfileExtensions
                 "ReflectionProbe",
                 SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
                 priority: 850);
+        }
+
+        if ((features & SceneRenderableFeatures.AreaLight) != 0)
+        {
+            builder.AddData<SceneAreaLight>(
+                "AreaLight",
+                SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+                priority: 800);
         }
 
         return builder;
