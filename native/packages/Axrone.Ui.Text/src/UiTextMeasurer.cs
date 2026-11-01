@@ -1,10 +1,5 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>
-/// Text measurement over shaped glyphs. Wraps at word or grapheme boundaries,
-/// caps lines and height, and reports clip/ellipsis truncation. Buffers are
-/// reused, so warm measurements allocate nothing. Not thread-safe.
-/// </summary>
 public sealed class UiTextMeasurer : IUiTextMeasurer
 {
     private const int InitialGlyphCapacity = 16;
@@ -18,7 +13,6 @@ public sealed class UiTextMeasurer : IUiTextMeasurer
     private int _lineCount;
     private UiTextMetrics _metrics;
 
-    /// <summary>Creates a measurer over a font provider.</summary>
     public UiTextMeasurer(UiFontProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -30,7 +24,6 @@ public sealed class UiTextMeasurer : IUiTextMeasurer
 
     internal ReadOnlySpan<UiTextLine> Lines => _lines.AsSpan(0, _lineCount);
 
-    /// <inheritdoc/>
     public UiTextMetrics Measure(ReadOnlySpan<char> text, in UiTextStyle style, in UiMeasureConstraints constraints)
     {
         return MeasureDetailed(text, in style, in constraints);

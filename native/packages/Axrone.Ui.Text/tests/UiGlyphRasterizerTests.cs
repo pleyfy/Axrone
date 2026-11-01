@@ -109,7 +109,7 @@ public sealed class UiGlyphRasterizerTests
     }
 
     [Fact]
-    public void RejectsCffOutlines()
+    public void RasterizesCffOutlines()
     {
         using var provider = new UiFontProvider();
         UiFontFaceId face = provider.RegisterFace(
@@ -119,8 +119,15 @@ public sealed class UiGlyphRasterizerTests
         face.IsValid.Should().BeTrue(registerError.Message);
         var rasterizer = new UiGlyphRasterizer(provider);
 
-        rasterizer.TryRasterize(face, 0x41, 64.0f, out _, out UiFontError error).Should().BeFalse();
-        error.Code.Should().Be(UiFontErrorCode.UnsupportedOutlineFormat);
+        rasterizer.TryRasterize(face, 0x41, 100.0f, out UiGlyphBitmap bitmap, out UiFontError error)
+            .Should().BeTrue(error.Message);
+
+        bitmap.Width.Should().Be(52);
+        bitmap.Height.Should().Be(62);
+        bitmap.BearingX.Should().Be(4);
+        bitmap.BearingY.Should().Be(61);
+        bitmap.Advance.Should().Be(60.0f);
+        bitmap.Alpha.ToArray().Sum(static value => value).Should().BeGreaterThan(0);
     }
 
     [Fact]

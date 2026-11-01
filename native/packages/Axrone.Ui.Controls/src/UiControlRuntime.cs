@@ -22,9 +22,11 @@ public sealed class UiControlRuntime : IDisposable
     private const int InitialEntries = 16;
     private const int MaxAncestorDepth = 512;
     private const ushort TabKeyCode = ControlKeys.Tab;
+    private const float DefaultToastSeconds = 3.0f;
 
     private readonly ControlNodeTree _tree;
     private readonly UiTextContentMeasurer? _textContent;
+    private readonly IUiTextMeasurer? _measurer;
     private readonly IUiImageMetrics? _images;
     private readonly IUiControlEventSink? _events;
     private readonly UiControlTheme _tokens;
@@ -60,6 +62,7 @@ public sealed class UiControlRuntime : IDisposable
     {
         _events = options.Events;
         _images = options.Images;
+        _measurer = options.TextMeasurer;
         _tokens = options.ThemeTokens ?? UiControlTheme.Default;
         _defaultTextStyle = options.DefaultTextStyle;
         _styleContext = new ControlStyleContext(options.Theme, in _tokens);
@@ -123,8 +126,9 @@ public sealed class UiControlRuntime : IDisposable
 
         int index = AllocateEntry();
         _generations[index]++;
+        bool startsHidden = kind is ControlKind.Tooltip or ControlKind.Toast or ControlKind.Dialog;
         UiNodeFlags flags =
-            UiNodeFlags.Visible |
+            (startsHidden ? UiNodeFlags.None : UiNodeFlags.Visible) |
             UiNodeFlags.Enabled |
             (behavior.Interactive ? UiNodeFlags.Interactive : UiNodeFlags.None) |
             (behavior.Focusable ? UiNodeFlags.Focusable : UiNodeFlags.None) |
@@ -138,7 +142,7 @@ public sealed class UiControlRuntime : IDisposable
         entry.Node = node;
         entry.Status = ControlStatus.Created;
         entry.Generation = _generations[index];
-        entry.Visible = true;
+        entry.Visible = !startsHidden;
         entry.Text = definition.Text ?? string.Empty;
         UiTextStyle textStyle = definition.TextStyle.Face.IsValid ? definition.TextStyle : _defaultTextStyle;
         if (textStyle.Size <= 0.0f)
@@ -154,6 +158,8 @@ public sealed class UiControlRuntime : IDisposable
         entry.Value = ClampValue(in definition, definition.Value);
         entry.Checked = definition.Checked;
         entry.Index = definition.SelectedIndex;
+        entry.Items = definition.Items;
+        entry.Tree = definition.Tree;
 
         _layoutStyles.Set(node, behavior.CreateLayoutStyle(in _styleContext));
         behavior.Initialize(this, index, in definition);
@@ -312,7 +318,7 @@ public sealed class UiControlRuntime : IDisposable
         return true;
     }
 
-    /// <summary>Sets the value of a slider or progress bar and emits a change event.</summary>
+    /// <summary>Sets the value of a value-bearing control and emits a change event.</summary>
     public bool SetValue(UiControl control, float value)
     {
         EnsureActive();
@@ -322,15 +328,20 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         ref ControlEntry entry = ref _entries[index];
-        bool range = entry.Kind is ControlKind.Slider or ControlKind.ProgressBar;
-        if (!range)
+        bool supported = entry.Kind is ControlKind.Slider or ControlKind.ProgressBar or
+            ControlKind.SplitPane or ControlKind.Stepper or ControlKind.Rating;
+        if (!supported)
         {
             return false;
         }
 
-        float clamped = entry.Kind == ControlKind.Slider
-            ? Math.Clamp(value, entry.MinValue, entry.MaxValue)
-            : Math.Clamp(value, 0.0f, 1.0f);
+        float clamped = entry.Kind switch
+        {
+            ControlKind.Slider or ControlKind.Stepper => Math.Clamp(value, entry.MinValue, entry.MaxValue),
+            ControlKind.Rating => Math.Clamp(value, 0.0f, entry.MaxValue),
+            ControlKind.SplitPane => Math.Clamp(value, 0.15f, 0.85f),
+            _ => Math.Clamp(value, 0.0f, 1.0f),
+        };
         if (clamped == entry.Value)
         {
             return true;
@@ -339,6 +350,7 @@ public sealed class UiControlRuntime : IDisposable
         entry.Value = clamped;
         Emit(index, UiControlEventKind.ValueChanged, clamped, entry.Checked, entry.Index, null);
         _dirty.Invalidate(new UiInvalidation(entry.Node, UiInvalidationFlags.Render));
+        ControlCatalog.Get(entry.Kind).OnValueApplied(this, index);
         return true;
     }
 
@@ -464,6 +476,140 @@ public sealed class UiControlRuntime : IDisposable
 
     /// <summary>Gets the control that currently owns focus, when it is a control node.</summary>
     public bool TryGetFocusedControl(out UiControl control) => TryGetControl(_focus.Focused, out control);
+
+    public bool SetOpen(UiControl control, bool open)
+    {
+        EnsureActive();
+        return TryGetEntry(control, out int index) && SetOpenByIndex(index, open);
+    }
+
+    internal bool SetOpenByIndex(int index, bool open)
+    {
+        ref ControlEntry entry = ref _entries[index];
+        if (entry.Kind is not (ControlKind.Menu or ControlKind.Tooltip or ControlKind.Dialog or ControlKind.Toast) ||
+            entry.Open == open)
+        {
+            return entry.Open == open;
+        }
+
+        bool wasOpen = entry.Open;
+        entry.Open = open;
+        if (entry.Kind is ControlKind.Tooltip or ControlKind.Toast or ControlKind.Dialog)
+        {
+            entry.Visible = open;
+            UiNodeFlags nodeFlags = _tree.GetFlags(entry.Node);
+            nodeFlags = open ? nodeFlags | UiNodeFlags.Visible : nodeFlags & ~UiNodeFlags.Visible;
+            _tree.SetFlags(entry.Node, nodeFlags);
+        }
+        if (open && entry.Kind == ControlKind.Toast && entry.Value <= 0.0f)
+        {
+            entry.Value = DefaultToastSeconds;
+        }
+
+        _hitSyncDirty = true;
+        if (entry.Kind == ControlKind.Dialog && wasOpen != open)
+        {
+            if (open)
+            {
+                _ = _focus.TryFocus(entry.Node, UiFocusReason.Api);
+            }
+            else if (TryGetFocusedControl(out UiControl focused) && focused.Index == index)
+            {
+                _focus.ClearFocus(UiFocusReason.Api);
+            }
+        }
+
+        RefreshVisual(index);
+        Emit(index, UiControlEventKind.OpenChanged, entry.Value, open, entry.Index, null);
+        return true;
+    }
+
+    public int Update(float deltaSeconds)
+    {
+        EnsureActive();
+        if (!(deltaSeconds > 0.0f))
+        {
+            return 0;
+        }
+
+        int expired = 0;
+        for (int i = 0; i < _entryCount; i++)
+        {
+            if (!_live[i])
+            {
+                continue;
+            }
+
+            ref ControlEntry entry = ref _entries[i];
+            if (entry.Kind != ControlKind.Toast || !entry.Open)
+            {
+                continue;
+            }
+
+            entry.Value -= deltaSeconds;
+            if (entry.Value > 0.0f)
+            {
+                InvalidateVisual(i);
+                continue;
+            }
+
+            entry.Value = 0.0f;
+            entry.Open = false;
+            _hitSyncDirty = true;
+            Emit(i, UiControlEventKind.OpenChanged, 0.0f, false, entry.Index, null);
+            expired++;
+        }
+
+        return expired;
+    }
+
+    public bool TryGetVirtualRange(UiControl control, out int first, out int last)
+    {
+        first = 0;
+        last = -1;
+        if (!TryGetEntry(control, out int index) || !_bounds.TryGetValue(_entries[index].Node, out Rect box))
+        {
+            return false;
+        }
+
+        ref ControlEntry entry = ref _entries[index];
+        int count = VirtualCount(in entry);
+        if (count == 0)
+        {
+            return false;
+        }
+
+        float rowHeight = RowHeight();
+        if (rowHeight <= 0.0f)
+        {
+            return false;
+        }
+
+        first = Math.Clamp((int)MathF.Floor(entry.ScrollOffset / rowHeight), 0, count - 1);
+        last = Math.Clamp((int)MathF.Floor((entry.ScrollOffset + MathF.Max(0.0f, box.Height)) / rowHeight), first, count - 1);
+        return true;
+    }
+
+    public bool AddPage(UiControl tab, UiControl page)
+    {
+        EnsureActive();
+        if (!TryGetEntry(tab, out int index) || _entries[index].Kind != ControlKind.TabView ||
+            !TryGetEntry(page, out _))
+        {
+            return false;
+        }
+
+        ref ControlEntry entry = ref _entries[index];
+        entry.Pages ??= new UiControl[4];
+        if (entry.PageCount == entry.Pages.Length)
+        {
+            Array.Resize(ref entry.Pages, Math.Max(entry.PageCount + 1, entry.PageCount * 2));
+        }
+
+        entry.Pages![entry.PageCount++] = page;
+        _ = SetVisible(page, entry.PageCount - 1 == entry.Index);
+        return true;
+    }
 
     /// <summary>Runs layout for dirty subtrees and synchronizes the hit-test index.</summary>
     public int UpdateLayout(in UiViewport viewport)
@@ -668,6 +814,7 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         RefreshVisual(index);
+        ControlCatalog.Get(entry.Kind).OnSelectionApplied(this, index);
         Emit(index, UiControlEventKind.SelectionChanged, entry.Value, entry.Checked, entry.Index, null);
     }
 
@@ -677,6 +824,74 @@ public sealed class UiControlRuntime : IDisposable
     }
 
     internal void RequestHitSync() => _hitSyncDirty = true;
+
+    internal float MeasureTextWidth(ReadOnlySpan<char> text, in UiTextStyle style) =>
+        _measurer is null ? 0.0f : _measurer.Measure(text, in style, UiMeasureConstraints.Unbounded).Width;
+
+    internal static float TextLineHeight(in UiTextStyle style) =>
+        style.LineHeight > 0.0f ? style.LineHeight : style.Size > 0.0f ? style.Size * 1.2f : 16.0f;
+
+    internal float RowHeight() => _styleContext.Number(_tokens.RowHeight, 28.0f);
+
+    internal static int VirtualCount(in ControlEntry entry) => entry.Kind switch
+    {
+        ControlKind.ListView => entry.Items?.Count ?? 0,
+        ControlKind.TreeView => entry.VisibleRows?.Length ?? 0,
+        _ => 0,
+    };
+
+    internal void RebuildVisibleRows(int index, int selectedNode)
+    {
+        ref ControlEntry entry = ref _entries[index];
+        if (entry.Tree is not IUiTreeSource tree)
+        {
+            return;
+        }
+
+        entry.VisibleRows ??= new int[16];
+        int count = 0;
+        for (int root = 0; root < tree.RootCount; root++)
+        {
+            AppendVisibleRow(ref entry, tree, tree.GetRoot(root), ref count);
+        }
+
+        if (count != entry.VisibleRows!.Length)
+        {
+            Array.Resize(ref entry.VisibleRows, count);
+        }
+
+        int selection = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (entry.VisibleRows[i] == selectedNode)
+            {
+                selection = i;
+                break;
+            }
+        }
+
+        entry.Index = count == 0 ? 0 : Math.Clamp(selection, 0, count - 1);
+    }
+
+    private static void AppendVisibleRow(ref ControlEntry entry, IUiTreeSource tree, int node, ref int count)
+    {
+        if (count == entry.VisibleRows!.Length)
+        {
+            Array.Resize(ref entry.VisibleRows, entry.VisibleRows.Length * 2);
+        }
+
+        entry.VisibleRows[count++] = node;
+        if (entry.Expanded is null || (uint)node >= (uint)entry.Expanded.Length || !entry.Expanded[node])
+        {
+            return;
+        }
+
+        int children = tree.GetChildCount(node);
+        for (int child = 0; child < children; child++)
+        {
+            AppendVisibleRow(ref entry, tree, tree.GetChild(node, child), ref count);
+        }
+    }
 
     internal void InvalidateLayout(UiNodeId node)
     {
@@ -720,6 +935,7 @@ public sealed class UiControlRuntime : IDisposable
 
     private void SyncHitTest()
     {
+        UiNodeId modal = FindModalNode();
         for (int i = 0; i < _entryCount; i++)
         {
             if (!_live[i])
@@ -730,18 +946,55 @@ public sealed class UiControlRuntime : IDisposable
             ref ControlEntry entry = ref _entries[i];
             ControlBehavior behavior = ControlCatalog.Get(entry.Kind);
             bool enabled = !entry.Disabled;
-            int extraRows = entry.Kind == ControlKind.Dropdown && entry.Open ? entry.Options?.Length ?? 0 : 0;
-            SyncNode(entry.Node, entry.Visible && enabled && behavior.Interactive, entry.Kind == ControlKind.ScrollView, extraRows);
+            bool reachable = !modal.IsValid || IsWithin(entry.Node, modal);
+            bool layered = entry.Kind is ControlKind.Dropdown or ControlKind.Menu;
+            int extraRows = layered && entry.Open ? entry.Options?.Length ?? 0 : 0;
+            SyncNode(entry.Node, reachable && entry.Visible && enabled && behavior.Interactive, entry.Kind == ControlKind.ScrollView, extraRows);
 
             if (entry.OptionNodes is UiNodeId[] options)
             {
                 for (int option = 0; option < options.Length; option++)
                 {
-                    bool hit = entry.Visible && enabled && behavior.IsSecondaryHitTestable(in entry, ControlPart.Option, option);
+                    bool hit = reachable && entry.Visible && enabled && behavior.IsSecondaryHitTestable(in entry, ControlPart.Option, option);
                     SyncNode(options[option], hit, false);
                 }
             }
         }
+    }
+
+    private UiNodeId FindModalNode()
+    {
+        UiNodeId modal = UiNodeId.Invalid;
+        for (int i = 0; i < _entryCount; i++)
+        {
+            if (_live[i] && _entries[i].Kind == ControlKind.Dialog && _entries[i].Open)
+            {
+                modal = _entries[i].Node;
+            }
+        }
+
+        return modal;
+    }
+
+    private bool IsWithin(UiNodeId node, UiNodeId ancestor)
+    {
+        UiNodeId cursor = node;
+        for (int depth = 0; depth < MaxAncestorDepth; depth++)
+        {
+            if (cursor == ancestor)
+            {
+                return true;
+            }
+
+            if (!_tree.TryGetParent(cursor, out UiNodeId parent))
+            {
+                return false;
+            }
+
+            cursor = parent;
+        }
+
+        return false;
     }
 
     private void SyncNode(UiNodeId node, bool enabled, bool clips, int extraRows = 0)
@@ -956,7 +1209,9 @@ public sealed class UiControlRuntime : IDisposable
         ControlKind.Image => UiNodeKind.Image,
         ControlKind.Button => UiNodeKind.Button,
         ControlKind.TextInput => UiNodeKind.Input,
-        ControlKind.Panel or ControlKind.ScrollView or ControlKind.RadioGroup => UiNodeKind.Container,
+        ControlKind.Panel or ControlKind.ScrollView or ControlKind.RadioGroup or ControlKind.TabView or
+            ControlKind.Dialog or ControlKind.SplitPane => UiNodeKind.Container,
+        ControlKind.TextArea => UiNodeKind.Input,
         _ => UiNodeKind.Custom,
     };
 

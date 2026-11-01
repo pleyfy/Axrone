@@ -10,7 +10,7 @@ public sealed class ControlCatalogTests
     [Fact]
     public void CatalogCoversEveryKindWithMatchingBehavior()
     {
-        ControlCatalog.Count.Should().Be(12);
+        ControlCatalog.Count.Should().Be(24);
 
         for (int i = 0; i < ControlCatalog.Count; i++)
         {
@@ -20,7 +20,7 @@ public sealed class ControlCatalogTests
             behavior.Kind.Should().Be(kind);
         }
 
-        ControlCatalog.Contains((ControlKind)12).Should().BeFalse();
+        ControlCatalog.Contains((ControlKind)24).Should().BeFalse();
         ControlCatalog.Contains((ControlKind)200).Should().BeFalse();
         ControlCatalog.TryGet((ControlKind)200, out _).Should().BeFalse();
     }
@@ -57,7 +57,7 @@ public sealed class ControlCatalogTests
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
-        hits.Should().Be(1000 * 66);
+        hits.Should().Be(1000 * 276);
     }
 }
 

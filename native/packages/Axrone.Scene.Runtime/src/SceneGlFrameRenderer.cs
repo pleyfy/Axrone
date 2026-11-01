@@ -26,7 +26,8 @@ public sealed class SceneGlFrameRenderer : IDisposable
             context,
             _assets,
             runtime.World,
-            runtime.HasParticles ? runtime.Particles : null);
+            runtime.HasParticles ? runtime.Particles : null,
+            bonePalettes: runtime.HasSkinnedMeshes ? runtime.BonePalettes : null);
     }
 
     /// <summary>GPU-side asset cache.</summary>
@@ -54,6 +55,7 @@ public sealed class SceneGlFrameRenderer : IDisposable
         _context.AssertRenderThread();
 
         SceneFramePipeline frame = _runtime.Frame;
+        frame.TimeSeconds = elapsedSeconds;
         if (!frame.Plan(frameIndex))
         {
             return frame.Complete(0);

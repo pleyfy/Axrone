@@ -1,57 +1,40 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>Rich-text failure classification.</summary>
 public enum UiRichTextErrorCode
 {
-    /// <summary>No failure.</summary>
     None,
 
-    /// <summary>The plain-text destination cannot hold the stripped markup.</summary>
     OutputTooSmall,
 
-    /// <summary>A tag is empty or malformed.</summary>
     MalformedTag,
 
-    /// <summary>A tag name is not recognized.</summary>
     UnknownTag,
 
-    /// <summary>A closing tag appeared without a matching open tag.</summary>
     UnexpectedCloseTag,
 
-    /// <summary>A closing tag does not match the innermost open tag.</summary>
     MismatchedTag,
 
-    /// <summary>An open tag was not closed.</summary>
     UnclosedTag,
 
-    /// <summary>A tag attribute is missing or not allowed.</summary>
     InvalidAttribute,
 
-    /// <summary>A color value is malformed.</summary>
     InvalidColor,
 
-    /// <summary>A size value is malformed or outside the supported range.</summary>
     InvalidSize,
 
-    /// <summary>Nesting exceeds the depth limit.</summary>
     TooDeep,
 
-    /// <summary>The run limit was exceeded.</summary>
     TooManyRuns,
 }
 
-/// <summary>Rich-text failure with an offset into the markup.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiRichTextError(UiRichTextErrorCode Code, int Offset, string Message)
 {
-    /// <summary>Gets the success sentinel.</summary>
     public static UiRichTextError None => new(UiRichTextErrorCode.None, -1, string.Empty);
 
-    /// <summary>Gets whether this value describes a failure.</summary>
     public bool HasError => Code != UiRichTextErrorCode.None;
 }
 
-/// <summary>Style overrides carried by one rich-text run.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiRichTextStyle(
     bool Bold,
@@ -63,31 +46,20 @@ public readonly record struct UiRichTextStyle(
     bool HasColorToken,
     UiThemeTokenId ColorToken)
 {
-    /// <summary>Gets the default inherited style.</summary>
     public static UiRichTextStyle Default => default;
 }
 
-/// <summary>One contiguous plain-text run and its style overrides.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiRichTextRun(int Start, int Length, int SpanIndex, UiRichTextStyle Style);
 
-/// <summary>
-/// Allocation-free rich-text parser. Supported tags: <c>b</c>, <c>i</c>,
-/// <c>color=#rgb/#rgba/#rrggbb/#rrggbbaa|token:N</c> and <c>size=N</c>.
-/// Nesting is validated; literal '&lt;' must be escaped as '\&lt;'.
-/// </summary>
 public static class UiRichTextParser
 {
-    /// <summary>Maximum nested tag depth.</summary>
     public const int MaxDepth = 16;
 
-    /// <summary>Maximum number of emitted runs.</summary>
     public const int MaxRuns = 1024;
 
-    /// <summary>Maximum supported explicit size.</summary>
     public const float MaxSize = 4096.0f;
 
-    /// <summary>Parses markup into plain text and styled runs.</summary>
     public static bool TryParse(
         ReadOnlySpan<char> markup,
         Span<char> plainText,
@@ -471,10 +443,8 @@ public static class UiRichTextParser
     }
 }
 
-/// <summary>Resolves rich-text run overrides against a base text style.</summary>
 public static class UiRichTextStyleResolver
 {
-    /// <summary>Resolves face, size and color for one run.</summary>
     public static bool TryResolve(
         UiFontProvider provider,
         UiFontFamilyId family,

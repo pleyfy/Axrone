@@ -1,28 +1,18 @@
 namespace Axrone.Ui.Text;
 
-/// <summary>Registration metadata for one font face.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiFontFaceDescriptor(string FamilyName, UiFontWeight Weight, UiFontStyle Style)
 {
-    /// <summary>Creates a normal/upright descriptor.</summary>
     public static UiFontFaceDescriptor Regular(string familyName) =>
         new(familyName, UiFontWeight.Normal, UiFontStyle.Normal);
 }
 
-/// <summary>
-/// Explicit, AOT-safe font registry and <see cref="IUiFontProvider"/>. Reads use
-/// a copy-on-write snapshot so shaping and measurement never lock; registration
-/// and fallback updates take a <see cref="Lock"/>.
-/// </summary>
 public sealed class UiFontProvider : IUiFontProvider, IDisposable
 {
-    /// <summary>Maximum registered faces.</summary>
     public const int MaxFaces = 64;
 
-    /// <summary>Maximum configured fallback families.</summary>
     public const int MaxFallbackFamilies = 16;
 
-    /// <summary>Maximum authored family-name length in UTF-16 units.</summary>
     public const int MaxFamilyNameLength = 64;
 
     private const uint FnvOffsetBasis = 2166136261u;
@@ -32,16 +22,12 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
     private FaceTable _table = FaceTable.Empty;
     private bool _disposed;
 
-    /// <summary>Gets the registered face count.</summary>
     public int FaceCount => Volatile.Read(ref _table).Faces.Length;
 
-    /// <summary>Gets the registered family count.</summary>
     public int FamilyCount => Volatile.Read(ref _table).Families.Count;
 
-    /// <summary>Gets the default family; invalid when no face is registered.</summary>
     public UiFontFamilyId DefaultFamily => Volatile.Read(ref _table).DefaultFamily;
 
-    /// <summary>Derives the stable family identity from a display name.</summary>
     public static UiFontFamilyId FromFamilyName(ReadOnlySpan<char> name)
     {
         ReadOnlySpan<char> trimmed = name.Trim();
@@ -75,14 +61,12 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         return new UiFontFamilyId(hash == 0 ? 1U : hash);
     }
 
-    /// <summary>Derives the stable family identity from a display name.</summary>
     public static UiFontFamilyId FromFamilyName(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
         return FromFamilyName(name.AsSpan());
     }
 
-    /// <summary>Registers a face; the provider takes ownership of the buffer on success.</summary>
     public UiFontFaceId RegisterFace(UiFontBuffer buffer, in UiFontFaceDescriptor descriptor, out UiFontError error)
     {
         ArgumentNullException.ThrowIfNull(buffer);
@@ -166,7 +150,6 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         }
     }
 
-    /// <summary>Copies bytes into a pinned buffer and registers the face.</summary>
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "Ownership transfers to the provider on success.")]
     public UiFontFaceId RegisterFace(ReadOnlySpan<byte> data, in UiFontFaceDescriptor descriptor, out UiFontError error)
     {
@@ -187,7 +170,6 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         }
     }
 
-    /// <summary>Registers a face through the native-memory buffer path.</summary>
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "Ownership transfers to the provider on success.")]
     public UiFontFaceId RegisterNativeFace(ReadOnlySpan<byte> data, in UiFontFaceDescriptor descriptor, out UiFontError error)
     {
@@ -208,7 +190,6 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         }
     }
 
-    /// <summary>Sets the ordered fallback families used when a glyph is missing.</summary>
     public void SetFallbackFamilies(ReadOnlySpan<UiFontFamilyId> families)
     {
         if (families.Length > MaxFallbackFamilies)
@@ -235,7 +216,6 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         }
     }
 
-    /// <inheritdoc/>
     public bool TryGetFace(in UiFontQuery query, out UiFontFaceId face)
     {
         FaceTable table = Volatile.Read(ref _table);
@@ -269,7 +249,6 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         return true;
     }
 
-    /// <inheritdoc/>
     public bool TryMeasureGlyph(UiFontFaceId face, int codePoint, out UiGlyphMetrics metrics)
     {
         if (TryGetFace(face, out UiFontFace? resolved))
@@ -281,13 +260,11 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         return false;
     }
 
-    /// <inheritdoc/>
     public float GetKerning(UiFontFaceId face, int left, int right)
     {
         return TryGetFace(face, out UiFontFace? resolved) ? resolved.GetKerning(left, right) : 0.0f;
     }
 
-    /// <summary>Resolves a glyph through the primary face and configured fallbacks.</summary>
     public bool TryResolveGlyph(
         UiFontFaceId primary,
         int codePoint,
@@ -334,7 +311,6 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         return false;
     }
 
-    /// <summary>Gets a registered face for outline access.</summary>
     public bool TryGetFace(UiFontFaceId id, [NotNullWhen(true)] out UiFontFace? face)
     {
         FaceTable table = Volatile.Read(ref _table);
@@ -349,7 +325,6 @@ public sealed class UiFontProvider : IUiFontProvider, IDisposable
         return false;
     }
 
-    /// <inheritdoc/>
     public void Dispose()
     {
         using (_gate.EnterScope())

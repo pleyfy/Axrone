@@ -77,8 +77,10 @@ public sealed class UiFontParserTests
             face.OutlineFormat.Should().Be(UiFontOutlineFormat.Cff);
             face.TryGetGlyphMetrics(0x41, out UiGlyphMetrics metrics).Should().BeTrue();
             metrics.Advance.Should().Be(600.0f);
-            metrics.Width.Should().Be(0.0f);
-            metrics.Height.Should().Be(0.0f);
+            metrics.BearingX.Should().Be(50.0f);
+            metrics.BearingY.Should().Be(600.0f);
+            metrics.Width.Should().Be(500.0f);
+            metrics.Height.Should().Be(600.0f);
             face.GetKerning(0x41, 0x56).Should().Be(-80.0f);
         });
     }

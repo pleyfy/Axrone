@@ -47,6 +47,16 @@ internal abstract class ControlBehavior
     {
     }
 
+    /// <summary>Runs after a selection change has been applied to the entry.</summary>
+    public virtual void OnSelectionApplied(UiControlRuntime runtime, int index)
+    {
+    }
+
+    /// <summary>Runs after a value change has been applied through the runtime API.</summary>
+    public virtual void OnValueApplied(UiControlRuntime runtime, int index)
+    {
+    }
+
     /// <summary>Builds the state-dependent style patch of the primary node.</summary>
     public virtual UiStylePatch CreateStylePatch(in ControlStyleContext style, in ControlEntry entry) => default;
 
@@ -167,6 +177,18 @@ public static class ControlCatalog
         new DropdownBehavior(),
         new ProgressBarBehavior(),
         new RadioGroupBehavior(),
+        new TextAreaBehavior(),
+        new TabViewBehavior(),
+        new ListViewBehavior(),
+        new TreeViewBehavior(),
+        new MenuBehavior(),
+        new TooltipBehavior(),
+        new DialogBehavior(),
+        new ToastBehavior(),
+        new SegmentedControlBehavior(),
+        new StepperBehavior(),
+        new RatingBehavior(),
+        new SplitPaneBehavior(),
     ];
 
     /// <summary>Gets the number of registered control kinds.</summary>
