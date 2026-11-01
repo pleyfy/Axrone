@@ -31,8 +31,18 @@ internal static class UiTestFont
     public static byte[] CreateColor(bool corrupt = false) =>
         CreateCore(4, false, 0, color: true, colorCorrupt: corrupt);
 
-    public static byte[] CreateHinted(bool prepYAxis = false) =>
-        CreateCore(4, false, 0, hinted: true, prepYAxis: prepYAxis);
+    public static byte[] CreateHinted(
+        bool prepYAxis = false,
+        bool compositeInstructions = false,
+        bool scaledComposite = false) =>
+        CreateCore(
+            4,
+            false,
+            0,
+            hinted: true,
+            prepYAxis: prepYAxis,
+            compositeInstructions: compositeInstructions,
+            scaledComposite: scaledComposite);
 
     public static byte[] CreateMetricsVariation(
         bool withHvar = true,
@@ -80,7 +90,9 @@ internal static class UiTestFont
         bool hvar = false,
         bool mvar = false,
         bool corruptHvar = false,
-        bool corruptMvar = false)
+        bool corruptMvar = false,
+        bool compositeInstructions = false,
+        bool scaledComposite = false)
     {
         List<byte[]> glyphs =
         [
@@ -154,6 +166,23 @@ internal static class UiTestFont
                 (0, 0),
                 (300, 740),
                 (600, 0));
+            if (compositeInstructions)
+            {
+                glyphs[10] = CompositeGlyphWithInstructions(
+                    2,
+                    100,
+                    0,
+                    [0x00, 0xB0, 0x01, 0xB0, 0xC0, 0x38],
+                    100,
+                    0,
+                    700,
+                    700);
+            }
+
+            if (scaledComposite)
+            {
+                glyphs[10] = CompositeGlyphWithScale(2, 100, 0, 0x2000, 100, 0, 400, 370);
+            }
         }
 
         List<(int Left, int Right, int Value)> kernPairs =
@@ -184,7 +213,9 @@ internal static class UiTestFont
             hvar,
             mvar,
             corruptHvar,
-            corruptMvar);
+            corruptMvar,
+            compositeInstructions,
+            scaledComposite);
     }
 
     public static byte[] CreateFallback()
@@ -368,7 +399,9 @@ internal static class UiTestFont
         bool hvar = false,
         bool mvar = false,
         bool corruptHvar = false,
-        bool corruptMvar = false)
+        bool corruptMvar = false,
+        bool compositeInstructions = false,
+        bool scaledComposite = false)
     {
         var tables = new List<(string Tag, byte[] Data)>
         {
@@ -872,6 +905,55 @@ internal static class UiTestFont
         data.AddRange([0, 0, 255, 255]);
         data.AddRange([255, 255, 255, 255]);
         data.AddRange([255, 0, 0, 255]);
+        return [.. data];
+    }
+
+    public static byte[] CompositeGlyphWithScale(
+        int glyphId,
+        int dx,
+        int dy,
+        short scale,
+        int xMin,
+        int yMin,
+        int xMax,
+        int yMax)
+    {
+        var data = new List<byte>(18);
+        WriteI16(data, -1);
+        WriteI16(data, xMin);
+        WriteI16(data, yMin);
+        WriteI16(data, xMax);
+        WriteI16(data, yMax);
+        WriteU16(data, 0x000B);
+        WriteU16(data, glyphId);
+        WriteI16(data, dx);
+        WriteI16(data, dy);
+        WriteI16(data, scale);
+        return [.. data];
+    }
+
+    public static byte[] CompositeGlyphWithInstructions(
+        int glyphId,
+        int dx,
+        int dy,
+        byte[] instructions,
+        int xMin,
+        int yMin,
+        int xMax,
+        int yMax)
+    {
+        var data = new List<byte>(16 + instructions.Length);
+        WriteI16(data, -1);
+        WriteI16(data, xMin);
+        WriteI16(data, yMin);
+        WriteI16(data, xMax);
+        WriteI16(data, yMax);
+        WriteU16(data, 0x0103);
+        WriteU16(data, glyphId);
+        WriteI16(data, dx);
+        WriteI16(data, dy);
+        WriteU16(data, instructions.Length);
+        data.AddRange(instructions);
         return [.. data];
     }
 
