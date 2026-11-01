@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Axrone.Ui.Scene</RootNamespace>
+    <AssemblyName>Axrone.Ui.Scene</AssemblyName>
+    <Description>Scene integration for the Axrone UI stack: UIHost component, codec, asset binding, control runtime bridge, input routing and frame production.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="AotCompatibility">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+  </PropertyGroup>
+
+  <PropertyGroup Label="SuppressedRules">
+    <!-- CA1815: equals on transient structs — host/runtime records are consumed field-wise. -->
+    <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <!-- CA2000: host runtimes created by TryCreate are owned by the bridge host
+         slot and disposed there; the analyzer cannot see that transfer. -->
+    <NoWarn>$(NoWarn);CA2000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Label="PublicApi">
+    <InternalsVisibleTo Include="Axrone.Ui.Scene.Tests" />
+    <InternalsVisibleTo Include="Axrone.Ui.Scene.OpenGL" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Axrone.Ui/Axrone.Ui.csproj" />
+    <ProjectReference Include="../Axrone.Ui.Controls/Axrone.Ui.Controls.csproj" />
+    <ProjectReference Include="../Axrone.Ui.Input/Axrone.Ui.Input.csproj" />
+    <ProjectReference Include="../Axrone.Ui.Rendering/Axrone.Ui.Rendering.csproj" />
+    <ProjectReference Include="../Axrone.Ui.Assets/Axrone.Ui.Assets.csproj" />
+    <ProjectReference Include="../Axrone.Ui.Text/Axrone.Ui.Text.csproj" />
+    <ProjectReference Include="../Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
+    <ProjectReference Include="../Axrone.Scene.Rendering/Axrone.Scene.Rendering.csproj" />
+    <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>
