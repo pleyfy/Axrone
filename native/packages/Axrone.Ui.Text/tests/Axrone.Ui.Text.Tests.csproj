@@ -24,4 +24,8 @@
     <ProjectReference Include="../Axrone.Ui.Text.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Fonts/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
