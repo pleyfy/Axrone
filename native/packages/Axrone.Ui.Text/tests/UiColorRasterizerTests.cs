@@ -90,6 +90,23 @@ public sealed class UiColorRasterizerTests
     }
 
     [Fact]
+    public void AppliesClipBoxes()
+    {
+        using var provider = new UiFontProvider();
+        UiFontFaceId face = Register(provider, UiTestFont.CreateColorV1(UiTestColorV1.ClipGlyph));
+        var rasterizer = new UiColorGlyphRasterizer(provider);
+
+        rasterizer.TryRasterize(face, 0x41, 100.0f, out UiColorGlyphBitmap bitmap, out UiFontError error)
+            .Should().BeTrue(error.Message);
+
+        (byte insideRed, _, _, byte insideAlpha) = Sample(bitmap, 150.0f, 100.0f, 0.1f);
+        (_, _, _, byte clippedAlpha) = Sample(bitmap, 300.0f, 100.0f, 0.1f);
+        insideAlpha.Should().BeGreaterThan(240);
+        insideRed.Should().BeGreaterThan(240);
+        clippedAlpha.Should().BeLessThan(20);
+    }
+
+    [Fact]
     public void RendersColrGlyphReference()
     {
         using var provider = new UiFontProvider();

@@ -10,6 +10,7 @@ internal enum UiTestColorV1
     Glyph,
     GlyphSolid,
     GlyphSolidAlpha,
+    ClipGlyph,
     Layers,
     Transform,
     TransformGlyph,
@@ -957,6 +958,7 @@ internal static class UiTestFont
         UiTestColorV1.Glyph => BuildGlyphV1(),
         UiTestColorV1.GlyphSolid => BuildGlyphSolidV1(alpha: 16384),
         UiTestColorV1.GlyphSolidAlpha => BuildGlyphSolidV1(alpha: 8192),
+        UiTestColorV1.ClipGlyph => BuildClipGlyphV1(),
         UiTestColorV1.Layers => BuildLayersV1(),
         UiTestColorV1.Transform => BuildTransformV1(),
         UiTestColorV1.TransformGlyph => BuildTransformGlyphV1(),
@@ -1018,6 +1020,31 @@ internal static class UiTestFont
         table.Add(2);
         WriteU16(table, 1);
         WriteI16(table, alpha);
+        return [.. table];
+    }
+
+    private static byte[] BuildClipGlyphV1()
+    {
+        var table = new List<byte>(76);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(10);
+        WriteU24(table, 6);
+        WriteU16(table, 2);
+        table.Add(2);
+        WriteU16(table, 1);
+        WriteI16(table, 16384);
+        table.Add(1);
+        WriteU32(table, 1);
+        WriteU16(table, 2);
+        WriteU16(table, 2);
+        WriteU24(table, 12);
+        table.Add(1);
+        WriteI16(table, 100);
+        WriteI16(table, 0);
+        WriteI16(table, 200);
+        WriteI16(table, 700);
+        PatchU32(table, 22, 55);
         return [.. table];
     }
 

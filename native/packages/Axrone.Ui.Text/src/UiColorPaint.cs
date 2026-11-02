@@ -73,6 +73,9 @@ public readonly record struct UiColorGradient(int Index)
 public readonly record struct UiColorGradientStop(float Offset, int PaletteIndex, float Alpha);
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
+public readonly record struct UiColorClipBox(float XMin, float YMin, float XMax, float YMax);
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiColorLinearGradient(
     UiColorExtendMode Extend,
     float X0,
@@ -129,6 +132,9 @@ internal sealed class UiColorPaintData
     private readonly UiColorGradientStop[] _stops;
     private readonly int[] _baseGlyphs;
     private readonly int[] _baseRoots;
+    private readonly int[] _clipStarts;
+    private readonly int[] _clipEnds;
+    private readonly UiColorClipBox[] _clipBoxes;
 
     private UiColorPaintData(
         UiColorPaintNode[] nodes,
@@ -136,7 +142,10 @@ internal sealed class UiColorPaintData
         UiColorGradientRecord[] gradients,
         UiColorGradientStop[] stops,
         int[] baseGlyphs,
-        int[] baseRoots)
+        int[] baseRoots,
+        int[] clipStarts,
+        int[] clipEnds,
+        UiColorClipBox[] clipBoxes)
     {
         _nodes = nodes;
         _children = children;
@@ -144,6 +153,9 @@ internal sealed class UiColorPaintData
         _stops = stops;
         _baseGlyphs = baseGlyphs;
         _baseRoots = baseRoots;
+        _clipStarts = clipStarts;
+        _clipEnds = clipEnds;
+        _clipBoxes = clipBoxes;
     }
 
     public int RootCount => _baseGlyphs.Length;
@@ -163,12 +175,19 @@ internal sealed class UiColorPaintData
     {
         paintGraph = null;
         error = UiFontError.None;
-        if (clipListOffset != 0 || varIndexMapOffset != 0 || varStoreOffset != 0)
+        if (varIndexMapOffset != 0 || varStoreOffset != 0)
         {
             error = UiFontError.At(
                 UiFontErrorCode.UnsupportedColorFormat,
                 colrOffset,
-                "COLR v1 clips and paint variations are not supported.");
+                "COLR v1 paint variations are not supported.");
+            return false;
+        }
+
+        if (clipListOffset != 0 &&
+            (clipListOffset < 34 || clipListOffset >= colrLength))
+        {
+            error = UiFontError.At(UiFontErrorCode.InvalidColor, colrOffset + 22, "COLR clip list offset is invalid.");
             return false;
         }
 
@@ -188,7 +207,7 @@ internal sealed class UiColorPaintData
 
         if (baseGlyphListOffset == 0)
         {
-            paintGraph = new UiColorPaintData([], [], [], [], [], []);
+            paintGraph = new UiColorPaintData([], [], [], [], [], [], [], [], []);
             return true;
         }
 
@@ -197,6 +216,7 @@ internal sealed class UiColorPaintData
             colrOffset,
             colrLength,
             layerListOffset,
+            clipListOffset,
             paletteCount);
         if (!parser.TryParse(baseGlyphListOffset, out error))
         {
@@ -231,6 +251,32 @@ internal sealed class UiColorPaintData
         }
 
         nodeIndex = -1;
+        return false;
+    }
+
+    public bool TryGetClip(int glyphId, out UiColorClipBox clip)
+    {
+        int low = 0;
+        int high = _clipStarts.Length - 1;
+        while (low <= high)
+        {
+            int middle = low + ((high - low) >> 1);
+            if (glyphId < _clipStarts[middle])
+            {
+                high = middle - 1;
+            }
+            else if (glyphId > _clipEnds[middle])
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                clip = _clipBoxes[middle];
+                return true;
+            }
+        }
+
+        clip = default;
         return false;
     }
 
@@ -320,6 +366,7 @@ internal sealed class UiColorPaintData
         private readonly int _colrLength;
         private readonly int _layerListOffset;
         private readonly int _layerCount;
+        private readonly int _clipListOffset;
         private readonly int _paletteCount;
         private readonly List<UiColorPaintNode> _nodes = [];
         private readonly List<int> _children = [];
@@ -329,6 +376,9 @@ internal sealed class UiColorPaintData
         private int[] _paintOffsets = [];
         private int[] _states = [];
         private int[] _roots = [];
+        private readonly List<int> _clipStarts = [];
+        private readonly List<int> _clipEnds = [];
+        private readonly List<UiColorClipBox> _clipBoxes = [];
         private bool _limitExceeded;
 
         public Parser(
@@ -336,6 +386,7 @@ internal sealed class UiColorPaintData
             int colrOffset,
             int colrLength,
             int layerListOffset,
+            int clipListOffset,
             int paletteCount)
         {
             _data = data;
@@ -343,12 +394,18 @@ internal sealed class UiColorPaintData
             _colrLength = colrLength;
             _paletteCount = paletteCount;
             _layerListOffset = layerListOffset;
+            _clipListOffset = clipListOffset;
             _layerCount = ReadLayerCount();
         }
 
         public bool TryParse(int baseGlyphListOffset, out UiFontError error)
         {
             error = UiFontError.None;
+            if (!TryParseClipList(out error))
+            {
+                return false;
+            }
+
             if (!IsRange(baseGlyphListOffset + _colrOffset, 4))
             {
                 return Fail(out error, UiFontErrorCode.InvalidColor, baseGlyphListOffset, "COLR base glyph list is outside the table.");
@@ -414,7 +471,70 @@ internal sealed class UiColorPaintData
             [.. _gradients],
             [.. _stops],
             _baseGlyphs,
-            _roots);
+            _roots,
+            [.. _clipStarts],
+            [.. _clipEnds],
+            [.. _clipBoxes]);
+
+        private bool TryParseClipList(out UiFontError error)
+        {
+            error = UiFontError.None;
+            if (_clipListOffset == 0)
+            {
+                return true;
+            }
+
+            int list = _colrOffset + _clipListOffset;
+            if (!IsRange(list, 5) || _data[list] != 1)
+            {
+                return Fail(out error, UiFontErrorCode.InvalidColor, list, "COLR clip list is invalid.");
+            }
+
+            uint count = UiFontFace.ReadU32(_data, list + 1);
+            if (count > MaxBaseGlyphs || !IsRange(list + 5, (int)count * 7))
+            {
+                return Fail(out error, UiFontErrorCode.InvalidColor, list, "COLR clip records exceed the table.");
+            }
+
+            int previousEnd = -1;
+            for (int i = 0; i < (int)count; i++)
+            {
+                int record = list + 5 + (i * 7);
+                int start = UiFontFace.ReadU16(_data, record);
+                int end = UiFontFace.ReadU16(_data, record + 2);
+                int boxOffset = list + ReadU24(record + 4);
+                if (start > end || start <= previousEnd || !IsRange(boxOffset, 9))
+                {
+                    return Fail(out error, UiFontErrorCode.InvalidColor, record, "COLR clip record is invalid.");
+                }
+
+                int format = _data[boxOffset];
+                if (format != 1)
+                {
+                    return Fail(
+                        out error,
+                        UiFontErrorCode.UnsupportedColorFormat,
+                        boxOffset,
+                        "Variable COLR clip boxes are not supported.");
+                }
+
+                float xMin = UiFontFace.ReadI16(_data, boxOffset + 1);
+                float yMin = UiFontFace.ReadI16(_data, boxOffset + 3);
+                float xMax = UiFontFace.ReadI16(_data, boxOffset + 5);
+                float yMax = UiFontFace.ReadI16(_data, boxOffset + 7);
+                if (xMax <= xMin || yMax <= yMin)
+                {
+                    return Fail(out error, UiFontErrorCode.InvalidColor, boxOffset, "COLR clip box is empty.");
+                }
+
+                previousEnd = end;
+                _clipStarts.Add(start);
+                _clipEnds.Add(end);
+                _clipBoxes.Add(new UiColorClipBox(xMin, yMin, xMax, yMax));
+            }
+
+            return true;
+        }
 
         private bool TryParseBase(int baseIndex, int depth, out UiFontError error)
         {

@@ -46,6 +46,7 @@ public sealed class UiColorGlyphRasterizer
     private readonly long _maxPixels;
     private readonly UiGlyphRasterizer _maskRasterizer;
     private byte[] _rgba = [];
+    private byte[] _clipMask = [];
     private readonly byte[][] _masks = new byte[MaxPaintDepth][];
     private readonly byte[][] _compositeSource = new byte[MaxCompositeDepth][];
     private readonly byte[][] _compositeBackdrop = new byte[MaxCompositeDepth][];
@@ -215,7 +216,15 @@ public sealed class UiColorGlyphRasterizer
         }
 
         EnsureCanvas();
-        if (!RenderPaint(root, UiColorAffine.Identity, ReadOnlySpan<byte>.Empty, 0, 0, _rgba.AsSpan(0, _pixels * 4), out failure))
+        ReadOnlySpan<byte> baseMask = ReadOnlySpan<byte>.Empty;
+        if (face.TryGetColorClipByGlyph(glyphId, out UiColorClipBox clip))
+        {
+            byte[] clipMask = GetClipMask();
+            FillClipMask(clip);
+            baseMask = clipMask.AsSpan(0, _pixels);
+        }
+
+        if (!RenderPaint(root, UiColorAffine.Identity, baseMask, 0, 0, _rgba.AsSpan(0, _pixels * 4), out failure))
         {
             return false;
         }
@@ -957,6 +966,43 @@ public sealed class UiColorGlyphRasterizer
         }
 
         return buffer;
+    }
+
+    private byte[] GetClipMask()
+    {
+        if (_clipMask.Length < _pixels)
+        {
+            _clipMask = GC.AllocateArray<byte>(_pixels, pinned: true);
+        }
+
+        _clipMask.AsSpan(0, _pixels).Clear();
+        return _clipMask;
+    }
+
+    private void FillClipMask(in UiColorClipBox clip)
+    {
+        float left = (clip.XMin * _scale) - _left;
+        float right = (clip.XMax * _scale) - _left;
+        float bottom = (clip.YMin * _scale) - _bottom;
+        float top = (clip.YMax * _scale) - _bottom;
+        for (int row = 0; row < _height; row++)
+        {
+            float y = _height - row - 0.5f;
+            if (y < bottom || y >= top)
+            {
+                continue;
+            }
+
+            int offset = row * _width;
+            for (int column = 0; column < _width; column++)
+            {
+                float x = column + 0.5f;
+                if (x >= left && x < right)
+                {
+                    _clipMask[offset + column] = 255;
+                }
+            }
+        }
     }
 
     private byte[] GetCompositeBackdrop(int depth)

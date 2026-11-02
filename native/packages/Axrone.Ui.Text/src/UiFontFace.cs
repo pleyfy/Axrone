@@ -358,6 +358,20 @@ public sealed class UiFontFace
 
     public bool HasColorPaintGraph => _color?.PaintGraph is { RootCount: > 0 };
 
+    public bool TryGetColorClip(int codePoint, out UiColorClipBox clip)
+    {
+        clip = default;
+        return _color?.PaintGraph is { } graph &&
+            TryGetBaseGlyph(codePoint, out int glyphId) &&
+            graph.TryGetClip(glyphId, out clip);
+    }
+
+    internal bool TryGetColorClipByGlyph(int glyphId, out UiColorClipBox clip)
+    {
+        clip = default;
+        return _color?.PaintGraph is { } graph && graph.TryGetClip(glyphId, out clip);
+    }
+
     public bool TryGetColorPaint(int codePoint, out UiColorPaint paint)
     {
         if (_color?.PaintGraph is not { } graph ||
