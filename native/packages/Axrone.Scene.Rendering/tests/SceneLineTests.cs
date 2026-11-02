@@ -352,4 +352,31 @@ public sealed class SceneLineTests
         SceneLineGeometry.BuildRoundCap(Vec3.Zero, Vec3.Zero, 1.0f, Vec3.UnitZ, cap).Should().Be(0);
         SceneLineGeometry.BuildRoundCap(Vec3.Zero, Vec3.UnitX, 0.0f, Vec3.UnitZ, cap).Should().Be(0);
     }
+
+    [Fact]
+    public void GeometryExpansionIsZeroAllocation()
+    {
+        Span<Vec3> corners = stackalloc Vec3[4];
+        Span<Vec3> join = stackalloc Vec3[SceneLineGeometry.MaxJoinVertices];
+        Span<Vec3> cap = stackalloc Vec3[SceneLineGeometry.MaxCapVertices];
+
+        static void Expand(Span<Vec3> corners, Span<Vec3> join, Span<Vec3> cap)
+        {
+            _ = SceneLineGeometry.BuildRibbon(Vec3.Zero, Vec3.UnitX, 0.1f, Vec3.UnitZ, SceneLineCap.Round, corners);
+            _ = SceneLineGeometry.BuildJoin(Vec3.UnitX, Vec3.UnitX, Vec3.UnitY, 0.1f, Vec3.UnitZ, SceneLineJoin.Round, join);
+            _ = SceneLineGeometry.BuildRoundCap(Vec3.UnitX, Vec3.UnitX, 0.1f, Vec3.UnitZ, cap);
+        }
+
+        Expand(corners, join, cap);
+        Expand(corners, join, cap);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 256; i++)
+        {
+            Expand(corners, join, cap);
+        }
+
+        long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+        delta.Should().Be(0);
+    }
 }
