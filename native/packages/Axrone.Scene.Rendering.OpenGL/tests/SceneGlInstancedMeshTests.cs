@@ -248,4 +248,119 @@ public sealed class SceneGlInstancedMeshTests
         assets.RenderPasses.Register(pass);
         return pass;
     }
+
+    [Fact]
+    public void HighSourceAttributeLocationsAreRemapped()
+    {
+        var api = new MockGLApi { EnableCallLogging = true };
+        using var context = new GLContext(api);
+        var assets = new SceneAssetRegistry();
+        SceneAssetId<MeshAssetTag> mesh = RegisterMeshWithCustomAttribute(assets, 11);
+        SceneAssetId<MaterialAssetTag> material = RegisterMaterial(assets);
+        SceneRenderPassDefinition pass = RegisterPass(assets);
+
+        using SceneWorld world = CreateWorld();
+        SceneActor cameraActor = CreateCamera(world);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        var registry = new SceneInstanceRegistry();
+        registry.Register(4, [new SceneInstanceTransform(Mat4.Identity, Vec4.One)]);
+
+        SceneActor actor = world.CreateActor("Instances");
+        SceneInstancedMeshRenderer renderer = SceneInstancedMeshRenderer.Default;
+        renderer.MeshId = mesh;
+        renderer.MaterialId = material;
+        renderer.InstanceGroupId = 4;
+        world.AddData(actor, renderer);
+        world.UpdateTransforms();
+
+        using var cache = new SceneGlAssetCache(context, assets);
+        cache.UploadAll();
+        var collector = new SceneInstancedMeshItemCollector();
+        collector.Collect(world, frame, SceneRenderPassIds.Main, registry).Should().Be(1);
+
+        using var instancedRenderer = new SceneGlInstancedMeshRenderer(context, cache);
+        var state = new SceneRenderFrameState();
+        state.Begin(0);
+
+        instancedRenderer.Render(world, frame, collector.Items, registry, pass, state).Should().Be(1);
+        instancedRenderer.PipelineCount.Should().Be(1);
+        instancedRenderer.SkippedBatches.Should().Be(0);
+        api.CallLog.Should().Contain(call => call.StartsWith("DrawElementsInstanced(", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MeshExceedingAttributeBudgetIsSkipped()
+    {
+        var api = new MockGLApi { EnableCallLogging = true };
+        using var context = new GLContext(api);
+        var assets = new SceneAssetRegistry();
+        SceneAssetId<MeshAssetTag> mesh = RegisterMeshWithManyAttributes(assets, 12);
+        SceneAssetId<MaterialAssetTag> material = RegisterMaterial(assets);
+        SceneRenderPassDefinition pass = RegisterPass(assets);
+
+        using SceneWorld world = CreateWorld();
+        SceneActor cameraActor = CreateCamera(world);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        var registry = new SceneInstanceRegistry();
+        registry.Register(5, [new SceneInstanceTransform(Mat4.Identity, Vec4.One)]);
+
+        SceneActor actor = world.CreateActor("Instances");
+        SceneInstancedMeshRenderer renderer = SceneInstancedMeshRenderer.Default;
+        renderer.MeshId = mesh;
+        renderer.MaterialId = material;
+        renderer.InstanceGroupId = 5;
+        world.AddData(actor, renderer);
+        world.UpdateTransforms();
+
+        using var cache = new SceneGlAssetCache(context, assets);
+        cache.UploadAll();
+        var collector = new SceneInstancedMeshItemCollector();
+        collector.Collect(world, frame, SceneRenderPassIds.Main, registry).Should().Be(1);
+
+        using var instancedRenderer = new SceneGlInstancedMeshRenderer(context, cache);
+        var state = new SceneRenderFrameState();
+        state.Begin(0);
+
+        instancedRenderer.Render(world, frame, collector.Items, registry, pass, state).Should().Be(0);
+        instancedRenderer.SkippedBatches.Should().Be(1);
+        instancedRenderer.PipelineCount.Should().Be(0);
+        _ = api;
+    }
+
+    private static SceneAssetId<MeshAssetTag> RegisterMeshWithCustomAttribute(SceneAssetRegistry assets, int location)
+    {
+        SceneAssetId<MeshAssetTag> id = assets.CreateId<MeshAssetTag>("mesh/custom-location");
+        SceneVertexAttribute[] attributes =
+        [
+            new SceneVertexAttribute(SceneMeshSemantic.Position, 3, 0, 24),
+            new SceneVertexAttribute((SceneMeshSemantic)location, 3, 12, 24)
+        ];
+        assets.Meshes.Register(new SceneMeshDefinition(
+            id,
+            new byte[3 * 24],
+            attributes,
+            indices: new byte[6],
+            bounds: new BoundingSphere3(Vec3.Zero, 1.0f)));
+        return id;
+    }
+
+    private static SceneAssetId<MeshAssetTag> RegisterMeshWithManyAttributes(SceneAssetRegistry assets, int attributeCount)
+    {
+        SceneAssetId<MeshAssetTag> id = assets.CreateId<MeshAssetTag>("mesh/many-attributes");
+        SceneVertexAttribute[] attributes = new SceneVertexAttribute[attributeCount];
+        int stride = attributeCount * 4;
+        for (int i = 0; i < attributeCount; i++)
+        {
+            byte components = i == 0 ? (byte)3 : (byte)1;
+            attributes[i] = new SceneVertexAttribute((SceneMeshSemantic)i, components, i * 4, stride);
+        }
+
+        assets.Meshes.Register(new SceneMeshDefinition(
+            id,
+            new byte[3 * stride],
+            attributes,
+            indices: new byte[6],
+            bounds: new BoundingSphere3(Vec3.Zero, 1.0f)));
+        return id;
+    }
 }
