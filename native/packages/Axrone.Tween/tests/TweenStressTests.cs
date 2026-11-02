@@ -27,6 +27,12 @@ public class TweenStressTests
 
         public void Submitted(long token) => _submitted.TryAdd(token, 0);
 
+        public int SubmittedCount => _submitted.Count;
+
+        public int CompletedCount => _completed.Count;
+
+        public int KilledCount => _killed.Count;
+
         public void Verify()
         {
             _completed.Count.Should().BeGreaterThan(0);
@@ -46,6 +52,43 @@ public class TweenStressTests
                 Interlocked.Increment(ref _violations);
             }
         }
+    }
+
+    /// <summary>
+    /// Runs after the concurrent storm with no pump racing: every outcome below is driven by
+    /// explicit ticks, so the completed/killed counts are computed by the test instead of by
+    /// which thread happened to win a race.
+    /// </summary>
+    private static void VerifyDeterministicLifecycleTail(TweenEngine engine, OutcomeLedger ledger)
+    {
+        int completedBefore = ledger.CompletedCount;
+        int killedBefore = ledger.KilledCount;
+        int submittedBefore = ledger.SubmittedCount;
+
+        TweenSpec natural = ledger.TrackedSpec(0.1f, out long naturalToken);
+        TweenHandle naturalHandle = engine.Play(natural);
+        ledger.Submitted(naturalToken);
+        engine.Update(DurationNs.FromSeconds(0.1f));
+        naturalHandle.State.Should().Be(TweenState.Inactive);
+
+        TweenSpec forced = ledger.TrackedSpec(10.0f, out long forcedToken);
+        TweenHandle forcedHandle = engine.Play(forced);
+        ledger.Submitted(forcedToken);
+        engine.Update(DurationNs.FromSeconds(1.0f));
+        forcedHandle.Pause().Should().BeTrue();
+        forcedHandle.Complete().Should().BeTrue();
+        forcedHandle.State.Should().Be(TweenState.Inactive);
+
+        TweenSpec killed = ledger.TrackedSpec(10.0f, out long killedToken);
+        TweenHandle killedHandle = engine.Play(killed);
+        ledger.Submitted(killedToken);
+        killedHandle.Cancel().Should().BeTrue();
+        killedHandle.State.Should().Be(TweenState.Inactive);
+
+        ledger.CompletedCount.Should().Be(completedBefore + 2);
+        ledger.KilledCount.Should().Be(killedBefore + 1);
+        ledger.SubmittedCount.Should().Be(submittedBefore + 3);
+        engine.ActiveCount.Should().Be(0);
     }
 
     private static bool TryTrackedPlay(TweenEngine engine, OutcomeLedger ledger, ConcurrentBag<TweenHandle> live, float seconds)
@@ -216,6 +259,7 @@ public class TweenStressTests
         }
 
         engine.ActiveCount.Should().Be(0);
+        VerifyDeterministicLifecycleTail(engine, ledger);
         ledger.Verify();
 
         TweenHandle after = engine.Play(
