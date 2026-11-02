@@ -13,7 +13,7 @@ public sealed class ObservableConfig
             observerOptions.ThrottleMs == 0
                 ? ObservationOptions.Default
                 : observerOptions.Normalize();
-        SubjectOptions = subjectOptions.MaxObservers > 0 ? subjectOptions.Normalize() : SubjectOptions.Default;
+        SubjectOptions = subjectOptions.Normalize();
         EnableGlobalErrorHandling = enableGlobalErrorHandling;
         GlobalErrorHandler = globalErrorHandler;
     }
