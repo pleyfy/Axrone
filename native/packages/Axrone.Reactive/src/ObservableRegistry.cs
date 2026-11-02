@@ -123,7 +123,7 @@ public sealed class ObservableRegistry : IDisposable
 
             if (active >= subject.Options.MaxObservers)
             {
-                throw new MaxObserversExceededError(subjectId, subject.Options.MaxObservers, active);
+                ReactiveThrowHelper.ThrowMaxObserversExceeded(subjectId, subject.Options.MaxObservers, active);
             }
 
             int id = ++_nextObserverId;
