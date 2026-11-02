@@ -112,7 +112,8 @@ public static class SceneGltfShaderProperties
         new(GltfTextureUsage.Thickness, "_ThicknessTexture", false, false),
         new(GltfTextureUsage.Iridescence, "_IridescenceTexture", false, false),
         new(GltfTextureUsage.IridescenceThickness, "_IridescenceThicknessTexture", false, false),
-        new(GltfTextureUsage.Anisotropy, "_AnisotropyTexture", false, false)
+        new(GltfTextureUsage.Anisotropy, "_AnisotropyTexture", false, false),
+        new(GltfTextureUsage.Subsurface, "_SubsurfaceTexture", false, false)
     ];
 
     private static readonly SceneGltfShaderProperty[] UnlitArray = BuildUnlit();
@@ -294,6 +295,7 @@ public static class SceneGltfShaderProperties
         properties.Add(Material("_SubsurfaceFactor", SceneGltfShaderPropertyType.Float));
         properties.Add(Material("_SubsurfaceColorFactor", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Material("_SubsurfaceThickness", SceneGltfShaderPropertyType.Float));
+        AppendTextureProperties(properties, TextureUniformSpecArray[17]);
         return [.. properties];
     }
 

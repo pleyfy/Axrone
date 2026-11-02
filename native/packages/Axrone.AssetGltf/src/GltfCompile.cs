@@ -248,6 +248,46 @@ public static class GltfCompileExtensions
                 payload = new GltfRawTexturePayload(ReadOnlyMemory<byte>.Empty, "unknown");
             }
 
+            if (options.DecodeEncodedTextures && payload is GltfRawTexturePayload rawPayload &&
+                !rawPayload.Bytes.IsEmpty)
+            {
+                if (IsPngPayload(rawPayload))
+                {
+                    if (GltfPngDecoder.TryDecode(rawPayload.Bytes.Span, out GltfDecodedImage? decoded, out string? decodeError))
+                    {
+                        payload = new GltfTranscodedTexturePayload(
+                            decoded.Rgba,
+                            GltfTextureFormat.R8G8B8A8_UNorm,
+                            [new GltfTextureMipLevel(0, decoded.Width, decoded.Height, 0, decoded.Rgba.Length)]);
+                        runtimeFormat = GltfTextureFormat.R8G8B8A8_UNorm;
+                        transcodeState = new GltfTextureTranscodeState(
+                            true,
+                            "builtin/png",
+                            null,
+                            GltfTextureFormat.R8G8B8A8_UNorm);
+                    }
+                    else
+                    {
+                        transcodeState = new GltfTextureTranscodeState(
+                            false,
+                            "builtin/png",
+                            decodeError,
+                            GltfTextureFormat.R8G8B8A8_UNorm);
+                        diagnostics.Add(new GltfDiagnostic(
+                            GltfDiagnosticLevel.Warning,
+                            "gltf.texture.decode.failed",
+                            $"Texture {i} could not be decoded as PNG: {decodeError}"));
+                    }
+                }
+                else if (IsUnsupportedEncodedImage(rawPayload.MimeType))
+                {
+                    diagnostics.Add(new GltfDiagnostic(
+                        GltfDiagnosticLevel.Warning,
+                        "gltf.texture.decode.unsupported",
+                        $"Texture {i} uses encoded format '{rawPayload.MimeType}' which is not decoded; the raw payload was retained."));
+                }
+            }
+
             textures.Add(new GltfTextureAsset
             {
                 Id = $"gltf/texture/{i}",
@@ -263,6 +303,35 @@ public static class GltfCompileExtensions
 
         return textures;
     }
+
+    private static ImmutableArray<float> CopyWeights(GltfRawModel rawModel, in GltfRawModel.Mesh mesh)
+    {
+        int count = GltfRawModel.GetWeightCount(mesh);
+        if (count == 0)
+        {
+            return ImmutableArray<float>.Empty;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<float>(count);
+        for (int i = 0; i < count; i++)
+        {
+            builder.Add(rawModel.GetWeight(in mesh, i));
+        }
+
+        return builder.MoveToImmutable();
+    }
+
+    private static bool IsPngPayload(GltfRawTexturePayload payload) =>
+        GltfPngDecoder.IsPng(payload.Bytes.Span) ||
+        string.Equals(payload.MimeType, "image/png", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsUnsupportedEncodedImage(string? mimeType) =>
+        string.Equals(mimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(mimeType, "image/jpg", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(mimeType, "image/webp", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(mimeType, "image/avif", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(mimeType, "image/ktx2", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(mimeType, "image/basis", StringComparison.OrdinalIgnoreCase);
 
     internal static List<GltfMaterialAsset> CompileMaterials(GltfRawModel rawModel, GltfImporterOptions options)
     {
@@ -793,6 +862,7 @@ public static class GltfCompileExtensions
                     prim.Mode == 0 ? GltfMeshTopology.Points : (prim.Mode is 1 or 2 or 3 ? GltfMeshTopology.Lines : GltfMeshTopology.Triangles))
                 {
                     CustomAttributes = customAttributes.ToImmutable(),
+                    MorphWeights = CopyWeights(rawModel, in meshDef),
                 };
 
                 int variantMappingCount = GltfRawModel.GetMaterialVariantCount(prim);
@@ -1376,11 +1446,12 @@ public static class GltfCompileExtensions
                     TargetNodeIndex = chan.TargetNode,
                     TargetNodeId = chan.TargetNode >= 0 ? $"node_{chan.TargetNode}_{NodeName(rawModel, chan.TargetNode)}" : string.Empty,
                     Path = path,
-                    Pointer = chan.Pointer,
+                    Pointer = isPointer ? chan.Pointer : null,
                     Interpolation = interp,
                     KeyframeCount = keyframeCount,
                     ValueComponentCount = valCompCount,
                     SampleStride = sampleStride,
+                    SampleMultiplier = sampleMultiplier,
                     Times = times,
                     Values = values,
                 });

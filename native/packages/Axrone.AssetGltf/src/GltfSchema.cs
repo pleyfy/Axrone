@@ -156,6 +156,12 @@ internal sealed class GltfRawModel : IDisposable
     /// <summary>Returns one morph weight.</summary>
     public float GetWeight(in Node node, int index) => _arena.GetFloat(node.Weights.Offset + index);
 
+    /// <summary>Morph weight count for a mesh.</summary>
+    public static int GetWeightCount(in Mesh mesh) => mesh.Weights.Length;
+
+    /// <summary>Returns one default morph weight.</summary>
+    public float GetWeight(in Mesh mesh, int index) => _arena.GetFloat(mesh.Weights.Offset + index);
+
     /// <summary>Returns an accessor min/max component.</summary>
     public GltfSpan<float> GetMin(in Accessor accessor) => _arena.GetFloats(accessor.Min);
 
@@ -438,6 +444,9 @@ internal sealed class GltfRawModel : IDisposable
 
         /// <summary>Primitive slice.</summary>
         public GltfSlice<Primitive> Primitives { get; init; }
+
+        /// <summary>Default morph weights.</summary>
+        public GltfSlice<float> Weights { get; init; }
     }
 
     /// <summary>Texture sampler binding with KHR_texture_transform.</summary>

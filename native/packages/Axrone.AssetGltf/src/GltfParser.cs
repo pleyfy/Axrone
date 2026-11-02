@@ -735,6 +735,7 @@ internal static class GltfJsonParser
 
             GltfStringRef name = GltfStringRef.Empty;
             GltfSlice<GltfRawModel.Primitive> primitives = GltfSlice<GltfRawModel.Primitive>.Empty;
+            GltfSlice<float> weights = GltfSlice<float>.Empty;
 
             while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
@@ -753,6 +754,10 @@ internal static class GltfJsonParser
                 {
                     primitives = ParsePrimitives(ref reader, model.Arena);
                 }
+                else if (prop.SequenceEqual("weights"u8))
+                {
+                    weights = ParseFloatSlice(ref reader, model.Arena);
+                }
                 else
                 {
                     reader.Skip();
@@ -763,6 +768,7 @@ internal static class GltfJsonParser
             {
                 Name = name,
                 Primitives = primitives,
+                Weights = weights,
             });
         }
     }

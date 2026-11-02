@@ -17,7 +17,8 @@ public sealed class SceneMeshDefinition : ISceneAssetDefinition<MeshAssetTag>
         SceneIndexFormat indexFormat = SceneIndexFormat.UInt16,
         int indexCount = 0,
         SceneMeshTopology topology = SceneMeshTopology.Triangles,
-        BoundingSphere3? bounds = null)
+        BoundingSphere3? bounds = null,
+        IReadOnlyList<SceneMorphTargetDefinition>? morphTargets = null)
     {
         if (!id.IsValid)
         {
@@ -96,6 +97,26 @@ public sealed class SceneMeshDefinition : ISceneAssetDefinition<MeshAssetTag>
             }
         }
 
+        SceneMorphTargetDefinition[] morphTargetArray = morphTargets is null ? [] : [.. morphTargets];
+        for (int i = 0; i < morphTargetArray.Length; i++)
+        {
+            SceneMorphTargetDefinition target = morphTargetArray[i];
+            if (target.Stride < target.ComponentCount * sizeof(float) ||
+                target.ComponentCount is < 1 or > 4)
+            {
+                throw new SceneAssetException(
+                    SceneAssetErrorCodes.Invalid,
+                    $"Mesh '{id}' morph target {i} has an invalid stride or component count.");
+            }
+
+            if (target.DeltaBuffer.Length < resolvedVertexCount * target.Stride)
+            {
+                throw new SceneAssetException(
+                    SceneAssetErrorCodes.Invalid,
+                    $"Mesh '{id}' morph target {i} delta buffer is shorter than the vertex count requires.");
+            }
+        }
+
         Id = id;
         Vertices = vertices;
         Indices = indices;
@@ -106,6 +127,7 @@ public sealed class SceneMeshDefinition : ISceneAssetDefinition<MeshAssetTag>
         IndexCount = resolvedIndexCount;
         Topology = topology;
         Bounds = bounds;
+        MorphTargets = morphTargetArray;
     }
 
     /// <inheritdoc/>
@@ -137,4 +159,7 @@ public sealed class SceneMeshDefinition : ISceneAssetDefinition<MeshAssetTag>
 
     /// <summary>Optional local-space bounding sphere.</summary>
     public BoundingSphere3? Bounds { get; }
+
+    /// <summary>Morph target delta streams in target order.</summary>
+    public IReadOnlyList<SceneMorphTargetDefinition> MorphTargets { get; }
 }
