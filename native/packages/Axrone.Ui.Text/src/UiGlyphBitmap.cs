@@ -1,16 +1,37 @@
 namespace Axrone.Ui.Text;
 
+public enum UiGlyphBitmapFormat
+{
+    Coverage,
+
+    Sdf,
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public readonly record struct UiSdfOptions(float Spread, int Resolution)
+{
+    public static UiSdfOptions Default => new(4.0f, 1);
+}
+
 public readonly ref struct UiGlyphBitmap
 {
     private readonly ReadOnlySpan<byte> _alpha;
 
-    public UiGlyphBitmap(int width, int height, int bearingX, int bearingY, float advance, ReadOnlySpan<byte> alpha)
+    public UiGlyphBitmap(
+        int width,
+        int height,
+        int bearingX,
+        int bearingY,
+        float advance,
+        ReadOnlySpan<byte> alpha,
+        UiGlyphBitmapFormat format = UiGlyphBitmapFormat.Coverage)
     {
         Width = width;
         Height = height;
         BearingX = bearingX;
         BearingY = bearingY;
         Advance = advance;
+        Format = format;
         _alpha = alpha;
     }
 
@@ -23,6 +44,8 @@ public readonly ref struct UiGlyphBitmap
     public int BearingY { get; }
 
     public float Advance { get; }
+
+    public UiGlyphBitmapFormat Format { get; }
 
     public ReadOnlySpan<byte> Alpha => _alpha;
 
