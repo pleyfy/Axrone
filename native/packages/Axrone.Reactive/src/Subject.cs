@@ -35,10 +35,13 @@ public sealed class Subject<T> : ObservableBase<T>, IObserver<T>
 
     protected override bool PropagateObserverErrors => _options.ErrorPropagation;
 
+    /// <summary>Publishes to current subscribers; ignored once terminated.</summary>
     public void OnNext(T value) => Publish(value);
 
+    /// <summary>Delivers a terminal fault.</summary>
     public void OnError(Exception error) => Fault(error);
 
+    /// <summary>Delivers completion.</summary>
     public void OnCompleted()
     {
         Complete();
