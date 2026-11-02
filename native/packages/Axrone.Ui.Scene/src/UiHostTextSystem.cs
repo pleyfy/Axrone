@@ -26,6 +26,9 @@ public sealed record UiHostRuntimeOptions
 
     /// <summary>GPU upload hook for the glyph atlas; null keeps the atlas headless.</summary>
     public IUiGlyphAtlasUploader? GlyphUploader { get; init; }
+
+    /// <summary>Whether glyphs prefer SDF rasterization; coverage is the fallback.</summary>
+    public bool EnableSdfGlyphs { get; init; } = true;
 }
 
 /// <summary>
@@ -41,7 +44,9 @@ public sealed class UiHostTextSystem : IDisposable
     private readonly UiGlyphRasterizer? _rasterizer;
     private readonly UiTextMeasurer? _measurer;
     private readonly IUiGlyphAtlasUploader? _uploader;
+    private readonly bool _enableSdf;
     private readonly UiGlyphAtlas _atlas;
+    private static readonly UiSdfOptions s_sdfOptions = UiSdfOptions.Default;
     private readonly Dictionary<UiNodeId, LayoutEntry> _byNode = new();
     private readonly Dictionary<UiTextLayoutId, LayoutEntry> _byId = new();
     private bool _disposed;
@@ -56,6 +61,7 @@ public sealed class UiHostTextSystem : IDisposable
         _rasterizer = _provider is null ? null : new UiGlyphRasterizer(_provider);
         _measurer = _provider is null ? null : new UiTextMeasurer(_provider);
         _uploader = options.GlyphUploader;
+        _enableSdf = options.EnableSdfGlyphs;
         _atlas = new UiGlyphAtlas(UiGlyphAtlasOptions.Default, options.GlyphUploader);
     }
 
@@ -188,7 +194,19 @@ public sealed class UiHostTextSystem : IDisposable
                 continue;
             }
 
-            if (!_rasterizer.TryRasterize(face, codePoint, pixelSize, out UiGlyphBitmap bitmap, out _) || bitmap.IsEmpty)
+            UiGlyphBitmap bitmap;
+            UiGlyphFormat format;
+            if (_enableSdf &&
+                _rasterizer.TryRasterizeSdf(face, codePoint, pixelSize, in s_sdfOptions, out bitmap, out _) &&
+                !bitmap.IsEmpty)
+            {
+                format = UiGlyphFormat.Sdf;
+            }
+            else if (_rasterizer.TryRasterize(face, codePoint, pixelSize, out bitmap, out _) && !bitmap.IsEmpty)
+            {
+                format = bitmap.Format == UiGlyphBitmapFormat.Sdf ? UiGlyphFormat.Sdf : UiGlyphFormat.Alpha8;
+            }
+            else
             {
                 continue;
             }
@@ -201,7 +219,7 @@ public sealed class UiHostTextSystem : IDisposable
                 -bitmap.BearingX,
                 bitmap.BearingY - ascent,
                 bitmap.Advance,
-                UiGlyphFormat.Alpha8);
+                format);
             _ = _atlas.TryAddGlyph(in raster, bitmap.Alpha, out _);
         }
     }
