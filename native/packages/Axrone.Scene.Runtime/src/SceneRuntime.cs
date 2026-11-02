@@ -7,6 +7,8 @@ namespace Axrone.Scene.Runtime;
 /// </summary>
 public sealed class SceneRuntime : IDisposable
 {
+    private readonly System.Threading.Lock _attachmentGate = new();
+    private readonly List<ISceneRuntimeAttachment> _attachments = new();
     private bool _disposed;
 
     /// <summary>Creates a runtime with an optional shared asset catalog.</summary>
@@ -131,6 +133,51 @@ public sealed class SceneRuntime : IDisposable
     /// <summary>Whether the profile registers path agent components.</summary>
     public bool HasPathAgents { get; }
 
+    /// <summary>Gets the number of registered lifecycle attachments.</summary>
+    public int AttachmentCount
+    {
+        get
+        {
+            lock (_attachmentGate)
+            {
+                return _attachments.Count;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Registers a lifecycle attachment. Re-attaching the same instance is a
+    /// no-op and returns true; attaching after disposal returns false.
+    /// </summary>
+    public bool TryAttach(ISceneRuntimeAttachment attachment)
+    {
+        ArgumentNullException.ThrowIfNull(attachment);
+        lock (_attachmentGate)
+        {
+            if (_disposed)
+            {
+                return false;
+            }
+
+            if (!_attachments.Contains(attachment))
+            {
+                _attachments.Add(attachment);
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>Removes a lifecycle attachment.</summary>
+    public bool TryDetach(ISceneRuntimeAttachment attachment)
+    {
+        ArgumentNullException.ThrowIfNull(attachment);
+        lock (_attachmentGate)
+        {
+            return _attachments.Remove(attachment);
+        }
+    }
+
     /// <summary>Viewport width forwarded to the frame planner.</summary>
     public int ViewportWidth
     {
@@ -200,9 +247,32 @@ public sealed class SceneRuntime : IDisposable
     /// <inheritdoc/>
     public void Dispose()
     {
-        if (_disposed)
+        ISceneRuntimeAttachment[] attachments;
+        lock (_attachmentGate)
         {
-            return;
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            attachments = _attachments.Count == 0
+                ? []
+                : _attachments.ToArray();
+            _attachments.Clear();
+        }
+
+        for (int i = attachments.Length - 1; i >= 0; i--)
+        {
+            try
+            {
+                attachments[i].OnRuntimeDisposed();
+            }
+            catch (Exception)
+            {
+                // Attachment cleanup is isolated; the remaining runtime
+                // teardown must still complete.
+            }
         }
 
         Frame.Dispose();
@@ -213,7 +283,6 @@ public sealed class SceneRuntime : IDisposable
         Physics?.Dispose();
         Profiler.Dispose();
         World.Dispose();
-        _disposed = true;
     }
 
     private void ThrowIfDisposed()
