@@ -70,6 +70,79 @@ public class TweenEasingTests
     }
 
     [Fact]
+    public void SineEasings_MatchClosedForm()
+    {
+        for (int i = 0; i <= 64; i++)
+        {
+            float t = i / 64.0f;
+            EaseInSineCurve.Evaluate(t).Should().BeApproximately(
+                1.0f - MathF.Cos(t * MathF.PI * 0.5f), 1e-6f);
+            EaseOutSineCurve.Evaluate(t).Should().BeApproximately(
+                MathF.Sin(t * MathF.PI * 0.5f), 1e-6f);
+            EaseInOutSineCurve.Evaluate(t).Should().BeApproximately(
+                0.5f * (1.0f - MathF.Cos(MathF.PI * t)), 1e-6f);
+        }
+
+        EasingEvaluator.Evaluate(EasingKind.EaseInSine, 0.0f).Should().Be(0.0f);
+        EasingEvaluator.Evaluate(EasingKind.EaseInSine, 1.0f).Should().Be(1.0f);
+        EasingEvaluator.Evaluate(EasingKind.EaseOutSine, 0.0f).Should().Be(0.0f);
+        EasingEvaluator.Evaluate(EasingKind.EaseOutSine, 1.0f).Should().Be(1.0f);
+        EasingEvaluator.Evaluate(EasingKind.EaseInOutSine, 0.5f).Should().BeApproximately(0.5f, 1e-6f);
+    }
+
+    [Fact]
+    public void SineEasings_ShapeAndMirror()
+    {
+        // Ease-in starts slower than linear; ease-out starts faster.
+        EasingEvaluator.Evaluate(EasingKind.EaseInSine, 0.25f).Should().BeLessThan(0.25f);
+        EasingEvaluator.Evaluate(EasingKind.EaseOutSine, 0.25f).Should().BeGreaterThan(0.25f);
+
+        // In-out is point-symmetric around (0.5, 0.5).
+        for (int i = 0; i <= 16; i++)
+        {
+            float t = i / 16.0f;
+            float mirrored = EasingEvaluator.Evaluate(EasingKind.EaseInOutSine, 1.0f - t);
+            (EasingEvaluator.Evaluate(EasingKind.EaseInOutSine, t) + mirrored).Should().BeApproximately(1.0f, 1e-6f);
+        }
+
+        // Out is the time-reverse of in.
+        for (int i = 0; i <= 16; i++)
+        {
+            float t = i / 16.0f;
+            EasingEvaluator.Evaluate(EasingKind.EaseOutSine, t).Should().BeApproximately(
+                1.0f - EasingEvaluator.Evaluate(EasingKind.EaseInSine, 1.0f - t), 1e-6f);
+        }
+    }
+
+    [Fact]
+    public void UnknownEasing_FallsBackToLinear()
+    {
+        EasingEvaluator.Evaluate((EasingKind)200, 0.37f).Should().Be(0.37f);
+        EasingEvaluator.Evaluate(EasingKind.Custom, 0.62f).Should().Be(0.62f);
+    }
+
+    [Fact]
+    public void EasingEvaluation_AllocatesNothing()
+    {
+        const int Iterations = 10_000;
+        float sink = 0.0f;
+        for (int i = 0; i < Iterations; i++)
+        {
+            sink += EasingEvaluator.Evaluate(EasingKind.EaseInOutSine, i / (float)Iterations);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Iterations; i++)
+        {
+            sink += EasingEvaluator.Evaluate(EasingKind.EaseInOutSine, i / (float)Iterations);
+        }
+
+        long after = GC.GetAllocatedBytesForCurrentThread();
+        (after - before).Should().Be(0);
+        sink.Should().BeGreaterThan(0.0f);
+    }
+
+    [Fact]
     public void ParametricEase_PlaysThroughBuilder()
     {
         var clock = new ManualTweenClock();
