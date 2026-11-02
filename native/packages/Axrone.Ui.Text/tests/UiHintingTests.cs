@@ -304,6 +304,124 @@ public sealed class UiHintingTests
     }
 
     [Fact]
+    public void HintsDeeplyNestedComposites()
+    {
+        using var provider = new UiFontProvider();
+        UiFontFaceId face = provider.RegisterFace(
+            UiTestFont.CreateDeepHinted(10),
+            new UiFontFaceDescriptor("DeepComposite", UiFontWeight.Normal, UiFontStyle.Normal),
+            out UiFontError error);
+        face.IsValid.Should().BeTrue(error.Message);
+
+        var rasterizer = new UiGlyphRasterizer(provider);
+        rasterizer.TryRasterize(face, 0x41, 10.0f, out UiGlyphBitmap hinted, out error)
+            .Should().BeTrue(error.Message);
+        byte[] hintedAlpha = hinted.Alpha.ToArray();
+        rasterizer.TryRasterize(face, 0x41, 10.0f, out UiGlyphBitmap repeated, out _).Should().BeTrue();
+        repeated.Alpha.ToArray().Should().Equal(hintedAlpha);
+
+        rasterizer.EnableHinting = false;
+        rasterizer.TryRasterize(face, 0x41, 10.0f, out UiGlyphBitmap plain, out error)
+            .Should().BeTrue(error.Message);
+        plain.Alpha.SequenceEqual(hintedAlpha).Should().BeFalse();
+    }
+
+    [Fact]
+    public void AppliesNestedCompositeInstructions()
+    {
+        using var withProvider = new UiFontProvider();
+        UiFontFaceId withFace = withProvider.RegisterFace(
+            UiTestFont.CreateDeepHinted(4, nestedInstructions: true),
+            new UiFontFaceDescriptor("NestedInstructions", UiFontWeight.Normal, UiFontStyle.Normal),
+            out UiFontError error);
+        withFace.IsValid.Should().BeTrue(error.Message);
+
+        using var withoutProvider = new UiFontProvider();
+        UiFontFaceId withoutFace = withoutProvider.RegisterFace(
+            UiTestFont.CreateDeepHinted(4, nestedInstructions: false),
+            new UiFontFaceDescriptor("NestedInstructions", UiFontWeight.Normal, UiFontStyle.Normal),
+            out _);
+
+        var withRasterizer = new UiGlyphRasterizer(withProvider);
+        var withoutRasterizer = new UiGlyphRasterizer(withoutProvider);
+        withRasterizer.TryRasterize(withFace, 0x41, 100.0f, out UiGlyphBitmap withInstructions, out error)
+            .Should().BeTrue(error.Message);
+        withoutRasterizer.TryRasterize(withoutFace, 0x41, 100.0f, out UiGlyphBitmap withoutInstructions, out _)
+            .Should().BeTrue();
+        withoutInstructions.Alpha.SequenceEqual(withInstructions.Alpha.ToArray()).Should().BeFalse();
+    }
+
+    [Fact]
+    public void PhantomPointHintingLeavesOutlineUntouched()
+    {
+        WithFace(UiTestFont.CreateHinted(), face =>
+        {
+            float[] x = [.. PointX];
+            float[] y = [.. PointY];
+            bool[] onCurve = [.. OnCurve];
+            int[] contourEnds = [.. ContourEnds];
+            var hinter = new UiTrueTypeHinter();
+
+            hinter.TryHintGlyph(
+                face,
+                100.0f,
+                [0x00, 0xB0, 0x03, 0x2F],
+                x,
+                y,
+                onCurve,
+                contourEnds,
+                3,
+                600,
+                out UiFontError error).Should().BeTrue(error.Message);
+
+            x.Should().Equal(0.0f, 300.0f, 600.0f);
+            y.Should().Equal(0.0f, 740.0f, 0.0f);
+
+            hinter.TryHintGlyph(
+                face,
+                100.0f,
+                [0x00, 0xB0, 0x04, 0x2F],
+                x,
+                y,
+                onCurve,
+                contourEnds,
+                3,
+                600,
+                out error).Should().BeTrue(error.Message);
+
+            x.Should().Equal(0.0f, 300.0f, 600.0f);
+            y.Should().Equal(0.0f, 740.0f, 0.0f);
+        });
+    }
+
+    [Fact]
+    public void DeepCompositeHintingDoesNotAllocate()
+    {
+        using var provider = new UiFontProvider();
+        UiFontFaceId face = provider.RegisterFace(
+            UiTestFont.CreateDeepHinted(12),
+            new UiFontFaceDescriptor("DeepAllocation", UiFontWeight.Normal, UiFontStyle.Normal),
+            out _);
+        var rasterizer = new UiGlyphRasterizer(provider);
+        for (int i = 0; i < 32; i++)
+        {
+            _ = rasterizer.TryRasterize(face, 0x41, 10.0f, out _, out _);
+        }
+
+        bool rasterized = true;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 64; i++)
+        {
+            rasterized &= rasterizer.TryRasterize(face, 0x41, 10.0f, out UiGlyphBitmap bitmap, out _);
+            rasterized &= !bitmap.IsEmpty;
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        rasterized.Should().BeTrue();
+        allocated.Should().Be(0);
+    }
+
+    [Fact]
     public void WarmHintedRasterizationDoesNotAllocate()
     {
         using var provider = new UiFontProvider();

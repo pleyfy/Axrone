@@ -61,6 +61,46 @@ internal static class UiTestFont
             compositeInstructions: compositeInstructions,
             scaledComposite: scaledComposite);
 
+    public static byte[] CreateDeepHinted(int depth = 10, bool nestedInstructions = false)
+    {
+        if (depth < 1 || depth > 24)
+        {
+            throw new ArgumentOutOfRangeException(nameof(depth));
+        }
+
+        List<byte[]> glyphs =
+        [
+            EmptyGlyph(),
+            EmptyGlyph(),
+            SimpleGlyphWithInstructions([0xB0, 0x00, 0x2B, 0xB0, 0x01, 0x2F], (0, 0), (300, 740), (600, 0)),
+        ];
+        int previous = 2;
+        for (int level = 0; level < depth; level++)
+        {
+            int glyphIndex = glyphs.Count;
+            bool addInstructions = nestedInstructions && level == depth / 2;
+            glyphs.Add(
+                addInstructions
+                    ? CompositeGlyphWithInstructions(
+                        previous,
+                        10,
+                        0,
+                        [0x00, 0xB0, 0x01, 0xB0, 0xC0, 0x38],
+                        0,
+                        0,
+                        600,
+                        740)
+                    : CompositeGlyph(previous, 10, 0, 0, 0, 600, 740));
+            previous = glyphIndex;
+        }
+
+        int[] advances = new int[glyphs.Count];
+        Array.Fill(advances, 500);
+        int[] bearings = new int[glyphs.Count];
+        List<(int CodePoint, int GlyphId)> mappings = [(0x41, previous)];
+        return Build(glyphs, advances, bearings, mappings, [], glyphs.Count, 4, false, false, hinted: true);
+    }
+
     public static byte[] CreateMetricsVariation(
         bool withHvar = true,
         bool withMvar = true,

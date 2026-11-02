@@ -5,7 +5,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private const int MaxPoints = 8192;
     private const int MaxContours = 512;
     private const int MaxEdges = 16_384;
-    private const int MaxCompositeDepth = 8;
+    private const int MaxCompositeDepth = 32;
     private const float MaxPixelSize = 4096.0f;
     private const int QuadSubdivisions = 8;
     private const float SubRowWeight = 0.25f;
@@ -14,9 +14,6 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private readonly int _maxDimension;
     private readonly long _maxPixels;
     private readonly UiTrueTypeHinter _hinter = new();
-    private int _compositeInstructionOffset;
-    private int _compositeInstructionLength;
-    private bool _topLevelComposite;
     private float _pixelSize;
 
     private float[] _pointX = new float[256];
@@ -28,6 +25,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private byte[] _flags = new byte[256];
     private int[] _endPoints = new int[16];
     private int[] _contourEnds = new int[16];
+    private int[] _hintContourEnds = new int[16];
     private float[] _edgeX0 = new float[512];
     private float[] _edgeY0 = new float[512];
     private float[] _edgeX1 = new float[512];
@@ -264,33 +262,11 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         _pointCount = 0;
         _contourCount = 0;
         _edgeCount = 0;
-        _compositeInstructionOffset = 0;
-        _compositeInstructionLength = 0;
-        _topLevelComposite = false;
         _pixelSize = pixelSize;
 
         if (!TryAppendGlyph(fontFace, glyphId, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0, out failure))
         {
             return false;
-        }
-
-        if (EnableHinting && _topLevelComposite && _compositeInstructionLength > 0 && _pointCount > 0)
-        {
-            ReadOnlySpan<byte> instructions = data.Slice(_compositeInstructionOffset, _compositeInstructionLength);
-            if (!_hinter.TryHintGlyph(
-                    fontFace,
-                    pixelSize,
-                    instructions,
-                    _pointX.AsSpan(0, _pointCount),
-                    _pointY.AsSpan(0, _pointCount),
-                    _onCurve.AsSpan(0, _pointCount),
-                    _contourEnds.AsSpan(0, _contourCount),
-                    _pointCount,
-                    fontFace.ReadAdvance(data, glyphId),
-                    out failure))
-            {
-                return false;
-            }
         }
 
         ExpandBounds(scale, ref left, ref right, ref bottom, ref top);
@@ -775,6 +751,8 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         ReadOnlySpan<byte> data = face.Buffer.Span;
         int end = offset + length;
         int cursor = offset + 10;
+        int pointStart = _pointCount;
+        int contourStart = _contourCount;
         int componentCount = 0;
         int componentIndex = 0;
         bool hasInstructions = false;
@@ -929,11 +907,35 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
                 return false;
             }
 
-            if (depth == 0)
+            if (EnableHinting && instructionLength > 0 && _pointCount > pointStart)
             {
-                _compositeInstructionOffset = cursor;
-                _compositeInstructionLength = instructionLength;
-                _topLevelComposite = true;
+                float hintPixelSize = _pixelSize * UniformScale(a, b, c, d);
+                if (hintPixelSize > 0.0f)
+                {
+                    int addedPoints = _pointCount - pointStart;
+                    int addedContours = _contourCount - contourStart;
+                    EnsureHintContourCapacity(Math.Max(addedContours, 1));
+                    for (int i = 0; i < addedContours; i++)
+                    {
+                        _hintContourEnds[i] = _contourEnds[contourStart + i] - pointStart;
+                    }
+
+                    ReadOnlySpan<byte> instructions = data.Slice(cursor, instructionLength);
+                    if (!_hinter.TryHintGlyph(
+                            face,
+                            hintPixelSize,
+                            instructions,
+                            _pointX.AsSpan(pointStart, addedPoints),
+                            _pointY.AsSpan(pointStart, addedPoints),
+                            _onCurve.AsSpan(pointStart, addedPoints),
+                            _hintContourEnds.AsSpan(0, addedContours),
+                            addedPoints,
+                            face.ReadAdvance(data, glyphId),
+                            out error))
+                    {
+                        return false;
+                    }
+                }
             }
         }
 
@@ -1506,6 +1508,16 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         }
 
         _contourEnds = new int[Math.Max(required, _contourEnds.Length * 2)];
+    }
+
+    private void EnsureHintContourCapacity(int required)
+    {
+        if (_hintContourEnds.Length >= required)
+        {
+            return;
+        }
+
+        _hintContourEnds = new int[Math.Max(required, _hintContourEnds.Length * 2)];
     }
 
     private void EnsureEdgeCapacity(int required)
