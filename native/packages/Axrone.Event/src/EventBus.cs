@@ -72,6 +72,43 @@ public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
         EventPriority priority) =>
         Router<TEvent>().SubscribeAsync(handler, priority);
 
+    /// <summary>Event types with a live router on this bus. The typed analogue of enumerating event names.</summary>
+    public Type[] EventTypes()
+    {
+        var types = new List<Type>(_routers.Count);
+        foreach (Type type in _routers.Keys)
+        {
+            types.Add(type);
+        }
+
+        return types.ToArray();
+    }
+
+    /// <summary>Forwards every payload of the type to another bus through an EventForwarder.</summary>
+    /// <typeparam name="TSource">Source payload type.</typeparam>
+    /// <typeparam name="TTarget">Destination payload type.</typeparam>
+    /// <param name="target">Destination bus.</param>
+    /// <param name="transform">Payload transform.</param>
+    /// <param name="filter">Optional source-side filter.</param>
+    /// <param name="options">Optional forwarding bounds.</param>
+    public EventForwarder<TSource, TTarget> Pipe<TSource, TTarget>(
+        EventBus target,
+        Func<TSource, TTarget> transform,
+        IEventFilter<TSource>? filter = null,
+        EventForwardingOptions? options = null) =>
+        new(this, target, transform, filter, options);
+
+    /// <summary>Forwards every payload of the type to another bus through an EventForwarder.</summary>
+    /// <typeparam name="TEvent">Payload type.</typeparam>
+    /// <param name="target">Destination bus.</param>
+    /// <param name="filter">Optional source-side filter.</param>
+    /// <param name="options">Optional forwarding bounds.</param>
+    public EventForwarder<TEvent> Pipe<TEvent>(
+        EventBus target,
+        IEventFilter<TEvent>? filter = null,
+        EventForwardingOptions? options = null) =>
+        new(this, target, filter, options);
+
     /// <summary>Returns the router for the event type, creating it on first use.</summary>
     public EventRouter<TEvent> Router<TEvent>()
     {

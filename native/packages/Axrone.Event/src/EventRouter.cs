@@ -11,7 +11,7 @@ namespace Axrone.Event;
 /// <see cref="TryPublish(in TEvent)"/> is the non-blocking game-thread path.
 /// </remarks>
 /// <typeparam name="TEvent">Payload type.</typeparam>
-public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
+public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisposable
 {
     private const int StateRunning = 0;
     private const int StateCompleting = 1;
@@ -25,7 +25,9 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
     private readonly Internal.EventSubscriptionTable<TEvent> _subscriptions = new();
     private readonly ConcurrentQueue<DeadLetterEntry<TEvent>> _deadLetters = new();
     private readonly EventEnvelope<TEvent>[] _dispatchBuffer;
+    private readonly EventMetricsRecorder _metrics = new();
     private readonly Lock _gate = new();
+    private readonly Lock _drainGate = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _dispatchLoop;
 
@@ -40,10 +42,20 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
     private long _reentrantDeferred;
     private long _reentrantDropped;
     private long _incompleteImmediate;
+    private long _maxListenersWarnings;
     private readonly int _deadLetterCapacity;
+    private readonly int _defaultMaxListeners;
+    private readonly int _pausedBufferCapacity;
+    private readonly MaxListenersPolicy _maxListenersPolicy;
     private readonly EventTelemetry _telemetry;
+    private PausedEventBuffer<TEvent>? _pausedBuffer;
+    private int _paused;
+    private int _maxListeners;
     private ExceptionDispatchInfo? _fault;
     private int _disposed;
+
+    /// <summary>Raised when a subscription is registered past <see cref="MaxListeners"/> under the warn policy.</summary>
+    public event EventHandler<MaxListenersExceededEventArgs>? MaxListenersExceeded;
 
     /// <summary>All dequeued-but-undelivered items.</summary>
     public long DroppedItems => DroppedUnsubscribed + DroppedPaused;
@@ -57,8 +69,32 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
     /// <summary>Dead letters discarded because the bound was full (oldest first).</summary>
     public long DroppedDeadLetters => Interlocked.Read(ref _droppedDeadLetters);
 
+    /// <summary>Event type routed by this instance.</summary>
+    public Type EventType => typeof(TEvent);
+
     /// <summary>Envelopes waiting in transport.</summary>
     public int QueuedCount => _queue.Count;
+
+    /// <summary>Envelopes waiting in the pause buffer.</summary>
+    public int BufferedCount => Volatile.Read(ref _pausedBuffer)?.Count ?? 0;
+
+    /// <summary>Slot count of the pause buffer; the configured value until the first pause allocates it.</summary>
+    public int BufferCapacity => Volatile.Read(ref _pausedBuffer)?.Capacity ?? _pausedBufferCapacity;
+
+    /// <summary>Whether publishes are buffered instead of dispatched.</summary>
+    public bool IsPaused => Volatile.Read(ref _paused) != 0;
+
+    /// <summary>Subscription bound; zero means unlimited.</summary>
+    public int MaxListeners => Volatile.Read(ref _maxListeners);
+
+    /// <summary>Registrations that exceeded the subscription bound since construction.</summary>
+    public long MaxListenersExceededCount => Interlocked.Read(ref _maxListenersWarnings);
+
+    /// <summary>Per-router timing metrics; independent from the OpenTelemetry meter.</summary>
+    public EventMetricsSnapshot Metrics => _metrics.Snapshot();
+
+    /// <summary>Whether the allocated pause buffer lives on the pinned object heap.</summary>
+    internal bool IsPausedBufferPinned => Volatile.Read(ref _pausedBuffer)?.IsPinned ?? false;
 
     /// <summary>Registered subscriptions.</summary>
     public int SubscriberCount => _subscriptions.Count;
@@ -94,7 +130,26 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
             ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "DeadLetterCapacity must be positive.");
         }
 
+        if (options.MaxListeners < 0)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "MaxListeners must be non-negative.");
+        }
+
+        if ((uint)options.MaxListenersPolicy > (uint)MaxListenersPolicy.Throw)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "MaxListenersPolicy must be Warn or Throw.");
+        }
+
+        if (options.PausedBufferCapacity < 1)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "PausedBufferCapacity must be positive.");
+        }
+
         _deadLetterCapacity = options.DeadLetterCapacity;
+        _defaultMaxListeners = options.MaxListeners;
+        _maxListeners = options.MaxListeners;
+        _pausedBufferCapacity = options.PausedBufferCapacity;
+        _maxListenersPolicy = options.MaxListenersPolicy;
         _telemetry = new EventTelemetry(options.MeterName ?? "Axrone.Event");
         _dispatchBuffer = new EventEnvelope<TEvent>[options.DispatchBatchSize];
         _queue = new VyukovBoundedBatchQueue<EventEnvelope<TEvent>>(new BufferCapacity((uint)options.Capacity));
@@ -135,13 +190,17 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
     /// <summary>Subscribes a synchronous handler with an explicit dispatch priority.</summary>
     public IEventSubscription Subscribe(
         Action<EventEnvelope<TEvent>, CancellationToken> handler,
-        EventPriority priority)
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        var subscription = new EventSubscription<TEvent>(handler, RemoveSubscription, priority);
-        _subscriptions.Add(subscription);
-        return subscription;
-    }
+        EventPriority priority) =>
+        AddSubscription(handler, priority, once: false);
+
+    /// <summary>
+    /// Subscribes a synchronous handler that releases itself before the first delivery; later
+    /// dispatches never observe it.
+    /// </summary>
+    public IEventSubscription SubscribeOnce(
+        Action<EventEnvelope<TEvent>, CancellationToken> handler,
+        EventPriority priority = EventPriority.Normal) =>
+        AddSubscription(handler, priority, once: true);
 
     /// <summary>Subscribes an asynchronous handler at <see cref="EventPriority.Normal"/>; starts delivery immediately.</summary>
     public IEventSubscription SubscribeAsync(Func<EventEnvelope<TEvent>, CancellationToken, ValueTask> handler) =>
@@ -150,22 +209,195 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
     /// <summary>Subscribes an asynchronous handler with an explicit dispatch priority.</summary>
     public IEventSubscription SubscribeAsync(
         Func<EventEnvelope<TEvent>, CancellationToken, ValueTask> handler,
-        EventPriority priority)
+        EventPriority priority) =>
+        AddSubscription(handler, priority, once: false);
+
+    /// <summary>
+    /// Subscribes an asynchronous handler that releases itself before the first delivery; later
+    /// dispatches never observe it.
+    /// </summary>
+    public IEventSubscription SubscribeOnceAsync(
+        Func<EventEnvelope<TEvent>, CancellationToken, ValueTask> handler,
+        EventPriority priority = EventPriority.Normal) =>
+        AddSubscription(handler, priority, once: true);
+
+    /// <summary>
+    /// Removes a subscription by identity. Equivalent to disposing the returned handle; returns
+    /// false when the identity is not registered or was already released.
+    /// </summary>
+    public bool Unsubscribe(Guid subscriptionId)
+    {
+        EventSubscription<TEvent>? subscription = _subscriptions.Find(subscriptionId);
+        if (subscription is null)
+        {
+            return false;
+        }
+
+        bool wasActive = subscription.IsActive;
+        subscription.Dispose();
+        return wasActive;
+    }
+
+    /// <summary>Whether a subscription with the given identity is currently registered.</summary>
+    public bool HasSubscription(Guid subscriptionId) => _subscriptions.Contains(subscriptionId);
+
+    /// <summary>
+    /// Captures the subscription table in priority/registration order. The result is an immutable
+    /// snapshot that enumerates without allocating.
+    /// </summary>
+    public SubscriptionSnapshot CaptureSubscriptions()
+    {
+        Internal.EventSubscriptionEntry<TEvent>[] entries = _subscriptions.Entries;
+        if (entries.Length == 0)
+        {
+            return default;
+        }
+
+        var items = new EventSubscriptionInfo[entries.Length];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            Internal.EventSubscriptionEntry<TEvent> entry = entries[i];
+            EventSubscription<TEvent> subscription = entry.Subscription;
+            items[i] = new EventSubscriptionInfo(
+                subscription.SubscriptionId,
+                entry.Priority,
+                subscription.IsOnce,
+                subscription.IsActive,
+                entry.Sequence);
+        }
+
+        return new SubscriptionSnapshot(items);
+    }
+
+    /// <summary>Sets the subscription bound; zero disables it.</summary>
+    /// <param name="maxListeners">New bound; must be non-negative.</param>
+    public void SetMaxListeners(int maxListeners)
+    {
+        if (maxListeners < 0)
+        {
+            ThrowHelper.ThrowArgumentNegative(nameof(maxListeners));
+        }
+
+        Volatile.Write(ref _maxListeners, maxListeners);
+    }
+
+    /// <summary>Restores the bound configured at construction.</summary>
+    public void ResetMaxListeners() => Volatile.Write(ref _maxListeners, _defaultMaxListeners);
+
+    /// <summary>Resets every per-router timing accumulator.</summary>
+    public void ResetMetrics() => _metrics.Reset();
+
+    /// <summary>Forwards every delivered payload to another router through an EventForwarder.</summary>
+    /// <typeparam name="TTarget">Destination payload type.</typeparam>
+    /// <param name="target">Destination router.</param>
+    /// <param name="transform">Payload transform.</param>
+    /// <param name="filter">Optional source-side filter.</param>
+    /// <param name="options">Optional forwarding bounds.</param>
+    public EventForwarder<TEvent, TTarget> Pipe<TTarget>(
+        EventRouter<TTarget> target,
+        Func<TEvent, TTarget> transform,
+        IEventFilter<TEvent>? filter = null,
+        EventForwardingOptions? options = null) =>
+        new(this, target, transform, filter, options);
+
+    /// <summary>Forwards every delivered payload to another router through an EventForwarder.</summary>
+    /// <param name="target">Destination router.</param>
+    /// <param name="filter">Optional source-side filter.</param>
+    /// <param name="options">Optional forwarding bounds.</param>
+    public EventForwarder<TEvent> Pipe(
+        EventRouter<TEvent> target,
+        IEventFilter<TEvent>? filter = null,
+        EventForwardingOptions? options = null) =>
+        new(this, target, filter, options);
+
+    /// <summary>Forwards every delivered payload to another bus through an EventForwarder.</summary>
+    /// <typeparam name="TTarget">Destination payload type.</typeparam>
+    /// <param name="target">Destination bus.</param>
+    /// <param name="transform">Payload transform.</param>
+    /// <param name="filter">Optional source-side filter.</param>
+    /// <param name="options">Optional forwarding bounds.</param>
+    public EventForwarder<TEvent, TTarget> Pipe<TTarget>(
+        EventBus target,
+        Func<TEvent, TTarget> transform,
+        IEventFilter<TEvent>? filter = null,
+        EventForwardingOptions? options = null) =>
+        new(this, target, transform, filter, options);
+
+    private EventSubscription<TEvent> AddSubscription(
+        Action<EventEnvelope<TEvent>, CancellationToken> handler,
+        EventPriority priority,
+        bool once)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        var subscription = new EventSubscription<TEvent>(handler, RemoveSubscription, priority);
-        _subscriptions.Add(subscription);
+        var subscription = new EventSubscription<TEvent>(handler, RemoveSubscription, priority, once);
+        RegisterSubscription(subscription);
         return subscription;
+    }
+
+    private EventSubscription<TEvent> AddSubscription(
+        Func<EventEnvelope<TEvent>, CancellationToken, ValueTask> handler,
+        EventPriority priority,
+        bool once)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        var subscription = new EventSubscription<TEvent>(handler, RemoveSubscription, priority, once);
+        RegisterSubscription(subscription);
+        return subscription;
+    }
+
+    private void RegisterSubscription(EventSubscription<TEvent> subscription)
+    {
+        int maxListeners = MaxListeners;
+        SubscriptionAddStatus status = _subscriptions.Add(
+            subscription,
+            maxListeners,
+            _maxListenersPolicy == MaxListenersPolicy.Throw,
+            out int countAfter);
+
+        if (status == SubscriptionAddStatus.RejectedOverLimit)
+        {
+            ThrowHelper.ThrowMaxListenersExceeded(typeof(TEvent), countAfter + 1, maxListeners);
+        }
+
+        if (status == SubscriptionAddStatus.AddedOverLimit)
+        {
+            RaiseMaxListenersWarning(countAfter, maxListeners);
+        }
+    }
+
+    private void RaiseMaxListenersWarning(int subscriptionCount, int maxListeners)
+    {
+        Interlocked.Increment(ref _maxListenersWarnings);
+        EventEventSource.Log.MaxListenersExceeded(typeof(TEvent).Name, subscriptionCount, maxListeners);
+        MaxListenersExceeded?.Invoke(this, new MaxListenersExceededEventArgs(typeof(TEvent), subscriptionCount, maxListeners));
     }
 
     /// <summary>
     /// Publishes a payload, spinning while the transport is full. Requires a running router;
     /// throws once completed. For subscriber-less emission use <see cref="TryPublish(in TEvent)"/>.
     /// </summary>
+    /// <remarks>While paused, the envelope is buffered and <see cref="Flush"/> releases it.</remarks>
     public void Publish(in TEvent message)
     {
-        var envelope = Stamp(message);
-        PublishEnvelope(in envelope);
+        ThrowIfFaulted();
+        if (Volatile.Read(ref _state) != StateRunning)
+        {
+            ThrowHelper.ThrowEngineTerminated();
+        }
+
+        long start = Stopwatch.GetTimestamp();
+        EventEnvelope<TEvent> envelope = Stamp(message);
+        PublishRoute route = RoutePublish(in envelope);
+        if (route == PublishRoute.Transport)
+        {
+            PublishEnvelopeCore(in envelope);
+        }
+
+        _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+        if (route == PublishRoute.BufferFull)
+        {
+            ThrowHelper.ThrowBufferFull(typeof(TEvent), BufferCapacity);
+        }
     }
 
     /// <summary>
@@ -173,6 +405,174 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
     /// unstamped. Spins while the transport is full.
     /// </summary>
     public void PublishEnvelope(in EventEnvelope<TEvent> envelope)
+    {
+        ThrowIfFaulted();
+        if (Volatile.Read(ref _state) != StateRunning)
+        {
+            ThrowHelper.ThrowEngineTerminated();
+        }
+
+        long start = Stopwatch.GetTimestamp();
+        EventEnvelope<TEvent> stamped = envelope.IsStamped ? envelope : StampEnvelope(in envelope);
+        PublishRoute route = RoutePublish(in stamped);
+        if (route == PublishRoute.Transport)
+        {
+            PublishEnvelopeCore(in stamped);
+        }
+
+        _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+        if (route == PublishRoute.BufferFull)
+        {
+            ThrowHelper.ThrowBufferFull(typeof(TEvent), BufferCapacity);
+        }
+    }
+
+    /// <summary>
+    /// Non-blocking publish; false when full or not running (backpressure, not an error).
+    /// </summary>
+    public bool TryPublish(in TEvent message)
+    {
+        ThrowIfFaulted();
+        if (Volatile.Read(ref _state) != StateRunning)
+        {
+            return false;
+        }
+
+        long start = Stopwatch.GetTimestamp();
+        EventEnvelope<TEvent> envelope = Stamp(message);
+        PublishRoute route = RoutePublish(in envelope);
+        bool published = route == PublishRoute.Buffered ||
+            (route == PublishRoute.Transport && TryPublishCore(in envelope));
+        _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+        return published;
+    }
+
+    /// <summary>Non-blocking envelope publish; preserves an existing stamp.</summary>
+    public bool TryPublishEnvelope(in EventEnvelope<TEvent> envelope)
+    {
+        ThrowIfFaulted();
+        if (Volatile.Read(ref _state) != StateRunning)
+        {
+            return false;
+        }
+
+        long start = Stopwatch.GetTimestamp();
+        EventEnvelope<TEvent> stamped = envelope.IsStamped ? envelope : StampEnvelope(in envelope);
+        PublishRoute route = RoutePublish(in stamped);
+        bool published = route == PublishRoute.Buffered ||
+            (route == PublishRoute.Transport && TryPublishCore(in stamped));
+        _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+        return published;
+    }
+
+    /// <summary>
+    /// Dispatches synchronously on the caller thread in priority order, bypassing the transport.
+    /// Reentrant calls from a handler are deferred to the transport instead of recursing.
+    /// </summary>
+    /// <param name="message">Payload to dispatch.</param>
+    /// <returns>Active subscriptions invoked; zero while paused.</returns>
+    public int PublishImmediate(in TEvent message)
+    {
+        ThrowIfFaulted();
+        if (Volatile.Read(ref _state) != StateRunning)
+        {
+            ThrowHelper.ThrowEngineTerminated();
+        }
+
+        long start = Stopwatch.GetTimestamp();
+        EventEnvelope<TEvent> envelope = Stamp(message);
+        PublishRoute route = RoutePublish(in envelope);
+        int delivered = route == PublishRoute.Transport ? DispatchImmediate(in envelope) : 0;
+        _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+        if (route == PublishRoute.BufferFull)
+        {
+            ThrowHelper.ThrowBufferFull(typeof(TEvent), BufferCapacity);
+        }
+
+        return delivered;
+    }
+
+    /// <summary>
+    /// Non-blocking immediate dispatch; returns zero once completed, while paused, or when the
+    /// transport is already running an immediate dispatch on this thread.
+    /// </summary>
+    /// <param name="message">Payload to dispatch.</param>
+    /// <returns>Active subscriptions invoked.</returns>
+    public int TryPublishImmediate(in TEvent message)
+    {
+        ThrowIfFaulted();
+        if (Volatile.Read(ref _state) != StateRunning)
+        {
+            return 0;
+        }
+
+        long start = Stopwatch.GetTimestamp();
+        EventEnvelope<TEvent> envelope = Stamp(message);
+        PublishRoute route = RoutePublish(in envelope);
+        int delivered = route == PublishRoute.Transport ? DispatchImmediate(in envelope) : 0;
+        _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+        return delivered;
+    }
+
+    /// <summary>
+    /// Stops transport dispatch and buffers subsequent publishes. The buffer is allocated on
+    /// first use and is bounded by <see cref="RouterOptions.PausedBufferCapacity"/>.
+    /// </summary>
+    public void Pause()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            ThrowHelper.ThrowObjectDisposed(nameof(EventRouter<TEvent>));
+        }
+
+        _ = EnsurePausedBuffer();
+        lock (_gate)
+        {
+            Volatile.Write(ref _paused, 1);
+        }
+    }
+
+    /// <summary>
+    /// Leaves the paused state and republishes buffered envelopes in FIFO order while the
+    /// transport accepts them; any remainder stays buffered for the next flush.
+    /// </summary>
+    public void Resume()
+    {
+        lock (_gate)
+        {
+            Volatile.Write(ref _paused, 0);
+        }
+
+        _ = DrainPauseBuffer();
+    }
+
+    /// <summary>
+    /// Republishes buffered envelopes in FIFO order without leaving the paused state, while the
+    /// transport accepts them; buffered envelopes run through the publish gate again.
+    /// </summary>
+    /// <returns>Envelopes republished; the remainder stays buffered.</returns>
+    public int Flush()
+    {
+        ThrowIfFaulted();
+        if (Volatile.Read(ref _state) != StateRunning)
+        {
+            ThrowHelper.ThrowEngineTerminated();
+        }
+
+        return DrainPauseBuffer();
+    }
+
+    /// <summary>Discards every buffered envelope.</summary>
+    /// <returns>Envelopes discarded.</returns>
+    public int ClearBuffer() => Volatile.Read(ref _pausedBuffer)?.Clear() ?? 0;
+
+    /// <summary>Copies buffered envelopes in FIFO order into a caller span.</summary>
+    /// <param name="destination">Destination view; the copy stops at the smaller length.</param>
+    /// <returns>Envelopes copied.</returns>
+    public int CopyBufferedEnvelopes(Span<EventEnvelope<TEvent>> destination) =>
+        Volatile.Read(ref _pausedBuffer)?.CopyTo(destination) ?? 0;
+
+    private void PublishEnvelopeCore(in EventEnvelope<TEvent> envelope)
     {
         ProgressiveSpinBackoff.Initialize(out int backoff);
         while (!TryPublishCore(in envelope))
@@ -187,52 +587,80 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Non-blocking publish; false when full or not running (backpressure, not an error).
-    /// </summary>
-    public bool TryPublish(in TEvent message)
+    private PublishRoute RoutePublish(in EventEnvelope<TEvent> envelope)
     {
-        var envelope = Stamp(message);
-        return TryPublishCore(in envelope);
-    }
-
-    /// <summary>Non-blocking envelope publish; preserves an existing stamp.</summary>
-    public bool TryPublishEnvelope(in EventEnvelope<TEvent> envelope) => TryPublishCore(in envelope);
-
-    /// <summary>
-    /// Dispatches synchronously on the caller thread in priority order, bypassing the transport.
-    /// Reentrant calls from a handler are deferred to the transport instead of recursing.
-    /// </summary>
-    /// <param name="message">Payload to dispatch.</param>
-    /// <returns>Active subscriptions invoked.</returns>
-    public int PublishImmediate(in TEvent message)
-    {
-        ThrowIfFaulted();
-        if (Volatile.Read(ref _state) != StateRunning)
+        if (!IsPaused)
         {
-            ThrowHelper.ThrowEngineTerminated();
+            return PublishRoute.Transport;
         }
 
-        EventEnvelope<TEvent> envelope = Stamp(message);
-        return DispatchImmediate(in envelope);
+        PausedEventBuffer<TEvent> buffer = EnsurePausedBuffer();
+        return buffer.TryEnqueue(in envelope) ? PublishRoute.Buffered : PublishRoute.BufferFull;
     }
 
-    /// <summary>
-    /// Non-blocking immediate dispatch; returns zero once completed or when the transport is
-    /// already running an immediate dispatch on this thread.
-    /// </summary>
-    /// <param name="message">Payload to dispatch.</param>
-    /// <returns>Active subscriptions invoked.</returns>
-    public int TryPublishImmediate(in TEvent message)
+    private PausedEventBuffer<TEvent> EnsurePausedBuffer()
     {
-        ThrowIfFaulted();
-        if (Volatile.Read(ref _state) != StateRunning)
+        PausedEventBuffer<TEvent>? buffer = Volatile.Read(ref _pausedBuffer);
+        if (buffer is not null)
+        {
+            return buffer;
+        }
+
+        lock (_gate)
+        {
+            buffer = _pausedBuffer;
+            if (buffer is null)
+            {
+                buffer = new PausedEventBuffer<TEvent>(_pausedBufferCapacity);
+                Volatile.Write(ref _pausedBuffer, buffer);
+            }
+
+            return buffer;
+        }
+    }
+
+    private int DrainPauseBuffer()
+    {
+        PausedEventBuffer<TEvent>? buffer = Volatile.Read(ref _pausedBuffer);
+        if (buffer is null)
         {
             return 0;
         }
 
-        EventEnvelope<TEvent> envelope = Stamp(message);
-        return DispatchImmediate(in envelope);
+        lock (_drainGate)
+        {
+            int drained = 0;
+            while (buffer.TryPeek(out EventEnvelope<TEvent> envelope))
+            {
+                long start = Stopwatch.GetTimestamp();
+                bool accepted;
+                try
+                {
+                    accepted = TryPublishCore(in envelope);
+                }
+                finally
+                {
+                    _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+                }
+
+                if (!accepted)
+                {
+                    break;
+                }
+
+                _ = buffer.TryDequeue(out _);
+                drained++;
+            }
+
+            return drained;
+        }
+    }
+
+    private enum PublishRoute
+    {
+        Transport = 0,
+        Buffered = 1,
+        BufferFull = 2
     }
 
     private int DispatchImmediate(in EventEnvelope<TEvent> envelope)
@@ -269,31 +697,52 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
                     continue;
                 }
 
+                bool once = subscription.IsOnce;
+                if (once && !subscription.TryClaimOnce())
+                {
+                    continue;
+                }
+
                 delivered++;
+                long executionStart = Stopwatch.GetTimestamp();
+                bool pendingObserved = false;
+                bool failed = false;
                 try
                 {
                     ValueTask pending = subscription.InvokeAsync(in envelope, CancellationToken.None);
-                    if (pending.IsCompletedSuccessfully)
+                    if (!pending.IsCompletedSuccessfully)
                     {
-                        continue;
-                    }
-
-                    if (pending.IsCompleted)
-                    {
-                        pending.GetAwaiter().GetResult();
-                    }
-                    else
-                    {
-                        ObserveIncompleteImmediate(pending, envelope);
+                        if (pending.IsCompleted)
+                        {
+                            pending.GetAwaiter().GetResult();
+                        }
+                        else
+                        {
+                            ObserveIncompleteImmediate(pending, envelope, executionStart);
+                            pendingObserved = true;
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
+                    failed = true;
                     AddDeadLetter(DeadLetterEntry<TEvent>.Capture(
                         in envelope,
                         DeadLetterReason.HandlerException,
                         ex));
                     NotifyConsumptionError(in envelope, ex);
+                }
+                finally
+                {
+                    if (!pendingObserved)
+                    {
+                        _metrics.RecordExecution(Stopwatch.GetTimestamp() - executionStart, failed);
+                    }
+
+                    if (once)
+                    {
+                        subscription.Dispose();
+                    }
                 }
             }
 
@@ -310,7 +759,10 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
         }
     }
 
-    private void ObserveIncompleteImmediate(ValueTask pending, EventEnvelope<TEvent> envelope)
+    private void ObserveIncompleteImmediate(
+        ValueTask pending,
+        EventEnvelope<TEvent> envelope,
+        long executionStart)
     {
         Interlocked.Increment(ref _incompleteImmediate);
         pending.AsTask().ContinueWith(
@@ -318,27 +770,33 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
             {
                 var observation = (ImmediateObservation)state!;
                 EventEnvelope<TEvent> observed = observation.Envelope;
-                observation.Router.CompleteObservedImmediate(task, in observed);
+                observation.Router.CompleteObservedImmediate(task, in observed, observation.ExecutionStart);
             },
-            new ImmediateObservation(this, envelope),
+            new ImmediateObservation(this, envelope, executionStart),
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
     }
 
-    private void CompleteObservedImmediate(Task pending, in EventEnvelope<TEvent> envelope)
+    private void CompleteObservedImmediate(Task pending, in EventEnvelope<TEvent> envelope, long executionStart)
     {
+        bool failed = false;
         try
         {
             pending.GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
+            failed = true;
             AddDeadLetter(DeadLetterEntry<TEvent>.Capture(
                 in envelope,
                 DeadLetterReason.HandlerException,
                 ex));
             NotifyConsumptionError(in envelope, ex);
+        }
+        finally
+        {
+            _metrics.RecordExecution(Stopwatch.GetTimestamp() - executionStart, failed);
         }
     }
 
@@ -377,6 +835,31 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
             ThrowHelper.ThrowEngineTerminated();
         }
 
+        long start = Stopwatch.GetTimestamp();
+        if (IsPaused)
+        {
+            PausedEventBuffer<TEvent> pauseBuffer = EnsurePausedBuffer();
+            int buffered = 0;
+            while (buffered < items.Length)
+            {
+                EventEnvelope<TEvent> stamped = Stamp(in items[buffered]);
+                if (!pauseBuffer.TryEnqueue(in stamped))
+                {
+                    break;
+                }
+
+                buffered++;
+            }
+
+            _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+            if (buffered < items.Length)
+            {
+                ThrowHelper.ThrowBufferFull(typeof(TEvent), pauseBuffer.Capacity);
+            }
+
+            return buffered;
+        }
+
         EventEnvelope<TEvent>[] buffer = ArrayPool<EventEnvelope<TEvent>>.Shared.Rent(items.Length);
         try
         {
@@ -403,6 +886,7 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
                 ProgressiveSpinBackoff.Advance(ref backoff);
             }
 
+            _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
             return accepted;
         }
         finally
@@ -428,6 +912,26 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
             return 0;
         }
 
+        long start = Stopwatch.GetTimestamp();
+        if (IsPaused)
+        {
+            PausedEventBuffer<TEvent> pauseBuffer = EnsurePausedBuffer();
+            int buffered = 0;
+            while (buffered < items.Length)
+            {
+                EventEnvelope<TEvent> stamped = Stamp(in items[buffered]);
+                if (!pauseBuffer.TryEnqueue(in stamped))
+                {
+                    break;
+                }
+
+                buffered++;
+            }
+
+            _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+            return buffered;
+        }
+
         EventEnvelope<TEvent>[] buffer = ArrayPool<EventEnvelope<TEvent>>.Shared.Rent(items.Length);
         try
         {
@@ -439,6 +943,7 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
                 NotifyPublished(buffer.AsSpan(0, enqueued));
             }
 
+            _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
             return enqueued;
         }
         finally
@@ -694,15 +1199,38 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
                     continue;
                 }
 
+                bool once = subscription.IsOnce;
+                if (once && !subscription.TryClaimOnce())
+                {
+                    continue;
+                }
+
                 delivered = true;
+                long executionStart = Stopwatch.GetTimestamp();
+                bool failed = false;
                 try
                 {
-                    await subscription.InvokeAsync(in envelope, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        await subscription.InvokeAsync(in envelope, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        failed = true;
+                        AddDeadLetter(DeadLetterEntry<TEvent>.Capture(in envelope, DeadLetterReason.HandlerException, ex));
+                        NotifyConsumptionError(in envelope, ex);
+                    }
+                    finally
+                    {
+                        _metrics.RecordExecution(Stopwatch.GetTimestamp() - executionStart, failed);
+                    }
                 }
-                catch (Exception ex)
+                finally
                 {
-                    AddDeadLetter(DeadLetterEntry<TEvent>.Capture(in envelope, DeadLetterReason.HandlerException, ex));
-                    NotifyConsumptionError(in envelope, ex);
+                    if (once)
+                    {
+                        await subscription.DisposeAsync().ConfigureAwait(false);
+                    }
                 }
             }
 
@@ -771,5 +1299,6 @@ public sealed class EventRouter<TEvent> : IDisposable, IAsyncDisposable
 
     private readonly record struct ImmediateObservation(
         EventRouter<TEvent> Router,
-        EventEnvelope<TEvent> Envelope);
+        EventEnvelope<TEvent> Envelope,
+        long ExecutionStart);
 }

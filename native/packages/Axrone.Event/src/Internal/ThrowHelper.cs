@@ -2,7 +2,7 @@ namespace Axrone.Event.Internal;
 
 using Axrone.Event.Hub;
 
-public static class ThrowHelper
+internal static class ThrowHelper
 {
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -86,6 +86,34 @@ public static class ThrowHelper
     public static void ThrowConcurrencyConflict(long expected, long actual)
     {
         throw new InvalidOperationException($"Optimistic concurrency violation: expected stream version {expected}, found {actual}.");
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowBufferFull(Type eventType, int capacity)
+    {
+        throw new EventBufferFullException(
+            $"The paused buffer for {eventType.Name} is full ({capacity} slots).",
+            eventType,
+            capacity);
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowMaxListenersExceeded(Type eventType, int subscriptionCount, int maxListeners)
+    {
+        throw new MaxListenersExceededException(
+            $"The {eventType.Name} router would exceed its listener bound: {subscriptionCount} registered, {maxListeners} allowed.",
+            eventType,
+            subscriptionCount,
+            maxListeners);
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowArgumentNegative(string paramName)
+    {
+        throw new ArgumentOutOfRangeException(paramName, "Value must be non-negative.");
     }
 
     [DoesNotReturn]

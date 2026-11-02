@@ -19,16 +19,27 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
         DispatchBatchSize = 256,
         DeadLetterCapacity = 1024,
         MeterName = "Axrone.Event",
+        MaxListeners = 0,
+        MaxListenersPolicy = MaxListenersPolicy.Warn,
+        PausedBufferCapacity = 1024,
     };
 
     public int Capacity { get; set; }
     public int DispatchBatchSize { get; set; }
     public int DeadLetterCapacity { get; set; }
     public string MeterName { get; set; }
+    public int MaxListeners { get; set; }
+    public MaxListenersPolicy MaxListenersPolicy { get; set; }
+    public int PausedBufferCapacity { get; set; }
 
     /// <inheritdoc/>
     public static RouterOptions Materialize(in RouterOptionsState state) =>
-        new(state.Capacity, state.DispatchBatchSize, state.DeadLetterCapacity, state.MeterName);
+        new(state.Capacity, state.DispatchBatchSize, state.DeadLetterCapacity, state.MeterName)
+        {
+            MaxListeners = state.MaxListeners,
+            MaxListenersPolicy = state.MaxListenersPolicy,
+            PausedBufferCapacity = state.PausedBufferCapacity,
+        };
 
     /// <inheritdoc/>
     public static bool TryValidate(in RouterOptionsState state, out BuilderDiagnostic diagnostic)
@@ -57,6 +68,24 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
             return false;
         }
 
+        if (state.MaxListeners < 0)
+        {
+            diagnostic = BuilderDiagnostic.Fail(BuilderStatusCode.ValidationFailed, "MaxListeners must be non-negative.");
+            return false;
+        }
+
+        if ((uint)state.MaxListenersPolicy > (uint)MaxListenersPolicy.Throw)
+        {
+            diagnostic = BuilderDiagnostic.Fail(BuilderStatusCode.ValidationFailed, "MaxListenersPolicy must be Warn or Throw.");
+            return false;
+        }
+
+        if (state.PausedBufferCapacity is < 1 or > 1048576)
+        {
+            diagnostic = BuilderDiagnostic.Fail(BuilderStatusCode.ValidationFailed, "PausedBufferCapacity must be between 1 and 1048576.");
+            return false;
+        }
+
         diagnostic = BuilderDiagnostic.Ok;
         return true;
     }
@@ -66,13 +95,21 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
         Capacity == other.Capacity &&
         DispatchBatchSize == other.DispatchBatchSize &&
         DeadLetterCapacity == other.DeadLetterCapacity &&
-        MeterName == other.MeterName;
+        MeterName == other.MeterName &&
+        MaxListeners == other.MaxListeners &&
+        MaxListenersPolicy == other.MaxListenersPolicy &&
+        PausedBufferCapacity == other.PausedBufferCapacity;
 
     /// <inheritdoc/>
     public override bool Equals(object? obj) => obj is RouterOptionsState other && Equals(other);
 
     /// <inheritdoc/>
-    public override int GetHashCode() => HashCode.Combine(Capacity, DispatchBatchSize, DeadLetterCapacity, MeterName);
+    public override int GetHashCode() => HashCode.Combine(
+        Capacity,
+        DispatchBatchSize,
+        DeadLetterCapacity,
+        MeterName,
+        HashCode.Combine(MaxListeners, MaxListenersPolicy, PausedBufferCapacity));
 
     public static bool operator ==(RouterOptionsState left, RouterOptionsState right) => left.Equals(right);
 
