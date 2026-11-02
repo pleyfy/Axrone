@@ -73,7 +73,9 @@ public static class Scene2DProfileExtensions
     /// <summary>
     /// Registers the facade's camera, sprite, animator and mask payloads under
     /// their manifest names. Add <c>Transform2D</c> as well when composing a
-    /// standalone 2D profile.
+    /// standalone 2D profile. Do not combine this staging family with
+    /// <c>AddRendering2D</c>; renderer-bound scenes use
+    /// <see cref="SceneRuntimeProfiles.TwoD"/> instead.
     /// </summary>
     public static SceneProfileBuilder AddScene2D(this SceneProfileBuilder builder)
     {

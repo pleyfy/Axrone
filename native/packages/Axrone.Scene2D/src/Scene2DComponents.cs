@@ -109,11 +109,11 @@ public struct Scene2DCamera2D : ISceneDataComponent
     /// <summary>Distance from the XY plane along -Z.</summary>
     public float Depth;
 
-    /// <summary>Default view distance of ten units.</summary>
+    /// <summary>Default view distance sourced from the renderer 2D defaults.</summary>
     public static Scene2DCamera2D Default
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => new() { Depth = 10.0f };
+        get => new() { Depth = SceneCamera2DDefaults.Depth };
     }
 }
 
