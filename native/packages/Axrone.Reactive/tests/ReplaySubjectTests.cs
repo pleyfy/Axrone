@@ -86,6 +86,24 @@ public class ReplaySubjectTests
     }
 
     [Fact]
+    public void ReplaySubjectEnforcesMaxObservers()
+    {
+        using var subject = new ReplaySubject<int>(2, new SubjectOptions(maxObservers: 2));
+        using var first = subject.Subscribe(new RecordingObserver<int>());
+        using var second = subject.Subscribe(new RecordingObserver<int>());
+        subject.SubscriberCount.Should().Be(2);
+
+        FluentActions.Invoking(() => subject.Subscribe(new RecordingObserver<int>()))
+            .Should().Throw<MaxObserversExceededError>()
+            .Which.MaxObservers.Should().Be(2);
+
+        subject.OnCompleted();
+        var late = new RecordingObserver<int>();
+        using var lateSubscription = subject.Subscribe(late);
+        late.Completed.Should().BeTrue();
+    }
+
+    [Fact]
     public void ReplayPublishDoesNotAllocate()
     {
         using var subject = new ReplaySubject<int>(8);
@@ -106,5 +124,20 @@ public class ReplaySubjectTests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
         observer.Count.Should().Be(1200);
+    }
+
+    [Fact]
+    public void ReplayAllocationGuardDetectsAKnownAllocation()
+    {
+        using var subject = new ReplaySubject<int[]>(4);
+        var observer = new CountingObserver<int[]>();
+        using var subscription = subject.Subscribe(observer);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        subject.OnNext(new int[16]);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        allocated.Should().BeGreaterThan(0);
+        observer.Count.Should().Be(1);
     }
 }

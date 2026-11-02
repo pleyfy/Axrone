@@ -79,4 +79,56 @@ public class AsyncSubjectTests
 
         late.Values.Should().Equal(1);
     }
+
+    [Fact]
+    public void AsyncSubjectEnforcesMaxObservers()
+    {
+        using var subject = new AsyncSubject<int>(new SubjectOptions(maxObservers: 1));
+        var first = new RecordingObserver<int>();
+        using var firstSubscription = subject.Subscribe(first);
+
+        FluentActions.Invoking(() => subject.Subscribe(new RecordingObserver<int>()))
+            .Should().Throw<MaxObserversExceededError>()
+            .Which.MaxObservers.Should().Be(1);
+
+        subject.OnNext(5);
+        subject.OnCompleted();
+        first.Values.Should().Equal(5);
+        first.Completed.Should().BeTrue();
+
+        var late = new RecordingObserver<int>();
+        using var lateSubscription = subject.Subscribe(late);
+        late.Values.Should().Equal(5);
+        late.Completed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AsyncPublishDoesNotAllocate()
+    {
+        using var subject = new AsyncSubject<int>();
+        for (int index = 0; index < 200; index++)
+        {
+            subject.OnNext(index);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int index = 0; index < 1000; index++)
+        {
+            subject.OnNext(index);
+        }
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0);
+    }
+
+    [Fact]
+    public void AsyncAllocationGuardDetectsAKnownAllocation()
+    {
+        using var subject = new AsyncSubject<int[]>();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        subject.OnNext(new int[16]);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        allocated.Should().BeGreaterThan(0);
+    }
 }
