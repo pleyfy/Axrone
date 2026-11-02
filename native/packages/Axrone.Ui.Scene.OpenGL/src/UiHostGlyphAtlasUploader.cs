@@ -61,6 +61,11 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The payload stride is derived from the page format: one byte per pixel for R8 pages,
+    /// three for RGB8 (MSDF) and four for RGBA8. Short payloads and rectangles outside the page
+    /// are rejected instead of being uploaded with an out-of-bounds read.
+    /// </remarks>
     public void UploadGlyph(UiGlyphAtlasPageId page, in Rect pixelRect, ReadOnlySpan<byte> pixels)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -69,16 +74,30 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
             return;
         }
 
+        _context.AssertRenderThread();
+
         int x = (int)pixelRect.X;
         int y = (int)pixelRect.Y;
         int width = (int)pixelRect.Width;
         int height = (int)pixelRect.Height;
-        if (width <= 0 || height <= 0 || pixels.Length < width * height)
+        if (width <= 0 || height <= 0 || x < 0 || y < 0 ||
+            x + width > entry.Width || y + height > entry.Height)
         {
-            return;
+            throw new ArgumentOutOfRangeException(
+                nameof(pixelRect),
+                "Glyph rectangle must be positive and inside the atlas page.");
         }
 
-        entry.Texture.UploadSubData2D(pixels, x, y, width, height);
+        int bytesPerPixel = UiGlyphAtlas.BytesPerPixel(entry.Format);
+        long required = (long)width * height * bytesPerPixel;
+        if (pixels.Length < required)
+        {
+            throw new ArgumentException(
+                $"Glyph payload has {pixels.Length} bytes; {entry.Format} needs {required} for {width}x{height}.",
+                nameof(pixels));
+        }
+
+        entry.Texture.UploadSubData2D(pixels[..(int)required], x, y, width, height);
     }
 
     /// <inheritdoc/>
@@ -88,6 +107,8 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
         {
             _byResource.Remove(entry.Resource);
             entry.Texture.Dispose();
+            // A later page can receive the recycled name; cached bindings must not skip it.
+            _context.State.Invalidate();
         }
     }
 
