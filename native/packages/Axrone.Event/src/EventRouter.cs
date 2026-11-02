@@ -8,7 +8,10 @@ namespace Axrone.Event;
 /// The dispatch loop starts at construction and drains continuously, so a publish can never spin
 /// forever waiting for a future subscriber: envelopes with no active subscriber are dequeued,
 /// counted as dropped, and discarded. <see cref="Publish(in TEvent)"/> spins while running;
-/// <see cref="TryPublish(in TEvent)"/> is the non-blocking game-thread path.
+/// <see cref="TryPublish(in TEvent)"/> is the non-blocking game-thread path. The loop owns a
+/// dedicated long-running thread and parks on a reset event instead of an asynchronous queue
+/// waiter, so publishing never schedules a thread-pool continuation (allocation-free on the
+/// producer); an incomplete async handler blocks that thread until it completes.
 /// </remarks>
 /// <typeparam name="TEvent">Payload type.</typeparam>
 public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisposable
@@ -29,6 +32,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
     private readonly Lock _gate = new();
     private readonly Lock _drainGate = new();
     private readonly CancellationTokenSource _cts = new();
+    private readonly ManualResetEventSlim _wake = new(false);
     private readonly Task _dispatchLoop;
 
     private volatile List<IEventFilter<TEvent>> _filters = new();
@@ -153,12 +157,11 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
         _telemetry = new EventTelemetry(options.MeterName ?? "Axrone.Event");
         _dispatchBuffer = new EventEnvelope<TEvent>[options.DispatchBatchSize];
         _queue = new VyukovBoundedBatchQueue<EventEnvelope<TEvent>>(new BufferCapacity((uint)options.Capacity));
-        CancellationToken token = _cts.Token;
         _dispatchLoop = Task.Factory.StartNew(
-            () => DispatchLoopAsync(token),
+            DispatchLoop,
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
-            TaskScheduler.Default).Unwrap();
+            TaskScheduler.Default);
     }
 
     /// <summary>Registers a publish-gate filter (copy-on-write; publishers never block).</summary>
@@ -871,6 +874,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
                 int enqueued = _queue.TryEnqueueBatch(buffer.AsSpan(offset, accepted - offset));
                 if (enqueued > 0)
                 {
+                    _wake.Set();
                     _telemetry.RecordPublished(enqueued);
                     NotifyPublished(buffer.AsSpan(offset, enqueued));
                     offset += enqueued;
@@ -939,6 +943,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             int enqueued = _queue.TryEnqueueBatch(buffer.AsSpan(0, accepted));
             if (enqueued > 0)
             {
+                _wake.Set();
                 _telemetry.RecordPublished(enqueued);
                 NotifyPublished(buffer.AsSpan(0, enqueued));
             }
@@ -1012,6 +1017,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             EventEventSource.Log.StateTransition(StateRunning, StateCompleting);
         }
 
+        _wake.Set();
         _cts.Cancel();
     }
 
@@ -1038,6 +1044,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
 
         _queue.Dispose();
         _telemetry.Dispose();
+        _wake.Dispose();
         _cts.Dispose();
     }
 
@@ -1061,6 +1068,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
 
         _queue.Dispose();
         _telemetry.Dispose();
+        _wake.Dispose();
         _cts.Dispose();
     }
 
@@ -1083,6 +1091,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             return false;
         }
 
+        _wake.Set();
         _telemetry.RecordPublished(1);
 
         foreach (IEventInterceptor<TEvent> interceptor in _interceptors)
@@ -1129,42 +1138,56 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             error,
             Stopwatch.GetTimestamp()));
 
-    private async Task DispatchLoopAsync(CancellationToken cancellationToken)
+    private void DispatchLoop()
     {
+        CancellationToken cancellationToken = _cts.Token;
         try
         {
             while (true)
             {
-                int received;
-                try
-                {
-                    received = await _queue.DequeueBatchAsync(_dispatchBuffer.AsMemory(), cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
+                int received = _queue.TryDequeueBatch(_dispatchBuffer.AsSpan());
+                if (Volatile.Read(ref _state) == StateFaulted)
                 {
                     break;
                 }
 
-                await DispatchBatchAsync(_dispatchBuffer.AsMemory(0, received), cancellationToken).ConfigureAwait(false);
-
-                if (Volatile.Read(ref _state) != StateRunning && _queue.IsEmpty)
+                if (received == 0)
                 {
-                    break;
+                    if (Volatile.Read(ref _state) != StateRunning)
+                    {
+                        break;
+                    }
+
+                    _wake.Reset();
+                    if (!_queue.IsEmpty)
+                    {
+                        continue;
+                    }
+
+                    if (Volatile.Read(ref _state) != StateRunning)
+                    {
+                        break;
+                    }
+
+                    _wake.Wait();
+                    continue;
                 }
+
+                DispatchBatch(_dispatchBuffer.AsMemory(0, received), cancellationToken);
             }
         }
         finally
         {
             if (Volatile.Read(ref _state) != StateFaulted)
             {
-                await DrainRemainingAsync().ConfigureAwait(false);
+                DrainRemaining();
                 int previous = Interlocked.Exchange(ref _state, StateTerminated);
                 EventEventSource.Log.StateTransition(previous, StateTerminated);
             }
         }
     }
 
-    private async ValueTask DrainRemainingAsync()
+    private void DrainRemaining()
     {
         while (true)
         {
@@ -1174,11 +1197,11 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
                 break;
             }
 
-            await DispatchBatchAsync(_dispatchBuffer.AsMemory(0, received), CancellationToken.None).ConfigureAwait(false);
+            DispatchBatch(_dispatchBuffer.AsMemory(0, received), CancellationToken.None);
         }
     }
 
-    private async ValueTask DispatchBatchAsync(ReadOnlyMemory<EventEnvelope<TEvent>> batch, CancellationToken cancellationToken)
+    private void DispatchBatch(ReadOnlyMemory<EventEnvelope<TEvent>> batch, CancellationToken cancellationToken)
     {
         long start = Stopwatch.GetTimestamp();
         int dispatched = 0;
@@ -1210,26 +1233,31 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
                 bool failed = false;
                 try
                 {
-                    try
+                    ValueTask pending = subscription.InvokeAsync(in envelope, cancellationToken);
+                    if (!pending.IsCompletedSuccessfully)
                     {
-                        await subscription.InvokeAsync(in envelope, cancellationToken).ConfigureAwait(false);
+                        if (pending.IsCompleted)
+                        {
+                            pending.GetAwaiter().GetResult();
+                        }
+                        else
+                        {
+                            pending.AsTask().GetAwaiter().GetResult();
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        failed = true;
-                        AddDeadLetter(DeadLetterEntry<TEvent>.Capture(in envelope, DeadLetterReason.HandlerException, ex));
-                        NotifyConsumptionError(in envelope, ex);
-                    }
-                    finally
-                    {
-                        _metrics.RecordExecution(Stopwatch.GetTimestamp() - executionStart, failed);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    failed = true;
+                    AddDeadLetter(DeadLetterEntry<TEvent>.Capture(in envelope, DeadLetterReason.HandlerException, ex));
+                    NotifyConsumptionError(in envelope, ex);
                 }
                 finally
                 {
+                    _metrics.RecordExecution(Stopwatch.GetTimestamp() - executionStart, failed);
                     if (once)
                     {
-                        await subscription.DisposeAsync().ConfigureAwait(false);
+                        subscription.Dispose();
                     }
                 }
             }
