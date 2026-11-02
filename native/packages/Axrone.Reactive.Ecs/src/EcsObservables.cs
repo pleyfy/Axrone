@@ -12,6 +12,7 @@ public sealed class EcsObservables : IDisposable
     private readonly Dictionary<string, IObservable<EntityLifecycleEvent>> _byTag = new(StringComparer.Ordinal);
     private readonly Dictionary<int, IObservable<EntityLifecycleEvent>> _byLayer = new();
     private readonly Dictionary<string, QueryEntry> _queries = new(StringComparer.Ordinal);
+    private readonly List<QueryEntry> _queryOrder = [];
     private readonly IDisposable _pollSubscription;
     private readonly Lock _gate = new();
     private bool _disposed;
@@ -107,7 +108,9 @@ public sealed class EcsObservables : IDisposable
             }
 
             var subject = new BehaviorSubject<Entity[]>(query(_bridge.World));
-            _queries.Add(key, new QueryEntry(query, subject));
+            var entry = new QueryEntry(query, subject);
+            _queries.Add(key, entry);
+            _queryOrder.Add(entry);
             return subject;
         }
     }
@@ -126,7 +129,9 @@ public sealed class EcsObservables : IDisposable
 
             Func<World, Entity[]> query = static world => QueryEntities<T1>(world);
             var subject = new BehaviorSubject<Entity[]>(query(_bridge.World));
-            _queries.Add(key, new QueryEntry(query, subject));
+            var entry = new QueryEntry(query, subject);
+            _queries.Add(key, entry);
+            _queryOrder.Add(entry);
             return subject;
         }
     }
@@ -137,7 +142,12 @@ public sealed class EcsObservables : IDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            entries = [.. _queries.Values];
+            if (_queryOrder.Count == 0)
+            {
+                return;
+            }
+
+            entries = [.. _queryOrder];
         }
 
         foreach (QueryEntry entry in entries)
@@ -157,8 +167,9 @@ public sealed class EcsObservables : IDisposable
             }
 
             _disposed = true;
-            entries = [.. _queries.Values];
+            entries = [.. _queryOrder];
             _queries.Clear();
+            _queryOrder.Clear();
             _byName.Clear();
             _byTag.Clear();
             _byLayer.Clear();

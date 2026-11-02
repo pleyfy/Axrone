@@ -23,7 +23,7 @@ namespace Axrone.Reactive;
 /// No schedulers, no timers — the engine drives threads.</para>
 /// </remarks>
 /// <typeparam name="T">Notification type.</typeparam>
-public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDisposable
+public abstract class ObservableBase<T> : IObservable<T>, IDisposable
 {
     private const int StateActive = 0;
     private const int StateCompleted = 1;
