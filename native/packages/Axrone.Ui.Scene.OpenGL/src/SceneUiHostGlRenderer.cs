@@ -16,6 +16,7 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
     private readonly SceneUiHostBridge _hosts;
     private readonly UiHostGlyphAtlasUploader _atlasUploader;
     private readonly bool _ownsAtlasUploader;
+    private readonly bool _usesSharedAtlasUploader;
     private readonly UiOpenGlBackend _backend;
     private readonly UiFrameRenderHost _renderHost;
     private readonly UiHostWorldQuadRenderer _quad;
@@ -56,6 +57,16 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
             throw new ArgumentNullException(nameof(atlasUploader));
         }
 
+        if (!uploaderIsExplicit &&
+            atlasUploader is null &&
+            hosts.Text.HasFonts &&
+            hosts.Text.GlyphUploader is not UiHostGlyphAtlasUploader)
+        {
+            throw new SceneValidationException(
+                SceneErrorCodes.ValidationInvalid,
+                "SceneUiHostGlRenderer requires the glyph uploader used by the bridge atlas; construct it with the uploader overload or attach through SceneUiHostRuntimeExtensions.AttachUiHosts.");
+        }
+
         _context = context;
         _hosts = hosts;
 
@@ -63,16 +74,19 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
         {
             _atlasUploader = atlasUploader;
             _ownsAtlasUploader = false;
+            _usesSharedAtlasUploader = true;
         }
         else if (hosts.Text.GlyphUploader is UiHostGlyphAtlasUploader sharedUploader)
         {
             _atlasUploader = sharedUploader;
             _ownsAtlasUploader = false;
+            _usesSharedAtlasUploader = true;
         }
         else
         {
             _atlasUploader = new UiHostGlyphAtlasUploader(context);
             _ownsAtlasUploader = true;
+            _usesSharedAtlasUploader = false;
         }
 
         _backend = new UiOpenGlBackend(context, new UiOpenGlBackendOptions
@@ -93,6 +107,12 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
 
     /// <summary>Gets the number of screen hosts drawn in the last frame.</summary>
     public int LastScreenHosts { get; private set; }
+
+    /// <summary>Gets whether the renderer and atlas share one glyph uploader.</summary>
+    public bool UsesSharedAtlasUploader => _usesSharedAtlasUploader;
+
+    /// <summary>Gets whether the renderer has been disposed.</summary>
+    public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
     /// <summary>Gets the number of cached world-space surfaces.</summary>
     public int SurfaceCount => _surfaces.Count;

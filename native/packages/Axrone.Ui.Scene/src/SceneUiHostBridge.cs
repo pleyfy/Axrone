@@ -96,6 +96,9 @@ public sealed class SceneUiHostBridge : IDisposable
     /// <summary>Gets a monotonic revision incremented on bind/unbind/rebind.</summary>
     public int Revision { get; private set; }
 
+    /// <summary>Gets whether the bridge has been disposed.</summary>
+    public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
     /// <summary>Synchronizes hosts with the world's components.</summary>
     public void Sync()
     {
