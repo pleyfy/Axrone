@@ -71,7 +71,7 @@ public sealed class ObservableRegistry : IDisposable
         {
             ThrowIfDisposed();
             int id = ++_nextSubjectId;
-            int memoryId = _enableMemoryTracking ? _memoryManager!.TrackSubject(subject, normalized) : 0;
+            int memoryId = _enableMemoryTracking ? _memoryManager!.TrackSubject(subject) : 0;
             _subjects.Add(id, new SubjectRecord(subject, normalized, memoryId));
             return id;
         }
@@ -123,7 +123,7 @@ public sealed class ObservableRegistry : IDisposable
 
             if (active >= subject.Options.MaxObservers)
             {
-                throw new MaxObserversExceededError(subjectId, subject.Options.MaxObservers, active);
+                ReactiveThrowHelper.ThrowMaxObserversExceeded(subject.Options.MaxObservers, active);
             }
 
             int id = ++_nextObserverId;

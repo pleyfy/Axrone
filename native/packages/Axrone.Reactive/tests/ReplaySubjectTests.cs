@@ -86,6 +86,24 @@ public class ReplaySubjectTests
     }
 
     [Fact]
+    public void ReplaySubjectEnforcesMaxObservers()
+    {
+        using var subject = new ReplaySubject<int>(2, new SubjectOptions(maxObservers: 2));
+        using var first = subject.Subscribe(new RecordingObserver<int>());
+        using var second = subject.Subscribe(new RecordingObserver<int>());
+        subject.SubscriberCount.Should().Be(2);
+
+        FluentActions.Invoking(() => subject.Subscribe(new RecordingObserver<int>()))
+            .Should().Throw<MaxObserversExceededError>()
+            .Which.MaxObservers.Should().Be(2);
+
+        subject.OnCompleted();
+        var late = new RecordingObserver<int>();
+        using var lateSubscription = subject.Subscribe(late);
+        late.Completed.Should().BeTrue();
+    }
+
+    [Fact]
     public void ReplayPublishDoesNotAllocate()
     {
         using var subject = new ReplaySubject<int>(8);
@@ -106,5 +124,47 @@ public class ReplaySubjectTests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
         observer.Count.Should().Be(1200);
+    }
+
+    [Fact]
+    public void ReplaySubjectCountsSwallowedObserverFaultsAndKeepsDelivering()
+    {
+        using var subject = new ReplaySubject<int>(4, new SubjectOptions(errorPropagation: false));
+        int received = 0;
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+        using var healthy = subject.Subscribe(new ActionObserver<int>(_ => received++));
+
+        subject.OnNext(1);
+        subject.OnNext(2);
+
+        subject.ObserverFaultCount.Should().Be(2);
+        received.Should().Be(2);
+    }
+
+    [Fact]
+    public void ReplaySubjectPropagatesObserverFaultsByDefault()
+    {
+        using var subject = new ReplaySubject<int>(4);
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+
+        FluentActions.Invoking(() => subject.OnNext(1)).Should().Throw<InvalidOperationException>();
+        subject.ObserverFaultCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void ReplayAllocationGuardDetectsAKnownAllocation()
+    {
+        using var subject = new ReplaySubject<int[]>(4);
+        var observer = new CountingObserver<int[]>();
+        using var subscription = subject.Subscribe(observer);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        subject.OnNext(new int[16]);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        allocated.Should().BeGreaterThan(0);
+        observer.Count.Should().Be(1);
     }
 }

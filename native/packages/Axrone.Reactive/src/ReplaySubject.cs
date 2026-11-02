@@ -18,6 +18,12 @@ public sealed class ReplaySubject<T> : ObservableBase<T>, IObserver<T>
     /// <summary>Creates a replay subject with a bounded history.</summary>
     /// <param name="bufferSize">Number of values replayed to late subscribers.</param>
     public ReplaySubject(int bufferSize = 10)
+        : this(bufferSize, SubjectOptions.Default)
+    {
+    }
+
+    public ReplaySubject(int bufferSize, in SubjectOptions options)
+        : base(options)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(bufferSize, 1, nameof(bufferSize));
         _buffer = new T[bufferSize];

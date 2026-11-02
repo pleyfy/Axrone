@@ -83,16 +83,10 @@ public sealed class ObservableMemoryManager : IDisposable
         }
     }
 
-    public int TrackSubject(object subject, in SubjectOptions options)
+    public int TrackSubject(object subject)
     {
         ArgumentNullException.ThrowIfNull(subject);
-        long bytes = SubjectEstimate;
-        if (options.Replay.Enabled)
-        {
-            bytes += options.Replay.BufferSize * BufferEntryEstimate;
-        }
-
-        return Track(subject, bytes, subjectEntry: true);
+        return Track(subject, SubjectEstimate, subjectEntry: true);
     }
 
     public int TrackObserver(object observer, in ObservationOptions options)

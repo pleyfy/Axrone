@@ -12,26 +12,11 @@ public sealed class ReactiveOptionsTests
         defaults.MaxObservers.Should().Be(100);
         defaults.AutoComplete.Should().BeFalse();
         defaults.ErrorPropagation.Should().BeTrue();
-        defaults.MemoryManagement.Enabled.Should().BeTrue();
-        defaults.MemoryManagement.GcIntervalMs.Should().Be(60000);
-        defaults.Replay.BufferSize.Should().Be(10);
-        defaults.Concurrency.MaxConcurrent.Should().Be(10);
 
-        var invalid = new SubjectOptions(
-            maxObservers: 0,
-            autoComplete: true,
-            errorPropagation: false,
-            memoryManagement: new SubjectMemoryOptions(true, -5, true),
-            replay: new SubjectReplayOptions(true, 0),
-            concurrency: new SubjectConcurrencyOptions(true, 0));
-        SubjectOptions normalized = invalid.Normalize();
+        SubjectOptions normalized = new SubjectOptions(maxObservers: 0, autoComplete: true, errorPropagation: false).Normalize();
         normalized.MaxObservers.Should().Be(100);
         normalized.AutoComplete.Should().BeTrue();
         normalized.ErrorPropagation.Should().BeFalse();
-        normalized.MemoryManagement.GcIntervalMs.Should().Be(60000);
-        normalized.MemoryManagement.WeakReferences.Should().BeTrue();
-        normalized.Replay.BufferSize.Should().Be(10);
-        normalized.Concurrency.MaxConcurrent.Should().Be(10);
 
         ObservationOptions observerDefaults = ObservationOptions.Default;
         observerDefaults.Priority.Should().Be(ObservationPriority.Normal);
@@ -80,29 +65,92 @@ public sealed class ReactiveOptionsTests
         merged.Replay.Enabled.Should().BeTrue();
         merged.Replay.BufferSize.Should().Be(5);
 
-        var subjectBase = new SubjectOptions(
-            maxObservers: 50,
-            autoComplete: false,
-            errorPropagation: true,
-            memoryManagement: new SubjectMemoryOptions(true, 100, false),
-            replay: new SubjectReplayOptions(true, 2),
-            concurrency: new SubjectConcurrencyOptions(true, 4));
-        var subjectOverride = new SubjectOptions(
-            maxObservers: 75,
-            autoComplete: true,
-            errorPropagation: false,
-            memoryManagement: new SubjectMemoryOptions(false, 0, true),
-            replay: new SubjectReplayOptions(false, 0),
-            concurrency: new SubjectConcurrencyOptions(false, 0));
+        var subjectBase = new SubjectOptions(maxObservers: 50, autoComplete: false, errorPropagation: true);
+        var subjectOverride = new SubjectOptions(maxObservers: 75, autoComplete: true, errorPropagation: false);
         SubjectOptions mergedSubject = SubjectOptions.Merge(subjectBase, subjectOverride);
         mergedSubject.MaxObservers.Should().Be(75);
         mergedSubject.AutoComplete.Should().BeTrue();
         mergedSubject.ErrorPropagation.Should().BeFalse();
-        mergedSubject.MemoryManagement.Enabled.Should().BeTrue();
-        mergedSubject.MemoryManagement.GcIntervalMs.Should().Be(100);
-        mergedSubject.MemoryManagement.WeakReferences.Should().BeTrue();
-        mergedSubject.Replay.BufferSize.Should().Be(2);
-        mergedSubject.Concurrency.MaxConcurrent.Should().Be(4);
+    }
+
+    [Fact]
+    public void SubjectOptionsNormalizeTreatsDefaultAsDefault()
+    {
+        default(SubjectOptions).Normalize().Should().Be(SubjectOptions.Default);
+        new SubjectOptions(maxObservers: 0).Normalize().Should().Be(SubjectOptions.Default);
+
+        using var subject = new Subject<int>(new SubjectOptions(maxObservers: 0, autoComplete: true, errorPropagation: false));
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+
+        FluentActions.Invoking(() => subject.OnNext(1)).Should().NotThrow();
+        subject.ObserverFaultCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void SubjectEnforcesMaxObserversAndErrorHandling()
+    {
+        using var subject = new Subject<int>(new SubjectOptions(maxObservers: 1, errorPropagation: false));
+        var first = new TestObserver<int>();
+        using var firstSubscription = subject.Subscribe(first);
+        FluentActions.Invoking(() => subject.Subscribe(new TestObserver<int>()))
+            .Should().Throw<MaxObserversExceededError>()
+            .Which.MaxObservers.Should().Be(1);
+
+        FluentActions.Invoking(() => subject.Subscribe(null!)).Should().Throw<ArgumentNullException>();
+        subject.OnNext(1);
+        first.Values.Should().Equal(1);
+        subject.OnCompleted();
+        first.Completed.Should().BeTrue();
+        subject.SubscriberCount.Should().Be(0);
+
+        using var swallowing = new Subject<int>(new SubjectOptions(errorPropagation: false));
+        using var throwingSubscription = swallowing.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+        FluentActions.Invoking(() => swallowing.OnNext(1)).Should().NotThrow();
+    }
+
+    [Fact]
+    public void SubjectCountsSwallowedObserverFaultsAndKeepsDelivering()
+    {
+        using var subject = new Subject<int>(new SubjectOptions(errorPropagation: false));
+        int received = 0;
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+        using var healthy = subject.Subscribe(new ActionObserver<int>(_ => received++));
+
+        subject.OnNext(1);
+        subject.OnNext(2);
+
+        subject.ObserverFaultCount.Should().Be(2);
+        received.Should().Be(2);
+    }
+
+    [Fact]
+    public void SubjectPropagatesObserverFaultsByDefault()
+    {
+        using var subject = new Subject<int>();
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+
+        FluentActions.Invoking(() => subject.OnNext(1))
+            .Should().Throw<InvalidOperationException>()
+            .WithMessage("observer");
+        subject.ObserverFaultCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void AutoCompleteDisposesSubjectAfterCompletion()
+    {
+        var subject = new Subject<int>(new SubjectOptions(autoComplete: true));
+        var observer = new TestObserver<int>();
+        using var subscription = subject.Subscribe(observer);
+        subject.OnCompleted();
+        observer.Completed.Should().BeTrue();
+        subject.IsTerminated.Should().BeTrue();
+        var late = new TestObserver<int>();
+        using var lateSubscription = subject.Subscribe(late);
+        late.Completed.Should().BeTrue();
     }
 
     [Fact]
@@ -132,9 +180,10 @@ public sealed class ReactiveOptionsTests
         new ObserverNotFoundError(4).Code.Should().Be("OBSERVER_ERROR");
         new SubjectCompletedError(3).SubjectId.Should().Be(3);
         new SubjectDisposedError(3).Code.Should().Be("SUBJECT_ERROR");
-        var max = new MaxObserversExceededError(2, 10, 10);
+        var max = new MaxObserversExceededError(10, 10);
         max.MaxObservers.Should().Be(10);
         max.CurrentCount.Should().Be(10);
+        max.Message.Should().Contain("Max: 10").And.Contain("Current: 10");
         var execution = new ObserverExecutionError(7, "payload", inner);
         execution.ObserverId.Should().Be(7);
         execution.OriginalError.Should().BeSameAs(inner);
@@ -156,7 +205,7 @@ public sealed class ReactiveOptionsTests
         using var manager = new ObservableMemoryManager(true, gcIntervalMs: 0);
         object subject = new();
         object observer = new();
-        int subjectId = manager.TrackSubject(subject, SubjectOptions.Default);
+        int subjectId = manager.TrackSubject(subject);
         int observerId = manager.TrackObserver(observer, ObservationOptions.Default);
         ObservableMemoryUsage usage = manager.GetMemoryUsage();
         usage.Subjects.Should().Be(1);

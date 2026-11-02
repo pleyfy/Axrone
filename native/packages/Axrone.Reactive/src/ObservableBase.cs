@@ -29,17 +29,28 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
     private const int StateCompleted = 1;
     private const int StateFaulted = 2;
 
+    private readonly SubjectOptions _subjectOptions;
     private SubscriptionEntry[] _observers = [];
     private int _terminal;
     private Exception? _error;
     private int _disposed;
+    private int _observerFaultCount;
     private long _nextSubscriptionId;
 
     /// <summary>Guards fault publication only; hot paths never take it.</summary>
     private readonly Lock _faultGate = new();
 
+    protected ObservableBase()
+        : this(SubjectOptions.Default)
+    {
+    }
+
+    protected ObservableBase(in SubjectOptions options) => _subjectOptions = options.Normalize();
+
     /// <summary>Live subscriptions.</summary>
     public int SubscriberCount => Volatile.Read(ref _observers).Length;
+
+    public int ObserverFaultCount => Volatile.Read(ref _observerFaultCount);
 
     /// <summary>Whether error/completed was delivered.</summary>
     public bool IsTerminated => Volatile.Read(ref _terminal) != StateActive;
@@ -58,6 +69,10 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
     public virtual IDisposable Subscribe(IObserver<T> observer, ObservationPriority priority)
     {
         ArgumentNullException.ThrowIfNull(observer);
+        if (!IsTerminated && SubscriberCount >= _subjectOptions.MaxObservers)
+        {
+            ReactiveThrowHelper.ThrowMaxObserversExceeded(_subjectOptions.MaxObservers, SubscriberCount);
+        }
 
         int terminal = Volatile.Read(ref _terminal);
         if (terminal == StateCompleted)
@@ -119,11 +134,28 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
         }
 
         SubscriptionEntry[] snapshot = Volatile.Read(ref _observers);
+        bool propagate = PropagateObserverErrors;
         for (int i = 0; i < snapshot.Length; i++)
         {
-            snapshot[i].Observer.OnNext(value);
+            if (propagate)
+            {
+                snapshot[i].Observer.OnNext(value);
+            }
+            else
+            {
+                try
+                {
+                    snapshot[i].Observer.OnNext(value);
+                }
+                catch (Exception)
+                {
+                    Interlocked.Increment(ref _observerFaultCount);
+                }
+            }
         }
     }
+
+    protected bool PropagateObserverErrors => _subjectOptions.ErrorPropagation;
 
     /// <summary>Delivers completion; later publishes are ignored, late subscribers replay it.</summary>
     protected void Complete()
@@ -140,6 +172,11 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
         for (int i = 0; i < snapshot.Length; i++)
         {
             snapshot[i].Observer.OnCompleted();
+        }
+
+        if (_subjectOptions.AutoComplete)
+        {
+            Dispose();
         }
     }
 
@@ -284,4 +321,12 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
         {
         }
     }
+}
+
+internal static class ReactiveThrowHelper
+{
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowMaxObserversExceeded(int maxObservers, int currentCount) =>
+        throw new MaxObserversExceededError(maxObservers, currentCount);
 }
