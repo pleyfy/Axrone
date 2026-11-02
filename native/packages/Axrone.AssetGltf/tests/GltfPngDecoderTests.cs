@@ -153,7 +153,7 @@ public sealed class GltfPngDecoderTests
     }
 
     [Fact]
-    public async Task Import_JpegRetainsRawPayloadWithDiagnostic()
+    public async Task Import_TruncatedJpegRetainsRawPayloadWithDiagnostic()
     {
         string json = """
             {
@@ -171,7 +171,37 @@ public sealed class GltfPngDecoderTests
             .Which.MimeType.Should().Be("image/jpeg");
         texture.RuntimeFormat.Should().Be(GltfTextureFormat.Unknown);
         result.Diagnostics.Should().Contain(diagnostic =>
-            diagnostic.Code == "gltf.texture.decode.unsupported");
+            diagnostic.Code == "gltf.texture.decode.failed" &&
+            diagnostic.Message.Contains("JPEG", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Import_DecodesJpegDataUriIntoRgba8Texture()
+    {
+        byte[] rgba = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 0];
+        byte[] jpeg = GltfJpegDecoderTests.JpegWriter.Encode(rgba, 2, 2, components: 3);
+        string json = $$"""
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/jpeg;base64,{{Convert.ToBase64String(jpeg)}}"}],
+              "textures": [{"source": 0}]
+            }
+            """;
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "jpeg.gltf" });
+        GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
+
+        GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
+        GltfTranscodedTexturePayload payload = texture.Payload
+            .Should().BeOfType<GltfTranscodedTexturePayload>().Subject;
+        payload.Format.Should().Be(GltfTextureFormat.R8G8B8A8_UNorm);
+        payload.Levels.Should().ContainSingle();
+        payload.Levels[0].Width.Should().Be(2);
+        payload.Levels[0].Height.Should().Be(2);
+        texture.RuntimeFormat.Should().Be(GltfTextureFormat.R8G8B8A8_UNorm);
+        texture.TranscodeState.Success.Should().BeTrue();
+        texture.TranscodeState.TranscoderId.Should().Be("builtin/jpeg");
+        result.Diagnostics.Should().BeEmpty();
     }
 
     [Fact]

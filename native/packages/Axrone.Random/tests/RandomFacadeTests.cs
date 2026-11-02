@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 
 namespace Axrone.Random.Tests;
 
@@ -879,23 +880,67 @@ public class RandomConcurrentFacadeTests
         var source = new ConcurrentRandom(13UL);
         var gate = new ManualResetEventSlim(false);
         var started = new ManualResetEventSlim(false);
+        var stop = new ManualResetEventSlim(false);
+        byte[] payload = new byte[64 * 1024 * 1024];
+        Exception? workerError = null;
+        int completedDraws = 0;
 
         var worker = new Thread(() =>
         {
-            started.Set();
-            gate.Wait();
-            source.NextUInt64();
-        });
+            try
+            {
+                started.Set();
+                gate.Wait();
+                while (!stop.IsSet)
+                {
+                    source.NextBytes(payload);
+                    Interlocked.Increment(ref completedDraws);
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // The drain completed between two loop iterations; the next draw must throw.
+            }
+            catch (Exception exception)
+            {
+                workerError = exception;
+            }
+        })
+        {
+            IsBackground = true,
+        };
+
+        // The counter is the only observable proof that a draw owns a stripe. Reading it keeps
+        // the test deterministic: DrainAsync must not be called until the worker is counted.
+        FieldInfo activeDraws = typeof(ConcurrentRandom).GetField(
+            "_activeDraws",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         worker.Start();
         started.Wait();
         gate.Set();
 
-        await source.DrainAsync();
-        AssertObjectDisposed(() => source.NextUInt64());
+        try
+        {
+            bool observed = WaitForInFlightDraw(activeDraws, source, timeoutMilliseconds: 15_000);
+            observed.Should().BeTrue("the worker draw must be in flight before draining");
 
-        worker.Join(TimeSpan.FromSeconds(60)).Should().BeTrue();
-        await source.DisposeAsync();
+            await source.DrainAsync();
+
+            ((int)activeDraws.GetValue(source)!).Should().Be(0);
+            AssertObjectDisposed(() => source.NextUInt64());
+
+            worker.Join(TimeSpan.FromSeconds(60)).Should().BeTrue();
+            workerError.Should().BeNull();
+            Volatile.Read(ref completedDraws).Should().BeGreaterThan(0);
+        }
+        finally
+        {
+            stop.Set();
+            gate.Set();
+            worker.Join(TimeSpan.FromSeconds(60));
+            await source.DisposeAsync();
+        }
     }
 
     [Fact]
@@ -910,6 +955,27 @@ public class RandomConcurrentFacadeTests
 
     private static void AssertObjectDisposed(Action draw) =>
         Assert.Throws<ObjectDisposedException>(() => draw());
+
+    private static bool WaitForInFlightDraw(
+        FieldInfo activeDraws,
+        ConcurrentRandom source,
+        int timeoutMilliseconds)
+    {
+        long deadline = Environment.TickCount64 + timeoutMilliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            if ((int)activeDraws.GetValue(source)! != 0)
+            {
+                return true;
+            }
+
+            // Sleep grants the worker a slice on constrained machines; a tight Yield loop can
+            // starve it and make the observation window unreachable.
+            Thread.Sleep(1);
+        }
+
+        return false;
+    }
 }
 
 /// <summary>

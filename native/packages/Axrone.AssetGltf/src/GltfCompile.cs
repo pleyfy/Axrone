@@ -155,92 +155,33 @@ public static class GltfCompileExtensions
             GltfTexturePayload payload;
             GltfTextureFormat runtimeFormat = GltfTextureFormat.Unknown;
             var transcodeState = new GltfTextureTranscodeState(true, null, null, GltfTextureFormat.Unknown);
+            GltfRawModel.Image? imageDef = texDef.Source.HasValue && texDef.Source.Value < rawModel.Images.Count
+                ? rawModel.Images[texDef.Source.Value]
+                : null;
+            string? imageUri = imageDef?.Uri;
 
-            if (texDef.Source.HasValue && texDef.Source.Value < rawModel.Images.Count)
+            if (imageDef?.BufferView is int bufferView && bufferView < rawModel.BufferViews.Count)
             {
-                GltfRawModel.Image img = rawModel.Images[texDef.Source.Value];
-                if (img.BufferView.HasValue && img.BufferView.Value < rawModel.BufferViews.Count)
+                ReadOnlyMemory<byte> imgBytes = await resourceRuntime.ResolveBufferViewAsync<TMeshoptPolicy>(
+                    bufferView, rawModel, cancellationToken).ConfigureAwait(false);
+                payload = new GltfRawTexturePayload(imgBytes, imageDef.MimeType ?? "application/octet-stream");
+            }
+            else if (!string.IsNullOrEmpty(imageUri))
+            {
+                if (imageUri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
-                    ReadOnlyMemory<byte> imgBytes = await resourceRuntime.ResolveBufferViewAsync<TMeshoptPolicy>(
-                        img.BufferView.Value, rawModel, cancellationToken).ConfigureAwait(false);
-
-                    if (string.Equals(img.MimeType, "image/ktx2", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (Ktx2Decoder.TryParse(imgBytes, out GltfCompressedTexturePayload? compressed, out string? error))
-                        {
-                            payload = compressed;
-                            runtimeFormat = Ktx2Decoder.MapVkFormat(compressed.VkFormat);
-
-                            if (options.TranscodeTargetFormat != GltfTextureFormat.Unknown
-                                && TTranscoderPolicy.CanTranscode(
-                                    imgBytes.Span,
-                                    runtimeFormat,
-                                    options.TranscodeTargetFormat))
-                            {
-                                if (TTranscoderPolicy.TryTranscode(
-                                        imgBytes,
-                                        runtimeFormat,
-                                        options.TranscodeTargetFormat,
-                                        out GltfTranscodeOutput? transcodeOutput,
-                                        out string? failureReason) &&
-                                    transcodeOutput.HasValue)
-                                {
-                                    transcodeState = new GltfTextureTranscodeState(true, TTranscoderPolicy.PolicyId, null, options.TranscodeTargetFormat);
-                                    runtimeFormat = transcodeOutput.Value.Format;
-                                    payload = transcodeOutput.Value.Payload;
-                                }
-                                else
-                                {
-                                    transcodeState = new GltfTextureTranscodeState(false, null, failureReason, options.TranscodeTargetFormat);
-                                    diagnostics.Add(new GltfDiagnostic(
-                                        GltfDiagnosticLevel.Warning,
-                                        "gltf.texture.transcode.failed",
-                                        failureReason ?? "Texture transcode failed."));
-                                }
-                            }
-                        }
-                        else
-                        {
-                            diagnostics.Add(new GltfDiagnostic(GltfDiagnosticLevel.Error, "gltf.texture.transcode.failed", error!));
-                            payload = new GltfRawTexturePayload(imgBytes, img.MimeType ?? "application/octet-stream");
-                        }
-                    }
-                    else
-                    {
-                        payload = new GltfRawTexturePayload(imgBytes, img.MimeType ?? "image/png");
-                        runtimeFormat = GltfTextureFormat.Unknown;
-                    }
-                }
-                else if (!string.IsNullOrEmpty(img.Uri))
-                {
-                    if (img.Uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        payload = new GltfRawTexturePayload(
-                            GltfResourceRuntimeCache.DecodeDataUri(img.Uri),
-                            img.MimeType ?? GltfResourceRuntimeCache.GetDataUriMimeType(img.Uri) ?? "application/octet-stream");
-                        runtimeFormat = GltfTextureFormat.Unknown;
-                    }
-                    else
-                    {
-                        ReadOnlyMemory<byte>? resolvedImage = await resourceRuntime.TryResolveImageAsync(
-                            img.Uri, img.MimeType, cancellationToken).ConfigureAwait(false);
-
-                        if (resolvedImage.HasValue)
-                        {
-                            payload = new GltfRawTexturePayload(
-                                resolvedImage.Value,
-                                img.MimeType ?? "application/octet-stream");
-                            runtimeFormat = GltfTextureFormat.Unknown;
-                        }
-                        else
-                        {
-                            payload = new GltfExternalTexturePayload(img.Uri);
-                        }
-                    }
+                    payload = new GltfRawTexturePayload(
+                        GltfResourceRuntimeCache.DecodeDataUri(imageUri),
+                        imageDef?.MimeType ?? GltfResourceRuntimeCache.GetDataUriMimeType(imageUri) ?? "application/octet-stream");
                 }
                 else
                 {
-                    payload = new GltfRawTexturePayload(ReadOnlyMemory<byte>.Empty, "unknown");
+                    ReadOnlyMemory<byte>? resolvedImage = await resourceRuntime.TryResolveImageAsync(
+                        imageUri, imageDef?.MimeType, cancellationToken).ConfigureAwait(false);
+
+                    payload = resolvedImage.HasValue
+                        ? new GltfRawTexturePayload(resolvedImage.Value, imageDef?.MimeType ?? "application/octet-stream")
+                        : new GltfExternalTexturePayload(imageUri);
                 }
             }
             else
@@ -248,12 +189,118 @@ public static class GltfCompileExtensions
                 payload = new GltfRawTexturePayload(ReadOnlyMemory<byte>.Empty, "unknown");
             }
 
-            if (options.DecodeEncodedTextures && payload is GltfRawTexturePayload rawPayload &&
-                !rawPayload.Bytes.IsEmpty)
+            if (payload is GltfRawTexturePayload encoded && !encoded.Bytes.IsEmpty)
             {
-                if (IsPngPayload(rawPayload))
+                GltfImageCodecKind codec = GltfImageCodec.Detect(
+                    encoded.Bytes.Span,
+                    encoded.MimeType,
+                    imageUri);
+
+                if (codec == GltfImageCodecKind.Ktx2)
                 {
-                    if (GltfPngDecoder.TryDecode(rawPayload.Bytes.Span, out GltfDecodedImage? decoded, out string? decodeError))
+                    if (!GltfKtx2Reader.TryRead(encoded.Bytes, out GltfKtx2Texture? ktx2, out GltfImageDecodeError? ktx2Error))
+                    {
+                        string errorCode = ktx2Error!.Value.Failure is
+                            GltfImageDecodeFailure.Supercompression or GltfImageDecodeFailure.Unsupported
+                            ? "gltf.texture.decode.unsupported"
+                            : "gltf.texture.ktx2.invalid";
+                        diagnostics.Add(new GltfDiagnostic(
+                            GltfDiagnosticLevel.Warning,
+                            errorCode,
+                            $"Texture {i}: {ktx2Error.Value}"));
+                    }
+                    else
+                    {
+                        payload = GltfKtx2Reader.ToPayload(ktx2);
+                        runtimeFormat = ktx2.RuntimeFormat;
+                        bool policyAttempted = false;
+
+                        if (options.TranscodeTargetFormat != GltfTextureFormat.Unknown &&
+                            TTranscoderPolicy.CanTranscode(
+                                encoded.Bytes.Span,
+                                runtimeFormat,
+                                options.TranscodeTargetFormat))
+                        {
+                            policyAttempted = true;
+                            if (TTranscoderPolicy.TryTranscode(
+                                    encoded.Bytes,
+                                    runtimeFormat,
+                                    options.TranscodeTargetFormat,
+                                    out GltfTranscodeOutput? transcodeOutput,
+                                    out string? failureReason) &&
+                                transcodeOutput.HasValue)
+                            {
+                                transcodeState = new GltfTextureTranscodeState(
+                                    true,
+                                    TTranscoderPolicy.PolicyId,
+                                    null,
+                                    options.TranscodeTargetFormat);
+                                runtimeFormat = transcodeOutput.Value.Format;
+                                payload = transcodeOutput.Value.Payload;
+                            }
+                            else
+                            {
+                                transcodeState = new GltfTextureTranscodeState(
+                                    false,
+                                    null,
+                                    failureReason,
+                                    options.TranscodeTargetFormat);
+                                diagnostics.Add(new GltfDiagnostic(
+                                    GltfDiagnosticLevel.Warning,
+                                    "gltf.texture.transcode.failed",
+                                    failureReason ?? "Texture transcode failed."));
+                            }
+                        }
+
+                        if (!policyAttempted && ktx2.RequiresBasisTranscode)
+                        {
+                            if (GltfKtx2Reader.TryResolvePayload(
+                                    ktx2,
+                                    options.CompressedTextureTranscoder,
+                                    options.TranscodeTargetFormat,
+                                    out GltfTexturePayload? resolvedPayload,
+                                    out GltfTextureFormat resolvedFormat,
+                                    out GltfImageDecodeError? resolveError))
+                            {
+                                payload = resolvedPayload;
+                                runtimeFormat = resolvedFormat;
+                                if (resolvedPayload is not GltfCompressedTexturePayload)
+                                {
+                                    transcodeState = new GltfTextureTranscodeState(
+                                        true,
+                                        options.CompressedTextureTranscoder?.Id,
+                                        null,
+                                        resolvedFormat);
+                                }
+                            }
+                            else
+                            {
+                                string errorCode = resolveError!.Value.Failure == GltfImageDecodeFailure.TranscoderMissing
+                                    ? "gltf.texture.transcode.unavailable"
+                                    : "gltf.texture.transcode.failed";
+                                diagnostics.Add(new GltfDiagnostic(
+                                    GltfDiagnosticLevel.Warning,
+                                    errorCode,
+                                    $"Texture {i}: {resolveError.Value.Message}"));
+                                transcodeState = new GltfTextureTranscodeState(
+                                    false,
+                                    null,
+                                    resolveError.Value.Message,
+                                    options.TranscodeTargetFormat);
+                            }
+                        }
+                    }
+                }
+                else if (options.DecodeEncodedTextures &&
+                         codec is GltfImageCodecKind.Png or GltfImageCodecKind.Jpeg)
+                {
+                    string transcoderId = codec == GltfImageCodecKind.Png ? "builtin/png" : "builtin/jpeg";
+                    if (GltfImageCodec.TryDecodeRaster(
+                            encoded.Bytes.Span,
+                            encoded.MimeType,
+                            imageUri,
+                            out GltfDecodedImage? decoded,
+                            out GltfImageDecodeError? decodeError))
                     {
                         payload = new GltfTranscodedTexturePayload(
                             decoded.Rgba,
@@ -262,7 +309,7 @@ public static class GltfCompileExtensions
                         runtimeFormat = GltfTextureFormat.R8G8B8A8_UNorm;
                         transcodeState = new GltfTextureTranscodeState(
                             true,
-                            "builtin/png",
+                            transcoderId,
                             null,
                             GltfTextureFormat.R8G8B8A8_UNorm);
                     }
@@ -270,21 +317,21 @@ public static class GltfCompileExtensions
                     {
                         transcodeState = new GltfTextureTranscodeState(
                             false,
-                            "builtin/png",
-                            decodeError,
+                            transcoderId,
+                            decodeError?.Message,
                             GltfTextureFormat.R8G8B8A8_UNorm);
                         diagnostics.Add(new GltfDiagnostic(
                             GltfDiagnosticLevel.Warning,
                             "gltf.texture.decode.failed",
-                            $"Texture {i} could not be decoded as PNG: {decodeError}"));
+                            $"Texture {i} could not be decoded as {codec}: {decodeError?.Message}"));
                     }
                 }
-                else if (IsUnsupportedEncodedImage(rawPayload.MimeType))
+                else if (options.DecodeEncodedTextures && IsUnsupportedEncodedImage(encoded.MimeType))
                 {
                     diagnostics.Add(new GltfDiagnostic(
                         GltfDiagnosticLevel.Warning,
                         "gltf.texture.decode.unsupported",
-                        $"Texture {i} uses encoded format '{rawPayload.MimeType}' which is not decoded; the raw payload was retained."));
+                        $"Texture {i} uses encoded format '{encoded.MimeType}' which is not decoded; the raw payload was retained."));
                 }
             }
 
@@ -321,16 +368,9 @@ public static class GltfCompileExtensions
         return builder.MoveToImmutable();
     }
 
-    private static bool IsPngPayload(GltfRawTexturePayload payload) =>
-        GltfPngDecoder.IsPng(payload.Bytes.Span) ||
-        string.Equals(payload.MimeType, "image/png", StringComparison.OrdinalIgnoreCase);
-
     private static bool IsUnsupportedEncodedImage(string? mimeType) =>
-        string.Equals(mimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(mimeType, "image/jpg", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(mimeType, "image/webp", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(mimeType, "image/avif", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(mimeType, "image/ktx2", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(mimeType, "image/basis", StringComparison.OrdinalIgnoreCase);
 
     internal static List<GltfMaterialAsset> CompileMaterials(GltfRawModel rawModel, GltfImporterOptions options)
