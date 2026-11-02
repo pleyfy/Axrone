@@ -160,17 +160,13 @@ public class Scene2DBulkTests
     }
 
     [Fact]
-    public void BulkCreationRequiresRendererCapability()
+    public void BulkCreationRequiresACompletePayloadProfile()
     {
         var runtime = SceneRuntimeProfiles.CreateCustom("test/core-2d", SceneProfiles.CreateCore2D());
-        using Scene2D scene = Scene2D.Create(new Scene2DCreateOptions { RuntimeProfile = runtime });
-        Scene2DSpriteSpec[] specs = CreateSpecs(2);
-        var actors = new SceneActor[specs.Length];
 
-        Action create = () => scene.CreateSprites(specs, actors);
+        Action create = () => Scene2D.Create(new Scene2DCreateOptions { RuntimeProfile = runtime });
 
-        create.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("SpriteRenderer");
-        scene.ActorCount.Should().Be(0);
+        create.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("Scene2D");
     }
 
     private static Scene2DSpriteSpec[] CreateSpecs(int count)
