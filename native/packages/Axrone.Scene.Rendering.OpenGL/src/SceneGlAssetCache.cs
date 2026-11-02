@@ -112,11 +112,12 @@ public sealed class SceneGlAssetCache : IDisposable
         _context.AssertRenderThread();
 
         string label = definition.Id.ToString();
+        string fragmentSource = SceneGlMaterialShaderComposer.ComposeFragmentSource(definition.FragmentSource);
         var shader = new SceneGlShader(
             _context,
             label,
             definition.VertexSource,
-            definition.FragmentSource);
+            fragmentSource);
 
         if (_shaders.TryGetValue(definition.Id, out SceneGlShader? previous))
         {
@@ -135,7 +136,7 @@ public sealed class SceneGlAssetCache : IDisposable
             _unskinnableShaderCount--;
         }
 
-        (SceneGlShader? skinned, SkinningInjectionFailure failure) = CompileSkinnedShader(definition, label);
+        (SceneGlShader? skinned, SkinningInjectionFailure failure) = CompileSkinnedShader(definition, label, fragmentSource);
         _skinnedShaders[definition.Id] = skinned;
         _skinningDiagnostics[definition.Id] = new SkinningShaderDiagnostic(definition.Id, skinned is not null, failure);
         if (skinned is null)
@@ -148,7 +149,8 @@ public sealed class SceneGlAssetCache : IDisposable
 
     private (SceneGlShader? Shader, SkinningInjectionFailure Failure) CompileSkinnedShader(
         SceneShaderDefinition definition,
-        string label)
+        string label,
+        string fragmentSource)
     {
         if (!SkinningShaderInjector.TryInject(definition.VertexSource, out string injected, out SkinningInjectionFailure failure))
         {
@@ -157,7 +159,7 @@ public sealed class SceneGlAssetCache : IDisposable
 
         try
         {
-            return (new SceneGlShader(_context, label + "-skinned", injected, definition.FragmentSource), SkinningInjectionFailure.None);
+            return (new SceneGlShader(_context, label + "-skinned", injected, fragmentSource), SkinningInjectionFailure.None);
         }
         catch (GLShaderException)
         {
@@ -319,43 +321,44 @@ public sealed class SceneGlAssetCache : IDisposable
                 $"Material '{definition.Id}' references shader '{definition.ShaderId}' which is not uploaded.");
         }
 
+        SceneAssetId<MaterialAssetTag> materialId = definition.Id;
         var slots = new List<SceneGlTextureSlot>(16);
-        AddTextureSlot(slots, "u_AlbedoMap", 0, definition.Surface.AlbedoMap);
-        AddTextureSlot(slots, "u_NormalMap", 1, definition.Surface.NormalMap);
-        AddTextureSlot(slots, "u_PbrMap", 2, definition.Surface.PbrMap);
-        AddTextureSlot(slots, "u_OcclusionMap", 3, definition.Surface.OcclusionMap);
-        AddTextureSlot(slots, "u_EmissiveMap", 4, definition.Surface.EmissiveMap);
+        AddTextureSlot(slots, "u_AlbedoMap", 0, definition.Surface.AlbedoMap, materialId, extension: false);
+        AddTextureSlot(slots, "u_NormalMap", 1, definition.Surface.NormalMap, materialId, extension: false);
+        AddTextureSlot(slots, "u_PbrMap", 2, definition.Surface.PbrMap, materialId, extension: false);
+        AddTextureSlot(slots, "u_OcclusionMap", 3, definition.Surface.OcclusionMap, materialId, extension: false);
+        AddTextureSlot(slots, "u_EmissiveMap", 4, definition.Surface.EmissiveMap, materialId, extension: false);
 
         SceneMaterialSurface surface = definition.Surface;
         SceneMaterialFeatures features = surface.Features;
 
         if ((features & SceneMaterialFeatures.Clearcoat) != 0)
         {
-            AddTextureSlot(slots, "u_ClearcoatMap", 5, surface.ClearcoatMap);
-            AddTextureSlot(slots, "u_ClearcoatRoughnessMap", 6, surface.ClearcoatRoughnessMap);
-            AddTextureSlot(slots, "u_ClearcoatNormalMap", 7, surface.ClearcoatNormalMap);
+            AddTextureSlot(slots, "u_ClearcoatMap", 5, surface.ClearcoatMap, materialId, extension: true);
+            AddTextureSlot(slots, "u_ClearcoatRoughnessMap", 6, surface.ClearcoatRoughnessMap, materialId, extension: true);
+            AddTextureSlot(slots, "u_ClearcoatNormalMap", 7, surface.ClearcoatNormalMap, materialId, extension: true);
         }
 
         if ((features & SceneMaterialFeatures.Sheen) != 0)
         {
-            AddTextureSlot(slots, "u_SheenColorMap", 8, surface.SheenColorMap);
-            AddTextureSlot(slots, "u_SheenRoughnessMap", 9, surface.SheenRoughnessMap);
+            AddTextureSlot(slots, "u_SheenColorMap", 8, surface.SheenColorMap, materialId, extension: true);
+            AddTextureSlot(slots, "u_SheenRoughnessMap", 9, surface.SheenRoughnessMap, materialId, extension: true);
         }
 
         if ((features & SceneMaterialFeatures.Transmission) != 0)
         {
-            AddTextureSlot(slots, "u_TransmissionMap", 10, surface.TransmissionMap);
+            AddTextureSlot(slots, "u_TransmissionMap", 10, surface.TransmissionMap, materialId, extension: true);
         }
 
         if ((features & SceneMaterialFeatures.Iridescence) != 0)
         {
-            AddTextureSlot(slots, "u_IridescenceMap", 11, surface.IridescenceMap);
-            AddTextureSlot(slots, "u_IridescenceThicknessMap", 12, surface.IridescenceThicknessMap);
+            AddTextureSlot(slots, "u_IridescenceMap", 11, surface.IridescenceMap, materialId, extension: true);
+            AddTextureSlot(slots, "u_IridescenceThicknessMap", 12, surface.IridescenceThicknessMap, materialId, extension: true);
         }
 
         if ((features & SceneMaterialFeatures.Subsurface) != 0)
         {
-            AddTextureSlot(slots, "u_SubsurfaceMap", 13, surface.SubsurfaceMap);
+            AddTextureSlot(slots, "u_SubsurfaceMap", 13, surface.SubsurfaceMap, materialId, extension: true);
         }
 
         var material = new SceneGlMaterial(
@@ -514,11 +517,27 @@ public sealed class SceneGlAssetCache : IDisposable
         List<SceneGlTextureSlot> slots,
         string uniformName,
         int unit,
-        SceneMaterialTextureBinding? binding)
+        SceneMaterialTextureBinding? binding,
+        SceneAssetId<MaterialAssetTag> materialId,
+        bool extension)
     {
         if (binding is not { } value)
         {
             return;
+        }
+
+        int resolvedUnit = value.Unit ?? unit;
+        SceneGlTextureUnits.ValidateMaterialSlot(resolvedUnit, extension, uniformName, materialId);
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            if (slots[i].Unit == resolvedUnit)
+            {
+                throw new SceneAssetException(
+                    SceneAssetErrorCodes.Invalid,
+                    $"Material '{materialId}' maps '{slots[i].UniformName}' and '{uniformName}' " +
+                    $"to the same texture unit {resolvedUnit}.");
+            }
         }
 
         if (!_textures.TryGetValue(value.TextureId, out GLTexture? texture))
@@ -538,7 +557,7 @@ public sealed class SceneGlAssetCache : IDisposable
             ? found
             : _defaultSampler;
 
-        slots.Add(new SceneGlTextureSlot(uniformName, value.Unit ?? unit, texture, sampler));
+        slots.Add(new SceneGlTextureSlot(uniformName, resolvedUnit, texture, sampler));
     }
 
     private static void UploadDataTexture(
