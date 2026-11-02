@@ -25,7 +25,43 @@ internal static class UiTestFont
 
     public static byte[] CreateArabic() => CreateCore(12, false, 0, arabic: true);
 
-    private static byte[] CreateCore(int cmapFormat, bool cff, int hMetrics, bool layout = false, bool arabic = false)
+    public static byte[] CreateVariation(bool avar = false, bool corruptGvar = false) =>
+        CreateCore(4, false, 0, variation: true, avar: avar, corruptGvar: corruptGvar);
+
+    public static byte[] CreateColor(bool corrupt = false) =>
+        CreateCore(4, false, 0, color: true, colorCorrupt: corrupt);
+
+    public static byte[] CreateHinted(bool prepYAxis = false) =>
+        CreateCore(4, false, 0, hinted: true, prepYAxis: prepYAxis);
+
+    public static byte[] CreateCff2Tagged()
+    {
+        byte[] font = Create(cff: true);
+        int record = TableRecord(font, "CFF ");
+        if (record >= 0)
+        {
+            font[record] = (byte)'C';
+            font[record + 1] = (byte)'F';
+            font[record + 2] = (byte)'F';
+            font[record + 3] = (byte)'2';
+        }
+
+        return font;
+    }
+
+    private static byte[] CreateCore(
+        int cmapFormat,
+        bool cff,
+        int hMetrics,
+        bool layout = false,
+        bool arabic = false,
+        bool variation = false,
+        bool avar = false,
+        bool corruptGvar = false,
+        bool color = false,
+        bool colorCorrupt = false,
+        bool hinted = false,
+        bool prepYAxis = false)
     {
         List<byte[]> glyphs =
         [
@@ -90,6 +126,17 @@ internal static class UiTestFont
 
         mappings.Sort(static (left, right) => left.CodePoint.CompareTo(right.CodePoint));
 
+        if (hinted)
+        {
+            glyphs[2] = SimpleGlyphWithInstructions(
+                prepYAxis
+                    ? [0xB0, 0x01, 0x2F]
+                    : [0xB0, 0x00, 0x2B, 0xB0, 0x01, 0x2F],
+                (0, 0),
+                (300, 740),
+                (600, 0));
+        }
+
         List<(int Left, int Right, int Value)> kernPairs =
         [
             (2, 3, -80),
@@ -98,7 +145,23 @@ internal static class UiTestFont
         ];
 
         int metrics = hMetrics <= 0 ? glyphs.Count : hMetrics;
-        return Build(glyphs, Advances, LeftBearings, mappings, kernPairs, metrics, cmapFormat, cff, layout);
+        return Build(
+            glyphs,
+            Advances,
+            LeftBearings,
+            mappings,
+            kernPairs,
+            metrics,
+            cmapFormat,
+            cff,
+            layout,
+            variation,
+            avar,
+            corruptGvar,
+            color,
+            colorCorrupt,
+            hinted,
+            prepYAxis);
     }
 
     public static byte[] CreateFallback()
@@ -113,6 +176,22 @@ internal static class UiTestFont
         string path = Path.Combine(AppContext.BaseDirectory, "Fonts", "kenpixel.ttf");
         File.Exists(path).ShouldBeTrue($"The real test font is missing at '{path}'.");
         return File.ReadAllBytes(path);
+    }
+
+    public static byte[] CreateWithTableChecksumDamage()
+    {
+        byte[] font = Create();
+        int hmtx = TableOffset(font, "hmtx");
+        font[hmtx + 1] ^= 0x01;
+        return font;
+    }
+
+    public static byte[] CreateWithAdjustmentDamage()
+    {
+        byte[] font = Create();
+        int head = TableOffset(font, "head");
+        font[head + 8] ^= 0x01;
+        return font;
     }
 
     public static int TableOffset(byte[] font, string tag)
@@ -186,6 +265,51 @@ internal static class UiTestFont
         return [.. data];
     }
 
+    public static byte[] SimpleGlyphWithInstructions(byte[] instructions, params (int X, int Y)[] points)
+    {
+        int xMin = int.MaxValue;
+        int yMin = int.MaxValue;
+        int xMax = int.MinValue;
+        int yMax = int.MinValue;
+        foreach ((int x, int y) in points)
+        {
+            xMin = Math.Min(xMin, x);
+            yMin = Math.Min(yMin, y);
+            xMax = Math.Max(xMax, x);
+            yMax = Math.Max(yMax, y);
+        }
+
+        var data = new List<byte>(32 + instructions.Length);
+        WriteI16(data, 1);
+        WriteI16(data, xMin);
+        WriteI16(data, yMin);
+        WriteI16(data, xMax);
+        WriteI16(data, yMax);
+        WriteU16(data, points.Length - 1);
+        WriteU16(data, instructions.Length);
+        data.AddRange(instructions);
+        for (int i = 0; i < points.Length; i++)
+        {
+            data.Add(0x01);
+        }
+
+        int previous = 0;
+        foreach ((int x, _) in points)
+        {
+            WriteI16(data, x - previous);
+            previous = x;
+        }
+
+        previous = 0;
+        foreach ((_, int y) in points)
+        {
+            WriteI16(data, y - previous);
+            previous = y;
+        }
+
+        return [.. data];
+    }
+
     public static byte[] CompositeGlyph(int glyphId, int dx, int dy, int xMin, int yMin, int xMax, int yMax)
     {
         var data = new List<byte>(18);
@@ -210,7 +334,14 @@ internal static class UiTestFont
         int hMetrics,
         int cmapFormat,
         bool cff,
-        bool layout)
+        bool layout,
+        bool variation = false,
+        bool avar = false,
+        bool corruptGvar = false,
+        bool color = false,
+        bool colorCorrupt = false,
+        bool hinted = false,
+        bool prepYAxis = false)
     {
         var tables = new List<(string Tag, byte[] Data)>
         {
@@ -242,6 +373,32 @@ internal static class UiTestFont
             tables.Add(("GPOS", UiTestLayoutTables.CreateGpos()));
         }
 
+        if (variation)
+        {
+            tables.Add(("fvar", BuildFvar()));
+            tables.Add(("gvar", BuildGvar(glyphs.Count, corruptGvar)));
+            if (avar)
+            {
+                tables.Add(("avar", BuildAvar()));
+            }
+        }
+
+        if (color)
+        {
+            tables.Add(("COLR", BuildColr(colorCorrupt)));
+            tables.Add(("CPAL", BuildCpal()));
+        }
+
+        if (hinted)
+        {
+            tables.Add(("fpgm", [0xB0, 0x00, 0x2C, 0x00, 0x2D]));
+            tables.Add(("cvt ", BuildCvt(740)));
+            if (prepYAxis)
+            {
+                tables.Add(("prep", [0x00]));
+            }
+        }
+
         tables.Sort(static (left, right) => string.CompareOrdinal(left.Tag, right.Tag));
 
         int tableCount = tables.Count;
@@ -266,6 +423,7 @@ internal static class UiTestFont
         }
 
         int cursor = file.Count;
+        int headTableOffset = -1;
         for (int i = 0; i < tableCount; i++)
         {
             while ((cursor & 3) != 0)
@@ -276,6 +434,11 @@ internal static class UiTestFont
 
             (string tag, byte[] data) = tables[i];
             int tableOffset = cursor;
+            if (string.Equals(tag, "head", StringComparison.Ordinal))
+            {
+                headTableOffset = tableOffset;
+            }
+
             file.AddRange(data);
             cursor += data.Length;
 
@@ -286,7 +449,14 @@ internal static class UiTestFont
             PatchU32(file, record + 12, (uint)data.Length);
         }
 
-        return [.. file];
+        byte[] bytes = [.. file];
+        if (headTableOffset >= 0)
+        {
+            uint adjustment = unchecked(0xB1B0AFBAu - Checksum(bytes));
+            PatchU32(bytes, headTableOffset + 8, adjustment);
+        }
+
+        return bytes;
     }
 
     private static byte[] BuildHead()
@@ -633,6 +803,162 @@ internal static class UiTestFont
         return [.. data];
     }
 
+    private static byte[] BuildColr(bool corrupt)
+    {
+        var data = new List<byte>(32);
+        WriteU16(data, 0);
+        WriteU16(data, 1);
+        WriteU32(data, 14);
+        WriteU32(data, 20);
+        WriteU16(data, corrupt ? 1 : 2);
+        WriteU16(data, 2);
+        WriteU16(data, 0);
+        WriteU16(data, 2);
+        WriteU16(data, 2);
+        WriteU16(data, 0);
+        WriteU16(data, 3);
+        WriteU16(data, 1);
+        return [.. data];
+    }
+
+    private static byte[] BuildCpal()
+    {
+        var data = new List<byte>(32);
+        WriteU16(data, 0);
+        WriteU16(data, 2);
+        WriteU16(data, 2);
+        WriteU16(data, 4);
+        WriteU32(data, 16);
+        WriteU16(data, 0);
+        WriteU16(data, 2);
+        data.AddRange([0, 0, 0, 255]);
+        data.AddRange([0, 0, 255, 255]);
+        data.AddRange([255, 255, 255, 255]);
+        data.AddRange([255, 0, 0, 255]);
+        return [.. data];
+    }
+
+    private static byte[] BuildCvt(params int[] values)
+    {
+        var data = new List<byte>(values.Length * 2);
+        foreach (int value in values)
+        {
+            WriteI16(data, value);
+        }
+
+        return [.. data];
+    }
+
+    private static byte[] BuildFvar()
+    {
+        var data = new List<byte>(36);
+        WriteU16(data, 1);
+        WriteU16(data, 0);
+        WriteU16(data, 16);
+        WriteU16(data, 2);
+        WriteU16(data, 1);
+        WriteU16(data, 20);
+        WriteU16(data, 0);
+        WriteU16(data, 0);
+        WriteTagBytes(data, "wght");
+        WriteU32(data, 100u << 16);
+        WriteU32(data, 400u << 16);
+        WriteU32(data, 900u << 16);
+        WriteU16(data, 0);
+        WriteU16(data, 256);
+        return [.. data];
+    }
+
+    private static byte[] BuildAvar()
+    {
+        var data = new List<byte>(24);
+        WriteU16(data, 1);
+        WriteU16(data, 0);
+        WriteU16(data, 0);
+        WriteU16(data, 1);
+        WriteU16(data, 3);
+        WriteI16(data, -16384);
+        WriteI16(data, -16384);
+        WriteI16(data, 8192);
+        WriteI16(data, 16384);
+        WriteI16(data, 16384);
+        WriteI16(data, 16384);
+        return [.. data];
+    }
+
+    private static byte[] BuildGvar(int glyphCount, bool corrupt)
+    {
+        var variationData = new byte[glyphCount][];
+        for (int i = 0; i < glyphCount; i++)
+        {
+            variationData[i] = [];
+        }
+
+        variationData[2] = BuildGlyphVariation(7, (1, 300));
+        variationData[10] = BuildGlyphVariation(5, (0, 50));
+        const int HeaderSize = 20;
+        int dataStart = HeaderSize + ((glyphCount + 1) * 2);
+        var table = new List<byte>(dataStart + 64);
+        WriteU16(table, 1);
+        WriteU16(table, 0);
+        WriteU16(table, 1);
+        WriteU16(table, 0);
+        WriteU32(table, (uint)dataStart);
+        WriteU16(table, (ushort)glyphCount);
+        WriteU16(table, 0);
+        WriteU32(table, (uint)dataStart);
+        int running = 0;
+        for (int i = 0; i < glyphCount; i++)
+        {
+            WriteU16(table, corrupt && i == 0 ? 0xFFFF : (ushort)running);
+            running += variationData[i].Length;
+        }
+
+        WriteU16(table, (ushort)running);
+        foreach (byte[] data in variationData)
+        {
+            table.AddRange(data);
+        }
+
+        return [.. table];
+    }
+
+    private static byte[] BuildGlyphVariation(int pointCount, params (int Point, int DeltaX)[] deltas)
+    {
+        int dataSize = 1 + (pointCount * 2) + 1;
+        var data = new List<byte>(12 + dataSize);
+        WriteU16(data, 1);
+        WriteU16(data, 10);
+        WriteU16(data, dataSize);
+        WriteU16(data, 0x8000);
+        WriteI16(data, 0x4000);
+        data.Add((byte)(0x40 | (pointCount - 1)));
+        for (int i = 0; i < pointCount; i++)
+        {
+            int delta = 0;
+            foreach ((int point, int value) in deltas)
+            {
+                if (point == i)
+                {
+                    delta = value;
+                }
+            }
+
+            WriteI16(data, delta);
+        }
+
+        data.Add((byte)(0x80 | (pointCount - 1)));
+        return [.. data];
+    }
+
+    private static void WriteTagBytes(List<byte> data, string tag)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            data.Add((byte)tag[i]);
+        }
+    }
+
     private static byte[] BuildKern(List<(int Left, int Right, int Value)> pairs)
     {
         pairs.Sort(static (left, right) =>
@@ -715,6 +1041,14 @@ internal static class UiTestFont
     }
 
     private static void PatchU32(List<byte> data, int offset, uint value)
+    {
+        data[offset] = (byte)(value >> 24);
+        data[offset + 1] = (byte)(value >> 16);
+        data[offset + 2] = (byte)(value >> 8);
+        data[offset + 3] = (byte)value;
+    }
+
+    private static void PatchU32(byte[] data, int offset, uint value)
     {
         data[offset] = (byte)(value >> 24);
         data[offset + 1] = (byte)(value >> 16);

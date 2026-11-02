@@ -104,7 +104,7 @@ public class RouterTests
 
         sub.Pause();
         router.Publish(1);
-        Thread.Sleep(100);
+        SpinWait.SpinUntil(() => router.DroppedPaused == 1, TimeSpan.FromSeconds(5)).Should().BeTrue();
         sub.Resume();
         router.Publish(2);
 

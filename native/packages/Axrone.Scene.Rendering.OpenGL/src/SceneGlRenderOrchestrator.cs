@@ -136,7 +136,15 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                 ReadOnlySpan<SceneSkinnedMeshRenderItem> skinned = skinnedSource.CollectSkinnedMeshes(pass.Id);
                 if (!skinned.IsEmpty)
                 {
-                    _ = _skinnedRenderer.Render(world, camera, skinned, pass, frameState);
+                    _ = _skinnedRenderer.Render(
+                        world,
+                        camera,
+                        skinned,
+                        items.Lighting,
+                        pass,
+                        frameState,
+                        elapsedSeconds,
+                        items.Fog);
                 }
             }
 

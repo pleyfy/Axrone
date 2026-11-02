@@ -92,7 +92,7 @@ public sealed class SceneGlEndToEndTests
     {
         var assets = new SceneAssetRegistry();
         SceneAssetId<ShaderAssetTag> shader = assets.CreateId<ShaderAssetTag>("shader/basic");
-        assets.Shaders.Register(new SceneShaderDefinition(shader, "void main(){}", "void main(){}"));
+        assets.Shaders.Register(new SceneShaderDefinition(shader, SkinnableVertexShader, FragmentShader));
         SceneAssetId<MaterialAssetTag> material = assets.CreateId<MaterialAssetTag>("material/basic");
         assets.Materials.Register(new SceneMaterialDefinition(material, shader, new SceneMaterialSurface()));
         SceneAssetId<RenderPassAssetTag> pass = assets.CreateId<RenderPassAssetTag>("main");
@@ -224,6 +224,26 @@ public sealed class SceneGlEndToEndTests
         controller.BindAll();
         return controller;
     }
+
+    private const string SkinnableVertexShader = """
+        #version 330 core
+        layout(location = 0) in vec3 a_Position;
+        uniform mat4 u_Model;
+        uniform mat4 u_ViewProjection;
+        void main()
+        {
+            gl_Position = vec4(a_Position, 1.0) * u_Model * u_ViewProjection;
+        }
+        """;
+
+    private const string FragmentShader = """
+        #version 330 core
+        out vec4 fragColor;
+        void main()
+        {
+            fragColor = vec4(1.0);
+        }
+        """;
 
     private static readonly float[] ChannelTimes = [0.0f, 1.0f];
     private static readonly float[] ChannelValues = [0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f];

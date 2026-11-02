@@ -207,6 +207,20 @@ public sealed class UiFontParserTests
     }
 
     [Fact]
+    public void ValidatesTableAndWholeFontChecksums()
+    {
+        WithFace(UiTestFont.Create(), static _ => { });
+        WithFace(UiTestFont.Create(cff: true), static _ => { });
+        WithFace(UiTestFont.LoadRealFont(), static _ => { });
+
+        ParseError(UiTestFont.CreateWithTableChecksumDamage()).Code
+            .Should().Be(UiFontErrorCode.ChecksumMismatch);
+
+        ParseError(UiTestFont.CreateWithAdjustmentDamage()).Code
+            .Should().Be(UiFontErrorCode.ChecksumMismatch);
+    }
+
+    [Fact]
     public void BufferPathsExposeTheSameBytes()
     {
         byte[] data = UiTestFont.Create();

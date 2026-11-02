@@ -107,4 +107,6 @@ internal static class ControlKeys
     internal const ushort Right = 39;
     internal const ushort Down = 40;
     internal const ushort Delete = 46;
+    internal const ushort PageUp = 33;
+    internal const ushort PageDown = 34;
 }

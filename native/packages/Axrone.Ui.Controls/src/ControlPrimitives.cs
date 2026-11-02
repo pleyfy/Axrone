@@ -76,6 +76,48 @@ public enum ControlKind : byte
 
     /// <summary>Two panes separated by a draggable splitter.</summary>
     SplitPane = 23,
+
+    /// <summary>Virtualized row/column grid.</summary>
+    DataGrid = 24,
+
+    /// <summary>Calendar date selector.</summary>
+    DatePicker = 25,
+
+    /// <summary>HSV/alpha color selector.</summary>
+    ColorPicker = 26,
+
+    /// <summary>Bar with a title and a back zone.</summary>
+    NavigationBar = 27,
+
+    /// <summary>Page container with a back stack.</summary>
+    PageStack = 28,
+
+    /// <summary>Horizontal pager over page controls.</summary>
+    PageView = 29,
+
+    /// <summary>Anchored popup container closed on Escape or outside clicks.</summary>
+    Popup = 30,
+
+    /// <summary>Clickable image surface.</summary>
+    ImageFace = 31,
+
+    /// <summary>Horizontal menu title strip.</summary>
+    MenuBar = 32,
+
+    /// <summary>Collapsible header and content section.</summary>
+    Accordion = 33,
+
+    /// <summary>Clickable path segments.</summary>
+    Breadcrumb = 34,
+
+    /// <summary>Removable tag.</summary>
+    Chip = 35,
+
+    /// <summary>Non-interactive status marker.</summary>
+    Badge = 36,
+
+    /// <summary>Indeterminate activity indicator advanced by the host tick.</summary>
+    Spinner = 37,
 }
 
 /// <summary>Resolved control interaction state.</summary>
@@ -126,6 +168,9 @@ public enum UiControlEventKind : byte
 
     /// <summary>Focus gained or lost.</summary>
     FocusChanged = 9,
+
+    /// <summary>Back navigation requested.</summary>
+    Back = 10,
 }
 
 /// <summary>Creation inputs for one control; each kind consumes the fields it needs.</summary>
@@ -140,6 +185,7 @@ public enum UiControlEventKind : byte
 /// <param name="TextStyle">Text style override; an invalid face inherits the runtime default.</param>
 /// <param name="Items">Row-count source for <see cref="ControlKind.ListView"/>.</param>
 /// <param name="Tree">Node/child source for <see cref="ControlKind.TreeView"/>.</param>
+/// <param name="Grid">Row/column source for <see cref="ControlKind.DataGrid"/>.</param>
 public readonly record struct UiControlDefinition(
     string? Text = null,
     UiResourceId Image = default,
@@ -151,7 +197,8 @@ public readonly record struct UiControlDefinition(
     float Step = 0.1f,
     UiTextStyle TextStyle = default,
     IUiListItemSource? Items = null,
-    IUiTreeSource? Tree = null);
+    IUiTreeSource? Tree = null,
+    IUiGridSource? Grid = null);
 
 /// <summary>Live handle to one control.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -193,7 +240,14 @@ public readonly record struct UiControlSnapshot(
     float Value,
     int Index,
     float ScrollOffset,
-    string? Text);
+    string? Text)
+{
+    /// <summary>Gets the selected column of a data grid.</summary>
+    public int Column { get; init; }
+
+    /// <summary>Gets the horizontal scroll offset of a data grid.</summary>
+    public float HorizontalOffset { get; init; }
+}
 
 /// <summary>Row-count source for <see cref="ControlKind.ListView"/>.</summary>
 public interface IUiListItemSource
@@ -216,6 +270,36 @@ public interface IUiTreeSource
 
     /// <summary>Gets a child node id by index.</summary>
     int GetChild(int node, int childIndex);
+}
+
+/// <summary>Row/column source for <see cref="ControlKind.DataGrid"/>.</summary>
+public interface IUiGridSource
+{
+    /// <summary>Gets the row count.</summary>
+    int RowCount { get; }
+
+    /// <summary>Gets the column count.</summary>
+    int ColumnCount { get; }
+
+    /// <summary>Gets the pixel width of a column.</summary>
+    float GetColumnWidth(int column);
+}
+
+/// <summary>Packs 8-bit RGBA channels into the integer carried by color controls.</summary>
+public static class UiColorCodec
+{
+    /// <summary>Packs four channels into one integer.</summary>
+    public static int Pack(byte r, byte g, byte b, byte a) =>
+        (r << 24) | (g << 16) | (b << 8) | a;
+
+    /// <summary>Unpacks one integer into four channels.</summary>
+    public static void Unpack(int packed, out byte r, out byte g, out byte b, out byte a)
+    {
+        r = (byte)(packed >> 24);
+        g = (byte)(packed >> 16);
+        b = (byte)(packed >> 8);
+        a = (byte)packed;
+    }
 }
 
 /// <summary>Intrinsic image size source used by <see cref="ControlKind.Image"/> sizing.</summary>

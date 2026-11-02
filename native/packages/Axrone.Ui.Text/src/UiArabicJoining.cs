@@ -94,7 +94,7 @@ internal static class UiArabicJoining
 
     public static UiJoiningType GetType(int codePoint)
     {
-        if (IsTransparent(codePoint))
+        if (IsTransparent(codePoint) || IsBidiFormat(codePoint))
         {
             return UiJoiningType.T;
         }
@@ -107,6 +107,11 @@ internal static class UiArabicJoining
         int entry = FindEntry(codePoint);
         return entry >= 0 ? Forms[entry].Type : UiJoiningType.U;
     }
+
+    private static bool IsBidiFormat(int codePoint) =>
+        codePoint is 0x061C or 0x200B or 0x200E or 0x200F or 0xFEFF ||
+        codePoint is >= 0x202A and <= 0x202E ||
+        codePoint is >= 0x2066 and <= 0x2069;
 
     private static UiJoiningType FindNeighbor(ReadOnlySpan<int> codepoints, int index, int step)
     {

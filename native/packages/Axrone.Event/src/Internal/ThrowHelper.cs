@@ -87,4 +87,14 @@ public static class ThrowHelper
     {
         throw new InvalidOperationException($"Optimistic concurrency violation: expected stream version {expected}, found {actual}.");
     }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowQueueFull(EventPriority priority, int capacity)
+    {
+        throw new EventQueueFullException(
+            $"The {priority} event scheduler lane is full ({capacity} slots).",
+            priority,
+            capacity);
+    }
 }

@@ -160,6 +160,45 @@ public sealed class UiTextAllocationTests
     }
 
     [Fact]
+    public void WarmVariedRasterizationDoesNotAllocateAndIsDeterministic()
+    {
+        using var provider = new UiFontProvider();
+        UiFontFaceId face = provider.RegisterFace(
+            UiTestFont.CreateVariation(),
+            new UiFontFaceDescriptor("Variable", UiFontWeight.Normal, UiFontStyle.Normal),
+            out UiFontError error);
+        face.IsValid.Should().BeTrue(error.Message);
+        provider.SetVariation(face, [new UiFontAxisValue(UiFontAxisTag.FromFourCc("wght"), 900.0f)], out _)
+            .Should().BeTrue();
+        var rasterizer = new UiGlyphRasterizer(provider);
+
+        for (int i = 0; i < Warmup; i++)
+        {
+            _ = rasterizer.TryRasterize(face, 0x41, 100.0f, out _, out _);
+            _ = rasterizer.TryRasterize(face, 0x42, 100.0f, out _, out _);
+        }
+
+        bool rasterized = true;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Measured; i++)
+        {
+            rasterized &= rasterizer.TryRasterize(face, 0x41, 100.0f, out UiGlyphBitmap simple, out _);
+            rasterized &= !simple.IsEmpty;
+            rasterized &= rasterizer.TryRasterize(face, 0x42, 100.0f, out UiGlyphBitmap composite, out _);
+            rasterized &= !composite.IsEmpty;
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        rasterized.Should().BeTrue();
+        allocated.Should().Be(0);
+
+        rasterizer.TryRasterize(face, 0x42, 100.0f, out UiGlyphBitmap first, out _).Should().BeTrue();
+        byte[] firstAlpha = first.Alpha.ToArray();
+        rasterizer.TryRasterize(face, 0x42, 100.0f, out UiGlyphBitmap second, out _).Should().BeTrue();
+        second.Alpha.ToArray().Should().Equal(firstAlpha);
+    }
+
+    [Fact]
     public void ShapingMeasurementAndRasterizationAreDeterministic()
     {
         using UiFontProvider provider = CreateProvider(out UiFontFaceId face);

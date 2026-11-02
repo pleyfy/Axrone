@@ -14,6 +14,8 @@ public enum UiFontErrorCode
 
     InvalidTableRange,
 
+    ChecksumMismatch,
+
     InvalidHead,
 
     InvalidMaxp,
@@ -33,6 +35,12 @@ public enum UiFontErrorCode
     InvalidCff,
 
     InvalidLayout,
+
+    InvalidVariation,
+
+    InvalidColor,
+
+    InvalidHinting,
 
     UnsupportedOutlineFormat,
 

@@ -14,9 +14,19 @@ internal static class UiFontParser
     private const uint TagGsub = 0x47535542;
     private const uint TagGpos = 0x47504F53;
     private const uint TagCff = 0x43464620;
+    private const uint TagCff2 = 0x43464632;
+    private const uint TagFvar = 0x66766172;
+    private const uint TagGvar = 0x67766172;
+    private const uint TagAvar = 0x61766172;
+    private const uint TagColr = 0x434F4C52;
+    private const uint TagCpal = 0x4350414C;
+    private const uint TagFpgm = 0x6670676D;
+    private const uint TagPrep = 0x70726570;
+    private const uint TagCvt = 0x63767420;
     private const uint SfntTrueType = 0x00010000;
     private const uint SfntOtto = 0x4F54544F;
     private const uint SfntTrue = 0x74727565;
+    private const uint WholeFontChecksum = 0xB1B0AFBA;
 
     public static bool TryParse(
         UiFontBuffer buffer,
@@ -79,6 +89,24 @@ internal static class UiFontParser
         int gsubLength = 0;
         int gposOffset = -1;
         int gposLength = 0;
+        int cff2Offset = -1;
+        int cff2Length = 0;
+        int fvarOffset = -1;
+        int fvarLength = 0;
+        int gvarOffset = -1;
+        int gvarLength = 0;
+        int avarOffset = -1;
+        int avarLength = 0;
+        int colrOffset = -1;
+        int colrLength = 0;
+        int cpalOffset = -1;
+        int cpalLength = 0;
+        int fpgmOffset = -1;
+        int fpgmLength = 0;
+        int prepOffset = -1;
+        int prepLength = 0;
+        int cvtOffset = -1;
+        int cvtLength = 0;
 
         for (int i = 0; i < tableCount; i++)
         {
@@ -138,6 +166,42 @@ internal static class UiFontParser
                 case TagGpos when gposOffset < 0:
                     gposOffset = tableOffset;
                     gposLength = tableLength;
+                    break;
+                case TagCff2 when cff2Offset < 0:
+                    cff2Offset = tableOffset;
+                    cff2Length = tableLength;
+                    break;
+                case TagFvar when fvarOffset < 0:
+                    fvarOffset = tableOffset;
+                    fvarLength = tableLength;
+                    break;
+                case TagGvar when gvarOffset < 0:
+                    gvarOffset = tableOffset;
+                    gvarLength = tableLength;
+                    break;
+                case TagAvar when avarOffset < 0:
+                    avarOffset = tableOffset;
+                    avarLength = tableLength;
+                    break;
+                case TagColr when colrOffset < 0:
+                    colrOffset = tableOffset;
+                    colrLength = tableLength;
+                    break;
+                case TagCpal when cpalOffset < 0:
+                    cpalOffset = tableOffset;
+                    cpalLength = tableLength;
+                    break;
+                case TagFpgm when fpgmOffset < 0:
+                    fpgmOffset = tableOffset;
+                    fpgmLength = tableLength;
+                    break;
+                case TagPrep when prepOffset < 0:
+                    prepOffset = tableOffset;
+                    prepLength = tableLength;
+                    break;
+                case TagCvt when cvtOffset < 0:
+                    cvtOffset = tableOffset;
+                    cvtLength = tableLength;
                     break;
             }
         }
@@ -230,7 +294,17 @@ internal static class UiFontParser
         {
             if (cffOffset < 0)
             {
+                if (cff2Offset >= 0)
+                {
+                    return Fail(out error, UiFontErrorCode.UnsupportedOutlineFormat, cff2Offset, "CFF2 outlines are not supported.");
+                }
+
                 return Fail(out error, UiFontErrorCode.MissingTable, 12, "CFF table is missing from an OTTO container.");
+            }
+
+            if (gvarOffset >= 0 || fvarOffset >= 0)
+            {
+                return Fail(out error, UiFontErrorCode.InvalidVariation, gvarOffset >= 0 ? gvarOffset : fvarOffset, "gvar and fvar require TrueType outlines.");
             }
 
             if (!UiCffParser.TryParse(data, cffOffset, cffLength, glyphCount, out cff, out error))
@@ -290,6 +364,55 @@ internal static class UiFontParser
             return false;
         }
 
+        if (!UiVariationParser.TryParse(
+                data,
+                fvarOffset,
+                fvarLength,
+                gvarOffset,
+                gvarLength,
+                avarOffset,
+                avarLength,
+                glyphCount,
+                out UiVariationData? variation,
+                out error))
+        {
+            return false;
+        }
+
+        if (!UiColorData.TryParse(
+                data,
+                colrOffset,
+                colrLength,
+                cpalOffset,
+                cpalLength,
+                out UiColorData? color,
+                out error))
+        {
+            return false;
+        }
+
+        UiTrueTypeHintData? hints = null;
+        if (fpgmOffset >= 0 || prepOffset >= 0 || cvtOffset >= 0)
+        {
+            if (cvtOffset >= 0 && (cvtLength & 1) != 0)
+            {
+                return Fail(out error, UiFontErrorCode.InvalidHinting, cvtOffset, "The cvt table length is not even.");
+            }
+
+            hints = new UiTrueTypeHintData(
+                fpgmOffset < 0 ? 0 : fpgmOffset,
+                fpgmOffset < 0 ? 0 : fpgmLength,
+                prepOffset < 0 ? 0 : prepOffset,
+                prepOffset < 0 ? 0 : prepLength,
+                cvtOffset < 0 ? 0 : cvtOffset,
+                cvtOffset < 0 ? 0 : cvtLength / 2);
+        }
+
+        if (!TryValidateChecksums(data, tableCount, out error))
+        {
+            return false;
+        }
+
         face = new UiFontFace(
             buffer,
             family,
@@ -306,6 +429,9 @@ internal static class UiFontParser
             cff,
             gsub,
             gpos,
+            variation,
+            color,
+            hints,
             hmtxOffset,
             numberOfHMetrics,
             kernPairsOffset,
@@ -321,5 +447,58 @@ internal static class UiFontParser
     {
         error = UiFontError.At(code, offset, message);
         return false;
+    }
+
+    private static bool TryValidateChecksums(ReadOnlySpan<byte> data, int tableCount, out UiFontError error)
+    {
+        error = UiFontError.None;
+        for (int i = 0; i < tableCount; i++)
+        {
+            int record = 12 + (i * 16);
+            uint tag = UiFontFace.ReadU32(data, record);
+            uint expected = UiFontFace.ReadU32(data, record + 4);
+            int offset = (int)UiFontFace.ReadU32(data, record + 8);
+            int length = (int)UiFontFace.ReadU32(data, record + 12);
+            ReadOnlySpan<byte> table = data.Slice(offset, length);
+            uint actual = tag == TagHead && length >= 12
+                ? Checksum(table[..8]) + Checksum(table[12..])
+                : Checksum(table);
+            if (actual != expected)
+            {
+                return Fail(out error, UiFontErrorCode.ChecksumMismatch, record, "A table checksum does not match the directory.");
+            }
+        }
+
+        if (Checksum(data) != WholeFontChecksum)
+        {
+            return Fail(out error, UiFontErrorCode.ChecksumMismatch, 0, "The whole-font checksum is invalid.");
+        }
+
+        return true;
+    }
+
+    private static uint Checksum(ReadOnlySpan<byte> data)
+    {
+        uint sum = 0;
+        int index = 0;
+        for (; index + 4 <= data.Length; index += 4)
+        {
+            sum += (uint)((data[index] << 24) | (data[index + 1] << 16) | (data[index + 2] << 8) | data[index + 3]);
+        }
+
+        if (index < data.Length)
+        {
+            uint last = 0;
+            int shift = 24;
+            for (; index < data.Length; index++)
+            {
+                last |= (uint)data[index] << shift;
+                shift -= 8;
+            }
+
+            sum += last;
+        }
+
+        return sum;
     }
 }

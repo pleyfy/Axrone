@@ -123,6 +123,20 @@ internal sealed class TestTreeSource : IUiTreeSource
     };
 }
 
+internal sealed class TestGridSource : IUiGridSource
+{
+    public int RowCount { get; set; } = 100;
+
+    public int ColumnCount => 3;
+
+    public float GetColumnWidth(int column) => column switch
+    {
+        0 => 40.0f,
+        1 => 60.0f,
+        _ => 80.0f,
+    };
+}
+
 internal sealed class ControlHost
 {
     public static readonly UiTextStyle DefaultTextStyle = new(
@@ -164,7 +178,8 @@ internal sealed class ControlHost
         float max = 1.0f,
         float step = 0.1f,
         IUiListItemSource? items = null,
-        IUiTreeSource? tree = null)
+        IUiTreeSource? tree = null,
+        IUiGridSource? grid = null)
     {
         var definition = new UiControlDefinition(
             Text: text,
@@ -176,7 +191,8 @@ internal sealed class ControlHost
             MaxValue: max,
             Step: step,
             Items: items,
-            Tree: tree);
+            Tree: tree,
+            Grid: grid);
         return parent.IsValid
             ? Runtime.CreateControl(kind, in definition, parent)
             : Runtime.CreateControl(kind, in definition);
