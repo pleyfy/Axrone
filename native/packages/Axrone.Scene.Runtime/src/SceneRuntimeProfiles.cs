@@ -140,6 +140,7 @@ public static class SceneRuntimeProfiles
             static builder => builder
                 .AddTransform2D()
                 .AddRendering2D()
+                .AddSceneRenderables(SceneRenderableFeatures.SpriteMask)
                 .AddPhysics2D());
 
     private static SceneRuntimeProfile CreateThreeD() =>
