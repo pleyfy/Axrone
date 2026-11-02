@@ -97,11 +97,14 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
     private uint _quadProgram;
     private uint _imageProgram;
     private uint _textProgram;
+    private uint _coverageTextProgram;
     private int _quadViewport;
     private int _imageViewport;
     private int _imageTexture;
     private int _textViewport;
     private int _textTexture;
+    private int _coverageTextViewport;
+    private int _coverageTextTexture;
     private uint _quadVao;
     private uint _imageVao;
     private uint _textVao;
@@ -166,6 +169,12 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
 
     /// <summary>Gets the number of instances submitted.</summary>
     public long Instances { get; private set; }
+
+    /// <summary>Gets the number of SDF glyph batches drawn.</summary>
+    public long SdfGlyphBatches { get; private set; }
+
+    /// <summary>Gets the number of coverage glyph batches drawn.</summary>
+    public long CoverageGlyphBatches { get; private set; }
 
     /// <summary>Gets the number of completed frames.</summary>
     public long FrameCount { get; private set; }
@@ -314,6 +323,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
             DeleteProgram(ref _quadProgram);
             DeleteProgram(ref _imageProgram);
             DeleteProgram(ref _textProgram);
+            DeleteProgram(ref _coverageTextProgram);
             DeleteVao(ref _quadVao);
             DeleteVao(ref _imageVao);
             DeleteVao(ref _textVao);
@@ -419,6 +429,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
 
         _glyphBuffer.Clear();
         uint currentTexture = 0;
+        UiGlyphFormat currentFormat = UiGlyphFormat.Alpha8;
 
         for (int i = 0; i < commands.Length; i++)
         {
@@ -445,12 +456,14 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
                     continue;
                 }
 
-                if (_glyphBuffer.Count != 0 && binding.Texture != currentTexture)
+                if (_glyphBuffer.Count != 0 &&
+                    (binding.Texture != currentTexture || entry.Format != currentFormat))
                 {
-                    FlushGlyphs(in key, currentTexture);
+                    FlushGlyphs(in key, currentTexture, currentFormat);
                 }
 
                 currentTexture = binding.Texture;
+                currentFormat = entry.Format;
                 UiGlyphInstance instance = new(
                     new Rect(
                         command.Bounds.X + glyph.X - entry.OriginX,
@@ -465,25 +478,38 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
 
                 if (!_glyphBuffer.TryAdd(instance))
                 {
-                    FlushGlyphs(in key, currentTexture);
+                    FlushGlyphs(in key, currentTexture, currentFormat);
                     _glyphBuffer.TryAdd(instance);
                 }
             }
         }
 
-        FlushGlyphs(in key, currentTexture);
+        FlushGlyphs(in key, currentTexture, currentFormat);
     }
 
-    private void FlushGlyphs(in UiBatchKey key, uint texture)
+    private void FlushGlyphs(in UiBatchKey key, uint texture, UiGlyphFormat format)
     {
         if (_glyphBuffer.Count == 0)
         {
             return;
         }
 
+        bool sdf = format is UiGlyphFormat.Sdf or UiGlyphFormat.Msdf;
+        uint program = sdf ? _textProgram : _coverageTextProgram;
+        int viewportLocation = sdf ? _textViewport : _coverageTextViewport;
+        int textureLocation = sdf ? _textTexture : _coverageTextTexture;
         _glyphInstances!.Update(MemoryMarshal.AsBytes(_glyphBuffer.Items));
         uint sampler = key.Sampling == UiImageSampling.Nearest ? _nearestSampler : _linearSampler;
-        DrawInstances(_textProgram, _textVao, _textViewport, _textTexture, in key, _glyphBuffer.Count, texture, sampler);
+        DrawInstances(program, _textVao, viewportLocation, textureLocation, in key, _glyphBuffer.Count, texture, sampler);
+        if (sdf)
+        {
+            SdfGlyphBatches++;
+        }
+        else
+        {
+            CoverageGlyphBatches++;
+        }
+
         _glyphBuffer.Clear();
     }
 
@@ -629,6 +655,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
         _quadProgram = Compile(UiShaderSources.QuadVertex, UiShaderSources.QuadFragment, out _quadViewport, out _);
         _imageProgram = Compile(UiShaderSources.ImageVertex, UiShaderSources.ImageFragment, out _imageViewport, out _imageTexture);
         _textProgram = Compile(UiShaderSources.TextVertex, UiShaderSources.TextFragment, out _textViewport, out _textTexture);
+        _coverageTextProgram = Compile(UiShaderSources.TextVertex, UiShaderSources.CoverageTextFragment, out _coverageTextViewport, out _coverageTextTexture);
 
         _linearSampler = CreateSampler(UiGl.Linear);
         _nearestSampler = CreateSampler(UiGl.Nearest);
