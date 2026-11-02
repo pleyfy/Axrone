@@ -14,6 +14,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <PropertyGroup Label="SuppressedRules">
+    <!-- CA1028: byte-backed wire discriminants keep batch keys and vertex
+         payloads compact and stable. -->
+    <NoWarn>$(NoWarn);CA1028</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup Label="PublicApi">
     <InternalsVisibleTo Include="Axrone.Render2D.Tests" />
   </ItemGroup>
