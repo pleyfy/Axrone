@@ -40,4 +40,14 @@ public sealed class EventEventSource : EventSource
             WriteEvent(2, oldState, newState);
         }
     }
+
+    /// <summary>Subscription bound exceeded while the policy is warn.</summary>
+    [Event(3, Level = EventLevel.Warning)]
+    public void MaxListenersExceeded(string eventType, int subscriptionCount, int maxListeners)
+    {
+        if (IsEnabled())
+        {
+            WriteEvent(3, eventType ?? string.Empty, subscriptionCount, maxListeners);
+        }
+    }
 }

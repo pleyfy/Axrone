@@ -20,6 +20,14 @@ internal readonly struct EventSubscriptionEntry<TEvent>
     public long Sequence { get; }
 }
 
+/// <summary>Outcome of a registration attempt against the configured listener bound.</summary>
+internal enum SubscriptionAddStatus
+{
+    Added = 0,
+    AddedOverLimit = 1,
+    RejectedOverLimit = 2
+}
+
 /// <summary>
 /// Copy-on-write subscription registry. Registration and removal pay one array copy; dispatch
 /// reads the published array reference without locking or allocating. Ordering is priority
@@ -43,12 +51,30 @@ internal sealed class EventSubscriptionTable<TEvent>
         get => Volatile.Read(ref _entries);
     }
 
-    /// <summary>Adds a subscription in priority/registration order.</summary>
-    public void Add(EventSubscription<TEvent> subscription)
+    /// <summary>
+    /// Adds a subscription in priority/registration order, enforcing an optional listener bound.
+    /// A zero bound is unlimited; the bound check and insertion are one atomic step.
+    /// </summary>
+    /// <param name="subscription">Subscription to register.</param>
+    /// <param name="maxListeners">Listener bound; zero disables the bound.</param>
+    /// <param name="throwOverLimit">Whether the bound rejects the registration.</param>
+    /// <param name="countAfter">Subscriptions registered when the call returns.</param>
+    public SubscriptionAddStatus Add(
+        EventSubscription<TEvent> subscription,
+        int maxListeners,
+        bool throwOverLimit,
+        out int countAfter)
     {
         lock (_gate)
         {
             EventSubscriptionEntry<TEvent>[] current = _entries;
+            bool overLimit = maxListeners > 0 && current.Length >= maxListeners;
+            if (overLimit && throwOverLimit)
+            {
+                countAfter = current.Length;
+                return SubscriptionAddStatus.RejectedOverLimit;
+            }
+
             var entry = new EventSubscriptionEntry<TEvent>(
                 subscription,
                 subscription.Priority,
@@ -69,8 +95,29 @@ internal sealed class EventSubscriptionTable<TEvent>
             }
 
             Volatile.Write(ref _entries, next);
+            countAfter = next.Length;
+            return overLimit ? SubscriptionAddStatus.AddedOverLimit : SubscriptionAddStatus.Added;
         }
     }
+
+    /// <summary>Returns the live subscription with the given identity, or null.</summary>
+    public EventSubscription<TEvent>? Find(Guid subscriptionId)
+    {
+        EventSubscriptionEntry<TEvent>[] current = Volatile.Read(ref _entries);
+        for (int i = 0; i < current.Length; i++)
+        {
+            EventSubscription<TEvent> subscription = current[i].Subscription;
+            if (subscription.SubscriptionId == subscriptionId)
+            {
+                return subscription;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether a subscription with the given identity is registered.</summary>
+    public bool Contains(Guid subscriptionId) => Find(subscriptionId) is not null;
 
     /// <summary>Removes a subscription by id; false when it was already gone.</summary>
     public bool Remove(Guid subscriptionId)
