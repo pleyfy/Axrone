@@ -41,6 +41,12 @@ public struct SceneSpriteRenderer : ISceneDataComponent
     /// <summary>Texture source size used by UV and nine-slice math.</summary>
     public Vec2 SourceSize;
 
+    /// <summary>
+    /// Nine-slice border in source pixels as (left, right, top, bottom); zero
+    /// disables slicing and keeps the sprite on the instanced fast path.
+    /// </summary>
+    public Vec4 SliceBorder;
+
     /// <summary>Anchor in normalized sprite space.</summary>
     public Vec2 Anchor;
 
@@ -70,6 +76,7 @@ public struct SceneSpriteRenderer : ISceneDataComponent
             RenderOrder = 0,
             Size = Vec2.One,
             SourceSize = Vec2.One,
+            SliceBorder = Vec4.Zero,
             Anchor = new Vec2(0.5f, 0.5f),
             Color = Vec4.One,
             UvRect = new Vec4(0.0f, 0.0f, 1.0f, 1.0f),
@@ -122,6 +129,9 @@ public struct SceneSpriteRenderItem
     /// <summary>World-space size.</summary>
     public Vec2 Size;
 
+    /// <summary>Texture source size used by nine-slice math.</summary>
+    public Vec2 SourceSize;
+
     /// <summary>Normalized anchor.</summary>
     public Vec2 Anchor;
 
@@ -154,6 +164,12 @@ public struct SceneSpriteRenderItem
 
     /// <summary>Rounded mask corner radius in normalized units.</summary>
     public float MaskCornerRadius;
+
+    /// <summary>Whether the sprite carries a nine-slice border.</summary>
+    public bool HasSlice;
+
+    /// <summary>Nine-slice border in source pixels as (left, right, top, bottom).</summary>
+    public Vec4 SliceBorder;
 }
 
 /// <summary>
@@ -257,6 +273,7 @@ public sealed class SceneSpriteItemCollector
             item.Depth = sprite.Depth;
             item.Sequence = _count;
             item.Size = sprite.Size;
+            item.SourceSize = sprite.SourceSize;
             item.Anchor = sprite.Anchor;
             item.Color = sprite.Color;
             item.UvRect = sprite.UvRect;
@@ -268,6 +285,10 @@ public sealed class SceneSpriteItemCollector
             item.MaskInvert = hasMask && mask.Invert;
             item.MaskFeather = hasMask ? mask.Feather : 0.0f;
             item.MaskCornerRadius = hasMask ? mask.CornerRadius : 0.0f;
+            Vec4 sliceBorder = sprite.SliceBorder;
+            item.HasSlice = sliceBorder.X > 0.0f || sliceBorder.Y > 0.0f ||
+                sliceBorder.Z > 0.0f || sliceBorder.W > 0.0f;
+            item.SliceBorder = item.HasSlice ? sliceBorder : Vec4.Zero;
             _count++;
         }
 

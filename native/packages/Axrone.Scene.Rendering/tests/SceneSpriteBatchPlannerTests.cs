@@ -8,20 +8,22 @@ using Xunit;
 
 public sealed class SceneSpriteBatchPlannerTests
 {
-    private static SceneSpriteRenderItem Item(string texture, string? material) => new()
+    private static SceneSpriteRenderItem Item(string texture, string? material, bool hasSlice = false) => new()
     {
         TextureId = SceneAssetId<TextureAssetTag>.FromName(texture),
         MaterialId = material is null
             ? default
             : SceneAssetId<MaterialAssetTag>.FromName(material),
+        HasSlice = hasSlice,
+        SliceBorder = hasSlice ? new Vec4(4.0f, 4.0f, 4.0f, 4.0f) : default,
     };
 
-    private static SceneSpriteRenderItem[] Fill(int count, string texture, string? material)
+    private static SceneSpriteRenderItem[] Fill(int count, string texture, string? material, bool hasSlice = false)
     {
         var items = new SceneSpriteRenderItem[count];
         for (int i = 0; i < count; i++)
         {
-            items[i] = Item(texture, material);
+            items[i] = Item(texture, material, hasSlice);
         }
 
         return items;
@@ -124,6 +126,38 @@ public sealed class SceneSpriteBatchPlannerTests
     {
         FluentActions.Invoking(static () => _ = new SceneSpriteBatchPlanner(0)).Should().Throw<SceneConfigurationException>();
         FluentActions.Invoking(static () => _ = new SceneSpriteBatchPlanner(8, 0)).Should().Throw<SceneConfigurationException>();
+    }
+
+    [Fact]
+    public void SlicedRunsAreNeverInstanced()
+    {
+        var planner = new SceneSpriteBatchPlanner(8, minInstancesForFastPath: 4);
+
+        planner.Plan(Fill(40, "texture/a", "material/one", hasSlice: true)).Should().Be(1);
+
+        planner.Groups[0].Instanced.Should().BeFalse();
+        planner.Groups[0].RequiresImmediate.Should().BeTrue();
+        planner.InstancedGroupCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void SliceBoundarySplitsRuns()
+    {
+        var planner = new SceneSpriteBatchPlanner(8, minInstancesForFastPath: 4);
+        var items = new SceneSpriteRenderItem[81];
+        for (int i = 0; i < items.Length; i++)
+        {
+            items[i] = Item("texture/a", "material/one", hasSlice: i == 40);
+        }
+
+        planner.Plan(items).Should().Be(3);
+
+        planner.Groups[0].Instanced.Should().BeTrue();
+        planner.Groups[0].Count.Should().Be(40);
+        planner.Groups[1].Instanced.Should().BeFalse();
+        planner.Groups[1].RequiresImmediate.Should().BeTrue();
+        planner.Groups[2].Instanced.Should().BeTrue();
+        planner.Groups[2].Count.Should().Be(40);
     }
 
     [Fact]

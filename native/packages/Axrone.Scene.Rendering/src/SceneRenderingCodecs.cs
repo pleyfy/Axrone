@@ -357,6 +357,7 @@ public sealed class SceneSpriteRendererCodec : SceneDataCodec<SceneSpriteRendere
         writer.WriteNumber("depth", value.Depth);
         SceneJson.WriteVec2(writer, "size", value.Size);
         SceneJson.WriteVec2(writer, "sourceSize", value.SourceSize);
+        SceneJson.WriteVec4(writer, "sliceBorder", value.SliceBorder);
         SceneJson.WriteVec2(writer, "anchor", value.Anchor);
         SceneJson.WriteVec4(writer, "color", value.Color);
         SceneJson.WriteVec4(writer, "uvRect", value.UvRect);
@@ -425,6 +426,11 @@ public sealed class SceneSpriteRendererCodec : SceneDataCodec<SceneSpriteRendere
         if (data.TryGetProperty("sourceSize", out JsonElement sourceSize))
         {
             sprite.SourceSize = SceneJson.ReadVec2(sourceSize, "sourceSize");
+        }
+
+        if (data.TryGetProperty("sliceBorder", out JsonElement sliceBorder))
+        {
+            sprite.SliceBorder = SceneJson.ReadVec4(sliceBorder, "sliceBorder");
         }
 
         if (data.TryGetProperty("anchor", out JsonElement anchor))

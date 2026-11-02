@@ -101,7 +101,9 @@ public readonly record struct Render2DSpriteMask(
     Mat4 InverseWorldMatrix,
     Vec2 Size,
     Vec2 Anchor,
-    float CornerRadius = 0.0f);
+    float CornerRadius = 0.0f,
+    bool Invert = false,
+    float Feather = 0.0f);
 
 /// <summary>One sprite submission consumed by the builder.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -120,7 +122,9 @@ public readonly record struct Render2DSpriteSubmission(
     bool HasSlice = false,
     Render2DSpriteSlice Slice = default,
     bool HasMask = false,
-    Render2DSpriteMask Mask = default);
+    Render2DSpriteMask Mask = default,
+    ulong MaterialId = 0,
+    bool RequiresImmediate = false);
 
 /// <summary>Batch identity: source, clip rectangle and mask state.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -129,7 +133,9 @@ public readonly record struct Render2DBatchKey(
     bool HasClip,
     Rect Clip,
     bool HasMask,
-    Render2DSpriteMask Mask)
+    Render2DSpriteMask Mask,
+    ulong MaterialId = 0,
+    bool RequiresImmediate = false)
 {
     /// <summary>Builds the key of one submission.</summary>
     public static Render2DBatchKey From(in Render2DSpriteSubmission submission) =>
@@ -138,7 +144,9 @@ public readonly record struct Render2DBatchKey(
             submission.HasClip,
             submission.HasClip ? submission.Clip : default,
             submission.HasMask,
-            submission.HasMask ? submission.Mask : default);
+            submission.HasMask ? submission.Mask : default,
+            submission.MaterialId,
+            submission.RequiresImmediate || submission.HasSlice);
 }
 
 /// <summary>Contiguous sprite range sharing one batch key.</summary>
@@ -149,4 +157,6 @@ public readonly record struct Render2DBatchRange(
     int SpriteCount,
     int QuadCount,
     int IndexOffset,
-    int IndexCount);
+    int IndexCount,
+    int FirstSubmission = 0,
+    int SubmissionCount = 0);
