@@ -97,6 +97,35 @@ public sealed class ReactiveOptionsTests
     }
 
     [Fact]
+    public void SubjectCountsSwallowedObserverFaultsAndKeepsDelivering()
+    {
+        using var subject = new Subject<int>(new SubjectOptions(errorPropagation: false));
+        int received = 0;
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+        using var healthy = subject.Subscribe(new ActionObserver<int>(_ => received++));
+
+        subject.OnNext(1);
+        subject.OnNext(2);
+
+        subject.ObserverFaultCount.Should().Be(2);
+        received.Should().Be(2);
+    }
+
+    [Fact]
+    public void SubjectPropagatesObserverFaultsByDefault()
+    {
+        using var subject = new Subject<int>();
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+
+        FluentActions.Invoking(() => subject.OnNext(1))
+            .Should().Throw<InvalidOperationException>()
+            .WithMessage("observer");
+        subject.ObserverFaultCount.Should().Be(0);
+    }
+
+    [Fact]
     public void AutoCompleteDisposesSubjectAfterCompletion()
     {
         var subject = new Subject<int>(new SubjectOptions(autoComplete: true));

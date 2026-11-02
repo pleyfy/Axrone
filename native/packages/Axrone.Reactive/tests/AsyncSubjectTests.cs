@@ -103,6 +103,38 @@ public class AsyncSubjectTests
     }
 
     [Fact]
+    public void AsyncSubjectCountsSwallowedObserverFaultsAndKeepsDelivering()
+    {
+        using var subject = new AsyncSubject<int>(new SubjectOptions(errorPropagation: false));
+        int received = 0;
+        bool completed = false;
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+        using var healthy = subject.Subscribe(new ActionObserver<int>(
+            _ => received++,
+            onCompleted: () => completed = true));
+
+        subject.OnNext(7);
+        subject.OnCompleted();
+
+        subject.ObserverFaultCount.Should().Be(1);
+        received.Should().Be(1);
+        completed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AsyncSubjectPropagatesObserverFaultsOnCompletion()
+    {
+        using var subject = new AsyncSubject<int>();
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+        subject.OnNext(7);
+
+        FluentActions.Invoking(subject.OnCompleted).Should().Throw<InvalidOperationException>();
+        subject.ObserverFaultCount.Should().Be(0);
+    }
+
+    [Fact]
     public void AsyncPublishDoesNotAllocate()
     {
         using var subject = new AsyncSubject<int>();

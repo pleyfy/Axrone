@@ -34,6 +34,7 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
     private int _terminal;
     private Exception? _error;
     private int _disposed;
+    private int _observerFaultCount;
     private long _nextSubscriptionId;
 
     /// <summary>Guards fault publication only; hot paths never take it.</summary>
@@ -49,6 +50,8 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
 
     /// <summary>Live subscriptions.</summary>
     public int SubscriberCount => Volatile.Read(ref _observers).Length;
+
+    public int ObserverFaultCount => Volatile.Read(ref _observerFaultCount);
 
     /// <summary>Whether error/completed was delivered.</summary>
     public bool IsTerminated => Volatile.Read(ref _terminal) != StateActive;
@@ -132,9 +135,10 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
         }
 
         SubscriptionEntry[] snapshot = Volatile.Read(ref _observers);
+        bool propagate = PropagateObserverErrors;
         for (int i = 0; i < snapshot.Length; i++)
         {
-            if (PropagateObserverErrors)
+            if (propagate)
             {
                 snapshot[i].Observer.OnNext(value);
             }
@@ -146,6 +150,7 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
                 }
                 catch (Exception)
                 {
+                    Interlocked.Increment(ref _observerFaultCount);
                 }
             }
         }

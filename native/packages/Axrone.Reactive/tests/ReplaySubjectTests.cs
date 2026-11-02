@@ -127,6 +127,33 @@ public class ReplaySubjectTests
     }
 
     [Fact]
+    public void ReplaySubjectCountsSwallowedObserverFaultsAndKeepsDelivering()
+    {
+        using var subject = new ReplaySubject<int>(4, new SubjectOptions(errorPropagation: false));
+        int received = 0;
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+        using var healthy = subject.Subscribe(new ActionObserver<int>(_ => received++));
+
+        subject.OnNext(1);
+        subject.OnNext(2);
+
+        subject.ObserverFaultCount.Should().Be(2);
+        received.Should().Be(2);
+    }
+
+    [Fact]
+    public void ReplaySubjectPropagatesObserverFaultsByDefault()
+    {
+        using var subject = new ReplaySubject<int>(4);
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+
+        FluentActions.Invoking(() => subject.OnNext(1)).Should().Throw<InvalidOperationException>();
+        subject.ObserverFaultCount.Should().Be(0);
+    }
+
+    [Fact]
     public void ReplayAllocationGuardDetectsAKnownAllocation()
     {
         using var subject = new ReplaySubject<int[]>(4);
