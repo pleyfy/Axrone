@@ -10,6 +10,16 @@ namespace Axrone.Reactive;
 /// <typeparam name="T">Notification type.</typeparam>
 public sealed class Subject<T> : ObservableBase<T>, IObserver<T>
 {
+    public Subject()
+        : this(SubjectOptions.Default)
+    {
+    }
+
+    public Subject(in SubjectOptions options)
+        : base(options)
+    {
+    }
+
     /// <summary>Publishes to current subscribers; ignored once terminated.</summary>
     public void OnNext(T value) => Publish(value);
 

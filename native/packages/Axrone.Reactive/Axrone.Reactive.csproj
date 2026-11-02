@@ -16,7 +16,7 @@
 
   <PropertyGroup Label="SuppressedRules">
     <!-- CA1031: Catching general exceptions — handler isolation is the contract -->
-    <NoWarn>$(NoWarn);CA1031</NoWarn>
+    <NoWarn>$(NoWarn);CA1031;CA1032;CA1040</NoWarn>
   </PropertyGroup>
 
   <ItemGroup Label="PublicApi">

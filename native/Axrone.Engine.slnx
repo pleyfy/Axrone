@@ -6,6 +6,8 @@
     <Project Path="packages/Axrone.Audio.Ecs/tests/Axrone.Audio.Ecs.Tests.csproj" />
     <Project Path="packages/Axrone.Ecs/Axrone.Ecs.csproj" />
     <Project Path="packages/Axrone.Ecs/tests/Axrone.Ecs.Tests.csproj" />
+    <Project Path="packages/Axrone.Event/Axrone.Event.csproj" />
+    <Project Path="packages/Axrone.Event/tests/Axrone.Event.Tests.csproj" />
     <Project Path="packages/Axrone.Reactive/Axrone.Reactive.csproj" />
     <Project Path="packages/Axrone.Reactive/tests/Axrone.Reactive.Tests.csproj" />
     <Project Path="packages/Axrone.Reactive.Ecs/Axrone.Reactive.Ecs.csproj" />
@@ -83,6 +85,10 @@
     <Project Path="packages/Axrone.Particles/tests/Axrone.Particles.Tests.csproj" />
     <Project Path="packages/Axrone.Shapes2D/Axrone.Shapes2D.csproj" />
     <Project Path="packages/Axrone.Shapes2D/tests/Axrone.Shapes2D.Tests.csproj" />
+    <Project Path="packages/Axrone.Render2D/Axrone.Render2D.csproj" />
+    <Project Path="packages/Axrone.Render2D/tests/Axrone.Render2D.Tests.csproj" />
+    <Project Path="packages/Axrone.Scene2D/Axrone.Scene2D.csproj" />
+    <Project Path="packages/Axrone.Scene2D/tests/Axrone.Scene2D.Tests.csproj" />
     <Project Path="packages/Axrone.Execution/Axrone.Execution.csproj" />
     <Project Path="packages/Axrone.Execution/tests/Axrone.Execution.Tests.csproj" />
     <Project Path="packages/Axrone.Random/Axrone.Random.csproj" />

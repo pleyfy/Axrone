@@ -12,6 +12,16 @@ public sealed class AsyncSubject<T> : ObservableBase<T>, IObserver<T>
     private bool _hasValue;
     private int _completed;
 
+    public AsyncSubject()
+        : this(SubjectOptions.Default)
+    {
+    }
+
+    public AsyncSubject(in SubjectOptions options)
+        : base(options)
+    {
+    }
+
     /// <summary>Stores the latest value without emitting it.</summary>
     public void OnNext(T value)
     {

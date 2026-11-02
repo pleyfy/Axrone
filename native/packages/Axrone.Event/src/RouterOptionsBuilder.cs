@@ -45,6 +45,27 @@ public sealed class RouterOptionsBuilder
         return this;
     }
 
+    /// <summary>Sets the subscription bound per router; zero disables the bound.</summary>
+    public RouterOptionsBuilder WithMaxListeners(int maxListeners)
+    {
+        State.MaxListeners = maxListeners;
+        return this;
+    }
+
+    /// <summary>Sets the reaction when the subscription bound is exceeded.</summary>
+    public RouterOptionsBuilder WithMaxListenersPolicy(MaxListenersPolicy policy)
+    {
+        State.MaxListenersPolicy = policy;
+        return this;
+    }
+
+    /// <summary>Sets the pause-buffer slot count.</summary>
+    public RouterOptionsBuilder WithPausedBufferCapacity(int capacity)
+    {
+        State.PausedBufferCapacity = capacity;
+        return this;
+    }
+
     /// <inheritdoc/>
     public override void Reset() => State = RouterOptionsState.Default;
 
