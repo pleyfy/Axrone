@@ -2,6 +2,20 @@ namespace Axrone.Ui.Text.Tests;
 
 using System.IO;
 
+internal enum UiTestColorV1
+{
+    None,
+    Linear,
+    Glyph,
+    Layers,
+    Transform,
+    Composite,
+    ColrGlyph,
+    Unsupported,
+    Corrupt,
+    Cycle,
+}
+
 internal static class UiTestFont
 {
     public const int UnitsPerEm = 1000;
@@ -30,6 +44,9 @@ internal static class UiTestFont
 
     public static byte[] CreateColor(bool corrupt = false, bool colrV1 = false, bool paintGraph = false) =>
         CreateCore(4, false, 0, color: true, colorCorrupt: corrupt, colrV1: colrV1, colorPaint: paintGraph);
+
+    public static byte[] CreateColorV1(UiTestColorV1 mode) =>
+        CreateCore(4, false, 0, paintGraphV1: mode);
 
     public static byte[] CreateHinted(
         bool prepYAxis = false,
@@ -94,7 +111,8 @@ internal static class UiTestFont
         bool compositeInstructions = false,
         bool scaledComposite = false,
         bool colrV1 = false,
-        bool colorPaint = false)
+        bool colorPaint = false,
+        UiTestColorV1 paintGraphV1 = UiTestColorV1.None)
     {
         List<byte[]> glyphs =
         [
@@ -219,7 +237,8 @@ internal static class UiTestFont
             compositeInstructions,
             scaledComposite,
             colrV1,
-            colorPaint);
+            colorPaint,
+            paintGraphV1);
     }
 
     public static byte[] CreateFallback()
@@ -407,7 +426,8 @@ internal static class UiTestFont
         bool compositeInstructions = false,
         bool scaledComposite = false,
         bool colrV1 = false,
-        bool colorPaint = false)
+        bool colorPaint = false,
+        UiTestColorV1 paintGraphV1 = UiTestColorV1.None)
     {
         var tables = new List<(string Tag, byte[] Data)>
         {
@@ -449,7 +469,12 @@ internal static class UiTestFont
             }
         }
 
-        if (color)
+        if (paintGraphV1 != UiTestColorV1.None)
+        {
+            tables.Add(("COLR", BuildColorV1(paintGraphV1)));
+            tables.Add(("CPAL", BuildCpal()));
+        }
+        else if (color)
         {
             tables.Add(("COLR", BuildColr(colorCorrupt, colrV1, colorPaint)));
             tables.Add(("CPAL", BuildCpal()));
@@ -877,6 +902,204 @@ internal static class UiTestFont
         }
 
         return [.. data];
+    }
+
+    private static byte[] BuildColorV1(UiTestColorV1 mode) => mode switch
+    {
+        UiTestColorV1.Linear => BuildLinearV1(),
+        UiTestColorV1.Glyph => BuildGlyphV1(),
+        UiTestColorV1.Layers => BuildLayersV1(),
+        UiTestColorV1.Transform => BuildTransformV1(),
+        UiTestColorV1.Composite => BuildCompositeV1(),
+        UiTestColorV1.ColrGlyph => BuildColrGlyphV1(),
+        UiTestColorV1.Unsupported => BuildUnsupportedV1(),
+        UiTestColorV1.Corrupt => BuildCorruptV1(),
+        UiTestColorV1.Cycle => BuildCycleV1(),
+        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+    };
+
+    private static byte[] BuildLinearV1()
+    {
+        var table = new List<byte>(75);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(4);
+        WriteU24(table, 16);
+        WriteI16(table, 0);
+        WriteI16(table, 0);
+        WriteI16(table, 640);
+        WriteI16(table, 0);
+        WriteI16(table, 0);
+        WriteI16(table, 640);
+        WriteColorLine(table, extend: 0, ((short)0, 0, (short)16384), ((short)16384, 1, (short)16384));
+        return [.. table];
+    }
+
+    private static byte[] BuildGlyphV1()
+    {
+        var table = new List<byte>(81);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(10);
+        WriteU24(table, 6);
+        WriteU16(table, 2);
+        table.Add(4);
+        WriteU24(table, 16);
+        WriteI16(table, 0);
+        WriteI16(table, 0);
+        WriteI16(table, 640);
+        WriteI16(table, 0);
+        WriteI16(table, 0);
+        WriteI16(table, 640);
+        WriteColorLine(table, extend: 2, ((short)0, 0, (short)16384), ((short)16384, 1, (short)16384));
+        return [.. table];
+    }
+
+    private static byte[] BuildLayersV1()
+    {
+        var table = new List<byte>(98);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 44);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 54);
+        WriteU32(table, 2);
+        WriteU32(table, 12);
+        WriteU32(table, 17);
+        table.Add(2);
+        WriteU16(table, 0);
+        WriteI16(table, 16384);
+        table.Add(6);
+        WriteU24(table, 16);
+        WriteI16(table, 320);
+        WriteI16(table, 320);
+        WriteU16(table, 0);
+        WriteI16(table, 320);
+        WriteI16(table, 320);
+        WriteU16(table, 480);
+        WriteColorLine(table, extend: 1, ((short)0, 0, (short)16384), ((short)16384, 1, (short)16384));
+        table.Add(1);
+        table.Add(2);
+        WriteU32(table, 0);
+        return [.. table];
+    }
+
+    private static byte[] BuildTransformV1()
+    {
+        var table = new List<byte>(80);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(12);
+        WriteU24(table, 7);
+        WriteU24(table, 12);
+        table.Add(2);
+        WriteU16(table, 1);
+        WriteI16(table, 16384);
+        WriteU32(table, 131072);
+        WriteU32(table, 0);
+        WriteU32(table, 0);
+        WriteU32(table, 131072);
+        WriteU32(table, 655360);
+        WriteU32(table, 1310720);
+        return [.. table];
+    }
+
+    private static byte[] BuildCompositeV1()
+    {
+        var table = new List<byte>(63);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(32);
+        WriteU24(table, 8);
+        table.Add(3);
+        WriteU24(table, 13);
+        table.Add(2);
+        WriteU16(table, 0);
+        WriteI16(table, 16384);
+        table.Add(2);
+        WriteU16(table, 1);
+        WriteI16(table, 16384);
+        return [.. table];
+    }
+
+    private static byte[] BuildColrGlyphV1()
+    {
+        var table = new List<byte>(58);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteU32(table, 2);
+        WriteU16(table, 2);
+        WriteU32(table, 12);
+        WriteU16(table, 3);
+        WriteU32(table, 11);
+        table.Add(2);
+        WriteU16(table, 0);
+        WriteI16(table, 16384);
+        table.Add(11);
+        WriteU16(table, 2);
+        return [.. table];
+    }
+
+    private static byte[] BuildUnsupportedV1()
+    {
+        var table = new List<byte>(45);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(8);
+        return [.. table];
+    }
+
+    private static byte[] BuildCorruptV1()
+    {
+        var table = new List<byte>(44);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteU32(table, 1);
+        WriteU16(table, 2);
+        WriteU32(table, 0xFFFFFF);
+        return [.. table];
+    }
+
+    private static byte[] BuildCycleV1()
+    {
+        var table = new List<byte>(47);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(11);
+        WriteU16(table, 2);
+        return [.. table];
+    }
+
+    private static void WriteV1Header(List<byte> table, int baseGlyphListOffset, int layerListOffset)
+    {
+        WriteU16(table, 1);
+        WriteU16(table, 0);
+        WriteU32(table, 0);
+        WriteU32(table, 0);
+        WriteU16(table, 0);
+        WriteU32(table, (uint)baseGlyphListOffset);
+        WriteU32(table, (uint)layerListOffset);
+        WriteU32(table, 0);
+        WriteU32(table, 0);
+        WriteU32(table, 0);
+    }
+
+    private static void WriteV1BaseRecord(List<byte> table, int glyph, int paintOffset)
+    {
+        WriteU32(table, 1);
+        WriteU16(table, (ushort)glyph);
+        WriteU32(table, (uint)paintOffset);
+    }
+
+    private static void WriteColorLine(
+        List<byte> table,
+        int extend,
+        (short Offset, int Palette, short Alpha) first,
+        (short Offset, int Palette, short Alpha) second)
+    {
+        table.Add((byte)extend);
+        WriteU16(table, 2);
+        WriteI16(table, first.Offset);
+        WriteU16(table, (ushort)first.Palette);
+        WriteI16(table, first.Alpha);
+        WriteI16(table, second.Offset);
+        WriteU16(table, (ushort)second.Palette);
+        WriteI16(table, second.Alpha);
     }
 
     private static byte[] BuildColr(bool corrupt, bool v1, bool paintGraph)

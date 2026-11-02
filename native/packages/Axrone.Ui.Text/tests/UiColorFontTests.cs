@@ -66,9 +66,9 @@ public sealed class UiColorFontTests
     }
 
     [Fact]
-    public void RejectsColrV1PaintGraphs()
+    public void RejectsUnsupportedColrV1Paints()
     {
-        UiFontError error = ParseError(UiTestFont.CreateColor(colrV1: true, paintGraph: true));
+        UiFontError error = ParseError(UiTestFont.CreateColorV1(UiTestColorV1.Unsupported));
         error.Code.Should().Be(UiFontErrorCode.UnsupportedColorFormat);
     }
 
