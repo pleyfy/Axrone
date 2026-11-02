@@ -261,4 +261,122 @@ public sealed class SceneLineTests
         read.Should().Throw<SceneValidationException>()
             .Where(exception => exception.Code == SceneErrorCodes.ValidationInvalid);
     }
+
+    [Fact]
+    public void MiterJoinPlacesApexOnTheBisector()
+    {
+        Span<Vec3> vertices = stackalloc Vec3[SceneLineGeometry.MaxJoinVertices];
+
+        int count = SceneLineGeometry.BuildJoin(
+            Vec3.Zero,
+            Vec3.UnitX,
+            Vec3.UnitY,
+            width: 1.0f,
+            viewDirection: Vec3.UnitZ,
+            SceneLineJoin.Miter,
+            vertices);
+
+        count.Should().Be(3);
+        vertices[1].X.Should().BeApproximately(0.5f, 1e-4f);
+        vertices[1].Y.Should().BeApproximately(-0.5f, 1e-4f);
+        vertices[1].Z.Should().BeApproximately(0.0f, 1e-4f);
+    }
+
+    [Fact]
+    public void BevelJoinReturnsBothSegmentSides()
+    {
+        Span<Vec3> vertices = stackalloc Vec3[SceneLineGeometry.MaxJoinVertices];
+
+        int count = SceneLineGeometry.BuildJoin(
+            Vec3.Zero,
+            Vec3.UnitX,
+            Vec3.UnitY,
+            1.0f,
+            Vec3.UnitZ,
+            SceneLineJoin.Bevel,
+            vertices);
+
+        count.Should().Be(2);
+        vertices[0].Y.Should().BeApproximately(-0.5f, 1e-4f);
+        vertices[1].X.Should().BeApproximately(0.5f, 1e-4f);
+    }
+
+    [Fact]
+    public void RoundJoinProducesAnArcAtHalfWidth()
+    {
+        Span<Vec3> vertices = stackalloc Vec3[SceneLineGeometry.MaxJoinVertices];
+
+        int count = SceneLineGeometry.BuildJoin(
+            Vec3.Zero,
+            Vec3.UnitX,
+            Vec3.UnitY,
+            1.0f,
+            Vec3.UnitZ,
+            SceneLineJoin.Round,
+            vertices);
+
+        count.Should().BeGreaterThan(2);
+        for (int i = 0; i < count; i++)
+        {
+            vertices[i].Length().Should().BeApproximately(0.5f, 1e-3f);
+        }
+    }
+
+    [Fact]
+    public void RoundCapProducesASemicircleAtHalfWidth()
+    {
+        Span<Vec3> vertices = stackalloc Vec3[SceneLineGeometry.MaxCapVertices];
+
+        int count = SceneLineGeometry.BuildRoundCap(Vec3.Zero, Vec3.UnitX, 1.0f, Vec3.UnitZ, vertices);
+
+        count.Should().Be(SceneLineGeometry.MaxCapVertices);
+        for (int i = 0; i < count; i++)
+        {
+            vertices[i].Length().Should().BeApproximately(0.5f, 1e-3f);
+        }
+
+        vertices[0].Y.Should().BeApproximately(-0.5f, 1e-4f);
+        vertices[count - 1].Y.Should().BeApproximately(0.5f, 1e-4f);
+    }
+
+    [Fact]
+    public void DegenerateJoinsAndCapsReturnZero()
+    {
+        Span<Vec3> vertices = stackalloc Vec3[SceneLineGeometry.MaxJoinVertices];
+        Span<Vec3> cap = stackalloc Vec3[SceneLineGeometry.MaxCapVertices];
+
+        SceneLineGeometry.BuildJoin(Vec3.Zero, Vec3.Zero, Vec3.UnitY, 1.0f, Vec3.UnitZ, SceneLineJoin.Miter, vertices)
+            .Should().Be(0);
+        SceneLineGeometry.BuildJoin(Vec3.Zero, Vec3.UnitX, Vec3.UnitY, 0.0f, Vec3.UnitZ, SceneLineJoin.Miter, vertices)
+            .Should().Be(0);
+        SceneLineGeometry.BuildRoundCap(Vec3.Zero, Vec3.Zero, 1.0f, Vec3.UnitZ, cap).Should().Be(0);
+        SceneLineGeometry.BuildRoundCap(Vec3.Zero, Vec3.UnitX, 0.0f, Vec3.UnitZ, cap).Should().Be(0);
+    }
+
+    [Fact]
+    public void GeometryExpansionIsZeroAllocation()
+    {
+        Span<Vec3> corners = stackalloc Vec3[4];
+        Span<Vec3> join = stackalloc Vec3[SceneLineGeometry.MaxJoinVertices];
+        Span<Vec3> cap = stackalloc Vec3[SceneLineGeometry.MaxCapVertices];
+
+        static void Expand(Span<Vec3> corners, Span<Vec3> join, Span<Vec3> cap)
+        {
+            _ = SceneLineGeometry.BuildRibbon(Vec3.Zero, Vec3.UnitX, 0.1f, Vec3.UnitZ, SceneLineCap.Round, corners);
+            _ = SceneLineGeometry.BuildJoin(Vec3.UnitX, Vec3.UnitX, Vec3.UnitY, 0.1f, Vec3.UnitZ, SceneLineJoin.Round, join);
+            _ = SceneLineGeometry.BuildRoundCap(Vec3.UnitX, Vec3.UnitX, 0.1f, Vec3.UnitZ, cap);
+        }
+
+        Expand(corners, join, cap);
+        Expand(corners, join, cap);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 256; i++)
+        {
+            Expand(corners, join, cap);
+        }
+
+        long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+        delta.Should().Be(0);
+    }
 }

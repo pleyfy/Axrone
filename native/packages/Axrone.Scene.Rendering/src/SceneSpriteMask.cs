@@ -7,7 +7,10 @@ public enum SceneSpriteMaskKind : byte
     Rect = 0,
 
     /// <summary>Ellipse inscribed in the rect.</summary>
-    Ellipse = 1
+    Ellipse = 1,
+
+    /// <summary>Rectangle with rounded corners.</summary>
+    RoundedRect = 2
 }
 
 /// <summary>
@@ -27,6 +30,12 @@ public struct SceneSpriteMask : ISceneDataComponent
     /// <summary>Inverts the inside test.</summary>
     public bool Invert;
 
+    /// <summary>Soft edge width in normalized mask units; zero is a hard edge.</summary>
+    public float Feather;
+
+    /// <summary>Corner radius for <see cref="SceneSpriteMaskKind.RoundedRect"/> in normalized units.</summary>
+    public float CornerRadius;
+
     /// <summary>Whether the mask participates in resolution.</summary>
     public bool Enabled;
 
@@ -39,6 +48,8 @@ public struct SceneSpriteMask : ISceneDataComponent
             Kind = SceneSpriteMaskKind.Rect,
             Rect = new Vec4(0.0f, 0.0f, 1.0f, 1.0f),
             Invert = false,
+            Feather = 0.0f,
+            CornerRadius = 0.0f,
             Enabled = true
         };
     }
@@ -85,5 +96,7 @@ public static class SceneSpriteMaskResolver
         float.IsFinite(mask.Rect.X) &&
         float.IsFinite(mask.Rect.Y) &&
         float.IsFinite(mask.Rect.Z) &&
-        float.IsFinite(mask.Rect.W);
+        float.IsFinite(mask.Rect.W) &&
+        float.IsFinite(mask.Feather) &&
+        float.IsFinite(mask.CornerRadius);
 }

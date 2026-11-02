@@ -34,6 +34,8 @@ public sealed class SceneGlSpriteMaskTests
         mask.Kind = SceneSpriteMaskKind.Ellipse;
         mask.Rect = new Vec4(0.1f, 0.2f, 0.3f, 0.4f);
         mask.Invert = true;
+        mask.Feather = 0.15f;
+        mask.CornerRadius = 0.2f;
         world.AddData(actor, mask);
         world.UpdateTransforms();
 
@@ -48,7 +50,7 @@ public sealed class SceneGlSpriteMaskTests
 
         renderer.Render(world, frame, collector.Items, pass, frameState).Should().Be(1);
 
-        byte[] vertexStorage = api.BufferStorage.Values.First(storage => storage.Length == 4 * 72);
+        byte[] vertexStorage = api.BufferStorage.Values.First(storage => storage.Length == 4 * 80);
         float[] values = MemoryMarshal.Cast<byte, float>(vertexStorage.AsSpan()).ToArray();
 
         values[11].Should().BeApproximately(0.1f, 1e-5f);
@@ -58,6 +60,8 @@ public sealed class SceneGlSpriteMaskTests
         values[15].Should().Be(1.0f);
         values[16].Should().Be(1.0f);
         values[17].Should().Be(1.0f);
+        values[18].Should().BeApproximately(0.15f, 1e-5f);
+        values[19].Should().BeApproximately(0.2f, 1e-5f);
     }
 
     private static SceneWorld CreateWorld() =>

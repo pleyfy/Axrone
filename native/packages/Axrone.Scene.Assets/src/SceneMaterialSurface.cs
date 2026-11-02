@@ -57,6 +57,48 @@ public sealed class SceneMaterialSurface
     /// <summary>Optional emissive texture.</summary>
     public SceneMaterialTextureBinding? EmissiveMap { get; init; }
 
+    /// <summary>Optional clearcoat layer texture.</summary>
+    public SceneMaterialTextureBinding? ClearcoatMap { get; init; }
+
+    /// <summary>Optional clearcoat roughness texture.</summary>
+    public SceneMaterialTextureBinding? ClearcoatRoughnessMap { get; init; }
+
+    /// <summary>Optional clearcoat normal texture.</summary>
+    public SceneMaterialTextureBinding? ClearcoatNormalMap { get; init; }
+
+    /// <summary>Optional sheen color texture.</summary>
+    public SceneMaterialTextureBinding? SheenColorMap { get; init; }
+
+    /// <summary>Optional sheen roughness texture.</summary>
+    public SceneMaterialTextureBinding? SheenRoughnessMap { get; init; }
+
+    /// <summary>Optional transmission texture.</summary>
+    public SceneMaterialTextureBinding? TransmissionMap { get; init; }
+
+    /// <summary>Optional volume thickness texture.</summary>
+    public SceneMaterialTextureBinding? ThicknessMap { get; init; }
+
+    /// <summary>Optional iridescence texture.</summary>
+    public SceneMaterialTextureBinding? IridescenceMap { get; init; }
+
+    /// <summary>Optional iridescence thickness texture.</summary>
+    public SceneMaterialTextureBinding? IridescenceThicknessMap { get; init; }
+
+    /// <summary>Optional specular intensity texture.</summary>
+    public SceneMaterialTextureBinding? SpecularMap { get; init; }
+
+    /// <summary>Optional specular color texture.</summary>
+    public SceneMaterialTextureBinding? SpecularColorMap { get; init; }
+
+    /// <summary>Optional anisotropy texture.</summary>
+    public SceneMaterialTextureBinding? AnisotropyMap { get; init; }
+
+    /// <summary>Optional subsurface scattering texture.</summary>
+    public SceneMaterialTextureBinding? SubsurfaceMap { get; init; }
+
+    /// <summary>Extension-driven scalar and color parameters.</summary>
+    public SceneMaterialExtensions? Extensions { get; init; }
+
     internal void Validate()
     {
         ValidateUnitRange(AlphaCutoff, "Alpha cutoff");
@@ -81,6 +123,21 @@ public sealed class SceneMaterialSurface
         ValidateBinding(PbrMap, "PBR");
         ValidateBinding(OcclusionMap, "occlusion");
         ValidateBinding(EmissiveMap, "emissive");
+        ValidateBinding(ClearcoatMap, "clearcoat");
+        ValidateBinding(ClearcoatRoughnessMap, "clearcoat roughness");
+        ValidateBinding(ClearcoatNormalMap, "clearcoat normal");
+        ValidateBinding(SheenColorMap, "sheen color");
+        ValidateBinding(SheenRoughnessMap, "sheen roughness");
+        ValidateBinding(TransmissionMap, "transmission");
+        ValidateBinding(ThicknessMap, "thickness");
+        ValidateBinding(IridescenceMap, "iridescence");
+        ValidateBinding(IridescenceThicknessMap, "iridescence thickness");
+        ValidateBinding(SpecularMap, "specular");
+        ValidateBinding(SpecularColorMap, "specular color");
+        ValidateBinding(AnisotropyMap, "anisotropy");
+        ValidateBinding(SubsurfaceMap, "subsurface");
+
+        Extensions?.Validate();
     }
 
     private static void ValidateBinding(SceneMaterialTextureBinding? binding, string name)

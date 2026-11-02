@@ -85,6 +85,51 @@ public sealed class SceneGlPrimitiveTests
     }
 
     [Fact]
+    public void LineBatchAddsRoundJoinsAndCaps()
+    {
+        var api = new MockGLApi { EnableCallLogging = true };
+        using var context = new GLContext(api);
+        var assets = new SceneAssetRegistry();
+        using SceneWorld world = CreateWorld(SceneRenderableFeatures.Line);
+        SceneCameraFrame frame = CreateCameraFrame(world);
+        SceneRenderPassDefinition pass = CreatePass();
+
+        using var cache = new SceneGlAssetCache(context, assets);
+        cache.UploadAll();
+
+        ReadOnlySpan<SceneLineRenderItem> items =
+        [
+            new SceneLineRenderItem
+            {
+                Start = new Vec3(-1, 0, 0),
+                End = new Vec3(0, 0, 0),
+                Width = 0.1f,
+                Color = Vec4.One,
+                Cap = SceneLineCap.Round,
+                Join = SceneLineJoin.Round
+            },
+            new SceneLineRenderItem
+            {
+                Start = new Vec3(0, 0, 0),
+                End = new Vec3(0, 1, 0),
+                Width = 0.1f,
+                Color = Vec4.One,
+                Cap = SceneLineCap.Round,
+                Join = SceneLineJoin.Round
+            }
+        ];
+
+        using var renderer = new SceneGlPrimitiveBatchRenderer(context, cache);
+        var state = new SceneRenderFrameState();
+        state.Begin(0);
+
+        renderer.RenderLines(frame, items, pass, state).Should().Be(1);
+        renderer.LastQuadCount.Should().Be(2);
+        state.TrianglesSubmitted.Should().Be(20);
+        api.CallLog.Should().Contain(call => call.StartsWith("DrawElements(", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void TrailBatchCarriesPerEndpointAlpha()
     {
         var api = new MockGLApi { EnableCallLogging = true };

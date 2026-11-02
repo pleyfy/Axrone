@@ -1027,7 +1027,11 @@ public sealed class GltfImportTests
             """;
 
         byte[] glb = BuildGlb(System.Text.Encoding.UTF8.GetBytes(json), bin);
-        var importer = new GltfImporter(new GltfImporterOptions { Id = "modern.glb" });
+        var importer = new GltfImporter(new GltfImporterOptions
+        {
+            Id = "modern.glb",
+            DecodeEncodedTextures = false,
+        });
         GltfImportResult result = await importer.ImportAsync(glb);
 
         result.Diagnostics.Should().BeEmpty();

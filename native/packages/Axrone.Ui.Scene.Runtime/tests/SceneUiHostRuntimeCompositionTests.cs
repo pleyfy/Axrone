@@ -332,6 +332,97 @@ public sealed class SceneUiHostRuntimeCompositionTests
         return table;
     }
 
+    [Fact]
+    public void RuntimeDisposeDisposesTheAttachedComposition()
+    {
+        using SceneRuntime runtime = CreateRuntime();
+        FakeRendererFactory factory = new();
+        SceneUiHostsRuntime hosts = runtime.AttachUiHosts(Options(factory));
+        runtime.AttachmentCount.Should().Be(1);
+
+        runtime.Dispose();
+
+        hosts.IsDisposed.Should().BeTrue();
+        factory.Renderer.Disposed.Should().Be(1);
+        runtime.AttachmentCount.Should().Be(0);
+        runtime.TryDetachUiHosts().Should().BeFalse();
+        hosts.Dispose();
+    }
+
+    [Fact]
+    public void RuntimeAttachmentHookIsIdempotentAndIsolated()
+    {
+        using SceneRuntime runtime = CreateRuntime();
+        CountingAttachment attachment = new();
+        CountingAttachment second = new();
+
+        runtime.TryAttach(attachment).Should().BeTrue();
+        runtime.TryAttach(attachment).Should().BeTrue();
+        runtime.AttachmentCount.Should().Be(1);
+        runtime.TryDetach(attachment).Should().BeTrue();
+        runtime.TryDetach(attachment).Should().BeFalse();
+        runtime.AttachmentCount.Should().Be(0);
+
+        runtime.TryAttach(attachment).Should().BeTrue();
+        runtime.TryAttach(second).Should().BeTrue();
+        runtime.Dispose();
+
+        attachment.Count.Should().Be(1);
+        second.Count.Should().Be(1);
+        runtime.AttachmentCount.Should().Be(0);
+        runtime.TryAttach(new CountingAttachment()).Should().BeFalse();
+    }
+
+    [Fact]
+    public void CustomFactoryWithoutAtlasCapabilityFailsClearly()
+    {
+        MockGLApi api = new();
+        using GLContext context = new(api);
+        using SceneRuntime runtime = CreateRuntime();
+        FakeRendererFactory factory = new();
+
+        bool attached = runtime.TryAttachUiHosts(
+            new SceneUiHostRuntimeOptions
+            {
+                Assets = CreateTable(),
+                Context = context,
+                RendererFactory = factory,
+            },
+            out SceneUiHostsRuntime? hosts,
+            out SceneUiHostComposeResult result);
+
+        attached.Should().BeFalse();
+        hosts.Should().BeNull();
+        result.Error.Should().Be(SceneUiHostComposeError.RendererUploaderUnsupported);
+        factory.CreateCount.Should().Be(0);
+        runtime.AttachmentCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void RuntimeDisposeDisposesTheCompositionOwnedUploader()
+    {
+        MockGLApi api = new();
+        using GLContext context = new(api);
+        using SceneRuntime runtime = CreateRuntime();
+        SceneUiHostsRuntime hosts = runtime.AttachUiHosts(new SceneUiHostRuntimeOptions
+        {
+            Assets = CreateTable(),
+            Context = context,
+        });
+
+        hosts.AtlasUploader.Should().NotBeNull();
+        hosts.AtlasUploader!.IsDisposed.Should().BeFalse();
+        SceneUiHostGlRenderer renderer = hosts.Renderer.Should().BeOfType<SceneUiHostGlRenderer>().Subject;
+        renderer.IsDisposed.Should().BeFalse();
+
+        runtime.Dispose();
+
+        hosts.AtlasUploader!.IsDisposed.Should().BeTrue();
+        renderer.IsDisposed.Should().BeTrue();
+        hosts.Bridge.IsDisposed.Should().BeTrue();
+        hosts.IsDisposed.Should().BeTrue();
+    }
+
     private static SceneRuntime CreateRuntime() =>
         new(new SceneRuntimeOptions
         {
@@ -384,6 +475,13 @@ public sealed class SceneUiHostRuntimeCompositionTests
         UiHostAssetTable table = new();
         table.Add(AssetId, buffer.WrittenSpan);
         return table;
+    }
+
+    private sealed class CountingAttachment : ISceneRuntimeAttachment
+    {
+        public int Count { get; private set; }
+
+        public void OnRuntimeDisposed() => Count++;
     }
 
     private sealed class FakeRendererFactory : ISceneUiHostRendererFactory

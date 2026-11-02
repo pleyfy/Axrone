@@ -63,7 +63,11 @@ public sealed record GltfMeshRendererComponent(
     string PassId,
     bool ReceiveLighting,
     string? SkinId,
-    int MorphTargetCount) : GltfComponentSnapshot;
+    int MorphTargetCount) : GltfComponentSnapshot
+{
+    /// <summary>Initial morph weights (node override or mesh default).</summary>
+    public ImmutableArray<float> MorphWeights { get; init; } = ImmutableArray<float>.Empty;
+}
 
 /// <summary>Animator component snapshot.</summary>
 public sealed record GltfAnimatorComponent(

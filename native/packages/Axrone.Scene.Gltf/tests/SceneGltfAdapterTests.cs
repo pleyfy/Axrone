@@ -77,14 +77,16 @@ public sealed class SceneGltfAdapterTests
     }
 
     [Fact]
-    public void Import_ReportsMorphTargetsButKeepsBaseMesh()
+    public void Import_ConvertsMorphTargetsOntoTheMesh()
     {
         GltfImportResult source = CreateResult(withMorphTargets: true);
 
         SceneGltfImportResult result = SceneGltfAdapter.Import(source);
 
         result.Snapshot.Meshes.Should().ContainSingle();
-        result.Diagnostics.Should().Contain(diagnostic =>
+        result.Snapshot.Meshes[0].MorphTargets.Should().ContainSingle();
+        result.Snapshot.Meshes[0].MorphTargets[0].Semantic.Should().Be(SceneMorphTargetSemantic.Position);
+        result.Diagnostics.Should().NotContain(diagnostic =>
             diagnostic.Code == "scene.gltf.morph-targets");
     }
 

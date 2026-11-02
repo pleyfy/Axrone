@@ -26,6 +26,9 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
     /// <summary>Gets the number of live pages.</summary>
     public int PageCount => _pages.Count;
 
+    /// <summary>Gets whether the uploader has been disposed.</summary>
+    public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
     /// <inheritdoc/>
     public UiResourceId CreatePage(UiGlyphAtlasPageId page, int width, int height, UiGlyphFormat format)
     {

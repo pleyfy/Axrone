@@ -23,6 +23,7 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         layout(location = 3) in vec2 a_Local;
         layout(location = 4) in vec4 a_MaskRect;
         layout(location = 5) in vec3 a_MaskParams;
+        layout(location = 6) in vec2 a_MaskExtra;
 
         uniform mat4 u_ViewProjection;
 
@@ -31,6 +32,7 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         out vec2 v_Local;
         out vec4 v_MaskRect;
         out vec3 v_MaskParams;
+        out vec2 v_MaskExtra;
 
         void main()
         {
@@ -39,6 +41,7 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
             v_Local = a_Local;
             v_MaskRect = a_MaskRect;
             v_MaskParams = a_MaskParams;
+            v_MaskExtra = a_MaskExtra;
             gl_Position = vec4(a_Position, 1.0) * u_ViewProjection;
         }
         """;
@@ -50,6 +53,7 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         in vec2 v_Local;
         in vec4 v_MaskRect;
         in vec3 v_MaskParams;
+        in vec2 v_MaskExtra;
 
         uniform sampler2D u_Texture;
 
@@ -64,15 +68,21 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
 
             vec2 size = max(v_MaskRect.zw, vec2(1e-5));
             vec2 p = (v_Local - v_MaskRect.xy) / size;
+            float feather = max(v_MaskExtra.x, 1e-4);
+            float corner = clamp(v_MaskExtra.y, 0.0, 0.5);
             float inside;
-            if (v_MaskParams.y < 0.5)
+
+            if (v_MaskParams.y < 0.5 || v_MaskParams.y > 1.5)
             {
-                inside = (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0) ? 1.0 : 0.0;
+                vec2 q = abs(p - 0.5) - (0.5 - corner);
+                float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - corner;
+                inside = 1.0 - smoothstep(0.0, feather, d);
             }
             else
             {
-                vec2 d = (p * 2.0) - 1.0;
-                inside = dot(d, d) <= 1.0 ? 1.0 : 0.0;
+                vec2 q = (p * 2.0) - 1.0;
+                float d = length(q) - 1.0;
+                inside = 1.0 - smoothstep(0.0, feather * 2.0, d);
             }
 
             return v_MaskParams.z > 0.5 ? 1.0 - inside : inside;
@@ -81,12 +91,14 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         void main()
         {
             float mask = maskFactor();
-            if (mask <= 0.0)
+            vec4 color = texture(u_Texture, v_Uv) * v_Color;
+            color.a *= mask;
+            if (color.a <= 0.001)
             {
                 discard;
             }
 
-            fragColor = texture(u_Texture, v_Uv) * v_Color * mask;
+            fragColor = color;
         }
         """;
 
@@ -99,7 +111,8 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         new VertexAttribute(2, 4, GLConst.Float, false, VertexStride, 20, 0, false),
         new VertexAttribute(3, 2, GLConst.Float, false, VertexStride, 36, 0, false),
         new VertexAttribute(4, 4, GLConst.Float, false, VertexStride, 44, 0, false),
-        new VertexAttribute(5, 3, GLConst.Float, false, VertexStride, 60, 0, false)
+        new VertexAttribute(5, 3, GLConst.Float, false, VertexStride, 60, 0, false),
+        new VertexAttribute(6, 2, GLConst.Float, false, VertexStride, 72, 0, false)
     ];
 
     private readonly GLContext _context;
@@ -306,15 +319,21 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
 
         Vec3 maskParams = new(
             item.HasMask ? 1.0f : 0.0f,
-            item.MaskKind == SceneSpriteMaskKind.Ellipse ? 1.0f : 0.0f,
+            item.MaskKind switch
+            {
+                SceneSpriteMaskKind.Ellipse => 1.0f,
+                SceneSpriteMaskKind.RoundedRect => 2.0f,
+                _ => 0.0f
+            },
             item.MaskInvert ? 1.0f : 0.0f);
         Vec4 maskRect = item.HasMask ? item.MaskRect : default;
+        Vec2 maskExtra = item.HasMask ? new Vec2(item.MaskFeather, item.MaskCornerRadius) : Vec2.Zero;
 
         Span<SpriteVertex> vertices = _vertices.AsSpan(_vertexCount, VerticesPerSprite);
-        vertices[0] = new SpriteVertex(new Vec3(bl.X, bl.Y, bl.Z), new Vec2(u0, v0), item.Color, new Vec2(0.0f, 0.0f), maskRect, maskParams);
-        vertices[1] = new SpriteVertex(new Vec3(br.X, br.Y, br.Z), new Vec2(u1, v0), item.Color, new Vec2(1.0f, 0.0f), maskRect, maskParams);
-        vertices[2] = new SpriteVertex(new Vec3(tr.X, tr.Y, tr.Z), new Vec2(u1, v1), item.Color, new Vec2(1.0f, 1.0f), maskRect, maskParams);
-        vertices[3] = new SpriteVertex(new Vec3(tl.X, tl.Y, tl.Z), new Vec2(u0, v1), item.Color, new Vec2(0.0f, 1.0f), maskRect, maskParams);
+        vertices[0] = new SpriteVertex(new Vec3(bl.X, bl.Y, bl.Z), new Vec2(u0, v0), item.Color, new Vec2(0.0f, 0.0f), maskRect, maskParams, maskExtra);
+        vertices[1] = new SpriteVertex(new Vec3(br.X, br.Y, br.Z), new Vec2(u1, v0), item.Color, new Vec2(1.0f, 0.0f), maskRect, maskParams, maskExtra);
+        vertices[2] = new SpriteVertex(new Vec3(tr.X, tr.Y, tr.Z), new Vec2(u1, v1), item.Color, new Vec2(1.0f, 1.0f), maskRect, maskParams, maskExtra);
+        vertices[3] = new SpriteVertex(new Vec3(tl.X, tl.Y, tl.Z), new Vec2(u0, v1), item.Color, new Vec2(0.0f, 1.0f), maskRect, maskParams, maskExtra);
 
         // Batches restart their vertex base at zero, so indices must be written
         // relative to this batch rather than the global sprite slot.
@@ -376,7 +395,8 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
             in Vec4 color,
             in Vec2 local,
             in Vec4 maskRect,
-            in Vec3 maskParams)
+            in Vec3 maskParams,
+            in Vec2 maskExtra)
         {
             Position = position;
             Uv = uv;
@@ -384,6 +404,7 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
             Local = local;
             MaskRect = maskRect;
             MaskParams = maskParams;
+            MaskExtra = maskExtra;
         }
 
         public readonly Vec3 Position;
@@ -397,5 +418,7 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         public readonly Vec4 MaskRect;
 
         public readonly Vec3 MaskParams;
+
+        public readonly Vec2 MaskExtra;
     }
 }

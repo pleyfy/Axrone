@@ -84,6 +84,8 @@ public sealed class SceneGlPrimitiveBatchRenderer : IDisposable
     private int _vertexCount;
     private int _indexCount;
     private readonly Vec3[] _corners = new Vec3[4];
+    private readonly Vec3[] _joinScratch = new Vec3[SceneLineGeometry.MaxJoinVertices];
+    private readonly Vec3[] _capScratch = new Vec3[SceneLineGeometry.MaxCapVertices];
     private bool _disposed;
 
     /// <summary>Creates the primitive batch renderer.</summary>
@@ -238,21 +240,78 @@ public sealed class SceneGlPrimitiveBatchRenderer : IDisposable
         _colorShader.Bind();
         _colorShader.SetMatrix4(ViewProjectionUniform, camera.ViewProjectionMatrix);
 
+        bool closed = items.Length > 1 && items[0].Start == items[^1].End;
         int submitted = 0;
+        int triangles = 0;
+
         for (int i = 0; i < items.Length; i++)
         {
             ref readonly SceneLineRenderItem item = ref items[i];
-            Vec3 middle = (item.Start + item.End) * 0.5f;
-            Vec3 toCamera = camera.Position - middle;
-            Vec3 view = toCamera.LengthSquared() > 1e-8f ? Vec3.Normalize(toCamera) : Vec3.UnitZ;
-            Span<Vec3> corners = _corners;
-            if (SceneLineGeometry.BuildRibbon(in item.Start, in item.End, item.Width, in view, item.Cap, corners) == 0)
+            Vec3 delta = item.End - item.Start;
+            float lengthSquared = delta.LengthSquared();
+            if (lengthSquared < 1e-12f)
             {
                 continue;
             }
 
+            Vec3 direction = delta / MathF.Sqrt(lengthSquared);
+            Vec3 middle = (item.Start + item.End) * 0.5f;
+            Vec3 toCamera = camera.Position - middle;
+            Vec3 view = toCamera.LengthSquared() > 1e-8f ? Vec3.Normalize(toCamera) : Vec3.UnitZ;
+
+            SceneLineRenderItem previous = Previous(i, items, closed);
+            SceneLineRenderItem next = Next(i, items, closed);
+            bool hasPrevious = IsAdjacent(in previous, in item, previous.End, item.Start);
+            bool hasNext = IsAdjacent(in item, in next, item.End, next.Start);
+
+            Span<Vec3> corners = _corners;
+            if (SceneLineGeometry.BuildRibbon(in item.Start, in item.End, item.Width, in view, SceneLineCap.Butt, corners) == 0)
+            {
+                continue;
+            }
+
+            float extension = item.Width * 0.5f;
+            if (!hasPrevious && (item.Cap == SceneLineCap.Square || item.Cap == SceneLineCap.Round))
+            {
+                corners[0] -= direction * extension;
+                corners[1] -= direction * extension;
+            }
+
+            if (!hasNext && (item.Cap == SceneLineCap.Square || item.Cap == SceneLineCap.Round))
+            {
+                corners[2] += direction * extension;
+                corners[3] += direction * extension;
+            }
+
             AppendQuad(corners, item.Color, item.Color, new Vec2(0, 0), new Vec2(1, 1));
             submitted++;
+            triangles += 2;
+
+            if (hasPrevious)
+            {
+                Vec3 previousDirection = Vec3.Normalize(previous.End - previous.Start);
+                int count = SceneLineGeometry.BuildJoin(
+                    in item.Start,
+                    in previousDirection,
+                    in direction,
+                    item.Width,
+                    in view,
+                    item.Join,
+                    _joinScratch);
+                triangles += AppendFan(in item.Start, _joinScratch.AsSpan(0, count), item.Color);
+            }
+
+            if (!hasPrevious && item.Cap == SceneLineCap.Round)
+            {
+                int count = SceneLineGeometry.BuildRoundCap(in item.Start, in direction, item.Width, in view, _capScratch);
+                triangles += AppendFan(in item.Start, _capScratch.AsSpan(0, count), item.Color);
+            }
+
+            if (!hasNext && item.Cap == SceneLineCap.Round)
+            {
+                int count = SceneLineGeometry.BuildRoundCap(in item.End, in direction, item.Width, in view, _capScratch);
+                triangles += AppendFan(in item.End, _capScratch.AsSpan(0, count), item.Color);
+            }
         }
 
         int drawCalls = 0;
@@ -264,7 +323,7 @@ public sealed class SceneGlPrimitiveBatchRenderer : IDisposable
 
         LastDrawCalls = drawCalls;
         LastQuadCount = submitted;
-        frameState.RecordDraw(submitted * 2, drawCalls);
+        frameState.RecordDraw(triangles, drawCalls);
         return drawCalls;
     }
 
@@ -398,6 +457,61 @@ public sealed class SceneGlPrimitiveBatchRenderer : IDisposable
         }
 
         AppendQuad(corners, item.Color, item.Color, new Vec2(u0, v0), new Vec2(u1, v1));
+    }
+
+    private static SceneLineRenderItem Previous(
+        int index,
+        ReadOnlySpan<SceneLineRenderItem> items,
+        bool closed) =>
+        index > 0 ? items[index - 1] : closed ? items[^1] : items[index];
+
+    private static SceneLineRenderItem Next(
+        int index,
+        ReadOnlySpan<SceneLineRenderItem> items,
+        bool closed) =>
+        index + 1 < items.Length ? items[index + 1] : closed ? items[0] : items[index];
+
+    private static bool IsAdjacent(
+        in SceneLineRenderItem previous,
+        in SceneLineRenderItem current,
+        in Vec3 previousEnd,
+        in Vec3 currentStart) =>
+        previous.Actor == current.Actor &&
+        previous.Width == current.Width &&
+        previousEnd == currentStart;
+
+    private int AppendFan(in Vec3 center, ReadOnlySpan<Vec3> points, in Vec4 color)
+    {
+        if (points.Length < 2)
+        {
+            return 0;
+        }
+
+        for (int i = 0; i < points.Length - 1; i++)
+        {
+            AppendTriangle(in center, in points[i], in points[i + 1], in color);
+        }
+
+        return points.Length - 1;
+    }
+
+    private void AppendTriangle(in Vec3 a, in Vec3 b, in Vec3 c, in Vec4 color)
+    {
+        EnsureCapacity();
+
+        uint baseIndex = (uint)_vertexCount;
+        Span<PrimitiveVertex> vertices = _vertices.AsSpan(_vertexCount, 3);
+        vertices[0] = new PrimitiveVertex(in a, Vec2.Zero, in color);
+        vertices[1] = new PrimitiveVertex(in b, Vec2.Zero, in color);
+        vertices[2] = new PrimitiveVertex(in c, Vec2.Zero, in color);
+
+        Span<uint> indices = _indices.AsSpan(_indexCount, 3);
+        indices[0] = baseIndex;
+        indices[1] = baseIndex + 1;
+        indices[2] = baseIndex + 2;
+
+        _vertexCount += 3;
+        _indexCount += 3;
     }
 
     private void AppendQuad(

@@ -17,6 +17,8 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     private readonly SceneInstanceRegistry? _instances;
     private readonly SceneGlInstancedMeshRenderer? _instancedRenderer;
     private readonly SceneGlSkinnedMeshRenderer? _skinnedRenderer;
+    private readonly SceneGlReflectionProbeAtlas? _probeAtlas;
+    private readonly ISceneReflectionProbeSource? _reflectionProbe;
     private readonly bool _hasSpriteComponent;
     private readonly bool _hasInstancedComponent;
     private SceneGlPrimitiveBatchRenderer? _primitiveRenderer;
@@ -41,6 +43,8 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     /// after LOD meshes.
     /// </param>
     /// <param name="skinningOptions">Optional skinning configuration; defaults to 256 bones on unit 15.</param>
+    /// <param name="probeAtlas">Optional reflection probe cubemap atlas.</param>
+    /// <param name="reflectionProbe">Optional selected-probe source for material sampling.</param>
     public SceneGlRenderOrchestrator(
         GLContext context,
         SceneGlAssetCache assets,
@@ -48,7 +52,9 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
         ISceneParticleSource? particles = null,
         SceneInstanceRegistry? instances = null,
         ISceneBonePaletteSource? bonePalettes = null,
-        SceneSkinningOptions? skinningOptions = null)
+        SceneSkinningOptions? skinningOptions = null,
+        SceneGlReflectionProbeAtlas? probeAtlas = null,
+        ISceneReflectionProbeSource? reflectionProbe = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assets);
@@ -56,6 +62,8 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
 
         _context = context;
         _assets = assets;
+        _probeAtlas = probeAtlas;
+        _reflectionProbe = reflectionProbe;
         _meshExecutor = new SceneGlDrawExecutor(context, assets);
         _spriteRenderer = new SceneGlSpriteBatchRenderer(context, assets);
         _hasSpriteComponent = world.Registry.TryGetDataByType(typeof(SceneSpriteRenderer), out _);
@@ -114,7 +122,10 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                 pass,
                 frameState,
                 elapsedSeconds,
-                items.Fog);
+                items.Fog,
+                items as ISceneAreaLightSource,
+                _probeAtlas,
+                _reflectionProbe);
 
             if (items is ISceneLodFrameItemSource lodSource)
             {
@@ -129,7 +140,10 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                         pass,
                         frameState,
                         elapsedSeconds,
-                        items.Fog);
+                        items.Fog,
+                        items as ISceneAreaLightSource,
+                        _probeAtlas,
+                        _reflectionProbe);
                 }
             }
 
@@ -146,7 +160,10 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                         pass,
                         frameState,
                         elapsedSeconds,
-                        items.Fog);
+                        items.Fog,
+                        items as ISceneAreaLightSource,
+                        _probeAtlas,
+                        _reflectionProbe);
                 }
             }
 

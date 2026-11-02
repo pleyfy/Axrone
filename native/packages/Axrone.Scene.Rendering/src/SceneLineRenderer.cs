@@ -450,4 +450,150 @@ public static class SceneLineGeometry
         corners[3] = extendedEnd - side;
         return 4;
     }
+
+    /// <summary>Maximum vertices produced by one join.</summary>
+    public const int MaxJoinVertices = 9;
+
+    /// <summary>Maximum vertices produced by one round cap.</summary>
+    public const int MaxCapVertices = 8;
+
+    /// <summary>
+    /// Builds the outer geometry of one polyline join. Miter returns the two
+    /// segment sides plus the miter apex, bevel returns the two sides, and round
+    /// returns a fan arc between the two sides. Callers triangulate against the
+    /// shared vertex position.
+    /// </summary>
+    public static int BuildJoin(
+        in Vec3 vertex,
+        in Vec3 previousDirection,
+        in Vec3 nextDirection,
+        float width,
+        in Vec3 viewDirection,
+        SceneLineJoin join,
+        Span<Vec3> vertices)
+    {
+        if (vertices.Length < 2 || width <= 0.0f || !float.IsFinite(width) ||
+            previousDirection.LengthSquared() < 1e-12f || nextDirection.LengthSquared() < 1e-12f)
+        {
+            return 0;
+        }
+
+        Vec3 previousUnit = Vec3.Normalize(previousDirection);
+        Vec3 nextUnit = Vec3.Normalize(nextDirection);
+        if (Vec3.Dot(previousUnit, nextUnit) > 0.9999f)
+        {
+            return 0;
+        }
+
+        Vec3 previousSide = SideVector(in previousUnit, in viewDirection) * (width * 0.5f);
+        Vec3 nextSide = SideVector(in nextUnit, in viewDirection) * (width * 0.5f);
+
+        if (join == SceneLineJoin.Bevel)
+        {
+            vertices[0] = vertex + previousSide;
+            vertices[1] = vertex + nextSide;
+            return 2;
+        }
+
+        if (join == SceneLineJoin.Round)
+        {
+            return BuildArc(in vertex, in previousSide, in nextSide, in viewDirection, MaxJoinVertices - 1, vertices);
+        }
+
+        Vec3 bisector = previousSide + nextSide;
+        if (bisector.LengthSquared() < 1e-8f)
+        {
+            vertices[0] = vertex + previousSide;
+            vertices[1] = vertex + nextSide;
+            return 2;
+        }
+
+        Vec3 miter = Vec3.Normalize(bisector);
+        float cosine = MathF.Max(Vec3.Dot(miter, Vec3.Normalize(nextSide)), 0.25f);
+        Vec3 apex = miter * ((width * 0.5f) / cosine);
+
+        vertices[0] = vertex + previousSide;
+        vertices[1] = vertex + apex;
+        vertices[2] = vertex + nextSide;
+        return 3;
+    }
+
+    /// <summary>Builds a round cap fan in the plane facing the camera.</summary>
+    public static int BuildRoundCap(
+        in Vec3 endpoint,
+        in Vec3 direction,
+        float width,
+        in Vec3 viewDirection,
+        Span<Vec3> vertices)
+    {
+        if (vertices.Length < 4 || width <= 0.0f || !float.IsFinite(width) ||
+            direction.LengthSquared() < 1e-12f)
+        {
+            return 0;
+        }
+
+        Vec3 side = SideVector(in direction, in viewDirection) * (width * 0.5f);
+        Vec3 forward = Vec3.Normalize(direction) * (width * 0.5f);
+        const int Steps = MaxCapVertices - 1;
+
+        for (int i = 0; i <= Steps; i++)
+        {
+            float angle = MathF.PI * i / Steps;
+            vertices[i] = endpoint + (side * MathF.Cos(angle)) + (forward * MathF.Sin(angle));
+        }
+
+        return Steps + 1;
+    }
+
+    private static int BuildArc(
+        in Vec3 vertex,
+        in Vec3 from,
+        in Vec3 to,
+        in Vec3 viewDirection,
+        int maxPoints,
+        Span<Vec3> vertices)
+    {
+        if (vertices.Length < 3 || maxPoints < 3)
+        {
+            return 0;
+        }
+
+        float cross = Vec3.Dot(Vec3.Cross(from, to), viewDirection);
+        float dot = Math.Clamp(Vec3.Dot(Vec3.Normalize(from), Vec3.Normalize(to)), -1.0f, 1.0f);
+        float angle = MathF.Atan2(cross, dot);
+        if (MathF.Abs(angle) < 1e-4f)
+        {
+            return 0;
+        }
+
+        int steps = Math.Clamp((int)MathF.Ceiling(MathF.Abs(angle) / (MathF.PI * 0.25f)), 2, maxPoints - 1);
+        Vec3 axis = angle >= 0.0f ? Vec3.Normalize(viewDirection) : -Vec3.Normalize(viewDirection);
+
+        for (int i = 0; i <= steps; i++)
+        {
+            float stepAngle = angle * i / steps;
+            float cosine = MathF.Cos(stepAngle);
+            float sine = MathF.Sin(stepAngle);
+            Vec3 rotated = (from * cosine) + (Vec3.Cross(axis, from) * sine) + (axis * (Vec3.Dot(axis, from) * (1.0f - cosine)));
+            vertices[i] = vertex + rotated;
+        }
+
+        return steps + 1;
+    }
+
+    private static Vec3 SideVector(in Vec3 direction, in Vec3 viewDirection)
+    {
+        Vec3 side = Vec3.Cross(direction, viewDirection);
+        if (side.LengthSquared() < 1e-8f)
+        {
+            side = Vec3.Cross(direction, Vec3.UnitY);
+        }
+
+        if (side.LengthSquared() < 1e-8f)
+        {
+            side = Vec3.Cross(direction, Vec3.UnitZ);
+        }
+
+        return Vec3.Normalize(side);
+    }
 }

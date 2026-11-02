@@ -315,6 +315,193 @@ public sealed class UiFontFace
         return _color is not null && _color.TryGetPaletteColor(_buffer.Span, paletteIndex, colorIndex, out color);
     }
 
+    public bool HasColorPaintGraph => _color?.PaintGraph is { RootCount: > 0 };
+
+    public bool TryGetColorPaint(int codePoint, out UiColorPaint paint)
+    {
+        if (_color?.PaintGraph is not { } graph ||
+            !TryGetBaseGlyph(codePoint, out int glyphId) ||
+            !graph.TryGetRoot(glyphId, out int node) ||
+            !graph.TryGetNode(node, out UiColorPaintNode value))
+        {
+            paint = default;
+            return false;
+        }
+
+        paint = new UiColorPaint(value.Kind, node);
+        return true;
+    }
+
+    public bool TryGetGlyphColorPaint(int glyphId, out UiColorPaint paint)
+    {
+        if (_color?.PaintGraph is not { } graph ||
+            !graph.TryGetRoot(glyphId, out int node) ||
+            !graph.TryGetNode(node, out UiColorPaintNode value))
+        {
+            paint = default;
+            return false;
+        }
+
+        paint = new UiColorPaint(value.Kind, node);
+        return true;
+    }
+
+    public bool TryGetPaintChildCount(in UiColorPaint paint, out int count)
+    {
+        if (!TryGetPaintNode(in paint, out _, out UiColorPaintNode node))
+        {
+            count = 0;
+            return false;
+        }
+
+        count = node.ChildCount;
+        return true;
+    }
+
+    public bool TryGetPaintChild(in UiColorPaint paint, int index, out UiColorPaint child)
+    {
+        child = default;
+        if (!TryGetPaintNode(in paint, out UiColorPaintData? graph, out _) ||
+            !graph!.TryGetChild(paint.Index, index, out int childNode) ||
+            !graph.TryGetNode(childNode, out UiColorPaintNode node))
+        {
+            return false;
+        }
+
+        child = new UiColorPaint(node.Kind, childNode);
+        return true;
+    }
+
+    public bool TryGetPaintGlyph(in UiColorPaint paint, out int glyphId)
+    {
+        glyphId = -1;
+        if (!TryGetPaintNode(in paint, out _, out UiColorPaintNode node) ||
+            node.Kind is not (UiColorPaintKind.Glyph or UiColorPaintKind.ColrGlyph))
+        {
+            return false;
+        }
+
+        glyphId = node.GlyphId;
+        return true;
+    }
+
+    public bool TryGetPaintSolid(in UiColorPaint paint, out int paletteIndex, out float alpha)
+    {
+        paletteIndex = -1;
+        alpha = 0.0f;
+        if (!TryGetPaintNode(in paint, out _, out UiColorPaintNode node) ||
+            node.Kind != UiColorPaintKind.Solid)
+        {
+            return false;
+        }
+
+        paletteIndex = node.PaletteIndex;
+        alpha = node.Alpha;
+        return true;
+    }
+
+    public bool TryGetPaintGradient(in UiColorPaint paint, out UiColorGradient gradient)
+    {
+        gradient = default;
+        if (!TryGetPaintNode(in paint, out _, out UiColorPaintNode node) ||
+            node.Kind is not (UiColorPaintKind.LinearGradient or UiColorPaintKind.RadialGradient) ||
+            node.GradientIndex < 0)
+        {
+            return false;
+        }
+
+        gradient = new UiColorGradient(node.GradientIndex);
+        return true;
+    }
+
+    public bool TryGetGradientStopCount(in UiColorGradient gradient, out int count)
+    {
+        count = 0;
+        if (_color?.PaintGraph is not { } graph ||
+            !graph.TryGetGradient(gradient.Index, out UiColorGradientRecord record))
+        {
+            return false;
+        }
+
+        count = record.StopCount;
+        return true;
+    }
+
+    public bool TryGetGradientStop(in UiColorGradient gradient, int index, out UiColorGradientStop stop)
+    {
+        stop = default;
+        return _color?.PaintGraph is { } graph && graph.TryGetStop(gradient.Index, index, out stop);
+    }
+
+    public bool TryGetLinearGradient(in UiColorGradient gradient, out UiColorLinearGradient value)
+    {
+        value = default;
+        if (_color?.PaintGraph is not { } graph ||
+            !graph.TryGetGradient(gradient.Index, out UiColorGradientRecord record) ||
+            record.Kind != UiColorPaintKind.LinearGradient)
+        {
+            return false;
+        }
+
+        value = new UiColorLinearGradient(record.Extend, record.X0, record.Y0, record.X1, record.Y1, record.X2, record.Y2);
+        return true;
+    }
+
+    public bool TryGetRadialGradient(in UiColorGradient gradient, out UiColorRadialGradient value)
+    {
+        value = default;
+        if (_color?.PaintGraph is not { } graph ||
+            !graph.TryGetGradient(gradient.Index, out UiColorGradientRecord record) ||
+            record.Kind != UiColorPaintKind.RadialGradient)
+        {
+            return false;
+        }
+
+        value = new UiColorRadialGradient(record.Extend, record.X0, record.Y0, record.R0, record.X1, record.Y1, record.R1);
+        return true;
+    }
+
+    public bool TryGetPaintTransform(in UiColorPaint paint, out UiColorAffine transform)
+    {
+        transform = UiColorAffine.Identity;
+        if (!TryGetPaintNode(in paint, out _, out UiColorPaintNode node) ||
+            node.Kind != UiColorPaintKind.Transform)
+        {
+            return false;
+        }
+
+        transform = node.Transform;
+        return true;
+    }
+
+    public bool TryGetPaintComposite(in UiColorPaint paint, out UiColorCompositeMode mode)
+    {
+        mode = default;
+        if (!TryGetPaintNode(in paint, out _, out UiColorPaintNode node) ||
+            node.Kind != UiColorPaintKind.Composite ||
+            node.CompositeMode < 0 ||
+            node.CompositeMode > (int)UiColorCompositeMode.Luminosity)
+        {
+            return false;
+        }
+
+        mode = (UiColorCompositeMode)node.CompositeMode;
+        return true;
+    }
+
+    private bool TryGetPaintNode(
+        in UiColorPaint paint,
+        [NotNullWhen(true)] out UiColorPaintData? graph,
+        out UiColorPaintNode node)
+    {
+        graph = _color?.PaintGraph;
+        node = default;
+        return graph is not null &&
+            paint.IsValid &&
+            graph.TryGetNode(paint.Index, out node) &&
+            node.Kind == paint.Kind;
+    }
+
     public bool TryGetGlyph(int codePoint, int variationSelector, out int glyphId)
     {
         if (variationSelector == 0)

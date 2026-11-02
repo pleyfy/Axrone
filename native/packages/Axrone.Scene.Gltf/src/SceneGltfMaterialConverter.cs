@@ -106,7 +106,7 @@ public static class SceneGltfMaterialConverter
             features,
             diagnostics);
 
-        SceneMaterialPass[] passes = BuildPasses(alphaMode, material.DoubleSided);
+        SceneMaterialPass[] passes = BuildPasses(alphaMode, material.DoubleSided, options.BlendMode);
 
         SceneAssetId<ShaderAssetTag>? declaredShaderId = ResolveDeclaredCustomShader(material, options);
         SceneAssetId<ShaderAssetTag> baseShaderId = material.Unlit
@@ -435,28 +435,88 @@ public static class SceneGltfMaterialConverter
             features |= SceneMaterialFeatures.Clearcoat;
         }
 
+        bool hasSheenColorMap = HasBinding(material, GltfTextureUsage.SheenColor);
+        bool hasSheenRoughnessMap = HasBinding(material, GltfTextureUsage.SheenRoughness);
+        bool hasTransmissionMap = HasBinding(material, GltfTextureUsage.Transmission);
+        bool hasIridescenceMap = HasBinding(material, GltfTextureUsage.Iridescence);
+        bool hasIridescenceThicknessMap = HasBinding(material, GltfTextureUsage.IridescenceThickness);
+        bool hasSubsurfaceMap = HasBinding(material, GltfTextureUsage.Subsurface);
+
+        if (hasSheenColorMap)
+        {
+            features |= SceneMaterialFeatures.SheenColorMap;
+        }
+
+        if (hasSheenRoughnessMap)
+        {
+            features |= SceneMaterialFeatures.SheenRoughnessMap;
+        }
+
+        if (hasTransmissionMap)
+        {
+            features |= SceneMaterialFeatures.TransmissionMap;
+        }
+
+        if (hasIridescenceMap)
+        {
+            features |= SceneMaterialFeatures.IridescenceMap;
+        }
+
+        if (hasIridescenceThicknessMap)
+        {
+            features |= SceneMaterialFeatures.IridescenceThicknessMap;
+        }
+
+        if (HasBinding(material, GltfTextureUsage.Thickness))
+        {
+            features |= SceneMaterialFeatures.ThicknessMap;
+        }
+
+        if (HasBinding(material, GltfTextureUsage.Specular))
+        {
+            features |= SceneMaterialFeatures.SpecularMap;
+        }
+
+        if (HasBinding(material, GltfTextureUsage.SpecularColor))
+        {
+            features |= SceneMaterialFeatures.SpecularColorMap;
+        }
+
+        if (HasBinding(material, GltfTextureUsage.Anisotropy))
+        {
+            features |= SceneMaterialFeatures.AnisotropyMap;
+        }
+
+        if (hasSubsurfaceMap)
+        {
+            features |= SceneMaterialFeatures.SubsurfaceMap;
+        }
+
         float anisotropy = ReadFloat(uniforms, "_AnisotropyStrength", ReadFloat(uniforms, "_AnisotropyFactor", 0.0f));
         if (MathF.Abs(anisotropy) > 0.001f)
         {
             features |= SceneMaterialFeatures.Anisotropy;
         }
 
-        if (AnyComponentPositive(uniforms, "_SheenColorFactor") || ReadFloat(uniforms, "_SheenFactor", 0.0f) > 0.001f)
+        if (AnyComponentPositive(uniforms, "_SheenColorFactor") ||
+            ReadFloat(uniforms, "_SheenFactor", 0.0f) > 0.001f ||
+            hasSheenColorMap || hasSheenRoughnessMap)
         {
             features |= SceneMaterialFeatures.Sheen;
         }
 
-        if (ReadFloat(uniforms, "_SubsurfaceFactor", 0.0f) > 0.001f)
+        if (ReadFloat(uniforms, "_SubsurfaceFactor", 0.0f) > 0.001f || hasSubsurfaceMap)
         {
             features |= SceneMaterialFeatures.Subsurface;
         }
 
-        if (ReadFloat(uniforms, "_TransmissionFactor", 0.0f) > 0.001f)
+        if (ReadFloat(uniforms, "_TransmissionFactor", 0.0f) > 0.001f || hasTransmissionMap)
         {
             features |= SceneMaterialFeatures.Transmission;
         }
 
-        if (ReadFloat(uniforms, "_IridescenceFactor", 0.0f) > 0.001f)
+        if (ReadFloat(uniforms, "_IridescenceFactor", 0.0f) > 0.001f ||
+            hasIridescenceMap || hasIridescenceThicknessMap)
         {
             features |= SceneMaterialFeatures.Iridescence;
         }
@@ -530,9 +590,61 @@ public static class SceneGltfMaterialConverter
             NormalMap = ReadBinding(material, GltfTextureUsage.Normal, options, textureSamplers, diagnostics),
             PbrMap = ReadBinding(material, GltfTextureUsage.MetallicRoughness, options, textureSamplers, diagnostics),
             OcclusionMap = ReadBinding(material, GltfTextureUsage.Occlusion, options, textureSamplers, diagnostics),
-            EmissiveMap = ReadBinding(material, GltfTextureUsage.Emissive, options, textureSamplers, diagnostics)
+            EmissiveMap = ReadBinding(material, GltfTextureUsage.Emissive, options, textureSamplers, diagnostics),
+            ClearcoatMap = ReadBinding(material, GltfTextureUsage.Clearcoat, options, textureSamplers, diagnostics),
+            ClearcoatRoughnessMap = ReadBinding(material, GltfTextureUsage.ClearcoatRoughness, options, textureSamplers, diagnostics),
+            ClearcoatNormalMap = ReadBinding(material, GltfTextureUsage.ClearcoatNormal, options, textureSamplers, diagnostics),
+            SheenColorMap = ReadBinding(material, GltfTextureUsage.SheenColor, options, textureSamplers, diagnostics),
+            SheenRoughnessMap = ReadBinding(material, GltfTextureUsage.SheenRoughness, options, textureSamplers, diagnostics),
+            TransmissionMap = ReadBinding(material, GltfTextureUsage.Transmission, options, textureSamplers, diagnostics),
+            ThicknessMap = ReadBinding(material, GltfTextureUsage.Thickness, options, textureSamplers, diagnostics),
+            IridescenceMap = ReadBinding(material, GltfTextureUsage.Iridescence, options, textureSamplers, diagnostics),
+            IridescenceThicknessMap = ReadBinding(material, GltfTextureUsage.IridescenceThickness, options, textureSamplers, diagnostics),
+            SpecularMap = ReadBinding(material, GltfTextureUsage.Specular, options, textureSamplers, diagnostics),
+            SpecularColorMap = ReadBinding(material, GltfTextureUsage.SpecularColor, options, textureSamplers, diagnostics),
+            AnisotropyMap = ReadBinding(material, GltfTextureUsage.Anisotropy, options, textureSamplers, diagnostics),
+            SubsurfaceMap = ReadBinding(material, GltfTextureUsage.Subsurface, options, textureSamplers, diagnostics),
+            Extensions = BuildExtensions(uniforms)
         };
     }
+
+    private static SceneMaterialExtensions BuildExtensions(
+        SortedDictionary<string, SceneUniformValue> uniforms)
+    {
+        float minimumThickness = MathF.Max(0.0f, ReadFloat(uniforms, "_IridescenceThicknessMinimum", 100.0f));
+        float maximumThickness = MathF.Max(0.0f, ReadFloat(uniforms, "_IridescenceThicknessMaximum", 400.0f));
+        if (minimumThickness > maximumThickness)
+        {
+            (minimumThickness, maximumThickness) = (maximumThickness, minimumThickness);
+        }
+
+        return new SceneMaterialExtensions
+        {
+            Clearcoat = Clamp01(ReadFloat(uniforms, "_ClearcoatFactor", 0.0f)),
+            ClearcoatRoughness = Clamp01(ReadFloat(uniforms, "_ClearcoatRoughnessFactor", 0.0f)),
+            ClearcoatNormalScale = MathF.Max(0.0f, ReadFloat(uniforms, "_ClearcoatNormalTexture_Scale", 1.0f)),
+            SheenColor = ReadVec3(uniforms, "_SheenColorFactor") ?? Vec3.Zero,
+            SheenRoughness = Clamp01(ReadFloat(uniforms, "_SheenRoughnessFactor", 0.5f)),
+            Transmission = Clamp01(ReadFloat(uniforms, "_TransmissionFactor", 0.0f)),
+            Ior = MathF.Max(1.0f, ReadFloat(uniforms, "_IorFactor", 1.5f)),
+            Thickness = MathF.Max(0.0f, ReadFloat(uniforms, "_ThicknessFactor", 0.0f)),
+            AttenuationDistance = MathF.Max(0.0f, ReadFloat(uniforms, "_AttenuationDistance", 0.0f)),
+            AttenuationColor = ReadVec3(uniforms, "_AttenuationColor") ?? Vec3.One,
+            Iridescence = Clamp01(ReadFloat(uniforms, "_IridescenceFactor", 0.0f)),
+            IridescenceIor = MathF.Max(1.0f, ReadFloat(uniforms, "_IridescenceIor", 1.3f)),
+            IridescenceThicknessMinimum = minimumThickness,
+            IridescenceThicknessMaximum = maximumThickness,
+            Subsurface = Clamp01(ReadFloat(uniforms, "_SubsurfaceFactor", 0.0f)),
+            SubsurfaceColor = ReadVec3(uniforms, "_SubsurfaceColorFactor") ?? new Vec3(1.0f, 0.8f, 0.6f),
+            SubsurfaceThickness = MathF.Max(0.0f, ReadFloat(uniforms, "_SubsurfaceThickness", 1.0f)),
+            Specular = Clamp01(ReadFloat(uniforms, "_SpecularFactor", 1.0f)),
+            SpecularColor = ReadVec3(uniforms, "_SpecularColorFactor") ?? Vec3.One,
+            Anisotropy = Math.Clamp(ReadFloat(uniforms, "_AnisotropyStrength", 0.0f), -1.0f, 1.0f),
+            AnisotropyRotation = ReadFloat(uniforms, "_AnisotropyRotation", 0.0f)
+        };
+    }
+
+    private static float Clamp01(float value) => float.IsFinite(value) ? Math.Clamp(value, 0.0f, 1.0f) : 0.0f;
 
     private static SceneMaterialTextureBinding? ReadBinding(
         GltfMaterialAsset material,
@@ -583,10 +695,16 @@ public static class SceneGltfMaterialConverter
 
     private static SceneMaterialPass[] BuildPasses(
         SceneMaterialAlphaMode alphaMode,
-        bool doubleSided)
+        bool doubleSided,
+        SceneGltfBlendMode blendMode)
     {
         bool blend = alphaMode == SceneMaterialAlphaMode.Blend;
         bool cull = !doubleSided;
+        SceneBlendState blendState = !blend
+            ? SceneBlendState.Disabled
+            : blendMode == SceneGltfBlendMode.Additive
+                ? SceneBlendState.Additive
+                : SceneBlendState.Alpha;
 
         return
         [
@@ -595,20 +713,23 @@ public static class SceneGltfMaterialConverter
                 depthTest: true,
                 depthWrite: !blend,
                 cull: cull,
-                blend: blend),
+                blend: blend,
+                blendState: blendState),
             new SceneMaterialPass(
                 "forward-add",
                 depthTest: true,
                 depthWrite: false,
                 cull: cull,
-                blend: true),
+                blend: true,
+                blendState: SceneBlendState.Additive),
             new SceneMaterialPass(
                 "shadow-caster",
                 alphaMode == SceneMaterialAlphaMode.Mask ? 1 : 0,
                 depthTest: true,
                 depthWrite: true,
                 cull: cull,
-                blend: false)
+                blend: false,
+                blendState: SceneBlendState.Disabled)
         ];
     }
 

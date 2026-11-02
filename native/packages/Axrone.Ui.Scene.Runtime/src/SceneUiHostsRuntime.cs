@@ -8,25 +8,30 @@ using Axrone.Scene.Rendering;
 /// deterministic update/render/input entry points and isolates failures behind
 /// <see cref="LastError"/>.
 /// </summary>
-public sealed class SceneUiHostsRuntime : IDisposable
+public sealed class SceneUiHostsRuntime : IDisposable, ISceneRuntimeAttachment
 {
     private readonly SceneRuntime _runtime;
     private readonly SceneUiHostBridge _bridge;
     private readonly ISceneUiHostRenderer? _renderer;
     private readonly UiHostGlyphAtlasUploader? _atlasUploader;
+    private readonly bool _ownsAtlasUploader;
     private int _disposed;
 
     internal SceneUiHostsRuntime(
         SceneRuntime runtime,
         SceneUiHostBridge bridge,
         ISceneUiHostRenderer? renderer,
-        UiHostGlyphAtlasUploader? atlasUploader)
+        UiHostGlyphAtlasUploader? atlasUploader,
+        bool ownsAtlasUploader)
     {
         _runtime = runtime;
         _bridge = bridge;
         _renderer = renderer;
         _atlasUploader = atlasUploader;
+        _ownsAtlasUploader = ownsAtlasUploader;
     }
+
+    internal UiHostGlyphAtlasUploader? AtlasUploader => _atlasUploader;
 
     /// <summary>Gets the owning scene runtime.</summary>
     public SceneRuntime Runtime => _runtime;
@@ -168,6 +173,19 @@ public sealed class SceneUiHostsRuntime : IDisposable
             return;
         }
 
+        _ = _runtime.TryDetach(this);
+        SceneUiHostRuntimeExtensions.RemoveBinding(_runtime, this);
+        DisposeCore();
+    }
+
+    /// <inheritdoc/>
+    public void OnRuntimeDisposed()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         SceneUiHostRuntimeExtensions.RemoveBinding(_runtime, this);
         DisposeCore();
     }
@@ -176,7 +194,10 @@ public sealed class SceneUiHostsRuntime : IDisposable
     {
         _renderer?.Dispose();
         _bridge.Dispose();
-        _atlasUploader?.Dispose();
+        if (_ownsAtlasUploader)
+        {
+            _atlasUploader?.Dispose();
+        }
     }
 
     internal void DetachAndDispose()
