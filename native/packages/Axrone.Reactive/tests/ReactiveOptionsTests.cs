@@ -74,6 +74,20 @@ public sealed class ReactiveOptionsTests
     }
 
     [Fact]
+    public void SubjectOptionsNormalizeTreatsDefaultAsDefault()
+    {
+        default(SubjectOptions).Normalize().Should().Be(SubjectOptions.Default);
+        new SubjectOptions(maxObservers: 0).Normalize().Should().Be(SubjectOptions.Default);
+
+        using var subject = new Subject<int>(new SubjectOptions(maxObservers: 0, autoComplete: true, errorPropagation: false));
+        using var failing = subject.Subscribe(new ActionObserver<int>(_ =>
+            throw new InvalidOperationException("observer")));
+
+        FluentActions.Invoking(() => subject.OnNext(1)).Should().NotThrow();
+        subject.ObserverFaultCount.Should().Be(1);
+    }
+
+    [Fact]
     public void SubjectEnforcesMaxObserversAndErrorHandling()
     {
         using var subject = new Subject<int>(new SubjectOptions(maxObservers: 1, errorPropagation: false));

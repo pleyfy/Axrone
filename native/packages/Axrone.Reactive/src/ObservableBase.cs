@@ -45,8 +45,7 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
     {
     }
 
-    protected ObservableBase(in SubjectOptions options) =>
-        _subjectOptions = options.MaxObservers > 0 ? options.Normalize() : SubjectOptions.Default;
+    protected ObservableBase(in SubjectOptions options) => _subjectOptions = options.Normalize();
 
     /// <summary>Live subscriptions.</summary>
     public int SubscriberCount => Volatile.Read(ref _observers).Length;

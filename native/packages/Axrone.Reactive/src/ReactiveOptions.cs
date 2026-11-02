@@ -144,10 +144,13 @@ public readonly record struct SubjectOptions
 
     public static SubjectOptions Default => new(100, false, true);
 
-    public SubjectOptions Normalize() => new(
-        MaxObservers >= 1 ? MaxObservers : 100,
-        AutoComplete,
-        ErrorPropagation);
+    public SubjectOptions Normalize() =>
+        MaxObservers == 0 && !AutoComplete && !ErrorPropagation
+            ? Default
+            : new SubjectOptions(
+                MaxObservers >= 1 ? MaxObservers : 100,
+                AutoComplete,
+                ErrorPropagation);
 
     public static SubjectOptions Merge(in SubjectOptions baseOptions, in SubjectOptions overrides) => new(
         overrides.MaxObservers > 0 ? overrides.MaxObservers : baseOptions.MaxObservers,
