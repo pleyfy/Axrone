@@ -22,6 +22,12 @@ public enum SceneUiHostComposeError
 
     /// <summary>Codec, bridge or renderer construction failed.</summary>
     CompositionFailed = 5,
+
+    /// <summary>The renderer factory cannot receive the shared glyph uploader.</summary>
+    RendererUploaderUnsupported = 6,
+
+    /// <summary>The runtime rejected the lifecycle attachment registration.</summary>
+    AttachmentFailed = 7,
 }
 
 /// <summary>Result of a composed attach attempt.</summary>
@@ -49,8 +55,16 @@ public interface ISceneUiHostRendererFactory
         Create(runtime, bridge);
 }
 
+/// <summary>
+/// Capability marker for factories that accept the composition-owned glyph
+/// uploader through the three-argument factory overload.
+/// </summary>
+public interface ISceneUiHostRendererFactoryWithAtlas : ISceneUiHostRendererFactory
+{
+}
+
 /// <summary>Default factory over a live GL context.</summary>
-public sealed class SceneUiHostGlRendererFactory : ISceneUiHostRendererFactory
+public sealed class SceneUiHostGlRendererFactory : ISceneUiHostRendererFactoryWithAtlas
 {
     private readonly GLContext _context;
 

@@ -81,6 +81,7 @@ public static class SceneUiHostRuntimeExtensions
 
             SceneUiHostBridge? bridge = null;
             UiHostGlyphAtlasUploader? atlasUploader = null;
+            bool ownsAtlasUploader = false;
             try
             {
                 if (!runtime.Codecs.TryGet("SceneUiHost", out _))
@@ -88,9 +89,40 @@ public static class SceneUiHostRuntimeExtensions
                     SceneUiHostRegistration.RegisterCodecs(runtime.Codecs, runtime.World.Registry);
                 }
 
-                if (options.EnableRendering && options.Context is not null)
+                if (options.EnableRendering)
                 {
-                    atlasUploader = new UiHostGlyphAtlasUploader(options.Context);
+                    if (options.HostRuntime.GlyphUploader is not null &&
+                        options.HostRuntime.GlyphUploader is not UiHostGlyphAtlasUploader)
+                    {
+                        result = new SceneUiHostComposeResult(
+                            false,
+                            SceneUiHostComposeError.RendererUploaderUnsupported,
+                            "A rendering UI host requires a UiHostGlyphAtlasUploader so the renderer can resolve atlas textures.");
+                        return false;
+                    }
+
+                    atlasUploader = options.HostRuntime.GlyphUploader as UiHostGlyphAtlasUploader;
+                    if (atlasUploader is null && options.Context is not null)
+                    {
+                        atlasUploader = new UiHostGlyphAtlasUploader(options.Context);
+                        ownsAtlasUploader = true;
+                    }
+
+                    if (factory is not null &&
+                        factory is not ISceneUiHostRendererFactoryWithAtlas &&
+                        (atlasUploader is not null || options.HostRuntime.Fonts is not null))
+                    {
+                        if (ownsAtlasUploader)
+                        {
+                            atlasUploader?.Dispose();
+                        }
+
+                        result = new SceneUiHostComposeResult(
+                            false,
+                            SceneUiHostComposeError.RendererUploaderUnsupported,
+                            "The custom renderer factory does not accept the shared glyph uploader; implement ISceneUiHostRendererFactoryWithAtlas or use SceneUiHostGlRendererFactory.");
+                        return false;
+                    }
                 }
 
                 UiHostRuntimeOptions hostRuntime = atlasUploader is null
@@ -114,15 +146,38 @@ public static class SceneUiHostRuntimeExtensions
                     }
                 }
 
-                hosts = new SceneUiHostsRuntime(runtime, bridge, renderer, atlasUploader);
+                hosts = new SceneUiHostsRuntime(runtime, bridge, renderer, atlasUploader, ownsAtlasUploader);
+                if (!runtime.TryAttach(hosts))
+                {
+                    hosts.DetachAndDispose();
+                    hosts = null;
+                    result = new SceneUiHostComposeResult(
+                        false,
+                        SceneUiHostComposeError.AttachmentFailed,
+                        "The scene runtime rejected the UI host lifecycle attachment.");
+                    return false;
+                }
+
                 s_bindings.Add(runtime, hosts);
                 result = SceneUiHostComposeResult.Ok;
                 return true;
             }
             catch (Exception exception)
             {
-                bridge?.Dispose();
-                atlasUploader?.Dispose();
+                if (hosts is not null)
+                {
+                    hosts.DetachAndDispose();
+                    hosts = null;
+                }
+                else
+                {
+                    bridge?.Dispose();
+                    if (ownsAtlasUploader)
+                    {
+                        atlasUploader?.Dispose();
+                    }
+                }
+
                 result = new SceneUiHostComposeResult(
                     false,
                     SceneUiHostComposeError.RendererFailed,
@@ -147,6 +202,7 @@ public static class SceneUiHostRuntimeExtensions
             s_bindings.Remove(runtime);
         }
 
+        _ = runtime.TryDetach(detached);
         detached.DetachAndDispose();
         return true;
     }
