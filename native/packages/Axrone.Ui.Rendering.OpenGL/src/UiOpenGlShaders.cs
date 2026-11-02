@@ -78,7 +78,7 @@ float sdRound(vec2 p, vec2 halfSize, vec4 radii)
         : (p.y < 0.0 ? radii.y : radii.z);
     r = min(r, min(halfSize.x, halfSize.y));
     vec2 q = abs(p) - halfSize + vec2(r);
-    return length(max(q, vec2(0.0))) - r;
+    return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;
 }
 void main()
 {
@@ -151,7 +151,7 @@ float sdRound(vec2 p, vec2 halfSize, vec4 radii)
         : (p.y < 0.0 ? radii.y : radii.z);
     r = min(r, min(halfSize.x, halfSize.y));
     vec2 q = abs(p) - halfSize + vec2(r);
-    return length(max(q, vec2(0.0))) - r;
+    return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;
 }
 void main()
 {
@@ -224,6 +224,24 @@ void main()
     float alpha = max(fill * v_Color.a, edge * v_OutlineColor.a) * v_Opacity;
     if (alpha <= 0.001) discard;
     o_Color = vec4(color.rgb, alpha);
+}
+""";
+
+    public const string ColorTextFragment = """
+#version 330 core
+in vec2 v_Unit;
+in vec2 v_UvMin;
+in vec2 v_UvMax;
+in float v_Opacity;
+uniform sampler2D u_Texture;
+out vec4 o_Color;
+void main()
+{
+    vec2 uv = mix(v_UvMin, v_UvMax, v_Unit);
+    vec4 texel = texture(u_Texture, uv);
+    float alpha = texel.a * v_Opacity;
+    if (alpha <= 0.001) discard;
+    o_Color = vec4(texel.rgb * v_Opacity, alpha);
 }
 """;
 

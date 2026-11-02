@@ -89,6 +89,9 @@ public sealed class UiHostOffscreenSurface : IDisposable
         _framebuffer = null;
         _texture?.Dispose();
         _texture = null;
+        // GL may recycle the deleted names; drop cached bindings so the rebuilt attachments are
+        // actually bound instead of being skipped as "already current".
+        _context.State.Invalidate();
     }
 }
 

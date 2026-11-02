@@ -3,6 +3,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn>$(NoWarn);CA1707;CA1305;CA2000;CA1515;CA2231;CA1815;CA1031;CA1849;CA2007</NoWarn>
   </PropertyGroup>
 
@@ -27,6 +28,14 @@
     <ProjectReference Include="../../Axrone.Scene.Rendering/Axrone.Scene.Rendering.csproj" />
     <ProjectReference Include="../../Axrone.Render.OpenGL.Mock/Axrone.Render.OpenGL.Mock.csproj" />
     <ProjectReference Include="../../Axrone.Ui.Assets/Axrone.Ui.Assets.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../Axrone.Ui.Rendering.OpenGL/tests/Harness/GlHarnessDevice.cs" Link="Harness/GlHarnessDevice.cs" />
+    <Compile Include="../../Axrone.Ui.Rendering.OpenGL/tests/Harness/PixelProbe.cs" Link="Harness/PixelProbe.cs" />
+    <Compile Include="../../Axrone.Ui.Rendering.OpenGL/tests/Harness/RealGpuFactAttribute.cs" Link="Harness/RealGpuFactAttribute.cs" />
+    <Compile Include="../../Axrone.Ui.Rendering.OpenGL/tests/Harness/GlyphFields.cs" Link="Harness/GlyphFields.cs" />
+    <Compile Include="../../Axrone.Ui.Rendering.OpenGL/tests/Harness/GlyphSceneFactory.cs" Link="Harness/GlyphSceneFactory.cs" />
   </ItemGroup>
 
   <ItemGroup>
