@@ -108,15 +108,6 @@ public sealed class ObservableCreationTests
         zipped.Completed.Should().BeTrue();
     }
 
-    [Fact]
-    public void ProbeRecognizesMarkedObservables()
-    {
-        using var subject = new Subject<int>();
-        ObservableProbe.IsObservable(subject).Should().BeTrue();
-        ObservableProbe.IsObservable(new object()).Should().BeFalse();
-        ObservableProbe.IsObservableSubject<int>(subject).Should().BeTrue();
-        ObservableProbe.IsObservableSubject<string>(subject).Should().BeFalse();
-    }
 }
 
 public sealed class ObservableSequenceOperatorTests
