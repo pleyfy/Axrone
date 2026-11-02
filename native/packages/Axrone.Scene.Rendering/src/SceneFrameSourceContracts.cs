@@ -29,3 +29,10 @@ public interface IScenePrimitiveFrameItemSource
     /// <summary>Collects fading trail segments for one pass.</summary>
     ReadOnlySpan<SceneTrailRenderItem> CollectTrails(SceneAssetId<RenderPassAssetTag> passId);
 }
+
+/// <summary>Optional frame-source extension for area lights.</summary>
+public interface ISceneAreaLightSource
+{
+    /// <summary>Gets the area lights collected for the current frame.</summary>
+    ReadOnlySpan<SceneAreaLightRenderItem> AreaLights { get; }
+}

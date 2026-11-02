@@ -120,8 +120,10 @@ public sealed class SceneSpriteMaskCodec : SceneDataCodec<SceneSpriteMask>
     {
         ArgumentNullException.ThrowIfNull(writer);
 
-        writer.WriteString("kind", value.Kind == SceneSpriteMaskKind.Ellipse ? "ellipse" : "rect");
+        writer.WriteString("kind", WriteKind(value.Kind));
         SceneJson.WriteVec4(writer, "rect", value.Rect);
+        writer.WriteNumber("feather", value.Feather);
+        writer.WriteNumber("cornerRadius", value.CornerRadius);
         writer.WriteBoolean("invert", value.Invert);
         writer.WriteBoolean("enabled", value.Enabled);
     }
@@ -141,6 +143,16 @@ public sealed class SceneSpriteMaskCodec : SceneDataCodec<SceneSpriteMask>
             value.Rect = SceneJson.ReadVec4(rect, "rect");
         }
 
+        if (data.TryGetProperty("feather", out JsonElement feather))
+        {
+            value.Feather = feather.GetSingle();
+        }
+
+        if (data.TryGetProperty("cornerRadius", out JsonElement cornerRadius))
+        {
+            value.CornerRadius = cornerRadius.GetSingle();
+        }
+
         if (data.TryGetProperty("invert", out JsonElement invert))
         {
             value.Invert = invert.GetBoolean();
@@ -154,6 +166,13 @@ public sealed class SceneSpriteMaskCodec : SceneDataCodec<SceneSpriteMask>
         return value;
     }
 
+    private static string WriteKind(SceneSpriteMaskKind kind) => kind switch
+    {
+        SceneSpriteMaskKind.Ellipse => "ellipse",
+        SceneSpriteMaskKind.RoundedRect => "roundedRect",
+        _ => "rect"
+    };
+
     private static SceneSpriteMaskKind ReadKind(JsonElement element)
     {
         if (element.ValueKind != JsonValueKind.String)
@@ -165,8 +184,9 @@ public sealed class SceneSpriteMaskCodec : SceneDataCodec<SceneSpriteMask>
         {
             "rect" => SceneSpriteMaskKind.Rect,
             "ellipse" => SceneSpriteMaskKind.Ellipse,
+            "roundedRect" => SceneSpriteMaskKind.RoundedRect,
             _ => throw SceneJson.Invalid(
-                $"Sprite mask 'kind' must be 'rect' or 'ellipse'; received '{element.GetString()}'.")
+                $"Sprite mask 'kind' must be 'rect', 'ellipse' or 'roundedRect'; received '{element.GetString()}'.")
         };
     }
 }

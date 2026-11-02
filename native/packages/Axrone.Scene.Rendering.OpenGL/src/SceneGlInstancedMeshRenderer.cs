@@ -8,15 +8,15 @@ namespace Axrone.Scene.Rendering.OpenGL;
 /// in <see cref="SceneGlDrawExecutor"/> is untouched.
 /// </summary>
 /// <remarks>
-/// The generated vertex shader consumes the mesh's first three- or four-component
-/// attribute as position and requires every mesh attribute location to be below
-/// 11 so the instance block at 11..15 never collides.
+/// Mesh attributes are remapped to compact locations and the instance block is
+/// appended directly after them, so arbitrary source attribute locations are
+/// supported as long as the mesh and instance attributes fit the context limit.
 /// </remarks>
 public sealed class SceneGlInstancedMeshRenderer : IDisposable
 {
     private const int InitialInstanceCapacity = 256;
     private const int InstanceStride = 80;
-    private const int InstanceBaseLocation = 11;
+    private const int InstanceAttributeCount = 5;
 
     private const string ViewProjectionUniform = "u_ViewProjection";
 
@@ -197,7 +197,7 @@ public sealed class SceneGlInstancedMeshRenderer : IDisposable
     {
         foreach (MeshPipeline pipeline in _pipelines.Values)
         {
-            ConfigureInstanceAttributes(pipeline.VertexArray);
+            ConfigureInstanceAttributes(pipeline.VertexArray, pipeline.InstanceBase);
         }
     }
 
@@ -226,20 +226,32 @@ public sealed class SceneGlInstancedMeshRenderer : IDisposable
     private MeshPipeline? BuildPipeline(GLMesh mesh)
     {
         ReadOnlySpan<VertexAttribute> meshAttributes = mesh.Layout.Attributes;
+        int instanceBase = meshAttributes.Length;
+        if (instanceBase + InstanceAttributeCount > _context.Capabilities.MaxVertexAttribs)
+        {
+            return null;
+        }
+
         int positionLocation = -1;
         int positionComponents = 0;
+        VertexAttribute[] remapped = new VertexAttribute[instanceBase];
 
-        for (int i = 0; i < meshAttributes.Length; i++)
+        for (int i = 0; i < instanceBase; i++)
         {
             VertexAttribute attribute = meshAttributes[i];
-            if (attribute.Location >= InstanceBaseLocation)
-            {
-                return null;
-            }
+            remapped[i] = new VertexAttribute(
+                i,
+                attribute.ComponentCount,
+                attribute.Type,
+                attribute.Normalized,
+                attribute.Stride,
+                attribute.Offset,
+                0,
+                attribute.IsInteger);
 
             if (positionLocation < 0 && attribute.ComponentCount >= 3)
             {
-                positionLocation = attribute.Location;
+                positionLocation = i;
                 positionComponents = attribute.ComponentCount;
             }
         }
@@ -249,11 +261,10 @@ public sealed class SceneGlInstancedMeshRenderer : IDisposable
             return null;
         }
 
-        VertexAttribute[] meshAttributesCopy = meshAttributes.ToArray();
         SceneGlShader shader = new(
             _context,
             $"scene-instanced-{mesh.Label}",
-            BuildVertexSource(positionLocation, positionComponents),
+            BuildVertexSource(positionLocation, positionComponents, instanceBase),
             FragmentShaderSource);
         GLVertexArray vertexArray = new(_context, $"scene-instanced-{mesh.Label}");
 
@@ -262,28 +273,28 @@ public sealed class SceneGlInstancedMeshRenderer : IDisposable
             vertexArray.ConfigureLayout(
                 mesh.VertexBuffer,
                 mesh.IndexBuffer!,
-                meshAttributesCopy,
+                remapped,
                 mesh.VertexCount,
                 mesh.IndexCount,
                 mesh.IndexType);
         }
         else
         {
-            vertexArray.ConfigureLayout(mesh.VertexBuffer, meshAttributesCopy, mesh.VertexCount);
+            vertexArray.ConfigureLayout(mesh.VertexBuffer, remapped, mesh.VertexCount);
         }
 
-        ConfigureInstanceAttributes(vertexArray);
-        return new MeshPipeline(shader, vertexArray);
+        ConfigureInstanceAttributes(vertexArray, instanceBase);
+        return new MeshPipeline(shader, vertexArray, instanceBase);
     }
 
-    private unsafe void ConfigureInstanceAttributes(GLVertexArray vertexArray)
+    private unsafe void ConfigureInstanceAttributes(GLVertexArray vertexArray, int instanceBase)
     {
         _context.State.BindVertexArray(vertexArray.Id);
         _context.State.BindArrayBuffer(_instanceBuffer.Id);
 
         for (uint row = 0; row < 4; row++)
         {
-            uint location = InstanceBaseLocation + row;
+            uint location = (uint)(instanceBase + row);
             _context.GL.EnableVertexAttribArray(location);
             _context.GL.VertexAttribPointer(
                 location,
@@ -295,20 +306,21 @@ public sealed class SceneGlInstancedMeshRenderer : IDisposable
             _context.GL.VertexAttribDivisor(location, 1);
         }
 
-        _context.GL.EnableVertexAttribArray(InstanceBaseLocation + 4);
+        uint colorLocation = (uint)(instanceBase + 4);
+        _context.GL.EnableVertexAttribArray(colorLocation);
         _context.GL.VertexAttribPointer(
-            InstanceBaseLocation + 4,
+            colorLocation,
             4,
             GLConst.Float,
             false,
             InstanceStride,
             (void*)64);
-        _context.GL.VertexAttribDivisor(InstanceBaseLocation + 4, 1);
+        _context.GL.VertexAttribDivisor(colorLocation, 1);
 
         _context.State.BindVertexArray(0);
     }
 
-    private static string BuildVertexSource(int positionLocation, int positionComponents)
+    private static string BuildVertexSource(int positionLocation, int positionComponents, int instanceBase)
     {
         string inputType = positionComponents == 4 ? "vec4" : "vec3";
         string position = positionComponents == 4 ? "a_Position" : "vec4(a_Position, 1.0)";
@@ -316,11 +328,11 @@ public sealed class SceneGlInstancedMeshRenderer : IDisposable
         return $$"""
             #version 330 core
             layout(location = {{positionLocation}}) in {{inputType}} a_Position;
-            layout(location = 11) in vec4 a_Row0;
-            layout(location = 12) in vec4 a_Row1;
-            layout(location = 13) in vec4 a_Row2;
-            layout(location = 14) in vec4 a_Row3;
-            layout(location = 15) in vec4 a_Color;
+            layout(location = {{instanceBase + 0}}) in vec4 a_Row0;
+            layout(location = {{instanceBase + 1}}) in vec4 a_Row1;
+            layout(location = {{instanceBase + 2}}) in vec4 a_Row2;
+            layout(location = {{instanceBase + 3}}) in vec4 a_Row3;
+            layout(location = {{instanceBase + 4}}) in vec4 a_Color;
 
             uniform mat4 u_ViewProjection;
 
@@ -383,15 +395,18 @@ public sealed class SceneGlInstancedMeshRenderer : IDisposable
 
     private sealed class MeshPipeline : IDisposable
     {
-        public MeshPipeline(SceneGlShader shader, GLVertexArray vertexArray)
+        public MeshPipeline(SceneGlShader shader, GLVertexArray vertexArray, int instanceBase)
         {
             Shader = shader;
             VertexArray = vertexArray;
+            InstanceBase = instanceBase;
         }
 
         public SceneGlShader Shader { get; }
 
         public GLVertexArray VertexArray { get; }
+
+        public int InstanceBase { get; }
 
         public void Dispose()
         {

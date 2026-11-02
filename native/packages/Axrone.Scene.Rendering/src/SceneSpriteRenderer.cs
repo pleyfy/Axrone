@@ -148,6 +148,12 @@ public struct SceneSpriteRenderItem
 
     /// <summary>Whether the mask inside test is inverted.</summary>
     public bool MaskInvert;
+
+    /// <summary>Soft edge width in normalized mask units.</summary>
+    public float MaskFeather;
+
+    /// <summary>Rounded mask corner radius in normalized units.</summary>
+    public float MaskCornerRadius;
 }
 
 /// <summary>
@@ -260,6 +266,8 @@ public sealed class SceneSpriteItemCollector
             item.MaskRect = hasMask ? mask.Rect : default;
             item.HasMask = hasMask;
             item.MaskInvert = hasMask && mask.Invert;
+            item.MaskFeather = hasMask ? mask.Feather : 0.0f;
+            item.MaskCornerRadius = hasMask ? mask.CornerRadius : 0.0f;
             _count++;
         }
 

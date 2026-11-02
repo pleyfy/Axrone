@@ -69,7 +69,10 @@ public sealed class SceneGlDrawExecutor
         SceneRenderPassDefinition pass,
         SceneRenderFrameState frameState,
         float elapsedSeconds = 0.0f,
-        in SceneFogState fog = default)
+        in SceneFogState fog = default,
+        ISceneAreaLightSource? areaLights = null,
+        SceneGlReflectionProbeAtlas? probeAtlas = null,
+        ISceneReflectionProbeSource? reflectionProbe = null)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(camera);
@@ -116,6 +119,13 @@ public sealed class SceneGlDrawExecutor
             ApplyFog(shader, in fog);
             ApplyCustomUniforms(shader, material.UniformEntries.Span);
             BindTextures(_context, shader, material.TextureSlots.Span);
+            SceneGlAreaLightBinder.Bind(shader, areaLights is null ? default : areaLights.AreaLights);
+            if (probeAtlas is not null && reflectionProbe is not null &&
+                reflectionProbe.TryGetSelectedProbe(out SceneReflectionProbeRenderItem probe))
+            {
+                SceneGlReflectionProbeBinder.Bind(_context, shader, probeAtlas, in probe);
+            }
+
             ApplyState(_context, item.Transparent, material, pass);
 
             int triangles = mesh.Topology == GLConst.Triangles
