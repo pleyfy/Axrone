@@ -1,6 +1,7 @@
 namespace Axrone.Scene.Rendering.OpenGL.Tests;
 
 using Axrone.Numeric;
+using Axrone.Render2D;
 using Axrone.Render.OpenGL.Context;
 using Axrone.Render.OpenGL.Mock;
 using Axrone.Scene;
@@ -302,7 +303,7 @@ public sealed class SceneGlSpriteInstancingTests
     {
         var assets = new SceneAssetRegistry();
 
-        SceneAssetId<ShaderAssetTag> shaderId = assets.CreateId<ShaderAssetTag>("test/sprite-shader");
+        SceneAssetId<ShaderAssetTag> shaderId = assets.CreateId<ShaderAssetTag>(Render2DSpriteShaderContract.DefaultShaderId);
         assets.Shaders.Register(new SceneShaderDefinition(shaderId, "void main(){}", "void main(){}"));
 
         SceneAssetId<RenderPassAssetTag> passId = assets.CreateId<RenderPassAssetTag>("main");

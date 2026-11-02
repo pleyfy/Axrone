@@ -28,6 +28,30 @@ public sealed class SceneRendering2DTests
     }
 
     [Fact]
+    public void SpriteItemCollector_FlagsSlicedSprites()
+    {
+        using SceneWorld world = CreateProfile2D().CreateWorld();
+        _ = CreateCamera2D(world, Vec2.Zero);
+        SceneAssetId<TextureAssetTag> textureId = TextureId();
+        SceneCameraFrame frame = new SceneCamera2DFrameCollector().Collect(world, 640, 360)!;
+
+        SceneActor actor = world.CreateActor("Sliced");
+        world.GetTransform2D(actor).SetPosition(Vec2.Zero);
+        SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
+        sprite.TextureId = textureId;
+        sprite.SourceSize = new Vec2(16.0f, 16.0f);
+        sprite.SliceBorder = new Vec4(4.0f, 4.0f, 4.0f, 4.0f);
+        world.AddData(actor, sprite);
+        world.UpdateTransforms();
+
+        var collector = new SceneSpriteItemCollector();
+        collector.Collect(world, frame, SceneRenderPassIds.Main).Should().Be(1);
+
+        collector.Items[0].HasSlice.Should().BeTrue();
+        collector.Items[0].SliceBorder.Should().Be(new Vec4(4.0f, 4.0f, 4.0f, 4.0f));
+    }
+
+    [Fact]
     public void Camera2DSelector_SelectsPrimaryCamera()
     {
         using SceneWorld world = CreateProfile2D().CreateWorld();
