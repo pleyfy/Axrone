@@ -183,6 +183,9 @@ public sealed class ReactiveOptionsTests
         registry.GetMemoryUsage().TotalBytes.Should().BeGreaterThan(0);
         FluentActions.Invoking(() => registry.RegisterObserver(subjectId, new object()))
             .Should().Throw<MaxObserversExceededError>();
+        registry.DeactivateObserver(first).Should().BeTrue();
+        registry.ActiveObserverCount.Should().Be(1);
+        registry.Validate().InactiveObservers.Should().Be(1);
         registry.UnregisterObserver(first).Should().BeTrue();
         registry.ActiveObserverCount.Should().Be(1);
         registry.Validate().IsHealthy.Should().BeTrue();

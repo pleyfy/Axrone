@@ -214,6 +214,21 @@ public sealed class ObservableRegistry : IDisposable
         }
     }
 
+    public bool DeactivateObserver(int observerId)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (!_observers.TryGetValue(observerId, out ObserverRecord? record) || !record.Active)
+            {
+                return false;
+            }
+
+            record.Active = false;
+            return true;
+        }
+    }
+
     public bool RecordExecution(int observerId)
     {
         lock (_gate)
@@ -408,6 +423,6 @@ public sealed class ObservableRegistry : IDisposable
 
         public int ExecutionCount { get; set; }
 
-        public bool Active { get; }
+        public bool Active { get; set; }
     }
 }
