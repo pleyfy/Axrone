@@ -83,6 +83,10 @@
     <Project Path="packages/Axrone.Particles/tests/Axrone.Particles.Tests.csproj" />
     <Project Path="packages/Axrone.Shapes2D/Axrone.Shapes2D.csproj" />
     <Project Path="packages/Axrone.Shapes2D/tests/Axrone.Shapes2D.Tests.csproj" />
+    <Project Path="packages/Axrone.Render2D/Axrone.Render2D.csproj" />
+    <Project Path="packages/Axrone.Render2D/tests/Axrone.Render2D.Tests.csproj" />
+    <Project Path="packages/Axrone.Scene2D/Axrone.Scene2D.csproj" />
+    <Project Path="packages/Axrone.Scene2D/tests/Axrone.Scene2D.Tests.csproj" />
     <Project Path="packages/Axrone.Execution/Axrone.Execution.csproj" />
     <Project Path="packages/Axrone.Execution/tests/Axrone.Execution.Tests.csproj" />
     <Project Path="packages/Axrone.Random/Axrone.Random.csproj" />
