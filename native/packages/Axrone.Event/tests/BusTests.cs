@@ -54,18 +54,18 @@ public class BusTests
         SpinWait.SpinUntil(() =>
         {
             lock (intBox)
-            lock (stringBox)
-            {
-                return intBox.Value.HasValue && stringBox.Value.HasValue;
-            }
+                lock (stringBox)
+                {
+                    return intBox.Value.HasValue && stringBox.Value.HasValue;
+                }
         }, TimeSpan.FromSeconds(5)).Should().BeTrue();
 
         lock (intBox)
-        lock (stringBox)
-        {
-            intBox.Value!.Value.Metadata.Sequence.Should().Be(1);
-            stringBox.Value!.Value.Metadata.Sequence.Should().Be(1);
-        }
+            lock (stringBox)
+            {
+                intBox.Value!.Value.Metadata.Sequence.Should().Be(1);
+                stringBox.Value!.Value.Metadata.Sequence.Should().Be(1);
+            }
     }
 
     [Fact]

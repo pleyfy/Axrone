@@ -381,7 +381,8 @@ public sealed class GltfJpegDecoderTests
         return rgba;
     }
 
-    internal static class JpegWriter    {
+    internal static class JpegWriter
+    {
         private const int BlockSize = 8;
         private const int DcTableId = 0;
         private const int AcTableId = 0;
