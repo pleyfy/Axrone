@@ -5,10 +5,16 @@ namespace Axrone.Event;
 /// the bus-wide transport capacity; <see cref="Router{TEvent}"/> exposes the router for
 /// non-blocking publishes, filters, and observability.
 /// </summary>
+/// <remarks>
+/// The bus owns exactly one <see cref="EventDispatcher"/> worker for all of its event types, so the
+/// thread count stays flat as routers are added. Disposing the bus drains every router and stops
+/// the worker deterministically.
+/// </remarks>
 public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<Type, object> _routers = new();
     private readonly Lock _gate = new();
+    private readonly EventDispatcher _dispatcher = new();
     private readonly RouterOptions _options;
     private int _disposed;
 
@@ -130,16 +136,24 @@ public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
     {
         lock (_gate)
         {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                ThrowHelper.ThrowObjectDisposed(nameof(EventBus));
+            }
+
             if (_routers.TryGetValue(typeof(TEvent), out object? existing))
             {
                 return Unsafe.As<EventRouter<TEvent>>(existing);
             }
 
-            var router = new EventRouter<TEvent>(_options);
+            var router = new EventRouter<TEvent>(_options, _dispatcher);
             _routers[typeof(TEvent)] = router;
             return router;
         }
     }
+
+    /// <summary>Dispatcher shared by every router owned by this bus.</summary>
+    internal EventDispatcher Dispatcher => _dispatcher;
 
     /// <inheritdoc/>
     public void Dispose()
@@ -149,15 +163,19 @@ public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
             return;
         }
 
+        List<object> routers;
         lock (_gate)
         {
-            foreach (object router in _routers.Values)
-            {
-                ((IDisposable)router).Dispose();
-            }
-
+            routers = new List<object>(_routers.Values);
             _routers.Clear();
         }
+
+        foreach (object router in routers)
+        {
+            ((IDisposable)router).Dispose();
+        }
+
+        _dispatcher.Dispose();
     }
 
     /// <inheritdoc/>
@@ -179,5 +197,7 @@ public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
         {
             await ((IAsyncDisposable)router).DisposeAsync().ConfigureAwait(false);
         }
+
+        await _dispatcher.DisposeAsync().ConfigureAwait(false);
     }
 }
