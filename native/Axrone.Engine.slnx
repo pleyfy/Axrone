@@ -6,6 +6,8 @@
     <Project Path="packages/Axrone.Audio.Ecs/tests/Axrone.Audio.Ecs.Tests.csproj" />
     <Project Path="packages/Axrone.Ecs/Axrone.Ecs.csproj" />
     <Project Path="packages/Axrone.Ecs/tests/Axrone.Ecs.Tests.csproj" />
+    <Project Path="packages/Axrone.Event/Axrone.Event.csproj" />
+    <Project Path="packages/Axrone.Event/tests/Axrone.Event.Tests.csproj" />
     <Project Path="packages/Axrone.Reactive/Axrone.Reactive.csproj" />
     <Project Path="packages/Axrone.Reactive/tests/Axrone.Reactive.Tests.csproj" />
     <Project Path="packages/Axrone.Reactive.Ecs/Axrone.Reactive.Ecs.csproj" />
