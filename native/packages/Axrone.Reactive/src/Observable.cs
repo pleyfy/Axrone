@@ -3,7 +3,7 @@ namespace Axrone.Reactive;
 /// <summary>
 /// Cold observable factories: each subscription runs the sequence independently.
 /// </summary>
-public static class Observable
+public static partial class Observable
 {
     /// <summary>Emits one value, then completes.</summary>
     public static IObservable<T> Return<T>(T value) => new ReturnObservable<T>(value);

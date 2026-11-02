@@ -30,6 +30,7 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
     private readonly Subject<SystemEvent> _systemStarted = new();
     private readonly Subject<SystemEvent> _systemCompleted = new();
     private readonly Subject<SystemFaultEvent> _systemFaulted = new();
+    private readonly Subject<int> _pollCompleted = new();
     private readonly Dictionary<ushort, IComponentPoller> _tracked = new();
     private Entity[] _removalEntities = [];
     private int[] _removalTicks = [];
@@ -69,6 +70,10 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
 
     /// <summary>Gets the system-faulted stream.</summary>
     public ObservableBase<SystemFaultEvent> SystemFaulted => _systemFaulted;
+
+    public ObservableBase<int> PollCompleted => _pollCompleted;
+
+    public World World => _world;
 
     /// <summary>Starts tracking one component type; repeated calls return the same stream.</summary>
     public ComponentChanges<T> Track<T>() where T : unmanaged
@@ -147,6 +152,7 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
             published += poller.Poll(tick, _removalEntities, _removalTicks);
         }
 
+        _pollCompleted.OnNext(published);
         return published;
     }
 
@@ -219,6 +225,7 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
         _systemStarted.Dispose();
         _systemCompleted.Dispose();
         _systemFaulted.Dispose();
+        _pollCompleted.Dispose();
         GC.SuppressFinalize(this);
     }
 }
