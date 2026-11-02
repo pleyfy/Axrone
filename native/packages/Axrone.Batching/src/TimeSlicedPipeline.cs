@@ -362,12 +362,16 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
 
     private void UpdateCalibration(long ticksTaken, int itemsProcessed)
     {
-        if (itemsProcessed <= 0 || ticksTaken <= 0)
+        if (itemsProcessed <= 0)
         {
             return;
         }
 
-        var sample = (double)ticksTaken / itemsProcessed;
+        // A chunk can complete below the clock's resolution. Treat that as one tick instead of
+        // skipping calibration: the smoothed cost and the derived snapshot rates must stay
+        // positive after real work has run, and zero-tick slices otherwise report 0 items/s.
+        long effectiveTicks = ticksTaken > 0 ? ticksTaken : 1;
+        var sample = (double)effectiveTicks / itemsProcessed;
         _smoothedTicksPerItem = _smoothedTicksPerItem <= 0d
             ? sample
             : (_smoothedTicksPerItem * (1d - SmoothingFactor)) + (sample * SmoothingFactor);

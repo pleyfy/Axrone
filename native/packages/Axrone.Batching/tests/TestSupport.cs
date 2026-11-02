@@ -34,3 +34,30 @@ internal struct SeededRng
     /// <summary>Returns the next full-range <see cref="uint"/>, exercising every bit position.</summary>
     public uint NextUInt32() => (uint)NextRaw();
 }
+
+/// <summary>Manual timestamp source for deterministic slicing tests.</summary>
+internal sealed class ManualTimestamp(long start)
+{
+    private long _ticks = start;
+
+    public long Now => Volatile.Read(ref _ticks);
+
+    public long GetTimestamp() => Now;
+
+    public void Advance(long ticks) => Interlocked.Add(ref _ticks, ticks);
+}
+
+/// <summary>Batch kernel that advances a manual clock by a fixed tick count per chunk.</summary>
+internal struct ClockAdvancingKernel : IBatchKernel<int>
+{
+    private readonly ManualTimestamp _clock;
+    private readonly long _ticksPerChunk;
+
+    public ClockAdvancingKernel(ManualTimestamp clock, long ticksPerChunk)
+    {
+        _clock = clock;
+        _ticksPerChunk = ticksPerChunk;
+    }
+
+    public void Execute(Span<int> batch) => _clock.Advance(_ticksPerChunk);
+}

@@ -21,31 +21,6 @@ public class TimeSlicedPipelineTests
         public void Execute(ref int item) => item++;
     }
 
-    private sealed class ManualTimestamp(long start)
-    {
-        private long _ticks = start;
-
-        public long Now => Volatile.Read(ref _ticks);
-
-        public long GetTimestamp() => Now;
-
-        public void Advance(long ticks) => Interlocked.Add(ref _ticks, ticks);
-    }
-
-    private struct AdvancingKernel : IBatchKernel<int>
-    {
-        private readonly ManualTimestamp _clock;
-        private readonly long _ticksPerChunk;
-
-        public AdvancingKernel(ManualTimestamp clock, long ticksPerChunk)
-        {
-            _clock = clock;
-            _ticksPerChunk = ticksPerChunk;
-        }
-
-        public void Execute(Span<int> batch) => _clock.Advance(_ticksPerChunk);
-    }
-
     private static TimeSlicedPipeline<int> Fill(int count)
     {
         var pipeline = new TimeSlicedPipeline<int>(Math.Max(count, 1));
@@ -117,7 +92,7 @@ public class TimeSlicedPipelineTests
         // slice always stops after exactly one chunk regardless of machine speed or load.
         const long budgetTicks = 10_000;
         long budgetStart = clock.Now;
-        var advancing = new AdvancingKernel(clock, budgetTicks * 2);
+        var advancing = new ClockAdvancingKernel(clock, budgetTicks * 2);
         var first = pipeline.ExecuteSlice(
             ref advancing,
             new FrameBudget(budgetStart, budgetStart + budgetTicks));
