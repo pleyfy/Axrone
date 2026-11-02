@@ -193,6 +193,9 @@ public readonly record struct GltfMeshDefinition(
     /// <summary>Attributes with application-specific names (<c>_NAME</c>).</summary>
     public ImmutableArray<GltfCustomVertexAttribute> CustomAttributes { get; init; } =
         ImmutableArray<GltfCustomVertexAttribute>.Empty;
+
+    /// <summary>Default morph weights declared by the mesh.</summary>
+    public ImmutableArray<float> MorphWeights { get; init; } = ImmutableArray<float>.Empty;
 }
 
 /// <summary>Canonical skin asset.</summary>
@@ -277,6 +280,9 @@ public sealed class GltfAnimationTrackAsset
 
     /// <summary>Sample stride.</summary>
     public required int SampleStride { get; init; }
+
+    /// <summary>Samples per keyframe: 1 normally, 3 for cubic splines.</summary>
+    public int SampleMultiplier { get; init; } = 1;
 
     /// <summary>Keyframe times.</summary>
     public required ReadOnlyMemory<float> Times { get; init; }

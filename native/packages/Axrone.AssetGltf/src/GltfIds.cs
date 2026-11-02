@@ -168,6 +168,9 @@ public enum GltfTextureUsage : byte
 
     /// <summary>Anisotropy.</summary>
     Anisotropy = 16,
+
+    /// <summary>Subsurface scattering color/weight (engine extension).</summary>
+    Subsurface = 17,
 }
 
 /// <summary>Animation channel target path.</summary>

@@ -158,6 +158,7 @@ internal static class GltfPrefabEngine
                 string? skinId = (node.HasSkin && skinKeyMap.TryGetValue(node.Skin, out string? sKey)) ? sKey : null;
                 ImmutableArray<string> primitiveKeys = meshKeysByMesh[node.Mesh];
                 int primitiveCount = mesh.Primitives.Length;
+                ImmutableArray<float> morphWeights = ResolveMorphWeights(model, node, mesh);
 
                 if (primitiveCount == 1)
                 {
@@ -179,7 +180,10 @@ internal static class GltfPrefabEngine
                         PassId: "ForwardPBR",
                         ReceiveLighting: true,
                         skinId,
-                        GltfRawModel.GetMorphTargetCount(primitive)));
+                        GltfRawModel.GetMorphTargetCount(primitive))
+                    {
+                        MorphWeights = morphWeights,
+                    });
                 }
                 else
                 {
@@ -206,7 +210,10 @@ internal static class GltfPrefabEngine
                                 PassId: "ForwardPBR",
                                 ReceiveLighting: true,
                                 skinId,
-                                GltfRawModel.GetMorphTargetCount(primitive)));
+                                GltfRawModel.GetMorphTargetCount(primitive))
+                            {
+                                MorphWeights = morphWeights,
+                            });
 
                         actorList.Add(new GltfActorSnapshot
                         {
@@ -263,5 +270,37 @@ internal static class GltfPrefabEngine
             MaterialKeys = materialKeys.ToImmutableArray(),
             AnimationController = animationClipIds.Length > 0 ? new GltfAnimationControllerMetadata { Clips = animationClipIds } : null,
         };
+    }
+
+    private static ImmutableArray<float> ResolveMorphWeights(
+        GltfRawModel model,
+        in GltfRawModel.Node node,
+        in GltfRawModel.Mesh mesh)
+    {
+        int count = GltfRawModel.GetWeightCount(node);
+        if (count > 0)
+        {
+            var nodeWeights = ImmutableArray.CreateBuilder<float>(count);
+            for (int i = 0; i < count; i++)
+            {
+                nodeWeights.Add(model.GetWeight(in node, i));
+            }
+
+            return nodeWeights.MoveToImmutable();
+        }
+
+        count = GltfRawModel.GetWeightCount(mesh);
+        if (count == 0)
+        {
+            return ImmutableArray<float>.Empty;
+        }
+
+        var meshWeights = ImmutableArray.CreateBuilder<float>(count);
+        for (int i = 0; i < count; i++)
+        {
+            meshWeights.Add(model.GetWeight(in mesh, i));
+        }
+
+        return meshWeights.MoveToImmutable();
     }
 }

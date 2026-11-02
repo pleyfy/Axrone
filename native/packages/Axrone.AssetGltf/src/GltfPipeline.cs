@@ -53,6 +53,12 @@ public sealed class GltfImporterOptions
         init => field = value;
     } = GltfTextureFormat.BC7_RGBA;
 
+    /// <summary>
+    /// Decodes embedded PNG images into RGBA8. Unknown encoded formats are retained as raw
+    /// payloads with a diagnostic.
+    /// </summary>
+    public bool DecodeEncodedTextures { get; init; } = true;
+
     /// <summary>Resource limits for untrusted input.</summary>
     public GltfImportLimits Limits { get; init; } = GltfImportLimits.Default;
 }
