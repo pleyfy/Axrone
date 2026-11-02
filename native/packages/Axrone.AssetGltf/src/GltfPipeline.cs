@@ -54,10 +54,16 @@ public sealed class GltfImporterOptions
     } = GltfTextureFormat.BC7_RGBA;
 
     /// <summary>
-    /// Decodes embedded PNG images into RGBA8. Unknown encoded formats are retained as raw
-    /// payloads with a diagnostic.
+    /// Decodes embedded PNG and baseline JPEG images into RGBA8. Unknown encoded formats are
+    /// retained as raw payloads with a diagnostic.
     /// </summary>
     public bool DecodeEncodedTextures { get; init; } = true;
+
+    /// <summary>
+    /// External transcoder for Basis Universal KTX2 payloads. When absent, such textures are
+    /// retained compressed and reported with a typed missing-transcoder diagnostic.
+    /// </summary>
+    public IGltfCompressedTextureTranscoder? CompressedTextureTranscoder { get; init; }
 
     /// <summary>Resource limits for untrusted input.</summary>
     public GltfImportLimits Limits { get; init; } = GltfImportLimits.Default;
