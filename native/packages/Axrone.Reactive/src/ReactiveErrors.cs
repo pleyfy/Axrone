@@ -60,14 +60,14 @@ public sealed class SubjectDisposedError : SubjectError
     }
 }
 
-public sealed class MaxObserversExceededError : SubjectError
+public sealed class MaxObserversExceededError : ObserverError
 {
     public int MaxObservers { get; }
 
     public int CurrentCount { get; }
 
-    public MaxObserversExceededError(int subjectId, int maxObservers, int currentCount)
-        : base(subjectId, $"Subject {subjectId} exceeds the observer limit of {maxObservers}.")
+    public MaxObserversExceededError(int maxObservers, int currentCount)
+        : base($"Maximum number of observers exceeded. Max: {maxObservers}, Current: {currentCount}")
     {
         MaxObservers = maxObservers;
         CurrentCount = currentCount;

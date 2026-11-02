@@ -27,7 +27,7 @@ public sealed class Subject<T> : ObservableBase<T>, IObserver<T>
         ArgumentNullException.ThrowIfNull(observer);
         if (!IsTerminated && SubscriberCount >= _options.MaxObservers)
         {
-            ReactiveThrowHelper.ThrowMaxObserversExceeded(0, _options.MaxObservers, SubscriberCount);
+            ReactiveThrowHelper.ThrowMaxObserversExceeded(_options.MaxObservers, SubscriberCount);
         }
 
         return base.Subscribe(observer, priority);
@@ -56,6 +56,6 @@ internal static class ReactiveThrowHelper
 {
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowMaxObserversExceeded(int subjectId, int maxObservers, int currentCount) =>
-        throw new MaxObserversExceededError(subjectId, maxObservers, currentCount);
+    public static void ThrowMaxObserversExceeded(int maxObservers, int currentCount) =>
+        throw new MaxObserversExceededError(maxObservers, currentCount);
 }

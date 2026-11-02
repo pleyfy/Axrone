@@ -80,7 +80,8 @@ public sealed class ReactiveOptionsTests
         var first = new TestObserver<int>();
         using var firstSubscription = subject.Subscribe(first);
         FluentActions.Invoking(() => subject.Subscribe(new TestObserver<int>()))
-            .Should().Throw<MaxObserversExceededError>();
+            .Should().Throw<MaxObserversExceededError>()
+            .Which.MaxObservers.Should().Be(1);
 
         FluentActions.Invoking(() => subject.Subscribe(null!)).Should().Throw<ArgumentNullException>();
         subject.OnNext(1);
@@ -136,9 +137,10 @@ public sealed class ReactiveOptionsTests
         new ObserverNotFoundError(4).Code.Should().Be("OBSERVER_ERROR");
         new SubjectCompletedError(3).SubjectId.Should().Be(3);
         new SubjectDisposedError(3).Code.Should().Be("SUBJECT_ERROR");
-        var max = new MaxObserversExceededError(2, 10, 10);
+        var max = new MaxObserversExceededError(10, 10);
         max.MaxObservers.Should().Be(10);
         max.CurrentCount.Should().Be(10);
+        max.Message.Should().Contain("Max: 10").And.Contain("Current: 10");
         var execution = new ObserverExecutionError(7, "payload", inner);
         execution.ObserverId.Should().Be(7);
         execution.OriginalError.Should().BeSameAs(inner);
