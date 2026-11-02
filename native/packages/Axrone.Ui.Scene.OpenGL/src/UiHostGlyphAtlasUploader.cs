@@ -35,10 +35,16 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         _context.AssertRenderThread();
 
+        TextureFormat textureFormat = format switch
+        {
+            UiGlyphFormat.Rgba32 => TextureFormat.Rgba8,
+            UiGlyphFormat.Msdf => TextureFormat.Rgb8,
+            _ => TextureFormat.R8,
+        };
         var texture = new GLTexture(
             _context,
             GLConst.Texture2D,
-            TextureFormat.R8,
+            textureFormat,
             width,
             height,
             label: $"UiGlyphPage{page.Value}");
@@ -48,10 +54,9 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
         texture.SetParameter(GLConst.TextureWrapT, GLConst.ClampToEdge);
 
         var resource = new UiResourceId(_nextResource++);
-        var entry = new PageTexture(texture, resource, width, height);
+        var entry = new PageTexture(texture, resource, width, height, format);
         _pages[page] = entry;
         _byResource[resource] = entry;
-        _ = format;
         return resource;
     }
 
@@ -86,6 +91,19 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
         }
     }
 
+    /// <summary>Gets the pixel format of one live page.</summary>
+    public bool TryGetPageFormat(UiGlyphAtlasPageId page, out UiGlyphFormat format)
+    {
+        if (_pages.TryGetValue(page, out PageTexture? entry))
+        {
+            format = entry.Format;
+            return true;
+        }
+
+        format = default;
+        return false;
+    }
+
     /// <inheritdoc/>
     public bool TryGetTexture(UiResourceId resource, out UiTextureBinding binding)
     {
@@ -118,12 +136,13 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
 
     private sealed class PageTexture
     {
-        public PageTexture(GLTexture texture, UiResourceId resource, int width, int height)
+        public PageTexture(GLTexture texture, UiResourceId resource, int width, int height, UiGlyphFormat format)
         {
             Texture = texture;
             Resource = resource;
             Width = width;
             Height = height;
+            Format = format;
         }
 
         public GLTexture Texture { get; }
@@ -133,6 +152,8 @@ public sealed class UiHostGlyphAtlasUploader : IUiGlyphAtlasUploader, IUiTexture
         public int Width { get; }
 
         public int Height { get; }
+
+        public UiGlyphFormat Format { get; }
     }
 }
 

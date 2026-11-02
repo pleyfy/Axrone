@@ -226,4 +226,25 @@ void main()
     o_Color = vec4(color.rgb, alpha);
 }
 """;
+
+    public const string CoverageTextFragment = """
+#version 330 core
+in vec2 v_Unit;
+in vec2 v_UvMin;
+in vec2 v_UvMax;
+in vec4 v_Color;
+in vec4 v_OutlineColor;
+in float v_OutlineWidth;
+in float v_Opacity;
+uniform sampler2D u_Texture;
+out vec4 o_Color;
+void main()
+{
+    vec2 uv = mix(v_UvMin, v_UvMax, v_Unit);
+    float coverage = texture(u_Texture, uv).r;
+    float alpha = coverage * v_Color.a * v_Opacity;
+    if (alpha <= 0.001) discard;
+    o_Color = vec4(v_Color.rgb, alpha);
+}
+""";
 }

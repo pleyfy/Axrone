@@ -284,6 +284,99 @@ public sealed class SceneUiHostBridgeTests
 
         hasText.Should().BeTrue();
         bridge.Text.GlyphAtlas.PageCount.Should().BeGreaterThan(0);
+
+        UiTextLayoutId layoutId = UiTextLayoutId.Invalid;
+        for (int i = 0; i < frame.Commands.Length; i++)
+        {
+            if (frame.Commands[i].Kind == UiRenderCommandKind.Text)
+            {
+                layoutId = frame.Commands[i].TextLayout;
+                break;
+            }
+        }
+
+        TryGetAtlasFormat(bridge, layoutId, out UiGlyphFormat format).Should().BeTrue();
+        format.Should().Be(UiGlyphFormat.Sdf);
+    }
+
+    [Fact]
+    public void CoverageFallbackIsUsedWhenSdfIsDisabled()
+    {
+        using UiFontProvider fonts = CreateFonts(out UiFontFaceId face);
+        var options = new SceneUiHostBridgeOptions
+        {
+            Assets = UiHostTestAssets.CreateTable(withLabel: true),
+            Runtime = new UiHostRuntimeOptions
+            {
+                Fonts = fonts,
+                DefaultFamily = UiFontProvider.FromFamilyName("Test"),
+                DefaultTextStyle = new UiTextStyle(face, 16.0f, 20.0f, 0.0f, UiTextWrap.None, UiTextOverflow.Clip, UiTextAlign.Start, UiTextDirection.Ltr, 1),
+                EnableSdfGlyphs = false,
+            },
+        };
+
+        using SceneWorld world = UiHostTestAssets.CreateWorld();
+        using SceneUiHostBridge bridge = new(world, options);
+        SceneUiHost component = SceneUiHost.Default;
+        component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
+        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        bridge.Sync();
+        bridge.Update(in Viewport);
+        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+
+        UiFrame frame = host!.BuildFrame(in Viewport);
+        UiTextLayoutId layoutId = UiTextLayoutId.Invalid;
+        for (int i = 0; i < frame.Commands.Length; i++)
+        {
+            if (frame.Commands[i].Kind == UiRenderCommandKind.Text)
+            {
+                layoutId = frame.Commands[i].TextLayout;
+                break;
+            }
+        }
+
+        TryGetAtlasFormat(bridge, layoutId, out UiGlyphFormat format).Should().BeTrue();
+        format.Should().Be(UiGlyphFormat.Alpha8);
+    }
+
+    [Fact]
+    public void SteadyStateSdfFramesAllocateNothing()
+    {
+        using UiFontProvider fonts = CreateFonts(out UiFontFaceId face);
+        var options = new SceneUiHostBridgeOptions
+        {
+            Assets = UiHostTestAssets.CreateTable(withLabel: true),
+            Runtime = new UiHostRuntimeOptions
+            {
+                Fonts = fonts,
+                DefaultFamily = UiFontProvider.FromFamilyName("Test"),
+                DefaultTextStyle = new UiTextStyle(face, 16.0f, 20.0f, 0.0f, UiTextWrap.None, UiTextOverflow.Clip, UiTextAlign.Start, UiTextDirection.Ltr, 1),
+            },
+        };
+
+        using SceneWorld world = UiHostTestAssets.CreateWorld();
+        using SceneUiHostBridge bridge = new(world, options);
+        SceneUiHost component = SceneUiHost.Default;
+        component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
+        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        bridge.Sync();
+        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+
+        for (int i = 0; i < 4; i++)
+        {
+            bridge.Update(in Viewport);
+            _ = host!.BuildFrame(in Viewport);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++)
+        {
+            bridge.Update(in Viewport);
+            _ = host!.BuildFrame(in Viewport);
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        allocated.Should().Be(0);
     }
 
     [Fact]
@@ -345,6 +438,40 @@ public sealed class SceneUiHostBridgeTests
             phase == UiPointerPhase.Down ? UiPointerButtons.Left : UiPointerButtons.None,
             UiKeyModifiers.None,
             0);
+
+    private static UiFontProvider CreateFonts(out UiFontFaceId face)
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Fonts", "kenpixel.ttf");
+        File.Exists(path).Should().BeTrue();
+        UiFontProvider fonts = new();
+        face = fonts.RegisterFace(
+            File.ReadAllBytes(path),
+            new UiFontFaceDescriptor("Test", UiFontWeight.Normal, UiFontStyle.Normal),
+            out UiFontError error);
+        face.IsValid.Should().BeTrue(error.ToString());
+        return fonts;
+    }
+
+    private static bool TryGetAtlasFormat(SceneUiHostBridge bridge, UiTextLayoutId layoutId, out UiGlyphFormat format)
+    {
+        format = default;
+        if (!layoutId.IsValid || !bridge.Text.TryGetLayout(layoutId, out IUiTextLayout layout, out UiFontFaceId face))
+        {
+            return false;
+        }
+
+        ReadOnlySpan<UiShapedGlyph> glyphs = layout.Glyphs;
+        for (int i = 0; i < glyphs.Length; i++)
+        {
+            if (bridge.Text.GlyphAtlas.TryGetEntry(face, glyphs[i].CodePoint, out UiGlyphAtlasEntry entry))
+            {
+                format = entry.Format;
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static UiNodeId FindButton(IUiNodeTree tree)
     {
