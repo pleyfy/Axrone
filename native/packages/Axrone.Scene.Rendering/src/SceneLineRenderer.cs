@@ -478,8 +478,15 @@ public static class SceneLineGeometry
             return 0;
         }
 
-        Vec3 previousSide = SideVector(in previousDirection, in viewDirection) * (width * 0.5f);
-        Vec3 nextSide = SideVector(in nextDirection, in viewDirection) * (width * 0.5f);
+        Vec3 previousUnit = Vec3.Normalize(previousDirection);
+        Vec3 nextUnit = Vec3.Normalize(nextDirection);
+        if (Vec3.Dot(previousUnit, nextUnit) > 0.9999f)
+        {
+            return 0;
+        }
+
+        Vec3 previousSide = SideVector(in previousUnit, in viewDirection) * (width * 0.5f);
+        Vec3 nextSide = SideVector(in nextUnit, in viewDirection) * (width * 0.5f);
 
         if (join == SceneLineJoin.Bevel)
         {
