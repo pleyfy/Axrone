@@ -81,6 +81,29 @@ public sealed class SceneRuntimeProfileTests
     }
 
     [Fact]
+    public void TwoDProfile_RegistersSpriteMask()
+    {
+        SceneRuntimeProfiles.TwoD.Profile.Registry.TryGetDataByType(typeof(SceneSpriteMask), out _).Should().BeTrue();
+        SceneRuntimeProfiles.Core.Profile.Registry.TryGetDataByType(typeof(SceneSpriteMask), out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TwoDWorldResolvesSpriteMasks()
+    {
+        using SceneWorld world = SceneRuntimeProfiles.TwoD.Profile.CreateWorld();
+        SceneActor parent = world.CreateActor("Mask");
+        SceneSpriteMask mask = SceneSpriteMask.Default;
+        mask.Kind = SceneSpriteMaskKind.Ellipse;
+        world.AddData(parent, mask);
+
+        SceneActor sprite = world.CreateActor("Sprite");
+        world.Hierarchy.SetParent(sprite, parent);
+
+        SceneSpriteMaskResolver.TryResolve(world, sprite, out SceneSpriteMask resolved).Should().BeTrue();
+        resolved.Kind.Should().Be(SceneSpriteMaskKind.Ellipse);
+    }
+
+    [Fact]
     public void ThreeDProfile_RegistersCameraMeshesLightsAndFog()
     {
         SceneProfile profile = SceneRuntimeProfiles.ThreeD.Profile;

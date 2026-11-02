@@ -112,9 +112,9 @@ public sealed class SceneCamera2DFrameCollector
         var up = new Vec3(-MathF.Sin(rotationRadians), MathF.Cos(rotationRadians), 0.0f);
 
         Mat4 view = Mat4.CreateLookAt(position, target, up);
-        Mat4 projection = Mat4.CreateOrthographic(
-            camera.OrthographicSize * aspectRatio * 2.0f,
-            camera.OrthographicSize * 2.0f,
+        Mat4 projection = SceneCamera2DDefaults.CreateProjection(
+            camera.OrthographicSize,
+            aspectRatio,
             camera.Near,
             camera.Far);
         Mat4 viewProjection = view * projection;
