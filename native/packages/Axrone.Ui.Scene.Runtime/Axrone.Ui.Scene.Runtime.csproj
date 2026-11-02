@@ -16,6 +16,9 @@
   <PropertyGroup Label="SuppressedRules">
     <!-- CA1815: compose results are consumed field-wise, not compared. -->
     <NoWarn>$(NoWarn);CA1815</NoWarn>
+    <!-- CA2000: the composition-created glyph uploader is owned by the
+         SceneUiHostsRuntime handle and disposed by it. -->
+    <NoWarn>$(NoWarn);CA2000</NoWarn>
     <!-- CA1031: composition update/render/input isolation must capture any
          host or renderer failure without taking down the runtime loop. -->
     <NoWarn>$(NoWarn);CA1031</NoWarn>

@@ -21,6 +21,29 @@ public sealed class SceneUiHostGlTextTests
     private static readonly UiViewport Viewport = new(new UiSize(320.0f, 180.0f));
 
     [Fact]
+    public void LegacyConstructorFailsFastWhenFontsHaveNoUploader()
+    {
+        MockGLApi api = new();
+        using GLContext context = new(api);
+        using UiFontProvider fonts = CreateFonts(out UiFontFamilyId family, out UiTextStyle style);
+        using SceneWorld world = CreateWorld();
+        using SceneUiHostBridge bridge = new(world, new SceneUiHostBridgeOptions
+        {
+            Assets = CreateTable(),
+            Runtime = new UiHostRuntimeOptions
+            {
+                Fonts = fonts,
+                DefaultFamily = family,
+                DefaultTextStyle = style,
+            },
+        });
+
+        Action create = () => _ = new SceneUiHostGlRenderer(context, bridge);
+
+        create.Should().Throw<SceneValidationException>();
+    }
+
+    [Fact]
     public void ScreenHostDrawsTextWithZeroMissingResources()
     {
         MockGLApi api = new();
@@ -36,6 +59,7 @@ public sealed class SceneUiHostGlTextTests
 
         renderer.Render(world, null, in Viewport, bridge);
 
+        renderer.UsesSharedAtlasUploader.Should().BeTrue();
         renderer.MissedGlyphs.Should().Be(0);
         renderer.MissingTextures.Should().Be(0);
         renderer.DrawCalls.Should().BeGreaterThan(0);
@@ -62,6 +86,7 @@ public sealed class SceneUiHostGlTextTests
 
         renderer.Render(world, camera, in Viewport, bridge);
 
+        renderer.UsesSharedAtlasUploader.Should().BeTrue();
         renderer.MissedGlyphs.Should().Be(0);
         renderer.MissingTextures.Should().Be(0);
         renderer.DrawCalls.Should().BeGreaterThan(0);
