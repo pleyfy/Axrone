@@ -12,16 +12,24 @@ public sealed class ComponentChanges<T> : IComponentPoller, IDisposable
     where T : unmanaged
 {
     private readonly World _world;
+    private readonly ObservableRegistry _registry;
     private readonly Subject<ComponentAddedEvent<T>> _added = new();
     private readonly Subject<ComponentChangedEvent<T>> _changed = new();
     private readonly Subject<ComponentRemovedEvent<T>> _removed = new();
+    private readonly int _addedRegistryId;
+    private readonly int _changedRegistryId;
+    private readonly int _removedRegistryId;
     private int _lastTick;
     private int _disposed;
 
-    internal ComponentChanges(World world)
+    internal ComponentChanges(World world, ObservableRegistry registry)
     {
         _world = world;
+        _registry = registry;
         _lastTick = unchecked(world.Tick - 1);
+        _addedRegistryId = registry.RegisterSubject(_added);
+        _changedRegistryId = registry.RegisterSubject(_changed);
+        _removedRegistryId = registry.RegisterSubject(_removed);
     }
 
     /// <summary>Gets the added-component stream.</summary>
@@ -88,6 +96,9 @@ public sealed class ComponentChanges<T> : IComponentPoller, IDisposable
             return;
         }
 
+        _ = _registry.UnregisterSubject(_addedRegistryId);
+        _ = _registry.UnregisterSubject(_changedRegistryId);
+        _ = _registry.UnregisterSubject(_removedRegistryId);
         _added.Dispose();
         _changed.Dispose();
         _removed.Dispose();

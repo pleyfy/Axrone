@@ -24,6 +24,10 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
     private readonly World _world;
     private readonly IDiagnosticsSink _innerDiagnostics;
     private readonly ReactiveDiagnosticsSink _sink;
+    private readonly ObservableRegistry _registry = new(
+        enableMemoryTracking: true,
+        memoryManager: new ObservableMemoryManager(gcIntervalMs: 0),
+        disposeMemoryManager: true);
     private readonly Subject<EntityLifecycleEvent> _lifecycle = new();
     private readonly Subject<FrameEvent> _frameStarted = new();
     private readonly Subject<FrameEvent> _frameCompleted = new();
@@ -32,6 +36,7 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
     private readonly Subject<SystemFaultEvent> _systemFaulted = new();
     private readonly Subject<int> _pollCompleted = new();
     private readonly Dictionary<ushort, IComponentPoller> _tracked = new();
+    private readonly EcsObservables _observables;
     private Entity[] _removalEntities = [];
     private int[] _removalTicks = [];
     private LifecycleRecord[] _lifecycleBuffer = [];
@@ -39,7 +44,11 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
     private int _disposed;
 
     /// <summary>Creates a bridge and installs its lifecycle diagnostics wrapper.</summary>
-    public EcsReactiveBridge(World world)
+    public EcsReactiveBridge(
+        World world,
+        Func<World, Entity, string?>? nameSelector = null,
+        Func<World, Entity, string?>? tagSelector = null,
+        Func<World, Entity, int>? layerSelector = null)
     {
         ArgumentNullException.ThrowIfNull(world);
         if (world.Diagnostics is ReactiveDiagnosticsSink)
@@ -51,6 +60,8 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
         _innerDiagnostics = world.Diagnostics;
         _sink = new ReactiveDiagnosticsSink(_innerDiagnostics);
         world.SetDiagnosticsSink(_sink);
+        RegisterSubjects();
+        _observables = new EcsObservables(this, nameSelector, tagSelector, layerSelector);
     }
 
     /// <summary>Gets the entity created/destroyed stream.</summary>
@@ -75,6 +86,10 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
 
     public World World => _world;
 
+    public ObservableRegistry Registry => _registry;
+
+    public EcsObservables Observables => _observables;
+
     /// <summary>Starts tracking one component type; repeated calls return the same stream.</summary>
     public ComponentChanges<T> Track<T>() where T : unmanaged
     {
@@ -86,7 +101,7 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
             return (ComponentChanges<T>)existing;
         }
 
-        var stream = new ComponentChanges<T>(_world);
+        var stream = new ComponentChanges<T>(_world, _registry);
         _tracked.Add(id, stream);
         return stream;
     }
@@ -210,6 +225,7 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
             _world.SetDiagnosticsSink(_innerDiagnostics);
         }
 
+        _observables.Dispose();
         foreach (IComponentPoller poller in _tracked.Values)
         {
             if (poller is IDisposable disposable)
@@ -226,6 +242,18 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
         _systemCompleted.Dispose();
         _systemFaulted.Dispose();
         _pollCompleted.Dispose();
+        _registry.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    private void RegisterSubjects()
+    {
+        _ = _registry.RegisterSubject(_lifecycle);
+        _ = _registry.RegisterSubject(_frameStarted);
+        _ = _registry.RegisterSubject(_frameCompleted);
+        _ = _registry.RegisterSubject(_systemStarted);
+        _ = _registry.RegisterSubject(_systemCompleted);
+        _ = _registry.RegisterSubject(_systemFaulted);
+        _ = _registry.RegisterSubject(_pollCompleted);
     }
 }
