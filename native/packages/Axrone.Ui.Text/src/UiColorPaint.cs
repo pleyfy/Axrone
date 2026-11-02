@@ -985,7 +985,7 @@ internal sealed class UiColorPaintData
             }
 
             int childOffset = offset + ReadU24(offset + 1);
-            float angle = F2Dot14(UiFontFace.ReadI16(_data, offset + 4)) * (MathF.PI / 180.0f);
+            float angle = F2Dot14(UiFontFace.ReadI16(_data, offset + 4)) * MathF.PI;
             float cosine = MathF.Cos(angle);
             float sine = MathF.Sin(angle);
             float centerX = aroundCenter ? UiFontFace.ReadI16(_data, offset + 6) : 0.0f;
@@ -1008,8 +1008,8 @@ internal sealed class UiColorPaintData
             }
 
             int childOffset = offset + ReadU24(offset + 1);
-            float xSkew = MathF.Tan(F2Dot14(UiFontFace.ReadI16(_data, offset + 4)) * (MathF.PI / 180.0f));
-            float ySkew = MathF.Tan(F2Dot14(UiFontFace.ReadI16(_data, offset + 6)) * (MathF.PI / 180.0f));
+            float xSkew = MathF.Tan(F2Dot14(UiFontFace.ReadI16(_data, offset + 4)) * MathF.PI);
+            float ySkew = MathF.Tan(F2Dot14(UiFontFace.ReadI16(_data, offset + 6)) * MathF.PI);
             float centerX = aroundCenter ? UiFontFace.ReadI16(_data, offset + 8) : 0.0f;
             float centerY = aroundCenter ? UiFontFace.ReadI16(_data, offset + 10) : 0.0f;
             var transform = Compose(

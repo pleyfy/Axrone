@@ -27,6 +27,10 @@ public sealed class UiColorRasterizerTests
         (_, _, _, byte outsideAlpha) = Sample(bitmap, 20.0f, 720.0f, 0.1f);
         outsideAlpha.Should().BeLessThan(20);
 
+        rasterizer.TryRasterizeGlyph(face, 2, 100.0f, out UiColorGlyphBitmap byGlyph, out error)
+            .Should().BeTrue(error.Message);
+        _ = Sample(byGlyph, 300.0f, 100.0f, 0.1f);
+
         using var alphaProvider = new UiFontProvider();
         UiFontFaceId alphaFace = Register(alphaProvider, UiTestFont.CreateColorV1(UiTestColorV1.GlyphSolidAlpha));
         var alphaRasterizer = new UiColorGlyphRasterizer(alphaProvider);
@@ -98,6 +102,9 @@ public sealed class UiColorRasterizerTests
 
         rasterizer.TryRasterize(face, 0x41, 100.0f, out UiColorGlyphBitmap bitmap, out UiFontError error)
             .Should().BeTrue(error.Message);
+        _ = provider.TryGetFace(face, out UiFontFace? fontFace);
+        fontFace!.TryGetColorClip(0x41, out UiColorClipBox clip).Should().BeTrue();
+        clip.Should().Be(new UiColorClipBox(100.0f, 0.0f, 200.0f, 700.0f));
 
         (byte insideRed, _, _, byte insideAlpha) = Sample(bitmap, 150.0f, 100.0f, 0.1f);
         (_, _, _, byte clippedAlpha) = Sample(bitmap, 300.0f, 100.0f, 0.1f);
@@ -141,6 +148,28 @@ public sealed class UiColorRasterizerTests
     }
 
     [Fact]
+    public void AppliesScaleAndRotatePaints()
+    {
+        using var provider = new UiFontProvider();
+        UiFontFaceId scaleFace = Register(provider, UiTestFont.CreateColorV1(UiTestColorV1.GlyphScale), "Scale");
+        UiFontFaceId rotateFace = Register(provider, UiTestFont.CreateColorV1(UiTestColorV1.GlyphRotate), "Rotate");
+        var rasterizer = new UiColorGlyphRasterizer(provider);
+
+        rasterizer.TryRasterize(scaleFace, 0x41, 100.0f, out UiColorGlyphBitmap scaled, out UiFontError error)
+            .Should().BeTrue(error.Message);
+        (byte scaledRed, _, _, byte scaledAlpha) = Sample(scaled, 100.0f, 50.0f, 0.1f);
+        (_, _, _, byte scaledOutside) = Sample(scaled, 500.0f, 100.0f, 0.1f);
+        scaledAlpha.Should().BeGreaterThan(200);
+        scaledRed.Should().BeGreaterThan(200);
+        scaledOutside.Should().BeLessThan(20);
+
+        rasterizer.TryRasterize(rotateFace, 0x41, 100.0f, out UiColorGlyphBitmap rotated, out error)
+            .Should().BeTrue(error.Message);
+        rotated.IsEmpty.Should().BeFalse();
+        rotated.Pixels.ToArray().Should().Contain(value => value > 0);
+    }
+
+    [Fact]
     public void CompositesSourceOverAndPlus()
     {
         using var provider = new UiFontProvider();
@@ -165,6 +194,19 @@ public sealed class UiColorRasterizerTests
         plusRed.Should().BeGreaterThan(240);
         plusGreen.Should().BeLessThan(20);
         plusBlue.Should().BeLessThan(20);
+
+        using var multiplyProvider = new UiFontProvider();
+        UiFontFaceId multiplyFace = Register(
+            multiplyProvider,
+            UiTestFont.CreateColorV1(UiTestColorV1.CompositeMultiply));
+        var multiplyRasterizer = new UiColorGlyphRasterizer(multiplyProvider);
+        multiplyRasterizer.TryRasterize(multiplyFace, 0x41, 100.0f, out UiColorGlyphBitmap multiply, out error)
+            .Should().BeTrue(error.Message);
+        (byte multiplyRed, byte multiplyGreen, byte multiplyBlue, byte multiplyAlpha) = Sample(multiply, 300.0f, 300.0f, 0.1f);
+        multiplyAlpha.Should().BeGreaterThan(240);
+        multiplyRed.Should().BeLessThan(20);
+        multiplyGreen.Should().BeLessThan(20);
+        multiplyBlue.Should().BeLessThan(20);
     }
 
     [Fact]
