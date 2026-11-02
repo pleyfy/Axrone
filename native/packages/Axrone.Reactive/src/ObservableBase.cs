@@ -121,9 +121,24 @@ public abstract class ObservableBase<T> : IObservable<T>, IObservableMarker, IDi
         SubscriptionEntry[] snapshot = Volatile.Read(ref _observers);
         for (int i = 0; i < snapshot.Length; i++)
         {
-            snapshot[i].Observer.OnNext(value);
+            if (PropagateObserverErrors)
+            {
+                snapshot[i].Observer.OnNext(value);
+            }
+            else
+            {
+                try
+                {
+                    snapshot[i].Observer.OnNext(value);
+                }
+                catch (Exception)
+                {
+                }
+            }
         }
     }
+
+    protected virtual bool PropagateObserverErrors => true;
 
     /// <summary>Delivers completion; later publishes are ignored, late subscribers replay it.</summary>
     protected void Complete()

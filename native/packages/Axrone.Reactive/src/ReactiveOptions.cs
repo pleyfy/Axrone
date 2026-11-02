@@ -126,119 +126,31 @@ public readonly record struct ObservationOptions
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
-public readonly record struct SubjectMemoryOptions
-{
-    public readonly bool Enabled;
-    public readonly int GcIntervalMs;
-    public readonly bool WeakReferences;
-
-    public SubjectMemoryOptions(bool enabled = true, int gcIntervalMs = 60000, bool weakReferences = false)
-    {
-        Enabled = enabled;
-        GcIntervalMs = gcIntervalMs;
-        WeakReferences = weakReferences;
-    }
-
-    public static SubjectMemoryOptions Default => new(true, 60000, false);
-
-    public SubjectMemoryOptions Normalize() => new(
-        Enabled,
-        GcIntervalMs >= 0 ? GcIntervalMs : 60000,
-        WeakReferences);
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 4)]
-public readonly record struct SubjectReplayOptions
-{
-    public readonly bool Enabled;
-    public readonly int BufferSize;
-
-    public SubjectReplayOptions(bool enabled = false, int bufferSize = 10)
-    {
-        Enabled = enabled;
-        BufferSize = bufferSize;
-    }
-
-    public static SubjectReplayOptions Default => new(false, 10);
-
-    public SubjectReplayOptions Normalize() => new(Enabled, BufferSize >= 1 ? BufferSize : 10);
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 4)]
-public readonly record struct SubjectConcurrencyOptions
-{
-    public readonly bool Enabled;
-    public readonly int MaxConcurrent;
-
-    public SubjectConcurrencyOptions(bool enabled = true, int maxConcurrent = 10)
-    {
-        Enabled = enabled;
-        MaxConcurrent = maxConcurrent;
-    }
-
-    public static SubjectConcurrencyOptions Default => new(true, 10);
-
-    public SubjectConcurrencyOptions Normalize() => new(Enabled, MaxConcurrent >= 1 ? MaxConcurrent : 10);
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct SubjectOptions
 {
     public readonly int MaxObservers;
     public readonly bool AutoComplete;
     public readonly bool ErrorPropagation;
-    public readonly SubjectMemoryOptions MemoryManagement;
-    public readonly SubjectReplayOptions Replay;
-    public readonly SubjectConcurrencyOptions Concurrency;
 
     public SubjectOptions(
         int maxObservers = 100,
         bool autoComplete = false,
-        bool errorPropagation = true,
-        SubjectMemoryOptions memoryManagement = default,
-        SubjectReplayOptions replay = default,
-        SubjectConcurrencyOptions concurrency = default)
+        bool errorPropagation = true)
     {
         MaxObservers = maxObservers;
         AutoComplete = autoComplete;
         ErrorPropagation = errorPropagation;
-        MemoryManagement = memoryManagement;
-        Replay = replay;
-        Concurrency = concurrency;
     }
 
-    public static SubjectOptions Default => new(
-        100,
-        false,
-        true,
-        SubjectMemoryOptions.Default,
-        SubjectReplayOptions.Default,
-        SubjectConcurrencyOptions.Default);
+    public static SubjectOptions Default => new(100, false, true);
 
     public SubjectOptions Normalize() => new(
         MaxObservers >= 1 ? MaxObservers : 100,
         AutoComplete,
-        ErrorPropagation,
-        MemoryManagement.Normalize(),
-        Replay.Normalize(),
-        Concurrency.Normalize());
+        ErrorPropagation);
 
     public static SubjectOptions Merge(in SubjectOptions baseOptions, in SubjectOptions overrides) => new(
         overrides.MaxObservers > 0 ? overrides.MaxObservers : baseOptions.MaxObservers,
         overrides.AutoComplete || baseOptions.AutoComplete,
-        overrides.ErrorPropagation,
-        new SubjectMemoryOptions(
-            overrides.MemoryManagement.Enabled || baseOptions.MemoryManagement.Enabled,
-            overrides.MemoryManagement.GcIntervalMs > 0
-                ? overrides.MemoryManagement.GcIntervalMs
-                : baseOptions.MemoryManagement.GcIntervalMs,
-            overrides.MemoryManagement.WeakReferences || baseOptions.MemoryManagement.WeakReferences),
-        new SubjectReplayOptions(
-            overrides.Replay.Enabled || baseOptions.Replay.Enabled,
-            overrides.Replay.BufferSize > 0 ? overrides.Replay.BufferSize : baseOptions.Replay.BufferSize),
-        new SubjectConcurrencyOptions(
-            overrides.Concurrency.Enabled || baseOptions.Concurrency.Enabled,
-            overrides.Concurrency.MaxConcurrent > 0
-                ? overrides.Concurrency.MaxConcurrent
-                : baseOptions.Concurrency.MaxConcurrent));
+        baseOptions.ErrorPropagation && overrides.ErrorPropagation);
 }
