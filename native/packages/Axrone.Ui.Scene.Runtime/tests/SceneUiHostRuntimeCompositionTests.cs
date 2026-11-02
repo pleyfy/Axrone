@@ -48,6 +48,8 @@ public sealed class SceneUiHostRuntimeCompositionTests
         SceneUiHostGlRenderer renderer = hosts.Renderer.Should().BeOfType<SceneUiHostGlRenderer>().Subject;
         renderer.MissedGlyphs.Should().Be(0);
         renderer.MissingTextures.Should().Be(0);
+        renderer.SdfGlyphBatches.Should().BeGreaterThan(0);
+        renderer.CoverageGlyphBatches.Should().Be(0);
         renderer.DrawCalls.Should().BeGreaterThan(0);
         renderer.LastScreenHosts.Should().Be(1);
         hosts.Bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
