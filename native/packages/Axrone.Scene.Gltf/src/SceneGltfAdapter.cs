@@ -8,6 +8,9 @@ public static class SceneGltfErrorCodes
 
     /// <summary>A material declares a property outside the declared shader catalog.</summary>
     public const string UnknownProperty = "scene.gltf.unknown-property";
+
+    /// <summary>A glTF extension is not mapped and the policy rejects it.</summary>
+    public const string UnknownExtension = "scene.gltf.unknown-extension";
 }
 
 /// <summary>glTF adapter failure.</summary>
@@ -22,6 +25,32 @@ public sealed class SceneGltfException : SceneException
 
 /// <summary>One conversion diagnostic for unsupported or lossy glTF data.</summary>
 public readonly record struct SceneGltfDiagnostic(string Code, string Message);
+
+/// <summary>Blend metadata applied to transparent glTF materials.</summary>
+public enum SceneGltfBlendMode
+{
+    /// <summary>Straight alpha blending for <c>BLEND</c> materials.</summary>
+    Auto = 0,
+
+    /// <summary>Force alpha blending for <c>BLEND</c> materials.</summary>
+    Alpha = 1,
+
+    /// <summary>Force additive blending for <c>BLEND</c> materials.</summary>
+    Additive = 2
+}
+
+/// <summary>Handling policy for glTF extensions the scene bridge does not map.</summary>
+public enum SceneGltfUnknownExtensionPolicy
+{
+    /// <summary>Report one diagnostic per unknown extension.</summary>
+    Report = 0,
+
+    /// <summary>Ignore unknown extensions silently.</summary>
+    Ignore = 1,
+
+    /// <summary>Fail the conversion.</summary>
+    Reject = 2
+}
 
 /// <summary>Conversion settings for <see cref="SceneGltfAdapter"/>.</summary>
 public sealed record SceneGltfImportOptions
@@ -56,6 +85,13 @@ public sealed record SceneGltfImportOptions
     public SceneGltfUnknownPropertyPolicy UnknownPropertyPolicy { get; init; } =
         SceneGltfUnknownPropertyPolicy.Preserve;
 
+    /// <summary>Handling policy for unmapped glTF extensions.</summary>
+    public SceneGltfUnknownExtensionPolicy UnknownExtensionPolicy { get; init; } =
+        SceneGltfUnknownExtensionPolicy.Report;
+
+    /// <summary>Blend metadata used for glTF <c>BLEND</c> materials.</summary>
+    public SceneGltfBlendMode BlendMode { get; init; } = SceneGltfBlendMode.Auto;
+
     /// <summary>Prefix applied to every imported asset name.</summary>
     public string AssetPrefix { get; init; } = "gltf/";
 
@@ -84,6 +120,30 @@ public sealed class SceneGltfConversion
         IReadOnlyList<SceneSamplerDefinition> samplers,
         IReadOnlyList<SceneRenderPassDefinition> renderPasses,
         IReadOnlyList<SceneGltfDiagnostic> diagnostics)
+        : this(
+            shaders,
+            meshes,
+            materials,
+            textures,
+            samplers,
+            renderPasses,
+            [],
+            [],
+            diagnostics)
+    {
+    }
+
+    /// <summary>Creates a definition conversion result with skinning and animation data.</summary>
+    public SceneGltfConversion(
+        IReadOnlyList<SceneShaderDefinition> shaders,
+        IReadOnlyList<SceneMeshDefinition> meshes,
+        IReadOnlyList<SceneMaterialDefinition> materials,
+        IReadOnlyList<SceneTextureDefinition> textures,
+        IReadOnlyList<SceneSamplerDefinition> samplers,
+        IReadOnlyList<SceneRenderPassDefinition> renderPasses,
+        IReadOnlyList<SceneSkinDefinition> skins,
+        IReadOnlyList<SceneAnimationClipDefinition> animations,
+        IReadOnlyList<SceneGltfDiagnostic> diagnostics)
     {
         ArgumentNullException.ThrowIfNull(shaders);
         ArgumentNullException.ThrowIfNull(meshes);
@@ -91,6 +151,8 @@ public sealed class SceneGltfConversion
         ArgumentNullException.ThrowIfNull(textures);
         ArgumentNullException.ThrowIfNull(samplers);
         ArgumentNullException.ThrowIfNull(renderPasses);
+        ArgumentNullException.ThrowIfNull(skins);
+        ArgumentNullException.ThrowIfNull(animations);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
         Shaders = [.. shaders];
@@ -99,6 +161,8 @@ public sealed class SceneGltfConversion
         Textures = [.. textures];
         Samplers = [.. samplers];
         RenderPasses = [.. renderPasses];
+        Skins = [.. skins];
+        Animations = [.. animations];
         Diagnostics = [.. diagnostics];
     }
 
@@ -119,6 +183,12 @@ public sealed class SceneGltfConversion
 
     /// <summary>Render-pass definitions in declaration order.</summary>
     public IReadOnlyList<SceneRenderPassDefinition> RenderPasses { get; }
+
+    /// <summary>Skin definitions in import order.</summary>
+    public IReadOnlyList<SceneSkinDefinition> Skins { get; }
+
+    /// <summary>Animation clips in import order.</summary>
+    public IReadOnlyList<SceneAnimationClipDefinition> Animations { get; }
 
     /// <summary>Conversion diagnostics in texture, material and mesh order.</summary>
     public IReadOnlyList<SceneGltfDiagnostic> Diagnostics { get; }
@@ -181,6 +251,8 @@ public static class SceneGltfAdapter
         var builtInShaderIds = new List<string>();
         var customShaderIds = new List<SceneAssetId<ShaderAssetTag>>();
 
+        ApplyUnknownExtensionPolicy(result, options, diagnostics);
+
         ImmutableArray<GltfMaterialAsset> sourceMaterials = result.Materials.IsDefault
             ? []
             : result.Materials;
@@ -205,6 +277,8 @@ public static class SceneGltfAdapter
             diagnostics);
 
         List<SceneMeshDefinition> meshes = ConvertMeshes(result.Meshes, options, diagnostics);
+        List<SceneSkinDefinition> skins = ConvertSkins(result.Skins, options, diagnostics);
+        List<SceneAnimationClipDefinition> animations = ConvertAnimations(result.Animations, options, diagnostics);
         List<SceneShaderDefinition> shaders = CollectShaders(
             options,
             builtInShaderIds,
@@ -218,6 +292,8 @@ public static class SceneGltfAdapter
             textures,
             samplers,
             options.RenderPasses ?? [],
+            skins,
+            animations,
             diagnostics);
     }
 
@@ -247,6 +323,213 @@ public static class SceneGltfAdapter
 
         return new SceneGltfImportResult(snapshot, diagnostics);
     }
+
+    private static readonly string[] KnownExtensions =
+    [
+        "EXT_meshopt_compression",
+        "EXT_texture_avif",
+        "EXT_texture_webp",
+        "KHR_animation_pointer",
+        "KHR_draco_mesh_compression",
+        "KHR_lights_punctual",
+        "KHR_materials_anisotropy",
+        "KHR_materials_clearcoat",
+        "KHR_materials_dispersion",
+        "KHR_materials_emissive_strength",
+        "KHR_materials_ior",
+        "KHR_materials_iridescence",
+        "KHR_materials_sheen",
+        "KHR_materials_specular",
+        "KHR_materials_transmission",
+        "KHR_materials_unlit",
+        "KHR_materials_variants",
+        "KHR_materials_volume",
+        "KHR_mesh_quantization",
+        "KHR_texture_basisu",
+        "KHR_texture_transform"
+    ];
+
+    private static void ApplyUnknownExtensionPolicy(
+        GltfImportResult result,
+        SceneGltfImportOptions options,
+        List<SceneGltfDiagnostic> diagnostics)
+    {
+        if (options.UnknownExtensionPolicy == SceneGltfUnknownExtensionPolicy.Ignore ||
+            result.Document is null ||
+            result.Document.ExtensionsUsed.IsDefaultOrEmpty)
+        {
+            return;
+        }
+
+        ImmutableArray<string> used = result.Document.ExtensionsUsed;
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < used.Length; i++)
+        {
+            string name = used[i];
+            if (string.IsNullOrEmpty(name) || IsKnownExtension(name) || !reported.Add(name))
+            {
+                continue;
+            }
+
+            if (options.UnknownExtensionPolicy == SceneGltfUnknownExtensionPolicy.Reject)
+            {
+                throw new SceneGltfException(
+                    SceneGltfErrorCodes.UnknownExtension,
+                    $"glTF extension '{name}' is not mapped by the scene bridge.");
+            }
+
+            diagnostics.Add(new SceneGltfDiagnostic(
+                SceneGltfErrorCodes.UnknownExtension,
+                $"glTF extension '{name}' is not mapped by the scene bridge; it was ignored."));
+        }
+    }
+
+    private static bool IsKnownExtension(string name)
+    {
+        for (int i = 0; i < KnownExtensions.Length; i++)
+        {
+            if (string.Equals(KnownExtensions[i], name, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static List<SceneSkinDefinition> ConvertSkins(
+        ImmutableArray<GltfSkinAsset> source,
+        SceneGltfImportOptions options,
+        List<SceneGltfDiagnostic> diagnostics)
+    {
+        var skins = new List<SceneSkinDefinition>(source.IsDefault ? 0 : source.Length);
+        if (source.IsDefault)
+        {
+            return skins;
+        }
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < source.Length; i++)
+        {
+            GltfSkinAsset skin = source[i] ??
+                throw new SceneGltfException(
+                    SceneGltfErrorCodes.Invalid,
+                    $"glTF skin asset at index {i} is null.");
+
+            RequireName(skin.Id, "Skin");
+            if (!names.Add(skin.Id))
+            {
+                throw new SceneGltfException(
+                    SceneGltfErrorCodes.Invalid,
+                    $"glTF import result declares duplicate skin id '{skin.Id}'.");
+            }
+
+            skins.Add(new SceneSkinDefinition(
+                MakeId<SkinAssetTag>(skin.Id, options),
+                skin.JointNodeIds,
+                skin.JointNodeIndices,
+                skin.SkeletonNodeId,
+                skin.InverseBindMatrices));
+        }
+
+        if (skins.Count > 0)
+        {
+            diagnostics.Add(new SceneGltfDiagnostic(
+                "scene.gltf.skins",
+                $"{skins.Count} skin(s) converted to scene skin definitions; runtime skinning playback is not wired."));
+        }
+
+        return skins;
+    }
+
+    private static List<SceneAnimationClipDefinition> ConvertAnimations(
+        ImmutableArray<GltfAnimationClipAsset> source,
+        SceneGltfImportOptions options,
+        List<SceneGltfDiagnostic> diagnostics)
+    {
+        var animations = new List<SceneAnimationClipDefinition>(
+            source.IsDefault ? 0 : source.Length);
+        if (source.IsDefault)
+        {
+            return animations;
+        }
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < source.Length; i++)
+        {
+            GltfAnimationClipAsset clip = source[i] ??
+                throw new SceneGltfException(
+                    SceneGltfErrorCodes.Invalid,
+                    $"glTF animation asset at index {i} is null.");
+
+            RequireName(clip.Id, "Animation");
+            if (!names.Add(clip.Id))
+            {
+                throw new SceneGltfException(
+                    SceneGltfErrorCodes.Invalid,
+                    $"glTF import result declares duplicate animation id '{clip.Id}'.");
+            }
+
+            ImmutableArray<GltfAnimationTrackAsset> trackSource = clip.Tracks.IsDefault
+                ? []
+                : clip.Tracks;
+            var tracks = new List<SceneAnimationTrackDefinition>(trackSource.Length);
+            for (int t = 0; t < trackSource.Length; t++)
+            {
+                GltfAnimationTrackAsset track = trackSource[t];
+                if (string.IsNullOrEmpty(track.TargetNodeId))
+                {
+                    diagnostics.Add(new SceneGltfDiagnostic(
+                        "scene.gltf.animation-target",
+                        $"Animation '{clip.Id}' track {track.ChannelIndex} has no target node and was skipped."));
+                    continue;
+                }
+
+                tracks.Add(new SceneAnimationTrackDefinition(
+                    track.TargetNodeId,
+                    MapAnimationPath(track.Path),
+                    MapAnimationInterpolation(track.Interpolation),
+                    track.KeyframeCount,
+                    track.ValueComponentCount,
+                    track.SampleStride,
+                    track.Times,
+                    track.Values,
+                    track.Pointer));
+            }
+
+            animations.Add(new SceneAnimationClipDefinition(
+                MakeId<AnimationAssetTag>(clip.Id, options),
+                clip.Duration,
+                tracks,
+                clip.Tags));
+        }
+
+        if (animations.Count > 0)
+        {
+            diagnostics.Add(new SceneGltfDiagnostic(
+                "scene.gltf.animations",
+                $"{animations.Count} animation clip(s) converted to scene animation definitions; runtime playback is not wired."));
+        }
+
+        return animations;
+    }
+
+    private static SceneAnimationPath MapAnimationPath(GltfAnimationPath path) => path switch
+    {
+        GltfAnimationPath.Rotation => SceneAnimationPath.Rotation,
+        GltfAnimationPath.Scale => SceneAnimationPath.Scale,
+        GltfAnimationPath.Weights => SceneAnimationPath.Weights,
+        GltfAnimationPath.Pointer => SceneAnimationPath.Pointer,
+        _ => SceneAnimationPath.Translation
+    };
+
+    private static SceneAnimationInterpolation MapAnimationInterpolation(GltfInterpolation interpolation) =>
+        interpolation switch
+        {
+            GltfInterpolation.Step => SceneAnimationInterpolation.Step,
+            GltfInterpolation.CubicSpline => SceneAnimationInterpolation.CubicSpline,
+            _ => SceneAnimationInterpolation.Linear
+        };
 
     private static SceneGltfImportOptions NormalizeOptions(SceneGltfImportOptions options)
     {
@@ -584,18 +867,26 @@ public static class SceneGltfAdapter
                     $"Mesh '{definition.Id}' has no vertex attributes.");
             }
 
-            if (!definition.MorphTargets.IsDefaultOrEmpty)
-            {
-                diagnostics.Add(new SceneGltfDiagnostic(
-                    "scene.gltf.morph-targets",
-                    $"Mesh '{definition.Id}' has {definition.MorphTargets.Length} morph targets; the base mesh is imported without them."));
-            }
-
             if (!definition.CustomAttributes.IsDefaultOrEmpty)
             {
                 diagnostics.Add(new SceneGltfDiagnostic(
                     "scene.gltf.custom-attributes",
                     $"Mesh '{definition.Id}' declares {definition.CustomAttributes.Length} custom attributes; only standard semantics are imported."));
+            }
+
+            var morphTargets = new List<SceneMorphTargetDefinition>(
+                definition.MorphTargets.IsDefault ? 0 : definition.MorphTargets.Length);
+            if (!definition.MorphTargets.IsDefaultOrEmpty)
+            {
+                for (int targetIndex = 0; targetIndex < definition.MorphTargets.Length; targetIndex++)
+                {
+                    GltfMorphTargetDefinition target = definition.MorphTargets[targetIndex];
+                    morphTargets.Add(new SceneMorphTargetDefinition(
+                        MapMorphSemantic(target.Semantic),
+                        target.DeltaBuffer,
+                        target.Stride,
+                        target.ComponentCount));
+                }
             }
 
             var attributes = new List<SceneVertexAttribute>(definition.Attributes.Length);
@@ -639,7 +930,9 @@ public static class SceneGltfAdapter
                     definition.Indices,
                     definition.Index16Bit ? SceneIndexFormat.UInt16 : SceneIndexFormat.UInt32,
                     definition.IndexCount,
-                    MapTopology(definition.Topology));
+                    MapTopology(definition.Topology),
+                    bounds: null,
+                    morphTargets);
             }
             catch (SceneAssetException exception)
             {
@@ -722,20 +1015,6 @@ public static class SceneGltfAdapter
             throw new SceneGltfException(
                 SceneGltfErrorCodes.Invalid,
                 "The glTF import result contains no prefab assets.");
-        }
-
-        if (!result.Skins.IsDefaultOrEmpty)
-        {
-            diagnostics.Add(new SceneGltfDiagnostic(
-                "scene.gltf.skins",
-                $"{result.Skins.Length} skin(s) were imported; scene skinning is not available yet."));
-        }
-
-        if (!result.Animations.IsDefaultOrEmpty)
-        {
-            diagnostics.Add(new SceneGltfDiagnostic(
-                "scene.gltf.animations",
-                $"{result.Animations.Length} animation clip(s) were imported; scene animators are not available yet."));
         }
 
         ImmutableArray<GltfActorSnapshot> sourceActors = prefabAsset.Definition.Actors;
@@ -894,14 +1173,14 @@ public static class SceneGltfAdapter
                     {
                         diagnostics.Add(new SceneGltfDiagnostic(
                             "scene.gltf.skinning",
-                            $"Node '{actor.NodeId}' is skinned; it renders as a static mesh for now."));
+                            $"Node '{actor.NodeId}' references skin '{renderer.SkinId}'; the skin is converted but runtime skinning playback is not wired."));
                     }
 
                     if (renderer.MorphTargetCount > 0)
                     {
                         diagnostics.Add(new SceneGltfDiagnostic(
                             "scene.gltf.morph-targets",
-                            $"Node '{actor.NodeId}' has {renderer.MorphTargetCount} morph targets; morph animation is not available yet."));
+                            $"Node '{actor.NodeId}' has {renderer.MorphTargetCount} morph targets; delta streams are converted but runtime morph playback is not wired."));
                     }
 
                     components.Add(new SceneComponentSnapshot(
@@ -912,6 +1191,22 @@ public static class SceneGltfAdapter
                             if (!string.IsNullOrEmpty(renderer.MaterialId))
                             {
                                 writer.WriteString("material", Prefixed(renderer.MaterialId, options));
+                            }
+
+                            if (!string.IsNullOrEmpty(renderer.SkinId))
+                            {
+                                writer.WriteString("skin", Prefixed(renderer.SkinId, options));
+                            }
+
+                            if (!renderer.MorphWeights.IsDefaultOrEmpty)
+                            {
+                                writer.WriteStartArray("morphWeights");
+                                for (int weightIndex = 0; weightIndex < renderer.MorphWeights.Length; weightIndex++)
+                                {
+                                    writer.WriteNumberValue(renderer.MorphWeights[weightIndex]);
+                                }
+
+                                writer.WriteEndArray();
                             }
 
                             writer.WriteString("pass", renderer.PassId);
@@ -925,7 +1220,7 @@ public static class SceneGltfAdapter
                 case GltfAnimatorComponent:
                     diagnostics.Add(new SceneGltfDiagnostic(
                         "scene.gltf.animator",
-                        $"Node '{actor.NodeId}' declares an animator; scene animators are not available yet."));
+                        $"Node '{actor.NodeId}' declares an animator; clips are converted but runtime playback is not wired."));
                     break;
             }
         }
@@ -949,7 +1244,8 @@ public static class SceneGltfAdapter
             mesh.IndexFormat,
             mesh.IndexCount,
             mesh.Topology,
-            bounds);
+            bounds,
+            mesh.MorphTargets);
     }
 
     private static void RequireName(string? name, string kind)
@@ -961,6 +1257,14 @@ public static class SceneGltfAdapter
                 $"glTF {kind} assets require a non-empty id.");
         }
     }
+
+    private static SceneMorphTargetSemantic MapMorphSemantic(GltfMorphTargetSemantic semantic) =>
+        semantic switch
+        {
+            GltfMorphTargetSemantic.Normal => SceneMorphTargetSemantic.Normal,
+            GltfMorphTargetSemantic.Tangent => SceneMorphTargetSemantic.Tangent,
+            _ => SceneMorphTargetSemantic.Position
+        };
 
     private static bool TryMapSemantic(GltfMeshSemantic semantic, out SceneMeshSemantic mapped)
     {
@@ -989,6 +1293,12 @@ public static class SceneGltfAdapter
                 return true;
             case GltfMeshSemantic.Weights0:
                 mapped = SceneMeshSemantic.Weights0;
+                return true;
+            case GltfMeshSemantic.Joints1:
+                mapped = SceneMeshSemantic.Joints1;
+                return true;
+            case GltfMeshSemantic.Weights1:
+                mapped = SceneMeshSemantic.Weights1;
                 return true;
             default:
                 mapped = default;
