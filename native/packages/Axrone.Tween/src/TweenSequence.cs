@@ -26,6 +26,7 @@ public sealed class TweenSequence
     private int _remaining;
     private readonly List<TweenHandle> _active = new();
     private bool _playing;
+    private bool _paused;
     private bool _canceled;
     private bool _completed;
     private Action? _onComplete;
@@ -91,6 +92,30 @@ public sealed class TweenSequence
         }
     }
 
+    /// <summary>Whether playback is active (running or paused).</summary>
+    public bool IsPlaying
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _playing;
+            }
+        }
+    }
+
+    /// <summary>Whether playback is paused.</summary>
+    public bool IsPaused
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _paused;
+            }
+        }
+    }
+
     /// <summary>Starts playback from the first group. Replays are ignored once started.</summary>
     public void Play()
     {
@@ -102,9 +127,62 @@ public sealed class TweenSequence
             }
 
             _playing = true;
+            _paused = false;
         }
 
         Advance();
+    }
+
+    /// <summary>Pauses the running group so it can be resumed where it stopped.</summary>
+    public void Pause()
+    {
+        TweenHandle[] running;
+        lock (_gate)
+        {
+            if (!_playing || _paused || _completed || _canceled)
+            {
+                return;
+            }
+
+            _paused = true;
+            running = _active.ToArray();
+        }
+
+        for (int i = 0; i < running.Length; i++)
+        {
+            _ = running[i].Pause();
+        }
+    }
+
+    /// <summary>Resumes a paused sequence from the group that was running.</summary>
+    public void Resume()
+    {
+        TweenHandle[] running;
+        bool continueNow;
+        lock (_gate)
+        {
+            if (!_playing || !_paused)
+            {
+                return;
+            }
+
+            _paused = false;
+            running = _active.ToArray();
+
+            // A child may have completed while the pause gate was held; its continuation
+            // flag is set but Advance refused to run. Re-check here so the chain cannot stall.
+            continueNow = _remaining == 0;
+        }
+
+        for (int i = 0; i < running.Length; i++)
+        {
+            _ = running[i].Resume();
+        }
+
+        if (continueNow)
+        {
+            Advance();
+        }
     }
 
     /// <summary>Stops playback and cancels the running group.</summary>
@@ -119,6 +197,7 @@ public sealed class TweenSequence
             }
 
             _canceled = true;
+            _paused = false;
             running.AddRange(_active);
             _active.Clear();
         }
@@ -152,7 +231,7 @@ public sealed class TweenSequence
 
             lock (_gate)
             {
-                if (_canceled || _completed)
+                if (_canceled || _completed || _paused)
                 {
                     return;
                 }
@@ -178,7 +257,7 @@ public sealed class TweenSequence
 
             lock (_gate)
             {
-                if (_canceled)
+                if (_canceled || _paused)
                 {
                     return;
                 }

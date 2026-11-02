@@ -35,6 +35,9 @@ public readonly struct TweenHandle : IEquatable<TweenHandle>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Cancel() => _engine != null && _engine.Cancel(Id);
 
+    /// <summary>Finishes the tween now, firing final update, step, and completion callbacks.</summary>
+    public bool Complete() => _engine != null && _engine.Complete(Id);
+
     /// <summary>Pauses a playing tween.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Pause() => _engine != null && _engine.Pause(Id);

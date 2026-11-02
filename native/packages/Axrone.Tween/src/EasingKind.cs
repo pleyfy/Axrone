@@ -32,4 +32,7 @@ public enum EasingKind : byte
     EaseOutBounce = 26,
     EaseInOutBounce = 27,
     Custom = 28,
+    EaseInSine = 29,
+    EaseOutSine = 30,
+    EaseInOutSine = 31,
 }

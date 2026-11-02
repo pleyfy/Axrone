@@ -157,6 +157,30 @@ public class TweenTickTests
     }
 
     [Fact]
+    public void WarmUpdate_AllocatesNothing()
+    {
+        using var store = new TweenStore(4);
+        var spec = new TweenBuilder()
+            .From(0f)
+            .To(1f)
+            .DurationSeconds(100f)
+            .OnUpdate(static (float _) => { })
+            .OnComplete(static () => { })
+            .Build();
+        Play(store, spec);
+
+        store.Update(DurationNs.FromSeconds(0.1f), 1f);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_000; i++)
+        {
+            store.Update(DurationNs.FromMilliseconds(1f), 1f);
+        }
+
+        long after = GC.GetAllocatedBytesForCurrentThread();
+        (after - before).Should().Be(0);
+    }
+
+    [Fact]
     public void ThrowingCallback_FaultsOnlyItsTween()
     {
         using var store = new TweenStore(8);

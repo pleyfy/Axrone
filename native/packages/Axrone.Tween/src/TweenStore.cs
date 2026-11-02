@@ -360,30 +360,48 @@ public sealed class TweenStore : IDisposable
     public void Free(uint index) => TryRetire(index);
 
     /// <summary>
-    /// Claims a live slot for settlement: the check, unlink, and generation bump happen under
-    /// one gate, so racing settlers (tick completion versus external cancel) produce exactly
-    /// one winner. Returns false when another settler already claimed the slot.
+    /// Claims a live slot for settlement: the state check and dense unlink happen under one
+    /// gate, so racing settlers (tick completion versus external cancel) produce exactly one
+    /// winner. Generation bump and callback release follow the claim. Returns false when
+    /// another settler already claimed the slot.
     /// </summary>
     internal bool TryRetire(uint index)
     {
         int i = (int)index;
         lock (_gate)
         {
-            TweenState observed = GetState(i);
-            if (observed != TweenState.Playing && observed != TweenState.Paused && observed != TweenState.Faulted)
+            if (!TryRetireLocked(i))
             {
                 return false;
             }
-
-            SetState(i, TweenState.Inactive);
-
-            int denseIndex = _sparse[i];
-            int last = _dense[_activeCount - 1];
-            _dense[denseIndex] = last;
-            _sparse[last] = denseIndex;
-            _activeCount--;
         }
 
+        FinishRetire(i);
+        return true;
+    }
+
+    /// <summary>Requires the gate: hides the slot and unlinks it from dense iteration.</summary>
+    private bool TryRetireLocked(int i)
+    {
+        TweenState observed = GetState(i);
+        if (observed != TweenState.Playing && observed != TweenState.Paused && observed != TweenState.Faulted)
+        {
+            return false;
+        }
+
+        SetState(i, TweenState.Inactive);
+
+        int denseIndex = _sparse[i];
+        int last = _dense[_activeCount - 1];
+        _dense[denseIndex] = last;
+        _sparse[last] = denseIndex;
+        _activeCount--;
+        return true;
+    }
+
+    /// <summary>Releases callbacks and recycles the slot once the claim is visible.</summary>
+    private void FinishRetire(int i)
+    {
         uint generation = _generations[i] + 1;
         _generations[i] = generation == 0 ? 1 : generation;
 
@@ -406,8 +424,6 @@ public sealed class TweenStore : IDisposable
                 break;
             }
         }
-
-        return true;
     }
 
     /// <summary>
@@ -433,6 +449,97 @@ public sealed class TweenStore : IDisposable
             _elapsed[i] = position;
             return true;
         }
+    }
+
+    /// <summary>
+    /// Finishes a live tween immediately: emits the final update, the step callback, and the
+    /// completion callback, then settles it. Paused tweens complete too, matching a forced
+    /// end rather than a tick. False when another settler won or the identity is stale.
+    /// </summary>
+    internal bool TryComplete(uint index, uint generation, Action<uint, uint, bool>? settled)
+    {
+        int i = (int)index;
+        Vector128<float> start;
+        Vector128<float> end;
+        EasingKind easing;
+        Func<float, float>? customEasing;
+        int channels;
+        Action<float>? updateFloat;
+        Action<Vec2>? updateVector2;
+        Action<Vec3>? updateVector3;
+        Action<Vec4>? updateVector4;
+        Action? onStep;
+        Action? onComplete;
+
+        lock (_gate)
+        {
+            if (Volatile.Read(ref _generations[i]) != generation)
+            {
+                return false;
+            }
+
+            TweenState observed = GetState(i);
+            if (observed != TweenState.Playing && observed != TweenState.Paused)
+            {
+                return false;
+            }
+
+            start = _starts[i];
+            end = _ends[i];
+            easing = _easings[i];
+            customEasing = _customEasings[i];
+            channels = _channels[i];
+            updateFloat = _updateFloats[i];
+            updateVector2 = _updateVector2s[i];
+            updateVector3 = _updateVector3s[i];
+            updateVector4 = _updateVector4s[i];
+            onStep = _onSteps[i];
+            onComplete = _onCompletes[i];
+
+            if (!TryRetireLocked(i))
+            {
+                return false;
+            }
+        }
+
+        FinishRetire(i);
+
+        try
+        {
+            float factor = easing == EasingKind.Custom
+                ? customEasing!(1.0f)
+                : EasingEvaluator.Evaluate(easing, 1.0f);
+            Vector128<float> current = Vector128.Add(
+                start,
+                Vector128.Multiply(Vector128.Subtract(end, start), Vector128.Create(factor)));
+
+            switch (channels)
+            {
+                case 1:
+                    updateFloat?.Invoke(current.GetElement(0));
+                    break;
+                case 2:
+                    updateVector2?.Invoke(new Vec2(current.GetElement(0), current.GetElement(1)));
+                    break;
+                case 3:
+                    updateVector3?.Invoke(new Vec3(current.GetElement(0), current.GetElement(1), current.GetElement(2)));
+                    break;
+                default:
+                    updateVector4?.Invoke((Vec4)current);
+                    break;
+            }
+
+            onStep?.Invoke();
+            onComplete?.Invoke();
+        }
+        catch (Exception)
+        {
+            settled?.Invoke((uint)i, generation, false);
+            return true;
+        }
+
+        settled?.Invoke((uint)i, generation, true);
+        return true;
     }
 
     /// <summary>

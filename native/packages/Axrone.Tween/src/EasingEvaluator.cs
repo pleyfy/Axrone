@@ -40,6 +40,9 @@ public static class EasingEvaluator
             EasingKind.EaseInBounce => EaseInBounceCurve.Evaluate(t),
             EasingKind.EaseOutBounce => EaseOutBounceCurve.Evaluate(t),
             EasingKind.EaseInOutBounce => EaseInOutBounceCurve.Evaluate(t),
+            EasingKind.EaseInSine => EaseInSineCurve.Evaluate(t),
+            EasingKind.EaseOutSine => EaseOutSineCurve.Evaluate(t),
+            EasingKind.EaseInOutSine => EaseInOutSineCurve.Evaluate(t),
             _ => t,
         };
     }
