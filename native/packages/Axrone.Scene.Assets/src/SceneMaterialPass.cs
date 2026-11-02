@@ -14,7 +14,8 @@ public sealed class SceneMaterialPass
         bool? depthTest = null,
         bool? depthWrite = null,
         bool? cull = null,
-        bool? blend = null)
+        bool? blend = null,
+        SceneBlendState? blendState = null)
     {
         if (string.IsNullOrWhiteSpace(id))
         {
@@ -23,6 +24,8 @@ public sealed class SceneMaterialPass
                 "Material passes require a non-empty id.");
         }
 
+        blendState?.Validate();
+
         Id = id;
         Priority = priority;
         Primitive = primitive;
@@ -30,6 +33,7 @@ public sealed class SceneMaterialPass
         DepthWrite = depthWrite;
         Cull = cull;
         Blend = blend;
+        BlendState = blendState;
     }
 
     /// <summary>Pass identity.</summary>
@@ -52,4 +56,7 @@ public sealed class SceneMaterialPass
 
     /// <summary>Optional blending override.</summary>
     public bool? Blend { get; }
+
+    /// <summary>Optional explicit blend factors and equations.</summary>
+    public SceneBlendState? BlendState { get; }
 }

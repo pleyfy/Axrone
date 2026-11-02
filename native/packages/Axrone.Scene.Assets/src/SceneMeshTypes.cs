@@ -25,7 +25,13 @@ public enum SceneMeshSemantic : byte
     Joints0 = 6,
 
     /// <summary>Skinning joint weights.</summary>
-    Weights0 = 7
+    Weights0 = 7,
+
+    /// <summary>Second skinning joint index set.</summary>
+    Joints1 = 8,
+
+    /// <summary>Second skinning joint weight set.</summary>
+    Weights1 = 9
 }
 
 /// <summary>Primitive topology of a mesh.</summary>

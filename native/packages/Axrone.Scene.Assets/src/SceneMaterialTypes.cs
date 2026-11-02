@@ -101,7 +101,37 @@ public enum SceneMaterialFeatures : uint
     Transmission = 1U << 17,
 
     /// <summary>Iridescence is enabled.</summary>
-    Iridescence = 1U << 18
+    Iridescence = 1U << 18,
+
+    /// <summary>Sheen color texture is present.</summary>
+    SheenColorMap = 1U << 19,
+
+    /// <summary>Sheen roughness texture is present.</summary>
+    SheenRoughnessMap = 1U << 20,
+
+    /// <summary>Transmission texture is present.</summary>
+    TransmissionMap = 1U << 21,
+
+    /// <summary>Volume thickness texture is present.</summary>
+    ThicknessMap = 1U << 22,
+
+    /// <summary>Iridescence texture is present.</summary>
+    IridescenceMap = 1U << 23,
+
+    /// <summary>Iridescence thickness texture is present.</summary>
+    IridescenceThicknessMap = 1U << 24,
+
+    /// <summary>Specular intensity texture is present.</summary>
+    SpecularMap = 1U << 25,
+
+    /// <summary>Specular color texture is present.</summary>
+    SpecularColorMap = 1U << 26,
+
+    /// <summary>Anisotropy texture is present.</summary>
+    AnisotropyMap = 1U << 27,
+
+    /// <summary>Subsurface scattering texture is present.</summary>
+    SubsurfaceMap = 1U << 28
 }
 
 /// <summary>
