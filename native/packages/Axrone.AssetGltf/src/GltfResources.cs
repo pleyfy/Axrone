@@ -56,83 +56,30 @@ public readonly record struct GltfTextureMipLevel(
 /// <summary>KTX2 fast header parser.</summary>
 public static class Ktx2Decoder
 {
-    // KTX2 magic as raw bytes: \xAB/\xBB in a u8 literal would UTF-8-expand to
-    // two bytes each, so the 12-byte signature is spelled out explicitly.
-    private static ReadOnlySpan<byte> Ktx2Identifier =>
-        [0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A];
+    /// <summary>Whether the buffer starts with the KTX2 identifier.</summary>
+    /// <param name="data">Candidate bytes.</param>
+    public static bool IsKtx2(ReadOnlySpan<byte> data) => GltfKtx2Reader.IsKtx2(data);
 
     /// <summary>Tries to parse KTX2 mip levels without transcoding.</summary>
+    /// <param name="data">KTX2 container bytes.</param>
+    /// <param name="payload">Compressed payload view of the container.</param>
+    /// <param name="errorMessage">Failure reason when parsing fails.</param>
+    /// <returns>Whether the container parsed.</returns>
     public static bool TryParse(
         ReadOnlyMemory<byte> data,
         [NotNullWhen(true)] out GltfCompressedTexturePayload? payload,
         out string? errorMessage)
     {
+        if (GltfKtx2Reader.TryRead(data, out GltfKtx2Texture? texture, out GltfImageDecodeError? error))
+        {
+            payload = GltfKtx2Reader.ToPayload(texture);
+            errorMessage = null;
+            return true;
+        }
+
         payload = null;
-        errorMessage = null;
-
-        ReadOnlySpan<byte> span = data.Span;
-        if (span.Length < 80)
-        {
-            errorMessage = "KTX2 header buffer underrun.";
-            return false;
-        }
-
-        if (!span[..12].SequenceEqual(Ktx2Identifier))
-        {
-            errorMessage = "Invalid KTX2 identifier signature.";
-            return false;
-        }
-
-        uint vkFormat = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(12, 4));
-        uint pixelWidth = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(20, 4));
-        uint pixelHeight = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(24, 4));
-        uint pixelDepth = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(28, 4));
-        uint layerCount = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(32, 4));
-        uint faceCount = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(36, 4));
-        uint levelCount = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(40, 4));
-        uint supercompressionScheme = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(44, 4));
-
-        if (pixelDepth > 1 || layerCount > 1 || faceCount > 1)
-        {
-            errorMessage = "3D/Array/Cubemap KTX2 textures are prohibited by runtime profile.";
-            return false;
-        }
-
-        levelCount = Math.Max(1u, levelCount);
-        int levelIndexOffset = 80;
-        int levelIndexSize = (int)levelCount * 24;
-
-        if (span.Length < levelIndexOffset + levelIndexSize)
-        {
-            errorMessage = "KTX2 level index buffer truncated.";
-            return false;
-        }
-
-        var levelsBuilder = ImmutableArray.CreateBuilder<ReadOnlyMemory<byte>>((int)levelCount);
-        for (int i = 0; i < (int)levelCount; i++)
-        {
-            int entryOffset = levelIndexOffset + (i * 24);
-            ulong byteOffset = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(entryOffset, 8));
-            ulong byteLength = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(entryOffset + 8, 8));
-
-            if (byteOffset + byteLength > (ulong)data.Length)
-            {
-                errorMessage = $"KTX2 mip level {i} payload exceeds container boundaries.";
-                return false;
-            }
-
-            levelsBuilder.Add(data.Slice((int)byteOffset, (int)byteLength));
-        }
-
-        payload = new GltfCompressedTexturePayload(
-            (int)vkFormat,
-            (int)pixelWidth,
-            (int)pixelHeight,
-            (int)levelCount,
-            (int)supercompressionScheme,
-            levelsBuilder.MoveToImmutable());
-
-        return true;
+        errorMessage = error?.ToString() ?? "KTX2 container is invalid.";
+        return false;
     }
 
     /// <summary>Maps a Vulkan format to a runtime texture format.</summary>
