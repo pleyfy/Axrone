@@ -95,6 +95,22 @@ public sealed class UiColorPaintTests
     }
 
     [Fact]
+    public void ReadsRotatePaintTransform()
+    {
+        WithFace(UiTestFont.CreateColorV1(UiTestColorV1.GlyphRotate), face =>
+        {
+            face.TryGetColorPaint(0x41, out UiColorPaint root).Should().BeTrue();
+            root.Kind.Should().Be(UiColorPaintKind.Transform);
+            face.TryGetPaintTransform(root, out UiColorAffine affine).Should().BeTrue();
+            float diagonal = MathF.Sqrt(0.5f);
+            affine.XX.Should().BeApproximately(diagonal, 0.001f);
+            affine.YX.Should().BeApproximately(diagonal, 0.001f);
+            affine.XY.Should().BeApproximately(-diagonal, 0.001f);
+            affine.YY.Should().BeApproximately(diagonal, 0.001f);
+        });
+    }
+
+    [Fact]
     public void ReadsCompositePaint()
     {
         WithFace(UiTestFont.CreateColorV1(UiTestColorV1.Composite), face =>

@@ -123,6 +123,12 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
     /// <summary>Gets the backend's missing-texture count.</summary>
     public long MissingTextures => _backend.MissingTextures;
 
+    /// <summary>Gets the number of SDF glyph batches drawn.</summary>
+    public long SdfGlyphBatches => _backend.SdfGlyphBatches;
+
+    /// <summary>Gets the number of coverage glyph batches drawn.</summary>
+    public long CoverageGlyphBatches => _backend.CoverageGlyphBatches;
+
     /// <summary>Gets the backend's completed draw-call count.</summary>
     public long DrawCalls => _backend.DrawCalls;
 

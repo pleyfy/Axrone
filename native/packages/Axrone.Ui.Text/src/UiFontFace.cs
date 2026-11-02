@@ -142,6 +142,47 @@ public sealed class UiFontFace
 
     internal UiGvarData? Gvar => _variation?.Gvar;
 
+    internal UiColorPaintData? ColorPaintGraph => _color?.PaintGraph;
+
+    internal bool TryGetGlyphBounds(int glyphId, out int xMin, out int yMin, out int xMax, out int yMax)
+    {
+        xMin = 0;
+        yMin = 0;
+        xMax = 0;
+        yMax = 0;
+        if ((uint)glyphId >= (uint)GlyphCount)
+        {
+            return false;
+        }
+
+        if (_cff is not null)
+        {
+            UiCffGlyphBounds bounds = _cff.GetBounds(glyphId);
+            if (bounds.IsEmpty)
+            {
+                return false;
+            }
+
+            xMin = bounds.XMin;
+            yMin = bounds.YMin;
+            xMax = bounds.XMax;
+            yMax = bounds.YMax;
+            return true;
+        }
+
+        if (!TryGetGlyphRange(glyphId, out int offset, out int length) || length < 10)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<byte> data = _buffer.Span;
+        xMin = ReadI16(data, offset + 2);
+        yMin = ReadI16(data, offset + 4);
+        xMax = ReadI16(data, offset + 6);
+        yMax = ReadI16(data, offset + 8);
+        return xMax > xMin && yMax > yMin;
+    }
+
     internal UiTrueTypeHintData? HintData => _hints;
 
     internal ReadOnlySpan<float> NormalizedCoordinates => _coordinates;
@@ -316,6 +357,20 @@ public sealed class UiFontFace
     }
 
     public bool HasColorPaintGraph => _color?.PaintGraph is { RootCount: > 0 };
+
+    public bool TryGetColorClip(int codePoint, out UiColorClipBox clip)
+    {
+        clip = default;
+        return _color?.PaintGraph is { } graph &&
+            TryGetBaseGlyph(codePoint, out int glyphId) &&
+            graph.TryGetClip(glyphId, out clip);
+    }
+
+    internal bool TryGetColorClipByGlyph(int glyphId, out UiColorClipBox clip)
+    {
+        clip = default;
+        return _color?.PaintGraph is { } graph && graph.TryGetClip(glyphId, out clip);
+    }
 
     public bool TryGetColorPaint(int codePoint, out UiColorPaint paint)
     {

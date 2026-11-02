@@ -293,7 +293,7 @@ public sealed class UiOpenGlBackendTests
             host.Flush();
 
             // Programs, VAOs and the four GL buffers are recreated from scratch.
-            CountCalls(api, "CreateProgram()").Should().Be(programsBefore + 3);
+            CountCalls(api, "CreateProgram()").Should().Be(programsBefore + 4);
             CountCalls(api, "GenVertexArray() ->").Should().Be(vaosBefore + 3);
             CountCalls(api, "GenBuffer() ->").Should().Be(buffersBefore + 4);
 

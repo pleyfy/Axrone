@@ -44,6 +44,32 @@ public sealed class SceneUiHostGlTextTests
     }
 
     [Fact]
+    public void CoverageFallbackRendersWhenSdfIsDisabled()
+    {
+        MockGLApi api = new();
+        using GLContext context = new(api);
+        using UiFontProvider fonts = CreateFonts(out UiFontFamilyId family, out UiTextStyle style);
+        using SceneWorld world = CreateWorld();
+        using UiHostGlyphAtlasUploader uploader = new(context);
+        using SceneUiHostBridge bridge = new(world, BridgeOptions(fonts, family, style, uploader, enableSdf: false));
+        using SceneUiHostGlRenderer renderer = new(context, bridge, uploader);
+        SceneActor actor = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
+        bridge.Sync();
+        bridge.Update(in Viewport);
+
+        renderer.Render(world, null, in Viewport, bridge);
+
+        renderer.MissedGlyphs.Should().Be(0);
+        renderer.MissingTextures.Should().Be(0);
+        renderer.SdfGlyphBatches.Should().Be(0);
+        renderer.CoverageGlyphBatches.Should().BeGreaterThan(0);
+
+        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        UiFrame frame = host!.BuildFrame(in Viewport);
+        AssertAtlasFormat(bridge, frame, UiGlyphFormat.Alpha8);
+    }
+
+    [Fact]
     public void ScreenHostDrawsTextWithZeroMissingResources()
     {
         MockGLApi api = new();
@@ -62,12 +88,16 @@ public sealed class SceneUiHostGlTextTests
         renderer.UsesSharedAtlasUploader.Should().BeTrue();
         renderer.MissedGlyphs.Should().Be(0);
         renderer.MissingTextures.Should().Be(0);
+        renderer.SdfGlyphBatches.Should().BeGreaterThan(0);
+        renderer.CoverageGlyphBatches.Should().Be(0);
         renderer.DrawCalls.Should().BeGreaterThan(0);
         renderer.LastScreenHosts.Should().Be(1);
 
         bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
         UiFrame frame = host!.BuildFrame(in Viewport);
         frame.Commands.ToArray().Should().Contain(static c => c.Kind == UiRenderCommandKind.Text);
+        AssertAtlasFormat(bridge, frame, UiGlyphFormat.Sdf);
+        AssertPageFormat(bridge, uploader, UiGlyphFormat.Sdf);
     }
 
     [Fact]
@@ -89,6 +119,8 @@ public sealed class SceneUiHostGlTextTests
         renderer.UsesSharedAtlasUploader.Should().BeTrue();
         renderer.MissedGlyphs.Should().Be(0);
         renderer.MissingTextures.Should().Be(0);
+        renderer.SdfGlyphBatches.Should().BeGreaterThan(0);
+        renderer.CoverageGlyphBatches.Should().Be(0);
         renderer.DrawCalls.Should().BeGreaterThan(0);
         renderer.LastWorldHosts.Should().Be(1);
 
@@ -96,23 +128,60 @@ public sealed class SceneUiHostGlTextTests
         UiViewport surface = host!.SurfaceViewport;
         UiFrame frame = host.BuildFrame(in surface);
         frame.Commands.ToArray().Should().Contain(static c => c.Kind == UiRenderCommandKind.Text);
+        AssertAtlasFormat(bridge, frame, UiGlyphFormat.Sdf);
     }
 
-    private static UiHostRuntimeOptions RuntimeOptions(UiFontProvider fonts, UiFontFamilyId family, UiTextStyle style, UiHostGlyphAtlasUploader uploader) =>
+    private static void AssertAtlasFormat(SceneUiHostBridge bridge, UiFrame frame, UiGlyphFormat expected)
+    {
+        UiTextLayoutId layoutId = UiTextLayoutId.Invalid;
+        for (int i = 0; i < frame.Commands.Length; i++)
+        {
+            if (frame.Commands[i].Kind == UiRenderCommandKind.Text)
+            {
+                layoutId = frame.Commands[i].TextLayout;
+                break;
+            }
+        }
+
+        layoutId.IsValid.Should().BeTrue();
+        bridge.Text.TryGetLayout(layoutId, out _, out UiFontFaceId face).Should().BeTrue();
+        bridge.Text.GlyphAtlas.TryGetEntry(face, 'A', out UiGlyphAtlasEntry entry).Should().BeTrue();
+        entry.Format.Should().Be(expected);
+    }
+
+    private static UiHostRuntimeOptions RuntimeOptions(UiFontProvider fonts, UiFontFamilyId family, UiTextStyle style, UiHostGlyphAtlasUploader uploader, bool enableSdf = true) =>
         new()
         {
             Fonts = fonts,
             DefaultFamily = family,
             DefaultTextStyle = style,
             GlyphUploader = uploader,
+            EnableSdfGlyphs = enableSdf,
         };
 
     private static SceneUiHostBridgeOptions BridgeOptions(
         UiFontProvider fonts,
         UiFontFamilyId family,
         UiTextStyle style,
-        UiHostGlyphAtlasUploader uploader) =>
-        new() { Assets = CreateTable(), Runtime = RuntimeOptions(fonts, family, style, uploader) };
+        UiHostGlyphAtlasUploader uploader,
+        bool enableSdf = true) =>
+        new() { Assets = CreateTable(), Runtime = RuntimeOptions(fonts, family, style, uploader, enableSdf) };
+
+    private static void AssertPageFormat(SceneUiHostBridge bridge, UiHostGlyphAtlasUploader uploader, UiGlyphFormat expected)
+    {
+        bool found = false;
+        ReadOnlySpan<UiGlyphAtlasPageId> pages = bridge.Text.GlyphAtlas.Pages;
+        for (int i = 0; i < pages.Length; i++)
+        {
+            if (uploader.TryGetPageFormat(pages[i], out UiGlyphFormat format))
+            {
+                format.Should().Be(expected);
+                found = true;
+            }
+        }
+
+        found.Should().BeTrue();
+    }
 
     private static UiFontProvider CreateFonts(out UiFontFamilyId family, out UiTextStyle style)
     {
