@@ -51,6 +51,28 @@ public sealed class UiColorFontTests
     }
 
     [Fact]
+    public void ParsesColrV1WhenOnlyV0RecordsAreUsed()
+    {
+        WithFace(UiTestFont.CreateColor(colrV1: true), face =>
+        {
+            face.HasColorLayers.Should().BeTrue();
+            var layers = new UiColorLayer[4];
+            face.GetColorLayers(0x41, layers).Should().Be(2);
+            layers[0].Should().Be(new UiColorLayer(2, 0));
+            layers[1].Should().Be(new UiColorLayer(3, 1));
+            face.TryGetColor(1, 1, out uint color).Should().BeTrue();
+            color.Should().Be(0xFF0000FFu);
+        });
+    }
+
+    [Fact]
+    public void RejectsColrV1PaintGraphs()
+    {
+        UiFontError error = ParseError(UiTestFont.CreateColor(colrV1: true, paintGraph: true));
+        error.Code.Should().Be(UiFontErrorCode.UnsupportedColorFormat);
+    }
+
+    [Fact]
     public void RejectsMalformedColorTables()
     {
         UiFontError error = ParseError(UiTestFont.CreateColor(corrupt: true));

@@ -28,11 +28,36 @@ internal static class UiTestFont
     public static byte[] CreateVariation(bool avar = false, bool corruptGvar = false) =>
         CreateCore(4, false, 0, variation: true, avar: avar, corruptGvar: corruptGvar);
 
-    public static byte[] CreateColor(bool corrupt = false) =>
-        CreateCore(4, false, 0, color: true, colorCorrupt: corrupt);
+    public static byte[] CreateColor(bool corrupt = false, bool colrV1 = false, bool paintGraph = false) =>
+        CreateCore(4, false, 0, color: true, colorCorrupt: corrupt, colrV1: colrV1, colorPaint: paintGraph);
 
-    public static byte[] CreateHinted(bool prepYAxis = false) =>
-        CreateCore(4, false, 0, hinted: true, prepYAxis: prepYAxis);
+    public static byte[] CreateHinted(
+        bool prepYAxis = false,
+        bool compositeInstructions = false,
+        bool scaledComposite = false) =>
+        CreateCore(
+            4,
+            false,
+            0,
+            hinted: true,
+            prepYAxis: prepYAxis,
+            compositeInstructions: compositeInstructions,
+            scaledComposite: scaledComposite);
+
+    public static byte[] CreateMetricsVariation(
+        bool withHvar = true,
+        bool withMvar = true,
+        bool corruptHvar = false,
+        bool corruptMvar = false) =>
+        CreateCore(
+            4,
+            false,
+            0,
+            variation: true,
+            hvar: withHvar,
+            mvar: withMvar,
+            corruptHvar: corruptHvar,
+            corruptMvar: corruptMvar);
 
     public static byte[] CreateCff2Tagged()
     {
@@ -61,7 +86,15 @@ internal static class UiTestFont
         bool color = false,
         bool colorCorrupt = false,
         bool hinted = false,
-        bool prepYAxis = false)
+        bool prepYAxis = false,
+        bool hvar = false,
+        bool mvar = false,
+        bool corruptHvar = false,
+        bool corruptMvar = false,
+        bool compositeInstructions = false,
+        bool scaledComposite = false,
+        bool colrV1 = false,
+        bool colorPaint = false)
     {
         List<byte[]> glyphs =
         [
@@ -135,6 +168,23 @@ internal static class UiTestFont
                 (0, 0),
                 (300, 740),
                 (600, 0));
+            if (compositeInstructions)
+            {
+                glyphs[10] = CompositeGlyphWithInstructions(
+                    2,
+                    100,
+                    0,
+                    [0x00, 0xB0, 0x01, 0xB0, 0xC0, 0x38],
+                    100,
+                    0,
+                    700,
+                    700);
+            }
+
+            if (scaledComposite)
+            {
+                glyphs[10] = CompositeGlyphWithScale(2, 100, 0, 0x2000, 100, 0, 400, 370);
+            }
         }
 
         List<(int Left, int Right, int Value)> kernPairs =
@@ -161,7 +211,15 @@ internal static class UiTestFont
             color,
             colorCorrupt,
             hinted,
-            prepYAxis);
+            prepYAxis,
+            hvar,
+            mvar,
+            corruptHvar,
+            corruptMvar,
+            compositeInstructions,
+            scaledComposite,
+            colrV1,
+            colorPaint);
     }
 
     public static byte[] CreateFallback()
@@ -341,7 +399,15 @@ internal static class UiTestFont
         bool color = false,
         bool colorCorrupt = false,
         bool hinted = false,
-        bool prepYAxis = false)
+        bool prepYAxis = false,
+        bool hvar = false,
+        bool mvar = false,
+        bool corruptHvar = false,
+        bool corruptMvar = false,
+        bool compositeInstructions = false,
+        bool scaledComposite = false,
+        bool colrV1 = false,
+        bool colorPaint = false)
     {
         var tables = new List<(string Tag, byte[] Data)>
         {
@@ -385,7 +451,7 @@ internal static class UiTestFont
 
         if (color)
         {
-            tables.Add(("COLR", BuildColr(colorCorrupt)));
+            tables.Add(("COLR", BuildColr(colorCorrupt, colrV1, colorPaint)));
             tables.Add(("CPAL", BuildCpal()));
         }
 
@@ -397,6 +463,16 @@ internal static class UiTestFont
             {
                 tables.Add(("prep", [0x00]));
             }
+        }
+
+        if (hvar)
+        {
+            tables.Add(("HVAR", BuildHvar(glyphs.Count, corruptHvar)));
+        }
+
+        if (mvar)
+        {
+            tables.Add(("MVAR", BuildMvar(corruptMvar)));
         }
 
         tables.Sort(static (left, right) => string.CompareOrdinal(left.Tag, right.Tag));
@@ -803,14 +879,26 @@ internal static class UiTestFont
         return [.. data];
     }
 
-    private static byte[] BuildColr(bool corrupt)
+    private static byte[] BuildColr(bool corrupt, bool v1, bool paintGraph)
     {
-        var data = new List<byte>(32);
-        WriteU16(data, 0);
+        int headerSize = v1 ? 34 : 14;
+        int baseOffset = headerSize;
+        int layerOffset = baseOffset + 6;
+        var data = new List<byte>(layerOffset + 8);
+        WriteU16(data, v1 ? 1 : 0);
         WriteU16(data, 1);
-        WriteU32(data, 14);
-        WriteU32(data, 20);
+        WriteU32(data, (uint)baseOffset);
+        WriteU32(data, (uint)layerOffset);
         WriteU16(data, corrupt ? 1 : 2);
+        if (v1)
+        {
+            WriteU32(data, paintGraph ? (uint)baseOffset : 0);
+            WriteU32(data, 0);
+            WriteU32(data, 0);
+            WriteU32(data, 0);
+            WriteU32(data, 0);
+        }
+
         WriteU16(data, 2);
         WriteU16(data, 0);
         WriteU16(data, 2);
@@ -838,6 +926,55 @@ internal static class UiTestFont
         return [.. data];
     }
 
+    public static byte[] CompositeGlyphWithScale(
+        int glyphId,
+        int dx,
+        int dy,
+        short scale,
+        int xMin,
+        int yMin,
+        int xMax,
+        int yMax)
+    {
+        var data = new List<byte>(18);
+        WriteI16(data, -1);
+        WriteI16(data, xMin);
+        WriteI16(data, yMin);
+        WriteI16(data, xMax);
+        WriteI16(data, yMax);
+        WriteU16(data, 0x000B);
+        WriteU16(data, glyphId);
+        WriteI16(data, dx);
+        WriteI16(data, dy);
+        WriteI16(data, scale);
+        return [.. data];
+    }
+
+    public static byte[] CompositeGlyphWithInstructions(
+        int glyphId,
+        int dx,
+        int dy,
+        byte[] instructions,
+        int xMin,
+        int yMin,
+        int xMax,
+        int yMax)
+    {
+        var data = new List<byte>(16 + instructions.Length);
+        WriteI16(data, -1);
+        WriteI16(data, xMin);
+        WriteI16(data, yMin);
+        WriteI16(data, xMax);
+        WriteI16(data, yMax);
+        WriteU16(data, 0x0103);
+        WriteU16(data, glyphId);
+        WriteI16(data, dx);
+        WriteI16(data, dy);
+        WriteU16(data, instructions.Length);
+        data.AddRange(instructions);
+        return [.. data];
+    }
+
     private static byte[] BuildCvt(params int[] values)
     {
         var data = new List<byte>(values.Length * 2);
@@ -847,6 +984,90 @@ internal static class UiTestFont
         }
 
         return [.. data];
+    }
+
+    private static byte[] BuildHvar(int glyphCount, bool corrupt)
+    {
+        byte[] store = BuildItemVariationStore([100, 50]);
+        byte[] advanceMap = BuildDeltaSetIndexMap(glyphCount, static glyph => glyph == 3 ? 1 : 0);
+        byte[] lsbMap = BuildDeltaSetIndexMap(glyphCount, static glyph => glyph == 2 ? 1 : 0);
+        int storeOffset = corrupt ? 0xFFFF : 20;
+        int advanceMapOffset = 20 + store.Length;
+        int lsbMapOffset = advanceMapOffset + advanceMap.Length;
+        var table = new List<byte>(lsbMapOffset + lsbMap.Length);
+        WriteU32(table, 0x00010000u);
+        WriteU32(table, (uint)storeOffset);
+        WriteU32(table, (uint)advanceMapOffset);
+        WriteU32(table, (uint)lsbMapOffset);
+        WriteU32(table, 0);
+        table.AddRange(store);
+        table.AddRange(advanceMap);
+        table.AddRange(lsbMap);
+        return [.. table];
+    }
+
+    private static byte[] BuildMvar(bool corrupt)
+    {
+        byte[] store = BuildItemVariationStore([50, -30, 20]);
+        int storeOffset = corrupt ? 0xFFFF : 38;
+        var table = new List<byte>(38 + store.Length);
+        WriteU16(table, 1);
+        WriteU16(table, 0);
+        WriteU16(table, 0);
+        WriteU16(table, 8);
+        WriteU16(table, 3);
+        WriteU32(table, (uint)storeOffset);
+        WriteU32(table, 0x68617363u);
+        WriteU16(table, 0);
+        WriteU16(table, 0);
+        WriteU32(table, 0x68647363u);
+        WriteU16(table, 0);
+        WriteU16(table, 1);
+        WriteU32(table, 0x686C6770u);
+        WriteU16(table, 0);
+        WriteU16(table, 2);
+        table.AddRange(store);
+        return [.. table];
+    }
+
+    private static byte[] BuildItemVariationStore(int[] deltas)
+    {
+        const int RegionListOffset = 12;
+        const int ItemDataOffset = 22;
+        var table = new List<byte>(ItemDataOffset + 8 + deltas.Length);
+        WriteU16(table, 1);
+        WriteU32(table, RegionListOffset);
+        WriteU16(table, 1);
+        WriteU32(table, ItemDataOffset);
+        WriteU16(table, 1);
+        WriteU16(table, 1);
+        WriteI16(table, 0);
+        WriteI16(table, 16384);
+        WriteI16(table, 16384);
+        WriteU16(table, (ushort)deltas.Length);
+        WriteU16(table, 0);
+        WriteU16(table, 1);
+        WriteU16(table, 0);
+        foreach (int delta in deltas)
+        {
+            table.Add((byte)(sbyte)delta);
+        }
+
+        return [.. table];
+    }
+
+    private static byte[] BuildDeltaSetIndexMap(int glyphCount, Func<int, int> inner)
+    {
+        var table = new List<byte>(4 + glyphCount);
+        table.Add(0);
+        table.Add(0);
+        WriteU16(table, (ushort)glyphCount);
+        for (int glyph = 0; glyph < glyphCount; glyph++)
+        {
+            table.Add((byte)inner(glyph));
+        }
+
+        return [.. table];
     }
 
     private static byte[] BuildFvar()

@@ -71,4 +71,33 @@ public sealed class ZeroAllocationTests
         forwarder.BackpressureDropCount.Should().Be(0);
         forwarder.LoopDropCount.Should().Be(0);
     }
+
+    [Fact]
+    public void TimerAdvanceAndDrain_DoesNotAllocateInSteadyState()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var scheduler = new EventScheduler<int>(
+            new EventSchedulerOptions(16) { MaxTimers = 4 },
+            clock);
+        using var timer = scheduler.ScheduleRecurring(TimeSpan.FromTicks(1), 1);
+
+        for (int i = 0; i < WarmupIterations; i++)
+        {
+            clock.AdvanceTicks(1);
+            scheduler.AdvanceDueTimers();
+            scheduler.TryDequeue(out _);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < MeasuredIterations; i++)
+        {
+            clock.AdvanceTicks(1);
+            scheduler.AdvanceDueTimers();
+            scheduler.TryDequeue(out _);
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        allocated.Should().Be(0);
+        timer.FiredTicks.Should().BeGreaterThan(WarmupIterations);
+    }
 }

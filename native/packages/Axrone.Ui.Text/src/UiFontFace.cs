@@ -24,6 +24,10 @@ public sealed class UiFontFace
     private readonly UiColorData? _color;
     private readonly UiTrueTypeHintData? _hints;
     private readonly float[] _coordinates;
+    private readonly int _baseAscender;
+    private readonly int _baseDescender;
+    private readonly int _baseLineGap;
+    private bool _activeVariation;
     private readonly int[] _reverseCodePoints;
     private readonly int _hmtxOffset;
     private readonly int _numberOfHMetrics;
@@ -69,9 +73,9 @@ public sealed class UiFontFace
         Style = style;
         UnitsPerEm = unitsPerEm;
         GlyphCount = glyphCount;
-        Ascender = ascender;
-        Descender = descender;
-        LineGap = lineGap;
+        _baseAscender = ascender;
+        _baseDescender = descender;
+        _baseLineGap = lineGap;
         OutlineFormat = outlineFormat;
         _cmap = cmap;
         _cff = cff;
@@ -120,11 +124,11 @@ public sealed class UiFontFace
 
     public bool HasHinting => _hints is not null;
 
-    public int Ascender { get; }
+    public int Ascender => GetAscender();
 
-    public int Descender { get; }
+    public int Descender => GetDescender();
 
-    public int LineGap { get; }
+    public int LineGap => GetLineGap();
 
     public UiFontOutlineFormat OutlineFormat { get; }
 
@@ -236,29 +240,27 @@ public sealed class UiFontFace
         }
 
         resolved.CopyTo(_coordinates);
+        bool active = false;
+        for (int i = 0; i < resolved.Length; i++)
+        {
+            if (resolved[i] != 0.0f)
+            {
+                active = true;
+                break;
+            }
+        }
+
+        _activeVariation = active;
         return true;
     }
 
     internal void ClearVariation()
     {
         _coordinates.AsSpan().Clear();
+        _activeVariation = false;
     }
 
-    internal bool HasActiveVariation
-    {
-        get
-        {
-            for (int i = 0; i < _coordinates.Length; i++)
-            {
-                if (_coordinates[i] != 0.0f)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
+    internal bool HasActiveVariation => _activeVariation;
 
     private static float Normalize(float value, in UiFontAxis axis)
     {
@@ -467,9 +469,29 @@ public sealed class UiFontFace
             height = Math.Max(0, yMax - yMin);
         }
 
+        if (_activeVariation && _variation?.Hvar is { } hvar)
+        {
+            bearingX += hvar.GetLsbDelta(data, glyphId, _coordinates);
+        }
+
         metrics = new UiGlyphMetrics(codePoint, advance, bearingX, bearingY, width, height);
         return true;
     }
+
+    private int GetAscender() =>
+        _activeVariation && _variation?.Mvar is { } mvar
+            ? _baseAscender + mvar.GetAscenderDelta(_buffer.Span, _coordinates)
+            : _baseAscender;
+
+    private int GetDescender() =>
+        _activeVariation && _variation?.Mvar is { } mvar
+            ? _baseDescender + mvar.GetDescenderDelta(_buffer.Span, _coordinates)
+            : _baseDescender;
+
+    private int GetLineGap() =>
+        _activeVariation && _variation?.Mvar is { } mvar
+            ? _baseLineGap + mvar.GetLineGapDelta(_buffer.Span, _coordinates)
+            : _baseLineGap;
 
     public float GetKerning(int leftCodePoint, int rightCodePoint)
     {
@@ -539,7 +561,13 @@ public sealed class UiFontFace
     internal int ReadAdvance(ReadOnlySpan<byte> data, int glyphId)
     {
         int index = Math.Min(glyphId, _numberOfHMetrics - 1);
-        return ReadU16(data, _hmtxOffset + (index * 4));
+        int advance = ReadU16(data, _hmtxOffset + (index * 4));
+        if (_activeVariation && _variation?.Hvar is { } hvar)
+        {
+            advance += hvar.GetAdvanceDelta(data, glyphId, _coordinates);
+        }
+
+        return advance < 0 ? 0 : advance;
     }
 
     internal int ReadLeftSideBearing(ReadOnlySpan<byte> data, int glyphId)

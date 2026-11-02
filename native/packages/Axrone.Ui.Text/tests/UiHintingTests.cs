@@ -233,6 +233,77 @@ public sealed class UiHintingTests
     }
 
     [Fact]
+    public void HintsCompositeComponents()
+    {
+        using var provider = new UiFontProvider();
+        UiFontFaceId face = provider.RegisterFace(
+            UiTestFont.CreateHinted(),
+            new UiFontFaceDescriptor("HintedComposite", UiFontWeight.Normal, UiFontStyle.Normal),
+            out UiFontError error);
+        face.IsValid.Should().BeTrue(error.Message);
+
+        var rasterizer = new UiGlyphRasterizer(provider);
+        rasterizer.TryRasterize(face, 0x42, 10.0f, out UiGlyphBitmap hinted, out error)
+            .Should().BeTrue(error.Message);
+        byte[] hintedAlpha = hinted.Alpha.ToArray();
+
+        rasterizer.TryRasterize(face, 0x42, 10.0f, out UiGlyphBitmap repeated, out _).Should().BeTrue();
+        repeated.Alpha.ToArray().Should().Equal(hintedAlpha);
+
+        rasterizer.EnableHinting = false;
+        rasterizer.TryRasterize(face, 0x42, 10.0f, out UiGlyphBitmap plain, out error)
+            .Should().BeTrue(error.Message);
+        plain.Alpha.SequenceEqual(hintedAlpha).Should().BeFalse();
+    }
+
+    [Fact]
+    public void AppliesCompositeGlyphInstructions()
+    {
+        using var withProvider = new UiFontProvider();
+        UiFontFaceId withFace = withProvider.RegisterFace(
+            UiTestFont.CreateHinted(compositeInstructions: true),
+            new UiFontFaceDescriptor("CompositeInstructions", UiFontWeight.Normal, UiFontStyle.Normal),
+            out UiFontError error);
+        withFace.IsValid.Should().BeTrue(error.Message);
+
+        using var withoutProvider = new UiFontProvider();
+        UiFontFaceId withoutFace = withoutProvider.RegisterFace(
+            UiTestFont.CreateHinted(),
+            new UiFontFaceDescriptor("CompositeInstructions", UiFontWeight.Normal, UiFontStyle.Normal),
+            out _);
+
+        var withRasterizer = new UiGlyphRasterizer(withProvider);
+        var withoutRasterizer = new UiGlyphRasterizer(withoutProvider);
+        withRasterizer.TryRasterize(withFace, 0x42, 100.0f, out UiGlyphBitmap withInstructions, out error)
+            .Should().BeTrue(error.Message);
+        byte[] alpha = withInstructions.Alpha.ToArray();
+        withoutRasterizer.TryRasterize(withoutFace, 0x42, 100.0f, out UiGlyphBitmap withoutInstructions, out _)
+            .Should().BeTrue();
+        withoutInstructions.Alpha.SequenceEqual(alpha).Should().BeFalse();
+    }
+
+    [Fact]
+    public void HintsScaledCompositeComponents()
+    {
+        using var provider = new UiFontProvider();
+        UiFontFaceId face = provider.RegisterFace(
+            UiTestFont.CreateHinted(scaledComposite: true),
+            new UiFontFaceDescriptor("ScaledComposite", UiFontWeight.Normal, UiFontStyle.Normal),
+            out UiFontError error);
+        face.IsValid.Should().BeTrue(error.Message);
+
+        var rasterizer = new UiGlyphRasterizer(provider);
+        rasterizer.TryRasterize(face, 0x42, 10.0f, out UiGlyphBitmap hinted, out error)
+            .Should().BeTrue(error.Message);
+        byte[] hintedAlpha = hinted.Alpha.ToArray();
+
+        rasterizer.EnableHinting = false;
+        rasterizer.TryRasterize(face, 0x42, 10.0f, out UiGlyphBitmap plain, out error)
+            .Should().BeTrue(error.Message);
+        plain.Alpha.SequenceEqual(hintedAlpha).Should().BeFalse();
+    }
+
+    [Fact]
     public void WarmHintedRasterizationDoesNotAllocate()
     {
         using var provider = new UiFontProvider();
@@ -244,14 +315,17 @@ public sealed class UiHintingTests
         for (int i = 0; i < 32; i++)
         {
             _ = rasterizer.TryRasterize(face, 0x41, 10.0f, out _, out _);
+            _ = rasterizer.TryRasterize(face, 0x42, 10.0f, out _, out _);
         }
 
         bool rasterized = true;
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 64; i++)
         {
-            rasterized &= rasterizer.TryRasterize(face, 0x41, 10.0f, out UiGlyphBitmap bitmap, out _);
-            rasterized &= !bitmap.IsEmpty;
+            rasterized &= rasterizer.TryRasterize(face, 0x41, 10.0f, out UiGlyphBitmap simple, out _);
+            rasterized &= !simple.IsEmpty;
+            rasterized &= rasterizer.TryRasterize(face, 0x42, 10.0f, out UiGlyphBitmap composite, out _);
+            rasterized &= !composite.IsEmpty;
         }
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;

@@ -106,6 +106,8 @@
     <Project Path="packages/Axrone.Ui.Scene/tests/Axrone.Ui.Scene.Tests.csproj" />
     <Project Path="packages/Axrone.Ui.Scene.OpenGL/Axrone.Ui.Scene.OpenGL.csproj" />
     <Project Path="packages/Axrone.Ui.Scene.OpenGL/tests/Axrone.Ui.Scene.OpenGL.Tests.csproj" />
+    <Project Path="packages/Axrone.Ui.Scene.Runtime/Axrone.Ui.Scene.Runtime.csproj" />
+    <Project Path="packages/Axrone.Ui.Scene.Runtime/tests/Axrone.Ui.Scene.Runtime.Tests.csproj" />
     <Project Path="packages/Axrone.Ui.Assets/Axrone.Ui.Assets.csproj" />
     <Project Path="packages/Axrone.Ui.Assets/tests/Axrone.Ui.Assets.Tests.csproj" />
     <Project Path="packages/Axrone.Ui.Controls/Axrone.Ui.Controls.csproj" />
