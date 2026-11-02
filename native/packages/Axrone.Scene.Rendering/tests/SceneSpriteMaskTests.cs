@@ -134,6 +134,8 @@ public sealed class SceneSpriteMaskTests
         item.MaskKind.Should().Be(SceneSpriteMaskKind.Ellipse);
         item.MaskRect.Should().Be(new Vec4(0.2f, 0.2f, 0.6f, 0.6f));
         item.MaskInvert.Should().BeTrue();
+        item.MaskFeather.Should().Be(0.0f);
+        item.MaskCornerRadius.Should().Be(0.0f);
     }
 
     [Fact]
@@ -145,6 +147,8 @@ public sealed class SceneSpriteMaskTests
             Kind = SceneSpriteMaskKind.Ellipse,
             Rect = new Vec4(0.1f, 0.2f, 0.3f, 0.4f),
             Invert = true,
+            Feather = 0.2f,
+            CornerRadius = 0.25f,
             Enabled = false
         };
 
@@ -155,6 +159,8 @@ public sealed class SceneSpriteMaskTests
         restored.Kind.Should().Be(SceneSpriteMaskKind.Ellipse);
         restored.Rect.Should().Be(new Vec4(0.1f, 0.2f, 0.3f, 0.4f));
         restored.Invert.Should().BeTrue();
+        restored.Feather.Should().BeApproximately(0.2f, 1e-6f);
+        restored.CornerRadius.Should().BeApproximately(0.25f, 1e-6f);
         restored.Enabled.Should().BeFalse();
     }
 
