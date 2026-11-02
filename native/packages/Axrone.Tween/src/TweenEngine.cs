@@ -139,7 +139,7 @@ public sealed class TweenEngine : IDisposable
             delta = MaxDelta.Value;
         }
 
-        int completed =         _store.Update(delta, TimeScale, _settledHook);
+        int completed = _store.Update(delta, TimeScale, _settledHook);
         if (completed > 0)
         {
             _telemetry.RecordCompleted(completed);
