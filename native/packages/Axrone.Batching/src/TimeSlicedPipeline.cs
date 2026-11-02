@@ -38,6 +38,7 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
     private readonly TripleBuffer<T> _buffer;
     private readonly BatchStride _strideBounds;
     private readonly BatchingTelemetry _telemetry;
+    private readonly Func<long>? _timestampProvider;
     private int _disposed;
     private TripleBufferSnapshot<T> _active;
     private bool _hasActive;
@@ -78,10 +79,26 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
     /// <param name="meterName">OpenTelemetry meter name.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="capacity"/> is not positive.</exception>
     public TimeSlicedPipeline(int capacity, BatchStride stride, string meterName)
+        : this(capacity, stride, meterName, timestampProvider: null)
+    {
+    }
+
+    /// <summary>Creates a pipeline with an injected timestamp source for deterministic slicing tests.</summary>
+    /// <param name="capacity">Elements per buffer slot; must be positive.</param>
+    /// <param name="stride">Calibrator stride bounds.</param>
+    /// <param name="meterName">OpenTelemetry meter name.</param>
+    /// <param name="timestampProvider">Timestamp source; <see langword="null"/> uses <see cref="Stopwatch"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="capacity"/> is not positive.</exception>
+    internal TimeSlicedPipeline(
+        int capacity,
+        BatchStride stride,
+        string meterName,
+        Func<long>? timestampProvider)
     {
         _buffer = new TripleBuffer<T>(capacity);
         _strideBounds = stride;
         _telemetry = new BatchingTelemetry(meterName);
+        _timestampProvider = timestampProvider;
         _active = default;
         _hasActive = false;
         _cursor = 0;
@@ -129,7 +146,7 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
         var items = _active.Items.Span;
         var length = items.Length;
         var processed = 0;
-        var timestamp = Stopwatch.GetTimestamp();
+        var timestamp = GetTimestamp();
 
         while (_cursor < length)
         {
@@ -161,7 +178,7 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
 
             kernel.Execute(items.Slice(_cursor, chunk));
 
-            var now = Stopwatch.GetTimestamp();
+            var now = GetTimestamp();
             UpdateCalibration(now - timestamp, chunk);
             timestamp = now;
 
@@ -200,7 +217,7 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
         var items = _active.Items.Span;
         var length = items.Length;
         var processed = 0;
-        var timestamp = Stopwatch.GetTimestamp();
+        var timestamp = GetTimestamp();
 
         while (_cursor < length)
         {
@@ -236,7 +253,7 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
                 kernel.Execute(ref window[i]);
             }
 
-            var now = Stopwatch.GetTimestamp();
+            var now = GetTimestamp();
             UpdateCalibration(now - timestamp, chunk);
             timestamp = now;
 
@@ -272,7 +289,7 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
         where TVisitor : struct, IBatchVisitor<T, TState>
         where TState : allows ref struct
     {
-        var start = Stopwatch.GetTimestamp();
+        var start = GetTimestamp();
         ThrowIfTerminated();
         if (!EnsureActive())
         {
@@ -283,7 +300,7 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
         visitor.Visit(remainder, ref state);
 
         var visited = remainder.Length;
-        _telemetry.RecordSlice(visited, (Stopwatch.GetTimestamp() - start) * 1000d / Stopwatch.Frequency);
+        _telemetry.RecordSlice(visited, (GetTimestamp() - start) * 1000d / Stopwatch.Frequency);
 
         _hasActive = false;
         _cursor = 0;
@@ -338,6 +355,10 @@ public sealed partial class TimeSlicedPipeline<T> : IBatchProducer<T>, IBatchSli
         _cursor = 0;
         return _cursor < _active.Items.Length;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private long GetTimestamp() =>
+        _timestampProvider is null ? Stopwatch.GetTimestamp() : _timestampProvider();
 
     private void UpdateCalibration(long ticksTaken, int itemsProcessed)
     {

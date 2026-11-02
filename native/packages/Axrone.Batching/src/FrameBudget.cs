@@ -48,7 +48,11 @@ public readonly struct FrameBudget
     /// <summary>A budget that never expires, for runs that should not slice.</summary>
     public static FrameBudget Infinite => new(Stopwatch.GetTimestamp(), NeverDeadline);
 
-    private FrameBudget(long startTicks, long deadlineTicks)
+    /// <summary>
+    /// Creates a budget from explicit timestamp ticks. Used by deterministic tests that drive the
+    /// pipeline through an injected timestamp source.
+    /// </summary>
+    internal FrameBudget(long startTicks, long deadlineTicks)
     {
         StartTicks = startTicks;
         DeadlineTicks = deadlineTicks;
