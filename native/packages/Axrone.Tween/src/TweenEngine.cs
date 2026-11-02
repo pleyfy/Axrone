@@ -262,6 +262,13 @@ public sealed class TweenEngine : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Finishes a live tween immediately: fires the final update, step, and completion
+    /// callbacks, then settles it. Paused tweens complete too. False for stale identities
+    /// or tweens another settler already claimed.
+    /// </summary>
+    public bool Complete(TweenId id) => _store.TryComplete(id.Index, id.Generation, _settledHook);
+
     /// <summary>Pauses a playing tween.</summary>
     public bool Pause(TweenId id) =>
         _store.TryTransition(id.Index, id.Generation, TweenState.Playing, TweenState.Playing, TweenState.Paused, null);
