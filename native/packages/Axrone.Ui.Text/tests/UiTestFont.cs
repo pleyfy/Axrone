@@ -6,10 +6,20 @@ internal enum UiTestColorV1
 {
     None,
     Linear,
+    LinearAlpha,
     Glyph,
+    GlyphSolid,
+    GlyphSolidAlpha,
+    ClipGlyph,
     Layers,
     Transform,
+    TransformGlyph,
+    GlyphScale,
+    GlyphRotate,
     Composite,
+    CompositePlus,
+    CompositeMultiply,
+    CompositeUnsupported,
     ColrGlyph,
     Unsupported,
     Corrupt,
@@ -946,11 +956,21 @@ internal static class UiTestFont
 
     private static byte[] BuildColorV1(UiTestColorV1 mode) => mode switch
     {
-        UiTestColorV1.Linear => BuildLinearV1(),
+        UiTestColorV1.Linear => BuildLinearV1(secondAlpha: 16384),
+        UiTestColorV1.LinearAlpha => BuildLinearV1(secondAlpha: 8192),
         UiTestColorV1.Glyph => BuildGlyphV1(),
+        UiTestColorV1.GlyphSolid => BuildGlyphSolidV1(alpha: 16384),
+        UiTestColorV1.GlyphSolidAlpha => BuildGlyphSolidV1(alpha: 8192),
+        UiTestColorV1.ClipGlyph => BuildClipGlyphV1(),
         UiTestColorV1.Layers => BuildLayersV1(),
         UiTestColorV1.Transform => BuildTransformV1(),
-        UiTestColorV1.Composite => BuildCompositeV1(),
+        UiTestColorV1.TransformGlyph => BuildTransformGlyphV1(),
+        UiTestColorV1.GlyphScale => BuildGlyphScaleV1(),
+        UiTestColorV1.GlyphRotate => BuildGlyphRotateV1(),
+        UiTestColorV1.Composite => BuildCompositeV1(mode: 3),
+        UiTestColorV1.CompositePlus => BuildCompositeV1(mode: 12),
+        UiTestColorV1.CompositeMultiply => BuildCompositeV1(mode: 23, sourcePalette: 1, backdropPalette: 0),
+        UiTestColorV1.CompositeUnsupported => BuildCompositeV1(mode: 24),
         UiTestColorV1.ColrGlyph => BuildColrGlyphV1(),
         UiTestColorV1.Unsupported => BuildUnsupportedV1(),
         UiTestColorV1.Corrupt => BuildCorruptV1(),
@@ -958,7 +978,7 @@ internal static class UiTestFont
         _ => throw new ArgumentOutOfRangeException(nameof(mode)),
     };
 
-    private static byte[] BuildLinearV1()
+    private static byte[] BuildLinearV1(short secondAlpha)
     {
         var table = new List<byte>(75);
         WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
@@ -971,7 +991,7 @@ internal static class UiTestFont
         WriteI16(table, 0);
         WriteI16(table, 0);
         WriteI16(table, 640);
-        WriteColorLine(table, extend: 0, ((short)0, 0, (short)16384), ((short)16384, 1, (short)16384));
+        WriteColorLine(table, extend: 0, ((short)0, 0, (short)16384), ((short)16384, 1, secondAlpha));
         return [.. table];
     }
 
@@ -992,6 +1012,45 @@ internal static class UiTestFont
         WriteI16(table, 0);
         WriteI16(table, 640);
         WriteColorLine(table, extend: 2, ((short)0, 0, (short)16384), ((short)16384, 1, (short)16384));
+        return [.. table];
+    }
+
+    private static byte[] BuildGlyphSolidV1(short alpha)
+    {
+        var table = new List<byte>(55);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(10);
+        WriteU24(table, 6);
+        WriteU16(table, 2);
+        table.Add(2);
+        WriteU16(table, 1);
+        WriteI16(table, alpha);
+        return [.. table];
+    }
+
+    private static byte[] BuildClipGlyphV1()
+    {
+        var table = new List<byte>(76);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(10);
+        WriteU24(table, 6);
+        WriteU16(table, 2);
+        table.Add(2);
+        WriteU16(table, 1);
+        WriteI16(table, 16384);
+        table.Add(1);
+        WriteU32(table, 1);
+        WriteU16(table, 2);
+        WriteU16(table, 2);
+        WriteU24(table, 12);
+        table.Add(1);
+        WriteI16(table, 100);
+        WriteI16(table, 0);
+        WriteI16(table, 200);
+        WriteI16(table, 700);
+        PatchU32(table, 22, 55);
         return [.. table];
     }
 
@@ -1041,20 +1100,78 @@ internal static class UiTestFont
         return [.. table];
     }
 
-    private static byte[] BuildCompositeV1()
+    private static byte[] BuildTransformGlyphV1()
+    {
+        var table = new List<byte>(86);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(12);
+        WriteU24(table, 7);
+        WriteU24(table, 18);
+        table.Add(10);
+        WriteU24(table, 6);
+        WriteU16(table, 2);
+        table.Add(2);
+        WriteU16(table, 1);
+        WriteI16(table, 16384);
+        WriteU32(table, 65536);
+        WriteU32(table, 0);
+        WriteU32(table, 0);
+        WriteU32(table, 65536);
+        WriteU32(table, 13107200);
+        WriteU32(table, 0);
+        return [.. table];
+    }
+
+    private static byte[] BuildGlyphScaleV1()
+    {
+        var table = new List<byte>(63);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(16);
+        WriteU24(table, 8);
+        WriteI16(table, 8192);
+        WriteI16(table, 8192);
+        table.Add(10);
+        WriteU24(table, 6);
+        WriteU16(table, 2);
+        table.Add(2);
+        WriteU16(table, 1);
+        WriteI16(table, 16384);
+        return [.. table];
+    }
+
+    private static byte[] BuildGlyphRotateV1()
+    {
+        var table = new List<byte>(61);
+        WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
+        WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
+        table.Add(24);
+        WriteU24(table, 6);
+        WriteI16(table, 4096);
+        table.Add(10);
+        WriteU24(table, 6);
+        WriteU16(table, 2);
+        table.Add(2);
+        WriteU16(table, 1);
+        WriteI16(table, 16384);
+        return [.. table];
+    }
+
+    private static byte[] BuildCompositeV1(int mode, int sourcePalette = 0, int backdropPalette = 1)
     {
         var table = new List<byte>(63);
         WriteV1Header(table, baseGlyphListOffset: 34, layerListOffset: 0);
         WriteV1BaseRecord(table, glyph: 2, paintOffset: 6);
         table.Add(32);
         WriteU24(table, 8);
-        table.Add(3);
+        table.Add((byte)mode);
         WriteU24(table, 13);
         table.Add(2);
-        WriteU16(table, 0);
+        WriteU16(table, (ushort)sourcePalette);
         WriteI16(table, 16384);
         table.Add(2);
-        WriteU16(table, 1);
+        WriteU16(table, (ushort)backdropPalette);
         WriteI16(table, 16384);
         return [.. table];
     }

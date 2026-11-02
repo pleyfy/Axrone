@@ -14,6 +14,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private readonly int _maxDimension;
     private readonly long _maxPixels;
     private readonly UiTrueTypeHinter _hinter = new();
+    private bool _suppressGlyphHints;
     private float _pixelSize;
 
     private float[] _pointX = new float[256];
@@ -209,6 +210,81 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         }
 
         return true;
+    }
+
+    internal bool TryRasterizeColorMask(
+        UiFontFace face,
+        int glyphId,
+        float pixelSize,
+        in UiColorAffine pixelTransform,
+        int width,
+        int height,
+        Span<byte> mask,
+        out UiFontError error)
+    {
+        error = UiFontError.None;
+        if (face.OutlineFormat != UiFontOutlineFormat.TrueType)
+        {
+            error = UiFontError.At(UiFontErrorCode.UnsupportedOutlineFormat, 0, "Color masks require TrueType outlines.");
+            return false;
+        }
+
+        if ((uint)glyphId >= (uint)face.GlyphCount)
+        {
+            error = UiFontError.At(UiFontErrorCode.GlyphNotFound, 0, "The glyph id is outside the face.");
+            return false;
+        }
+
+        int pixels = width * height;
+        if (width <= 0 || height <= 0 || mask.Length < pixels)
+        {
+            error = UiFontError.At(UiFontErrorCode.InvalidGlyph, 0, "The color mask dimensions are invalid.");
+            return false;
+        }
+
+        if (width > _maxDimension || height > _maxDimension || pixels > _maxPixels)
+        {
+            error = UiFontError.At(UiFontErrorCode.RasterTooLarge, 0, "The color mask dimensions exceed the limit.");
+            return false;
+        }
+
+        _pointCount = 0;
+        _contourCount = 0;
+        _edgeCount = 0;
+        _pixelSize = pixelSize;
+        _suppressGlyphHints = true;
+        try
+        {
+            if (!TryAppendGlyph(face, glyphId, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0, out error))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _pointCount; i++)
+            {
+                float x = _pointX[i];
+                float y = _pointY[i];
+                _pointX[i] = (pixelTransform.XX * x) + (pixelTransform.XY * y) + pixelTransform.DX;
+                _pointY[i] = (pixelTransform.YX * x) + (pixelTransform.YY * y) + pixelTransform.DY;
+            }
+
+            if (!Flatten(1.0f, 0, 0, out error))
+            {
+                return false;
+            }
+
+            EnsureCoverage(pixels);
+            EnsureHitCapacity(_edgeCount);
+            _coverage.AsSpan(0, pixels).Clear();
+            RasterizeEdges(width, height);
+            FillAlpha(width, height);
+            _alpha.AsSpan(0, pixels).CopyTo(mask);
+            return true;
+        }
+        finally
+        {
+            _suppressGlyphHints = false;
+        }
     }
 
     private bool RasterizeGlyphCore(
@@ -685,7 +761,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             return false;
         }
 
-        if (EnableHinting && instructionLength > 0)
+        if (EnableHinting && !_suppressGlyphHints && instructionLength > 0)
         {
             float hintPixelSize = _pixelSize * UniformScale(a, b, c, d);
             if (hintPixelSize > 0.0f)
@@ -907,7 +983,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
                 return false;
             }
 
-            if (EnableHinting && instructionLength > 0 && _pointCount > pointStart)
+            if (EnableHinting && !_suppressGlyphHints && instructionLength > 0 && _pointCount > pointStart)
             {
                 float hintPixelSize = _pixelSize * UniformScale(a, b, c, d);
                 if (hintPixelSize > 0.0f)
