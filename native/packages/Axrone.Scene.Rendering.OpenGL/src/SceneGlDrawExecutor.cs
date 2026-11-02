@@ -115,6 +115,7 @@ public sealed class SceneGlDrawExecutor
             shader.SetBool(ReceiveLightingUniform, item.ReceiveLighting);
 
             ApplySurface(shader, material.Surface);
+            SceneGlMaterialExtensionBinder.Bind(shader, material.Surface);
             ApplyLighting(shader, in lights);
             ApplyFog(shader, in fog);
             ApplyCustomUniforms(shader, material.UniformEntries.Span);
@@ -286,23 +287,21 @@ public sealed class SceneGlDrawExecutor
         bool depthTest = materialPass?.DepthTest ?? pass.DepthTest ?? true;
         bool depthWrite = materialPass?.DepthWrite ?? !transparent;
         bool cull = materialPass?.Cull ?? pass.Cull ?? true;
-        bool blend = materialPass?.Blend ??
-            pass.Blend ??
-            (transparent || material.Surface.AlphaMode == SceneMaterialAlphaMode.Blend);
-
         context.State.SetDepthTest(depthTest);
         context.State.SetDepthMask(depthWrite);
         context.State.SetCullFace(cull);
         context.State.SetCullMode(GLConst.Back);
-        context.State.SetBlend(blend);
+        SceneGlBlendMapping mapping = SceneGlBlendStateMapper.Resolve(material, pass, transparent);
+        context.State.SetBlend(mapping.Enabled);
 
-        if (blend)
+        if (mapping.Enabled)
         {
             context.State.SetBlendFuncSeparate(
-                GLConst.SrcAlpha,
-                GLConst.OneMinusSrcAlpha,
-                GLConst.One,
-                GLConst.OneMinusSrcAlpha);
+                mapping.SourceColor,
+                mapping.DestinationColor,
+                mapping.SourceAlpha,
+                mapping.DestinationAlpha);
+            context.State.SetBlendEquationSeparate(mapping.ColorEquation, mapping.AlphaEquation);
         }
     }
 
