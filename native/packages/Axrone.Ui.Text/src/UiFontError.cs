@@ -60,6 +60,8 @@ public enum UiFontErrorCode
 
     InvalidPixelSize,
 
+    InvalidSdfSettings,
+
     RasterTooLarge,
 
     OutlineTooComplex,

@@ -5,7 +5,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private const int MaxPoints = 8192;
     private const int MaxContours = 512;
     private const int MaxEdges = 16_384;
-    private const int MaxCompositeDepth = 8;
+    private const int MaxCompositeDepth = 32;
     private const float MaxPixelSize = 4096.0f;
     private const int QuadSubdivisions = 8;
     private const float SubRowWeight = 0.25f;
@@ -14,9 +14,6 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private readonly int _maxDimension;
     private readonly long _maxPixels;
     private readonly UiTrueTypeHinter _hinter = new();
-    private int _compositeInstructionOffset;
-    private int _compositeInstructionLength;
-    private bool _topLevelComposite;
     private float _pixelSize;
 
     private float[] _pointX = new float[256];
@@ -28,6 +25,7 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     private byte[] _flags = new byte[256];
     private int[] _endPoints = new int[16];
     private int[] _contourEnds = new int[16];
+    private int[] _hintContourEnds = new int[16];
     private float[] _edgeX0 = new float[512];
     private float[] _edgeY0 = new float[512];
     private float[] _edgeX1 = new float[512];
@@ -89,21 +87,53 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             return false;
         }
 
-        return RasterizeGlyphCore(fontFace, glyphId, pixelSize, out bitmap, out failure);
+        return RasterizeGlyphCore(fontFace, glyphId, pixelSize, default, false, out bitmap, out failure);
     }
 
-    public bool TryRasterizeGlyph(
+    public bool TryRasterizeSdf(
         UiFontFaceId face,
-        int glyphId,
+        int codePoint,
         float pixelSize,
+        in UiSdfOptions options,
         out UiGlyphBitmap bitmap,
         out UiFontError failure)
     {
         bitmap = default;
         failure = UiFontError.None;
-        if (!float.IsFinite(pixelSize) || pixelSize <= 0.0f || pixelSize > MaxPixelSize)
+        if (!ValidateSdfOptions(in options, out failure) ||
+            !ValidatePixelSize(pixelSize, out failure))
         {
-            failure = UiFontError.At(UiFontErrorCode.InvalidPixelSize, 0, "Pixel size must be finite, positive and within the limit.");
+            return false;
+        }
+
+        if (!_provider.TryGetFace(face, out UiFontFace? fontFace))
+        {
+            failure = UiFontError.At(UiFontErrorCode.FaceNotFound, 0, "The face identity is not registered.");
+            return false;
+        }
+
+        if (!fontFace.TryGetGlyph(codePoint, out int glyphId))
+        {
+            failure = UiFontError.At(UiFontErrorCode.GlyphNotFound, 0, "The code point has no glyph in the face.");
+            return false;
+        }
+
+        return RasterizeGlyphCore(fontFace, glyphId, pixelSize, options, true, out bitmap, out failure);
+    }
+
+    public bool TryRasterizeSdfGlyph(
+        UiFontFaceId face,
+        int glyphId,
+        float pixelSize,
+        in UiSdfOptions options,
+        out UiGlyphBitmap bitmap,
+        out UiFontError failure)
+    {
+        bitmap = default;
+        failure = UiFontError.None;
+        if (!ValidateSdfOptions(in options, out failure) ||
+            !ValidatePixelSize(pixelSize, out failure))
+        {
             return false;
         }
 
@@ -119,11 +149,11 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             return false;
         }
 
-        return RasterizeGlyphCore(fontFace, glyphId, pixelSize, out bitmap, out failure);
+        return RasterizeGlyphCore(fontFace, glyphId, pixelSize, options, true, out bitmap, out failure);
     }
 
-    private bool RasterizeGlyphCore(
-        UiFontFace fontFace,
+    public bool TryRasterizeGlyph(
+        UiFontFaceId face,
         int glyphId,
         float pixelSize,
         out UiGlyphBitmap bitmap,
@@ -131,9 +161,70 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
     {
         bitmap = default;
         failure = UiFontError.None;
+        if (!ValidatePixelSize(pixelSize, out failure))
+        {
+            return false;
+        }
+
+        if (!_provider.TryGetFace(face, out UiFontFace? fontFace))
+        {
+            failure = UiFontError.At(UiFontErrorCode.FaceNotFound, 0, "The face identity is not registered.");
+            return false;
+        }
+
+        if ((uint)glyphId >= (uint)fontFace.GlyphCount)
+        {
+            failure = UiFontError.At(UiFontErrorCode.GlyphNotFound, 0, "The glyph id is outside the face.");
+            return false;
+        }
+
+        return RasterizeGlyphCore(fontFace, glyphId, pixelSize, default, false, out bitmap, out failure);
+    }
+
+    private static bool ValidatePixelSize(float pixelSize, out UiFontError failure)
+    {
+        failure = UiFontError.None;
+        if (!float.IsFinite(pixelSize) || pixelSize <= 0.0f || pixelSize > MaxPixelSize)
+        {
+            failure = UiFontError.At(UiFontErrorCode.InvalidPixelSize, 0, "Pixel size must be finite, positive and within the limit.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ValidateSdfOptions(in UiSdfOptions options, out UiFontError failure)
+    {
+        failure = UiFontError.None;
+        if (!float.IsFinite(options.Spread) || options.Spread <= 0.0f || options.Spread > 128.0f)
+        {
+            failure = UiFontError.At(UiFontErrorCode.InvalidSdfSettings, 0, "SDF spread must be finite, positive and within the limit.");
+            return false;
+        }
+
+        if (options.Resolution < 1 || options.Resolution > 4)
+        {
+            failure = UiFontError.At(UiFontErrorCode.InvalidSdfSettings, 0, "SDF resolution must be between 1 and 4.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool RasterizeGlyphCore(
+        UiFontFace fontFace,
+        int glyphId,
+        float pixelSize,
+        UiSdfOptions sdfOptions,
+        bool sdf,
+        out UiGlyphBitmap bitmap,
+        out UiFontError failure)
+    {
+        bitmap = default;
+        failure = UiFontError.None;
         if (fontFace.OutlineFormat == UiFontOutlineFormat.Cff)
         {
-            return TryRasterizeCff(fontFace, glyphId, pixelSize, out bitmap, out failure);
+            return TryRasterizeCff(fontFace, glyphId, pixelSize, sdfOptions, sdf, out bitmap, out failure);
         }
 
         if (!fontFace.TryGetGlyphRange(glyphId, out int glyphOffset, out int glyphLength))
@@ -145,9 +236,10 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         ReadOnlySpan<byte> data = fontFace.Buffer.Span;
         float scale = pixelSize / fontFace.UnitsPerEm;
         float advance = fontFace.ReadAdvance(data, glyphId) * scale;
+        UiGlyphBitmapFormat format = sdf ? UiGlyphBitmapFormat.Sdf : UiGlyphBitmapFormat.Coverage;
         if (glyphLength < 10)
         {
-            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty);
+            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty, format);
             return true;
         }
 
@@ -157,21 +249,19 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         int yMax = UiFontFace.ReadI16(data, glyphOffset + 8);
         if (xMax <= xMin || yMax <= yMin)
         {
-            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty);
+            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty, format);
             return true;
         }
 
-        int left = (int)MathF.Floor(xMin * scale) - 1;
-        int right = (int)MathF.Ceiling(xMax * scale) + 1;
-        int bottom = (int)MathF.Floor(yMin * scale) - 1;
-        int top = (int)MathF.Ceiling(yMax * scale) + 1;
+        int padding = sdf ? Math.Max(1, (int)MathF.Ceiling(sdfOptions.Spread)) : 1;
+        int left = (int)MathF.Floor(xMin * scale) - padding;
+        int right = (int)MathF.Ceiling(xMax * scale) + padding;
+        int bottom = (int)MathF.Floor(yMin * scale) - padding;
+        int top = (int)MathF.Ceiling(yMax * scale) + padding;
 
         _pointCount = 0;
         _contourCount = 0;
         _edgeCount = 0;
-        _compositeInstructionOffset = 0;
-        _compositeInstructionLength = 0;
-        _topLevelComposite = false;
         _pixelSize = pixelSize;
 
         if (!TryAppendGlyph(fontFace, glyphId, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0, out failure))
@@ -179,31 +269,12 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
             return false;
         }
 
-        if (EnableHinting && _topLevelComposite && _compositeInstructionLength > 0 && _pointCount > 0)
-        {
-            ReadOnlySpan<byte> instructions = data.Slice(_compositeInstructionOffset, _compositeInstructionLength);
-            if (!_hinter.TryHintGlyph(
-                    fontFace,
-                    pixelSize,
-                    instructions,
-                    _pointX.AsSpan(0, _pointCount),
-                    _pointY.AsSpan(0, _pointCount),
-                    _onCurve.AsSpan(0, _pointCount),
-                    _contourEnds.AsSpan(0, _contourCount),
-                    _pointCount,
-                    fontFace.ReadAdvance(data, glyphId),
-                    out failure))
-            {
-                return false;
-            }
-        }
-
         ExpandBounds(scale, ref left, ref right, ref bottom, ref top);
         int width = right - left;
         int height = top - bottom;
         if (width <= 0 || height <= 0)
         {
-            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty);
+            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty, format);
             return true;
         }
 
@@ -219,12 +290,20 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         }
 
         int pixels = width * height;
+        if (sdf)
+        {
+            EnsureAlpha(pixels);
+            RasterizeSignedDistance(width, height, sdfOptions.Spread, sdfOptions.Resolution);
+            bitmap = new UiGlyphBitmap(width, height, left, top, advance, _alpha.AsSpan(0, pixels), format);
+            return true;
+        }
+
         EnsureCoverage(pixels);
         EnsureHitCapacity(_edgeCount);
         _coverage.AsSpan(0, pixels).Clear();
         RasterizeEdges(width, height);
         FillAlpha(width, height);
-        bitmap = new UiGlyphBitmap(width, height, left, top, advance, _alpha.AsSpan(0, pixels));
+        bitmap = new UiGlyphBitmap(width, height, left, top, advance, _alpha.AsSpan(0, pixels), format);
         return true;
     }
 
@@ -232,6 +311,8 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         UiFontFace face,
         int glyphId,
         float pixelSize,
+        UiSdfOptions sdfOptions,
+        bool sdf,
         out UiGlyphBitmap bitmap,
         out UiFontError error)
     {
@@ -246,22 +327,24 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
 
         float scale = pixelSize / face.UnitsPerEm;
         float advance = face.ReadAdvance(face.Buffer.Span, glyphId) * scale;
+        UiGlyphBitmapFormat format = sdf ? UiGlyphBitmapFormat.Sdf : UiGlyphBitmapFormat.Coverage;
         UiCffGlyphBounds bounds = cff.GetBounds(glyphId);
         if (bounds.IsEmpty)
         {
-            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty);
+            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty, format);
             return true;
         }
 
-        int left = (int)MathF.Floor(bounds.XMin * scale) - 1;
-        int right = (int)MathF.Ceiling(bounds.XMax * scale) + 1;
-        int bottom = (int)MathF.Floor(bounds.YMin * scale) - 1;
-        int top = (int)MathF.Ceiling(bounds.YMax * scale) + 1;
+        int padding = sdf ? Math.Max(1, (int)MathF.Ceiling(sdfOptions.Spread)) : 1;
+        int left = (int)MathF.Floor(bounds.XMin * scale) - padding;
+        int right = (int)MathF.Ceiling(bounds.XMax * scale) + padding;
+        int bottom = (int)MathF.Floor(bounds.YMin * scale) - padding;
+        int top = (int)MathF.Ceiling(bounds.YMax * scale) + padding;
         int width = right - left;
         int height = top - bottom;
         if (width <= 0 || height <= 0)
         {
-            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty);
+            bitmap = new UiGlyphBitmap(0, 0, 0, 0, advance, ReadOnlySpan<byte>.Empty, format);
             return true;
         }
 
@@ -297,12 +380,20 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         }
 
         int pixels = width * height;
+        if (sdf)
+        {
+            EnsureAlpha(pixels);
+            RasterizeSignedDistance(width, height, sdfOptions.Spread, sdfOptions.Resolution);
+            bitmap = new UiGlyphBitmap(width, height, left, top, advance, _alpha.AsSpan(0, pixels), format);
+            return true;
+        }
+
         EnsureCoverage(pixels);
         EnsureHitCapacity(_edgeCount);
         _coverage.AsSpan(0, pixels).Clear();
         RasterizeEdges(width, height);
         FillAlpha(width, height);
-        bitmap = new UiGlyphBitmap(width, height, left, top, advance, _alpha.AsSpan(0, pixels));
+        bitmap = new UiGlyphBitmap(width, height, left, top, advance, _alpha.AsSpan(0, pixels), format);
         return true;
     }
 
@@ -660,6 +751,8 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         ReadOnlySpan<byte> data = face.Buffer.Span;
         int end = offset + length;
         int cursor = offset + 10;
+        int pointStart = _pointCount;
+        int contourStart = _contourCount;
         int componentCount = 0;
         int componentIndex = 0;
         bool hasInstructions = false;
@@ -814,11 +907,35 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
                 return false;
             }
 
-            if (depth == 0)
+            if (EnableHinting && instructionLength > 0 && _pointCount > pointStart)
             {
-                _compositeInstructionOffset = cursor;
-                _compositeInstructionLength = instructionLength;
-                _topLevelComposite = true;
+                float hintPixelSize = _pixelSize * UniformScale(a, b, c, d);
+                if (hintPixelSize > 0.0f)
+                {
+                    int addedPoints = _pointCount - pointStart;
+                    int addedContours = _contourCount - contourStart;
+                    EnsureHintContourCapacity(Math.Max(addedContours, 1));
+                    for (int i = 0; i < addedContours; i++)
+                    {
+                        _hintContourEnds[i] = _contourEnds[contourStart + i] - pointStart;
+                    }
+
+                    ReadOnlySpan<byte> instructions = data.Slice(cursor, instructionLength);
+                    if (!_hinter.TryHintGlyph(
+                            face,
+                            hintPixelSize,
+                            instructions,
+                            _pointX.AsSpan(pointStart, addedPoints),
+                            _pointY.AsSpan(pointStart, addedPoints),
+                            _onCurve.AsSpan(pointStart, addedPoints),
+                            _hintContourEnds.AsSpan(0, addedContours),
+                            addedPoints,
+                            face.ReadAdvance(data, glyphId),
+                            out error))
+                    {
+                        return false;
+                    }
+                }
             }
         }
 
@@ -1243,6 +1360,70 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
 
     private static float F2Dot14(short value) => value / 16384.0f;
 
+    private void RasterizeSignedDistance(int width, int height, float spread, int resolution)
+    {
+        float step = 1.0f / resolution;
+        float invSpread = 0.5f / spread;
+        float sampleCount = resolution * resolution;
+        for (int row = 0; row < height; row++)
+        {
+            int target = (height - 1 - row) * width;
+            for (int column = 0; column < width; column++)
+            {
+                float total = 0.0f;
+                for (int sy = 0; sy < resolution; sy++)
+                {
+                    float sampleY = row + ((sy + 0.5f) * step);
+                    for (int sx = 0; sx < resolution; sx++)
+                    {
+                        float sampleX = column + ((sx + 0.5f) * step);
+                        float minimumDistance = float.MaxValue;
+                        int winding = 0;
+                        for (int edge = 0; edge < _edgeCount; edge++)
+                        {
+                            float x0 = _edgeX0[edge];
+                            float y0 = _edgeY0[edge];
+                            float x1 = _edgeX1[edge];
+                            float y1 = _edgeY1[edge];
+                            float dx = x1 - x0;
+                            float dy = y1 - y0;
+                            float lengthSquared = (dx * dx) + (dy * dy);
+                            float t = lengthSquared > 0.0f
+                                ? (((sampleX - x0) * dx) + ((sampleY - y0) * dy)) / lengthSquared
+                                : 0.0f;
+                            t = Math.Clamp(t, 0.0f, 1.0f);
+                            float nearestX = x0 + (t * dx);
+                            float nearestY = y0 + (t * dy);
+                            float distanceX = sampleX - nearestX;
+                            float distanceY = sampleY - nearestY;
+                            float distanceSquared = (distanceX * distanceX) + (distanceY * distanceY);
+                            if (distanceSquared < minimumDistance)
+                            {
+                                minimumDistance = distanceSquared;
+                            }
+
+                            if ((y0 <= sampleY && sampleY < y1) || (y1 <= sampleY && sampleY < y0))
+                            {
+                                float intersection = x0 + (((sampleY - y0) / (y1 - y0)) * dx);
+                                if (intersection > sampleX)
+                                {
+                                    winding += y1 > y0 ? 1 : -1;
+                                }
+                            }
+                        }
+
+                        float distance = MathF.Sqrt(minimumDistance);
+                        float signed = winding != 0 ? distance : -distance;
+                        total += Math.Clamp(0.5f + (signed * invSpread), 0.0f, 1.0f);
+                    }
+                }
+
+                float value = total / sampleCount;
+                _alpha[target + column] = (byte)Math.Clamp((int)MathF.Round(value * 255.0f), 0, 255);
+            }
+        }
+    }
+
     private static float UniformScale(float a, float b, float c, float d)
     {
         float determinant = MathF.Abs((a * d) - (b * c));
@@ -1257,6 +1438,16 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         }
 
         _coverage = GC.AllocateArray<float>(pixels, pinned: true);
+        _alpha = GC.AllocateArray<byte>(pixels, pinned: true);
+    }
+
+    private void EnsureAlpha(int pixels)
+    {
+        if (_alpha.Length >= pixels)
+        {
+            return;
+        }
+
         _alpha = GC.AllocateArray<byte>(pixels, pinned: true);
     }
 
@@ -1317,6 +1508,16 @@ public sealed class UiGlyphRasterizer : IUiGlyphRasterizer
         }
 
         _contourEnds = new int[Math.Max(required, _contourEnds.Length * 2)];
+    }
+
+    private void EnsureHintContourCapacity(int required)
+    {
+        if (_hintContourEnds.Length >= required)
+        {
+            return;
+        }
+
+        _hintContourEnds = new int[Math.Max(required, _hintContourEnds.Length * 2)];
     }
 
     private void EnsureEdgeCapacity(int required)

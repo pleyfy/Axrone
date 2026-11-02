@@ -22,6 +22,7 @@ internal sealed class UiColorData
     private readonly int _paletteIndicesOffset;
     private readonly int _colorRecordsOffset;
     private readonly int _colorRecordCount;
+    private readonly UiColorPaintData? _paintGraph;
 
     private UiColorData(
         int colrOffset,
@@ -35,7 +36,8 @@ internal sealed class UiColorData
         int paletteCount,
         int paletteIndicesOffset,
         int colorRecordsOffset,
-        int colorRecordCount)
+        int colorRecordCount,
+        UiColorPaintData? paintGraph)
     {
         _colrOffset = colrOffset;
         _colrLength = colrLength;
@@ -49,13 +51,14 @@ internal sealed class UiColorData
         _paletteIndicesOffset = paletteIndicesOffset;
         _colorRecordsOffset = colorRecordsOffset;
         _colorRecordCount = colorRecordCount;
+        _paintGraph = paintGraph;
     }
 
     public int PaletteCount => _paletteCount;
 
     public int PaletteEntryCount => _paletteEntries;
 
-    public int BaseGlyphCount => _baseCount;
+    public UiColorPaintData? PaintGraph => _paintGraph;
 
     public static bool TryParse(
         ReadOnlySpan<byte> data,
@@ -93,6 +96,11 @@ internal sealed class UiColorData
             return Fail(out error, UiFontErrorCode.InvalidColor, colrOffset, "COLR version is not supported.");
         }
 
+        int baseGlyphListOffset = 0;
+        int paintLayerListOffset = 0;
+        int clipListOffset = 0;
+        int varIndexMapOffset = 0;
+        int varStoreOffset = 0;
         if (version == 1)
         {
             if (colrLength < 34)
@@ -100,18 +108,11 @@ internal sealed class UiColorData
                 return Fail(out error, UiFontErrorCode.InvalidColor, colrOffset, "COLR v1 header is truncated.");
             }
 
-            if (UiFontFace.ReadU32(data, colrOffset + 14) != 0 ||
-                UiFontFace.ReadU32(data, colrOffset + 18) != 0 ||
-                UiFontFace.ReadU32(data, colrOffset + 22) != 0 ||
-                UiFontFace.ReadU32(data, colrOffset + 26) != 0 ||
-                UiFontFace.ReadU32(data, colrOffset + 30) != 0)
-            {
-                return Fail(
-                    out error,
-                    UiFontErrorCode.UnsupportedColorFormat,
-                    colrOffset + 14,
-                    "COLR v1 paint graphs, transforms and gradients are not supported.");
-            }
+            baseGlyphListOffset = (int)UiFontFace.ReadU32(data, colrOffset + 14);
+            paintLayerListOffset = (int)UiFontFace.ReadU32(data, colrOffset + 18);
+            clipListOffset = (int)UiFontFace.ReadU32(data, colrOffset + 22);
+            varIndexMapOffset = (int)UiFontFace.ReadU32(data, colrOffset + 26);
+            varStoreOffset = (int)UiFontFace.ReadU32(data, colrOffset + 30);
         }
 
         long baseEnd = baseOffset + ((long)baseCount * BaseRecordSize);
@@ -172,6 +173,28 @@ internal sealed class UiColorData
             }
         }
 
+        UiColorPaintData? paintGraph = null;
+        if (version == 1 &&
+            (baseGlyphListOffset != 0 || paintLayerListOffset != 0 || clipListOffset != 0 ||
+             varIndexMapOffset != 0 || varStoreOffset != 0))
+        {
+            if (!UiColorPaintData.TryParse(
+                    data,
+                    colrOffset,
+                    colrLength,
+                    baseGlyphListOffset,
+                    paintLayerListOffset,
+                    clipListOffset,
+                    varIndexMapOffset,
+                    varStoreOffset,
+                    paletteCount,
+                    out paintGraph,
+                    out error))
+            {
+                return false;
+            }
+        }
+
         color = new UiColorData(
             colrOffset,
             colrLength,
@@ -184,7 +207,8 @@ internal sealed class UiColorData
             paletteCount,
             paletteIndicesOffset: 12,
             colorRecordsOffset,
-            colorRecordCount);
+            colorRecordCount,
+            paintGraph);
         return true;
     }
 
