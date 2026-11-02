@@ -231,6 +231,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
             shader.SetBool(SceneGlDrawExecutor.ReceiveLightingUniform, item.ReceiveLighting);
 
             SceneGlDrawExecutor.ApplySurface(shader, material.Surface);
+            SceneGlMaterialExtensionBinder.Bind(shader, material.Surface);
             SceneGlDrawExecutor.ApplyLighting(shader, in lights);
             SceneGlDrawExecutor.ApplyFog(shader, in fog);
             SceneGlDrawExecutor.ApplyCustomUniforms(shader, material.UniformEntries.Span);

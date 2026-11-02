@@ -319,12 +319,44 @@ public sealed class SceneGlAssetCache : IDisposable
                 $"Material '{definition.Id}' references shader '{definition.ShaderId}' which is not uploaded.");
         }
 
-        var slots = new List<SceneGlTextureSlot>(5);
+        var slots = new List<SceneGlTextureSlot>(16);
         AddTextureSlot(slots, "u_AlbedoMap", 0, definition.Surface.AlbedoMap);
         AddTextureSlot(slots, "u_NormalMap", 1, definition.Surface.NormalMap);
         AddTextureSlot(slots, "u_PbrMap", 2, definition.Surface.PbrMap);
         AddTextureSlot(slots, "u_OcclusionMap", 3, definition.Surface.OcclusionMap);
         AddTextureSlot(slots, "u_EmissiveMap", 4, definition.Surface.EmissiveMap);
+
+        SceneMaterialSurface surface = definition.Surface;
+        SceneMaterialFeatures features = surface.Features;
+
+        if ((features & SceneMaterialFeatures.Clearcoat) != 0)
+        {
+            AddTextureSlot(slots, "u_ClearcoatMap", 5, surface.ClearcoatMap);
+            AddTextureSlot(slots, "u_ClearcoatRoughnessMap", 6, surface.ClearcoatRoughnessMap);
+            AddTextureSlot(slots, "u_ClearcoatNormalMap", 7, surface.ClearcoatNormalMap);
+        }
+
+        if ((features & SceneMaterialFeatures.Sheen) != 0)
+        {
+            AddTextureSlot(slots, "u_SheenColorMap", 8, surface.SheenColorMap);
+            AddTextureSlot(slots, "u_SheenRoughnessMap", 9, surface.SheenRoughnessMap);
+        }
+
+        if ((features & SceneMaterialFeatures.Transmission) != 0)
+        {
+            AddTextureSlot(slots, "u_TransmissionMap", 10, surface.TransmissionMap);
+        }
+
+        if ((features & SceneMaterialFeatures.Iridescence) != 0)
+        {
+            AddTextureSlot(slots, "u_IridescenceMap", 11, surface.IridescenceMap);
+            AddTextureSlot(slots, "u_IridescenceThicknessMap", 12, surface.IridescenceThicknessMap);
+        }
+
+        if ((features & SceneMaterialFeatures.Subsurface) != 0)
+        {
+            AddTextureSlot(slots, "u_SubsurfaceMap", 13, surface.SubsurfaceMap);
+        }
 
         var material = new SceneGlMaterial(
             definition,
