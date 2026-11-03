@@ -143,7 +143,7 @@ public sealed class AudioEcsBinder : IDisposable
         ThrowIfDisposed();
         lock (_gate)
         {
-            if (_listenerIds.Remove(entity, out AudioListenerId id))
+            if (_listenerIds.Remove(entity, out AudioListenerId id) && _system.Listeners.RegisteredCount > 1)
             {
                 _system.Listeners.RemoveListener(id);
             }

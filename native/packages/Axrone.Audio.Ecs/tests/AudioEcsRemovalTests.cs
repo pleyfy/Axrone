@@ -113,6 +113,20 @@ public sealed class AudioEcsRemovalTests : IDisposable
     }
 
     [Fact]
+    public void DetachListener_LastListener_KeepsRegistrationWithoutThrowing()
+    {
+        Entity entity = _world.BeginEntity().Commit();
+        _world.AddComponent(entity, new AudioListenerRef(AudioListenerId.Primary, active: true));
+        _binder.AttachListener(entity);
+
+        _binder.DetachListener(entity);
+
+        _system.Listeners.RegisteredCount.Should().Be(1);
+        _system.Listeners.TryGetDescriptor(AudioListenerId.Primary, out _).Should().BeTrue();
+        _system.Listeners.ActiveListenerId.Should().Be(AudioListenerId.Primary);
+    }
+
+    [Fact]
     public void RemovedSource_ReportsTypedError_WhenPlayedAgain()
     {
         AudioClipId clip = RegisterClip(4U);
