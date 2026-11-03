@@ -147,6 +147,22 @@ public static class GltfCompileExtensions
         {
             cancellationToken.ThrowIfCancellationRequested();
             GltfRawModel.Texture texDef = rawModel.Textures[i];
+            if (texDef.Source is int declaredSource &&
+                (declaredSource < 0 || declaredSource >= rawModel.Images.Count))
+            {
+                ThrowHelper.ThrowTextureSource(i, declaredSource, rawModel.Images.Count);
+            }
+
+            if (texDef.Sampler is int declaredSampler &&
+                (declaredSampler < 0 || declaredSampler >= rawModel.Samplers.Count))
+            {
+                diagnostics.Add(new GltfDiagnostic(
+                    GltfDiagnosticLevel.Warning,
+                    "gltf.texture.sampler.invalid",
+                    $"Texture {i} references sampler {declaredSampler} but the document declares " +
+                    $"{rawModel.Samplers.Count} samplers; default sampler parameters were used."));
+            }
+
             GltfRawModel.Sampler sampDef = (texDef.Sampler.HasValue && texDef.Sampler.Value < rawModel.Samplers.Count)
                 ? rawModel.Samplers[texDef.Sampler.Value]
                 : new GltfRawModel.Sampler();
@@ -184,9 +200,39 @@ public static class GltfCompileExtensions
                         : new GltfExternalTexturePayload(imageUri);
                 }
             }
+            else if (imageDef is null)
+            {
+                string reason = $"Texture {i} declares no image source.";
+                payload = UnusablePayload(
+                    diagnostics,
+                    GltfDiagnosticLevel.Error,
+                    "gltf.texture.source.missing",
+                    GltfImageDecodeFailure.SourceMissing,
+                    $"{reason} The payload is empty and marked unusable.");
+                transcodeState = new GltfTextureTranscodeState(
+                    false,
+                    null,
+                    reason,
+                    GltfTextureFormat.Unknown);
+            }
             else
             {
-                payload = new GltfRawTexturePayload(ReadOnlyMemory<byte>.Empty, "unknown");
+                string reason = imageDef.BufferView is int undeclaredBufferView
+                    ? $"Image {texDef.Source} references bufferView {undeclaredBufferView} which the document does not declare."
+                    : $"Image {texDef.Source} for texture {i} declares neither a URI nor a bufferView.";
+                payload = UnusablePayload(
+                    diagnostics,
+                    GltfDiagnosticLevel.Error,
+                    imageDef.BufferView is int
+                        ? "gltf.texture.source.bufferview.invalid"
+                        : "gltf.texture.source.empty",
+                    GltfImageDecodeFailure.SourceMissing,
+                    $"{reason} The payload is empty and marked unusable.");
+                transcodeState = new GltfTextureTranscodeState(
+                    false,
+                    null,
+                    reason,
+                    GltfTextureFormat.Unknown);
             }
 
             if (payload is GltfRawTexturePayload encoded && !encoded.Bytes.IsEmpty)
@@ -200,18 +246,23 @@ public static class GltfCompileExtensions
                 {
                     if (!GltfKtx2Reader.TryRead(encoded.Bytes, out GltfKtx2Texture? ktx2, out GltfImageDecodeError? ktx2Error))
                     {
-                        string errorCode = ktx2Error!.Value.Failure is
-                            GltfImageDecodeFailure.Supercompression or GltfImageDecodeFailure.Unsupported
-                            ? "gltf.texture.decode.unsupported"
-                            : "gltf.texture.ktx2.invalid";
+                        bool unsupported = ktx2Error!.Value.Failure is
+                            GltfImageDecodeFailure.Supercompression or GltfImageDecodeFailure.Unsupported;
                         diagnostics.Add(new GltfDiagnostic(
-                            GltfDiagnosticLevel.Warning,
-                            errorCode,
+                            unsupported ? GltfDiagnosticLevel.Warning : GltfDiagnosticLevel.Error,
+                            unsupported ? "gltf.texture.decode.unsupported" : "gltf.texture.ktx2.invalid",
                             $"Texture {i}: {ktx2Error.Value}"));
+                        payload = encoded with { Unusable = ktx2Error };
+                        transcodeState = new GltfTextureTranscodeState(
+                            false,
+                            null,
+                            ktx2Error.Value.Message,
+                            GltfTextureFormat.Unknown);
                     }
                     else
                     {
-                        payload = GltfKtx2Reader.ToPayload(ktx2);
+                        GltfCompressedTexturePayload compressed = GltfKtx2Reader.ToPayload(ktx2);
+                        payload = compressed;
                         runtimeFormat = ktx2.RuntimeFormat;
                         bool policyAttempted = false;
 
@@ -240,15 +291,21 @@ public static class GltfCompileExtensions
                             }
                             else
                             {
+                                GltfImageDecodeError transcodeError = new(
+                                    GltfImageCodecKind.Ktx2,
+                                    GltfImageDecodeFailure.TranscoderFailed,
+                                    failureReason ?? "Texture transcode failed.",
+                                    "transcoder");
                                 transcodeState = new GltfTextureTranscodeState(
                                     false,
                                     null,
                                     failureReason,
                                     options.TranscodeTargetFormat);
                                 diagnostics.Add(new GltfDiagnostic(
-                                    GltfDiagnosticLevel.Warning,
+                                    GltfDiagnosticLevel.Error,
                                     "gltf.texture.transcode.failed",
-                                    failureReason ?? "Texture transcode failed."));
+                                    $"Texture {i}: {transcodeError}"));
+                                payload = compressed with { Unusable = transcodeError };
                             }
                         }
 
@@ -275,18 +332,20 @@ public static class GltfCompileExtensions
                             }
                             else
                             {
-                                string errorCode = resolveError!.Value.Failure == GltfImageDecodeFailure.TranscoderMissing
-                                    ? "gltf.texture.transcode.unavailable"
-                                    : "gltf.texture.transcode.failed";
+                                bool unavailable =
+                                    resolveError!.Value.Failure == GltfImageDecodeFailure.TranscoderMissing;
                                 diagnostics.Add(new GltfDiagnostic(
-                                    GltfDiagnosticLevel.Warning,
-                                    errorCode,
-                                    $"Texture {i}: {resolveError.Value.Message}"));
+                                    unavailable ? GltfDiagnosticLevel.Warning : GltfDiagnosticLevel.Error,
+                                    unavailable
+                                        ? "gltf.texture.transcode.unavailable"
+                                        : "gltf.texture.transcode.failed",
+                                    $"Texture {i}: {resolveError.Value}"));
                                 transcodeState = new GltfTextureTranscodeState(
                                     false,
                                     null,
                                     resolveError.Value.Message,
                                     options.TranscodeTargetFormat);
+                                payload = compressed with { Unusable = resolveError };
                             }
                         }
                     }
@@ -321,17 +380,25 @@ public static class GltfCompileExtensions
                             decodeError?.Message,
                             GltfTextureFormat.R8G8B8A8_UNorm);
                         diagnostics.Add(new GltfDiagnostic(
-                            GltfDiagnosticLevel.Warning,
+                            GltfDiagnosticLevel.Error,
                             "gltf.texture.decode.failed",
-                            $"Texture {i} could not be decoded as {codec}: {decodeError?.Message}"));
+                            $"Texture {i} could not be decoded as {codec}: {decodeError}"));
+                        payload = encoded with { Unusable = decodeError };
                     }
                 }
                 else if (options.DecodeEncodedTextures && IsUnsupportedEncodedImage(encoded.MimeType))
                 {
+                    GltfImageDecodeError missingDecoder = new(
+                        codec,
+                        GltfImageDecodeFailure.DecoderMissing,
+                        $"No decoder is linked for '{encoded.MimeType}'; the raw bytes are retained for a future codec.",
+                        encoded.MimeType);
                     diagnostics.Add(new GltfDiagnostic(
                         GltfDiagnosticLevel.Warning,
                         "gltf.texture.decode.unsupported",
-                        $"Texture {i} uses encoded format '{encoded.MimeType}' which is not decoded; the raw payload was retained."));
+                        $"Texture {i} uses encoded format '{encoded.MimeType}' which is not decoded; " +
+                        "the raw payload was retained and marked unusable."));
+                    payload = encoded with { Unusable = missingDecoder };
                 }
             }
 
@@ -349,6 +416,24 @@ public static class GltfCompileExtensions
         }
 
         return textures;
+    }
+
+    private static GltfRawTexturePayload UnusablePayload(
+        List<GltfDiagnostic> diagnostics,
+        GltfDiagnosticLevel level,
+        string code,
+        GltfImageDecodeFailure failure,
+        string message)
+    {
+        diagnostics.Add(new GltfDiagnostic(level, code, message));
+        return new GltfRawTexturePayload(ReadOnlyMemory<byte>.Empty, "unknown")
+        {
+            Unusable = new GltfImageDecodeError(
+                GltfImageCodecKind.Unknown,
+                failure,
+                message,
+                "source"),
+        };
     }
 
     private static ImmutableArray<float> CopyWeights(GltfRawModel rawModel, in GltfRawModel.Mesh mesh)

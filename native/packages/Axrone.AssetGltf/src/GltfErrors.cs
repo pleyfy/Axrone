@@ -71,6 +71,22 @@ public sealed class GltfLimitExceededError(string limit, long requested, long ma
     public long Maximum { get; } = maximum;
 }
 
+/// <summary>Texture references an image index that the document does not declare.</summary>
+public sealed class GltfTextureSourceError(int textureIndex, int imageSource, int imageCount)
+    : GltfException(
+        "gltf.texture.source.invalid",
+        $"Texture [{textureIndex}] references image {imageSource} but the document declares {imageCount} images.")
+{
+    /// <summary>Texture index with the bad reference.</summary>
+    public int TextureIndex { get; } = textureIndex;
+
+    /// <summary>Referenced image index.</summary>
+    public int ImageSource { get; } = imageSource;
+
+    /// <summary>Declared image count.</summary>
+    public int ImageCount { get; } = imageCount;
+}
+
 /// <summary>Centralized throw paths (keeps hot paths inline).</summary>
 internal static class ThrowHelper
 {
@@ -111,4 +127,10 @@ internal static class ThrowHelper
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void ThrowLimit(string limit, long requested, long maximum) =>
         throw new GltfLimitExceededError(limit, requested, maximum);
+
+    /// <summary>Throws a texture source reference error.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowTextureSource(int textureIndex, int source, int imageCount) =>
+        throw new GltfTextureSourceError(textureIndex, source, imageCount);
 }

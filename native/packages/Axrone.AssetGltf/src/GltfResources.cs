@@ -17,14 +17,29 @@ public readonly record struct GltfResolvedResource(
 /// <param name="token">Cancellation token.</param>
 public delegate ValueTask<GltfResolvedResource?> GltfResourceResolver(GltfResourceRequest request, CancellationToken token);
 
-/// <summary>Texture payload variants.</summary>
-public abstract record GltfTexturePayload;
+/// <summary>
+/// Texture payload variants. <see cref="Unusable"/> is the contract that keeps a payload which the
+/// runtime cannot upload from silently producing a plausible-looking texture downstream.
+/// </summary>
+public abstract record GltfTexturePayload
+{
+    /// <summary>Typed reason the payload cannot be consumed as-is; null means it can.</summary>
+    public abstract GltfImageDecodeError? Unusable { get; init; }
+}
 
 /// <summary>External texture reference.</summary>
-public sealed record GltfExternalTexturePayload(string Uri) : GltfTexturePayload;
+public sealed record GltfExternalTexturePayload(string Uri) : GltfTexturePayload
+{
+    /// <inheritdoc />
+    public override GltfImageDecodeError? Unusable { get; init; }
+}
 
-/// <summary>Raw decoded texture bytes.</summary>
-public sealed record GltfRawTexturePayload(ReadOnlyMemory<byte> Bytes, string MimeType) : GltfTexturePayload;
+/// <summary>Raw encoded texture bytes.</summary>
+public sealed record GltfRawTexturePayload(ReadOnlyMemory<byte> Bytes, string MimeType) : GltfTexturePayload
+{
+    /// <inheritdoc />
+    public override GltfImageDecodeError? Unusable { get; init; }
+}
 
 /// <summary>Compressed KTX2 texture payload.</summary>
 public sealed record GltfCompressedTexturePayload(
@@ -37,13 +52,20 @@ public sealed record GltfCompressedTexturePayload(
 {
     /// <summary>Mip level metadata for packed transcoded output.</summary>
     public ImmutableArray<GltfTextureMipLevel> MipLevels { get; init; } = ImmutableArray<GltfTextureMipLevel>.Empty;
+
+    /// <inheritdoc />
+    public override GltfImageDecodeError? Unusable { get; init; }
 }
 
 /// <summary>Transcoded texture payload with packed mip levels.</summary>
 public sealed record GltfTranscodedTexturePayload(
     ReadOnlyMemory<byte> Bytes,
     GltfTextureFormat Format,
-    ImmutableArray<GltfTextureMipLevel> Levels) : GltfTexturePayload;
+    ImmutableArray<GltfTextureMipLevel> Levels) : GltfTexturePayload
+{
+    /// <inheritdoc />
+    public override GltfImageDecodeError? Unusable { get; init; }
+}
 
 /// <summary>Packed mip level metadata.</summary>
 public readonly record struct GltfTextureMipLevel(

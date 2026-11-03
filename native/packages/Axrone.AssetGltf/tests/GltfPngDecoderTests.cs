@@ -219,7 +219,7 @@ public sealed class GltfPngDecoderTests
     }
 
     [Fact]
-    public async Task Import_TruncatedJpegRetainsRawPayloadWithDiagnostic()
+    public async Task Import_TruncatedJpegMarksTheRawPayloadUnusable()
     {
         string json = """
             {
@@ -233,12 +233,13 @@ public sealed class GltfPngDecoderTests
         GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
 
         GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
-        texture.Payload.Should().BeOfType<GltfRawTexturePayload>()
-            .Which.MimeType.Should().Be("image/jpeg");
+        GltfRawTexturePayload payload = texture.Payload.Should().BeOfType<GltfRawTexturePayload>().Subject;
+        payload.MimeType.Should().Be("image/jpeg");
+        payload.Unusable!.Value.Codec.Should().Be(GltfImageCodecKind.Jpeg);
         texture.RuntimeFormat.Should().Be(GltfTextureFormat.Unknown);
-        result.Diagnostics.Should().Contain(diagnostic =>
-            diagnostic.Code == "gltf.texture.decode.failed" &&
-            diagnostic.Message.Contains("JPEG", StringComparison.Ordinal));
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.decode.failed");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Error);
     }
 
     [Fact]
@@ -271,7 +272,7 @@ public sealed class GltfPngDecoderTests
     }
 
     [Fact]
-    public async Task Import_InvalidPngRetainsRawPayloadWithDiagnostic()
+    public async Task Import_InvalidPngMarksTheRawPayloadUnusable()
     {
         string json = """
             {
@@ -285,9 +286,10 @@ public sealed class GltfPngDecoderTests
         GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
 
         GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
-        texture.Payload.Should().BeOfType<GltfRawTexturePayload>();
-        result.Diagnostics.Should().Contain(diagnostic =>
-            diagnostic.Code == "gltf.texture.decode.failed");
+        texture.Payload.Should().BeOfType<GltfRawTexturePayload>()
+            .Which.Unusable!.Value.Codec.Should().Be(GltfImageCodecKind.Png);
+        result.Diagnostics.Should().ContainSingle()
+            .Which.Code.Should().Be("gltf.texture.decode.failed");
     }
 
     [Fact]

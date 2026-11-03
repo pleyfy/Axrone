@@ -123,11 +123,13 @@ public sealed class GltfImageCodecTests
         GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
 
         GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
-        texture.Payload.Should().BeOfType<GltfCompressedTexturePayload>();
+        texture.Payload.Should().BeOfType<GltfCompressedTexturePayload>()
+            .Which.Unusable!.Value.Failure.Should().Be(GltfImageDecodeFailure.TranscoderMissing);
         texture.RuntimeFormat.Should().Be(GltfTextureFormat.Unknown);
         texture.TranscodeState.Success.Should().BeFalse();
-        result.Diagnostics.Should().Contain(diagnostic =>
-            diagnostic.Code == "gltf.texture.transcode.unavailable");
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.transcode.unavailable");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Warning);
     }
 
     [Fact]
@@ -187,6 +189,187 @@ public sealed class GltfImageCodecTests
           "textures": [{"source": 0}]
         }
         """;
+
+    [Fact]
+    public async Task Import_TextureWithoutSource_ReportsCodedErrorAndMarksPayloadUnusable()
+    {
+        const string json = """
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/png;base64,iVBORw0KGgo="}],
+              "textures": [{}]
+            }
+            """;
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "sourceless.gltf" });
+        GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
+
+        GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.source.missing");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Error);
+        GltfRawTexturePayload payload = texture.Payload.Should().BeOfType<GltfRawTexturePayload>().Subject;
+        payload.Bytes.IsEmpty.Should().BeTrue();
+        payload.Unusable.Should().NotBeNull();
+        payload.Unusable!.Value.Failure.Should().Be(GltfImageDecodeFailure.SourceMissing);
+        payload.Unusable.Value.Marker.Should().Be("source");
+        texture.TranscodeState.Success.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Import_OutOfRangeTextureSource_ThrowsCodedError()
+    {
+        const string json = """
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/png;base64,iVBORw0KGgo="}],
+              "textures": [{"source": 4}]
+            }
+            """;
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "badsource.gltf" });
+        Func<Task> act = () => importer.ImportAsync(Encoding.UTF8.GetBytes(json)).AsTask();
+
+        (await act.Should().ThrowAsync<GltfTextureSourceError>())
+            .Which.Code.Should().Be("gltf.texture.source.invalid");
+    }
+
+    [Fact]
+    public async Task Import_OutOfRangeSampler_ReportsCodedWarningAndKeepsDefaultSampler()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        string json = $$"""
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/png;base64,{{Convert.ToBase64String(png)}}"}],
+              "textures": [{"source": 0, "sampler": 3}]
+            }
+            """;
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "badsampler.gltf" });
+        GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
+
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.sampler.invalid");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Warning);
+        GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
+        texture.Sampler.WrapS.Should().Be(10497);
+        texture.Payload.Should().BeOfType<GltfTranscodedTexturePayload>()
+            .Which.Unusable.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Import_UndecodablePng_MarksRawPayloadUnusableWithTheDecoderCode()
+    {
+        const string json = """
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/png;base64,iVBORw0KGgo="}],
+              "textures": [{"source": 0}]
+            }
+            """;
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "broken.gltf" });
+        GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
+
+        GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.decode.failed");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Error);
+        GltfRawTexturePayload payload = texture.Payload.Should().BeOfType<GltfRawTexturePayload>().Subject;
+        payload.Unusable.Should().NotBeNull();
+        payload.Unusable!.Value.Codec.Should().Be(GltfImageCodecKind.Png);
+        texture.TranscodeState.Success.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Import_Ktx2WithInvalidContainer_MarksRawPayloadUnusableAsError()
+    {
+        byte[] ktx2 = Ktx2TestData.Build(
+            vkFormat: 145,
+            width: 4,
+            height: 4,
+            levels: [[1, 2, 3, 4]],
+            dfd: Ktx2TestData.BuildDfd(166));
+        BinaryPrimitives.WriteUInt32LittleEndian(ktx2.AsSpan(52, 4), 2);
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "brokenktx2.gltf" });
+        GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(BuildKtx2Gltf(ktx2)));
+
+        GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.ktx2.invalid");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Error);
+        texture.Payload.Should().BeOfType<GltfRawTexturePayload>()
+            .Which.Unusable!.Value.Failure.Should().Be(GltfImageDecodeFailure.Container);
+        texture.TranscodeState.Success.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Import_Ktx2WithZlibSupercompression_WarnsAndMarksPayloadUnusable()
+    {
+        byte[] ktx2 = Ktx2TestData.Build(
+            vkFormat: 145,
+            width: 4,
+            height: 4,
+            levels: [[1, 2, 3, 4]],
+            scheme: GltfKtx2SupercompressionScheme.Zlib);
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "zlib.gltf" });
+        GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(BuildKtx2Gltf(ktx2)));
+
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.decode.unsupported");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Warning);
+        result.Textures[0].Payload.Should().BeOfType<GltfRawTexturePayload>()
+            .Which.Unusable!.Value.Failure.Should().Be(GltfImageDecodeFailure.Supercompression);
+    }
+
+    [Fact]
+    public async Task Import_WebpDataUri_RetainsBytesWithAMissingDecoderMarker()
+    {
+        const string webpBase64 = "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJaQAA3AA/vv9";
+        string json = $$"""
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/webp;base64,{{webpBase64}}"}],
+              "textures": [{"source": 0}]
+            }
+            """;
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "webp.gltf" });
+        GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
+
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.decode.unsupported");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Warning);
+        GltfRawTexturePayload payload = result.Textures[0].Payload.Should().BeOfType<GltfRawTexturePayload>().Subject;
+        payload.Bytes.Length.Should().BeGreaterThan(0);
+        payload.Unusable!.Value.Failure.Should().Be(GltfImageDecodeFailure.DecoderMissing);
+        result.Textures[0].RuntimeFormat.Should().Be(GltfTextureFormat.Unknown);
+    }
+
+    [Fact]
+    public async Task Import_TranscodedPng_PayloadCarriesNoUnusableMarker()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        string json = $$"""
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/png;base64,{{Convert.ToBase64String(png)}}"}],
+              "textures": [{"source": 0}]
+            }
+            """;
+
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "good.gltf" });
+        GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
+
+        result.Diagnostics.Should().BeEmpty();
+        result.Textures[0].Payload.Should().BeOfType<GltfTranscodedTexturePayload>()
+            .Which.Unusable.Should().BeNull();
+    }
 
     private static int FindMarker(byte[] jpeg, byte marker)
     {
