@@ -1,4 +1,4 @@
-﻿namespace Axrone.Particles;
+namespace Axrone.Particles;
 
 /// <summary>Storage capacity management.</summary>
 public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
@@ -21,7 +21,7 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
 
             nuint streamFloats = (nuint)aligned * sizeof(float);
             nuint streamIds = (nuint)aligned * (nuint)sizeof(ParticleId);
-            nuint newSizeBytes = (streamFloats * 28) + streamIds;
+            nuint newSizeBytes = (streamFloats * FloatStreamCount) + streamIds;
             void* newBlock = NativeMemory.AlignedAlloc(newSizeBytes, Alignment);
             if (newBlock == null)
             {
@@ -59,12 +59,12 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
             nuint oldStreamFloats = (nuint)Capacity * sizeof(float);
             nuint copyFloats = (nuint)active * sizeof(float);
 
-            for (int s = 0; s < 28; s++)
+            for (int s = 0; s < FloatStreamCount; s++)
             {
                 Buffer.MemoryCopy(src + ((nuint)s * oldStreamFloats), dst + ((nuint)s * streamFloats), copyFloats, copyFloats);
             }
 
-            ParticleId* newIds = (ParticleId*)(dst + (streamFloats * 28));
+            ParticleId* newIds = (ParticleId*)(dst + (streamFloats * FloatStreamCount));
             ParticleId* oldIds = DenseToId;
             for (int i = 0; i < active; i++)
             {
@@ -146,6 +146,8 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
         Custom1 = (float*)ptr; ptr += streamFloats;
         Custom2 = (float*)ptr; ptr += streamFloats;
         Custom3 = (float*)ptr; ptr += streamFloats;
+
+        CollisionHits = (int*)ptr;
     }
 
     /// <summary>Verifies dense packing. Removal is always swap-back, so storage is
@@ -216,6 +218,7 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
         SwapStreams(Custom1, a, b);
         SwapStreams(Custom2, a, b);
         SwapStreams(Custom3, a, b);
+        SwapStreams(CollisionHits, a, b);
 
         ParticleId tmp = DenseToId[a];
         DenseToId[a] = DenseToId[b];
@@ -225,9 +228,10 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SwapStreams(float* stream, int a, int b)
+    private static void SwapStreams<T>(T* stream, int a, int b)
+        where T : unmanaged
     {
-        float tmp = stream[a];
+        T tmp = stream[a];
         stream[a] = stream[b];
         stream[b] = tmp;
     }
