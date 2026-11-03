@@ -580,17 +580,18 @@ public struct CollisionModule : IParticleModulePolicy<CollisionModule>
         storage.PosZ[index] = resolvedPosition.Z;
 
         int hits = ++storage.CollisionHits[index];
+        float age = storage.Age[index];
         float lifetime = storage.Lifetime[index];
         if (state.LifetimeLoss > 0.0f)
         {
-            lifetime *= MathF.Max(0.0f, 1.0f - state.LifetimeLoss);
+            float remaining = MathF.Max(0.0f, lifetime - age);
+            lifetime = age + (remaining * (1.0f - Math.Clamp(state.LifetimeLoss, 0.0f, 1.0f)));
             storage.Lifetime[index] = lifetime;
         }
 
         float speed = reflected.Length();
         bool budgetExhausted = state.MaxNumberOfHits > 0 && hits >= state.MaxNumberOfHits;
         bool tooSlow = state.MinVelocity > 0.0f && speed < state.MinVelocity;
-        float age = storage.Age[index];
         if (budgetExhausted || tooSlow || lifetime <= age)
         {
             context.Sink?.OnDeath(new ParticleDeathEvent(id, ParticleDeathReason.Collision, age, lifetime));

@@ -670,6 +670,51 @@ public sealed class ParticleCollisionTests
     }
 
     [Fact]
+    public void SphereLifetimeLossAppliesToRemainingLifetimeWhenAged()
+    {
+        using NativeSoaParticleStorage storage = new((ParticleCapacity)16);
+        storage.TryAllocate(new Vec3(0.5f, 0f, 0f), new Vec3(0.2f, 0f, 0f), 10f, Vec3.One, Vec4.One, out _).Should().BeTrue();
+
+        CollisionModule module = CallbackSphere();
+        module.LifetimeLoss = 0.5f;
+
+        unsafe
+        {
+            storage.Age[0] = 3f;
+
+            CollisionModule.Process(storage, Context(sink: new NullEventSink()), ref module);
+
+            storage.Age[0].Should().Be(3f);
+            storage.Lifetime[0].Should().BeApproximately(6.5f, 1e-5f);
+            storage.Lifetime[0].Should().NotBe(5f);
+            storage.ActiveCount.Should().Be(1);
+        }
+    }
+
+    [Fact]
+    public void SphereLifetimeLossOfOneEndsParticleLifetime()
+    {
+        using NativeSoaParticleStorage storage = new((ParticleCapacity)16);
+        storage.TryAllocate(new Vec3(0.5f, 0f, 0f), new Vec3(0.2f, 0f, 0f), 10f, Vec3.One, Vec4.One, out _).Should().BeTrue();
+
+        RecordingSink sink = new();
+        CollisionModule module = CallbackSphere();
+        module.LifetimeLoss = 2f;
+
+        unsafe
+        {
+            storage.Age[0] = 4f;
+
+            CollisionModule.Process(storage, Context(sink: sink), ref module);
+
+            storage.Lifetime[0].Should().Be(4f);
+            storage.ActiveCount.Should().Be(0);
+            sink.Deaths.Should().ContainSingle();
+            sink.Deaths[0].Reason.Should().Be(ParticleDeathReason.Collision);
+        }
+    }
+
+    [Fact]
     public void DegeneratePlaneNormalFailsClosed()
     {
         using NativeSoaParticleStorage storage = new((ParticleCapacity)16);
