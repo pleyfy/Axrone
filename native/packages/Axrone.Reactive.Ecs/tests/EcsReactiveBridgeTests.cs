@@ -423,6 +423,31 @@ public sealed class EcsReactiveBridgeTests
     }
 
     [Fact]
+    public void RegistryTracksBridgeAndComponentSubjects()
+    {
+        ComponentRegistry.Register<BridgePosition>();
+        using var world = new World(workerCount: 1);
+        var bridge = new EcsReactiveBridge(world);
+        bridge.Registry.SubjectCount.Should().Be(7);
+        bridge.Registry.GetMemoryUsage().Subjects.Should().Be(7);
+
+        ComponentChanges<BridgePosition> changes = bridge.Track<BridgePosition>();
+        bridge.Track<BridgePosition>().Should().BeSameAs(changes);
+        bridge.Registry.SubjectCount.Should().Be(10);
+        bridge.Registry.GetMemoryUsage().Subjects.Should().Be(10);
+
+        changes.Dispose();
+        bridge.Registry.SubjectCount.Should().Be(7);
+        bridge.Registry.GetMemoryUsage().Subjects.Should().Be(7);
+
+        bridge.Dispose();
+        bridge.Registry.SubjectCount.Should().Be(0);
+        FluentActions.Invoking(() => bridge.Registry.GetMemoryUsage()).Should().Throw<ObjectDisposedException>();
+        FluentActions.Invoking(() => bridge.Registry.RegisterSubject(new object())).Should().Throw<ObjectDisposedException>();
+        FluentActions.Invoking(bridge.Dispose).Should().NotThrow();
+    }
+
+    [Fact]
     public void SecondBridgeOnTheSameWorldIsRejected()
     {
         using var world = new World(workerCount: 1);

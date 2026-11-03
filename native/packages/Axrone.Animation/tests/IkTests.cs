@@ -54,6 +54,49 @@ public class IkTests
     }
 
     [Fact]
+    public void Fabrik_ReachesDiagonalTargetWithBothJoints()
+    {
+        Rig rig = Arm();
+        AnimationFrame frame = RestFrame(rig);
+        Span<Vec3> scratch = stackalloc Vec3[3];
+        int[] chain = [0, 1, 2];
+
+        IkSolvers.SolveFabrik(rig, frame, chain, new Vec3(0.0f, 1.0f, 0.0f), scratch, maxIterations: 50);
+        Vec3 tip = TipWorld(rig, frame, 2);
+        Vec3.Distance(tip, new Vec3(0.0f, 1.0f, 0.0f)).Should().BeLessThan(0.05f);
+    }
+
+    [Fact]
+    public void Fabrik_ZeroWeightHoldsStill()
+    {
+        Rig rig = Arm();
+        AnimationFrame frame = RestFrame(rig);
+        Span<Vec3> scratch = stackalloc Vec3[3];
+        int[] chain = [0, 1, 2];
+
+        IkSolvers.SolveFabrik(rig, frame, chain, new Vec3(1.0f, 1.0f, 0.0f), scratch, weight: 0.0f);
+        TipWorld(rig, frame, 2).Should().Be(new Vec3(2.0f, 0.0f, 0.0f));
+
+        AnimationFrame negative = RestFrame(rig);
+        IkSolvers.SolveFabrik(rig, negative, chain, new Vec3(1.0f, 1.0f, 0.0f), scratch, weight: -1.0f);
+        TipWorld(rig, negative, 2).Should().Be(new Vec3(2.0f, 0.0f, 0.0f));
+    }
+
+    [Fact]
+    public void Fabrik_WeightBlendsCorrection()
+    {
+        Rig rig = Arm();
+        AnimationFrame frame = RestFrame(rig);
+        Span<Vec3> scratch = stackalloc Vec3[3];
+        int[] chain = [0, 1, 2];
+
+        IkSolvers.SolveFabrik(rig, frame, chain, new Vec3(1.0f, 1.0f, 0.0f), scratch, maxIterations: 50, weight: 0.5f);
+        Vec3 tip = TipWorld(rig, frame, 2);
+        Vec3.Distance(tip, new Vec3(1.0f, 1.0f, 0.0f)).Should().BeGreaterThan(0.05f);
+        Vec3.Distance(tip, new Vec3(2.0f, 0.0f, 0.0f)).Should().BeGreaterThan(0.05f);
+    }
+
+    [Fact]
     public void Ccd_ReachesTargetWithWeight()
     {
         Rig rig = Arm();

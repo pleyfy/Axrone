@@ -5,7 +5,6 @@ public readonly record struct ObservationBuilder<T>
     private readonly IObservable<T> _source;
     private readonly ObservationOptions _options;
     private readonly TimeProvider? _timeProvider;
-    private readonly int _replayBufferSize;
 
     public ObservationBuilder(
         IObservable<T> source,
@@ -16,40 +15,27 @@ public readonly record struct ObservationBuilder<T>
         _source = source;
         _options = ResolveOptions(in options);
         _timeProvider = timeProvider;
-        _replayBufferSize = 0;
-    }
-
-    private ObservationBuilder(
-        IObservable<T> source,
-        in ObservationOptions options,
-        TimeProvider? timeProvider,
-        int replayBufferSize)
-    {
-        _source = source;
-        _options = options;
-        _timeProvider = timeProvider;
-        _replayBufferSize = replayBufferSize;
     }
 
     public ObservationBuilder<T> Filter(Func<T, bool> predicate)
     {
         ArgumentNullException.ThrowIfNull(predicate);
-        return new ObservationBuilder<T>(_source.Where(WrapFilter(predicate)), _options, _timeProvider, _replayBufferSize);
+        return new ObservationBuilder<T>(_source.Where(WrapFilter(predicate)), _options, _timeProvider);
     }
 
     public ObservationBuilder<TResult> Transform<TResult>(Func<T, TResult> selector)
     {
         ArgumentNullException.ThrowIfNull(selector);
-        return new ObservationBuilder<TResult>(_source.Select(WrapTransform(selector)), _options, _timeProvider, _replayBufferSize);
+        return new ObservationBuilder<TResult>(_source.Select(WrapTransform(selector)), _options, _timeProvider);
     }
 
-    public ObservationBuilder<T> Once() => new(_source, WithOnce(in _options), _timeProvider, _replayBufferSize);
+    public ObservationBuilder<T> Once() => new(_source, WithOnce(in _options), _timeProvider);
 
     public ObservationBuilder<T> Debounce(int milliseconds) =>
-        new(_source, WithDebounce(in _options, milliseconds), _timeProvider, _replayBufferSize);
+        new(_source, WithDebounce(in _options, milliseconds), _timeProvider);
 
     public ObservationBuilder<T> Throttle(int milliseconds) =>
-        new(_source, WithThrottle(in _options, milliseconds), _timeProvider, _replayBufferSize);
+        new(_source, WithThrottle(in _options, milliseconds), _timeProvider);
 
     public ObservationBuilder<T> Replay(int bufferSize)
     {
@@ -57,15 +43,14 @@ public readonly record struct ObservationBuilder<T>
         return new ObservationBuilder<T>(
             new ReplayObservable<T>(_source, bufferSize),
             _options,
-            _timeProvider,
-            0);
+            _timeProvider);
     }
 
     public ObservationBuilder<T> WeakReference() =>
-        new(_source, WithWeakReference(in _options), _timeProvider, _replayBufferSize);
+        new(_source, WithWeakReference(in _options), _timeProvider);
 
     public ObservationBuilder<T> ErrorHandling(ObservationErrorHandling handling, Action<Exception>? onError = null) =>
-        new(_source, WithErrorHandling(in _options, handling, onError), _timeProvider, _replayBufferSize);
+        new(_source, WithErrorHandling(in _options, handling, onError), _timeProvider);
 
     public ObservationBuilder<T[]> Buffer(int count, int flushIntervalMs = 1000)
     {
@@ -74,12 +59,12 @@ public readonly record struct ObservationBuilder<T>
         IObservable<T[]> source = flushIntervalMs == 0
             ? _source.Buffer(count)
             : _source.Buffer(count, TimeSpan.FromMilliseconds(flushIntervalMs), _timeProvider);
-        return new ObservationBuilder<T[]>(source, _options, _timeProvider, _replayBufferSize);
+        return new ObservationBuilder<T[]>(source, _options, _timeProvider);
     }
 
-    public ObservationBuilder<T> Take(int count) => new(_source.Take(count), _options, _timeProvider, _replayBufferSize);
+    public ObservationBuilder<T> Take(int count) => new(_source.Take(count), _options, _timeProvider);
 
-    public ObservationBuilder<T> Skip(int count) => new(_source.Skip(count), _options, _timeProvider, _replayBufferSize);
+    public ObservationBuilder<T> Skip(int count) => new(_source.Skip(count), _options, _timeProvider);
 
     public IDisposable Subscribe(IObserver<T> observer)
     {
@@ -109,23 +94,8 @@ public readonly record struct ObservationBuilder<T>
         return Subscribe(new ActionObserver<T>(onNext, onError, onCompleted));
     }
 
-    private static ObservationOptions ResolveOptions(in ObservationOptions options)
-    {
-        if (options.Priority == ObservationPriority.High &&
-            options.DebounceMs == 0 &&
-            options.ThrottleMs == 0 &&
-            options.Buffering.MaxSize == 0 &&
-            options.Replay.BufferSize == 0 &&
-            options.ErrorHandling == ObservationErrorHandling.Throw &&
-            options.OnError is null &&
-            !options.Once &&
-            !options.WeakReference)
-        {
-            return ObservationOptions.Default;
-        }
-
-        return options.Normalize();
-    }
+    private static ObservationOptions ResolveOptions(in ObservationOptions options) =>
+        options == default ? ObservationOptions.Default : options.Normalize();
 
     private static Func<T, bool> WrapFilter(Func<T, bool> predicate) => value =>
     {

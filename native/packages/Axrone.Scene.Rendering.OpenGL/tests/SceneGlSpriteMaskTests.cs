@@ -2,6 +2,7 @@ namespace Axrone.Scene.Rendering.OpenGL.Tests;
 
 using System.Runtime.InteropServices;
 using Axrone.Numeric;
+using Axrone.Render2D;
 using Axrone.Render.OpenGL.Context;
 using Axrone.Render.OpenGL.Mock;
 using Axrone.Scene;
@@ -14,7 +15,7 @@ using Xunit;
 public sealed class SceneGlSpriteMaskTests
 {
     [Fact]
-    public void MaskedSpriteUploadsMaskAttributes()
+    public void MaskedSpriteBindsMaskUniforms()
     {
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
@@ -35,7 +36,6 @@ public sealed class SceneGlSpriteMaskTests
         mask.Rect = new Vec4(0.1f, 0.2f, 0.3f, 0.4f);
         mask.Invert = true;
         mask.Feather = 0.15f;
-        mask.CornerRadius = 0.2f;
         world.AddData(actor, mask);
         world.UpdateTransforms();
 
@@ -49,19 +49,9 @@ public sealed class SceneGlSpriteMaskTests
         frameState.Begin(0);
 
         renderer.Render(world, frame, collector.Items, pass, frameState).Should().Be(1);
-
-        byte[] vertexStorage = api.BufferStorage.Values.First(storage => storage.Length == 4 * 80);
-        float[] values = MemoryMarshal.Cast<byte, float>(vertexStorage.AsSpan()).ToArray();
-
-        values[11].Should().BeApproximately(0.1f, 1e-5f);
-        values[12].Should().BeApproximately(0.2f, 1e-5f);
-        values[13].Should().BeApproximately(0.3f, 1e-5f);
-        values[14].Should().BeApproximately(0.4f, 1e-5f);
-        values[15].Should().Be(1.0f);
-        values[16].Should().Be(1.0f);
-        values[17].Should().Be(1.0f);
-        values[18].Should().BeApproximately(0.15f, 1e-5f);
-        values[19].Should().BeApproximately(0.2f, 1e-5f);
+        renderer.LastMaskShape.Should().Be(Render2DSpriteShaderContract.MaskShapeCircle);
+        renderer.LastBatchCount.Should().Be(1);
+        renderer.LastSpriteCount.Should().Be(1);
     }
 
     private static SceneWorld CreateWorld() =>

@@ -16,7 +16,8 @@ public static class IkSolvers
         Vec3 targetPos,
         Span<Vec3> scratchPositions,
         int maxIterations = AnimationConstants.IkDefaultMaxIterations,
-        float precision = AnimationConstants.IkDefaultPrecision)
+        float precision = AnimationConstants.IkDefaultPrecision,
+        float weight = 1.0f)
     {
         ArgumentNullException.ThrowIfNull(rig);
         ArgumentNullException.ThrowIfNull(frame);
@@ -24,6 +25,13 @@ public static class IkSolvers
         {
             AnimationThrowHelper.ThrowIk(AnimationErrorCode.ValidationInvalidArgument, "FABRIK chain requires at least two bones.");
         }
+
+        if (weight <= 0.0f)
+        {
+            return;
+        }
+
+        float w = FastMath.Clamp01(weight);
 
         if (scratchPositions.Length < chainBoneIndices.Length)
         {
@@ -98,7 +106,7 @@ public static class IkSolvers
             AnimationTelemetry.RecordIkIterations(iterations);
         }
 
-        WriteBackRotations(rig, frame, worldT, worldR, chainBoneIndices, scratchPositions);
+        WriteBackRotations(rig, frame, worldT, worldR, worldS, chainBoneIndices, scratchPositions, w);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -121,15 +129,22 @@ public static class IkSolvers
     private static void WriteBackRotations(
         Rig rig,
         AnimationFrame frame,
-        ReadOnlySpan<Vec3> worldT,
-        ReadOnlySpan<Quat> worldR,
+        Span<Vec3> worldT,
+        Span<Quat> worldR,
+        Span<Vec3> worldS,
         ReadOnlySpan<int> chain,
-        ReadOnlySpan<Vec3> solved)
+        ReadOnlySpan<Vec3> solved,
+        float weight)
     {
         Span<Quat> localR = frame.GetRotations();
 
         for (int i = 0; i < chain.Length - 1; i++)
         {
+            // Each correction changes the world transform of every descendant, so
+            // refresh before reading the next joint's current direction and parent
+            // world rotation. Stale buffers leave diagonal multi-joint targets short.
+            BlendingKernels.ForwardKinematics(rig, frame, worldT, worldR, worldS);
+
             int bone = chain[i];
             Vec3 currentDir = worldT[chain[i + 1]] - worldT[bone];
             Vec3 targetDir = solved[i + 1] - solved[i];
@@ -144,7 +159,7 @@ public static class IkSolvers
             Quat parentWorld = parent != -1 ? worldR[parent] : Quat.Identity;
             Quat newLocal = FastMath.Normalize(
                 FastMath.Multiply(FastMath.Multiply(FastMath.Invert(parentWorld), correction), FastMath.Multiply(parentWorld, localR[bone])));
-            localR[bone] = newLocal;
+            localR[bone] = weight >= 1.0f ? newLocal : FastMath.Slerp(localR[bone], newLocal, weight);
         }
     }
 

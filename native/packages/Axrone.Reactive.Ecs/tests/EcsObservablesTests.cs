@@ -12,12 +12,11 @@ public sealed class EcsObservablesTests
     {
         ComponentRegistry.Register<BridgePosition>();
         using var world = new World(workerCount: 1);
-        using var bridge = new EcsReactiveBridge(world);
         var names = new Dictionary<Entity, string>();
         var tags = new Dictionary<Entity, string>();
         var layers = new Dictionary<Entity, int>();
-        using var observables = new EcsObservables(
-            bridge,
+        using var bridge = new EcsReactiveBridge(
+            world,
             (_, entity) => names.TryGetValue(entity, out string? name) ? name : null,
             (_, entity) => tags.TryGetValue(entity, out string? tag) ? tag : null,
             (_, entity) => layers.TryGetValue(entity, out int layer) ? layer : -1);
@@ -25,9 +24,9 @@ public sealed class EcsObservablesTests
         var byName = new RecordingObserver<EntityLifecycleEvent>();
         var byTag = new RecordingObserver<EntityLifecycleEvent>();
         var byLayer = new RecordingObserver<EntityLifecycleEvent>();
-        using var nameSubscription = observables.ByName("hero").Subscribe(byName);
-        using var tagSubscription = observables.ByTag("enemy").Subscribe(byTag);
-        using var layerSubscription = observables.ByLayer(2).Subscribe(byLayer);
+        using var nameSubscription = bridge.Observables.ByName("hero").Subscribe(byName);
+        using var tagSubscription = bridge.Observables.ByTag("enemy").Subscribe(byTag);
+        using var layerSubscription = bridge.Observables.ByLayer(2).Subscribe(byLayer);
 
         Entity hero = world.BeginEntity().With(new BridgePosition(1, 2)).Commit();
         Entity enemy = world.BeginEntity().With(new BridgePosition(3, 4)).Commit();
@@ -61,11 +60,10 @@ public sealed class EcsObservablesTests
         _ = world.BeginEntity().With(new BridgePosition(1, 0)).Commit();
         _ = world.BeginEntity().With(new BridgePosition(2, 0)).Commit();
         using var bridge = new EcsReactiveBridge(world);
-        using var observables = new EcsObservables(bridge);
 
-        BehaviorSubject<Entity[]> query = observables.GetQueryObservable<BridgePosition>("positions");
+        BehaviorSubject<Entity[]> query = bridge.Observables.GetQueryObservable<BridgePosition>("positions");
         query.Value.Should().HaveCount(2);
-        observables.GetQueryObservable<BridgePosition>("positions").Should().BeSameAs(query);
+        bridge.Observables.GetQueryObservable<BridgePosition>("positions").Should().BeSameAs(query);
         var observer = new RecordingObserver<Entity[]>();
         using var subscription = query.Subscribe(observer);
         observer.Values.Should().ContainSingle();
@@ -85,13 +83,13 @@ public sealed class EcsObservablesTests
         using var world = new World(workerCount: 1);
         Entity entity = world.BeginEntity().Commit();
         using var bridge = new EcsReactiveBridge(world);
-        using var observables = new EcsObservables(bridge);
-        BehaviorSubject<Entity[]> query = observables.GetQueryObservable("custom", _ => [entity]);
+        BehaviorSubject<Entity[]> query = bridge.Observables.GetQueryObservable("custom", _ => [entity]);
         query.Value.Should().HaveCount(1);
-        observables.RefreshQueries();
+        bridge.Observables.RefreshQueries();
         query.Value.Should().HaveCount(1);
-        observables.Dispose();
-        FluentActions.Invoking(() => observables.GetQueryObservable("after", _ => [])).Should().Throw<ObjectDisposedException>();
+        bridge.Dispose();
+        query.IsTerminated.Should().BeTrue();
+        FluentActions.Invoking(() => bridge.Observables.GetQueryObservable("after", _ => [])).Should().Throw<ObjectDisposedException>();
     }
 
     [Fact]
@@ -99,9 +97,42 @@ public sealed class EcsObservablesTests
     {
         using var world = new World(workerCount: 1);
         using var bridge = new EcsReactiveBridge(world);
-        using var observables = new EcsObservables(bridge);
-        FluentActions.Invoking(() => observables.ByName("x")).Should().Throw<InvalidOperationException>();
-        FluentActions.Invoking(() => observables.ByTag("x")).Should().Throw<InvalidOperationException>();
-        FluentActions.Invoking(() => observables.ByLayer(1)).Should().Throw<InvalidOperationException>();
+        FluentActions.Invoking(() => bridge.Observables.ByName("x")).Should().Throw<InvalidOperationException>();
+        FluentActions.Invoking(() => bridge.Observables.ByTag("x")).Should().Throw<InvalidOperationException>();
+        FluentActions.Invoking(() => bridge.Observables.ByLayer(1)).Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void QueriesRefreshInRegistrationOrder()
+    {
+        using var world = new World(workerCount: 1);
+        Entity first = world.BeginEntity().Commit();
+        Entity second = world.BeginEntity().Commit();
+        using var bridge = new EcsReactiveBridge(world);
+        var order = new List<string>();
+        BehaviorSubject<Entity[]> firstQuery = bridge.Observables.GetQueryObservable("first", _ => [first]);
+        BehaviorSubject<Entity[]> secondQuery = bridge.Observables.GetQueryObservable("second", _ => [second]);
+        using var firstSubscription = firstQuery.Subscribe(new CallbackObserver<Entity[]>(_ => order.Add("first")));
+        using var secondSubscription = secondQuery.Subscribe(new CallbackObserver<Entity[]>(_ => order.Add("second")));
+        order.Clear();
+
+        bridge.Poll();
+
+        order.Should().Equal("first", "second");
+    }
+
+    private sealed class CallbackObserver<T> : IObserver<T>
+    {
+        private readonly Action<T> _onNext;
+
+        public CallbackObserver(Action<T> onNext) => _onNext = onNext;
+
+        public void OnNext(T value) => _onNext(value);
+
+        public void OnError(Exception error) => throw error;
+
+        public void OnCompleted()
+        {
+        }
     }
 }

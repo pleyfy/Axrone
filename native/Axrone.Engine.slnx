@@ -1,5 +1,9 @@
 <Solution>
   <Folder Name="/packages/">
+    <Project Path="packages/Axrone.Animation/Axrone.Animation.csproj" />
+    <Project Path="packages/Axrone.Animation/tests/Axrone.Animation.Tests.csproj" />
+    <Project Path="packages/Axrone.Tween/Axrone.Tween.csproj" />
+    <Project Path="packages/Axrone.Tween/tests/Axrone.Tween.Tests.csproj" />
     <Project Path="packages/Axrone.Audio/Axrone.Audio.csproj" />
     <Project Path="packages/Axrone.Audio/tests/Axrone.Audio.Tests.csproj" />
     <Project Path="packages/Axrone.Audio.Ecs/Axrone.Audio.Ecs.csproj" />

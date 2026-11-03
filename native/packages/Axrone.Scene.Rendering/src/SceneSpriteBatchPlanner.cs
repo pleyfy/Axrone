@@ -7,7 +7,8 @@ public readonly record struct SceneSpriteInstanceGroup(
     SceneAssetId<MaterialAssetTag> MaterialId,
     int FirstItem,
     int Count,
-    bool Instanced);
+    bool Instanced,
+    bool RequiresImmediate = false);
 
 /// <summary>
 /// Splits a sorted sprite plan into contiguous runs keyed by texture and
@@ -66,15 +67,17 @@ public sealed class SceneSpriteBatchPlanner
         {
             SceneAssetId<TextureAssetTag> texture = items[start].TextureId;
             SceneAssetId<MaterialAssetTag> material = items[start].MaterialId;
+            bool requiresImmediate = items[start].HasSlice;
             int end = start + 1;
             while (end < items.Length &&
                    items[end].TextureId == texture &&
-                   items[end].MaterialId == material)
+                   items[end].MaterialId == material &&
+                   items[end].HasSlice == requiresImmediate)
             {
                 end++;
             }
 
-            bool instanced = end - start >= MinInstancesForFastPath;
+            bool instanced = !requiresImmediate && end - start >= MinInstancesForFastPath;
             if (instanced)
             {
                 InstancedGroupCount++;
@@ -85,7 +88,13 @@ public sealed class SceneSpriteBatchPlanner
                 Grow();
             }
 
-            _groups[_count++] = new SceneSpriteInstanceGroup(texture, material, start, end - start, instanced);
+            _groups[_count++] = new SceneSpriteInstanceGroup(
+                texture,
+                material,
+                start,
+                end - start,
+                instanced,
+                requiresImmediate);
             start = end;
         }
 

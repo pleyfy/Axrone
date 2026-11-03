@@ -1,101 +1,131 @@
 namespace Axrone.Scene.Rendering.OpenGL;
 
+using Axrone.Render2D;
+
+/// <summary>Why one sprite batch was rejected before a draw was issued.</summary>
+public enum SceneGlSpriteMaterialFailure
+{
+    /// <summary>No failure.</summary>
+    None = 0,
+
+    /// <summary>The material id is not registered in the asset cache.</summary>
+    MissingMaterial = 1,
+
+    /// <summary>The material shader is not the Render2D sprite contract shader.</summary>
+    UnsupportedShader = 2,
+}
+
 /// <summary>
-/// Batched sprite renderer. Sprites are grouped into contiguous runs keyed by
-/// texture and material; short runs are expanded into world-space quads on the
-/// CPU, long runs go through a per-instance fast path that keeps one base quad
-/// and uploads an instance block. Buffers and scratch arrays are reused, so a
-/// steady frame allocates nothing on the managed heap.
+/// Batched sprite renderer driven by <see cref="Render2DSpriteBatchBuilder"/>.
+/// The scene collector feeds planning records; the renderer converts them into
+/// renderer-independent submissions, lets the builder expand and batch them,
+/// uploads the builder's 16-byte vertices and 16/32-bit indices, and draws one
+/// range per batch. Long unsliced runs go through the instanced fast path;
+/// sliced or masked runs always use the builder's expanded geometry.
 /// </summary>
-/// <remarks>
-/// A material id of zero/default keeps the historical texture-only grouping;
-/// any material change inside a texture run starts a new group so material
-/// state can be bound between draws. The instanced path is selected by a
-/// deterministic run-length threshold owned by <see cref="SceneSpriteBatchPlanner"/>.
-/// </remarks>
 public sealed class SceneGlSpriteBatchRenderer : IDisposable
 {
-    private const int InitialSpriteCapacity = 256;
-    private const int VerticesPerSprite = 4;
-    private const int IndicesPerSprite = 6;
+    private const int InitialVertexBytes = 64 * 1024;
+    private const int InitialIndexCount = 16 * 1024;
+    private const int InitialInstanceCapacity = 256;
+    private const int InstanceStride = 112;
 
-    private const string ViewProjectionUniform = "u_ViewProjection";
-    private const string TextureUniform = "u_Texture";
+    private const string MaterialTintUniform = "u_MaterialTint";
+    private const string MaskInvertUniform = "u_MaskInvert";
+    private const string MaskFeatherUniform = "u_MaskFeather";
+
+    private static readonly SceneAssetId<ShaderAssetTag> SpriteShaderId =
+        SceneAssetId<ShaderAssetTag>.FromName(Render2DSpriteShaderContract.DefaultShaderId);
 
     private const string MaskFunctionSource = """
-        float maskFactor()
+        uniform int u_MaskShape;
+        uniform mat4 u_MaskWorldToLocal;
+        uniform vec2 u_MaskSize;
+        uniform vec2 u_MaskAnchor;
+        uniform float u_MaskCornerRadius;
+        uniform float u_MaskInvert;
+        uniform float u_MaskFeather;
+
+        float roundedRectSdf(vec2 p, vec2 size, float radius)
         {
-            if (v_MaskParams.x < 0.5)
+            vec2 q = abs(p - (size * 0.5)) - ((size * 0.5) - radius);
+            return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+        }
+
+        float evaluateMask(vec3 worldPosition)
+        {
+            if (u_MaskShape == 0)
             {
                 return 1.0;
             }
 
-            vec2 size = max(v_MaskRect.zw, vec2(1e-5));
-            vec2 p = (v_Local - v_MaskRect.xy) / size;
-            float feather = max(v_MaskExtra.x, 1e-4);
-            float corner = clamp(v_MaskExtra.y, 0.0, 0.5);
+            vec2 localPosition = (u_MaskWorldToLocal * vec4(worldPosition, 1.0)).xy;
+            float feather = max(u_MaskFeather, 1e-4);
             float inside;
-
-            if (v_MaskParams.y < 0.5 || v_MaskParams.y > 1.5)
+            if (u_MaskShape == 1)
             {
-                vec2 q = abs(p - 0.5) - (0.5 - corner);
-                float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - corner;
-                inside = 1.0 - smoothstep(0.0, feather, d);
+                vec2 maskMin = -u_MaskAnchor * u_MaskSize;
+                vec2 maskCenter = maskMin + (u_MaskSize * 0.5);
+                vec2 radius = max(u_MaskSize * 0.5, vec2(0.000001));
+                vec2 normalized = (localPosition - maskCenter) / radius;
+                inside = 1.0 - smoothstep(1.0, 1.0 + feather, length(normalized));
             }
             else
             {
-                vec2 q = (p * 2.0) - 1.0;
-                float d = length(q) - 1.0;
-                inside = 1.0 - smoothstep(0.0, feather * 2.0, d);
+                vec2 maskMin = -u_MaskAnchor * u_MaskSize;
+                float radius = clamp(u_MaskCornerRadius, 0.0, min(u_MaskSize.x, u_MaskSize.y) * 0.5);
+                float sdf = roundedRectSdf(localPosition - maskMin, u_MaskSize, radius);
+                inside = 1.0 - smoothstep(0.0, feather, sdf);
             }
 
-            return v_MaskParams.z > 0.5 ? 1.0 - inside : inside;
-        }
-        """;
-
-    private const string FragmentBodySource = """
-        void main()
-        {
-            float mask = maskFactor();
-            vec4 color = texture(u_Texture, v_Uv) * v_Color;
-            color.a *= mask;
-            if (color.a <= 0.001)
-            {
-                discard;
-            }
-
-            fragColor = color;
+            return u_MaskInvert > 0.5 ? 1.0 - inside : inside;
         }
         """;
 
     private const string ImmediateVertexShaderSource = """
         #version 330 core
-        layout(location = 0) in vec3 a_Position;
-        layout(location = 1) in vec2 a_Uv;
-        layout(location = 2) in vec4 a_Color;
-        layout(location = 3) in vec2 a_Local;
-        layout(location = 4) in vec4 a_MaskRect;
-        layout(location = 5) in vec3 a_MaskParams;
-        layout(location = 6) in vec2 a_MaskExtra;
+        layout(location = 0) in vec2 a_Position;
+        layout(location = 2) in vec2 a_UV0;
+        layout(location = 3) in vec4 a_Color0;
 
         uniform mat4 u_ViewProjection;
+        uniform vec4 u_MaterialTint;
 
-        out vec2 v_Uv;
-        out vec4 v_Color;
-        out vec2 v_Local;
-        out vec4 v_MaskRect;
-        out vec3 v_MaskParams;
-        out vec2 v_MaskExtra;
+        out vec2 v_UV0;
+        out vec4 v_Color0;
+        out vec3 v_WorldPosition;
 
         void main()
         {
-            v_Uv = a_Uv;
-            v_Color = a_Color;
-            v_Local = a_Local;
-            v_MaskRect = a_MaskRect;
-            v_MaskParams = a_MaskParams;
-            v_MaskExtra = a_MaskExtra;
-            gl_Position = vec4(a_Position, 1.0) * u_ViewProjection;
+            v_UV0 = a_UV0;
+            v_Color0 = a_Color0 * u_MaterialTint;
+            v_WorldPosition = vec3(a_Position, 0.0);
+            gl_Position = vec4(a_Position, 0.0, 1.0) * u_ViewProjection;
+        }
+        """;
+
+    private const string FragmentHeaderSource = """
+        #version 330 core
+        in vec2 v_UV0;
+        in vec4 v_Color0;
+        in vec3 v_WorldPosition;
+
+        uniform sampler2D u_MainTex;
+
+        out vec4 o_Color;
+
+        """;
+
+    private const string FragmentBodySource = """
+        void main()
+        {
+            float mask = evaluateMask(v_WorldPosition);
+            if (mask <= 0.0)
+            {
+                discard;
+            }
+
+            o_Color = texture(u_MainTex, v_UV0) * v_Color0;
         }
         """;
 
@@ -108,86 +138,37 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         layout(location = 4) in vec4 a_Row3;
         layout(location = 5) in vec4 a_Color;
         layout(location = 6) in vec4 a_UvRect;
-        layout(location = 7) in vec4 a_MaskRect;
-        layout(location = 8) in vec4 a_MaskParams;
-        layout(location = 9) in vec4 a_MaskExtra;
-        layout(location = 10) in vec4 a_Geometry;
+        layout(location = 7) in vec4 a_Geometry;
 
         uniform mat4 u_ViewProjection;
+        uniform vec4 u_MaterialTint;
 
-        out vec2 v_Uv;
-        out vec4 v_Color;
-        out vec2 v_Local;
-        out vec4 v_MaskRect;
-        out vec3 v_MaskParams;
-        out vec2 v_MaskExtra;
+        out vec2 v_UV0;
+        out vec4 v_Color0;
+        out vec3 v_WorldPosition;
 
         void main()
         {
             vec2 local = (a_Corner - a_Geometry.zw) * a_Geometry.xy;
             mat4 model = mat4(a_Row0, a_Row1, a_Row2, a_Row3);
-            gl_Position = vec4(local, 0.0, 1.0) * model * u_ViewProjection;
-            v_Uv = a_UvRect.xy + (a_Corner * a_UvRect.zw);
-            v_Color = a_Color;
-            v_Local = a_Corner;
-            v_MaskRect = a_MaskRect;
-            v_MaskParams = a_MaskParams.xyz;
-            v_MaskExtra = vec2(a_MaskParams.w, a_MaskExtra.x);
+            vec4 world = vec4(local, 0.0, 1.0) * model;
+            v_UV0 = a_UvRect.xy + (a_Corner * a_UvRect.zw);
+            v_Color0 = a_Color * u_MaterialTint;
+            v_WorldPosition = world.xyz;
+            gl_Position = world * u_ViewProjection;
         }
         """;
 
-    private const string ImmediateFragmentHeaderSource = """
-        #version 330 core
-        in vec2 v_Uv;
-        in vec4 v_Color;
-        in vec2 v_Local;
-        in vec4 v_MaskRect;
-        in vec3 v_MaskParams;
-        in vec2 v_MaskExtra;
-
-        uniform sampler2D u_Texture;
-
-        out vec4 fragColor;
-        """;
-
-    private const string InstancedFragmentHeaderSource = """
-        #version 330 core
-        in vec2 v_Uv;
-        in vec4 v_Color;
-        in vec2 v_Local;
-        in vec4 v_MaskRect;
-        in vec3 v_MaskParams;
-        in vec2 v_MaskExtra;
-
-        uniform sampler2D u_Texture;
-
-        out vec4 fragColor;
-        """;
-
     private const string ImmediateFragmentShaderSource =
-        ImmediateFragmentHeaderSource + "\n" + MaskFunctionSource + "\n" + FragmentBodySource;
+        FragmentHeaderSource + MaskFunctionSource + "\n" + FragmentBodySource;
 
     private const string InstancedFragmentShaderSource =
-        InstancedFragmentHeaderSource + "\n" + MaskFunctionSource + "\n" + FragmentBodySource;
+        FragmentHeaderSource + MaskFunctionSource + "\n" + FragmentBodySource;
 
-    private static readonly int VertexStride = Unsafe.SizeOf<SpriteVertex>();
-    private static readonly int InstanceStride = Unsafe.SizeOf<SpriteInstance>();
-    private static readonly int QuadStride = Unsafe.SizeOf<QuadCorner>();
-
-    private static readonly VertexAttribute[] s_layout =
-    [
-        new VertexAttribute(0, 3, GLConst.Float, false, VertexStride, 0, 0, false),
-        new VertexAttribute(1, 2, GLConst.Float, false, VertexStride, 12, 0, false),
-        new VertexAttribute(2, 4, GLConst.Float, false, VertexStride, 20, 0, false),
-        new VertexAttribute(3, 2, GLConst.Float, false, VertexStride, 36, 0, false),
-        new VertexAttribute(4, 4, GLConst.Float, false, VertexStride, 44, 0, false),
-        new VertexAttribute(5, 3, GLConst.Float, false, VertexStride, 60, 0, false),
-        new VertexAttribute(6, 2, GLConst.Float, false, VertexStride, 72, 0, false)
-    ];
-
+    private static readonly VertexAttribute[] s_immediateLayout = BuildImmediateLayout();
     private static readonly VertexAttribute[] s_quadLayout =
     [
-        new VertexAttribute(0, 2, GLConst.Float, false, QuadStride, 0, 0, false)
+        new VertexAttribute(0, 2, GLConst.Float, false, 8, 0, 0, false),
     ];
 
     private static readonly QuadCorner[] s_quadCorners =
@@ -195,86 +176,87 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         new QuadCorner(new Vec2(0.0f, 0.0f)),
         new QuadCorner(new Vec2(1.0f, 0.0f)),
         new QuadCorner(new Vec2(1.0f, 1.0f)),
-        new QuadCorner(new Vec2(0.0f, 1.0f))
+        new QuadCorner(new Vec2(0.0f, 1.0f)),
     ];
 
     private static readonly uint[] s_quadIndices = [0u, 1u, 2u, 0u, 2u, 3u];
 
     private readonly GLContext _context;
     private readonly SceneGlAssetCache _assets;
-    private readonly SceneSpriteBatchPlanner _planner;
+    private readonly int _minInstancesForFastPath;
+    private readonly Render2DSpriteBatchBuilder _builder = new(new Render2DSpriteBatchBuilderOptions { MaxBatchQuads = 2048 });
+
     private readonly SceneGlShader _shader;
-    private readonly GLVertexArray _vao;
     private readonly GLBuffer _vertexBuffer;
-    private readonly GLBuffer _indexBuffer;
+    private readonly GLBuffer _indexBuffer16;
+    private readonly GLBuffer _indexBuffer32;
+    private readonly GLVertexArray _vao16;
+    private readonly GLVertexArray _vao32;
+
     private readonly SceneGlShader _instancedShader;
     private readonly GLVertexArray _instancedVao;
     private readonly GLBuffer _quadBuffer;
     private readonly GLBuffer _quadIndexBuffer;
     private readonly GLBuffer _instanceBuffer;
 
-    private SpriteVertex[] _vertices;
-    private uint[] _indices;
+    private Render2DSpriteSubmission[] _submissions;
     private SpriteInstance[] _instances;
-    private int _vertexCount;
-    private int _indexCount;
     private bool _disposed;
 
     /// <summary>Creates a sprite batch renderer over an uploaded asset cache.</summary>
     public SceneGlSpriteBatchRenderer(GLContext context, SceneGlAssetCache assets)
-        : this(context, assets, new SceneSpriteBatchPlanner())
+        : this(context, assets, SceneSpriteBatchPlanner.DefaultMinInstancesForFastPath)
     {
     }
 
     /// <summary>Creates a sprite batch renderer with an explicit fast-path threshold.</summary>
     public SceneGlSpriteBatchRenderer(GLContext context, SceneGlAssetCache assets, int minInstancesForFastPath)
-        : this(context, assets, new SceneSpriteBatchPlanner(64, minInstancesForFastPath))
-    {
-    }
-
-    /// <summary>Creates a sprite batch renderer with an explicit run planner.</summary>
-    public SceneGlSpriteBatchRenderer(GLContext context, SceneGlAssetCache assets, SceneSpriteBatchPlanner planner)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assets);
-        ArgumentNullException.ThrowIfNull(planner);
+        if (minInstancesForFastPath <= 0)
+        {
+            throw new SceneConfigurationException(
+                $"Sprite instancing threshold must be positive; received {minInstancesForFastPath}.");
+        }
 
         _context = context;
         _assets = assets;
-        _planner = planner;
+        _minInstancesForFastPath = minInstancesForFastPath;
+        _submissions = new Render2DSpriteSubmission[64];
+        _instances = GC.AllocateArray<SpriteInstance>(InitialInstanceCapacity, pinned: true);
+
         _shader = new SceneGlShader(context, "scene-sprite-batch", ImmediateVertexShaderSource, ImmediateFragmentShaderSource);
         _instancedShader = new SceneGlShader(context, "scene-sprite-batch-instanced", InstancedVertexShaderSource, InstancedFragmentShaderSource);
+        _vertexBuffer = new GLBuffer(context, GLConst.ArrayBuffer, GLConst.DynamicDraw, InitialVertexBytes, "scene-sprite-vertices");
+        _indexBuffer16 = new GLBuffer(context, GLConst.ElementArrayBuffer, GLConst.DynamicDraw, InitialIndexCount * sizeof(ushort), "scene-sprite-indices16");
+        _indexBuffer32 = new GLBuffer(context, GLConst.ElementArrayBuffer, GLConst.DynamicDraw, InitialIndexCount * sizeof(uint), "scene-sprite-indices32");
+        _vao16 = new GLVertexArray(context, "scene-sprite-batch16");
+        _vao16.ConfigureLayout(_vertexBuffer, _indexBuffer16, s_immediateLayout, 0, 0, GLConst.UnsignedShort);
+        _vao32 = new GLVertexArray(context, "scene-sprite-batch32");
+        _vao32.ConfigureLayout(_vertexBuffer, _indexBuffer32, s_immediateLayout, 0, 0, GLConst.UnsignedInt);
 
-        int vertexCapacity = InitialSpriteCapacity * VerticesPerSprite;
-        int indexCapacity = InitialSpriteCapacity * IndicesPerSprite;
-        _vertices = new SpriteVertex[vertexCapacity];
-        _indices = new uint[indexCapacity];
-        _instances = GC.AllocateArray<SpriteInstance>(InitialSpriteCapacity, pinned: true);
-
-        _vertexBuffer = new GLBuffer(context, GLConst.ArrayBuffer, GLConst.DynamicDraw, vertexCapacity * VertexStride, "scene-sprite-vertices");
-        _indexBuffer = new GLBuffer(context, GLConst.ElementArrayBuffer, GLConst.DynamicDraw, indexCapacity * sizeof(uint), "scene-sprite-indices");
-        _vao = new GLVertexArray(context, "scene-sprite-batch");
-        _vao.ConfigureLayout(_vertexBuffer, _indexBuffer, s_layout, vertexCapacity, indexCapacity, GLConst.UnsignedInt);
-
-        _quadBuffer = new GLBuffer(context, GLConst.ArrayBuffer, GLConst.StaticDraw, s_quadCorners.Length * QuadStride, "scene-sprite-quad");
+        _quadBuffer = new GLBuffer(context, GLConst.ArrayBuffer, GLConst.StaticDraw, s_quadCorners.Length * 8, "scene-sprite-quad");
         _quadIndexBuffer = new GLBuffer(context, GLConst.ElementArrayBuffer, GLConst.StaticDraw, s_quadIndices.Length * sizeof(uint), "scene-sprite-quad-indices");
-        _instanceBuffer = new GLBuffer(context, GLConst.ArrayBuffer, GLConst.DynamicDraw, InitialSpriteCapacity * InstanceStride, "scene-sprite-instances");
+        _instanceBuffer = new GLBuffer(context, GLConst.ArrayBuffer, GLConst.DynamicDraw, InitialInstanceCapacity * InstanceStride, "scene-sprite-instances");
         _instancedVao = new GLVertexArray(context, "scene-sprite-batch-instanced");
         _instancedVao.ConfigureLayout(_quadBuffer, _quadIndexBuffer, s_quadLayout, s_quadCorners.Length, s_quadIndices.Length, GLConst.UnsignedInt);
 
-        if (InstanceStride != 160)
+        if (Unsafe.SizeOf<SpriteInstance>() != InstanceStride)
         {
             _instancedVao.Dispose();
             _instanceBuffer.Dispose();
             _quadIndexBuffer.Dispose();
             _quadBuffer.Dispose();
-            _vao.Dispose();
-            _indexBuffer.Dispose();
+            _vao32.Dispose();
+            _vao16.Dispose();
+            _indexBuffer32.Dispose();
+            _indexBuffer16.Dispose();
             _vertexBuffer.Dispose();
-            _shader.Dispose();
             _instancedShader.Dispose();
+            _shader.Dispose();
             throw new SceneConfigurationException(
-                $"Sprite instance layout must be 160 bytes; measured {InstanceStride}.");
+                $"Sprite instance layout must be 112 bytes; measured {InstanceStride}.");
         }
 
         UploadQuadGeometry();
@@ -285,20 +267,44 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
     /// <summary>Number of sprites submitted by the last render call.</summary>
     public int LastSpriteCount { get; private set; }
 
+    /// <summary>Number of batches drawn by the last render call.</summary>
+    public int LastBatchCount { get; private set; }
+
     /// <summary>Number of sprites drawn through the instanced fast path.</summary>
     public int LastInstancedSpriteCount { get; private set; }
 
-    /// <summary>Number of sprites drawn through the immediate path.</summary>
+    /// <summary>Number of sprites drawn through builder-expanded geometry.</summary>
     public int LastImmediateSpriteCount { get; private set; }
 
-    /// <summary>Number of instanced runs drawn.</summary>
+    /// <summary>Number of instanced batches drawn.</summary>
     public int LastInstancedRunCount { get; private set; }
 
-    /// <summary>Number of immediate runs drawn.</summary>
+    /// <summary>Number of builder-expanded batches drawn.</summary>
     public int LastImmediateRunCount { get; private set; }
 
+    /// <summary>Batches skipped because their texture or material is unavailable.</summary>
+    public int SkippedBatches { get; private set; }
+
+    /// <summary>Batches rejected by the material contract.</summary>
+    public int SkippedMaterialBatches { get; private set; }
+
+    /// <summary>Last material rejection reason.</summary>
+    public SceneGlSpriteMaterialFailure LastMaterialFailure { get; private set; }
+
+    /// <summary>Whether the last build selected 32-bit indices.</summary>
+    public bool LastUsesUint32Indices { get; private set; }
+
+    /// <summary>Validation failure of the last builder run, or none.</summary>
+    public Render2DValidationErrorCode LastBuildError { get; private set; }
+
+    /// <summary>Material tint bound by the last batch (white when unset).</summary>
+    public Vec4 LastMaterialTint { get; private set; }
+
+    /// <summary>Mask shape bound by the last batch (0 none, 1 circle, 2 rounded rect).</summary>
+    public int LastMaskShape { get; private set; }
+
     /// <summary>Gets the deterministic run-length threshold for the fast path.</summary>
-    public int MinInstancesForFastPath => _planner.MinInstancesForFastPath;
+    public int MinInstancesForFastPath => _minInstancesForFastPath;
 
     /// <summary>Renders one sprite pass and returns the number of draw calls.</summary>
     public int Render(
@@ -314,55 +320,92 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         ArgumentNullException.ThrowIfNull(pass);
         ArgumentNullException.ThrowIfNull(frameState);
 
+        EnsureSubmissionCapacity(items.Length);
+        int count = 0;
+        for (int i = 0; i < items.Length; i++)
+        {
+            _submissions[count++] = ToSubmission(world, in items[i]);
+        }
+
+        return RenderSubmissions(camera, _submissions.AsSpan(0, count), pass, frameState);
+    }
+
+    /// <summary>Renders already-built submissions; used by tests and non-scene sources.</summary>
+    public int RenderSubmissions(
+        SceneCameraFrame camera,
+        ReadOnlySpan<Render2DSpriteSubmission> submissions,
+        SceneRenderPassDefinition pass,
+        SceneRenderFrameState frameState)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(camera);
+        ArgumentNullException.ThrowIfNull(pass);
+        ArgumentNullException.ThrowIfNull(frameState);
+
         _context.AssertRenderThread();
         ResetCounters();
 
-        if (items.Length == 0)
+        if (!_builder.TryBuild(submissions, out Render2DSpriteBatchBuildResult build, out Render2DValidationErrorCode error))
+        {
+            LastBuildError = error;
+            return 0;
+        }
+
+        LastBuildError = Render2DValidationErrorCode.None;
+        LastUsesUint32Indices = build.UsesUint32Indices;
+        if (build.SpriteCount == 0)
         {
             return 0;
         }
 
         _context.State.SetViewport(0, 0, camera.ViewportWidth, camera.ViewportHeight);
         ApplyState(pass);
+        UploadGeometry(in build);
 
+        uint indexType = build.UsesUint32Indices ? GLConst.UnsignedInt : GLConst.UnsignedShort;
+        int indexSize = build.UsesUint32Indices ? sizeof(uint) : sizeof(ushort);
+        GLVertexArray indexVao = build.UsesUint32Indices ? _vao32 : _vao16;
         int drawCalls = 0;
+        int triangles = 0;
         int submitted = 0;
-        int groupCount = _planner.Plan(items);
-        ReadOnlySpan<SceneSpriteInstanceGroup> groups = _planner.Groups;
-        for (int groupIndex = 0; groupIndex < groupCount; groupIndex++)
+        ReadOnlySpan<Render2DBatchRange> batches = build.Batches;
+        for (int batchIndex = 0; batchIndex < batches.Length; batchIndex++)
         {
-            ref readonly SceneSpriteInstanceGroup group = ref groups[groupIndex];
-            if (!_assets.TryGetTexture(group.TextureId, out GLTexture? texture))
+            ref readonly Render2DBatchRange batch = ref batches[batchIndex];
+            Render2DBatchKey key = batch.Key;
+            if (!TryResolveBatch(key, out GLTexture texture, out Vec4 tint))
             {
                 continue;
             }
 
-            BindTexture(group.TextureId, texture);
-
-            if (group.Instanced)
+            BindTexture(key, texture);
+            bool instanced = !key.RequiresImmediate && batch.SubmissionCount >= _minInstancesForFastPath;
+            if (instanced)
             {
-                DrawInstanced(world, camera, items, in group);
+                _instancedShader.SetVec4(MaterialTintUniform, in tint);
+                BindMaskUniforms(_instancedShader, key);
+                DrawInstanced(camera, submissions, in batch);
                 LastInstancedRunCount++;
-                LastInstancedSpriteCount += group.Count;
+                LastInstancedSpriteCount += batch.SubmissionCount;
             }
             else
             {
-                for (int itemIndex = 0; itemIndex < group.Count; itemIndex++)
-                {
-                    AppendSprite(world, in items[group.FirstItem + itemIndex]);
-                }
-
-                FlushImmediate(camera);
+                BindImmediatePipeline(camera, in tint);
+                BindMaskUniforms(_shader, key);
+                indexVao.Bind();
+                DrawIndexRange(in batch, indexType, indexSize);
                 LastImmediateRunCount++;
-                LastImmediateSpriteCount += group.Count;
+                LastImmediateSpriteCount += batch.SubmissionCount;
             }
 
-            submitted += group.Count;
+            submitted += batch.SubmissionCount;
+            triangles += batch.QuadCount * 2;
             drawCalls++;
         }
 
         LastSpriteCount = submitted;
-        frameState.RecordDraw(submitted << 1, drawCalls);
+        LastBatchCount = drawCalls;
+        frameState.RecordDraw(triangles, drawCalls);
         return drawCalls;
     }
 
@@ -381,106 +424,299 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         _quadIndexBuffer.Dispose();
         _quadBuffer.Dispose();
         _instancedShader.Dispose();
-        _vao.Dispose();
+        _vao32.Dispose();
+        _vao16.Dispose();
+        _indexBuffer32.Dispose();
+        _indexBuffer16.Dispose();
         _vertexBuffer.Dispose();
-        _indexBuffer.Dispose();
         _shader.Dispose();
         _disposed = true;
     }
 
-    private void ResetCounters()
+    private static VertexAttribute[] BuildImmediateLayout()
     {
-        LastSpriteCount = 0;
-        LastInstancedSpriteCount = 0;
-        LastImmediateSpriteCount = 0;
-        LastInstancedRunCount = 0;
-        LastImmediateRunCount = 0;
-    }
-
-    private void BindTexture(SceneAssetId<TextureAssetTag> textureId, GLTexture texture)
-    {
-        _assets.TryGetTextureSampler(textureId, out GLSampler? sampler);
-        _context.State.BindTexture2D(0, texture.Id);
-        _ = sampler!.Bind(0);
-    }
-
-    private unsafe void DrawInstanced(
-        SceneWorld world,
-        SceneCameraFrame camera,
-        ReadOnlySpan<SceneSpriteRenderItem> items,
-        in SceneSpriteInstanceGroup group)
-    {
-        EnsureInstanceCapacity(group.Count);
-        for (int i = 0; i < group.Count; i++)
+        ReadOnlySpan<Render2DSpriteAttributeLayout> attributes = Render2DSpriteShaderContract.Attributes;
+        var layout = new VertexAttribute[attributes.Length];
+        for (int i = 0; i < attributes.Length; i++)
         {
-            _instances[i] = BuildInstance(world, in items[group.FirstItem + i]);
+            ref readonly Render2DSpriteAttributeLayout attribute = ref attributes[i];
+            (uint type, bool normalized) = attribute.Type switch
+            {
+                Render2DSpriteAttributeType.Scalar32 => (GLConst.Float, false),
+                Render2DSpriteAttributeType.UNorm16 => (GLConst.UnsignedShort, true),
+                _ => (GLConst.UnsignedByte, true),
+            };
+            layout[i] = new VertexAttribute(
+                attribute.Location,
+                attribute.ComponentCount,
+                type,
+                normalized,
+                Render2DSpriteShaderContract.VertexStride,
+                attribute.Offset,
+                0,
+                false);
         }
 
-        _instanceBuffer.Update(MemoryMarshal.AsBytes(_instances.AsSpan(0, group.Count)));
-        _instancedShader.Bind();
-        _instancedShader.SetMatrix4(ViewProjectionUniform, camera.ViewProjectionMatrix);
-        _instancedShader.SetInt(TextureUniform, 0);
-        _context.State.BindVertexArray(_instancedVao.Id);
-        _context.GL.DrawElementsInstanced(
-            GLConst.Triangles,
-            IndicesPerSprite,
-            GLConst.UnsignedInt,
-            null,
-            (uint)group.Count);
-        _context.State.BindVertexArray(0);
+        return layout;
     }
 
-    private void FlushImmediate(SceneCameraFrame camera)
-    {
-        if (_indexCount == 0)
-        {
-            return;
-        }
-
-        _shader.Bind();
-        _shader.SetMatrix4(ViewProjectionUniform, camera.ViewProjectionMatrix);
-        _shader.SetInt(TextureUniform, 0);
-        Flush();
-    }
-
-    private static SpriteInstance BuildInstance(SceneWorld world, in SceneSpriteRenderItem item)
+    private static Render2DSpriteSubmission ToSubmission(SceneWorld world, in SceneSpriteRenderItem item)
     {
         Mat4 worldMatrix = world.HasTransform2D
             ? SceneBounds.FromAffine2D(world.GetWorldMatrix2D(item.Actor))
             : world.GetWorldMatrix3D(item.Actor);
 
-        float u0 = item.UvRect.X;
-        float v0 = item.UvRect.Y;
-        float u1 = u0 + item.UvRect.Z;
-        float v1 = v0 + item.UvRect.W;
-        float du = item.UvRect.Z;
-        float dv = item.UvRect.W;
-
-        if (item.FlipX)
-        {
-            (u0, u1) = (u1, u0);
-            du = -du;
-        }
-
-        if (item.FlipY)
-        {
-            (v0, v1) = (v1, v0);
-            dv = -dv;
-        }
-
-        Vec4 uvRect = new(u0, v0, du, dv);
-        Vec4 maskRect = item.HasMask ? item.MaskRect : default;
-        Vec4 maskParams = item.HasMask
-            ? new Vec4(1.0f, item.MaskKind switch
-            {
-                SceneSpriteMaskKind.Ellipse => 1.0f,
-                SceneSpriteMaskKind.RoundedRect => 2.0f,
-                _ => 0.0f
-            }, item.MaskInvert ? 1.0f : 0.0f, item.MaskFeather)
+        Mat4 inverse = default;
+        bool hasMask = item.HasMask && Mat4.Invert(worldMatrix, out inverse);
+        Render2DSpriteMask mask = hasMask
+            ? BuildMask(item, in inverse)
             : default;
-        Vec4 maskExtra = item.HasMask ? new Vec4(item.MaskCornerRadius, 0.0f, 0.0f, 0.0f) : default;
-        Vec4 geometry = new(item.Size.X, item.Size.Y, item.Anchor.X, item.Anchor.Y);
-        return new SpriteInstance(worldMatrix, item.Color, uvRect, maskRect, maskParams, maskExtra, geometry);
+
+        bool hasSlice = item.HasSlice;
+        Render2DSpriteSlice slice = default;
+        if (hasSlice)
+        {
+            var border = new Render2DBorder(item.SliceBorder.X, item.SliceBorder.Y, item.SliceBorder.Z, item.SliceBorder.W);
+            Vec2 sourceSize = item.SourceSize.X > 0.0f && item.SourceSize.Y > 0.0f ? item.SourceSize : item.Size;
+            slice = new Render2DSpriteSlice(sourceSize, border);
+        }
+
+        return new Render2DSpriteSubmission(
+            Render2DSpriteSource.Texture(item.TextureId.Value.Value),
+            worldMatrix,
+            item.Size,
+            item.Anchor,
+            new Rect(item.UvRect.X, item.UvRect.Y, item.UvRect.Z, item.UvRect.W),
+            item.Color,
+            true,
+            item.FlipX,
+            item.FlipY,
+            false,
+            default,
+            hasSlice,
+            slice,
+            hasMask,
+            mask,
+            item.MaterialId.IsValid ? item.MaterialId.Value.Value : 0UL,
+            hasSlice);
+    }
+
+    private static Render2DSpriteMask BuildMask(in SceneSpriteRenderItem item, in Mat4 inverse)
+    {
+        float width = MathF.Max(item.MaskRect.Z, 1e-5f);
+        float height = MathF.Max(item.MaskRect.W, 1e-5f);
+        var size = new Vec2(width * item.Size.X, height * item.Size.Y);
+        var anchor = new Vec2(
+            (item.Anchor.X - item.MaskRect.X) / width,
+            (item.Anchor.Y - item.MaskRect.Y) / height);
+        Render2DSpriteMaskShape shape = item.MaskKind == SceneSpriteMaskKind.Ellipse
+            ? Render2DSpriteMaskShape.Circle
+            : Render2DSpriteMaskShape.RoundedRect;
+        float corner = item.MaskCornerRadius * MathF.Min(size.X, size.Y);
+        return new Render2DSpriteMask(shape, inverse, size, anchor, corner, item.MaskInvert, item.MaskFeather);
+    }
+
+    private bool TryResolveBatch(Render2DBatchKey key, out GLTexture texture, out Vec4 tint)
+    {
+        texture = null!;
+        tint = Vec4.One;
+        if (key.Source.Kind != Render2DSpriteSourceKind.Texture || key.Source.Id == 0)
+        {
+            SkippedBatches++;
+            return false;
+        }
+
+        var textureId = SceneAssetId<TextureAssetTag>.FromSymbol(new SceneStringId(key.Source.Id));
+        if (!_assets.TryGetTexture(textureId, out GLTexture? resolved))
+        {
+            SkippedBatches++;
+            return false;
+        }
+
+        texture = resolved;
+        if (key.MaterialId == 0)
+        {
+            return true;
+        }
+
+        var materialId = SceneAssetId<MaterialAssetTag>.FromSymbol(new SceneStringId(key.MaterialId));
+        if (!_assets.TryGetMaterial(materialId, out SceneGlMaterial? material))
+        {
+            SkippedBatches++;
+            SkippedMaterialBatches++;
+            LastMaterialFailure = SceneGlSpriteMaterialFailure.MissingMaterial;
+            return false;
+        }
+
+        if (material.Definition.ShaderId != SpriteShaderId)
+        {
+            SkippedBatches++;
+            SkippedMaterialBatches++;
+            LastMaterialFailure = SceneGlSpriteMaterialFailure.UnsupportedShader;
+            return false;
+        }
+
+        tint = material.Surface.Albedo;
+        LastMaterialTint = tint;
+        return true;
+    }
+
+    private void BindTexture(Render2DBatchKey key, GLTexture texture)
+    {
+        var textureId = SceneAssetId<TextureAssetTag>.FromSymbol(new SceneStringId(key.Source.Id));
+        _assets.TryGetTextureSampler(textureId, out GLSampler? sampler);
+        _context.State.BindTexture2D(0, texture.Id);
+        _ = sampler!.Bind(0);
+    }
+
+    private void BindImmediatePipeline(SceneCameraFrame camera, in Vec4 tint)
+    {
+        _shader.Bind();
+        _shader.SetMatrix4(Render2DSpriteShaderContract.ViewProjectionUniform, camera.ViewProjectionMatrix);
+        _shader.SetInt(Render2DSpriteShaderContract.MainTextureUniform, 0);
+        _shader.SetVec4(MaterialTintUniform, in tint);
+    }
+
+    private void BindMaskUniforms(SceneGlShader shader, Render2DBatchKey key)
+    {
+        if (!key.HasMask)
+        {
+            LastMaskShape = Render2DSpriteShaderContract.MaskShapeNone;
+            SetMaskUniforms(shader, Render2DSpriteShaderContract.MaskShapeNone, default, default, default, 0.0f, false, 0.0f);
+            return;
+        }
+
+        Render2DSpriteMask mask = key.Mask;
+        int shape = mask.Shape == Render2DSpriteMaskShape.Circle
+            ? Render2DSpriteShaderContract.MaskShapeCircle
+            : Render2DSpriteShaderContract.MaskShapeRoundedRect;
+        LastMaskShape = shape;
+        SetMaskUniforms(shader, shape, mask.InverseWorldMatrix, mask.Size, mask.Anchor, mask.CornerRadius, mask.Invert, mask.Feather);
+    }
+
+    private static void SetMaskUniforms(
+        SceneGlShader shader,
+        int shape,
+        in Mat4 worldToLocal,
+        in Vec2 size,
+        in Vec2 anchor,
+        float cornerRadius,
+        bool invert,
+        float feather)
+    {
+        shader.SetInt(Render2DSpriteShaderContract.MaskShapeUniform, shape);
+        shader.SetMatrix4(Render2DSpriteShaderContract.MaskWorldToLocalUniform, in worldToLocal);
+        shader.SetVec2(Render2DSpriteShaderContract.MaskSizeUniform, in size);
+        shader.SetVec2(Render2DSpriteShaderContract.MaskAnchorUniform, in anchor);
+        shader.SetFloat(Render2DSpriteShaderContract.MaskCornerRadiusUniform, cornerRadius);
+        shader.SetFloat(MaskInvertUniform, invert ? 1.0f : 0.0f);
+        shader.SetFloat(MaskFeatherUniform, feather);
+    }
+
+    private unsafe void DrawIndexRange(in Render2DBatchRange batch, uint indexType, int indexSize)
+    {
+        _context.GL.DrawElements(
+            GLConst.Triangles,
+            (uint)batch.IndexCount,
+            indexType,
+            (void*)(batch.IndexOffset * indexSize));
+    }
+
+    private unsafe void DrawInstanced(
+        SceneCameraFrame camera,
+        ReadOnlySpan<Render2DSpriteSubmission> submissions,
+        in Render2DBatchRange batch)
+    {
+        EnsureInstanceCapacity(batch.SubmissionCount);
+        int written = 0;
+        for (int i = batch.FirstSubmission; i < submissions.Length && written < batch.SubmissionCount; i++)
+        {
+            ref readonly Render2DSpriteSubmission submission = ref submissions[i];
+            if (!Render2DSpriteBatchBuilder.IsRenderable(in submission))
+            {
+                continue;
+            }
+
+            _instances[written++] = BuildInstance(in submission);
+        }
+
+        if (written == 0)
+        {
+            return;
+        }
+
+        _instanceBuffer.Update(MemoryMarshal.AsBytes(_instances.AsSpan(0, written)));
+        _instancedShader.Bind();
+        _instancedShader.SetMatrix4(Render2DSpriteShaderContract.ViewProjectionUniform, camera.ViewProjectionMatrix);
+        _instancedShader.SetInt(Render2DSpriteShaderContract.MainTextureUniform, 0);
+        _context.State.BindVertexArray(_instancedVao.Id);
+        _context.GL.DrawElementsInstanced(
+            GLConst.Triangles,
+            Render2DSpriteShaderContract.IndicesPerQuad,
+            GLConst.UnsignedInt,
+            null,
+            (uint)written);
+        _context.State.BindVertexArray(0);
+    }
+
+    private static SpriteInstance BuildInstance(in Render2DSpriteSubmission submission)
+    {
+        Rect sourceUv = submission.UvRect;
+        Render2DUvMath.Resolve(
+            in sourceUv,
+            submission.FlipX,
+            submission.FlipY,
+            out float u0,
+            out float v0,
+            out float u1,
+            out float v1);
+        var uv = new Vec4(u0, v0, u1 - u0, v1 - v0);
+        var geometry = new Vec4(submission.Size.X, submission.Size.Y, submission.Anchor.X, submission.Anchor.Y);
+        return new SpriteInstance(submission.WorldMatrix, submission.Color, uv, geometry);
+    }
+
+    private void UploadGeometry(in Render2DSpriteBatchBuildResult build)
+    {
+        EnsureVertexCapacity(build.VertexByteLength);
+        _vertexBuffer.Update(build.VertexData);
+        if (build.UsesUint32Indices)
+        {
+            int bytes = build.Indices32.Length * sizeof(uint);
+            if (_indexBuffer32.ByteLength < bytes)
+            {
+                _indexBuffer32.Resize(Math.Max(bytes, _indexBuffer32.ByteLength * 2));
+            }
+
+            _indexBuffer32.Update(MemoryMarshal.AsBytes(build.Indices32));
+        }
+        else
+        {
+            int bytes = build.Indices16.Length * sizeof(ushort);
+            if (_indexBuffer16.ByteLength < bytes)
+            {
+                _indexBuffer16.Resize(Math.Max(bytes, _indexBuffer16.ByteLength * 2));
+            }
+
+            _indexBuffer16.Update(MemoryMarshal.AsBytes(build.Indices16));
+        }
+    }
+
+    private void EnsureVertexCapacity(int bytes)
+    {
+        if (_vertexBuffer.ByteLength < bytes)
+        {
+            _vertexBuffer.Resize(Math.Max(bytes, _vertexBuffer.ByteLength * 2));
+        }
+    }
+
+    private void EnsureSubmissionCapacity(int count)
+    {
+        if (count <= _submissions.Length)
+        {
+            return;
+        }
+
+        Array.Resize(ref _submissions, Math.Max(count, _submissions.Length * 2));
     }
 
     private void ApplyState(SceneRenderPassDefinition pass)
@@ -504,92 +740,6 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         }
     }
 
-    private void AppendSprite(SceneWorld world, ref readonly SceneSpriteRenderItem item)
-    {
-        if (_vertexCount + VerticesPerSprite > _vertices.Length ||
-            _indexCount + IndicesPerSprite > _indices.Length)
-        {
-            Grow();
-        }
-
-        Mat4 worldMatrix = world.HasTransform2D
-            ? SceneBounds.FromAffine2D(world.GetWorldMatrix2D(item.Actor))
-            : world.GetWorldMatrix3D(item.Actor);
-
-        float left = -item.Anchor.X * item.Size.X;
-        float right = left + item.Size.X;
-        float bottom = -item.Anchor.Y * item.Size.Y;
-        float top = bottom + item.Size.Y;
-
-        float u0 = item.UvRect.X;
-        float v0 = item.UvRect.Y;
-        float u1 = u0 + item.UvRect.Z;
-        float v1 = v0 + item.UvRect.W;
-
-        if (item.FlipX)
-        {
-            (u0, u1) = (u1, u0);
-        }
-
-        if (item.FlipY)
-        {
-            (v0, v1) = (v1, v0);
-        }
-
-        Vec4 bl = worldMatrix * new Vec4(left, bottom, 0.0f, 1.0f);
-        Vec4 br = worldMatrix * new Vec4(right, bottom, 0.0f, 1.0f);
-        Vec4 tr = worldMatrix * new Vec4(right, top, 0.0f, 1.0f);
-        Vec4 tl = worldMatrix * new Vec4(left, top, 0.0f, 1.0f);
-
-        Vec3 maskParams = new(
-            item.HasMask ? 1.0f : 0.0f,
-            item.MaskKind switch
-            {
-                SceneSpriteMaskKind.Ellipse => 1.0f,
-                SceneSpriteMaskKind.RoundedRect => 2.0f,
-                _ => 0.0f
-            },
-            item.MaskInvert ? 1.0f : 0.0f);
-        Vec4 maskRect = item.HasMask ? item.MaskRect : default;
-        Vec2 maskExtra = item.HasMask ? new Vec2(item.MaskFeather, item.MaskCornerRadius) : Vec2.Zero;
-
-        Span<SpriteVertex> vertices = _vertices.AsSpan(_vertexCount, VerticesPerSprite);
-        vertices[0] = new SpriteVertex(new Vec3(bl.X, bl.Y, bl.Z), new Vec2(u0, v0), item.Color, new Vec2(0.0f, 0.0f), maskRect, maskParams, maskExtra);
-        vertices[1] = new SpriteVertex(new Vec3(br.X, br.Y, br.Z), new Vec2(u1, v0), item.Color, new Vec2(1.0f, 0.0f), maskRect, maskParams, maskExtra);
-        vertices[2] = new SpriteVertex(new Vec3(tr.X, tr.Y, tr.Z), new Vec2(u1, v1), item.Color, new Vec2(1.0f, 1.0f), maskRect, maskParams, maskExtra);
-        vertices[3] = new SpriteVertex(new Vec3(tl.X, tl.Y, tl.Z), new Vec2(u0, v1), item.Color, new Vec2(0.0f, 1.0f), maskRect, maskParams, maskExtra);
-
-        // Batches restart their vertex base at zero, so indices must be written
-        // relative to this batch rather than the global sprite slot.
-        uint baseIndex = (uint)_vertexCount;
-        int indexOffset = _indexCount;
-        _indices[indexOffset] = baseIndex;
-        _indices[indexOffset + 1] = baseIndex + 1;
-        _indices[indexOffset + 2] = baseIndex + 2;
-        _indices[indexOffset + 3] = baseIndex;
-        _indices[indexOffset + 4] = baseIndex + 2;
-        _indices[indexOffset + 5] = baseIndex + 3;
-
-        _vertexCount += VerticesPerSprite;
-        _indexCount += IndicesPerSprite;
-    }
-
-    private unsafe void Flush()
-    {
-        if (_indexCount == 0)
-        {
-            return;
-        }
-
-        _vertexBuffer.Update(MemoryMarshal.AsBytes(_vertices.AsSpan(0, _vertexCount)));
-        _indexBuffer.Update(MemoryMarshal.AsBytes(_indices.AsSpan(0, _indexCount)));
-        _vao.Bind();
-        _context.GL.DrawElements(GLConst.Triangles, (uint)_indexCount, GLConst.UnsignedInt, null);
-
-        _vertexCount = 0;
-        _indexCount = 0;
-    }
-
     private void UploadQuadGeometry()
     {
         _quadBuffer.Update(MemoryMarshal.AsBytes(s_quadCorners.AsSpan()));
@@ -609,9 +759,6 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         SetInstanceAttribute(5, 4, 64);
         SetInstanceAttribute(6, 4, 80);
         SetInstanceAttribute(7, 4, 96);
-        SetInstanceAttribute(8, 4, 112);
-        SetInstanceAttribute(9, 4, 128);
-        SetInstanceAttribute(10, 4, 144);
 
         _context.State.BindVertexArray(0);
     }
@@ -652,16 +799,21 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         _instanceBuffer.Resize(capacity * InstanceStride);
     }
 
-    private void Grow()
+    private void ResetCounters()
     {
-        int spriteCapacity = _vertices.Length / VerticesPerSprite;
-        int newSpriteCapacity = spriteCapacity * 2;
-
-        Array.Resize(ref _vertices, newSpriteCapacity * VerticesPerSprite);
-        Array.Resize(ref _indices, newSpriteCapacity * IndicesPerSprite);
-
-        _vertexBuffer.Resize(_vertices.Length * VertexStride);
-        _indexBuffer.Resize(_indices.Length * sizeof(uint));
+        LastSpriteCount = 0;
+        LastBatchCount = 0;
+        LastInstancedSpriteCount = 0;
+        LastImmediateSpriteCount = 0;
+        LastInstancedRunCount = 0;
+        LastImmediateRunCount = 0;
+        SkippedBatches = 0;
+        SkippedMaterialBatches = 0;
+        LastMaterialFailure = SceneGlSpriteMaterialFailure.None;
+        LastUsesUint32Indices = false;
+        LastBuildError = Render2DValidationErrorCode.None;
+        LastMaterialTint = Vec4.One;
+        LastMaskShape = Render2DSpriteShaderContract.MaskShapeNone;
     }
 
     private void ThrowIfDisposed()
@@ -670,42 +822,6 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         {
             throw new SceneDisposedException(nameof(SceneGlSpriteBatchRenderer));
         }
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 4)]
-    private readonly struct SpriteVertex
-    {
-        public SpriteVertex(
-            in Vec3 position,
-            in Vec2 uv,
-            in Vec4 color,
-            in Vec2 local,
-            in Vec4 maskRect,
-            in Vec3 maskParams,
-            in Vec2 maskExtra)
-        {
-            Position = position;
-            Uv = uv;
-            Color = color;
-            Local = local;
-            MaskRect = maskRect;
-            MaskParams = maskParams;
-            MaskExtra = maskExtra;
-        }
-
-        public readonly Vec3 Position;
-
-        public readonly Vec2 Uv;
-
-        public readonly Vec4 Color;
-
-        public readonly Vec2 Local;
-
-        public readonly Vec4 MaskRect;
-
-        public readonly Vec3 MaskParams;
-
-        public readonly Vec2 MaskExtra;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -723,17 +839,11 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
             in Mat4 matrix,
             in Vec4 color,
             in Vec4 uvRect,
-            in Vec4 maskRect,
-            in Vec4 maskParams,
-            in Vec4 maskExtra,
             in Vec4 geometry)
         {
             Matrix = matrix;
             Color = color;
             UvRect = uvRect;
-            MaskRect = maskRect;
-            MaskParams = maskParams;
-            MaskExtra = maskExtra;
             Geometry = geometry;
         }
 
@@ -742,12 +852,6 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
         public readonly Vec4 Color;
 
         public readonly Vec4 UvRect;
-
-        public readonly Vec4 MaskRect;
-
-        public readonly Vec4 MaskParams;
-
-        public readonly Vec4 MaskExtra;
 
         public readonly Vec4 Geometry;
     }

@@ -1,23 +1,5 @@
 namespace Axrone.Reactive;
 
-public interface IObservableMarker
-{
-}
-
-public static class ObservableProbe
-{
-    public static bool IsObservable(object? value) => value is IObservableMarker;
-
-    public static bool IsObservableSubject<T>(object? value) =>
-        value is Subject<T> or BehaviorSubject<T> or ReplaySubject<T> or AsyncSubject<T>;
-
-    public static bool TryGetObservable<T>(object? value, [NotNullWhen(true)] out IObservable<T>? observable)
-    {
-        observable = value as IObservable<T>;
-        return observable is not null;
-    }
-}
-
 internal sealed class AnonymousObservable<T> : IObservable<T>
 {
     private readonly Func<IObserver<T>, IDisposable> _subscribe;

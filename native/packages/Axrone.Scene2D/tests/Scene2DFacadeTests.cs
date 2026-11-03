@@ -11,17 +11,18 @@ public class Scene2DFacadeTests
             new SceneActorConfig("Camera"),
             new Scene2DCameraConfig { Primary = true });
 
+        SceneCamera defaults = SceneCamera2DDefaults.CreateCamera();
         scene.World.TryGetData(actor, out Scene2DCamera camera).Should().BeTrue();
-        camera.Orthographic.Should().BeTrue();
-        camera.Enabled.Should().BeTrue();
-        camera.Primary.Should().BeTrue();
-        camera.Near.Should().Be(0.1f);
-        camera.Far.Should().Be(1000.0f);
-        camera.OrthographicSize.Should().Be(5.0f);
+        camera.Orthographic.Should().Be(defaults.Orthographic);
+        camera.Enabled.Should().Be(defaults.Enabled);
+        camera.Primary.Should().Be(defaults.Primary);
+        camera.Near.Should().Be(defaults.Near);
+        camera.Far.Should().Be(defaults.Far);
+        camera.OrthographicSize.Should().Be(defaults.OrthographicSize);
         camera.ClearMask.Should().Be(Scene2DClearMask.Color | Scene2DClearMask.Depth);
 
         scene.World.TryGetData(actor, out Scene2DCamera2D camera2D).Should().BeTrue();
-        camera2D.Depth.Should().Be(10.0f);
+        camera2D.Depth.Should().Be(SceneCamera2DDefaults.Depth);
         scene.World.GetWorldPosition2D(actor).Should().Be(Vec2.Zero);
         scene.World.GetName(actor).Should().Be("Camera");
     }
@@ -146,27 +147,13 @@ public class Scene2DFacadeTests
     }
 
     [Fact]
-    public void MissingPayloadsThrowCapabilityExceptions()
+    public void ProfileWithoutAnyPayloadFamilyIsRejectedAtCreation()
     {
         var runtime = SceneRuntimeProfiles.CreateCustom("test/core-2d", SceneProfiles.CreateCore2D());
-        using Scene2D scene = Scene2D.Create(new Scene2DCreateOptions { RuntimeProfile = runtime });
 
-        Action camera = () => scene.CreateCameraActor(new SceneActorConfig("Camera"), new Scene2DCameraConfig());
-        camera.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("Camera");
+        Action create = () => Scene2D.Create(new Scene2DCreateOptions { RuntimeProfile = runtime });
 
-        Action sprite = () => scene.CreateSpriteActor(new SceneActorConfig("Sprite"), new Scene2DSpriteConfig());
-        sprite.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("SpriteRenderer");
-
-        Action animated = () => scene.CreateAnimatedSpriteActor(
-            new SceneActorConfig("Animated"),
-            new Scene2DSpriteConfig(),
-            new Scene2DSpriteAnimatorConfig());
-        animated.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("SpriteRenderer");
-
-        Action mask = () => scene.CreateMaskActor(new SceneActorConfig("Mask"), new Scene2DSpriteMaskConfig());
-        mask.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("SpriteMask");
-
-        scene.ActorCount.Should().Be(0);
+        create.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("Scene2D");
     }
 
     [Fact]
@@ -238,11 +225,10 @@ public class Scene2DFacadeTests
     [Fact]
     public void ManifestRequireRejectsMissingPayloads()
     {
-        var runtime = SceneRuntimeProfiles.CreateCustom("test/core-2d", SceneProfiles.CreateCore2D());
-        using Scene2D scene = Scene2D.Create(new Scene2DCreateOptions { RuntimeProfile = runtime });
+        using SceneWorld world = SceneProfiles.CreateCore2D().CreateWorld();
 
-        Action require = () => Scene2DBuiltInManifest.Require(scene.World, Scene2DBuiltInComponent.SpriteRenderer);
+        Action require = () => Scene2DBuiltInManifest.Require(world, Scene2DBuiltInComponent.SpriteRenderer);
         require.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("SpriteRenderer");
-        Scene2DBuiltInManifest.IsRegistered(scene.World, Scene2DBuiltInComponent.SpriteRenderer).Should().BeFalse();
+        Scene2DBuiltInManifest.IsRegistered(world, Scene2DBuiltInComponent.SpriteRenderer).Should().BeFalse();
     }
 }

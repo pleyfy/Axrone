@@ -28,12 +28,25 @@ public sealed class AnimationLayer
     /// <summary>Optional bone mask (null includes everything).</summary>
     public AnimationMask? BoneMask { get; init; }
 
+    private readonly List<AnimationIkLayer> _ikLayers = new();
+
+    /// <summary>IK jobs applied to this layer's pose before composition.</summary>
+    public IReadOnlyList<AnimationIkLayer> IkLayers => _ikLayers;
+
     /// <summary>Creates a layer.</summary>
     public AnimationLayer(LayerId id, StateMachineInstance machine)
     {
         ArgumentNullException.ThrowIfNull(machine);
         Id = id;
         Machine = machine;
+    }
+
+    /// <summary>Appends an IK layer evaluated after this layer's state machine.</summary>
+    /// <param name="layer">IK layer bound to the controller rig.</param>
+    public void AddIkLayer(AnimationIkLayer layer)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+        _ikLayers.Add(layer);
     }
 }
 
@@ -122,6 +135,7 @@ public sealed class AnimationController : IDisposable
         if (_layers.Count > 0 && _layers[0].Weight > 0.0f)
         {
             _layers[0].Machine.Evaluate(CurrentFrame, Arena, Rig, Parameters);
+            ApplyIkLayers(_layers[0], CurrentFrame);
             _layers[0].Machine.ExtractRootDelta(Rig, out rootMotionDeltaPos, out rootMotionDeltaRot);
         }
         else
@@ -142,6 +156,7 @@ public sealed class AnimationController : IDisposable
 
             AnimationFrame layerFrame = Arena.Alloc();
             layer.Machine.Evaluate(layerFrame, Arena, Rig, Parameters);
+            ApplyIkLayers(layer, layerFrame);
 
             if (layer.Mode == LayerMode.Override)
             {
@@ -159,6 +174,15 @@ public sealed class AnimationController : IDisposable
 
         AnimationTelemetry.RecordFrameEvaluated();
         AnimationTelemetry.RecordEvaluationLatency(Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
+    }
+
+    private static void ApplyIkLayers(AnimationLayer layer, AnimationFrame frame)
+    {
+        IReadOnlyList<AnimationIkLayer> ikLayers = layer.IkLayers;
+        for (int i = 0; i < ikLayers.Count; i++)
+        {
+            ikLayers[i].Apply(frame);
+        }
     }
 
     /// <inheritdoc/>

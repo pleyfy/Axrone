@@ -331,7 +331,8 @@ public sealed class Render2DSpriteBatchBuilder
         return Render2DValidationErrorCode.None;
     }
 
-    private static bool IsRenderable(in Render2DSpriteSubmission submission)
+    /// <summary>Whether a submission contributes quads to the build.</summary>
+    public static bool IsRenderable(in Render2DSpriteSubmission submission)
     {
         if (!submission.Visible || !submission.Source.IsValid)
         {
@@ -413,7 +414,15 @@ public sealed class Render2DSpriteBatchBuilder
             if (split)
             {
                 EnsureBatchCapacity(batchCount + 1);
-                _batches[batchCount] = new Render2DBatchRange(key, spriteOffset, 0, 0, quadIndex * 6, 0);
+                _batches[batchCount] = new Render2DBatchRange(
+                    key,
+                    spriteOffset,
+                    0,
+                    0,
+                    quadIndex * 6,
+                    0,
+                    i,
+                    0);
                 batchCount++;
                 currentKey = key;
                 hasBatch = true;
@@ -432,6 +441,7 @@ public sealed class Render2DSpriteBatchBuilder
                 SpriteCount = range.SpriteCount + 1,
                 QuadCount = range.QuadCount + written,
                 IndexCount = range.IndexCount + (written * Render2DSpriteShaderContract.IndicesPerQuad),
+                SubmissionCount = range.SubmissionCount + 1,
             };
 
             quadIndex += written;
@@ -459,19 +469,15 @@ public sealed class Render2DSpriteBatchBuilder
 
         if (!submission.HasSlice)
         {
-            float u0 = submission.UvRect.X;
-            float v0 = submission.UvRect.Y;
-            float u1 = u0 + submission.UvRect.Width;
-            float v1 = v0 + submission.UvRect.Height;
-            if (submission.FlipX)
-            {
-                (u0, u1) = (u1, u0);
-            }
-
-            if (submission.FlipY)
-            {
-                (v0, v1) = (v1, v0);
-            }
+            Rect sourceUv = submission.UvRect;
+            Render2DUvMath.Resolve(
+                in sourceUv,
+                submission.FlipX,
+                submission.FlipY,
+                out float u0,
+                out float v0,
+                out float u1,
+                out float v1);
 
             WriteTransformedQuad(
                 in submission,

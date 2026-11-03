@@ -39,6 +39,7 @@
     <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
     <ProjectReference Include="../Axrone.Geometry/Axrone.Geometry.csproj" />
     <ProjectReference Include="../Axrone.Lighting/Axrone.Lighting.csproj" />
+    <ProjectReference Include="../Axrone.Render2D/Axrone.Render2D.csproj" />
   </ItemGroup>
 
   <ItemGroup>

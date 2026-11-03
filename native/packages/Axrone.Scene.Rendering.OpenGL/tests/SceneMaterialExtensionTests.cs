@@ -1,5 +1,6 @@
 namespace Axrone.Scene.Rendering.OpenGL.Tests;
 
+using System.Runtime.CompilerServices;
 using Axrone.Numeric;
 using Axrone.Render.OpenGL.Context;
 using Axrone.Render.OpenGL.Mock;
@@ -150,14 +151,30 @@ public sealed class SceneMaterialExtensionTests
         _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
         _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
 
+        // Tiered JIT/OSR promotion charges its one-time allocations to the
+        // calling thread, so a first-execution measured loop can see a false
+        // positive under parallel load. The helper runs the exact measured
+        // loop shape once as a prime pass, then measures a second identical
+        // pass; the assertion stays an exact zero-delta check.
+        long delta = MeasureBindingAllocations(shader, surface);
+        delta.Should().Be(0);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static long MeasureBindingAllocations(SceneGlShader shader, SceneMaterialSurface surface)
+    {
+        for (int i = 0; i < 256; i++)
+        {
+            _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
+        }
+
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 256; i++)
         {
             _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
         }
 
-        long delta = GC.GetAllocatedBytesForCurrentThread() - before;
-        delta.Should().Be(0);
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     [Fact]

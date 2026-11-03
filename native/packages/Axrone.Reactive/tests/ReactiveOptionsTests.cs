@@ -88,6 +88,28 @@ public sealed class ReactiveOptionsTests
     }
 
     [Fact]
+    public void ConfigAndRegistryNormalizeSubjectOptions()
+    {
+        var config = new ObservableConfig(
+            subjectOptions: new SubjectOptions(maxObservers: 0, autoComplete: true, errorPropagation: false));
+        config.SubjectOptions.MaxObservers.Should().Be(100);
+        config.SubjectOptions.AutoComplete.Should().BeTrue();
+        config.SubjectOptions.ErrorPropagation.Should().BeFalse();
+
+        using var registry = new ObservableRegistry(enableMemoryTracking: false);
+        int subjectId = registry.RegisterSubject(new object(), default);
+        for (int index = 0; index < 100; index++)
+        {
+            registry.RegisterObserver(subjectId, new object());
+        }
+
+        registry.ActiveObserverCount.Should().Be(100);
+        FluentActions.Invoking(() => registry.RegisterObserver(subjectId, new object()))
+            .Should().Throw<MaxObserversExceededError>()
+            .Which.MaxObservers.Should().Be(100);
+    }
+
+    [Fact]
     public void SubjectEnforcesMaxObserversAndErrorHandling()
     {
         using var subject = new Subject<int>(new SubjectOptions(maxObservers: 1, errorPropagation: false));
@@ -246,22 +268,12 @@ public sealed class ReactiveOptionsTests
     }
 
     [Fact]
-    public void ConfigIsInstanceScopedAndProbeRecognizesSubjects()
+    public void ConfigIsInstanceScoped()
     {
         ObservableConfig config = ObservableConfig.Default;
         config.ObserverOptions.Should().Be(ObservationOptions.Default);
         var custom = config.WithObserverOptions(new ObservationOptions(ObservationPriority.Low));
         custom.ObserverOptions.Priority.Should().Be(ObservationPriority.Low);
         ObservableConfig.Default.ObserverOptions.Priority.Should().Be(ObservationPriority.Normal);
-
-        var subject = new Subject<int>();
-        ObservableProbe.IsObservable(subject).Should().BeTrue();
-        ObservableProbe.IsObservable("not observable").Should().BeFalse();
-        ObservableProbe.IsObservableSubject<int>(subject).Should().BeTrue();
-        using var behavior = new BehaviorSubject<int>(0);
-        ObservableProbe.IsObservableSubject<int>(behavior).Should().BeTrue();
-        ObservableProbe.TryGetObservable<int>(subject, out IObservable<int>? observable).Should().BeTrue();
-        observable.Should().BeSameAs(subject);
-        subject.Dispose();
     }
 }

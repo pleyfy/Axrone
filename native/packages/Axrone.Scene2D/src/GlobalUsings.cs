@@ -4,4 +4,6 @@ global using System.Runtime.CompilerServices;
 global using System.Runtime.InteropServices;
 global using Axrone.Numeric;
 global using Axrone.Scene;
+global using Axrone.Scene.Assets;
+global using Axrone.Scene.Rendering;
 global using Axrone.Scene.Runtime;

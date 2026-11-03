@@ -99,33 +99,47 @@ public static class Scene2DBuiltInManifest
         Components.IndexOf(component) >= 0;
 
     /// <summary>
-    /// Whether a world registers both the manifest name and the facade payload
-    /// type for a component. A name collision with a backend type fails the
-    /// type check so callers get a capability error instead of a payload
+    /// Whether a registry registers both the manifest name and the facade
+    /// payload type for a component. A name collision with a backend type fails
+    /// the type check so callers get a capability error instead of a payload
     /// mismatch.
     /// </summary>
+    public static bool IsRegistered(SceneComponentRegistry registry, Scene2DBuiltInComponent component)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+
+        return registry.TryGetDataByType(
+                Scene2DComponentIds.GetComponentType(component),
+                out _) &&
+            registry.TryGetByName(Scene2DComponentIds.ToName(component), out _);
+    }
+
+    /// <summary>Whether a world registers the facade payload for a component.</summary>
     public static bool IsRegistered(SceneWorld world, Scene2DBuiltInComponent component)
     {
         ArgumentNullException.ThrowIfNull(world);
-
-        return world.Registry.TryGetDataByType(
-                Scene2DComponentIds.GetComponentType(component),
-                out _) &&
-            world.Registry.TryGetByName(Scene2DComponentIds.ToName(component), out _);
+        return IsRegistered(world.Registry, component);
     }
 
     /// <summary>Requires a registered built-in component.</summary>
     /// <exception cref="SceneCapabilityException">
     /// The active profile does not expose the component with its facade payload.
     /// </exception>
-    public static void Require(SceneWorld world, Scene2DBuiltInComponent component)
+    public static void Require(SceneComponentRegistry registry, Scene2DBuiltInComponent component)
     {
-        if (!IsRegistered(world, component))
+        if (!IsRegistered(registry, component))
         {
             string name = Scene2DComponentIds.ToName(component);
             throw new SceneCapabilityException(
                 name,
                 "the active scene profile does not register the Scene2D component payload.");
         }
+    }
+
+    /// <summary>Requires a registered built-in component on a world.</summary>
+    public static void Require(SceneWorld world, Scene2DBuiltInComponent component)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        Require(world.Registry, component);
     }
 }

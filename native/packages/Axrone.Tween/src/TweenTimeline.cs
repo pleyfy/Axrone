@@ -32,6 +32,7 @@ public sealed class TweenTimeline
     private int _count;
     private DurationNs _clock;
     private bool _playing;
+    private bool _paused;
     private bool _completed;
     private float _timeScale = 1.0f;
     private Action? _onComplete;
@@ -107,6 +108,30 @@ public sealed class TweenTimeline
         return end;
     }
 
+    /// <summary>Whether playback is active (running or paused).</summary>
+    public bool IsPlaying
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _playing;
+            }
+        }
+    }
+
+    /// <summary>Whether playback is paused.</summary>
+    public bool IsPaused
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _paused;
+            }
+        }
+    }
+
     /// <summary>Virtual playhead position.</summary>
     public DurationNs Position
     {
@@ -131,6 +156,48 @@ public sealed class TweenTimeline
             }
 
             Volatile.Write(ref _timeScale, value);
+        }
+    }
+
+    /// <summary>Pauses the virtual clock and every live member tween.</summary>
+    public void Pause()
+    {
+        TweenHandle[] running;
+        lock (_gate)
+        {
+            if (!_playing || _paused)
+            {
+                return;
+            }
+
+            _paused = true;
+            running = CollectLiveLocked();
+        }
+
+        for (int i = 0; i < running.Length; i++)
+        {
+            _ = running[i].Pause();
+        }
+    }
+
+    /// <summary>Resumes the virtual clock and every paused member tween.</summary>
+    public void Resume()
+    {
+        TweenHandle[] running;
+        lock (_gate)
+        {
+            if (!_playing || !_paused)
+            {
+                return;
+            }
+
+            _paused = false;
+            running = CollectLiveLocked();
+        }
+
+        for (int i = 0; i < running.Length; i++)
+        {
+            _ = running[i].Resume();
         }
     }
 
@@ -160,6 +227,7 @@ public sealed class TweenTimeline
         lock (_gate)
         {
             _playing = true;
+            _paused = false;
             _completed = false;
         }
 
@@ -173,6 +241,7 @@ public sealed class TweenTimeline
         lock (_gate)
         {
             _playing = false;
+            _paused = false;
             running = CollectLiveLocked();
         }
 
@@ -194,7 +263,7 @@ public sealed class TweenTimeline
 
         lock (_gate)
         {
-            if (!_playing || _completed)
+            if (!_playing || _paused || _completed)
             {
                 return;
             }

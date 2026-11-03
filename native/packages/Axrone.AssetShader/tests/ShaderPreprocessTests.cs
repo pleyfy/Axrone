@@ -131,13 +131,39 @@ public sealed class ShaderPreprocessTests
     [Fact]
     public void Registry_Registers_Resolves_And_Clears()
     {
-        ShaderLibraryRegistry.Instance.Clear();
-        ShaderLibraryRegistry.Instance.Register("chunk", "  float c() { return 0.0; }\n");
-        ShaderLibraryRegistry.Instance.Has("chunk").Should().BeTrue();
-        ShaderLibraryRegistry.Instance.TryResolve("chunk", out string? code).Should().BeTrue();
+        // A private instance keeps registry semantics independent from the process-wide
+        // ShaderLibraryRegistry.Instance shared by concurrent bake tests.
+        var registry = new ShaderLibraryRegistry();
+
+        registry.Has("chunk").Should().BeFalse();
+        registry.TryResolve("chunk", out string? missing).Should().BeFalse();
+        missing.Should().BeNull();
+        registry.Remove("chunk").Should().BeFalse();
+
+        ShaderLibraryDefinition definition = registry.Register("chunk", "  float c() { return 0.0; }\n");
+        definition.Id.Should().Be(new ShaderSymbol("chunk"));
+        definition.Code.TrimEnd().Should().Be("float c() { return 0.0; }");
+        registry.Has("chunk").Should().BeTrue();
+        registry.TryResolve("chunk", out string? code).Should().BeTrue();
         code.Should().Contain("float c()");
-        ShaderLibraryRegistry.Instance.ToArray().Should().ContainSingle();
-        ShaderLibraryRegistry.Instance.Remove("chunk").Should().BeTrue();
-        ShaderLibraryRegistry.Instance.Has("chunk").Should().BeFalse();
+        registry.ToArray().Should().ContainSingle();
+
+        registry.Register("chunk", "float replacement() { return 1.0; }");
+        registry.TryResolve("chunk", out string? replaced).Should().BeTrue();
+        replaced.Should().Contain("replacement");
+        registry.ToArray().Should().ContainSingle();
+
+        registry.Register("other", "float o();");
+        registry.ToArray().Should().HaveCount(2);
+
+        registry.Remove("chunk").Should().BeTrue();
+        registry.Has("chunk").Should().BeFalse();
+        registry.Has("other").Should().BeTrue();
+
+        registry.Clear();
+        registry.ToArray().Should().BeEmpty();
+        registry.Has("other").Should().BeFalse();
+
+        ShaderLibraryRegistry.Instance.Should().BeSameAs(ShaderLibraryRegistry.Instance);
     }
 }

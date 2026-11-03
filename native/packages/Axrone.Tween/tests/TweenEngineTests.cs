@@ -59,6 +59,81 @@ public class TweenEngineTests
     }
 
     [Fact]
+    public void Complete_FinishesImmediatelyWithFinalCallbacks()
+    {
+        using var engine = Create(out ManualTweenClock clock);
+        var seen = new List<float>();
+        int steps = 0;
+        bool done = false;
+        var handle = engine.Play(new TweenBuilder()
+            .From(0f)
+            .To(10f)
+            .DurationSeconds(1f)
+            .OnUpdate(seen.Add)
+            .OnStepComplete(() => steps++)
+            .OnComplete(() => done = true)
+            .Build());
+
+        clock.Advance(DurationNs.FromSeconds(0.25f));
+        engine.Update();
+        seen.Should().Equal(2.5f);
+
+        handle.Complete().Should().BeTrue();
+        seen.Should().Equal(2.5f, 10f);
+        steps.Should().Be(1);
+        done.Should().BeTrue();
+        engine.ActiveCount.Should().Be(0);
+        handle.State.Should().Be(TweenState.Inactive);
+        handle.Complete().Should().BeFalse();
+
+        clock.Advance(DurationNs.FromSeconds(1f));
+        engine.Update();
+        seen.Should().Equal(2.5f, 10f);
+    }
+
+    [Fact]
+    public void Complete_PausedTween_Finishes()
+    {
+        using var engine = Create(out _);
+        bool done = false;
+        var handle = engine.Play(new TweenBuilder()
+            .From(0f)
+            .To(10f)
+            .DurationSeconds(1f)
+            .OnComplete(() => done = true)
+            .Build());
+
+        handle.Pause().Should().BeTrue();
+        handle.Complete().Should().BeTrue();
+        done.Should().BeTrue();
+        engine.ActiveCount.Should().Be(0);
+        handle.State.Should().Be(TweenState.Inactive);
+    }
+
+    [Fact]
+    public void Complete_StaleIdentity_ReturnsFalse()
+    {
+        using var engine = Create(out ManualTweenClock clock);
+        var handle = engine.Play(Linear(0f, 10f, 1f));
+        clock.Advance(DurationNs.FromSeconds(1f));
+        engine.Update();
+
+        handle.Complete().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Complete_SettlesAwaitersAsCompleted()
+    {
+        using var engine = Create(out _);
+        var handle = engine.Play(Linear(0f, 10f, 10f));
+
+        Task<bool> pending = engine.AwaitAsync(handle.Id);
+        handle.Complete().Should().BeTrue();
+
+        (await pending).Should().BeTrue();
+    }
+
+    [Fact]
     public void Complete_StopsScheduling()
     {
         using var engine = Create(out _);

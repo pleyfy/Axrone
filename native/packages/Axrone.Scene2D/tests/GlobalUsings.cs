@@ -1,6 +1,8 @@
 global using System;
 global using Axrone.Numeric;
 global using Axrone.Scene;
+global using Axrone.Scene.Assets;
+global using Axrone.Scene.Rendering;
 global using Axrone.Scene.Runtime;
 global using Axrone.Scene2D;
 global using FluentAssertions;

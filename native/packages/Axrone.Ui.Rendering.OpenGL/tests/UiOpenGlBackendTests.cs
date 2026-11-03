@@ -292,8 +292,9 @@ public sealed class UiOpenGlBackendTests
             host.Submit(BuildFrame(new UiViewport(100, 100, 1, 0, 0), QuadAt(20), QuadAt(30)));
             host.Flush();
 
-            // Programs, VAOs and the four GL buffers are recreated from scratch.
-            CountCalls(api, "CreateProgram()").Should().Be(programsBefore + 4);
+            // Programs (quad, image, SDF text, coverage text, colour text), VAOs and the four GL
+            // buffers are recreated from scratch.
+            CountCalls(api, "CreateProgram()").Should().Be(programsBefore + 5);
             CountCalls(api, "GenVertexArray() ->").Should().Be(vaosBefore + 3);
             CountCalls(api, "GenBuffer() ->").Should().Be(buffersBefore + 4);
 

@@ -1,9 +1,21 @@
 namespace Axrone.Event.Tests;
 
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ZeroAllocationCollectionDefinition
+{
+    public const string Name = "Event.ZeroAllocation";
+
+    private ZeroAllocationCollectionDefinition()
+    {
+    }
+}
+
+[Collection(ZeroAllocationCollectionDefinition.Name)]
 public sealed class ZeroAllocationTests
 {
     private const int WarmupIterations = 10_000;
     private const int MeasuredIterations = 10_000;
+    private const int TotalIterations = WarmupIterations + MeasuredIterations;
 
     [Fact]
     public void Scheduler_EnqueueDequeue_DoesNotAllocate()
@@ -25,6 +37,8 @@ public sealed class ZeroAllocationTests
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
+        scheduler.ScheduledCount.Should().Be(TotalIterations, "every schedule call must have been accepted");
+        scheduler.DequeuedCount.Should().Be(TotalIterations, "every scheduled item must have been dequeued");
     }
 
     [Fact]
@@ -46,6 +60,8 @@ public sealed class ZeroAllocationTests
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
+        router.Metrics.Execution.Count.Should().Be(TotalIterations, "every publish must have invoked the handler");
+        router.Metrics.Emit.Count.Should().Be(TotalIterations);
     }
 
     [Fact]
@@ -70,6 +86,10 @@ public sealed class ZeroAllocationTests
         allocated.Should().Be(0);
         forwarder.BackpressureDropCount.Should().Be(0);
         forwarder.LoopDropCount.Should().Be(0);
+        forwarder.FilteredCount.Should().Be(0);
+        forwarder.FailureCount.Should().Be(0);
+        forwarder.ForwardedCount.Should().Be(TotalIterations, "every publish must have reached the target");
+        source.Metrics.Execution.Count.Should().Be(TotalIterations, "the forwarder subscription must have run for every publish");
     }
 
     [Fact]
@@ -98,6 +118,8 @@ public sealed class ZeroAllocationTests
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
-        timer.FiredTicks.Should().BeGreaterThan(WarmupIterations);
+        timer.FiredTicks.Should().Be(TotalIterations, "each advance must have fired exactly one tick");
+        scheduler.ScheduledCount.Should().Be(TotalIterations);
+        scheduler.DequeuedCount.Should().Be(TotalIterations);
     }
 }

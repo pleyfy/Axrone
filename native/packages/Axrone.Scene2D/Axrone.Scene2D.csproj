@@ -30,6 +30,7 @@
     <ProjectReference Include="../Axrone.Collections/Axrone.Collections.csproj" />
     <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
     <ProjectReference Include="../Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
+    <ProjectReference Include="../Axrone.Scene.Rendering/Axrone.Scene.Rendering.csproj" />
     <ProjectReference Include="../Axrone.Scene.Runtime/Axrone.Scene.Runtime.csproj" />
   </ItemGroup>
 

@@ -66,7 +66,7 @@ public sealed class ObservableRegistry : IDisposable
     public int RegisterSubject(object subject, in SubjectOptions options = default)
     {
         ArgumentNullException.ThrowIfNull(subject);
-        SubjectOptions normalized = options.MaxObservers > 0 ? options.Normalize() : SubjectOptions.Default;
+        SubjectOptions normalized = options.Normalize();
         lock (_gate)
         {
             ThrowIfDisposed();

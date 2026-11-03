@@ -98,6 +98,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
     private uint _imageProgram;
     private uint _textProgram;
     private uint _coverageTextProgram;
+    private uint _colorTextProgram;
     private int _quadViewport;
     private int _imageViewport;
     private int _imageTexture;
@@ -105,6 +106,8 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
     private int _textTexture;
     private int _coverageTextViewport;
     private int _coverageTextTexture;
+    private int _colorTextViewport;
+    private int _colorTextTexture;
     private uint _quadVao;
     private uint _imageVao;
     private uint _textVao;
@@ -175,6 +178,9 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
 
     /// <summary>Gets the number of coverage glyph batches drawn.</summary>
     public long CoverageGlyphBatches { get; private set; }
+
+    /// <summary>Gets the number of premultiplied RGBA color glyph batches drawn.</summary>
+    public long ColorGlyphBatches { get; private set; }
 
     /// <summary>Gets the number of completed frames.</summary>
     public long FrameCount { get; private set; }
@@ -324,6 +330,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
             DeleteProgram(ref _imageProgram);
             DeleteProgram(ref _textProgram);
             DeleteProgram(ref _coverageTextProgram);
+            DeleteProgram(ref _colorTextProgram);
             DeleteVao(ref _quadVao);
             DeleteVao(ref _imageVao);
             DeleteVao(ref _textVao);
@@ -495,15 +502,29 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
         }
 
         bool sdf = format is UiGlyphFormat.Sdf or UiGlyphFormat.Msdf;
-        uint program = sdf ? _textProgram : _coverageTextProgram;
-        int viewportLocation = sdf ? _textViewport : _coverageTextViewport;
-        int textureLocation = sdf ? _textTexture : _coverageTextTexture;
+        bool color = format == UiGlyphFormat.Rgba32;
+        uint program = sdf ? _textProgram : color ? _colorTextProgram : _coverageTextProgram;
+        int viewportLocation = sdf ? _textViewport : color ? _colorTextViewport : _coverageTextViewport;
+        int textureLocation = sdf ? _textTexture : color ? _colorTextTexture : _coverageTextTexture;
         _glyphInstances!.Update(MemoryMarshal.AsBytes(_glyphBuffer.Items));
         uint sampler = key.Sampling == UiImageSampling.Nearest ? _nearestSampler : _linearSampler;
-        DrawInstances(program, _textVao, viewportLocation, textureLocation, in key, _glyphBuffer.Count, texture, sampler);
+        DrawInstances(
+            program,
+            _textVao,
+            viewportLocation,
+            textureLocation,
+            in key,
+            _glyphBuffer.Count,
+            texture,
+            sampler,
+            premultiplied: color);
         if (sdf)
         {
             SdfGlyphBatches++;
+        }
+        else if (color)
+        {
+            ColorGlyphBatches++;
         }
         else
         {
@@ -541,7 +562,8 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
         in UiBatchKey key,
         int instanceCount,
         uint texture,
-        uint sampler)
+        uint sampler,
+        bool premultiplied = false)
     {
         if (instanceCount == 0 || !ApplyScissor(in key))
         {
@@ -561,7 +583,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
             _gl.Uniform1(textureLocation, 0);
         }
 
-        ApplyBlend(key.Blend);
+        ApplyBlend(key.Blend, premultiplied);
         _state.BindVertexArray(vao);
         _gl.DrawArraysInstanced(GLConst.TriangleStrip, 0, 4, (uint)instanceCount);
         _state.BindVertexArray(0);
@@ -570,7 +592,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
         Instances += instanceCount;
     }
 
-    private void ApplyBlend(UiBlendMode blend)
+    private void ApplyBlend(UiBlendMode blend, bool premultiplied)
     {
         switch (blend)
         {
@@ -579,7 +601,11 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
                 break;
             case UiBlendMode.Additive:
                 _state.SetBlend(true);
-                _state.SetBlendFuncSeparate(UiGl.SrcAlpha, UiGl.One, UiGl.One, UiGl.One);
+                _state.SetBlendFuncSeparate(
+                    premultiplied ? UiGl.One : UiGl.SrcAlpha,
+                    UiGl.One,
+                    UiGl.One,
+                    UiGl.One);
                 break;
             case UiBlendMode.Multiply:
                 _state.SetBlend(true);
@@ -587,7 +613,11 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
                 break;
             default:
                 _state.SetBlend(true);
-                _state.SetBlendFuncSeparate(UiGl.SrcAlpha, UiGl.OneMinusSrcAlpha, UiGl.One, UiGl.OneMinusSrcAlpha);
+                _state.SetBlendFuncSeparate(
+                    premultiplied ? UiGl.One : UiGl.SrcAlpha,
+                    UiGl.OneMinusSrcAlpha,
+                    UiGl.One,
+                    UiGl.OneMinusSrcAlpha);
                 break;
         }
     }
@@ -656,6 +686,7 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
         _imageProgram = Compile(UiShaderSources.ImageVertex, UiShaderSources.ImageFragment, out _imageViewport, out _imageTexture);
         _textProgram = Compile(UiShaderSources.TextVertex, UiShaderSources.TextFragment, out _textViewport, out _textTexture);
         _coverageTextProgram = Compile(UiShaderSources.TextVertex, UiShaderSources.CoverageTextFragment, out _coverageTextViewport, out _coverageTextTexture);
+        _colorTextProgram = Compile(UiShaderSources.TextVertex, UiShaderSources.ColorTextFragment, out _colorTextViewport, out _colorTextTexture);
 
         _linearSampler = CreateSampler(UiGl.Linear);
         _nearestSampler = CreateSampler(UiGl.Nearest);
@@ -681,7 +712,11 @@ public sealed class UiOpenGlBackend : IUiRenderBackend, IDisposable
         for (uint location = 1; location <= 6; location++)
         {
             int size = location <= 4 ? 4 : 1;
-            int offset = (int)((location - 1) * 16);
+            // Four vec4 payloads occupy 0..63; the scalar attributes follow at 64 (width/flags)
+            // and 68 (opacity) inside the 72-byte instance stride.
+            int offset = location <= 4
+                ? (int)((location - 1) * 16)
+                : 64 + (int)((location - 5) * sizeof(float));
             _gl.EnableVertexAttribArray(location);
             _gl.VertexAttribPointer(location, size, GLConst.Float, false, InstanceStrideBytes, (void*)offset);
             _gl.VertexAttribDivisor(location, 1);

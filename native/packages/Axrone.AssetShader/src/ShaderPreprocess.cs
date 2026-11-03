@@ -152,176 +152,176 @@ public static class GLSLPreprocessor
             switch (name)
             {
                 case "if":
-                {
-                    bool parentActive = IsEmitting(branchStack, stackDepth);
-                    bool cond = parentActive && EvaluateCondition(rest, table, lookup) != 0;
-                    if (stackDepth >= branchStack.Length)
                     {
-                        ThrowHelper.ThrowPreprocessorStackOverflow();
+                        bool parentActive = IsEmitting(branchStack, stackDepth);
+                        bool cond = parentActive && EvaluateCondition(rest, table, lookup) != 0;
+                        if (stackDepth >= branchStack.Length)
+                        {
+                            ThrowHelper.ThrowPreprocessorStackOverflow();
+                        }
+
+                        branchStack[stackDepth++] = new BranchContext
+                        {
+                            ConditionMet = cond,
+                            Active = parentActive && cond,
+                            HadElse = false,
+                        };
+
+                        break;
                     }
-
-                    branchStack[stackDepth++] = new BranchContext
-                    {
-                        ConditionMet = cond,
-                        Active = parentActive && cond,
-                        HadElse = false,
-                    };
-
-                    break;
-                }
 
                 case "ifdef":
-                {
-                    bool parentActive = IsEmitting(branchStack, stackDepth);
-                    bool exists = parentActive && (table.IsDefined(rest.Trim()) || lookup.IsDefined(new ShaderSymbol(rest.Trim())));
-                    if (stackDepth >= branchStack.Length)
                     {
-                        ThrowHelper.ThrowPreprocessorStackOverflow();
+                        bool parentActive = IsEmitting(branchStack, stackDepth);
+                        bool exists = parentActive && (table.IsDefined(rest.Trim()) || lookup.IsDefined(new ShaderSymbol(rest.Trim())));
+                        if (stackDepth >= branchStack.Length)
+                        {
+                            ThrowHelper.ThrowPreprocessorStackOverflow();
+                        }
+
+                        branchStack[stackDepth++] = new BranchContext
+                        {
+                            ConditionMet = exists,
+                            Active = parentActive && exists,
+                            HadElse = false,
+                        };
+
+                        break;
                     }
-
-                    branchStack[stackDepth++] = new BranchContext
-                    {
-                        ConditionMet = exists,
-                        Active = parentActive && exists,
-                        HadElse = false,
-                    };
-
-                    break;
-                }
 
                 case "ifndef":
-                {
-                    bool parentActive = IsEmitting(branchStack, stackDepth);
-                    string target = rest.Trim();
-                    bool missing = parentActive && !table.IsDefined(target) && !lookup.IsDefined(new ShaderSymbol(target));
-                    if (stackDepth >= branchStack.Length)
                     {
-                        ThrowHelper.ThrowPreprocessorStackOverflow();
+                        bool parentActive = IsEmitting(branchStack, stackDepth);
+                        string target = rest.Trim();
+                        bool missing = parentActive && !table.IsDefined(target) && !lookup.IsDefined(new ShaderSymbol(target));
+                        if (stackDepth >= branchStack.Length)
+                        {
+                            ThrowHelper.ThrowPreprocessorStackOverflow();
+                        }
+
+                        branchStack[stackDepth++] = new BranchContext
+                        {
+                            ConditionMet = missing,
+                            Active = parentActive && missing,
+                            HadElse = false,
+                        };
+
+                        break;
                     }
-
-                    branchStack[stackDepth++] = new BranchContext
-                    {
-                        ConditionMet = missing,
-                        Active = parentActive && missing,
-                        HadElse = false,
-                    };
-
-                    break;
-                }
 
                 case "elif":
-                {
-                    if (stackDepth == 0)
                     {
-                        sink.ReportError("ERR_UNEXPECTED_ELIF", "#elif without matching #if",
-                            new SourceLocation(line, 1), sourceId);
+                        if (stackDepth == 0)
+                        {
+                            sink.ReportError("ERR_UNEXPECTED_ELIF", "#elif without matching #if",
+                                new SourceLocation(line, 1), sourceId);
+                            break;
+                        }
+
+                        ref BranchContext current = ref branchStack[stackDepth - 1];
+                        if (current.HadElse)
+                        {
+                            sink.ReportError("ERR_ELIF_AFTER_ELSE", "#elif after #else is forbidden",
+                                new SourceLocation(line, 1), sourceId);
+                            break;
+                        }
+
+                        bool parentActive = stackDepth <= 1 || branchStack[stackDepth - 2].Active;
+                        bool cond = parentActive && !current.ConditionMet && EvaluateCondition(rest, table, lookup) != 0;
+                        current.Active = cond;
+                        if (cond)
+                        {
+                            current.ConditionMet = true;
+                        }
+
                         break;
                     }
-
-                    ref BranchContext current = ref branchStack[stackDepth - 1];
-                    if (current.HadElse)
-                    {
-                        sink.ReportError("ERR_ELIF_AFTER_ELSE", "#elif after #else is forbidden",
-                            new SourceLocation(line, 1), sourceId);
-                        break;
-                    }
-
-                    bool parentActive = stackDepth <= 1 || branchStack[stackDepth - 2].Active;
-                    bool cond = parentActive && !current.ConditionMet && EvaluateCondition(rest, table, lookup) != 0;
-                    current.Active = cond;
-                    if (cond)
-                    {
-                        current.ConditionMet = true;
-                    }
-
-                    break;
-                }
 
                 case "else":
-                {
-                    if (stackDepth == 0)
                     {
-                        sink.ReportError("ERR_UNEXPECTED_ELSE", "#else without matching #if",
-                            new SourceLocation(line, 1), sourceId);
+                        if (stackDepth == 0)
+                        {
+                            sink.ReportError("ERR_UNEXPECTED_ELSE", "#else without matching #if",
+                                new SourceLocation(line, 1), sourceId);
+                            break;
+                        }
+
+                        ref BranchContext current = ref branchStack[stackDepth - 1];
+                        if (current.HadElse)
+                        {
+                            sink.ReportError("ERR_DUPLICATE_ELSE", "Duplicate #else block encountered",
+                                new SourceLocation(line, 1), sourceId);
+                            break;
+                        }
+
+                        bool parentActive = stackDepth <= 1 || branchStack[stackDepth - 2].Active;
+                        current.Active = parentActive && !current.ConditionMet;
+                        current.ConditionMet = true;
+                        current.HadElse = true;
                         break;
                     }
-
-                    ref BranchContext current = ref branchStack[stackDepth - 1];
-                    if (current.HadElse)
-                    {
-                        sink.ReportError("ERR_DUPLICATE_ELSE", "Duplicate #else block encountered",
-                            new SourceLocation(line, 1), sourceId);
-                        break;
-                    }
-
-                    bool parentActive = stackDepth <= 1 || branchStack[stackDepth - 2].Active;
-                    current.Active = parentActive && !current.ConditionMet;
-                    current.ConditionMet = true;
-                    current.HadElse = true;
-                    break;
-                }
 
                 case "endif":
-                {
-                    if (stackDepth == 0)
                     {
-                        sink.ReportError("ERR_UNEXPECTED_ENDIF", "#endif without matching #if",
-                            new SourceLocation(line, 1), sourceId);
+                        if (stackDepth == 0)
+                        {
+                            sink.ReportError("ERR_UNEXPECTED_ENDIF", "#endif without matching #if",
+                                new SourceLocation(line, 1), sourceId);
+                            break;
+                        }
+
+                        stackDepth--;
                         break;
                     }
 
-                    stackDepth--;
-                    break;
-                }
-
                 case "define":
-                {
-                    if (IsEmitting(branchStack, stackDepth))
                     {
-                        var (macroName, macroRest) = SplitDefineName(rest);
-                        if (macroName.Length != 0)
+                        if (IsEmitting(branchStack, stackDepth))
                         {
-                            table.Define(macroName, ShaderMacroTable.ParseDefine(macroRest, macroName));
+                            var (macroName, macroRest) = SplitDefineName(rest);
+                            if (macroName.Length != 0)
+                            {
+                                table.Define(macroName, ShaderMacroTable.ParseDefine(macroRest, macroName));
+                            }
                         }
-                    }
 
-                    break;
-                }
+                        break;
+                    }
 
                 case "undef":
-                {
-                    if (IsEmitting(branchStack, stackDepth))
                     {
-                        table.Undefine(rest.Trim());
-                    }
+                        if (IsEmitting(branchStack, stackDepth))
+                        {
+                            table.Undefine(rest.Trim());
+                        }
 
-                    break;
-                }
+                        break;
+                    }
 
                 case "error":
-                {
-                    if (IsEmitting(branchStack, stackDepth))
                     {
-                        sink.ReportError("ERR_USER_DIRECTIVE", rest.Trim().Length != 0 ? rest.Trim() : "#error",
-                            new SourceLocation(line, 1), sourceId);
-                    }
+                        if (IsEmitting(branchStack, stackDepth))
+                        {
+                            sink.ReportError("ERR_USER_DIRECTIVE", rest.Trim().Length != 0 ? rest.Trim() : "#error",
+                                new SourceLocation(line, 1), sourceId);
+                        }
 
-                    break;
-                }
+                        break;
+                    }
 
                 case "version":
                 case "extension":
                 case "pragma":
                 case "line":
                 default:
-                {
-                    if (IsEmitting(branchStack, stackDepth))
                     {
-                        output.Add((text.TrimStart(), line, true));
-                    }
+                        if (IsEmitting(branchStack, stackDepth))
+                        {
+                            output.Add((text.TrimStart(), line, true));
+                        }
 
-                    break;
-                }
+                        break;
+                    }
             }
         }
 

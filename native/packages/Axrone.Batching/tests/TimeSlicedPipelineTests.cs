@@ -21,11 +21,6 @@ public class TimeSlicedPipelineTests
         public void Execute(ref int item) => item++;
     }
 
-    private struct SpinKernel : IBatchKernel<int>
-    {
-        public void Execute(Span<int> batch) => Thread.SpinWait(5000);
-    }
-
     private static TimeSlicedPipeline<int> Fill(int count)
     {
         var pipeline = new TimeSlicedPipeline<int>(Math.Max(count, 1));
@@ -80,25 +75,43 @@ public class TimeSlicedPipelineTests
     [Fact]
     public void ExecuteSlice_SmallBudget_ResumesToCompletion()
     {
-        var pipeline = Fill(200);
-        var spin = new SpinKernel();
+        var clock = new ManualTimestamp(Stopwatch.GetTimestamp());
+        using var pipeline = new TimeSlicedPipeline<int>(
+            200,
+            BatchStride.Default,
+            "Axrone.Batching.Tests",
+            clock.GetTimestamp);
+        for (var i = 0; i < 200; i++)
+        {
+            pipeline.TryWrite(i + 1).Should().BeTrue();
+        }
 
-        var first = pipeline.ExecuteSlice(ref spin, new FrameBudget(1d));
+        pipeline.SwapProducer();
+
+        // The kernel advances the injected clock past the deadline during the first chunk, so the
+        // slice always stops after exactly one chunk regardless of machine speed or load.
+        const long budgetTicks = 10_000;
+        long budgetStart = clock.Now;
+        var advancing = new ClockAdvancingKernel(clock, budgetTicks * 2);
+        var first = pipeline.ExecuteSlice(
+            ref advancing,
+            new FrameBudget(budgetStart, budgetStart + budgetTicks));
 
         first.Status.Should().Be(FrameBudgetStatus.BudgetExceeded);
-        first.ProcessedCount.Should().BeGreaterThan(0);
-        first.RemainingCount.Should().Be(200 - first.ProcessedCount);
+        first.ProcessedCount.Should().Be(TimeSlicedPipeline<int>.InitialStride);
+        first.RemainingCount.Should().Be(200 - TimeSlicedPipeline<int>.InitialStride);
+        (clock.Now - budgetStart).Should().Be(budgetTicks * 2);
         pipeline.HasRemainingWork.Should().BeTrue();
 
         var kernel = new DoubleKernel();
-        SliceResult last = default;
-        for (var i = 0; i < 10 && pipeline.HasRemainingWork; i++)
-        {
-            last = pipeline.ExecuteSlice(ref kernel, FrameBudget.Infinite);
-        }
+        SliceResult last = pipeline.ExecuteSlice(
+            ref kernel,
+            new FrameBudget(clock.Now, clock.Now + 10_000_000));
 
-        pipeline.HasRemainingWork.Should().BeFalse();
         last.Status.Should().Be(FrameBudgetStatus.Completed);
+        last.ProcessedCount.Should().Be(200 - TimeSlicedPipeline<int>.InitialStride);
+        last.RemainingCount.Should().Be(0);
+        pipeline.HasRemainingWork.Should().BeFalse();
     }
 
     [Fact]

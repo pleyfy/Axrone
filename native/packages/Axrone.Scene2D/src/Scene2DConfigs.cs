@@ -39,18 +39,23 @@ public readonly record struct Scene2DCameraConfig
     /// <summary>Clear depth.</summary>
     public float ClearDepth { get; init; }
 
-    /// <summary>Creates the 2D camera defaults: orthographic, near 0.1, far 1000.</summary>
+    /// <summary>
+    /// Creates the 2D camera defaults from
+    /// <see cref="SceneCamera2DDefaults"/>: orthographic, primary, near 0.1,
+    /// far 1000 and the reference-viewport half-height.
+    /// </summary>
     public Scene2DCameraConfig()
     {
         Scene2DCamera defaults = Scene2DCamera.Default;
-        Orthographic = defaults.Orthographic;
-        Primary = defaults.Primary;
+        SceneCamera rendererDefaults = SceneCamera2DDefaults.CreateCamera();
+        Orthographic = rendererDefaults.Orthographic;
+        Primary = rendererDefaults.Primary;
         Enabled = defaults.Enabled;
-        OrthographicSize = defaults.OrthographicSize;
+        OrthographicSize = rendererDefaults.OrthographicSize;
         FieldOfViewDegrees = defaults.FieldOfViewDegrees;
         FieldOfViewAxis = defaults.FieldOfViewAxis;
-        Near = defaults.Near;
-        Far = defaults.Far;
+        Near = rendererDefaults.Near;
+        Far = rendererDefaults.Far;
         Depth = Scene2DCamera2D.Default.Depth;
         ClearMask = defaults.ClearMask;
         ClearColor = defaults.ClearColor;
@@ -235,6 +240,13 @@ public readonly record struct Scene2DSpriteAnimatorConfig
     /// <summary>Animation clip symbol.</summary>
     public SceneStringId ClipId { get; init; }
 
+    /// <summary>
+    /// Optional renderer clip used by renderer-bound profiles. Lean staging
+    /// profiles reject managed clips because their animator payload carries
+    /// playback state only.
+    /// </summary>
+    public SceneSpriteAnimationClip? Clip { get; init; }
+
     /// <summary>Playback speed multiplier; zero pauses advancement.</summary>
     public float Speed { get; init; }
 
@@ -255,6 +267,7 @@ public readonly record struct Scene2DSpriteAnimatorConfig
     {
         Scene2DSpriteAnimator defaults = Scene2DSpriteAnimator.Default;
         ClipId = defaults.ClipId;
+        Clip = null;
         Speed = defaults.Speed;
         ElapsedSeconds = defaults.ElapsedSeconds;
         FrameIndex = defaults.FrameIndex;
@@ -277,6 +290,22 @@ public readonly record struct Scene2DSpriteAnimatorConfig
         if (FrameIndex < 0)
         {
             Scene2DValidation.ThrowInvalid("Animator frame index must not be negative.");
+        }
+
+        if (Clip is { } clip)
+        {
+            int count = clip.Frames.Count;
+            if (count == 0)
+            {
+                if (FrameIndex != 0 || ElapsedSeconds > 0.0f)
+                {
+                    Scene2DValidation.ThrowInvalid("An empty animation clip cannot carry frame progress.");
+                }
+            }
+            else if ((uint)FrameIndex >= (uint)count)
+            {
+                Scene2DValidation.ThrowInvalid("Animator frame index exceeds the animation clip frame count.");
+            }
         }
     }
 

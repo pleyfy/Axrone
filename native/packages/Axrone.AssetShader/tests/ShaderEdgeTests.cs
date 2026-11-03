@@ -1,5 +1,6 @@
 namespace Axrone.AssetShader.Tests;
 
+[Collection(ShaderLibraryRegistryGroup.Name)]
 public sealed class ShaderEdgeTests
 {
     private static long Eval(string expression, in EmptyMacroPolicy lookup)
@@ -91,26 +92,53 @@ public sealed class ShaderEdgeTests
     [Fact]
     public void Bake_Resolves_Registered_Library()
     {
-        ShaderLibraryRegistry.Instance.Clear();
+        const string libraryKey = "p7_lighting";
+        string? previous = ShaderLibraryRegistry.Instance.TryResolve(libraryKey, out string? existing)
+            ? existing
+            : null;
+
         try
         {
-            ShaderLibraryRegistry.Instance.Register("lighting", "float lit() { return 1.0; }");
-            ShaderEffect effect = ShaderPipelineBuilder<StageUninitialized>.Begin("lit")
-                .WithVertex(new ShaderStageDefinition("gl_Position = vec4(0.0);"))
-                .WithFragment(new ShaderStageDefinition(
-                    "gl_FragColor = vec4(lit());",
-                    Includes: ImmutableArray.Create(new ShaderSymbol("lighting"))))
-                .Seal()
-                .BuildEffect();
+            ShaderEffect missing = BuildEffectWithInclude("lit_before", libraryKey, "gl_FragColor = vec4(lit());");
+            ShaderPreprocessException missingError = Assert.Throws<ShaderPreprocessException>(
+                () => ShaderVariantSystem.BakeVariant(missing));
+            missingError.Diagnostics.Should().Contain(diagnostic => diagnostic.Code.Name == "ERR_INCLUDE_NOT_FOUND");
 
-            ShaderVariant variant = ShaderVariantSystem.BakeVariant(effect);
-            variant.FragmentSource.Should().Contain("float lit()");
+            ShaderLibraryRegistry.Instance.Register(libraryKey, "float lit() { return 1.0; }");
+
+            ShaderEffect registered = BuildEffectWithInclude("lit_registered", libraryKey, "gl_FragColor = vec4(lit());");
+            ShaderVariant resolved = ShaderVariantSystem.BakeVariant(registered);
+            resolved.FragmentSource.Should().Contain("float lit()");
+            resolved.Diagnostics.Should().BeEmpty();
+
+            ShaderLibraryRegistry.Instance.Remove(libraryKey).Should().BeTrue();
+
+            ShaderEffect removed = BuildEffectWithInclude("lit_removed", libraryKey, "gl_FragColor = vec4(lit());");
+            ShaderPreprocessException removedError = Assert.Throws<ShaderPreprocessException>(
+                () => ShaderVariantSystem.BakeVariant(removed));
+            removedError.Diagnostics.Should().Contain(diagnostic => diagnostic.Code.Name == "ERR_INCLUDE_NOT_FOUND");
         }
         finally
         {
-            ShaderLibraryRegistry.Instance.Clear();
+            if (previous is null)
+            {
+                ShaderLibraryRegistry.Instance.Remove(libraryKey);
+            }
+            else
+            {
+                ShaderLibraryRegistry.Instance.Register(libraryKey, previous);
+            }
         }
     }
+
+    private static ShaderEffect BuildEffectWithInclude(string id, string includeKey, string fragmentMain) =>
+        ShaderPipelineBuilder<StageUninitialized>.Begin(id)
+            .WithVertex(new ShaderStageDefinition("gl_Position = vec4(0.0);"))
+            .WithFragment(new ShaderStageDefinition(
+                fragmentMain,
+                Includes: ImmutableArray.Create(new ShaderSymbol(includeKey))))
+            .Seal()
+            .BuildEffect();
 
     [Fact]
     public void Bake_User_Error_Throws()
