@@ -11,6 +11,9 @@ public static class SceneSnapshotErrorCodes
 
     /// <summary>Loading failed and the partial payload was rolled back.</summary>
     public const string LoadFailed = "scene.snapshot.load-failed";
+
+    /// <summary>A JSON string sequence contains an explicit null element.</summary>
+    public const string InvalidNullElement = "scene.snapshot.invalid-null-element";
 }
 
 /// <summary>Snapshot failure with a stable error code.</summary>
