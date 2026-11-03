@@ -1,3 +1,4 @@
+using Axrone.Lighting;
 using Axrone.Render.OpenGL.Context;
 using Axrone.Render.OpenGL.FrameGraph;
 using Axrone.Render.OpenGL.FrameGraph.Passes;
@@ -718,6 +719,101 @@ public sealed class PassExecutorTests : IDisposable
         pass.GetWrittenResources().ToArray().Should().Contain("shadow_fbo");
 
         program.Dispose();
+    }
+
+    [Fact]
+    public void ShadowPass_CascadeFactory_KeepsLegacyPathSeparate()
+    {
+        var program = new GLProgram(_context, "vs", "fs");
+        var cascades = NewCascadeFrame();
+        var pass = ShadowPass.Create(
+            "cascaded-shadow",
+            program,
+            "shadow_map",
+            "shadow_fbo",
+            cascades,
+            2048,
+            2048);
+
+        pass.Data.Cascades.Should().BeSameAs(cascades);
+        pass.Data.Meshes.Should().NotBeNull();
+        var legacyPass = ShadowPass.Create(
+            "legacy-shadow",
+            program,
+            "shadow_map",
+            "shadow_fbo",
+            Mat4.Identity);
+        legacyPass.Data.Cascades.Should().BeNull();
+
+        program.Dispose();
+    }
+
+    [Fact]
+    public void ShadowPass_CascadeValidate_RejectsMismatchedAtlas()
+    {
+        var program = new GLProgram(_context, "vs", "fs");
+        var cascades = NewCascadeFrame();
+        var data = new ShadowPassData
+        {
+            DepthProgram = program,
+            ShadowMapTextureName = "shadow_map",
+            ShadowFramebufferName = "shadow_fbo",
+            Cascades = cascades,
+            ShadowMapWidth = 1024,
+            ShadowMapHeight = 2048,
+            Meshes = []
+        };
+
+        Action validate = () => ShadowPassData.Validate(in data);
+        validate.Should().Throw<RenderException>()
+            .Where(e => e.Code == RenderErrorCode.InvalidPassConfiguration);
+
+        program.Dispose();
+    }
+
+    [Fact]
+    public void ShadowPass_CascadeValidate_AcceptsFourByFourGrid()
+    {
+        var program = new GLProgram(_context, "vs", "fs");
+        var cascades = NewCascadeFrame();
+        var data = new ShadowPassData
+        {
+            DepthProgram = program,
+            ShadowMapTextureName = "shadow_map",
+            ShadowFramebufferName = "shadow_fbo",
+            Cascades = cascades,
+            ShadowMapWidth = 2048,
+            ShadowMapHeight = 2048,
+            Meshes = []
+        };
+
+        Action validate = () => ShadowPassData.Validate(in data);
+        validate.Should().NotThrow();
+
+        program.Dispose();
+    }
+
+    private static ShadowFrameData NewCascadeFrame()
+    {
+        var frame = new ShadowFrameData();
+        var camera = new ShadowCameraParameters(
+            Vec3.Zero,
+            new Vec3(0.0f, 0.0f, -1.0f),
+            Vec3.UnitY,
+            Vec3.UnitX,
+            MathF.PI / 3.0f,
+            1.0f,
+            0.1f,
+            500.0f);
+        Vec3 lightDirection = new(-0.35f, -0.9f, -0.25f);
+        ShadowCascadeFrameBuilder.Build(
+            frame,
+            ShadowSettings.Default,
+            in camera,
+            in lightDirection,
+            2048,
+            2048);
+        return frame;
     }
 
     // =========================================================================

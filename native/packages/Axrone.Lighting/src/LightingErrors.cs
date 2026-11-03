@@ -76,6 +76,20 @@ internal static class ThrowHelper
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void ThrowSerializationError(string code, string message) =>
         throw new LightingSerializationException(code, message);
+
+    /// <summary>Throws an invalid cascade-count mapping.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static T InvalidShadowCascadeCount<T>() =>
+        throw new LightingValidationException(
+            "lighting.shadow.invalid-cascade-count",
+            "Shadow cascades must be exactly 1, 2, or 4.");
+
+    /// <summary>Throws an invalid shadow configuration.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowShadowValidation(string message) =>
+        throw new LightingValidationException("lighting.shadow.invalid", message);
 }
 
 /// <summary>Validation guards.</summary>

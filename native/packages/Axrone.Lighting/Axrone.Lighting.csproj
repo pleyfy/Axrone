@@ -51,6 +51,13 @@
     <!-- CA1711: *Flags enums end with Flags by domain vocabulary;
          they are bit sets, not System attributes. -->
     <NoWarn>$(NoWarn);CA1711</NoWarn>
+    <!-- CA1008: ShadowCascadeCount intentionally enumerates only supported
+         cascade totals (1, 2, 4). A zero/None member would represent no atlas
+         and would let invalid renderer settings reach the hot path. -->
+    <NoWarn>$(NoWarn);CA1008</NoWarn>
+    <!-- CA1027: ShadowCascadeCount values are not bit flags. The sparse values
+         encode the physical cascade count, so bitwise semantics would be wrong. -->
+    <NoWarn>$(NoWarn);CA1027</NoWarn>
   </PropertyGroup>
 
   <ItemGroup Label="PublicApi">

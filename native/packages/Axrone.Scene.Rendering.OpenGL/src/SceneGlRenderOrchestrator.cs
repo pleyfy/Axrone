@@ -19,6 +19,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     private readonly SceneGlSkinnedMeshRenderer? _skinnedRenderer;
     private readonly SceneGlReflectionProbeAtlas? _probeAtlas;
     private readonly ISceneReflectionProbeSource? _reflectionProbe;
+    private readonly ISceneGlShadowSource? _shadow;
     private readonly bool _hasSpriteComponent;
     private readonly bool _hasInstancedComponent;
     private SceneGlPrimitiveBatchRenderer? _primitiveRenderer;
@@ -45,6 +46,8 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     /// <param name="skinningOptions">Optional skinning configuration; defaults to 256 bones on unit 15.</param>
     /// <param name="probeAtlas">Optional reflection probe cubemap atlas.</param>
     /// <param name="reflectionProbe">Optional selected-probe source for material sampling.</param>
+    /// <param name="shadow">Optional shadow source; when supplied, its cascade frame and
+    /// height-fog contract are bound to every mesh and skinned shader in the pass.</param>
     public SceneGlRenderOrchestrator(
         GLContext context,
         SceneGlAssetCache assets,
@@ -54,7 +57,8 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
         ISceneBonePaletteSource? bonePalettes = null,
         SceneSkinningOptions? skinningOptions = null,
         SceneGlReflectionProbeAtlas? probeAtlas = null,
-        ISceneReflectionProbeSource? reflectionProbe = null)
+        ISceneReflectionProbeSource? reflectionProbe = null,
+        ISceneGlShadowSource? shadow = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assets);
@@ -64,6 +68,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
         _assets = assets;
         _probeAtlas = probeAtlas;
         _reflectionProbe = reflectionProbe;
+        _shadow = shadow;
         _meshExecutor = new SceneGlDrawExecutor(context, assets);
         _spriteRenderer = new SceneGlSpriteBatchRenderer(context, assets);
         _hasSpriteComponent = world.Registry.TryGetDataByType(typeof(SceneSpriteRenderer), out _);
@@ -125,7 +130,8 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                 items.Fog,
                 items as ISceneAreaLightSource,
                 _probeAtlas,
-                _reflectionProbe);
+                _reflectionProbe,
+                _shadow);
 
             if (items is ISceneLodFrameItemSource lodSource)
             {
@@ -143,7 +149,8 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                         items.Fog,
                         items as ISceneAreaLightSource,
                         _probeAtlas,
-                        _reflectionProbe);
+                        _reflectionProbe,
+                        _shadow);
                 }
             }
 
@@ -163,7 +170,8 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
                         items.Fog,
                         items as ISceneAreaLightSource,
                         _probeAtlas,
-                        _reflectionProbe);
+                        _reflectionProbe,
+                        _shadow);
                 }
             }
 
