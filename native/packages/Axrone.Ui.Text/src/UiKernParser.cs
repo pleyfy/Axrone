@@ -27,7 +27,11 @@ internal static class UiKernParser
 
         if (UiFontFace.ReadU16(data, kernOffset) != 0)
         {
-            return true;
+            return Fail(
+                out error,
+                UiFontErrorCode.UnsupportedKernVersion,
+                kernOffset,
+                "kern table version is not supported.");
         }
 
         int subtableCount = UiFontFace.ReadU16(data, kernOffset + 2);

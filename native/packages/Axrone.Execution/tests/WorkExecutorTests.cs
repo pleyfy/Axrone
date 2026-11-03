@@ -472,8 +472,36 @@ public class WorkExecutorTests
         OrderContext.Latest!.Count.Should().Be(4);
         executor.State.Should().Be(PumpState.Stopped);
 
-        // Affinity is a hint: an out-of-range request is refused, never thrown.
-        ThreadAffinityScope.TryPinCurrentThread(-1).Should().BeFalse();
+        // Affinity is a hint: the worker reports why it ended up unpinned instead of the
+        // answer collapsing into one shared failure value. Core 0 is in range on every
+        // supported platform, so the only honest answers are the OS accepting or refusing it.
+        executor.WorkerAffinity.Should().NotBe(AffinityResult.NotAttempted);
+        executor.WorkerAffinity.Should().NotBe(AffinityResult.AbiUnavailable);
+        executor.WorkerAffinity.Should().NotBe(AffinityResult.UnsupportedPlatform);
+        executor.WorkerAffinity.Should().BeOneOf(AffinityResult.Pinned, AffinityResult.DeclinedByOs);
+
+        // Out-of-range requests are refused with their own code, never thrown.
+        ThreadAffinityScope.PinCurrentThread(-1).Should().Be(AffinityResult.OutOfRange);
+    }
+
+    [Fact]
+    public async Task WithoutProcessorAffinity_WorkerReportsNotAttempted()
+    {
+        ResetRendezvous();
+        RequireConstructibleContext<OrderContext>();
+
+        using var processed = new ManualResetEventSlim();
+        SetRendezvous(processed, 4);
+        using var executor = CreateExecutor<OrderContext, OrderProcessor>(8);
+
+        for (int i = 0; i < 4; i++)
+            executor.TryEnqueue(i).IsEnqueued.Should().BeTrue();
+
+        processed.Wait(WaitTimeoutMs).Should().BeTrue();
+        executor.Complete();
+        await executor.DrainAsync();
+
+        executor.WorkerAffinity.Should().Be(AffinityResult.NotAttempted, "no pin was requested");
     }
 
     [Fact]

@@ -50,6 +50,15 @@ public sealed class TweenEngine : IDisposable
     public int ActiveCount => _store.ActiveCount;
 
     /// <summary>
+    /// Tweens retired because user callback code threw. The pump stays alive; this counter is
+    /// the record that a tween was retired early, including ticks driven without awaiters.
+    /// </summary>
+    public int FaultCount => _store.FaultCount;
+
+    /// <summary>Most recent callback fault retired by the engine, or <c>null</c> when none did.</summary>
+    public Exception? LastFault => _store.LastFault;
+
+    /// <summary>
     /// Ceiling for a single pump step; larger deltas are clamped. Guards against stall
     /// jumps (a frozen frame must not fast-forward the choreography). Null disables.
     /// </summary>
