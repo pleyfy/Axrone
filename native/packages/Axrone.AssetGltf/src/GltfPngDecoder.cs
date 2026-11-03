@@ -17,14 +17,25 @@ public sealed class GltfDecodedImage
 
 /// <summary>
 /// Self-contained PNG decoder producing RGBA8. Supports all PNG color types and bit depths,
-/// filters 0..4 and Adam7 interlacing. The decoder never throws for malformed input; it returns
-/// false with a diagnostic string.
+/// filters 0..4 and Adam7 interlacing. Every malformed input is classified at the site that
+/// detected it as a <see cref="GltfImageDecodeFailure"/>; decoder defects (index, arithmetic or
+/// argument errors) are never converted into a diagnostic and are allowed to terminate the run.
 /// </summary>
 public static class GltfPngDecoder
 {
     private const int MaxDimension = 8192;
     private const long MaxPixels = 32L * 1024 * 1024;
     private const long MaxRawBytes = 256L * 1024 * 1024;
+
+    private const string MarkerIhdr = "IHDR";
+
+    private const string MarkerPlte = "PLTE";
+
+    private const string MarkerTrns = "tRNS";
+
+    private const string MarkerIdat = "IDAT";
+
+    private const string MarkerIend = "IEND";
 
     private static ReadOnlySpan<byte> Signature => [137, 80, 78, 71, 13, 10, 26, 10];
 
@@ -45,40 +56,59 @@ public static class GltfPngDecoder
 
     /// <summary>Decodes a PNG buffer into RGBA8.</summary>
     /// <param name="png">PNG bytes.</param>
-    /// <param name="image">Decoded image.</param>
-    /// <param name="error">Failure reason when decoding fails.</param>
+    /// <param name="image">Decoded image on success.</param>
+    /// <param name="error">Typed diagnostic on failure.</param>
     /// <returns>Whether the buffer decoded successfully.</returns>
     public static bool TryDecode(
         ReadOnlySpan<byte> png,
         [NotNullWhen(true)] out GltfDecodedImage? image,
-        out string? error)
+        out GltfImageDecodeError? error)
     {
         try
         {
-            return TryDecodeCore(png, out image, out error);
+            image = DecodeCore(png);
+            error = null;
+            return true;
         }
-        catch (Exception exception) when (
-            exception is InvalidDataException or IOException or ArgumentException or IndexOutOfRangeException
-                or OverflowException or NotSupportedException or FormatException)
+        catch (PngFailureException failure)
         {
             image = null;
-            error = $"PNG decode failed: {exception.Message}";
+            error = new GltfImageDecodeError(
+                GltfImageCodecKind.Png,
+                failure.Failure,
+                failure.Message,
+                failure.Marker);
+            return false;
+        }
+        catch (InvalidDataException exception)
+        {
+            // The deflate stream rejects corrupt entropy-coded data; the exception type
+            // carries the classification and the message is human detail only.
+            image = null;
+            error = new GltfImageDecodeError(
+                GltfImageCodecKind.Png,
+                GltfImageDecodeFailure.ScanData,
+                $"PNG compressed data stream was rejected: {exception.Message}",
+                MarkerIdat);
+            return false;
+        }
+        catch (IOException exception)
+        {
+            image = null;
+            error = new GltfImageDecodeError(
+                GltfImageCodecKind.Png,
+                GltfImageDecodeFailure.Truncated,
+                $"PNG compressed data stream stopped early: {exception.Message}",
+                MarkerIdat);
             return false;
         }
     }
 
-    private static bool TryDecodeCore(
-        ReadOnlySpan<byte> png,
-        [NotNullWhen(true)] out GltfDecodedImage? image,
-        out string? error)
+    private static GltfDecodedImage DecodeCore(ReadOnlySpan<byte> png)
     {
-        image = null;
-        error = null;
-
         if (!IsPng(png))
         {
-            error = "PNG signature is missing.";
-            return false;
+            throw Failure(GltfImageDecodeFailure.Signature, "PNG signature is missing.", null);
         }
 
         int offset = 8;
@@ -99,13 +129,15 @@ public static class GltfPngDecoder
         while (offset + 12 <= png.Length)
         {
             int length = BinaryPrimitives.ReadInt32BigEndian(png.Slice(offset, 4));
+            ReadOnlySpan<byte> type = png.Slice(offset + 4, 4);
             if (length < 0 || length > png.Length - offset - 12)
             {
-                error = "PNG chunk length is outside the buffer.";
-                return false;
+                throw Failure(
+                    GltfImageDecodeFailure.Truncated,
+                    "PNG chunk length is outside the buffer.",
+                    Encoding.ASCII.GetString(type));
             }
 
-            ReadOnlySpan<byte> type = png.Slice(offset + 4, 4);
             ReadOnlySpan<byte> data = png.Slice(offset + 8, length);
             offset += 12 + length;
 
@@ -113,8 +145,10 @@ public static class GltfPngDecoder
             {
                 if (hasHeader || length != 13)
                 {
-                    error = "PNG IHDR is duplicated or malformed.";
-                    return false;
+                    throw Failure(
+                        GltfImageDecodeFailure.Marker,
+                        "PNG IHDR is duplicated or malformed.",
+                        MarkerIhdr);
                 }
 
                 width = BinaryPrimitives.ReadInt32BigEndian(data);
@@ -146,55 +180,67 @@ public static class GltfPngDecoder
             }
         }
 
-        if (!hasHeader || !hasData || !hasEnd)
+        if (!hasHeader)
         {
-            error = "PNG requires IHDR, IDAT and IEND chunks.";
-            return false;
+            throw Failure(GltfImageDecodeFailure.Truncated, "PNG stream has no IHDR chunk.", MarkerIhdr);
         }
 
-        if (!TryResolveLayout(width, height, bitDepth, colorType, compression, filterMethod, interlace,
-                palette, transparency, out int channels, out error))
+        if (!hasData)
         {
-            return false;
+            throw Failure(GltfImageDecodeFailure.Truncated, "PNG stream has no IDAT chunk.", MarkerIdat);
         }
+
+        if (!hasEnd)
+        {
+            throw Failure(GltfImageDecodeFailure.Truncated, "PNG stream has no IEND chunk.", MarkerIend);
+        }
+
+        int channels = ResolveLayout(
+            width,
+            height,
+            bitDepth,
+            colorType,
+            compression,
+            filterMethod,
+            interlace,
+            palette,
+            transparency);
 
         long expected = ComputeExpectedBytes(width, height, channels, bitDepth, interlace);
         if (expected <= 0 || expected > MaxRawBytes || expected > int.MaxValue)
         {
-            error = "PNG decoded scanline size exceeds the decoder budget.";
-            return false;
+            throw Failure(
+                GltfImageDecodeFailure.LimitExceeded,
+                "PNG decoded scanline size exceeds the decoder budget.",
+                MarkerIdat);
         }
 
         byte[] raw = GC.AllocateUninitializedArray<byte>((int)expected);
-        if (!TryInflate(idat.WrittenSpan, raw, out error))
-        {
-            return false;
-        }
+        Inflate(idat.WrittenSpan, raw);
 
         byte[] rgba = GC.AllocateUninitializedArray<byte>(width * height * 4, pinned: true);
         int rawOffset = 0;
         int filterBpp = Math.Max(1, (channels * bitDepth + 7) >> 3);
-        bool ok = interlace == 0
-            ? DecodePass(raw, ref rawOffset, rgba, width, height, width, height, 0, 0, 1, 1,
-                channels, bitDepth, colorType, filterBpp, palette, transparency, out error)
-            : DecodeInterlaced(raw, ref rawOffset, rgba, width, height, channels, bitDepth, colorType,
-                filterBpp, palette, transparency, out error);
-
-        if (!ok)
+        if (interlace == 0)
         {
-            return false;
+            DecodePass(raw, ref rawOffset, rgba, width, height, width, height, 0, 0, 1, 1,
+                channels, bitDepth, colorType, filterBpp, palette, transparency);
+        }
+        else
+        {
+            DecodeInterlaced(raw, ref rawOffset, rgba, width, height, channels, bitDepth, colorType,
+                filterBpp, palette, transparency);
         }
 
-        image = new GltfDecodedImage
+        return new GltfDecodedImage
         {
             Width = width,
             Height = height,
             Rgba = rgba
         };
-        return true;
     }
 
-    private static bool TryResolveLayout(
+    private static int ResolveLayout(
         int width,
         int height,
         byte bitDepth,
@@ -203,32 +249,33 @@ public static class GltfPngDecoder
         byte filterMethod,
         byte interlace,
         byte[]? palette,
-        byte[]? transparency,
-        out int channels,
-        out string? error)
+        byte[]? transparency)
     {
-        error = null;
-        channels = 0;
-
         if (width <= 0 || height <= 0 || width > MaxDimension || height > MaxDimension)
         {
-            error = "PNG dimensions are outside the supported range.";
-            return false;
+            throw Failure(
+                GltfImageDecodeFailure.LimitExceeded,
+                "PNG dimensions are outside the supported range.",
+                MarkerIhdr);
         }
 
         if ((long)width * height > MaxPixels)
         {
-            error = "PNG pixel count exceeds the decoder budget.";
-            return false;
+            throw Failure(
+                GltfImageDecodeFailure.LimitExceeded,
+                "PNG pixel count exceeds the decoder budget.",
+                MarkerIhdr);
         }
 
         if (compression != 0 || filterMethod != 0 || interlace > 1)
         {
-            error = "PNG compression, filter or interlace method is unsupported.";
-            return false;
+            throw Failure(
+                GltfImageDecodeFailure.Unsupported,
+                "PNG compression, filter or interlace method is unsupported.",
+                MarkerIhdr);
         }
 
-        channels = colorType switch
+        int channels = colorType switch
         {
             0 => 1,
             2 => 3,
@@ -240,8 +287,10 @@ public static class GltfPngDecoder
 
         if (channels == 0)
         {
-            error = "PNG color type is unsupported.";
-            return false;
+            throw Failure(
+                GltfImageDecodeFailure.Unsupported,
+                $"PNG color type {colorType} is unsupported.",
+                MarkerIhdr);
         }
 
         bool validDepth = colorType switch
@@ -255,14 +304,18 @@ public static class GltfPngDecoder
 
         if (!validDepth)
         {
-            error = "PNG bit depth is invalid for its color type.";
-            return false;
+            throw Failure(
+                GltfImageDecodeFailure.Unsupported,
+                $"PNG bit depth {bitDepth} is invalid for color type {colorType}.",
+                MarkerIhdr);
         }
 
         if (colorType == 3 && (palette is null || palette.Length == 0 || palette.Length % 3 != 0))
         {
-            error = "Indexed PNG requires a valid PLTE chunk.";
-            return false;
+            throw Failure(
+                GltfImageDecodeFailure.Marker,
+                "Indexed PNG requires a valid PLTE chunk.",
+                MarkerPlte);
         }
 
         if (transparency is not null)
@@ -277,12 +330,14 @@ public static class GltfPngDecoder
 
             if (!validTransparency)
             {
-                error = "PNG tRNS chunk is invalid for its color type.";
-                return false;
+                throw Failure(
+                    GltfImageDecodeFailure.Marker,
+                    $"PNG tRNS chunk is invalid for color type {colorType}.",
+                    MarkerTrns);
             }
         }
 
-        return true;
+        return channels;
     }
 
     private static long ComputeExpectedBytes(int width, int height, int channels, byte bitDepth, byte interlace)
@@ -310,7 +365,7 @@ public static class GltfPngDecoder
         return total;
     }
 
-    private static bool DecodeInterlaced(
+    private static void DecodeInterlaced(
         byte[] raw,
         ref int rawOffset,
         byte[] rgba,
@@ -321,8 +376,7 @@ public static class GltfPngDecoder
         byte colorType,
         int filterBpp,
         byte[]? palette,
-        byte[]? transparency,
-        out string? error)
+        byte[]? transparency)
     {
         ReadOnlySpan<int> offsets = [0, 4, 0, 2, 0, 1, 0];
         ReadOnlySpan<int> steps = [8, 8, 4, 4, 2, 2, 1];
@@ -337,35 +391,28 @@ public static class GltfPngDecoder
                 continue;
             }
 
-            if (!DecodePass(
-                    raw,
-                    ref rawOffset,
-                    rgba,
-                    width,
-                    height,
-                    passWidth,
-                    passHeight,
-                    offsets[pass],
-                    rows[pass],
-                    steps[pass],
-                    columns[pass],
-                    channels,
-                    bitDepth,
-                    colorType,
-                    filterBpp,
-                    palette,
-                    transparency,
-                    out error))
-            {
-                return false;
-            }
+            DecodePass(
+                raw,
+                ref rawOffset,
+                rgba,
+                width,
+                height,
+                passWidth,
+                passHeight,
+                offsets[pass],
+                rows[pass],
+                steps[pass],
+                columns[pass],
+                channels,
+                bitDepth,
+                colorType,
+                filterBpp,
+                palette,
+                transparency);
         }
-
-        error = null;
-        return true;
     }
 
-    private static bool DecodePass(
+    private static void DecodePass(
         byte[] raw,
         ref int rawOffset,
         byte[] rgba,
@@ -382,10 +429,8 @@ public static class GltfPngDecoder
         byte colorType,
         int filterBpp,
         byte[]? palette,
-        byte[]? transparency,
-        out string? error)
+        byte[]? transparency)
     {
-        error = null;
         _ = imageHeight;
         int rowBytes = RowBytes(passWidth, channels, bitDepth);
         int previousRowStart = -1;
@@ -394,21 +439,18 @@ public static class GltfPngDecoder
         {
             if (rawOffset >= raw.Length)
             {
-                error = "PNG scanline data ended early.";
-                return false;
+                throw Failure(GltfImageDecodeFailure.Truncated, "PNG scanline data ended early.", MarkerIdat);
             }
 
             int filter = raw[rawOffset++];
             if (filter > 4)
             {
-                error = "PNG scanline filter type is invalid.";
-                return false;
+                throw Failure(GltfImageDecodeFailure.Marker, "PNG scanline filter type is invalid.", MarkerIdat);
             }
 
             if (raw.Length - rawOffset < rowBytes)
             {
-                error = "PNG scanline data ended early.";
-                return false;
+                throw Failure(GltfImageDecodeFailure.Truncated, "PNG scanline data ended early.", MarkerIdat);
             }
 
             int rowStart = rawOffset;
@@ -429,8 +471,6 @@ public static class GltfPngDecoder
             previousRowStart = rowStart;
             rawOffset += rowBytes;
         }
-
-        return true;
     }
 
     private static void Unfilter(Span<byte> row, ReadOnlySpan<byte> previous, int bpp, int filter)
@@ -541,7 +581,10 @@ public static class GltfPngDecoder
                     int index = ReadSample(row, valueOffset, bitDepth, channels);
                     if (palette is null || index * 3 + 2 >= palette.Length)
                     {
-                        throw new InvalidDataException("PNG palette index is out of range.");
+                        throw Failure(
+                            GltfImageDecodeFailure.ScanData,
+                            $"PNG palette index {index} is out of range.",
+                            MarkerPlte);
                     }
 
                     int alpha = transparency is not null && index < transparency.Length
@@ -614,9 +657,8 @@ public static class GltfPngDecoder
     private static int PassSize(int size, int start, int step) =>
         size <= start ? 0 : (size - start + step - 1) / step;
 
-    private static bool TryInflate(ReadOnlySpan<byte> compressed, byte[] output, out string? error)
+    private static void Inflate(ReadOnlySpan<byte> compressed, byte[] output)
     {
-        error = null;
         using var input = new MemoryStream(compressed.ToArray(), writable: false);
         using var zlib = new ZLibStream(input, CompressionMode.Decompress);
         int total = 0;
@@ -633,10 +675,30 @@ public static class GltfPngDecoder
 
         if (total != output.Length)
         {
-            error = "PNG image data ended before all scanlines were decoded.";
-            return false;
+            throw Failure(
+                GltfImageDecodeFailure.Truncated,
+                "PNG image data ended before all scanlines were decoded.",
+                MarkerIdat);
         }
+    }
 
-        return true;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static PngFailureException Failure(
+        GltfImageDecodeFailure failure,
+        string message,
+        string? marker) => new(failure, message, marker);
+
+    [SuppressMessage(
+        "Design",
+        "CA1064:Exceptions should be public",
+        Justification = "Internal control-flow exception; the decoder surface returns typed diagnostics.")]
+    private sealed class PngFailureException(
+        GltfImageDecodeFailure failure,
+        string message,
+        string? marker) : Exception(message)
+    {
+        public GltfImageDecodeFailure Failure { get; } = failure;
+
+        public string? Marker { get; } = marker;
     }
 }
