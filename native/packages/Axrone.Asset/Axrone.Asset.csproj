@@ -37,8 +37,11 @@
          exposes static abstracts on generic structs by design. -->
     <NoWarn>$(NoWarn);CA1000</NoWarn>
     <!-- CA1031: Catching general exceptions — intentional for per-importer
-         routing and subscriber fan-out; failures are reported or isolated,
-         never silently swallowed. -->
+         routing and subscriber fan-out. Every refusal carries a code
+         (AssetError.Code, AssetCodecFailure.CodeOf) or is isolated and
+         surfaced; the default data codec distinguishes foreign payloads
+         (asset.codec.tag.unknown, asset.codec.payload.empty) from broken
+         ones (asset.codec.json.invalid). -->
     <NoWarn>$(NoWarn);CA1031</NoWarn>
     <!-- CA1710: Exception names mirror the web asset contract (AssetError,
          AssetConfigurationError); renaming would break the contract. -->

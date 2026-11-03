@@ -41,6 +41,58 @@ public readonly struct DefaultLifecyclePolicy<TData> : IAssetLifecyclePolicy<TDa
     }
 }
 
+/// <summary>
+/// Coded reason one <see cref="DefaultDataCodecPolicy{TData}"/> payload was refused. A decline
+/// (<see cref="AssetCodecFailureExtensions.IsForeignPayload"/>) means the bytes belong to another
+/// codec; every other value means this codec owned the payload and the payload is broken.
+/// </summary>
+public enum AssetCodecFailure : byte
+{
+    /// <summary>No failure.</summary>
+    None = 0,
+
+    /// <summary>The payload is empty; there is nothing to decode.</summary>
+    EmptyPayload = 1,
+
+    /// <summary>The leading tag byte is not part of this codec's tag space.</summary>
+    UnknownTag = 2,
+
+    /// <summary>A known tag carries no bytes behind it.</summary>
+    TruncatedTag = 3,
+
+    /// <summary>The tagged JSON body is not valid JSON.</summary>
+    InvalidJson = 4,
+
+    /// <summary>The destination is smaller than the encoded payload.</summary>
+    DestinationTooSmall = 5,
+}
+
+/// <summary>Stable machine codes and decline semantics for <see cref="AssetCodecFailure"/>.</summary>
+public static class AssetCodecFailureExtensions
+{
+    /// <summary>Stable error code, or null when the failure is <see cref="AssetCodecFailure.None"/>.</summary>
+    public static string? CodeOf(this AssetCodecFailure failure) => failure switch
+    {
+        AssetCodecFailure.None => null,
+        AssetCodecFailure.EmptyPayload => "asset.codec.payload.empty",
+        AssetCodecFailure.UnknownTag => "asset.codec.tag.unknown",
+        AssetCodecFailure.TruncatedTag => "asset.codec.payload.truncated",
+        AssetCodecFailure.InvalidJson => "asset.codec.json.invalid",
+        AssetCodecFailure.DestinationTooSmall => "asset.codec.destination.too-small",
+        _ => "asset.codec.unknown",
+    };
+
+    /// <summary>Whether the failure means "this payload is not mine" rather than "mine is broken".</summary>
+    public static bool IsForeignPayload(this AssetCodecFailure failure) =>
+        failure is AssetCodecFailure.EmptyPayload or AssetCodecFailure.UnknownTag;
+
+    /// <summary>Builds the matching <see cref="AssetError"/> for a failure and payload description.</summary>
+    public static AssetError ToError(this AssetCodecFailure failure, string payloadDescription) =>
+        new(
+            $"Default data codec refused the payload ({payloadDescription}): {failure} ({failure.CodeOf()}).",
+            failure.CodeOf() ?? "asset.codec.unknown");
+}
+
 /// <summary>Default data codec: byte arrays verbatim, strings as UTF-8, everything else as JSON.</summary>
 /// <typeparam name="TData">Payload type.</typeparam>
 public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
@@ -80,11 +132,25 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TrySerialize(in TData data, Span<byte> destination, out int bytesWritten)
+    public static bool TrySerialize(in TData data, Span<byte> destination, out int bytesWritten) =>
+        TrySerialize(data, destination, out bytesWritten, out _);
+
+    /// <summary>Serializes and reports the coded reason when the destination cannot hold the payload.</summary>
+    /// <param name="data">Payload to encode.</param>
+    /// <param name="destination">Destination buffer.</param>
+    /// <param name="bytesWritten">Bytes written on success.</param>
+    /// <param name="failure">Coded failure on refusal; <see cref="AssetCodecFailure.None"/> on success.</param>
+    /// <returns>Whether the payload was written.</returns>
+    public static bool TrySerialize(
+        in TData data,
+        Span<byte> destination,
+        out int bytesWritten,
+        out AssetCodecFailure failure)
     {
+        failure = AssetCodecFailure.None;
         if (typeof(TData) == typeof(object))
         {
-            return TrySerializeObject(data, destination, out bytesWritten);
+            return TrySerializeObject(data, destination, out bytesWritten, out failure);
         }
 
         if (data is byte[] bytes)
@@ -92,6 +158,7 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
             if (destination.Length < bytes.Length)
             {
                 bytesWritten = 0;
+                failure = AssetCodecFailure.DestinationTooSmall;
                 return false;
             }
 
@@ -102,7 +169,13 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
 
         if (data is string text)
         {
-            return Encoding.UTF8.TryGetBytes(text, destination, out bytesWritten);
+            if (Encoding.UTF8.TryGetBytes(text, destination, out bytesWritten))
+            {
+                return true;
+            }
+
+            failure = AssetCodecFailure.DestinationTooSmall;
+            return false;
         }
 
 #pragma warning disable IL2026 // Generic-TData JSON fallback is inherently dynamic; AOT users bind concrete codecs.
@@ -113,6 +186,7 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
         if (destination.Length < json.Length)
         {
             bytesWritten = 0;
+            failure = AssetCodecFailure.DestinationTooSmall;
             return false;
         }
 
@@ -122,14 +196,20 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
     }
 
     /// <summary>Tagged object serialization: 0=null, 1=bytes, 2=utf8, 3=json.</summary>
-    private static bool TrySerializeObject(object? data, Span<byte> destination, out int bytesWritten)
+    private static bool TrySerializeObject(
+        object? data,
+        Span<byte> destination,
+        out int bytesWritten,
+        out AssetCodecFailure failure)
     {
         bytesWritten = 0;
+        failure = AssetCodecFailure.None;
         switch (data)
         {
             case null:
                 if (destination.IsEmpty)
                 {
+                    failure = AssetCodecFailure.DestinationTooSmall;
                     return false;
                 }
 
@@ -139,6 +219,7 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
             case byte[] bytes:
                 if (destination.Length < bytes.Length + 1)
                 {
+                    failure = AssetCodecFailure.DestinationTooSmall;
                     return false;
                 }
 
@@ -149,6 +230,8 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
             case string text:
                 if (destination.IsEmpty || !Encoding.UTF8.TryGetBytes(text, destination[1..], out int written))
                 {
+                    bytesWritten = 0;
+                    failure = AssetCodecFailure.DestinationTooSmall;
                     return false;
                 }
 
@@ -164,6 +247,7 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
 #pragma warning restore IL2026
                 if (destination.Length < json.Length + 1)
                 {
+                    failure = AssetCodecFailure.DestinationTooSmall;
                     return false;
                 }
 
@@ -177,11 +261,23 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryDeserialize(ReadOnlySpan<byte> source, out TData data)
+    public static bool TryDeserialize(ReadOnlySpan<byte> source, out TData data) =>
+        TryDeserialize(source, out data, out _);
+
+    /// <summary>Deserializes and reports the coded reason for a refusal.</summary>
+    /// <param name="source">Encoded payload.</param>
+    /// <param name="data">Decoded payload on success.</param>
+    /// <param name="failure">Coded failure on refusal; <see cref="AssetCodecFailure.None"/> on success.</param>
+    /// <returns>Whether the payload was decoded.</returns>
+    public static bool TryDeserialize(
+        ReadOnlySpan<byte> source,
+        out TData data,
+        out AssetCodecFailure failure)
     {
+        failure = AssetCodecFailure.None;
         if (typeof(TData) == typeof(object))
         {
-            if (TryDeserializeObject(source, out object? boxed))
+            if (TryDeserializeObject(source, out object? boxed, out failure))
             {
                 data = (TData)boxed!;
                 return true;
@@ -208,15 +304,26 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
         data = JsonSerializer.Deserialize<TData>(source)!;
 #pragma warning restore IL3050
 #pragma warning restore IL2026
-        return data is not null;
+        if (data is not null)
+        {
+            return true;
+        }
+
+        failure = AssetCodecFailure.InvalidJson;
+        return false;
     }
 
     /// <summary>Reads a tagged object payload.</summary>
-    private static bool TryDeserializeObject(ReadOnlySpan<byte> source, out object? value)
+    private static bool TryDeserializeObject(
+        ReadOnlySpan<byte> source,
+        out object? value,
+        out AssetCodecFailure failure)
     {
         value = null;
+        failure = AssetCodecFailure.None;
         if (source.IsEmpty)
         {
+            failure = AssetCodecFailure.EmptyPayload;
             return false;
         }
 
@@ -238,14 +345,16 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
                     value = JsonSerializer.Deserialize<object>(source[1..]);
 #pragma warning restore IL3050
 #pragma warning restore IL2026
-                    return value is not null;
+                    return true;
                 }
                 catch (JsonException)
                 {
+                    failure = AssetCodecFailure.InvalidJson;
                     return false;
                 }
 
             default:
+                failure = AssetCodecFailure.UnknownTag;
                 return false;
         }
     }
