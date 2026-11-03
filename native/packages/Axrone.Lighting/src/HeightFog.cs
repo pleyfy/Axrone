@@ -133,7 +133,9 @@ public static class HeightFogModel
         }
 
         float clamped = Math.Clamp(product, -MaxExponent, MaxExponent);
-        return (1.0f - MathF.Exp(-clamped)) / clamped;
+        return clamped >= 0.0f
+            ? (1.0f - MathF.Exp(-clamped)) / clamped
+            : (MathF.Exp(-clamped) - 1.0f) / (-clamped);
     }
 
     /// <summary>Clamps a height term so single-precision exp remains finite.</summary>
