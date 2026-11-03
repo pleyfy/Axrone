@@ -377,30 +377,51 @@ public sealed class SceneGlShadowTests
             ShadowCascadeFrameBuilder.Build(frame, settings, in camera, in lightDirection, AtlasEdge, AtlasEdge);
         }
 
-        long minDelta = long.MaxValue;
-        for (int window = 0; window < 12; window++)
-        {
-            long before = GC.GetTotalAllocatedBytes(true);
-            for (int i = 0; i < 128; i++)
-            {
-                int count = ShadowCascadeFrameBuilder.Build(frame, settings, in camera, in lightDirection, AtlasEdge, AtlasEdge);
-                for (int cascade = 0; cascade < count; cascade++)
-                {
-                    Vec4 tile = frame.GetAtlasTile(cascade);
-                    Mat4 matrix = frame.GetLightViewProjection(cascade);
-                    sum += tile.X + tile.Z + matrix.M11 + frame.GetSplitDepth(cascade);
-                }
-            }
+        // Thread-local accounting keeps concurrent test collections out of the
+        // measurement; every window must be exactly clean, not just the
+        // quietest one, so a single sporadic allocation cannot hide.
+        var buildWindow = new Action(() => RebuildShadowWindows(
+            frame, settings, in camera, in lightDirection, ref sum));
 
-            long delta = GC.GetTotalAllocatedBytes(true) - before;
-            minDelta = Math.Min(minDelta, delta);
+        // Prime once with the measured loop shape itself (delegate invoke,
+        // closure reads, thread-local counter access) so JIT tier promotion
+        // cannot land inside a timed window.
+        long primeBefore = GC.GetAllocatedBytesForCurrentThread();
+        buildWindow();
+        _ = GC.GetAllocatedBytesForCurrentThread() - primeBefore;
+
+        for (int window = 0; window < 8; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            buildWindow();
+            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+            delta.Should().Be(
+                0L,
+                $"window {window}: cascade rebuild hot path must allocate zero bytes on the measured thread");
         }
 
         sum.Should().NotBe(0.0f);
         frame.ActiveCascadeCount.Should().Be(4);
-        minDelta.Should().Be(
-            0L,
-            "cascade rebuild hot path must stay allocation-free; the quietest of 12 windows is the steady state");
+    }
+
+    private static void RebuildShadowWindows(
+        ShadowFrameData frame,
+        ShadowSettings settings,
+        in ShadowCameraParameters camera,
+        in Vec3 lightDirection,
+        ref float sum)
+    {
+        for (int i = 0; i < 128; i++)
+        {
+            int count = ShadowCascadeFrameBuilder.Build(
+                frame, settings, in camera, in lightDirection, AtlasEdge, AtlasEdge);
+            for (int cascade = 0; cascade < count; cascade++)
+            {
+                Vec4 tile = frame.GetAtlasTile(cascade);
+                Mat4 matrix = frame.GetLightViewProjection(cascade);
+                sum += tile.X + tile.Z + matrix.M11 + frame.GetSplitDepth(cascade);
+            }
+        }
     }
 
     [Theory]
