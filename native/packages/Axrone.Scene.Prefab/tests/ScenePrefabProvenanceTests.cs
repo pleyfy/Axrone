@@ -297,6 +297,22 @@ public sealed class ScenePrefabProvenanceTests
             .Which.Code.Should().Be(ScenePrefabErrorCodes.InvalidProvenance);
     }
 
+    [Fact]
+    public void FallbackDiagnosticReportsCallerIndex()
+    {
+        Action create = () => ScenePrefabNodeIdentity.CreateFallback(
+            "prefab/indexed",
+            string.Empty,
+            [],
+            2);
+
+        create.Should().Throw<ScenePrefabException>()
+            .Where(exception =>
+                exception.Code == ScenePrefabErrorCodes.MissingStableNodeId &&
+                exception.Message.Contains("prefab/indexed", StringComparison.Ordinal) &&
+                exception.Message.Contains("index 2", StringComparison.Ordinal));
+    }
+
     private static ScenePrefabDefinition Composed(
         string id,
         IReadOnlyList<SceneActorSnapshot> actors,
