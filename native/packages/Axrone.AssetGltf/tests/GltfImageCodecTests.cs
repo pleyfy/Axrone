@@ -351,6 +351,38 @@ public sealed class GltfImageCodecTests
     }
 
     [Fact]
+    public async Task Import_NegativeTextureReferences_AreCodedNotIndexFaults()
+    {
+        const string samplerJson = """
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="}],
+              "textures": [{"source": 0, "sampler": -1}]
+            }
+            """;
+
+        var samplerImporter = new GltfImporter(new GltfImporterOptions { Id = "negsampler.gltf" });
+        GltfImportResult samplerResult = await samplerImporter.ImportAsync(Encoding.UTF8.GetBytes(samplerJson));
+        GltfDiagnostic diagnostic = samplerResult.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.sampler.invalid");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Warning);
+        samplerResult.Textures[0].Sampler.WrapS.Should().Be(10497);
+
+        const string sourceJson = """
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"uri": "data:image/png;base64,iVBORw0KGgo="}],
+              "textures": [{"source": -1}]
+            }
+            """;
+
+        var sourceImporter = new GltfImporter(new GltfImporterOptions { Id = "negsource.gltf" });
+        Func<Task> act = () => sourceImporter.ImportAsync(Encoding.UTF8.GetBytes(sourceJson)).AsTask();
+        (await act.Should().ThrowAsync<GltfTextureSourceError>())
+            .Which.Code.Should().Be("gltf.texture.source.invalid");
+    }
+
+    [Fact]
     public async Task Import_TranscodedPng_PayloadCarriesNoUnusableMarker()
     {
         byte[] png = Convert.FromBase64String(

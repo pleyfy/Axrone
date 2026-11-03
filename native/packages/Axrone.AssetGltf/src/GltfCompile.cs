@@ -163,16 +163,20 @@ public static class GltfCompileExtensions
                     $"{rawModel.Samplers.Count} samplers; default sampler parameters were used."));
             }
 
-            GltfRawModel.Sampler sampDef = (texDef.Sampler.HasValue && texDef.Sampler.Value < rawModel.Samplers.Count)
-                ? rawModel.Samplers[texDef.Sampler.Value]
+            GltfRawModel.Sampler sampDef = texDef.Sampler is int samplerIndex &&
+                samplerIndex >= 0 &&
+                samplerIndex < rawModel.Samplers.Count
+                ? rawModel.Samplers[samplerIndex]
                 : new GltfRawModel.Sampler();
 
             var sampler = new GltfTextureSampler(sampDef.MagFilter, sampDef.MinFilter, sampDef.WrapS, sampDef.WrapT);
             GltfTexturePayload payload;
             GltfTextureFormat runtimeFormat = GltfTextureFormat.Unknown;
             var transcodeState = new GltfTextureTranscodeState(true, null, null, GltfTextureFormat.Unknown);
-            GltfRawModel.Image? imageDef = texDef.Source.HasValue && texDef.Source.Value < rawModel.Images.Count
-                ? rawModel.Images[texDef.Source.Value]
+            GltfRawModel.Image? imageDef = texDef.Source is int sourceIndex &&
+                sourceIndex >= 0 &&
+                sourceIndex < rawModel.Images.Count
+                ? rawModel.Images[sourceIndex]
                 : null;
             string? imageUri = imageDef?.Uri;
 
