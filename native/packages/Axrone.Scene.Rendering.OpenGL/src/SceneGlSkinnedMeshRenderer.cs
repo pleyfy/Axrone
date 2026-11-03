@@ -129,7 +129,8 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
         in SceneFogState fog = default,
         ISceneAreaLightSource? areaLights = null,
         SceneGlReflectionProbeAtlas? probeAtlas = null,
-        ISceneReflectionProbeSource? reflectionProbe = null)
+        ISceneReflectionProbeSource? reflectionProbe = null,
+        ISceneGlShadowSource? shadow = null)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(world);
@@ -241,6 +242,14 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
                 reflectionProbe.TryGetSelectedProbe(out SceneReflectionProbeRenderItem probe))
             {
                 SceneGlReflectionProbeBinder.Bind(_context, shader, probeAtlas, in probe);
+            }
+
+            if (shadow is not null)
+            {
+                if (!shadow.TryBind(_context, shader))
+                {
+                    shadow.BindFogOnly(shader);
+                }
             }
 
             _context.State.BindTexture2D((uint)_boneTextureUnit, _boneTexture.Id);
