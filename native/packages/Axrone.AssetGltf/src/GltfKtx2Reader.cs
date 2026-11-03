@@ -259,15 +259,6 @@ public static class GltfKtx2Reader
                 failure.Marker);
             return false;
         }
-        catch (Exception exception) when (exception is ArgumentOutOfRangeException or OverflowException)
-        {
-            error = new GltfImageDecodeError(
-                GltfImageCodecKind.Ktx2,
-                GltfImageDecodeFailure.Container,
-                $"KTX2 container parse failed: {exception.Message}",
-                null);
-            return false;
-        }
     }
 
     /// <summary>Parses a KTX2 container into levels, metadata and format information.</summary>
@@ -294,10 +285,10 @@ public static class GltfKtx2Reader
             for (int level = 0; level < header.LevelCount; level++)
             {
                 int entry = HeaderLength + (level * LevelIndexEntryLength);
-                int byteOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(entry, 8)));
-                int byteLength = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(entry + 8, 8)));
+                int byteOffset = (int)BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(entry, 8));
+                int byteLength = (int)BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(entry + 8, 8));
                 int uncompressedLength =
-                    checked((int)BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(entry + 16, 8)));
+                    (int)BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(entry + 16, 8));
                 levels.Add(new GltfKtx2Level(
                     level,
                     Math.Max(1, header.PixelWidth >> level),
@@ -323,13 +314,13 @@ public static class GltfKtx2Reader
             };
             return true;
         }
-        catch (Exception exception) when (exception is ArgumentOutOfRangeException or OverflowException)
+        catch (Ktx2FailureException failure)
         {
             error = new GltfImageDecodeError(
                 GltfImageCodecKind.Ktx2,
-                GltfImageDecodeFailure.Container,
-                $"KTX2 parse failed: {exception.Message}",
-                null);
+                failure.Failure,
+                failure.Message,
+                failure.Marker);
             return false;
         }
     }
@@ -530,11 +521,19 @@ public static class GltfKtx2Reader
                 "header");
         }
 
+        if (vkFormat > int.MaxValue || typeSize > int.MaxValue)
+        {
+            Throw(
+                GltfImageDecodeFailure.Container,
+                "KTX2 vkFormat or typeSize does not fit the signed container fields.",
+                "header");
+        }
+
         return new GltfKtx2Header(
-            checked((int)vkFormat),
-            checked((int)typeSize),
-            checked((int)width),
-            checked((int)height),
+            (int)vkFormat,
+            (int)typeSize,
+            (int)width,
+            (int)height,
             1,
             1,
             1,

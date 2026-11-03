@@ -219,17 +219,6 @@ public static class GltfJpegDecoder
                 failure.Marker);
             return false;
         }
-        catch (Exception exception) when (
-            exception is OverflowException or IndexOutOfRangeException or ArgumentException or InvalidOperationException)
-        {
-            allocated = null;
-            error = new GltfImageDecodeError(
-                GltfImageCodecKind.Jpeg,
-                GltfImageDecodeFailure.ScanData,
-                $"JPEG entropy decode failed: {exception.Message}",
-                null);
-            return false;
-        }
     }
 
     private static double[] CreateIdctCosine()

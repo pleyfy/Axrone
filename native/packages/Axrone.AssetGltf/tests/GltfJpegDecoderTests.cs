@@ -214,6 +214,43 @@ public sealed class GltfJpegDecoderTests
     }
 
     [Fact]
+    public void Decode_SingleByteCorruptions_NeverEscapeTheCodedFailureSurface()
+    {
+        byte[] jpeg = JpegWriter.Encode(Gradient(16, 16), 16, 16, components: 3);
+        var observed = new HashSet<GltfImageDecodeFailure>();
+
+        for (int position = 0; position < jpeg.Length; position++)
+        {
+            byte[] corrupted = (byte[])jpeg.Clone();
+            corrupted[position] ^= 0x5A;
+
+            // Bug-class exceptions escaping here would mean the decoder still swallows its own defects.
+            bool decoded = GltfJpegDecoder.TryDecode(
+                corrupted,
+                out GltfDecodedImage? image,
+                out GltfImageDecodeError? error);
+
+            if (decoded)
+            {
+                image!.Width.Should().Be(16);
+                image.Height.Should().Be(16);
+                continue;
+            }
+
+            error!.Value.Codec.Should().Be(GltfImageCodecKind.Jpeg);
+            error.Value.Failure.Should().NotBe(GltfImageDecodeFailure.None);
+            if (error.Value.Failure != GltfImageDecodeFailure.LimitExceeded)
+            {
+                error.Value.Marker.Should().NotBeNullOrEmpty();
+            }
+
+            observed.Add(error.Value.Failure);
+        }
+
+        observed.Should().NotBeEmpty();
+    }
+
+    [Fact]
     public void Decode_InvalidMarkerPrefix_FailsClosed()
     {
         byte[] jpeg = [0xFF, 0xD8, 0x00, 0x00];
