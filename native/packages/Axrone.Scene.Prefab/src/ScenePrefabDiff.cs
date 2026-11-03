@@ -42,15 +42,20 @@ public static class ScenePrefabDiff
 
         var baseById = ScenePrefabComparisons.IndexActors(basePrefab.Actors);
         var targetById = ScenePrefabComparisons.IndexActors(target.Actors);
+        HashSet<string> affectedByProvenance = CollectAffectedBySourceChange(
+            basePrefab,
+            baseById,
+            targetById);
         var overrides = new List<ScenePrefabOverrideOperation>();
 
-        EmitRemovedActors(basePrefab, targetById, overrides);
-        EmitAddedActors(target, baseById, overrides);
+        EmitRemovedActors(basePrefab, targetById, affectedByProvenance, overrides);
+        EmitAddedActors(target, baseById, affectedByProvenance, overrides);
 
         for (int i = 0; i < basePrefab.Actors.Count; i++)
         {
             SceneActorSnapshot baseActor = basePrefab.Actors[i];
-            if (targetById.TryGetValue(baseActor.NodeId, out SceneActorSnapshot? targetActor))
+            if (!affectedByProvenance.Contains(baseActor.NodeId) &&
+                targetById.TryGetValue(baseActor.NodeId, out SceneActorSnapshot? targetActor))
             {
                 DiffActor(baseActor, targetActor, overrides);
             }
@@ -59,16 +64,74 @@ public static class ScenePrefabDiff
         return new ScenePrefabDiffResult(basePrefab.Id, target.Id, overrides);
     }
 
+    private static HashSet<string> CollectAffectedBySourceChange(
+        ScenePrefabDefinition basePrefab,
+        Dictionary<string, SceneActorSnapshot> baseById,
+        Dictionary<string, SceneActorSnapshot> targetById)
+    {
+        var roots = new HashSet<string>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, SceneActorSnapshot> targetEntry in targetById)
+        {
+            if (baseById.TryGetValue(targetEntry.Key, out SceneActorSnapshot? baseActor) &&
+                !ScenePrefabComparisons.SameSource(baseActor.Source, targetEntry.Value.Source))
+            {
+                roots.Add(targetEntry.Key);
+            }
+        }
+
+        if (roots.Count == 0)
+        {
+            return roots;
+        }
+
+        var children = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (SceneActorSnapshot actor in basePrefab.Actors)
+        {
+            if (actor.ParentNodeId is { } parent)
+            {
+                if (!children.TryGetValue(parent, out List<string>? list))
+                {
+                    list = [];
+                    children[parent] = list;
+                }
+
+                list.Add(actor.NodeId);
+            }
+        }
+
+        var affected = new HashSet<string>(roots, StringComparer.Ordinal);
+        var queue = new Queue<string>(roots);
+        while (queue.Count > 0)
+        {
+            string current = queue.Dequeue();
+            if (!children.TryGetValue(current, out List<string>? childNodes))
+            {
+                continue;
+            }
+
+            foreach (string child in childNodes)
+            {
+                if (affected.Add(child))
+                {
+                    queue.Enqueue(child);
+                }
+            }
+        }
+
+        return affected;
+    }
+
     private static void EmitRemovedActors(
         ScenePrefabDefinition basePrefab,
         Dictionary<string, SceneActorSnapshot> targetById,
+        HashSet<string> affectedByProvenance,
         List<ScenePrefabOverrideOperation> overrides)
     {
         var removed = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < basePrefab.Actors.Count; i++)
         {
             SceneActorSnapshot actor = basePrefab.Actors[i];
-            if (!targetById.ContainsKey(actor.NodeId))
+            if (!targetById.ContainsKey(actor.NodeId) || affectedByProvenance.Contains(actor.NodeId))
             {
                 removed.Add(actor.NodeId);
             }
@@ -101,13 +164,14 @@ public static class ScenePrefabDiff
     private static void EmitAddedActors(
         ScenePrefabDefinition target,
         Dictionary<string, SceneActorSnapshot> baseById,
+        HashSet<string> affectedByProvenance,
         List<ScenePrefabOverrideOperation> overrides)
     {
         var added = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < target.Actors.Count; i++)
         {
             SceneActorSnapshot actor = target.Actors[i];
-            if (!baseById.ContainsKey(actor.NodeId))
+            if (!baseById.ContainsKey(actor.NodeId) || affectedByProvenance.Contains(actor.NodeId))
             {
                 added.Add(actor.NodeId);
             }
@@ -423,6 +487,7 @@ internal static class ScenePrefabComparisons
             left.Active != right.Active ||
             left.Persistent != right.Persistent ||
             left.Pooled != right.Pooled ||
+            !SameSource(left.Source, right.Source) ||
             left.Components.Count != right.Components.Count)
         {
             return false;
@@ -443,6 +508,9 @@ internal static class ScenePrefabComparisons
         string.Equals(left.Id, right.Id, StringComparison.Ordinal) &&
         string.Equals(left.Type, right.Type, StringComparison.Ordinal) &&
         JsonElement.DeepEquals(left.Data, right.Data);
+
+    public static bool SameSource(ScenePrefabNodeSource? left, ScenePrefabNodeSource? right) =>
+        left == right;
 
     public static bool SameOperation(
         ScenePrefabOverrideOperation left,

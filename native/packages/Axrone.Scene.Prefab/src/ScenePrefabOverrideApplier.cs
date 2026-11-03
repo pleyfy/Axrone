@@ -74,7 +74,12 @@ internal sealed class ScenePrefabOverrideState
     {
         for (int i = 0; i < actors.Count; i++)
         {
-            var actor = new ActorState(actors[i]);
+            SceneActorSnapshot prepared = ScenePrefabNodeIdentity.EnsureProvenance(
+                actors[i],
+                Id,
+                Lineage,
+                i);
+            var actor = new ActorState(prepared);
             if (_byNode.TryGetValue(actor.NodeId, out ActorState? existing))
             {
                 int index = _actors.IndexOf(existing);
@@ -630,6 +635,7 @@ internal sealed class ScenePrefabOverrideState
             Persistent = snapshot.Persistent;
             Pooled = snapshot.Pooled;
             Components = [.. snapshot.Components];
+            Source = snapshot.Source;
         }
 
         public string NodeId { get; }
@@ -648,6 +654,8 @@ internal sealed class ScenePrefabOverrideState
 
         public bool Pooled { get; set; }
 
+        public ScenePrefabNodeSource? Source { get; }
+
         public List<SceneComponentSnapshot> Components { get; }
 
         public SceneActorSnapshot ToSnapshot() => new(
@@ -659,6 +667,7 @@ internal sealed class ScenePrefabOverrideState
             Persistent,
             Pooled,
             Components,
-            ParentNodeId);
+            ParentNodeId,
+            Source);
     }
 }

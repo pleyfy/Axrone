@@ -20,6 +20,7 @@ public static class ScenePrefabInstantiator
 
         ScenePrefabDefinition effective = Prepare(prefab, options);
         var created = new List<SceneActor>(effective.Actors.Count);
+        var sources = new List<ScenePrefabNodeSource>(effective.Actors.Count);
         var nodeMap = new Dictionary<string, SceneActor>(effective.Actors.Count, StringComparer.Ordinal);
 
         try
@@ -40,6 +41,10 @@ public static class ScenePrefabInstantiator
                     snapshot.Pooled));
 
                 created.Add(actor);
+                sources.Add(snapshot.Source ?? ScenePrefabNodeIdentity.CreateFallback(
+                    effective.Id,
+                    snapshot.NodeId,
+                    effective.Lineage));
                 nodeMap.Add(snapshot.NodeId, actor);
             }
 
@@ -82,7 +87,7 @@ public static class ScenePrefabInstantiator
                 }
             }
 
-            return new ScenePrefabInstantiationResult(created, nodeMap);
+            return new ScenePrefabInstantiationResult(created, nodeMap, sources);
         }
         catch (Exception exception)
         {
