@@ -180,30 +180,30 @@ public sealed class LightingFrameResolver
                 switch (light.Type)
                 {
                     case LightType.Directional:
-                    {
-                        totalDir++;
-                        float score = TPolicy.ScoreDirectional(in light);
-                        InsertCandidate(dirScratch, ref selDirCount, Capacity.MaxDirectionalLights, in light, score, seq);
-                        break;
-                    }
+                        {
+                            totalDir++;
+                            float score = TPolicy.ScoreDirectional(in light);
+                            InsertCandidate(dirScratch, ref selDirCount, Capacity.MaxDirectionalLights, in light, score, seq);
+                            break;
+                        }
 
                     case LightType.Point:
-                    {
-                        totalPoint++;
-                        float score = TPolicy.ScorePoint(in light, in camPos, hasCam);
-                        InsertCandidate(ptScratch, ref selPointCount, Capacity.MaxPointLights, in light, score, seq);
-                        InsertCandidate(locScratch, ref selLocalCount, Capacity.MaxLocalLights, in light, score, seq);
-                        break;
-                    }
+                        {
+                            totalPoint++;
+                            float score = TPolicy.ScorePoint(in light, in camPos, hasCam);
+                            InsertCandidate(ptScratch, ref selPointCount, Capacity.MaxPointLights, in light, score, seq);
+                            InsertCandidate(locScratch, ref selLocalCount, Capacity.MaxLocalLights, in light, score, seq);
+                            break;
+                        }
 
                     case LightType.Spot:
-                    {
-                        totalSpot++;
-                        float score = TPolicy.ScoreSpot(in light, in camPos, hasCam);
-                        InsertCandidate(spScratch, ref selSpotCount, Capacity.MaxSpotLights, in light, score, seq);
-                        InsertCandidate(locScratch, ref selLocalCount, Capacity.MaxLocalLights, in light, score, seq);
-                        break;
-                    }
+                        {
+                            totalSpot++;
+                            float score = TPolicy.ScoreSpot(in light, in camPos, hasCam);
+                            InsertCandidate(spScratch, ref selSpotCount, Capacity.MaxSpotLights, in light, score, seq);
+                            InsertCandidate(locScratch, ref selLocalCount, Capacity.MaxLocalLights, in light, score, seq);
+                            break;
+                        }
 
                     default:
                         break;
