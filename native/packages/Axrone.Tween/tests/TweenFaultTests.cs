@@ -4,6 +4,9 @@ using System.Runtime.Intrinsics;
 
 public class TweenFaultTests
 {
+    /// <summary>Bounded wait for every cross-thread signal in this file: a regression fails, it never hangs.</summary>
+    private const int SignalTimeoutMs = 5_000;
+
     private static TweenEngine Create(out ManualTweenClock clock, int capacity = 16)
     {
         clock = new ManualTweenClock();
@@ -204,19 +207,39 @@ public class TweenFaultTests
     {
         using var engine = Create(out ManualTweenClock clock);
         using var gate = new ManualResetEventSlim(false);
+        using var pumping = new ManualResetEventSlim(false);
         TweenSpec spec = Linear(10.0f) with
         {
-            OnUpdateFloat = _ => { gate.Wait(TimeSpan.FromSeconds(10)); },
+            OnUpdateFloat = _ =>
+            {
+                // Reaching this callback proves the pump already owns the single-pump flag, so
+                // the rival below is refused by construction instead of racing the pump for the
+                // lock. The release is a signal, never a wall-clock guess; the long cap exists
+                // only so a stuck run cannot outlive the test, and the finally below lifts it.
+                pumping.Set();
+                gate.Wait(TimeSpan.FromSeconds(30));
+            },
         };
         _ = engine.Play(spec);
         clock.Advance(DurationNs.FromSeconds(0.5f));
 
         Task pump = Task.Run(() => engine.Update());
-        Func<Task> rival = () => Task.Run(() => engine.Update());
-        await rival.Should().ThrowAsync<InvalidOperationException>();
+        try
+        {
+            pumping.Wait(SignalTimeoutMs).Should().BeTrue(because: "the pump must hold the tick before the rival runs");
 
-        gate.Set();
-        await pump;
+            // The rival runs on the test thread while the lock is provably held: refusal is certain.
+            Action rival = () => engine.Update();
+            rival.Should().Throw<InvalidOperationException>();
+        }
+        finally
+        {
+            // Always release the pump, even when an assertion above failed, so the events are
+            // disposed after the pump left the callback and a failing run stays a clean failure.
+            gate.Set();
+        }
+
+        await pump.WaitAsync(TimeSpan.FromMilliseconds(SignalTimeoutMs));
         engine.ActiveCount.Should().Be(1);
 
         TweenHandle healthy = engine.Play(Linear(0.1f));
@@ -228,13 +251,22 @@ public class TweenFaultTests
     {
         using var engine = Create(out _, capacity: 1);
         TweenHandle occupant = engine.Play(Linear(10.0f));
-        _ = Task.Run(() =>
+
+        // Deterministic precondition, not a timing assumption: the only slot is really taken.
+        engine.TryPlay(Linear(0.1f), out _).Should().BeFalse(because: "the only slot is occupied");
+
+        using var waiting = new ManualResetEventSlim(false);
+        Task<TweenHandle> waiter = Task.Run(() =>
         {
-            Thread.Sleep(100);
-            occupant.Cancel();
+            waiting.Set();
+            return engine.Play(Linear(0.1f));
         });
 
-        TweenHandle freed = await Task.Run(() => engine.Play(Linear(0.1f))).WaitAsync(TimeSpan.FromSeconds(10));
+        // The release is gated on the waiter having started; no sleep-based ordering.
+        waiting.Wait(SignalTimeoutMs).Should().BeTrue(because: "the waiter must be launching before the slot frees");
+        occupant.Cancel();
+
+        TweenHandle freed = await waiter.WaitAsync(TimeSpan.FromMilliseconds(SignalTimeoutMs));
         freed.IsValid.Should().BeTrue();
         engine.ActiveCount.Should().Be(1);
     }
