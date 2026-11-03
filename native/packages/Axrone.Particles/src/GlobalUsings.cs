@@ -9,3 +9,4 @@ global using System.Runtime.InteropServices;
 global using System.Threading;
 global using System.Threading.Tasks;
 global using Axrone.Numeric;
+global using Axrone.Geometry;
