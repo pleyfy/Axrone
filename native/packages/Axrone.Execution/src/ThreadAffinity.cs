@@ -4,32 +4,6 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
 /// <summary>
-/// Best-effort current-thread processor pinning. The only hard guarantees here
-/// are the ones the OS actually provides — Windows gives per-thread affinity
-/// masks, Linux gives a per-thread CPU set — so every path degrades to "not
-/// pinned" instead of throwing, and the worker treats pinning as advisory.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Bindings are source-generated <see cref="LibraryImportAttribute"/> rather than
-/// <c>DllImport</c>, which keeps the package trim- and AOT-clean: the marshalling
-/// stub is generated at compile time, there is no runtime marshaller to preserve,
-/// and the entry-point probe is compile-time known per platform.
-/// </para>
-/// <para>
-/// Platform coverage: Windows and Linux only. Every other target (macOS, the
-/// browser-hosted runtime, a platform this build does not know) is a documented
-/// no-op reporting <see cref="AffinityResult.UnsupportedPlatform"/> — a caller
-/// that treats the result as a requirement is asking for something the BCL
-/// cannot promise cross-platform either.
-/// </para>
-/// <para>
-/// Every non-pinned answer is coded: an out-of-range core, an unknown platform, an
-/// OS refusal, a missing ABI, and an unexpected platform fault are separate outcomes,
-/// so a caller can tell "the OS said no" from "this deployment cannot pin at all".
-/// </para>
-/// </remarks>
-/// <summary>
 /// Why a pinning request ended the way it did. The distinction matters: an OS that refused a
 /// mask and a deployment whose affinity ABI is missing both leave the thread unpinned, but only
 /// one of them is a broken install worth reporting.
@@ -58,6 +32,32 @@ internal enum AffinityResult : byte
     PlatformFault,
 }
 
+/// <summary>
+/// Best-effort current-thread processor pinning. The only hard guarantees here
+/// are the ones the OS actually provides — Windows gives per-thread affinity
+/// masks, Linux gives a per-thread CPU set — so every path degrades to "not
+/// pinned" instead of throwing, and the worker treats pinning as advisory.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Bindings are source-generated <see cref="LibraryImportAttribute"/> rather than
+/// <c>DllImport</c>, which keeps the package trim- and AOT-clean: the marshalling
+/// stub is generated at compile time, there is no runtime marshaller to preserve,
+/// and the entry-point probe is compile-time known per platform.
+/// </para>
+/// <para>
+/// Platform coverage: Windows and Linux only. Every other target (macOS, the
+/// browser-hosted runtime, a platform this build does not know) is a documented
+/// no-op reporting <see cref="AffinityResult.UnsupportedPlatform"/> — a caller
+/// that treats the result as a requirement is asking for something the BCL
+/// cannot promise cross-platform either.
+/// </para>
+/// <para>
+/// Every non-pinned answer is coded: an out-of-range core, an unknown platform, an
+/// OS refusal, a missing ABI, and an unexpected platform fault are separate outcomes,
+/// so a caller can tell "the OS said no" from "this deployment cannot pin at all".
+/// </para>
+/// </remarks>
 internal static partial class ThreadAffinityScope
 {
     /// <summary>Windows encodes affinity as a 64-bit mask.</summary>

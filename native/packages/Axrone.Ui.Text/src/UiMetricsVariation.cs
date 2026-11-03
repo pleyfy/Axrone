@@ -452,13 +452,16 @@ internal sealed class UiHvarData
 
         // Without a map a glyph id addresses the store directly, so the store must cover the
         // whole glyph range; with a map, every entry it can decode must already be in range.
-        // Anything else would surface later as a swallowed zero delta on live metrics.
-        if (advanceMap is null || lsbMap is null)
+        // Anything else would surface later as a swallowed zero delta on live metrics. Shippers
+        // either provide a map or one item data set per glyph, so refusing the table is the
+        // honest answer, not a regression: the alternative is advances that silently stop
+        // scaling with the axes.
+        if ((advanceMap is null || lsbMap is null) && !store!.CoversIdentityRange(data, glyphCount))
         {
-            if (!store!.CoversIdentityRange(data, glyphCount))
-            {
-                return Fail(out error, offset + 8, "HVAR identity indexing does not cover the glyph range.");
-            }
+            return Fail(
+                out error,
+                advanceMap is null ? offset + 8 : offset + 12,
+                "HVAR identity indexing does not cover the glyph range.");
         }
 
         if (advanceMap is not null && !advanceMap.TryValidate(data, store!, out int advanceFaultOffset))
