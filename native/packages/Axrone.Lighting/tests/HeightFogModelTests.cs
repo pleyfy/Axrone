@@ -62,4 +62,29 @@ public class HeightFogModelTests
             .Should()
             .Be(HeightFogModel.OpticalDepth(in camera, in fragment, in settings));
     }
+
+    [Fact]
+    public void SteepRatio_IsAnalyticallyCorrectAndSignAsymmetric()
+    {
+        // (1 - e^-x) / x through the product x * falloff; the negative branch
+        // must NOT mirror the positive branch or downward rays lose density.
+        HeightFogModel.SteepRatio(2.0f, 1.0f)
+            .Should().BeApproximately((1.0f - MathF.Exp(-2.0f)) / 2.0f, 1e-5f);
+        HeightFogModel.SteepRatio(-2.0f, 1.0f)
+            .Should().BeApproximately((1.0f - MathF.Exp(2.0f)) / -2.0f, 1e-4f);
+
+        float up = HeightFogModel.SteepRatio(10.0f, 0.2f);
+        float down = HeightFogModel.SteepRatio(-10.0f, 0.2f);
+        down.Should().BeGreaterThan(up);
+        up.Should().NotBe(down);
+        down.Should().BeApproximately(3.1945281f, 1e-5f);
+
+        HeightFogModel.SteepRatio(1e-5f, 0.2f).Should().BeApproximately(1.0f, 1e-4f);
+        HeightFogModel.SteepRatio(-1e-5f, 0.2f).Should().BeApproximately(1.0f, 1e-4f);
+
+        // Deep downward slopes clamp at exp(80)/80 instead of overflowing.
+        HeightFogModel.SteepRatio(-200.0f, 1.0f)
+            .Should().BeApproximately(MathF.Exp(80.0f) / 80.0f, MathF.Exp(80.0f) * 1e-4f);
+        HeightFogModel.SteepRatio(-200.0f, 1.0f).Should().BeGreaterThan(1e30f);
+    }
 }
