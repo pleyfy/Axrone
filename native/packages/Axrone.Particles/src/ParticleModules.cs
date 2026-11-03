@@ -337,9 +337,9 @@ public struct CollisionModule : IParticleModulePolicy<CollisionModule>
     private static unsafe void RunSphere(NativeSoaParticleStorage storage, in ModuleExecutionContext context, ref CollisionModule state)
     {
         SphereCollider collider = state.Sphere;
-        if (collider.Radius <= 0.0f)
+        if (!float.IsFinite(collider.Radius) || collider.Radius <= 0.0f)
         {
-            ParticleThrowHelper.InvalidConfiguration("Sphere collider radius must be positive.");
+            ParticleThrowHelper.InvalidConfiguration("Sphere collider radius must be a finite positive value.");
         }
 
         float radiusSq = collider.Radius * collider.Radius;
@@ -378,9 +378,12 @@ public struct CollisionModule : IParticleModulePolicy<CollisionModule>
     private static unsafe void RunBox(NativeSoaParticleStorage storage, in ModuleExecutionContext context, ref CollisionModule state)
     {
         BoxCollider collider = state.Box;
-        if (collider.HalfExtents.X <= 0.0f || collider.HalfExtents.Y <= 0.0f || collider.HalfExtents.Z <= 0.0f)
+        if (!ParticleColliders.IsFinite(collider.HalfExtents) ||
+            collider.HalfExtents.X <= 0.0f ||
+            collider.HalfExtents.Y <= 0.0f ||
+            collider.HalfExtents.Z <= 0.0f)
         {
-            ParticleThrowHelper.InvalidConfiguration("Box collider half extents must be positive.");
+            ParticleThrowHelper.InvalidConfiguration("Box collider half extents must be finite positive values.");
         }
 
         Quat inverse = collider.Orientation.Inverse();
@@ -438,9 +441,10 @@ public struct CollisionModule : IParticleModulePolicy<CollisionModule>
     private static unsafe void RunCylinder(NativeSoaParticleStorage storage, in ModuleExecutionContext context, ref CollisionModule state)
     {
         CylinderCollider collider = state.Cylinder;
-        if (collider.Radius <= 0.0f || collider.HalfHeight <= 0.0f)
+        if (!float.IsFinite(collider.Radius) || !float.IsFinite(collider.HalfHeight) ||
+            collider.Radius <= 0.0f || collider.HalfHeight <= 0.0f)
         {
-            ParticleThrowHelper.InvalidConfiguration("Cylinder collider radius and half height must be positive.");
+            ParticleThrowHelper.InvalidConfiguration("Cylinder collider radius and half height must be finite positive values.");
         }
 
         Vec3 axis = PrepareNormal(collider.Axis, "Cylinder");
@@ -534,6 +538,11 @@ public struct CollisionModule : IParticleModulePolicy<CollisionModule>
 
     private static Vec3 PrepareNormal(Vec3 value, string label)
     {
+        if (!ParticleColliders.IsFinite(value))
+        {
+            ParticleThrowHelper.InvalidConfiguration($"{label} collider orientation must be finite.");
+        }
+
         float lengthSq = value.LengthSquared();
         if (lengthSq < Epsilon)
         {

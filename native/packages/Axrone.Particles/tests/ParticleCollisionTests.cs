@@ -715,6 +715,118 @@ public sealed class ParticleCollisionTests
     }
 
     [Fact]
+    public void MeshRejectsNonFiniteVertices()
+    {
+        Triangle3[] nanVertices =
+        [
+            new Triangle3(new Vec3(float.NaN, 0f, 0f), new Vec3(1f, 0f, -1f), new Vec3(0f, 0f, 1f)),
+        ];
+
+        Triangle3[] infiniteVertices =
+        [
+            new Triangle3(new Vec3(0f, 0f, 0f), new Vec3(float.PositiveInfinity, 0f, -1f), new Vec3(0f, 0f, 1f)),
+        ];
+
+        Action createNaN = () => ParticleMeshCollider.Create(nanVertices, new CollisionSurface()).Dispose();
+        createNaN.Should().Throw<ParticleSystemException>()
+            .Which.ErrorCode.Should().Be(ParticleSystemErrorCode.InvalidConfiguration);
+
+        Action createInfinite = () => ParticleMeshCollider.Create(infiniteVertices, new CollisionSurface()).Dispose();
+        createInfinite.Should().Throw<ParticleSystemException>()
+            .Which.ErrorCode.Should().Be(ParticleSystemErrorCode.InvalidConfiguration);
+
+        using ParticleMeshCollider valid = FloorCollider(13u);
+        valid.TryCast(new Vec3(0f, 0.5f, 0f), new Vec3(0f, -0.5f, 0f), out PrimitiveHit hit).Should().BeTrue();
+        hit.Normal.Y.Should().BeApproximately(1f, 1e-5f);
+    }
+
+    [Fact]
+    public void MeshRejectsNonFiniteCastEndpoints()
+    {
+        using ParticleMeshCollider mesh = FloorCollider(14u);
+
+        Action castNaN = () => mesh.TryCast(new Vec3(0f, float.NaN, 0f), new Vec3(0f, -0.5f, 0f), out _);
+        castNaN.Should().Throw<ParticleSystemException>()
+            .Which.ErrorCode.Should().Be(ParticleSystemErrorCode.InvalidConfiguration);
+
+        mesh.TryCast(new Vec3(0f, 0.5f, 0f), new Vec3(0f, -0.5f, 0f), out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void SphereRejectsNonFiniteRadius()
+    {
+        using NativeSoaParticleStorage storage = new((ParticleCapacity)16);
+        storage.TryAllocate(new Vec3(0.5f, 0f, 0f), new Vec3(0.2f, 0f, 0f), 5f, Vec3.One, Vec4.One, out _).Should().BeTrue();
+
+        CollisionModule module = CallbackSphere();
+        module.Sphere.Radius = float.NaN;
+
+        unsafe
+        {
+            Action process = () => CollisionModule.Process(storage, Context(sink: new NullEventSink()), ref module);
+            process.Should().Throw<ParticleSystemException>()
+                .Which.ErrorCode.Should().Be(ParticleSystemErrorCode.InvalidConfiguration);
+        }
+    }
+
+    [Fact]
+    public void BoxRejectsNonFiniteExtents()
+    {
+        using NativeSoaParticleStorage storage = new((ParticleCapacity)16);
+        storage.TryAllocate(new Vec3(0.9f, 0.2f, 0.1f), new Vec3(1f, 0f, 0f), 5f, Vec3.One, Vec4.One, out _).Should().BeTrue();
+
+        CollisionModule module = new()
+        {
+            Primitive = CollisionPrimitive.Box,
+            Mode = CollisionMode.Callback,
+            Box = new BoxCollider { HalfExtents = new Vec3(float.PositiveInfinity, 1f, 1f), Orientation = Quat.Identity },
+        };
+
+        unsafe
+        {
+            Action process = () => CollisionModule.Process(storage, Context(sink: new NullEventSink()), ref module);
+            process.Should().Throw<ParticleSystemException>()
+                .Which.ErrorCode.Should().Be(ParticleSystemErrorCode.InvalidConfiguration);
+        }
+    }
+
+    [Fact]
+    public void CylinderRejectsNonFiniteDimensions()
+    {
+        using NativeSoaParticleStorage storage = new((ParticleCapacity)16);
+        storage.TryAllocate(new Vec3(0.5f, 0f, 0f), new Vec3(1f, 0f, 0f), 5f, Vec3.One, Vec4.One, out _).Should().BeTrue();
+
+        CollisionModule module = CallbackCylinder();
+        module.Cylinder.HalfHeight = float.NaN;
+
+        unsafe
+        {
+            Action process = () => CollisionModule.Process(storage, Context(sink: new NullEventSink()), ref module);
+            process.Should().Throw<ParticleSystemException>()
+                .Which.ErrorCode.Should().Be(ParticleSystemErrorCode.InvalidConfiguration);
+        }
+    }
+
+    [Fact]
+    public void PlaneRejectsNonFiniteNormal()
+    {
+        using NativeSoaParticleStorage storage = new((ParticleCapacity)16);
+        storage.TryAllocate(new Vec3(0f, -1f, 0f), Vec3.Zero, 5f, Vec3.One, Vec4.One, out _).Should().BeTrue();
+
+        CollisionModule module = new()
+        {
+            Plane = new PlaneCollider { Normal = new Vec3(float.NaN, 1f, 0f) },
+        };
+
+        unsafe
+        {
+            Action process = () => CollisionModule.Process(storage, Context(), ref module);
+            process.Should().Throw<ParticleSystemException>()
+                .Which.ErrorCode.Should().Be(ParticleSystemErrorCode.InvalidConfiguration);
+        }
+    }
+
+    [Fact]
     public void DegeneratePlaneNormalFailsClosed()
     {
         using NativeSoaParticleStorage storage = new((ParticleCapacity)16);

@@ -1,5 +1,11 @@
 namespace Axrone.Particles;
 
+internal static class ParticleColliders
+{
+    internal static bool IsFinite(in Vec3 value) =>
+        float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
+}
+
 public struct CollisionSurface
 {
     public uint ColliderId;
@@ -134,7 +140,15 @@ public sealed unsafe class ParticleMeshCollider : IDisposable
         Aabb3D bounds = Aabb3D.Empty;
         for (int i = 0; i < triangles.Length; i++)
         {
-            bounds = Aabb3D.CreateMerged(bounds, triangles[i].GetBounds());
+            Triangle3 triangle = triangles[i];
+            if (!ParticleColliders.IsFinite(triangle.A) ||
+                !ParticleColliders.IsFinite(triangle.B) ||
+                !ParticleColliders.IsFinite(triangle.C))
+            {
+                ParticleThrowHelper.InvalidConfiguration($"Mesh collider triangle {i} has a non-finite vertex.");
+            }
+
+            bounds = Aabb3D.CreateMerged(bounds, triangle.GetBounds());
         }
 
         Vec3 size = bounds.Size;
@@ -268,6 +282,11 @@ public sealed unsafe class ParticleMeshCollider : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         hit = PrimitiveHit.None;
+
+        if (!ParticleColliders.IsFinite(from) || !ParticleColliders.IsFinite(to))
+        {
+            ParticleThrowHelper.InvalidConfiguration("Mesh cast endpoints must be finite.");
+        }
 
         Vec3 delta = to - from;
         float lengthSq = delta.LengthSquared();
@@ -416,13 +435,17 @@ public sealed unsafe class ParticleMeshCollider : IDisposable
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int ClampCell(float value, int divisions)
         {
-            if (float.IsNaN(value))
+            if (value >= divisions)
+            {
+                return divisions - 1;
+            }
+
+            if (value < 0.0f)
             {
                 return 0;
             }
 
-            int cell = (int)value;
-            return cell < 0 ? 0 : (cell >= divisions ? divisions - 1 : cell);
+            return (int)value;
         }
     }
 }
