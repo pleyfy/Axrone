@@ -1104,9 +1104,38 @@ public sealed class ObjectPool<T> : IObjectPool<T> where T : class
             {
                 await _storage.EnqueueAsync(pooledItem, cancellationToken).ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex)
             {
-                // Fall through - item could not be enqueued
+                // Same discipline as the reset and validation sites: the item already left the
+                // rent tracking, so it is destroyed and accounted for instead of vanishing with
+                // the swallowed exception. This is a live return path, not shutdown teardown.
+                Interlocked.Increment(ref _metrics.RecycleFailureCount);
+                _metrics.LastException = ex;
+                try
+                {
+                    _handler.OnDispose?.Invoke(item);
+                    if (_diagnosticsLevel >= DiagnosticsLevel.Full)
+                    {
+                        _handler.OnDestroy?.Invoke(new PoolObjectInfo<T>
+                        {
+                            Instance = item,
+                            CreationTime = now,
+                            Generation = _generation,
+                            RentCount = 0,
+                            TotalRentTime = TimeSpan.Zero,
+                            IsPoolable = item is IPoolable,
+                            IsActive = false,
+                            Id = instanceId,
+                        });
+                        _objectInfo.TryRemove(instanceId, out _);
+                    }
+                }
+                catch { Interlocked.Increment(ref _metrics.DisposeFailureCount); }
+                Interlocked.Increment(ref _metrics.TotalDestroyed);
+                Interlocked.Decrement(ref _count);
+                if (_diagnosticsLevel >= DiagnosticsLevel.Basic)
+                    RecordEvent($"Return enqueue failed for instance {instanceId}: {ex.Message}");
+                return;
             }
         }
         else
