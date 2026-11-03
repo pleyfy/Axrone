@@ -220,9 +220,11 @@ public static class SceneGltfShaderProperties
     {
         var properties = new List<SceneGltfShaderProperty>(32);
         AppendVertexTransform(properties);
+        properties.Add(Camera("u_CameraPosition", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Material("u_Albedo", SceneGltfShaderPropertyType.Vec4));
         properties.Add(Material("u_AlphaCutoff", SceneGltfShaderPropertyType.Float));
         properties.Add(Material("u_AlbedoMap", SceneGltfShaderPropertyType.Sampler2D));
+        AppendFog(properties);
         AppendAlphaProperties(properties);
         properties.Add(Material("_BaseColorFactor", SceneGltfShaderPropertyType.Vec4));
         AppendTextureProperties(properties, TextureUniformSpecArray[0]);
@@ -250,6 +252,8 @@ public static class SceneGltfShaderProperties
         properties.Add(Material("u_PbrMap", SceneGltfShaderPropertyType.Sampler2D));
         properties.Add(Material("u_OcclusionMap", SceneGltfShaderPropertyType.Sampler2D));
         properties.Add(Material("u_EmissiveMap", SceneGltfShaderPropertyType.Sampler2D));
+        AppendShadow(properties);
+        AppendFog(properties);
         AppendAlphaProperties(properties);
         properties.Add(Material("_BaseColorFactor", SceneGltfShaderPropertyType.Vec4));
         AppendTextureProperties(properties, TextureUniformSpecArray[0]);
@@ -311,6 +315,7 @@ public static class SceneGltfShaderProperties
         properties.Add(Material("u_AlphaCutoff", SceneGltfShaderPropertyType.Float));
         properties.Add(Material("u_AlbedoMap", SceneGltfShaderPropertyType.Sampler2D));
         properties.Add(Material("u_EmissiveMap", SceneGltfShaderPropertyType.Sampler2D));
+        AppendFog(properties);
         AppendAlphaProperties(properties);
         properties.Add(Material("_BaseColorFactor", SceneGltfShaderPropertyType.Vec4));
         AppendTextureProperties(properties, TextureUniformSpecArray[0]);
@@ -355,6 +360,34 @@ public static class SceneGltfShaderProperties
         properties.Add(Frame("u_SpotLightOuterCos", SceneGltfShaderPropertyType.Float));
     }
 
+    private static void AppendShadow(List<SceneGltfShaderProperty> properties)
+    {
+        properties.Add(SystemProperty("u_ShadowMap", SceneGltfShaderPropertyType.Sampler2D));
+        properties.Add(Frame("u_ShadowEnabled", SceneGltfShaderPropertyType.Int));
+        properties.Add(Frame("u_ShadowCascadeCount", SceneGltfShaderPropertyType.Int));
+        properties.Add(Frame("u_ShadowFilter", SceneGltfShaderPropertyType.Int));
+        properties.Add(Frame("u_ShadowSplits", SceneGltfShaderPropertyType.Vec4));
+        properties.Add(Frame("u_ShadowTiles", SceneGltfShaderPropertyType.Vec4, 4));
+        properties.Add(Frame("u_ShadowTexelSize", SceneGltfShaderPropertyType.Vec2));
+        properties.Add(Frame("u_ShadowLightMatrices", SceneGltfShaderPropertyType.Mat4, 4));
+        properties.Add(Frame("u_ShadowDepthBias", SceneGltfShaderPropertyType.Float));
+        properties.Add(Frame("u_ShadowNormalBias", SceneGltfShaderPropertyType.Float));
+    }
+
+    private static void AppendFog(List<SceneGltfShaderProperty> properties)
+    {
+        properties.Add(Frame("u_FogEnabled", SceneGltfShaderPropertyType.Int));
+        properties.Add(Frame("u_FogColor", SceneGltfShaderPropertyType.Vec3));
+        properties.Add(Frame("u_FogMode", SceneGltfShaderPropertyType.Int));
+        properties.Add(Frame("u_FogDensity", SceneGltfShaderPropertyType.Float));
+        properties.Add(Frame("u_FogStartEnd", SceneGltfShaderPropertyType.Vec2));
+        properties.Add(Frame("u_HeightFogEnabled", SceneGltfShaderPropertyType.Int));
+        properties.Add(Frame("u_HeightFogColor", SceneGltfShaderPropertyType.Vec3));
+        properties.Add(Frame("u_HeightFogDensity", SceneGltfShaderPropertyType.Float));
+        properties.Add(Frame("u_HeightFogFalloff", SceneGltfShaderPropertyType.Float));
+        properties.Add(Frame("u_HeightFogGroundHeight", SceneGltfShaderPropertyType.Float));
+    }
+
     private static void AppendAlphaProperties(List<SceneGltfShaderProperty> properties)
     {
         properties.Add(Material("_AlphaMode", SceneGltfShaderPropertyType.Int));
@@ -397,8 +430,8 @@ public static class SceneGltfShaderProperties
                 : SceneGltfShaderStage.Fragment,
             SceneGltfShaderScope.Camera);
 
-    private static SceneGltfShaderProperty Frame(string name, SceneGltfShaderPropertyType type) =>
-        new(name, type, SceneGltfShaderStage.Fragment, SceneGltfShaderScope.Frame);
+    private static SceneGltfShaderProperty Frame(string name, SceneGltfShaderPropertyType type, int arrayLength = 0) =>
+        new(name, type, SceneGltfShaderStage.Fragment, SceneGltfShaderScope.Frame, arrayLength);
 
     private static SceneGltfShaderProperty SystemProperty(string name, SceneGltfShaderPropertyType type) =>
         new(name, type, SceneGltfShaderStage.Fragment, SceneGltfShaderScope.System);

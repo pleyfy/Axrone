@@ -55,7 +55,8 @@ public static class SceneGltfShaders
     private static readonly string[] UnlitVaryings =
     [
         "out vec2 v_UV0;",
-        "out vec2 v_UV1;"
+        "out vec2 v_UV1;",
+        "out vec3 v_WorldPosition;"
     ];
 
     private static readonly string[] PbrVertexBody =
@@ -81,9 +82,11 @@ public static class SceneGltfShaders
 
     private static readonly string[] UnlitVertexBody =
     [
+        "    vec4 worldPosition = u_Model * vec4(a_Position, 1.0);",
+        "    v_WorldPosition = worldPosition.xyz;",
         "    v_UV0 = a_UV0;",
         "    v_UV1 = a_UV1;",
-        "    gl_Position = u_Projection * u_View * u_Model * vec4(a_Position, 1.0);"
+        "    gl_Position = u_Projection * u_View * worldPosition;"
     ];
 
     private static readonly string[] PbrFragmentBody =
@@ -130,8 +133,9 @@ public static class SceneGltfShaders
         "",
         "    if (u_ReceiveLighting) {",
         "        vec3 lightDirection = length(u_LightDirection) > 1e-5 ? normalize(u_LightDirection) : vec3(0.0, 1.0, 0.0);",
-        "        color += evaluateGltfDirectLight(normal, viewDir, albedo, metallic, roughness, F0, lightDirection, u_LightColor, u_LightIntensity);",
-        "        color += evaluateGltfClearcoat(normal, viewDir, clearcoat, clearcoatRoughness, lightDirection, u_LightColor, u_LightIntensity);",
+        "        float shadowFactor = gltfResolveShadowFactor(v_WorldPosition, normal, lightDirection);",
+        "        color += evaluateGltfDirectLight(normal, viewDir, albedo, metallic, roughness, F0, lightDirection, u_LightColor, u_LightIntensity) * shadowFactor;",
+        "        color += evaluateGltfClearcoat(normal, viewDir, clearcoat, clearcoatRoughness, lightDirection, u_LightColor, u_LightIntensity) * shadowFactor;",
         "",
         "        vec3 toPoint = u_PointLightPosition - v_WorldPosition;",
         "        float pointDistance = length(toPoint);",
@@ -164,6 +168,7 @@ public static class SceneGltfShaders
         "        emissive *= texture(u_EmissiveMap, uv).rgb;",
         "    }",
         "    color += emissive;",
+        "    color = gltfApplyFog(color, v_WorldPosition, u_CameraPosition);",
         "",
         "    float alpha = _AlphaMode == 2 ? baseColor.a : 1.0;",
         "    o_FragColor = vec4(color, alpha);"
@@ -214,6 +219,7 @@ public static class SceneGltfShaders
         "        emissive *= texture(u_EmissiveMap, uv).rgb;",
         "    }",
         "    color += emissive;",
+        "    color = gltfApplyFog(color, v_WorldPosition, u_CameraPosition);",
         "",
         "    float alpha = _AlphaMode == 2 ? baseColor.a : 1.0;",
         "    o_FragColor = vec4(color, alpha);"
@@ -230,7 +236,8 @@ public static class SceneGltfShaders
         "        discard;",
         "    }",
         "    float alpha = _AlphaMode == 2 ? baseColor.a : 1.0;",
-        "    o_FragColor = vec4(linearToSrgb(baseColor.rgb), alpha);"
+        "    vec3 color = gltfApplyFog(linearToSrgb(baseColor.rgb), v_WorldPosition, u_CameraPosition);",
+        "    o_FragColor = vec4(color, alpha);"
     ];
 
     private static readonly FrozenDictionary<SceneMeshSemantic, string> PbrAttributes =
@@ -269,7 +276,7 @@ public static class SceneGltfShaders
     private static readonly string PbrFragmentSource = BuildFragmentSource(
         SceneGltfShaderProperties.Pbr,
         PbrVaryings,
-        [SceneGltfShaderLibrary.UvBlockId, SceneGltfShaderLibrary.PbrLightingBlockId],
+        [SceneGltfShaderLibrary.UvBlockId, SceneGltfShaderLibrary.PbrLightingBlockId, SceneGltfShaderLibrary.ShadowBlockId, SceneGltfShaderLibrary.FogBlockId],
         PbrFragmentBody);
 
     private static readonly string ToonVertexSource = BuildVertexSource(
@@ -284,7 +291,8 @@ public static class SceneGltfShaders
         [
             SceneGltfShaderLibrary.UvBlockId,
             SceneGltfShaderLibrary.PbrLightingBlockId,
-            SceneGltfShaderLibrary.ToonShadingBlockId
+            SceneGltfShaderLibrary.ToonShadingBlockId,
+            SceneGltfShaderLibrary.FogBlockId
         ],
         ToonFragmentBody);
 
@@ -297,7 +305,7 @@ public static class SceneGltfShaders
     private static readonly string UnlitFragmentSource = BuildFragmentSource(
         SceneGltfShaderProperties.Unlit,
         UnlitVaryings,
-        [SceneGltfShaderLibrary.UvBlockId, SceneGltfShaderLibrary.ColorSpaceBlockId],
+        [SceneGltfShaderLibrary.UvBlockId, SceneGltfShaderLibrary.ColorSpaceBlockId, SceneGltfShaderLibrary.FogBlockId],
         UnlitFragmentBody);
 
     private static readonly FrozenDictionary<string, SceneShaderDefinition> Cache = BuildCache();
