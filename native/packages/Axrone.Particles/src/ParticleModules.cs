@@ -1,4 +1,4 @@
-﻿namespace Axrone.Particles;
+namespace Axrone.Particles;
 
 // 1. Texture Sheet Module (Priority 1100)
 /// <summary>Sprite sheet animation module.</summary>
@@ -221,9 +221,11 @@ public unsafe struct TrailModule : IParticleModulePolicy<TrailModule>, IDisposab
 }
 
 // 5. Collision Module (Priority 700)
-/// <summary>Plane collision module.</summary>
+/// <summary>Primitive collision module.</summary>
 public struct CollisionModule : IParticleModulePolicy<CollisionModule>
 {
+    private const float Epsilon = 1e-6f;
+
     /// <inheritdoc/>
     public static int Priority => 700;
 
@@ -233,17 +235,29 @@ public struct CollisionModule : IParticleModulePolicy<CollisionModule>
     /// <summary>Collision mode.</summary>
     public CollisionMode Mode = CollisionMode.Kill;
 
-    /// <summary>Plane point.</summary>
-    public Vec3 PlanePoint = Vec3.Zero;
+    /// <summary>Plane collider.</summary>
+    public PlaneCollider Plane = new();
 
-    /// <summary>Plane normal.</summary>
-    public Vec3 PlaneNormal = Vec3.UnitY;
+    /// <summary>Sphere collider.</summary>
+    public SphereCollider Sphere = new();
 
-    /// <summary>Bounce factor.</summary>
-    public float Bounce = 0.5f;
+    /// <summary>Box collider.</summary>
+    public BoxCollider Box = new();
 
-    /// <summary>Dampen factor.</summary>
-    public float Dampen = 0.1f;
+    /// <summary>Cylinder collider.</summary>
+    public CylinderCollider Cylinder = new();
+
+    /// <summary>Mesh collider.</summary>
+    public ParticleMeshCollider? Mesh;
+
+    /// <summary>Speed below which a resolved particle is killed; zero disables the rule.</summary>
+    public float MinVelocity;
+
+    /// <summary>Per-particle contact budget; zero disables the rule.</summary>
+    public int MaxNumberOfHits;
+
+    /// <summary>Fraction of remaining lifetime removed per contact.</summary>
+    public float LifetimeLoss;
 
     /// <summary>Creates a module.</summary>
     public CollisionModule()
@@ -261,42 +275,342 @@ public struct CollisionModule : IParticleModulePolicy<CollisionModule>
             return;
         }
 
-        int i = 0;
-        Vec3 n = state.PlaneNormal;
-        Vec3 p0 = state.PlanePoint;
+        if (state.Mode == CollisionMode.Callback && context.Sink is null)
+        {
+            ParticleThrowHelper.InvalidConfiguration("CollisionMode.Callback requires an event sink on the module context.");
+        }
 
+        switch (state.Primitive)
+        {
+            case CollisionPrimitive.Plane:
+                RunPlane(storage, context, ref state);
+                break;
+            case CollisionPrimitive.Sphere:
+                RunSphere(storage, context, ref state);
+                break;
+            case CollisionPrimitive.Box:
+                RunBox(storage, context, ref state);
+                break;
+            case CollisionPrimitive.Cylinder:
+                RunCylinder(storage, context, ref state);
+                break;
+            case CollisionPrimitive.Mesh:
+                RunMesh(storage, context, ref state);
+                break;
+            default:
+                ParticleThrowHelper.InvalidConfiguration($"Unsupported collision primitive {state.Primitive}.");
+                break;
+        }
+    }
+
+    private static unsafe void RunPlane(NativeSoaParticleStorage storage, in ModuleExecutionContext context, ref CollisionModule state)
+    {
+        PlaneCollider collider = state.Plane;
+        Vec3 normal = PrepareNormal(collider.Normal, "Plane");
+        Vec3 point = collider.Point;
+
+        int i = 0;
         while (i < storage.ActiveCount)
         {
             Vec3 pos = new(storage.PosX[i], storage.PosY[i], storage.PosZ[i]);
-            float dist = Vec3.Dot(pos - p0, n);
-
-            if (dist < 0.0f)
+            float distance = Vec3.Dot(pos - point, normal);
+            if (distance < 0.0f)
             {
                 if (state.Mode == CollisionMode.Kill)
                 {
-                    storage.RemoveAtDense(i);
+                    Kill(storage, context, i);
                     continue;
+                }
+
+                if (!Resolve(storage, context, ref state, i, normal, pos - (normal * distance), collider.Surface))
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            i++;
+        }
+    }
+
+    private static unsafe void RunSphere(NativeSoaParticleStorage storage, in ModuleExecutionContext context, ref CollisionModule state)
+    {
+        SphereCollider collider = state.Sphere;
+        if (collider.Radius <= 0.0f)
+        {
+            ParticleThrowHelper.InvalidConfiguration("Sphere collider radius must be positive.");
+        }
+
+        float radiusSq = collider.Radius * collider.Radius;
+
+        int i = 0;
+        while (i < storage.ActiveCount)
+        {
+            Vec3 pos = new(storage.PosX[i], storage.PosY[i], storage.PosZ[i]);
+            Vec3 offset = pos - collider.Center;
+            float distanceSq = offset.LengthSquared();
+            if (distanceSq < radiusSq)
+            {
+                if (state.Mode == CollisionMode.Kill)
+                {
+                    Kill(storage, context, i);
+                    continue;
+                }
+
+                float distance = MathF.Sqrt(distanceSq);
+                Vec3 normal = distance > Epsilon
+                    ? offset * (1.0f / distance)
+                    : OutwardFallback(storage, i);
+                float depth = collider.Radius - distance;
+                if (!Resolve(storage, context, ref state, i, normal, pos + (normal * depth), collider.Surface))
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            i++;
+        }
+    }
+
+    private static unsafe void RunBox(NativeSoaParticleStorage storage, in ModuleExecutionContext context, ref CollisionModule state)
+    {
+        BoxCollider collider = state.Box;
+        if (collider.HalfExtents.X <= 0.0f || collider.HalfExtents.Y <= 0.0f || collider.HalfExtents.Z <= 0.0f)
+        {
+            ParticleThrowHelper.InvalidConfiguration("Box collider half extents must be positive.");
+        }
+
+        Quat inverse = collider.Orientation.Inverse();
+
+        int i = 0;
+        while (i < storage.ActiveCount)
+        {
+            Vec3 pos = new(storage.PosX[i], storage.PosY[i], storage.PosZ[i]);
+            Vec3 local = Vec3.Transform(pos - collider.Center, inverse);
+            Vec3 absolute = new(MathF.Abs(local.X), MathF.Abs(local.Y), MathF.Abs(local.Z));
+            if (absolute.X <= collider.HalfExtents.X &&
+                absolute.Y <= collider.HalfExtents.Y &&
+                absolute.Z <= collider.HalfExtents.Z)
+            {
+                if (state.Mode == CollisionMode.Kill)
+                {
+                    Kill(storage, context, i);
+                    continue;
+                }
+
+                float depthX = collider.HalfExtents.X - absolute.X;
+                float depthY = collider.HalfExtents.Y - absolute.Y;
+                float depthZ = collider.HalfExtents.Z - absolute.Z;
+                Vec3 localNormal;
+                float depth;
+                if (depthX <= depthY && depthX <= depthZ)
+                {
+                    depth = depthX;
+                    localNormal = new Vec3(Sign(local.X), 0.0f, 0.0f);
+                }
+                else if (depthY <= depthZ)
+                {
+                    depth = depthY;
+                    localNormal = new Vec3(0.0f, Sign(local.Y), 0.0f);
                 }
                 else
                 {
-                    Vec3 vel = new(storage.VelX[i], storage.VelY[i], storage.VelZ[i]);
-                    Vec3 normVel = n * Vec3.Dot(vel, n);
-                    Vec3 tangVel = vel - normVel;
-                    Vec3 reflected = (tangVel * (1.0f - state.Dampen)) - (normVel * state.Bounce);
+                    depth = depthZ;
+                    localNormal = new Vec3(0.0f, 0.0f, Sign(local.Z));
+                }
 
-                    pos -= n * dist;
-                    storage.PosX[i] = pos.X;
-                    storage.PosY[i] = pos.Y;
-                    storage.PosZ[i] = pos.Z;
+                Vec3 normal = Vec3.Normalize(Vec3.Transform(localNormal, collider.Orientation));
+                if (!Resolve(storage, context, ref state, i, normal, pos + (normal * depth), collider.Surface))
+                {
+                    i++;
+                }
 
-                    storage.VelX[i] = reflected.X;
-                    storage.VelY[i] = reflected.Y;
-                    storage.VelZ[i] = reflected.Z;
+                continue;
+            }
+
+            i++;
+        }
+    }
+
+    private static unsafe void RunCylinder(NativeSoaParticleStorage storage, in ModuleExecutionContext context, ref CollisionModule state)
+    {
+        CylinderCollider collider = state.Cylinder;
+        if (collider.Radius <= 0.0f || collider.HalfHeight <= 0.0f)
+        {
+            ParticleThrowHelper.InvalidConfiguration("Cylinder collider radius and half height must be positive.");
+        }
+
+        Vec3 axis = PrepareNormal(collider.Axis, "Cylinder");
+
+        int i = 0;
+        while (i < storage.ActiveCount)
+        {
+            Vec3 pos = new(storage.PosX[i], storage.PosY[i], storage.PosZ[i]);
+            Vec3 relative = pos - collider.Center;
+            float axial = Vec3.Dot(relative, axis);
+            float capDepth = collider.HalfHeight - MathF.Abs(axial);
+            if (capDepth > 0.0f)
+            {
+                Vec3 radial = relative - (axis * axial);
+                float radialSq = radial.LengthSquared();
+                if (radialSq < collider.Radius * collider.Radius)
+                {
+                    if (state.Mode == CollisionMode.Kill)
+                    {
+                        Kill(storage, context, i);
+                        continue;
+                    }
+
+                    float radialDistance = MathF.Sqrt(radialSq);
+                    float radialDepth = collider.Radius - radialDistance;
+                    Vec3 normal;
+                    float depth;
+                    if (radialDepth <= capDepth)
+                    {
+                        depth = radialDepth;
+                        normal = radialDistance > Epsilon
+                            ? radial * (1.0f / radialDistance)
+                            : OutwardFallback(storage, i);
+                    }
+                    else
+                    {
+                        depth = capDepth;
+                        normal = axis * Sign(axial);
+                    }
+
+                    if (!Resolve(storage, context, ref state, i, normal, pos + (normal * depth), collider.Surface))
+                    {
+                        i++;
+                    }
+
+                    continue;
                 }
             }
 
             i++;
         }
+    }
+
+    private static unsafe void RunMesh(NativeSoaParticleStorage storage, in ModuleExecutionContext context, ref CollisionModule state)
+    {
+        ParticleMeshCollider? mesh = state.Mesh;
+        if (mesh is null)
+        {
+            ParticleThrowHelper.InvalidConfiguration("Mesh primitive requires an assigned ParticleMeshCollider.");
+        }
+
+        CollisionSurface surface = mesh!.Surface;
+        float dt = context.DeltaTime.Seconds;
+
+        int i = 0;
+        while (i < storage.ActiveCount)
+        {
+            Vec3 pos = new(storage.PosX[i], storage.PosY[i], storage.PosZ[i]);
+            Vec3 velocity = new(storage.VelX[i], storage.VelY[i], storage.VelZ[i]);
+            Vec3 from = pos - (velocity * dt);
+            if (mesh.TryCast(from, pos, out PrimitiveHit hit))
+            {
+                if (state.Mode == CollisionMode.Kill)
+                {
+                    Kill(storage, context, i);
+                    continue;
+                }
+
+                Vec3 resolved = hit.Point + (hit.Normal * 1e-3f);
+                if (!Resolve(storage, context, ref state, i, hit.Normal, resolved, surface))
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            i++;
+        }
+    }
+
+    private static Vec3 PrepareNormal(Vec3 value, string label)
+    {
+        float lengthSq = value.LengthSquared();
+        if (lengthSq < Epsilon)
+        {
+            ParticleThrowHelper.InvalidConfiguration($"{label} collider orientation is degenerate.");
+        }
+
+        return value * (1.0f / MathF.Sqrt(lengthSq));
+    }
+
+    private static unsafe Vec3 OutwardFallback(NativeSoaParticleStorage storage, int index)
+    {
+        Vec3 velocity = new(storage.VelX[index], storage.VelY[index], storage.VelZ[index]);
+        float speedSq = velocity.LengthSquared();
+        if (speedSq > Epsilon)
+        {
+            return velocity * (-1.0f / MathF.Sqrt(speedSq));
+        }
+
+        return Vec3.UnitY;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float Sign(float value) => value >= 0.0f ? 1.0f : -1.0f;
+
+    private static unsafe bool Resolve(
+        NativeSoaParticleStorage storage,
+        in ModuleExecutionContext context,
+        ref CollisionModule state,
+        int index,
+        in Vec3 normal,
+        in Vec3 resolvedPosition,
+        in CollisionSurface surface)
+    {
+        Vec3 velocity = new(storage.VelX[index], storage.VelY[index], storage.VelZ[index]);
+        float approach = MathF.Abs(Vec3.Dot(velocity, normal));
+        ParticleId id = storage.DenseToId[index];
+
+        Vec3 normalComponent = normal * Vec3.Dot(velocity, normal);
+        Vec3 tangent = velocity - normalComponent;
+        Vec3 reflected = (tangent * (1.0f - surface.Dampen)) - (normalComponent * surface.Bounce);
+
+        storage.PosX[index] = resolvedPosition.X;
+        storage.PosY[index] = resolvedPosition.Y;
+        storage.PosZ[index] = resolvedPosition.Z;
+
+        int hits = ++storage.CollisionHits[index];
+        float lifetime = storage.Lifetime[index];
+        if (state.LifetimeLoss > 0.0f)
+        {
+            lifetime *= MathF.Max(0.0f, 1.0f - state.LifetimeLoss);
+            storage.Lifetime[index] = lifetime;
+        }
+
+        float speed = reflected.Length();
+        bool budgetExhausted = state.MaxNumberOfHits > 0 && hits >= state.MaxNumberOfHits;
+        bool tooSlow = state.MinVelocity > 0.0f && speed < state.MinVelocity;
+        float age = storage.Age[index];
+        if (budgetExhausted || tooSlow || lifetime <= age)
+        {
+            context.Sink?.OnDeath(new ParticleDeathEvent(id, ParticleDeathReason.Collision, age, lifetime));
+            storage.RemoveAtDense(index);
+            return true;
+        }
+
+        storage.VelX[index] = reflected.X;
+        storage.VelY[index] = reflected.Y;
+        storage.VelZ[index] = reflected.Z;
+
+        context.Sink!.OnCollision(new ParticleCollisionEvent(id, surface.ColliderId, normal, approach));
+        return false;
+    }
+
+    private static unsafe void Kill(NativeSoaParticleStorage storage, in ModuleExecutionContext context, int index)
+    {
+        ParticleId id = storage.DenseToId[index];
+        context.Sink?.OnDeath(new ParticleDeathEvent(id, ParticleDeathReason.Collision, storage.Age[index], storage.Lifetime[index]));
+        storage.RemoveAtDense(index);
     }
 }
 
@@ -888,59 +1202,59 @@ public struct ShapeModule : IParticleModulePolicy<ShapeModule>
         switch (Shape)
         {
             case EmitterShape.Sphere:
-            {
-                float u = NextFloat();
-                float v = NextFloat();
-                float theta = u * 2.0f * MathF.PI;
-                float phi = MathF.Acos((2.0f * v) - 1.0f);
-                float r = MathF.Cbrt(NextFloat()) * Radius;
-                float sinPhi = MathF.Sin(phi);
+                {
+                    float u = NextFloat();
+                    float v = NextFloat();
+                    float theta = u * 2.0f * MathF.PI;
+                    float phi = MathF.Acos((2.0f * v) - 1.0f);
+                    float r = MathF.Cbrt(NextFloat()) * Radius;
+                    float sinPhi = MathF.Sin(phi);
 
-                direction = new Vec3(sinPhi * MathF.Cos(theta), sinPhi * MathF.Sin(theta), MathF.Cos(phi));
-                position = direction * r;
-                break;
-            }
+                    direction = new Vec3(sinPhi * MathF.Cos(theta), sinPhi * MathF.Sin(theta), MathF.Cos(phi));
+                    position = direction * r;
+                    break;
+                }
 
             case EmitterShape.Hemisphere:
-            {
-                float u = NextFloat();
-                float v = NextFloat();
-                float theta = u * 2.0f * MathF.PI;
-                float phi = MathF.Acos(v);
-                float r = MathF.Cbrt(NextFloat()) * Radius;
-                float sinPhi = MathF.Sin(phi);
+                {
+                    float u = NextFloat();
+                    float v = NextFloat();
+                    float theta = u * 2.0f * MathF.PI;
+                    float phi = MathF.Acos(v);
+                    float r = MathF.Cbrt(NextFloat()) * Radius;
+                    float sinPhi = MathF.Sin(phi);
 
-                direction = new Vec3(sinPhi * MathF.Cos(theta), MathF.Abs(MathF.Cos(phi)), sinPhi * MathF.Sin(theta));
-                position = direction * r;
-                break;
-            }
+                    direction = new Vec3(sinPhi * MathF.Cos(theta), MathF.Abs(MathF.Cos(phi)), sinPhi * MathF.Sin(theta));
+                    position = direction * r;
+                    break;
+                }
 
             case EmitterShape.Cone:
-            {
-                float theta = NextFloat() * 2.0f * MathF.PI;
-                float r = NextFloat() * Radius;
-                position = new Vec3(r * MathF.Cos(theta), 0.0f, r * MathF.Sin(theta));
-                direction = new Vec3(MathF.Sin(ConeAngle) * MathF.Cos(theta), MathF.Cos(ConeAngle), MathF.Sin(ConeAngle) * MathF.Sin(theta));
-                direction = Vec3.Normalize(direction);
-                break;
-            }
+                {
+                    float theta = NextFloat() * 2.0f * MathF.PI;
+                    float r = NextFloat() * Radius;
+                    position = new Vec3(r * MathF.Cos(theta), 0.0f, r * MathF.Sin(theta));
+                    direction = new Vec3(MathF.Sin(ConeAngle) * MathF.Cos(theta), MathF.Cos(ConeAngle), MathF.Sin(ConeAngle) * MathF.Sin(theta));
+                    direction = Vec3.Normalize(direction);
+                    break;
+                }
 
             case EmitterShape.Box:
-            {
-                position = new Vec3(
-                    (NextFloat() - 0.5f) * BoxExtents.X * 2.0f,
-                    (NextFloat() - 0.5f) * BoxExtents.Y * 2.0f,
-                    (NextFloat() - 0.5f) * BoxExtents.Z * 2.0f);
-                direction = Vec3.UnitY;
-                break;
-            }
+                {
+                    position = new Vec3(
+                        (NextFloat() - 0.5f) * BoxExtents.X * 2.0f,
+                        (NextFloat() - 0.5f) * BoxExtents.Y * 2.0f,
+                        (NextFloat() - 0.5f) * BoxExtents.Z * 2.0f);
+                    direction = Vec3.UnitY;
+                    break;
+                }
 
             default:
-            {
-                position = Vec3.Zero;
-                direction = Vec3.UnitY;
-                break;
-            }
+                {
+                    position = Vec3.Zero;
+                    direction = Vec3.UnitY;
+                    break;
+                }
         }
     }
 
