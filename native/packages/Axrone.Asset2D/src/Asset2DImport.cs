@@ -144,6 +144,15 @@ internal static class Asset2DProbeHelper
     /// <summary>Stable code for a source every importer in the chain declined.</summary>
     public const string NoImporter = "asset2d.importer.not-found";
 
+    /// <summary>Stable code for a canonical atlas without a textureSize section.</summary>
+    public const string TextureSizeMissing = "asset2d.atlas.textureSize.missing";
+
+    /// <summary>Stable code for a canonical atlas without any frame.</summary>
+    public const string FramesEmpty = "asset2d.atlas.frames.empty";
+
+    /// <summary>Stable code for a TexturePacker atlas without frames or a meta size.</summary>
+    public const string PackedSectionsMissing = "asset2d.atlas.texturepacker.sections.missing";
+
     /// <summary>Whether the payload opens as a JSON object or array (after BOM and whitespace).</summary>
     public static bool StartsAsJson(ReadOnlySpan<byte> content)
     {
@@ -350,7 +359,9 @@ public readonly struct SpriteAtlasJsonImporter<TCoordPolicy> : IAssetImporterPol
 
             if (!textureSize.HasValue)
             {
-                return Asset2DImportResult<TCoordPolicy>.Failure("Missing textureSize section in JSON.");
+                return Asset2DImportResult<TCoordPolicy>.Failure(
+                    "Missing textureSize section in JSON.",
+                    Asset2DProbeHelper.TextureSizeMissing);
             }
 
             AtlasBuilder<AtlasBuildStage.Configured, TCoordPolicy> configured = AtlasBuilder.Create<TCoordPolicy>()
@@ -358,7 +369,9 @@ public readonly struct SpriteAtlasJsonImporter<TCoordPolicy> : IAssetImporterPol
 
             if (framesList.Count == 0)
             {
-                return Asset2DImportResult<TCoordPolicy>.Failure("Atlas contains no frames.");
+                return Asset2DImportResult<TCoordPolicy>.Failure(
+                    "Atlas contains no frames.",
+                    Asset2DProbeHelper.FramesEmpty);
             }
 
             Span<SpriteFrameDefinition> framesSpan = CollectionsMarshal.AsSpan(framesList);
@@ -872,7 +885,9 @@ public readonly struct TexturePackerSpriteAtlasImporter<TCoordPolicy> : IAssetIm
 
             if (frameList.Count == 0 || !metaSize.HasValue)
             {
-                return Asset2DImportResult<TCoordPolicy>.Failure("TexturePacker JSON missing required 'frames' or 'meta' root sections.");
+                return Asset2DImportResult<TCoordPolicy>.Failure(
+                    "TexturePacker JSON missing required 'frames' or 'meta' root sections.",
+                    Asset2DProbeHelper.PackedSectionsMissing);
             }
 
             string atlasId = context.Path.IsEmpty
