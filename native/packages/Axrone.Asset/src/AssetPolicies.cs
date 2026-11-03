@@ -57,14 +57,11 @@ public enum AssetCodecFailure : byte
     /// <summary>The leading tag byte is not part of this codec's tag space.</summary>
     UnknownTag = 2,
 
-    /// <summary>A known tag carries no bytes behind it.</summary>
-    TruncatedTag = 3,
-
     /// <summary>The tagged JSON body is not valid JSON.</summary>
-    InvalidJson = 4,
+    InvalidJson = 3,
 
     /// <summary>The destination is smaller than the encoded payload.</summary>
-    DestinationTooSmall = 5,
+    DestinationTooSmall = 4,
 }
 
 /// <summary>Stable machine codes and decline semantics for <see cref="AssetCodecFailure"/>.</summary>
@@ -76,7 +73,6 @@ public static class AssetCodecFailureExtensions
         AssetCodecFailure.None => null,
         AssetCodecFailure.EmptyPayload => "asset.codec.payload.empty",
         AssetCodecFailure.UnknownTag => "asset.codec.tag.unknown",
-        AssetCodecFailure.TruncatedTag => "asset.codec.payload.truncated",
         AssetCodecFailure.InvalidJson => "asset.codec.json.invalid",
         AssetCodecFailure.DestinationTooSmall => "asset.codec.destination.too-small",
         _ => "asset.codec.unknown",
