@@ -6,11 +6,19 @@ namespace Axrone.Audio;
 /// </summary>
 public sealed unsafe class NativeAudioMemory : IDisposable
 {
+    private static long _liveCount;
+    private static long _liveByteCount;
     private float* _pointer;
     private readonly int _sampleCount;
     private readonly int _channelCount;
     private readonly int _sampleRate;
     private int _disposed;
+
+    /// <summary>Live native buffers across the process; the release gauge for teardown tests.</summary>
+    public static long LiveBufferCount => Volatile.Read(ref _liveCount);
+
+    /// <summary>Bytes still held by live native buffers across the process.</summary>
+    public static long LiveByteCount => Volatile.Read(ref _liveByteCount);
 
     /// <summary>Native pointer.</summary>
     public float* Pointer => _pointer;
@@ -49,6 +57,8 @@ public sealed unsafe class NativeAudioMemory : IDisposable
         nuint byteSize = (nuint)sampleCount * sizeof(float);
         _pointer = (float*)NativeMemory.AlignedAlloc(byteSize, 64);
         NativeMemory.Clear(_pointer, byteSize);
+        Interlocked.Increment(ref _liveCount);
+        Interlocked.Add(ref _liveByteCount, (long)byteSize);
     }
 
     /// <summary>Views the buffer; throws after disposal.</summary>
@@ -87,6 +97,8 @@ public sealed unsafe class NativeAudioMemory : IDisposable
         {
             NativeMemory.AlignedFree(_pointer);
             _pointer = null;
+            Interlocked.Decrement(ref _liveCount);
+            Interlocked.Add(ref _liveByteCount, -((long)_sampleCount * sizeof(float)));
         }
 
         GC.SuppressFinalize(this);

@@ -240,4 +240,99 @@ public sealed class AudioSourceRegistry
             }
         }
     }
+
+    /// <summary>
+    /// Removes a source and releases everything it owns: the active voice is
+    /// stopped through the runtime, the slot is cleared and the registry entry
+    /// becomes unknown, so a later play must re-register first.
+    /// </summary>
+    public int RemoveSource(AudioSourceId id)
+    {
+        lock (_gate)
+        {
+            uint idx = id.Value;
+            if (idx == 0U || idx >= (uint)_maxSources || !_sources[idx].IsRegistered)
+            {
+                return 0;
+            }
+
+            int released = _runtime.ReleaseVoicesForSource(id);
+            _sources[idx] = default;
+
+            _observability.Counters.IncrementSourceMutations();
+            _observability.Dispatch(AudioEventType.SourceRemoved, id.Value, (uint)released);
+            return released;
+        }
+    }
+
+    /// <summary>
+    /// Re-points registered sources from one bus to another and updates their
+    /// live voices. Used when a bus is removed so no source keeps a dangling
+    /// bus id and falls permanently silent.
+    /// </summary>
+    public int ReassignBus(AudioBusId from, AudioBusId to)
+    {
+        if (from == to)
+        {
+            return 0;
+        }
+
+        lock (_gate)
+        {
+            int updated = 0;
+            for (int i = 0; i < _maxSources; i++)
+            {
+                if (_sources[i].IsRegistered && _sources[i].Definition.BusId == from)
+                {
+                    _sources[i].Definition = _sources[i].Definition with { BusId = to };
+                    updated++;
+                }
+            }
+
+            if (updated != 0)
+            {
+                _ = _runtime.ReassignVoiceBus(from, to);
+            }
+
+            return updated;
+        }
+    }
+
+    /// <summary>Registered source count.</summary>
+    public int RegisteredCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                int count = 0;
+                for (int i = 0; i < _maxSources; i++)
+                {
+                    if (_sources[i].IsRegistered)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+        }
+    }
+
+    /// <summary>Reads one registered definition.</summary>
+    public bool TryGetDefinition(AudioSourceId id, out AudioSourceDefinition definition)
+    {
+        lock (_gate)
+        {
+            uint idx = id.Value;
+            if (idx == 0U || idx >= (uint)_maxSources || !_sources[idx].IsRegistered)
+            {
+                definition = default;
+                return false;
+            }
+
+            definition = _sources[idx].Definition;
+            return true;
+        }
+    }
 }
