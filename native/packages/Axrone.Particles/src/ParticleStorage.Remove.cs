@@ -1,4 +1,4 @@
-﻿namespace Axrone.Particles;
+namespace Axrone.Particles;
 
 /// <summary>Native struct-of-arrays particle storage with generational handles.</summary>
 public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
@@ -67,6 +67,8 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
             Custom1[denseIdx] = 0f;
             Custom2[denseIdx] = 0f;
             Custom3[denseIdx] = 0f;
+
+            CollisionHits[denseIdx] = 0;
 
             return true;
         }
@@ -140,6 +142,8 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
                 Custom1[denseIndex] = Custom1[lastIdx];
                 Custom2[denseIndex] = Custom2[lastIdx];
                 Custom3[denseIndex] = Custom3[lastIdx];
+
+                CollisionHits[denseIndex] = CollisionHits[lastIdx];
 
                 ParticleId swappedId = DenseToId[lastIdx];
                 DenseToId[denseIndex] = swappedId;

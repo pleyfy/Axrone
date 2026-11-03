@@ -58,7 +58,7 @@ public sealed class ParticleSystemEngine<TPipeline, TSink> : IDisposable
     public int ParticleCount => Storage.ActiveCount;
 
     private TPipeline _pipeline;
-    private TSink _eventSink;
+    private readonly IParticleEventSink _eventSink;
     private SimulationTime _currentTime;
     private uint _nextEmitterId = 1;
     private readonly List<ParticleEmitter> _emitters = new();
@@ -176,7 +176,11 @@ public sealed class ParticleSystemEngine<TPipeline, TSink> : IDisposable
 
             UpdateParticleLifetimes(deltaTime.Seconds);
 
-            ModuleExecutionContext context = new(deltaTime, _currentTime, EnableSpatialOptimization ? SpatialGrid : null);
+            ModuleExecutionContext context = new(
+                deltaTime,
+                _currentTime,
+                EnableSpatialOptimization ? SpatialGrid : null,
+                _eventSink);
             _pipeline.Execute(Storage, context);
 
             EmitFromEmitters(context);
