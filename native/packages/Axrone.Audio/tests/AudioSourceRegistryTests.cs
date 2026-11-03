@@ -1,5 +1,6 @@
 namespace Axrone.Audio.Tests;
 
+[Collection(TestCollections.NativeMemoryGauge)]
 public sealed class AudioSourceRegistryTests : IDisposable
 {
     private readonly CacheAlignedDiagnosticsCounters _counters = new();

@@ -302,14 +302,17 @@ public sealed class MixerSnapshotTests
     }
 
     [Fact]
-    public void Apply_OverSelfParentedBus_TerminatesAndKeepsGainsFinite()
+    public void Apply_OverFullRampCycle_TerminatesAndKeepsGainsFinite()
     {
+        // Cyclic topologies can no longer be built through the guarded upsert
+        // path (see AudioBusCycleGuardTests); this pins the ramp semantics
+        // over a full clock cycle instead.
         using AudioSystem system = new(maxBuses: 32);
         AudioBusId a = new(20U);
-        system.Buses.Upsert(new AudioBusDefinition(a, a, 1.0f));
+        system.Buses.Upsert(new AudioBusDefinition(a, AudioBusId.Master, 1.0f));
 
         AudioMixerSnapshot snapshot = system.CaptureMixerSnapshot();
-        system.Buses.Upsert(new AudioBusDefinition(a, a, 0.2f));
+        system.Buses.Upsert(new AudioBusDefinition(a, AudioBusId.Master, 0.2f));
         system.ApplyMixerSnapshot(snapshot, atTime: 0.0, durationSeconds: 1.0);
         system.AdvanceMixerClock(0.5);
 

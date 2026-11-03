@@ -63,9 +63,9 @@ public sealed class AudioClipIngest
                     return false;
                 }
 
-                if (!TryInvokeDecoder(decoder, in container, payload, out samples, out AudioDecoderFailure decoderFailure))
+                if (!TryInvokeDecoder(decoder, in container, payload, out samples, out AudioDecoderFailure decoderFailure, out string? decoderReason, out Exception? decoderInner))
                 {
-                    error = new AudioDecoderException(decoderFailure, container.Kind, decoder.Id);
+                    error = new AudioDecoderException(decoderFailure, container.Kind, decoder.Id, decoderReason, decoderInner);
                     return false;
                 }
             }
@@ -147,16 +147,19 @@ public sealed class AudioClipIngest
         in AudioContainerInfo container,
         ReadOnlyMemory<byte> payload,
         out NativeAudioMemory? samples,
-        out AudioDecoderFailure failure)
+        out AudioDecoderFailure failure,
+        out string? reason,
+        out Exception? innerException)
     {
         // Third-party decoders are untrusted; any throw is reported as
         // DecoderFaulted rather than escaping ingest.
 #pragma warning disable CA1031
         try
         {
-            if (!decoder.TryDecode(in container, payload, out samples, out _))
+            if (!decoder.TryDecode(in container, payload, out samples, out reason))
             {
                 failure = AudioDecoderFailure.DecoderRejected;
+                innerException = null;
                 return false;
             }
 
@@ -165,16 +168,22 @@ public sealed class AudioClipIngest
                 samples?.Dispose();
                 samples = null;
                 failure = AudioDecoderFailure.DecoderProducedEmpty;
+                reason = "Decoder returned no samples.";
+                innerException = null;
                 return false;
             }
 
             failure = AudioDecoderFailure.None;
+            reason = null;
+            innerException = null;
             return true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             samples = null;
             failure = AudioDecoderFailure.DecoderFaulted;
+            reason = ex.Message;
+            innerException = ex;
             return false;
         }
 #pragma warning restore CA1031

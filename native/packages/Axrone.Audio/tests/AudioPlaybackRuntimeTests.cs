@@ -1,5 +1,6 @@
 namespace Axrone.Audio.Tests;
 
+[Collection(TestCollections.NativeMemoryGauge)]
 public sealed class AudioPlaybackRuntimeTests : IDisposable
 {
     private readonly CacheAlignedDiagnosticsCounters _counters = new();
@@ -81,6 +82,60 @@ public sealed class AudioPlaybackRuntimeTests : IDisposable
         Span<float> tail = stackalloc float[512];
         _runtime.ProcessGraph(tail);
         tail.ToArray().Should().OnlyContain(v => v == 0.0f);
+    }
+
+    [Fact]
+    public void LoopingVoice_EndsWhenScheduledDurationIsConsumed()
+    {
+        AudioClipId clip = RegisterSine(seconds: 1.0f);
+        AudioPlaybackHandle handle = _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(DurationSeconds: 0.008f),
+            AudioSpatialization.Default2D, loop: true, 1.0f, 1.0f, 0.0f);
+
+        // A 512-float block is 256 stereo frames; at rate 1.0 that consumes
+        // 256/48000 ≈ 0.00533 s of clip. 0.008 s therefore survives exactly
+        // the first block and closes inside the second.
+        Span<float> first = stackalloc float[512];
+        _runtime.ProcessGraph(first);
+        first.ToArray().Should().Contain(v => v != 0.0f);
+        _runtime.TryGetState(handle, out AudioPlaybackState state).Should().BeTrue();
+        state.Should().Be(AudioPlaybackState.Playing);
+        state.Should().NotBe(AudioPlaybackState.Stopped);
+
+        Span<float> second = stackalloc float[512];
+        _runtime.ProcessGraph(second);
+        _runtime.TryGetState(handle, out state).Should().BeFalse("the duration window closed");
+
+        Span<float> tail = stackalloc float[512];
+        _runtime.ProcessGraph(tail);
+        tail.ToArray().Should().OnlyContain(v => v == 0.0f);
+    }
+
+    [Fact]
+    public void ZeroDurationVoice_StopsOnTheFirstBlock()
+    {
+        AudioClipId clip = RegisterSine();
+        AudioPlaybackHandle handle = _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(DurationSeconds: 0.0f),
+            AudioSpatialization.Default2D, loop: true, 1.0f, 1.0f, 0.0f);
+
+        Span<float> block = stackalloc float[512];
+        _runtime.ProcessGraph(block);
+
+        _runtime.TryGetState(handle, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void NegativeDuration_IsRejectedWithTypedError()
+    {
+        AudioClipId clip = RegisterSine();
+
+        Action allocate = () => _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(DurationSeconds: -1.0f),
+            AudioSpatialization.Default2D, loop: true, 1.0f, 1.0f, 0.0f);
+
+        allocate.Should().Throw<AudioConfigurationException>()
+            .Which.Code.Should().Be("audio.invalid-duration");
     }
 
     [Fact]

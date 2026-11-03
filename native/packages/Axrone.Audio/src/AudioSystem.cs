@@ -93,6 +93,7 @@ public sealed class AudioSystem : IDisposable, IAsyncDisposable
             outputSampleRate);
 
         _sourceRegistry = new AudioSourceRegistry(maxSources, _playbackRuntime, _observability);
+        _busMixer.SetSourceRebindHook((from, to) => _sourceRegistry.ReassignBus(from, to));
     }
 
     /// <summary>Suspends rendering; the graph is retained.</summary>
@@ -161,19 +162,11 @@ public sealed class AudioSystem : IDisposable, IAsyncDisposable
         _busMixer.ApplyMixerSnapshot(snapshot, atTime, durationSeconds, curve);
 
     /// <summary>
-    /// Removes a bus, re-parenting its children and re-pointing its sources at
-    /// the fallback bus. Master is protected by a typed error.
+    /// Removes a bus, re-parenting its children and re-pointing its sources and
+    /// live voices at the fallback bus through the registry hook. Master is
+    /// protected by a typed error.
     /// </summary>
-    public AudioBusRemoveResult RemoveBus(AudioBusId id)
-    {
-        AudioBusRemoveResult result = _busMixer.RemoveBus(id);
-        if (result.Removed)
-        {
-            _ = _sourceRegistry.ReassignBus(id, result.ReparentedTo);
-        }
-
-        return result;
-    }
+    public AudioBusRemoveResult RemoveBus(AudioBusId id) => _busMixer.RemoveBus(id);
 
     /// <summary>Removes a listener; the last registered listener is protected.</summary>
     public bool RemoveListener(AudioListenerId id) => _listenerRegistry.RemoveListener(id);

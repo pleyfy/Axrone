@@ -1,5 +1,6 @@
 namespace Axrone.Audio.Tests;
 
+[Collection(TestCollections.NativeMemoryGauge)]
 public sealed class AudioGraphZeroAllocationTests
 {
     private const int Iterations = 2000;

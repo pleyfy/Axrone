@@ -88,7 +88,7 @@ public readonly record struct AudioPlaybackHandle(AudioSourceId SourceId, uint S
 /// </summary>
 public sealed class AudioPlaybackRuntime : IDisposable
 {
-    [StructLayout(LayoutKind.Explicit, Size = 128)]
+    [StructLayout(LayoutKind.Explicit, Size = 192)]
     private struct HardwareVoiceSlot
     {
         [FieldOffset(0)] public AudioSourceId SourceId;
@@ -105,7 +105,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
         [FieldOffset(52)] public bool Loop;
         [FieldOffset(53)] public bool IsActive;
         [FieldOffset(64)] public AudioSpatialization Spatial;
-        [FieldOffset(116)] public float DurationRemaining;
+        [FieldOffset(128)] public float DurationRemaining;
     }
 
     private readonly HardwareVoiceSlot[] _voices;
@@ -219,6 +219,11 @@ public sealed class AudioPlaybackRuntime : IDisposable
             voice.StepRate = rate * detuneMultiplier * resampleRatio;
 
             voice.ReadIndex = request.OffsetSeconds.HasValue ? request.OffsetSeconds.Value * clipRate : 0.0;
+            if (request.DurationSeconds is float duration && (!float.IsFinite(duration) || duration < 0.0f))
+            {
+                AudioThrowHelper.ThrowConfig("audio.invalid-duration", "Play duration must be finite and non-negative.");
+            }
+
             voice.DurationRemaining = request.DurationSeconds ?? float.MaxValue;
             voice.Spatial = spatial;
             voice.IsActive = true;
@@ -430,6 +435,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
         int channels = mem.ChannelCount;
 
         double readIdx = voice.ReadIndex;
+        double consumedFrom = readIdx;
         double step = voice.StepRate;
         float leftGain = voice.LeftGain;
         float rightGain = voice.RightGain;
@@ -507,6 +513,21 @@ public sealed class AudioPlaybackRuntime : IDisposable
         }
 
         voice.ReadIndex = readIdx;
+
+        // Scheduled play duration: consume clip-seconds advanced this block
+        // and retire the voice when the window closes. Voices without an
+        // explicit duration keep the MaxValue sentinel and skip the path.
+        if (voice.IsActive && voice.DurationRemaining < float.MaxValue)
+        {
+            int clipRate = mem.SampleRate;
+            double consumed = clipRate > 0 ? (readIdx - consumedFrom) / clipRate : 0.0;
+            voice.DurationRemaining -= (float)consumed;
+            if (voice.DurationRemaining <= 0.0f)
+            {
+                voice.State = AudioPlaybackState.Stopped;
+                voice.IsActive = false;
+            }
+        }
     }
 
     private int AcquireFreeSlot()

@@ -1,5 +1,6 @@
 namespace Axrone.Audio.Tests;
 
+[Collection(TestCollections.NativeMemoryGauge)]
 public sealed class AudioGraphRemovalTests
 {
     private static readonly AudioClipId ClipId = new(5U);
