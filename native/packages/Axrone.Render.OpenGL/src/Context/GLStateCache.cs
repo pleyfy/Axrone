@@ -15,171 +15,171 @@ public sealed class GLStateCache
 
     // Buffer bindings
     /// <summary>Cached GL state value.</summary>
-     public uint BoundArrayBuffer { get; set; }
+    public uint BoundArrayBuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundElementBuffer { get; set; }
+    public uint BoundElementBuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundUniformBuffer { get; set; }
+    public uint BoundUniformBuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundCopyReadBuffer { get; set; }
+    public uint BoundCopyReadBuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundCopyWriteBuffer { get; set; }
+    public uint BoundCopyWriteBuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundPixelPackBuffer { get; set; }
+    public uint BoundPixelPackBuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundPixelUnpackBuffer { get; set; }
+    public uint BoundPixelUnpackBuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundTransformFeedbackBuffer { get; set; }
+    public uint BoundTransformFeedbackBuffer { get; set; }
 
     // Vertex array
     /// <summary>Cached GL state value.</summary>
-     public uint BoundVertexArray { get; set; }
+    public uint BoundVertexArray { get; set; }
 
     // Program
     /// <summary>Cached GL state value.</summary>
-     public uint BoundProgram { get; set; }
+    public uint BoundProgram { get; set; }
 
     // Framebuffers
     /// <summary>Cached GL state value.</summary>
-     public uint BoundReadFramebuffer { get; set; }
+    public uint BoundReadFramebuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundDrawFramebuffer { get; set; }
+    public uint BoundDrawFramebuffer { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BoundRenderbuffer { get; set; }
+    public uint BoundRenderbuffer { get; set; }
 
     // Textures and samplers (per unit)
     /// <summary>Cached GL state value.</summary>
-     public uint ActiveUnit { get; set; }
+    public uint ActiveUnit { get; set; }
     private readonly uint[] _boundTextures2D = new uint[32];
     private readonly uint[] _boundSamplers = new uint[32];
 
     // Viewport and scissor
     /// <summary>Cached GL state value.</summary>
-     public int ViewportX { get; set; }
+    public int ViewportX { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int ViewportY { get; set; }
+    public int ViewportY { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int ViewportWidth { get; set; }
+    public int ViewportWidth { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int ViewportHeight { get; set; }
+    public int ViewportHeight { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int ScissorX { get; set; }
+    public int ScissorX { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int ScissorY { get; set; }
+    public int ScissorY { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int ScissorWidth { get; set; }
+    public int ScissorWidth { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int ScissorHeight { get; set; }
+    public int ScissorHeight { get; set; }
 
     // Depth state
     /// <summary>Cached GL state value.</summary>
-     public bool DepthTestEnabled { get; set; }
+    public bool DepthTestEnabled { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint DepthFunc { get; set; }
+    public uint DepthFunc { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public bool DepthMask { get; set; }
+    public bool DepthMask { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public double ClearDepth { get; set; }
+    public double ClearDepth { get; set; }
 
     // Blend state
     /// <summary>Cached GL state value.</summary>
-     public bool BlendEnabled { get; set; }
+    public bool BlendEnabled { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BlendSrcRGB { get; set; }
+    public uint BlendSrcRGB { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BlendDstRGB { get; set; }
+    public uint BlendDstRGB { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BlendSrcAlpha { get; set; }
+    public uint BlendSrcAlpha { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BlendDstAlpha { get; set; }
+    public uint BlendDstAlpha { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BlendEquationRGB { get; set; }
+    public uint BlendEquationRGB { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint BlendEquationAlpha { get; set; }
+    public uint BlendEquationAlpha { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float BlendColorR { get; set; }
+    public float BlendColorR { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float BlendColorG { get; set; }
+    public float BlendColorG { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float BlendColorB { get; set; }
+    public float BlendColorB { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float BlendColorA { get; set; }
+    public float BlendColorA { get; set; }
 
     // Stencil state (per face)
     /// <summary>Cached GL state value.</summary>
-     public bool StencilTestEnabled { get; set; }
+    public bool StencilTestEnabled { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilFuncFront { get; set; }
+    public uint StencilFuncFront { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilFuncBack { get; set; }
+    public uint StencilFuncBack { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int StencilRefFront { get; set; }
+    public int StencilRefFront { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int StencilRefBack { get; set; }
+    public int StencilRefBack { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilMaskFront { get; set; }
+    public uint StencilMaskFront { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilMaskBack { get; set; }
+    public uint StencilMaskBack { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilSfailFront { get; set; }
+    public uint StencilSfailFront { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilDpfailFront { get; set; }
+    public uint StencilDpfailFront { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilDppassFront { get; set; }
+    public uint StencilDppassFront { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilSfailBack { get; set; }
+    public uint StencilSfailBack { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilDpfailBack { get; set; }
+    public uint StencilDpfailBack { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilDppassBack { get; set; }
+    public uint StencilDppassBack { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint StencilWriteMask { get; set; }
+    public uint StencilWriteMask { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int ClearStencil { get; set; }
+    public int ClearStencil { get; set; }
 
     // Cull state
     /// <summary>Cached GL state value.</summary>
-     public bool CullFaceEnabled { get; set; }
+    public bool CullFaceEnabled { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint CullMode { get; set; }
+    public uint CullMode { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public uint FrontFace { get; set; }
+    public uint FrontFace { get; set; }
 
     // Color state
     /// <summary>Cached GL state value.</summary>
-     public bool ColorMaskR { get; set; }
+    public bool ColorMaskR { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public bool ColorMaskG { get; set; }
+    public bool ColorMaskG { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public bool ColorMaskB { get; set; }
+    public bool ColorMaskB { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public bool ColorMaskA { get; set; }
+    public bool ColorMaskA { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float ClearColorR { get; set; }
+    public float ClearColorR { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float ClearColorG { get; set; }
+    public float ClearColorG { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float ClearColorB { get; set; }
+    public float ClearColorB { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float ClearColorA { get; set; }
+    public float ClearColorA { get; set; }
 
     // Polygon offset
     /// <summary>Cached GL state value.</summary>
-     public bool PolygonOffsetFillEnabled { get; set; }
+    public bool PolygonOffsetFillEnabled { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float PolygonOffsetFactor { get; set; }
+    public float PolygonOffsetFactor { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public float PolygonOffsetUnits { get; set; }
+    public float PolygonOffsetUnits { get; set; }
 
     // Line width
     /// <summary>Cached GL state value.</summary>
-     public float LineWidth { get; set; }
+    public float LineWidth { get; set; }
 
     // Pixel store
     /// <summary>Cached GL state value.</summary>
-     public int UnpackAlignment { get; set; }
+    public int UnpackAlignment { get; set; }
     /// <summary>Cached GL state value.</summary>
-     public int PackAlignment { get; set; }
+    public int PackAlignment { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="GLStateCache"/> class.
