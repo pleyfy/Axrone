@@ -51,8 +51,29 @@ public sealed class TweenStore : IDisposable
     private readonly Lock _gate = new();
     private int _disposed;
 
+    private int _faultCount;
+    private int _lastFaultSlot = -1;
+    private uint _lastFaultGeneration;
+    private Exception? _lastFault;
+
     /// <summary>Slot capacity.</summary>
     public int Capacity { get; }
+
+    /// <summary>
+    /// Tweens retired by a throwing callback or evaluator since the store was created. Every
+    /// such retirement is also written to <see cref="LastFault"/>, so a fault stays observable
+    /// even when the tick was driven without a settlement hook.
+    /// </summary>
+    public int FaultCount => Volatile.Read(ref _faultCount);
+
+    /// <summary>Most recent callback fault, or <c>null</c> when none happened.</summary>
+    public Exception? LastFault => Volatile.Read(ref _lastFault);
+
+    /// <summary>Slot that produced <see cref="LastFault"/>; -1 when no fault was recorded.</summary>
+    public int LastFaultSlot => Volatile.Read(ref _lastFaultSlot);
+
+    /// <summary>Generation the faulting tween held, pairing with <see cref="LastFaultSlot"/>.</summary>
+    public uint LastFaultGeneration => Volatile.Read(ref _lastFaultGeneration);
 
     /// <summary>Creates storage.</summary>
     public TweenStore(int capacity = 1024)
@@ -257,8 +278,9 @@ public sealed class TweenStore : IDisposable
                     {
                         onComplete?.Invoke();
                     }
-                    catch (Exception)
+                    catch (Exception fault)
                     {
+                        RecordFault(slot, generation, fault);
                         settled?.Invoke((uint)slot, generation, false);
                         continue;
                     }
@@ -267,9 +289,10 @@ public sealed class TweenStore : IDisposable
                     completed++;
                 }
             }
-            catch (Exception)
+            catch (Exception fault)
             {
                 uint generation = GenerationOf((uint)slot);
+                RecordFault(slot, generation, fault);
                 if (TryRetire((uint)slot))
                 {
                     settled?.Invoke((uint)slot, generation, false);
@@ -278,6 +301,20 @@ public sealed class TweenStore : IDisposable
         }
 
         return completed;
+    }
+
+    /// <summary>
+    /// Publishes one retired-by-fault tween before bumping the counter, so an observer that
+    /// sees a non-zero <see cref="FaultCount"/> always finds the matching fault record.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RecordFault(int slot, uint generation, Exception fault)
+    {
+        Volatile.Write(ref _lastFaultSlot, slot);
+        Volatile.Write(ref _lastFaultGeneration, generation);
+        Volatile.Write(ref _lastFault, fault);
+        Interlocked.Increment(ref _faultCount);
+        TweenEventSource.Log.FaultOccurred(fault.GetType().Name, fault.Message);
     }
 
     private bool TickSlot(int slot, DurationNs delta, float globalTimeScale)
@@ -532,8 +569,9 @@ public sealed class TweenStore : IDisposable
             onStep?.Invoke();
             onComplete?.Invoke();
         }
-        catch (Exception)
+        catch (Exception fault)
         {
+            RecordFault(i, generation, fault);
             settled?.Invoke((uint)i, generation, false);
             return true;
         }
