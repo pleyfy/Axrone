@@ -18,6 +18,7 @@ public sealed class OpenALOutputBackend : IDisposable
     private readonly uint[] _buffers;
     private readonly uint[] _scratch;
     private readonly bool _preferFloat;
+    private readonly bool _autoPump;
     private bool _useFloat;
     private uint _source;
     private Thread? _pump;
@@ -34,13 +35,15 @@ public sealed class OpenALOutputBackend : IDisposable
     /// <param name="blockFrames">Frames per rendered block.</param>
     /// <param name="bufferCount">Queued buffers, at least two.</param>
     /// <param name="preferFloat">Probe AL_EXT_float32 and upload float when present.</param>
+    /// <param name="autoPump">Spawn the refill thread. False drives <see cref="PumpOnce"/> manually.</param>
     public OpenALOutputBackend(
         AudioSystem system,
         IAudioDriver driver,
         int frequency = 48000,
         int blockFrames = 512,
         int bufferCount = 4,
-        bool preferFloat = true)
+        bool preferFloat = true,
+        bool autoPump = true)
     {
         ArgumentNullException.ThrowIfNull(system);
         ArgumentNullException.ThrowIfNull(driver);
@@ -53,6 +56,7 @@ public sealed class OpenALOutputBackend : IDisposable
         _frequency = frequency;
         _blockFrames = blockFrames;
         _preferFloat = preferFloat;
+        _autoPump = autoPump;
         _floatBlock = new float[blockFrames * 2];
         _shortBlock = new short[blockFrames * 2];
         _buffers = new uint[bufferCount];
@@ -64,7 +68,7 @@ public sealed class OpenALOutputBackend : IDisposable
     public void Start(string? deviceName = null)
     {
         ThrowIfDisposed();
-        if (_pump is not null)
+        if (_pump is not null || _source != 0U)
         {
             return;
         }
@@ -84,6 +88,11 @@ public sealed class OpenALOutputBackend : IDisposable
         _driver.QueueBuffers(_source, _buffers);
         _driver.Play(_source);
 
+        if (!_autoPump)
+        {
+            return;
+        }
+
         _stop = new ManualResetEventSlim(false);
         _pump = new Thread(PumpLoop)
         {
@@ -102,18 +111,26 @@ public sealed class OpenALOutputBackend : IDisposable
         _stop?.Dispose();
         _stop = null;
 
-        if (!_driver.IsOpen)
+        bool deviceOpen = _driver.IsOpen;
+        if (deviceOpen && _source != 0U)
         {
-            return;
+            _driver.StopPlayback(_source);
+            _driver.UnqueueProcessed(_source, _scratch);
+            _driver.DeleteSource(_source);
+            _driver.DeleteBuffers(_buffers);
         }
 
-        _driver.StopPlayback(_source);
-        _driver.UnqueueProcessed(_source, _scratch);
-        _driver.DeleteSource(_source);
-        _driver.DeleteBuffers(_buffers);
+        // Handles are cleared on every path: a device closed underneath us
+        // cannot be deleted from, but leaving stale ids behind would orphan the
+        // next Start() and leak the previous generation.
+        _source = 0U;
         Array.Clear(_buffers);
-        _source = 0;
-        _driver.Close();
+        Array.Clear(_scratch);
+
+        if (deviceOpen)
+        {
+            _driver.Close();
+        }
     }
 
     /// <inheritdoc/>
@@ -132,7 +149,8 @@ public sealed class OpenALOutputBackend : IDisposable
     /// <summary>Runs one refill iteration; the pump thread loops on this.</summary>
     internal void PumpOnce()
     {
-        int count = _driver.UnqueueProcessed(_source, _scratch);
+        uint source = _source;
+        int count = _driver.UnqueueProcessed(source, _scratch);
         for (int i = 0; i < count; i++)
         {
             RenderInto(_scratch[i]);
@@ -140,19 +158,12 @@ public sealed class OpenALOutputBackend : IDisposable
 
         if (count > 0)
         {
-            uint[] ready = _scratch;
-            if (count != ready.Length)
-            {
-                ready = new uint[count];
-                Array.Copy(_scratch, ready, count);
-            }
-
-            _driver.QueueBuffers(_source, ready);
+            _driver.QueueBuffers(source, _scratch.AsSpan(0, count));
         }
 
-        if (_driver.GetSourceState(_source) != AudioDriverSourceState.Playing)
+        if (_driver.GetSourceState(source) != AudioDriverSourceState.Playing)
         {
-            _driver.Play(_source);
+            _driver.Play(source);
         }
     }
 
