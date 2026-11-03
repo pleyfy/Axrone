@@ -207,6 +207,27 @@ public sealed class UiFontParserTests
     }
 
     [Fact]
+    public void RejectsUnknownKernTableVersionInsteadOfReadingItAsNoKerning()
+    {
+        // Positive: version 0 is the only supported header and its pairs stay live.
+        WithFace(UiTestFont.Create(), face =>
+        {
+            face.GetKerning(0x41, 0x56).Should().Be(-80.0f);
+        });
+
+        // Negative: an unknown version used to parse as an empty pair list, hiding the fact that
+        // the whole table was skipped.
+        byte[] badVersion = Clone(UiTestFont.Create());
+        int kern = UiTestFont.TableOffset(badVersion, "kern");
+        badVersion[kern] = 0;
+        badVersion[kern + 1] = 1;
+        ParseError(badVersion).Code.Should().Be(UiFontErrorCode.UnsupportedKernVersion);
+
+        // The offset and code travel together, so the report points at the header byte.
+        ParseError(badVersion).Offset.Should().Be(kern);
+    }
+
+    [Fact]
     public void ValidatesTableAndWholeFontChecksums()
     {
         WithFace(UiTestFont.Create(), static _ => { });

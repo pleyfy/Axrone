@@ -115,7 +115,8 @@ internal static class UiTestFont
         bool withHvar = true,
         bool withMvar = true,
         bool corruptHvar = false,
-        bool corruptMvar = false) =>
+        bool corruptMvar = false,
+        bool identityHvar = false) =>
         CreateCore(
             4,
             false,
@@ -124,7 +125,8 @@ internal static class UiTestFont
             hvar: withHvar,
             mvar: withMvar,
             corruptHvar: corruptHvar,
-            corruptMvar: corruptMvar);
+            corruptMvar: corruptMvar,
+            hvarIdentity: identityHvar);
 
     public static byte[] CreateCff2Tagged()
     {
@@ -158,6 +160,7 @@ internal static class UiTestFont
         bool mvar = false,
         bool corruptHvar = false,
         bool corruptMvar = false,
+        bool hvarIdentity = false,
         bool compositeInstructions = false,
         bool scaledComposite = false,
         bool colrV1 = false,
@@ -284,6 +287,7 @@ internal static class UiTestFont
             mvar,
             corruptHvar,
             corruptMvar,
+            hvarIdentity,
             compositeInstructions,
             scaledComposite,
             colrV1,
@@ -473,6 +477,7 @@ internal static class UiTestFont
         bool mvar = false,
         bool corruptHvar = false,
         bool corruptMvar = false,
+        bool hvarIdentity = false,
         bool compositeInstructions = false,
         bool scaledComposite = false,
         bool colrV1 = false,
@@ -542,7 +547,9 @@ internal static class UiTestFont
 
         if (hvar)
         {
-            tables.Add(("HVAR", BuildHvar(glyphs.Count, corruptHvar)));
+            tables.Add(("HVAR", hvarIdentity
+                ? BuildIdentityHvar(glyphs.Count)
+                : BuildHvar(glyphs.Count, corruptHvar)));
         }
 
         if (mvar)
@@ -1383,6 +1390,52 @@ internal static class UiTestFont
         table.AddRange(store);
         table.AddRange(advanceMap);
         table.AddRange(lsbMap);
+        return [.. table];
+    }
+
+    /// <summary>
+    /// HVAR without any delta set index map: glyph ids index the store directly, so the store
+    /// carries one item data set per glyph with a per-glyph delta of <c>glyph * 10</c>.
+    /// </summary>
+    private static byte[] BuildIdentityHvar(int glyphCount)
+    {
+        var table = new List<byte>(20 + BuildIdentityItemVariationStore(glyphCount).Length);
+        WriteU32(table, 0x00010000u);
+        WriteU32(table, 20u);
+        WriteU32(table, 0u);
+        WriteU32(table, 0u);
+        WriteU32(table, 0u);
+        table.AddRange(BuildIdentityItemVariationStore(glyphCount));
+        return [.. table];
+    }
+
+    private static byte[] BuildIdentityItemVariationStore(int glyphCount)
+    {
+        int regionListOffset = 8 + (glyphCount * 4);
+        const int ItemDataSize = 8;
+        var table = new List<byte>(regionListOffset + 10 + (glyphCount * (ItemDataSize + 1)));
+        WriteU16(table, 1);
+        WriteU32(table, (uint)regionListOffset);
+        WriteU16(table, (ushort)glyphCount);
+        for (int glyph = 0; glyph < glyphCount; glyph++)
+        {
+            WriteU32(table, (uint)(regionListOffset + 10 + (glyph * (ItemDataSize + 1))));
+        }
+
+        WriteU16(table, 1);
+        WriteU16(table, 1);
+        WriteI16(table, 0);
+        WriteI16(table, 16384);
+        WriteI16(table, 16384);
+        for (int glyph = 0; glyph < glyphCount; glyph++)
+        {
+            WriteU16(table, 1);
+            WriteU16(table, 0);
+            WriteU16(table, 1);
+            WriteU16(table, 0);
+            table.Add((byte)(sbyte)(glyph * 10));
+        }
+
         return [.. table];
     }
 

@@ -28,6 +28,8 @@ public enum UiFontErrorCode
 
     InvalidKern,
 
+    UnsupportedKernVersion,
+
     InvalidLoca,
 
     InvalidGlyph,

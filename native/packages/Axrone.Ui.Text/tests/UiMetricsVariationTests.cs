@@ -105,6 +105,96 @@ public sealed class UiMetricsVariationTests
     }
 
     [Fact]
+    public void IdentityHvarAppliesPerGlyphDeltasWithoutAMap()
+    {
+        WithProvider(UiTestFont.CreateMetricsVariation(identityHvar: true), out UiFontProvider provider, out UiFontFaceId face, out _);
+        _ = provider.TryGetFace(face, out UiFontFace? fontFace);
+
+        fontFace!.TryGetGlyphMetrics(0x41, out UiGlyphMetrics defaultA).Should().BeTrue();
+        defaultA.Advance.Should().Be(600.0f);
+
+        provider.SetVariation(face, [new UiFontAxisValue(Weight, 900.0f)], out UiFontError error)
+            .Should().BeTrue(error.Message);
+
+        // Glyph 2 and glyph 3 index item data sets 2 and 3, whose deltas are glyph * 10.
+        fontFace.TryGetGlyphMetrics(0x41, out UiGlyphMetrics variedA).Should().BeTrue();
+        variedA.Advance.Should().Be(620.0f);
+        fontFace.TryGetGlyphMetrics(0x56, out UiGlyphMetrics variedV).Should().BeTrue();
+        variedV.Advance.Should().Be(630.0f);
+    }
+
+    [Fact]
+    public void RejectsIdentityHvarWhoseStoreDoesNotCoverTheGlyphs()
+    {
+        byte[] font = UiTestFont.CreateMetricsVariation(identityHvar: true);
+
+        // Same header, but the store now answers only outer index 0: glyph ids past it would
+        // silently read as a zero delta, so the face is refused at parse instead.
+        int store = UiTestFont.TableOffset(font, "HVAR") + 20;
+        font[store + 6] = 0;
+        font[store + 7] = 1;
+
+        ParseError(font).Code.Should().Be(UiFontErrorCode.InvalidVariation);
+    }
+
+    [Fact]
+    public void RejectsHvarMapEntryOutsideTheItemVariationStore()
+    {
+        byte[] font = UiTestFont.CreateMetricsVariation();
+        int hvar = UiTestFont.TableOffset(font, "HVAR");
+
+        // HVAR header (20) + store (32) + map header (4): the first advance map entry.
+        int entry = hvar + 20 + 32 + 4;
+        font[entry] = 2;
+
+        UiFontError error = ParseError(font);
+        error.Code.Should().Be(UiFontErrorCode.InvalidVariation);
+        error.Offset.Should().Be(entry);
+    }
+
+    [Fact]
+    public void RejectsMalformedVariationRegionTriplet()
+    {
+        byte[] font = UiTestFont.CreateMetricsVariation();
+        int hvar = UiTestFont.TableOffset(font, "HVAR");
+
+        // Store region cuts sit at HVAR+20+16 (start) .. +21 (end): set end below the peak.
+        font[hvar + 20 + 20] = 0x20;
+        font[hvar + 20 + 21] = 0x00;
+
+        UiFontError error = ParseError(font);
+        error.Code.Should().Be(UiFontErrorCode.InvalidVariation);
+
+        // The report points at the start of the offending cut triple, not at the patched byte.
+        error.Offset.Should().Be(hvar + 20 + 16);
+    }
+
+    [Fact]
+    public void MalformedRegionTripletYieldsNoDeltaInsteadOfTheFullOne()
+    {
+        // The same cuts evaluated directly: a region whose end sits below its peak is refused
+        // with a zero factor, so a stray tuple can never apply its whole delta.
+        UiVariationMath.TryAxisFactor(1.0f, 0.0f, 1.0f, 0.5f, out float broken).Should().BeFalse();
+        broken.Should().Be(0.0f);
+
+        // Positive counterpart: a well-formed triplet still interpolates to its full factor.
+        UiVariationMath.TryAxisFactor(1.0f, 0.0f, 1.0f, 1.0f, out float valid).Should().BeTrue();
+        valid.Should().Be(1.0f);
+    }
+
+    [Fact]
+    public void ZeroPeakRegionIgnoresTheAxisInsteadOfRefusingIt()
+    {
+        // Positive/negative pair for the peak == 0 rule: the axis contributes a neutral factor
+        // whatever the cuts say, and a straddling cut pair is only malformed for a real peak.
+        UiVariationMath.TryAxisFactor(0.5f, -0.5f, 0.0f, 0.5f, out float ignored).Should().BeTrue();
+        ignored.Should().Be(1.0f);
+
+        UiVariationMath.TryAxisFactor(0.5f, -0.5f, 0.5f, 0.5f, out float straddling).Should().BeFalse();
+        straddling.Should().Be(0.0f);
+    }
+
+    [Fact]
     public void MetricVariationIsDeterministicAndAllocationFree()
     {
         WithProvider(UiTestFont.CreateMetricsVariation(), out UiFontProvider provider, out UiFontFaceId face, out _);
