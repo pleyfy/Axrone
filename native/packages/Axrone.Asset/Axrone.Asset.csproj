@@ -41,7 +41,8 @@
          (AssetError.Code, AssetCodecFailure.CodeOf) or is isolated and
          surfaced; the default data codec distinguishes foreign payloads
          (asset.codec.tag.unknown, asset.codec.payload.empty) from broken
-         ones (asset.codec.json.invalid). -->
+         ones (asset.codec.json.invalid) on both the tagged-object path and
+         the typed-JSON path. -->
     <NoWarn>$(NoWarn);CA1031</NoWarn>
     <!-- CA1710: Exception names mirror the web asset contract (AssetError,
          AssetConfigurationError); renaming would break the contract. -->
