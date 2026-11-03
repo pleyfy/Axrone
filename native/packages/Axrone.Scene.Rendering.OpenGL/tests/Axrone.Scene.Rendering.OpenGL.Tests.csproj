@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Axrone.Scene.Rendering.OpenGL.csproj" />
     <ProjectReference Include="../../Axrone.Render.OpenGL.Mock/Axrone.Render.OpenGL.Mock.csproj" />
   </ItemGroup>
