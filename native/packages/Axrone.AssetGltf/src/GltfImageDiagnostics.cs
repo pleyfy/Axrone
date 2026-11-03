@@ -51,6 +51,12 @@ public enum GltfImageDecodeFailure : byte
 
     /// <summary>A registered transcoder refused or failed the payload.</summary>
     TranscoderFailed = 10,
+
+    /// <summary>The texture references no image; there is nothing to decode.</summary>
+    SourceMissing = 11,
+
+    /// <summary>No decoder is linked for the container family carried by the payload.</summary>
+    DecoderMissing = 12,
 }
 
 /// <summary>

@@ -56,26 +56,34 @@ public readonly struct Asset2DImportResult<TCoordPolicy>
     /// <summary>Failure message.</summary>
     public string? ErrorMessage { get; }
 
+    /// <summary>Stable machine code for the failure; null on success or legacy message-only failures.</summary>
+    public string? ErrorCode { get; }
+
     /// <summary>Whether the import succeeded.</summary>
     [MemberNotNullWhen(true, nameof(Atlas))]
     public bool IsSuccess => Kind == ResultKind.Atlas && Atlas is not null;
 
-    private Asset2DImportResult(ResultKind kind, SpriteAtlas<TCoordPolicy>? atlas, string? errorMessage)
+    private Asset2DImportResult(
+        ResultKind kind,
+        SpriteAtlas<TCoordPolicy>? atlas,
+        string? errorMessage,
+        string? errorCode)
     {
         Kind = kind;
         Atlas = atlas;
         ErrorMessage = errorMessage;
+        ErrorCode = errorCode;
     }
 
     /// <summary>Creates a success.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Asset2DImportResult<TCoordPolicy> Success(SpriteAtlas<TCoordPolicy> atlas) =>
-        new(ResultKind.Atlas, atlas, null);
+        new(ResultKind.Atlas, atlas, null, null);
 
-    /// <summary>Creates a failure.</summary>
+    /// <summary>Creates a failure with an optional stable machine code.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Asset2DImportResult<TCoordPolicy> Failure(string message) =>
-        new(ResultKind.Failure, null, message);
+    public static Asset2DImportResult<TCoordPolicy> Failure(string message, string? errorCode = null) =>
+        new(ResultKind.Failure, null, message, errorCode);
 
     /// <summary>Dispatches on the discriminant.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -91,7 +99,70 @@ public readonly struct Asset2DImportResult<TCoordPolicy>
     }
 }
 
-/// <summary>Importer policy contract: match, then import.</summary>
+/// <summary>What one importer probe concluded about a source.</summary>
+public enum Asset2DProbeVerdict : byte
+{
+    /// <summary>The source belongs to a different format; the importer declines it.</summary>
+    NotMine = 0,
+
+    /// <summary>The source is this format and structurally readable.</summary>
+    Mine = 1,
+
+    /// <summary>The source is this format but broken; the coded reason is carried.</summary>
+    MineButUnreadable = 2,
+}
+
+/// <summary>
+/// Coded probe outcome. Only <see cref="Asset2DProbeVerdict.NotMine"/> may collapse into a
+/// "not my format" answer; a broken document keeps its reason so the chain can report it.
+/// </summary>
+/// <param name="Verdict">Probe conclusion.</param>
+/// <param name="ErrorCode">Stable machine code, when the verdict carries a failure.</param>
+/// <param name="Reason">Human-readable detail, when the verdict carries a failure.</param>
+public readonly record struct Asset2DProbe(Asset2DProbeVerdict Verdict, string? ErrorCode, string? Reason)
+{
+    /// <summary>The importer declines the source.</summary>
+    public static Asset2DProbe Decline() => new(Asset2DProbeVerdict.NotMine, null, null);
+
+    /// <summary>The importer recognises a readable source.</summary>
+    public static Asset2DProbe Accept() => new(Asset2DProbeVerdict.Mine, null, null);
+
+    /// <summary>The importer recognises the source but cannot parse it.</summary>
+    public static Asset2DProbe Unreadable(string errorCode, string reason) =>
+        new(Asset2DProbeVerdict.MineButUnreadable, errorCode, reason);
+}
+
+/// <summary>Shared probe helpers for the JSON atlas importers.</summary>
+internal static class Asset2DProbeHelper
+{
+    /// <summary>Stable code for a JSON document that is recognised as ours but cannot be read.</summary>
+    public const string MalformedJson = "asset2d.atlas.json.malformed";
+
+    /// <summary>Stable code for a failure raised while importing a recognised source.</summary>
+    public const string ImportFailed = "asset2d.atlas.import.failed";
+
+    /// <summary>Stable code for a source every importer in the chain declined.</summary>
+    public const string NoImporter = "asset2d.importer.not-found";
+
+    /// <summary>Whether the payload opens as a JSON object or array (after BOM and whitespace).</summary>
+    public static bool StartsAsJson(ReadOnlySpan<byte> content)
+    {
+        int index = 0;
+        if (content.Length >= 3 && content[0] == 0xEF && content[1] == 0xBB && content[2] == 0xBF)
+        {
+            index = 3;
+        }
+
+        while (index < content.Length && content[index] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+        {
+            index++;
+        }
+
+        return index < content.Length && content[index] is (byte)'{' or (byte)'[';
+    }
+}
+
+/// <summary>Importer policy contract: probe, then import.</summary>
 public interface IAssetImporterPolicy<TCoordPolicy>
     where TCoordPolicy : struct, ICoordinatePolicy
 {
@@ -103,6 +174,9 @@ public interface IAssetImporterPolicy<TCoordPolicy>
 
     /// <summary>Whether this importer accepts the source.</summary>
     static abstract bool CanImport(in AssetImportContext context);
+
+    /// <summary>Probes the source and keeps the coded reason when the source is ours but broken.</summary>
+    static abstract Asset2DProbe Probe(in AssetImportContext context);
 
     /// <summary>Imports the source.</summary>
     static abstract Asset2DImportResult<TCoordPolicy> Import(in AssetImportContext context);
@@ -120,18 +194,34 @@ public readonly struct ImporterChain<TPrimary, TSecondary, TCoordPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Asset2DImportResult<TCoordPolicy> Import(in AssetImportContext context)
     {
-        if (TPrimary.CanImport(in context))
+        Asset2DProbe primary = TPrimary.Probe(in context);
+        if (primary.Verdict == Asset2DProbeVerdict.Mine)
         {
             return TPrimary.Import(in context);
         }
 
-        if (TSecondary.CanImport(in context))
+        Asset2DProbe secondary = TSecondary.Probe(in context);
+        if (secondary.Verdict == Asset2DProbeVerdict.Mine)
         {
             return TSecondary.Import(in context);
         }
 
+        Asset2DProbe cause = primary.Verdict == Asset2DProbeVerdict.MineButUnreadable
+            ? primary
+            : secondary.Verdict == Asset2DProbeVerdict.MineButUnreadable
+                ? secondary
+                : default;
+
+        if (cause.Verdict == Asset2DProbeVerdict.MineButUnreadable)
+        {
+            return Asset2DImportResult<TCoordPolicy>.Failure(
+                $"No importer could read the asset at '{context.Path.ToString()}': {cause.Reason}",
+                cause.ErrorCode);
+        }
+
         return Asset2DImportResult<TCoordPolicy>.Failure(
-            $"No registered importer could process asset at: '{context.Path.ToString()}'");
+            $"No registered importer could process asset at: '{context.Path.ToString()}'",
+            Asset2DProbeHelper.NoImporter);
     }
 }
 
@@ -148,15 +238,30 @@ public readonly struct SpriteAtlasJsonImporter<TCoordPolicy> : IAssetImporterPol
     public static int Priority => 20;
 
     /// <inheritdoc/>
-    public static bool CanImport(in AssetImportContext context)
+    public static bool CanImport(in AssetImportContext context) =>
+        Probe(in context).Verdict != Asset2DProbeVerdict.NotMine;
+
+    /// <inheritdoc/>
+    public static Asset2DProbe Probe(in AssetImportContext context)
     {
+        ReadOnlySpan<byte> content = context.Content;
+        if (!Asset2DProbeHelper.StartsAsJson(content))
+        {
+            return Asset2DProbe.Decline();
+        }
+
         try
         {
-            return IsCanonicalJsonPayload(context.Content);
+            return IsCanonicalJsonPayload(content) ? Asset2DProbe.Accept() : Asset2DProbe.Decline();
         }
-        catch
+        catch (JsonException exception)
         {
-            return false;
+            string position = exception.Path is { Length: > 0 } path
+                ? $" at path '{path}'"
+                : string.Empty;
+            return Asset2DProbe.Unreadable(
+                Asset2DProbeHelper.MalformedJson,
+                $"Canonical atlas JSON is malformed{position}: {exception.Message}");
         }
     }
 
@@ -271,9 +376,18 @@ public readonly struct SpriteAtlasJsonImporter<TCoordPolicy> : IAssetImporterPol
 
             return Asset2DImportResult<TCoordPolicy>.Success(builder.Build());
         }
-        catch (Exception ex)
+        catch (Asset2DException exception)
         {
-            return Asset2DImportResult<TCoordPolicy>.Failure(ex.Message);
+            return Asset2DImportResult<TCoordPolicy>.Failure(
+                $"{ImporterId} rejected '{context.Path.ToString()}': {exception.Message}",
+                exception.Code);
+        }
+        catch (Exception exception) when (
+            exception is JsonException or NotSupportedException or FormatException or InvalidOperationException)
+        {
+            return Asset2DImportResult<TCoordPolicy>.Failure(
+                $"{ImporterId} could not read '{context.Path.ToString()}': {exception.Message}",
+                Asset2DProbeHelper.ImportFailed);
         }
     }
 
@@ -522,97 +636,90 @@ public readonly struct SpriteAtlasJsonImporter<TCoordPolicy> : IAssetImporterPol
 
     private static bool IsCanonicalJsonPayload(ReadOnlySpan<byte> utf8)
     {
-        try
-        {
-            var reader = new Utf8JsonReader(utf8);
-            bool hasId = false;
-            bool hasTextureId = false;
-            bool hasFrames = false;
-            bool hasWidth = false;
-            bool hasHeight = false;
-            bool inTextureSize = false;
-            int depth = 0;
+        var reader = new Utf8JsonReader(utf8);
+        bool hasId = false;
+        bool hasTextureId = false;
+        bool hasFrames = false;
+        bool hasWidth = false;
+        bool hasHeight = false;
+        bool inTextureSize = false;
+        int depth = 0;
 
-            while (reader.Read())
+        while (reader.Read())
+        {
+            switch (reader.TokenType)
             {
-                switch (reader.TokenType)
-                {
-                    case JsonTokenType.StartObject:
-                    case JsonTokenType.StartArray:
-                        depth++;
-                        break;
-                    case JsonTokenType.EndObject:
-                        depth--;
-                        if (depth == 1)
-                        {
-                            inTextureSize = false;
-                        }
+                case JsonTokenType.StartObject:
+                case JsonTokenType.StartArray:
+                    depth++;
+                    break;
+                case JsonTokenType.EndObject:
+                    depth--;
+                    if (depth == 1)
+                    {
+                        inTextureSize = false;
+                    }
 
+                    break;
+                case JsonTokenType.EndArray:
+                    depth--;
+                    break;
+                case JsonTokenType.PropertyName:
+                    if (depth != 1 && !inTextureSize)
+                    {
                         break;
-                    case JsonTokenType.EndArray:
-                        depth--;
-                        break;
-                    case JsonTokenType.PropertyName:
-                        if (depth != 1 && !inTextureSize)
-                        {
-                            break;
-                        }
+                    }
 
-                        if (!inTextureSize)
+                    if (!inTextureSize)
+                    {
+                        if (reader.ValueTextEquals("id"u8))
                         {
-                            if (reader.ValueTextEquals("id"u8))
+                            reader.Read();
+                            hasId = reader.TokenType == JsonTokenType.String;
+                        }
+                        else if (reader.ValueTextEquals("textureId"u8))
+                        {
+                            reader.Read();
+                            hasTextureId = reader.TokenType == JsonTokenType.String;
+                        }
+                        else if (reader.ValueTextEquals("textureSize"u8))
+                        {
+                            reader.Read();
+                            if (reader.TokenType == JsonTokenType.StartObject)
                             {
-                                reader.Read();
-                                hasId = reader.TokenType == JsonTokenType.String;
-                            }
-                            else if (reader.ValueTextEquals("textureId"u8))
-                            {
-                                reader.Read();
-                                hasTextureId = reader.TokenType == JsonTokenType.String;
-                            }
-                            else if (reader.ValueTextEquals("textureSize"u8))
-                            {
-                                reader.Read();
-                                if (reader.TokenType == JsonTokenType.StartObject)
-                                {
-                                    depth++;
-                                    inTextureSize = true;
-                                }
-                            }
-                            else if (reader.ValueTextEquals("frames"u8))
-                            {
-                                reader.Read();
-                                hasFrames = reader.TokenType == JsonTokenType.StartArray;
+                                depth++;
+                                inTextureSize = true;
                             }
                         }
-                        else if (depth == 2)
+                        else if (reader.ValueTextEquals("frames"u8))
                         {
-                            if (reader.ValueTextEquals("width"u8))
-                            {
-                                reader.Read();
-                                hasWidth = reader.TokenType == JsonTokenType.Number;
-                            }
-                            else if (reader.ValueTextEquals("height"u8))
-                            {
-                                reader.Read();
-                                hasHeight = reader.TokenType == JsonTokenType.Number;
-                            }
+                            reader.Read();
+                            hasFrames = reader.TokenType == JsonTokenType.StartArray;
                         }
+                    }
+                    else if (depth == 2)
+                    {
+                        if (reader.ValueTextEquals("width"u8))
+                        {
+                            reader.Read();
+                            hasWidth = reader.TokenType == JsonTokenType.Number;
+                        }
+                        else if (reader.ValueTextEquals("height"u8))
+                        {
+                            reader.Read();
+                            hasHeight = reader.TokenType == JsonTokenType.Number;
+                        }
+                    }
 
-                        break;
-                    default:
-                        break;
-                }
-
-                if (hasId && hasTextureId && hasFrames && hasWidth && hasHeight)
-                {
-                    return true;
-                }
+                    break;
+                default:
+                    break;
             }
-        }
-        catch
-        {
-            return false;
+
+            if (hasId && hasTextureId && hasFrames && hasWidth && hasHeight)
+            {
+                return true;
+            }
         }
 
         return false;
@@ -632,9 +739,31 @@ public readonly struct TexturePackerSpriteAtlasImporter<TCoordPolicy> : IAssetIm
     public static int Priority => 10;
 
     /// <inheritdoc/>
-    public static bool CanImport(in AssetImportContext context)
+    public static bool CanImport(in AssetImportContext context) =>
+        Probe(in context).Verdict != Asset2DProbeVerdict.NotMine;
+
+    /// <inheritdoc/>
+    public static Asset2DProbe Probe(in AssetImportContext context)
     {
-        return IsTexturePackerJson(context.Content);
+        ReadOnlySpan<byte> content = context.Content;
+        if (!Asset2DProbeHelper.StartsAsJson(content))
+        {
+            return Asset2DProbe.Decline();
+        }
+
+        try
+        {
+            return IsTexturePackerJson(content) ? Asset2DProbe.Accept() : Asset2DProbe.Decline();
+        }
+        catch (JsonException exception)
+        {
+            string position = exception.Path is { Length: > 0 } path
+                ? $" at path '{path}'"
+                : string.Empty;
+            return Asset2DProbe.Unreadable(
+                Asset2DProbeHelper.MalformedJson,
+                $"TexturePacker atlas JSON is malformed{position}: {exception.Message}");
+        }
     }
 
     /// <inheritdoc/>
@@ -796,9 +925,18 @@ public readonly struct TexturePackerSpriteAtlasImporter<TCoordPolicy> : IAssetIm
 
             return Asset2DImportResult<TCoordPolicy>.Success(builder.Build());
         }
-        catch (Exception ex)
+        catch (Asset2DException exception)
         {
-            return Asset2DImportResult<TCoordPolicy>.Failure(ex.Message);
+            return Asset2DImportResult<TCoordPolicy>.Failure(
+                $"{ImporterId} rejected '{context.Path.ToString()}': {exception.Message}",
+                exception.Code);
+        }
+        catch (Exception exception) when (
+            exception is JsonException or NotSupportedException or FormatException or InvalidOperationException)
+        {
+            return Asset2DImportResult<TCoordPolicy>.Failure(
+                $"{ImporterId} could not read '{context.Path.ToString()}': {exception.Message}",
+                Asset2DProbeHelper.ImportFailed);
         }
     }
 
@@ -926,42 +1064,35 @@ public readonly struct TexturePackerSpriteAtlasImporter<TCoordPolicy> : IAssetIm
 
     private static bool IsTexturePackerJson(ReadOnlySpan<byte> utf8)
     {
-        try
-        {
-            var reader = new Utf8JsonReader(utf8);
-            bool hasFramesObject = false;
-            bool hasMeta = false;
+        var reader = new Utf8JsonReader(utf8);
+        bool hasFramesObject = false;
+        bool hasMeta = false;
 
-            while (reader.Read())
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.PropertyName)
             {
-                if (reader.TokenType == JsonTokenType.PropertyName)
+                if (reader.ValueTextEquals("frames"u8))
                 {
-                    if (reader.ValueTextEquals("frames"u8))
+                    reader.Read();
+                    if (reader.TokenType == JsonTokenType.StartObject)
                     {
-                        reader.Read();
-                        if (reader.TokenType == JsonTokenType.StartObject)
-                        {
-                            hasFramesObject = true;
-                        }
-                    }
-                    else if (reader.ValueTextEquals("meta"u8))
-                    {
-                        hasMeta = true;
+                        hasFramesObject = true;
                     }
                 }
-
-                if (hasFramesObject && hasMeta)
+                else if (reader.ValueTextEquals("meta"u8))
                 {
-                    return true;
+                    hasMeta = true;
                 }
             }
 
-            return hasFramesObject;
+            if (hasFramesObject && hasMeta)
+            {
+                return true;
+            }
         }
-        catch
-        {
-            return false;
-        }
+
+        return hasFramesObject;
     }
 }
 
