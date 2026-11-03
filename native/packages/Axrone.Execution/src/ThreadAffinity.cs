@@ -19,11 +19,45 @@ using System.Runtime.Versioning;
 /// <para>
 /// Platform coverage: Windows and Linux only. Every other target (macOS, the
 /// browser-hosted runtime, a platform this build does not know) is a documented
-/// no-op that reports <c>false</c> — a caller that treats the result as a
-/// requirement is asking for something the BCL cannot promise cross-platform
-/// either.
+/// no-op reporting <see cref="AffinityResult.UnsupportedPlatform"/> — a caller
+/// that treats the result as a requirement is asking for something the BCL
+/// cannot promise cross-platform either.
+/// </para>
+/// <para>
+/// Every non-pinned answer is coded: an out-of-range core, an unknown platform, an
+/// OS refusal, a missing ABI, and an unexpected platform fault are separate outcomes,
+/// so a caller can tell "the OS said no" from "this deployment cannot pin at all".
 /// </para>
 /// </remarks>
+/// <summary>
+/// Why a pinning request ended the way it did. The distinction matters: an OS that refused a
+/// mask and a deployment whose affinity ABI is missing both leave the thread unpinned, but only
+/// one of them is a broken install worth reporting.
+/// </summary>
+internal enum AffinityResult : byte
+{
+    /// <summary>No request was made (default value).</summary>
+    NotAttempted,
+
+    /// <summary>The OS accepted the mask.</summary>
+    Pinned,
+
+    /// <summary>The core id is outside the range the platform can encode.</summary>
+    OutOfRange,
+
+    /// <summary>This build has no affinity ABI for the running platform.</summary>
+    UnsupportedPlatform,
+
+    /// <summary>The OS rejected the mask for an in-range core.</summary>
+    DeclinedByOs,
+
+    /// <summary>kernel32/libc or its entry point is missing: the pin can never happen here.</summary>
+    AbiUnavailable,
+
+    /// <summary>The platform raised something unexpected while probing.</summary>
+    PlatformFault,
+}
+
 internal static partial class ThreadAffinityScope
 {
     /// <summary>Windows encodes affinity as a 64-bit mask.</summary>
@@ -43,16 +77,17 @@ internal static partial class ThreadAffinityScope
     /// </summary>
     /// <param name="coreId">Zero-based logical processor id.</param>
     /// <returns>
-    /// <c>true</c> when the OS accepted the mask; <c>false</c> for an
-    /// out-of-range core, an unsupported platform, or a rejected call. Never
-    /// throws: a failed pin must not take the worker down with it.
+    /// Why the thread ended up pinned or not: <see cref="AffinityResult.Pinned"/> only when the
+    /// OS accepted the mask. A refused mask, an unsupported platform, an out-of-range core and a
+    /// missing ABI are four different answers, and never throws — a failed pin must not take the
+    /// worker down with it.
     /// </returns>
     [SuppressMessage(
         "Design",
         "CA1031:Do not catch general exception types",
-        Justification = "Probing a platform ABI must never propagate: a rejected mask, a missing entry point and a platform fault all degrade to 'not pinned'.")]
+        Justification = "Probing a platform ABI must never propagate, but it is never discarded either: each exception class becomes a coded AffinityResult the caller can act on.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool TryPinCurrentThread(int coreId)
+    internal static AffinityResult PinCurrentThread(int coreId)
     {
         try
         {
@@ -62,16 +97,23 @@ internal static partial class ThreadAffinityScope
             if (OperatingSystem.IsLinux())
                 return TryPinLinux(coreId);
 
-            return false;
+            return AffinityResult.UnsupportedPlatform;
         }
-        catch
+        catch (Exception fault)
         {
-            // Deliberate: DllNotFoundException, EntryPointNotFoundException and
-            // anything the platform raises on a rejected mask all mean the same
-            // thing here — the request is advisory, so report it as declined.
-            return false;
+            return OutcomeFrom(fault);
         }
     }
+
+    /// <summary>
+    /// Codes a caught probe exception. A missing module or entry point means the affinity ABI is
+    /// absent from this deployment, so pinning can never happen however often it is retried;
+    /// anything else is an unexpected platform fault. Neither is reported as an OS refusal.
+    /// </summary>
+    internal static AffinityResult OutcomeFrom(Exception fault) =>
+        fault is DllNotFoundException or EntryPointNotFoundException
+            ? AffinityResult.AbiUnavailable
+            : AffinityResult.PlatformFault;
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetCurrentThread")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
@@ -89,26 +131,30 @@ internal static partial class ThreadAffinityScope
     private static unsafe partial int SchedSetAffinity(int pid, nuint cpuSetSize, ulong* mask);
 
     [SupportedOSPlatform("windows")]
-    private static bool TryPinWindows(int coreId)
+    private static AffinityResult TryPinWindows(int coreId)
     {
         if ((uint)coreId > MaxWindowsCoreId)
-            return false;
+            return AffinityResult.OutOfRange;
 
         nuint thread = GetCurrentThread();
-        return SetThreadAffinityMask(thread, (nuint)(1UL << coreId)) != 0;
+        return SetThreadAffinityMask(thread, (nuint)(1UL << coreId)) != 0
+            ? AffinityResult.Pinned
+            : AffinityResult.DeclinedByOs;
     }
 
     [SupportedOSPlatform("linux")]
-    private static unsafe bool TryPinLinux(int coreId)
+    private static unsafe AffinityResult TryPinLinux(int coreId)
     {
         if ((uint)coreId > MaxLinuxCoreId)
-            return false;
+            return AffinityResult.OutOfRange;
 
         ulong* mask = stackalloc ulong[LinuxCpuSetWords];
         new Span<ulong>(mask, LinuxCpuSetWords).Clear();
         mask[coreId >> 6] = 1UL << (coreId & 63);
 
         // pid 0 addresses the calling thread, which is the thread being pinned.
-        return SchedSetAffinity(0, LinuxCpuSetBytes, mask) == 0;
+        return SchedSetAffinity(0, LinuxCpuSetBytes, mask) == 0
+            ? AffinityResult.Pinned
+            : AffinityResult.DeclinedByOs;
     }
 }

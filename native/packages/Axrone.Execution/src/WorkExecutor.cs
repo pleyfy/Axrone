@@ -130,12 +130,24 @@ public sealed class WorkExecutor<TCommand, TContext, TProcessor, TBackoff, TTele
     private TContext _context;
     private ExceptionDispatchInfo? _faultInfo;
     private int _disposed;
+    private int _affinityResult;
 
     /// <summary>Ring slot capacity.</summary>
     public nuint Capacity
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _capacity;
+    }
+
+    /// <summary>
+    /// Coded outcome of the worker's startup pinning attempt. <see cref="AffinityResult.NotAttempted"/>
+    /// until the worker reports, and stays unpinned-but-explained when the OS declines the mask, the
+    /// platform has no affinity ABI, or the deployment is missing it.
+    /// </summary>
+    internal AffinityResult WorkerAffinity
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => (AffinityResult)Volatile.Read(ref _affinityResult);
     }
 
     /// <summary>Lifecycle state.</summary>
@@ -481,12 +493,13 @@ public sealed class WorkExecutor<TCommand, TContext, TProcessor, TBackoff, TTele
         int affinity = parameter is int coreId ? coreId : -1;
         if (affinity >= 0)
         {
-            // Best effort by design: a hard affinity guarantee is platform
-            // specific (process CPU sets, cgroup cpusets, IRQL on Windows),
-            // and a rejected mask must degrade to normal scheduling rather than
-            // fail the worker. The call reports success but nothing depends on
-            // it, so the result is deliberately ignored.
-            ThreadAffinityScope.TryPinCurrentThread(affinity);
+            // Best effort by design: a hard affinity guarantee is platform specific (process CPU
+            // sets, cgroup cpusets, IRQL on Windows), and a refused mask must degrade to normal
+            // scheduling rather than fail the worker. The answer is never dropped: it is published
+            // on WorkerAffinity, so "the OS declined", "this platform has no ABI" and "the ABI is
+            // missing from the deployment" stay distinguishable from a successful pin.
+            AffinityResult result = ThreadAffinityScope.PinCurrentThread(affinity);
+            Volatile.Write(ref _affinityResult, (int)result);
         }
 
         TBackoff.Initialize(out int spin);
