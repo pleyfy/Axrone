@@ -37,6 +37,15 @@ public static class ScenePrefabErrorCodes
 
     /// <summary>Instantiation failed and was rolled back.</summary>
     public const string InstantiationFailed = "scene.prefab.instantiation-failed";
+
+    /// <summary>An actor has no stable node id in its owning prefab context.</summary>
+    public const string MissingStableNodeId = "scene.prefab.missing-stable-node-id";
+
+    /// <summary>Provenance metadata is malformed or exceeds a fixed capacity.</summary>
+    public const string InvalidProvenance = "scene.prefab.invalid-provenance";
+
+    /// <summary>A JSON string sequence contains an explicit null element.</summary>
+    public const string InvalidNullElement = "scene.prefab.invalid-null-element";
 }
 
 /// <summary>Prefab failure with an optional node id.</summary>
@@ -134,7 +143,8 @@ public sealed class SceneActorSnapshot
         bool persistent,
         bool pooled,
         IReadOnlyList<SceneComponentSnapshot> components,
-        string? parentNodeId = null)
+        string? parentNodeId = null,
+        ScenePrefabNodeSource? source = null)
     {
         if (string.IsNullOrWhiteSpace(nodeId))
         {
@@ -170,6 +180,7 @@ public sealed class SceneActorSnapshot
         Persistent = persistent;
         Pooled = pooled;
         Components = [.. components];
+        Source = source;
     }
 
     /// <summary>Stable node id inside the prefab.</summary>
@@ -198,6 +209,36 @@ public sealed class SceneActorSnapshot
 
     /// <summary>Component snapshots in declaration order.</summary>
     public IReadOnlyList<SceneComponentSnapshot> Components { get; }
+
+    /// <summary>Stable prefab origin, or null for an authored snapshot without composition provenance.</summary>
+    public ScenePrefabNodeSource? Source { get; }
+
+    /// <summary>Returns the same actor snapshot with composition provenance removed.</summary>
+    public SceneActorSnapshot WithoutSource() => Source is null
+        ? this
+        : new SceneActorSnapshot(
+            NodeId,
+            Name,
+            Layer,
+            Tag,
+            Active,
+            Persistent,
+            Pooled,
+            Components,
+            ParentNodeId);
+
+    /// <summary>Returns a copy carrying composition provenance.</summary>
+    public SceneActorSnapshot WithSource(ScenePrefabNodeSource source) => new(
+        NodeId,
+        Name,
+        Layer,
+        Tag,
+        Active,
+        Persistent,
+        Pooled,
+        Components,
+        ParentNodeId,
+        source);
 }
 
 /// <summary>Immutable prefab definition.</summary>
@@ -415,13 +456,15 @@ public sealed class ScenePrefabInstantiationResult
     /// <summary>Creates an instantiation result.</summary>
     public ScenePrefabInstantiationResult(
         IReadOnlyList<SceneActor> actors,
-        IReadOnlyDictionary<string, SceneActor> nodeMap)
+        IReadOnlyDictionary<string, SceneActor> nodeMap,
+        IReadOnlyList<ScenePrefabNodeSource>? sources = null)
     {
         ArgumentNullException.ThrowIfNull(actors);
         ArgumentNullException.ThrowIfNull(nodeMap);
 
         Actors = [.. actors];
         NodeMap = nodeMap.ToFrozenDictionary(StringComparer.Ordinal);
+        Sources = sources is null ? [] : [.. sources];
     }
 
     /// <summary>Created actors in prefab declaration order.</summary>
@@ -429,4 +472,7 @@ public sealed class ScenePrefabInstantiationResult
 
     /// <summary>Created actors keyed by node id.</summary>
     public IReadOnlyDictionary<string, SceneActor> NodeMap { get; }
+
+    /// <summary>Provenance for each actor in <see cref="Actors"/> declaration order.</summary>
+    public IReadOnlyList<ScenePrefabNodeSource> Sources { get; }
 }

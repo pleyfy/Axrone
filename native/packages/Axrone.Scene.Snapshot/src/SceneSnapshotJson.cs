@@ -190,7 +190,12 @@ public static class SceneSnapshotJson
         {
             foreach (JsonProperty attribute in attributesElement.EnumerateObject())
             {
-                attributes[ParseSemantic(attribute.Name)] = attribute.Value.GetString() ?? string.Empty;
+                attributes[ParseSemantic(attribute.Name)] = attribute.Value.ValueKind switch
+                {
+                    JsonValueKind.String => attribute.Value.GetString()!,
+                    JsonValueKind.Null => ThrowNullElement(attribute.Name),
+                    _ => ThrowInvalidStringArray(attribute.Name)
+                };
             }
         }
 
@@ -782,17 +787,26 @@ public static class SceneSnapshotJson
 
     private static string[] ReadStringArray(JsonElement element, string name)
     {
-        if (!element.TryGetProperty(name, out JsonElement array) ||
-            array.ValueKind != JsonValueKind.Array)
+        if (!element.TryGetProperty(name, out JsonElement array))
         {
             return [];
+        }
+
+        if (array.ValueKind != JsonValueKind.Array)
+        {
+            throw Invalid($"'{name}' must be an array of strings");
         }
 
         var result = new string[array.GetArrayLength()];
         int index = 0;
         foreach (JsonElement item in array.EnumerateArray())
         {
-            result[index++] = item.GetString() ?? string.Empty;
+            result[index++] = item.ValueKind switch
+            {
+                JsonValueKind.String => item.GetString()!,
+                JsonValueKind.Null => ThrowNullElement(name),
+                _ => ThrowInvalidStringArray(name)
+            };
         }
 
         return result;
@@ -988,4 +1002,14 @@ public static class SceneSnapshotJson
 
     private static SceneSnapshotException Invalid(string message) =>
         new(SceneSnapshotErrorCodes.Invalid, message);
+
+    [DoesNotReturn]
+    private static string ThrowNullElement(string name) =>
+        throw new SceneSnapshotException(
+            SceneSnapshotErrorCodes.InvalidNullElement,
+            $"'{name}' must not contain null elements.");
+
+    [DoesNotReturn]
+    private static string ThrowInvalidStringArray(string name) =>
+        throw Invalid($"'{name}' must be an array of strings");
 }

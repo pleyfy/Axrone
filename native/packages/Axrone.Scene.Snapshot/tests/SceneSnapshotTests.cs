@@ -1,6 +1,8 @@
 namespace Axrone.Scene.Snapshot.Tests;
 
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Axrone.Geometry;
 using Axrone.Numeric;
 using Axrone.Scene;
@@ -198,6 +200,132 @@ public sealed class SceneSnapshotTests
         snapshot.RenderPasses.Should().ContainSingle();
         snapshot.Prefab.Actors[0].Components.Should().ContainSingle()
             .Which.Type.Should().Be("Transform3D");
+    }
+
+    [Fact]
+    public void Json_RoundTripsPrefabProvenance()
+    {
+        ScenePrefabNodeSource source = ScenePrefabNodeSource.Create(
+            "prefab/base",
+            "root",
+            ["outer", "mid"],
+            ["prefab/base"]);
+        var actor = new SceneActorSnapshot(
+            "root",
+            "Root",
+            0,
+            "Default",
+            active: true,
+            persistent: false,
+            pooled: false,
+            [],
+            null,
+            source);
+        var snapshot = new SceneSnapshot(
+            new ScenePrefabDefinition("prefab/source", [actor]),
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
+        var names = new SceneNameTable();
+
+        byte[] json = SceneSnapshotJson.Serialize(snapshot, names);
+        SceneSnapshot read = SceneSnapshotJson.Deserialize(json, names);
+        byte[] rewritten = SceneSnapshotJson.Serialize(read, names);
+
+        rewritten.Should().Equal(json);
+        read.Prefab.Actors.Should().ContainSingle().Which.Source.Should().Be(source);
+    }
+
+    [Fact]
+    public void Json_MissingSourceRemainsCompatible()
+    {
+        (SceneSnapshot snapshot, SceneAssetRegistry assets) = CreateSnapshot();
+        byte[] json = SceneSnapshotJson.Serialize(snapshot, assets.Names);
+        JsonNode root = JsonNode.Parse(Encoding.UTF8.GetString(json))!;
+        JsonArray actors = root["prefab"]!["actors"]!.AsArray();
+        for (int i = 0; i < actors.Count; i++)
+        {
+            actors[i]!.AsObject().Remove("source");
+        }
+
+        SceneSnapshot read = SceneSnapshotJson.Deserialize(
+            JsonSerializer.SerializeToUtf8Bytes(root),
+            assets.Names);
+
+        read.Prefab.Actors.Should().OnlyContain(actor => actor.Source == null);
+    }
+
+    [Fact]
+    public void Json_WrongTypedUniformArrayFailsClosed()
+    {
+        (SceneSnapshot snapshot, SceneAssetRegistry assets) = CreateSnapshot();
+        byte[] json = SceneSnapshotJson.Serialize(snapshot, assets.Names);
+        JsonNode root = JsonNode.Parse(Encoding.UTF8.GetString(json))!;
+        root["shaders"]!.AsArray()[0]!["uniforms"] = JsonValue.Create(42);
+
+        Action read = () => SceneSnapshotJson.Deserialize(
+            JsonSerializer.SerializeToUtf8Bytes(root),
+            assets.Names);
+
+        read.Should().Throw<SceneSnapshotException>()
+            .Which.Code.Should().Be(SceneSnapshotErrorCodes.Invalid);
+    }
+
+    [Fact]
+    public void Json_NullUniformElementFailsClosed()
+    {
+        (SceneSnapshot snapshot, SceneAssetRegistry assets) = CreateSnapshot();
+        byte[] json = SceneSnapshotJson.Serialize(snapshot, assets.Names);
+        JsonNode root = JsonNode.Parse(Encoding.UTF8.GetString(json))!;
+        root["shaders"]!.AsArray()[0]!["uniforms"] = new JsonArray(
+            JsonValue.Create("uModel"),
+            null);
+
+        Action read = () => SceneSnapshotJson.Deserialize(
+            JsonSerializer.SerializeToUtf8Bytes(root),
+            assets.Names);
+
+        read.Should().Throw<SceneSnapshotException>()
+            .Which.Code.Should().Be(SceneSnapshotErrorCodes.InvalidNullElement);
+    }
+
+    [Fact]
+    public void Json_MissingUniformsRemainCompatible()
+    {
+        (SceneSnapshot snapshot, SceneAssetRegistry assets) = CreateSnapshot();
+        byte[] json = SceneSnapshotJson.Serialize(snapshot, assets.Names);
+        JsonNode root = JsonNode.Parse(Encoding.UTF8.GetString(json))!;
+        root["shaders"]!.AsArray()[0]!.AsObject().Remove("uniforms");
+
+        SceneSnapshot read = SceneSnapshotJson.Deserialize(
+            JsonSerializer.SerializeToUtf8Bytes(root),
+            assets.Names);
+
+        read.Shaders.Should().ContainSingle().Which.Uniforms.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Json_NullShaderAttributeFailsClosed()
+    {
+        (SceneSnapshot snapshot, SceneAssetRegistry assets) = CreateSnapshot();
+        byte[] json = SceneSnapshotJson.Serialize(snapshot, assets.Names);
+        JsonNode root = JsonNode.Parse(Encoding.UTF8.GetString(json))!;
+        JsonObject attributes = root["shaders"]!.AsArray()[0]!["attributes"]!.AsObject();
+        foreach (KeyValuePair<string, JsonNode?> property in attributes)
+        {
+            attributes[property.Key] = null;
+            break;
+        }
+
+        Action read = () => SceneSnapshotJson.Deserialize(
+            JsonSerializer.SerializeToUtf8Bytes(root),
+            assets.Names);
+
+        read.Should().Throw<SceneSnapshotException>()
+            .Which.Code.Should().Be(SceneSnapshotErrorCodes.InvalidNullElement);
     }
 
     private static SceneProfile CreateProfile() =>

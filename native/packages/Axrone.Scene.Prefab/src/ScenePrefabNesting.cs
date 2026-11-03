@@ -418,8 +418,16 @@ public sealed class ScenePrefabResolver
             {
                 ScenePrefabNestedInstance nested = definition.Nested[i];
                 ScenePrefabDefinition nestedResolved = ResolveReference(nested.Reference, stack);
-                state.AddActors(ScenePrefabNestedScope.ScopeActors(nestedResolved.Actors, nested));
-                state.ApplyRange(ScenePrefabNestedScope.ScopeOperations(nested.Overrides, nested));
+                state.AddActors(ScenePrefabNestedScope.ScopeActors(
+                    nestedResolved.Actors,
+                    nested,
+                    nestedResolved.Id,
+                    nestedResolved.Lineage));
+                state.ApplyRange(ScenePrefabNestedScope.ScopeOperations(
+                    nested.Overrides,
+                    nested,
+                    nestedResolved.Id,
+                    nestedResolved.Lineage));
             }
 
             state.ApplyRange(definition.Overrides);
@@ -500,18 +508,27 @@ internal static class ScenePrefabNestedScope
     /// <summary>Scopes actors under an instance id, parent and optional name prefix.</summary>
     public static SceneActorSnapshot[] ScopeActors(
         IReadOnlyList<SceneActorSnapshot> actors,
-        ScenePrefabNestedInstance nested)
+        ScenePrefabNestedInstance nested,
+        string sourcePrefabId,
+        IReadOnlyList<string> sourceLineage)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePrefabId);
+
         var scoped = new SceneActorSnapshot[actors.Count];
         for (int i = 0; i < actors.Count; i++)
         {
-            SceneActorSnapshot actor = actors[i];
+            SceneActorSnapshot actor = ScenePrefabNodeIdentity.EnsureProvenance(
+                actors[i],
+                sourcePrefabId,
+                sourceLineage,
+                i);
             string? parentNodeId = actor.ParentNodeId is { } parent
                 ? ScopedNodeId(nested.InstanceId, parent)
                 : nested.ParentNodeId;
             string name = nested.NamePrefix is { } prefix
                 ? string.Concat(prefix, actor.Name)
                 : actor.Name;
+            ScenePrefabNodeSource source = actor.Source!.Value.WithInstancePath(nested.InstanceId);
 
             scoped[i] = new SceneActorSnapshot(
                 ScopedNodeId(nested.InstanceId, actor.NodeId),
@@ -522,7 +539,8 @@ internal static class ScenePrefabNestedScope
                 actor.Persistent,
                 actor.Pooled,
                 actor.Components,
-                parentNodeId);
+                parentNodeId,
+                source);
         }
 
         return scoped;
@@ -531,12 +549,14 @@ internal static class ScenePrefabNestedScope
     /// <summary>Scopes instance-local override operations to the host node ids.</summary>
     public static ScenePrefabOverrideOperation[] ScopeOperations(
         IReadOnlyList<ScenePrefabOverrideOperation> operations,
-        ScenePrefabNestedInstance nested)
+        ScenePrefabNestedInstance nested,
+        string sourcePrefabId,
+        IReadOnlyList<string> sourceLineage)
     {
         var scoped = new ScenePrefabOverrideOperation[operations.Count];
         for (int i = 0; i < operations.Count; i++)
         {
-            scoped[i] = Scope(operations[i], nested);
+            scoped[i] = Scope(operations[i], nested, sourcePrefabId, sourceLineage);
         }
 
         return scoped;
@@ -544,14 +564,16 @@ internal static class ScenePrefabNestedScope
 
     private static ScenePrefabOverrideOperation Scope(
         ScenePrefabOverrideOperation operation,
-        ScenePrefabNestedInstance nested)
+        ScenePrefabNestedInstance nested,
+        string sourcePrefabId,
+        IReadOnlyList<string> sourceLineage)
     {
         string ScopeId(string nodeId) => ScopedNodeId(nested.InstanceId, nodeId);
 
         return operation switch
         {
             ScenePrefabAddActorOperation add => new ScenePrefabAddActorOperation(
-                ScopeActors([add.Actor], nested)[0],
+                ScopeActors([add.Actor], nested, sourcePrefabId, sourceLineage)[0],
                 add.AfterNodeId is { } afterNodeId ? ScopeId(afterNodeId) : null),
             ScenePrefabRemoveActorOperation remove => new ScenePrefabRemoveActorOperation(
                 ScopeId(remove.NodeId)),
