@@ -27,10 +27,11 @@ public readonly record struct QueryFilter(uint Category, uint Mask, int Group)
     /// <summary>
     /// Determines whether a shape owning <paramref name="shape"/> may be
     /// reported to a query carrying <paramref name="query"/>. An empty query
-    /// filter matches everything; otherwise a shared non-zero group decides
-    /// (positive includes, negative excludes), and shapes without a group
-    /// pin must cross-match the category/mask pair: the shape is visible to
-    /// the query and the query is visible to the shape.
+    /// filter matches everything; a pinned non-zero query group restricts the
+    /// answer to shapes of that group (positive includes, negative excludes),
+    /// and shapes without a group pin must cross-match the category/mask
+    /// pair: the shape is visible to the query and the query is visible to
+    /// the shape.
     /// </summary>
     /// <param name="shape">The filter stored on the candidate shape.</param>
     /// <param name="query">The filter carried by the query.</param>
@@ -43,8 +44,13 @@ public readonly record struct QueryFilter(uint Category, uint Mask, int Group)
             return true;
         }
 
-        if (query.Group != 0 && shape.Group == query.Group)
+        if (query.Group != 0)
         {
+            if (shape.Group != query.Group)
+            {
+                return false;
+            }
+
             return query.Group > 0;
         }
 

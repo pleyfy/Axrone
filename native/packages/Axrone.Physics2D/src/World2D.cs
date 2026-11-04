@@ -583,11 +583,10 @@ public sealed class World : IDisposable
             return false;
         }
 
-        float bestDistance = maxDistance;
         RaycastHit2D best = default;
         bool found = false;
         ClosestRayVisitor closestVisitor = default;
-        ClosestRayContext context = new(this, in filter, ref bestDistance, ref best, ref found);
+        ClosestRayContext context = new(this, in filter, ref best, ref found);
         _tree.RayCast(in ray, maxDistance, ref closestVisitor, ref context);
         hit = best;
         return found;
@@ -684,7 +683,7 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void QueryPointAll<TVisitor, TState>(Vec2 point, ref TVisitor report, ref TState context)
         where TVisitor : struct, IPointQueryVisitor<TState>
-        where TState : allows ref struct
+        where TState : struct, allows ref struct
     {
         ThrowIfDisposed();
 
@@ -1521,7 +1520,8 @@ public sealed class World : IDisposable
                 !IsFinite(body.LinearVelocity.X) || !IsFinite(body.LinearVelocity.Y) ||
                 !IsFinite(body.AngularVelocity) || !IsFinite(body.Force.X) || !IsFinite(body.Force.Y) ||
                 !IsFinite(body.Torque) || !IsFinite(body.Mass) || !IsFinite(body.InverseMass) ||
-                !IsFinite(body.Inertia) || !IsFinite(body.InverseInertia))
+                !IsFinite(body.Inertia) || !IsFinite(body.InverseInertia) ||
+                !IsFinite(body.LocalCenter.X) || !IsFinite(body.LocalCenter.Y))
             {
                 failure = $"Body slot {slot} carries non-finite state.";
                 return false;
@@ -1717,7 +1717,7 @@ public sealed class World : IDisposable
 
         _events[_eventCount++] = new ContactEvent(pair.ShapeA, pair.ShapeB, pair.BodyA, pair.BodyB, type);
 
-        if (pair.IsSensor && type != CollisionEventType.Stay)
+        if (pair.IsSensor)
         {
             if (_sensorEventCount >= _sensorEvents.Length)
             {
@@ -1726,7 +1726,12 @@ public sealed class World : IDisposable
 
             _sensorEvents[_sensorEventCount++] = new SensorEvent(
                 pair.ShapeA, pair.ShapeB, pair.BodyA, pair.BodyB,
-                type == CollisionEventType.Begin ? SensorEventType.Enter : SensorEventType.Exit);
+                type switch
+                {
+                    CollisionEventType.Begin => SensorEventType.Enter,
+                    CollisionEventType.Stay => SensorEventType.Stay,
+                    _ => SensorEventType.Exit,
+                });
         }
     }
 
@@ -1746,7 +1751,7 @@ public sealed class World : IDisposable
 
     private readonly struct RayQueryVisitor : IRayHitVisitor2D<ShapeId, RayQueryContext>
     {
-        
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public bool OnHit(SpatialItemId itemId, ShapeId userData, in Ray2D ray, ref float maxDistance, ref RayQueryContext context) =>
@@ -1796,11 +1801,10 @@ public sealed class World : IDisposable
     }
 
     private ref struct ClosestRayContext(
-        World world, in QueryFilter filter, ref float bestDistance, ref RaycastHit2D bestHit, ref bool found)
+        World world, in QueryFilter filter, ref RaycastHit2D bestHit, ref bool found)
     {
         private readonly World _world = world;
         private readonly QueryFilter _filter = filter;
-        private readonly ref float _bestDistance = ref bestDistance;
         private readonly ref RaycastHit2D _bestHit = ref bestHit;
         private readonly ref bool _found = ref found;
 
@@ -1814,7 +1818,6 @@ public sealed class World : IDisposable
             if (_world.TryRaycastShape(shapeId, in ray, maxDistance, out RaycastHit2D hit))
             {
                 _bestHit = hit;
-                _bestDistance = hit.Distance;
                 _found = true;
                 maxDistance = hit.Distance;
             }
@@ -1903,7 +1906,7 @@ public sealed class World : IDisposable
     /// </summary>
     /// <typeparam name="TContext">Caller state; may be a <see langword="ref"/> struct.</typeparam>
     public interface IPointQueryVisitor<TContext>
-        where TContext : allows ref struct
+        where TContext : struct, allows ref struct
     {
         /// <summary>Reports one covering shape.</summary>
         /// <param name="shapeId">The covering shape.</param>
@@ -1915,7 +1918,7 @@ public sealed class World : IDisposable
 
     private readonly struct QueryPointAllVisitor<TVisitor, TState> : ISpatialVisitor2D<ShapeId, QueryPointAllContext<TVisitor, TState>>
         where TVisitor : struct, IPointQueryVisitor<TState>
-        where TState : allows ref struct
+        where TState : struct, allows ref struct
     {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -1926,14 +1929,14 @@ public sealed class World : IDisposable
     private unsafe ref struct QueryPointAllContext<TVisitor, TState>(
         World world, Vec2 point, ref TVisitor report, ref TState context)
         where TVisitor : struct, IPointQueryVisitor<TState>
-        where TState : allows ref struct
+        where TState : struct, allows ref struct
     {
-        // SAFETY: the pointer addresses caller stack locals for the duration
+        // SAFETY: the addresses point at caller stack locals for the duration
         // of the synchronous traversal only; neither value escapes it.
         private readonly World _world = world;
         private readonly Vec2 _point = point;
-        private readonly void* _reportPtr = (byte*)Unsafe.As<TVisitor, byte>(ref report);
-        private readonly void* _contextPtr = (byte*)Unsafe.As<TState, byte>(ref context);
+        private readonly nint _reportPtr = (nint)Unsafe.AsPointer(ref report);
+        private readonly nint _contextPtr = (nint)Unsafe.AsPointer(ref context);
 
         public bool TryReport(SpatialItemId itemId, ShapeId shapeId)
         {
@@ -1950,8 +1953,8 @@ public sealed class World : IDisposable
                 return true;
             }
 
-            ref TVisitor report = ref Unsafe.AsRef<TVisitor>(_reportPtr);
-            ref TState context = ref Unsafe.AsRef<TState>(_contextPtr);
+            ref TVisitor report = ref Unsafe.AsRef<TVisitor>((void*)_reportPtr);
+            ref TState context = ref Unsafe.AsRef<TState>((void*)_contextPtr);
             return report.OnShape(shapeId, owner, ref context);
         }
     }
@@ -2036,11 +2039,21 @@ public sealed class World : IDisposable
             {
                 case ColliderKind.Circle:
                     surface = ShapeQueries2D.ClosestCirclePoint(in record.WorldCircle, _point, out distance);
+                    if (distance < 0.0f)
+                    {
+                        surface = _point;
+                    }
+
                     distance = MathF.Max(distance, 0.0f);
                     break;
 
                 case ColliderKind.Capsule:
                     surface = ShapeQueries2D.ClosestCapsulePoint(in record.WorldCapsule, _point, out distance);
+                    if (distance < 0.0f)
+                    {
+                        surface = _point;
+                    }
+
                     distance = MathF.Max(distance, 0.0f);
                     break;
 
@@ -2106,6 +2119,13 @@ public sealed class World : IDisposable
             ref readonly BodyState stateB = ref _world._bodies.Slot(bodyB);
 
             if (stateA.Type == BodyType.Static && stateB.Type == BodyType.Static)
+            {
+                return true;
+            }
+
+            bool enabledA = (stateA.Flags & BodyFlags.Active) != 0;
+            bool enabledB = (stateB.Flags & BodyFlags.Active) != 0;
+            if (!enabledA || !enabledB)
             {
                 return true;
             }

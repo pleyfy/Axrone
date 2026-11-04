@@ -197,6 +197,10 @@ public sealed class BodyStore
         body.Torque = 0.0f;
     }
 
+    /// <summary>Sleeps a body when set, matching the web <c>setSleeping</c> surface.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetSleeping(BodyId id, bool sleeping) => SetAwake(id, !sleeping);
+
     /// <summary>Accumulates a world force at the center of mass; wakes the body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyForce(BodyId id, Vec2 force)
@@ -548,20 +552,6 @@ public sealed class BodyStore
             {
                 body.Force = Vec2.Zero;
                 body.Torque = 0.0f;
-            }
-        }
-    }
-
-    /// <summary>Translates every body by an offset; the caller keeps the broadphase in sync.</summary>
-    internal void ShiftPositions(Vec2 offset)
-    {
-        Span<BodyState> bodies = _bodies.AsSpan(0, _capacity);
-        for (int i = 0; i < bodies.Length; i++)
-        {
-            ref BodyState body = ref bodies[i];
-            if (body.Live)
-            {
-                body.Position += offset;
             }
         }
     }

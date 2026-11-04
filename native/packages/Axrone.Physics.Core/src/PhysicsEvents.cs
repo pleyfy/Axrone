@@ -52,6 +52,9 @@ public struct ContactImpulses : IEquatable<ContactImpulses>
     /// <summary>Number of valid contact points; at most four.</summary>
     public int Count { get; set; }
 
+    /// <summary>Callback point that produced this payload; always <see cref="CollisionEventType.PostSolve"/> when the solver emits it.</summary>
+    public CollisionEventType Phase { get; set; }
+
     /// <summary>Accumulated normal impulse of contact point <paramref name="index"/>; non-negative.</summary>
     /// <param name="index">Contact point index, below <see cref="Count"/>.</param>
     /// <returns>The normal impulse.</returns>
@@ -67,7 +70,7 @@ public struct ContactImpulses : IEquatable<ContactImpulses>
     /// <inheritdoc/>
     public readonly bool Equals(ContactImpulses other)
     {
-        if (Count != other.Count)
+        if (Count != other.Count || Phase != other.Phase)
         {
             return false;
         }
@@ -91,6 +94,7 @@ public struct ContactImpulses : IEquatable<ContactImpulses>
     {
         HashCode code = default;
         code.Add(Count);
+        code.Add(Phase);
         for (int i = 0; i < Math.Clamp(Count, 0, 4); i++)
         {
             code.Add(NormalAt(i));
@@ -138,6 +142,9 @@ internal struct ImpulseBuffer
 /// </summary>
 public struct ContactTuning : IEquatable<ContactTuning>
 {
+    /// <summary>Callback point that produced this tuning; always <see cref="CollisionEventType.PreSolve"/> when the solver emits it.</summary>
+    public CollisionEventType Phase { get; set; }
+
     /// <summary>Combined friction coefficient for this pair.</summary>
     public float Friction { get; set; }
 
@@ -149,7 +156,10 @@ public struct ContactTuning : IEquatable<ContactTuning>
 
     /// <summary>
     /// Signed surface speed along the contact tangent driving the relative
-    /// sliding target (conveyor); dimension code decides its exact use.
+    /// sliding target (conveyor): the solver steers the pair's relative
+    /// tangent velocity toward this value. In 2D the tangent is the contact
+    /// normal rotated +90° and the pair's speed is shape A minus shape B;
+    /// dimension code decides the exact use.
     /// </summary>
     public float TangentSpeed { get; set; }
 
@@ -164,13 +174,14 @@ public struct ContactTuning : IEquatable<ContactTuning>
     public readonly bool Equals(ContactTuning other) =>
         Friction == other.Friction && Restitution == other.Restitution &&
         RestitutionThreshold == other.RestitutionThreshold && TangentSpeed == other.TangentSpeed &&
-        DynamicFriction == other.DynamicFriction;
+        DynamicFriction == other.DynamicFriction && Phase == other.Phase;
 
     /// <inheritdoc/>
     public override readonly bool Equals(object? obj) => obj is ContactTuning other && Equals(other);
 
     /// <inheritdoc/>
-    public override readonly int GetHashCode() => HashCode.Combine(Friction, Restitution, RestitutionThreshold, TangentSpeed, DynamicFriction);
+    public override readonly int GetHashCode() =>
+        HashCode.Combine(Friction, Restitution, RestitutionThreshold, TangentSpeed, DynamicFriction, Phase);
 
     /// <summary>Determines whether two tuning payloads carry identical coefficients.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
