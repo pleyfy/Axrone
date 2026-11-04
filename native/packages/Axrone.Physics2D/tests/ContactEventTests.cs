@@ -96,6 +96,28 @@ public sealed class ContactEventTests : IDisposable
     }
 
     [Fact]
+    public void PersistingSensorOverlap_RaisesStayNotice()
+    {
+        BodyId sensor = _world.Bodies.Create(new BodyDef { Type = BodyType.Static, Position = new Vec2(0f, 0f) });
+        _world.Shapes.AttachCircle(_world.Bodies, _world.Broadphase, sensor, Vec2.Zero, 1f, isSensor: true);
+        BodyId ball = _world.Bodies.Create(new BodyDef { Type = BodyType.Kinematic, Position = new Vec2(0.5f, 0f) });
+        _world.Shapes.AttachCircle(_world.Bodies, _world.Broadphase, ball, Vec2.Zero, 1f);
+
+        _world.Step(1f / 60f);
+        _world.SensorEventCount.Should().Be(1);
+        _world.GetSensorEvent(0).Type.Should().Be(SensorEventType.Enter);
+
+        _world.Step(1f / 60f);
+        _world.SensorEventCount.Should().Be(1);
+        _world.GetSensorEvent(0).Type.Should().Be(SensorEventType.Stay);
+
+        _world.Bodies.SetTransform(ball, new Vec2(50f, 50f), 0f);
+        _world.Step(1f / 60f);
+        _world.SensorEventCount.Should().Be(1);
+        _world.GetSensorEvent(0).Type.Should().Be(SensorEventType.Exit);
+    }
+
+    [Fact]
     public void DestroyBody_RaisesEndOnNextStep()
     {
         AddBox(new Vec2(0, 0), new Vec2(1, 1), BodyType.Static);

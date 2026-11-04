@@ -128,4 +128,43 @@ public sealed class PhysicsCoreContractTests
         ((byte)ToiState.Touching).Should().Be(3);
         ((byte)ToiState.Separated).Should().Be(4);
     }
+
+    [Fact]
+    public void QueryFilter_MatchesCategoryMaskAndSharedGroup()
+    {
+        var shape = new CollisionFilter(4, 8, 0);
+
+        QueryFilter.Matches(in shape, QueryFilter.None).Should().BeTrue();
+        QueryFilter.Matches(in shape, new QueryFilter(8, 4, 0)).Should().BeTrue();
+        QueryFilter.Matches(in shape, new QueryFilter(1, 4, 0)).Should().BeFalse();
+        QueryFilter.Matches(in shape, new QueryFilter(1, 2, 0)).Should().BeFalse();
+        QueryFilter.Matches(in shape, new QueryFilter(16, 16, 0)).Should().BeFalse();
+
+        var grouped = new CollisionFilter(4, 8, 5);
+        QueryFilter.Matches(in grouped, new QueryFilter(1, 8, 5)).Should().BeTrue();
+        QueryFilter.Matches(in grouped, new QueryFilter(1, 8, 6)).Should().BeFalse();
+        QueryFilter.Matches(in grouped, new QueryFilter(1, 4, 6)).Should().BeFalse();
+
+        var negative = new CollisionFilter(4, 8, -5);
+        QueryFilter.Matches(in negative, new QueryFilter(1, 8, -5)).Should().BeFalse();
+        QueryFilter.Matches(in negative, new QueryFilter(1, 8, -6)).Should().BeFalse();
+        QueryFilter.Matches(in negative, new QueryFilter(8, 4, 0)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void MaterialCombiner_PicksTheStricterSideRule()
+    {
+        // Friction takes the mode of the lower-friction side, restitution the
+        // mode of the higher-restitution side.
+        MaterialCombiner.CombineFriction(0.1f, 0.5f, CombineMode.Max, CombineMode.Min).Should().Be(0.5f);
+        MaterialCombiner.CombineFriction(0.1f, 0.5f, CombineMode.Min, CombineMode.Max).Should().Be(0.1f);
+        MaterialCombiner.CombineFriction(0.5f, 0.1f, CombineMode.Max, CombineMode.Min).Should().Be(0.1f);
+        MaterialCombiner.CombineFriction(0.1f, 0.5f, CombineMode.Average, CombineMode.Average).Should().Be(0.3f);
+        MaterialCombiner.CombineFriction(0.1f, 0.5f, CombineMode.Multiply, CombineMode.Multiply).Should().BeApproximately(0.05f, 1e-6f);
+
+        MaterialCombiner.CombineRestitution(0.8f, 0.2f, CombineMode.Min, CombineMode.Max).Should().Be(0.2f);
+        MaterialCombiner.CombineRestitution(0.2f, 0.8f, CombineMode.Max, CombineMode.Min).Should().Be(0.2f);
+        MaterialCombiner.CombineRestitution(0.8f, 0.2f, CombineMode.Max, CombineMode.Max).Should().Be(0.8f);
+        MaterialCombiner.CombineRestitution(0.8f, 0.2f, CombineMode.Multiply, CombineMode.Multiply).Should().BeApproximately(0.16f, 1e-6f);
+    }
 }
