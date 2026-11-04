@@ -136,6 +136,17 @@ internal struct HingeJointData
     /// <summary>Accumulated motor impulse.</summary>
     public float MotorImpulse;
 
+    /// <summary>Stop enforcement mode.</summary>
+    public JointLimitMode LimitMode;
+
+    /// <summary>Spring parameters used when the stop mode is soft.</summary>
+    public LimitSpringSettings LimitSpring;
+
+    /// <summary>Frozen rebound velocity budget consumed by the first soft push.</summary>
+    public float LimitBounceBias;
+
+    /// <summary>Soft-stop engagement flag (1.0 when engaged).</summary>
+    public float LimitEngaged;
     /// <summary>Whether the slot holds a live joint.</summary>
     public bool Live;
 }
@@ -195,6 +206,17 @@ internal struct PrismaticJointData
     /// <summary>Accumulated motor impulse.</summary>
     public float MotorImpulse;
 
+    /// <summary>Stop enforcement mode.</summary>
+    public JointLimitMode LimitMode;
+
+    /// <summary>Spring parameters used when the stop mode is soft.</summary>
+    public LimitSpringSettings LimitSpring;
+
+    /// <summary>Frozen rebound velocity budget consumed by the first soft push.</summary>
+    public float LimitBounceBias;
+
+    /// <summary>Soft-stop engagement flag (1.0 when engaged).</summary>
+    public float LimitEngaged;
     /// <summary>Whether the slot holds a live joint.</summary>
     public bool Live;
 }
@@ -292,6 +314,12 @@ public struct JointAxisDef
 
     /// <summary>Whether the motor drives.</summary>
     public bool EnableMotor;
+
+    /// <summary>Stop enforcement mode for this axis.</summary>
+    public JointLimitMode LimitMode;
+
+    /// <summary>Spring parameters used when the stop mode is soft.</summary>
+    public LimitSpringSettings LimitSpring;
 }
 
 /// <summary>Six-degree tuning of a configurable joint: three linear slides plus three twists.</summary>
@@ -387,6 +415,11 @@ internal struct ConfigurableJointData
     /// <summary>Relative reference orientation at creation; locked axes hold it.</summary>
     public Quat ReferenceRotation;
 
+    /// <summary>Per-axis soft-stop engagement budgets (1.0 when engaged).</summary>
+    public Vec3 AxisEngaged;
+
+    /// <summary>Per-axis frozen rebound velocity budgets.</summary>
+    public Vec3 AxisBounceBias;
     /// <summary>Whether the slot holds a live joint.</summary>
     public bool Live;
 }
@@ -638,15 +671,23 @@ public sealed class JointStore
     /// <param name="motorSpeed">Motor target speed in radians per second.</param>
     /// <param name="maxMotorTorque">Motor torque cap.</param>
     /// <param name="enableMotor">Whether the motor drives.</param>
+    /// <param name="limitMode">Hard or soft stop enforcement.</param>
+    /// <param name="limitSpring">Spring parameters used when the stop mode is soft.</param>
     public JointId CreateHinge(
         BodyStore bodies, BodyId bodyA, BodyId bodyB,
         Vec3 localAnchorA, Vec3 localAnchorB, Vec3 localAxisA, Vec3 localAxisB,
         float lowerLimit = 0.0f, float upperLimit = 0.0f, bool enableLimit = false,
-        float motorSpeed = 0.0f, float maxMotorTorque = 0.0f, bool enableMotor = false)
+        float motorSpeed = 0.0f, float maxMotorTorque = 0.0f, bool enableMotor = false,
+        JointLimitMode limitMode = JointLimitMode.Hard, LimitSpringSettings limitSpring = default)
     {
         ArgumentNullException.ThrowIfNull(bodies);
         bodies.Slot(bodyA);
         bodies.Slot(bodyB);
+
+        if (limitMode == JointLimitMode.Soft)
+        {
+            limitSpring.ValidateForSoft();
+        }
 
         if (MathF.Abs(localAxisA.LengthSquared() - 1.0f) > 1e-4f || MathF.Abs(localAxisB.LengthSquared() - 1.0f) > 1e-4f)
         {
@@ -680,6 +721,10 @@ public sealed class JointStore
             MotorSpeed = motorSpeed,
             MaxMotorTorque = maxMotorTorque,
             EnableMotor = enableMotor,
+            LimitMode = limitMode,
+            LimitSpring = limitSpring,
+            LimitBounceBias = 0.0f,
+            LimitEngaged = 0.0f,
             PointImpulse = Vec3.Zero,
             AxisImpulse = Vec3.Zero,
             LimitImpulse = 0.0f,
@@ -706,15 +751,23 @@ public sealed class JointStore
     /// <param name="motorSpeed">Motor target speed along the axis.</param>
     /// <param name="maxMotorForce">Motor force cap.</param>
     /// <param name="enableMotor">Whether the motor drives.</param>
+    /// <param name="limitMode">Hard or soft stop enforcement.</param>
+    /// <param name="limitSpring">Spring parameters used when the stop mode is soft.</param>
     public JointId CreatePrismatic(
         BodyStore bodies, BodyId bodyA, BodyId bodyB,
         Vec3 localAnchorA, Vec3 localAnchorB, Vec3 localAxisA, Vec3 localAxisB,
         float lowerLimit = 0.0f, float upperLimit = 0.0f, bool enableLimit = false,
-        float motorSpeed = 0.0f, float maxMotorForce = 0.0f, bool enableMotor = false)
+        float motorSpeed = 0.0f, float maxMotorForce = 0.0f, bool enableMotor = false,
+        JointLimitMode limitMode = JointLimitMode.Hard, LimitSpringSettings limitSpring = default)
     {
         ArgumentNullException.ThrowIfNull(bodies);
         bodies.Slot(bodyA);
         bodies.Slot(bodyB);
+
+        if (limitMode == JointLimitMode.Soft)
+        {
+            limitSpring.ValidateForSoft();
+        }
 
         if (MathF.Abs(localAxisA.LengthSquared() - 1.0f) > 1e-4f || MathF.Abs(localAxisB.LengthSquared() - 1.0f) > 1e-4f)
         {
@@ -746,6 +799,10 @@ public sealed class JointStore
             MotorSpeed = motorSpeed,
             MaxMotorForce = maxMotorForce,
             EnableMotor = enableMotor,
+            LimitMode = limitMode,
+            LimitSpring = limitSpring,
+            LimitBounceBias = 0.0f,
+            LimitEngaged = 0.0f,
             LineImpulse = Vec3.Zero,
             AxisImpulse = Vec3.Zero,
             AngularImpulse = Vec3.Zero,
@@ -886,6 +943,103 @@ public sealed class JointStore
         {
             ThrowHelper.ThrowInvalidOperation($"{name} motor cap must not be negative.");
         }
+
+        if (axis.Mode == JointAxisMode.Limited && axis.LimitMode == JointLimitMode.Soft)
+        {
+            axis.LimitSpring.ValidateForSoft();
+        }
+    }
+
+    /// <summary>Rewrites hinge stops and wakes both bodies.</summary>
+    public void SetHingeLimit(BodyStore bodies, JointId id, float lowerLimit, float upperLimit, bool enableLimit)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+
+        int slot = Validate(id);
+        ref HingeJointData joint = ref _hinge[slot];
+        if (enableLimit && lowerLimit > upperLimit)
+        {
+            ThrowHelper.ThrowInvalidOperation("Hinge lower limit must not exceed the upper limit.");
+        }
+
+        joint.LowerLimit = lowerLimit;
+        joint.UpperLimit = upperLimit;
+        joint.EnableLimit = enableLimit;
+        ResetHingeLimitState(ref joint);
+        bodies.SetAwake(joint.BodyA, true);
+        bodies.SetAwake(joint.BodyB, true);
+    }
+
+    /// <summary>Switches hinge stop enforcement between hard and soft modes and wakes both bodies.</summary>
+    public void SetHingeLimitSpring(BodyStore bodies, JointId id, JointLimitMode mode, LimitSpringSettings spring)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+
+        int slot = Validate(id);
+        ref HingeJointData joint = ref _hinge[slot];
+        if (mode == JointLimitMode.Soft)
+        {
+            spring.ValidateForSoft();
+        }
+
+        joint.LimitMode = mode;
+        joint.LimitSpring = spring;
+        ResetHingeLimitState(ref joint);
+        bodies.SetAwake(joint.BodyA, true);
+        bodies.SetAwake(joint.BodyB, true);
+    }
+
+    /// <summary>Rewrites prismatic stops and wakes both bodies.</summary>
+    public void SetPrismaticLimit(BodyStore bodies, JointId id, float lowerLimit, float upperLimit, bool enableLimit)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+
+        int slot = Validate(id);
+        ref PrismaticJointData joint = ref _prismatic[slot];
+        if (enableLimit && lowerLimit > upperLimit)
+        {
+            ThrowHelper.ThrowInvalidOperation("Prismatic lower limit must not exceed the upper limit.");
+        }
+
+        joint.LowerLimit = lowerLimit;
+        joint.UpperLimit = upperLimit;
+        joint.EnableLimit = enableLimit;
+        ResetPrismaticLimitState(ref joint);
+        bodies.SetAwake(joint.BodyA, true);
+        bodies.SetAwake(joint.BodyB, true);
+    }
+
+    /// <summary>Switches prismatic stop enforcement between hard and soft modes and wakes both bodies.</summary>
+    public void SetPrismaticLimitSpring(BodyStore bodies, JointId id, JointLimitMode mode, LimitSpringSettings spring)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+
+        int slot = Validate(id);
+        ref PrismaticJointData joint = ref _prismatic[slot];
+        if (mode == JointLimitMode.Soft)
+        {
+            spring.ValidateForSoft();
+        }
+
+        joint.LimitMode = mode;
+        joint.LimitSpring = spring;
+        ResetPrismaticLimitState(ref joint);
+        bodies.SetAwake(joint.BodyA, true);
+        bodies.SetAwake(joint.BodyB, true);
+    }
+
+    private static void ResetHingeLimitState(ref HingeJointData joint)
+    {
+        joint.LimitImpulse = 0.0f;
+        joint.LimitBounceBias = 0.0f;
+        joint.LimitEngaged = 0.0f;
+    }
+
+    private static void ResetPrismaticLimitState(ref PrismaticJointData joint)
+    {
+        joint.LimitImpulse = 0.0f;
+        joint.LimitBounceBias = 0.0f;
+        joint.LimitEngaged = 0.0f;
     }
 
     /// <summary>Creates a spring-damper between two body-frame anchors; wakes both bodies.</summary>
