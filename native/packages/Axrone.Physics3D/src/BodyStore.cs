@@ -191,9 +191,39 @@ public sealed class BodyStore
         body.Torque = Vec3.Zero;
     }
 
-    /// <summary>Accumulates a world force; wakes the body.</summary>
+    /// <summary>Accumulates a world force at the center of mass; wakes the body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyForce(BodyId id, Vec3 force)
+    {
+        ref BodyState body = ref Slot(id);
+        if (body.Type != BodyType.Dynamic)
+        {
+            return;
+        }
+
+        body.Force += force;
+        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+    }
+
+    /// <summary>Accumulates a world force applied at a world-space point; the offset from the center of mass adds torque; wakes the body.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ApplyForce(BodyId id, Vec3 force, Vec3 point)
+    {
+        ref BodyState body = ref Slot(id);
+        if (body.Type != BodyType.Dynamic)
+        {
+            return;
+        }
+
+        Vec3 lever = point - CenterOfMass(in body);
+        body.Force += force;
+        body.Torque += Vec3.Cross(lever, force);
+        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+    }
+
+    /// <summary>Accumulates a world force through the center of mass; produces no torque; wakes the body.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ApplyForceToCenter(BodyId id, Vec3 force)
     {
         ref BodyState body = ref Slot(id);
         if (body.Type != BodyType.Dynamic)
@@ -219,7 +249,7 @@ public sealed class BodyStore
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
     }
 
-    /// <summary>Applies an instantaneous linear impulse; wakes the body.</summary>
+    /// <summary>Applies an instantaneous linear impulse at the center of mass; wakes the body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyLinearImpulse(BodyId id, Vec3 impulse)
     {
@@ -230,6 +260,22 @@ public sealed class BodyStore
         }
 
         body.LinearVelocity += impulse * body.InverseMass;
+        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+    }
+
+    /// <summary>Applies an instantaneous linear impulse at a world-space point; the offset from the center of mass spins the body; wakes it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ApplyLinearImpulse(BodyId id, Vec3 impulse, Vec3 point)
+    {
+        ref BodyState body = ref Slot(id);
+        if (body.Type != BodyType.Dynamic)
+        {
+            return;
+        }
+
+        Vec3 lever = point - CenterOfMass(in body);
+        body.LinearVelocity += impulse * body.InverseMass;
+        body.AngularVelocity += ContactSolver.ApplyInverseInertia(body.Rotation, body.InverseInertia, Vec3.Cross(lever, impulse));
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
     }
 
@@ -422,6 +468,10 @@ public sealed class BodyStore
         Array.Resize(ref _freeStack, newCapacity);
         _capacity = newCapacity;
     }
+
+    /// <summary>World-space center of mass: the body origin plus the rotated local offset.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vec3 CenterOfMass(in BodyState body) => body.Position + (body.Rotation * body.LocalCenter);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int Validate(BodyId id)
