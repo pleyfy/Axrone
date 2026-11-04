@@ -235,23 +235,23 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
                 bytesWritten = written + 1;
                 return true;
             default:
-            {
+                {
 #pragma warning disable IL2026 // Generic-TData JSON fallback is inherently dynamic; AOT users bind concrete codecs.
 #pragma warning disable IL3050 // Generic-TData JSON fallback is inherently dynamic; AOT users bind concrete codecs.
-                byte[] json = JsonSerializer.SerializeToUtf8Bytes(data);
+                    byte[] json = JsonSerializer.SerializeToUtf8Bytes(data);
 #pragma warning restore IL3050
 #pragma warning restore IL2026
-                if (destination.Length < json.Length + 1)
-                {
-                    failure = AssetCodecFailure.DestinationTooSmall;
-                    return false;
-                }
+                    if (destination.Length < json.Length + 1)
+                    {
+                        failure = AssetCodecFailure.DestinationTooSmall;
+                        return false;
+                    }
 
-                destination[0] = 3;
-                json.CopyTo(destination[1..]);
-                bytesWritten = json.Length + 1;
-                return true;
-            }
+                    destination[0] = 3;
+                    json.CopyTo(destination[1..]);
+                    bytesWritten = json.Length + 1;
+                    return true;
+                }
         }
     }
 
@@ -297,7 +297,16 @@ public readonly struct DefaultDataCodecPolicy<TData> : IAssetCodecPolicy<TData>
 
 #pragma warning disable IL2026 // Generic-TData JSON fallback is inherently dynamic; AOT users bind concrete codecs.
 #pragma warning disable IL3050 // Generic-TData JSON fallback is inherently dynamic; AOT users bind concrete codecs.
-        data = JsonSerializer.Deserialize<TData>(source)!;
+        try
+        {
+            data = JsonSerializer.Deserialize<TData>(source)!;
+        }
+        catch (JsonException)
+        {
+            data = default!;
+            failure = AssetCodecFailure.InvalidJson;
+            return false;
+        }
 #pragma warning restore IL3050
 #pragma warning restore IL2026
         if (data is not null)

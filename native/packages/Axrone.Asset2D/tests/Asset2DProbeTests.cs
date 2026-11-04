@@ -126,6 +126,44 @@ public sealed class Asset2DProbeTests
         result.ErrorMessage.Should().NotBeNullOrWhiteSpace();
     }
 
+    [Theory]
+    [InlineData("""
+        { "id": "hero", "textureId": "hero.png", "frames": [] }
+        """, "asset2d.atlas.textureSize.missing")]
+    [InlineData("""
+        { "id": "hero", "textureId": "hero.png", "textureSize": { "width": 8, "height": 8 }, "frames": [] }
+        """, "asset2d.atlas.frames.empty")]
+    public void Canonical_Import_ReportsTheCodedSchemaFailure(string json, string expectedCode)
+    {
+        AssetImportContext context = Context("sprites/hero.spriteatlas.json", json);
+
+        Asset2DImportResult<TopLeftOriginPolicy> result =
+            SpriteAtlasJsonImporter<TopLeftOriginPolicy>.Import(in context);
+
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be(expectedCode);
+    }
+
+    [Theory]
+    [InlineData("""
+        { "frames": {}, "meta": { "image": "a.png", "size": { "w": 8, "h": 8 } } }
+        """)]
+    [InlineData("""
+        { "frames": { "f": { "frame": { "x": 0, "y": 0, "w": 8, "h": 8 } } }, "meta": { "image": "a.png" } }
+        """)]
+    public void TexturePacker_Import_ReportsTheCodedSchemaFailure(string json)
+    {
+        AssetImportContext context = Context("sprites/run.json", json);
+
+        TexturePackerSpriteAtlasImporter<TopLeftOriginPolicy>.Probe(in context).Verdict
+            .Should().Be(Asset2DProbeVerdict.Mine);
+        Asset2DImportResult<TopLeftOriginPolicy> result =
+            TexturePackerSpriteAtlasImporter<TopLeftOriginPolicy>.Import(in context);
+
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("asset2d.atlas.texturepacker.sections.missing");
+    }
+
     private static AssetImportContext Context(string path, string content) =>
         new(path.AsSpan(), Encoding.UTF8.GetBytes(content));
 }

@@ -122,6 +122,47 @@ public sealed class AssetCodecFailureTests
     }
 
     [Fact]
+    public void TypedJsonMalformedPayload_IsACodedRefusalNotAnException()
+    {
+        byte[] broken = "{ \"id\": \"hero\", "u8.ToArray();
+        AtlasProbe? data = null;
+        AssetCodecFailure failure = AssetCodecFailure.None;
+        bool result = false;
+        Action act = () => result = DefaultDataCodecPolicy<AtlasProbe>.TryDeserialize(broken, out data, out failure);
+
+        act.Should().NotThrow();
+        result.Should().BeFalse();
+        data.Should().BeNull();
+        failure.Should().Be(AssetCodecFailure.InvalidJson);
+        failure.IsForeignPayload().Should().BeFalse();
+        failure.CodeOf().Should().Be("asset.codec.json.invalid");
+    }
+
+    [Fact]
+    public void TypedJsonValidPayload_DecodesWithoutFailure()
+    {
+        byte[] payload = """
+            { "Id": "hero", "Frames": 3 }
+            """u8.ToArray();
+
+        DefaultDataCodecPolicy<AtlasProbe>.TryDeserialize(payload, out AtlasProbe? data, out AssetCodecFailure failure)
+            .Should().BeTrue();
+
+        data.Should().Be(new AtlasProbe("hero", 3));
+        failure.Should().Be(AssetCodecFailure.None);
+    }
+
+    [Fact]
+    public void TypedJsonNullLiteral_IsACodedRefusal()
+    {
+        DefaultDataCodecPolicy<AtlasProbe>.TryDeserialize("null"u8.ToArray(), out AtlasProbe? data, out AssetCodecFailure failure)
+            .Should().BeFalse();
+
+        data.Should().BeNull();
+        failure.Should().Be(AssetCodecFailure.InvalidJson);
+    }
+
+    [Fact]
     public void ToError_CarriesTheCodecCodeAndPayloadDescription()
     {
         AssetError error = AssetCodecFailure.InvalidJson.ToError("asset 'sprites/hero'");
@@ -129,4 +170,6 @@ public sealed class AssetCodecFailureTests
         error.Code.Should().Be("asset.codec.json.invalid");
         error.Message.Should().Contain("sprites/hero").And.Contain("InvalidJson");
     }
+
+    private sealed record AtlasProbe(string Id, int Frames);
 }
