@@ -331,11 +331,11 @@ internal static class SceneJointJson
         writer.WriteEndObject();
     }
 
-    public static SceneJointDrive3D ReadDrive(JsonElement data, string name)
+    public static SceneJointDrive3D ReadDrive(JsonElement data, string name, in SceneJointDrive3D current)
     {
         if (!data.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Object)
         {
-            return default;
+            return current;
         }
 
         return new SceneJointDrive3D(
@@ -957,11 +957,11 @@ public sealed class SceneConfigurableJoint3DCodec : SceneDataCodec<SceneConfigur
         value.RotationDriveMode = SceneJointJson.ReadInt32(data, "rotationDriveMode", value.RotationDriveMode);
         value.ConfiguredInWorldSpace = SceneJointJson.ReadBool(data, "configuredInWorldSpace", value.ConfiguredInWorldSpace);
         value.SwapBodies = SceneJointJson.ReadBool(data, "swapBodies", value.SwapBodies);
-        value.XDrive = SceneJointJson.ReadDrive(data, "xDrive");
-        value.YDrive = SceneJointJson.ReadDrive(data, "yDrive");
-        value.ZDrive = SceneJointJson.ReadDrive(data, "zDrive");
-        value.AngularXDrive = SceneJointJson.ReadDrive(data, "angularXDrive");
-        value.AngularYZDrive = SceneJointJson.ReadDrive(data, "angularYZDrive");
+        value.XDrive = SceneJointJson.ReadDrive(data, "xDrive", value.XDrive);
+        value.YDrive = SceneJointJson.ReadDrive(data, "yDrive", value.YDrive);
+        value.ZDrive = SceneJointJson.ReadDrive(data, "zDrive", value.ZDrive);
+        value.AngularXDrive = SceneJointJson.ReadDrive(data, "angularXDrive", value.AngularXDrive);
+        value.AngularYZDrive = SceneJointJson.ReadDrive(data, "angularYZDrive", value.AngularYZDrive);
         return value;
     }
 }
