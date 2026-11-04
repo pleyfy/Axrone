@@ -39,8 +39,8 @@ public sealed class AudioDecoderException : AudioException
     public string? DecoderId { get; }
 
     /// <summary>Creates a decoder failure.</summary>
-    public AudioDecoderException(AudioDecoderFailure failure, AudioContainerKind kind, string? decoderId = null, string? detail = null)
-        : base(CodeFor(failure), MessageFor(failure, kind, decoderId, detail))
+    public AudioDecoderException(AudioDecoderFailure failure, AudioContainerKind kind, string? decoderId = null, string? detail = null, Exception? innerException = null)
+        : base(CodeFor(failure), MessageFor(failure, kind, decoderId, detail), innerException)
     {
         Kind = kind;
         Failure = failure;

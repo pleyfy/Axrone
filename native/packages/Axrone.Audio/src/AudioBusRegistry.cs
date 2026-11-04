@@ -87,6 +87,21 @@ public sealed class AudioBusRegistry
     private long _clockBits;
     private int _activeRampCount;
     private uint _snapshotCounter;
+    private System.Action<AudioBusId, AudioBusId>? _sourceRebindHook;
+
+    /// <summary>
+    /// Wires the callback that re-points registered sources and live voices
+    /// when a bus is removed. Set once by the system owner; removal without a
+    /// hook still keeps the graph consistent, but only through the hook can
+    /// every RemoveBus entry point rebind sources atomically.
+    /// </summary>
+    public void SetSourceRebindHook(System.Action<AudioBusId, AudioBusId>? hook)
+    {
+        lock (_gate)
+        {
+            _sourceRebindHook = hook;
+        }
+    }
 
     /// <summary>Creates a registry with the default hierarchy.</summary>
     public AudioBusRegistry(AudioObservabilityRuntime observability, int maxBuses = 128)
@@ -156,6 +171,12 @@ public sealed class AudioBusRegistry
 
             ref BusNode node = ref _nodes[idx];
             AudioBusDefinition def = node.Definition;
+            AudioBusId newParent = patch.ParentId ?? def.ParentId;
+
+            if (newParent != def.ParentId)
+            {
+                ValidateParentWrite(id, newParent, idx);
+            }
 
             CancelRamp((int)idx);
             node.Definition = def with
@@ -163,7 +184,7 @@ public sealed class AudioBusRegistry
                 Volume = patch.Volume ?? def.Volume,
                 Mute = patch.Mute ?? def.Mute,
                 Pan = patch.Pan ?? def.Pan,
-                ParentId = patch.ParentId ?? def.ParentId,
+                ParentId = newParent,
             };
 
             RebuildHierarchyTopology();
@@ -428,6 +449,11 @@ public sealed class AudioBusRegistry
             _nodes[idx] = default;
             RebuildHierarchyTopology();
 
+            // Rebind registered sources and live voices before the removal
+            // becomes externally visible, so every RemoveBus entry point —
+            // the facade or the registry directly — leaves no dangling bus id.
+            _sourceRebindHook?.Invoke(id, fallback);
+
             _observability.Counters.IncrementBusMutations();
             _observability.Dispatch(AudioEventType.BusRemoved, id.Value, fallback.Value, reparented);
 
@@ -512,10 +538,45 @@ public sealed class AudioBusRegistry
             AudioThrowHelper.ThrowConfig("audio.invalid-bus", "Bus id exceeds registry bounds.");
         }
 
+        ValidateParentWrite(definition.Id, definition.ParentId, idx);
         CancelRamp((int)idx);
         _nodes[idx].Definition = definition;
         _nodes[idx].IsActive = true;
         return BuildBusState((int)idx);
+    }
+
+    private void ValidateParentWrite(AudioBusId id, AudioBusId parentId, uint idx)
+    {
+        uint p = parentId.Value;
+        if (p == 0U)
+        {
+            return;
+        }
+
+        if (p == idx)
+        {
+            throw new AudioBusCycleException(id, parentId);
+        }
+
+        if (p >= (uint)_maxBuses)
+        {
+            AudioThrowHelper.ThrowConfig("audio.invalid-bus", "Parent bus id exceeds registry bounds.");
+        }
+
+        // Re-applying the parent a node already has cannot change the graph.
+        if (_nodes[idx].IsActive && _nodes[idx].Definition.ParentId.Value == p)
+        {
+            return;
+        }
+
+        // The write is a cycle when this bus is reachable by walking parents
+        // up from the proposed parent. Gain resolution would then recurse
+        // without bound, so reject before the write commits and
+        // RebuildHierarchyTopology never sees a loop.
+        if (_nodes[p].IsActive && IsAncestorPathCyclic((int)p, idx))
+        {
+            throw new AudioBusCycleException(id, parentId);
+        }
     }
 
     private int CountActive()
@@ -713,10 +774,13 @@ public sealed class AudioBusRegistry
             return 0.0f;
         }
 
+        // Mark on entry: even if an upstream guard is ever bypassed, a cyclic
+        // parent chain terminates here instead of overflowing the stack.
+        visited[idx] = true;
+
         if (node.Definition.Mute)
         {
             node.EffectiveGain = 0.0f;
-            visited[idx] = true;
             return 0.0f;
         }
 
@@ -728,7 +792,6 @@ public sealed class AudioBusRegistry
         }
 
         node.EffectiveGain = Math.Clamp(node.Definition.Volume, 0.0f, 4.0f) * parentGain;
-        visited[idx] = true;
         return node.EffectiveGain;
     }
 

@@ -3,7 +3,7 @@ namespace Axrone.Audio;
 /// <summary>
 /// Coded audio error.
 /// </summary>
-public class AudioException(string code, string message) : Exception(message)
+public class AudioException(string code, string message, Exception? innerException = null) : Exception(message, innerException)
 {
     /// <summary>Machine-readable code.</summary>
     public string Code { get; } = code;
@@ -12,7 +12,7 @@ public class AudioException(string code, string message) : Exception(message)
 /// <summary>
 /// Invalid audio configuration.
 /// </summary>
-public sealed class AudioConfigurationException(string code, string message) : AudioException(code, message);
+public sealed class AudioConfigurationException(string code, string message, Exception? innerException = null) : AudioException(code, message, innerException);
 
 /// <summary>
 /// Illegal audio lifecycle transition.
@@ -33,6 +33,20 @@ public sealed class AudioBusException(AudioBusId busId, string message)
 {
     /// <summary>Offending bus.</summary>
     public AudioBusId BusId { get; } = busId;
+}
+
+/// <summary>
+/// Hierarchy write that would create a parent cycle. Cycles make gain
+/// resolution recurse without bound, so they are rejected before commit.
+/// </summary>
+public sealed class AudioBusCycleException(AudioBusId busId, AudioBusId parentId)
+    : AudioException("audio.bus-cycle", $"Bus '{busId}' cannot take parent '{parentId}': the parent is reachable from the bus, which would form a cycle.")
+{
+    /// <summary>Offending bus.</summary>
+    public AudioBusId BusId { get; } = busId;
+
+    /// <summary>Rejected parent.</summary>
+    public AudioBusId ParentId { get; } = parentId;
 }
 
 /// <summary>

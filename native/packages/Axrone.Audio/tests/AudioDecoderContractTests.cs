@@ -1,5 +1,6 @@
 namespace Axrone.Audio.Tests;
 
+[Collection(TestCollections.NativeMemoryGauge)]
 public sealed class AudioDecoderContractTests
 {
     private static readonly AudioClipId ClipId = new(11U);
@@ -122,6 +123,7 @@ public sealed class AudioDecoderContractTests
         decoder.Failure.Should().Be(AudioDecoderFailure.DecoderRejected);
         decoder.Code.Should().Be("audio.decoder.failed");
         decoder.DecoderId.Should().Be("stub.refuse");
+        decoder.Message.Should().Contain("unsupported stream");
     }
 
     [Fact]
@@ -132,7 +134,10 @@ public sealed class AudioDecoderContractTests
         ingest.TryCreateRecord(ClipId, OggPayload, out AudioClipRecord? record, out _, out AudioException? error).Should().BeFalse();
 
         record.Should().BeNull();
-        error.As<AudioDecoderException>().Failure.Should().Be(AudioDecoderFailure.DecoderFaulted);
+        AudioDecoderException decoder = error.As<AudioDecoderException>();
+        decoder.Failure.Should().Be(AudioDecoderFailure.DecoderFaulted);
+        decoder.Message.Should().Contain("decoder exploded");
+        decoder.InnerException.Should().BeOfType<InvalidOperationException>();
     }
 
     [Fact]
