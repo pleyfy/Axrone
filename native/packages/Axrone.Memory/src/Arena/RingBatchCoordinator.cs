@@ -113,7 +113,7 @@ public sealed unsafe class RingBatchCoordinator<T, TBackoff> : IBatchReservable<
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public bool TryConsumeWithVisitor<TVisitor, TContext>(int count, TVisitor visitor, ref TContext context)        where TVisitor : struct, IBatchVisitor<T, TContext>
+    public bool TryConsumeWithVisitor<TVisitor, TContext>(int count, TVisitor visitor, ref TContext context) where TVisitor : struct, IBatchVisitor<T, TContext>
         where TContext : allows ref struct
     {
         if (!TryReserveRead(count, out var reservation))

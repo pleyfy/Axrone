@@ -1,4 +1,4 @@
-﻿namespace Axrone.Memory.Lifetime;
+namespace Axrone.Memory.Lifetime;
 
 /// <summary>
 /// Static monotonic accessor over a lease-tracked singleton engine. The wrapped engine
