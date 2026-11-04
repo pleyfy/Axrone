@@ -193,7 +193,6 @@ public enum UiControlEventKind : byte
 /// <param name="Items">Row-count source for <see cref="ControlKind.ListView"/>.</param>
 /// <param name="Tree">Node/child source for <see cref="ControlKind.TreeView"/>.</param>
 /// <param name="Grid">Row/column source for <see cref="ControlKind.DataGrid"/>.</param>
-/// <param name="Widget">Registry handle for <see cref="ControlKind.Custom"/> creation; default elsewhere.</param>
 /// <param name="Variant">Emphasis variant selecting a theme palette; <see cref="UiControlVariant.Neutral"/> keeps historical colors.</param>
 public readonly record struct UiControlDefinition(
     string? Text = null,
@@ -208,7 +207,6 @@ public readonly record struct UiControlDefinition(
     IUiListItemSource? Items = null,
     IUiTreeSource? Tree = null,
     IUiGridSource? Grid = null,
-    UiWidgetHandle Widget = default,
     UiControlVariant Variant = UiControlVariant.Neutral);
 
 /// <summary>Live handle to one control.</summary>

@@ -243,6 +243,7 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         UiNodeId parentNode = _tree.Root;
+        int mountedUnder = -1;
         if (parent.IsValid)
         {
             if (!TryGetEntry(parent, out int parentIndex))
@@ -251,6 +252,7 @@ public sealed class UiControlRuntime : IDisposable
             }
 
             parentNode = _entries[parentIndex].Node;
+            mountedUnder = parentIndex;
         }
 
         ref ControlEntry entry = ref _entries[index];
@@ -263,7 +265,7 @@ public sealed class UiControlRuntime : IDisposable
         _dirty.Invalidate(new UiInvalidation(entry.Node, UiInvalidationFlags.Layout | UiInvalidationFlags.Render));
         _focus.MarkOrderDirty();
         _hitSyncDirty = true;
-        if (parent.IsValid && TryGetEntry(parent, out int mountedUnder))
+        if (mountedUnder >= 0)
         {
             BehaviorOf(_entries[mountedUnder]).RefreshSecondary(this, mountedUnder);
         }
@@ -566,6 +568,11 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         ref ControlEntry entry = ref _entries[index];
+        if (entry.Kind != ControlKind.Custom)
+        {
+            ControlThrowHelper.ThrowWidgetOnlyChildNode();
+        }
+
         UiNodeId[] nodes = EnsureOptionCapacity(ref entry, childIndex);
         UiNodeId existing = nodes[childIndex];
         if (existing.IsValid)
@@ -573,10 +580,9 @@ public sealed class UiControlRuntime : IDisposable
             DetachOwnedNode(index, existing);
         }
 
-        UiNodeKind nodeKind = KindOf(in entry) == ControlKind.Custom ? UiNodeKind.Custom : MapNodeKind(entry.Kind);
         UiNodeId node = CreateChildNode(
             index,
-            nodeKind,
+            UiNodeKind.Custom,
             UiNodeFlags.Visible | UiNodeFlags.Enabled | UiNodeFlags.Interactive | UiNodeFlags.Focusable,
             ControlPart.Option,
             childIndex);
@@ -593,10 +599,11 @@ public sealed class UiControlRuntime : IDisposable
     {
         EnsureActive();
         if (!TryGetEntry(control, out int index) ||
+            _entries[index].Kind != ControlKind.Custom ||
             !_tree.TryGetBinding(node, out ControlNodeBinding binding) ||
             binding.Control != index ||
             binding.Part != ControlPart.Option ||
-            entryOptionSlot(index, binding.Option) < 0)
+            !holdsOptionNode(index, binding.Option, node))
         {
             return false;
         }
@@ -1151,7 +1158,11 @@ public sealed class UiControlRuntime : IDisposable
             return false;
         }
 
-        if (!_tree.TryGetBinding(node, out ControlNodeBinding binding) || binding.Control != entryIndex)
+        // Widget-owned node authoring is reserved for registered widgets; built-in
+        // secondary nodes stay under their catalog behavior's exclusive control.
+        if (_entries[entryIndex].Kind != ControlKind.Custom ||
+            !_tree.TryGetBinding(node, out ControlNodeBinding binding) ||
+            binding.Control != entryIndex)
         {
             return false;
         }
@@ -1160,10 +1171,10 @@ public sealed class UiControlRuntime : IDisposable
         return true;
     }
 
-    private int entryOptionSlot(int index, int option)
+    private bool holdsOptionNode(int index, int option, UiNodeId node)
     {
         UiNodeId[]? nodes = _entries[index].OptionNodes;
-        return nodes is not null && (uint)option < (uint)nodes.Length ? option : -1;
+        return nodes is not null && (uint)option < (uint)nodes.Length && nodes[option] == node;
     }
 
     private static UiNodeId[] EnsureOptionCapacity(ref ControlEntry entry, int childIndex)

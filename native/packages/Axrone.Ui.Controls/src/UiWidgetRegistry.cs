@@ -16,7 +16,9 @@ public readonly record struct UiWidgetHandle(int Slot, uint Generation)
 /// <summary>
 /// Open widget registry: third-party code adds <see cref="IUiWidgetBehavior"/>
 /// instances by name and creates controls through the returned
-/// <see cref="UiWidgetHandle"/> without extending <see cref="ControlKind"/>.
+/// <see cref="UiWidgetHandle"/>. Built-in <see cref="ControlKind"/> values and
+/// the static catalog stay frozen; <see cref="ControlKind.Custom"/> is the
+/// single fixed extension point dispatched through this registry.
 /// Dispatch is an array load plus virtual call, identical in cost to built-in
 /// controls; no reflection is involved and registration never runs per frame.
 /// </summary>

@@ -22,6 +22,11 @@ public enum UiControlVariant : byte
 }
 
 /// <summary>State colors resolved for one control variant; all values are theme-driven.</summary>
+/// <param name="Idle">Background in the idle state.</param>
+/// <param name="Hover">Background while the pointer is inside.</param>
+/// <param name="Pressed">Background while pressed.</param>
+/// <param name="Text">Text color.</param>
+/// <param name="Border">Border color when unfocused.</param>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiVariantPalette(
     UiColor Idle,
@@ -35,6 +40,25 @@ public readonly record struct UiVariantPalette(
 /// (16-34) are appended to the built-in token table, so serialized themes using
 /// identities 1-15 keep their meaning.
 /// </summary>
+/// <param name="PrimaryHover">Primary hover color token.</param>
+/// <param name="PrimaryPressed">Primary pressed color token.</param>
+/// <param name="PrimaryText">Primary text color token.</param>
+/// <param name="PrimaryBorder">Primary border color token.</param>
+/// <param name="SuccessIdle">Success idle color token.</param>
+/// <param name="SuccessHover">Success hover color token.</param>
+/// <param name="SuccessPressed">Success pressed color token.</param>
+/// <param name="SuccessText">Success text color token.</param>
+/// <param name="SuccessBorder">Success border color token.</param>
+/// <param name="WarningIdle">Warning idle color token.</param>
+/// <param name="WarningHover">Warning hover color token.</param>
+/// <param name="WarningPressed">Warning pressed color token.</param>
+/// <param name="WarningText">Warning text color token.</param>
+/// <param name="WarningBorder">Warning border color token.</param>
+/// <param name="DangerIdle">Danger idle color token.</param>
+/// <param name="DangerHover">Danger hover color token.</param>
+/// <param name="DangerPressed">Danger pressed color token.</param>
+/// <param name="DangerText">Danger text color token.</param>
+/// <param name="DangerBorder">Danger border color token.</param>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiControlVariantTokens(
     UiThemeTokenId PrimaryHover,

@@ -38,6 +38,6 @@ internal static class ControlThrowHelper
 
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static void ThrowForeignNode(UiNodeId node) =>
-        throw new ArgumentException($"Node {node.Value} is not owned by this control.", nameof(node));
+    internal static void ThrowWidgetOnlyChildNode() =>
+        throw new InvalidOperationException("Child-node authoring is only available for registered widgets (ControlKind.Custom).");
 }
