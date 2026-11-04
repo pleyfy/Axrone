@@ -140,6 +140,9 @@ public readonly struct WorldDef
 
     /// <summary>Solver capabilities; clearing <see cref="SolverFlags.SleepingBodies"/> skips the sleep pass.</summary>
     public SolverFlags Flags { get; init; } = SolverFlags.Default;
+
+    /// <summary>Whether each step clears accumulated forces after applying them.</summary>
+    public bool AutoClearForces { get; init; } = true;
 }
 
 /// <summary>
@@ -171,6 +174,14 @@ public enum ContactEventType : byte
     /// <summary>A previous overlap is gone.</summary>
     Ended = 2,
 }
+
+/// <summary>Snapshot of world population counters.</summary>
+/// <param name="BodyCount">Live bodies.</param>
+/// <param name="ShapeCount">Live shapes.</param>
+/// <param name="JointCount">Live joints.</param>
+/// <param name="ContactCount">Tracked contacts after the last step.</param>
+/// <param name="SleepingBodyCount">Live dynamic bodies currently asleep.</param>
+public readonly record struct WorldStatistics3D(int BodyCount, int ShapeCount, int JointCount, int ContactCount, int SleepingBodyCount);
 
 /// <summary>Closest-point hit: the surface point nearest a query.</summary>
 /// <param name="Shape">The shape hit.</param>
@@ -236,6 +247,9 @@ public sealed class World : IDisposable
     /// <summary>Solver capabilities.</summary>
     public SolverFlags Flags { get; set; }
 
+    /// <summary>Whether each step clears accumulated forces after applying them.</summary>
+    public bool AutoClearForces { get; set; }
+
     /// <summary>Creates a world with default tuning.</summary>
     public World()
         : this(new WorldDef())
@@ -254,6 +268,7 @@ public sealed class World : IDisposable
         CcdSweepStep = definition.CcdSweepStep;
         MaxCcdSubsteps = definition.MaxCcdSubsteps;
         Flags = definition.Flags;
+        AutoClearForces = definition.AutoClearForces;
         _bodies = new BodyStore();
         _shapes = new ShapeStore();
         _joints = new JointStore();
@@ -637,6 +652,101 @@ public sealed class World : IDisposable
         _shapes.SyncBody(_bodies, _tree, bodyId);
     }
 
+    /// <summary>Zeroes accumulated forces and torques on every body.</summary>
+    public void ClearForces()
+    {
+        ThrowIfDisposed();
+
+        _bodies.ClearForces();
+    }
+
+    /// <summary>Wakes every live dynamic body.</summary>
+    public void WakeAllBodies()
+    {
+        ThrowIfDisposed();
+
+        _bodies.WakeAllBodies();
+    }
+
+    /// <summary>Reads population counters for diagnostics.</summary>
+    public WorldStatistics3D GetStatistics()
+    {
+        ThrowIfDisposed();
+
+        int sleeping = 0;
+        for (int slot = 0; slot < _bodies.SlotCapacity; slot++)
+        {
+            if (!_bodies.IsSlotLive(slot))
+            {
+                continue;
+            }
+
+            BodyId bodyId = BodyId.FromIndex(slot);
+            if (_bodies.GetType(bodyId) == BodyType.Dynamic && _bodies.IsSleeping(bodyId))
+            {
+                sleeping++;
+            }
+        }
+
+        return new WorldStatistics3D(_bodies.Count, _shapes.Count, _joints.Count, _contactCount, sleeping);
+    }
+
+    /// <summary>Walks the reference graph and reports whether every shape, joint and contact names live entities.</summary>
+    public bool Validate()
+    {
+        ThrowIfDisposed();
+
+        for (int slot = 0; slot < _bodies.SlotCapacity; slot++)
+        {
+            if (!_bodies.IsSlotLive(slot))
+            {
+                continue;
+            }
+
+            ref BodyState body = ref _bodies.Slot(BodyId.FromIndex(slot));
+            int current = body.FirstShape;
+            while (current != -1)
+            {
+                ShapeId shapeId = ShapeId.FromIndex(current);
+                if (!_shapes.IsValid(shapeId) || _shapes.GetBody(shapeId) != BodyId.FromIndex(slot))
+                {
+                    return false;
+                }
+
+                current = _shapes.Record(shapeId).NextShape;
+            }
+        }
+
+        for (int slot = 0; slot < _joints.HingeCapacity; slot++)
+        {
+            ref HingeJointData hinge = ref _joints.Hinge(slot);
+            if (hinge.Live && (!_bodies.IsValid(hinge.BodyA) || !_bodies.IsValid(hinge.BodyB)))
+            {
+                return false;
+            }
+        }
+
+        for (int slot = 0; slot < _joints.PrismaticCapacity; slot++)
+        {
+            ref PrismaticJointData prismatic = ref _joints.Prismatic(slot);
+            if (prismatic.Live && (!_bodies.IsValid(prismatic.BodyA) || !_bodies.IsValid(prismatic.BodyB)))
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            if (!_bodies.IsValid(_contacts[i].BodyA) || !_bodies.IsValid(_contacts[i].BodyB)
+                || !_shapes.IsValid(_contacts[i].ShapeA) || !_shapes.IsValid(_contacts[i].ShapeB))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>Advances the simulation by <paramref name="dt"/> seconds.</summary>
     public void Step(float dt)
     {
@@ -732,7 +842,7 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void StepSlice(float h)
     {
-        _bodies.IntegrateVelocities(h, Gravity);
+        _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
 
         Contact3D[] built = _previous;

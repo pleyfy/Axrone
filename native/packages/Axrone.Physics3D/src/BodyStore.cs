@@ -460,10 +460,11 @@ public sealed class BodyStore
 
     /// <summary>
     /// Force half of the step: gravity and accumulated forces integrate into
-    /// velocities with damping applied, then forces clear. Positions untouched.
+    /// velocities with damping applied, then forces clear when
+    /// <paramref name="clearForces"/> is set. Positions untouched.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public void IntegrateVelocities(float dt, Vec3 gravity)
+    public void IntegrateVelocities(float dt, Vec3 gravity, bool clearForces = true)
     {
         if (!(dt > 0.0f))
         {
@@ -495,8 +496,45 @@ public sealed class BodyStore
                 body.AngularVelocity = Vec3.Zero;
             }
 
+            if (clearForces)
+            {
+                body.Force = Vec3.Zero;
+                body.Torque = Vec3.Zero;
+            }
+        }
+    }
+
+    /// <summary>Zeroes accumulated forces and torques on every body.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public void ClearForces()
+    {
+        Span<BodyState> bodies = _bodies.AsSpan(0, _capacity);
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            ref BodyState body = ref bodies[i];
+            if (!body.Live)
+            {
+                continue;
+            }
+
             body.Force = Vec3.Zero;
             body.Torque = Vec3.Zero;
+        }
+    }
+
+    /// <summary>Wakes every live dynamic body.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public void WakeAllBodies()
+    {
+        Span<BodyState> bodies = _bodies.AsSpan(0, _capacity);
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            ref BodyState body = ref bodies[i];
+            if (body.Live && body.Type == BodyType.Dynamic)
+            {
+                body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+                body.SleepTime = 0.0f;
+            }
         }
     }
 
