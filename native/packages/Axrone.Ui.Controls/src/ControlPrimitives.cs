@@ -329,6 +329,7 @@ public interface IUiImageMetrics
 /// <param name="DefaultTextStyle">Text style inherited by text controls.</param>
 /// <param name="Viewport">Initial viewport for viewport-relative layout lengths.</param>
 /// <param name="Widgets">Widget registry enabling <see cref="ControlKind.Custom"/> creation; <see langword="null"/> disables it.</param>
+/// <param name="AutoSizing">Shared shrink-to-fit measurement cache; a default one is created when omitted.</param>
 public readonly record struct UiControlRuntimeOptions(
     IUiTextMeasurer? TextMeasurer = null,
     IUiControlEventSink? Events = null,
@@ -337,4 +338,5 @@ public readonly record struct UiControlRuntimeOptions(
     UiControlTheme? ThemeTokens = null,
     UiTextStyle DefaultTextStyle = default,
     UiViewport Viewport = default,
-    UiWidgetRegistry? Widgets = null);
+    UiWidgetRegistry? Widgets = null,
+    UiAutoSizeService? AutoSizing = null);

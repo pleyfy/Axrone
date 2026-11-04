@@ -69,7 +69,11 @@ public sealed class UiControlRuntime : IDisposable
         _defaultTextStyle = options.DefaultTextStyle;
         _styleContext = new ControlStyleContext(options.Theme, in _tokens);
         _tree = new ControlNodeTree();
-        _textContent = options.TextMeasurer is null ? null : new UiTextContentMeasurer(options.TextMeasurer);
+        _textContent = options.TextMeasurer is null
+            ? null
+            : options.AutoSizing is null
+                ? new UiTextContentMeasurer(options.TextMeasurer)
+                : new UiTextContentMeasurer(options.TextMeasurer, options.AutoSizing);
         _sink = new ControlLayoutSink(this);
         _layoutTree = new UiLayoutTree(_tree, _layoutStyles, new ControlContentMeasurer(this));
         _runner = new UiLayoutRunner(_tree, _layoutTree, _layoutEngine, _sink, _dirty);
@@ -1122,6 +1126,8 @@ public sealed class UiControlRuntime : IDisposable
     }
 
     internal ref ControlEntry Entry(int index) => ref _entries[index];
+
+    internal UiTextContentMeasurer? TextContentMeasurer => _textContent;
 
     internal ControlStyleContext Style => _styleContext;
 
