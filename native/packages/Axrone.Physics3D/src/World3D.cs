@@ -575,6 +575,19 @@ public sealed class World : IDisposable
         }
     }
 
+    /// <summary>Rebuilds a body's mass properties from its attached shapes, shifting the frame so the world center of mass stays put.</summary>
+    /// <param name="bodyId">The body to recompute.</param>
+    public void ResetMassData(BodyId bodyId)
+    {
+        ThrowIfDisposed();
+
+        ref BodyState body = ref _bodies.Slot(bodyId);
+        Vec3 previousCenter = body.Position + (body.Rotation * body.LocalCenter);
+        _shapes.RecalculateMass(_bodies, bodyId);
+        body.Position += previousCenter - (body.Position + (body.Rotation * body.LocalCenter));
+        _shapes.SyncBody(_bodies, _tree, bodyId);
+    }
+
     /// <summary>Advances the simulation by <paramref name="dt"/> seconds.</summary>
     public void Step(float dt)
     {

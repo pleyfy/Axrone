@@ -758,6 +758,7 @@ public sealed class ShapeStore
         {
             body.Mass = 0.0f;
             body.InverseMass = 0.0f;
+            body.InertiaDiagonal = Vec3.Zero;
             body.InverseInertia = Vec3.Zero;
             body.LocalCenter = Vec3.Zero;
             return;
