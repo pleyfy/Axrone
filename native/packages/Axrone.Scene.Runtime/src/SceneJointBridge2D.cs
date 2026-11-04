@@ -131,19 +131,25 @@ public sealed class SceneJointBridge2D : IDisposable
             return false;
         }
 
-        if (!connected.TryResolve(_world, out SceneActor target))
-        {
-            bodyA = BodyId.Invalid;
-            return false;
-        }
-
-        if (!_physics.TryGetBody(target, out bodyB))
+        if (!connected.TryResolve(_world, out SceneActor target) ||
+            !_physics.TryGetBody(target, out bodyB))
         {
             bodyA = BodyId.Invalid;
             return false;
         }
 
         return true;
+    }
+
+    private bool HasLiveBodies(SceneActor actor, in SceneJointActorRef connected)
+    {
+        if (!_physics.TryGetBody(actor, out _))
+        {
+            return false;
+        }
+
+        return connected.TryResolve(_world, out SceneActor target) &&
+            _physics.TryGetBody(target, out _);
     }
 
     private void SyncType<T>()
@@ -201,7 +207,9 @@ public sealed class SceneJointBridge2D : IDisposable
             bool isCreated = entry.Result == SceneJointBuildResult2D.Created;
             bool idAlive = isCreated && joints.IsValid(entry.Id);
 
-            if (idAlive && entry.Hash == hash)
+            if (idAlive &&
+                entry.Hash == hash &&
+                (kind == SceneJointKind2D.Gear || HasLiveBodies(actor, value.TargetBodyRef)))
             {
                 continue;
             }
