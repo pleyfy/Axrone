@@ -28,16 +28,19 @@ internal static class ControlStyles
     internal static UiStylePatch Interactive(in ControlStyleContext style, in ControlEntry entry, bool accentWhenChecked)
     {
         UiControlState state = StateOf(entry);
+        UiVariantPalette palette = style.Palette(entry.Variant);
         UiColor background = state switch
         {
             UiControlState.Disabled => style.Color(style.Tokens.BackgroundDisabled, new UiColor(0.07f, 0.12f, 0.20f, 0.6f)),
-            UiControlState.Pressed => style.Color(style.Tokens.BackgroundPressed, new UiColor(0.06f, 0.10f, 0.17f, 1.0f)),
-            UiControlState.Hover => style.Color(style.Tokens.BackgroundHover, new UiColor(0.11f, 0.17f, 0.27f, 1.0f)),
-            _ => style.Color(style.Tokens.Background, new UiColor(0.05f, 0.09f, 0.16f, 1.0f)),
+            UiControlState.Pressed => palette.Pressed,
+            UiControlState.Hover => palette.Hover,
+            _ => palette.Idle,
         };
         if (accentWhenChecked && entry.Checked && state != UiControlState.Disabled)
         {
-            background = style.Color(style.Tokens.Accent, new UiColor(0.15f, 0.39f, 0.92f, 1.0f));
+            background = entry.Variant == UiControlVariant.Neutral
+                ? style.Color(style.Tokens.Accent, new UiColor(0.15f, 0.39f, 0.92f, 1.0f))
+                : palette.Idle;
         }
 
         return new UiStylePatch
@@ -46,12 +49,12 @@ internal static class ControlStyles
             Background = background,
             BorderColor = entry.Focused
                 ? style.Color(style.Tokens.BorderFocused, new UiColor(0.38f, 0.65f, 0.98f, 1.0f))
-                : style.Color(style.Tokens.Border, new UiColor(0.85f, 0.90f, 1.00f, 0.15f)),
+                : palette.Border,
             BorderWidth = BorderWidth(in style),
             Radius = Radius(in style),
             TextColor = state == UiControlState.Disabled
                 ? style.Color(style.Tokens.TextColorDisabled, new UiColor(0.55f, 0.62f, 0.72f, 1.0f))
-                : style.Color(style.Tokens.TextColor, UiColor.White),
+                : palette.Text,
         };
     }
 
@@ -78,18 +81,28 @@ internal static class ControlStyles
                 : style.Color(style.Tokens.TextColor, UiColor.White),
         };
 
-    internal static UiStylePatch Accent(in ControlStyleContext style, in ControlEntry entry) =>
-        new()
+    internal static UiStylePatch Accent(in ControlStyleContext style, in ControlEntry entry)
+    {
+        UiVariantPalette palette = entry.Variant == UiControlVariant.Neutral
+            ? new UiVariantPalette(
+                style.Color(style.Tokens.Accent, new UiColor(0.15f, 0.39f, 0.92f, 1.0f)),
+                style.Color(style.Tokens.Accent, new UiColor(0.15f, 0.39f, 0.92f, 1.0f)),
+                style.Color(style.Tokens.Accent, new UiColor(0.15f, 0.39f, 0.92f, 1.0f)),
+                style.Color(style.Tokens.TextColor, UiColor.White),
+                style.Color(style.Tokens.Border, new UiColor(0.85f, 0.90f, 1.00f, 0.15f)))
+            : style.Palette(entry.Variant);
+        return new UiStylePatch
         {
             Visible = true,
             Background = entry.Disabled
                 ? style.Color(style.Tokens.BackgroundDisabled, new UiColor(0.07f, 0.12f, 0.20f, 0.6f))
-                : style.Color(style.Tokens.Accent, new UiColor(0.15f, 0.39f, 0.92f, 1.0f)),
-            BorderColor = style.Color(style.Tokens.Border, new UiColor(0.85f, 0.90f, 1.00f, 0.15f)),
+                : palette.Idle,
+            BorderColor = palette.Border,
             BorderWidth = BorderWidth(in style),
             Radius = Radius(in style),
-            TextColor = style.Color(style.Tokens.TextColor, UiColor.White),
+            TextColor = palette.Text,
         };
+    }
 }
 
 /// <summary>Key codes consumed by the built-in behaviors.</summary>

@@ -59,4 +59,5 @@ internal struct ControlEntry
     public uint Generation;
     public int WidgetSlot;
     public uint WidgetGeneration;
+    public UiControlVariant Variant;
 }

@@ -189,6 +189,7 @@ public sealed class UiControlRuntime : IDisposable
         entry.Visible = !startsHidden;
         entry.WidgetSlot = widget.Slot;
         entry.WidgetGeneration = widget.Generation;
+        entry.Variant = definition.Variant;
         entry.Text = definition.Text ?? string.Empty;
         UiTextStyle textStyle = definition.TextStyle.Face.IsValid ? definition.TextStyle : _defaultTextStyle;
         if (textStyle.Size <= 0.0f)

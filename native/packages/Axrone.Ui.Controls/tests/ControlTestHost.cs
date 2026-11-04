@@ -180,7 +180,8 @@ internal sealed class ControlHost
         float step = 0.1f,
         IUiListItemSource? items = null,
         IUiTreeSource? tree = null,
-        IUiGridSource? grid = null)
+        IUiGridSource? grid = null,
+        UiControlVariant variant = UiControlVariant.Neutral)
     {
         var definition = new UiControlDefinition(
             Text: text,
@@ -193,7 +194,8 @@ internal sealed class ControlHost
             Step: step,
             Items: items,
             Tree: tree,
-            Grid: grid);
+            Grid: grid,
+            Variant: variant);
         return parent.IsValid
             ? Runtime.CreateControl(kind, in definition, parent)
             : Runtime.CreateControl(kind, in definition);
