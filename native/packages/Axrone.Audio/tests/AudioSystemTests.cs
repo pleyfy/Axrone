@@ -1,5 +1,6 @@
 namespace Axrone.Audio.Tests;
 
+[Collection(TestCollections.NativeMemoryGauge)]
 public sealed class AudioSystemTests : IDisposable
 {
     private readonly AudioSystem _system = AudioSystemBuilder<TypestateInitial>.Create()

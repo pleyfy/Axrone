@@ -88,7 +88,7 @@ public readonly record struct AudioPlaybackHandle(AudioSourceId SourceId, uint S
 /// </summary>
 public sealed class AudioPlaybackRuntime : IDisposable
 {
-    [StructLayout(LayoutKind.Explicit, Size = 128)]
+    [StructLayout(LayoutKind.Explicit, Size = 192)]
     private struct HardwareVoiceSlot
     {
         [FieldOffset(0)] public AudioSourceId SourceId;
@@ -105,7 +105,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
         [FieldOffset(52)] public bool Loop;
         [FieldOffset(53)] public bool IsActive;
         [FieldOffset(64)] public AudioSpatialization Spatial;
-        [FieldOffset(116)] public float DurationRemaining;
+        [FieldOffset(128)] public float DurationRemaining;
     }
 
     private readonly HardwareVoiceSlot[] _voices;
@@ -121,6 +121,30 @@ public sealed class AudioPlaybackRuntime : IDisposable
 
     /// <summary>Output sample rate in Hz; voices resample to this.</summary>
     public int OutputSampleRate => _outputSampleRate;
+
+    /// <summary>
+    /// Live voice slots. Diagnostics and removal assertions only: the scan
+    /// takes the gate so it never sits on the render path.
+    /// </summary>
+    public int ActiveVoiceCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                int count = 0;
+                for (int i = 0; i < _maxVoices; i++)
+                {
+                    if (_voices[i].IsActive)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+        }
+    }
 
     /// <summary>Creates a runtime.</summary>
     public AudioPlaybackRuntime(
@@ -195,6 +219,11 @@ public sealed class AudioPlaybackRuntime : IDisposable
             voice.StepRate = rate * detuneMultiplier * resampleRatio;
 
             voice.ReadIndex = request.OffsetSeconds.HasValue ? request.OffsetSeconds.Value * clipRate : 0.0;
+            if (request.DurationSeconds is float duration && (!float.IsFinite(duration) || duration < 0.0f))
+            {
+                AudioThrowHelper.ThrowConfig("audio.invalid-duration", "Play duration must be finite and non-negative.");
+            }
+
             voice.DurationRemaining = request.DurationSeconds ?? float.MaxValue;
             voice.Spatial = spatial;
             voice.IsActive = true;
@@ -210,6 +239,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void StopVoice(in AudioPlaybackHandle handle)
     {
+        ThrowIfDisposed();
         lock (_gate)
         {
             int idx = FindVoiceIndex(in handle);
@@ -223,10 +253,62 @@ public sealed class AudioPlaybackRuntime : IDisposable
         }
     }
 
+    /// <summary>
+    /// Releases every live voice bound to a source. Used by source removal so
+    /// a dropped entity cannot pin a voice slot or its clip reference.
+    /// </summary>
+    public int ReleaseVoicesForSource(AudioSourceId sourceId)
+    {
+        ThrowIfDisposed();
+        lock (_gate)
+        {
+            int released = 0;
+            for (int i = 0; i < _maxVoices; i++)
+            {
+                ref HardwareVoiceSlot voice = ref _voices[i];
+                if (voice.IsActive && voice.SourceId == sourceId)
+                {
+                    voice.State = AudioPlaybackState.Stopped;
+                    voice.IsActive = false;
+                    released++;
+                    _observability.Counters.IncrementCompletions();
+                    _observability.Dispatch(AudioEventType.SourceStopped, sourceId.Value, voice.Sequence);
+                }
+            }
+
+            return released;
+        }
+    }
+
+    /// <summary>
+    /// Re-points live voices at a replacement bus. Returns the number of
+    /// updated voices so a bus removal can be verified end to end.
+    /// </summary>
+    public int ReassignVoiceBus(AudioBusId from, AudioBusId to)
+    {
+        ThrowIfDisposed();
+        lock (_gate)
+        {
+            int updated = 0;
+            for (int i = 0; i < _maxVoices; i++)
+            {
+                ref HardwareVoiceSlot voice = ref _voices[i];
+                if (voice.IsActive && voice.BusId == from)
+                {
+                    voice.BusId = to;
+                    updated++;
+                }
+            }
+
+            return updated;
+        }
+    }
+
     /// <summary>Pauses a voice.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void PauseVoice(in AudioPlaybackHandle handle)
     {
+        ThrowIfDisposed();
         lock (_gate)
         {
             int idx = FindVoiceIndex(in handle);
@@ -242,6 +324,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void ResumeVoice(in AudioPlaybackHandle handle)
     {
+        ThrowIfDisposed();
         lock (_gate)
         {
             int idx = FindVoiceIndex(in handle);
@@ -352,6 +435,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
         int channels = mem.ChannelCount;
 
         double readIdx = voice.ReadIndex;
+        double consumedFrom = readIdx;
         double step = voice.StepRate;
         float leftGain = voice.LeftGain;
         float rightGain = voice.RightGain;
@@ -414,8 +498,8 @@ public sealed class AudioPlaybackRuntime : IDisposable
                     int i1 = i0 + 1 < totalFrames ? i0 + 1 : (voice.Loop ? 0 : i0);
                     float frac = (float)(readIdx - i0);
 
-                    int idx0 = i0 * 2;
-                    int idx1 = i1 * 2;
+                    int idx0 = i0 * channels;
+                    int idx1 = i1 * channels;
 
                     float sLeft = pSrc[idx0] + (frac * (pSrc[idx1] - pSrc[idx0]));
                     float sRight = pSrc[idx0 + 1] + (frac * (pSrc[idx1 + 1] - pSrc[idx0 + 1]));
@@ -429,6 +513,21 @@ public sealed class AudioPlaybackRuntime : IDisposable
         }
 
         voice.ReadIndex = readIdx;
+
+        // Scheduled play duration: consume clip-seconds advanced this block
+        // and retire the voice when the window closes. Voices without an
+        // explicit duration keep the MaxValue sentinel and skip the path.
+        if (voice.IsActive && voice.DurationRemaining < float.MaxValue)
+        {
+            int clipRate = mem.SampleRate;
+            double consumed = clipRate > 0 ? (readIdx - consumedFrom) / clipRate : 0.0;
+            voice.DurationRemaining -= (float)consumed;
+            if (voice.DurationRemaining <= 0.0f)
+            {
+                voice.State = AudioPlaybackState.Stopped;
+                voice.IsActive = false;
+            }
+        }
     }
 
     private int AcquireFreeSlot()
@@ -464,6 +563,12 @@ public sealed class AudioPlaybackRuntime : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetState(in AudioPlaybackHandle handle, out AudioPlaybackState state)
     {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            state = AudioPlaybackState.Disposed;
+            return false;
+        }
+
         lock (_gate)
         {
             int idx = FindVoiceIndex(in handle);
@@ -482,6 +587,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void UpdateSpatial(in AudioPlaybackHandle handle, in AudioSpatialization spatial)
     {
+        ThrowIfDisposed();
         lock (_gate)
         {
             int idx = FindVoiceIndex(in handle);
@@ -496,6 +602,11 @@ public sealed class AudioPlaybackRuntime : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryUpdateSpatial(AudioSourceId sourceId, in AudioSpatialization spatial)
     {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return false;
+        }
+
         lock (_gate)
         {
             for (int i = 0; i < _maxVoices; i++)
@@ -508,6 +619,15 @@ public sealed class AudioPlaybackRuntime : IDisposable
             }
 
             return false;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ThrowIfDisposed()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            AudioThrowHelper.ThrowDisposed(nameof(AudioPlaybackRuntime));
         }
     }
 

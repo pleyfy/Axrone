@@ -150,9 +150,13 @@ public sealed unsafe class SilkAudioDriver : IAudioDriver
     }
 
     /// <inheritdoc/>
-    public void QueueBuffers(uint source, uint[] buffers)
+    public void QueueBuffers(uint source, ReadOnlySpan<uint> buffers)
     {
-        ArgumentNullException.ThrowIfNull(buffers);
+        if (buffers.IsEmpty)
+        {
+            return;
+        }
+
         fixed (uint* ptr = buffers)
         {
             _al.SourceQueueBuffers(source, buffers.Length, ptr);

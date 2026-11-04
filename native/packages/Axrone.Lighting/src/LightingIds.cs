@@ -1,4 +1,4 @@
-﻿namespace Axrone.Lighting;
+namespace Axrone.Lighting;
 
 /// <summary>Cache topology constants.</summary>
 public static class CacheTopology

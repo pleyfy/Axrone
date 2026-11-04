@@ -251,4 +251,95 @@ public sealed class AudioListenerRegistry
         uint idx = Volatile.Read(ref _activeRaw);
         return _nodes[idx].Descriptor;
     }
+
+    /// <summary>Registered listener count.</summary>
+    public int RegisteredCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                int count = 0;
+                for (int i = 0; i < _maxListeners; i++)
+                {
+                    if (_nodes[i].IsRegistered)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+        }
+    }
+
+    /// <summary>Reads one registered descriptor.</summary>
+    public bool TryGetDescriptor(AudioListenerId id, out AudioListenerDescriptor descriptor)
+    {
+        lock (_gate)
+        {
+            uint idx = id.Value;
+            if (idx == 0U || idx >= (uint)_maxListeners || !_nodes[idx].IsRegistered)
+            {
+                descriptor = default;
+                return false;
+            }
+
+            descriptor = _nodes[idx].Descriptor;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Removes a listener and, when it was active, promotes the lowest
+    /// remaining listener. The last registered listener is protected: the mixer
+    /// always needs one active descriptor, so removing it is a typed error
+    /// rather than an implicit fall back to a phantom listener.
+    /// </summary>
+    public bool RemoveListener(AudioListenerId id)
+    {
+        lock (_gate)
+        {
+            uint idx = id.Value;
+            if (idx == 0U || idx >= (uint)_maxListeners || !_nodes[idx].IsRegistered)
+            {
+                return false;
+            }
+
+            int registered = 0;
+            for (int i = 0; i < _maxListeners; i++)
+            {
+                if (_nodes[i].IsRegistered)
+                {
+                    registered++;
+                }
+            }
+
+            if (registered <= 1)
+            {
+                AudioThrowHelper.ThrowListener(id, "At least one listener must stay registered for the mixer.");
+            }
+
+            _nodes[idx] = default;
+
+            if (Volatile.Read(ref _activeRaw) == idx)
+            {
+                uint fallback = 1U;
+                for (int i = 1; i < _maxListeners; i++)
+                {
+                    if (_nodes[i].IsRegistered)
+                    {
+                        fallback = (uint)i;
+                        break;
+                    }
+                }
+
+                Volatile.Write(ref _activeRaw, fallback);
+            }
+
+            _observability.Counters.IncrementListenerMutations();
+            _observability.Dispatch(AudioEventType.ListenerRemoved, id.Value);
+            return true;
+        }
+    }
 }

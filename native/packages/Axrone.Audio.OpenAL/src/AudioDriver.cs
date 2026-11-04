@@ -54,8 +54,8 @@ public interface IAudioDriver : IDisposable
     /// <summary>Whether an extension is present.</summary>
     bool IsExtensionPresent(string name);
 
-    /// <summary>Queues buffers on a source.</summary>
-    void QueueBuffers(uint source, uint[] buffers);
+    /// <summary>Queues buffers on a source. The span view keeps the pump allocation-free.</summary>
+    void QueueBuffers(uint source, ReadOnlySpan<uint> buffers);
 
     /// <summary>Unqueues processed buffers; returns the count written.</summary>
     int UnqueueProcessed(uint source, uint[] destination);

@@ -12,13 +12,21 @@ public readonly ref struct ModuleExecutionContext
     /// <summary>Spatial grid (when enabled).</summary>
     public readonly SpatialHashGrid3D? SpatialGrid;
 
+    /// <summary>Event sink modules raise contact and death notifications into.</summary>
+    public readonly IParticleEventSink? Sink;
+
     /// <summary>Creates a context.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ModuleExecutionContext(DeltaTime deltaTime, SimulationTime time, SpatialHashGrid3D? spatialGrid)
+    public ModuleExecutionContext(
+        DeltaTime deltaTime,
+        SimulationTime time,
+        SpatialHashGrid3D? spatialGrid,
+        IParticleEventSink? sink = null)
     {
         DeltaTime = deltaTime;
         Time = time;
         SpatialGrid = spatialGrid;
+        Sink = sink;
     }
 }
 

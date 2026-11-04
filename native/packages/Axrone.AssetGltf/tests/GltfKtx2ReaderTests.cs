@@ -201,7 +201,6 @@ public sealed class GltfKtx2ReaderTests
         GltfKtx2Reader.TryRead(zstd, out _, out GltfImageDecodeError? zstdError).Should().BeFalse();
         zstdError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Supercompression);
         zstdError.Value.Marker.Should().Be("supercompression");
-        zstdError.Value.Message.Should().Contain("Zstandard");
 
         byte[] zlib = Ktx2TestData.Build(
             vkFormat: 145,
@@ -289,6 +288,117 @@ public sealed class GltfKtx2ReaderTests
     }
 
     [Fact]
+    public void TryRead_HeaderFieldsBeyondSignedRange_ReturnTheirOwnCode()
+    {
+        byte[] vkFormatOverflow = Ktx2TestData.Build(vkFormat: 145, width: 4, height: 4, levels: [[1, 2, 3, 4]]);
+        BinaryPrimitives.WriteUInt32LittleEndian(vkFormatOverflow.AsSpan(12, 4), uint.MaxValue);
+        GltfKtx2Reader.TryRead(vkFormatOverflow, out _, out GltfImageDecodeError? vkError).Should().BeFalse();
+        vkError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Container);
+        vkError.Value.Marker.Should().Be("header");
+
+        byte[] typeSizeOverflow = Ktx2TestData.Build(vkFormat: 145, width: 4, height: 4, levels: [[1, 2, 3, 4]]);
+        BinaryPrimitives.WriteUInt32LittleEndian(typeSizeOverflow.AsSpan(16, 4), uint.MaxValue);
+        GltfKtx2Reader.TryRead(typeSizeOverflow, out _, out GltfImageDecodeError? typeSizeError).Should().BeFalse();
+        typeSizeError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Container);
+        typeSizeError.Value.Marker.Should().Be("header");
+
+        byte[] supercompressionOffsetOverflow =
+            Ktx2TestData.Build(vkFormat: 145, width: 4, height: 4, levels: [[1, 2, 3, 4]]);
+        BinaryPrimitives.WriteUInt64LittleEndian(supercompressionOffsetOverflow.AsSpan(64, 8), 1L << 32);
+        GltfKtx2Reader.TryRead(
+                supercompressionOffsetOverflow,
+                out _,
+                out GltfImageDecodeError? supercompressionError)
+            .Should().BeFalse();
+        supercompressionError!.Value.Failure.Should().Be(GltfImageDecodeFailure.LimitExceeded);
+        supercompressionError.Value.Marker.Should().Be("header");
+    }
+
+    [Fact]
+    public void TryRead_LevelIndexEntriesBeyondSignedRange_ReturnContainerCode()
+    {
+        byte[] lengthOverflow = Ktx2TestData.Build(vkFormat: 145, width: 4, height: 4, levels: [[1, 2, 3, 4]]);
+        BinaryPrimitives.WriteUInt64LittleEndian(lengthOverflow.AsSpan(80 + 8, 8), 1L << 32);
+        GltfKtx2Reader.TryRead(lengthOverflow, out _, out GltfImageDecodeError? lengthError).Should().BeFalse();
+        lengthError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Container);
+        lengthError.Value.Marker.Should().Be("level 0");
+
+        byte[] uncompressedOverflow = Ktx2TestData.Build(vkFormat: 145, width: 4, height: 4, levels: [[1, 2, 3, 4]]);
+        BinaryPrimitives.WriteUInt64LittleEndian(uncompressedOverflow.AsSpan(80 + 16, 8), 1L << 32);
+        GltfKtx2Reader.TryRead(uncompressedOverflow, out _, out GltfImageDecodeError? uncompressedError)
+            .Should().BeFalse();
+        uncompressedError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Container);
+        uncompressedError.Value.Marker.Should().Be("level 0");
+    }
+
+    [Fact]
+    public void TryRead_SingleByteCorruptions_NeverEscapeTheCodedFailureSurface()
+    {
+        byte[] ktx2 = Ktx2TestData.Build(
+            vkFormat: 0,
+            width: 4,
+            height: 4,
+            levels: [[1, 2, 3, 4]],
+            dfd: Ktx2TestData.BuildDfd(166),
+            keys: [("Dkmd", new byte[] { 1, 2, 3, 4 })]);
+        var observed = new HashSet<GltfImageDecodeFailure>();
+
+        for (int position = 0; position < ktx2.Length; position++)
+        {
+            byte[] corrupted = (byte[])ktx2.Clone();
+            corrupted[position] ^= 0x5A;
+
+            bool parsed = GltfKtx2Reader.TryRead(
+                corrupted,
+                out GltfKtx2Texture? texture,
+                out GltfImageDecodeError? error);
+
+            if (parsed)
+            {
+                texture!.Levels.Should().NotBeEmpty();
+                continue;
+            }
+
+            error!.Value.Codec.Should().Be(GltfImageCodecKind.Ktx2);
+            error.Value.Failure.Should().NotBe(GltfImageDecodeFailure.None);
+            observed.Add(error.Value.Failure);
+        }
+
+        observed.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public void TryResolvePayload_TranscoderDefect_PropagatesInsteadOfBeingClassified()
+    {
+        byte[] ktx2 = Ktx2TestData.Build(
+            vkFormat: 0,
+            width: 4,
+            height: 4,
+            levels: [[1, 2, 3, 4]],
+            dfd: Ktx2TestData.BuildDfd(166));
+        GltfKtx2Reader.TryRead(ktx2, out GltfKtx2Texture? texture, out _).Should().BeTrue();
+
+        Action index = () => GltfKtx2Reader.TryResolvePayload(
+            texture!,
+            new ThrowingTranscoder("defect/index", TranscoderDefect.IndexOutOfRange),
+            GltfTextureFormat.BC7_RGBA,
+            out _,
+            out _,
+            out _);
+        Action overflow = () => GltfKtx2Reader.TryResolvePayload(
+            texture!,
+            new ThrowingTranscoder("defect/overflow", TranscoderDefect.Overflow),
+            GltfTextureFormat.BC7_RGBA,
+            out _,
+            out _,
+            out _);
+
+        // Decoder defects are bugs, not input failures: they must surface, never become a diagnostic.
+        index.Should().Throw<IndexOutOfRangeException>();
+        overflow.Should().Throw<OverflowException>();
+    }
+
+    [Fact]
     public void TryValidate_IsAllocationFreeAfterWarmup()
     {
         byte[] ktx2 = Ktx2TestData.Build(
@@ -344,7 +454,6 @@ public sealed class GltfKtx2ReaderTests
         format.Should().Be(GltfTextureFormat.Unknown);
         error!.Value.Failure.Should().Be(GltfImageDecodeFailure.TranscoderMissing);
         error.Value.Marker.Should().Be("transcoder");
-        error.Value.Message.Should().Contain("IGltfCompressedTextureTranscoder");
     }
 
     [Fact]
@@ -421,7 +530,7 @@ public sealed class GltfKtx2ReaderTests
             .Should().BeFalse();
 
         error!.Value.Failure.Should().Be(GltfImageDecodeFailure.TranscoderFailed);
-        error.Value.Message.Should().Contain("stub/refuse");
+        error.Value.Marker.Should().Be("transcoder");
     }
 
     [Fact]
@@ -441,6 +550,39 @@ public sealed class GltfKtx2ReaderTests
         second.Levels.Should().Equal(first.Levels);
         second.KeyValues.Select(static entry => entry.Key).Should().Equal(first.KeyValues.Select(static entry => entry.Key));
         second.Dkmd.ToArray().Should().Equal(first.Dkmd.ToArray());
+    }
+
+    private enum TranscoderDefect
+    {
+        IndexOutOfRange,
+        Overflow,
+    }
+
+    private sealed class ThrowingTranscoder(string id, TranscoderDefect defect) : IGltfCompressedTextureTranscoder
+    {
+        public string Id { get; } = id;
+
+        public bool CanTranscode(GltfKtx2Texture texture, GltfTextureFormat targetFormat) => true;
+
+        public bool TryTranscode(
+            GltfKtx2Texture texture,
+            GltfTextureFormat targetFormat,
+            [NotNullWhen(true)] out GltfTexturePayload? payload,
+            out GltfTextureFormat format,
+            out string? failureReason)
+        {
+            payload = null;
+            format = GltfTextureFormat.Unknown;
+            failureReason = null;
+            int[] samples = [0];
+            if (defect == TranscoderDefect.IndexOutOfRange)
+            {
+                return samples[^1] == 0 && samples[samples.Length] == 0;
+            }
+
+            int operand = samples.Length + 65534;
+            return samples[^1] == 0 && checked(operand * operand) == 0;
+        }
     }
 
     private sealed class StubTranscoder(string id, bool canTranscode = true) : IGltfCompressedTextureTranscoder

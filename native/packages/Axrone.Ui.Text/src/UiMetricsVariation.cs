@@ -73,6 +73,25 @@ internal sealed class UiItemVariationStore
             return Fail(out error, offset + regionListOffset, "Variation regions exceed the store.");
         }
 
+        // Region cuts are checked once here: an evaluator must never see a malformed triplet
+        // and silently deform the glyph with its full delta.
+        for (int region = 0; region < regionCount; region++)
+        {
+            int record = offset + regionListOffset + 4 + (region * axisCount * 6);
+            for (int axis = 0; axis < axisCount; axis++)
+            {
+                float start = F2Dot14(UiFontFace.ReadI16(data, record));
+                float peak = F2Dot14(UiFontFace.ReadI16(data, record + 2));
+                float end = F2Dot14(UiFontFace.ReadI16(data, record + 4));
+                if (!UiVariationMath.IsTripletValid(start, peak, end))
+                {
+                    return Fail(out error, record, "Variation region cut coordinates are invalid.");
+                }
+
+                record += 6;
+            }
+        }
+
         for (int item = 0; item < itemDataCount; item++)
         {
             int relative = (int)UiFontFace.ReadU32(data, offset + HeaderSize + (item * 4));
@@ -138,26 +157,51 @@ internal sealed class UiItemVariationStore
         return (uint)inner < (uint)itemCount;
     }
 
+    /// <summary>
+    /// Checks the identity index rule (delta set index == glyph id) used when a variation table
+    /// carries no delta set index map: every glyph id must address a real item record.
+    /// </summary>
+    public bool CoversIdentityRange(ReadOnlySpan<byte> data, int count)
+    {
+        if ((uint)count > (uint)_itemDataCount)
+        {
+            return false;
+        }
+
+        for (int outer = 0; outer < count; outer++)
+        {
+            if (!IsValidIndex(data, outer, 0))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Accumulates the region-weighted delta for one (outer, inner) pair. Indices are validated
+    /// when the owning table is parsed, so a rejected pair here is an out-of-contract request:
+    /// the caller keeps the base metric instead of a partly applied delta.
+    /// </summary>
     public bool TryGetDelta(
         ReadOnlySpan<byte> data,
         int outer,
         int inner,
         ReadOnlySpan<float> coordinates,
-        out float delta,
-        out UiFontError error)
+        out float delta)
     {
         delta = 0.0f;
-        error = UiFontError.None;
         if ((uint)outer >= (uint)_itemDataCount)
         {
-            return Fail(out error, _offset, "Item variation outer index is outside the store.");
+            return false;
         }
 
         int itemOffset = _offset + (int)UiFontFace.ReadU32(data, _offset + _itemDataOffsetsOffset + (outer * 4));
         int itemCount = UiFontFace.ReadU16(data, itemOffset);
         if ((uint)inner >= (uint)itemCount)
         {
-            return Fail(out error, itemOffset, "Item variation inner index is outside the data.");
+            return false;
         }
 
         int wordFlags = UiFontFace.ReadU16(data, itemOffset + 2);
@@ -289,8 +333,7 @@ internal sealed class UiDeltaSetIndexMap
             return true;
         }
 
-        int entry = index < 0 ? 0 : Math.Min(index, _count - 1);
-        int position = _offset + (data[_offset] == 0 ? 4 : 6) + (entry * _entrySize);
+        int position = EntryPosition(data, index < 0 ? 0 : Math.Min(index, _count - 1));
         uint value = 0;
         for (int i = 0; i < _entrySize; i++)
         {
@@ -302,6 +345,38 @@ internal sealed class UiDeltaSetIndexMap
         outer = (int)(value >> _innerBits);
         return true;
     }
+
+    /// <summary>
+    /// Checks every addressable entry — plus the single fallback used by an empty map — against
+    /// the store, so a malformed delta set index is refused when the table is parsed and reported
+    /// to the font loader instead of becoming a silent zero delta on every glyph.
+    /// </summary>
+    public bool TryValidate(ReadOnlySpan<byte> data, UiItemVariationStore store, out int faultOffset)
+    {
+        if (_count == 0)
+        {
+            faultOffset = _offset;
+            return store.IsValidIndex(data, 0, 0);
+        }
+
+        for (int entry = 0; entry < _count; entry++)
+        {
+            _ = TryLookup(data, entry, out int outer, out int inner);
+            if (store.IsValidIndex(data, outer, inner))
+            {
+                continue;
+            }
+
+            faultOffset = EntryPosition(data, entry);
+            return false;
+        }
+
+        faultOffset = _offset;
+        return true;
+    }
+
+    private int EntryPosition(ReadOnlySpan<byte> data, int entry) =>
+        _offset + (data[_offset] == 0 ? 4 : 6) + (entry * _entrySize);
 
     private static bool Fail(out UiFontError error, int offset, string message)
     {
@@ -328,6 +403,7 @@ internal sealed class UiHvarData
         int offset,
         int length,
         int axisCount,
+        int glyphCount,
         out UiHvarData? hvar,
         out UiFontError error)
     {
@@ -374,6 +450,30 @@ internal sealed class UiHvarData
             return Fail(out error, offset + 16, "HVAR right side bearing map offset is invalid.");
         }
 
+        // Without a map a glyph id addresses the store directly, so the store must cover the
+        // whole glyph range; with a map, every entry it can decode must already be in range.
+        // Anything else would surface later as a swallowed zero delta on live metrics. Shippers
+        // either provide a map or one item data set per glyph, so refusing the table is the
+        // honest answer, not a regression: the alternative is advances that silently stop
+        // scaling with the axes.
+        if ((advanceMap is null || lsbMap is null) && !store!.CoversIdentityRange(data, glyphCount))
+        {
+            return Fail(
+                out error,
+                advanceMap is null ? offset + 8 : offset + 12,
+                "HVAR identity indexing does not cover the glyph range.");
+        }
+
+        if (advanceMap is not null && !advanceMap.TryValidate(data, store!, out int advanceFaultOffset))
+        {
+            return Fail(out error, advanceFaultOffset, "HVAR advance map entry is outside the item variation store.");
+        }
+
+        if (lsbMap is not null && !lsbMap.TryValidate(data, store!, out int lsbFaultOffset))
+        {
+            return Fail(out error, lsbFaultOffset, "HVAR left side bearing map entry is outside the item variation store.");
+        }
+
         hvar = new UiHvarData(store!, advanceMap, lsbMap);
         return true;
     }
@@ -402,7 +502,7 @@ internal sealed class UiHvarData
             return 0;
         }
 
-        return _store.TryGetDelta(data, outer, inner, coordinates, out float delta, out _)
+        return _store.TryGetDelta(data, outer, inner, coordinates, out float delta)
             ? (int)MathF.Round(delta, MidpointRounding.AwayFromZero)
             : 0;
     }
@@ -583,7 +683,7 @@ internal sealed class UiMvarData
             return 0;
         }
 
-        return _store.TryGetDelta(data, outer, inner, coordinates, out float delta, out _)
+        return _store.TryGetDelta(data, outer, inner, coordinates, out float delta)
             ? (int)MathF.Round(delta, MidpointRounding.AwayFromZero)
             : 0;
     }

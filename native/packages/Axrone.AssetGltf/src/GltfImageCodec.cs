@@ -102,17 +102,7 @@ public static class GltfImageCodec
         switch (codec)
         {
             case GltfImageCodecKind.Png:
-                if (GltfPngDecoder.TryDecode(data, out image, out string? pngError))
-                {
-                    return true;
-                }
-
-                error = new GltfImageDecodeError(
-                    GltfImageCodecKind.Png,
-                    ClassifyPngFailure(pngError),
-                    pngError ?? "PNG decode failed.",
-                    null);
-                return false;
+                return GltfPngDecoder.TryDecode(data, out image, out error);
 
             case GltfImageCodecKind.Jpeg:
                 return GltfJpegDecoder.TryDecode(data, out image, out error, upsampling);
@@ -225,38 +215,5 @@ public static class GltfImageCodec
         }
 
         return GltfImageCodecKind.Unknown;
-    }
-
-    private static GltfImageDecodeFailure ClassifyPngFailure(string? message)
-    {
-        if (string.IsNullOrEmpty(message))
-        {
-            return GltfImageDecodeFailure.Marker;
-        }
-
-        if (message.Contains("signature", StringComparison.OrdinalIgnoreCase))
-        {
-            return GltfImageDecodeFailure.Signature;
-        }
-
-        if (message.Contains("budget", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("exceeds", StringComparison.OrdinalIgnoreCase))
-        {
-            return GltfImageDecodeFailure.LimitExceeded;
-        }
-
-        if (message.Contains("unsupported", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("invalid for its color type", StringComparison.OrdinalIgnoreCase))
-        {
-            return GltfImageDecodeFailure.Unsupported;
-        }
-
-        if (message.Contains("ended", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("requires", StringComparison.OrdinalIgnoreCase))
-        {
-            return GltfImageDecodeFailure.Truncated;
-        }
-
-        return GltfImageDecodeFailure.Marker;
     }
 }

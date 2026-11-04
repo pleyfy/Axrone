@@ -1,5 +1,8 @@
 namespace Axrone.Audio.OpenAL.Tests;
 
+using System.Collections.Generic;
+using System.Diagnostics;
+
 internal sealed class FakeAudioDriver : IAudioDriver
 {
     public bool IsOpen { get; private set; }
@@ -11,6 +14,7 @@ internal sealed class FakeAudioDriver : IAudioDriver
     public int PlayCalls;
     public int StopCalls;
     public bool SupportsFloat;
+    public bool Record = true;
     public readonly List<short> Uploaded = new();
     public readonly List<float> UploadedFloat = new();
     public readonly Queue<uint> Processed = new();
@@ -31,8 +35,17 @@ internal sealed class FakeAudioDriver : IAudioDriver
         IsOpen = false;
     }
 
+    public int GenSourceCalls;
+    public int GenBuffersCalls;
+    public int DeleteSourceCalls;
+    public int DeleteBufferCalls;
+    public readonly List<uint> QueuedHandles = new();
+    public readonly List<uint> DeletedSources = new();
+    public readonly List<uint> DeletedBuffers = new();
+
     public uint[] GenBuffers(int count)
     {
+        GenBuffersCalls++;
         uint[] buffers = new uint[count];
         for (int i = 0; i < count; i++)
         {
@@ -42,20 +55,35 @@ internal sealed class FakeAudioDriver : IAudioDriver
         return buffers;
     }
 
-    public uint GenSource() => 100U;
+    public uint GenSource()
+    {
+        GenSourceCalls++;
+        return 100U;
+    }
 
-    public void DeleteBuffers(uint[] buffers) => _ = buffers;
+    public void DeleteBuffers(uint[] buffers)
+    {
+        DeleteBufferCalls++;
+        DeletedBuffers.AddRange(buffers);
+    }
 
-    public void DeleteSource(uint source) => _ = source;
+    public void DeleteSource(uint source)
+    {
+        DeleteSourceCalls++;
+        DeletedSources.Add(source);
+    }
 
     public void BufferDataShort(uint buffer, ReadOnlySpan<short> interleavedStereo, int frequency)
     {
         _ = buffer;
         _ = frequency;
         BufferDataCalls++;
-        foreach (short sample in interleavedStereo)
+        if (Record)
         {
-            Uploaded.Add(sample);
+            foreach (short sample in interleavedStereo)
+            {
+                Uploaded.Add(sample);
+            }
         }
     }
 
@@ -64,9 +92,12 @@ internal sealed class FakeAudioDriver : IAudioDriver
         _ = buffer;
         _ = frequency;
         BufferDataFloatCalls++;
-        foreach (float sample in interleavedStereo)
+        if (Record)
         {
-            UploadedFloat.Add(sample);
+            foreach (float sample in interleavedStereo)
+            {
+                UploadedFloat.Add(sample);
+            }
         }
     }
 
@@ -76,11 +107,17 @@ internal sealed class FakeAudioDriver : IAudioDriver
         return SupportsFloat;
     }
 
-    public void QueueBuffers(uint source, uint[] buffers)
+    public void QueueBuffers(uint source, ReadOnlySpan<uint> buffers)
     {
         _ = source;
         QueueCalls++;
-        _ = buffers;
+        if (Record)
+        {
+            for (int i = 0; i < buffers.Length; i++)
+            {
+                QueuedHandles.Add(buffers[i]);
+            }
+        }
     }
 
     public int UnqueueProcessed(uint source, uint[] destination)
@@ -155,25 +192,59 @@ public sealed class OpenALOutputBackendTests : IDisposable
     [Fact]
     public void PumpOnce_Refills_ProcessedBuffers()
     {
-        _backend.Start();
+        using OpenALOutputBackend backend = new(_system, _driver, blockFrames: 64, bufferCount: 3, autoPump: false);
+        backend.Start();
         int before = _driver.BufferDataCalls;
         _driver.Processed.Enqueue(1U);
         _driver.Processed.Enqueue(2U);
-        _backend.PumpOnce();
+        backend.PumpOnce();
         _driver.BufferDataCalls.Should().Be(before + 2);
-        _driver.QueueCalls.Should().BeGreaterThan(1);
-        _backend.Stop();
+        _driver.QueueCalls.Should().Be(2);
+        _driver.QueuedHandles.Should().Equal(1U, 2U, 3U, 1U, 2U);
+        backend.Stop();
     }
 
     [Fact]
     public void PumpOnce_Restarts_StalledSource()
     {
-        _backend.Start();
+        using OpenALOutputBackend backend = new(_system, _driver, blockFrames: 64, bufferCount: 3, autoPump: false);
+        backend.Start();
         _driver.State = AudioDriverSourceState.Stopped;
         int plays = _driver.PlayCalls;
-        _backend.PumpOnce();
+        backend.PumpOnce();
         _driver.PlayCalls.Should().Be(plays + 1);
-        _backend.Stop();
+        backend.Stop();
+    }
+
+    [Fact]
+    public void ManualPump_Start_DoesNotSpawnRefillThread()
+    {
+        int before = Process.GetCurrentProcess().Threads.Count;
+        using OpenALOutputBackend backend = new(_system, _driver, blockFrames: 64, bufferCount: 2, autoPump: false);
+        backend.Start();
+
+        backend.IsRunning.Should().BeFalse();
+        _driver.PlayCalls.Should().Be(1);
+        backend.Stop();
+
+        int after = Process.GetCurrentProcess().Threads.Count;
+        Math.Abs(after - before).Should().BeLessThanOrEqualTo(2);
+    }
+
+    [Fact]
+    public void ManualPump_DoubleStart_DoesNotRegenerateOrReopenHandles()
+    {
+        using OpenALOutputBackend backend = new(_system, _driver, blockFrames: 64, bufferCount: 2, autoPump: false);
+        backend.Start();
+        backend.Start();
+
+        _driver.OpenCalls.Should().Be(1);
+        _driver.GenSourceCalls.Should().Be(1);
+        _driver.GenBuffersCalls.Should().Be(1);
+        backend.Stop();
+
+        _driver.DeleteSourceCalls.Should().Be(1);
+        _driver.DeleteBufferCalls.Should().Be(1);
     }
 
     [Fact]
@@ -207,6 +278,95 @@ public sealed class OpenALOutputBackendTests : IDisposable
         backend.Start();
         _driver.BufferDataCalls.Should().Be(2);
         _driver.BufferDataFloatCalls.Should().Be(0);
+        backend.Stop();
+    }
+
+    [Fact]
+    public void Stop_DeletesSourceAndEveryBufferExactlyOnce()
+    {
+        _backend.Start();
+        _driver.GenSourceCalls.Should().Be(1);
+        _driver.GenBuffersCalls.Should().Be(1);
+
+        _backend.Stop();
+
+        _driver.DeleteSourceCalls.Should().Be(1);
+        _driver.DeletedSources.Should().Equal(100U);
+        _driver.DeleteBufferCalls.Should().Be(1);
+        _driver.DeletedBuffers.Should().Equal(1U, 2U, 3U);
+    }
+
+    [Fact]
+    public void Restart_DeletesPreviousGenerationBeforeRegeneratingHandles()
+    {
+        _backend.Start();
+        _backend.Stop();
+        _backend.Start();
+        _backend.Stop();
+
+        _driver.GenSourceCalls.Should().Be(2);
+        _driver.DeleteSourceCalls.Should().Be(2);
+        _driver.GenBuffersCalls.Should().Be(2);
+        _driver.DeletedBuffers.Should().Equal(1U, 2U, 3U, 4U, 5U, 6U);
+    }
+
+    [Fact]
+    public void Stop_AfterDeviceClosedUnderneath_ClearsHandlesAndCanRestart()
+    {
+        _backend.Start();
+        _driver.Close();
+
+        _backend.Stop();
+
+        _driver.DeleteSourceCalls.Should().Be(0);
+        _driver.CloseCalls.Should().Be(1);
+
+        _backend.Start();
+        _backend.Stop();
+
+        _driver.GenSourceCalls.Should().Be(2);
+        _driver.DeleteSourceCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public void Start_AfterDispose_IsTypedDisposedError()
+    {
+        _backend.Start();
+        _backend.Stop();
+        _backend.Dispose();
+
+        Action start = () => _backend.Start();
+
+        start.Should().Throw<AudioDisposedException>().WithMessage("*OpenALOutputBackend*");
+    }
+
+    [Fact]
+    public void PumpOnce_QueuesPartialBatchesWithoutAllocating()
+    {
+        using OpenALOutputBackend backend = new(_system, _driver, blockFrames: 64, bufferCount: 3, autoPump: false);
+        backend.Start();
+        _driver.Record = false;
+
+        for (int i = 0; i < 400; i++)
+        {
+            _driver.Processed.Enqueue(1U);
+            backend.PumpOnce();
+        }
+
+        int uploadBefore = _driver.BufferDataCalls;
+        long measuredBefore = GC.GetAllocatedBytesForCurrentThread();
+
+        for (int i = 0; i < 400; i++)
+        {
+            _driver.Processed.Enqueue(1U);
+            backend.PumpOnce();
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - measuredBefore;
+
+        allocated.Should().Be(0L);
+        _driver.BufferDataCalls.Should().Be(uploadBefore + 400);
+
         backend.Stop();
     }
 }

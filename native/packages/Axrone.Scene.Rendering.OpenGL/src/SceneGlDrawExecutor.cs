@@ -72,7 +72,8 @@ public sealed class SceneGlDrawExecutor
         in SceneFogState fog = default,
         ISceneAreaLightSource? areaLights = null,
         SceneGlReflectionProbeAtlas? probeAtlas = null,
-        ISceneReflectionProbeSource? reflectionProbe = null)
+        ISceneReflectionProbeSource? reflectionProbe = null,
+        ISceneGlShadowSource? shadow = null)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(camera);
@@ -125,6 +126,14 @@ public sealed class SceneGlDrawExecutor
                 reflectionProbe.TryGetSelectedProbe(out SceneReflectionProbeRenderItem probe))
             {
                 SceneGlReflectionProbeBinder.Bind(_context, shader, probeAtlas, in probe);
+            }
+
+            if (shadow is not null)
+            {
+                if (!shadow.TryBind(_context, shader))
+                {
+                    shadow.BindFogOnly(shader);
+                }
             }
 
             ApplyState(_context, item.Transparent, material, pass);

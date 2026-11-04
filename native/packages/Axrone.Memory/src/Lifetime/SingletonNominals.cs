@@ -1,4 +1,4 @@
-﻿namespace Axrone.Memory.Lifetime;
+namespace Axrone.Memory.Lifetime;
 
 /// <summary>
 /// Strongly-typed count of leases currently held against a singleton instance.

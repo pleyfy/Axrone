@@ -20,7 +20,7 @@ public sealed class GltfPngDecoderTests
 
         byte[] png = EncodePng(2, 2, colorType: 6, bitDepth: 8, Rows(2, 2, 4, pixels));
 
-        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out string? error).Should().BeTrue();
+        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out GltfImageDecodeError? error).Should().BeTrue();
 
         error.Should().BeNull();
         image!.Width.Should().Be(2);
@@ -41,7 +41,7 @@ public sealed class GltfPngDecoderTests
         byte[] scanlines = FilterRows(rows, bpp: 3, [1, 2, 3, 4]);
         byte[] png = EncodePng(2, 4, colorType: 2, bitDepth: 8, scanlines);
 
-        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out string? error).Should().BeTrue();
+        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out GltfImageDecodeError? error).Should().BeTrue();
 
         error.Should().BeNull();
         byte[] expected = new byte[2 * 4 * 4];
@@ -70,7 +70,7 @@ public sealed class GltfPngDecoderTests
 
         byte[] png = EncodePng(2, 1, colorType: 3, bitDepth: 8, scanlines, palette, transparency);
 
-        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out string? error).Should().BeTrue();
+        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out GltfImageDecodeError? error).Should().BeTrue();
 
         error.Should().BeNull();
         image!.Rgba.ToArray().Should().Equal(
@@ -95,7 +95,7 @@ public sealed class GltfPngDecoderTests
         byte[] interlaced = BuildAdam7Scanlines(width, height, pixels);
         byte[] png = EncodePng(width, height, colorType: 6, bitDepth: 8, interlaced, interlace: 1);
 
-        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out string? error).Should().BeTrue();
+        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out GltfImageDecodeError? error).Should().BeTrue();
 
         error.Should().BeNull();
         image!.Width.Should().Be(width);
@@ -106,20 +106,86 @@ public sealed class GltfPngDecoderTests
     [Fact]
     public void Decode_InvalidBuffers_FailClosed()
     {
-        GltfPngDecoder.TryDecode([1, 2, 3], out _, out string? signatureError).Should().BeFalse();
-        signatureError.Should().Contain("signature");
+        GltfPngDecoder.TryDecode([1, 2, 3], out _, out GltfImageDecodeError? signatureError).Should().BeFalse();
+        signatureError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Signature);
+        signatureError.Value.Codec.Should().Be(GltfImageCodecKind.Png);
 
         byte[] invalidColorType = EncodePng(1, 1, colorType: 7, bitDepth: 8, [0, 0, 0, 0]);
-        GltfPngDecoder.TryDecode(invalidColorType, out _, out string? colorError).Should().BeFalse();
-        colorError.Should().Contain("color type");
+        GltfPngDecoder.TryDecode(invalidColorType, out _, out GltfImageDecodeError? colorError).Should().BeFalse();
+        colorError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Unsupported);
+        colorError.Value.Marker.Should().Be("IHDR");
 
         byte[] missingPalette = EncodePng(1, 1, colorType: 3, bitDepth: 8, [0, 0]);
-        GltfPngDecoder.TryDecode(missingPalette, out _, out string? paletteError).Should().BeFalse();
-        paletteError.Should().Contain("PLTE");
+        GltfPngDecoder.TryDecode(missingPalette, out _, out GltfImageDecodeError? paletteError).Should().BeFalse();
+        paletteError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Marker);
+        paletteError.Value.Marker.Should().Be("PLTE");
 
         byte[] truncated = EncodePng(2, 2, colorType: 6, bitDepth: 8, Rows(2, 2, 4, new byte[16]));
-        GltfPngDecoder.TryDecode(truncated.AsSpan(0, 40), out _, out string? truncatedError).Should().BeFalse();
-        truncatedError.Should().NotBeNull();
+        GltfPngDecoder.TryDecode(truncated.AsSpan(0, 40), out _, out GltfImageDecodeError? truncatedError).Should().BeFalse();
+        truncatedError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Truncated);
+    }
+
+    [Fact]
+    public void Decode_StructuralFailures_CarryTheirOwnCode()
+    {
+        byte[] invalidFilter = EncodePng(1, 1, colorType: 6, bitDepth: 8, [9, 0, 0, 0, 0]);
+        GltfPngDecoder.TryDecode(invalidFilter, out _, out GltfImageDecodeError? filterError).Should().BeFalse();
+        filterError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Marker);
+        filterError.Value.Marker.Should().Be("IDAT");
+
+        byte[] paletteOutOfRange = EncodePng(1, 1, colorType: 3, bitDepth: 8, [0, 5], [255, 0, 0, 0, 255, 0]);
+        GltfPngDecoder.TryDecode(paletteOutOfRange, out _, out GltfImageDecodeError? indexError).Should().BeFalse();
+        indexError!.Value.Failure.Should().Be(GltfImageDecodeFailure.ScanData);
+        indexError.Value.Marker.Should().Be("PLTE");
+
+        byte[] badDepth = EncodePng(1, 1, colorType: 2, bitDepth: 4, [0, 0]);
+        GltfPngDecoder.TryDecode(badDepth, out _, out GltfImageDecodeError? depthError).Should().BeFalse();
+        depthError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Unsupported);
+
+        byte[] badTransparency = EncodePng(1, 1, colorType: 6, bitDepth: 8, [0, 0, 0, 0, 0], transparency: [255]);
+        GltfPngDecoder.TryDecode(badTransparency, out _, out GltfImageDecodeError? trnsError).Should().BeFalse();
+        trnsError!.Value.Failure.Should().Be(GltfImageDecodeFailure.Marker);
+        trnsError.Value.Marker.Should().Be("tRNS");
+
+        byte[] oversize = EncodePng(9000, 1, colorType: 6, bitDepth: 8, [0, 0, 0, 0, 0]);
+        GltfPngDecoder.TryDecode(oversize, out _, out GltfImageDecodeError? limitError).Should().BeFalse();
+        limitError!.Value.Failure.Should().Be(GltfImageDecodeFailure.LimitExceeded);
+    }
+
+    [Fact]
+    public void Decode_ChunkLengthBeyondBuffer_IsTruncatedWithChunkName()
+    {
+        byte[] idatChunkType = [0x49, 0x44, 0x41, 0x54];
+        var png = new List<byte>(Signature);
+        Span<byte> length = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(length, 4096);
+        png.AddRange(length);
+        png.AddRange(idatChunkType);
+        png.AddRange([1, 2, 3, 4]);
+
+        GltfPngDecoder.TryDecode([.. png], out _, out GltfImageDecodeError? error).Should().BeFalse();
+        error!.Value.Failure.Should().Be(GltfImageDecodeFailure.Truncated);
+        error.Value.Marker.Should().Be("IDAT");
+    }
+
+    [Fact]
+    public void Decode_GrayscaleVector_ProducesNoErrorObject()
+    {
+        byte[] png = EncodePng(1, 1, colorType: 0, bitDepth: 8, [0, 128]);
+        GltfPngDecoder.TryDecode(png, out GltfDecodedImage? image, out GltfImageDecodeError? error).Should().BeTrue();
+        error.Should().BeNull();
+        image!.Rgba.ToArray().Should().Equal(128, 128, 128, 255);
+    }
+
+    [Fact]
+    public void Codec_PngFailure_IsTheDecoderCode()
+    {
+        byte[] missingPalette = EncodePng(1, 1, colorType: 3, bitDepth: 8, [0, 0]);
+        GltfImageCodec.TryDecodeRaster(missingPalette, "image/png", null, out _, out GltfImageDecodeError? codecError)
+            .Should().BeFalse();
+        codecError!.Value.Codec.Should().Be(GltfImageCodecKind.Png);
+        codecError.Value.Failure.Should().Be(GltfImageDecodeFailure.Marker);
+        codecError.Value.Marker.Should().Be("PLTE");
     }
 
     [Fact]
@@ -153,7 +219,7 @@ public sealed class GltfPngDecoderTests
     }
 
     [Fact]
-    public async Task Import_TruncatedJpegRetainsRawPayloadWithDiagnostic()
+    public async Task Import_TruncatedJpegMarksTheRawPayloadUnusable()
     {
         string json = """
             {
@@ -167,12 +233,13 @@ public sealed class GltfPngDecoderTests
         GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
 
         GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
-        texture.Payload.Should().BeOfType<GltfRawTexturePayload>()
-            .Which.MimeType.Should().Be("image/jpeg");
+        GltfRawTexturePayload payload = texture.Payload.Should().BeOfType<GltfRawTexturePayload>().Subject;
+        payload.MimeType.Should().Be("image/jpeg");
+        payload.Unusable!.Value.Codec.Should().Be(GltfImageCodecKind.Jpeg);
         texture.RuntimeFormat.Should().Be(GltfTextureFormat.Unknown);
-        result.Diagnostics.Should().Contain(diagnostic =>
-            diagnostic.Code == "gltf.texture.decode.failed" &&
-            diagnostic.Message.Contains("JPEG", StringComparison.Ordinal));
+        GltfDiagnostic diagnostic = result.Diagnostics.Should().ContainSingle().Subject;
+        diagnostic.Code.Should().Be("gltf.texture.decode.failed");
+        diagnostic.Level.Should().Be(GltfDiagnosticLevel.Error);
     }
 
     [Fact]
@@ -205,7 +272,7 @@ public sealed class GltfPngDecoderTests
     }
 
     [Fact]
-    public async Task Import_InvalidPngRetainsRawPayloadWithDiagnostic()
+    public async Task Import_InvalidPngMarksTheRawPayloadUnusable()
     {
         string json = """
             {
@@ -219,9 +286,10 @@ public sealed class GltfPngDecoderTests
         GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
 
         GltfTextureAsset texture = result.Textures.Should().ContainSingle().Subject;
-        texture.Payload.Should().BeOfType<GltfRawTexturePayload>();
-        result.Diagnostics.Should().Contain(diagnostic =>
-            diagnostic.Code == "gltf.texture.decode.failed");
+        texture.Payload.Should().BeOfType<GltfRawTexturePayload>()
+            .Which.Unusable!.Value.Codec.Should().Be(GltfImageCodecKind.Png);
+        result.Diagnostics.Should().ContainSingle()
+            .Which.Code.Should().Be("gltf.texture.decode.failed");
     }
 
     [Fact]

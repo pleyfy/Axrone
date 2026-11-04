@@ -51,7 +51,11 @@ public sealed class SpriteAtlasAssetImporter : IAssetImporter
 
         if (!result.IsSuccess)
         {
-            throw new Asset2DException("asset-2d.import", result.ErrorMessage ?? "Sprite atlas import failed.");
+            throw new Asset2DException(
+                "asset-2d.import",
+                result.ErrorCode is null
+                    ? result.ErrorMessage ?? "Sprite atlas import failed."
+                    : $"[{result.ErrorCode}] {result.ErrorMessage ?? "Sprite atlas import failed."}");
         }
 
         SpriteAtlas<TopLeftOriginPolicy> atlas = result.Atlas;

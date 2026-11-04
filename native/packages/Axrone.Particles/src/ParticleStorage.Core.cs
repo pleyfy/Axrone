@@ -1,4 +1,4 @@
-﻿namespace Axrone.Particles;
+namespace Axrone.Particles;
 
 /// <summary>Generational slot map entry.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -26,6 +26,7 @@ internal struct CachePaddedCounters
 public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
 {
     private const nuint Alignment = 64;
+    private const int FloatStreamCount = 29;
 
     /// <summary>Capacity.</summary>
     public int Capacity { get; private set; }
@@ -126,6 +127,9 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
     /// <summary>Custom channel 3.</summary>
     public float* Custom3;
 
+    /// <summary>Collision hit counts.</summary>
+    public int* CollisionHits;
+
     /// <summary>Dense index to identity.</summary>
     public ParticleId* DenseToId;
 
@@ -141,7 +145,7 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
 
         nuint streamFloats = (nuint)cap * sizeof(float);
         nuint streamIds = (nuint)cap * (nuint)sizeof(ParticleId);
-        _storageSizeBytes = (streamFloats * 28) + streamIds;
+        _storageSizeBytes = (streamFloats * FloatStreamCount) + streamIds;
 
         _storageMemoryBlock = NativeMemory.AlignedAlloc(_storageSizeBytes, Alignment);
         if (_storageMemoryBlock == null)
@@ -188,6 +192,8 @@ public sealed unsafe partial class NativeSoaParticleStorage : IDisposable
         Custom1 = (float*)ptr; ptr += streamFloats;
         Custom2 = (float*)ptr; ptr += streamFloats;
         Custom3 = (float*)ptr; ptr += streamFloats;
+
+        CollisionHits = (int*)ptr; ptr += streamFloats;
 
         DenseToId = (ParticleId*)ptr;
 

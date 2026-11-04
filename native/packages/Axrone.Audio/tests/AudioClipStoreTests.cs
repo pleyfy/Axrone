@@ -1,5 +1,6 @@
 namespace Axrone.Audio.Tests;
 
+[Collection(TestCollections.NativeMemoryGauge)]
 public sealed class AudioClipStoreTests : IDisposable
 {
     private readonly AudioClipStore _store = new(4);

@@ -52,22 +52,43 @@ public readonly record struct UiFontAxisValue(UiFontAxisTag Tag, float Value);
 
 internal static class UiVariationMath
 {
+    /// <summary>
+    /// Triplet sanity for one axis of a variation region: the cut ordering must hold and the
+    /// region must not straddle the default instance. A peak of zero marks an axis the region
+    /// ignores, so any cut pair is acceptable there. Store parsing rejects malformed regions;
+    /// evaluators keep the same predicate as a last line of defence.
+    /// </summary>
+    public static bool IsTripletValid(float start, float peak, float end) =>
+        peak == 0.0f || !(start > peak || peak > end || (start < 0.0f && end > 0.0f));
+
+    /// <summary>
+    /// Axis factor of a region at <paramref name="coordinate"/>. False with a zero factor when
+    /// the coordinate is outside the region or the triplet is malformed: an unusable region
+    /// contributes nothing instead of applying its full delta.
+    /// </summary>
     public static bool TryAxisFactor(float coordinate, float start, float peak, float end, out float factor)
     {
-        factor = 1.0f;
-        if (peak == 0.0f || start > peak || peak > end || (start < 0.0f && end > 0.0f))
+        if (peak == 0.0f)
         {
+            factor = 1.0f;
             return true;
         }
 
+        if (!IsTripletValid(start, peak, end))
+        {
+            factor = 0.0f;
+            return false;
+        }
+
+        factor = 0.0f;
         if (coordinate == peak)
         {
+            factor = 1.0f;
             return true;
         }
 
         if (coordinate <= start || end <= coordinate)
         {
-            factor = 0.0f;
             return false;
         }
 
@@ -299,7 +320,7 @@ internal static class UiVariationParser
 
         UiHvarData? hvar = null;
         if (hvarOffset >= 0 &&
-            !UiHvarData.TryParse(data, hvarOffset, hvarLength, axes!.Length, out hvar, out error))
+            !UiHvarData.TryParse(data, hvarOffset, hvarLength, axes!.Length, glyphCount, out hvar, out error))
         {
             return false;
         }

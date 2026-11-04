@@ -156,6 +156,12 @@ public class TweenStressTests
         }
 
         engine.ActiveCount.Should().Be(0);
+
+        // The storm decides its own tallies: whichever thread wins, some runs can legitimately
+        // end with every tween already settled by the pump, so no cancel fires. The tail below
+        // drives the settle paths with explicit ticks and exact counters, so the completed and
+        // killed sides of the ledger are proven live by construction rather than by scheduling.
+        VerifyDeterministicLifecycleTail(engine, ledger);
         ledger.Verify();
     }
 

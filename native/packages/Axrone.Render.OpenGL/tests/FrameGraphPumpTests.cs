@@ -1,4 +1,4 @@
-﻿using Axrone.Execution;
+using Axrone.Execution;
 using Axrone.Render.Core.Abstractions;
 using Axrone.Render.OpenGL.Context;
 using Axrone.Render.OpenGL.FrameGraph;

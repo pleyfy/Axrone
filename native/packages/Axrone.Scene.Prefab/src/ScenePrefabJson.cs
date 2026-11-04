@@ -112,9 +112,10 @@ public static class ScenePrefabJson
         }
 
         var actors = new List<SceneActorSnapshot>(actorsElement.GetArrayLength());
+        int actorIndex = 0;
         foreach (JsonElement actorElement in actorsElement.EnumerateArray())
         {
-            actors.Add(ReadActor(actorElement));
+            actors.Add(ReadActor(actorElement, id, actorIndex++));
         }
 
         ScenePrefabMetadata? metadata = null;
@@ -151,7 +152,8 @@ public static class ScenePrefabJson
             int index = 0;
             foreach (JsonElement operationElement in overridesElement.EnumerateArray())
             {
-                overrides[index++] = ReadOperation(operationElement);
+                overrides[index] = ReadOperation(operationElement, id, index);
+                index++;
             }
         }
 
@@ -227,6 +229,12 @@ public static class ScenePrefabJson
         writer.WriteBoolean("persistent", actor.Persistent);
         writer.WriteBoolean("pooled", actor.Pooled);
 
+        if (actor.Source is { } source)
+        {
+            writer.WritePropertyName("source");
+            WriteSource(writer, source);
+        }
+
         writer.WriteStartArray("components");
         for (int i = 0; i < actor.Components.Count; i++)
         {
@@ -290,7 +298,7 @@ public static class ScenePrefabJson
         writer.WriteEndObject();
     }
 
-    private static SceneActorSnapshot ReadActor(JsonElement element)
+    private static SceneActorSnapshot ReadActor(JsonElement element, string prefabId, int index)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
@@ -299,7 +307,7 @@ public static class ScenePrefabJson
                 "Actor snapshots must be JSON objects.");
         }
 
-        string nodeId = GetRequiredString(element, "nodeId");
+        string nodeId = ReadStableNodeId(element, prefabId, index);
         string? parentNodeId = GetOptionalString(element, "parentNodeId");
         string name = GetRequiredString(element, "name");
         ushort layer = GetOptionalUInt16(element, "layer");
@@ -325,6 +333,8 @@ public static class ScenePrefabJson
             components.Add(ReadComponent(componentElement, nodeId));
         }
 
+        ScenePrefabNodeSource? source = ReadSource(element);
+
         return new SceneActorSnapshot(
             nodeId,
             name,
@@ -334,7 +344,8 @@ public static class ScenePrefabJson
             persistent,
             pooled,
             components,
-            parentNodeId);
+            parentNodeId,
+            source);
     }
 
     private static SceneComponentSnapshot ReadComponent(JsonElement element, string nodeId)
@@ -372,21 +383,180 @@ public static class ScenePrefabJson
 
     private static string[] ReadTags(JsonElement element)
     {
-        if (!element.TryGetProperty("tags", out JsonElement tags) ||
-            tags.ValueKind != JsonValueKind.Array)
+        if (!element.TryGetProperty("tags", out JsonElement tags))
         {
             return [];
+        }
+
+        if (tags.ValueKind != JsonValueKind.Array)
+        {
+            throw new ScenePrefabException(
+                ScenePrefabErrorCodes.Invalid,
+                "'tags' must be an array of strings.");
         }
 
         string[] result = new string[tags.GetArrayLength()];
         int index = 0;
         foreach (JsonElement tag in tags.EnumerateArray())
         {
-            result[index++] = tag.GetString() ?? string.Empty;
+            result[index++] = tag.ValueKind switch
+            {
+                JsonValueKind.String => tag.GetString()!,
+                JsonValueKind.Null => ThrowNullElement("tags"),
+                _ => ThrowInvalidStringTag()
+            };
         }
 
         return result;
     }
+
+    private static void WriteSource(Utf8JsonWriter writer, in ScenePrefabNodeSource source)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("prefabId", source.PrefabId);
+        writer.WriteString("nodeId", source.NodeId);
+
+        if (!source.InstancePath.IsEmpty)
+        {
+            source.InstancePath.WriteTo(writer, "instancePath");
+        }
+
+        if (!source.Lineage.IsEmpty)
+        {
+            source.Lineage.WriteTo(writer, "lineage");
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static ScenePrefabNodeSource? ReadSource(JsonElement element)
+    {
+        if (!element.TryGetProperty("source", out JsonElement sourceElement))
+        {
+            return null;
+        }
+
+        if (sourceElement.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (sourceElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new ScenePrefabException(
+                ScenePrefabErrorCodes.InvalidProvenance,
+                "'source' must be an object or null.");
+        }
+
+        return new ScenePrefabNodeSource(
+            GetRequiredString(sourceElement, "prefabId"),
+            GetRequiredString(sourceElement, "nodeId"),
+            ReadIdPath(sourceElement, "instancePath"),
+            ReadIdPath(sourceElement, "lineage"));
+    }
+
+    private static ScenePrefabIdPath ReadIdPath(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out JsonElement values))
+        {
+            return ScenePrefabIdPath.Empty;
+        }
+
+        if (values.ValueKind != JsonValueKind.Array)
+        {
+            throw new ScenePrefabException(
+                ScenePrefabErrorCodes.InvalidProvenance,
+                $"'{name}' must be an array of strings.");
+        }
+
+        int count = values.GetArrayLength();
+        if (count > ScenePrefabIdPath.Capacity)
+        {
+            throw new ScenePrefabException(
+                ScenePrefabErrorCodes.InvalidProvenance,
+                $"'{name}' exceeds the fixed capacity of {ScenePrefabIdPath.Capacity}.");
+        }
+
+        if (count == 0)
+        {
+            return ScenePrefabIdPath.Empty;
+        }
+
+        string[] buffer = ArrayPool<string>.Shared.Rent(count);
+        try
+        {
+            int index = 0;
+            foreach (JsonElement value in values.EnumerateArray())
+            {
+                string item = value.ValueKind switch
+                {
+                    JsonValueKind.String => value.GetString()!,
+                    JsonValueKind.Null => ThrowNullElement(name),
+                    _ => ThrowInvalidStringElement(name)
+                };
+                if (string.IsNullOrEmpty(item))
+                {
+                    ThrowInvalidProvenance($"'{name}' elements must be non-empty.");
+                }
+
+                buffer[index++] = item;
+            }
+
+            return ScenePrefabIdPath.Create(buffer.AsSpan(0, count));
+        }
+        finally
+        {
+            ArrayPool<string>.Shared.Return(buffer, clearArray: true);
+        }
+    }
+
+    private static string ReadStableNodeId(JsonElement element, string prefabId, int index)
+    {
+        if (!element.TryGetProperty("nodeId", out JsonElement nodeIdElement))
+        {
+            return ScenePrefabNodeIdentity.RequireStableNodeId(null, prefabId, index);
+        }
+
+        if (nodeIdElement.ValueKind == JsonValueKind.Null)
+        {
+            return ScenePrefabNodeIdentity.RequireStableNodeId(null, prefabId, index);
+        }
+
+        if (nodeIdElement.ValueKind != JsonValueKind.String)
+        {
+            throw new ScenePrefabException(
+                ScenePrefabErrorCodes.Invalid,
+                $"Property 'nodeId' must be a string.",
+                nodeIdElement.ToString());
+        }
+
+        return ScenePrefabNodeIdentity.RequireStableNodeId(
+            nodeIdElement.GetString(),
+            prefabId,
+            index);
+    }
+
+    [DoesNotReturn]
+    private static string ThrowNullElement(string name) =>
+        throw new ScenePrefabException(
+            ScenePrefabErrorCodes.InvalidNullElement,
+            $"'{name}' must not contain null elements.");
+
+    [DoesNotReturn]
+    private static string ThrowInvalidStringTag() =>
+        throw new ScenePrefabException(
+            ScenePrefabErrorCodes.Invalid,
+            "'tags' must be an array of strings.");
+
+    [DoesNotReturn]
+    private static string ThrowInvalidStringElement(string name) =>
+        throw new ScenePrefabException(
+            ScenePrefabErrorCodes.InvalidProvenance,
+            $"'{name}' must be an array of strings.");
+
+    [DoesNotReturn]
+    private static void ThrowInvalidProvenance(string message) =>
+        throw new ScenePrefabException(ScenePrefabErrorCodes.InvalidProvenance, message);
 
     private static void WriteReference(Utf8JsonWriter writer, ScenePrefabReference reference)
     {
@@ -484,9 +654,10 @@ public static class ScenePrefabJson
         if (element.TryGetProperty("overrides", out JsonElement overridesElement) &&
             overridesElement.ValueKind == JsonValueKind.Array)
         {
+            int operationIndex = 0;
             foreach (JsonElement operationElement in overridesElement.EnumerateArray())
             {
-                overrides.Add(ReadOperation(operationElement));
+                overrides.Add(ReadOperation(operationElement, instanceId, operationIndex++));
             }
         }
 
@@ -599,7 +770,10 @@ public static class ScenePrefabJson
         writer.WriteEndObject();
     }
 
-    private static ScenePrefabOverrideOperation ReadOperation(JsonElement element)
+    private static ScenePrefabOverrideOperation ReadOperation(
+        JsonElement element,
+        string prefabId,
+        int operationIndex)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
@@ -613,7 +787,7 @@ public static class ScenePrefabJson
         return kind switch
         {
             "add-actor" => new ScenePrefabAddActorOperation(
-                ReadActor(RequireProperty(element, "actor")),
+                ReadActor(RequireProperty(element, "actor"), prefabId, operationIndex),
                 GetOptionalString(element, "afterNodeId")),
             "remove-actor" => new ScenePrefabRemoveActorOperation(
                 GetRequiredString(element, "nodeId")),

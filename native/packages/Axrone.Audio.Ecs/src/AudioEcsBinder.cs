@@ -42,8 +42,9 @@ public sealed class AudioEcsBinder : IDisposable
     private readonly AudioSystem _system;
     private readonly World _world;
     private readonly Dictionary<Entity, CommandQueue> _queues = new();
+    private readonly Dictionary<Entity, AudioSourceId> _sourceIds = new();
+    private readonly Dictionary<Entity, AudioListenerId> _listenerIds = new();
     private readonly HashSet<Entity> _autoplayed = new();
-    private readonly HashSet<Entity> _listeners = new();
     private readonly Lock _gate = new();
     private int _disposed;
 
@@ -67,6 +68,7 @@ public sealed class AudioEcsBinder : IDisposable
                 return;
             }
 
+            _sourceIds[entity] = _world.GetComponent<AudioSourceRef>(entity).SourceId;
             if (_autoplayed.Add(entity) && _world.GetComponent<AudioSourceRef>(entity).Autoplay)
             {
                 EnqueueLocked(entity, new AudioSourceCommand(AudioSourceCommandType.Play, default));
@@ -74,16 +76,18 @@ public sealed class AudioEcsBinder : IDisposable
         }
     }
 
-    /// <summary>Stops and untracks a source entity.</summary>
+    /// <summary>
+    /// Untracks a source entity and removes its registry entry, so a detached
+    /// entity cannot leave a registered source or a live voice behind.
+    /// </summary>
     public void DetachSource(Entity entity)
     {
         ThrowIfDisposed();
         lock (_gate)
         {
-            if (_world.HasComponent<AudioSourceRef>(entity))
+            if (_sourceIds.Remove(entity, out AudioSourceId id))
             {
-                AudioSourceId id = _world.GetComponent<AudioSourceRef>(entity).SourceId;
-                _system.Sources.Stop(id);
+                _system.Sources.RemoveSource(id);
             }
 
             _queues.Remove(entity);
@@ -113,12 +117,18 @@ public sealed class AudioEcsBinder : IDisposable
         ThrowIfDisposed();
         lock (_gate)
         {
-            if (!_world.HasComponent<AudioListenerRef>(entity) || !_listeners.Add(entity))
+            if (!_world.HasComponent<AudioListenerRef>(entity))
             {
                 return;
             }
 
             AudioListenerRef link = _world.GetComponent<AudioListenerRef>(entity);
+            if (_listenerIds.TryGetValue(entity, out AudioListenerId known) && known == link.ListenerId)
+            {
+                return;
+            }
+
+            _listenerIds[entity] = link.ListenerId;
             _system.Listeners.Upsert(link.ListenerId, link.ToDescriptor());
             if (link.Active)
             {
@@ -127,13 +137,16 @@ public sealed class AudioEcsBinder : IDisposable
         }
     }
 
-    /// <summary>Untracks a listener entity.</summary>
+    /// <summary>Untracks a listener entity and removes its registry entry.</summary>
     public void DetachListener(Entity entity)
     {
         ThrowIfDisposed();
         lock (_gate)
         {
-            _listeners.Remove(entity);
+            if (_listenerIds.Remove(entity, out AudioListenerId id) && _system.Listeners.RegisteredCount > 1)
+            {
+                _system.Listeners.RemoveListener(id);
+            }
         }
     }
 
@@ -152,8 +165,8 @@ public sealed class AudioEcsBinder : IDisposable
         {
             SweepDeadLocked();
 
-            List<(Entity Entity, AudioListenerRef Link)> listeners = new(_listeners.Count);
-            foreach (Entity entity in _listeners)
+            List<(Entity Entity, AudioListenerRef Link)> listeners = new(_listenerIds.Count);
+            foreach (Entity entity in _listenerIds.Keys)
             {
                 if (_world.HasComponent<AudioListenerRef>(entity))
                 {
@@ -180,6 +193,7 @@ public sealed class AudioEcsBinder : IDisposable
 
                 ref AudioSourceRef link = ref _world.GetComponent<AudioSourceRef>(entity);
                 _system.Sources.Upsert(link.SourceId, link.ToDefinition());
+                _sourceIds[entity] = link.SourceId;
 
                 CommandQueue queue = _queues[entity];
                 int head = queue.Head;
@@ -238,7 +252,8 @@ public sealed class AudioEcsBinder : IDisposable
         {
             _queues.Clear();
             _autoplayed.Clear();
-            _listeners.Clear();
+            _sourceIds.Clear();
+            _listenerIds.Clear();
         }
 
         GC.SuppressFinalize(this);
@@ -302,7 +317,7 @@ public sealed class AudioEcsBinder : IDisposable
     private void SweepDeadLocked()
     {
         List<Entity>? dead = null;
-        foreach (Entity entity in _queues.Keys)
+        foreach (Entity entity in _sourceIds.Keys)
         {
             if (!_world.HasComponent<AudioSourceRef>(entity))
             {
@@ -315,13 +330,18 @@ public sealed class AudioEcsBinder : IDisposable
         {
             foreach (Entity entity in dead)
             {
+                if (_sourceIds.Remove(entity, out AudioSourceId id))
+                {
+                    _system.Sources.RemoveSource(id);
+                }
+
                 _queues.Remove(entity);
                 _autoplayed.Remove(entity);
             }
         }
 
         List<Entity>? gone = null;
-        foreach (Entity entity in _listeners)
+        foreach (Entity entity in _listenerIds.Keys)
         {
             if (!_world.HasComponent<AudioListenerRef>(entity))
             {
@@ -334,7 +354,10 @@ public sealed class AudioEcsBinder : IDisposable
         {
             foreach (Entity entity in gone)
             {
-                _listeners.Remove(entity);
+                if (_listenerIds.Remove(entity, out AudioListenerId id) && _system.Listeners.RegisteredCount > 1)
+                {
+                    _system.Listeners.RemoveListener(id);
+                }
             }
         }
     }

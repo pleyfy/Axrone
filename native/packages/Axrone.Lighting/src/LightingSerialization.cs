@@ -253,36 +253,36 @@ public static class LightingSerializer
                     switch (lightDto.Kind?.ToLowerInvariant())
                     {
                         case "directional":
-                        {
-                            Vec3 dir = ParseVector3(lightDto.Direction, $"{path}.direction");
-                            Vec3 amb = lightDto.Ambient != null ? ParseVector3(lightDto.Ambient, $"{path}.ambient") : Vec3.Zero;
+                            {
+                                Vec3 dir = ParseVector3(lightDto.Direction, $"{path}.direction");
+                                Vec3 amb = lightDto.Ambient != null ? ParseVector3(lightDto.Ambient, $"{path}.ambient") : Vec3.Zero;
 
-                            rig.Add(LightData.CreateDirectional(id, id.Value, dir, color, amb, intensity, priority, lightDto.Enabled));
-                            break;
-                        }
+                                rig.Add(LightData.CreateDirectional(id, id.Value, dir, color, amb, intensity, priority, lightDto.Enabled));
+                                break;
+                            }
 
                         case "point":
-                        {
-                            Vec3 pos = ParseVector3(lightDto.Position, $"{path}.position");
-                            var range = new LightRange(lightDto.Range ?? 8.0f);
-                            var att = new AttenuationFactor(lightDto.Attenuation ?? 2.0f);
+                            {
+                                Vec3 pos = ParseVector3(lightDto.Position, $"{path}.position");
+                                var range = new LightRange(lightDto.Range ?? 8.0f);
+                                var att = new AttenuationFactor(lightDto.Attenuation ?? 2.0f);
 
-                            rig.Add(LightData.CreatePoint(id, id.Value, pos, color, intensity, priority, range, att, lightDto.Enabled));
-                            break;
-                        }
+                                rig.Add(LightData.CreatePoint(id, id.Value, pos, color, intensity, priority, range, att, lightDto.Enabled));
+                                break;
+                            }
 
                         case "spot":
-                        {
-                            Vec3 pos = ParseVector3(lightDto.Position, $"{path}.position");
-                            Vec3 dir = ParseVector3(lightDto.Direction, $"{path}.direction");
-                            var range = new LightRange(lightDto.Range ?? 8.0f);
-                            var att = new AttenuationFactor(lightDto.Attenuation ?? 2.0f);
-                            var inCos = new ConeCosine(lightDto.InnerConeCosine ?? ConeCosine.DefaultInner.Value);
-                            var outCos = new ConeCosine(lightDto.OuterConeCosine ?? ConeCosine.DefaultOuter.Value);
+                            {
+                                Vec3 pos = ParseVector3(lightDto.Position, $"{path}.position");
+                                Vec3 dir = ParseVector3(lightDto.Direction, $"{path}.direction");
+                                var range = new LightRange(lightDto.Range ?? 8.0f);
+                                var att = new AttenuationFactor(lightDto.Attenuation ?? 2.0f);
+                                var inCos = new ConeCosine(lightDto.InnerConeCosine ?? ConeCosine.DefaultInner.Value);
+                                var outCos = new ConeCosine(lightDto.OuterConeCosine ?? ConeCosine.DefaultOuter.Value);
 
-                            rig.Add(LightData.CreateSpot(id, id.Value, pos, dir, color, intensity, priority, range, att, inCos, outCos, lightDto.Enabled));
-                            break;
-                        }
+                                rig.Add(LightData.CreateSpot(id, id.Value, pos, dir, color, intensity, priority, range, att, inCos, outCos, lightDto.Enabled));
+                                break;
+                            }
 
                         default:
                             issues.Add(new SerializationIssue("lighting.parse.unknown-kind", $"Invalid light kind: '{lightDto.Kind}'.", $"{path}.kind"));

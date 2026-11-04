@@ -31,6 +31,8 @@ public sealed class AudioSystem : IDisposable, IAsyncDisposable
     private readonly AudioListenerRegistry _listenerRegistry;
     private readonly AudioPlaybackRuntime _playbackRuntime;
     private readonly AudioSourceRegistry _sourceRegistry;
+    private readonly AudioClipIngest _ingest;
+    private readonly int _outputSampleRate;
 
     private int _systemStatus = (int)AudioSystemStatus.Running;
     private int _disposed;
@@ -56,6 +58,12 @@ public sealed class AudioSystem : IDisposable, IAsyncDisposable
     /// <summary>Source registry.</summary>
     public AudioSourceRegistry Sources => _sourceRegistry;
 
+    /// <summary>Container ingest: WAV in-engine, compressed families through the decoder registry.</summary>
+    public AudioClipIngest Ingest => _ingest;
+
+    /// <summary>Decoder registry used by <see cref="Ingest"/>.</summary>
+    public AudioDecoderRegistry Decoders => _ingest.Decoders;
+
     /// <summary>Current status.</summary>
     public AudioSystemStatus Status => (AudioSystemStatus)Volatile.Read(ref _systemStatus);
 
@@ -65,13 +73,16 @@ public sealed class AudioSystem : IDisposable, IAsyncDisposable
         int maxSources = 1024,
         int maxBuses = 128,
         int clipCacheCapacity = 512,
-        int outputSampleRate = 48000)
+        int outputSampleRate = 48000,
+        AudioDecoderRegistry? decoders = null)
     {
         _counters = new CacheAlignedDiagnosticsCounters();
         _observability = new AudioObservabilityRuntime(_counters);
         _clipStore = new AudioClipStore(clipCacheCapacity);
         _busMixer = new AudioBusRegistry(_observability, maxBuses);
         _listenerRegistry = new AudioListenerRegistry(_observability);
+        _ingest = new AudioClipIngest(decoders);
+        _outputSampleRate = outputSampleRate;
 
         _playbackRuntime = new AudioPlaybackRuntime(
             maxVoices,
@@ -82,6 +93,7 @@ public sealed class AudioSystem : IDisposable, IAsyncDisposable
             outputSampleRate);
 
         _sourceRegistry = new AudioSourceRegistry(maxSources, _playbackRuntime, _observability);
+        _busMixer.SetSourceRebindHook((from, to) => _sourceRegistry.ReassignBus(from, to));
     }
 
     /// <summary>Suspends rendering; the graph is retained.</summary>
@@ -124,8 +136,54 @@ public sealed class AudioSystem : IDisposable, IAsyncDisposable
             return;
         }
 
+        double secondsPerBlock = (interleavedStereoOut.Length >> 1) / (double)_outputSampleRate;
+        _busMixer.AdvanceClock(secondsPerBlock);
         _playbackRuntime.ProcessGraph(interleavedStereoOut);
     }
+
+    /// <summary>Mixer clock in seconds; ramps are scheduled against it.</summary>
+    public double MixerClockSeconds => _busMixer.ClockSeconds;
+
+    /// <summary>Advances the mixer clock explicitly, for deterministic tests and manual stepping.</summary>
+    public void AdvanceMixerClock(double seconds) => _busMixer.AdvanceClock(seconds);
+
+    /// <summary>Captures the committed tuning and topology of every active bus.</summary>
+    public AudioMixerSnapshot CaptureMixerSnapshot() => _busMixer.CaptureMixerSnapshot();
+
+    /// <summary>
+    /// Restores a snapshot. Topology is reinstated immediately and gains
+    /// interpolate to the captured targets over the mixer clock.
+    /// </summary>
+    public AudioSnapshotApplyResult ApplyMixerSnapshot(
+        AudioMixerSnapshot snapshot,
+        double? atTime = null,
+        double? durationSeconds = null,
+        MixerRampCurve curve = MixerRampCurve.Linear) =>
+        _busMixer.ApplyMixerSnapshot(snapshot, atTime, durationSeconds, curve);
+
+    /// <summary>
+    /// Removes a bus, re-parenting its children and re-pointing its sources and
+    /// live voices at the fallback bus through the registry hook. Master is
+    /// protected by a typed error.
+    /// </summary>
+    public AudioBusRemoveResult RemoveBus(AudioBusId id) => _busMixer.RemoveBus(id);
+
+    /// <summary>Removes a listener; the last registered listener is protected.</summary>
+    public bool RemoveListener(AudioListenerId id) => _listenerRegistry.RemoveListener(id);
+
+    /// <summary>Removes a source and releases its live voices; returns the released voice count.</summary>
+    public int RemoveSource(AudioSourceId id) => _sourceRegistry.RemoveSource(id);
+
+    /// <summary>Decodes a container and registers the clip; throws the typed ingest error on failure.</summary>
+    public AudioClipId RegisterClip(AudioClipId id, ReadOnlyMemory<byte> container) => _ingest.Register(_clipStore, id, container);
+
+    /// <summary>Decodes and registers a container, reporting the typed failure instead of throwing.</summary>
+    public bool TryRegisterClip(
+        AudioClipId id,
+        ReadOnlyMemory<byte> container,
+        out AudioContainerInfo info,
+        [NotNullWhen(false)] out AudioException? error) =>
+        _ingest.TryRegister(_clipStore, id, container, out _, out info, out error);
 
     /// <inheritdoc/>
     public void Dispose()

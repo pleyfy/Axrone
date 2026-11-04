@@ -13,11 +13,13 @@ public sealed class SceneGltfShaderTests
     {
         SceneGltfShaderBlock[] blocks = SceneGltfShaderLibrary.Blocks.ToArray();
 
-        blocks.Should().HaveCount(4);
+        blocks.Should().HaveCount(6);
         blocks[0].Id.Should().Be(SceneGltfShaderLibrary.UvBlockId);
         blocks[1].Id.Should().Be(SceneGltfShaderLibrary.PbrLightingBlockId);
         blocks[2].Id.Should().Be(SceneGltfShaderLibrary.ToonShadingBlockId);
         blocks[3].Id.Should().Be(SceneGltfShaderLibrary.ColorSpaceBlockId);
+        blocks[4].Id.Should().Be(SceneGltfShaderLibrary.ShadowBlockId);
+        blocks[5].Id.Should().Be(SceneGltfShaderLibrary.FogBlockId);
 
         SceneGltfShaderLibrary.TryGetCode(SceneGltfShaderLibrary.UvBlockId, out string? uv).Should().BeTrue();
         uv!.Should().Contain("transformGltfUv").And.Contain("selectGltfUv");
@@ -30,6 +32,15 @@ public sealed class SceneGltfShaderTests
 
         SceneGltfShaderLibrary.TryGetCode(SceneGltfShaderLibrary.ColorSpaceBlockId, out string? colorSpace).Should().BeTrue();
         colorSpace!.Should().Contain("linearToSrgb");
+
+        SceneGltfShaderLibrary.TryGetCode(SceneGltfShaderLibrary.ShadowBlockId, out string? shadow).Should().BeTrue();
+        shadow!.Should().Contain("gltfResolveShadowFactor")
+            .And.Contain("gltfShadowPcf")
+            .And.Contain("gltfShadowEsm")
+            .And.Contain("gltfShadowVsm");
+
+        SceneGltfShaderLibrary.TryGetCode(SceneGltfShaderLibrary.FogBlockId, out string? fog).Should().BeTrue();
+        fog!.Should().Contain("gltfApplyFog").And.Contain("gltfHeightFogFactor");
 
         SceneGltfShaderLibrary.TryGetCode("gltf.unknown", out _).Should().BeFalse();
     }
@@ -108,7 +119,14 @@ public sealed class SceneGltfShaderTests
         shader.FragmentSource.Should().Contain("uniform int _AlphaMode;");
         shader.FragmentSource.Should().Contain("evaluateGltfDirectLight");
         shader.FragmentSource.Should().Contain("_BaseColorTexture_ST");
-        shader.Uniforms.Should().Contain("_ClearcoatFactor").And.Contain("u_ReceiveLighting");
+        shader.FragmentSource.Should().Contain("float shadowFactor = gltfResolveShadowFactor(v_WorldPosition, normal, lightDirection);");
+        shader.FragmentSource.Should().Contain("evaluateGltfDirectLight(normal, viewDir, albedo, metallic, roughness, F0, lightDirection, u_LightColor, u_LightIntensity) * shadowFactor");
+        shader.FragmentSource.Should().Contain("evaluateGltfClearcoat(normal, viewDir, clearcoat, clearcoatRoughness, lightDirection, u_LightColor, u_LightIntensity) * shadowFactor");
+        shader.FragmentSource.Should().Contain("gltfApplyFog(color, v_WorldPosition, u_CameraPosition)");
+        shader.VertexSource.Should().Contain("out vec3 v_WorldPosition;");
+        shader.Uniforms.Should().Contain(["u_ShadowMap", "u_ShadowEnabled", "u_ShadowCascadeCount", "u_ShadowFilter", "u_ShadowSplits", "u_ShadowTiles", "u_ShadowTexelSize", "u_ShadowLightMatrices", "u_ShadowDepthBias", "u_ShadowNormalBias"]);
+        shader.Uniforms.Should().Contain(["u_HeightFogEnabled", "u_HeightFogColor", "u_HeightFogDensity", "u_HeightFogFalloff", "u_HeightFogGroundHeight"]);
+        shader.Uniforms.Should().Contain("_BaseColorFactor").And.Contain("u_ReceiveLighting");
         shader.Attributes[SceneMeshSemantic.Tangent].Should().Be("a_Tangent");
         shader.DepthTest.Should().BeTrue();
         shader.Cull.Should().BeTrue();
@@ -125,6 +143,11 @@ public sealed class SceneGltfShaderTests
         shader.Id.Should().Be(SceneAssetId<ShaderAssetTag>.FromName(SceneGltfShaders.UnlitShaderName));
         shader.FragmentSource.Should().Contain("linearToSrgb");
         shader.FragmentSource.Should().NotContain("evaluateGltfDirectLight");
+        shader.FragmentSource.Should().NotContain("gltfResolveShadowFactor");
+        shader.FragmentSource.Should().NotContain("u_ShadowMap");
+        shader.FragmentSource.Should().Contain("gltfApplyFog(linearToSrgb(baseColor.rgb), v_WorldPosition, u_CameraPosition)");
+        shader.VertexSource.Should().Contain("out vec3 v_WorldPosition;");
+        shader.Uniforms.Should().NotContain(["u_ShadowMap", "u_ShadowEnabled", "u_ShadowLightMatrices"]);
         shader.Attributes.Should().NotContainKey(SceneMeshSemantic.Normal);
         shader.Attributes.Should().NotContainKey(SceneMeshSemantic.Tangent);
         shader.Uniforms.Should().Contain("_BaseColorFactor");
@@ -140,6 +163,10 @@ public sealed class SceneGltfShaderTests
         shader.Id.Should().Be(SceneAssetId<ShaderAssetTag>.FromName(SceneGltfShaders.ToonShaderName));
         shader.FragmentSource.Should().Contain("toonBand");
         shader.FragmentSource.Should().Contain("_ShadowColor");
+        shader.FragmentSource.Should().NotContain("gltfResolveShadowFactor");
+        shader.FragmentSource.Should().NotContain("u_ShadowMap");
+        shader.FragmentSource.Should().Contain("gltfApplyFog(color, v_WorldPosition, u_CameraPosition)");
+        shader.Uniforms.Should().NotContain(["u_ShadowMap", "u_ShadowEnabled", "u_ShadowLightMatrices"]);
         shader.Uniforms.Should().Contain("_ShadowColor").And.Contain("_RimColor").And.Contain("_OutlineWidth");
         shader.Attributes.Should().ContainKey(SceneMeshSemantic.Normal);
         shader.Attributes.Should().NotContainKey(SceneMeshSemantic.Tangent);

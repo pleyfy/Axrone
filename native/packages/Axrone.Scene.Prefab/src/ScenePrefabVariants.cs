@@ -59,10 +59,15 @@ public static class ScenePrefabVariants
         ScenePrefabDefinition applied = overrides is { Count: > 0 }
             ? ScenePrefabOverrides.Apply(definition, overrides)
             : definition;
+        SceneActorSnapshot[] unpacked = new SceneActorSnapshot[applied.Actors.Count];
+        for (int i = 0; i < applied.Actors.Count; i++)
+        {
+            unpacked[i] = applied.Actors[i].WithoutSource();
+        }
 
         return new ScenePrefabDefinition(
             string.IsNullOrWhiteSpace(unpackedId) ? definition.Id : unpackedId,
-            applied.Actors,
+            unpacked,
             ScenePrefabKind.Prefab,
             definition.Metadata);
     }

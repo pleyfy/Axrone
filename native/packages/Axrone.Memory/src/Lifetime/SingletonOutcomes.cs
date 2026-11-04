@@ -1,4 +1,4 @@
-﻿namespace Axrone.Memory.Lifetime;
+namespace Axrone.Memory.Lifetime;
 
 /// <summary>
 /// Describes the outcome of an attempt to acquire a lease on a singleton engine.
