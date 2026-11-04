@@ -35,6 +35,112 @@ public sealed class EcsComponentException(string? componentName, string message)
 public sealed class EcsConfigurationException(string code, string message) : EcsException(code, message);
 
 /// <summary>
+/// Fault raised by the world event bus itself rather than by a subscribed handler.
+/// These escape handler dispatch instead of being recorded as handler faults.
+/// </summary>
+public interface IEcsEventBusError
+{
+    /// <summary>Machine-readable fault code.</summary>
+    string Code { get; }
+}
+
+/// <summary>
+/// Operation attempted against a disposed world.
+/// </summary>
+/// <param name="operation">API name that was rejected.</param>
+public sealed class EcsWorldClosedException(string operation)
+    : EcsException("ecs.world-closed", $"World is disposed; '{operation}' is unavailable."), IEcsEventBusError;
+
+/// <summary>
+/// Paused event buffer is full and the overflow policy is
+/// <see cref="EcsEventBufferOverflow.Throw"/>.
+/// </summary>
+/// <param name="name">Event whose buffer overflowed.</param>
+/// <param name="capacity">Slot limit in force.</param>
+public sealed class EcsEventBufferFullException(EcsEventName name, int capacity)
+    : EcsException(
+        "ecs.event-buffer-full",
+        $"Event '{name}' paused at its {capacity} buffered-event ceiling; raise EventBufferCapacity or choose a drop policy."), IEcsEventBusError
+{
+    /// <summary>Overflowing event.</summary>
+    public EcsEventName Name { get; } = name;
+
+    /// <summary>Capacity that was exhausted.</summary>
+    public int Capacity { get; } = capacity;
+}
+
+/// <summary>
+/// Payload does not fit the buffered event slot budget.
+/// </summary>
+/// <param name="typeName">Payload type name.</param>
+/// <param name="size">Payload size in bytes.</param>
+/// <param name="limit">Buffered slot budget in bytes.</param>
+public sealed class EcsEventPayloadTooLargeException(string typeName, int size, int limit)
+    : EcsException(
+        "ecs.event-payload-too-large",
+        $"Payload '{typeName}' is {size} bytes and exceeds the {limit} byte buffered slot; emit it only while events are running."), IEcsEventBusError
+{
+    /// <summary>Payload size in bytes.</summary>
+    public int Size { get; } = size;
+
+    /// <summary>Buffered slot budget in bytes.</summary>
+    public int Limit { get; } = limit;
+}
+
+/// <summary>
+/// Event dispatch re-entered deeper than the supported ceiling.
+/// </summary>
+/// <param name="depth">Depth that was rejected.</param>
+public sealed class EcsEventDispatchDepthException(int depth)
+    : EcsException("ecs.event-dispatch-depth", $"Event dispatch re-entered to depth {depth}; the ceiling is {EcsEventRuntime.MaxDispatchDepth}."), IEcsEventBusError
+{
+    /// <summary>Rejected depth.</summary>
+    public int Depth { get; } = depth;
+}
+
+/// <summary>
+/// A singleton component is already owned by another entity.
+/// </summary>
+/// <param name="componentId">Component type involved.</param>
+/// <param name="owner">Entity holding the registration.</param>
+/// <param name="attempted">Entity that tried to take the slot.</param>
+public sealed class EcsSingletonConflictException(ComponentId componentId, Entity owner, Entity attempted)
+    : EcsException(
+        "ecs.singleton-conflict",
+        $"Singleton component {componentId} is owned by {owner}; {attempted} cannot register a second instance.")
+{
+    /// <summary>Component type involved.</summary>
+    public ComponentId ComponentId { get; } = componentId;
+
+    /// <summary>Current owner.</summary>
+    public Entity Owner { get; } = owner;
+
+    /// <summary>Rejected entity.</summary>
+    public Entity Attempted { get; } = attempted;
+}
+
+/// <summary>
+/// An actor name is already claimed by another live entity.
+/// </summary>
+/// <param name="name">Claimed actor name.</param>
+/// <param name="owner">Entity that owns the name.</param>
+/// <param name="attempted">Entity that tried to take it.</param>
+public sealed class EcsActorNameConflictException(EcsActorName name, Entity owner, Entity attempted)
+    : EcsException(
+        "ecs.actor-name-conflict",
+        $"Actor '{name}' is owned by {owner}; {attempted} cannot claim the same name.")
+{
+    /// <summary>Claimed actor name.</summary>
+    public EcsActorName Name { get; } = name;
+
+    /// <summary>Current owner.</summary>
+    public Entity Owner { get; } = owner;
+
+    /// <summary>Rejected entity.</summary>
+    public Entity Attempted { get; } = attempted;
+}
+
+/// <summary>
 /// Centralized ECS throw helpers; throwing paths stay out of hot methods.
 /// </summary>
 internal static class EcsThrowHelper
@@ -194,4 +300,90 @@ internal static class EcsThrowHelper
         throw new EcsConfigurationException(
             "ecs.snapshot-invalid-payload",
             "Snapshot component payload did not consume exactly its declared length.");
+
+    /// <summary>Throws when an API is used after the world was disposed.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowWorldClosed(string operation) =>
+        throw new EcsWorldClosedException(operation);
+
+    /// <summary>Throws when an event slot handle is unresolved.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowInvalidEventName(string operation) =>
+        throw new EcsConfigurationException(
+            "ecs.invalid-event-name",
+            $"'{operation}' requires an interned event name; use EcsEventNames.Intern.");
+
+    /// <summary>Throws when an interned symbol is blank.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowEmptySymbol(string kind) =>
+        throw new EcsConfigurationException("ecs.empty-symbol", $"A {kind} symbol must contain at least one non-whitespace character.");
+
+    /// <summary>Throws when a symbol table reaches its slot ceiling.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowSymbolLimitExceeded(string kind, int limit) =>
+        throw new EcsConfigurationException(
+            "ecs.symbol-limit",
+            $"The {kind} symbol table is limited to {limit} interned symbols.");
+
+    /// <summary>Throws when a symbol slot was never interned.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowUnknownSymbol(string kind, int slot) =>
+        throw new EcsConfigurationException("ecs.unknown-symbol", $"Slot {slot} is not an interned {kind} symbol.");
+
+    /// <summary>Throws when a paused event buffer is full under the throw policy.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowEventBufferFull(EcsEventName name, int capacity) =>
+        throw new EcsEventBufferFullException(name, capacity);
+
+    /// <summary>Throws when an event buffer capacity is outside its valid range.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowInvalidEventBufferCapacity(int capacity) =>
+        throw new EcsConfigurationException(
+            "ecs.invalid-event-buffer-capacity",
+            $"Paused event buffer capacity must be positive, but was {capacity}.");
+
+    /// <summary>Throws when a payload cannot be parked in a buffered slot.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowEventPayloadTooLarge(string typeName, int size, int limit) =>
+        throw new EcsEventPayloadTooLargeException(typeName, size, limit);
+
+    /// <summary>Throws when event dispatch re-enters beyond the supported ceiling.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowDispatchDepthExceeded(int depth) =>
+        throw new EcsEventDispatchDepthException(depth);
+
+    /// <summary>Throws when a singleton component slot is claimed by a different entity.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowSingletonConflict(ComponentId componentId, Entity owner, Entity attempted) =>
+        throw new EcsSingletonConflictException(componentId, owner, attempted);
+
+    /// <summary>Throws when an actor registration targets a missing entity.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowActorEntityNotFound(in Entity entity) =>
+        throw new EcsEntityException(entity, "Actor registration requires a live entity.");
+
+    /// <summary>Throws when an actor name slot is unresolved.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowInvalidActorName(string operation) =>
+        throw new EcsConfigurationException(
+            "ecs.invalid-actor-name",
+            $"'{operation}' requires an interned actor name; use EcsActorNames.Intern.");
+
+    /// <summary>Throws when an actor name is owned by another live entity.</summary>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowActorNameConflict(in EcsActorName name, in Entity owner, in Entity attempted) =>
+        throw new EcsActorNameConflictException(name, owner, attempted);
 }

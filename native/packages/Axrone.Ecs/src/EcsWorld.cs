@@ -15,6 +15,11 @@ public sealed partial class World : IDisposable
     private readonly Lock _structuralSync = new();
     private long _frameCount;
     private int _tick;
+    private int _renderRevision;
+    private bool _closed;
+
+    /// <summary>Whether <see cref="Dispose"/> has run.</summary>
+    public bool IsClosed => Volatile.Read(ref _closed);
 
     /// <summary>Archetype graph.</summary>
     public ArchetypeGraph Archetypes => _archetypes;
@@ -49,6 +54,25 @@ public sealed partial class World : IDisposable
     /// <summary>Removals lost because the removal ring was full.</summary>
     public long DroppedRemovals => _removals.DroppedCount;
 
+    /// <summary>
+    /// Monotonic render-mutation revision: advanced by every entity or component mutation,
+    /// wrapping at uint range. It signals "revalidate", never what changed.
+    /// </summary>
+    public uint RenderRevision => unchecked((uint)Volatile.Read(ref _renderRevision));
+
+    /// <summary>Throws when an API is used against a disposed world.</summary>
+    /// <param name="operation">API name that was rejected.</param>
+    internal void ValidateWorldOpen(string operation)
+    {
+        if (Volatile.Read(ref _closed))
+        {
+            EcsThrowHelper.ThrowWorldClosed(operation);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void BumpRenderRevision() => Interlocked.Increment(ref _renderRevision);
+
     /// <summary>Creates a world.</summary>
     public World(int initialCapacity = 4096, IDiagnosticsSink? diagnostics = null, int workerCount = 0)
     {
@@ -69,6 +93,7 @@ public sealed partial class World : IDisposable
             entity = _entities.Allocate(root.Id, row);
             root.SetEntityRow(row, in entity);
             _diagnostics.OnEntityCreated(entity);
+            BumpRenderRevision();
         }
 
         return new EntityTransaction<DraftState>(this, entity);
@@ -93,6 +118,7 @@ public sealed partial class World : IDisposable
                 ComponentColumn<T> column = currentArch.GetColumn<T>()!;
                 column.Set(loc.Row, in component);
                 column.MarkChanged(loc.Row, Tick);
+                BumpRenderRevision();
                 return;
             }
 
@@ -138,6 +164,7 @@ public sealed partial class World : IDisposable
             }
 
             _entities.UpdateRecord(entity.Id, nextArch.Id, newRow);
+            BumpRenderRevision();
         }
     }
 
@@ -200,6 +227,8 @@ public sealed partial class World : IDisposable
 
             _entities.UpdateRecord(entity.Id, nextArch.Id, newRow);
             _removals.Record(entity, compId, Tick);
+            OnSingletonComponentRemoved(compId, in entity);
+            BumpRenderRevision();
         }
     }
 
@@ -226,6 +255,7 @@ public sealed partial class World : IDisposable
 
             column.Set(loc.Row, in component);
             column.MarkChanged(loc.Row, Tick);
+            BumpRenderRevision();
         }
     }
 
@@ -304,7 +334,11 @@ public sealed partial class World : IDisposable
                     _entities.UpdateRecord(movedEntity.Id, arch.Id, record.Row);
                 }
 
+                _actors.Unregister(entity);
+                OnSingletonEntityFreed(entity, in mask);
+
                 _diagnostics.OnEntityDestroyed(entity);
+                BumpRenderRevision();
             }
         }
     }
@@ -346,6 +380,10 @@ public sealed partial class World : IDisposable
     /// <inheritdoc/>
     public void Dispose()
     {
+        Volatile.Write(ref _closed, true);
+        _events.Dispose();
+        _actors.Clear();
+        _singletons.ClearAll();
         DisposeParallelInfrastructure();
         _archetypes.Dispose();
     }
