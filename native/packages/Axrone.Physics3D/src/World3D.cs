@@ -219,6 +219,7 @@ public sealed class World : IDisposable
     private BroadPair[] _stepPairs;
     private int _stepPairCount;
     private int _disposed;
+    private IContactEvents3D? _contactEvents;
 
     /// <summary>Gravity of the world.</summary>
     public Vec3 Gravity { get; set; }
@@ -246,6 +247,23 @@ public sealed class World : IDisposable
 
     /// <summary>Solver capabilities.</summary>
     public SolverFlags Flags { get; set; }
+
+    /// <summary>Contact lifecycle observer; null disables callbacks.</summary>
+    public IContactEvents3D? ContactEvents
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _contactEvents;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        set
+        {
+            if (value is null && Volatile.Read(ref _contactEvents) is null)
+            {
+                return;
+            }
+
+            Volatile.Write(ref _contactEvents, value);
+        }
+    }
 
     /// <summary>Whether each step clears accumulated forces after applying them.</summary>
     public bool AutoClearForces { get; set; }
@@ -771,6 +789,7 @@ public sealed class World : IDisposable
 
         UpdateIslands(dt);
         PublishContactEvents();
+        EmitPostSolveContacts();
     }
 
     /// <summary>
@@ -889,6 +908,7 @@ public sealed class World : IDisposable
             }
         }
 
+        EmitPreSolveContacts();
         ContactSolver.SolveVelocity(_bodies, _shapes, _contacts.AsSpan(0, _contactCount), VelocityIterations);
         JointSolver.SolveSpringPass(_bodies, _joints, h);
 
@@ -1276,6 +1296,36 @@ public sealed class World : IDisposable
             {
                 ArrayPool<JointPair3D>.Shared.Return(rentedJoints);
             }
+        }
+    }
+
+    /// <summary>Single pre-solve emit point: fires the observer once per contact before the velocity solve.</summary>
+    private void EmitPreSolveContacts()
+    {
+        IContactEvents3D? listener = Volatile.Read(ref _contactEvents);
+        if (listener is null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            listener.PreSolve(ref _contacts[i]);
+        }
+    }
+
+    /// <summary>Single post-solve emit point: fires the observer once per contact with final impulses.</summary>
+    private void EmitPostSolveContacts()
+    {
+        IContactEvents3D? listener = Volatile.Read(ref _contactEvents);
+        if (listener is null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            listener.PostSolve(in _contacts[i]);
         }
     }
 
