@@ -313,7 +313,7 @@ public static class ContactSolver
         float b1 = Vec3.Dot(normal, vA0 - vB0) - p0.VelocityBias - ((k11 * a1) + (k12 * a2));
         float b2 = Vec3.Dot(normal, vA1 - vB1) - p1.VelocityBias - ((k12 * a1) + (k22 * a2));
 
-        for (;;)
+        for (; ; )
         {
             float x1 = -((k22 * b1) - (k12 * b2)) * invDet;
             float x2 = -((k11 * b2) - (k12 * b1)) * invDet;

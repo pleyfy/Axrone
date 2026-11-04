@@ -161,5 +161,5 @@ public class MaterialCombineTests
 
         rollingOut.Should().BeApproximately(0.004f * 5.0f / 7.0f, 0.0006f);
         slipperyOut.Should().BeGreaterThan(0.0039f);
-}
+    }
 }
