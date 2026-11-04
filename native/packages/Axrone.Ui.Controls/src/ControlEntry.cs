@@ -57,4 +57,6 @@ internal struct ControlEntry
     public float ScrollOffset;
     public int Caret;
     public uint Generation;
+    public int WidgetSlot;
+    public uint WidgetGeneration;
 }

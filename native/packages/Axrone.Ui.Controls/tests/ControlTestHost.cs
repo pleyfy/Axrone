@@ -152,7 +152,7 @@ internal sealed class ControlHost
 
     public static readonly UiViewport DefaultViewport = new(new UiSize(400.0f, 400.0f));
 
-    public ControlHost(IUiControlEventSink? events = null, IUiImageMetrics? images = null, IUiTextMeasurer? measurer = null)
+    public ControlHost(IUiControlEventSink? events = null, IUiImageMetrics? images = null, IUiTextMeasurer? measurer = null, UiWidgetRegistry? widgets = null)
     {
         Runtime = new UiControlRuntime(new UiControlRuntimeOptions(
             TextMeasurer: measurer ?? new TestTextMeasurer(),
@@ -161,7 +161,8 @@ internal sealed class ControlHost
             Theme: UiControlTheme.CreateDefaultTheme(),
             ThemeTokens: UiControlTheme.Default,
             DefaultTextStyle: DefaultTextStyle,
-            Viewport: DefaultViewport));
+            Viewport: DefaultViewport,
+            Widgets: widgets));
     }
 
     public UiControlRuntime Runtime { get; }

@@ -80,4 +80,8 @@ internal readonly struct ControlStyleContext
 
     public float Number(UiThemeTokenId token, float fallback) =>
         _theme is not null && _theme.TryGetNumber(token, out float value) ? value : fallback;
+
+    internal UiWidgetThemeContext WidgetContext() => new(_theme, Tokens);
+
+    internal IUiTheme? Theme => _theme;
 }

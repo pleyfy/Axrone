@@ -118,6 +118,13 @@ public enum ControlKind : byte
 
     /// <summary>Indeterminate activity indicator advanced by the host tick.</summary>
     Spinner = 37,
+
+    /// <summary>
+    /// Externally registered widget dispatched through <see cref="UiWidgetRegistry"/>.
+    /// Sentinel kind: it is intentionally absent from <see cref="ControlCatalog"/>;
+    /// built-in kinds and their serialized values are frozen.
+    /// </summary>
+    Custom = 38,
 }
 
 /// <summary>Resolved control interaction state.</summary>
@@ -186,6 +193,7 @@ public enum UiControlEventKind : byte
 /// <param name="Items">Row-count source for <see cref="ControlKind.ListView"/>.</param>
 /// <param name="Tree">Node/child source for <see cref="ControlKind.TreeView"/>.</param>
 /// <param name="Grid">Row/column source for <see cref="ControlKind.DataGrid"/>.</param>
+/// <param name="Widget">Registry handle for <see cref="ControlKind.Custom"/> creation; default elsewhere.</param>
 public readonly record struct UiControlDefinition(
     string? Text = null,
     UiResourceId Image = default,
@@ -198,7 +206,8 @@ public readonly record struct UiControlDefinition(
     UiTextStyle TextStyle = default,
     IUiListItemSource? Items = null,
     IUiTreeSource? Tree = null,
-    IUiGridSource? Grid = null);
+    IUiGridSource? Grid = null,
+    UiWidgetHandle Widget = default);
 
 /// <summary>Live handle to one control.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -317,6 +326,7 @@ public interface IUiImageMetrics
 /// <param name="ThemeTokens">Token identity map; <see langword="null"/> selects the default map.</param>
 /// <param name="DefaultTextStyle">Text style inherited by text controls.</param>
 /// <param name="Viewport">Initial viewport for viewport-relative layout lengths.</param>
+/// <param name="Widgets">Widget registry enabling <see cref="ControlKind.Custom"/> creation; <see langword="null"/> disables it.</param>
 public readonly record struct UiControlRuntimeOptions(
     IUiTextMeasurer? TextMeasurer = null,
     IUiControlEventSink? Events = null,
@@ -324,4 +334,5 @@ public readonly record struct UiControlRuntimeOptions(
     IUiTheme? Theme = null,
     UiControlTheme? ThemeTokens = null,
     UiTextStyle DefaultTextStyle = default,
-    UiViewport Viewport = default);
+    UiViewport Viewport = default,
+    UiWidgetRegistry? Widgets = null);
