@@ -341,12 +341,13 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SensorEvent GetSensorEvent(int index) => _sensorEvents[index];
 
-    /// <summary>Casts a ray against all shapes; hits sort by ascending distance.</summary>
+    /// <summary>Casts a ray against filtered shapes; hits sort by ascending distance.</summary>
     /// <param name="ray">The ray.</param>
     /// <param name="maxDistance">The furthest hit kept.</param>
     /// <param name="hits">The destination; truncated when full.</param>
+    /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The hits written.</returns>
-    public int Raycast(in Ray3D ray, float maxDistance, Span<RaycastHit3D> hits)
+    public int Raycast(in Ray3D ray, float maxDistance, Span<RaycastHit3D> hits, in QueryFilter3D filter = default)
     {
         ThrowIfDisposed();
 
@@ -363,6 +364,11 @@ public sealed class World : IDisposable
             }
 
             ref ShapeRecord record = ref _shapes.Record(shapeId);
+            if (!filter.Matches(in record.Filter))
+            {
+                continue;
+            }
+
             bool struck;
             float distance;
             Vec3 normal;
@@ -438,11 +444,12 @@ public sealed class World : IDisposable
         return written;
     }
 
-    /// <summary>Collects the shapes overlapping a volume; ids sort ascending.</summary>
+    /// <summary>Collects the filtered shapes overlapping a volume; ids sort ascending.</summary>
     /// <param name="box">The query volume.</param>
     /// <param name="results">The destination; truncated when full.</param>
+    /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The shapes written.</returns>
-    public int OverlapAabb(in Aabb3D box, Span<ShapeId> results)
+    public int OverlapAabb(in Aabb3D box, Span<ShapeId> results, in QueryFilter3D filter = default)
     {
         ThrowIfDisposed();
 
@@ -454,6 +461,11 @@ public sealed class World : IDisposable
         {
             ShapeId shapeId = _tree.GetUserData(candidates[i]);
             if (!_shapes.IsValid(shapeId))
+            {
+                continue;
+            }
+
+            if (!filter.Matches(in _shapes.Record(shapeId).Filter))
             {
                 continue;
             }
@@ -472,15 +484,16 @@ public sealed class World : IDisposable
         return written;
     }
 
-    /// <summary>Casts a ray and returns only the closest hit.</summary>
+    /// <summary>Casts a ray and returns only the closest filtered hit.</summary>
     /// <param name="ray">The ray.</param>
     /// <param name="maxDistance">The furthest hit kept.</param>
     /// <param name="hit">The closest hit when one exists.</param>
+    /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns><see langword="true"/> when anything was hit.</returns>
-    public bool RaycastClosest(in Ray3D ray, float maxDistance, out RaycastHit3D hit)
+    public bool RaycastClosest(in Ray3D ray, float maxDistance, out RaycastHit3D hit, in QueryFilter3D filter = default)
     {
-        Span<RaycastHit3D> buffer = stackalloc RaycastHit3D[1];
-        if (Raycast(in ray, maxDistance, buffer) == 0)
+        Span<RaycastHit3D> buffer = stackalloc RaycastHit3D[128];
+        if (Raycast(in ray, maxDistance, buffer, in filter) == 0)
         {
             hit = default;
             return false;
@@ -490,12 +503,13 @@ public sealed class World : IDisposable
         return true;
     }
 
-    /// <summary>Finds the surface points nearest a query point; hits sort by ascending distance.</summary>
+    /// <summary>Finds the filtered surface points nearest a query; hits sort by ascending distance.</summary>
     /// <param name="point">The query point.</param>
     /// <param name="maxDistance">The furthest surface kept.</param>
     /// <param name="hits">The destination; truncated when full.</param>
+    /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The hits written.</returns>
-    public int QueryPoint(Vec3 point, float maxDistance, Span<ClosestPointHit3D> hits)
+    public int QueryPoint(Vec3 point, float maxDistance, Span<ClosestPointHit3D> hits, in QueryFilter3D filter = default)
     {
         ThrowIfDisposed();
 
@@ -516,6 +530,11 @@ public sealed class World : IDisposable
         {
             ShapeId shapeId = _tree.GetUserData(candidates[i]);
             if (!_shapes.IsValid(shapeId))
+            {
+                continue;
+            }
+
+            if (!filter.Matches(in _shapes.Record(shapeId).Filter))
             {
                 continue;
             }
