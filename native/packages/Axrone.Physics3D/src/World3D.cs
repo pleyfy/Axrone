@@ -355,7 +355,7 @@ public sealed class World : IDisposable
         int candidateCount = Math.Min(_tree.RayCast(in ray, candidates, maxDistance), candidates.Length);
 
         int written = 0;
-        for (int i = 0; i < candidateCount && written < hits.Length; i++)
+        for (int i = 0; i < candidateCount; i++)
         {
             ShapeId shapeId = _tree.GetUserData(candidates[i].ItemId);
             if (!_shapes.IsValid(shapeId))
@@ -430,6 +430,16 @@ public sealed class World : IDisposable
             }
 
             var hit = new RaycastHit3D(shapeId, record.Body, ray.Origin + (ray.Direction * distance), normal, distance);
+            if (written == hits.Length)
+            {
+                if (hits.Length == 0 || distance >= hits[written - 1].Distance)
+                {
+                    continue;
+                }
+
+                written--;
+            }
+
             int slot = written;
             while (slot > 0 && hits[slot - 1].Distance > distance)
             {
@@ -457,7 +467,7 @@ public sealed class World : IDisposable
         int candidateCount = Math.Min(_tree.QueryOverlaps(in box, candidates), candidates.Length);
 
         int written = 0;
-        for (int i = 0; i < candidateCount && written < results.Length; i++)
+        for (int i = 0; i < candidateCount; i++)
         {
             ShapeId shapeId = _tree.GetUserData(candidates[i]);
             if (!_shapes.IsValid(shapeId))
@@ -468,6 +478,16 @@ public sealed class World : IDisposable
             if (!filter.Matches(in _shapes.Record(shapeId).Filter))
             {
                 continue;
+            }
+
+            if (written == results.Length)
+            {
+                if (results.Length == 0 || shapeId > results[written - 1])
+                {
+                    continue;
+                }
+
+                written--;
             }
 
             int slot = written;
@@ -526,7 +546,7 @@ public sealed class World : IDisposable
 
         var probe = new Sphere3(point, 0.0f);
         int written = 0;
-        for (int i = 0; i < candidateCount && written < hits.Length; i++)
+        for (int i = 0; i < candidateCount; i++)
         {
             ShapeId shapeId = _tree.GetUserData(candidates[i]);
             if (!_shapes.IsValid(shapeId))
@@ -560,6 +580,16 @@ public sealed class World : IDisposable
             }
 
             var found = new ClosestPointHit3D(shapeId, _shapes.GetBody(shapeId), hitPoint, hitDistance);
+            if (written == hits.Length)
+            {
+                if (hits.Length == 0 || distance >= hits[written - 1].Distance)
+                {
+                    continue;
+                }
+
+                written--;
+            }
+
             int slot = written;
             while (slot > 0 && hits[slot - 1].Distance > distance)
             {
