@@ -41,15 +41,16 @@ public static class ScenePrefabNodeIdentity
         RequireStableNodeId(actor.NodeId, prefabId, index);
         return actor.Source is { } source
             ? actor
-            : actor.WithSource(CreateFallback(prefabId, actor.NodeId, lineage));
+            : actor.WithSource(CreateFallback(prefabId, actor.NodeId, lineage, index));
     }
 
     /// <summary>Creates fallback provenance for a definition-level actor without an explicit source.</summary>
     public static ScenePrefabNodeSource CreateFallback(
         string prefabId,
         string nodeId,
-        IReadOnlyList<string> lineage) =>
-        new(prefabId, RequireStableNodeId(nodeId, prefabId, 0), default, FromSequence(lineage));
+        IReadOnlyList<string> lineage,
+        int index) =>
+        new(prefabId, RequireStableNodeId(nodeId, prefabId, index), default, FromSequence(lineage));
 
     /// <summary>Builds a fixed path from a stable ID sequence without allocating an intermediate array.</summary>
     public static ScenePrefabIdPath FromSequence(IReadOnlyList<string> values)

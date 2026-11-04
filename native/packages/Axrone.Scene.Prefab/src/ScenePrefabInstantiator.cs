@@ -44,7 +44,8 @@ public static class ScenePrefabInstantiator
                 sources.Add(snapshot.Source ?? ScenePrefabNodeIdentity.CreateFallback(
                     effective.Id,
                     snapshot.NodeId,
-                    effective.Lineage));
+                    effective.Lineage,
+                    i));
                 nodeMap.Add(snapshot.NodeId, actor);
             }
 

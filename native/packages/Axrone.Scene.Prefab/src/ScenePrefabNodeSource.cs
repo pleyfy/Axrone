@@ -162,7 +162,7 @@ public readonly record struct ScenePrefabNodeSource
     /// <summary>Unscoped node id of the original actor.</summary>
     public string NodeId { get; }
 
-    /// <summary>Nested instance ids from the outermost host to the owning instance.</summary>
+    /// <summary>Nested instance ids from the owning instance to the outermost host.</summary>
     public ScenePrefabIdPath InstancePath { get; }
 
     /// <summary>Variant resolution chain copied from the owning definition.</summary>
