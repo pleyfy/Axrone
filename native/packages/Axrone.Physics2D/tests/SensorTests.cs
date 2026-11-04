@@ -76,7 +76,7 @@ public sealed class SensorTests : IDisposable
 
         _world.ContactEventCount.Should().Be(1);
         ContactEvent evt = _world.GetContactEvent(0);
-        evt.Began.Should().BeTrue();
+        evt.Type.Should().Be(CollisionEventType.Begin);
         Contact contact = _world.GetContact(0);
         evt.ShapeA.Should().Be(contact.ShapeA);
         evt.ShapeB.Should().Be(contact.ShapeB);

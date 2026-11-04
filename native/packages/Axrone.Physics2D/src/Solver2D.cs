@@ -36,7 +36,9 @@ public static class ContactSolver
 {
     /// <summary>
     /// Freezes restitution biases from approach speeds; call once per step
-    /// before the iteration loop.
+    /// before the iteration loop. Friction and restitution combine through
+    /// each shape's <see cref="CombineMode"/>; conveyor tangent speeds reach
+    /// the friction sweep through the manifold points.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void InitVelocityConstraints(BodyStore bodies, ShapeStore shapes, Span<Contact> contacts)
@@ -52,29 +54,132 @@ public static class ContactSolver
                 continue;
             }
 
+            ref readonly ShapeRecord recordA = ref shapes.Slot(contact.ShapeA);
+            ref readonly ShapeRecord recordB = ref shapes.Slot(contact.ShapeB);
+            InitContact(bodies, ref contact, DefaultTuning(in recordA.Material, in recordB.Material));
+        }
+    }
+
+    /// <summary>
+    /// Same pass through a caller context: for every solid contact the
+    /// context first supplies the combined tuning, receives it back mutated
+    /// by the pre-solve hook, and the frozen restitution biases read the
+    /// rewritten coefficients.
+    /// </summary>
+    /// <typeparam name="TSink">Sink implementing the pre-solve callback point.</typeparam>
+    /// <typeparam name="TContext">Caller state the sink may read and write.</typeparam>
+    /// <param name="bodies">Body store to freeze biases against.</param>
+    /// <param name="shapes">Shape store the sink combines materials from.</param>
+    /// <param name="contacts">Contacts of the step.</param>
+    /// <param name="context">Sink driving the callback point.</param>
+    /// <param name="solveContext">Caller state handed to the sink.</param>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static void InitVelocityConstraints<TSink, TContext>(
+        BodyStore bodies, ShapeStore shapes, Span<Contact> contacts, ref TSink context, ref TContext solveContext)
+        where TSink : struct, IContactSolveContext<Contact, ContactManifold, TContext>
+        where TContext : allows ref struct
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+        ArgumentNullException.ThrowIfNull(shapes);
+
+        for (int i = 0; i < contacts.Length; i++)
+        {
+            ref Contact contact = ref contacts[i];
+            if (contact.IsSensor)
+            {
+                continue;
+            }
+
+            ContactTuning tuning = context.Tune(in contact, ref solveContext);
             ContactManifold manifold = contact.Manifold;
+            context.PreSolve(ref contact, ref manifold, ref tuning, ref solveContext);
+            contact.Manifold = manifold;
+            InitContact(bodies, ref contact, tuning);
+        }
+    }
 
-            ref BodyState stateA = ref bodies.Slot(contact.BodyA);
-            ref BodyState stateB = ref bodies.Slot(contact.BodyB);
-            Vec2 comA = stateA.Position + Rotate(stateA.Cos, stateA.Sin, stateA.LocalCenter);
-            Vec2 comB = stateB.Position + Rotate(stateB.Cos, stateB.Sin, stateB.LocalCenter);
+    /// <summary>
+    /// Combines two materials into the default tuning of their contact pair
+    /// through each side's <see cref="CombineMode"/>.
+    /// </summary>
+    /// <param name="a">Material of the first shape.</param>
+    /// <param name="b">Material of the second shape.</param>
+    /// <returns>The pair tuning before any pre-solve rewrite.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public static ContactTuning DefaultTuning(in PhysicsMaterial a, in PhysicsMaterial b)
+    {
+        float staticFriction = MaterialCombiner.CombineFriction(a.StaticFriction, b.StaticFriction, a.FrictionCombine, b.FrictionCombine);
+        float dynamicFriction = MaterialCombiner.CombineFriction(a.DynamicFriction, b.DynamicFriction, a.FrictionCombine, b.FrictionCombine);
+        float slideScale = a.StaticFriction > 0.0f ? dynamicFriction / a.StaticFriction : 1.0f;
+        return new ContactTuning
+        {
+            Friction = staticFriction,
+            Restitution = MaterialCombiner.CombineRestitution(a.Restitution, b.Restitution, a.RestitutionCombine, b.RestitutionCombine),
+            RestitutionThreshold = SolverTuning.RestitutionThreshold,
+            TangentSpeed = a.TangentSpeed - b.TangentSpeed,
 
-            ref ShapeRecord recordA = ref shapes.Slot(contact.ShapeA);
-            ref ShapeRecord recordB = ref shapes.Slot(contact.ShapeB);
-            float restitution = MathF.Max(recordA.Material.Restitution, recordB.Material.Restitution);
+            // A pre-solve rewrite of Friction rescales sliding friction by the
+            // same ratio the materials carried into the step.
+            DynamicFriction = staticFriction * slideScale,
+        };
+    }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void InitContact(BodyStore bodies, ref Contact contact, ContactTuning tuning)
+    {
+        ContactManifold manifold = contact.Manifold;
+
+        ref BodyState stateA = ref bodies.Slot(contact.BodyA);
+        ref BodyState stateB = ref bodies.Slot(contact.BodyB);
+        Vec2 comA = stateA.Position + Rotate(stateA.Cos, stateA.Sin, stateA.LocalCenter);
+        Vec2 comB = stateB.Position + Rotate(stateB.Cos, stateB.Sin, stateB.LocalCenter);
+
+        for (int p = 0; p < manifold.Count; p++)
+        {
+            ContactPoint point = manifold.GetPointRO(p);
+            Vec2 rA = point.PositionA - comA;
+            Vec2 rB = point.PositionB - comB;
+            Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * Perp(rA));
+            Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
+            float approach = Vec2.Dot(manifold.Normal, vB - vA);
+            manifold.SetVelocityBias(p, approach < -tuning.RestitutionThreshold ? -tuning.Restitution * approach : 0.0f);
+        }
+
+        contact.Manifold = manifold;
+        contact.Tuning = tuning;
+    }
+
+    /// <summary>
+    /// Reports the impulses accumulated on every solid contact through a
+    /// caller context; call after the last velocity sweep of the step.
+    /// </summary>
+    /// <typeparam name="TSink">Sink implementing the post-solve callback point.</typeparam>
+    /// <typeparam name="TContext">Caller state the sink may read and write.</typeparam>
+    /// <param name="contacts">Contacts of the step.</param>
+    /// <param name="context">Sink receiving one payload per solid contact.</param>
+    /// <param name="solveContext">Caller state handed to the sink.</param>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static void ReportPostSolve<TSink, TContext>(Span<Contact> contacts, ref TSink context, ref TContext solveContext)
+        where TSink : struct, IContactSolveContext<Contact, ContactManifold, TContext>
+        where TContext : allows ref struct
+    {
+        for (int i = 0; i < contacts.Length; i++)
+        {
+            ref readonly Contact contact = ref contacts[i];
+            if (contact.IsSensor)
+            {
+                continue;
+            }
+
+            ContactManifold manifold = contact.Manifold;
+            ContactImpulses impulses = new() { Count = manifold.Count };
             for (int p = 0; p < manifold.Count; p++)
             {
                 ContactPoint point = manifold.GetPointRO(p);
-                Vec2 rA = point.PositionA - comA;
-                Vec2 rB = point.PositionB - comB;
-                Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * Perp(rA));
-                Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
-                float approach = Vec2.Dot(manifold.Normal, vB - vA);
-                manifold.SetVelocityBias(p, approach < -SolverTuning.RestitutionThreshold ? -restitution * approach : 0.0f);
+                impulses.WritePoint(p, point.NormalImpulse, point.TangentImpulse);
             }
 
-            contact.Manifold = manifold;
+            context.PostSolve(in contact, in manifold, in impulses, ref solveContext);
         }
     }
 
@@ -93,7 +198,7 @@ public static class ContactSolver
         {
             for (int i = 0; i < contacts.Length; i++)
             {
-                SolveContactVelocity(bodies, shapes, ref contacts[i]);
+                SolveContactVelocity(bodies, ref contacts[i]);
             }
         }
     }
@@ -141,7 +246,7 @@ public static class ContactSolver
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static void SolveContactVelocity(BodyStore bodies, ShapeStore shapes, ref Contact contact)
+    private static void SolveContactVelocity(BodyStore bodies, ref Contact contact)
     {
         if (contact.IsSensor)
         {
@@ -159,9 +264,9 @@ public static class ContactSolver
         float invIA = awakeA ? stateA.InverseInertia : 0.0f;
         float invIB = awakeB ? stateB.InverseInertia : 0.0f;
 
-        ref ShapeRecord recordA = ref shapes.Slot(contact.ShapeA);
-        ref ShapeRecord recordB = ref shapes.Slot(contact.ShapeB);
-        float friction = MathF.Sqrt(recordA.Material.Friction * recordB.Material.Friction);
+        // Pair tuning comes from the init pass (materials combined through
+        // each side's modes, rewritten by the pre-solve hook when one ran).
+        ContactTuning tuning = contact.Tuning;
 
         ContactManifold manifold = contact.Manifold;
         Vec2 normal = manifold.Normal;
@@ -193,7 +298,7 @@ public static class ContactSolver
             SolvePointFriction(
                 ref stateA, ref stateB, awakeA, awakeB,
                 invMassA, invMassB, invIA, invIB,
-                comA, comB, normal, tangent, friction, ref manifold, p);
+                comA, comB, normal, tangent, in tuning, ref manifold, p);
         }
 
         contact.Manifold = manifold;
@@ -349,7 +454,7 @@ public static class ContactSolver
     private static void SolvePointFriction(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
         float invMassA, float invMassB, float invIA, float invIB,
-        Vec2 comA, Vec2 comB, Vec2 normal, Vec2 tangent, float friction,
+        Vec2 comA, Vec2 comB, Vec2 normal, Vec2 tangent, in ContactTuning tuning,
         ref ContactManifold manifold, int p)
     {
         ContactPoint point = manifold.GetPointRO(p);
@@ -362,10 +467,17 @@ public static class ContactSolver
 
         Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * Perp(rA));
         Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
-        float vt = Vec2.Dot(tangent, vB - vA);
 
+        // The conveyor tangent speed shifts the target relative sliding
+        // velocity; a non-zero dynamic coefficient scales the sliding
+        // resistance relative to the static cone.
+        float vt = Vec2.Dot(tangent, vB - vA) - tuning.TangentSpeed;
+        float friction = tuning.Friction;
+        float slideScale = tuning.DynamicFriction > 0.0f && friction > 0.0f
+            ? MathF.Min(tuning.DynamicFriction / friction, 1.0f)
+            : 1.0f;
         float maxFriction = friction * point.NormalImpulse;
-        float newTangent = Math.Clamp(point.TangentImpulse + (-tangentMass * vt), -maxFriction, maxFriction);
+        float newTangent = Math.Clamp(point.TangentImpulse + (-tangentMass * vt * slideScale), -maxFriction, maxFriction);
         float delta = newTangent - point.TangentImpulse;
         manifold.SetImpulses(p, point.NormalImpulse, newTangent);
 

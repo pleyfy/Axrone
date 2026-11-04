@@ -1,5 +1,22 @@
 namespace Axrone.Physics2D;
 
+using System.Buffers;
+
+/// <summary>
+/// Structural quality of a built tree: the height of the root, the largest
+/// single-side imbalance anywhere, and the ratio of internal-node area to
+/// leaf area — the figure of merit Box2D's validation pass reports. A tight,
+/// balanced tree keeps query traversals shallow.
+/// </summary>
+/// <param name="Height">Depth of the root subtree; zero for a single leaf, -1 for an empty tree.</param>
+/// <param name="MaxBalance">Largest <c>height(right) − height(left)</c> over internal nodes.</param>
+/// <param name="Quality">Summed internal proxy areas divided by summed leaf areas; 1 is perfect.</param>
+public readonly record struct TreeMetrics(int Height, int MaxBalance, float Quality)
+{
+    /// <summary>An empty tree: no height, no imbalance, unit-quality baseline.</summary>
+    public static TreeMetrics Empty => new(-1, 0, 1.0f);
+}
+
 /// <summary>
 /// Query half of the 2D dynamic AABB tree: overlap scans, ray casts, pair
 /// enumeration and k-nearest search. All traversals are allocation-free
@@ -496,6 +513,76 @@ public sealed partial class DynamicAabbTree2D<TUserData, TStrategy, TMetrics>
         {
             (heap[0], heap[i]) = (heap[i], heap[0]);
             HeapifyDown(heap, i, 0);
+        }
+    }
+
+    /// <summary>
+    /// Walks the stored structure under the operation gate and reports height,
+    /// worst imbalance and proxy-area quality. Diagnostic path: it holds the
+    /// gate for a full traversal and rents its stack from the shared pool, so
+    /// call it outside the simulation step.
+    /// </summary>
+    /// <returns>The structural metrics of the current tree shape.</returns>
+    public TreeMetrics ComputeMetrics()
+    {
+        EnterOperation();
+        try
+        {
+            if (_rootIndex.IsNull)
+            {
+                return TreeMetrics.Empty;
+            }
+
+            int height = 0;
+            int maxBalance = 0;
+            float leafArea = 0.0f;
+            float internalArea = 0.0f;
+            NodeIndex[] rented = ArrayPool<NodeIndex>.Shared.Rent(_nodes.Length);
+            try
+            {
+                Span<NodeIndex> stack = rented.AsSpan(0, _nodes.Length);
+                int stackPtr = 0;
+                stack[stackPtr++] = _rootIndex;
+
+                while (stackPtr > 0)
+                {
+                    NodeIndex nodeIndex = stack[--stackPtr];
+                    ref Node2D node = ref GetNodeRef(nodeIndex);
+                    if (node.IsLeaf())
+                    {
+                        leafArea += node.Box.Area;
+                        continue;
+                    }
+
+                    internalArea += node.Box.Area;
+                    ref Node2D left = ref GetNodeRef(node.LeftChild);
+                    ref Node2D right = ref GetNodeRef(node.RightChild);
+                    int balance = Math.Abs(right.Height - left.Height);
+                    if (balance > maxBalance)
+                    {
+                        maxBalance = balance;
+                    }
+
+                    stack[stackPtr++] = node.LeftChild;
+                    stack[stackPtr++] = node.RightChild;
+
+                    if (node.Height > height)
+                    {
+                        height = node.Height;
+                    }
+                }
+            }
+            finally
+            {
+                ArrayPool<NodeIndex>.Shared.Return(rented);
+            }
+
+            float quality = leafArea > 0.0f ? internalArea / leafArea : 1.0f;
+            return new TreeMetrics(height, maxBalance, quality);
+        }
+        finally
+        {
+            ExitOperation();
         }
     }
 }
