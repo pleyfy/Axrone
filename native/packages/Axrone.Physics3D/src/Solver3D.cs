@@ -66,7 +66,12 @@ public static class ContactSolver
 
             ref ShapeRecord recordA = ref shapes.Record(contact.ShapeA);
             ref ShapeRecord recordB = ref shapes.Record(contact.ShapeB);
-            float restitution = MathF.Max(recordA.Material.Restitution, recordB.Material.Restitution);
+            if (!contact.Blended)
+            {
+                SurfaceSettings.BlendInto(in recordA, in recordB, ref contact);
+            }
+
+            float restitution = contact.Restitution;
 
             BuildTangents(manifold.Normal, out Vec3 tangent1, out Vec3 tangent2);
 
@@ -183,9 +188,8 @@ public static class ContactSolver
         Vec3 invIA = awakeA ? stateA.InverseInertia : Vec3.Zero;
         Vec3 invIB = awakeB ? stateB.InverseInertia : Vec3.Zero;
 
-        ref ShapeRecord recordA = ref shapes.Record(contact.ShapeA);
-        ref ShapeRecord recordB = ref shapes.Record(contact.ShapeB);
-        float friction = MathF.Sqrt(recordA.Material.Friction * recordB.Material.Friction);
+        float dynamicFriction = contact.Friction;
+        float staticFriction = contact.StaticFriction;
 
         Manifold3D manifold = contact.Manifold;
         Vec3 normal = manifold.Normal;
@@ -217,11 +221,11 @@ public static class ContactSolver
             SolvePointFriction(
                 ref stateA, ref stateB, awakeA, awakeB,
                 invMassA, invMassB, invIA, invIB,
-                comA, comB, normal, tangent1, friction, ref manifold, p, channel: 0);
+                comA, comB, normal, tangent1, staticFriction, dynamicFriction, ref manifold, p, channel: 0);
             SolvePointFriction(
                 ref stateA, ref stateB, awakeA, awakeB,
                 invMassA, invMassB, invIA, invIB,
-                comA, comB, normal, tangent2, friction, ref manifold, p, channel: 1);
+                comA, comB, normal, tangent2, staticFriction, dynamicFriction, ref manifold, p, channel: 1);
         }
 
         contact.Manifold = manifold;
@@ -361,7 +365,7 @@ public static class ContactSolver
     private static void SolvePointFriction(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
         float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
-        Vec3 comA, Vec3 comB, Vec3 normal, Vec3 tangent, float friction, ref Manifold3D manifold, int p, int channel)
+        Vec3 comA, Vec3 comB, Vec3 normal, Vec3 tangent, float staticFriction, float dynamicFriction, ref Manifold3D manifold, int p, int channel)
     {
         ContactPoint3D point = manifold[p];
         Vec3 rA = point.PositionA - comA;
@@ -378,6 +382,7 @@ public static class ContactSolver
         float vt = Vec3.Dot(tangent, vA - vB);
 
         float stored = channel == 0 ? point.TangentImpulse1 : point.TangentImpulse2;
+        float friction = MathF.Abs(vt) < SolverTuning.LinearSlop ? staticFriction : dynamicFriction;
         float maxFriction = friction * point.NormalImpulse;
         float newImpulse = Math.Clamp(stored + (tangentMass * -vt), -maxFriction, maxFriction);
         float delta = newImpulse - stored;

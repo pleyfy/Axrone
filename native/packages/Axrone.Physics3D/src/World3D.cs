@@ -982,6 +982,7 @@ public sealed class World : IDisposable
                 IsSensor = recordA.IsSensor || recordB.IsSensor,
                 Manifold = epa,
             };
+            SurfaceSettings.BlendInto(in recordA, in recordB, ref contact);
             return true;
         }
 
@@ -999,6 +1000,7 @@ public sealed class World : IDisposable
             IsSensor = recordA.IsSensor || recordB.IsSensor,
             Manifold = rest,
         };
+        SurfaceSettings.BlendInto(in recordA, in recordB, ref contact);
         return true;
     }
 

@@ -59,6 +59,9 @@ internal struct ShapeRecord
     /// <summary>Contact response.</summary>
     public PhysicsMaterial Material;
 
+    /// <summary>Static/dynamic friction split and combine overrides.</summary>
+    public SurfaceSettings Surface;
+
     /// <summary>Trigger-only collider: overlaps report but never push.</summary>
     public bool IsSensor;
 
@@ -150,14 +153,15 @@ public sealed class ShapeStore
         PhysicsMaterial material = default,
         Vec3 localOffset = default,
         Quat localRotation = default,
-        bool isSensor = false)
+        bool isSensor = false,
+        SurfaceSettings surface = default)
         where TStrategy : struct, ISpatialPartitionStrategy
         where TMetrics : struct, ISpatialMetricsSink
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(tree);
         var local = new Sphere3(center, radius);
-        int slot = InsertRecord(bodies, bodyId, ColliderKind.Sphere, density, filter, material, localOffset, localRotation, isSensor);
+        int slot = InsertRecord(bodies, bodyId, ColliderKind.Sphere, density, filter, material, localOffset, localRotation, isSensor, surface);
         _shapes[slot].LocalSphere = local;
         FinishAttach(bodies, tree, slot);
         return ShapeId.FromIndex(slot);
@@ -175,14 +179,15 @@ public sealed class ShapeStore
         PhysicsMaterial material = default,
         Vec3 localOffset = default,
         Quat localRotation = default,
-        bool isSensor = false)
+        bool isSensor = false,
+        SurfaceSettings surface = default)
         where TStrategy : struct, ISpatialPartitionStrategy
         where TMetrics : struct, ISpatialMetricsSink
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(tree);
         var local = new Box3(center, halfExtents);
-        int slot = InsertRecord(bodies, bodyId, ColliderKind.Box, density, filter, material, localOffset, localRotation, isSensor);
+        int slot = InsertRecord(bodies, bodyId, ColliderKind.Box, density, filter, material, localOffset, localRotation, isSensor, surface);
         _shapes[slot].LocalBox = local;
         FinishAttach(bodies, tree, slot);
         return ShapeId.FromIndex(slot);
@@ -201,14 +206,15 @@ public sealed class ShapeStore
         PhysicsMaterial material = default,
         Vec3 localOffset = default,
         Quat localRotation = default,
-        bool isSensor = false)
+        bool isSensor = false,
+        SurfaceSettings surface = default)
         where TStrategy : struct, ISpatialPartitionStrategy
         where TMetrics : struct, ISpatialMetricsSink
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(tree);
         var local = new Capsule3(p0, p1, radius);
-        int slot = InsertRecord(bodies, bodyId, ColliderKind.Capsule, density, filter, material, localOffset, localRotation, isSensor);
+        int slot = InsertRecord(bodies, bodyId, ColliderKind.Capsule, density, filter, material, localOffset, localRotation, isSensor, surface);
         _shapes[slot].LocalCapsule = local;
         FinishAttach(bodies, tree, slot);
         return ShapeId.FromIndex(slot);
@@ -228,14 +234,15 @@ public sealed class ShapeStore
         PhysicsMaterial material = default,
         Vec3 localOffset = default,
         Quat localRotation = default,
-        bool isSensor = false)
+        bool isSensor = false,
+        SurfaceSettings surface = default)
         where TStrategy : struct, ISpatialPartitionStrategy
         where TMetrics : struct, ISpatialMetricsSink
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(tree);
         var local = new Cylinder3(center, radius, height, axis);
-        int slot = InsertRecord(bodies, bodyId, ColliderKind.Cylinder, density, filter, material, localOffset, localRotation, isSensor);
+        int slot = InsertRecord(bodies, bodyId, ColliderKind.Cylinder, density, filter, material, localOffset, localRotation, isSensor, surface);
         _shapes[slot].LocalCylinder = local;
         FinishAttach(bodies, tree, slot);
         return ShapeId.FromIndex(slot);
@@ -255,14 +262,15 @@ public sealed class ShapeStore
         PhysicsMaterial material = default,
         Vec3 localOffset = default,
         Quat localRotation = default,
-        bool isSensor = false)
+        bool isSensor = false,
+        SurfaceSettings surface = default)
         where TStrategy : struct, ISpatialPartitionStrategy
         where TMetrics : struct, ISpatialMetricsSink
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(tree);
         var local = new Cone3(center, radius, height, axis);
-        int slot = InsertRecord(bodies, bodyId, ColliderKind.Cone, density, filter, material, localOffset, localRotation, isSensor);
+        int slot = InsertRecord(bodies, bodyId, ColliderKind.Cone, density, filter, material, localOffset, localRotation, isSensor, surface);
         _shapes[slot].LocalCone = local;
         FinishAttach(bodies, tree, slot);
         return ShapeId.FromIndex(slot);
@@ -279,14 +287,15 @@ public sealed class ShapeStore
         PhysicsMaterial material = default,
         Vec3 localOffset = default,
         Quat localRotation = default,
-        bool isSensor = false)
+        bool isSensor = false,
+        SurfaceSettings surface = default)
         where TStrategy : struct, ISpatialPartitionStrategy
         where TMetrics : struct, ISpatialMetricsSink
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(tree);
         var local = new Hull3D(vertices);
-        int slot = InsertRecord(bodies, bodyId, ColliderKind.Hull, density, filter, material, localOffset, localRotation, isSensor);
+        int slot = InsertRecord(bodies, bodyId, ColliderKind.Hull, density, filter, material, localOffset, localRotation, isSensor, surface);
         _shapes[slot].LocalHull = local;
         FinishAttach(bodies, tree, slot);
         return ShapeId.FromIndex(slot);
@@ -304,14 +313,15 @@ public sealed class ShapeStore
         PhysicsMaterial material = default,
         Vec3 localOffset = default,
         Quat localRotation = default,
-        bool isSensor = false)
+        bool isSensor = false,
+        SurfaceSettings surface = default)
         where TStrategy : struct, ISpatialPartitionStrategy
         where TMetrics : struct, ISpatialMetricsSink
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(tree);
         var local = new Mesh3D(vertices, indices);
-        int slot = InsertRecord(bodies, bodyId, ColliderKind.Mesh, density, filter, material, localOffset, localRotation, isSensor);
+        int slot = InsertRecord(bodies, bodyId, ColliderKind.Mesh, density, filter, material, localOffset, localRotation, isSensor, surface);
         _shapes[slot].LocalMesh = local;
         FinishAttach(bodies, tree, slot);
         return ShapeId.FromIndex(slot);
@@ -333,14 +343,15 @@ public sealed class ShapeStore
         PhysicsMaterial material = default,
         Vec3 localOffset = default,
         Quat localRotation = default,
-        bool isSensor = false)
+        bool isSensor = false,
+        SurfaceSettings surface = default)
         where TStrategy : struct, ISpatialPartitionStrategy
         where TMetrics : struct, ISpatialMetricsSink
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(tree);
         var local = new Heightfield3D(heights, width, depth, scaleX, scaleY, scaleZ);
-        int slot = InsertRecord(bodies, bodyId, ColliderKind.Heightfield, density, filter, material, localOffset, localRotation, isSensor);
+        int slot = InsertRecord(bodies, bodyId, ColliderKind.Heightfield, density, filter, material, localOffset, localRotation, isSensor, surface);
         _shapes[slot].LocalHeightfield = local;
         FinishAttach(bodies, tree, slot);
         return ShapeId.FromIndex(slot);
@@ -547,7 +558,8 @@ public sealed class ShapeStore
         PhysicsMaterial material,
         Vec3 localOffset,
         Quat localRotation,
-        bool isSensor)
+        bool isSensor,
+        SurfaceSettings surface)
     {
         bodies.Slot(bodyId);
 
@@ -583,6 +595,7 @@ public sealed class ShapeStore
         shape.Filter = filter;
         shape.Material = material;
         shape.IsSensor = isSensor;
+        shape.Surface = surface;
         shape.TreeItem = SpatialItemId.Invalid;
         shape.NextShape = -1;
         return slot;

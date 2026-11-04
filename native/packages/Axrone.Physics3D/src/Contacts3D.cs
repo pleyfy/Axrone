@@ -23,6 +23,18 @@ public struct Contact3D
     /// <summary>Trigger-only overlap: reported but never solved.</summary>
     public bool IsSensor;
 
+    /// <summary>Blended dynamic friction for the pair.</summary>
+    public float Friction;
+
+    /// <summary>Blended static friction for the pair.</summary>
+    public float StaticFriction;
+
+    /// <summary>Blended restitution for the pair.</summary>
+    public float Restitution;
+
+    /// <summary>Whether the pair surface properties have been blended.</summary>
+    public bool Blended;
+
     /// <summary>Contact manifold; impulses accumulate across steps.</summary>
     public Manifold3D Manifold;
 }
