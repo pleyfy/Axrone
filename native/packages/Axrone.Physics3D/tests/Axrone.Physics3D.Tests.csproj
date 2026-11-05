@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../Axrone.Physics3D.csproj" />
+    <ProjectReference Include="../../Axrone.Physics2D/Axrone.Physics2D.csproj" />
   </ItemGroup>
 
 </Project>

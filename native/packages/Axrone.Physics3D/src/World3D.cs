@@ -162,6 +162,52 @@ public readonly record struct ContactEvent(ShapeId ShapeA, ShapeId ShapeB, BodyI
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct SensorEvent(ShapeId ShapeA, ShapeId ShapeB, BodyId BodyA, BodyId BodyB, SensorEventType Type);
 
+/// <summary>
+/// Post-solve notice for a solid pair: the impulses the solver accumulated
+/// at every contact point. Tangent slots carry the combined magnitude of the
+/// two friction channels. Notices accumulate across the step and clear at the
+/// start of the next one; read them after <see cref="World.Step(float)"/>.
+/// </summary>
+public readonly record struct ContactImpulseEvent(
+    ShapeId ShapeA,
+    ShapeId ShapeB,
+    BodyId BodyA,
+    BodyId BodyB,
+    int PointCount,
+    float NormalImpulse0,
+    float TangentImpulse0,
+    float NormalImpulse1,
+    float TangentImpulse1)
+{
+    /// <summary>Accumulated normal impulse of contact point <paramref name="index"/>.</summary>
+    /// <param name="index">Point index, below <see cref="PointCount"/> and at most two slots.</param>
+    /// <returns>The normal impulse.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly float NormalAt(int index)
+    {
+        if (index != 0 && index != 1)
+        {
+            ThrowHelper.ThrowInvalidOperation("Impulse point index is out of range.");
+        }
+
+        return index == 0 ? NormalImpulse0 : NormalImpulse1;
+    }
+
+    /// <summary>Accumulated combined tangent impulse of contact point <paramref name="index"/>.</summary>
+    /// <param name="index">Point index, below <see cref="PointCount"/> and at most two slots.</param>
+    /// <returns>The tangent impulse magnitude.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly float TangentAt(int index)
+    {
+        if (index != 0 && index != 1)
+        {
+            ThrowHelper.ThrowInvalidOperation("Impulse point index is out of range.");
+        }
+
+        return index == 0 ? TangentImpulse0 : TangentImpulse1;
+    }
+}
+
 /// <summary>Lifecycle phase of a contact event.</summary>
 public enum ContactEventType : byte
 {
@@ -214,12 +260,13 @@ public sealed class World : IDisposable
     private int _eventCount;
     private SensorEvent[] _sensorEvents;
     private int _sensorEventCount;
+    private ContactImpulseEvent[] _impulseEvents;
+    private int _impulseEventCount;
     private BroadPair[] _currentPairs;
     private int _currentPairCount;
     private BroadPair[] _stepPairs;
     private int _stepPairCount;
     private int _disposed;
-    private IContactEvents3D? _contactEvents;
 
     /// <summary>Gravity of the world.</summary>
     public Vec3 Gravity { get; set; }
@@ -247,23 +294,6 @@ public sealed class World : IDisposable
 
     /// <summary>Solver capabilities.</summary>
     public SolverFlags Flags { get; set; }
-
-    /// <summary>Contact lifecycle observer; null disables callbacks.</summary>
-    public IContactEvents3D? ContactEvents
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _contactEvents;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        set
-        {
-            if (value is null && Volatile.Read(ref _contactEvents) is null)
-            {
-                return;
-            }
-
-            Volatile.Write(ref _contactEvents, value);
-        }
-    }
 
     /// <summary>Whether each step clears accumulated forces after applying them.</summary>
     public bool AutoClearForces { get; set; }
@@ -299,6 +329,8 @@ public sealed class World : IDisposable
         _eventCount = 0;
         _sensorEvents = new SensorEvent[InitialContactCapacity];
         _sensorEventCount = 0;
+        _impulseEvents = new ContactImpulseEvent[InitialContactCapacity];
+        _impulseEventCount = 0;
         _currentPairs = new BroadPair[InitialContactCapacity];
         _currentPairCount = 0;
         _stepPairs = new BroadPair[InitialContactCapacity];
@@ -374,13 +406,31 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SensorEvent GetSensorEvent(int index) => _sensorEvents[index];
 
+    /// <summary>Post-solve impulse notices raised by the last step.</summary>
+    public int ContactImpulseEventCount
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _impulseEventCount;
+    }
+
+    /// <summary>Reads a post-solve impulse notice by index.</summary>
+    public ContactImpulseEvent GetContactImpulseEvent(int index)
+    {
+        if ((uint)index >= (uint)_impulseEventCount)
+        {
+            ThrowHelper.ThrowInvalidOperation("Impulse event index is out of range.");
+        }
+
+        return _impulseEvents[index];
+    }
+
     /// <summary>Casts a ray against filtered shapes; hits sort by ascending distance.</summary>
     /// <param name="ray">The ray.</param>
     /// <param name="maxDistance">The furthest hit kept.</param>
     /// <param name="hits">The destination; truncated when full.</param>
     /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The hits written.</returns>
-    public int Raycast(in Ray3D ray, float maxDistance, Span<RaycastHit3D> hits, in QueryFilter3D filter = default)
+    public int Raycast(in Ray3D ray, float maxDistance, Span<RaycastHit3D> hits, in QueryFilter filter = default)
     {
         ThrowIfDisposed();
 
@@ -397,7 +447,7 @@ public sealed class World : IDisposable
             }
 
             ref ShapeRecord record = ref _shapes.Record(shapeId);
-            if (!filter.Matches(in record.Filter))
+            if (!QueryFilter.Matches(in record.Filter, in filter))
             {
                 continue;
             }
@@ -492,7 +542,7 @@ public sealed class World : IDisposable
     /// <param name="results">The destination; truncated when full.</param>
     /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The shapes written.</returns>
-    public int OverlapAabb(in Aabb3D box, Span<ShapeId> results, in QueryFilter3D filter = default)
+    public int OverlapAabb(in Aabb3D box, Span<ShapeId> results, in QueryFilter filter = default)
     {
         ThrowIfDisposed();
 
@@ -508,7 +558,7 @@ public sealed class World : IDisposable
                 continue;
             }
 
-            if (!filter.Matches(in _shapes.Record(shapeId).Filter))
+            if (!QueryFilter.Matches(in _shapes.Record(shapeId).Filter, in filter))
             {
                 continue;
             }
@@ -543,7 +593,7 @@ public sealed class World : IDisposable
     /// <param name="hit">The closest hit when one exists.</param>
     /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns><see langword="true"/> when anything was hit.</returns>
-    public bool RaycastClosest(in Ray3D ray, float maxDistance, out RaycastHit3D hit, in QueryFilter3D filter = default)
+    public bool RaycastClosest(in Ray3D ray, float maxDistance, out RaycastHit3D hit, in QueryFilter filter = default)
     {
         Span<RaycastHit3D> buffer = stackalloc RaycastHit3D[128];
         if (Raycast(in ray, maxDistance, buffer, in filter) == 0)
@@ -562,7 +612,7 @@ public sealed class World : IDisposable
     /// <param name="hits">The destination; truncated when full.</param>
     /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The hits written.</returns>
-    public int QueryPoint(Vec3 point, float maxDistance, Span<ClosestPointHit3D> hits, in QueryFilter3D filter = default)
+    public int QueryPoint(Vec3 point, float maxDistance, Span<ClosestPointHit3D> hits, in QueryFilter filter = default)
     {
         ThrowIfDisposed();
 
@@ -587,7 +637,7 @@ public sealed class World : IDisposable
                 continue;
             }
 
-            if (!filter.Matches(in _shapes.Record(shapeId).Filter))
+            if (!QueryFilter.Matches(in _shapes.Record(shapeId).Filter, in filter))
             {
                 continue;
             }
@@ -765,7 +815,7 @@ public sealed class World : IDisposable
         return true;
     }
 
-    /// <summary>Advances the simulation by <paramref name="dt"/> seconds.</summary>
+    /// <summary>Advances the simulation by <paramref name="dt"/> seconds; the built-in sink records post-solve impulse notices on the last slice.</summary>
     public void Step(float dt)
     {
         ThrowIfDisposed();
@@ -780,16 +830,57 @@ public sealed class World : IDisposable
 
         _eventCount = 0;
         _sensorEventCount = 0;
+        _impulseEventCount = 0;
         SnapshotStepPairs();
 
         for (int slice = 0; slice < slices; slice++)
         {
-            StepSlice(h);
+            StepSlice(h, emitImpulseNotices: slice == slices - 1);
         }
 
         UpdateIslands(dt);
         PublishContactEvents();
-        EmitPostSolveContacts();
+    }
+
+    /// <summary>
+    /// Advances the world like <see cref="Step(float)"/> and emits the pre-solve
+    /// and post-solve callback points through <paramref name="handler"/>; the
+    /// callbacks fire once per step (pre-solve at the first CCD slice's constraint
+    /// init, post-solve after the last slice's velocity sweeps). Static-abstract
+    /// dispatch: no delegates, no boxing, no allocation.
+    /// </summary>
+    /// <param name="dt">Time advance; strictly positive.</param>
+    /// <param name="handler">Callback surface; see <see cref="IContactSolverCallbacks{TContact, TManifold, TContext}"/>.</param>
+    /// <param name="context">Caller state the handler may read and write.</param>
+    /// <typeparam name="THandler">Callback surface type; static-abstract dispatch.</typeparam>
+    /// <typeparam name="TContext">Caller state; may be a <see langword="ref"/> struct.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public void Step<THandler, TContext>(float dt, THandler handler, ref TContext context)
+        where THandler : IContactSolverCallbacks<Contact3D, Manifold3D, TContext>
+        where TContext : allows ref struct
+    {
+        ThrowIfDisposed();
+
+        if (!(dt > 0.0f) || float.IsNaN(dt))
+        {
+            ThrowHelper.ThrowInvalidOperation("Time step must be positive.");
+        }
+
+        int slices = CcdSliceCount(dt);
+        float h = dt / slices;
+
+        _eventCount = 0;
+        _sensorEventCount = 0;
+        _impulseEventCount = 0;
+        SnapshotStepPairs();
+
+        for (int slice = 0; slice < slices; slice++)
+        {
+            StepSliceCallback(h, slice == 0, slice == slices - 1, handler, ref context);
+        }
+
+        UpdateIslands(dt);
+        PublishContactEvents();
     }
 
     /// <summary>
@@ -859,7 +950,7 @@ public sealed class World : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void StepSlice(float h)
+    private void StepSlice(float h, bool emitImpulseNotices)
     {
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
@@ -908,13 +999,20 @@ public sealed class World : IDisposable
             }
         }
 
-        EmitPreSolveContacts();
-        ContactSolver.SolveVelocity(_bodies, _shapes, _contacts.AsSpan(0, _contactCount), VelocityIterations);
+        ContactSolver.InitVelocityConstraints(_bodies, _shapes, _contacts.AsSpan(0, _contactCount));
+        ContactSolver.SolveVelocityPass(_bodies, _shapes, _contacts.AsSpan(0, _contactCount), VelocityIterations);
         JointSolver.SolveSpringPass(_bodies, _joints, h);
 
         for (int iteration = 0; iteration < VelocityIterations; iteration++)
         {
             JointSolver.SolveVelocityPass(_bodies, _joints, h);
+        }
+
+        if (emitImpulseNotices)
+        {
+            NoSolveState unusedState;
+            ImpulseNoticeContext notices = new(this);
+            ContactSolver.ReportPostSolve(_contacts.AsSpan(0, _contactCount), ref notices, ref unusedState);
         }
 
         _bodies.IntegratePositions(h);
@@ -1002,7 +1100,6 @@ public sealed class World : IDisposable
                 IsSensor = recordA.IsSensor || recordB.IsSensor,
                 Manifold = epa,
             };
-            SurfaceSettings.BlendInto(in recordA, in recordB, ref contact);
             return true;
         }
 
@@ -1020,7 +1117,6 @@ public sealed class World : IDisposable
             IsSensor = recordA.IsSensor || recordB.IsSensor,
             Manifold = rest,
         };
-        SurfaceSettings.BlendInto(in recordA, in recordB, ref contact);
         return true;
     }
 
@@ -1299,36 +1395,173 @@ public sealed class World : IDisposable
         }
     }
 
-    /// <summary>Single pre-solve emit point: fires the observer once per contact before the velocity solve.</summary>
-    private void EmitPreSolveContacts()
+    /// <summary>Runs one slice with the caller's callback surface: pre-solve on the first slice, post-solve on the last.</summary>
+    private void StepSliceCallback<THandler, TContext>(
+        float h, bool emitPreSolve, bool emitPostSolve, THandler handler, ref TContext context)
+        where THandler : IContactSolverCallbacks<Contact3D, Manifold3D, TContext>
+        where TContext : allows ref struct
     {
-        IContactEvents3D? listener = Volatile.Read(ref _contactEvents);
-        if (listener is null)
+        _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
+        SyncAwakeBodies();
+
+        Contact3D[] built = _previous;
+        _previous = _contacts;
+        _previousCount = _contactCount;
+        _contacts = built;
+        _contactCount = 0;
+        _currentPairCount = 0;
+
+        var collector = new PairCollector();
+        World self = this;
+        _tree.FindPairs(ref collector, ref self);
+
+        for (int i = 0; i < _currentPairCount; i++)
         {
-            return;
+            BroadPair pair = _currentPairs[i];
+            if (TryBuildContact(pair.First, pair.Second, out Contact3D contact))
+            {
+                if (_contactCount >= _contacts.Length)
+                {
+                    Array.Resize(ref _contacts, _contacts.Length * 2);
+                }
+
+                _contacts[_contactCount++] = contact;
+            }
         }
 
         for (int i = 0; i < _contactCount; i++)
         {
-            listener.PreSolve(ref _contacts[i]);
+            bool matched = false;
+            for (int j = 0; j < _previousCount; j++)
+            {
+                if (_previous[j].ShapeA == _contacts[i].ShapeA && _previous[j].ShapeB == _contacts[i].ShapeB)
+                {
+                    WarmStart(ref _contacts[i], in _previous[j]);
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched)
+            {
+                WakePair(_contacts[i].BodyA, _contacts[i].BodyB);
+            }
         }
+
+        Span<Contact3D> span = _contacts.AsSpan(0, _contactCount);
+        if (emitPreSolve)
+        {
+            PreSolveContext<THandler, TContext> pre = new(_shapes);
+            ContactSolver.InitVelocityConstraints(_bodies, _shapes, span, ref pre, ref context);
+        }
+        else
+        {
+            ContactSolver.InitVelocityConstraints(_bodies, _shapes, span);
+        }
+
+        ContactSolver.SolveVelocityPass(_bodies, _shapes, span, VelocityIterations);
+        JointSolver.SolveSpringPass(_bodies, _joints, h);
+
+        for (int iteration = 0; iteration < VelocityIterations; iteration++)
+        {
+            JointSolver.SolveVelocityPass(_bodies, _joints, h);
+        }
+
+        if (emitPostSolve)
+        {
+            PostSolveContext<THandler, TContext> post = new();
+            ContactSolver.ReportPostSolve(span, ref post, ref context);
+        }
+
+        _bodies.IntegratePositions(h);
+        SyncAwakeBodies();
+
+        ContactSolver.SolvePositions(_bodies, span, PositionIterations);
+        JointSolver.SolvePositionPass(_bodies, _joints);
     }
 
-    /// <summary>Single post-solve emit point: fires the observer once per contact with final impulses.</summary>
-    private void EmitPostSolveContacts()
+    /// <summary>Unit caller state for sink contexts that need none.</summary>
+    private ref struct NoSolveState;
+
+    /// <summary>Pre-solve sink: combines pair tuning from the materials and fires the handler.</summary>
+    private readonly struct PreSolveContext<THandler, TContext>(ShapeStore shapes)
+        : IContactSolveContext<Contact3D, Manifold3D, TContext>
+        where THandler : IContactSolverCallbacks<Contact3D, Manifold3D, TContext>
+        where TContext : allows ref struct
     {
-        IContactEvents3D? listener = Volatile.Read(ref _contactEvents);
-        if (listener is null)
+        private readonly ShapeStore _shapes = shapes;
+
+        public readonly ContactTuning Tune(ref readonly Contact3D contact, ref TContext context)
         {
-            return;
+            ref readonly ShapeRecord recordA = ref _shapes.Record(contact.ShapeA);
+            ref readonly ShapeRecord recordB = ref _shapes.Record(contact.ShapeB);
+            return ContactSolver.DefaultTuning(in recordA.Material, in recordB.Material);
         }
 
-        for (int i = 0; i < _contactCount; i++)
+        public readonly void PreSolve(ref Contact3D contact, ref Manifold3D manifold, ref ContactTuning tuning, ref TContext context) =>
+            THandler.OnPreSolve(ref contact, ref manifold, ref tuning, ref context);
+
+        public readonly void PostSolve(ref readonly Contact3D contact, in Manifold3D manifold, in ContactImpulses impulses, ref TContext context)
         {
-            listener.PostSolve(in _contacts[i]);
         }
     }
 
+    /// <summary>Post-solve sink: forwards accumulated impulses to the handler.</summary>
+    private readonly struct PostSolveContext<THandler, TContext>
+        : IContactSolveContext<Contact3D, Manifold3D, TContext>
+        where THandler : IContactSolverCallbacks<Contact3D, Manifold3D, TContext>
+        where TContext : allows ref struct
+    {
+        public readonly ContactTuning Tune(ref readonly Contact3D contact, ref TContext context) => default;
+
+        public readonly void PreSolve(ref Contact3D contact, ref Manifold3D manifold, ref ContactTuning tuning, ref TContext context)
+        {
+        }
+
+        public readonly void PostSolve(ref readonly Contact3D contact, in Manifold3D manifold, in ContactImpulses impulses, ref TContext context) =>
+            THandler.OnPostSolve(in contact, in manifold, in impulses, ref context);
+    }
+
+    /// <summary>Post-solve sink: records accumulated impulses as world notices.</summary>
+    private readonly struct ImpulseNoticeContext(World world)
+        : IContactSolveContext<Contact3D, Manifold3D, NoSolveState>
+    {
+        private readonly World _world = world;
+
+        public ContactTuning Tune(ref readonly Contact3D contact, ref NoSolveState context) => default;
+
+        public void PreSolve(ref Contact3D contact, ref Manifold3D manifold, ref ContactTuning tuning, ref NoSolveState context)
+        {
+        }
+
+        public void PostSolve(ref readonly Contact3D contact, in Manifold3D manifold, in ContactImpulses impulses, ref NoSolveState context)
+        {
+            if (manifold.Count == 0)
+            {
+                return;
+            }
+
+            _world.AddImpulseEvent(
+                contact.ShapeA, contact.ShapeB, contact.BodyA, contact.BodyB,
+                impulses.Count, impulses.NormalAt(0), impulses.TangentAt(0),
+                manifold.Count > 1 ? impulses.NormalAt(1) : 0.0f,
+                manifold.Count > 1 ? impulses.TangentAt(1) : 0.0f);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void AddImpulseEvent(
+        ShapeId shapeA, ShapeId shapeB, BodyId bodyA, BodyId bodyB,
+        int pointCount, float normal0, float tangent0, float normal1, float tangent1)
+    {
+        if (_impulseEventCount >= _impulseEvents.Length)
+        {
+            Array.Resize(ref _impulseEvents, Math.Max(_impulseEvents.Length * 2, 1));
+        }
+
+        _impulseEvents[_impulseEventCount++] = new ContactImpulseEvent(
+            shapeA, shapeB, bodyA, bodyB, pointCount, normal0, tangent0, normal1, tangent1);
+    }
     /// <summary>Diffs the confirmed contact sets into begin/stay/end events.</summary>
     private void PublishContactEvents()
     {

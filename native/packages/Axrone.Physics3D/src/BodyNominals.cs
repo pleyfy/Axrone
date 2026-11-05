@@ -370,20 +370,61 @@ public enum BodyType : byte
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct PhysicsMaterial
 {
-    /// <summary>Coulomb friction; never negative.</summary>
+    /// <summary>Headline Coulomb friction; never negative.</summary>
     public readonly float Friction;
 
     /// <summary>Restitution; the closed interval [0, 1].</summary>
     public readonly float Restitution;
 
+    /// <summary>Static friction feeding the Coulomb cone; never negative.</summary>
+    public readonly float StaticFriction;
+
+    /// <summary>
+    /// Dynamic friction while sliding; zero mirrors <see cref="StaticFriction"/>.
+    /// </summary>
+    public readonly float DynamicFriction;
+
+    /// <summary>Conveyor surface speed along the contact tangent; finite.</summary>
+    public readonly float TangentSpeed;
+
+    /// <summary>How a pair merges friction.</summary>
+    public readonly CombineMode FrictionCombine;
+
+    /// <summary>How a pair merges restitution.</summary>
+    public readonly CombineMode RestitutionCombine;
+
     /// <summary>Balanced default: slight friction, no bounce.</summary>
     public static PhysicsMaterial Default => new(0.2f, 0.0f);
 
-    /// <summary>Creates a material, rejecting negative friction and out-of-range restitution.</summary>
+    /// <summary>Creates a material from the two headline coefficients.</summary>
     /// <param name="friction">Coulomb friction; must not be negative.</param>
     /// <param name="restitution">Restitution; must lie in [0, 1].</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public PhysicsMaterial(float friction, float restitution)
+        : this(friction, restitution, friction, 0.0f, 0.0f, CombineMode.Max, CombineMode.Max)
+    {
+    }
+
+    /// <summary>Creates a fully specified material.</summary>
+    /// <param name="friction">Headline Coulomb friction; must not be negative.</param>
+    /// <param name="restitution">Restitution; must lie in [0, 1].</param>
+    /// <param name="staticFriction">Static friction for the Coulomb cone; defaults to <paramref name="friction"/>.</param>
+    /// <param name="dynamicFriction">
+    /// Dynamic friction while sliding; zero mirrors <paramref name="staticFriction"/>
+    /// (Box2D convention: a zero coefficient still resists at its own value).
+    /// </param>
+    /// <param name="tangentSpeed">Conveyor surface speed along the contact tangent.</param>
+    /// <param name="frictionCombine">How a pair merges friction.</param>
+    /// <param name="restitutionCombine">How a pair merges restitution.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public PhysicsMaterial(
+        float friction,
+        float restitution,
+        float staticFriction,
+        float dynamicFriction,
+        float tangentSpeed,
+        CombineMode frictionCombine,
+        CombineMode restitutionCombine)
     {
         if (friction < 0.0f || float.IsNaN(friction))
         {
@@ -395,7 +436,27 @@ public readonly record struct PhysicsMaterial
             ThrowHelper.ThrowInvalidOperation("Restitution must lie in [0, 1].");
         }
 
+        if (staticFriction < 0.0f || float.IsNaN(staticFriction))
+        {
+            ThrowHelper.ThrowInvalidOperation("Static friction must not be negative.");
+        }
+
+        if (dynamicFriction < 0.0f || float.IsNaN(dynamicFriction))
+        {
+            ThrowHelper.ThrowInvalidOperation("Dynamic friction must not be negative.");
+        }
+
+        if (float.IsNaN(tangentSpeed) || float.IsInfinity(tangentSpeed))
+        {
+            ThrowHelper.ThrowInvalidOperation("Tangent speed must be finite.");
+        }
+
         Friction = friction;
         Restitution = restitution;
+        StaticFriction = staticFriction;
+        DynamicFriction = dynamicFriction > 0.0f ? dynamicFriction : staticFriction;
+        TangentSpeed = tangentSpeed;
+        FrictionCombine = frictionCombine;
+        RestitutionCombine = restitutionCombine;
     }
 }

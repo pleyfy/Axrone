@@ -1,4 +1,5 @@
 using Axrone.Numeric;
+using Axrone.Physics.Core;
 using Axrone.Physics3D;
 using FluentAssertions;
 using Xunit;
@@ -7,30 +8,33 @@ namespace Axrone.Physics3D.Tests;
 
 public class ContactEventsTests
 {
-    private sealed class Listener : IContactEvents3D
+    private struct RunState
     {
         public int PreCount;
         public int PostCount;
-        public float MaxPostNormalImpulse;
-        public float ForceRestitution = -1.0f;
+        public float MaxNormal0;
+        public float MaxTangent0;
+        public float ForceRestitution;
+        public int ReportedPointCount;
+    }
 
-        public void PreSolve(ref Contact3D contact)
+    private struct TestHandler : IContactSolverCallbacks<Contact3D, Manifold3D, RunState>
+    {
+        public static void OnPreSolve(ref Contact3D contact, ref Manifold3D manifold, ref ContactTuning tuning, ref RunState state)
         {
-            PreCount++;
-            if (ForceRestitution >= 0.0f)
+            state.PreCount++;
+            if (state.ForceRestitution >= 0.0f)
             {
-                contact.Restitution = ForceRestitution;
+                tuning.Restitution = state.ForceRestitution;
             }
         }
 
-        public void PostSolve(in Contact3D contact)
+        public static void OnPostSolve(ref readonly Contact3D contact, in Manifold3D manifold, in ContactImpulses impulses, ref RunState state)
         {
-            PostCount++;
-            Manifold3D manifold = contact.Manifold;
-            for (int p = 0; p < manifold.Count; p++)
-            {
-                MaxPostNormalImpulse = MathF.Max(MaxPostNormalImpulse, manifold[p].NormalImpulse);
-            }
+            state.PostCount++;
+            state.MaxNormal0 = MathF.Max(state.MaxNormal0, impulses.NormalAt(0));
+            state.MaxTangent0 = MathF.Max(state.MaxTangent0, impulses.TangentAt(0));
+            state.ReportedPointCount = impulses.Count;
         }
     }
 
@@ -54,52 +58,132 @@ public class ContactEventsTests
         var (world, _) = FallingBallWorld(0.9f);
         using (world)
         {
-            var listener = new Listener();
-            world.ContactEvents = listener;
-
+            var state = new RunState { ForceRestitution = -1.0f };
             for (int i = 0; i < 120; i++)
             {
-                world.Step(1.0f / 60.0f);
+                world.Step(1.0f / 60.0f, new TestHandler(), ref state);
             }
 
-            listener.PreCount.Should().BeGreaterThan(0);
-            listener.PostCount.Should().BeGreaterThan(0);
-            listener.MaxPostNormalImpulse.Should().BeGreaterThan(0.0f);
+            state.PreCount.Should().BeGreaterThan(0);
+            state.PostCount.Should().BeGreaterThan(0);
+            state.MaxNormal0.Should().BeGreaterThan(0.0f);
         }
     }
 
     [Fact]
-    public void PreSolve_Mutation_Lifts_Rebound()
+    public void PreSolve_Tuning_Mutation_Lifts_Rebound()
     {
+        var (plainWorld, plainBall) = FallingBallWorld(0.0f);
         float plainUp = 0.0f;
-        var (worldPlain, ballPlain) = FallingBallWorld(0.0f);
-        using (worldPlain)
+        using (plainWorld)
         {
-            for (int i = 0; i < 30; i++)
+            for (int i = 0; i < 60; i++)
             {
-                worldPlain.Step(1.0f / 60.0f);
-            }
-
-            for (int i = 0; i < 30; i++)
-            {
-                worldPlain.Step(1.0f / 60.0f);
-                plainUp = MathF.Max(plainUp, worldPlain.Bodies.GetLinearVelocity(ballPlain).Y);
+                plainWorld.Step(1.0f / 60.0f);
+                plainUp = MathF.Max(plainUp, plainWorld.Bodies.GetLinearVelocity(plainBall).Y);
             }
         }
 
-        var (worldBoosted, ballBoosted) = FallingBallWorld(0.0f);
-        using (worldBoosted)
+        var (boostedWorld, boostedBall) = FallingBallWorld(0.0f);
+        using (boostedWorld)
         {
-            worldBoosted.ContactEvents = new Listener { ForceRestitution = 1.0f };
+            var state = new RunState { ForceRestitution = 1.0f };
             float boostedUp = 0.0f;
             for (int i = 0; i < 60; i++)
             {
-                worldBoosted.Step(1.0f / 60.0f);
-                boostedUp = MathF.Max(boostedUp, worldBoosted.Bodies.GetLinearVelocity(ballBoosted).Y);
+                boostedWorld.Step(1.0f / 60.0f, new TestHandler(), ref state);
+                boostedUp = MathF.Max(boostedUp, boostedWorld.Bodies.GetLinearVelocity(boostedBall).Y);
             }
 
+            state.PreCount.Should().BeGreaterThan(0);
             plainUp.Should().BeLessThanOrEqualTo(0.1f);
             boostedUp.Should().BeGreaterThan(1.0f);
         }
+    }
+
+    [Fact]
+    public void PostSolve_Impulses_Match_Manifold()
+    {
+        var (world, _) = FallingBallWorld(0.5f);
+        using (world)
+        {
+            var state = new RunState { ForceRestitution = -1.0f };
+            float manifoldNormal = 0.0f;
+            int manifoldCount = 0;
+            for (int i = 0; i < 120; i++)
+            {
+                world.Step(1.0f / 60.0f, new TestHandler(), ref state);
+                if (state.PostCount > 0)
+                {
+                    Contact3D contact = world.GetContact(0);
+                    Manifold3D manifold = contact.Manifold;
+                    manifoldCount = manifold.Count;
+                    manifoldNormal = manifold[0].NormalImpulse;
+                }
+            }
+
+            state.ReportedPointCount.Should().Be(manifoldCount);
+            state.MaxNormal0.Should().BeGreaterThan(0.0f);
+            manifoldNormal.Should().BeGreaterThan(0.0f);
+            state.MaxNormal0.Should().BeGreaterThanOrEqualTo(manifoldNormal * 0.999f);
+        }
+    }
+
+    [Fact]
+    public void Callback_Emit_Is_SteadyState_Zero_Alloc()
+    {
+        var (world, _) = FallingBallWorld(0.9f);
+        using (world)
+        {
+            var state = new RunState { ForceRestitution = -1.0f };
+            for (int i = 0; i < 60; i++)
+            {
+                world.Step(1.0f / 60.0f, new TestHandler(), ref state);
+            }
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 240; i++)
+            {
+                world.Step(1.0f / 60.0f, new TestHandler(), ref state);
+            }
+
+            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            delta.Should().Be(0L);
+        }
+    }
+
+    [Fact]
+    public void Builtin_Notice_Reports_Impulses_And_Resets_Per_Step()
+    {
+        var (world, _) = FallingBallWorld(0.5f);
+        using (world)
+        {
+            float peakNormal = 0.0f;
+            int sawNotice = 0;
+            for (int i = 0; i < 120; i++)
+            {
+                world.Step(1.0f / 60.0f);
+                if (world.ContactImpulseEventCount > 0)
+                {
+                    sawNotice++;
+                    ContactImpulseEvent notice = world.GetContactImpulseEvent(0);
+                    notice.PointCount.Should().BeGreaterThan(0);
+                    peakNormal = MathF.Max(peakNormal, notice.NormalAt(0));
+                }
+
+                world.ContactImpulseEventCount.Should().BeLessThanOrEqualTo(1);
+            }
+
+            sawNotice.Should().BeGreaterThan(0);
+            peakNormal.Should().BeGreaterThan(0.0f);
+        }
+    }
+
+    [Fact]
+    public void Duplicate_Callback_Surface_Is_Gone()
+    {
+        typeof(World).GetProperty("ContactEvents").Should().BeNull();
+        typeof(World).Assembly.GetType("Axrone.Physics3D.IContactEvents3D").Should().BeNull();
     }
 }
