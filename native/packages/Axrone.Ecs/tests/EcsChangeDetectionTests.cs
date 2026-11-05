@@ -2,6 +2,8 @@ namespace Axrone.Ecs.Tests;
 
 public sealed class EcsChangeDetectionTests : IDisposable
 {
+    private const int WindowIterations = 1_000;
+
     private readonly World _world;
 
     public EcsChangeDetectionTests()
@@ -203,22 +205,25 @@ public sealed class EcsChangeDetectionTests : IDisposable
 
         _world.Step();
         var visitor = new CountingChangeVisitor();
-        for (int iteration = 0; iteration < 200; iteration++)
-        {
-            visitor.Reset();
-            _world.ForEachChanged<CountingChangeVisitor, EcsTestPosition>(-1, ref visitor);
-        }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int iteration = 0; iteration < 1000; iteration++)
-        {
-            visitor.Reset();
-            _world.ForEachChanged<CountingChangeVisitor, EcsTestPosition>(-1, ref visitor);
-        }
+        EcsAllocationHarness.AssertEveryWindowClean(
+            () => VisitChangedWindows(_world, ref visitor, WindowIterations),
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
+            "change-visitor traversal");
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        allocated.Should().Be(0);
+        // The gate only means something if the traversals still visited every changed row.
         visitor.Count.Should().Be(4);
+    }
+
+    private static void VisitChangedWindows(World world, ref CountingChangeVisitor visitor, int iterations)
+    {
+        for (int iteration = 0; iteration < iterations; iteration++)
+        {
+            visitor.Reset();
+            world.ForEachChanged<CountingChangeVisitor, EcsTestPosition>(-1, ref visitor);
+        }
     }
 
     [Fact]
