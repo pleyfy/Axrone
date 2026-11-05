@@ -104,73 +104,105 @@ public sealed class MaterialCombineTests
     [Fact]
     public void RestitutionModes_MixBothSidesThroughTheSelectedRule()
     {
-        float maxBounce = Bounce(CombineMode.Max);
-        float averageBounce = Bounce(CombineMode.Average);
-        float minBounce = Bounce(CombineMode.Min);
-        float multiplyBounce = Bounce(CombineMode.Multiply);
+        float maxBounce = BounceApex(0.8f, 0.4f, CombineMode.Max, CombineMode.Max);
+        float averageBounce = BounceApex(0.8f, 0.4f, CombineMode.Average, CombineMode.Average);
+        float minBounce = BounceApex(0.8f, 0.4f, CombineMode.Min, CombineMode.Min);
+        float multiplyBounce = BounceApex(0.8f, 0.4f, CombineMode.Multiply, CombineMode.Multiply);
 
         maxBounce.Should().BeGreaterThan(averageBounce);
         averageBounce.Should().BeGreaterThan(minBounce);
         minBounce.Should().BeGreaterThan(multiplyBounce);
-
-        static float Bounce(CombineMode mode)
-        {
-            using var world = new World();
-            BodyId ball = AddDroppingBall(world, Material(0.4f, 0.8f, mode), Material(0.4f, 0.4f, mode));
-            float apex = 0f;
-            bool bounced = false;
-            for (int i = 0; i < 120; i++)
-            {
-                world.Step(1f / 60f);
-                if (!bounced)
-                {
-                    bounced = world.Bodies.GetLinearVelocity(ball).Y > 0f;
-                    continue;
-                }
-
-                float y = world.Bodies.GetTransform(ball).Position.Y;
-                if (y > apex)
-                {
-                    apex = y;
-                }
-            }
-
-            return apex;
-        }
+        multiplyBounce.Should().BeGreaterThan(0.5f, "even the weakest rule must reverse the drop visibly");
     }
 
     [Fact]
-    public void RestitutionSidesMatch_ModesAgree()
+    public void RestitutionSidesMatch_ModesAgreeAndActuallyBounce()
     {
-        float maxBounce = BounceSymmetric(CombineMode.Max);
-        float averageBounce = BounceSymmetric(CombineMode.Average);
+        float maxBounce = BounceApex(0.6f, 0.6f, CombineMode.Max, CombineMode.Max);
+        float averageBounce = BounceApex(0.6f, 0.6f, CombineMode.Average, CombineMode.Average);
+        float minBounce = BounceApex(0.6f, 0.6f, CombineMode.Min, CombineMode.Min);
+        float multiplyBounce = BounceApex(0.6f, 0.6f, CombineMode.Multiply, CombineMode.Multiply);
 
         maxBounce.Should().BeApproximately(averageBounce, 1e-3f);
+        maxBounce.Should().BeApproximately(minBounce, 1e-3f);
+        maxBounce.Should().BeGreaterThan(1f, "a symmetric 0.6 pair must rebound near 0.6 squared of the drop height");
 
-        static float BounceSymmetric(CombineMode mode)
+        TunedRestitution(0.6f, CombineMode.Multiply, 0.6f, CombineMode.Multiply)
+            .Should().BeApproximately(0.36f, Tolerance);
+        multiplyBounce.Should().BeLessThan(averageBounce,
+            "the multiplier rule is legitimately weaker: 0.6 times 0.6, not 0.6");
+        multiplyBounce.Should().BeGreaterThan(0.5f);
+    }
+
+    [Fact]
+    public void RestitutionTuning_MixesValuesThroughTheLargerSidesRule()
+    {
+        TunedRestitution(0.8f, CombineMode.Max, 0.4f, CombineMode.Max).Should().BeApproximately(0.8f, Tolerance);
+        TunedRestitution(0.8f, CombineMode.Average, 0.4f, CombineMode.Average).Should().BeApproximately(0.6f, Tolerance);
+        TunedRestitution(0.8f, CombineMode.Min, 0.4f, CombineMode.Min).Should().BeApproximately(0.4f, Tolerance);
+        TunedRestitution(0.8f, CombineMode.Multiply, 0.4f, CombineMode.Multiply).Should().BeApproximately(0.32f, Tolerance);
+    }
+
+    [Fact]
+    public void Restitution_LargerSidePicksTheRuleWhicheverBodyItCarries()
+    {
+        TunedRestitution(0.8f, CombineMode.Min, 0.4f, CombineMode.Max).Should().BeApproximately(0.4f, Tolerance);
+        TunedRestitution(0.8f, CombineMode.Max, 0.4f, CombineMode.Min).Should().BeApproximately(0.8f, Tolerance);
+        TunedRestitution(0.4f, CombineMode.Min, 0.8f, CombineMode.Max).Should().BeApproximately(0.8f, Tolerance);
+
+        float mixedWithHardSideChoosingMin = BounceApex(0.8f, 0.4f, CombineMode.Min, CombineMode.Max);
+        float pureMin = BounceApex(0.8f, 0.4f, CombineMode.Min, CombineMode.Min);
+        float pureMax = BounceApex(0.8f, 0.4f, CombineMode.Max, CombineMode.Max);
+        mixedWithHardSideChoosingMin.Should().Be(pureMin);
+        mixedWithHardSideChoosingMin.Should().NotBe(pureMax);
+    }
+
+    private static PhysicsMaterial Bouncy(float restitution, CombineMode mode) =>
+        new(0.4f, restitution, 0.4f, 0f, 0f, CombineMode.Max, mode);
+
+    private static float TunedRestitution(
+        float ballRestitution, CombineMode ballMode, float groundRestitution, CombineMode groundMode)
+    {
+        using var world = new World();
+        BodyId ground = world.Bodies.Create(new BodyDef { Type = BodyType.Static, Position = new Vec2(0f, -1f) });
+        world.Shapes.AttachPolygon(
+            world.Bodies, world.Broadphase, ground,
+            new Vec2[] { new(-20f, 0f), new(20f, 0f), new(20f, 1f), new(-20f, 1f) },
+            material: Bouncy(groundRestitution, groundMode));
+
+        BodyId ball = world.Bodies.Create(
+            new BodyDef { Position = new Vec2(0f, 0.39f), LinearVelocity = new Vec2(0f, -4f) });
+        world.Shapes.AttachCircle(world.Bodies, world.Broadphase, ball, Vec2.Zero, 0.4f, material: Bouncy(ballRestitution, ballMode));
+        world.Step(1f / 60f);
+
+        return world.GetContact(0).Tuning.Restitution;
+    }
+
+    private static float BounceApex(
+        float ballRestitution, float groundRestitution, CombineMode ballMode, CombineMode groundMode)
+    {
+        using var world = new World();
+        BodyId ball = AddDroppingBall(world, Bouncy(ballRestitution, ballMode), Bouncy(groundRestitution, groundMode));
+        float apex = 0f;
+        bool bounced = false;
+        for (int i = 0; i < 120; i++)
         {
-            using var world = new World();
-            BodyId ball = AddDroppingBall(world, Material(0.4f, 0.5f, mode), Material(0.4f, 0.5f, mode));
-            float apex = 0f;
-            bool bounced = false;
-            for (int i = 0; i < 120; i++)
+            world.Step(1f / 60f);
+            if (!bounced)
             {
-                world.Step(1f / 60f);
-                if (!bounced)
-                {
-                    bounced = world.Bodies.GetLinearVelocity(ball).Y > 0f;
-                    continue;
-                }
-
-                float y = world.Bodies.GetTransform(ball).Position.Y;
-                if (y > apex)
-                {
-                    apex = y;
-                }
+                bounced = world.Bodies.GetLinearVelocity(ball).Y > 0f;
+                continue;
             }
 
-            return apex;
+            float y = world.Bodies.GetTransform(ball).Position.Y;
+            if (y > apex)
+            {
+                apex = y;
+            }
         }
+
+        bounced.Should().BeTrue("the combined restitution must reverse the fall before any apex is meaningful");
+        return apex;
     }
 
     private static BodyId AddDroppingBall(World world, PhysicsMaterial ballMaterial, PhysicsMaterial groundMaterial)
