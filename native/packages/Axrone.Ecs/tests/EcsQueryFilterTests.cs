@@ -201,20 +201,33 @@ public sealed class EcsQueryFilterTests : IDisposable
     public void CachedQueryEnumerationDoesNotAllocate()
     {
         var rows = 0;
-        for (int iteration = 0; iteration < 200; iteration++)
-        {
-            rows = CountChunks(_world.Query<EcsTestPosition, EcsTestVelocity, EcsTestHealth>());
-        }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int iteration = 0; iteration < 1000; iteration++)
-        {
-            rows = CountChunks(_world.Query<EcsTestPosition, EcsTestVelocity, EcsTestHealth>());
-        }
+        EcsAllocationHarness.Outcome outcome = EcsAllocationHarness.AssertEveryWindowClean(
+            () =>
+            {
+                for (int iteration = 0; iteration < 1_000; iteration++)
+                {
+                    rows = CountChunks(_world.Query<EcsTestPosition, EcsTestVelocity, EcsTestHealth>());
+                }
+            },
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
+            "cached query enumeration",
+            [
+                new EcsGatePhase(
+                    "resolve",
+                    () => _ = _world.QueryCache.Resolve(
+                        ComponentType<EcsTestPosition>.Mask | ComponentType<EcsTestVelocity>.Mask | ComponentType<EcsTestHealth>.Mask,
+                        ComponentMask.Empty,
+                        _world.Archetypes)),
+                new EcsGatePhase(
+                    "enumerate-1",
+                    () => _ = CountChunks(_world.Query<EcsTestPosition, EcsTestVelocity, EcsTestHealth>())),
+            ]);
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        allocated.Should().Be(0);
         rows.Should().Be(5);
+        outcome.MeasuredWindows.Should().Be(EcsAllocationHarness.Windows);
     }
 
     private static int CountChunks<T1>(Query1<T1> query) where T1 : unmanaged

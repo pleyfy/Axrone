@@ -563,19 +563,21 @@ public sealed class EcsSystemSchedulerTests
             _ = world.BeginEntity().With(new EcsTestPosition(0.0f, 0.0f)).Commit();
         }
 
-        for (int iteration = 0; iteration < 100; iteration++)
-        {
-            world.RunParallelChunks<IncrementPositionJob, EcsTestPosition>();
-        }
+        EcsAllocationHarness.Outcome outcome = EcsAllocationHarness.AssertEveryWindowClean(
+            () =>
+            {
+                for (int iteration = 0; iteration < 100; iteration++)
+                {
+                    world.RunParallelChunks<IncrementPositionJob, EcsTestPosition>();
+                }
+            },
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
+            "parallel chunk dispatch",
+            []);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int iteration = 0; iteration < 100; iteration++)
-        {
-            world.RunParallelChunks<IncrementPositionJob, EcsTestPosition>();
-        }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        allocated.Should().Be(0);
+        outcome.MeasuredWindows.Should().Be(EcsAllocationHarness.Windows);
     }
 
     [Fact]

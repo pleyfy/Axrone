@@ -206,15 +206,37 @@ public sealed class EcsChangeDetectionTests : IDisposable
         _world.Step();
         var visitor = new CountingChangeVisitor();
 
-        EcsAllocationHarness.AssertEveryWindowClean(
+        // Phases are measured only after a window already failed, so the next red names the
+        // allocation site (cache resolve / archetype walk setup / row visit) instead of only
+        // reporting a byte count.
+        EcsGatePhase[] phases =
+        [
+            new("resolve", () => _ = _world.QueryCache.Resolve(
+                ComponentType<EcsTestPosition>.Mask, ComponentMask.Empty, _world.Archetypes)),
+            new("walk", () =>
+            {
+                Query1<EcsTestPosition> query = _world.Query<EcsTestPosition>();
+                Query1<EcsTestPosition>.Enumerator enumerator = query.GetEnumerator();
+                _ = enumerator.MoveNext();
+                Chunk1<EcsTestPosition> chunk = enumerator.Current;
+                _ = chunk.Length + chunk.Entities.Length + chunk.Column1.Length;
+                _ = enumerator.MoveNext();
+            }),
+            new("visit", () => VisitChangedWindows(_world, ref visitor, 1)),
+        ];
+
+        EcsAllocationHarness.Outcome outcome = EcsAllocationHarness.AssertEveryWindowClean(
             () => VisitChangedWindows(_world, ref visitor, WindowIterations),
             betweenWindows: null,
             EcsAllocationHarness.Windows,
             EcsAllocationHarness.PrimePasses,
-            "change-visitor traversal");
+            "change-visitor traversal",
+            phases);
 
         // The gate only means something if the traversals still visited every changed row.
         visitor.Count.Should().Be(4);
+        outcome.MeasuredWindows.Should().Be(EcsAllocationHarness.Windows);
+        outcome.PrimePasses.Should().BeGreaterThanOrEqualTo(EcsAllocationHarness.PrimePasses);
     }
 
     private static void VisitChangedWindows(World world, ref CountingChangeVisitor visitor, int iterations)

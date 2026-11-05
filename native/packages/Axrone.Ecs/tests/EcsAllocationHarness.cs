@@ -2,18 +2,39 @@ namespace Axrone.Ecs.Tests;
 
 using System.Runtime.ExceptionServices;
 
+/// <summary>
+/// One named sub-phase of a gated workload, measured only after a window already failed,
+/// so the verdict names the allocation site instead of only reporting a byte count.
+/// </summary>
+/// <param name="Name">Phase label used in the failure message.</param>
+/// <param name="Run">Runs the phase in isolation, in the same call shape as inside the window.</param>
+internal readonly record struct EcsGatePhase(string Name, Action Run);
+
 /// <summary>Shared zero-allocation gate: every measured window must claim exactly zero bytes.</summary>
 internal static class EcsAllocationHarness
 {
     internal const int Windows = 8;
     internal const int PrimePasses = 14;
 
-    internal static void AssertEveryWindowClean(
+    /// <summary>
+    /// Pass accounting the caller needs to keep its own counters exact without hard-coding the
+    /// priming length.
+    /// </summary>
+    /// <param name="PrimePasses">Workload invocations consumed by warm-up.</param>
+    /// <param name="MeasuredWindows">Gated windows that each had to claim zero bytes.</param>
+    internal readonly record struct Outcome(int PrimePasses, int MeasuredWindows)
+    {
+        /// <summary>Total workload invocations, warm-up plus gated windows.</summary>
+        internal int TotalInvocations => PrimePasses + MeasuredWindows;
+    }
+
+    internal static Outcome AssertEveryWindowClean(
         Action workload,
         Action? betweenWindows,
         int windows,
         int primePasses,
-        string label)
+        string label,
+        EcsGatePhase[] diagnostics)
     {
         Exception? failure = null;
         Thread worker = new(
@@ -35,12 +56,13 @@ internal static class EcsAllocationHarness
 
                         // The window body builds nothing, not even a formatted reason: an eager
                         // reason string would be allocated between windows and pollute the very
-                        // counter being watched. The predicate itself is unchanged.
+                        // counter being watched. No tolerance, no retry, no cleanest-window: a
+                        // single claimed byte fails, because a one-off allocation is a defect too.
                         if (delta != 0L)
                         {
                             Assert.Fail(
-                                $"window {window}: the {label} hot path must allocate zero bytes on the " +
-                                $"measured thread, but claimed {delta} B");
+                                $"window {window}: the {label} hot path must allocate zero bytes on the measured " +
+                                $"thread, but claimed {delta} B{Diagnose(diagnostics)}");
                         }
 
                         betweenWindows?.Invoke();
@@ -64,6 +86,50 @@ internal static class EcsAllocationHarness
         if (failure is not null)
         {
             ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+
+        return new Outcome(primePasses, windows);
+    }
+
+    private static string Diagnose(EcsGatePhase[] diagnostics)
+    {
+        if (diagnostics.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        System.Text.StringBuilder report = new();
+        _ = report.Append(" (gen0 collections ");
+        _ = report.Append(GC.CollectionCount(0));
+        _ = report.Append(';');
+        foreach (EcsGatePhase phase in diagnostics)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            string outcome = RunPhase(phase.Run);
+            _ = report.Append(' ');
+            _ = report.Append(phase.Name);
+            _ = report.Append('=');
+            _ = report.Append(GC.GetAllocatedBytesForCurrentThread() - before);
+            _ = report.Append(" B");
+            _ = report.Append(outcome);
+            _ = report.Append(';');
+        }
+
+        return report.ToString();
+    }
+
+    // A diagnostic phase may legitimately throw (a full parked ring, for instance); the verdict
+    // is already failure, so the report records the type rather than masking it or replacing it.
+    private static string RunPhase(Action run)
+    {
+        try
+        {
+            run();
+            return string.Empty;
+        }
+        catch (Exception error)
+        {
+            return $" (threw {error.GetType().Name})";
         }
     }
 }

@@ -17,7 +17,6 @@ public sealed class EcsEventAllocationTests : IDisposable
     private const int IterationsPerWindow = 25_000;
     private const int ParkIterationsPerWindow = 8_000;
     private const int QueriesPerWindow = 1_000;
-    private const int TotalPasses = EcsAllocationHarness.PrimePasses + EcsAllocationHarness.Windows;
 
     private readonly World _world;
     private readonly EcsEventName _tick = EcsEventNames.Intern("alloc.tick");
@@ -42,7 +41,7 @@ public sealed class EcsEventAllocationTests : IDisposable
         _world.On<EcsAllocationProbe>(in _tick, (in EcsEventName _, in EcsAllocationProbe value) => calls += value.First);
         EcsAllocationProbe payload = new(1, 2);
 
-        EcsAllocationHarness.AssertEveryWindowClean(
+        EcsAllocationHarness.Outcome outcome = EcsAllocationHarness.AssertEveryWindowClean(
             () =>
             {
                 for (int i = 0; i < IterationsPerWindow; i++)
@@ -53,14 +52,15 @@ public sealed class EcsEventAllocationTests : IDisposable
             betweenWindows: null,
             EcsAllocationHarness.Windows,
             EcsAllocationHarness.PrimePasses,
-            "world event emit");
+            "world event emit",
+            [new EcsGatePhase("single-emit", () => _ = _world.EmitSync(_tick, payload))]);
 
-        long expected = (long)TotalPasses * IterationsPerWindow;
+        long expected = (long)outcome.TotalInvocations * IterationsPerWindow;
         calls.Should().Be(expected);
         _world.TryGetEventMetrics(_tick, out EcsEventMetrics metrics).Should().BeTrue();
         metrics.EmitCount.Should().Be(expected);
         metrics.InvocationCount.Should().Be(expected);
-        Console.WriteLine($"emit hot path: {EcsAllocationHarness.Windows} measured windows x {IterationsPerWindow} emits, each 0 B");
+        Console.WriteLine($"emit hot path: {outcome.PrimePasses} prime + {EcsAllocationHarness.Windows} gated windows x {IterationsPerWindow} emits, each 0 B");
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class EcsEventAllocationTests : IDisposable
         _world.PauseEvents();
 
         EcsAllocationProbe payload = new(3, 4);
-        EcsAllocationHarness.AssertEveryWindowClean(
+        EcsAllocationHarness.Outcome outcome = EcsAllocationHarness.AssertEveryWindowClean(
             () =>
             {
                 for (int i = 0; i < ParkIterationsPerWindow; i++)
@@ -89,15 +89,16 @@ public sealed class EcsEventAllocationTests : IDisposable
             },
             EcsAllocationHarness.Windows,
             EcsAllocationHarness.PrimePasses,
-            "paused event parking");
+            "paused event parking",
+            [new EcsGatePhase("park-one", () => _ = _world.EmitSync(_tick, payload))]);
 
-        long expected = (long)TotalPasses * ParkIterationsPerWindow;
+        long expected = (long)outcome.TotalInvocations * ParkIterationsPerWindow;
         _world.TryGetEventMetrics(_tick, out EcsEventMetrics metrics).Should().BeTrue();
         metrics.BufferedCount.Should().Be(expected);
         metrics.InvocationCount.Should().Be(expected);
         metrics.DroppedCount.Should().Be(0);
         metrics.UndeliveredCount.Should().Be(0);
-        Console.WriteLine($"paused buffering: {EcsAllocationHarness.Windows} measured windows x {ParkIterationsPerWindow} parks, each 0 B");
+        Console.WriteLine($"paused buffering: {outcome.PrimePasses} prime + {EcsAllocationHarness.Windows} gated windows x {ParkIterationsPerWindow} parks, each 0 B");
     }
 
     [Fact]
@@ -109,7 +110,7 @@ public sealed class EcsEventAllocationTests : IDisposable
         _world.PauseEvents();
 
         EcsAllocationProbe payload = new(1, 1);
-        EcsAllocationHarness.AssertEveryWindowClean(
+        EcsAllocationHarness.Outcome flushed = EcsAllocationHarness.AssertEveryWindowClean(
             () =>
             {
                 for (int i = 0; i < IterationsPerWindow; i++)
@@ -123,11 +124,25 @@ public sealed class EcsEventAllocationTests : IDisposable
             betweenWindows: null,
             EcsAllocationHarness.Windows,
             EcsAllocationHarness.PrimePasses,
-            "park plus flush cycle");
+            "park plus flush cycle",
+            [
+                new EcsGatePhase("park-batch-1000", () =>
+                {
+                    for (int i = 0; i < 1_000; i++)
+                    {
+                        _ = _world.EmitSync(_tick, payload);
+                    }
+                }),
+                new EcsGatePhase("flush", () =>
+                {
+                    _ = _world.ResumeEvents();
+                    _world.PauseEvents();
+                }),
+            ]);
 
         _world.PendingEventCount.Should().Be(0);
-        delivered.Should().Be((long)TotalPasses * IterationsPerWindow);
-        Console.WriteLine($"park+flush cycle: {EcsAllocationHarness.Windows} measured windows x {IterationsPerWindow} pairs, each 0 B");
+        delivered.Should().Be((long)flushed.TotalInvocations * IterationsPerWindow);
+        Console.WriteLine($"park+flush cycle: {flushed.PrimePasses} prime + {EcsAllocationHarness.Windows} gated windows x {IterationsPerWindow} pairs, each 0 B");
     }
 
     [Fact]
@@ -139,6 +154,12 @@ public sealed class EcsEventAllocationTests : IDisposable
             Entity entity = _world.BeginEntity().Commit();
             _world.RegisterActor(entity, EcsActorNames.Intern($"alloc.actor.{i}"), _tag, layer: i % 3);
         }
+
+        EcsGatePhase[] phases =
+        [
+            new EcsGatePhase("tag-query", () => _ = _world.GetActorsByTag(_tag, buffer)),
+            new EcsGatePhase("layer-query", () => _ = _world.GetActorsByLayer(1, buffer)),
+        ];
 
         EcsAllocationHarness.AssertEveryWindowClean(
             () =>
@@ -152,7 +173,8 @@ public sealed class EcsEventAllocationTests : IDisposable
             betweenWindows: null,
             EcsAllocationHarness.Windows,
             EcsAllocationHarness.PrimePasses,
-            "actor tag and layer queries");
+            "actor tag and layer queries",
+            phases);
 
         // The gate only means something if the loops still found the same actors.
         _world.GetActorsByTag(_tag, buffer).Should().Be(16);
@@ -179,7 +201,8 @@ public sealed class EcsEventAllocationTests : IDisposable
             betweenWindows: null,
             EcsAllocationHarness.Windows,
             EcsAllocationHarness.PrimePasses,
-            "singleton reads");
+            "singleton reads",
+            [new EcsGatePhase("singleton-read", () => _ = _world.TryGetSingleton(out EcsAllocationProbe _))]);
 
         _world.TryGetSingleton(out EcsAllocationProbe current).Should().BeTrue();
         current.First.Should().Be(5);
