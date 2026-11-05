@@ -208,6 +208,19 @@ public static class WeldJointBuilderExtensions
         return new WeldJointBuilder<Typestate.GeometryConfigured>(in definition);
     }
 
+    /// <summary>Binds the soft attach: a frequency relaxes the rigid lock into a spring toward the welded pose.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static WeldJointBuilder<Typestate.GeometryConfigured> WithSoftAttach(
+        this WeldJointBuilder<Typestate.GeometryConfigured> builder, float frequency, float dampingRatio)
+    {
+        WeldDef definition = builder.Definition with
+        {
+            Frequency = frequency,
+            DampingRatio = dampingRatio,
+        };
+        return new WeldJointBuilder<Typestate.GeometryConfigured>(in definition);
+    }
+
     /// <summary>Allocates the joint in the store.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JointId Build(

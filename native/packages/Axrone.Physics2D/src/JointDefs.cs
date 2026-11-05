@@ -265,7 +265,8 @@ public readonly struct RevoluteDef
 /// <summary>
 /// Construction parameters of a weld joint: two bodies locked through a
 /// shared world anchor. Local anchors and the reference angle derive from
-/// the world anchor at creation.
+/// the world anchor at creation. A positive <see cref="Frequency"/> relaxes
+/// the lock into a soft attach that springs toward the welded pose.
 /// </summary>
 public readonly struct WeldDef
 {
@@ -282,6 +283,36 @@ public readonly struct WeldDef
 
     /// <summary>Shared world anchor.</summary>
     public Vec2 WorldAnchor { get; init; } = default;
+
+    /// <summary>Soft-attach frequency; zero keeps the weld rigid, positive springs toward the welded pose.</summary>
+    public float Frequency
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Frequency));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Damping of the soft attach; never negative, and only read while the frequency is positive.</summary>
+    public float DampingRatio
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(DampingRatio));
+            }
+
+            field = value;
+        }
+    } = 0.7f;
 }
 
 /// <summary>

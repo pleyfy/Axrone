@@ -233,10 +233,11 @@ public sealed class JointStore : IJointRegistry
     /// <summary>
     /// Creates a weld locking two bodies through a shared world anchor and
     /// wakes both bodies. The relative angle and anchor separation freeze at
-    /// creation.
+    /// creation. A positive frequency in the definition turns the lock into a
+    /// soft attach that springs toward the welded pose; zero keeps it rigid.
     /// </summary>
     /// <param name="bodies">Body registry; both bodies must be live and distinct.</param>
-    /// <param name="definition">Pin anchor.</param>
+    /// <param name="definition">Pin anchor and soft-attach tuning.</param>
     public JointId CreateWeld(BodyStore bodies, in WeldDef definition)
     {
         ArgumentNullException.ThrowIfNull(bodies);
@@ -267,6 +268,8 @@ public sealed class JointStore : IJointRegistry
                 LocalAnchorA = transformA.InverseTransformPoint(definition.WorldAnchor),
                 LocalAnchorB = transformB.InverseTransformPoint(definition.WorldAnchor),
                 ReferenceAngle = transformB.Angle - transformA.Angle,
+                Stiffness = definition.Frequency * definition.Frequency,
+                Damping = 2.0f * definition.DampingRatio * definition.Frequency,
             };
             uint sparse = _weld.Allocate(in data);
             bodies.SetAwake(definition.BodyA, true);
