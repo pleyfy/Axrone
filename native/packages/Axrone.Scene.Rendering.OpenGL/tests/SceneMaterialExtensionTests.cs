@@ -151,30 +151,47 @@ public sealed class SceneMaterialExtensionTests
         _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
         _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
 
-        // Tiered JIT/OSR promotion charges its one-time allocations to the
-        // calling thread, so a first-execution measured loop can see a false
-        // positive under parallel load. The helper runs the exact measured
-        // loop shape once as a prime pass, then measures a second identical
-        // pass; the assertion stays an exact zero-delta check.
-        long delta = MeasureBindingAllocations(shader, surface);
-        delta.Should().Be(0);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static long MeasureBindingAllocations(SceneGlShader shader, SceneMaterialSurface surface)
-    {
-        for (int i = 0; i < 256; i++)
+        // Same joined-thread harness as the warm-shadow gate: every window
+        // must claim exactly zero bytes. A noop control phase with the
+        // identical iteration shape runs on failure, so an environmental
+        // first-touch burst charged by the host is distinguishable from an
+        // allocation on the binding channel.
+        var bindWindow = new Action(() =>
         {
-            _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
-        }
+            for (int i = 0; i < 256; i++)
+            {
+                _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
+            }
+        });
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 256; i++)
+        Action noopWindow = () =>
         {
-            _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
-        }
+            for (int i = 0; i < 256; i++)
+            {
+            }
+        };
 
-        return GC.GetAllocatedBytesForCurrentThread() - before;
+        Action bindPhase = () =>
+        {
+            for (int i = 0; i < 32; i++)
+            {
+                _ = SceneGlMaterialExtensionBinder.Bind(shader, surface);
+            }
+        };
+
+        SceneGlAllocationHarness.Outcome outcome = SceneGlAllocationHarness.AssertEveryWindowClean(
+            bindWindow,
+            betweenWindows: null,
+            SceneGlAllocationHarness.Windows,
+            primePasses: 3,
+            label: "material extension bind",
+            diagnostics:
+            [
+                new SceneGlGatePhase("bind-loop", bindPhase),
+                new SceneGlGatePhase("noop-control", noopWindow),
+            ]);
+
+        outcome.MeasuredWindows.Should().Be(8);
     }
 
     [Fact]
