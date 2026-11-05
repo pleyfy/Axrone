@@ -22,13 +22,19 @@ namespace Axrone.Physics3D.Tests;
 
 /// <summary>
 /// Cross-dimensional query-filter equivalence over a hand-tabulated visibility
-/// truth table. Expected sets are fixed data derived from the web reference
-/// filter semantics (physics-3d/src/core/physics-world-3d-shared.ts:194-195 for
-/// the default filter, :291-297 makeFilter, :299-314 supportsQueryFilter) and
-/// the shared consumer door both dimensions implement: unfiltered shapes (zero
-/// category and zero group) stay visible to every query, a pinned non-zero
-/// group restricts visibility to that group when positive, and every disabled
-/// body is invisible to every query.
+/// table derived exclusively from the canonical core contract
+/// <see cref="QueryFilter.Matches(in CollisionFilter, in QueryFilter)"/>
+/// (Physics.Core/src/QueryFilter.cs): an unset query mask (0) matches
+/// everything; a non-zero query group pins visibility to shapes of that exact
+/// group and only when the pin is positive; otherwise category and mask must
+/// cross-match both ways. Expected sets are fixed data, not observed output.
+/// The web reference is internally inconsistent between its two dimensions
+/// (physics-2d <c>_matchesFilter</c> in physics-world-2d-shape-store.ts:412-429
+/// pins only non-zero groups and cross-tests shape.mask against query
+/// category, while physics-3d <c>supportsQueryFilter</c> in
+/// physics-world-3d-shared.ts:299-314 treats every defined group as an exact
+/// match and uses same-side checks); the native engine deliberately unifies
+/// both dimensions on the single core contract.
 /// </summary>
 public class FilterEquivalenceTests
 {
@@ -52,28 +58,41 @@ public class FilterEquivalenceTests
         new(0u, 0xFFFFu, 0),
     ];
 
+    /// <summary>
+    /// Hand derivations per Core rules; shapes are s0=(2,8,g5) s1=(4,3,g7)
+    /// s2=(0,8,g0) s3=(8,1,g-3).
+    /// q0 default: query.Mask==0 -> IsEmpty -> every shape visible.
+    /// q1 (F,F,0): cross: s0 2&amp;F &amp;&amp; F&amp;8 yes; s1 yes; s2 cat 0 fails; s3 yes.
+    /// q2 (0,F,5): group pin 5>0: only s0 (g5); s1/s2/s3 groups differ.
+    /// q3 (0,F,-3): group pin -3: s3 equal but pin not positive; others differ; empty.
+    /// q4 (8,2,0): cross: s0 2&amp;2 &amp;&amp; 8&amp;8 yes; s1 4&amp;2=0; s2 0&amp;2=0; s3 8&amp;2=0.
+    /// q5 (1,1,0): cross: every shape category is even, cat&amp;1=0 for all; empty.
+    /// q6 (0,0,7): query.Mask==0 -> IsEmpty takes precedence over the group pin -> all visible.
+    /// q7 (0,F,0): cross second factor query.Category 0 &amp; shape.Mask = 0 for all; empty.
+    /// </summary>
     private static readonly int[][] ExpectedVisible =
     [
         [0, 1, 2, 3],
+        [0, 1, 3],
+        [0],
+        [],
+        [0],
+        [],
         [0, 1, 2, 3],
-        [0, 2],
-        [2],
-        [0, 2],
-        [2],
-        [0, 1, 2, 3],
-        [2],
+        [],
     ];
 
+    /// <summary>Same rows with the s1 body disabled: the enabled gate hides s1 in every query.</summary>
     private static readonly int[][] ExpectedVisibleWithSlot1Disabled =
     [
         [0, 2, 3],
+        [0, 3],
+        [0],
+        [],
+        [0],
+        [],
         [0, 2, 3],
-        [0, 2],
-        [2],
-        [0, 2],
-        [2],
-        [0, 2, 3],
-        [2],
+        [],
     ];
 
     private static World2 Build2D(int disabledSlot)
@@ -161,15 +180,14 @@ public class FilterEquivalenceTests
         using World2 world2 = Build2D(disabledSlot);
         using World3 world3 = Build3D(disabledSlot);
 
-
         for (int q = 0; q < QueryFilters.Length; q++)
         {
             QueryFilter query = QueryFilters[q];
             int[] actual2 = Visible2D(world2, in query);
             int[] actual3 = Visible3D(world3, in query);
 
-            actual3.Should().Equal(expected[q], $"3D overlap must equal the hand table at query {q}");
-            actual2.Should().Equal(expected[q], $"2D overlap must equal the hand table at query {q}");
+            actual3.Should().Equal(expected[q], $"3D overlap must equal the hand-derived core table at query {q}");
+            actual2.Should().Equal(expected[q], $"2D overlap must equal the hand-derived core table at query {q}");
         }
     }
 

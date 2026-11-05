@@ -427,7 +427,7 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private bool IsShapeQueryable(ref ShapeRecord record, in QueryFilter filter)
     {
-        if ((record.Filter.Group != 0 || record.Filter.Category != 0) && !QueryFilter.Matches(in record.Filter, in filter))
+        if (!QueryFilter.Matches(in record.Filter, in filter))
         {
             return false;
         }
