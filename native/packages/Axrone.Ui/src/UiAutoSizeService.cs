@@ -395,7 +395,7 @@ public sealed class UiAutoSizeService
         NaturalExtents natural = default;
         for (int refinement = 0; refinement < 2; refinement++)
         {
-            if (!natural.Initialized)
+            if (!natural.Initialized && layout.Truncated)
             {
                 natural = MeasureNatural(measurer, text, in style, maxWidth, maxHeight, maxSize);
             }

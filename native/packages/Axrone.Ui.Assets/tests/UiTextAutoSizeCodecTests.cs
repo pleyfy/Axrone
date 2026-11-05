@@ -70,6 +70,8 @@ public sealed class UiTextAutoSizeCodecTests
         byte[] encoded = Encode(source);
 
         Encoding.UTF8.GetString(encoded).Should().NotContain("autoSize");
+        Encoding.UTF8.GetString(encoded).Should().NotContain("minFontSize");
+        Encoding.UTF8.GetString(encoded).Should().NotContain("maxFontSize");
         using var codec = new UiDocumentJsonCodec(reuseStorage: false);
         codec.TryRead(encoded, out IUiDocument? decoded, out _)
             .Should().BeTrue();
