@@ -461,6 +461,21 @@ internal static class UiDocumentJsonWriter
             writer.WriteNumber("maxLines", text.MaxLines);
         }
 
+        if (text.AutoSize != UiTextAutoSize.None)
+        {
+            writer.WriteString("autoSize", UiDocumentJsonSchema.TextAutoSize(text.AutoSize));
+        }
+
+        if (text.MinFontSize != 0.0f)
+        {
+            writer.WriteNumber("minFontSize", Finite(text.MinFontSize, "text.minFontSize"));
+        }
+
+        if (text.MaxFontSize != 0.0f)
+        {
+            writer.WriteNumber("maxFontSize", Finite(text.MaxFontSize, "text.maxFontSize"));
+        }
+
         writer.WriteEndObject();
     }
 
