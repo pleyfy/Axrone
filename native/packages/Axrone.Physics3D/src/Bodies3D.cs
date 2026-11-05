@@ -149,6 +149,9 @@ internal struct BodyState
     /// <summary>Inverse mass; zero for infinite mass.</summary>
     public float InverseMass;
 
+    /// <summary>Diagonal of the inertia tensor in the body frame; the raw tensor mass queries read back.</summary>
+    public Vec3 InertiaDiagonal;
+
     /// <summary>Diagonal of the inverse inertia tensor in the body frame; zero for infinite inertia.</summary>
     public Vec3 InverseInertia;
 

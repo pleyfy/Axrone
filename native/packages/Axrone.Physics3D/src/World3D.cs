@@ -140,6 +140,9 @@ public readonly struct WorldDef
 
     /// <summary>Solver capabilities; clearing <see cref="SolverFlags.SleepingBodies"/> skips the sleep pass.</summary>
     public SolverFlags Flags { get; init; } = SolverFlags.Default;
+
+    /// <summary>Whether each step clears accumulated forces after applying them.</summary>
+    public bool AutoClearForces { get; init; } = true;
 }
 
 /// <summary>
@@ -171,6 +174,14 @@ public enum ContactEventType : byte
     /// <summary>A previous overlap is gone.</summary>
     Ended = 2,
 }
+
+/// <summary>Snapshot of world population counters.</summary>
+/// <param name="BodyCount">Live bodies.</param>
+/// <param name="ShapeCount">Live shapes.</param>
+/// <param name="JointCount">Live joints.</param>
+/// <param name="ContactCount">Tracked contacts after the last step.</param>
+/// <param name="SleepingBodyCount">Live dynamic bodies currently asleep.</param>
+public readonly record struct WorldStatistics3D(int BodyCount, int ShapeCount, int JointCount, int ContactCount, int SleepingBodyCount);
 
 /// <summary>Closest-point hit: the surface point nearest a query.</summary>
 /// <param name="Shape">The shape hit.</param>
@@ -208,6 +219,7 @@ public sealed class World : IDisposable
     private BroadPair[] _stepPairs;
     private int _stepPairCount;
     private int _disposed;
+    private IContactEvents3D? _contactEvents;
 
     /// <summary>Gravity of the world.</summary>
     public Vec3 Gravity { get; set; }
@@ -236,6 +248,26 @@ public sealed class World : IDisposable
     /// <summary>Solver capabilities.</summary>
     public SolverFlags Flags { get; set; }
 
+    /// <summary>Contact lifecycle observer; null disables callbacks.</summary>
+    public IContactEvents3D? ContactEvents
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _contactEvents;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        set
+        {
+            if (value is null && Volatile.Read(ref _contactEvents) is null)
+            {
+                return;
+            }
+
+            Volatile.Write(ref _contactEvents, value);
+        }
+    }
+
+    /// <summary>Whether each step clears accumulated forces after applying them.</summary>
+    public bool AutoClearForces { get; set; }
+
     /// <summary>Creates a world with default tuning.</summary>
     public World()
         : this(new WorldDef())
@@ -254,6 +286,7 @@ public sealed class World : IDisposable
         CcdSweepStep = definition.CcdSweepStep;
         MaxCcdSubsteps = definition.MaxCcdSubsteps;
         Flags = definition.Flags;
+        AutoClearForces = definition.AutoClearForces;
         _bodies = new BodyStore();
         _shapes = new ShapeStore();
         _joints = new JointStore();
@@ -341,12 +374,13 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SensorEvent GetSensorEvent(int index) => _sensorEvents[index];
 
-    /// <summary>Casts a ray against all shapes; hits sort by ascending distance.</summary>
+    /// <summary>Casts a ray against filtered shapes; hits sort by ascending distance.</summary>
     /// <param name="ray">The ray.</param>
     /// <param name="maxDistance">The furthest hit kept.</param>
     /// <param name="hits">The destination; truncated when full.</param>
+    /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The hits written.</returns>
-    public int Raycast(in Ray3D ray, float maxDistance, Span<RaycastHit3D> hits)
+    public int Raycast(in Ray3D ray, float maxDistance, Span<RaycastHit3D> hits, in QueryFilter3D filter = default)
     {
         ThrowIfDisposed();
 
@@ -354,7 +388,7 @@ public sealed class World : IDisposable
         int candidateCount = Math.Min(_tree.RayCast(in ray, candidates, maxDistance), candidates.Length);
 
         int written = 0;
-        for (int i = 0; i < candidateCount && written < hits.Length; i++)
+        for (int i = 0; i < candidateCount; i++)
         {
             ShapeId shapeId = _tree.GetUserData(candidates[i].ItemId);
             if (!_shapes.IsValid(shapeId))
@@ -363,6 +397,11 @@ public sealed class World : IDisposable
             }
 
             ref ShapeRecord record = ref _shapes.Record(shapeId);
+            if (!filter.Matches(in record.Filter))
+            {
+                continue;
+            }
+
             bool struck;
             float distance;
             Vec3 normal;
@@ -424,6 +463,16 @@ public sealed class World : IDisposable
             }
 
             var hit = new RaycastHit3D(shapeId, record.Body, ray.Origin + (ray.Direction * distance), normal, distance);
+            if (written == hits.Length)
+            {
+                if (hits.Length == 0 || distance >= hits[written - 1].Distance)
+                {
+                    continue;
+                }
+
+                written--;
+            }
+
             int slot = written;
             while (slot > 0 && hits[slot - 1].Distance > distance)
             {
@@ -438,11 +487,12 @@ public sealed class World : IDisposable
         return written;
     }
 
-    /// <summary>Collects the shapes overlapping a volume; ids sort ascending.</summary>
+    /// <summary>Collects the filtered shapes overlapping a volume; ids sort ascending.</summary>
     /// <param name="box">The query volume.</param>
     /// <param name="results">The destination; truncated when full.</param>
+    /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The shapes written.</returns>
-    public int OverlapAabb(in Aabb3D box, Span<ShapeId> results)
+    public int OverlapAabb(in Aabb3D box, Span<ShapeId> results, in QueryFilter3D filter = default)
     {
         ThrowIfDisposed();
 
@@ -450,12 +500,27 @@ public sealed class World : IDisposable
         int candidateCount = Math.Min(_tree.QueryOverlaps(in box, candidates), candidates.Length);
 
         int written = 0;
-        for (int i = 0; i < candidateCount && written < results.Length; i++)
+        for (int i = 0; i < candidateCount; i++)
         {
             ShapeId shapeId = _tree.GetUserData(candidates[i]);
             if (!_shapes.IsValid(shapeId))
             {
                 continue;
+            }
+
+            if (!filter.Matches(in _shapes.Record(shapeId).Filter))
+            {
+                continue;
+            }
+
+            if (written == results.Length)
+            {
+                if (results.Length == 0 || shapeId > results[written - 1])
+                {
+                    continue;
+                }
+
+                written--;
             }
 
             int slot = written;
@@ -472,15 +537,16 @@ public sealed class World : IDisposable
         return written;
     }
 
-    /// <summary>Casts a ray and returns only the closest hit.</summary>
+    /// <summary>Casts a ray and returns only the closest filtered hit.</summary>
     /// <param name="ray">The ray.</param>
     /// <param name="maxDistance">The furthest hit kept.</param>
     /// <param name="hit">The closest hit when one exists.</param>
+    /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns><see langword="true"/> when anything was hit.</returns>
-    public bool RaycastClosest(in Ray3D ray, float maxDistance, out RaycastHit3D hit)
+    public bool RaycastClosest(in Ray3D ray, float maxDistance, out RaycastHit3D hit, in QueryFilter3D filter = default)
     {
-        Span<RaycastHit3D> buffer = stackalloc RaycastHit3D[1];
-        if (Raycast(in ray, maxDistance, buffer) == 0)
+        Span<RaycastHit3D> buffer = stackalloc RaycastHit3D[128];
+        if (Raycast(in ray, maxDistance, buffer, in filter) == 0)
         {
             hit = default;
             return false;
@@ -490,12 +556,13 @@ public sealed class World : IDisposable
         return true;
     }
 
-    /// <summary>Finds the surface points nearest a query point; hits sort by ascending distance.</summary>
+    /// <summary>Finds the filtered surface points nearest a query; hits sort by ascending distance.</summary>
     /// <param name="point">The query point.</param>
     /// <param name="maxDistance">The furthest surface kept.</param>
     /// <param name="hits">The destination; truncated when full.</param>
+    /// <param name="filter">Query pruning; unset fields accept everything.</param>
     /// <returns>The hits written.</returns>
-    public int QueryPoint(Vec3 point, float maxDistance, Span<ClosestPointHit3D> hits)
+    public int QueryPoint(Vec3 point, float maxDistance, Span<ClosestPointHit3D> hits, in QueryFilter3D filter = default)
     {
         ThrowIfDisposed();
 
@@ -512,10 +579,15 @@ public sealed class World : IDisposable
 
         var probe = new Sphere3(point, 0.0f);
         int written = 0;
-        for (int i = 0; i < candidateCount && written < hits.Length; i++)
+        for (int i = 0; i < candidateCount; i++)
         {
             ShapeId shapeId = _tree.GetUserData(candidates[i]);
             if (!_shapes.IsValid(shapeId))
+            {
+                continue;
+            }
+
+            if (!filter.Matches(in _shapes.Record(shapeId).Filter))
             {
                 continue;
             }
@@ -541,6 +613,16 @@ public sealed class World : IDisposable
             }
 
             var found = new ClosestPointHit3D(shapeId, _shapes.GetBody(shapeId), hitPoint, hitDistance);
+            if (written == hits.Length)
+            {
+                if (hits.Length == 0 || distance >= hits[written - 1].Distance)
+                {
+                    continue;
+                }
+
+                written--;
+            }
+
             int slot = written;
             while (slot > 0 && hits[slot - 1].Distance > distance)
             {
@@ -575,6 +657,114 @@ public sealed class World : IDisposable
         }
     }
 
+    /// <summary>Rebuilds a body's mass properties from its attached shapes, shifting the frame so the world center of mass stays put.</summary>
+    /// <param name="bodyId">The body to recompute.</param>
+    public void ResetMassData(BodyId bodyId)
+    {
+        ThrowIfDisposed();
+
+        ref BodyState body = ref _bodies.Slot(bodyId);
+        Vec3 previousCenter = body.Position + (body.Rotation * body.LocalCenter);
+        _shapes.RecalculateMass(_bodies, bodyId);
+        body.Position += previousCenter - (body.Position + (body.Rotation * body.LocalCenter));
+        _shapes.SyncBody(_bodies, _tree, bodyId);
+    }
+
+    /// <summary>Zeroes accumulated forces and torques on every body.</summary>
+    public void ClearForces()
+    {
+        ThrowIfDisposed();
+
+        _bodies.ClearForces();
+    }
+
+    /// <summary>Wakes every live dynamic body.</summary>
+    public void WakeAllBodies()
+    {
+        ThrowIfDisposed();
+
+        _bodies.WakeAllBodies();
+    }
+
+    /// <summary>Reads population counters for diagnostics.</summary>
+    public WorldStatistics3D GetStatistics()
+    {
+        ThrowIfDisposed();
+
+        int sleeping = 0;
+        for (int slot = 0; slot < _bodies.SlotCapacity; slot++)
+        {
+            if (!_bodies.IsSlotLive(slot))
+            {
+                continue;
+            }
+
+            BodyId bodyId = BodyId.FromIndex(slot);
+            if (_bodies.GetType(bodyId) == BodyType.Dynamic && _bodies.IsSleeping(bodyId))
+            {
+                sleeping++;
+            }
+        }
+
+        return new WorldStatistics3D(_bodies.Count, _shapes.Count, _joints.Count, _contactCount, sleeping);
+    }
+
+    /// <summary>Walks the reference graph and reports whether every shape, joint and contact names live entities.</summary>
+    public bool Validate()
+    {
+        ThrowIfDisposed();
+
+        for (int slot = 0; slot < _bodies.SlotCapacity; slot++)
+        {
+            if (!_bodies.IsSlotLive(slot))
+            {
+                continue;
+            }
+
+            ref BodyState body = ref _bodies.Slot(BodyId.FromIndex(slot));
+            int current = body.FirstShape;
+            while (current != -1)
+            {
+                ShapeId shapeId = ShapeId.FromIndex(current);
+                if (!_shapes.IsValid(shapeId) || _shapes.GetBody(shapeId) != BodyId.FromIndex(slot))
+                {
+                    return false;
+                }
+
+                current = _shapes.Record(shapeId).NextShape;
+            }
+        }
+
+        for (int slot = 0; slot < _joints.HingeCapacity; slot++)
+        {
+            ref HingeJointData hinge = ref _joints.Hinge(slot);
+            if (hinge.Live && (!_bodies.IsValid(hinge.BodyA) || !_bodies.IsValid(hinge.BodyB)))
+            {
+                return false;
+            }
+        }
+
+        for (int slot = 0; slot < _joints.PrismaticCapacity; slot++)
+        {
+            ref PrismaticJointData prismatic = ref _joints.Prismatic(slot);
+            if (prismatic.Live && (!_bodies.IsValid(prismatic.BodyA) || !_bodies.IsValid(prismatic.BodyB)))
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            if (!_bodies.IsValid(_contacts[i].BodyA) || !_bodies.IsValid(_contacts[i].BodyB)
+                || !_shapes.IsValid(_contacts[i].ShapeA) || !_shapes.IsValid(_contacts[i].ShapeB))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>Advances the simulation by <paramref name="dt"/> seconds.</summary>
     public void Step(float dt)
     {
@@ -599,6 +789,7 @@ public sealed class World : IDisposable
 
         UpdateIslands(dt);
         PublishContactEvents();
+        EmitPostSolveContacts();
     }
 
     /// <summary>
@@ -670,7 +861,7 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void StepSlice(float h)
     {
-        _bodies.IntegrateVelocities(h, Gravity);
+        _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
 
         Contact3D[] built = _previous;
@@ -717,6 +908,7 @@ public sealed class World : IDisposable
             }
         }
 
+        EmitPreSolveContacts();
         ContactSolver.SolveVelocity(_bodies, _shapes, _contacts.AsSpan(0, _contactCount), VelocityIterations);
         JointSolver.SolveSpringPass(_bodies, _joints, h);
 
@@ -810,6 +1002,7 @@ public sealed class World : IDisposable
                 IsSensor = recordA.IsSensor || recordB.IsSensor,
                 Manifold = epa,
             };
+            SurfaceSettings.BlendInto(in recordA, in recordB, ref contact);
             return true;
         }
 
@@ -827,6 +1020,7 @@ public sealed class World : IDisposable
             IsSensor = recordA.IsSensor || recordB.IsSensor,
             Manifold = rest,
         };
+        SurfaceSettings.BlendInto(in recordA, in recordB, ref contact);
         return true;
     }
 
@@ -1102,6 +1296,36 @@ public sealed class World : IDisposable
             {
                 ArrayPool<JointPair3D>.Shared.Return(rentedJoints);
             }
+        }
+    }
+
+    /// <summary>Single pre-solve emit point: fires the observer once per contact before the velocity solve.</summary>
+    private void EmitPreSolveContacts()
+    {
+        IContactEvents3D? listener = Volatile.Read(ref _contactEvents);
+        if (listener is null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            listener.PreSolve(ref _contacts[i]);
+        }
+    }
+
+    /// <summary>Single post-solve emit point: fires the observer once per contact with final impulses.</summary>
+    private void EmitPostSolveContacts()
+    {
+        IContactEvents3D? listener = Volatile.Read(ref _contactEvents);
+        if (listener is null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            listener.PostSolve(in _contacts[i]);
         }
     }
 
