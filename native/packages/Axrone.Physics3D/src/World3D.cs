@@ -424,6 +424,17 @@ public sealed class World : IDisposable
         return _impulseEvents[index];
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private bool IsShapeQueryable(ref ShapeRecord record, in QueryFilter filter)
+    {
+        if ((record.Filter.Group != 0 || record.Filter.Category != 0) && !QueryFilter.Matches(in record.Filter, in filter))
+        {
+            return false;
+        }
+
+        return _bodies.IsEnabled(record.Body);
+    }
+
     /// <summary>Casts a ray against filtered shapes; hits sort by ascending distance.</summary>
     /// <param name="ray">The ray.</param>
     /// <param name="maxDistance">The furthest hit kept.</param>
@@ -447,7 +458,7 @@ public sealed class World : IDisposable
             }
 
             ref ShapeRecord record = ref _shapes.Record(shapeId);
-            if (!QueryFilter.Matches(in record.Filter, in filter))
+            if (!IsShapeQueryable(ref record, in filter))
             {
                 continue;
             }
@@ -558,7 +569,8 @@ public sealed class World : IDisposable
                 continue;
             }
 
-            if (!QueryFilter.Matches(in _shapes.Record(shapeId).Filter, in filter))
+            ref ShapeRecord record = ref _shapes.Record(shapeId);
+            if (!IsShapeQueryable(ref record, in filter))
             {
                 continue;
             }
@@ -637,7 +649,8 @@ public sealed class World : IDisposable
                 continue;
             }
 
-            if (!QueryFilter.Matches(in _shapes.Record(shapeId).Filter, in filter))
+            ref ShapeRecord record = ref _shapes.Record(shapeId);
+            if (!IsShapeQueryable(ref record, in filter))
             {
                 continue;
             }
@@ -1071,6 +1084,11 @@ public sealed class World : IDisposable
             return false;
         }
 
+        if ((stateA.Flags & BodyFlags.Active) == 0 || (stateB.Flags & BodyFlags.Active) == 0)
+        {
+            return false;
+        }
+
         if (!CollisionFilter.ShouldCollide(in recordA.Filter, in recordB.Filter))
         {
             return false;
@@ -1235,7 +1253,7 @@ public sealed class World : IDisposable
 
             BodyId bodyId = BodyId.FromIndex(slot);
             ref BodyState body = ref _bodies.Slot(bodyId);
-            if (body.Type == BodyType.Static || (body.Flags & BodyFlags.Awake) == 0)
+            if (body.Type == BodyType.Static || (body.Flags & (BodyFlags.Awake | BodyFlags.Active)) != (BodyFlags.Awake | BodyFlags.Active))
             {
                 continue;
             }

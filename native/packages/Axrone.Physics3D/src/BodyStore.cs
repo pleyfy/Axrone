@@ -198,7 +198,7 @@ public sealed class BodyStore
     public void ApplyForce(BodyId id, Vec3 force)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -212,7 +212,7 @@ public sealed class BodyStore
     public void ApplyForce(BodyId id, Vec3 force, Vec3 point)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -228,7 +228,7 @@ public sealed class BodyStore
     public void ApplyForceToCenter(BodyId id, Vec3 force)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -237,12 +237,12 @@ public sealed class BodyStore
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
     }
 
-    /// <summary>Accumulates a torque; wakes the body.</summary>
+    /// <summary>Accumulates a world-space torque; wakes the body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyTorque(BodyId id, Vec3 torque)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -256,7 +256,7 @@ public sealed class BodyStore
     public void ApplyLinearImpulse(BodyId id, Vec3 impulse)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -270,7 +270,7 @@ public sealed class BodyStore
     public void ApplyLinearImpulse(BodyId id, Vec3 impulse, Vec3 point)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -286,12 +286,12 @@ public sealed class BodyStore
     public void ApplyAngularImpulse(BodyId id, Vec3 impulse)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.FixedRotation) != 0)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.FixedRotation) != 0 || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
 
-        body.AngularVelocity += impulse * body.InverseInertia;
+        body.AngularVelocity += ContactSolver.ApplyInverseInertia(body.Rotation, body.InverseInertia, impulse);
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
     }
 
@@ -486,7 +486,7 @@ public sealed class BodyStore
             }
 
             body.LinearVelocity += dt * ((gravity * body.GravityScale) + (body.Force * body.InverseMass));
-            body.AngularVelocity += dt * (body.Torque * body.InverseInertia);
+            body.AngularVelocity += dt * ContactSolver.ApplyInverseInertia(body.Rotation, body.InverseInertia, body.Torque);
 
             body.LinearVelocity *= 1.0f / (1.0f + (dt * body.LinearDamping));
             body.AngularVelocity *= 1.0f / (1.0f + (dt * body.AngularDamping));

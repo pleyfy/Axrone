@@ -15,7 +15,8 @@ public class ContactEventsTests
         public float MaxNormal0;
         public float MaxTangent0;
         public float ForceRestitution;
-        public int ReportedPointCount;
+        public int PointChecks;
+        public int PointMismatch;
     }
 
     private struct TestHandler : IContactSolverCallbacks<Contact3D, Manifold3D, RunState>
@@ -34,7 +35,17 @@ public class ContactEventsTests
             state.PostCount++;
             state.MaxNormal0 = MathF.Max(state.MaxNormal0, impulses.NormalAt(0));
             state.MaxTangent0 = MathF.Max(state.MaxTangent0, impulses.TangentAt(0));
-            state.ReportedPointCount = impulses.Count;
+            for (int p = 0; p < manifold.Count; p++)
+            {
+                ContactPoint3D point = manifold[p];
+                float tangent = MathF.Sqrt((point.TangentImpulse1 * point.TangentImpulse1) + (point.TangentImpulse2 * point.TangentImpulse2));
+                state.PointChecks++;
+                if (MathF.Abs(impulses.NormalAt(p) - point.NormalImpulse) > 1e-6f
+                    || MathF.Abs(impulses.TangentAt(p) - tangent) > 1e-5f)
+                {
+                    state.PointMismatch++;
+                }
+            }
         }
     }
 
@@ -108,24 +119,14 @@ public class ContactEventsTests
         using (world)
         {
             var state = new RunState { ForceRestitution = -1.0f };
-            float manifoldNormal = 0.0f;
-            int manifoldCount = 0;
             for (int i = 0; i < 120; i++)
             {
                 world.Step(1.0f / 60.0f, new TestHandler(), ref state);
-                if (state.PostCount > 0)
-                {
-                    Contact3D contact = world.GetContact(0);
-                    Manifold3D manifold = contact.Manifold;
-                    manifoldCount = manifold.Count;
-                    manifoldNormal = manifold[0].NormalImpulse;
-                }
             }
 
-            state.ReportedPointCount.Should().Be(manifoldCount);
+            state.PointChecks.Should().BeGreaterThan(0);
+            state.PointMismatch.Should().Be(0);
             state.MaxNormal0.Should().BeGreaterThan(0.0f);
-            manifoldNormal.Should().BeGreaterThan(0.0f);
-            state.MaxNormal0.Should().BeGreaterThanOrEqualTo(manifoldNormal * 0.999f);
         }
     }
 
