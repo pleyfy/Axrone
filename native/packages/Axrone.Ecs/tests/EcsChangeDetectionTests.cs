@@ -1,12 +1,7 @@
 namespace Axrone.Ecs.Tests;
 
-using System.Runtime.ExceptionServices;
-
 public sealed class EcsChangeDetectionTests : IDisposable
 {
-    private const int Windows = 8;
-    private const int PrimePasses = 6;
-    private const int PrimeIterations = 10_000;
     private const int WindowIterations = 1_000;
 
     private readonly World _world;
@@ -209,59 +204,17 @@ public sealed class EcsChangeDetectionTests : IDisposable
         }
 
         _world.Step();
+        var visitor = new CountingChangeVisitor();
 
-        Exception? failure = null;
-        int visited = 0;
-        Thread worker = new(
-            () =>
-            {
-                try
-                {
-                    var visitor = new CountingChangeVisitor();
+        EcsAllocationHarness.AssertEveryWindowClean(
+            () => VisitChangedWindows(_world, ref visitor, WindowIterations),
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
+            "change-visitor traversal");
 
-                    // Prime with the measured call shape itself (same helper, same generic
-                    // instantiation, same ref-passed visitor) and repeat until tiered
-                    // compilation has settled, so JIT promotion cannot land in a timed window.
-                    for (int pass = 0; pass < PrimePasses; pass++)
-                    {
-                        VisitChangedWindows(_world, ref visitor, PrimeIterations);
-                    }
-
-                    // Every window must be exactly clean, not just the quietest one, so one
-                    // sporadic allocation cannot hide behind a min-of-N. The loop runs on a
-                    // joined dedicated thread: a pooled xUnit worker is shared with other
-                    // collections and gets credited with their allocation blocks.
-                    for (int window = 0; window < Windows; window++)
-                    {
-                        long before = GC.GetAllocatedBytesForCurrentThread();
-                        VisitChangedWindows(_world, ref visitor, WindowIterations);
-                        long delta = GC.GetAllocatedBytesForCurrentThread() - before;
-                        if (delta != 0L)
-                        {
-                            Assert.Fail(
-                                $"window {window}: change-visitor traversal must allocate zero bytes " +
-                                $"on the measured thread, but claimed {delta} B");
-                        }
-                    }
-
-                    visited = visitor.Count;
-                }
-                catch (Exception error)
-                {
-                    failure = error;
-                }
-            });
-
-        worker.IsBackground = true;
-        worker.Start();
-        worker.Join();
-
-        if (failure is not null)
-        {
-            ExceptionDispatchInfo.Capture(failure).Throw();
-        }
-
-        visited.Should().Be(4);
+        // The gate only means something if the traversals still visited every changed row.
+        visitor.Count.Should().Be(4);
     }
 
     private static void VisitChangedWindows(World world, ref CountingChangeVisitor visitor, int iterations)

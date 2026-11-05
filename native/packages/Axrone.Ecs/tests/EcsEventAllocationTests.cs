@@ -1,7 +1,5 @@
 namespace Axrone.Ecs.Tests;
 
-using System.Runtime.ExceptionServices;
-
 internal readonly struct EcsAllocationProbe(int first, int second)
 {
     internal readonly int First = first;
@@ -9,21 +7,17 @@ internal readonly struct EcsAllocationProbe(int first, int second)
 }
 
 /// <summary>
-/// Steady-state allocation evidence for the world event, actor and singleton surfaces.
-/// Every window must be exactly clean — a min-of-N shape forgives the windows that really
-/// allocated — and the loop runs on its own joined thread, because a pooled xUnit worker is
-/// serviced by other collections and gets credited with their allocation blocks: the same
-/// workload showed sporadic 5.5-6.9 KB deltas in 3 of ~170 windows on a pooled worker and 0
-/// in 1728 windows on a dedicated thread.
+/// Steady-state allocation evidence for the world event, actor and singleton surfaces, gated by
+/// <see cref="EcsAllocationHarness"/>: every measured window must claim exactly zero bytes. Each
+/// gate also asserts the workload's observable effect, so a green verdict cannot come from a loop
+/// that quietly stopped doing the production work.
 /// </summary>
 public sealed class EcsEventAllocationTests : IDisposable
 {
-    private const int Windows = 8;
-    private const int PrimePasses = 14;
-    private const int MeasuredPasses = PrimePasses + Windows;
     private const int IterationsPerWindow = 25_000;
     private const int ParkIterationsPerWindow = 8_000;
     private const int QueriesPerWindow = 1_000;
+    private const int TotalPasses = EcsAllocationHarness.PrimePasses + EcsAllocationHarness.Windows;
 
     private readonly World _world;
     private readonly EcsEventName _tick = EcsEventNames.Intern("alloc.tick");
@@ -48,7 +42,7 @@ public sealed class EcsEventAllocationTests : IDisposable
         _world.On<EcsAllocationProbe>(in _tick, (in EcsEventName _, in EcsAllocationProbe value) => calls += value.First);
         EcsAllocationProbe payload = new(1, 2);
 
-        AssertEveryWindowClean(
+        EcsAllocationHarness.AssertEveryWindowClean(
             () =>
             {
                 for (int i = 0; i < IterationsPerWindow; i++)
@@ -56,24 +50,28 @@ public sealed class EcsEventAllocationTests : IDisposable
                     _world.EmitSync(_tick, payload);
                 }
             },
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
             "world event emit");
 
-        calls.Should().Be((long)MeasuredPasses * IterationsPerWindow);
+        long expected = (long)TotalPasses * IterationsPerWindow;
+        calls.Should().Be(expected);
         _world.TryGetEventMetrics(_tick, out EcsEventMetrics metrics).Should().BeTrue();
-        metrics.EmitCount.Should().Be(calls);
-        Console.WriteLine($"emit hot path: {MeasuredPasses} x {IterationsPerWindow} emits ({PrimePasses} prime passes), every measured window 0 B");
+        metrics.EmitCount.Should().Be(expected);
+        metrics.InvocationCount.Should().Be(expected);
+        Console.WriteLine($"emit hot path: {EcsAllocationHarness.Windows} measured windows x {IterationsPerWindow} emits, each 0 B");
     }
 
     [Fact]
     public void Paused_Buffering_Does_Not_Allocate_Per_Event()
     {
-        int parked = MeasuredPasses * ParkIterationsPerWindow;
-        _world.EventBufferCapacity = parked + 8;
+        _world.EventBufferCapacity = ParkIterationsPerWindow + 8;
         _world.On<EcsAllocationProbe>(in _tick, static (in EcsEventName _, in EcsAllocationProbe _) => { });
         _world.PauseEvents();
 
         EcsAllocationProbe payload = new(3, 4);
-        AssertEveryWindowClean(
+        EcsAllocationHarness.AssertEveryWindowClean(
             () =>
             {
                 for (int i = 0; i < ParkIterationsPerWindow; i++)
@@ -81,10 +79,25 @@ public sealed class EcsEventAllocationTests : IDisposable
                     _world.EmitSync(_tick, payload);
                 }
             },
+
+            // The ring is emptied between windows, outside the measurement, so the gate parks
+            // into a rolling buffer that wraps instead of growing one giant ring.
+            betweenWindows: () =>
+            {
+                _ = _world.ResumeEvents();
+                _world.PauseEvents();
+            },
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
             "paused event parking");
 
-        _world.PendingEventCount.Should().Be(parked);
-        Console.WriteLine($"paused buffering: {MeasuredPasses} x {ParkIterationsPerWindow} parks ({PrimePasses} prime passes), every measured window 0 B");
+        long expected = (long)TotalPasses * ParkIterationsPerWindow;
+        _world.TryGetEventMetrics(_tick, out EcsEventMetrics metrics).Should().BeTrue();
+        metrics.BufferedCount.Should().Be(expected);
+        metrics.InvocationCount.Should().Be(expected);
+        metrics.DroppedCount.Should().Be(0);
+        metrics.UndeliveredCount.Should().Be(0);
+        Console.WriteLine($"paused buffering: {EcsAllocationHarness.Windows} measured windows x {ParkIterationsPerWindow} parks, each 0 B");
     }
 
     [Fact]
@@ -96,7 +109,7 @@ public sealed class EcsEventAllocationTests : IDisposable
         _world.PauseEvents();
 
         EcsAllocationProbe payload = new(1, 1);
-        AssertEveryWindowClean(
+        EcsAllocationHarness.AssertEveryWindowClean(
             () =>
             {
                 for (int i = 0; i < IterationsPerWindow; i++)
@@ -107,11 +120,14 @@ public sealed class EcsEventAllocationTests : IDisposable
                 _world.ResumeEvents();
                 _world.PauseEvents();
             },
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
             "park plus flush cycle");
 
         _world.PendingEventCount.Should().Be(0);
-        delivered.Should().Be((long)MeasuredPasses * IterationsPerWindow);
-        Console.WriteLine($"park+flush cycle: {MeasuredPasses} x {IterationsPerWindow} pairs ({PrimePasses} prime passes), every measured window 0 B");
+        delivered.Should().Be((long)TotalPasses * IterationsPerWindow);
+        Console.WriteLine($"park+flush cycle: {EcsAllocationHarness.Windows} measured windows x {IterationsPerWindow} pairs, each 0 B");
     }
 
     [Fact]
@@ -124,7 +140,7 @@ public sealed class EcsEventAllocationTests : IDisposable
             _world.RegisterActor(entity, EcsActorNames.Intern($"alloc.actor.{i}"), _tag, layer: i % 3);
         }
 
-        AssertEveryWindowClean(
+        EcsAllocationHarness.AssertEveryWindowClean(
             () =>
             {
                 for (int i = 0; i < QueriesPerWindow; i++)
@@ -133,9 +149,16 @@ public sealed class EcsEventAllocationTests : IDisposable
                     _ = _world.GetActorsByLayer(1, buffer);
                 }
             },
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
             "actor tag and layer queries");
 
-        Console.WriteLine($"actor queries: {MeasuredPasses} x {QueriesPerWindow * 2} queries ({PrimePasses} prime passes), every measured window 0 B");
+        // The gate only means something if the loops still found the same actors.
+        _world.GetActorsByTag(_tag, buffer).Should().Be(16);
+        _world.GetActorsByLayer(1, buffer).Should().Be(5);
+        buffer[0].Should().NotBe(Entity.Null);
+        Console.WriteLine($"actor queries: {EcsAllocationHarness.Windows} measured windows x {QueriesPerWindow * 2} queries, each 0 B");
     }
 
     [Fact]
@@ -144,7 +167,7 @@ public sealed class EcsEventAllocationTests : IDisposable
         Entity owner = _world.BeginEntity().Commit();
         _world.SetSingleton(owner, new EcsAllocationProbe(5, 6));
 
-        AssertEveryWindowClean(
+        EcsAllocationHarness.AssertEveryWindowClean(
             () =>
             {
                 for (int i = 0; i < IterationsPerWindow; i++)
@@ -153,59 +176,14 @@ public sealed class EcsEventAllocationTests : IDisposable
                     _ = value.First;
                 }
             },
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
             "singleton reads");
 
-        Console.WriteLine($"singleton read: {MeasuredPasses} x {IterationsPerWindow} reads ({PrimePasses} prime passes), every measured window 0 B");
-    }
-
-    /// <summary>
-    /// Primes with the exact measured call shape until tiered compilation has settled, then
-    /// requires every window to allocate zero bytes. The loop runs on a dedicated thread that is
-    /// joined before returning, so the thread-local allocation counter only ever accounts for
-    /// this workload; a failure is rethrown on the test thread with its original stack.
-    /// </summary>
-    private static void AssertEveryWindowClean(Action workload, string label)
-    {
-        Exception? failure = null;
-        Thread worker = new(() =>
-        {
-            try
-            {
-                for (int pass = 0; pass < PrimePasses; pass++)
-                {
-                    workload();
-                }
-
-                for (int window = 0; window < Windows; window++)
-                {
-                    long before = GC.GetAllocatedBytesForCurrentThread();
-                    workload();
-                    long delta = GC.GetAllocatedBytesForCurrentThread() - before;
-
-                    // The window body allocates nothing, not even a formatted reason: an eager
-                    // reason string would be built between windows and blur the very counter
-                    // being watched. The predicate is unchanged — any non-zero delta fails.
-                    if (delta != 0L)
-                    {
-                        Assert.Fail(
-                            $"window {window}: the {label} hot path must allocate zero bytes on the " +
-                            $"measured thread, but claimed {delta} B");
-                    }
-                }
-            }
-            catch (Exception error)
-            {
-                failure = error;
-            }
-        });
-
-        worker.IsBackground = true;
-        worker.Start();
-        worker.Join();
-
-        if (failure is not null)
-        {
-            ExceptionDispatchInfo.Capture(failure).Throw();
-        }
+        _world.TryGetSingleton(out EcsAllocationProbe current).Should().BeTrue();
+        current.First.Should().Be(5);
+        current.Second.Should().Be(6);
+        Console.WriteLine($"singleton read: {EcsAllocationHarness.Windows} measured windows x {IterationsPerWindow} reads, each 0 B");
     }
 }
