@@ -620,7 +620,7 @@ public sealed class TaskQueueTests
     }
 
     [Fact]
-    public void SubmittingManyTasks_DoesNotBuyThreadsPerTask()
+    public async Task SubmittingManyTasks_DoesNotBuyThreadsPerTask()
     {
         int threadsBefore = Process.GetCurrentProcess().Threads.Count;
 
@@ -638,11 +638,48 @@ public sealed class TaskQueueTests
             int threadsAfter = Process.GetCurrentProcess().Threads.Count;
             (threadsAfter - threadsBefore).Should().BeLessThan(32, "the task queue never buys threads per task");
             scheduler.ActiveCount.Should().BeLessThanOrEqualTo(8);
+
+            await scheduler.DrainAsync().AsTask().WaitAsync(Wait);
+            scheduler.GetStats().CompletedCount.Should().Be(2000, "every submitted body actually ran");
         }
         finally
         {
             scheduler.Dispose();
         }
+    }
+
+    [Fact]
+    public async Task QueuedBacklog_StillCompletesWhileRunningWorkExceedsQueueCapacity()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder()
+                .WithMaxQueueSize(4)
+                .WithConcurrencyLimit(2)
+                .WithTaskTimeout(TimeSpan.Zero)
+                .Build());
+
+        _ = scheduler.Submit(async token =>
+        {
+            await gate.Task.WaitAsync(Wait, CancellationToken.None).ConfigureAwait(false);
+            return 0;
+        });
+        _ = scheduler.Submit(async token =>
+        {
+            await gate.Task.WaitAsync(Wait, CancellationToken.None).ConfigureAwait(false);
+            return 1;
+        });
+        WaitUntil(() => scheduler.ActiveCount == 2);
+
+        for (int i = 0; i < 4; i++)
+        {
+            int index = i;
+            _ = scheduler.SubmitBound(SyncBody, index);
+        }
+
+        gate.SetResult();
+        await scheduler.DrainAsync().AsTask().WaitAsync(Wait);
+        scheduler.GetStats().CompletedCount.Should().Be(6, "running bodies do not consume queue capacity");
     }
 
     [Fact]
@@ -676,5 +713,220 @@ public sealed class TaskQueueTests
         await scheduler.DrainAsync().AsTask().WaitAsync(Wait);
 
         static ValueTask<object?> SyncBoundBody(object? state, CancellationToken token) => ValueTask.FromResult<object?>(null);
+    }
+
+    [Fact]
+    public async Task DrainAsync_SequentialDrainsEachBlockUntilTheirOwnIdleSignal()
+    {
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithConcurrencyLimit(1).WithTaskTimeout(TimeSpan.Zero).Build());
+
+        for (int round = 0; round < 3; round++)
+        {
+            var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _ = scheduler.Submit(async token =>
+            {
+                await gate.Task.ConfigureAwait(false);
+                return round;
+            });
+            WaitUntil(() => scheduler.ActiveCount == 1);
+
+            Task drain = scheduler.DrainAsync().AsTask();
+            drain.IsCompleted.Should().BeFalse($"round {round}: the drain must block, not poll to idle");
+
+            gate.SetResult();
+            await drain.WaitAsync(Wait);
+            scheduler.IsIdle.Should().BeTrue($"round {round} drained");
+        }
+    }
+
+    [Fact]
+    public async Task DrainAsync_ConcurrentBlockedDrainsAllWakeOnSingleIdleSignal()
+    {
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithConcurrencyLimit(1).WithTaskTimeout(TimeSpan.Zero).Build());
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = scheduler.Submit(async token =>
+        {
+            await gate.Task.ConfigureAwait(false);
+            return 0;
+        });
+        WaitUntil(() => scheduler.ActiveCount == 1);
+
+        var t1 = scheduler.DrainAsync().AsTask();
+        var t2 = scheduler.DrainAsync().AsTask();
+        var t3 = scheduler.DrainAsync().AsTask();
+        (t1.IsCompleted || t2.IsCompleted || t3.IsCompleted).Should().BeFalse("all three drainers must be parked");
+
+        gate.SetResult();
+        await Task.WhenAll(t1, t2, t3).WaitAsync(Wait);
+        scheduler.IsIdle.Should().BeTrue();
+    }
+
+    [Fact]
+    public void DrainWaiters_ReserveFreshSignalPerClaimAndRejectStaleRelease()
+    {
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithTaskTimeout(TimeSpan.Zero).Build());
+
+        long first = scheduler.ClaimWaiter(out Task firstSignal);
+        firstSignal.IsCompleted.Should().BeFalse("a claim must yield a blocking signal");
+        scheduler.ReleaseWaiter(first);
+        firstSignal.IsCompleted.Should().BeFalse("an idle-detected claim is dropped, never completed");
+        scheduler.WaitCount.Should().Be(0, "dropping a claim deregisters the waiter");
+
+        long second = scheduler.ClaimWaiter(out Task secondSignal);
+        second.Should().NotBe(first, "every claim carries a fresh epoch token");
+        secondSignal.IsCompleted.Should().BeFalse("a recycled slot hands back a blocking signal, not the dropped one");
+        scheduler.SignalDrainWaiters();
+        secondSignal.IsCompleted.Should().BeTrue("the idle signal wakes the parked waiter");
+        scheduler.WaitCount.Should().Be(0, "signals deregister as they wake");
+
+        long third = scheduler.ClaimWaiter(out Task thirdSignal);
+        third.Should().NotBe(second, "a woken slot is reusable");
+        thirdSignal.IsCompleted.Should().BeFalse(
+            "a recycled slot must hand back a blocking signal, never the previous claim's completed task");
+
+        scheduler.ReleaseWaiter(first);
+        scheduler.ReleaseWaiter(second);
+        scheduler.WaitCount.Should().Be(1, "stale tokens cannot steal the live claim");
+        thirdSignal.IsCompleted.Should().BeFalse("stale tokens cannot complete another waiter's signal");
+
+        scheduler.SignalDrainWaiters();
+        thirdSignal.IsCompleted.Should().BeTrue("the live claim still wakes normally");
+        scheduler.WaitCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void GetAllTaskMetrics_DoesNotQueueBehindTheSchedulingGate()
+    {
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithMetrics().WithConcurrencyLimit(1).WithTaskTimeout(TimeSpan.Zero).Build());
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        for (int i = 0; i < 4; i++)
+        {
+            int index = i;
+            _ = scheduler.Submit(async token =>
+            {
+                await gate.Task.ConfigureAwait(false);
+                return index;
+            });
+        }
+
+        scheduler.GetAllTaskMetrics().Should().HaveCount(4);
+
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reported = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = Task.Run(async () =>
+        {
+            await start.Task.ConfigureAwait(false);
+            reported.TrySetResult(scheduler.GetAllTaskMetrics().Count);
+        });
+
+        bool finished;
+        lock (scheduler.Gate)
+        {
+            start.SetResult();
+            finished = SpinWait.SpinUntil(() => reported.Task.IsCompleted, Wait);
+        }
+
+        finished.Should().BeTrue("a metrics snapshot must never queue behind the submit gate");
+    }
+
+    [Fact]
+    public async Task Submit_KeepsFlowingWhileMetricsAreSnapshotted()
+    {
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithMetrics().WithConcurrencyLimit(4).WithTaskTimeout(TimeSpan.Zero).Build());
+        using var stop = new CancellationTokenSource();
+        Task hammer = Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                scheduler.GetAllTaskMetrics();
+                await Task.Yield();
+            }
+        });
+
+        for (int i = 0; i < 200; i++)
+        {
+            _ = scheduler.SubmitBound(SyncBody, null);
+        }
+
+        await scheduler.DrainAsync().AsTask().WaitAsync(Wait);
+        stop.Cancel();
+        await hammer;
+        scheduler.GetStats().CompletedCount.Should().Be(200, "concurrent metric snapshots never stall the producer");
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WithToken_AbandonsWaitForStubbornBodyAndRemainsObservable()
+    {
+        var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithConcurrencyLimit(2).WithTaskTimeout(TimeSpan.Zero).Build());
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventTaskHandle handle = scheduler.Submit(async token =>
+        {
+            await release.Task.WaitAsync(Wait, CancellationToken.None).ConfigureAwait(false);
+            return 1;
+        });
+        Task<int> body = handle.AwaitAsync<int>().AsTask();
+        _ = body.ContinueWith(
+            static (task, _) => _ = task.Exception, null, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        WaitUntil(() => scheduler.ActiveCount == 1);
+
+        using var budget = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+        await scheduler.DisposeAsync(budget.Token);
+
+        scheduler.IsClosed.Should().BeTrue("abandoning the idle wait still finalises the closure");
+        scheduler.GetStats().ActiveCount.Should().Be(1, "the stubborn body remains observable instead of vanishing");
+        scheduler.WaitCount.Should().Be(0, "the abandoned drainer deregisters its waiter");
+
+        release.SetException(new TimeoutException("the body never observed cancellation"));
+        (await body.ContinueWith(
+            static (task, _) => task.IsFaulted, null, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default))
+            .Should().BeTrue("the abandoned body surfaces its failure instead of hanging the disposal");
+    }
+
+    [Fact]
+    public async Task Metrics_RegistryScanStaysBoundedByCreatedSlots()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder()
+                .WithMetrics()
+                .WithConcurrencyLimit(1)
+                .WithTaskTimeout(TimeSpan.Zero)
+                .Build(),
+            clock);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = scheduler.Submit(async token =>
+        {
+            await gate.Task.ConfigureAwait(false);
+            return -1;
+        });
+        WaitUntil(() => scheduler.ActiveCount == 1);
+
+        for (int i = 0; i < 8; i++)
+        {
+            int index = i;
+            _ = scheduler.Submit(async token =>
+            {
+                await gate.Task.ConfigureAwait(false);
+                return index;
+            });
+        }
+
+        scheduler.CreatedSlotCount.Should().Be(9, "each live task owns a slot");
+        scheduler.MetricsRegistryLength.Should().Be(scheduler.CreatedSlotCount, "the registry mirrors created slots, never the capacity table");
+        scheduler.GetAllTaskMetrics().Should().HaveCount(9);
+
+        gate.SetResult();
+        await scheduler.DrainAsync().AsTask().WaitAsync(Wait);
+        scheduler.WaitCount.Should().Be(0, "drains release their waiter slots");
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+        scheduler.CollectGarbage().Should().Be(9, "the bounded registry walk prunes every terminal metric");
+        scheduler.GetAllTaskMetrics().Should().BeEmpty("pruned metrics leave the live snapshot");
     }
 }

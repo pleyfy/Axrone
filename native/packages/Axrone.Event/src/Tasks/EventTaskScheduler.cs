@@ -32,6 +32,8 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
     private const int PumpDeferred = 2;
     private const int PassStartLimit = 256;
     private const int DrainWaiterCount = 64;
+    private const int DrainSlotShift = 6;
+    private const long DrainSlotMask = (1L << DrainSlotShift) - 1;
     private const long FixedSlotTableBytes = 64;
     private const long EstimatedEntryBytes = 256;
     private const long DefaultGcWindowTicks = TimeSpan.TicksPerMinute * 2;
@@ -49,12 +51,14 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
     private readonly TaskEntryBase[] _laneHeads;
     private readonly TaskEntryBase[] _laneTails;
     private readonly int[] _laneCounts;
-    private readonly DrainWaiter[] _drainWaiters;
+    private readonly DrainSignaler _drainSignaler;
     private readonly TaskEntryBase?[] _deferredSignals;
     private readonly TaskEntryBase?[] _cancelSignals;
+    /// <summary>Protects deferred signal and cancel scratch buffers plus drain-waiter hand-offs; always taken before <see cref="_gate"/>.</summary>
     private readonly Lock _signalGate = new();
     private readonly EventTaskSchedulerOptions _options;
     private readonly TimeProvider _timeProvider;
+    /// <summary>Protects lanes, slot table, retry/deadline/free lists and the idle counters; the only lock on the submit path.</summary>
     private readonly Lock _gate = new();
     private readonly Timer _deadlineTimer;
     private readonly Timer? _gcTimer;
@@ -65,6 +69,9 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
 
     private TaskEntryBase? _retryHead;
     private TaskEntryBase? _retryTail;
+    private readonly MetricsRegistry _registry = new();
+    private int _liveSlotCount;
+    private int _slotWatermark;
     private TaskEntryBase? _deadlineHead;
     private TaskEntryBase? _deadlineTail;
     private TaskEntryBase? _freeHead;
@@ -134,11 +141,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         _laneCounts = new int[LaneCount];
         _deferredSignals = new TaskEntryBase?[_slots.Length];
         _cancelSignals = new TaskEntryBase?[_slots.Length];
-        _drainWaiters = new DrainWaiter[DrainWaiterCount];
-        for (int i = 0; i < DrainWaiterCount; i++)
-        {
-            _drainWaiters[i] = new DrainWaiter();
-        }
+        _drainSignaler = new DrainSignaler();
 
         _throughputAnchorTicks = timeProvider.GetUtcNow().UtcTicks;
         _gcWindowTicks = options.GcInterval > TimeSpan.Zero ? options.GcInterval.Ticks : DefaultGcWindowTicks;
@@ -487,26 +490,21 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         {
             lock (_gate)
             {
-                for (int i = 0; i < _slots.Length; i++)
+                for (TaskEntryBase? entry = _registry.Head; entry is not null; entry = entry.ReportNext)
                 {
-                    TaskEntryBase? entry = _slots[i];
-                    if (entry is null || entry.IsFree || entry.State != EventTaskState.Pending)
+                    if (entry.IsFree)
                     {
                         continue;
                     }
 
-                    if (entry.TryTransition(EventTaskState.Pending, EventTaskState.Cancelled))
+                    if (entry.State == EventTaskState.Pending &&
+                        entry.TryTransition(EventTaskState.Pending, EventTaskState.Cancelled))
                     {
                         entry.MarkTerminal(ClockTicks);
                         DetachLocked(entry);
                         _deferredSignals[pendingSignals++] = entry;
                     }
-                }
-
-                for (int i = 0; i < _slots.Length; i++)
-                {
-                    TaskEntryBase? entry = _slots[i];
-                    if (entry is not null && !entry.IsFree && entry.State == EventTaskState.Running)
+                    else if (entry.State == EventTaskState.Running)
                     {
                         _cancelSignals[runningSignals++] = entry;
                     }
@@ -562,7 +560,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
     {
         while (true)
         {
-            DrainWaiter waiter = AcquireDrainWaiter();
+            long token = _drainSignaler.TryClaim(out Task signal);
             try
             {
                 if (IsIdle)
@@ -570,11 +568,11 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                     break;
                 }
 
-                await waiter.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {
-                waiter.Release();
+                _drainSignaler.Release(token);
             }
         }
     }
@@ -595,10 +593,9 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             {
                 pendingSignals = CancelAllQueuedLocked();
                 runningSignals = 0;
-                for (int i = 0; i < _slots.Length; i++)
+                for (TaskEntryBase? entry = _registry.Head; entry is not null; entry = entry.ReportNext)
                 {
-                    TaskEntryBase? entry = _slots[i];
-                    if (entry is not null && !entry.IsFree && entry.State == EventTaskState.Running)
+                    if (!entry.IsFree && entry.State == EventTaskState.Running)
                     {
                         _cancelSignals[runningSignals++] = entry;
                     }
@@ -636,7 +633,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         return entry is not null && entry.Matches(id) && entry.QueuedAtTicks != 0 ? entry.ToMetrics() : null;
     }
 
-    /// <summary>Metrics snapshots of every live task, in slot order. Cold-path allocation.</summary>
+    /// <summary>Metrics snapshots of every live task. Lock-free: never contends with the submit path, may return slightly stale fields.</summary>
     public List<EventTaskMetrics> GetAllTaskMetrics()
     {
         var result = new List<EventTaskMetrics>();
@@ -645,15 +642,11 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             return result;
         }
 
-        lock (_gate)
+        for (TaskEntryBase? entry = _registry.Head; entry is not null; entry = Volatile.Read(ref entry.ReportNext))
         {
-            for (int i = 0; i < _slots.Length; i++)
+            if (entry.QueuedAtTicks != 0)
             {
-                TaskEntryBase? entry = _slots[i];
-                if (entry is not null && entry.QueuedAtTicks != 0)
-                {
-                    result.Add(entry.ToMetrics());
-                }
+                result.Add(entry.ToMetrics());
             }
         }
 
@@ -671,9 +664,11 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             _completedTicksSum = 0;
             _throughputAnchorBodies = 0;
             _throughputAnchorTicks = _timeProvider.GetUtcNow().UtcTicks;
-            for (int i = 0; i < _slots.Length; i++)
+            TaskEntryBase? entry = _registry.Head;
+            while (entry is not null)
             {
-                _slots[i]?.ResetMetrics();
+                entry.ResetMetrics();
+                entry = entry.ReportNext;
             }
         }
     }
@@ -707,19 +702,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                 Volatile.Write(ref _throughputAnchorTicks, now);
             }
 
-            lock (_gate)
-            {
-                int liveSlots = 0;
-                for (int i = 0; i < _slots.Length; i++)
-                {
-                    if (_slots[i] is not null)
-                    {
-                        liveSlots++;
-                    }
-                }
-
-                memory += liveSlots * EstimatedEntryBytes;
-            }
+            memory += Volatile.Read(ref _liveSlotCount) * EstimatedEntryBytes;
         }
 
         return new EventTaskStats(
@@ -751,6 +734,16 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
     /// <summary>Closes the scheduler, waits for running bodies, then releases timers.</summary>
     public async ValueTask DisposeAsync()
     {
+        await DisposeAsyncCore(CancellationToken.None).ConfigureAwait(false);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Closes the scheduler and waits for running bodies until the token abandons the wait; disposal is final either way.</summary>
+    /// <param name="cancellationToken">Abandons the idle wait; undisposed timers are still destroyed and remaining counts stay observable via stats.</param>
+    public ValueTask DisposeAsync(CancellationToken cancellationToken) => DisposeAsyncCore(cancellationToken);
+
+    private async ValueTask DisposeAsyncCore(CancellationToken cancellationToken)
+    {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
@@ -759,17 +752,44 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         Complete();
         try
         {
-            await WaitForIdleAsync(CancellationToken.None).ConfigureAwait(false);
+            await WaitForIdleAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         finally
         {
             DestroyTimers();
         }
-
-        GC.SuppressFinalize(this);
     }
 
     internal int EntryMaxRetries => _entryMaxRetries;
+
+    /// <summary>Entries in the metrics registry; grows only with created slots, never with table capacity.</summary>
+    internal int MetricsRegistryLength
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _registry.CountLocked();
+            }
+        }
+    }
+
+    /// <summary>Slot objects allocated so far.</summary>
+    internal int CreatedSlotCount => Volatile.Read(ref _slotWatermark);
+
+    /// <summary>Waiters currently parked on drain waits.</summary>
+    internal int WaitCount => _drainSignaler.CountClaimed();
+
+    internal long ClaimWaiter(out Task signal) => _drainSignaler.TryClaim(out signal);
+
+    internal Lock Gate => _gate;
+
+    internal void ReleaseWaiter(long token) => _drainSignaler.Release(token);
+
+    internal void SignalDrainWaiters() => _drainSignaler.SignalIdle();
 
     private static void OnDeadlineTick(object? state) => ((EventTaskScheduler)state!).AdvanceDueWork();
 
@@ -827,14 +847,15 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             return recycled;
         }
 
-        for (int i = 0; i < _slots.Length; i++)
+        if (_slotWatermark < _slots.Length)
         {
-            if (_slots[i] is null)
-            {
-                var created = new TaskEntryBase(this, i);
-                _slots[i] = created;
-                return created;
-            }
+            int watermark = _slotWatermark;
+            TaskEntryBase created = new(this, watermark);
+            _slots[watermark] = created;
+            _slotWatermark = watermark + 1;
+            Interlocked.Increment(ref _liveSlotCount);
+            _registry.AddLocked(created);
+            return created;
         }
 
         ThrowHelper.ThrowQueueFull(EventTaskPriority.Normal, _slots.Length);
@@ -1512,30 +1533,145 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             return;
         }
 
-        for (int i = 0; i < DrainWaiterCount; i++)
+        _drainSignaler.SignalIdle();
+    }
+
+    private sealed class MetricsRegistry
+    {
+        private TaskEntryBase? _head;
+        private TaskEntryBase? _tail;
+
+        internal TaskEntryBase? Head => Volatile.Read(ref _head);
+
+        internal void AddLocked(TaskEntryBase entry)
         {
-            _drainWaiters[i].ReleaseIfClaimed();
+            if (entry.ReportNext is not null || ReferenceEquals(_head, entry))
+            {
+                return;
+            }
+
+            entry.ReportNext = null;
+            if (_tail is null)
+            {
+                Volatile.Write(ref _head, entry);
+            }
+            else
+            {
+                Volatile.Write(ref _tail.ReportNext, entry);
+            }
+
+            _tail = entry;
+        }
+
+        internal int CountLocked()
+        {
+            int count = 0;
+            for (TaskEntryBase? entry = _head; entry is not null; entry = entry.ReportNext)
+            {
+                count++;
+            }
+
+            return count;
         }
     }
 
-    private DrainWaiter AcquireDrainWaiter()
+    private sealed class DrainSignaler
     {
-        for (int attempt = 0; attempt < 8; attempt++)
+        /// <summary>Leaf lock guarding waiter claim tokens and their one-shot signals; never held while taking any other lock.</summary>
+        private readonly Lock _sync = new();
+        private readonly Waiter[] _waiters;
+        private long _epoch;
+
+        internal DrainSignaler()
         {
+            _waiters = new Waiter[DrainWaiterCount];
             for (int i = 0; i < DrainWaiterCount; i++)
             {
-                DrainWaiter waiter = _drainWaiters[i];
-                if (waiter.TryClaim())
-                {
-                    return waiter;
-                }
+                _waiters[i] = new Waiter();
             }
-
-            new SpinWait().SpinOnce();
         }
 
-        ThrowHelper.ThrowWaitCapacityExceeded();
-        return null!;
+        internal long TryClaim(out Task signal)
+        {
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                lock (_sync)
+                {
+                    for (int i = 0; i < _waiters.Length; i++)
+                    {
+                        Waiter waiter = _waiters[i];
+                        if (waiter.Token != 0)
+                        {
+                            continue;
+                        }
+
+                        waiter.Token = (++_epoch << DrainSlotShift) | (uint)i;
+                        waiter.Signal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                        signal = waiter.Signal.Task;
+                        return waiter.Token;
+                    }
+                }
+
+                new SpinWait().SpinOnce();
+            }
+
+            signal = Task.CompletedTask;
+            ThrowHelper.ThrowWaitCapacityExceeded();
+            return 0;
+        }
+
+        internal int CountClaimed()
+        {
+            lock (_sync)
+            {
+                int count = 0;
+                for (int i = 0; i < _waiters.Length; i++)
+                {
+                    if (_waiters[i].Token != 0)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+        }
+
+        internal void Release(long token)
+        {
+            lock (_sync)
+            {
+                Waiter waiter = _waiters[(int)(token & DrainSlotMask)];
+                if (waiter.Token == token)
+                {
+                    waiter.Token = 0;
+                }
+            }
+        }
+
+        internal void SignalIdle()
+        {
+            lock (_sync)
+            {
+                for (int i = 0; i < _waiters.Length; i++)
+                {
+                    Waiter waiter = _waiters[i];
+                    if (waiter.Token == 0)
+                    {
+                        continue;
+                    }
+
+                    waiter.Token = 0;
+                    waiter.Signal.TrySetResult(true);
+                }
+            }
+        }
+
+        private sealed class Waiter
+        {
+            internal long Token;
+            internal TaskCompletionSource<bool> Signal = null!;
+        }
     }
 
     private int RunGcPass()
@@ -1549,10 +1685,10 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         int pruned = 0;
         lock (_gate)
         {
-            for (int i = 0; i < _slots.Length; i++)
+            TaskEntryBase? entry = _registry.Head;
+            while (entry is not null)
             {
-                TaskEntryBase? entry = _slots[i];
-                if (entry is not null &&
+                if (entry.QueuedAtTicks != 0 &&
                     entry.IsFree &&
                     entry.CompletedAtTicks != 0 &&
                     entry.CompletedAtTicks < cutoff &&
@@ -1561,6 +1697,8 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                     entry.ResetMetrics();
                     pruned++;
                 }
+
+                entry = entry.ReportNext;
             }
         }
 
@@ -1585,9 +1723,9 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
 
         lock (_gate)
         {
-            for (int i = 0; i < _slots.Length; i++)
+            for (TaskEntryBase? entry = _registry.Head; entry is not null; entry = entry.ReportNext)
             {
-                _slots[i]?.Dispose();
+                entry.Dispose();
             }
         }
     }
@@ -1634,32 +1772,6 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         return pendingSignals;
     }
 
-    private sealed class DrainWaiter
-    {
-        private readonly TaskCompletionSource<bool> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _claimed;
-
-        internal Task Task => _tcs.Task;
-
-        internal bool TryClaim() => Interlocked.CompareExchange(ref _claimed, 1, 0) == 0;
-
-        internal void ReleaseIfClaimed()
-        {
-            if (Volatile.Read(ref _claimed) == 1)
-            {
-                Release();
-            }
-        }
-
-        internal void Release()
-        {
-            if (Interlocked.Exchange(ref _claimed, 0) == 1)
-            {
-                _tcs.TrySetResult(true);
-            }
-        }
-    }
-
     internal sealed class TaskEntryBase : IDisposable
     {
         internal readonly EventTaskScheduler Owner;
@@ -1685,6 +1797,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         internal TaskEntryBase? Next;
         internal TaskEntryBase? NextFree;
         internal TaskEntryBase? NextDeadline;
+        internal TaskEntryBase? ReportNext;
 
         private readonly CancellationTokenSource _cts;
         private readonly CancellationTokenRegistration _tokenRegistration;
@@ -1857,12 +1970,12 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
 
         internal EventTaskMetrics ToMetrics() => new(
             Id,
-            (EventTaskPriority)PriorityLane,
+            (EventTaskPriority)Volatile.Read(ref PriorityLane),
             State,
-            QueuedAtTicks,
-            StartedAtTicks,
-            CompletedAtTicks,
-            ExecutionTimeMs,
+            Volatile.Read(ref QueuedAtTicks),
+            Volatile.Read(ref StartedAtTicks),
+            Volatile.Read(ref CompletedAtTicks),
+            Volatile.Read(ref ExecutionTimeMs),
             RetryCount);
 
         internal void ResetMetrics()
