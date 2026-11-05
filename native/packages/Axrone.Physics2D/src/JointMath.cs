@@ -23,6 +23,20 @@ internal static class MathPhysics
     public static float NormalizeAngle(float angle) =>
         angle - (MathF.Floor((angle + MathF.PI) / (2.0f * MathF.PI)) * 2.0f * MathF.PI);
 
+    /// <summary>
+    /// Converts a soft-attach frequency in hertz and its damping ratio to the
+    /// solver's stiffness and damping coefficients (omega = 2*pi*frequency).
+    /// Same convention as the wheel suspension: one hertz is one full cycle
+    /// per second. Zero frequency yields the rigid pair (0, 0).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ComputeAttachTuning(float frequency, float dampingRatio, out float stiffness, out float damping)
+    {
+        float omega = 2.0f * MathF.PI * frequency;
+        stiffness = omega * omega;
+        damping = 2.0f * dampingRatio * omega;
+    }
+
     /// <summary>Resolves the limit state of a coordinate against its stops.</summary>
     /// <param name="enabled">Whether stops apply.</param>
     /// <param name="lower">The lower stop.</param>

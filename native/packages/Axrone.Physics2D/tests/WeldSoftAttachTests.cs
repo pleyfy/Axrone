@@ -51,7 +51,7 @@ public sealed class WeldSoftAttachTests
             BodyA = softAnchor,
             BodyB = softBall,
             WorldAnchor = new Vec2(0, -2f),
-            Frequency = 1f,
+            Frequency = 0.16f,
             DampingRatio = 0.7f,
         });
 
@@ -109,7 +109,7 @@ public sealed class WeldSoftAttachTests
                 BodyA = anchor,
                 BodyB = ball,
                 WorldAnchor = new Vec2(0, -2f),
-                Frequency = 2f,
+                Frequency = 0.32f,
                 DampingRatio = dampingRatio,
             });
 
@@ -155,7 +155,7 @@ public sealed class WeldSoftAttachTests
         }
 
         float rigid = KickDepth(0f, 0.7f);
-        float slack = KickDepth(0.3f, 0.1f);
+        float slack = KickDepth(0.05f, 0.1f);
         rigid.Should().BeLessThan(5e-2f);
         slack.Should().BeGreaterThan(rigid + 5e-2f);
     }
@@ -170,7 +170,7 @@ public sealed class WeldSoftAttachTests
             BodyA = defAnchor,
             BodyB = defBall,
             WorldAnchor = new Vec2(0, -2f),
-            Frequency = 1.5f,
+            Frequency = 0.24f,
             DampingRatio = 0.4f,
         });
 
@@ -179,7 +179,7 @@ public sealed class WeldSoftAttachTests
         var start = WeldJointBuilder<Typestate.Unconfigured>.Create();
         var bodies = start.WithBodies(anchor, ball);
         var pinned = bodies.WithAnchor(new Vec2(0, -2f));
-        pinned.WithSoftAttach(1.5f, 0.4f).Build(builderWorld.Bodies, builderWorld.Joints);
+        pinned.WithSoftAttach(0.24f, 0.4f).Build(builderWorld.Bodies, builderWorld.Joints);
 
         float[] defSamples = new float[120];
         float[] builderSamples = new float[120];
@@ -213,6 +213,26 @@ public sealed class WeldSoftAttachTests
     }
 
     [Fact]
+    public void ComputeAttachTuning_MatchesHandComputedHertzValues()
+    {
+        MathPhysics.ComputeAttachTuning(0f, 0.7f, out float rigidStiffness, out float rigidDamping);
+        rigidStiffness.Should().Be(0f);
+        rigidDamping.Should().Be(0f);
+
+        MathPhysics.ComputeAttachTuning(1f, 0.7f, out float oneHzStiffness, out float oneHzDamping);
+        oneHzStiffness.Should().BeApproximately(39.478418f, 1e-3f);
+        oneHzDamping.Should().BeApproximately(8.796459f, 1e-3f);
+
+        MathPhysics.ComputeAttachTuning(2.5f, 0.4f, out float midStiffness, out float midDamping);
+        midStiffness.Should().BeApproximately(246.740110f, 1e-2f);
+        midDamping.Should().BeApproximately(12.566371f, 1e-3f);
+
+        MathPhysics.ComputeAttachTuning(2f, 0.7f, out float wheelLikeStiffness, out _);
+        wheelLikeStiffness.Should().BeApproximately(157.913670f, 1e-2f,
+            "both the weld attach and the wheel suspension read frequency as hertz with omega = 2*pi*f");
+    }
+
+    [Fact]
     public void ExtremeStep_KeepsTheSoftWeldFinite()
     {
         using var world = new World();
@@ -222,7 +242,7 @@ public sealed class WeldSoftAttachTests
             BodyA = anchor,
             BodyB = ball,
             WorldAnchor = new Vec2(0, -2f),
-            Frequency = 50f,
+            Frequency = 8f,
             DampingRatio = 500f,
         });
 

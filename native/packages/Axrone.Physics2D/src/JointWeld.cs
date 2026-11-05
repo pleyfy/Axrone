@@ -29,10 +29,10 @@ public struct WeldJointData
     /// <summary>Accumulated angle impulse; warm-started every step.</summary>
     public float WeldAngleImpulse;
 
-    /// <summary>Soft-attach stiffness (frequency squared); zero keeps the weld rigid.</summary>
+    /// <summary>Soft-attach stiffness (omega squared, omega = 2*pi*hertz); zero keeps the weld rigid.</summary>
     public float Stiffness;
 
-    /// <summary>Soft-attach damping (twice the damping ratio times the frequency).</summary>
+    /// <summary>Soft-attach damping (twice the damping ratio times omega).</summary>
     public float Damping;
 
     /// <summary>Compliance added to each diagonal of the effective mass this step.</summary>
