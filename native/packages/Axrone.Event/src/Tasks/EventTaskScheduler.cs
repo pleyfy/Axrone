@@ -556,11 +556,12 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
     /// <param name="cancellationToken">Abandons waiting; does not cancel tasks.</param>
     public ValueTask DrainAsync(CancellationToken cancellationToken = default) => WaitForIdleAsync(cancellationToken);
 
+    /// <summary>Parks until idle: the claim is registered before <see cref="IsIdle"/> is read (lost-wakeup guard) and the wake signal is materialized only when this wait actually parks.</summary>
     private async ValueTask WaitForIdleAsync(CancellationToken cancellationToken)
     {
         while (true)
         {
-            long token = _drainSignaler.TryClaim(out Task signal);
+            long token = _drainSignaler.TryClaim();
             try
             {
                 if (IsIdle)
@@ -568,7 +569,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                     break;
                 }
 
-                await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await _drainSignaler.PrepareWait(token).WaitAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -783,7 +784,9 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
     /// <summary>Waiters currently parked on drain waits.</summary>
     internal int WaitCount => _drainSignaler.CountClaimed();
 
-    internal long ClaimWaiter(out Task signal) => _drainSignaler.TryClaim(out signal);
+    internal long ClaimWaiter() => _drainSignaler.TryClaim();
+
+    internal Task PrepareWaiterSignal(long token) => _drainSignaler.PrepareWait(token);
 
     internal Lock Gate => _gate;
 
@@ -1591,7 +1594,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             }
         }
 
-        internal long TryClaim(out Task signal)
+        internal long TryClaim()
         {
             for (int attempt = 0; attempt < 8; attempt++)
             {
@@ -1606,8 +1609,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                         }
 
                         waiter.Token = (++_epoch << DrainSlotShift) | (uint)i;
-                        waiter.Signal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                        signal = waiter.Signal.Task;
+                        waiter.Signal = null;
                         return waiter.Token;
                     }
                 }
@@ -1615,9 +1617,24 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                 new SpinWait().SpinOnce();
             }
 
-            signal = Task.CompletedTask;
             ThrowHelper.ThrowWaitCapacityExceeded();
             return 0;
+        }
+
+        internal Task PrepareWait(long token)
+        {
+            lock (_sync)
+            {
+                Waiter waiter = _waiters[(int)(token & DrainSlotMask)];
+                if (waiter.Token != token)
+                {
+                    return Task.CompletedTask;
+                }
+
+                return waiter.Signal is { } materialized
+                    ? materialized.Task
+                    : (waiter.Signal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+            }
         }
 
         internal int CountClaimed()
@@ -1645,6 +1662,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                 if (waiter.Token == token)
                 {
                     waiter.Token = 0;
+                    waiter.Signal = null;
                 }
             }
         }
@@ -1661,8 +1679,10 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                         continue;
                     }
 
+                    TaskCompletionSource<bool>? signal = waiter.Signal;
                     waiter.Token = 0;
-                    waiter.Signal.TrySetResult(true);
+                    waiter.Signal = null;
+                    signal?.TrySetResult(true);
                 }
             }
         }
@@ -1670,7 +1690,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         private sealed class Waiter
         {
             internal long Token;
-            internal TaskCompletionSource<bool> Signal = null!;
+            internal TaskCompletionSource<bool>? Signal;
         }
     }
 

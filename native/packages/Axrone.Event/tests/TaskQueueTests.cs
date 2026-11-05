@@ -771,21 +771,23 @@ public sealed class TaskQueueTests
         using var scheduler = new EventTaskScheduler(
             new EventTaskSchedulerOptionsBuilder().WithTaskTimeout(TimeSpan.Zero).Build());
 
-        long first = scheduler.ClaimWaiter(out Task firstSignal);
-        firstSignal.IsCompleted.Should().BeFalse("a claim must yield a blocking signal");
+        long first = scheduler.ClaimWaiter();
+        scheduler.WaitCount.Should().Be(1, "a claim registers the waiter before any idle read");
+        scheduler.PrepareWaiterSignal(first).IsCompleted.Should().BeFalse("a parking claim yields a blocking signal");
         scheduler.ReleaseWaiter(first);
-        firstSignal.IsCompleted.Should().BeFalse("an idle-detected claim is dropped, never completed");
-        scheduler.WaitCount.Should().Be(0, "dropping a claim deregisters the waiter");
+        scheduler.WaitCount.Should().Be(0, "an idle-detected claim is dropped, never completed");
 
-        long second = scheduler.ClaimWaiter(out Task secondSignal);
+        long second = scheduler.ClaimWaiter();
         second.Should().NotBe(first, "every claim carries a fresh epoch token");
-        secondSignal.IsCompleted.Should().BeFalse("a recycled slot hands back a blocking signal, not the dropped one");
+        Task secondSignal = scheduler.PrepareWaiterSignal(second);
+        secondSignal.IsCompleted.Should().BeFalse("a recycled slot hands back a blocking signal");
         scheduler.SignalDrainWaiters();
         secondSignal.IsCompleted.Should().BeTrue("the idle signal wakes the parked waiter");
         scheduler.WaitCount.Should().Be(0, "signals deregister as they wake");
 
-        long third = scheduler.ClaimWaiter(out Task thirdSignal);
+        long third = scheduler.ClaimWaiter();
         third.Should().NotBe(second, "a woken slot is reusable");
+        Task thirdSignal = scheduler.PrepareWaiterSignal(third);
         thirdSignal.IsCompleted.Should().BeFalse(
             "a recycled slot must hand back a blocking signal, never the previous claim's completed task");
 
@@ -797,6 +799,46 @@ public sealed class TaskQueueTests
         scheduler.SignalDrainWaiters();
         thirdSignal.IsCompleted.Should().BeTrue("the live claim still wakes normally");
         scheduler.WaitCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void DrainWaiters_SignalLandingBeforeMaterializationStillWakes()
+    {
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithTaskTimeout(TimeSpan.Zero).Build());
+
+        long token = scheduler.ClaimWaiter();
+        scheduler.SignalDrainWaiters();
+        scheduler.PrepareWaiterSignal(token).IsCompleted.Should().BeTrue(
+            "an idle signal that lands before the wait is materialized must not be lost");
+        scheduler.WaitCount.Should().Be(0);
+
+        long reused = scheduler.ClaimWaiter();
+        reused.Should().NotBe(token, "the slot is reusable under a fresh epoch token");
+        scheduler.PrepareWaiterSignal(reused).IsCompleted.Should().BeFalse(
+            "the fresh claim parks again instead of inheriting the earlier wake");
+        scheduler.ReleaseWaiter(reused);
+    }
+
+    [Fact]
+    public void DrainWaiters_ClaimAndReleaseAllocateNothing()
+    {
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithTaskTimeout(TimeSpan.Zero).Build());
+
+        for (int i = 0; i < 64; i++)
+        {
+            scheduler.ReleaseWaiter(scheduler.ClaimWaiter());
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+        {
+            scheduler.ReleaseWaiter(scheduler.ClaimWaiter());
+        }
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0,
+            "the idle drain path registers and drops claims without allocating a signal");
     }
 
     [Fact]
