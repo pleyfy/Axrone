@@ -150,6 +150,31 @@ public sealed class JointStore : IJointRegistry
     }
 
     /// <summary>
+    /// Creates a spring joint from <paramref name="definition"/> and wakes both
+    /// bodies: a soft distance constraint whose stiffness keeps it strictly
+    /// positive, sharing the distance joint's storage and solver path.
+    /// </summary>
+    /// <param name="bodies">Body registry; both bodies must be live.</param>
+    /// <param name="definition">Anchors, rest length, stiffness and damping.</param>
+    /// <returns>The identity of the created joint, tagged <see cref="JointKind.Distance"/>.</returns>
+    public JointId CreateSpring(BodyStore bodies, in SpringDef definition)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+
+        DistanceDef rod = new()
+        {
+            BodyA = definition.BodyA,
+            BodyB = definition.BodyB,
+            LocalAnchorA = definition.LocalAnchorA,
+            LocalAnchorB = definition.LocalAnchorB,
+            Length = definition.Distance,
+            Stiffness = definition.Stiffness,
+            Damping = definition.Damping,
+        };
+        return CreateDistance(bodies, in rod);
+    }
+
+    /// <summary>
     /// Creates a pinned hinge between two bodies through a shared world
     /// anchor and wakes both bodies. Angular stops and the speed motor are
     /// configured by <paramref name="definition"/>.

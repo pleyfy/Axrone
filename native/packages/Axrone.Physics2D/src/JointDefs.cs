@@ -4,8 +4,8 @@ namespace Axrone.Physics2D;
 /// Construction parameters of a distance joint: two body anchors held at a
 /// rest separation. With <see cref="Stiffness"/> the rod pulls softly toward
 /// the rest length instead of rigidly; with a
-/// <see cref="MinDistance"/>/<see cref="MaxDistance"/> pair the rod is
-/// replaced by a range the separation may not leave.
+/// <see cref="MinDistance"/>/<see cref="MaxDistance"/> pair a hard range row
+/// joins the rod and bounds the separation from leaving it.
 /// </summary>
 public readonly struct DistanceDef
 {
@@ -100,6 +100,77 @@ public readonly struct DistanceDef
             field = value;
         }
     } = 0.0f;
+}
+
+/// <summary>
+/// Construction parameters of a spring joint: a soft distance constraint with
+/// a restoring pull toward the rest length. The spring shares the distance
+/// joint's storage and solver path; it differs in requiring positive
+/// stiffness so a named spring can never collapse into a rigid rod silently.
+/// </summary>
+public readonly struct SpringDef
+{
+    /// <summary>Creates default parameters: a unit-length spring matching the engine's soft-joint defaults.</summary>
+    public SpringDef()
+    {
+    }
+
+    /// <summary>First body.</summary>
+    public BodyId BodyA { get; init; } = BodyId.Invalid;
+
+    /// <summary>Second body.</summary>
+    public BodyId BodyB { get; init; } = BodyId.Invalid;
+
+    /// <summary>Anchor in the first body frame.</summary>
+    public Vec2 LocalAnchorA { get; init; } = default;
+
+    /// <summary>Anchor in the second body frame.</summary>
+    public Vec2 LocalAnchorB { get; init; } = default;
+
+    /// <summary>Rest length of the spring; finite and never negative.</summary>
+    public float Distance
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Distance));
+            }
+
+            field = value;
+        }
+    } = 1.0f;
+
+    /// <summary>Spring stiffness; strictly positive, finite. Zero would silently rigidify the spring.</summary>
+    public float Stiffness
+    {
+        get => field;
+        init
+        {
+            if (value <= 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Stiffness));
+            }
+
+            field = value;
+        }
+    } = 10.0f;
+
+    /// <summary>Spring damping; finite and never negative.</summary>
+    public float Damping
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Damping));
+            }
+
+            field = value;
+        }
+    } = 0.5f;
 }
 
 /// <summary>
