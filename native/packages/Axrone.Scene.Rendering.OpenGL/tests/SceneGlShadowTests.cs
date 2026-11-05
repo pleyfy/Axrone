@@ -377,29 +377,66 @@ public sealed class SceneGlShadowTests
             ShadowCascadeFrameBuilder.Build(frame, settings, in camera, in lightDirection, AtlasEdge, AtlasEdge);
         }
 
-        // Thread-local accounting keeps concurrent test collections out of the
-        // measurement; every window must be exactly clean, not just the
-        // quietest one, so a single sporadic allocation cannot hide.
+        // The measured windows run on a dedicated joined thread so work
+        // attributed to the shared pool workers of the parallel test host can
+        // never land inside a timed window; every window must be exactly
+        // clean, not just the quietest one, so a single sporadic allocation
+        // cannot hide. On failure the harness re-measures each pipeline phase
+        // separately and names the allocating phase in the message.
         var buildWindow = new Action(() => RebuildShadowWindows(
             frame, settings, in camera, in lightDirection, ref sum));
+        float[] splitDestination = new float[8];
 
-        // Prime once with the measured loop shape itself (delegate invoke,
-        // closure reads, thread-local counter access) so JIT tier promotion
-        // cannot land inside a timed window.
-        long primeBefore = GC.GetAllocatedBytesForCurrentThread();
-        buildWindow();
-        _ = GC.GetAllocatedBytesForCurrentThread() - primeBefore;
-
-        for (int window = 0; window < 8; window++)
+        Action splitPhase = () =>
         {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            buildWindow();
-            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
-            delta.Should().Be(
-                0L,
-                $"window {window}: cascade rebuild hot path must allocate zero bytes on the measured thread");
-        }
+            for (int i = 0; i < 32; i++)
+            {
+                ShadowSplits.Compute(
+                    camera.Near,
+                    camera.Far,
+                    ShadowCascadeCount.Four,
+                    settings.CascadeSplitLambda,
+                    settings.MaxDistance,
+                    splitDestination);
+            }
+        };
 
+        Action buildPhase = () =>
+        {
+            for (int i = 0; i < 32; i++)
+            {
+                _ = ShadowCascadeFrameBuilder.Build(
+                    frame, settings, in camera, in lightDirection, AtlasEdge, AtlasEdge);
+            }
+        };
+
+        Action readPhase = () =>
+        {
+            for (int i = 0; i < 32; i++)
+            {
+                for (int cascade = 0; cascade < 4; cascade++)
+                {
+                    sum += frame.GetAtlasTile(cascade).X +
+                        frame.GetLightViewProjection(cascade).M11 +
+                        frame.GetSplitDepth(cascade);
+                }
+            }
+        };
+
+        SceneGlAllocationHarness.Outcome outcome = SceneGlAllocationHarness.AssertEveryWindowClean(
+            buildWindow,
+            betweenWindows: null,
+            SceneGlAllocationHarness.Windows,
+            primePasses: 3,
+            label: "cascade rebuild",
+            diagnostics:
+            [
+                new SceneGlGatePhase("cascade-split", splitPhase),
+                new SceneGlGatePhase("frame-build", buildPhase),
+                new SceneGlGatePhase("atlas-read", readPhase),
+            ]);
+
+        outcome.MeasuredWindows.Should().Be(8);
         sum.Should().NotBe(0.0f);
         frame.ActiveCascadeCount.Should().Be(4);
     }
