@@ -1,7 +1,7 @@
 using Axrone.Geometry;
 using Axrone.Numeric;
-using Axrone.Physics3D;
 using Axrone.Physics.Core;
+using Axrone.Physics3D;
 using FluentAssertions;
 using Xunit;
 
@@ -9,8 +9,8 @@ namespace Axrone.Physics3D.Tests;
 
 public class QueryFilterTests
 {
-    private static readonly CollisionFilter LayerA = new(2u, 0xFFFFu, 5);
-    private static readonly CollisionFilter LayerB = new(4u, 0xFFFFu, 7);
+    private static readonly CollisionFilter LayerA = new(2u, 8u, 5);
+    private static readonly CollisionFilter LayerB = new(4u, 3u, 7);
 
     private static World BuildTwoSphereWorld(out ShapeId shapeA, out ShapeId shapeB)
     {
@@ -23,56 +23,67 @@ public class QueryFilterTests
     }
 
     [Fact]
-    public void Raycast_Without_Filter_Hits_Everything()
+    public void Empty_Filter_Reports_Everything()
     {
         using var world = BuildTwoSphereWorld(out _, out _);
         var ray = new Ray3D(Vec3.Zero, new Vec3(0.0f, 0.0f, 1.0f));
 
         Span<RaycastHit3D> hits = stackalloc RaycastHit3D[4];
-        int count = world.Raycast(in ray, 20.0f, hits);
-
-        count.Should().Be(2);
+        world.Raycast(in ray, 20.0f, hits).Should().Be(2);
+        world.Raycast(in ray, 20.0f, hits, QueryFilter.None).Should().Be(2);
     }
 
     [Fact]
-    public void Raycast_Category_Filter_Prunes_Other_Layers()
+    public void Pinned_Positive_Group_Reports_Only_That_Group()
     {
         using var world = BuildTwoSphereWorld(out ShapeId shapeA, out _);
         var ray = new Ray3D(Vec3.Zero, new Vec3(0.0f, 0.0f, 1.0f));
 
         Span<RaycastHit3D> hits = stackalloc RaycastHit3D[4];
-        int count = world.Raycast(in ray, 20.0f, hits, new QueryFilter3D(2u, null, null));
+        int count = world.Raycast(in ray, 20.0f, hits, new QueryFilter(0u, 0xFFFFu, 5));
 
         count.Should().Be(1);
         hits[0].Shape.Should().Be(shapeA);
     }
 
     [Fact]
-    public void Raycast_Group_Filter_Is_Exact_Identity_Match()
+    public void Pinned_Negative_Group_Reports_Nothing()
     {
-        using var world = BuildTwoSphereWorld(out _, out ShapeId shapeB);
+        using var world = BuildTwoSphereWorld(out _, out _);
         var ray = new Ray3D(Vec3.Zero, new Vec3(0.0f, 0.0f, 1.0f));
 
         Span<RaycastHit3D> hits = stackalloc RaycastHit3D[4];
-        int count = world.Raycast(in ray, 20.0f, hits, new QueryFilter3D(null, null, 7));
+        world.Raycast(in ray, 20.0f, hits, new QueryFilter(0u, 0xFFFFu, -5)).Should().Be(0);
+    }
 
-        count.Should().Be(1);
-        hits[0].Shape.Should().Be(shapeB);
+    [Fact]
+    public void Cross_Match_Requires_Mutual_Bits()
+    {
+        using var world = BuildTwoSphereWorld(out ShapeId shapeA, out _);
+        var ray = new Ray3D(Vec3.Zero, new Vec3(0.0f, 0.0f, 1.0f));
+
+        Span<RaycastHit3D> hits = stackalloc RaycastHit3D[4];
+        // (category 8, mask 2): shape A (2, 8) crosses both ways; shape B (4, 3) fails both.
+        world.Raycast(in ray, 20.0f, hits, new QueryFilter(8u, 2u, 0)).Should().Be(1);
+        hits[0].Shape.Should().Be(shapeA);
+
+        // (category 1, mask 1): neither shape crosses.
+        world.Raycast(in ray, 20.0f, hits, new QueryFilter(1u, 1u, 0)).Should().Be(0);
     }
 
     [Fact]
     public void RaycastClosest_Respects_Filter()
     {
-        using var world = BuildTwoSphereWorld(out ShapeId shapeA, out _);
+        using var world = BuildTwoSphereWorld(out ShapeId shapeA, out ShapeId shapeB);
         var ray = new Ray3D(Vec3.Zero, new Vec3(0.0f, 0.0f, 1.0f));
 
-        world.RaycastClosest(in ray, 20.0f, out RaycastHit3D hit).Should().BeTrue();
+        world.RaycastClosest(in ray, 20.0f, out RaycastHit3D hit, new QueryFilter(0u, 0xFFFFu, 7)).Should().BeTrue();
+        hit.Shape.Should().Be(shapeB);
+
+        world.RaycastClosest(in ray, 20.0f, out hit, new QueryFilter(0u, 0xFFFFu, 5)).Should().BeTrue();
         hit.Shape.Should().Be(shapeA);
 
-        world.RaycastClosest(in ray, 20.0f, out hit, new QueryFilter3D(null, null, 7)).Should().BeTrue();
-        hit.Shape.Should().NotBe(shapeA);
-
-        world.RaycastClosest(in ray, 20.0f, out _, new QueryFilter3D(null, null, 999)).Should().BeFalse();
+        world.RaycastClosest(in ray, 20.0f, out _, new QueryFilter(0u, 0xFFFFu, 999)).Should().BeFalse();
     }
 
     [Fact]
@@ -82,36 +93,46 @@ public class QueryFilterTests
         var box = new Aabb3D(new Vec3(-1.0f, -1.0f, 0.0f), new Vec3(1.0f, 1.0f, 12.0f));
 
         Span<ShapeId> results = stackalloc ShapeId[4];
-        world.OverlapAabb(box, results).Should().Be(2);
-        world.OverlapAabb(box, results, new QueryFilter3D(2u, null, null)).Should().Be(1);
+        world.OverlapAabb(box, results, QueryFilter.None).Should().Be(2);
+        world.OverlapAabb(box, results, new QueryFilter(0u, 0xFFFFu, 5)).Should().Be(1);
         results[0].Should().Be(shapeA);
-        world.OverlapAabb(box, results, new QueryFilter3D(null, null, 7)).Should().Be(1);
-        results[0].Should().Be(shapeB);
+        world.OverlapAabb(box, results, new QueryFilter(0u, 0xFFFFu, -5)).Should().Be(0);
     }
 
     [Fact]
     public void QueryPoint_Respects_Filter()
     {
-        using var world = BuildTwoSphereWorld(out ShapeId shapeA, out _);
+        using var world = BuildTwoSphereWorld(out ShapeId shapeA, out ShapeId shapeB);
 
         Span<ClosestPointHit3D> hits = stackalloc ClosestPointHit3D[4];
         world.QueryPoint(new Vec3(0.0f, 0.0f, 0.0f), 12.0f, hits).Should().Be(2);
-        world.QueryPoint(new Vec3(0.0f, 0.0f, 0.0f), 12.0f, hits, new QueryFilter3D(4u, null, null)).Should().Be(1);
-        hits[0].Shape.Should().NotBe(shapeA);
+        world.QueryPoint(new Vec3(0.0f, 0.0f, 0.0f), 12.0f, hits, new QueryFilter(0u, 0xFFFFu, 7)).Should().Be(1);
+        hits[0].Shape.Should().Be(shapeB);
     }
 
     [Fact]
-    public void QueryFilter_Matches_And_Test_Semantics()
+    public void Matches_Table_Is_The_Single_Decision_Source()
     {
-        var shapeFilter = new CollisionFilter(0b1010u, 0b0101u, 3);
+        var shape = new CollisionFilter(0b1010u, 0b0101u, 3);
+        QueryFilter none = QueryFilter.None;
+        QueryFilter empty = default;
 
-        QueryFilter3D.Any.Matches(in shapeFilter).Should().BeTrue();
-        new QueryFilter3D(0b0010u, null, null).Matches(in shapeFilter).Should().BeTrue();
-        new QueryFilter3D(0b1100u, null, null).Matches(in shapeFilter).Should().BeTrue();
-        new QueryFilter3D(0b0100u, null, null).Matches(in shapeFilter).Should().BeFalse();
-        new QueryFilter3D(null, 0b0001u, null).Matches(in shapeFilter).Should().BeTrue();
-        new QueryFilter3D(null, 0b0010u, null).Matches(in shapeFilter).Should().BeFalse();
-        new QueryFilter3D(null, null, 3).Matches(in shapeFilter).Should().BeTrue();
-        new QueryFilter3D(null, null, 4).Matches(in shapeFilter).Should().BeFalse();
+        QueryFilter.Matches(in shape, in none).Should().BeTrue();
+        QueryFilter.Matches(in shape, in empty).Should().BeTrue();
+
+        QueryFilter disjoint = new(0b0100u, 0b0100u, 0);
+        QueryFilter.Matches(in shape, in disjoint).Should().BeFalse();
+
+        QueryFilter crossing = new(0b0011u, 0b1010u, 0);
+        QueryFilter.Matches(in shape, in crossing).Should().BeTrue();
+
+        QueryFilter pinnedMember = new(0u, 0xFFFFu, 3);
+        QueryFilter.Matches(in shape, in pinnedMember).Should().BeTrue();
+
+        QueryFilter pinnedNegative = new(0u, 0xFFFFu, -3);
+        QueryFilter.Matches(in shape, in pinnedNegative).Should().BeFalse();
+
+        QueryFilter pinnedStranger = new(0u, 0xFFFFu, 4);
+        QueryFilter.Matches(in shape, in pinnedStranger).Should().BeFalse();
     }
 }
