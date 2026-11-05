@@ -30,6 +30,7 @@ public sealed class UiControlRuntime : IDisposable
     private readonly IUiImageMetrics? _images;
     private readonly IUiControlEventSink? _events;
     private readonly UiControlTheme _tokens;
+    private readonly UiWidgetRegistry? _widgets;
     private readonly UiTextStyle _defaultTextStyle;
     private readonly ControlStyleContext _styleContext;
     private readonly UiLayoutStyleTable _layoutStyles = new();
@@ -64,10 +65,15 @@ public sealed class UiControlRuntime : IDisposable
         _images = options.Images;
         _measurer = options.TextMeasurer;
         _tokens = options.ThemeTokens ?? UiControlTheme.Default;
+        _widgets = options.Widgets;
         _defaultTextStyle = options.DefaultTextStyle;
         _styleContext = new ControlStyleContext(options.Theme, in _tokens);
         _tree = new ControlNodeTree();
-        _textContent = options.TextMeasurer is null ? null : new UiTextContentMeasurer(options.TextMeasurer);
+        _textContent = options.TextMeasurer is null
+            ? null
+            : options.AutoSizing is null
+                ? new UiTextContentMeasurer(options.TextMeasurer)
+                : new UiTextContentMeasurer(options.TextMeasurer, options.AutoSizing);
         _sink = new ControlLayoutSink(this);
         _layoutTree = new UiLayoutTree(_tree, _layoutStyles, new ControlContentMeasurer(this));
         _runner = new UiLayoutRunner(_tree, _layoutTree, _layoutEngine, _sink, _dirty);
@@ -124,6 +130,48 @@ public sealed class UiControlRuntime : IDisposable
             ControlThrowHelper.ThrowInvalidKind(kind);
         }
 
+        return CreateControlCore(kind, behavior, UiWidgetHandle.Invalid, in definition);
+    }
+
+    /// <summary>Creates a detached control for a widget registered in this runtime's registry.</summary>
+    /// <param name="handle">Widget handle returned by <see cref="UiWidgetRegistry.Register"/>.</param>
+    /// <param name="definition">Creation inputs consumed by the widget behavior.</param>
+    /// <exception cref="InvalidOperationException">The runtime has no widget registry.</exception>
+    /// <exception cref="ArgumentException"><paramref name="handle"/> is stale or foreign.</exception>
+    public UiControl CreateControl(UiWidgetHandle handle, in UiControlDefinition definition = default)
+    {
+        EnsureActive();
+        if (_widgets is null)
+        {
+            ControlThrowHelper.ThrowNoWidgetRegistry();
+        }
+
+        if (!_widgets.TryGetHandle(handle, out ControlBehavior behavior))
+        {
+            ControlThrowHelper.ThrowInvalidWidgetHandle();
+        }
+
+        return CreateControlCore(ControlKind.Custom, behavior, handle, in definition);
+    }
+
+    /// <summary>Creates and mounts a control for a registered widget under a parent control, or under the root.</summary>
+    /// <param name="handle">Widget handle returned by <see cref="UiWidgetRegistry.Register"/>.</param>
+    /// <param name="definition">Creation inputs consumed by the widget behavior.</param>
+    /// <param name="parent">Parent control; the default mounts under the root.</param>
+    public UiControl CreateControl(UiWidgetHandle handle, in UiControlDefinition definition, UiControl parent)
+    {
+        UiControl created = CreateControl(handle, in definition);
+        if (!Mount(created, parent))
+        {
+            _ = DestroyControl(created);
+            ControlThrowHelper.ThrowInvalidHandle();
+        }
+
+        return created;
+    }
+
+    private UiControl CreateControlCore(ControlKind kind, ControlBehavior behavior, UiWidgetHandle widget, in UiControlDefinition definition)
+    {
         int index = AllocateEntry();
         _generations[index]++;
         bool startsHidden = kind is ControlKind.Tooltip or ControlKind.Toast or ControlKind.Dialog or ControlKind.Popup;
@@ -143,6 +191,9 @@ public sealed class UiControlRuntime : IDisposable
         entry.Status = ControlStatus.Created;
         entry.Generation = _generations[index];
         entry.Visible = !startsHidden;
+        entry.WidgetSlot = widget.Slot;
+        entry.WidgetGeneration = widget.Generation;
+        entry.Variant = definition.Variant;
         entry.Text = definition.Text ?? string.Empty;
         UiTextStyle textStyle = definition.TextStyle.Face.IsValid ? definition.TextStyle : _defaultTextStyle;
         if (textStyle.Size <= 0.0f)
@@ -192,6 +243,7 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         UiNodeId parentNode = _tree.Root;
+        int mountedUnder = -1;
         if (parent.IsValid)
         {
             if (!TryGetEntry(parent, out int parentIndex))
@@ -200,6 +252,7 @@ public sealed class UiControlRuntime : IDisposable
             }
 
             parentNode = _entries[parentIndex].Node;
+            mountedUnder = parentIndex;
         }
 
         ref ControlEntry entry = ref _entries[index];
@@ -212,9 +265,9 @@ public sealed class UiControlRuntime : IDisposable
         _dirty.Invalidate(new UiInvalidation(entry.Node, UiInvalidationFlags.Layout | UiInvalidationFlags.Render));
         _focus.MarkOrderDirty();
         _hitSyncDirty = true;
-        if (parent.IsValid && TryGetEntry(parent, out int mountedUnder))
+        if (mountedUnder >= 0)
         {
-            ControlCatalog.Get(_entries[mountedUnder].Kind).RefreshSecondary(this, mountedUnder);
+            BehaviorOf(_entries[mountedUnder]).RefreshSecondary(this, mountedUnder);
         }
 
         return true;
@@ -335,7 +388,7 @@ public sealed class UiControlRuntime : IDisposable
 
         ref ControlEntry entry = ref _entries[index];
         bool supported = entry.Kind is ControlKind.Slider or ControlKind.ProgressBar or
-            ControlKind.SplitPane or ControlKind.Stepper or ControlKind.Rating;
+            ControlKind.SplitPane or ControlKind.Stepper or ControlKind.Rating or ControlKind.Custom;
         if (!supported)
         {
             return false;
@@ -346,6 +399,7 @@ public sealed class UiControlRuntime : IDisposable
             ControlKind.Slider or ControlKind.Stepper => Math.Clamp(value, entry.MinValue, entry.MaxValue),
             ControlKind.Rating => Math.Clamp(value, 0.0f, entry.MaxValue),
             ControlKind.SplitPane => Math.Clamp(value, 0.15f, 0.85f),
+            ControlKind.Custom => Math.Clamp(value, entry.MinValue, entry.MaxValue),
             _ => Math.Clamp(value, 0.0f, 1.0f),
         };
         if (clamped == entry.Value)
@@ -356,7 +410,7 @@ public sealed class UiControlRuntime : IDisposable
         entry.Value = clamped;
         Emit(index, UiControlEventKind.ValueChanged, clamped, entry.Checked, entry.Index, null);
         _dirty.Invalidate(new UiInvalidation(entry.Node, UiInvalidationFlags.Render));
-        ControlCatalog.Get(entry.Kind).OnValueApplied(this, index);
+        BehaviorOf(in entry).OnValueApplied(this, index);
         return true;
     }
 
@@ -370,7 +424,7 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         ref ControlEntry entry = ref _entries[index];
-        if (entry.Kind is not (ControlKind.Checkbox or ControlKind.Toggle))
+        if (entry.Kind is not (ControlKind.Checkbox or ControlKind.Toggle or ControlKind.Custom))
         {
             return false;
         }
@@ -397,12 +451,13 @@ public sealed class UiControlRuntime : IDisposable
 
         ref ControlEntry entry = ref _entries[indexOfControl];
         if (entry.Kind is not (ControlKind.Dropdown or ControlKind.RadioGroup or ControlKind.TabView or
-            ControlKind.PageStack or ControlKind.PageView or ControlKind.MenuBar or ControlKind.Breadcrumb))
+            ControlKind.PageStack or ControlKind.PageView or ControlKind.MenuBar or ControlKind.Breadcrumb or
+            ControlKind.Custom))
         {
             return false;
         }
 
-        int maximum = Math.Max(entry.Options?.Length ?? 0, entry.PageCount) - 1;
+        int maximum = Math.Max(Math.Max(entry.Options?.Length ?? 0, entry.OptionNodes?.Length ?? 0), entry.PageCount) - 1;
         int clamped = maximum < 0 ? 0 : Math.Clamp(index, 0, maximum);
         if (clamped == entry.Index)
         {
@@ -452,6 +507,217 @@ public sealed class UiControlRuntime : IDisposable
         return true;
     }
 
+    /// <summary>Re-runs the control's style projection and refreshes dependent nodes.</summary>
+    /// <param name="control">Live control handle.</param>
+    /// <returns>Whether the control is live.</returns>
+    public bool RefreshControl(UiControl control)
+    {
+        EnsureActive();
+        if (!TryGetEntry(control, out int index))
+        {
+            return false;
+        }
+
+        RefreshVisual(index);
+        return true;
+    }
+
+    /// <summary>Marks whether the pointer is inside the control; drives hover styling for widget state machines.</summary>
+    /// <param name="control">Live control handle.</param>
+    /// <param name="inside">Whether the pointer is inside.</param>
+    /// <returns>Whether the control is live.</returns>
+    public bool SetPointerInside(UiControl control, bool inside)
+    {
+        EnsureActive();
+        if (!TryGetEntry(control, out int index))
+        {
+            return false;
+        }
+
+        SetPointerInside(index, inside);
+        return true;
+    }
+
+    /// <summary>Marks whether the control is pressed; drives press styling for widget state machines.</summary>
+    /// <param name="control">Live control handle.</param>
+    /// <param name="pressed">Whether the control is pressed.</param>
+    /// <returns>Whether the control is live.</returns>
+    public bool SetPressed(UiControl control, bool pressed)
+    {
+        EnsureActive();
+        if (!TryGetEntry(control, out int index))
+        {
+            return false;
+        }
+
+        _ = SetPressed(index, pressed);
+        return true;
+    }
+
+    /// <summary>Adds a hit-testable child node owned by a control at the given child index.</summary>
+    /// <param name="control">Live control handle; typically a registered widget.</param>
+    /// <param name="childIndex">Child index bound into the node identity for pointer routing.</param>
+    /// <returns>The new node id.</returns>
+    /// <exception cref="ArgumentException"><paramref name="control"/> is stale or invalid.</exception>
+    public UiNodeId AddControlChildNode(UiControl control, int childIndex)
+    {
+        EnsureActive();
+        if (!TryGetEntry(control, out int index))
+        {
+            ControlThrowHelper.ThrowInvalidHandle();
+        }
+
+        ref ControlEntry entry = ref _entries[index];
+        if (entry.Kind != ControlKind.Custom)
+        {
+            ControlThrowHelper.ThrowWidgetOnlyChildNode();
+        }
+
+        UiNodeId[] nodes = EnsureOptionCapacity(ref entry, childIndex);
+        UiNodeId existing = nodes[childIndex];
+        if (existing.IsValid)
+        {
+            DetachOwnedNode(index, existing);
+        }
+
+        UiNodeId node = CreateChildNode(
+            index,
+            UiNodeKind.Custom,
+            UiNodeFlags.Visible | UiNodeFlags.Enabled | UiNodeFlags.Interactive | UiNodeFlags.Focusable,
+            ControlPart.Option,
+            childIndex);
+        nodes[childIndex] = node;
+        _dirty.Invalidate(new UiInvalidation(entry.Node, UiInvalidationFlags.Layout | UiInvalidationFlags.Render));
+        return node;
+    }
+
+    /// <summary>Removes a child node previously added to the control.</summary>
+    /// <param name="control">Live control handle owning the node.</param>
+    /// <param name="node">Child node to remove.</param>
+    /// <returns>Whether the node was owned by the control and removed.</returns>
+    public bool RemoveControlChildNode(UiControl control, UiNodeId node)
+    {
+        EnsureActive();
+        if (!TryGetEntry(control, out int index) ||
+            _entries[index].Kind != ControlKind.Custom ||
+            !_tree.TryGetBinding(node, out ControlNodeBinding binding) ||
+            binding.Control != index ||
+            binding.Part != ControlPart.Option ||
+            !holdsOptionNode(index, binding.Option, node))
+        {
+            return false;
+        }
+
+        _entries[index].OptionNodes![binding.Option] = UiNodeId.Invalid;
+        DetachOwnedNode(index, node);
+        _dirty.Invalidate(new UiInvalidation(_entries[index].Node, UiInvalidationFlags.Layout | UiInvalidationFlags.Render));
+        return true;
+    }
+
+    /// <summary>Replaces the layout style of a control-owned node.</summary>
+    /// <param name="control">Live control handle owning the node.</param>
+    /// <param name="node">Primary or child node of the control.</param>
+    /// <param name="style">New layout style.</param>
+    /// <returns>Whether the node is owned by the control and was updated.</returns>
+    public bool SetControlNodeLayoutStyle(UiControl control, UiNodeId node, in UiLayoutStyle style)
+    {
+        EnsureActive();
+        if (!TryGetOwnedNode(control, node, out _))
+        {
+            return false;
+        }
+
+        SetNodeLayoutStyle(node, in style);
+        return true;
+    }
+
+    /// <summary>Replaces the style patch of a control-owned node.</summary>
+    /// <param name="control">Live control handle owning the node.</param>
+    /// <param name="node">Primary or child node of the control.</param>
+    /// <param name="patch">New style patch consumed by the render list.</param>
+    /// <returns>Whether the node is owned by the control and was updated.</returns>
+    public bool SetControlNodeStyle(UiControl control, UiNodeId node, in UiStylePatch patch)
+    {
+        EnsureActive();
+        if (!TryGetOwnedNode(control, node, out _))
+        {
+            return false;
+        }
+
+        SetNodePatch(node, in patch);
+        return true;
+    }
+
+    /// <summary>Registers text on a control-owned node for measurement and rendering.</summary>
+    /// <param name="control">Live control handle owning the node.</param>
+    /// <param name="node">Primary or child node of the control.</param>
+    /// <param name="text">Text content; empty text removes the node from measurement.</param>
+    /// <returns>Whether the node is owned by the control and was updated.</returns>
+    public bool SetControlNodeText(UiControl control, UiNodeId node, string text)
+    {
+        EnsureActive();
+        ArgumentNullException.ThrowIfNull(text);
+        if (!TryGetOwnedNode(control, node, out int index))
+        {
+            return false;
+        }
+
+        if (node == _entries[index].Node)
+        {
+            SetText(control, text);
+            return true;
+        }
+
+        SetNodeText(node, text, in _entries[index].TextStyle);
+        return true;
+    }
+
+    /// <summary>Emits an observable outcome attributed to a control.</summary>
+    /// <param name="control">Live control handle.</param>
+    /// <param name="kind">Outcome kind.</param>
+    /// <param name="value">Value payload.</param>
+    /// <param name="checkedFlag">Checked payload.</param>
+    /// <param name="index">Selection payload.</param>
+    /// <param name="text">Text payload.</param>
+    public void EmitControlEvent(UiControl control, UiControlEventKind kind, float value, bool checkedFlag, int index, string? text)
+    {
+        EnsureActive();
+        if (TryGetEntry(control, out int entryIndex))
+        {
+            Emit(entryIndex, kind, value, checkedFlag, index, text);
+        }
+    }
+
+    /// <summary>Resolves a theme color token for widget styling.</summary>
+    /// <param name="token">Theme token identity.</param>
+    /// <param name="color">Resolved color, when the token exists.</param>
+    /// <returns>Whether the token resolved.</returns>
+    public bool TryResolveThemeColor(UiThemeTokenId token, out UiColor color)
+    {
+        if (_styleContext.Theme is IUiTheme theme)
+        {
+            return theme.TryGetColor(token, out color);
+        }
+
+        color = default;
+        return false;
+    }
+
+    /// <summary>Resolves a theme number token for widget styling.</summary>
+    /// <param name="token">Theme token identity.</param>
+    /// <param name="value">Resolved number, when the token exists.</param>
+    /// <returns>Whether the token resolved.</returns>
+    public bool TryResolveThemeNumber(UiThemeTokenId token, out float value)
+    {
+        if (_styleContext.Theme is IUiTheme theme)
+        {
+            return theme.TryGetNumber(token, out value);
+        }
+
+        value = default;
+        return false;
+    }
+
     /// <summary>Reads the current state of a control.</summary>
     public bool TryGetSnapshot(UiControl control, out UiControlSnapshot snapshot)
     {
@@ -498,7 +764,7 @@ public sealed class UiControlRuntime : IDisposable
     {
         ref ControlEntry entry = ref _entries[index];
         if (entry.Kind is not (ControlKind.Menu or ControlKind.Tooltip or ControlKind.Dialog or ControlKind.Toast or
-            ControlKind.Popup or ControlKind.Spinner) ||
+            ControlKind.Popup or ControlKind.Spinner or ControlKind.Custom) ||
             entry.Open == open)
         {
             return entry.Open == open;
@@ -868,9 +1134,82 @@ public sealed class UiControlRuntime : IDisposable
 
     internal ref ControlEntry Entry(int index) => ref _entries[index];
 
+    internal UiTextContentMeasurer? TextContentMeasurer => _textContent;
+
     internal ControlStyleContext Style => _styleContext;
 
     internal ControlNodeTree Tree => _tree;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ControlBehavior BehaviorOf(in ControlEntry entry) =>
+        entry.Kind == ControlKind.Custom
+            ? _widgets is not null
+                ? _widgets.ResolveForDispatch(entry.WidgetSlot, entry.WidgetGeneration)
+                : InertWidgetBehavior.Instance
+            : ControlCatalog.Get(entry.Kind);
+
+    internal UiWidgetSession Session(int index) => new(this, CreateHandle(index, in _entries[index]));
+
+    private bool TryGetOwnedNode(UiControl control, UiNodeId node, out int index)
+    {
+        index = -1;
+        if (!TryGetEntry(control, out int entryIndex))
+        {
+            return false;
+        }
+
+        // Widget-owned node authoring is reserved for registered widgets; built-in
+        // secondary nodes stay under their catalog behavior's exclusive control.
+        if (_entries[entryIndex].Kind != ControlKind.Custom ||
+            !_tree.TryGetBinding(node, out ControlNodeBinding binding) ||
+            binding.Control != entryIndex)
+        {
+            return false;
+        }
+
+        index = entryIndex;
+        return true;
+    }
+
+    private bool holdsOptionNode(int index, int option, UiNodeId node)
+    {
+        UiNodeId[]? nodes = _entries[index].OptionNodes;
+        return nodes is not null && (uint)option < (uint)nodes.Length && nodes[option] == node;
+    }
+
+    private static UiNodeId[] EnsureOptionCapacity(ref ControlEntry entry, int childIndex)
+    {
+        if (childIndex < 0)
+        {
+            ControlThrowHelper.ThrowInvalidHandle();
+        }
+
+        if (entry.OptionNodes is null)
+        {
+            entry.OptionNodes = new UiNodeId[Math.Max(4, childIndex + 1)];
+            return entry.OptionNodes;
+        }
+
+        if ((uint)childIndex >= (uint)entry.OptionNodes.Length)
+        {
+            Array.Resize(ref entry.OptionNodes, Math.Max(entry.OptionNodes.Length * 2, childIndex + 1));
+        }
+
+        return entry.OptionNodes;
+    }
+
+    private void DetachOwnedNode(int index, UiNodeId node)
+    {
+        _capture.ReleaseNode(node);
+        _ = _receivers.Remove(node);
+        _ = _bounds.Remove(node);
+        _layoutStyles.Remove(node);
+        _ = _styles.RemovePatch(node);
+        _ = _textContent?.Remove(node);
+        _hitIndex.Remove(node);
+        _ = _tree.RemoveNode(node);
+        _hitSyncDirty = true;
+    }
 
     internal bool TryGetEntryIndex(UiNodeId node, out int index)
     {
@@ -977,7 +1316,7 @@ public sealed class UiControlRuntime : IDisposable
     internal void RefreshVisual(int index)
     {
         ref ControlEntry entry = ref _entries[index];
-        ControlBehavior behavior = ControlCatalog.Get(entry.Kind);
+        ControlBehavior behavior = BehaviorOf(in entry);
         UiStylePatch patch = behavior.CreateStylePatch(in _styleContext, in entry);
         _styles.SetPatch(entry.Node, in patch);
         _dirty.Invalidate(new UiInvalidation(entry.Node, UiInvalidationFlags.Style | UiInvalidationFlags.Render));
@@ -1000,7 +1339,7 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         RefreshVisual(index);
-        ControlCatalog.Get(entry.Kind).OnSelectionApplied(this, index);
+        BehaviorOf(in entry).OnSelectionApplied(this, index);
         Emit(index, UiControlEventKind.SelectionChanged, entry.Value, entry.Checked, entry.Index, null);
     }
 
@@ -1131,7 +1470,7 @@ public sealed class UiControlRuntime : IDisposable
             }
 
             ref ControlEntry entry = ref _entries[i];
-            ControlBehavior behavior = ControlCatalog.Get(entry.Kind);
+            ControlBehavior behavior = BehaviorOf(in entry);
             bool enabled = !entry.Disabled;
             bool reachable = !modal.IsValid || IsWithin(entry.Node, modal);
             bool layered = entry.Kind is ControlKind.Dropdown or ControlKind.Menu;
@@ -1142,7 +1481,13 @@ public sealed class UiControlRuntime : IDisposable
             {
                 for (int option = 0; option < options.Length; option++)
                 {
-                    bool hit = reachable && entry.Visible && enabled && behavior.IsSecondaryHitTestable(in entry, ControlPart.Option, option);
+                    if (!options[option].IsValid)
+                    {
+                        continue;
+                    }
+
+                    bool hit = reachable && entry.Visible && enabled &&
+                        behavior.IsSecondaryHitTestable(in _styleContext, in entry, ControlPart.Option, option);
                     SyncNode(options[option], hit, false);
                 }
             }
@@ -1269,7 +1614,7 @@ public sealed class UiControlRuntime : IDisposable
         }
 
         RefreshVisual(index);
-        ControlCatalog.Get(entry.Kind).OnFocusChanged(this, index, args.Focused);
+        BehaviorOf(in entry).OnFocusChanged(this, index, args.Focused);
         Emit(index, UiControlEventKind.FocusChanged, entry.Value, entry.Checked, entry.Index, null);
     }
 
@@ -1490,7 +1835,7 @@ internal sealed class ControlInputReceiver(UiControlRuntime runtime, UiNodeId no
             return false;
         }
 
-        return ControlCatalog.Get(runtime.Entry(index).Kind).OnPointer(runtime, index, in binding, in args, phase);
+        return runtime.BehaviorOf(runtime.Entry(index)).OnPointer(runtime, index, in binding, in args, phase);
     }
 
     private bool HandleKey(in UiKeyEvent args)
@@ -1505,7 +1850,7 @@ internal sealed class ControlInputReceiver(UiControlRuntime runtime, UiNodeId no
             return false;
         }
 
-        return ControlCatalog.Get(runtime.Entry(index).Kind).OnKey(runtime, index, in args, UiRoutingPhase.Target);
+        return runtime.BehaviorOf(runtime.Entry(index)).OnKey(runtime, index, in args, UiRoutingPhase.Target);
     }
 
     private bool HandleText(in UiTextInputEvent args)
@@ -1521,6 +1866,6 @@ internal sealed class ControlInputReceiver(UiControlRuntime runtime, UiNodeId no
             return false;
         }
 
-        return ControlCatalog.Get(runtime.Entry(index).Kind).OnText(runtime, index, in args, UiRoutingPhase.Target);
+        return runtime.BehaviorOf(runtime.Entry(index)).OnText(runtime, index, in args, UiRoutingPhase.Target);
     }
 }

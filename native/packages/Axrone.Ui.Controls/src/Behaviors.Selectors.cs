@@ -250,7 +250,7 @@ internal sealed class RadioGroupBehavior : InteractiveBehavior
         }
     }
 
-    public override bool IsSecondaryHitTestable(in ControlEntry entry, ControlPart part, int option) =>
+    public override bool IsSecondaryHitTestable(in ControlStyleContext style, in ControlEntry entry, ControlPart part, int option) =>
         part == ControlPart.Option && (uint)option < (uint)(entry.OptionNodes?.Length ?? 0);
 
     public override bool OnKey(UiControlRuntime runtime, int index, in UiKeyEvent args, UiRoutingPhase phase)

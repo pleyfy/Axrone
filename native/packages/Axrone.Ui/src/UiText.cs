@@ -130,7 +130,29 @@ public interface IUiFontProvider
     float GetKerning(UiFontFaceId face, int left, int right);
 }
 
+/// <summary>Text auto-sizing mode, mirroring TypeScript <c>autoSize</c>.</summary>
+public enum UiTextAutoSize
+{
+    /// <summary>Fixed font size (default).</summary>
+    None = 0,
+
+    /// <summary>Shrink the font size until the layout fits the measured box.</summary>
+    ShrinkToFit = 1,
+}
+
 /// <summary>Resolved text style used for measurement and shaping.</summary>
+/// <param name="Face">Resolved font face.</param>
+/// <param name="Size">Requested font size; the upper bound for shrink-to-fit.</param>
+/// <param name="LineHeight">Line height in pixels; non-positive derives from the face.</param>
+/// <param name="LetterSpacing">Extra letter spacing in pixels.</param>
+/// <param name="Wrap">Wrapping mode.</param>
+/// <param name="Overflow">Overflow handling.</param>
+/// <param name="Align">Horizontal alignment.</param>
+/// <param name="Direction">Requested direction.</param>
+/// <param name="MaxLines">Maximum line count; non-positive means unlimited.</param>
+/// <param name="AutoSize">Auto-sizing mode; <see cref="UiTextAutoSize.None"/> keeps the size fixed.</param>
+/// <param name="MinFontSize">Smallest shrink-to-fit size; non-positive selects the default of 6.</param>
+/// <param name="MaxFontSize">Largest shrink-to-fit size; non-positive selects the requested <paramref name="Size"/>.</param>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiTextStyle(
     UiFontFaceId Face,
@@ -141,7 +163,10 @@ public readonly record struct UiTextStyle(
     UiTextOverflow Overflow,
     UiTextAlign Align,
     UiTextDirection Direction,
-    int MaxLines);
+    int MaxLines,
+    UiTextAutoSize AutoSize = UiTextAutoSize.None,
+    float MinFontSize = 0.0f,
+    float MaxFontSize = 0.0f);
 
 /// <summary>Measured text block extents.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

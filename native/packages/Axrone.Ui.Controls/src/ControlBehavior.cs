@@ -66,7 +66,7 @@ internal abstract class ControlBehavior
     }
 
     /// <summary>Gets whether a secondary node of this control is hit-testable.</summary>
-    public virtual bool IsSecondaryHitTestable(in ControlEntry entry, ControlPart part, int option) => false;
+    public virtual bool IsSecondaryHitTestable(in ControlStyleContext style, in ControlEntry entry, ControlPart part, int option) => false;
 }
 
 /// <summary>
