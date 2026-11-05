@@ -55,6 +55,40 @@ internal static class MathPhysics
         return LimitState.Inactive;
     }
 
+    /// <summary>
+    /// Folds a joint's stiffness and damping into the solver's softness and
+    /// velocity bias for one step: a compliant constraint adds <c>gamma</c> to
+    /// its effective mass and a <c>bias</c> toward the target, while a zero
+    /// stiffness leaves both at zero so the rigid path is untouched.
+    /// </summary>
+    /// <param name="stiffness">Spring stiffness; zero or negative means rigid.</param>
+    /// <param name="damping">Spring damping; never negative.</param>
+    /// <param name="dt">Step length in seconds.</param>
+    /// <param name="error">Signed constraint error at the start of the step.</param>
+    /// <param name="gamma">Added to the effective mass; zero for a rigid constraint.</param>
+    /// <param name="bias">Velocity bias toward the target; zero for a rigid constraint.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ComputeSoftness(
+        float stiffness, float damping, float dt, float error, out float gamma, out float bias)
+    {
+        if (stiffness > 0.0f)
+        {
+            gamma = 1.0f / (damping + (dt * stiffness));
+            bias = error * dt * stiffness * gamma;
+            return;
+        }
+
+        gamma = 0.0f;
+        bias = 0.0f;
+    }
+
+    /// <summary>Whether a joint's stored range pins the coordinate at all.</summary>
+    /// <param name="lower">Lower bound; zero or negative means unbounded.</param>
+    /// <param name="upper">Upper bound; zero or negative means unbounded.</param>
+    /// <returns><see langword="true"/> when either bound is set.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool HasRange(float lower, float upper) => lower > 0.0f || upper > 0.0f;
+
     /// <summary>Applies one position correction to a body pair with rotation coupling.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ApplyPositionCorrection(

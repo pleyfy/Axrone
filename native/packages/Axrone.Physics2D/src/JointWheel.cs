@@ -49,6 +49,21 @@ public struct WheelJointData
 
     /// <summary>Whether the hub motor drives.</summary>
     public bool EnableMotor;
+
+    /// <summary>Lower travel stop along the suspension axis, relative to the rest translation.</summary>
+    public float LowerTranslation;
+
+    /// <summary>Upper travel stop along the suspension axis, relative to the rest translation.</summary>
+    public float UpperTranslation;
+
+    /// <summary>Accumulated travel limit impulse; warm-started every step.</summary>
+    public float LimitImpulse;
+
+    /// <summary>Whether the travel stops clamp the suspension axis.</summary>
+    public bool EnableLimit;
+
+    /// <summary>Resolved travel limit state of the current step.</summary>
+    public LimitState LimitState;
 }
 
 /// <summary>Suspension: explicit spring force in init, hub motor plus lateral lock in the sweep.</summary>
@@ -134,6 +149,18 @@ public readonly struct WheelPolicy : IJointPolicy<WheelPolicy, WheelJointData>
 
         data.MotorMaxImpulse = data.EnableMotor ? data.MaxMotorTorque * dt : 0.0f;
 
+        LimitState previous = data.LimitState;
+        data.LimitState = MathPhysics.ResolveLimitState(
+            data.EnableLimit,
+            data.LowerTranslation,
+            data.UpperTranslation,
+            Vec2.Dot(pB - pA, axis) - data.ReferenceTranslation,
+            SolverTuning.AngularSlop);
+        if (data.LimitState != previous)
+        {
+            data.LimitImpulse = 0.0f;
+        }
+
         Vec2 anchorA = stateA.LinearVelocity + (stateA.AngularVelocity * MathPhysics.Perp(rA));
         Vec2 anchorB = stateB.LinearVelocity + (stateB.AngularVelocity * MathPhysics.Perp(rB));
         if ((anchorB - anchorA).LengthSquared() > wakeTolerance * wakeTolerance ||
@@ -153,7 +180,7 @@ public readonly struct WheelPolicy : IJointPolicy<WheelPolicy, WheelJointData>
         awakeA = (stateA.Flags & BodyFlags.Awake) != 0;
         awakeB = (stateB.Flags & BodyFlags.Awake) != 0;
 
-        Vec2 impulse = perp * data.PerpImpulse;
+        Vec2 impulse = (axis * data.LimitImpulse) + (perp * data.PerpImpulse);
         if (awakeA)
         {
             stateA.LinearVelocity -= impulse * stateA.InverseMass;
@@ -187,7 +214,7 @@ public readonly struct WheelPolicy : IJointPolicy<WheelPolicy, WheelJointData>
         float invIB = awakeB ? stateB.InverseInertia : 0.0f;
 
         Frame(in stateA, in stateB, data.LocalAnchorA, data.LocalAnchorB, data.LocalAxisA,
-            out _, out Vec2 perp, out Vec2 rA, out Vec2 rB, out _, out _);
+            out Vec2 axis, out Vec2 perp, out Vec2 rA, out Vec2 rB, out _, out _);
 
         float axialMass = invIA + invIB;
         if (data.EnableMotor && axialMass > 0.0f)
@@ -207,6 +234,39 @@ public readonly struct WheelPolicy : IJointPolicy<WheelPolicy, WheelJointData>
             if (awakeB)
             {
                 stateB.AngularVelocity += invIB * delta;
+            }
+        }
+
+        if (data.LimitState != LimitState.Inactive)
+        {
+            float limitAxisA = Vec2.Cross(rA, axis);
+            float limitAxisB = Vec2.Cross(rB, axis);
+            float travelMass = invMassA + invMassB + (invIA * limitAxisA * limitAxisA) + (invIB * limitAxisB * limitAxisB);
+            if (travelMass > 0.0f)
+            {
+                Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * MathPhysics.Perp(rA));
+                Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * MathPhysics.Perp(rB));
+                float rate = Vec2.Dot(vB - vA, axis);
+                float impulse = -rate / travelMass;
+                float oldLimit = data.LimitImpulse;
+                data.LimitImpulse = data.LimitState switch
+                {
+                    LimitState.AtLower => MathF.Max(oldLimit + impulse, 0.0f),
+                    LimitState.AtUpper => MathF.Min(oldLimit + impulse, 0.0f),
+                    _ => oldLimit + impulse,
+                };
+                Vec2 limitApplied = axis * (data.LimitImpulse - oldLimit);
+                if (awakeA)
+                {
+                    stateA.LinearVelocity -= limitApplied * invMassA;
+                    stateA.AngularVelocity -= invIA * Vec2.Cross(rA, limitApplied);
+                }
+
+                if (awakeB)
+                {
+                    stateB.LinearVelocity += limitApplied * invMassB;
+                    stateB.AngularVelocity += invIB * Vec2.Cross(rB, limitApplied);
+                }
             }
         }
 
@@ -256,19 +316,53 @@ public readonly struct WheelPolicy : IJointPolicy<WheelPolicy, WheelJointData>
         float invIB = awakeB ? stateB.InverseInertia : 0.0f;
 
         Frame(in stateA, in stateB, data.LocalAnchorA, data.LocalAnchorB, data.LocalAxisA,
-            out _, out Vec2 perp, out Vec2 rA, out Vec2 rB, out Vec2 pA, out Vec2 pB);
+            out Vec2 axis, out Vec2 perp, out Vec2 rA, out Vec2 rB, out Vec2 pA, out Vec2 pB);
 
         float perpA = Vec2.Cross(rA, perp);
         float perpB = Vec2.Cross(rB, perp);
         float perpK = invMassA + invMassB + (invIA * perpA * perpA) + (invIB * perpB * perpB);
-        if (perpK <= 0.0f)
+        if (perpK > 0.0f)
+        {
+            float error = Math.Clamp(Vec2.Dot(pB - pA, perp), -SolverTuning.MaxCorrection, SolverTuning.MaxCorrection);
+            Vec2 applied = perp * (-error / perpK);
+            MathPhysics.ApplyPositionCorrection(ref stateA, ref stateB, rA, rB, applied, invMassA, invMassB, invIA, invIB, awakeA, awakeB);
+        }
+
+        if (data.LimitState == LimitState.Inactive)
         {
             return;
         }
 
-        float error = Math.Clamp(Vec2.Dot(pB - pA, perp), -SolverTuning.MaxCorrection, SolverTuning.MaxCorrection);
-        Vec2 applied = perp * (-error / perpK);
-        MathPhysics.ApplyPositionCorrection(ref stateA, ref stateB, rA, rB, applied, invMassA, invMassB, invIA, invIB, awakeA, awakeB);
+        float travelAxisA = Vec2.Cross(rA, axis);
+        float travelAxisB = Vec2.Cross(rB, axis);
+        float travelK = invMassA + invMassB + (invIA * travelAxisA * travelAxisA) + (invIB * travelAxisB * travelAxisB);
+        if (travelK <= 0.0f)
+        {
+            return;
+        }
+
+        float translation = Vec2.Dot(pB - pA, axis) - data.ReferenceTranslation;
+        float limitError = data.LimitState switch
+        {
+            LimitState.AtLower => translation - data.LowerTranslation + SolverTuning.LinearSlop,
+            LimitState.AtUpper => translation - data.UpperTranslation - SolverTuning.LinearSlop,
+            _ => translation - data.LowerTranslation,
+        };
+
+        bool violates = data.LimitState switch
+        {
+            LimitState.AtLower => limitError < 0.0f,
+            LimitState.AtUpper => limitError > 0.0f,
+            _ => limitError != 0.0f,
+        };
+
+        if (!violates)
+        {
+            return;
+        }
+
+        Vec2 limitApplied = axis * (-Math.Clamp(limitError, -SolverTuning.MaxCorrection, SolverTuning.MaxCorrection) / travelK);
+        MathPhysics.ApplyPositionCorrection(ref stateA, ref stateB, rA, rB, limitApplied, invMassA, invMassB, invIA, invIB, awakeA, awakeB);
     }
 }
 #pragma warning restore CA1062
