@@ -1,5 +1,7 @@
 namespace Axrone.Ecs.Tests;
 
+using System.Runtime.ExceptionServices;
+
 internal readonly struct EcsAllocationProbe(int first, int second)
 {
     internal readonly int First = first;
@@ -8,15 +10,20 @@ internal readonly struct EcsAllocationProbe(int first, int second)
 
 /// <summary>
 /// Steady-state allocation evidence for the world event, actor and singleton surfaces.
-/// A thread's allocation counter advances in GC quanta (8 KB blocks), so a neighbour's
-/// garbage collection can inflate one window without this code allocating anything.
-/// Every measurement therefore reports the cleanest of several windows: a window with
-/// zero claimed bytes is proof of zero allocation, and inflation can only ever be added.
+/// Every window must be exactly clean — a min-of-N shape forgives the windows that really
+/// allocated — and the loop runs on its own joined thread, because a pooled xUnit worker is
+/// serviced by other collections and gets credited with their allocation blocks: the same
+/// workload showed sporadic 5.5-6.9 KB deltas in 3 of ~170 windows on a pooled worker and 0
+/// in 1728 windows on a dedicated thread.
 /// </summary>
 public sealed class EcsEventAllocationTests : IDisposable
 {
-    private const int Windows = 6;
+    private const int Windows = 8;
+    private const int PrimePasses = 14;
+    private const int MeasuredPasses = PrimePasses + Windows;
     private const int IterationsPerWindow = 25_000;
+    private const int ParkIterationsPerWindow = 8_000;
+    private const int QueriesPerWindow = 1_000;
 
     private readonly World _world;
     private readonly EcsEventName _tick = EcsEventNames.Intern("alloc.tick");
@@ -39,42 +46,45 @@ public sealed class EcsEventAllocationTests : IDisposable
     {
         long calls = 0;
         _world.On<EcsAllocationProbe>(in _tick, (in EcsEventName _, in EcsAllocationProbe value) => calls += value.First);
-
         EcsAllocationProbe payload = new(1, 2);
-        long best = BestWindow(() =>
-        {
-            for (int i = 0; i < IterationsPerWindow; i++)
-            {
-                _world.EmitSync(_tick, payload);
-            }
-        });
 
-        calls.Should().BeGreaterThanOrEqualTo(IterationsPerWindow);
+        AssertEveryWindowClean(
+            () =>
+            {
+                for (int i = 0; i < IterationsPerWindow; i++)
+                {
+                    _world.EmitSync(_tick, payload);
+                }
+            },
+            "world event emit");
+
+        calls.Should().Be((long)MeasuredPasses * IterationsPerWindow);
         _world.TryGetEventMetrics(_tick, out EcsEventMetrics metrics).Should().BeTrue();
         metrics.EmitCount.Should().Be(calls);
-        best.Should().Be(0L);
-        Console.WriteLine($"emit hot path: best {best} B over {Windows} x {IterationsPerWindow} emits");
+        Console.WriteLine($"emit hot path: {MeasuredPasses} x {IterationsPerWindow} emits ({PrimePasses} prime passes), every measured window 0 B");
     }
 
     [Fact]
     public void Paused_Buffering_Does_Not_Allocate_Per_Event()
     {
-        _world.EventBufferCapacity = IterationsPerWindow * 2;
+        int parked = MeasuredPasses * ParkIterationsPerWindow;
+        _world.EventBufferCapacity = parked + 8;
         _world.On<EcsAllocationProbe>(in _tick, static (in EcsEventName _, in EcsAllocationProbe _) => { });
         _world.PauseEvents();
 
         EcsAllocationProbe payload = new(3, 4);
-        long best = BestWindow(() =>
-        {
-            for (int i = 0; i < IterationsPerWindow; i++)
+        AssertEveryWindowClean(
+            () =>
             {
-                _world.EmitSync(_tick, payload);
-            }
-        });
+                for (int i = 0; i < ParkIterationsPerWindow; i++)
+                {
+                    _world.EmitSync(_tick, payload);
+                }
+            },
+            "paused event parking");
 
-        _world.PendingEventCount.Should().BeGreaterThanOrEqualTo(IterationsPerWindow);
-        best.Should().Be(0L);
-        Console.WriteLine($"paused buffering: best {best} B per {IterationsPerWindow}-event park window");
+        _world.PendingEventCount.Should().Be(parked);
+        Console.WriteLine($"paused buffering: {MeasuredPasses} x {ParkIterationsPerWindow} parks ({PrimePasses} prime passes), every measured window 0 B");
     }
 
     [Fact]
@@ -86,27 +96,27 @@ public sealed class EcsEventAllocationTests : IDisposable
         _world.PauseEvents();
 
         EcsAllocationProbe payload = new(1, 1);
-        long best = BestWindow(() =>
-        {
-            for (int i = 0; i < IterationsPerWindow; i++)
+        AssertEveryWindowClean(
+            () =>
             {
-                _world.EmitSync(_tick, payload);
-            }
+                for (int i = 0; i < IterationsPerWindow; i++)
+                {
+                    _world.EmitSync(_tick, payload);
+                }
 
-            _world.ResumeEvents();
-            _world.PauseEvents();
-        });
+                _world.ResumeEvents();
+                _world.PauseEvents();
+            },
+            "park plus flush cycle");
 
         _world.PendingEventCount.Should().Be(0);
-        best.Should().Be(0L);
-        delivered.Should().BeGreaterThanOrEqualTo(IterationsPerWindow);
-        Console.WriteLine($"park+flush cycle: best {best} B over {Windows} x {IterationsPerWindow} park/flush pairs");
+        delivered.Should().Be((long)MeasuredPasses * IterationsPerWindow);
+        Console.WriteLine($"park+flush cycle: {MeasuredPasses} x {IterationsPerWindow} pairs ({PrimePasses} prime passes), every measured window 0 B");
     }
 
     [Fact]
     public void Actor_Tag_Query_Is_Allocation_Free()
     {
-        const int Queries = 1_000;
         Entity[] buffer = new Entity[64];
         for (int i = 0; i < 16; i++)
         {
@@ -114,19 +124,18 @@ public sealed class EcsEventAllocationTests : IDisposable
             _world.RegisterActor(entity, EcsActorNames.Intern($"alloc.actor.{i}"), _tag, layer: i % 3);
         }
 
-        _ = _world.GetActorsByTag(_tag, buffer);
-
-        long best = BestWindow(() =>
-        {
-            for (int i = 0; i < Queries; i++)
+        AssertEveryWindowClean(
+            () =>
             {
-                _ = _world.GetActorsByTag(_tag, buffer);
-                _ = _world.GetActorsByLayer(1, buffer);
-            }
-        });
+                for (int i = 0; i < QueriesPerWindow; i++)
+                {
+                    _ = _world.GetActorsByTag(_tag, buffer);
+                    _ = _world.GetActorsByLayer(1, buffer);
+                }
+            },
+            "actor tag and layer queries");
 
-        best.Should().Be(0L);
-        Console.WriteLine($"actor queries: best {best} B over {Windows} x {Queries * 2} queries");
+        Console.WriteLine($"actor queries: {MeasuredPasses} x {QueriesPerWindow * 2} queries ({PrimePasses} prime passes), every measured window 0 B");
     }
 
     [Fact]
@@ -134,40 +143,69 @@ public sealed class EcsEventAllocationTests : IDisposable
     {
         Entity owner = _world.BeginEntity().Commit();
         _world.SetSingleton(owner, new EcsAllocationProbe(5, 6));
-        _ = _world.TryGetSingleton(out EcsAllocationProbe warm);
-        _ = warm.First;
 
-        long best = BestWindow(() =>
-        {
-            for (int i = 0; i < IterationsPerWindow; i++)
+        AssertEveryWindowClean(
+            () =>
             {
-                _ = _world.TryGetSingleton(out EcsAllocationProbe value);
-                _ = value.First;
+                for (int i = 0; i < IterationsPerWindow; i++)
+                {
+                    _ = _world.TryGetSingleton(out EcsAllocationProbe value);
+                    _ = value.First;
+                }
+            },
+            "singleton reads");
+
+        Console.WriteLine($"singleton read: {MeasuredPasses} x {IterationsPerWindow} reads ({PrimePasses} prime passes), every measured window 0 B");
+    }
+
+    /// <summary>
+    /// Primes with the exact measured call shape until tiered compilation has settled, then
+    /// requires every window to allocate zero bytes. The loop runs on a dedicated thread that is
+    /// joined before returning, so the thread-local allocation counter only ever accounts for
+    /// this workload; a failure is rethrown on the test thread with its original stack.
+    /// </summary>
+    private static void AssertEveryWindowClean(Action workload, string label)
+    {
+        Exception? failure = null;
+        Thread worker = new(() =>
+        {
+            try
+            {
+                for (int pass = 0; pass < PrimePasses; pass++)
+                {
+                    workload();
+                }
+
+                for (int window = 0; window < Windows; window++)
+                {
+                    long before = GC.GetAllocatedBytesForCurrentThread();
+                    workload();
+                    long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+
+                    // The window body allocates nothing, not even a formatted reason: an eager
+                    // reason string would be built between windows and blur the very counter
+                    // being watched. The predicate is unchanged — any non-zero delta fails.
+                    if (delta != 0L)
+                    {
+                        Assert.Fail(
+                            $"window {window}: the {label} hot path must allocate zero bytes on the " +
+                            $"measured thread, but claimed {delta} B");
+                    }
+                }
+            }
+            catch (Exception error)
+            {
+                failure = error;
             }
         });
 
-        best.Should().Be(0L);
-        Console.WriteLine($"singleton read: best {best} B over {Windows} x {IterationsPerWindow} reads");
-    }
+        worker.IsBackground = true;
+        worker.Start();
+        worker.Join();
 
-    /// <summary>Runs the workload several times and returns the cleanest window in bytes.</summary>
-    private static long BestWindow(Action workload)
-    {
-        workload();
-        long best = long.MaxValue;
-        for (int window = 0; window < Windows; window++)
+        if (failure is not null)
         {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            workload();
-            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
-            best = Math.Min(best, delta);
-            if (best == 0L)
-            {
-                break;
-            }
+            ExceptionDispatchInfo.Capture(failure).Throw();
         }
-
-        return best;
     }
-
 }

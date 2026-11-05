@@ -1,5 +1,6 @@
 namespace Axrone.Ecs.Tests;
 
+using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 
 internal readonly struct EcsEventProbe(int first, int second)
@@ -252,21 +253,168 @@ public sealed class EcsWorldEventsTests : IDisposable
     }
 
     [Fact]
-    public void Metrics_Track_Emits_Invocations_And_Timing()
+    public void Metrics_Timing_Grows_With_Work_And_Stays_Zero_Without_It()
     {
+        const int Batch = 20_000;
+        const long OneSecondNanoseconds = 1_000_000_000L;
+
         _world.On<EcsEventProbe>(in _tick, static (in EcsEventName _, in EcsEventProbe _) => { });
 
-        for (int i = 0; i < 5; i++)
+        // Negative control: a live subscription with no emission must not fabricate timing.
+        _world.TryGetEventMetrics(_tick, out EcsEventMetrics idle).Should().BeTrue();
+        idle.EmitCount.Should().Be(0);
+        idle.TotalNanoseconds.Should().Be(0);
+        idle.MaxNanoseconds.Should().Be(0);
+
+        for (int i = 0; i < Batch; i++)
         {
             _world.EmitSync(_tick, default(EcsEventProbe));
         }
 
+        _world.TryGetEventMetrics(_tick, out EcsEventMetrics first).Should().BeTrue();
+        first.EmitCount.Should().Be(Batch);
+        first.InvocationCount.Should().Be(Batch);
+        first.HandlerCount.Should().Be(1);
+        first.TotalNanoseconds.Should().BeGreaterThan(0);
+        first.TotalNanoseconds.Should().BeLessThan(OneSecondNanoseconds);
+
+        for (int i = 0; i < Batch; i++)
+        {
+            _world.EmitSync(_tick, default(EcsEventProbe));
+        }
+
+        _world.TryGetEventMetrics(_tick, out EcsEventMetrics second).Should().BeTrue();
+        second.EmitCount.Should().Be(Batch * 2);
+        second.InvocationCount.Should().Be(Batch * 2);
+        second.TotalNanoseconds.Should().BeGreaterThan(first.TotalNanoseconds);
+        second.TotalNanoseconds.Should().BeLessThan(OneSecondNanoseconds);
+        second.MaxNanoseconds.Should().BeGreaterThan(0);
+
+        // Per-emit maximum must dominate the per-emit average; an average recorded as the
+        // maximum, or a unit slip between ticks and nanoseconds, breaks this immediately.
+        (second.MaxNanoseconds * second.EmitCount).Should().BeGreaterThanOrEqualTo(second.TotalNanoseconds);
+        second.FaultCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Parked_Event_With_No_Handler_Remains_Visible_As_Undelivered()
+    {
+        _world.On<EcsEventProbe>(in _tick, static (in EcsEventName _, in EcsEventProbe _) => { });
+        _world.PauseEvents();
+        _world.EmitSync(_tick, new EcsEventProbe(1, 0));
+        _world.EmitSync(_tick, new EcsEventProbe(2, 0));
+
+        _world.OffAll(in _tick).Should().Be(1);
+        _world.ResumeEvents().Should().Be(0);
+
         _world.TryGetEventMetrics(_tick, out EcsEventMetrics metrics).Should().BeTrue();
-        metrics.EmitCount.Should().Be(5);
-        metrics.InvocationCount.Should().Be(5);
-        metrics.HandlerCount.Should().Be(1);
-        metrics.TotalNanoseconds.Should().BeGreaterThan(0);
+        metrics.BufferedCount.Should().Be(2);
+        metrics.PendingCount.Should().Be(0);
+        metrics.InvocationCount.Should().Be(0);
+        metrics.DroppedCount.Should().Be(0);
+        metrics.UndeliveredCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void Parked_Event_For_A_Foreign_Payload_Shape_Is_Counted_Undelivered()
+    {
+        _world.On<EcsEventWideProbe>(in _tick, static (in EcsEventName _, in EcsEventWideProbe _) => { });
+        _world.PauseEvents();
+        _world.EmitSync(_tick, default(EcsEventProbe));
+
+        _world.ResumeEvents().Should().Be(0);
+        _world.TryGetEventMetrics(_tick, out EcsEventMetrics metrics).Should().BeTrue();
+        metrics.UndeliveredCount.Should().Be(1);
+        metrics.InvocationCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Parked_Events_Flush_Per_Name_Grouped_By_Slot_Not_By_Global_Park_Order()
+    {
+        EcsEventName alpha = EcsEventNames.Intern("order.alpha");
+        EcsEventName beta = EcsEventNames.Intern("order.beta");
+        alpha.Value.Should().BeLessThan(beta.Value);
+
+        List<(int Slot, int Sequence)> delivered = [];
+        _world.On<EcsEventProbe>(in alpha, (in EcsEventName name, in EcsEventProbe value) => delivered.Add((name.Value, value.Second)));
+        _world.On<EcsEventProbe>(in beta, (in EcsEventName name, in EcsEventProbe value) => delivered.Add((name.Value, value.Second)));
+
+        _world.PauseEvents();
+        _world.EmitSync(beta, new EcsEventProbe(0, 1));
+        _world.EmitSync(alpha, new EcsEventProbe(0, 2));
+        _world.EmitSync(beta, new EcsEventProbe(0, 3));
+        _world.EmitSync(alpha, new EcsEventProbe(0, 4));
+        _world.PendingEventCount.Should().Be(4);
+
+        _world.ResumeEvents().Should().Be(4);
+
+        // Documented order: ascending interned slot, park order inside each slot — the alpha
+        // queue drains completely before beta, even though beta parked first.
+        delivered.Should().Equal(
+            [(alpha.Value, 2), (alpha.Value, 4), (beta.Value, 1), (beta.Value, 3)]);
+    }
+
+    [Fact]
+    public async Task Drain_Follows_The_Same_Per_Name_Grouping_As_Resume()
+    {
+        EcsEventName alpha = EcsEventNames.Intern("drorder.alpha");
+        EcsEventName beta = EcsEventNames.Intern("drorder.beta");
+        List<(int Slot, int Sequence)> delivered = [];
+        _world.On<EcsEventProbe>(in alpha, (in EcsEventName name, in EcsEventProbe value) => delivered.Add((name.Value, value.Second)));
+        _world.On<EcsEventProbe>(in beta, (in EcsEventName name, in EcsEventProbe value) => delivered.Add((name.Value, value.Second)));
+
+        _world.PauseEvents();
+        _world.EmitSync(beta, new EcsEventProbe(0, 1));
+        _world.EmitSync(alpha, new EcsEventProbe(0, 2));
+
+        (await _world.DrainEventsAsync()).Should().Be(2);
+        delivered.Should().Equal([(alpha.Value, 2), (beta.Value, 1)]);
+        _world.EventsPaused.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Cross_Thread_Emits_Are_Delivered_And_Ordered_Per_Emitting_Thread()
+    {
+        const int PerThread = 4_000;
+        using ManualResetEventSlim gate = new(false);
+        ConcurrentQueue<(int Thread, int Sequence)> observed = new();
+        _world.On<EcsEventProbe>(in _tick, (in EcsEventName _, in EcsEventProbe value) =>
+            observed.Enqueue((value.First, value.Second)));
+
+        Task[] emitters =
+        [
+            Task.Run(() => EmitSequence(_world, _tick, gate, thread: 0, PerThread)),
+            Task.Run(() => EmitSequence(_world, _tick, gate, thread: 1, PerThread)),
+        ];
+
+        gate.Set();
+        await Task.WhenAll(emitters);
+
+        observed.Should().HaveCount(PerThread * 2);
+        foreach (int thread in new[] { 0, 1 })
+        {
+            observed.Where(entry => entry.Thread == thread).Select(entry => entry.Sequence)
+                .Should().BeInAscendingOrder("an emitting thread's own events keep call order");
+        }
+
+        _world.TryGetEventMetrics(_tick, out EcsEventMetrics metrics).Should().BeTrue();
+        metrics.EmitCount.Should().Be(PerThread * 2);
+        metrics.InvocationCount.Should().Be(PerThread * 2);
+
+        // The re-entrancy ceiling is scoped to one thread's call stack, so independent
+        // concurrent emitters must never be rejected by it.
         metrics.FaultCount.Should().Be(0);
+        _world.GetEventFault(in _tick).Should().BeNull();
+        _world.HandlerCount(in _tick).Should().Be(1);
+    }
+
+    private static void EmitSequence(World world, in EcsEventName name, ManualResetEventSlim gate, int thread, int count)
+    {
+        gate.Wait();
+        for (int sequence = 0; sequence < count; sequence++)
+        {
+            _ = world.EmitSync(name, new EcsEventProbe(thread, sequence));
+        }
     }
 
     [Fact]
