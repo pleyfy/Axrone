@@ -137,10 +137,10 @@ internal struct BodyState
     /// <summary>Angular velocity in radians per second.</summary>
     public Vec3 AngularVelocity;
 
-    /// <summary>Accumulated force, cleared every step.</summary>
+    /// <summary>Accumulated world-space force, cleared every step.</summary>
     public Vec3 Force;
 
-    /// <summary>Accumulated torque, cleared every step.</summary>
+    /// <summary>Accumulated world-space torque, cleared every step.</summary>
     public Vec3 Torque;
 
     /// <summary>Mass; zero means infinite.</summary>
