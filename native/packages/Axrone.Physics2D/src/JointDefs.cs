@@ -284,7 +284,7 @@ public readonly struct WeldDef
     /// <summary>Shared world anchor.</summary>
     public Vec2 WorldAnchor { get; init; } = default;
 
-    /// <summary>Soft-attach frequency; zero keeps the weld rigid, positive springs toward the welded pose.</summary>
+    /// <summary>Soft-attach frequency in hertz (omega = 2*pi*f, the wheel suspension's convention); zero keeps the weld rigid, positive springs toward the welded pose at this cycle rate.</summary>
     public float Frequency
     {
         get => field;
@@ -299,7 +299,7 @@ public readonly struct WeldDef
         }
     } = 0.0f;
 
-    /// <summary>Damping of the soft attach; never negative, and only read while the frequency is positive.</summary>
+    /// <summary>Damping ratio of the soft attach (zeta in damping = 2*zeta*omega); never negative, and only read while the frequency is positive.</summary>
     public float DampingRatio
     {
         get => field;

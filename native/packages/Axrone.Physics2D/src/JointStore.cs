@@ -261,6 +261,7 @@ public sealed class JointStore : IJointRegistry
 
         lock (_lock)
         {
+            MathPhysics.ComputeAttachTuning(definition.Frequency, definition.DampingRatio, out float stiffness, out float damping);
             WeldJointData data = new()
             {
                 BodyA = definition.BodyA,
@@ -268,8 +269,8 @@ public sealed class JointStore : IJointRegistry
                 LocalAnchorA = transformA.InverseTransformPoint(definition.WorldAnchor),
                 LocalAnchorB = transformB.InverseTransformPoint(definition.WorldAnchor),
                 ReferenceAngle = transformB.Angle - transformA.Angle,
-                Stiffness = definition.Frequency * definition.Frequency,
-                Damping = 2.0f * definition.DampingRatio * definition.Frequency,
+                Stiffness = stiffness,
+                Damping = damping,
             };
             uint sparse = _weld.Allocate(in data);
             bodies.SetAwake(definition.BodyA, true);
