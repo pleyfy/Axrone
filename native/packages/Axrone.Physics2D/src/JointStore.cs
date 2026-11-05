@@ -425,6 +425,11 @@ public sealed class JointStore : IJointRegistry
             ThrowHelper.ThrowInvalidOperation("Suspension axis must be a finite non-zero vector.");
         }
 
+        if (definition.EnableLimit && definition.LowerTranslation > definition.UpperTranslation)
+        {
+            ThrowHelper.ThrowInvalidOperation("Lower travel stop must not exceed the upper stop.");
+        }
+
         ref BodyState stateA = ref bodies.Slot(definition.BodyA);
         ref BodyState stateB = ref bodies.Slot(definition.BodyB);
 
@@ -453,6 +458,9 @@ public sealed class JointStore : IJointRegistry
                 MotorSpeed = definition.MotorSpeed,
                 MaxMotorTorque = definition.MaxMotorTorque,
                 EnableMotor = definition.EnableMotor,
+                EnableLimit = definition.EnableLimit,
+                LowerTranslation = definition.LowerTranslation,
+                UpperTranslation = definition.UpperTranslation,
                 SuspensionFrequency = definition.SuspensionFrequency,
                 SuspensionDamping = definition.SuspensionDamping,
             };

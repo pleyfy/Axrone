@@ -436,6 +436,20 @@ public static class WheelJointBuilderExtensions
         return new WheelJointBuilder<Typestate.GeometryConfigured>(in definition);
     }
 
+    /// <summary>Binds the travel stops along the suspension axis.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static WheelJointBuilder<Typestate.GeometryConfigured> WithLimits(
+        this WheelJointBuilder<Typestate.GeometryConfigured> builder, float lower, float upper)
+    {
+        WheelDef definition = builder.Definition with
+        {
+            LowerTranslation = lower,
+            UpperTranslation = upper,
+            EnableLimit = true,
+        };
+        return new WheelJointBuilder<Typestate.GeometryConfigured>(in definition);
+    }
+
     /// <summary>Allocates the joint in the store.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static JointId Build(

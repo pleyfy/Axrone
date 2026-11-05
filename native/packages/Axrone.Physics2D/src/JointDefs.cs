@@ -479,6 +479,39 @@ public readonly struct WheelDef
     /// <summary>Whether the hub motor drives.</summary>
     public bool EnableMotor { get; init; } = false;
 
+    /// <summary>Whether the travel stops clamp the suspension axis.</summary>
+    public bool EnableLimit { get; init; } = false;
+
+    /// <summary>Lower travel stop along the suspension axis, relative to the rest translation.</summary>
+    public float LowerTranslation
+    {
+        get => field;
+        init
+        {
+            if (float.IsNaN(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(LowerTranslation));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Upper travel stop along the suspension axis, relative to the rest translation.</summary>
+    public float UpperTranslation
+    {
+        get => field;
+        init
+        {
+            if (float.IsNaN(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(UpperTranslation));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
     /// <summary>Suspension frequency in hertz; strictly positive, stable below 1 / (pi * dt).</summary>
     public float SuspensionFrequency
     {
