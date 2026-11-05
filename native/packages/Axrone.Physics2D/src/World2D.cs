@@ -789,7 +789,7 @@ public sealed class World : IDisposable
             return false;
         }
 
-        if ((record.Filter.Group != 0 || record.Filter.Category != 0) && !QueryFilter.Matches(in record.Filter, in filter))
+        if (!QueryFilter.Matches(in record.Filter, in filter))
         {
             return false;
         }
