@@ -77,6 +77,21 @@ public class TaskQueueBenchmarks : IDisposable
         return completed;
     }
 
+    [Benchmark]
+    public bool DrainWhenIdle()
+    {
+        _scheduler!.DrainAsync().AsTask().GetAwaiter().GetResult();
+        return _scheduler.IsIdle;
+    }
+
+    [Benchmark]
+    public bool SubmitThenDrain()
+    {
+        EventTaskHandle handle = SubmitOne();
+        _scheduler!.DrainAsync().AsTask().GetAwaiter().GetResult();
+        return handle.State == EventTaskState.Completed;
+    }
+
     private EventTaskHandle SubmitOne() => _scheduler!.SubmitBound(_boundBody!, _state);
 
     private static ValueTask<object?> SyncBoundBody(object? state, CancellationToken token) => ValueTask.FromResult<object?>(null);
