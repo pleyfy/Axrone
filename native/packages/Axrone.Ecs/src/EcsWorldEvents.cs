@@ -39,27 +39,29 @@ public enum EcsEventBufferOverflow : byte
 /// <param name="EmitCount">Accepted emissions, buffered ones included.</param>
 /// <param name="InvocationCount">Handler invocations that completed.</param>
 /// <param name="BufferedCount">Emissions parked while the world was paused.</param>
-/// <param name="DroppedCount">Buffered emissions lost by an overflow policy or by a bus fault.</param>
-/// <param name="UndeliveredCount">Parked emissions flushed to zero matching handlers; the
-/// payload was consumed but nothing observed it.</param>
+/// <param name="DroppedCount">Parked emissions refused or evicted by an overflow policy, and
+/// parked emissions discarded when the world closed.</param>
 /// <param name="FaultCount">Handler invocations that threw.</param>
-/// <param name="TotalNanoseconds">Cumulative dispatch time.</param>
-/// <param name="MaxNanoseconds">Longest single dispatch.</param>
+/// <param name="TotalNanoseconds">Cumulative inline dispatch time; parked flushes are not timed.</param>
+/// <param name="MaxNanoseconds">Longest single inline dispatch.</param>
 /// <param name="PendingCount">Emissions still buffered.</param>
 /// <param name="HandlerCount">Live registrations for the event.</param>
 /// <param name="LastEmittedTimestamp">Raw <see cref="Stopwatch"/> tick of the last accepted emission.</param>
+/// <param name="UndeliveredCount">Parked emissions whose flush found no handler to accept them: the
+/// payload left the buffer and nothing observed it. An emission that was never parked reports the
+/// same condition through the <c>false</c> return of <see cref="World.EmitSync{TPayload}"/>.</param>
 public readonly record struct EcsEventMetrics(
     long EmitCount,
     long InvocationCount,
     long BufferedCount,
     long DroppedCount,
-    long UndeliveredCount,
     long FaultCount,
     long TotalNanoseconds,
     long MaxNanoseconds,
     long PendingCount,
     int HandlerCount,
-    long LastEmittedTimestamp);
+    long LastEmittedTimestamp,
+    long UndeliveredCount);
 
 /// <summary>
 /// One live registration inside an event bucket.
@@ -139,8 +141,8 @@ internal enum EcsEventParkResult : byte
 
 /// <summary>
 /// Bounded FIFO of payloads parked while the world is paused. The ring is allocated
-/// once per event on the first parked emission and pinned, so the flush path never
-/// moves the heap.
+/// once per event on the first parked emission; its byte slots are pinned, so flushing
+/// copies a payload into a stack buffer without touching the heap.
 /// </summary>
 internal sealed class EcsEventBuffer
 {
@@ -281,6 +283,9 @@ internal sealed class EcsEventRuntime
 {
     /// <summary>Re-entrancy ceiling, matching the reference emitter.</summary>
     internal const int MaxDispatchDepth = 32;
+
+    /// <summary>Claims one flush pump may take per call, bounding a self-parking handler loop.</summary>
+    internal const int MaxFlushClaims = 8;
 
     private readonly Lock _gate = new();
     private EcsEventBucket?[] _buckets = new EcsEventBucket?[64];
@@ -464,41 +469,51 @@ internal sealed class EcsEventRuntime
     internal void SetPaused(bool value) => Interlocked.Exchange(ref _paused, value ? 1 : 0);
 
     /// <summary>
-    /// Delivers parked events. One pump runs at a time: a nested or concurrent request raises a
-    /// request flag and the running pump takes another pass, so no parked event waits for an
-    /// unrelated call. Each pass is budgeted by the pending count at its start, so a handler that
-    /// parks new events cannot livelock the pump.
+    /// Delivers parked events. One pump runs at a time: a nested or concurrent caller raises a
+    /// request flag and takes another pass after releasing the pump rather than stranding its
+    /// parked events. Each pass is budgeted by the pending count at its start and the whole call
+    /// is claim-bounded, so a handler that parks new events cannot livelock the pump.
     /// </summary>
     internal int FlushAll(bool respectPaused)
     {
-        if (Interlocked.CompareExchange(ref _flushing, 1, 0) != 0)
-        {
-            Volatile.Write(ref _flushRequested, 1);
-            return 0;
-        }
-
         int dispatched = 0;
-        try
+        for (int claim = 0; claim < MaxFlushClaims; claim++)
         {
-            while (true)
+            if (Interlocked.CompareExchange(ref _flushing, 1, 0) != 0)
             {
-                Volatile.Write(ref _flushRequested, 0);
-                int budget = CountPending();
-                if (budget == 0)
-                {
-                    break;
-                }
+                Volatile.Write(ref _flushRequested, 1);
+                return dispatched;
+            }
 
-                dispatched += FlushPass(budget, respectPaused);
-                if (Volatile.Read(ref _flushRequested) == 0 || (respectPaused && IsPaused))
+            try
+            {
+                while (true)
                 {
-                    break;
+                    Volatile.Write(ref _flushRequested, 0);
+                    int budget = CountPending();
+                    if (budget == 0)
+                    {
+                        break;
+                    }
+
+                    dispatched += FlushPass(budget, respectPaused);
+                    if ((respectPaused && IsPaused) || Volatile.Read(ref _flushRequested) == 0)
+                    {
+                        break;
+                    }
                 }
             }
-        }
-        finally
-        {
-            Volatile.Write(ref _flushing, 0);
+            finally
+            {
+                Volatile.Write(ref _flushing, 0);
+            }
+
+            // Release-then-recheck: a caller that flagged between the last check and the release
+            // is served here instead of waiting for an unrelated resume or drain.
+            if (Volatile.Read(ref _flushRequested) == 0 || CountPending() == 0)
+            {
+                break;
+            }
         }
 
         return dispatched;
@@ -530,6 +545,10 @@ internal sealed class EcsEventRuntime
             }
 
             dispatched += FlushBucket(bucket, new EcsEventName(slot), respectPaused, ref budget);
+            if (respectPaused && IsPaused)
+            {
+                break;
+            }
         }
 
         return dispatched;
@@ -545,18 +564,19 @@ internal sealed class EcsEventRuntime
         EcsEventBuffer buffer = Volatile.Read(ref bucket.Buffer)!;
         Span<byte> scratch = stackalloc byte[EcsEventBuffer.SlotBytes];
 
-        while (budget > 0 && buffer.TryReadHead(scratch, out IEcsEventPayloadBridge? bridge, out int size))
+        while (budget > 0 && (!respectPaused || !IsPaused) &&
+            buffer.TryReadHead(scratch, out IEcsEventPayloadBridge? bridge, out int size))
         {
             budget--;
             if (bridge is null)
             {
+                _ = Interlocked.Increment(ref bucket.UndeliveredCount);
                 continue;
             }
 
             EcsEventRegistration[] registrations = Volatile.Read(ref bucket.Registrations);
             bool hasOnce = false;
             bool delivered = false;
-            bool lost = false;
             for (int i = 0; i < registrations.Length; i++)
             {
                 EcsEventRegistration registration = registrations[i];
@@ -577,13 +597,12 @@ internal sealed class EcsEventRuntime
                 }
                 catch (Exception error) when (error is IEcsEventBusError)
                 {
-                    lost = true;
-                    _ = Interlocked.Increment(ref bucket.DroppedCount);
+                    delivered = true;
                     RecordFault(bucket, error);
                 }
             }
 
-            if (!delivered && !lost)
+            if (!delivered)
             {
                 _ = Interlocked.Increment(ref bucket.UndeliveredCount);
             }
@@ -591,11 +610,6 @@ internal sealed class EcsEventRuntime
             if (hasOnce)
             {
                 RemoveExpiredOnce(bucket, registrations, bridge);
-            }
-
-            if (respectPaused && IsPaused)
-            {
-                break;
             }
         }
 
@@ -994,10 +1008,11 @@ public sealed partial class World
 
     /// <summary>
     /// Clears the paused flag and dispatches parked events in park order, ascending event slot,
-    /// so one event's parked queue drains completely before the next event's. Stops early when a
-    /// handler pauses again mid-flush; the remainder stays parked and
-    /// <see cref="DrainEventsAsync"/> delivers it. A parked event that finds no handler at flush
-    /// time is counted in <see cref="EcsEventMetrics.UndeliveredCount"/> rather than lost silently.
+    /// so one event's parked queue drains before the next event's. A handler that pauses again
+    /// mid-flush stops dispatch at once; whatever is still parked — including the rest of that
+    /// handler's own event queue — is delivered by the next <see cref="ResumeEvents"/> or
+    /// <see cref="DrainEventsAsync"/>. A parked event that finds no handler at flush time is
+    /// counted in <see cref="EcsEventMetrics.UndeliveredCount"/> rather than lost silently.
     /// </summary>
     /// <returns>Handler invocations the flush performed.</returns>
     public int ResumeEvents()
@@ -1039,13 +1054,13 @@ public sealed partial class World
             Volatile.Read(ref bucket.InvocationCount),
             Volatile.Read(ref bucket.BufferedCount),
             Volatile.Read(ref bucket.DroppedCount),
-            Volatile.Read(ref bucket.UndeliveredCount),
             Volatile.Read(ref bucket.FaultCount),
             Volatile.Read(ref bucket.TotalNanoseconds),
             Volatile.Read(ref bucket.MaxNanoseconds),
             bucket.Buffer?.Count ?? 0,
             bucket.Registrations.Length,
-            Volatile.Read(ref bucket.LastEmittedTimestamp));
+            Volatile.Read(ref bucket.LastEmittedTimestamp),
+            Volatile.Read(ref bucket.UndeliveredCount));
         return true;
     }
 
