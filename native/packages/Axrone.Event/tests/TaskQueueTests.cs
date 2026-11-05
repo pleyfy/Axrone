@@ -529,6 +529,8 @@ public sealed class TaskQueueTests
 
         gate.SetResult();
         await scheduler.DrainAsync().AsTask().WaitAsync(Wait);
+        scheduler.GetStats().CompletedCount.Should()
+            .Be(3, "six submissions but only three survived the capacity policy, so completions drop with them");
     }
 
     [Fact]
