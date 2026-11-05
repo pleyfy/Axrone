@@ -1,6 +1,108 @@
 namespace Axrone.Physics2D;
 
 /// <summary>
+/// Construction parameters of a distance joint: two body anchors held at a
+/// rest separation. With <see cref="Stiffness"/> the rod pulls softly toward
+/// the rest length instead of rigidly; with a
+/// <see cref="MinDistance"/>/<see cref="MaxDistance"/> pair the rod is
+/// replaced by a range the separation may not leave.
+/// </summary>
+public readonly struct DistanceDef
+{
+    /// <summary>Creates default parameters: a rigid rod of zero rest length.</summary>
+    public DistanceDef()
+    {
+    }
+
+    /// <summary>First body.</summary>
+    public BodyId BodyA { get; init; } = BodyId.Invalid;
+
+    /// <summary>Second body.</summary>
+    public BodyId BodyB { get; init; } = BodyId.Invalid;
+
+    /// <summary>Anchor in the first body frame.</summary>
+    public Vec2 LocalAnchorA { get; init; } = default;
+
+    /// <summary>Anchor in the second body frame.</summary>
+    public Vec2 LocalAnchorB { get; init; } = default;
+
+    /// <summary>Rest separation of the anchors; finite and never negative.</summary>
+    public float Length
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Length));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Spring stiffness per unit effective mass; zero keeps the rod rigid.</summary>
+    public float Stiffness
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Stiffness));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Spring damping; never negative, and only read while the joint is soft.</summary>
+    public float Damping
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Damping));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Smallest allowed separation; zero leaves the range open below.</summary>
+    public float MinDistance
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(MinDistance));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Largest allowed separation; zero leaves the range open above.</summary>
+    public float MaxDistance
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(MaxDistance));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+}
+
+/// <summary>
 /// Construction parameters of a revolute joint: two bodies pinned through a
 /// shared world anchor, with optional angular stops and a speed motor.
 /// Local anchors and the reference angle derive from the world anchor at

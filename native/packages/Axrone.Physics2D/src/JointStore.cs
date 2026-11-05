@@ -87,20 +87,64 @@ public sealed class JointStore : IJointRegistry
             ThrowHelper.ThrowInvalidOperation("Joint rest length must be finite and non-negative.");
         }
 
+        DistanceDef definition = new()
+        {
+            BodyA = bodyA,
+            BodyB = bodyB,
+            LocalAnchorA = localAnchorA,
+            LocalAnchorB = localAnchorB,
+            Length = length,
+        };
+        return CreateDistance(bodies, in definition);
+    }
+
+    /// <summary>
+    /// Creates a distance joint from <paramref name="definition"/> and wakes
+    /// both bodies: a rigid rod by default, a soft spring when the definition
+    /// carries stiffness, and a bounded separation range when it carries
+    /// bounds.
+    /// </summary>
+    /// <param name="bodies">Body registry; both bodies must be live.</param>
+    /// <param name="definition">Anchors, rest length, compliance and range.</param>
+    public JointId CreateDistance(BodyStore bodies, in DistanceDef definition)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+
+        bodies.Slot(definition.BodyA);
+        bodies.Slot(definition.BodyB);
+
+        bool ranged = MathPhysics.HasRange(definition.MinDistance, definition.MaxDistance);
+        if (ranged && definition.MinDistance > 0.0f && definition.MaxDistance > 0.0f &&
+            definition.MinDistance > definition.MaxDistance)
+        {
+            ThrowHelper.ThrowInvalidOperation("The distance range needs its lower bound at or below its upper bound.");
+        }
+
+        if (ranged && definition.Length > 0.0f &&
+            ((definition.MinDistance > 0.0f && definition.Length < definition.MinDistance) ||
+            (definition.MaxDistance > 0.0f && definition.Length > definition.MaxDistance)))
+        {
+            ThrowHelper.ThrowInvalidOperation("The rest length must sit inside the separation range.");
+        }
+
         lock (_lock)
         {
             DistanceJointData data = new()
             {
-                BodyA = bodyA,
-                BodyB = bodyB,
-                LocalAnchorA = localAnchorA,
-                LocalAnchorB = localAnchorB,
-                Length = length,
+                BodyA = definition.BodyA,
+                BodyB = definition.BodyB,
+                LocalAnchorA = definition.LocalAnchorA,
+                LocalAnchorB = definition.LocalAnchorB,
+                Length = definition.Length,
+                Stiffness = definition.Stiffness,
+                Damping = definition.Damping,
+                MinDistance = definition.MinDistance,
+                MaxDistance = definition.MaxDistance,
                 Impulse = 0.0f,
             };
             uint sparse = _distance.Allocate(in data);
-            bodies.SetAwake(bodyA, true);
-            bodies.SetAwake(bodyB, true);
+            bodies.SetAwake(definition.BodyA, true);
+            bodies.SetAwake(definition.BodyB, true);
             return new JointId(JointKind.Distance, sparse);
         }
     }
