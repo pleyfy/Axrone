@@ -173,7 +173,10 @@ public sealed class UiAssetDocument : IUiDocument
             core.Direction,
             core.LineHeight,
             core.LetterSpacing,
-            core.MaxLines);
+            core.MaxLines,
+            core.AutoSize,
+            core.MinFontSize,
+            core.MaxFontSize);
         return true;
     }
 

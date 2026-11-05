@@ -1182,6 +1182,9 @@ internal sealed class UiDocumentJsonReader
         float lineHeight = 0.0f;
         float letterSpacing = 0.0f;
         int maxLines = 0;
+        UiTextAutoSize autoSize = UiTextAutoSize.None;
+        float minFontSize = 0.0f;
+        float maxFontSize = 0.0f;
         bool hasValue = false;
         bool closed = false;
 
@@ -1298,6 +1301,30 @@ internal sealed class UiDocumentJsonReader
                     return false;
                 }
             }
+            else if (reader.ValueTextEquals("autoSize"u8))
+            {
+                if (Duplicate(ref seen, 12) || !reader.Read() || !TryParseTextAutoSize(ref reader, out autoSize))
+                {
+                    error = new UiDocumentError(UiDocumentErrorCode.Malformed, offset, "'autoSize' is invalid.");
+                    return false;
+                }
+            }
+            else if (reader.ValueTextEquals("minFontSize"u8))
+            {
+                if (Duplicate(ref seen, 13) || !ReadNonNegativeFloat(ref reader, out minFontSize))
+                {
+                    error = new UiDocumentError(UiDocumentErrorCode.Malformed, offset, "'minFontSize' is invalid.");
+                    return false;
+                }
+            }
+            else if (reader.ValueTextEquals("maxFontSize"u8))
+            {
+                if (Duplicate(ref seen, 14) || !ReadNonNegativeFloat(ref reader, out maxFontSize))
+                {
+                    error = new UiDocumentError(UiDocumentErrorCode.Malformed, offset, "'maxFontSize' is invalid.");
+                    return false;
+                }
+            }
             else if (reader.ValueTextEquals("spans"u8))
             {
                 error = new UiDocumentError(UiDocumentErrorCode.UnsupportedFeature, offset, "Rich text spans are not supported by the v1 schema.");
@@ -1328,7 +1355,10 @@ internal sealed class UiDocumentJsonReader
             overflow,
             align,
             direction,
-            maxLines);
+            maxLines,
+            autoSize,
+            minFontSize,
+            maxFontSize);
         return true;
     }
 
@@ -2527,6 +2557,23 @@ internal sealed class UiDocumentJsonReader
         if (reader.ValueTextEquals("grapheme"u8))
         {
             value = UiTextWrap.Grapheme;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseTextAutoSize(ref Utf8JsonReader reader, out UiTextAutoSize value)
+    {
+        value = UiTextAutoSize.None;
+        if (reader.ValueTextEquals("none"u8))
+        {
+            return true;
+        }
+
+        if (reader.ValueTextEquals("shrink-to-fit"u8))
+        {
+            value = UiTextAutoSize.ShrinkToFit;
             return true;
         }
 

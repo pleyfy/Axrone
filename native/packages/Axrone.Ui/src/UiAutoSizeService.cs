@@ -244,6 +244,7 @@ public sealed class UiAutoSizeService
         left.Direction == right.Direction;
 
     private static bool Fits(in UiTextMetrics metrics, float maxWidth, float maxHeight) =>
+        !metrics.Truncated &&
         (!float.IsFinite(maxWidth) || metrics.Width <= maxWidth) &&
         (!float.IsFinite(maxHeight) || metrics.Height <= maxHeight);
 
@@ -263,6 +264,49 @@ public sealed class UiAutoSizeService
         return float.IsFinite(ratio) ? ratio : 1.0f;
     }
 
+    /// <summary>
+    /// Overflow ratio when the measurer clamps truncated extents to the box
+    /// (the TypeScript engine reports natural widths directly; the C#
+    /// <see cref="UiTextMetrics"/> contract clamps and flags truncation).
+    /// Clamped dimensions fall back to the natural-size probe, scaled linearly
+    /// with the current font size.
+    /// </summary>
+    private static float OverflowRatio(
+        in UiTextMetrics layout,
+        in NaturalExtents natural,
+        float maxWidth,
+        float maxHeight,
+        float size,
+        float maxSize)
+    {
+        float ratio = float.PositiveInfinity;
+        if (float.IsFinite(maxWidth))
+        {
+            bool clamped = layout.Truncated && layout.Width >= maxWidth;
+            float width = clamped && natural.Width > 0.0f
+                ? natural.Width * size / maxSize
+                : layout.Width;
+            if (width > 0.0f)
+            {
+                ratio = MathF.Min(ratio, maxWidth / width);
+            }
+        }
+
+        if (float.IsFinite(maxHeight))
+        {
+            bool clamped = layout.Truncated && layout.Height >= maxHeight;
+            float height = clamped && natural.Height > 0.0f
+                ? natural.Height * size / maxSize
+                : layout.Height;
+            if (height > 0.0f)
+            {
+                ratio = MathF.Min(ratio, maxHeight / height);
+            }
+        }
+
+        return float.IsFinite(ratio) ? ratio : 1.0f;
+    }
+
     private static UiTextMetrics MeasureAt(
         IUiTextMeasurer measurer,
         ReadOnlySpan<char> text,
@@ -274,12 +318,62 @@ public sealed class UiAutoSizeService
         return measurer.Measure(text, in probe, in constraints);
     }
 
+    /// <summary>Unbounded natural extents at the maximum size, used to recover overflow ratios.</summary>
+    private readonly struct NaturalExtents
+    {
+        public NaturalExtents(float width, float height)
+        {
+            Width = width;
+            Height = height;
+            Initialized = true;
+        }
+
+        public float Width { get; }
+
+        public float Height { get; }
+
+        public bool Initialized { get; }
+    }
+
+    private static NaturalExtents MeasureNatural(
+        IUiTextMeasurer measurer,
+        ReadOnlySpan<char> text,
+        in UiTextStyle style,
+        float maxWidth,
+        float maxHeight,
+        float maxSize)
+    {
+        UiTextStyle probe = style with { Size = maxSize, AutoSize = UiTextAutoSize.None, MaxLines = 0 };
+        float naturalWidth = 0.0f;
+        float naturalHeight = 0.0f;
+        if (float.IsFinite(maxWidth))
+        {
+            naturalWidth = measurer.Measure(
+                text,
+                in probe,
+                new UiMeasureConstraints(0.0f, 0.0f, float.PositiveInfinity, float.PositiveInfinity)).Width;
+        }
+
+        if (float.IsFinite(maxHeight))
+        {
+            naturalHeight = measurer.Measure(
+                text,
+                in probe,
+                new UiMeasureConstraints(0.0f, 0.0f, maxWidth, float.PositiveInfinity)).Height;
+        }
+
+        return new NaturalExtents(naturalWidth, naturalHeight);
+    }
+
     /// <summary>
     /// Analytical shrink resolution ported from TypeScript
     /// <c>resolveShrinkToFitLayout</c>: initial measure at max, at most two
     /// down-scale refinements (0.995 safety factor, 0.25px floor), bottom-out at
     /// min with the fixed-size mark, and one headroom nudge when re-wrapping
-    /// left slack. No path exceeds four measures.
+    /// left slack. At most four constrained measures run; truncated dimensions
+    /// additionally consume up to two unbounded natural-size probes, which the
+    /// TypeScript engine does not need because it reports unclamped widths.
+    /// All probing happens once per cache miss; steady-state hits allocate zero.
     /// </summary>
     private static UiAutoSizeResult ResolveShrinkToFit(
         IUiTextMeasurer measurer,
@@ -298,9 +392,15 @@ public sealed class UiAutoSizeService
             return new UiAutoSizeResult(layout, size, false);
         }
 
+        NaturalExtents natural = default;
         for (int refinement = 0; refinement < 2; refinement++)
         {
-            float ratio = MathF.Min(1.0f, ScaleRatio(layout, maxWidth, maxHeight));
+            if (!natural.Initialized && layout.Truncated)
+            {
+                natural = MeasureNatural(measurer, text, in style, maxWidth, maxHeight, maxSize);
+            }
+
+            float ratio = MathF.Min(1.0f, OverflowRatio(layout, natural, maxWidth, maxHeight, size, maxSize));
             if (ratio >= 1.0f)
             {
                 break;

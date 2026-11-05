@@ -241,6 +241,12 @@ public sealed class UiHostRuntime : IDisposable
                     Rect content = Inset(in bounds, in visualLayout, style.BorderWidth);
                     var constraints = new UiMeasureConstraints(0.0f, 0.0f, content.Width, content.Height);
                     UiTextStyle textStyle = visual.TextStyle;
+                    if (textStyle.AutoSize == UiTextAutoSize.ShrinkToFit &&
+                        _controls.TryGetResolvedTextStyle(node, out UiTextStyle resolvedStyle))
+                    {
+                        textStyle = resolvedStyle;
+                    }
+
                     UiTextLayoutId layoutId = _text.BuildLayout(node, visual.Text!, in textStyle, in constraints);
                     if (layoutId.IsValid)
                     {

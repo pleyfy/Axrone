@@ -748,6 +748,21 @@ public sealed class UiControlRuntime : IDisposable
     /// <summary>Gets the arranged border box of a node.</summary>
     public bool TryGetBounds(UiNodeId node, out Rect bounds) => _bounds.TryGetValue(node, out bounds);
 
+    /// <summary>Reads the style a shrink-to-fit text node last resolved to during layout.</summary>
+    /// <param name="node">Text-bearing node owned by a control.</param>
+    /// <param name="style">Resolved style, when the node has completed an auto-size measurement.</param>
+    /// <returns>Whether a resolved shrink style exists for the node.</returns>
+    public bool TryGetResolvedTextStyle(UiNodeId node, out UiTextStyle style)
+    {
+        if (_textContent is not null)
+        {
+            return _textContent.TryGetResolvedStyle(node, out style);
+        }
+
+        style = default;
+        return false;
+    }
+
     /// <summary>Gets the resolved widget style of a node for rendering.</summary>
     public bool TryGetStyle(UiNodeId node, out UiWidgetStyle style) => _styles.TryGetStyle(node, out style);
 

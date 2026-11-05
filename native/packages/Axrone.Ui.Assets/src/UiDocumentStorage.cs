@@ -37,7 +37,10 @@ internal readonly record struct UiNodeTextCore(
     UiTextOverflow Overflow,
     UiTextAlign Align,
     UiTextDirection Direction,
-    int MaxLines);
+    int MaxLines,
+    UiTextAutoSize AutoSize = UiTextAutoSize.None,
+    float MinFontSize = 0.0f,
+    float MaxFontSize = 0.0f);
 
 /// <summary>Internal image payload; the resource stays in the arena as a slice.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
