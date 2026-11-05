@@ -282,8 +282,76 @@ public sealed class TaskQueueTests
 
         int peak = Volatile.Read(ref maxObserved);
         peak.Should().BeLessThanOrEqualTo(3, "the limit bounds running bodies");
-        peak.Should().BeGreaterThan(1, "the limit is a bound, not a serial queue");
         handles.Should().OnlyContain(handle => handle.State == EventTaskState.Completed);
+    }
+
+    [Fact]
+    public async Task ConcurrencyLimit_StartsUpToLimitBodiesInParallel()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int started = 0;
+        int maxObserved = 0;
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithConcurrencyLimit(3).WithTaskTimeout(TimeSpan.Zero).Build());
+
+        var handles = new EventTaskHandle[6];
+        for (int i = 0; i < handles.Length; i++)
+        {
+            handles[i] = scheduler.Submit(async token =>
+            {
+                int now = Interlocked.Increment(ref started);
+                int previous = Volatile.Read(ref maxObserved);
+                while (now > previous && Interlocked.CompareExchange(ref maxObserved, now, previous) != previous)
+                {
+                    previous = Volatile.Read(ref maxObserved);
+                }
+
+                await gate.Task.ConfigureAwait(false);
+                return i;
+            });
+        }
+
+        WaitUntil(() => Volatile.Read(ref maxObserved) >= 3);
+        int peak = Volatile.Read(ref maxObserved);
+        peak.Should().Be(3, "bodies wait at the gate, so the run-set cannot grow beyond the limit");
+        scheduler.QueuedCount.Should().Be(3, "the remaining submissions wait for a free slot");
+
+        gate.SetResult();
+        await scheduler.DrainAsync().AsTask().WaitAsync(Wait);
+        handles.Should().OnlyContain(handle => handle.State == EventTaskState.Completed);
+    }
+
+    [Fact]
+    public async Task DrainAsync_CompletesEveryRoundWhenLateBodiesYield()
+    {
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithConcurrencyLimit(3).WithTaskTimeout(TimeSpan.Zero).Build());
+        int? timedOutRound = null;
+
+        for (int round = 0; round < 200 && timedOutRound is null; round++)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                _ = scheduler.Submit(async token =>
+                {
+                    await Task.Yield();
+                    return i;
+                });
+            }
+
+            using var budget = new CancellationTokenSource(Wait);
+            try
+            {
+                await scheduler.DrainAsync().AsTask().WaitAsync(budget.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                timedOutRound = round;
+            }
+
+            timedOutRound.Should().BeNull($"round {round} must drain within the budget");
+            scheduler.IsIdle.Should().BeTrue($"round {round} must be fully drained");
+        }
     }
 
     [Fact]

@@ -556,13 +556,20 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
 
     /// <summary>Waits until no task is queued, delayed or running.</summary>
     /// <param name="cancellationToken">Abandons waiting; does not cancel tasks.</param>
-    public async ValueTask DrainAsync(CancellationToken cancellationToken = default)
+    public ValueTask DrainAsync(CancellationToken cancellationToken = default) => WaitForIdleAsync(cancellationToken);
+
+    private async ValueTask WaitForIdleAsync(CancellationToken cancellationToken)
     {
-        while (!IsIdle)
+        while (true)
         {
             DrainWaiter waiter = AcquireDrainWaiter();
             try
             {
+                if (IsIdle)
+                {
+                    break;
+                }
+
                 await waiter.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
@@ -752,7 +759,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         Complete();
         try
         {
-            await DrainIdleAsync().ConfigureAwait(false);
+            await WaitForIdleAsync(CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
@@ -1119,23 +1126,31 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
 
                     current.Next = null;
                     current.Delayed = false;
-                    _delayedCount--;
 
                     if (current.State == EventTaskState.Pending)
                     {
-                        if (_closed == 0 && _queuedCount + _delayedCount < _capacity)
+                        if (_closed == 0 && _queuedCount + _delayedCount <= _capacity)
                         {
                             EnqueueLaneLocked(current);
                             _queuedCount++;
+                            _delayedCount--;
                             collected++;
                         }
-                        else if (current.TryTransition(EventTaskState.Pending, EventTaskState.Failed))
+                        else
                         {
-                            Interlocked.Increment(ref _failedCount);
-                            current.MarkTerminal(now);
-                            _deferredSignals[overflowSignals++] = current;
-                            ReleaseLocked(current);
+                            _delayedCount--;
+                            if (current.TryTransition(EventTaskState.Pending, EventTaskState.Failed))
+                            {
+                                Interlocked.Increment(ref _failedCount);
+                                current.MarkTerminal(now);
+                                _deferredSignals[overflowSignals++] = current;
+                                ReleaseLocked(current);
+                            }
                         }
+                    }
+                    else
+                    {
+                        _delayedCount--;
                     }
 
                     current = next;
@@ -1259,7 +1274,6 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                     return null;
                 }
 
-                _queuedCount--;
                 if (stale.State == EventTaskState.Pending &&
                     stale.TryTransition(EventTaskState.Pending, EventTaskState.Cancelled))
                 {
@@ -1268,6 +1282,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                     ReleaseLocked(stale);
                 }
 
+                _queuedCount--;
                 return stale;
             }
 
@@ -1285,7 +1300,6 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                     break;
                 }
 
-                _queuedCount--;
                 if (next.State == EventTaskState.Pending &&
                     next.TryTransition(EventTaskState.Pending, EventTaskState.Running))
                 {
@@ -1293,6 +1307,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                     break;
                 }
 
+                _queuedCount--;
                 ReleaseLocked(next);
             }
 
@@ -1302,6 +1317,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             }
 
             entry = candidate;
+            Interlocked.Increment(ref _runningCount);
             entry.BeginBody(_timeProvider.GetUtcNow().UtcTicks);
             if (entry.TimeoutTicks != 0)
             {
@@ -1309,7 +1325,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             }
 
             RearmDeadlineTimerLocked();
-            Interlocked.Increment(ref _runningCount);
+            _queuedCount--;
         }
 
         entry.ExecuteBody();
@@ -1370,6 +1386,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             HandleBodyFailure(entry, failure!, now);
         }
 
+        bool idle;
         lock (_gate)
         {
             if (!entry.IsFree && !entry.Delayed)
@@ -1378,9 +1395,11 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                 RearmDeadlineTimerLocked();
                 ReleaseLocked(entry);
             }
+
+            idle = Interlocked.Decrement(ref _runningCount) == 0;
         }
 
-        if (Interlocked.Decrement(ref _runningCount) == 0)
+        if (idle)
         {
             TrySignalIdle();
         }
@@ -1519,22 +1538,6 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
         return null!;
     }
 
-    private async ValueTask DrainIdleAsync()
-    {
-        while (!IsIdle)
-        {
-            DrainWaiter waiter = AcquireDrainWaiter();
-            try
-            {
-                await waiter.Task.ConfigureAwait(false);
-            }
-            finally
-            {
-                waiter.Release();
-            }
-        }
-    }
-
     private int RunGcPass()
     {
         if (!_options.EnableMetrics || Volatile.Read(ref _disposed) != 0)
@@ -1600,7 +1603,6 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                 break;
             }
 
-            _queuedCount--;
             if (entry.State == EventTaskState.Pending &&
                 entry.TryTransition(EventTaskState.Pending, EventTaskState.Cancelled))
             {
@@ -1608,6 +1610,8 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                 _deferredSignals[pendingSignals++] = entry;
                 ReleaseLocked(entry);
             }
+
+            _queuedCount--;
         }
 
         while (_retryHead is not null)
@@ -1616,7 +1620,6 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             _retryHead = entry.Next;
             entry.Next = null;
             entry.Delayed = false;
-            _delayedCount--;
             if (entry.State == EventTaskState.Pending &&
                 entry.TryTransition(EventTaskState.Pending, EventTaskState.Cancelled))
             {
@@ -1624,6 +1627,8 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                 _deferredSignals[pendingSignals++] = entry;
                 ReleaseLocked(entry);
             }
+
+            _delayedCount--;
         }
 
         return pendingSignals;
