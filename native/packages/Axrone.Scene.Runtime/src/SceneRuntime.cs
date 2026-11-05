@@ -46,6 +46,22 @@ public sealed class SceneRuntime : IDisposable
         Profiler = new SceneRuntimeProfiler(options.Profiler);
         Physics = RuntimeProfile.PhysicsBridges.Bridge3D ? new ScenePhysicsBridge3D(World) : null;
         Physics2D = RuntimeProfile.PhysicsBridges.Bridge2D ? new ScenePhysicsBridge2D(World) : null;
+        HasJoints3D = World.Registry.TryGetDataByType(typeof(SceneFixedJoint3D), out _);
+        HasJoints2D = World.Registry.TryGetDataByType(typeof(SceneDistanceJoint2D), out _);
+        if (HasJoints3D && Physics is null)
+        {
+            throw new SceneConfigurationException(
+                $"Runtime profile '{RuntimeProfile.Id}' registers 3D joint components but does not step the 3D physics bridge.");
+        }
+
+        if (HasJoints2D && Physics2D is null)
+        {
+            throw new SceneConfigurationException(
+                $"Runtime profile '{RuntimeProfile.Id}' registers 2D joint components but does not step the 2D physics bridge.");
+        }
+
+        Joints3D = HasJoints3D ? new SceneJointBridge3D(World, Physics!) : null;
+        Joints2D = HasJoints2D ? new SceneJointBridge2D(World, Physics2D!) : null;
         Particles = new SceneParticleBridge3D(World);
         HasParticles = World.Registry.TryGetDataByType(typeof(SceneParticleSystem), out _);
         HasAnimators = World.Registry.TryGetDataByType(typeof(SceneAnimator), out _);
@@ -105,6 +121,18 @@ public sealed class SceneRuntime : IDisposable
 
     /// <summary>2D physics bridge; null when the profile does not step 2D physics.</summary>
     public ScenePhysicsBridge2D? Physics2D { get; }
+
+    /// <summary>3D joint bridge; null when the profile does not register 3D joint components.</summary>
+    public SceneJointBridge3D? Joints3D { get; }
+
+    /// <summary>2D joint bridge; null when the profile does not register 2D joint components.</summary>
+    public SceneJointBridge2D? Joints2D { get; }
+
+    /// <summary>Whether the profile registers 3D joint components.</summary>
+    public bool HasJoints3D { get; }
+
+    /// <summary>Whether the profile registers 2D joint components.</summary>
+    public bool HasJoints2D { get; }
 
     /// <summary>Particle bridge; active when the profile registers particle components.</summary>
     public SceneParticleBridge3D Particles { get; }
@@ -279,6 +307,8 @@ public sealed class SceneRuntime : IDisposable
         PathAgents?.Dispose();
         Animators?.Dispose();
         Particles.Dispose();
+        Joints2D?.Dispose();
+        Joints3D?.Dispose();
         Physics2D?.Dispose();
         Physics?.Dispose();
         Profiler.Dispose();

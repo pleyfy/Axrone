@@ -48,6 +48,7 @@ public sealed class SceneRuntimeSystem : IGameLoopSystem<SceneRuntimeFrameState>
         if (_runtime.Physics is { } physics)
         {
             physics.SyncBodies();
+            _runtime.Joints3D?.SyncJoints();
             physics.Step(stepSeconds);
             physics.SyncTransformsFromPhysics();
         }
@@ -55,6 +56,7 @@ public sealed class SceneRuntimeSystem : IGameLoopSystem<SceneRuntimeFrameState>
         if (_runtime.Physics2D is { } physics2D)
         {
             physics2D.SyncBodies();
+            _runtime.Joints2D?.SyncJoints();
             physics2D.Step(stepSeconds);
             physics2D.SyncTransformsFromPhysics();
         }
