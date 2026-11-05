@@ -110,7 +110,10 @@ public sealed class UiHostTextSystem : IDisposable
             text.Overflow,
             text.Align,
             text.Direction,
-            text.MaxLines);
+            text.MaxLines,
+            text.AutoSize,
+            text.MinFontSize,
+            text.MaxFontSize);
     }
 
     /// <summary>
@@ -156,6 +159,22 @@ public sealed class UiHostTextSystem : IDisposable
 
         layout = null!;
         face = UiFontFaceId.Invalid;
+        return false;
+    }
+
+    /// <summary>Reads the font size the last painted layout of a node rasterized glyphs at.</summary>
+    /// <param name="node">Node passed to <see cref="BuildLayout"/>.</param>
+    /// <param name="size">Rasterized font size in pixels.</param>
+    /// <returns>Whether the node has a built layout in this pipeline.</returns>
+    public bool TryGetPaintedFontSize(UiNodeId node, out float size)
+    {
+        if (_byNode.TryGetValue(node, out LayoutEntry? entry))
+        {
+            size = entry.StyleSize;
+            return true;
+        }
+
+        size = 0.0f;
         return false;
     }
 
