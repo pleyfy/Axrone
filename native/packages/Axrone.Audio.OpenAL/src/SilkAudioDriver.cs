@@ -188,6 +188,17 @@ public sealed unsafe class SilkAudioDriver : IAudioDriver
         return count;
     }
 
+    /// <summary>Reads how many queued buffers finished playing without removing them from the queue.</summary>
+    /// <param name="source">Live source handle.</param>
+    /// <returns>The processed-buffer count.</returns>
+    public int PeekProcessedBufferCount(uint source)
+    {
+        int processed = 0;
+        _al.GetSourceProperty(source, GetSourceInteger.BuffersProcessed, &processed);
+        CheckError("GetSourceProperty");
+        return processed;
+    }
+
     /// <inheritdoc/>
     public AudioDriverSourceState GetSourceState(uint source)
     {
