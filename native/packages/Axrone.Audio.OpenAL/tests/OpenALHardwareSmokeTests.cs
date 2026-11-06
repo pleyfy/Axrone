@@ -1,39 +1,27 @@
 namespace Axrone.Audio.OpenAL.Tests;
 
+using System.Diagnostics;
+
 /// <summary>
-/// Real-device smoke tests: probe the default device and, when present,
-/// run the full upload/play/stop/teardown sequence. Without audio hardware
-/// the probe passes vacuously; filter by Category=Hardware in CI.
+/// Real-device smoke tests: the default OpenAL device is probed at discovery
+/// and an absent device reports the tests as skipped with a reason, never as
+/// green. With a device they run the full upload/play/stop/teardown sequence.
+/// Filter by Category=Hardware in CI.
 /// </summary>
 [Trait("Category", "Hardware")]
 public sealed class OpenALHardwareSmokeTests
 {
+    private static readonly TimeSpan StartBudget = TimeSpan.FromMilliseconds(3000);
+
     private readonly ITestOutputHelper _output;
 
     public OpenALHardwareSmokeTests(ITestOutputHelper output) => _output = output;
-    private static bool TryOpen(SilkAudioDriver driver)
-    {
-        try
-        {
-            driver.Open(null, 48000);
-            return driver.IsOpen;
-        }
-        catch (Exception ex) when (ex is AudioDriverException or DllNotFoundException or EntryPointNotFoundException)
-        {
-            return false;
-        }
-    }
 
-    [Fact]
+    [RealAudioDeviceFact]
     public void Device_Open_Probe()
     {
         using var driver = new SilkAudioDriver();
-        if (!TryOpen(driver))
-        {
-            _output.WriteLine("No audio device; probe vacuous.");
-            return;
-        }
-
+        OpenOrExplainFailure(driver);
         _output.WriteLine("Audio device opened.");
         try
         {
@@ -47,16 +35,11 @@ public sealed class OpenALHardwareSmokeTests
         driver.IsOpen.Should().BeFalse();
     }
 
-    [Fact]
+    [RealAudioDeviceFact]
     public void Device_Play_Silence_Teardown()
     {
         using var driver = new SilkAudioDriver();
-        if (!TryOpen(driver))
-        {
-            _output.WriteLine("No audio device; smoke test vacuous.");
-            return;
-        }
-
+        OpenOrExplainFailure(driver);
         _output.WriteLine("Audio device opened; running full sequence.");
 
         try
@@ -64,11 +47,12 @@ public sealed class OpenALHardwareSmokeTests
             uint[] buffers = driver.GenBuffers(2);
             uint source = driver.GenSource();
 
-            short[] silence = new short[512];
+            short[] silence = new short[9600];
             driver.BufferDataShort(buffers[0], silence, 48000);
             driver.BufferDataShort(buffers[1], silence, 48000);
             driver.QueueBuffers(source, buffers);
             driver.Play(source);
+            WaitUntilPlaying(driver, source);
             driver.GetSourceState(source).Should().Be(AudioDriverSourceState.Playing);
 
             driver.StopPlayback(source);
@@ -83,5 +67,43 @@ public sealed class OpenALHardwareSmokeTests
         {
             driver.Close();
         }
+    }
+
+    private static void OpenOrExplainFailure(SilkAudioDriver driver)
+    {
+        try
+        {
+            driver.Open(null, 48000);
+        }
+        catch (Exception ex) when (ex is AudioDriverException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            throw new InvalidOperationException(
+                $"RealAudioDeviceFact saw an audio device at discovery, but opening it failed at run time: {ex.Message}",
+                ex);
+        }
+
+        driver.IsOpen.Should().BeTrue(
+            "the discovery probe reported a device; a runtime open failure is a regression, not a vacuous pass");
+    }
+
+    private static void WaitUntilPlaying(SilkAudioDriver driver, uint source)
+    {
+        SpinWait spin = default;
+        Stopwatch watch = Stopwatch.StartNew();
+        AudioDriverSourceState state = driver.GetSourceState(source);
+        AudioDriverSourceState first = state;
+        while (state != AudioDriverSourceState.Playing && watch.Elapsed < StartBudget)
+        {
+            spin.SpinOnce();
+            state = driver.GetSourceState(source);
+        }
+
+        int processed = driver.PeekProcessedBufferCount(source);
+        state.Should().Be(
+            AudioDriverSourceState.Playing,
+            "alSourcePlay is asynchronous and the audio thread must start the source: expected Playing, " +
+            "first saw {0}, final saw {1} after {2:F0} ms of the {3} startup budget " +
+            "(processed buffers {4}, source {5}, device open {6})",
+            first, state, watch.Elapsed.TotalMilliseconds, StartBudget, processed, source, driver.IsOpen);
     }
 }
