@@ -447,20 +447,34 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             return false;
         }
 
-        if (entry.State == EventTaskState.Pending &&
-            entry.TryTransition(EventTaskState.Pending, EventTaskState.Cancelled))
+        if (CancelPending(entry))
         {
-            entry.MarkTerminal(ClockTicks);
-            lock (_gate)
-            {
-                DetachLocked(entry);
-            }
-
-            entry.SignalPendingCancellation();
             return true;
         }
 
         return entry.SignalRunningCancel();
+    }
+
+    /// <summary>Applies the pending-to-cancelled transition, detaches the entry from live counters and re-evaluates idle so parked drain waiters wake.</summary>
+    /// <param name="entry">Candidate task.</param>
+    /// <returns>True when this call won the transition.</returns>
+    private bool CancelPending(TaskEntryBase entry)
+    {
+        if (entry.State != EventTaskState.Pending ||
+            !entry.TryTransition(EventTaskState.Pending, EventTaskState.Cancelled))
+        {
+            return false;
+        }
+
+        entry.MarkTerminal(ClockTicks);
+        lock (_gate)
+        {
+            DetachLocked(entry);
+        }
+
+        entry.SignalPendingCancellation();
+        TrySignalIdle();
+        return true;
     }
 
     /// <summary>Cancels tasks in batch; running bodies are signalled cooperatively.</summary>
@@ -525,6 +539,8 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                 entry?.SignalPendingCancellation();
             }
         }
+
+        TrySignalIdle();
 
         return pendingSignals;
     }
@@ -783,6 +799,8 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
 
     /// <summary>Waiters currently parked on drain waits.</summary>
     internal int WaitCount => _drainSignaler.CountClaimed();
+
+    internal int DrainParkCount => _drainSignaler.Parks;
 
     internal long ClaimWaiter() => _drainSignaler.TryClaim();
 
@@ -1580,10 +1598,11 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
 
     private sealed class DrainSignaler
     {
-        /// <summary>Leaf lock guarding waiter claim tokens and their one-shot signals; never held while taking any other lock.</summary>
+        /// <summary>Leaf lock guarding waiter claim tokens and the signals materialized for real parks; never held while taking any other lock.</summary>
         private readonly Lock _sync = new();
         private readonly Waiter[] _waiters;
         private long _epoch;
+        private int _parks;
 
         internal DrainSignaler()
         {
@@ -1621,6 +1640,8 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
             return 0;
         }
 
+        internal int Parks => Volatile.Read(ref _parks);
+
         internal Task PrepareWait(long token)
         {
             lock (_sync)
@@ -1631,6 +1652,7 @@ public sealed class EventTaskScheduler : IDisposable, IAsyncDisposable
                     return Task.CompletedTask;
                 }
 
+                Interlocked.Increment(ref _parks);
                 return waiter.Signal is { } materialized
                     ? materialized.Task
                     : (waiter.Signal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
