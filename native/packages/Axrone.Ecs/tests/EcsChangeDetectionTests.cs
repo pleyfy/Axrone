@@ -206,9 +206,10 @@ public sealed class EcsChangeDetectionTests : IDisposable
         _world.Step();
         var visitor = new CountingChangeVisitor();
 
-        // Phases are measured only after a window already failed, so the next red names the
-        // allocation site (cache resolve / archetype walk setup / row visit) instead of only
-        // reporting a byte count.
+        // Phases are measured only after a window already failed, twice each, so the next red
+        // names the channel: cache resolve, chunk walk, one traversal, or the full window shape.
+        // A phase that claims on its first run and not on its second is a first touch; one that
+        // claims both times is a standing allocation in the product.
         EcsGatePhase[] phases =
         [
             new("resolve", () => _ = _world.QueryCache.Resolve(
@@ -222,7 +223,8 @@ public sealed class EcsChangeDetectionTests : IDisposable
                 _ = chunk.Length + chunk.Entities.Length + chunk.Column1.Length;
                 _ = enumerator.MoveNext();
             }),
-            new("visit", () => VisitChangedWindows(_world, ref visitor, 1)),
+            new("visit-one", () => VisitChangedWindows(_world, ref visitor, 1)),
+            new("visit-window", () => VisitChangedWindows(_world, ref visitor, WindowIterations)),
         ];
 
         EcsAllocationHarness.Outcome outcome = EcsAllocationHarness.AssertEveryWindowClean(
