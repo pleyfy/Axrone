@@ -233,35 +233,48 @@ public sealed class UiAutoSizeServiceTests
         var service = new UiAutoSizeService();
         var constraints = new UiMeasureConstraints(0.0f, 0.0f, 100.0f, 12.0f);
         var style = ShrinkStyle();
-        for (int warmup = 0; warmup < 64; warmup++)
-        {
-            _ = service.Measure(measurer, Text, in style, in constraints);
-        }
+        int opsPerWindow = 64;
 
         float lastWidth = 0.0f;
-
-        // First measured round absorbs one-off tier-promotion charges; the gate
-        // asserts that a subsequent steady-state round allocates nothing.
-        long firstBefore = GC.GetAllocatedBytesForCurrentThread();
-        for (int round = 0; round < 64; round++)
+        var hitWindow = new Action(() =>
         {
-            UiAutoSizeResult result = service.Measure(measurer, Text, in style, in constraints);
-            lastWidth = result.Metrics.Width;
-        }
-
-        long firstAllocated = GC.GetAllocatedBytesForCurrentThread() - firstBefore;
-
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int round = 0; round < 64; round++)
+            for (int round = 0; round < opsPerWindow; round++)
+            {
+                UiAutoSizeResult result = service.Measure(measurer, Text, in style, in constraints);
+                lastWidth = result.Metrics.Width;
+            }
+        });
+        Action noopWindow = () =>
         {
-            UiAutoSizeResult result = service.Measure(measurer, Text, in style, in constraints);
-            lastWidth = result.Metrics.Width;
-        }
+            for (int round = 0; round < opsPerWindow; round++)
+            {
+            }
+        };
+        Action measurePhase = () =>
+        {
+            for (int round = 0; round < opsPerWindow / 2; round++)
+            {
+                UiAutoSizeResult result = service.Measure(measurer, Text, in style, in constraints);
+                lastWidth = result.Metrics.Width;
+            }
+        };
 
-        long allocated = Math.Min(firstAllocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        UiAllocationHarness.Outcome outcome = UiAllocationHarness.AssertEveryWindowClean(
+            hitWindow,
+            betweenWindows: null,
+            UiAllocationHarness.Windows,
+            primePasses: 3,
+            label: "auto-size cache hit",
+            diagnostics:
+            [
+                new UiGatePhase("measure-loop", measurePhase),
+                new UiGatePhase("noop-control", noopWindow),
+            ]);
+
+        outcome.MeasuredWindows.Should().Be(UiAllocationHarness.Windows);
         lastWidth.Should().BeGreaterThan(0.0f);
-        allocated.Should().Be(0);
-        service.HitCount.Should().Be(191);
+        service.MissCount.Should().Be(1);
+        service.HitCount.Should().Be((long)outcome.TotalInvocations * opsPerWindow - 1);
     }
 }
 
