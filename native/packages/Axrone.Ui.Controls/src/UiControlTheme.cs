@@ -22,9 +22,10 @@ public readonly record struct UiControlTheme(
     UiThemeTokenId Radius,
     UiThemeTokenId BorderWidth,
     UiThemeTokenId FontSize,
-    UiThemeTokenId RowHeight)
+    UiThemeTokenId RowHeight,
+    UiControlVariantTokens Variants = default)
 {
-    /// <summary>Gets the default token map (identities 1 through 15).</summary>
+    /// <summary>Gets the default token map (identities 1 through 15, variants 16 through 34).</summary>
     public static UiControlTheme Default => new(
         new UiThemeTokenId(1),
         new UiThemeTokenId(2),
@@ -40,7 +41,8 @@ public readonly record struct UiControlTheme(
         new UiThemeTokenId(12),
         new UiThemeTokenId(13),
         new UiThemeTokenId(14),
-        new UiThemeTokenId(15));
+        new UiThemeTokenId(15),
+        UiControlVariantTokens.Default);
 
     /// <summary>Builds the dark default theme for <see cref="Default"/>.</summary>
     public static UiTheme CreateDefaultTheme() => new UiThemeBuilder()
@@ -59,6 +61,25 @@ public readonly record struct UiControlTheme(
         .AddNumber(new UiThemeTokenId(13), 1.0f)
         .AddNumber(new UiThemeTokenId(14), 15.0f)
         .AddNumber(new UiThemeTokenId(15), 28.0f)
+        .AddColor(new UiThemeTokenId(16), UiControlThemeResolver.DefaultTheme.PrimaryHover)
+        .AddColor(new UiThemeTokenId(17), UiControlThemeResolver.DefaultTheme.PrimaryPressed)
+        .AddColor(new UiThemeTokenId(18), UiControlThemeResolver.DefaultTheme.VariantText)
+        .AddColor(new UiThemeTokenId(19), UiControlThemeResolver.DefaultTheme.PrimaryBorder)
+        .AddColor(new UiThemeTokenId(20), UiControlThemeResolver.DefaultTheme.SuccessIdle)
+        .AddColor(new UiThemeTokenId(21), UiControlThemeResolver.DefaultTheme.SuccessHover)
+        .AddColor(new UiThemeTokenId(22), UiControlThemeResolver.DefaultTheme.SuccessPressed)
+        .AddColor(new UiThemeTokenId(23), UiControlThemeResolver.DefaultTheme.VariantText)
+        .AddColor(new UiThemeTokenId(24), UiControlThemeResolver.DefaultTheme.SuccessBorder)
+        .AddColor(new UiThemeTokenId(25), UiControlThemeResolver.DefaultTheme.WarningIdle)
+        .AddColor(new UiThemeTokenId(26), UiControlThemeResolver.DefaultTheme.WarningHover)
+        .AddColor(new UiThemeTokenId(27), UiControlThemeResolver.DefaultTheme.WarningPressed)
+        .AddColor(new UiThemeTokenId(28), UiControlThemeResolver.DefaultTheme.WarningText)
+        .AddColor(new UiThemeTokenId(29), UiControlThemeResolver.DefaultTheme.WarningBorder)
+        .AddColor(new UiThemeTokenId(30), UiControlThemeResolver.DefaultTheme.DangerIdle)
+        .AddColor(new UiThemeTokenId(31), UiControlThemeResolver.DefaultTheme.DangerHover)
+        .AddColor(new UiThemeTokenId(32), UiControlThemeResolver.DefaultTheme.DangerPressed)
+        .AddColor(new UiThemeTokenId(33), UiControlThemeResolver.DefaultTheme.VariantText)
+        .AddColor(new UiThemeTokenId(34), UiControlThemeResolver.DefaultTheme.DangerBorder)
         .Build();
 }
 
@@ -80,4 +101,13 @@ internal readonly struct ControlStyleContext
 
     public float Number(UiThemeTokenId token, float fallback) =>
         _theme is not null && _theme.TryGetNumber(token, out float value) ? value : fallback;
+
+    internal UiWidgetThemeContext WidgetContext() => new(_theme, Tokens);
+
+    internal IUiTheme? Theme => _theme;
+
+    internal UiVariantPalette Palette(UiControlVariant variant) =>
+        UiControlThemeResolver.ResolveVariantPalette(_theme, Tokens, variant);
+
+    internal float Scale() => UiControlThemeResolver.ResolveThemeScale(_theme, Tokens);
 }

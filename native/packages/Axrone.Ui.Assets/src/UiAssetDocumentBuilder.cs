@@ -427,7 +427,10 @@ public sealed class UiAssetDocumentBuilder : IUiDocumentBuilder
                     text.Overflow,
                     text.Align,
                     text.Direction,
-                    text.MaxLines));
+                    text.MaxLines,
+                    text.AutoSize,
+                    text.MinFontSize,
+                    text.MaxFontSize));
         }
 
         if ((_presence[old] & UiNodePresence.Image) != 0)

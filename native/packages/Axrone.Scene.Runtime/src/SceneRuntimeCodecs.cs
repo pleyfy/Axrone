@@ -52,6 +52,91 @@ public static class SceneRuntimeCodecs
         {
             codecs.Register(new ScenePathAgentCodec());
         }
+
+        RegisterJointCodecs(codecs, components);
+    }
+
+    private static void RegisterJointCodecs(SceneCodecRegistry codecs, SceneComponentRegistry components)
+    {
+        if (components.TryGetDataByType(typeof(SceneDistanceJoint2D), out _))
+        {
+            codecs.Register(new SceneDistanceJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneHingeJoint2D), out _))
+        {
+            codecs.Register(new SceneHingeJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneFixedJoint2D), out _))
+        {
+            codecs.Register(new SceneFixedJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneSliderJoint2D), out _))
+        {
+            codecs.Register(new SceneSliderJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneSpringJoint2D), out _))
+        {
+            codecs.Register(new SceneSpringJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneMotorJoint2D), out _))
+        {
+            codecs.Register(new SceneMotorJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneWheelJoint2D), out _))
+        {
+            codecs.Register(new SceneWheelJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneRopeJoint2D), out _))
+        {
+            codecs.Register(new SceneRopeJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneMouseJoint2D), out _))
+        {
+            codecs.Register(new SceneMouseJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneGearJoint2D), out _))
+        {
+            codecs.Register(new SceneGearJoint2DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneFixedJoint3D), out _))
+        {
+            codecs.Register(new SceneFixedJoint3DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneHingeJoint3D), out _))
+        {
+            codecs.Register(new SceneHingeJoint3DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneSliderJoint3D), out _))
+        {
+            codecs.Register(new SceneSliderJoint3DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneSpringJoint3D), out _))
+        {
+            codecs.Register(new SceneSpringJoint3DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneCharacterJoint3D), out _))
+        {
+            codecs.Register(new SceneCharacterJoint3DCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneConfigurableJoint3D), out _))
+        {
+            codecs.Register(new SceneConfigurableJoint3DCodec());
+        }
     }
 }
 

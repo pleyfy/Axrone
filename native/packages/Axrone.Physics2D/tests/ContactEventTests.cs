@@ -45,7 +45,7 @@ public sealed class ContactEventTests : IDisposable
         _world.ContactCount.Should().Be(1);
         _world.ContactEventCount.Should().Be(1);
         ContactEvent evt = _world.GetContactEvent(0);
-        evt.Began.Should().BeTrue();
+        evt.Type.Should().Be(CollisionEventType.Begin);
         Contact contact = _world.GetContact(0);
         evt.ShapeA.Should().Be(contact.ShapeA);
         evt.ShapeB.Should().Be(contact.ShapeB);
@@ -54,18 +54,23 @@ public sealed class ContactEventTests : IDisposable
     }
 
     [Fact]
-    public void PersistingContact_RaisesNoNewEvents()
+    public void PersistingContact_RaisesStay()
     {
+        // Behavior update with the enum event surface: a persisting overlap
+        // now reports Stay (shared physics-core contract) instead of staying
+        // silent as the old bool-Began surface did.
         AddBox(new Vec2(0, 0), new Vec2(1, 1), BodyType.Static);
         AddBox(new Vec2(0.5f, 0), new Vec2(1, 1));
 
         _world.Step(1f / 60f);
         _world.ContactEventCount.Should().Be(1);
+        _world.GetContactEvent(0).Type.Should().Be(CollisionEventType.Begin);
 
         _world.Step(1f / 60f);
 
         _world.ContactCount.Should().Be(1);
-        _world.ContactEventCount.Should().Be(0);
+        _world.ContactEventCount.Should().Be(1);
+        _world.GetContactEvent(0).Type.Should().Be(CollisionEventType.Stay);
     }
 
     [Fact]
@@ -77,7 +82,7 @@ public sealed class ContactEventTests : IDisposable
         _world.Step(1f / 60f);
         _world.ContactEventCount.Should().Be(1);
         ContactEvent began = _world.GetContactEvent(0);
-        began.Began.Should().BeTrue();
+        began.Type.Should().Be(CollisionEventType.Begin);
 
         _world.Bodies.SetTransform(mover, new Vec2(50, 50), 0f);
         _world.Step(1f / 60f);
@@ -85,9 +90,31 @@ public sealed class ContactEventTests : IDisposable
         _world.ContactCount.Should().Be(0);
         _world.ContactEventCount.Should().Be(1);
         ContactEvent ended = _world.GetContactEvent(0);
-        ended.Began.Should().BeFalse();
+        ended.Type.Should().Be(CollisionEventType.End);
         ended.ShapeA.Should().Be(began.ShapeA);
         ended.ShapeB.Should().Be(began.ShapeB);
+    }
+
+    [Fact]
+    public void PersistingSensorOverlap_RaisesStayNotice()
+    {
+        BodyId sensor = _world.Bodies.Create(new BodyDef { Type = BodyType.Static, Position = new Vec2(0f, 0f) });
+        _world.Shapes.AttachCircle(_world.Bodies, _world.Broadphase, sensor, Vec2.Zero, 1f, isSensor: true);
+        BodyId ball = _world.Bodies.Create(new BodyDef { Type = BodyType.Kinematic, Position = new Vec2(0.5f, 0f) });
+        _world.Shapes.AttachCircle(_world.Bodies, _world.Broadphase, ball, Vec2.Zero, 1f);
+
+        _world.Step(1f / 60f);
+        _world.SensorEventCount.Should().Be(1);
+        _world.GetSensorEvent(0).Type.Should().Be(SensorEventType.Enter);
+
+        _world.Step(1f / 60f);
+        _world.SensorEventCount.Should().Be(1);
+        _world.GetSensorEvent(0).Type.Should().Be(SensorEventType.Stay);
+
+        _world.Bodies.SetTransform(ball, new Vec2(50f, 50f), 0f);
+        _world.Step(1f / 60f);
+        _world.SensorEventCount.Should().Be(1);
+        _world.GetSensorEvent(0).Type.Should().Be(SensorEventType.Exit);
     }
 
     [Fact]
@@ -99,7 +126,7 @@ public sealed class ContactEventTests : IDisposable
         _world.Step(1f / 60f);
         _world.ContactEventCount.Should().Be(1);
         ContactEvent began = _world.GetContactEvent(0);
-        began.Began.Should().BeTrue();
+        began.Type.Should().Be(CollisionEventType.Begin);
 
         _world.DestroyBody(doomed);
         _world.Step(1f / 60f);
@@ -107,7 +134,7 @@ public sealed class ContactEventTests : IDisposable
         _world.ContactCount.Should().Be(0);
         _world.ContactEventCount.Should().Be(1);
         ContactEvent ended = _world.GetContactEvent(0);
-        ended.Began.Should().BeFalse();
+        ended.Type.Should().Be(CollisionEventType.End);
         ended.ShapeA.Should().Be(began.ShapeA);
         ended.ShapeB.Should().Be(began.ShapeB);
     }

@@ -1,6 +1,179 @@
 namespace Axrone.Physics2D;
 
 /// <summary>
+/// Construction parameters of a distance joint: two body anchors held at a
+/// rest separation. With <see cref="Stiffness"/> the rod pulls softly toward
+/// the rest length instead of rigidly; with a
+/// <see cref="MinDistance"/>/<see cref="MaxDistance"/> pair a hard range row
+/// joins the rod and bounds the separation from leaving it.
+/// </summary>
+public readonly struct DistanceDef
+{
+    /// <summary>Creates default parameters: a rigid rod of zero rest length.</summary>
+    public DistanceDef()
+    {
+    }
+
+    /// <summary>First body.</summary>
+    public BodyId BodyA { get; init; } = BodyId.Invalid;
+
+    /// <summary>Second body.</summary>
+    public BodyId BodyB { get; init; } = BodyId.Invalid;
+
+    /// <summary>Anchor in the first body frame.</summary>
+    public Vec2 LocalAnchorA { get; init; } = default;
+
+    /// <summary>Anchor in the second body frame.</summary>
+    public Vec2 LocalAnchorB { get; init; } = default;
+
+    /// <summary>Rest separation of the anchors; finite and never negative.</summary>
+    public float Length
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Length));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Spring stiffness per unit effective mass; zero keeps the rod rigid.</summary>
+    public float Stiffness
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Stiffness));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Spring damping; never negative, and only read while the joint is soft.</summary>
+    public float Damping
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Damping));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Smallest allowed separation; zero leaves the range open below.</summary>
+    public float MinDistance
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(MinDistance));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Largest allowed separation; zero leaves the range open above.</summary>
+    public float MaxDistance
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(MaxDistance));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+}
+
+/// <summary>
+/// Construction parameters of a spring joint: a soft distance constraint with
+/// a restoring pull toward the rest length. The spring shares the distance
+/// joint's storage and solver path; it differs in requiring positive
+/// stiffness so a named spring can never collapse into a rigid rod silently.
+/// </summary>
+public readonly struct SpringDef
+{
+    /// <summary>Creates default parameters: a unit-length spring matching the engine's soft-joint defaults.</summary>
+    public SpringDef()
+    {
+    }
+
+    /// <summary>First body.</summary>
+    public BodyId BodyA { get; init; } = BodyId.Invalid;
+
+    /// <summary>Second body.</summary>
+    public BodyId BodyB { get; init; } = BodyId.Invalid;
+
+    /// <summary>Anchor in the first body frame.</summary>
+    public Vec2 LocalAnchorA { get; init; } = default;
+
+    /// <summary>Anchor in the second body frame.</summary>
+    public Vec2 LocalAnchorB { get; init; } = default;
+
+    /// <summary>Rest length of the spring; finite and never negative.</summary>
+    public float Distance
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Distance));
+            }
+
+            field = value;
+        }
+    } = 1.0f;
+
+    /// <summary>Spring stiffness; strictly positive, finite. Zero would silently rigidify the spring.</summary>
+    public float Stiffness
+    {
+        get => field;
+        init
+        {
+            if (value <= 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Stiffness));
+            }
+
+            field = value;
+        }
+    } = 10.0f;
+
+    /// <summary>Spring damping; finite and never negative.</summary>
+    public float Damping
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Damping));
+            }
+
+            field = value;
+        }
+    } = 0.5f;
+}
+
+/// <summary>
 /// Construction parameters of a revolute joint: two bodies pinned through a
 /// shared world anchor, with optional angular stops and a speed motor.
 /// Local anchors and the reference angle derive from the world anchor at
@@ -92,7 +265,8 @@ public readonly struct RevoluteDef
 /// <summary>
 /// Construction parameters of a weld joint: two bodies locked through a
 /// shared world anchor. Local anchors and the reference angle derive from
-/// the world anchor at creation.
+/// the world anchor at creation. A positive <see cref="Frequency"/> relaxes
+/// the lock into a soft attach that springs toward the welded pose.
 /// </summary>
 public readonly struct WeldDef
 {
@@ -109,6 +283,36 @@ public readonly struct WeldDef
 
     /// <summary>Shared world anchor.</summary>
     public Vec2 WorldAnchor { get; init; } = default;
+
+    /// <summary>Soft-attach frequency in hertz (omega = 2*pi*f, the wheel suspension's convention); zero keeps the weld rigid, positive springs toward the welded pose at this cycle rate.</summary>
+    public float Frequency
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(Frequency));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Damping ratio of the soft attach (zeta in damping = 2*zeta*omega); never negative, and only read while the frequency is positive.</summary>
+    public float DampingRatio
+    {
+        get => field;
+        init
+        {
+            if (value < 0.0f || float.IsNaN(value) || float.IsInfinity(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(DampingRatio));
+            }
+
+            field = value;
+        }
+    } = 0.7f;
 }
 
 /// <summary>
@@ -305,6 +509,39 @@ public readonly struct WheelDef
 
     /// <summary>Whether the hub motor drives.</summary>
     public bool EnableMotor { get; init; } = false;
+
+    /// <summary>Whether the travel stops clamp the suspension axis.</summary>
+    public bool EnableLimit { get; init; } = false;
+
+    /// <summary>Lower travel stop along the suspension axis, relative to the rest translation.</summary>
+    public float LowerTranslation
+    {
+        get => field;
+        init
+        {
+            if (float.IsNaN(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(LowerTranslation));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
+
+    /// <summary>Upper travel stop along the suspension axis, relative to the rest translation.</summary>
+    public float UpperTranslation
+    {
+        get => field;
+        init
+        {
+            if (float.IsNaN(value))
+            {
+                ThrowHelper.ThrowArgumentOutOfRange(nameof(UpperTranslation));
+            }
+
+            field = value;
+        }
+    } = 0.0f;
 
     /// <summary>Suspension frequency in hertz; strictly positive, stable below 1 / (pi * dt).</summary>
     public float SuspensionFrequency

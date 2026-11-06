@@ -58,7 +58,6 @@ internal struct ShapeRecord
 
     /// <summary>Contact response.</summary>
     public PhysicsMaterial Material;
-
     /// <summary>Trigger-only collider: overlaps report but never push.</summary>
     public bool IsSensor;
 
@@ -758,6 +757,7 @@ public sealed class ShapeStore
         {
             body.Mass = 0.0f;
             body.InverseMass = 0.0f;
+            body.InertiaDiagonal = Vec3.Zero;
             body.InverseInertia = Vec3.Zero;
             body.LocalCenter = Vec3.Zero;
             return;

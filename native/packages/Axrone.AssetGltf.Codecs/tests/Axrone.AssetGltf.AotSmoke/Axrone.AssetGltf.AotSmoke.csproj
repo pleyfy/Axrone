@@ -15,6 +15,9 @@
     <ProjectReference Include="../../Axrone.AssetGltf.Codecs.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="..\TestData\draco-grid-1k.drc" Link="TestData\draco-grid-1k.drc" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

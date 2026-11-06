@@ -16,4 +16,8 @@
     <ProjectReference Include="../../Axrone.Scene.Runtime.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" />
+  </ItemGroup>
+
 </Project>

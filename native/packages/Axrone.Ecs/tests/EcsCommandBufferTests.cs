@@ -141,28 +141,22 @@ public sealed class EcsCommandBufferTests : IDisposable
         var buffer = new EntityCommandBuffer(1024);
         var position = new EcsTestPosition(1.0f, 2.0f);
 
-        for (int iteration = 0; iteration < 100; iteration++)
-        {
-            for (int command = 0; command < 100; command++)
+        EcsAllocationHarness.Outcome outcome = EcsAllocationHarness.AssertEveryWindowClean(
+            () =>
             {
-                buffer.EnqueueAdd(entity, in position);
-            }
+                for (int command = 0; command < 100; command++)
+                {
+                    buffer.EnqueueAdd(entity, in position);
+                }
 
-            buffer.Clear();
-        }
+                buffer.Clear();
+            },
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
+            "command buffer enqueue",
+            [new EcsGatePhase("enqueue-one", () => buffer.EnqueueAdd(entity, in position))]);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int iteration = 0; iteration < 100; iteration++)
-        {
-            for (int command = 0; command < 100; command++)
-            {
-                buffer.EnqueueAdd(entity, in position);
-            }
-
-            buffer.Clear();
-        }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        allocated.Should().Be(0);
+        outcome.MeasuredWindows.Should().Be(EcsAllocationHarness.Windows);
     }
 }

@@ -87,22 +87,91 @@ public sealed class JointStore : IJointRegistry
             ThrowHelper.ThrowInvalidOperation("Joint rest length must be finite and non-negative.");
         }
 
+        DistanceDef definition = new()
+        {
+            BodyA = bodyA,
+            BodyB = bodyB,
+            LocalAnchorA = localAnchorA,
+            LocalAnchorB = localAnchorB,
+            Length = length,
+        };
+        return CreateDistance(bodies, in definition);
+    }
+
+    /// <summary>
+    /// Creates a distance joint from <paramref name="definition"/> and wakes
+    /// both bodies: a rigid rod by default, a soft spring when the definition
+    /// carries stiffness, and a bounded separation range when it carries
+    /// bounds.
+    /// </summary>
+    /// <param name="bodies">Body registry; both bodies must be live.</param>
+    /// <param name="definition">Anchors, rest length, compliance and range.</param>
+    public JointId CreateDistance(BodyStore bodies, in DistanceDef definition)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+
+        bodies.Slot(definition.BodyA);
+        bodies.Slot(definition.BodyB);
+
+        bool ranged = MathPhysics.HasRange(definition.MinDistance, definition.MaxDistance);
+        if (ranged && definition.MinDistance > 0.0f && definition.MaxDistance > 0.0f &&
+            definition.MinDistance > definition.MaxDistance)
+        {
+            ThrowHelper.ThrowInvalidOperation("The distance range needs its lower bound at or below its upper bound.");
+        }
+
+        if (ranged && definition.Length > 0.0f &&
+            ((definition.MinDistance > 0.0f && definition.Length < definition.MinDistance) ||
+            (definition.MaxDistance > 0.0f && definition.Length > definition.MaxDistance)))
+        {
+            ThrowHelper.ThrowInvalidOperation("The rest length must sit inside the separation range.");
+        }
+
         lock (_lock)
         {
             DistanceJointData data = new()
             {
-                BodyA = bodyA,
-                BodyB = bodyB,
-                LocalAnchorA = localAnchorA,
-                LocalAnchorB = localAnchorB,
-                Length = length,
+                BodyA = definition.BodyA,
+                BodyB = definition.BodyB,
+                LocalAnchorA = definition.LocalAnchorA,
+                LocalAnchorB = definition.LocalAnchorB,
+                Length = definition.Length,
+                Stiffness = definition.Stiffness,
+                Damping = definition.Damping,
+                MinDistance = definition.MinDistance,
+                MaxDistance = definition.MaxDistance,
                 Impulse = 0.0f,
             };
             uint sparse = _distance.Allocate(in data);
-            bodies.SetAwake(bodyA, true);
-            bodies.SetAwake(bodyB, true);
+            bodies.SetAwake(definition.BodyA, true);
+            bodies.SetAwake(definition.BodyB, true);
             return new JointId(JointKind.Distance, sparse);
         }
+    }
+
+    /// <summary>
+    /// Creates a spring joint from <paramref name="definition"/> and wakes both
+    /// bodies: a soft distance constraint whose stiffness keeps it strictly
+    /// positive, sharing the distance joint's storage and solver path.
+    /// </summary>
+    /// <param name="bodies">Body registry; both bodies must be live.</param>
+    /// <param name="definition">Anchors, rest length, stiffness and damping.</param>
+    /// <returns>The identity of the created joint, tagged <see cref="JointKind.Distance"/>.</returns>
+    public JointId CreateSpring(BodyStore bodies, in SpringDef definition)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+
+        DistanceDef rod = new()
+        {
+            BodyA = definition.BodyA,
+            BodyB = definition.BodyB,
+            LocalAnchorA = definition.LocalAnchorA,
+            LocalAnchorB = definition.LocalAnchorB,
+            Length = definition.Distance,
+            Stiffness = definition.Stiffness,
+            Damping = definition.Damping,
+        };
+        return CreateDistance(bodies, in rod);
     }
 
     /// <summary>
@@ -164,10 +233,11 @@ public sealed class JointStore : IJointRegistry
     /// <summary>
     /// Creates a weld locking two bodies through a shared world anchor and
     /// wakes both bodies. The relative angle and anchor separation freeze at
-    /// creation.
+    /// creation. A positive frequency in the definition turns the lock into a
+    /// soft attach that springs toward the welded pose; zero keeps it rigid.
     /// </summary>
     /// <param name="bodies">Body registry; both bodies must be live and distinct.</param>
-    /// <param name="definition">Pin anchor.</param>
+    /// <param name="definition">Pin anchor and soft-attach tuning.</param>
     public JointId CreateWeld(BodyStore bodies, in WeldDef definition)
     {
         ArgumentNullException.ThrowIfNull(bodies);
@@ -191,6 +261,7 @@ public sealed class JointStore : IJointRegistry
 
         lock (_lock)
         {
+            MathPhysics.ComputeAttachTuning(definition.Frequency, definition.DampingRatio, out float stiffness, out float damping);
             WeldJointData data = new()
             {
                 BodyA = definition.BodyA,
@@ -198,6 +269,8 @@ public sealed class JointStore : IJointRegistry
                 LocalAnchorA = transformA.InverseTransformPoint(definition.WorldAnchor),
                 LocalAnchorB = transformB.InverseTransformPoint(definition.WorldAnchor),
                 ReferenceAngle = transformB.Angle - transformA.Angle,
+                Stiffness = stiffness,
+                Damping = damping,
             };
             uint sparse = _weld.Allocate(in data);
             bodies.SetAwake(definition.BodyA, true);
@@ -356,6 +429,11 @@ public sealed class JointStore : IJointRegistry
             ThrowHelper.ThrowInvalidOperation("Suspension axis must be a finite non-zero vector.");
         }
 
+        if (definition.EnableLimit && definition.LowerTranslation > definition.UpperTranslation)
+        {
+            ThrowHelper.ThrowInvalidOperation("Lower travel stop must not exceed the upper stop.");
+        }
+
         ref BodyState stateA = ref bodies.Slot(definition.BodyA);
         ref BodyState stateB = ref bodies.Slot(definition.BodyB);
 
@@ -384,6 +462,9 @@ public sealed class JointStore : IJointRegistry
                 MotorSpeed = definition.MotorSpeed,
                 MaxMotorTorque = definition.MaxMotorTorque,
                 EnableMotor = definition.EnableMotor,
+                EnableLimit = definition.EnableLimit,
+                LowerTranslation = definition.LowerTranslation,
+                UpperTranslation = definition.UpperTranslation,
                 SuspensionFrequency = definition.SuspensionFrequency,
                 SuspensionDamping = definition.SuspensionDamping,
             };

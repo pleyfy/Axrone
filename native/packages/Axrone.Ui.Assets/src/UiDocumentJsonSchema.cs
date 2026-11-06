@@ -181,6 +181,9 @@ internal static class UiDocumentJsonSchema
         _ => "auto"u8,
     };
 
+    public static ReadOnlySpan<byte> TextAutoSize(UiTextAutoSize autoSize) =>
+        autoSize == UiTextAutoSize.ShrinkToFit ? "shrink-to-fit"u8 : "none"u8;
+
     public static ReadOnlySpan<byte> ImageFit(UiImageFit fit) => fit switch
     {
         UiImageFit.Contain => "contain"u8,

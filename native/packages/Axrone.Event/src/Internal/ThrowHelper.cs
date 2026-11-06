@@ -135,4 +135,28 @@ internal static class ThrowHelper
             priority,
             capacity);
     }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowTaskSchedulerClosed(string schedulerName)
+    {
+        throw new EventTaskSchedulerClosedException($"The task scheduler '{schedulerName}' has been closed and no longer accepts submissions.");
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowQueueFull(EventTaskPriority priority, int capacity)
+    {
+        throw new EventQueueFullException(
+            $"The {priority} task lane is full ({capacity} slots).",
+            EventPriority.Normal,
+            capacity);
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowInvalidTaskHandle()
+    {
+        throw new InvalidOperationException("The task handle does not refer to an issued task.");
+    }
 }

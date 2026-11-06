@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 #pragma warning disable CA1062 // Policy entry points run behind JointStorage sweeps owned by JointStore; JointSolver validates both stores once per pass, so per-sweep revalidation would pessimise the hot loop without covering new ground.
-/// <summary>One locked relative pose: pin block plus angle lock.</summary>
+/// <summary>One locked relative pose: pin block plus angle lock, softened into a spring attach when a frequency is set.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct WeldJointData
 {
@@ -28,6 +28,21 @@ public struct WeldJointData
 
     /// <summary>Accumulated angle impulse; warm-started every step.</summary>
     public float WeldAngleImpulse;
+
+    /// <summary>Soft-attach stiffness (omega squared, omega = 2*pi*hertz); zero keeps the weld rigid.</summary>
+    public float Stiffness;
+
+    /// <summary>Soft-attach damping (twice the damping ratio times omega).</summary>
+    public float Damping;
+
+    /// <summary>Compliance added to each diagonal of the effective mass this step.</summary>
+    public float Gamma;
+
+    /// <summary>Velocity bias toward the welded anchors this step.</summary>
+    public Vec2 BiasPin;
+
+    /// <summary>Velocity bias toward the welded angle this step.</summary>
+    public float AngleBias;
 }
 
 /// <summary>Locked pose: angle lock, then the shared pin block.</summary>
@@ -74,6 +89,18 @@ public readonly struct WeldPolicy : IJointPolicy<WeldPolicy, WeldJointData>
         bool awakeA = (stateA.Flags & BodyFlags.Awake) != 0;
         bool awakeB = (stateB.Flags & BodyFlags.Awake) != 0;
 
+        Vec2 pA = stateA.Position + MathPhysics.Rotate(stateA, data.LocalAnchorA);
+        Vec2 pB = stateB.Position + MathPhysics.Rotate(stateB, data.LocalAnchorB);
+        float angleError = MathPhysics.NormalizeAngle(
+            (MathF.Atan2(stateB.Sin, stateB.Cos) - MathF.Atan2(stateA.Sin, stateA.Cos)) - data.ReferenceAngle);
+        MathPhysics.ComputeSoftness(
+            data.Stiffness, data.Damping, dt, (pB - pA).X, out data.Gamma, out float biasX);
+        MathPhysics.ComputeSoftness(
+            data.Stiffness, data.Damping, dt, (pB - pA).Y, out _, out float biasY);
+        MathPhysics.ComputeSoftness(
+            data.Stiffness, data.Damping, dt, angleError, out _, out data.AngleBias);
+        data.BiasPin = new Vec2(biasX, biasY);
+
         Vec2 pointImpulse = data.PointImpulse;
         if (awakeA)
         {
@@ -108,13 +135,13 @@ public readonly struct WeldPolicy : IJointPolicy<WeldPolicy, WeldJointData>
 
         float invIA = awakeA ? stateA.InverseInertia : 0.0f;
         float invIB = awakeB ? stateB.InverseInertia : 0.0f;
-        float axialMass = invIA + invIB;
+        float axialMass = (invIA + invIB) + data.Gamma;
         if (axialMass <= 0.0f || (!awakeA && !awakeB))
         {
             return;
         }
 
-        float delta = -(stateB.AngularVelocity - stateA.AngularVelocity) / axialMass;
+        float delta = -((stateB.AngularVelocity - stateA.AngularVelocity) + data.AngleBias + (data.Gamma * data.WeldAngleImpulse)) / axialMass;
         data.WeldAngleImpulse += delta;
 
         if (awakeA)
@@ -146,8 +173,8 @@ public readonly struct WeldPolicy : IJointPolicy<WeldPolicy, WeldJointData>
         Vec2 rA = MathPhysics.Rotate(stateA, data.LocalAnchorA) - MathPhysics.Rotate(stateA, stateA.LocalCenter);
         Vec2 rB = MathPhysics.Rotate(stateB, data.LocalAnchorB) - MathPhysics.Rotate(stateB, stateB.LocalCenter);
 
-        float k11 = invMassA + invMassB + (invIA * rA.Y * rA.Y) + (invIB * rB.Y * rB.Y);
-        float k22 = invMassA + invMassB + (invIA * rA.X * rA.X) + (invIB * rB.X * rB.X);
+        float k11 = (invMassA + invMassB + (invIA * rA.Y * rA.Y) + (invIB * rB.Y * rB.Y)) + data.Gamma;
+        float k22 = (invMassA + invMassB + (invIA * rA.X * rA.X) + (invIB * rB.X * rB.X)) + data.Gamma;
         float k12 = (invIA * rA.X * rA.Y) - (invIB * rB.X * rB.Y);
         float det = (k11 * k22) - (k12 * k12);
         if (det <= 0.0f)
@@ -158,7 +185,7 @@ public readonly struct WeldPolicy : IJointPolicy<WeldPolicy, WeldJointData>
         Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * MathPhysics.Perp(rA));
         Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * MathPhysics.Perp(rB));
         Vec2 accumulated = data.PointImpulse;
-        Vec2 residual = (vB - vA) - new Vec2(
+        Vec2 residual = ((vB - vA) + data.BiasPin + (data.Gamma * accumulated)) - new Vec2(
             (k11 * accumulated.X) + (k12 * accumulated.Y),
             (k12 * accumulated.X) + (k22 * accumulated.Y));
 
@@ -230,6 +257,13 @@ public readonly struct WeldPolicy : IJointPolicy<WeldPolicy, WeldJointData>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static void SolvePosition(ref WeldJointData data, BodyStore bodies, JointStore store)
     {
+        if (data.Stiffness > 0.0f)
+        {
+            // The soft attach carries pose error in its spring rows; a rigid
+            // position push would fight them.
+            return;
+        }
+
         SolvePinCorrection(bodies, data.BodyA, data.BodyB, data.LocalAnchorA, data.LocalAnchorB);
 
         ref BodyState stateA = ref bodies.Slot(data.BodyA);

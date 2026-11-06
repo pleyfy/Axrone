@@ -664,7 +664,8 @@ public static class JointSolver
             ref stateA, ref stateB, awakeA, awakeB, invIA, invIB, axis, angle,
             joint.LowerLimit, joint.UpperLimit, joint.EnableLimit,
             joint.MotorSpeed, joint.MaxMotorTorque, joint.EnableMotor,
-            ref joint.LimitImpulse, ref joint.MotorImpulse, h);
+            ref joint.LimitImpulse, ref joint.MotorImpulse, h,
+            joint.LimitMode, in joint.LimitSpring, ref joint.LimitEngaged, ref joint.LimitBounceBias);
     }
 
     /// <summary>Twist stops with a centered range plus an optional speed motor around an axis.</summary>
@@ -673,7 +674,8 @@ public static class JointSolver
         Vec3 invIA, Vec3 invIB, Vec3 axis, float angle,
         float lowerLimit, float upperLimit, bool enableLimit,
         float motorSpeed, float maxMotorTorque, bool enableMotor,
-        ref float limitImpulse, ref float motorImpulse, float h)
+        ref float limitImpulse, ref float motorImpulse, float h,
+        JointLimitMode mode, in LimitSpringSettings spring, ref float engagedFlag, ref float bounceBias)
     {
         float k = Vec3.Dot(axis, ContactSolver.ApplyInverseInertia(stateA.Rotation, invIA, axis))
             + Vec3.Dot(axis, ContactSolver.ApplyInverseInertia(stateB.Rotation, invIB, axis));
@@ -699,13 +701,25 @@ public static class JointSolver
                 sign = -1.0f;
             }
 
-            if (sign != 0.0f)
+            if (mode == JointLimitMode.Hard)
             {
-                float bias = (PositionBeta / MathF.Max(h, 1e-6f)) * violation;
-                float lambda = (-(rate * sign) + bias) / k;
-                float updated = MathF.Max(limitImpulse + lambda, 0.0f);
-                ApplyHingeSpin(ref stateA, ref stateB, awakeA, awakeB, invIA, invIB, axis, (updated - limitImpulse) * sign);
-                limitImpulse = updated;
+                if (sign != 0.0f)
+                {
+                    float bias = (PositionBeta / MathF.Max(h, 1e-6f)) * violation;
+                    float lambda = (-(rate * sign) + bias) / k;
+                    float updated = MathF.Max(limitImpulse + lambda, 0.0f);
+                    ApplyHingeSpin(ref stateA, ref stateB, awakeA, awakeB, invIA, invIB, axis, (updated - limitImpulse) * sign);
+                    limitImpulse = updated;
+                }
+            }
+            else
+            {
+                float dLow = angle - lowerLimit;
+                float dHigh = upperLimit - angle;
+                float side = dLow <= dHigh ? 1.0f : -1.0f;
+                float past = side > 0.0f ? -dLow : -dHigh;
+                SolveSoftAngularLimit(ref stateA, ref stateB, awakeA, awakeB, invIA, invIB, axis, k,
+                    past, side * rate, h, in spring, side, ref limitImpulse, ref engagedFlag, ref bounceBias);
             }
         }
 
@@ -803,11 +817,15 @@ public static class JointSolver
 
         float twist = HingeAngle(stateA.Rotation, stateB.Rotation, joint.LocalPerpA, joint.LocalPerpB, axisA);
         float halfTwist = joint.TwistSpan * 0.5f;
+        float twistEngaged = 0.0f;
+        float twistBounceBias = 0.0f;
+        LimitSpringSettings hardOnlySpring = default;
         SolveTwistLimitMotor(
             ref stateA, ref stateB, awakeA, awakeB, invIA, invIB, axisA, twist,
             -halfTwist, halfTwist, true,
             joint.MotorSpeed, joint.MaxMotorTorque, joint.EnableMotor,
-            ref joint.TwistLimitImpulse, ref joint.TwistMotorImpulse, h);
+            ref joint.TwistLimitImpulse, ref joint.TwistMotorImpulse, h,
+            JointLimitMode.Hard, in hardOnlySpring, ref twistEngaged, ref twistBounceBias);
     }
 
     private static void SolveConeTwistPosition(BodyStore bodies, ref ConeTwistJointData joint)
@@ -866,7 +884,17 @@ public static class JointSolver
         Vec3 vB = stateB.LinearVelocity + Vec3.Cross(stateB.AngularVelocity, rB);
         float slideRate = Vec3.Dot(axisA, vB - vA);
 
-        if (joint.EnableLimit)
+        if (joint.EnableLimit && joint.LimitMode == JointLimitMode.Soft)
+        {
+            float dLow = travel - joint.LowerLimit;
+            float dHigh = joint.UpperLimit - travel;
+            float side = dLow <= dHigh ? 1.0f : -1.0f;
+            float past = side > 0.0f ? -dLow : -dHigh;
+            SolveSoftLinearLimit(ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
+                rA, rB, axisA * -side, past, side * slideRate, h, in joint.LimitSpring,
+                ref joint.LimitImpulse, ref joint.LimitEngaged, ref joint.LimitBounceBias);
+        }
+        else if (joint.EnableLimit)
         {
             float violation = 0.0f;
             float sign = 0.0f;
@@ -984,7 +1012,7 @@ public static class JointSolver
 
         CorrectAxisAlignment(bodies, joint.BodyA, joint.BodyB, axisA, axisB);
 
-        if (joint.EnableLimit)
+        if (joint.EnableLimit && joint.LimitMode == JointLimitMode.Hard)
         {
             float travel = Vec3.Dot(axisA, span);
             float clamped = Math.Clamp(travel, joint.LowerLimit, joint.UpperLimit);
@@ -1017,13 +1045,17 @@ public static class JointSolver
         Vec3 axisZ = stateA.Rotation * (joint.LocalFrameA * new Vec3(0.0f, 0.0f, 1.0f));
 
         Vec3 linear = joint.LinearImpulse;
+        Vec3 engaged = joint.AxisEngaged;
+        Vec3 bounce = joint.AxisBounceBias;
         SolveConfigurableLinearRow(ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
-            rA, rB, axisX, span, joint.X, h, ref linear.X);
+            rA, rB, axisX, span, joint.X, h, ref linear.X, ref engaged.X, ref bounce.X);
         SolveConfigurableLinearRow(ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
-            rA, rB, axisY, span, joint.Y, h, ref linear.Y);
+            rA, rB, axisY, span, joint.Y, h, ref linear.Y, ref engaged.Y, ref bounce.Y);
         SolveConfigurableLinearRow(ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
-            rA, rB, axisZ, span, joint.Z, h, ref linear.Z);
+            rA, rB, axisZ, span, joint.Z, h, ref linear.Z, ref engaged.Z, ref bounce.Z);
         joint.LinearImpulse = linear;
+        joint.AxisEngaged = engaged;
+        joint.AxisBounceBias = bounce;
 
         Quat worldA = stateA.Rotation * joint.LocalFrameA;
         Quat worldB = stateB.Rotation * joint.LocalFrameB;
@@ -1039,19 +1071,22 @@ public static class JointSolver
         Vec3 axisW_Z = worldA * new Vec3(0.0f, 0.0f, 1.0f);
         Vec3 angular = joint.AngularImpulse;
         SolveConfigurableAngularRow(ref stateA, ref stateB, awakeA, awakeB, invIA, invIB,
-            axisW_X, twist, joint.AngularX, h, ref angular.X);
+            axisW_X, twist, joint.AngularX, h, ref angular.X, ref engaged.X, ref bounce.X);
         SolveConfigurableAngularRow(ref stateA, ref stateB, awakeA, awakeB, invIA, invIB,
-            axisW_Y, twist, joint.AngularY, h, ref angular.Y);
+            axisW_Y, twist, joint.AngularY, h, ref angular.Y, ref engaged.Y, ref bounce.Y);
         SolveConfigurableAngularRow(ref stateA, ref stateB, awakeA, awakeB, invIA, invIB,
-            axisW_Z, twist, joint.AngularZ, h, ref angular.Z);
+            axisW_Z, twist, joint.AngularZ, h, ref angular.Z, ref engaged.Z, ref bounce.Z);
         joint.AngularImpulse = angular;
+        joint.AxisEngaged = engaged;
+        joint.AxisBounceBias = bounce;
     }
 
     /// <summary>One configurable linear row along a reference axis.</summary>
     private static void SolveConfigurableLinearRow(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
         float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
-        Vec3 rA, Vec3 rB, Vec3 axis, Vec3 span, in JointAxisDef tuning, float h, ref float accumulated)
+        Vec3 rA, Vec3 rB, Vec3 axis, Vec3 span, in JointAxisDef tuning, float h, ref float accumulated,
+        ref float engagedFlag, ref float bounceBias)
     {
         if (tuning.Mode == JointAxisMode.Free && !tuning.EnableMotor)
         {
@@ -1087,7 +1122,17 @@ public static class JointSolver
                 sign = -1.0f;
             }
 
-            if (sign != 0.0f)
+            if (tuning.LimitMode == JointLimitMode.Soft)
+            {
+                float dLow = position - tuning.LowerLimit;
+                float dHigh = tuning.UpperLimit - position;
+                float side = dLow <= dHigh ? 1.0f : -1.0f;
+                float past = side > 0.0f ? -dLow : -dHigh;
+                SolveSoftLinearLimit(ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
+                    rA, rB, axis * -side, past, -side * rate, h, in tuning.LimitSpring,
+                    ref accumulated, ref engagedFlag, ref bounceBias);
+            }
+            else if (sign != 0.0f)
             {
                 Vec3 rowAxis = axis * -sign;
                 float bias = (PositionBeta / MathF.Max(h, 1e-6f)) * violation;
@@ -1107,7 +1152,8 @@ public static class JointSolver
     /// <summary>One configurable angular row about a reference axis.</summary>
     private static void SolveConfigurableAngularRow(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
-        Vec3 invIA, Vec3 invIB, Vec3 axis, Vec3 twist, in JointAxisDef tuning, float h, ref float accumulated)
+        Vec3 invIA, Vec3 invIB, Vec3 axis, Vec3 twist, in JointAxisDef tuning, float h, ref float accumulated,
+        ref float engagedFlag, ref float bounceBias)
     {
         if (tuning.Mode == JointAxisMode.Free && !tuning.EnableMotor)
         {
@@ -1148,7 +1194,16 @@ public static class JointSolver
                 sign = -1.0f;
             }
 
-            if (sign != 0.0f)
+            if (tuning.LimitMode == JointLimitMode.Soft)
+            {
+                float dLow = angle - tuning.LowerLimit;
+                float dHigh = tuning.UpperLimit - angle;
+                float side = dLow <= dHigh ? 1.0f : -1.0f;
+                float past = side > 0.0f ? -dLow : -dHigh;
+                SolveSoftAngularLimit(ref stateA, ref stateB, awakeA, awakeB, invIA, invIB, axis, k,
+                    past, side * rate, h, in tuning.LimitSpring, side, ref accumulated, ref engagedFlag, ref bounceBias);
+            }
+            else if (sign != 0.0f)
             {
                 float bias = (PositionBeta / MathF.Max(h, 1e-6f)) * violation;
                 float lambda = (-(rate * sign) + bias) / k;
@@ -1242,6 +1297,11 @@ public static class JointSolver
             return Vec3.Zero;
         }
 
+        if (tuning.Mode == JointAxisMode.Limited && tuning.LimitMode == JointLimitMode.Soft)
+        {
+            return Vec3.Zero;
+        }
+
         float position = Vec3.Dot(axis, span);
         if (tuning.Mode == JointAxisMode.Locked)
         {
@@ -1260,6 +1320,11 @@ public static class JointSolver
             return Vec3.Zero;
         }
 
+        if (tuning.Mode == JointAxisMode.Limited && tuning.LimitMode == JointLimitMode.Soft)
+        {
+            return Vec3.Zero;
+        }
+
         float angle = Vec3.Dot(axis, twist);
         if (tuning.Mode == JointAxisMode.Locked)
         {
@@ -1268,5 +1333,129 @@ public static class JointSolver
 
         float clamped = Math.Clamp(angle, tuning.LowerLimit, tuning.UpperLimit);
         return axis * (angle - clamped);
+    }
+
+    /// <summary>
+    /// Semi-implicit spring push for one angular soft stop. The row engages at
+    /// ContactDistance from the stop, decelerates approach through the damping
+    /// term, adds a one-shot rebound budget on first contact, and stays unilateral
+    /// through the non-negative accumulated impulse. The velocity ceiling of
+    /// |inward| + frequency amplitude keeps extreme dt, tiny mass and deep
+    /// penetration from amplifying energy.
+    /// </summary>
+    private static void SolveSoftAngularLimit(
+        ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
+        Vec3 invIA, Vec3 invIB, Vec3 axis, float k,
+        float past, float sepRate, float h, in LimitSpringSettings spring, float side,
+        ref float accumulated, ref float engagedFlag, ref float bounceBias)
+    {
+        if (k <= 0.0f)
+        {
+            accumulated = 0.0f;
+            engagedFlag = 0.0f;
+            bounceBias = 0.0f;
+            return;
+        }
+
+        if (past <= -spring.ContactDistance)
+        {
+            accumulated = 0.0f;
+            engagedFlag = 0.0f;
+            bounceBias = 0.0f;
+            return;
+        }
+
+        float inward = -sepRate;
+        if (engagedFlag == 0.0f)
+        {
+            engagedFlag = 1.0f;
+            bounceBias = inward > spring.BounceThreshold ? spring.Bounciness * inward : 0.0f;
+        }
+
+        float x = past > 0.0f ? past : 0.0f;
+        float hh = MathF.Max(h, 1e-6f);
+        float omega = 2.0f * MathF.PI * spring.Frequency;
+        float wh = omega * hh;
+        float zeta = spring.DampingRatio;
+        float denom = 1.0f + (2.0f * zeta * wh) + (wh * wh);
+        float bias = bounceBias;
+        bounceBias = 0.0f;
+        float dampTerm = inward > 0.0f ? 2.0f * zeta * omega * inward : 0.0f;
+        float deltaRate = ((hh * (((omega * omega) * x) + dampTerm)) / denom) + bias;
+        float ceiling = MathF.Abs(inward) + (omega * x) + bias;
+        if (deltaRate > ceiling)
+        {
+            deltaRate = ceiling;
+        }
+
+        float updated = MathF.Max(accumulated + (deltaRate / k), 0.0f);
+        float applied = updated - accumulated;
+        if (applied != 0.0f)
+        {
+            ApplyHingeSpin(ref stateA, ref stateB, awakeA, awakeB, invIA, invIB, axis, applied * side);
+        }
+
+        accumulated = updated;
+    }
+
+    /// <summary>Semi-implicit spring push for one linear soft stop; same guards as the angular form.</summary>
+    private static void SolveSoftLinearLimit(
+        ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
+        float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
+        Vec3 rA, Vec3 rB, Vec3 pushDir, float past, float sepRate, float h, in LimitSpringSettings spring,
+        ref float accumulated, ref float engagedFlag, ref float bounceBias)
+    {
+        Vec3 rnA = Vec3.Cross(rA, pushDir);
+        Vec3 rnB = Vec3.Cross(rB, pushDir);
+        float k = invMassA + invMassB
+            + Vec3.Dot(rnA, ContactSolver.ApplyInverseInertia(stateA.Rotation, invIA, rnA))
+            + Vec3.Dot(rnB, ContactSolver.ApplyInverseInertia(stateB.Rotation, invIB, rnB));
+        if (k <= 0.0f)
+        {
+            accumulated = 0.0f;
+            engagedFlag = 0.0f;
+            bounceBias = 0.0f;
+            return;
+        }
+
+        if (past <= -spring.ContactDistance)
+        {
+            accumulated = 0.0f;
+            engagedFlag = 0.0f;
+            bounceBias = 0.0f;
+            return;
+        }
+
+        float inward = -sepRate;
+        if (engagedFlag == 0.0f)
+        {
+            engagedFlag = 1.0f;
+            bounceBias = inward > spring.BounceThreshold ? spring.Bounciness * inward : 0.0f;
+        }
+
+        float x = past > 0.0f ? past : 0.0f;
+        float hh = MathF.Max(h, 1e-6f);
+        float omega = 2.0f * MathF.PI * spring.Frequency;
+        float wh = omega * hh;
+        float zeta = spring.DampingRatio;
+        float denom = 1.0f + (2.0f * zeta * wh) + (wh * wh);
+        float bias = bounceBias;
+        bounceBias = 0.0f;
+        float dampTerm = inward > 0.0f ? 2.0f * zeta * omega * inward : 0.0f;
+        float deltaRate = ((hh * (((omega * omega) * x) + dampTerm)) / denom) + bias;
+        float ceiling = MathF.Abs(inward) + (omega * x) + bias;
+        if (deltaRate > ceiling)
+        {
+            deltaRate = ceiling;
+        }
+
+        float updated = MathF.Max(accumulated + (deltaRate / k), 0.0f);
+        if (updated != accumulated)
+        {
+            ApplyLinearRow(ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
+                rA, rB, pushDir, updated - accumulated);
+        }
+
+        accumulated = updated;
     }
 }

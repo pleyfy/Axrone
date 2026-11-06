@@ -6,6 +6,7 @@
 
   <PropertyGroup Label="CentralizedPackageVersions">
     <BenchmarkDotNetVersion>0.14.0</BenchmarkDotNetVersion>
+    <MicrosoftDotNetIlCompilerVersion>10.0.14</MicrosoftDotNetIlCompilerVersion>
     <FluentAssertionsVersion>8.3.0</FluentAssertionsVersion>
     <AwesomeAssertionsVersion>9.6.0</AwesomeAssertionsVersion>
     <XunitVersion>2.9.3</XunitVersion>
@@ -28,6 +29,10 @@
 
   <ItemGroup Label="PerformanceDependencies">
     <PackageVersion Include="BenchmarkDotNet" Version="$(BenchmarkDotNetVersion)" />
+  </ItemGroup>
+
+  <ItemGroup Label="NativeAotToolchain">
+    <PackageVersion Include="Microsoft.DotNet.ILCompiler" Version="$(MicrosoftDotNetIlCompilerVersion)" />
   </ItemGroup>
 
   <ItemGroup Label="AssetCodecDependencies">

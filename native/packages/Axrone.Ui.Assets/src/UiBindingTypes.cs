@@ -95,6 +95,21 @@ public readonly record struct UiUvRect(float X, float Y, float Width, float Heig
 }
 
 /// <summary>Authored text content and typography for one node.</summary>
+/// <param name="Value">Text content.</param>
+/// <param name="Family">Authored font family name; empty selects the host default.</param>
+/// <param name="Size">Requested font size; the upper bound for shrink-to-fit.</param>
+/// <param name="Weight">Font weight.</param>
+/// <param name="FontStyle">Font slant.</param>
+/// <param name="Wrap">Wrapping mode.</param>
+/// <param name="Overflow">Overflow handling.</param>
+/// <param name="Align">Horizontal alignment.</param>
+/// <param name="Direction">Requested direction.</param>
+/// <param name="LineHeight">Line height in pixels; non-positive derives from the size.</param>
+/// <param name="LetterSpacing">Extra letter spacing in pixels.</param>
+/// <param name="MaxLines">Maximum line count; non-positive means unlimited.</param>
+/// <param name="AutoSize">Auto-sizing mode; <see cref="UiTextAutoSize.None"/> keeps historical behavior.</param>
+/// <param name="MinFontSize">Smallest shrink-to-fit size; non-positive selects the service default.</param>
+/// <param name="MaxFontSize">Largest shrink-to-fit size; non-positive selects the requested size.</param>
 public readonly record struct UiNodeText(
     string Value,
     string Family,
@@ -107,7 +122,10 @@ public readonly record struct UiNodeText(
     UiTextDirection Direction,
     float LineHeight,
     float LetterSpacing,
-    int MaxLines)
+    int MaxLines,
+    UiTextAutoSize AutoSize = UiTextAutoSize.None,
+    float MinFontSize = 0.0f,
+    float MaxFontSize = 0.0f)
 {
     /// <summary>Gets the neutral text block.</summary>
     public static UiNodeText Default => new(

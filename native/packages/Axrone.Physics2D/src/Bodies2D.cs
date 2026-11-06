@@ -133,6 +133,9 @@ public readonly struct BodyDef
     /// <summary>Whether the body may sleep.</summary>
     public bool AllowSleep { get; init; } = true;
 
+    /// <summary>Whether the body starts enabled (disabled bodies integrate nothing).</summary>
+    public bool Enabled { get; init; } = true;
+
     /// <summary>Whether the body starts awake.</summary>
     public bool Awake { get; init; } = true;
 }

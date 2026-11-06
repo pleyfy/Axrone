@@ -126,7 +126,13 @@
     <Project Path="packages/Axrone.Ui.Text/tests/Axrone.Ui.Text.Tests.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
+    <Project Path="packages/Axrone.Animation/benchmarks/Axrone.Animation.Benchmarks.csproj" />
     <Project Path="packages/Axrone.AssetGltf/benchmarks/Axrone.AssetGltf.Benchmarks.csproj" />
     <Project Path="packages/Axrone.Batching/benchmarks/Axrone.Batching.Benchmarks.csproj" />
+    <Project Path="packages/Axrone.Event/benchmarks/Axrone.Event.Benchmarks.csproj" />
+    <Project Path="packages/Axrone.Random/benchmarks/Axrone.Random.Benchmarks.csproj" />
+    <Project Path="packages/Axrone.Reactive/benchmarks/Axrone.Reactive.Benchmarks.csproj" />
+    <Project Path="packages/Axrone.Render.OpenGL/benchmarks/Axrone.Render.OpenGL.Benchmarks.csproj" />
+    <Project Path="packages/Axrone.Tween/benchmarks/Axrone.Tween.Benchmarks.csproj" />
   </Folder>
 </Solution>

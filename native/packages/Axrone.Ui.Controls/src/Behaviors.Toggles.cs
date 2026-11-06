@@ -67,10 +67,15 @@ internal sealed class ToggleBehavior : ToggleBehaviorBase
 
     protected override bool EmitsClick => false;
 
-    public override UiLayoutStyle CreateLayoutStyle(in ControlStyleContext style) =>
-        UiLayoutStyle.Default with
+    public override UiLayoutStyle CreateLayoutStyle(in ControlStyleContext style)
+    {
+        // Historical 44x24 switch geometry is the scale-1 reference; the theme
+        // scale factor stretches it like TypeScript's toggle track sizing.
+        float scale = style.Scale();
+        return UiLayoutStyle.Default with
         {
-            Width = UiLength.Px(44.0f),
-            Height = UiLength.Px(24.0f),
+            Width = UiLength.Px(44.0f * scale),
+            Height = UiLength.Px(24.0f * scale),
         };
+    }
 }

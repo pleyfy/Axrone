@@ -7,7 +7,7 @@ namespace Axrone.Audio.Tests;
 /// sequentially after them, so gauge deltas stay exact without disabling
 /// parallelism for the whole assembly.
 /// </summary>
-[CollectionDefinition(TestCollections.NativeMemoryGauge)]
+[CollectionDefinition(TestCollections.NativeMemoryGauge, DisableParallelization = true)]
 public sealed class GaugeIsolation
 {
 }

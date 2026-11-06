@@ -80,6 +80,8 @@ public sealed class BodyStore
             body.Flags |= BodyFlags.AutoSleep;
         }
 
+        body.Flags |= BodyFlags.Active;
+
         body.Position = definition.Position;
         body.Rotation = definition.Rotation;
         body.LinearVelocity = definition.Type == BodyType.Static ? Vec3.Zero : definition.LinearVelocity;
@@ -191,12 +193,12 @@ public sealed class BodyStore
         body.Torque = Vec3.Zero;
     }
 
-    /// <summary>Accumulates a world force; wakes the body.</summary>
+    /// <summary>Accumulates a world force at the center of mass; wakes the body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyForce(BodyId id, Vec3 force)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -205,12 +207,42 @@ public sealed class BodyStore
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
     }
 
-    /// <summary>Accumulates a torque; wakes the body.</summary>
+    /// <summary>Accumulates a world force applied at a world-space point; the offset from the center of mass adds torque; wakes the body.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ApplyForce(BodyId id, Vec3 force, Vec3 point)
+    {
+        ref BodyState body = ref Slot(id);
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
+        {
+            return;
+        }
+
+        Vec3 lever = point - CenterOfMass(in body);
+        body.Force += force;
+        body.Torque += Vec3.Cross(lever, force);
+        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+    }
+
+    /// <summary>Accumulates a world force through the center of mass; produces no torque; wakes the body.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ApplyForceToCenter(BodyId id, Vec3 force)
+    {
+        ref BodyState body = ref Slot(id);
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
+        {
+            return;
+        }
+
+        body.Force += force;
+        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+    }
+
+    /// <summary>Accumulates a world-space torque; wakes the body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyTorque(BodyId id, Vec3 torque)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -219,12 +251,12 @@ public sealed class BodyStore
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
     }
 
-    /// <summary>Applies an instantaneous linear impulse; wakes the body.</summary>
+    /// <summary>Applies an instantaneous linear impulse at the center of mass; wakes the body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyLinearImpulse(BodyId id, Vec3 impulse)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
@@ -233,17 +265,33 @@ public sealed class BodyStore
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
     }
 
+    /// <summary>Applies an instantaneous linear impulse at a world-space point; the offset from the center of mass spins the body; wakes it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ApplyLinearImpulse(BodyId id, Vec3 impulse, Vec3 point)
+    {
+        ref BodyState body = ref Slot(id);
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
+        {
+            return;
+        }
+
+        Vec3 lever = point - CenterOfMass(in body);
+        body.LinearVelocity += impulse * body.InverseMass;
+        body.AngularVelocity += ContactSolver.ApplyInverseInertia(body.Rotation, body.InverseInertia, Vec3.Cross(lever, impulse));
+        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+    }
+
     /// <summary>Applies an instantaneous angular impulse; wakes the body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyAngularImpulse(BodyId id, Vec3 impulse)
     {
         ref BodyState body = ref Slot(id);
-        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.FixedRotation) != 0)
+        if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.FixedRotation) != 0 || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
 
-        body.AngularVelocity += impulse * body.InverseInertia;
+        body.AngularVelocity += ContactSolver.ApplyInverseInertia(body.Rotation, body.InverseInertia, impulse);
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
     }
 
@@ -261,15 +309,128 @@ public sealed class BodyStore
         }
 
         ref BodyState body = ref Slot(id);
+        body.Mass = mass;
+        body.InertiaDiagonal = inertiaDiagonal;
+        body.InverseMass = body.Type != BodyType.Dynamic || mass <= 0.0f ? 0.0f : 1.0f / mass;
+        RecomputeInverseInertia(ref body);
+    }
+
+    /// <summary>Rebuilds the inverse inertia from the stored tensor, type and rotation lock.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void RecomputeInverseInertia(ref BodyState body)
+    {
         bool infinite = body.Type != BodyType.Dynamic;
         bool locked = (body.Flags & BodyFlags.FixedRotation) != 0;
-        body.Mass = mass;
-        body.InverseMass = !infinite && mass > 0.0f ? 1.0f / mass : 0.0f;
         body.InverseInertia = new Vec3(
-            !infinite && !locked && inertiaDiagonal.X > 0.0f ? 1.0f / inertiaDiagonal.X : 0.0f,
-            !infinite && !locked && inertiaDiagonal.Y > 0.0f ? 1.0f / inertiaDiagonal.Y : 0.0f,
-            !infinite && !locked && inertiaDiagonal.Z > 0.0f ? 1.0f / inertiaDiagonal.Z : 0.0f);
+            !infinite && !locked && body.InertiaDiagonal.X > 0.0f ? 1.0f / body.InertiaDiagonal.X : 0.0f,
+            !infinite && !locked && body.InertiaDiagonal.Y > 0.0f ? 1.0f / body.InertiaDiagonal.Y : 0.0f,
+            !infinite && !locked && body.InertiaDiagonal.Z > 0.0f ? 1.0f / body.InertiaDiagonal.Z : 0.0f);
     }
+
+    /// <summary>Reads the full mass properties: mass and inverses, the body-frame inertia diagonal and the local center of mass.</summary>
+    public MassData3D GetMassData(BodyId id)
+    {
+        ref readonly BodyState body = ref Slot(id);
+        return new MassData3D(body.Mass, body.InverseMass, body.InertiaDiagonal, body.InverseInertia, body.LocalCenter);
+    }
+
+    /// <summary>Reads whether rotation is locked.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IsFixedRotation(BodyId id) => (Slot(id).Flags & BodyFlags.FixedRotation) != 0;
+
+    /// <summary>Locks or unlocks rotation; locking zeroes angular velocity and pins the inverse inertia, unlocking restores it from the stored tensor.</summary>
+    public void SetFixedRotation(BodyId id, bool fixedRotation)
+    {
+        ref BodyState body = ref Slot(id);
+        if (fixedRotation)
+        {
+            body.Flags |= BodyFlags.FixedRotation;
+            body.AngularVelocity = Vec3.Zero;
+            body.InverseInertia = Vec3.Zero;
+            return;
+        }
+
+        body.Flags &= ~BodyFlags.FixedRotation;
+        RecomputeInverseInertia(ref body);
+    }
+
+    /// <summary>Reads the continuous-detection hint.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IsBullet(BodyId id) => (Slot(id).Flags & BodyFlags.Bullet) != 0;
+
+    /// <summary>Toggles the continuous-detection hint for fast movers.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetBullet(BodyId id, bool bullet)
+    {
+        ref BodyState body = ref Slot(id);
+        if (bullet)
+        {
+            body.Flags |= BodyFlags.Bullet;
+        }
+        else
+        {
+            body.Flags &= ~BodyFlags.Bullet;
+        }
+    }
+
+    /// <summary>Reads whether the body participates in simulation.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IsEnabled(BodyId id) => (Slot(id).Flags & BodyFlags.Active) != 0;
+
+    /// <summary>Enables or disables the body; disabling zeroes motion, clears loads and sleeps it, enabling restores participation without waking.</summary>
+    public void SetEnabled(BodyId id, bool enabled)
+    {
+        ref BodyState body = ref Slot(id);
+        if (enabled)
+        {
+            body.Flags |= BodyFlags.Active;
+            return;
+        }
+
+        body.Flags &= ~(BodyFlags.Active | BodyFlags.Awake);
+        body.Flags |= BodyFlags.Sleeping;
+        body.LinearVelocity = Vec3.Zero;
+        body.AngularVelocity = Vec3.Zero;
+        body.Force = Vec3.Zero;
+        body.Torque = Vec3.Zero;
+    }
+
+    /// <summary>Puts a body to sleep or wakes it; the inverse view of <see cref="SetAwake"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetSleeping(BodyId id, bool sleeping) => SetAwake(id, !sleeping);
+
+    /// <summary>Reads the linear velocity a rigidly attached world point would carry.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Vec3 GetLinearVelocityAtPoint(BodyId id, Vec3 point)
+    {
+        ref readonly BodyState body = ref Slot(id);
+        return body.LinearVelocity + Vec3.Cross(body.AngularVelocity, point - CenterOfMass(in body));
+    }
+
+    /// <summary>Maps a body-frame point into world space.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Vec3 GetWorldPoint(BodyId id, Vec3 localPoint)
+    {
+        ref readonly BodyState body = ref Slot(id);
+        return new RigidTransform3D(body.Position, body.Rotation).TransformPoint(localPoint);
+    }
+
+    /// <summary>Maps a world point into the body frame.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Vec3 GetLocalPoint(BodyId id, Vec3 worldPoint)
+    {
+        ref readonly BodyState body = ref Slot(id);
+        return new RigidTransform3D(body.Position, body.Rotation).InverseTransformPoint(worldPoint);
+    }
+
+    /// <summary>Rotates a body-frame vector into world space; translation is ignored.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Vec3 GetWorldVector(BodyId id, Vec3 localVector) => Slot(id).Rotation * localVector;
+
+    /// <summary>Rotates a world vector into the body frame; translation is ignored.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Vec3 GetLocalVector(BodyId id, Vec3 worldVector) => Slot(id).Rotation.Conjugate() * worldVector;
+
 
     /// <summary>Reads the mass of a body.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -299,10 +460,11 @@ public sealed class BodyStore
 
     /// <summary>
     /// Force half of the step: gravity and accumulated forces integrate into
-    /// velocities with damping applied, then forces clear. Positions untouched.
+    /// velocities with damping applied, then forces clear when
+    /// <paramref name="clearForces"/> is set. Positions untouched.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public void IntegrateVelocities(float dt, Vec3 gravity)
+    public void IntegrateVelocities(float dt, Vec3 gravity, bool clearForces = true)
     {
         if (!(dt > 0.0f))
         {
@@ -313,7 +475,7 @@ public sealed class BodyStore
         for (int i = 0; i < bodies.Length; i++)
         {
             ref BodyState body = ref bodies[i];
-            if ((body.Flags & BodyFlags.Awake) == 0)
+            if ((body.Flags & BodyFlags.Awake) == 0 || (body.Flags & BodyFlags.Active) == 0)
             {
                 continue;
             }
@@ -324,7 +486,7 @@ public sealed class BodyStore
             }
 
             body.LinearVelocity += dt * ((gravity * body.GravityScale) + (body.Force * body.InverseMass));
-            body.AngularVelocity += dt * (body.Torque * body.InverseInertia);
+            body.AngularVelocity += dt * ContactSolver.ApplyInverseInertia(body.Rotation, body.InverseInertia, body.Torque);
 
             body.LinearVelocity *= 1.0f / (1.0f + (dt * body.LinearDamping));
             body.AngularVelocity *= 1.0f / (1.0f + (dt * body.AngularDamping));
@@ -334,8 +496,45 @@ public sealed class BodyStore
                 body.AngularVelocity = Vec3.Zero;
             }
 
+            if (clearForces)
+            {
+                body.Force = Vec3.Zero;
+                body.Torque = Vec3.Zero;
+            }
+        }
+    }
+
+    /// <summary>Zeroes accumulated forces and torques on every body.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public void ClearForces()
+    {
+        Span<BodyState> bodies = _bodies.AsSpan(0, _capacity);
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            ref BodyState body = ref bodies[i];
+            if (!body.Live)
+            {
+                continue;
+            }
+
             body.Force = Vec3.Zero;
             body.Torque = Vec3.Zero;
+        }
+    }
+
+    /// <summary>Wakes every live dynamic body.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public void WakeAllBodies()
+    {
+        Span<BodyState> bodies = _bodies.AsSpan(0, _capacity);
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            ref BodyState body = ref bodies[i];
+            if (body.Live && body.Type == BodyType.Dynamic)
+            {
+                body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+                body.SleepTime = 0.0f;
+            }
         }
     }
 
@@ -357,7 +556,7 @@ public sealed class BodyStore
         for (int i = 0; i < bodies.Length; i++)
         {
             ref BodyState body = ref bodies[i];
-            if ((body.Flags & BodyFlags.Awake) == 0)
+            if ((body.Flags & BodyFlags.Awake) == 0 || (body.Flags & BodyFlags.Active) == 0)
             {
                 continue;
             }
@@ -422,6 +621,10 @@ public sealed class BodyStore
         Array.Resize(ref _freeStack, newCapacity);
         _capacity = newCapacity;
     }
+
+    /// <summary>World-space center of mass: the body origin plus the rotated local offset.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vec3 CenterOfMass(in BodyState body) => body.Position + (body.Rotation * body.LocalCenter);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int Validate(BodyId id)

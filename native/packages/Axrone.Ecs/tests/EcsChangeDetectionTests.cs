@@ -2,6 +2,8 @@ namespace Axrone.Ecs.Tests;
 
 public sealed class EcsChangeDetectionTests : IDisposable
 {
+    private const int WindowIterations = 1_000;
+
     private readonly World _world;
 
     public EcsChangeDetectionTests()
@@ -203,22 +205,49 @@ public sealed class EcsChangeDetectionTests : IDisposable
 
         _world.Step();
         var visitor = new CountingChangeVisitor();
-        for (int iteration = 0; iteration < 200; iteration++)
-        {
-            visitor.Reset();
-            _world.ForEachChanged<CountingChangeVisitor, EcsTestPosition>(-1, ref visitor);
-        }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int iteration = 0; iteration < 1000; iteration++)
-        {
-            visitor.Reset();
-            _world.ForEachChanged<CountingChangeVisitor, EcsTestPosition>(-1, ref visitor);
-        }
+        // Phases are measured only after a window already failed, twice each, so the next red
+        // names the channel: cache resolve, chunk walk, one traversal, or the full window shape.
+        // A phase that claims on its first run and not on its second is a first touch; one that
+        // claims both times is a standing allocation in the product.
+        EcsGatePhase[] phases =
+        [
+            new("resolve", () => _ = _world.QueryCache.Resolve(
+                ComponentType<EcsTestPosition>.Mask, ComponentMask.Empty, _world.Archetypes)),
+            new("walk", () =>
+            {
+                Query1<EcsTestPosition> query = _world.Query<EcsTestPosition>();
+                Query1<EcsTestPosition>.Enumerator enumerator = query.GetEnumerator();
+                _ = enumerator.MoveNext();
+                Chunk1<EcsTestPosition> chunk = enumerator.Current;
+                _ = chunk.Length + chunk.Entities.Length + chunk.Column1.Length;
+                _ = enumerator.MoveNext();
+            }),
+            new("visit-one", () => VisitChangedWindows(_world, ref visitor, 1)),
+            new("visit-window", () => VisitChangedWindows(_world, ref visitor, WindowIterations)),
+        ];
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        allocated.Should().Be(0);
+        EcsAllocationHarness.Outcome outcome = EcsAllocationHarness.AssertEveryWindowClean(
+            () => VisitChangedWindows(_world, ref visitor, WindowIterations),
+            betweenWindows: null,
+            EcsAllocationHarness.Windows,
+            EcsAllocationHarness.PrimePasses,
+            "change-visitor traversal",
+            phases);
+
+        // The gate only means something if the traversals still visited every changed row.
         visitor.Count.Should().Be(4);
+        outcome.MeasuredWindows.Should().Be(EcsAllocationHarness.Windows);
+        outcome.PrimePasses.Should().BeGreaterThanOrEqualTo(EcsAllocationHarness.PrimePasses);
+    }
+
+    private static void VisitChangedWindows(World world, ref CountingChangeVisitor visitor, int iterations)
+    {
+        for (int iteration = 0; iteration < iterations; iteration++)
+        {
+            visitor.Reset();
+            world.ForEachChanged<CountingChangeVisitor, EcsTestPosition>(-1, ref visitor);
+        }
     }
 
     [Fact]

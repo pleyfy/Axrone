@@ -456,9 +456,35 @@ public sealed class ShapeStore
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsSlotLive(int slot) => slot >= 0 && slot < _capacity && _shapes[slot].Live;
 
+    /// <summary>Raw slot view for internal iteration; the caller holds the liveness invariant.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ref ShapeRecord SlotAt(int slot) => ref _shapes[slot];
+
     /// <summary>Whether a shape is a trigger-only sensor.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsSensor(ShapeId id) => _shapes[Validate(id)].IsSensor;
+
+    /// <summary>Reads the collision filter of a shape.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public CollisionFilter GetFilter(ShapeId id) => _shapes[Validate(id)].Filter;
+
+    /// <summary>Writes the collision filter of a shape; bounds never change, so the tree needs no sync.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetFilter(ShapeId id, in CollisionFilter filter)
+    {
+        _shapes[Validate(id)].Filter = filter;
+    }
+
+    /// <summary>Reads the contact material of a shape.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public PhysicsMaterial GetMaterial(ShapeId id) => _shapes[Validate(id)].Material;
+
+    /// <summary>Writes the contact material of a shape; the solver reads it from the next pass on.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetMaterial(ShapeId id, in PhysicsMaterial material)
+    {
+        _shapes[Validate(id)].Material = material;
+    }
 
     /// <summary>Marks a shape as a trigger-only sensor or a solid collider. Bounds never change, so the tree needs no sync.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

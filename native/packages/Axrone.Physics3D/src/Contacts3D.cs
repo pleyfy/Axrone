@@ -23,6 +23,9 @@ public struct Contact3D
     /// <summary>Trigger-only overlap: reported but never solved.</summary>
     public bool IsSensor;
 
+    /// <summary>Pair tuning the solver reads each sweep; rewritten by pre-solve callbacks.</summary>
+    public ContactTuning Tuning;
+
     /// <summary>Contact manifold; impulses accumulate across steps.</summary>
     public Manifold3D Manifold;
 }

@@ -137,10 +137,10 @@ internal struct BodyState
     /// <summary>Angular velocity in radians per second.</summary>
     public Vec3 AngularVelocity;
 
-    /// <summary>Accumulated force, cleared every step.</summary>
+    /// <summary>Accumulated world-space force, cleared every step.</summary>
     public Vec3 Force;
 
-    /// <summary>Accumulated torque, cleared every step.</summary>
+    /// <summary>Accumulated world-space torque, cleared every step.</summary>
     public Vec3 Torque;
 
     /// <summary>Mass; zero means infinite.</summary>
@@ -148,6 +148,9 @@ internal struct BodyState
 
     /// <summary>Inverse mass; zero for infinite mass.</summary>
     public float InverseMass;
+
+    /// <summary>Diagonal of the inertia tensor in the body frame; the raw tensor mass queries read back.</summary>
+    public Vec3 InertiaDiagonal;
 
     /// <summary>Diagonal of the inverse inertia tensor in the body frame; zero for infinite inertia.</summary>
     public Vec3 InverseInertia;
