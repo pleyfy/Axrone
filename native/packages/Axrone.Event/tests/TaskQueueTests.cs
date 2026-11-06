@@ -6,12 +6,23 @@ public sealed class TaskQueueTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
-    private static readonly EventTaskState[] TerminalStates =
-        [EventTaskState.Completed, EventTaskState.Timeout, EventTaskState.Failed, EventTaskState.Cancelled];
+    private static readonly EventTaskState[] RaceTerminalStates =
+        [EventTaskState.Completed, EventTaskState.Timeout];
 
     private static void WaitUntil(Func<bool> condition)
     {
         SpinWait.SpinUntil(condition, Wait).Should().BeTrue("the scheduler must reach the expected state");
+    }
+
+    private static async Task SettleAsync()
+    {
+        await Task.Run(static async () =>
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                await Task.Yield();
+            }
+        });
     }
 
     [Fact]
@@ -409,14 +420,14 @@ public sealed class TaskQueueTests
             _ = scheduler.Cancel(handle.Id);
 
             handle.State.Should().BeOneOf(
-                TerminalStates,
-                "only a terminal state may be observable once the deadline, the cancel requests and the body have all run");
+                RaceTerminalStates,
+                "only the deadline and the body completion contend here; the body ignores its token, so the two Cancel calls are no-ops and can never yield Cancelled or Failed");
 
             WaitUntil(() => scheduler.IsIdle);
 
             EventTaskStats stats = scheduler.GetStats();
             (stats.CompletedCount + stats.FailedCount).Should().Be(1,
-                "exactly one terminal transition may be counted, whichever path won the compare-exchange");
+                "exactly one terminal transition may be counted, whichever of the deadline and the body won the compare-exchange");
             stats.TotalProcessed.Should().Be(1, "the aggregate counter sees the same single terminal transition");
 
             if (handle.State == EventTaskState.Completed)
@@ -1084,5 +1095,204 @@ public sealed class TaskQueueTests
         clock.Advance(TimeSpan.FromMinutes(5));
         scheduler.CollectGarbage().Should().Be(9, "the bounded registry walk prunes every terminal metric");
         scheduler.GetAllTaskMetrics().Should().BeEmpty("pruned metrics leave the live snapshot");
+    }
+
+    [Fact]
+    public async Task DrainWaiter_WakesWhenCancelDropsTheLastDelayedRetry()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder()
+                .WithConcurrencyLimit(1)
+                .WithTaskTimeout(TimeSpan.Zero)
+                .WithRetries(maxRetries: 3)
+                .WithRetryDelay(TimeSpan.FromHours(1))
+                .Build(),
+            clock);
+
+        EventTaskHandle handle = scheduler.SubmitVoid(async token =>
+        {
+            await Task.Yield();
+            throw new InvalidOperationException("park this retry");
+        });
+        WaitUntil(() => scheduler.DelayedRetryCount == 1);
+
+        long token = scheduler.ClaimWaiter();
+        Task signal = scheduler.PrepareWaiterSignal(token);
+        await SettleAsync();
+        signal.IsCompleted.Should().BeFalse(
+            "live retry work exists, so a registered waiter must park and unrelated pumps must not wake it");
+
+        scheduler.Cancel(handle.Id).Should().BeTrue();
+
+        signal.IsCompleted.Should().BeTrue(
+            "Cancel dropped the last live work and must wake the registered drain waiter itself, not via an unrelated pump");
+        scheduler.WaitCount.Should().Be(0, "waking deregisters the waiter");
+        scheduler.IsIdle.Should().BeTrue();
+        scheduler.ReleaseWaiter(token);
+    }
+
+    [Fact]
+    public async Task DrainWaiter_WakesWhenCancelBatchDropsTheLastDelayedRetries()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder()
+                .WithConcurrencyLimit(1)
+                .WithTaskTimeout(TimeSpan.Zero)
+                .WithRetries(maxRetries: 3)
+                .WithRetryDelay(TimeSpan.FromHours(1))
+                .Build(),
+            clock);
+
+        var ids = new EventTaskId[2];
+        for (int i = 0; i < ids.Length; i++)
+        {
+            ids[i] = scheduler.SubmitVoid(async token =>
+            {
+                await Task.Yield();
+                throw new InvalidOperationException("park these retries");
+            }).Id;
+        }
+
+        WaitUntil(() => scheduler.ActiveCount == 0 && scheduler.DelayedRetryCount == 2);
+
+        long token = scheduler.ClaimWaiter();
+        Task signal = scheduler.PrepareWaiterSignal(token);
+        await SettleAsync();
+        signal.IsCompleted.Should().BeFalse(
+            "two parked retries are live work, so a registered waiter must park and unrelated pumps must not wake it");
+
+        scheduler.CancelBatch(ids).Should().Be(2);
+
+        signal.IsCompleted.Should().BeTrue(
+            "CancelBatch dropped the last live work and must wake the registered drain waiter itself");
+        scheduler.WaitCount.Should().Be(0, "waking deregisters the waiter");
+        scheduler.IsIdle.Should().BeTrue();
+        scheduler.ReleaseWaiter(token);
+    }
+
+    [Fact]
+    public async Task DrainWaiter_WakesWhenCancelAllDropsTheLastDelayedRetries()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder()
+                .WithConcurrencyLimit(1)
+                .WithTaskTimeout(TimeSpan.Zero)
+                .WithRetries(maxRetries: 3)
+                .WithRetryDelay(TimeSpan.FromHours(1))
+                .Build(),
+            clock);
+
+        for (int i = 0; i < 3; i++)
+        {
+            _ = scheduler.SubmitVoid(async token =>
+            {
+                await Task.Yield();
+                throw new InvalidOperationException("park these retries");
+            });
+        }
+
+        WaitUntil(() => scheduler.ActiveCount == 0 && scheduler.DelayedRetryCount == 3);
+
+        long token = scheduler.ClaimWaiter();
+        Task signal = scheduler.PrepareWaiterSignal(token);
+        await SettleAsync();
+        signal.IsCompleted.Should().BeFalse(
+            "three parked retries are live work, so a registered waiter must park and unrelated pumps must not wake it");
+
+        scheduler.CancelAll().Should().Be(3);
+
+        signal.IsCompleted.Should().BeTrue(
+            "CancelAll dropped the last live work and must wake the registered drain waiter itself");
+        scheduler.WaitCount.Should().Be(0, "waking deregisters the waiter");
+        scheduler.IsIdle.Should().BeTrue();
+        scheduler.ReleaseWaiter(token);
+    }
+
+    [Fact]
+    public async Task DrainWaiter_StaysParkedWhileABodyRunsAfterQueuedCancel()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithConcurrencyLimit(1).WithTaskTimeout(TimeSpan.Zero).Build());
+
+        EventTaskHandle blocker = scheduler.SubmitVoid(async token =>
+        {
+            await gate.Task.ConfigureAwait(false);
+        });
+        EventTaskHandle queued = scheduler.Submit(async token => ValueTask.FromResult(1));
+        WaitUntil(() => scheduler.ActiveCount == 1 && scheduler.QueuedCount == 1);
+        blocker.State.Should().Be(EventTaskState.Running);
+
+        long token = scheduler.ClaimWaiter();
+        Task signal = scheduler.PrepareWaiterSignal(token);
+        signal.IsCompleted.Should().BeFalse("a running body and a queued task are live work");
+
+        scheduler.Cancel(queued.Id).Should().BeTrue();
+        signal.IsCompleted.Should().BeFalse(
+            "cancelling a queued task while a body still runs must not claim idleness");
+
+        gate.SetResult();
+        Func<Task> awaitDrain = async () => await signal.ConfigureAwait(false);
+        await awaitDrain.Should().NotThrowAsync(
+            "when the last running body finishes, the completion path wakes the registered waiter");
+        scheduler.ReleaseWaiter(token);
+    }
+
+    [Fact]
+    public async Task DrainAsync_WakesWhenAnotherThreadCancelsAllRemainingWork()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder()
+                .WithConcurrencyLimit(1)
+                .WithTaskTimeout(TimeSpan.Zero)
+                .WithRetries(maxRetries: 3)
+                .WithRetryDelay(TimeSpan.FromHours(1))
+                .Build(),
+            clock);
+
+        var handles = new EventTaskHandle[3];
+        for (int i = 0; i < handles.Length; i++)
+        {
+            handles[i] = scheduler.SubmitVoid(async token =>
+            {
+                await Task.Yield();
+                throw new InvalidOperationException("park these retries");
+            });
+        }
+
+        WaitUntil(() => scheduler.ActiveCount == 0 && scheduler.DelayedRetryCount == 3);
+
+        var parked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var budget = new CancellationTokenSource(Wait);
+
+        Task drainer = Task.Run(async () =>
+        {
+            parked.SetResult();
+            await scheduler.DrainAsync(budget.Token).ConfigureAwait(false);
+        });
+        _ = drainer.ContinueWith(static (task, _) => _ = task.Exception, null, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+
+        await parked.Task.WaitAsync(Wait);
+        WaitUntil(() => scheduler.DrainParkCount == 1);
+
+        Task canceller = Task.Run(() =>
+        {
+            scheduler.CancelAll();
+            cancelled.SetResult();
+        });
+
+        await cancelled.Task.WaitAsync(Wait);
+        await canceller;
+        Func<Task> awaitDrain = async () => await drainer.ConfigureAwait(false);
+        await awaitDrain.Should().NotThrowAsync(
+            "the drain waiter parked on thread A must be woken by thread B's CancelAll, without an unrelated pump");
+        scheduler.IsIdle.Should().BeTrue();
+        scheduler.WaitCount.Should().Be(0);
+        handles.Should().OnlyContain(handle => handle.State == EventTaskState.Cancelled);
     }
 }
