@@ -6,6 +6,9 @@ public sealed class TaskQueueTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
+    private static readonly EventTaskState[] TerminalStates =
+        [EventTaskState.Completed, EventTaskState.Timeout, EventTaskState.Failed, EventTaskState.Cancelled];
+
     private static void WaitUntil(Func<bool> condition)
     {
         SpinWait.SpinUntil(condition, Wait).Should().BeTrue("the scheduler must reach the expected state");
@@ -379,7 +382,7 @@ public sealed class TaskQueueTests
     }
 
     [Fact]
-    public void DoubleCompletion_IsImpossibleUnderRace()
+    public async Task DoubleCompletion_IsImpossibleUnderRace()
     {
         for (int round = 0; round < 50; round++)
         {
@@ -405,13 +408,122 @@ public sealed class TaskQueueTests
             _ = scheduler.Cancel(handle.Id);
             _ = scheduler.Cancel(handle.Id);
 
-            handle.State.Should().Be(EventTaskState.Timeout, "the deadline wins the single terminal transition");
-            SpinWait.SpinUntil(() => resultTask.IsFaulted, Wait).Should().BeTrue("the handle faults exactly once");
-            resultTask.Exception!.InnerException!.Should().BeOfType<TimeoutException>();
+            handle.State.Should().BeOneOf(
+                TerminalStates,
+                "only a terminal state may be observable once the deadline, the cancel requests and the body have all run");
+
+            WaitUntil(() => scheduler.IsIdle);
+
+            EventTaskStats stats = scheduler.GetStats();
+            (stats.CompletedCount + stats.FailedCount).Should().Be(1,
+                "exactly one terminal transition may be counted, whichever path won the compare-exchange");
+            stats.TotalProcessed.Should().Be(1, "the aggregate counter sees the same single terminal transition");
+
+            if (handle.State == EventTaskState.Completed)
+            {
+                (await resultTask).Should().Be(7, "the body won, so the handle carries its result");
+                stats.CompletedCount.Should().Be(1);
+                stats.FailedCount.Should().Be(0);
+            }
+            else
+            {
+                SpinWait.SpinUntil(() => resultTask.IsFaulted, Wait).Should().BeTrue("the losing path still faults exactly once");
+                resultTask.Exception!.InnerException!.Should().BeOfType<TimeoutException>();
+                stats.FailedCount.Should().Be(1, "a deadline terminal transition is counted as a failure");
+                stats.CompletedCount.Should().Be(0, "the late body completion may not add a second terminal transition");
+            }
+
             scheduler.Cancel(handle.Id).Should().BeFalse("terminal handles accept no further transition");
 
             scheduler.Dispose();
         }
+    }
+
+    [Fact]
+    public async Task TerminalTransition_DeadlineWinsWhenBodyIsStillParked()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithTaskTimeout(TimeSpan.FromMilliseconds(1)).Build(),
+            clock);
+        var park = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        try
+        {
+            EventTaskHandle handle = scheduler.Submit(async token =>
+            {
+                entered.SetResult();
+                await park.Task.ConfigureAwait(false);
+                return 7;
+            });
+
+            await entered.Task.WaitAsync(Wait);
+            WaitUntil(() => handle.State == EventTaskState.Running);
+
+            clock.Advance(TimeSpan.FromMilliseconds(2));
+            scheduler.AdvanceDueWork().Should().Be(1);
+
+            handle.State.Should().Be(EventTaskState.Timeout, "no racing body completion exists yet, so the deadline is the only transition");
+            EventTaskStats afterDeadline = scheduler.GetStats();
+            afterDeadline.FailedCount.Should().Be(1);
+            afterDeadline.CompletedCount.Should().Be(0);
+            afterDeadline.TotalProcessed.Should().Be(1);
+
+            Task<int> deadlineResult = handle.AwaitAsync<int>().AsTask();
+            deadlineResult.IsFaulted.Should().BeTrue("the deadline resolves the handle exactly once");
+            deadlineResult.Exception!.InnerException!.Should().BeOfType<TimeoutException>();
+
+            park.SetResult();
+            WaitUntil(() => scheduler.IsIdle);
+
+            EventTaskStats afterBody = scheduler.GetStats();
+            afterBody.CompletedCount.Should().Be(0, "the late body completion lost the transition and must not count");
+            afterBody.FailedCount.Should().Be(1, "the single terminal transition stays the deadline one");
+            afterBody.TotalProcessed.Should().Be(1);
+            scheduler.Cancel(handle.Id).Should().BeFalse();
+        }
+        finally
+        {
+            park.TrySetResult();
+            scheduler.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task TerminalTransition_BodyWinsWhenDeadlineHasNotFired()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        using var scheduler = new EventTaskScheduler(
+            new EventTaskSchedulerOptionsBuilder().WithTaskTimeout(TimeSpan.FromMinutes(5)).Build(),
+            clock);
+
+        var park = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventTaskHandle handle = scheduler.Submit(async token =>
+        {
+            await park.Task.ConfigureAwait(false);
+            return 7;
+        });
+
+        park.SetResult();
+        (await handle.AwaitAsync<int>().AsTask().WaitAsync(Wait)).Should().Be(7);
+
+        handle.State.Should().Be(EventTaskState.Completed, "the body finished while the deadline was still five minutes away");
+        EventTaskStats afterBody = scheduler.GetStats();
+        afterBody.CompletedCount.Should().Be(1);
+        afterBody.FailedCount.Should().Be(0);
+        afterBody.TotalProcessed.Should().Be(1);
+
+        clock.Advance(TimeSpan.FromMinutes(6));
+        scheduler.AdvanceDueWork().Should().Be(0, "a finished task is no longer in the deadline table");
+
+        EventTaskStats afterAdvance = scheduler.GetStats();
+        afterAdvance.CompletedCount.Should().Be(1);
+        afterAdvance.FailedCount.Should().Be(0, "the late clock advance may not convert a completed task into a timeout");
+        afterAdvance.TotalProcessed.Should().Be(1);
+        scheduler.Cancel(handle.Id).Should().BeFalse();
+
+        await scheduler.DrainAsync().AsTask().WaitAsync(Wait);
     }
 
     [Fact]
