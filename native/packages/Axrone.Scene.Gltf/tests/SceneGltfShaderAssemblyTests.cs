@@ -20,8 +20,64 @@ public sealed class SceneGltfShaderAssemblyTests
         SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
 
         shader.FragmentSource.Should().Contain(
-            "u_AmbientLight * albedo * (1.0 - metallic)",
+            "vec3 diffuseAmbient = irradiance * albedo * (1.0 - metallic);",
             "ambient diffuse must not be multiplied by a Fresnel term");
+
+        string diffuseLine = SingleLine(shader.FragmentSource, "vec3 diffuseAmbient");
+        diffuseLine.Should().NotContain("fresnel", "grazing faces must not be gated by Fresnel");
+        diffuseLine.Should().NotContain("0.65", "the native-only hemisphere attenuation must be gone");
+        diffuseLine.Should().NotContain("0.25", "the native-only ambient attenuation must be gone");
+    }
+
+    [Fact]
+    public void PbrFragment_MatchesWebGltfIblIrradiance()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.FragmentSource.Should().Contain(
+            "vec3 hemiIrradiance = mix(u_GroundLight, u_SkyLight, hemiFactor);");
+        shader.FragmentSource.Should().Contain(
+            "vec3 irradiance = hemiIrradiance + (u_AmbientLight * 0.45);");
+        shader.FragmentSource.Should().Contain(
+            "vec3 prefilteredEnv = mix(u_GroundLight * 0.5, u_SkyLight, specHemiFactor);");
+        shader.FragmentSource.Should().NotContain(
+            "mix(prefilteredEnv, u_AmbientLight, 0.25)",
+            "the native-only ambient env mix must be gone");
+    }
+
+    [Fact]
+    public void PbrFragment_MatchesWebGltfEnvBrdf()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.FragmentSource.Should().Contain(
+            "float NdotV = max(dot(normal, viewDir), 0.001);");
+        shader.FragmentSource.Should().Contain(
+            "float oneMinusNdotV = max(1.0 - NdotV, 0.0);");
+        shader.FragmentSource.Should().Contain(
+            "clamp(pow(roughness, 0.6 + 0.2 * NdotV) * oneMinusNdotV * 1.7, 0.0, 1.0)");
+        shader.FragmentSource.Should().Contain(
+            "clamp(pow(roughness, 2.0 * NdotV) * oneMinusNdotV * 0.5 + 0.02, 0.0, 1.0)");
+        shader.FragmentSource.Should().Contain(
+            "vec3 envSpecular = prefilteredEnv * (envF * envBRDF.x + envBRDF.y);");
+        shader.FragmentSource.Should().Contain("vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)");
+        shader.FragmentSource.Should().Contain(
+            "vec3 envF = fresnelSchlickRoughness(max(dot(normal, viewDir), 0.0), F0, roughness);");
+    }
+
+    [Fact]
+    public void PbrFragment_ThreadsF0ThroughSpecularBrdf()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.FragmentSource.Should().Contain(
+            "vec3 evaluateSpecularBrdf(vec3 N, vec3 V, vec3 L, float roughness, vec3 F0)");
+        shader.FragmentSource.Should().Contain("vec3 F = fresnelSchlick(VdotH, F0);");
+        shader.FragmentSource.Should().NotContain(
+            "fresnelSchlick(VdotH, vec3(0.04))",
+            "the dielectric-only Fresnel must be replaced by the material F0");
+        shader.FragmentSource.Should().Contain(
+            "vec3 specular = evaluateSpecularBrdf(normal, viewDir, lightDir, roughness, F0);");
     }
 
     [Fact]
@@ -46,6 +102,10 @@ public sealed class SceneGltfShaderAssemblyTests
 
         shader!.FragmentSource.Should().Contain("u_OutputGamma");
         shader.FragmentSource.Should().Contain("vec3(u_OutputGamma)");
+        shader.FragmentSource.Should().Contain(
+            "u_OutputGamma < 0.99",
+            "the game path must take the exact sRGB transfer curve in linear projects");
+        shader.FragmentSource.Should().Contain("linearToSrgb(color)");
     }
 
     [Theory]
@@ -68,6 +128,56 @@ public sealed class SceneGltfShaderAssemblyTests
                     .Should().Be(3, $"{shaderId} must use the GLSL three-argument clamp");
             }
         }
+    }
+
+    [Theory]
+    [InlineData("gltf/pbr")]
+    [InlineData("gltf/pbr/blend")]
+    [InlineData("gltf/pbr/double-sided")]
+    [InlineData("gltf/toon")]
+    public void DirectionalLightShadersNegateLightToSceneVector(string shaderName)
+    {
+        ArgumentNullException.ThrowIfNull(shaderName);
+        SceneGltfShaders.TryCreate(shaderName, names: null, out SceneShaderDefinition? shader)
+            .Should().BeTrue();
+
+        shader!.FragmentSource.Should().Contain("normalize(-u_LightDirection)");
+    }
+
+    [Theory]
+    [InlineData("gltf/pbr")]
+    [InlineData("gltf/pbr/blend")]
+    [InlineData("gltf/pbr/double-sided")]
+    public void PbrShaders_NeverCallHighlightCompression(string shaderName)
+    {
+        ArgumentNullException.ThrowIfNull(shaderName);
+        SceneGltfShaders.TryCreate(shaderName, names: null, out SceneShaderDefinition? shader)
+            .Should().BeTrue();
+
+        shader!.FragmentSource.Should().NotContain(
+            "= gltfSoftCompressHighlights(",
+            "WebGL2 gltf/pbr has no in-shader highlight compression; the rolloff dulled bright floors and speculars");
+    }
+
+    private static string SingleLine(string source, string prefix)
+    {
+        string? match = null;
+        foreach (string candidate in source.Split('\n'))
+        {
+            if (!candidate.TrimStart().StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (match is not null)
+            {
+                throw new InvalidOperationException($"Shader line '{prefix}' is not unique.");
+            }
+
+            match = candidate.Trim();
+        }
+
+        return match ?? throw new InvalidOperationException($"Shader line '{prefix}' not found.");
     }
 
     private static int CountArguments(string source, int openParenthesisIndex)
