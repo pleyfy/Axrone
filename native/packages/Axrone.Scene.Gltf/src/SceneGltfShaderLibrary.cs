@@ -73,7 +73,14 @@ public static class SceneGltfShaderLibrary
             return F0 + (1.0 - F0) * t5;
         }
 
-        vec3 evaluateSpecularBrdf(vec3 N, vec3 V, vec3 L, float roughness) {
+        vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+            float t = 1.0 - cosTheta;
+            float t2 = t * t;
+            float t5 = t2 * t2 * t;
+            return F0 + (max(vec3(1.0 - roughness), F0) - F0) * t5;
+        }
+
+        vec3 evaluateSpecularBrdf(vec3 N, vec3 V, vec3 L, float roughness, vec3 F0) {
             vec3 H = normalize(V + L);
             float NdotH = max(dot(N, H), 0.0);
             float NdotV = max(dot(N, V), 0.001);
@@ -84,7 +91,7 @@ public static class SceneGltfShaderLibrary
             }
             float D = distributionGgx(NdotH, roughness);
             float G = geometrySmith(NdotV, NdotL, roughness);
-            vec3 F = fresnelSchlick(VdotH, vec3(0.04));
+            vec3 F = fresnelSchlick(VdotH, F0);
             return (D * G * F) / (4.0 * NdotV * NdotL + 0.001);
         }
 
@@ -96,7 +103,7 @@ public static class SceneGltfShaderLibrary
             vec3 F = fresnelSchlick(max(dot(normalize(viewDir + lightDir), viewDir), 0.0), F0);
             vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
             vec3 diffuse = kD * albedo / PI;
-            vec3 specular = evaluateSpecularBrdf(normal, viewDir, lightDir, roughness);
+            vec3 specular = evaluateSpecularBrdf(normal, viewDir, lightDir, roughness, F0);
             return (diffuse + specular) * lightColor * intensity * NdotL;
         }
 
@@ -130,6 +137,24 @@ public static class SceneGltfShaderLibrary
         float spotAttenuation(vec3 lightDir, vec3 spotDir, float innerConeCosine, float outerConeCosine) {
             float cd = dot(normalize(-lightDir), normalize(spotDir));
             return smoothstep(outerConeCosine, innerConeCosine, cd);
+        }
+
+        // Khronos PBR Neutral highlight rolloff: preserves midtones below 0.76
+        // linearly while smoothly compressing HDR peaks so bright speculars
+        // and lights do not clip into harsh white blotches.
+        vec3 gltfSoftCompressHighlights(vec3 color) {
+            const float startCompression = 0.76;
+            const float desaturation = 0.15;
+            vec3 safe = max(color, vec3(0.0));
+            float peak = max(safe.r, max(safe.g, safe.b));
+            if (peak < startCompression) {
+                return safe;
+            }
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - (d * d) / (peak + d - startCompression);
+            safe *= newPeak / peak;
+            float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);
+            return mix(safe, vec3(newPeak), g);
         }
         """;
 
