@@ -352,6 +352,7 @@ public static class SceneGltfShaderProperties
         properties.Add(Frame("u_LightColor", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Frame("u_LightIntensity", SceneGltfShaderPropertyType.Float));
         properties.Add(Frame("u_AmbientLight", SceneGltfShaderPropertyType.Vec3));
+        properties.Add(Frame("u_DirectionalLightAmbientColor", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Frame("u_PointLightPosition", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Frame("u_PointLightColor", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Frame("u_PointLightIntensity", SceneGltfShaderPropertyType.Float));

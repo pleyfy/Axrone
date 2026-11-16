@@ -27,6 +27,7 @@ public sealed class SceneGlDrawExecutor
     private const string LightColorUniform = "u_LightColor";
     private const string LightIntensityUniform = "u_LightIntensity";
     private const string AmbientLightUniform = "u_AmbientLight";
+    private const string DirectionalAmbientColorUniform = "u_DirectionalLightAmbientColor";
     private const string SkyLightUniform = "u_SkyLight";
     private const string GroundLightUniform = "u_GroundLight";
     private const string OutputGammaUniform = "u_OutputGamma";
@@ -234,6 +235,7 @@ public sealed class SceneGlDrawExecutor
         shader.SetVec3(LightColorUniform, in lights.DirectionalColor);
         shader.SetFloat(LightIntensityUniform, lights.DirectionalIntensity);
         shader.SetVec3(AmbientLightUniform, in lights.Ambient);
+        shader.SetVec3(DirectionalAmbientColorUniform, in lights.DirectionalAmbient);
         shader.SetVec3(SkyLightUniform, in lights.Sky);
         shader.SetVec3(GroundLightUniform, in lights.Ground);
 
@@ -357,9 +359,11 @@ public sealed class SceneGlDrawExecutor
             ReadOnlySpan<float> directions = lighting.DirectionalDirections.Span;
             ReadOnlySpan<float> colors = lighting.DirectionalColors.Span;
             ReadOnlySpan<float> intensities = lighting.DirectionalIntensities.Span;
+            ReadOnlySpan<float> ambientColors = lighting.DirectionalAmbientColors.Span;
 
             values.DirectionalDirection = new Vec3(directions[0], directions[1], directions[2]);
             values.DirectionalColor = new Vec3(colors[0], colors[1], colors[2]);
+            values.DirectionalAmbient = new Vec3(ambientColors[0], ambientColors[1], ambientColors[2]);
             values.DirectionalIntensity = intensities[0];
         }
 
@@ -403,6 +407,7 @@ public sealed class SceneGlDrawExecutor
         public Vec3 Ground;
         public Vec3 DirectionalDirection;
         public Vec3 DirectionalColor;
+        public Vec3 DirectionalAmbient;
         public float DirectionalIntensity;
         public Vec3 PointPosition;
         public Vec3 PointColor;

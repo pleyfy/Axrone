@@ -91,6 +91,33 @@ public sealed class SceneGltfShaderAssemblyTests
         shader.Uniforms.Should().Contain(["u_EditorPreview", "u_SkyLight", "u_GroundLight"]);
     }
 
+    [Fact]
+    public void PbrEditorPreview_MatchesWebEditorLambertEnergy()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.FragmentSource.Should().Contain(
+            "editorLighting += u_LightColor * u_LightIntensity * max(dot(normal, editorLightDirection), 0.0);",
+            "the WebGL2 editor lit shader multiplies color by intensity by NdotL with no PI division");
+        shader.FragmentSource.Should().NotContain(
+            "max(dot(normal, editorLightDirection), 0.0)) / PI",
+            "the native-only /PI made the Scene view roughly three times darker than WebGL2");
+    }
+
+    [Fact]
+    public void PbrEditorPreview_AddsTheDirectionalAmbientColor()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.FragmentSource.Should().Contain(
+            "editorLighting += u_DirectionalLightAmbientColor;",
+            "SceneDirectionalLight.Ambient must reach the editor preview lighting");
+        shader.FragmentSource.Should().Contain(
+            "uniform vec3 u_DirectionalLightAmbientColor;",
+            "the uniform must be declared, not merely referenced, or the program fails to link");
+        shader.Uniforms.Should().Contain("u_DirectionalLightAmbientColor");
+    }
+
     [Theory]
     [InlineData("gltf/pbr")]
     [InlineData("gltf/unlit")]
