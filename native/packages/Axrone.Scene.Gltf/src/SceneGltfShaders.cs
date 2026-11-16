@@ -310,7 +310,7 @@ public static class SceneGltfShaders
     private static readonly string PbrFragmentSource = BuildFragmentSource(
         SceneGltfShaderProperties.Pbr,
         PbrVaryings,
-        [SceneGltfShaderLibrary.UvBlockId, SceneGltfShaderLibrary.PbrLightingBlockId, SceneGltfShaderLibrary.ShadowBlockId, SceneGltfShaderLibrary.FogBlockId],
+        [SceneGltfShaderLibrary.UvBlockId, SceneGltfShaderLibrary.PbrLightingBlockId, SceneGltfShaderLibrary.ColorSpaceBlockId, SceneGltfShaderLibrary.ShadowBlockId, SceneGltfShaderLibrary.FogBlockId],
         PbrFragmentBody);
 
     private static readonly string ToonVertexSource = BuildVertexSource(
@@ -325,6 +325,7 @@ public static class SceneGltfShaders
         [
             SceneGltfShaderLibrary.UvBlockId,
             SceneGltfShaderLibrary.PbrLightingBlockId,
+            SceneGltfShaderLibrary.ColorSpaceBlockId,
             SceneGltfShaderLibrary.ToonShadingBlockId,
             SceneGltfShaderLibrary.FogBlockId
         ],
