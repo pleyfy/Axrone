@@ -228,7 +228,9 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
             items as ISceneAreaLightSource,
             _probeAtlas,
             _reflectionProbe,
-            _shadow);
+            _shadow,
+            items.OutputGamma,
+            items.EditorPreview);
 
         if (items is ISceneLodFrameItemSource lodSource)
         {
