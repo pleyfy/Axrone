@@ -64,6 +64,12 @@ public sealed class SceneGlDrawExecutor
     /// <summary>Fog state bound by the last render call (diagnostics/tests).</summary>
     internal SceneFogState LastFog { get; private set; }
 
+    /// <summary>Output gamma bound by the last render call (diagnostics/tests).</summary>
+    internal float LastOutputGamma { get; private set; } = 1f;
+
+    /// <summary>Editor preview flag bound by the last render call (diagnostics/tests).</summary>
+    internal bool LastEditorPreview { get; private set; }
+
     /// <summary>Renders one pass and returns the submitted draw count.</summary>
     public int Render(
         SceneWorld world,
@@ -89,6 +95,8 @@ public sealed class SceneGlDrawExecutor
         _context.AssertRenderThread();
         _context.State.SetViewport(0, 0, camera.ViewportWidth, camera.ViewportHeight);
         LastFog = fog;
+        LastOutputGamma = outputGamma;
+        LastEditorPreview = editorPreview;
 
         BeginPass(camera, pass);
         ExtractLighting(lighting, out LightingValues lights);
