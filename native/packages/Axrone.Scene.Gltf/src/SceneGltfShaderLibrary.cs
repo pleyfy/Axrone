@@ -126,6 +126,23 @@ public static class SceneGltfShaderLibrary
             return vec3(spec * clearcoat) * lightColor * intensity * NdotL;
         }
 
+        vec3 evaluateGltfSheen(vec3 N, vec3 V, vec3 L, vec3 sheenColor, float sheenRoughness) {
+            vec3 H = normalize(V + L);
+            float NdotL = max(dot(N, L), 0.0);
+            if (NdotL <= 0.0) {
+                return vec3(0.0);
+            }
+            float NdotH = max(dot(N, H), 0.0);
+            float roughnessSq = max(sheenRoughness * sheenRoughness, 1e-4);
+            float invRoughnessSq = 1.0 / roughnessSq;
+            float cos2h = NdotH * NdotH;
+            float sin2h = max(1.0 - cos2h, 0.0);
+            float D = (2.0 + invRoughnessSq) * pow(sin2h, invRoughnessSq * 0.5) / (2.0 * PI);
+            float VdotH = max(dot(V, H), 0.0);
+            float F = VdotH * exp2((-5.55473 * VdotH - 6.98316) * VdotH);
+            return sheenColor * D * F * NdotL;
+        }
+
         float rangeAttenuation(float distanceToLight, float range) {
             if (range <= 0.0) {
                 return 1.0;

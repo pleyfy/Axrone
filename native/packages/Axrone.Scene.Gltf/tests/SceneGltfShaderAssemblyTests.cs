@@ -118,6 +118,80 @@ public sealed class SceneGltfShaderAssemblyTests
         shader.Uniforms.Should().Contain("u_DirectionalLightAmbientColor");
     }
 
+    [Fact]
+    public void PbrFragment_DisablesSheenWhenTheFactorIsZero()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.FragmentSource.Should().Contain(
+            "float sheenFactor = clamp(_SheenFactor, 0.0, 1.0);");
+        shader.FragmentSource.Should().Contain(
+            "vec3 sheenColor = _SheenColorFactor * sheenFactor;");
+        shader.FragmentSource.Should().NotContain(
+            "_SheenFactor > 0.0 ?",
+            "a zero sheen factor must not fall back to full-strength sheen");
+        shader.FragmentSource.Should().NotContain(
+            "sheenColor * (1.0 - max(dot(normal, viewDir), 0.0)) * irradiance",
+            "the native-only IBL sheen wash blinded upward-facing normals");
+    }
+
+    [Fact]
+    public void PbrFragment_AppliesSheenAsShadowedDirectLightOnly()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.FragmentSource.Should().Contain(
+            "float sheenRoughness = clamp(_SheenRoughnessFactor, 0.04, 1.0);");
+        shader.FragmentSource.Should().Contain(
+            "uniform float _SheenRoughnessFactor;",
+            "sheen roughness was previously declared-but-dead; the lobe now reads it");
+        shader.FragmentSource.Should().Contain(
+            "evaluateGltfSheen(normal, viewDir, lightDirection, sheenColor, sheenRoughness) * u_LightColor * u_LightIntensity * shadowFactor");
+        shader.FragmentSource.Should().Contain(
+            "evaluateGltfSheen(normal, viewDir, pointDirection, sheenColor, sheenRoughness) * u_PointLightColor * u_PointLightIntensity * pointAttenuation");
+        shader.FragmentSource.Should().Contain(
+            "evaluateGltfSheen(normal, viewDir, spotDirection, sheenColor, sheenRoughness) * u_SpotLightColor * u_SpotLightIntensity * spotAttenuationValue");
+
+        CountOccurrences(shader.FragmentSource, "if (sheenFactor > 0.001) {")
+            .Should().Be(3, "WebGL2 gates sheen once per directional, point and spot light");
+        CountOccurrences(shader.FragmentSource, "evaluateGltfSheen(normal, viewDir,")
+            .Should().Be(3);
+    }
+
+    [Theory]
+    [InlineData("gltf/pbr")]
+    [InlineData("gltf/pbr/blend")]
+    [InlineData("gltf/pbr/double-sided")]
+    public void PbrShaders_NeverApplySheenWithoutAFactor(string shaderName)
+    {
+        ArgumentNullException.ThrowIfNull(shaderName);
+        SceneGltfShaders.TryCreate(shaderName, names: null, out SceneShaderDefinition? shader)
+            .Should().BeTrue();
+
+        string source = shader!.FragmentSource;
+        int gates = CountOccurrences(source, "if (sheenFactor > 0.001) {");
+        int calls = CountOccurrences(source, "evaluateGltfSheen(normal, viewDir,");
+
+        calls.Should().Be(3, $"{shaderName} evaluates sheen for the directional, point and spot light");
+        gates.Should().Be(calls, $"{shaderName} must never evaluate sheen outside the factor guard");
+    }
+
+    [Fact]
+    public void SheenLibraryFunctionMatchesTheWebGltfCharlieLobe()
+    {
+        SceneGltfShaderLibrary.TryGetCode(
+            SceneGltfShaderLibrary.PbrLightingBlockId,
+            out string? lighting).Should().BeTrue();
+
+        lighting!.Should().Contain(
+            "vec3 evaluateGltfSheen(vec3 N, vec3 V, vec3 L, vec3 sheenColor, float sheenRoughness)");
+        lighting.Should().Contain(
+            "float D = (2.0 + invRoughnessSq) * pow(sin2h, invRoughnessSq * 0.5) / (2.0 * PI);");
+        lighting.Should().Contain(
+            "float F = VdotH * exp2((-5.55473 * VdotH - 6.98316) * VdotH);");
+        lighting.Should().Contain("return sheenColor * D * F * NdotL;");
+    }
+
     [Theory]
     [InlineData("gltf/pbr")]
     [InlineData("gltf/unlit")]
@@ -184,6 +258,19 @@ public sealed class SceneGltfShaderAssemblyTests
         shader!.FragmentSource.Should().NotContain(
             "= gltfSoftCompressHighlights(",
             "WebGL2 gltf/pbr has no in-shader highlight compression; the rolloff dulled bright floors and speculars");
+    }
+
+    private static int CountOccurrences(string source, string needle)
+    {
+        int count = 0;
+        for (int index = source.IndexOf(needle, StringComparison.Ordinal);
+            index >= 0;
+            index = source.IndexOf(needle, index + needle.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     private static string SingleLine(string source, string prefix)
