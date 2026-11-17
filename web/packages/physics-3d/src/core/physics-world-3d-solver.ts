@@ -2,6 +2,7 @@ import { clamp } from '@axrone/numeric';
 import { BodyFlags, PhysicsConstants } from '../types';
 import type { Impulse } from '../types';
 import { BODY_LAYOUT, type BodyManager3D } from './physics-managers-3d';
+import { CONTACT_NORMAL_RELAXATION } from './physics-solver-policy-3d';
 import type { IMutableContactPoint3D, IResolvedContactManifold3D } from './physics-world-3d-shared';
 
 /**
@@ -62,6 +63,7 @@ const P_REL_B_Z = 5;
 const P_NORMAL_MASS = 6;
 
 const BODY_TYPE_DYNAMIC = 2;
+export { CONTACT_NORMAL_RELAXATION as NORMAL_RELAXATION };
 
 export class ContactSolverCache {
     private _values = new Float64Array(4096);
@@ -324,20 +326,19 @@ export class PhysicsWorld3DSolver {
 
             const normalImpulse = point.normalImpulse as unknown as number;
             const ns = relVx * normalX + relVy * normalY + relVz * normalZ;
-            let accumulatedNormal: number;
-            if (ns < 0) {
-                const rest = ns < -PhysicsConstants.VELOCITY_THRESHOLD ? restitution : 0;
-                const dPn = values[slot + P_NORMAL_MASS] * (-(1 + rest) * ns);
-                const newPn = Math.max(normalImpulse + dPn, 0);
-                point.normalImpulse = newPn as unknown as Impulse;
-                accumulatedNormal = newPn;
-                const dApplied = newPn - normalImpulse;
+            const rest = ns < -PhysicsConstants.VELOCITY_THRESHOLD ? restitution : 0;
+            const dPn = CONTACT_NORMAL_RELAXATION * values[slot + P_NORMAL_MASS] * (-(1 + rest) * ns);
+            const newPn = normalImpulse + dPn > 0 ? normalImpulse + dPn : 0;
+            point.normalImpulse = newPn as unknown as Impulse;
+            const accumulatedNormal = newPn;
+            const dNormalApplied = newPn - normalImpulse;
+            if (dNormalApplied !== 0) {
                 if (applyA) {
                     this._applyImpulse(
                         velocities, velBaseA, bodyFlags, indexA,
-                        negateComponent(normalX * dApplied),
-                        negateComponent(normalY * dApplied),
-                        negateComponent(normalZ * dApplied),
+                        negateComponent(normalX * dNormalApplied),
+                        negateComponent(normalY * dNormalApplied),
+                        negateComponent(normalZ * dNormalApplied),
                         relAX, relAY, relAZ, rawInvMassA,
                         values[offset + H_RIIV_AX], values[offset + H_RIIV_AY], values[offset + H_RIIV_AZ]
                     );
@@ -345,22 +346,28 @@ export class PhysicsWorld3DSolver {
                 if (applyB) {
                     this._applyImpulse(
                         velocities, velBaseB, bodyFlags, indexB,
-                        normalX * dApplied, normalY * dApplied, normalZ * dApplied,
+                        normalX * dNormalApplied, normalY * dNormalApplied, normalZ * dNormalApplied,
                         relBX, relBY, relBZ, rawInvMassB,
                         values[offset + H_RIIV_BX], values[offset + H_RIIV_BY], values[offset + H_RIIV_BZ]
                     );
                 }
-            } else {
-                point.normalImpulse = 0 as unknown as Impulse;
-                point.tangentImpulse1 = 0 as unknown as Impulse;
-                accumulatedNormal = 0;
             }
 
-            // The tangent leg reuses the pre-impulse relV, exactly as before:
-            // vn is the same dot product as ns and velocities are not re-read.
-            const tanVx = relVx - normalX * ns;
-            const tanVy = relVy - normalY * ns;
-            const tanVz = relVz - normalZ * ns;
+            const bvX2 = velocities[angBaseB];
+            const bvY2 = velocities[angBaseB + 1];
+            const bvZ2 = velocities[angBaseB + 2];
+            const avX2 = velocities[angBaseA];
+            const avY2 = velocities[angBaseA + 1];
+            const avZ2 = velocities[angBaseA + 2];
+            const tanVx =
+                velocities[velBaseB] + (bvY2 * relBZ - bvZ2 * relBY) -
+                (velocities[velBaseA] + (avY2 * relAZ - avZ2 * relAY));
+            const tanVy =
+                velocities[velBaseB + 1] + (bvZ2 * relBX - bvX2 * relBZ) -
+                (velocities[velBaseA + 1] + (avZ2 * relAX - avX2 * relAZ));
+            const tanVz =
+                velocities[velBaseB + 2] + (bvX2 * relBY - bvY2 * relBX) -
+                (velocities[velBaseA + 2] + (avX2 * relAY - avY2 * relAX));
             const tLen = Math.sqrt(tanVx * tanVx + tanVy * tanVy + tanVz * tanVz);
             if (tLen <= PhysicsConstants.EPSILON) continue;
 
@@ -385,7 +392,7 @@ export class PhysicsWorld3DSolver {
                 iivBz * rtBz * rtBz;
             const tangentMass = kTangent > PhysicsConstants.EPSILON ? 1 / kTangent : 0;
 
-            const dPt = tangentMass * -(relVx * tanX + relVy * tanY + relVz * tanZ);
+            const dPt = tangentMass * -(tanVx * tanX + tanVy * tanY + tanVz * tanZ);
             const maxPt = friction * accumulatedNormal;
             const previousTangent = point.tangentImpulse1 as unknown as number;
             const newPt = clamp(previousTangent + dPt, -maxPt, maxPt);
@@ -426,8 +433,9 @@ export class PhysicsWorld3DSolver {
         const normalX = values[offset + H_NORMAL_X];
         const normalY = values[offset + H_NORMAL_Y];
         const normalZ = values[offset + H_NORMAL_Z];
-        const applyA = values[offset + H_APPLY_A] === 1;
-        const applyB = values[offset + H_APPLY_B] === 1;
+        const pairAwake = (bodyFlags[indexA] & BodyFlags.Awake) !== 0 && (bodyFlags[indexB] & BodyFlags.Awake) !== 0;
+        const applyA = values[offset + H_APPLY_A] === 1 && pairAwake;
+        const applyB = values[offset + H_APPLY_B] === 1 && pairAwake;
         const rowBaseA = indexA * BODY_LAYOUT.positionStride;
         const rowBaseB = indexB * BODY_LAYOUT.positionStride;
 
@@ -447,7 +455,8 @@ export class PhysicsWorld3DSolver {
                     negateComponent(impX), negateComponent(impY), negateComponent(impZ),
                     values[slot + P_REL_A_X], values[slot + P_REL_A_Y], values[slot + P_REL_A_Z],
                     values[offset + H_RAW_IMASS_A],
-                    values[offset + H_RIIV_AX], values[offset + H_RIIV_AY], values[offset + H_RIIV_AZ]
+                    values[offset + H_RIIV_AX], values[offset + H_RIIV_AY], values[offset + H_RIIV_AZ],
+                    false
                 );
             }
             if (applyB) {
@@ -457,7 +466,8 @@ export class PhysicsWorld3DSolver {
                     impX, impY, impZ,
                     values[slot + P_REL_B_X], values[slot + P_REL_B_Y], values[slot + P_REL_B_Z],
                     values[offset + H_RAW_IMASS_B],
-                    values[offset + H_RIIV_BX], values[offset + H_RIIV_BY], values[offset + H_RIIV_BZ]
+                    values[offset + H_RIIV_BX], values[offset + H_RIIV_BY], values[offset + H_RIIV_BZ],
+                    false
                 );
             }
         }
@@ -466,7 +476,8 @@ export class PhysicsWorld3DSolver {
     correctContactPositions(
         manifold: IResolvedContactManifold3D,
         beta: number,
-        cache: ContactSolverCache
+        cache: ContactSolverCache,
+        entering: boolean
     ): void {
         const offset = this._ensurePrepared(manifold, cache);
         const values = cache.values;
@@ -476,6 +487,8 @@ export class PhysicsWorld3DSolver {
         const invMassB = values[offset + H_IMASS_B];
         const iSum = invMassA + invMassB;
         if (iSum <= PhysicsConstants.EPSILON) return;
+
+        const trimDepth = entering ? 0 : PhysicsConstants.ALLOWED_PENETRATION;
 
         const bm = this._host.bodyManager;
         const positions = bm.positionsRaw();
@@ -492,9 +505,9 @@ export class PhysicsWorld3DSolver {
             const point = manifold.points[pointIndex];
             const sep = this._separation(positions, rowBaseA, rowBaseB, point, normalX, normalY, normalZ);
             const pen = Math.max(0, -sep);
-            if (pen <= PhysicsConstants.ALLOWED_PENETRATION) continue;
+            if (pen <= trimDepth) continue;
 
-            const scale = ((pen - PhysicsConstants.ALLOWED_PENETRATION) * beta) / iSum;
+            const scale = ((pen - trimDepth) * beta) / iSum;
             const corrX = normalX * scale;
             const corrY = normalY * scale;
             const corrZ = normalZ * scale;
@@ -649,7 +662,8 @@ export class PhysicsWorld3DSolver {
         inverseMass: number,
         inverseInertiaX: number,
         inverseInertiaY: number,
-        inverseInertiaZ: number
+        inverseInertiaZ: number,
+        wake = true
     ): void {
         velocities[velBase] += impulseX * inverseMass;
         velocities[velBase + 1] += impulseY * inverseMass;
@@ -660,9 +674,11 @@ export class PhysicsWorld3DSolver {
         velocities[angBase + 1] += (relZ * impulseX - relX * impulseZ) * inverseInertiaY;
         velocities[angBase + 2] += (relX * impulseY - relY * impulseX) * inverseInertiaZ;
 
-        // applyImpulse() wakes the body it writes; the row is already resolved,
-        // so this is the flag write without the Map lookup.
-        bodyFlags[index] |= BodyFlags.Awake;
+        if (wake) {
+            // applyImpulse() wakes the body it writes; the row is already resolved,
+            // so this is the flag write without the Map lookup.
+            bodyFlags[index] |= BodyFlags.Awake;
+        }
     }
 
     /** Quat.rotateVector(q, v) writing into `out`; term order matches @axrone/numeric. */

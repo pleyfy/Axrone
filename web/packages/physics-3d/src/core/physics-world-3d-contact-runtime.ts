@@ -17,12 +17,14 @@ import type {
     IShapePairCandidate3D,
     SupportedConstraintDef3D,
 } from './physics-world-3d-shared';
+import { CONTACT_BREAK_THRESHOLD } from './physics-world-3d-shared';
 import { PhysicsWorld3DBroadphase } from './physics-world-3d-broadphase';
 import { PhysicsWorld3DContactIndex } from './physics-world-3d-contact-index';
 import { PhysicsWorld3DEvents } from './physics-world-3d-events';
 import { PhysicsWorld3DManifoldBuilder } from './physics-world-3d-manifold';
 import { PhysicsWorld3DNarrowphase } from './physics-world-3d-narrowphase';
-import { ContactSolverCache, PhysicsWorld3DSolver } from './physics-world-3d-solver';
+import { ContactSolverCache, HEADER_FLOATS, POINT_FLOATS, PhysicsWorld3DSolver } from './physics-world-3d-solver';
+import { CONTACT_POSITION_BETA_FINAL, CONTACT_POSITION_BETA_SOFT } from './physics-solver-policy-3d';
 import { PhysicsWorld3DSpring } from './physics-world-3d-spring';
 import { makeCollisionPairKey } from '@axrone/physics-core';
 
@@ -44,7 +46,37 @@ import {
 } from './physics-world-3d-constraints-framework';
 
 /** Cached warm-start impulses for one contact point, plus the step that wrote it. */
-interface IWarmImpulseEntry3D {
+
+export interface IContactDiagnosticsSnapshot {
+    manifolds: {
+        pairKey: number;
+        bodyIdA: BodyId3D;
+        bodyIdB: BodyId3D;
+        normal: { x: number; y: number; z: number };
+        tangent1: { x: number; y: number; z: number };
+        tangent2: { x: number; y: number; z: number };
+        pointCount: number;
+        friction: number;
+        restitution: number;
+        sensor: boolean;
+        solverOffset: number;
+        points: {
+            separation: number;
+            normalImpulse: number;
+            tangentImpulse1: number;
+            tangentImpulse2: number;
+            localPointA: { x: number; y: number; z: number };
+            localPointB: { x: number; y: number; z: number };
+        }[];
+    }[];
+    cacheValues: Float64Array;
+    headerFloats: number;
+    pointFloats: number;
+    warmImpulses: { key: number; normal: number; tangent: number; generation: number }[];
+    contactCount: number;
+}
+
+export interface IWarmImpulseEntry3D {
     normal: number;
     tangent: number;
     generation: number;
@@ -90,9 +122,11 @@ export class PhysicsWorld3DContactRuntime {
 
     /** Refreshes the flat manifold view when it diverged from the map. */
     private _ensureManifoldList(): IResolvedContactManifold3D[] {
-        if (this._manifoldList.length !== this._contactManifolds.size) {
+        if (this._manifoldList.length !== this._contactManifolds.size - this._gapPairKeys.size) {
             this._manifoldList.length = 0;
-            for (const m of this._contactManifolds.values()) this._manifoldList.push(m);
+            for (const m of this._contactManifolds.values()) {
+                if (!this._gapPairKeys.has(m.pairKey)) this._manifoldList.push(m);
+            }
         }
         return this._manifoldList;
     }
@@ -100,6 +134,18 @@ export class PhysicsWorld3DContactRuntime {
 
     /** Previous-frame manifold snapshot for event dispatch diff. */
     private _previousManifolds = new Map<number, IResolvedContactManifold3D>();
+    private _contactedPairs = new Map<number, IResolvedContactManifold3D>();
+    private _nextContactedPairs = new Map<number, IResolvedContactManifold3D>();
+    private _gapPairKeys = new Set<number>();
+    private _indexScratch = new Map<number, IResolvedContactManifold3D>();
+    private _enteringFlags: boolean[] = [];
+    private readonly _gapCandidate = {
+        descriptorA: null as unknown as IShapeDescriptor3D,
+        descriptorB: null as unknown as IShapeDescriptor3D,
+        aabbA: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+        aabbB: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+        pairKey: 0,
+    };
 
     private readonly _narrowphase: PhysicsWorld3DNarrowphase;
     private readonly _manifoldBuilder: PhysicsWorld3DManifoldBuilder;
@@ -133,7 +179,7 @@ export class PhysicsWorld3DContactRuntime {
     }
 
     get contactCount(): number {
-        return this._contactManifolds.size;
+        return this._contactManifolds.size - this._gapPairKeys.size;
     }
 
     get islandCount(): number {
@@ -180,7 +226,16 @@ export class PhysicsWorld3DContactRuntime {
      * O(C) where C = contact count. Called lazily when kinematic bodies move.
      */
     rebuildBodyContactIndex(): void {
-        this._contactIndex.rebuildBodyContactIndex(this._contactManifolds);
+        if (this._gapPairKeys.size === 0) {
+            this._contactIndex.rebuildBodyContactIndex(this._contactManifolds);
+            return;
+        }
+        const solvable = this._indexScratch;
+        solvable.clear();
+        for (const [key, m] of this._contactManifolds) {
+            if (!this._gapPairKeys.has(key)) solvable.set(key, m);
+        }
+        this._contactIndex.rebuildBodyContactIndex(solvable);
     }
 
     /** Get contact pairKeys for a body from the pre-built index. (P1-4) */
@@ -217,7 +272,7 @@ export class PhysicsWorld3DContactRuntime {
         this.collectManifolds();
         this.warmStart();
         this.solveVelocity(velIters);
-        this.solvePosition(posIters);
+        this.solvePosition(posIters, deltaTime);
         this._persistWarmImpulses();
         this.dispatchEvents();
     }
@@ -236,6 +291,15 @@ export class PhysicsWorld3DContactRuntime {
         // flat cache starts over with them.
         this._solverCache.reset();
 
+        const carried = this._contactedPairs;
+        this._contactedPairs = this._nextContactedPairs;
+        this._nextContactedPairs = carried;
+        const carrying = this._contactedPairs;
+        carrying.clear();
+        const carryingGaps = this._gapPairKeys;
+        carryingGaps.clear();
+        const band = CONTACT_BREAK_THRESHOLD;
+
         // collideConnected filter: skip pairs joined by a non-colliding constraint.
         // The broadphase module owns proxy/candidate bookkeeping only, so the
         // joint-collision suppression lives here, next to the contact index.
@@ -251,25 +315,50 @@ export class PhysicsWorld3DContactRuntime {
                 );
                 if (jointCollisionCounts.has(bodyPairKey)) continue;
             }
-            const m = this._manifoldBuilder.buildContactManifold(pair);
+            const strict = this._manifoldBuilder.buildContactManifold(pair, null);
+            let m = strict;
+            let gapContact = false;
+            if (!m && carried.has(pair.pairKey)) {
+                m = this._buildBandedManifold(pair.descriptorA, pair.descriptorB, pair.pairKey, band);
+                gapContact = m !== null;
+            }
             if (!m) continue;
-            // Apply warm impulses from previous frame, scaled for stability.
-            // Full warm starting can overshoot when the solver's accumulated impulse
-            // was from an impact frame (large) and the current frame is resting.
-            // A factor of 0.5 provides convergence benefit without instability.
-            const WARM_SCALE = 0.5;
+            carrying.set(pair.pairKey, m);
+            const bodyManager = this._host.bodyManager;
+            const inverseMassSum = bodyManager.getInverseMass(m.bodyIdA) + bodyManager.getInverseMass(m.bodyIdB);
+            const velocityA = bodyManager.getLinearVelocity(m.bodyIdA);
+            const velocityB = bodyManager.getLinearVelocity(m.bodyIdB);
+            const approach = (velocityB.x - velocityA.x) * m.normal.x
+                + (velocityB.y - velocityA.y) * m.normal.y
+                + (velocityB.z - velocityA.z) * m.normal.z;
+            const seedCap = inverseMassSum > 0 && approach < 0 ? -approach / (inverseMassSum * m.pointCount) : 0;
             for (let pi = 0; pi < m.pointCount; pi++) {
                 const warmKey = pair.pairKey * 4 + pi;
                 const warm = this._warmImpulses.get(warmKey);
-                if (warm) {
-                    m.points[pi].normalImpulse = (warm.normal * WARM_SCALE) as Impulse;
-                    m.points[pi].tangentImpulse1 = (warm.tangent * WARM_SCALE) as Impulse;
-                }
+                if (!warm) continue;
+                const seed = warm.normal < seedCap ? warm.normal : seedCap;
+                m.points[pi].normalImpulse = seed as Impulse;
+                m.points[pi].tangentImpulse1 = (warm.normal > 0 ? warm.tangent * (seed / warm.normal) : 0) as Impulse;
             }
             next.set(pair.pairKey, m);
-            this._manifoldList.push(m);
-            this._solver.prepareContact(m, this._solverCache);
+            if (gapContact) {
+                carryingGaps.add(pair.pairKey);
+            } else {
+                this._manifoldList.push(m);
+                this._solver.prepareContact(m, this._solverCache);
+            }
         }
+
+        for (const entry of carried) {
+            if (next.has(entry[0])) continue;
+            const previous = entry[1];
+            const m = this._buildBandedManifold(previous.descriptorA, previous.descriptorB, entry[0], band);
+            if (!m) continue;
+            carrying.set(entry[0], m);
+            carryingGaps.add(entry[0]);
+            next.set(entry[0], m);
+        }
+
         const nTime = performance.now() - nStart;
         const profiler = this._host.getProfiler();
         if (profiler) {
@@ -283,8 +372,11 @@ export class PhysicsWorld3DContactRuntime {
 
     /** Phase 2: apply cached impulses to velocities. */
     warmStart(): void {
+        const wStart = performance.now();
         const list = this._ensureManifoldList();
         for (let i = 0; i < list.length; i++) this._solver.warmStartContact(list[i], this._solverCache);
+        const profiler = this._host.getProfiler();
+        if (profiler) profiler.warmStartTime = performance.now() - wStart;
     }
 
     /** Phase 3: sequential impulse velocity solve. */
@@ -332,13 +424,46 @@ export class PhysicsWorld3DContactRuntime {
     }
 
     /** Phase 4: Baumgarte positional correction. */
-    solvePosition(posIters: number): void {
+    private _buildBandedManifold(
+        dA: IShapeDescriptor3D,
+        dB: IShapeDescriptor3D,
+        pairKey: number,
+        band: number
+    ): IResolvedContactManifold3D | null {
+        const separation = this._narrowphase.pairSeparation(dA, dB);
+        if (!separation || separation.distance >= band) return null;
+        const candidate = this._gapCandidate;
+        candidate.descriptorA = dA;
+        candidate.descriptorB = dB;
+        candidate.pairKey = pairKey;
+        return this._manifoldBuilder.buildContactManifold(candidate, {
+            normal: separation.normal,
+            point: separation.point,
+            penetration: -separation.distance,
+        });
+    }
+
+    private _isEntering(manifold: IResolvedContactManifold3D): boolean {
+        for (let pi = 0; pi < manifold.pointCount; pi++) {
+            if (this._warmImpulses.has(manifold.pairKey * 4 + pi)) return false;
+        }
+        return manifold.pointCount > 0;
+    }
+
+    solvePosition(posIters: number, dt: number): void {
         const pStart = performance.now();
         const list = this._ensureManifoldList();
-        for (let i = 0; i < posIters; i++) {
-            for (let m = 0; m < list.length; m++) this._solver.correctContactPositions(list[m], 0.2, this._solverCache);
+        if (posIters > 0) {
+            for (let m = 0; m < list.length; m++) this._enteringFlags[m] = this._isEntering(list[m]);
+            for (let i = 0; i < posIters; i++) {
+                for (let m = 0; m < list.length; m++) {
+                    this._solver.correctContactPositions(list[m], CONTACT_POSITION_BETA_SOFT, this._solverCache, this._enteringFlags[m]);
+                }
+            }
+            for (let m = 0; m < list.length; m++) {
+                this._solver.correctContactPositions(list[m], CONTACT_POSITION_BETA_FINAL, this._solverCache, this._enteringFlags[m]);
+            }
         }
-        for (let m = 0; m < list.length; m++) this._solver.correctContactPositions(list[m], 1.0, this._solverCache);
 
         // ─── Jacobian constraint position correction ───
         // Apply anchor-alignment position corrections for constraints (Fixed, Hinge, etc.)
@@ -348,7 +473,7 @@ export class PhysicsWorld3DContactRuntime {
                 this._jacobianCache,
                 this._host.bodyManager,
                 this._host.constraintManager,
-                1 / 60, // dt for bias computation
+                dt,
             );
         }
 
@@ -392,12 +517,42 @@ export class PhysicsWorld3DContactRuntime {
      * after solvePosition(). Delegates to the private _persistWarmImpulses().
      */
     persistWarmImpulses(): void {
+        const pStart = performance.now();
         this._persistWarmImpulses();
+        const profiler = this._host.getProfiler();
+        if (profiler) profiler.persistTime = performance.now() - pStart;
     }
 
     /** Expose warm impulse cache size for testing. */
     get warmImpulseCacheSize(): number {
         return this._warmImpulses.size;
+    }
+
+    getContactDiagnostics(): IContactDiagnosticsSnapshot {
+        const manifolds = this._ensureManifoldList().map((m) => ({
+            pairKey: m.pairKey,
+            bodyIdA: m.bodyIdA,
+            bodyIdB: m.bodyIdB,
+            normal: { ...m.normal },
+            tangent1: { ...m.tangent1 },
+            tangent2: { ...m.tangent2 },
+            pointCount: m.pointCount,
+            friction: m.friction,
+            restitution: m.restitution,
+            sensor: m.sensor,
+            solverOffset: m.solverOffset,
+            points: m.points.map((p) => ({
+                separation: p.separation,
+                normalImpulse: Number(p.normalImpulse),
+                tangentImpulse1: Number(p.tangentImpulse1),
+                tangentImpulse2: Number(p.tangentImpulse2),
+                localPointA: { ...p.localPointA },
+                localPointB: { ...p.localPointB },
+            })),
+        }));
+        const cacheValues = new Float64Array(this._solverCache.values);
+        const warmImpulses = [...this._warmImpulses.entries()].map(([key, entry]) => ({ key, normal: entry.normal, tangent: entry.tangent, generation: entry.generation }));
+        return { manifolds, cacheValues, headerFloats: HEADER_FLOATS, pointFloats: POINT_FLOATS, warmImpulses, contactCount: this._contactManifolds.size - this._gapPairKeys.size };
     }
 
     /** Fire contact events by comparing previous vs current manifolds. */

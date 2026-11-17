@@ -164,6 +164,11 @@ export class PhysicsWorld3D implements Disposable {
                 solveVelocityTime: 0,
                 solvePositionTime: 0,
                 sleepTime: 0,
+                warmStartTime: 0,
+                persistTime: 0,
+                integrateVelocityTime: 0,
+                integratePositionTime: 0,
+                eventsTime: 0,
             };
         }
 
@@ -480,13 +485,20 @@ export class PhysicsWorld3D implements Disposable {
         return this._constraintManager;
     }
 
+    getSolverDiagnostics() {
+        return this._contactRuntime.getContactDiagnostics();
+    }
+
     step(deltaTime: number, velocityIterations: number = 10, positionIterations: number = 4): void {
         if (this._disposed) return;
 
+        const profiler = this._profiler;
         const t0 = performance.now();
 
+        const integrateVelocityStart = profiler ? performance.now() : 0;
         // 1. Integrate forces → velocities (gravity, damping, force accumulators)
         this._integrateVelocities(deltaTime);
+        if (profiler) profiler.integrateVelocityTime = performance.now() - integrateVelocityStart;
 
         // 2-5. Warm start, velocity solve and position solve run on the
         // manifolds collected at the end of the previous step (their positions
@@ -495,8 +507,12 @@ export class PhysicsWorld3D implements Disposable {
         // position pass corrects — the same drift relation the old order had.
         this._contactRuntime.warmStart();
         this._contactRuntime.solveVelocity(velocityIterations, deltaTime);
+
+        const integratePositionStart = profiler ? performance.now() : 0;
         this._integratePositions(deltaTime);
-        this._contactRuntime.solvePosition(positionIterations);
+        if (profiler) profiler.integratePositionTime = performance.now() - integratePositionStart;
+
+        this._contactRuntime.solvePosition(positionIterations, deltaTime);
 
         // 6. Persist warm impulses for next frame (after full solve, before events)
         this._contactRuntime.persistWarmImpulses();
@@ -511,16 +527,20 @@ export class PhysicsWorld3D implements Disposable {
         this._frameGeneration += 1;
         this._contactRuntime.collectManifolds();
 
+        const eventsStart = profiler ? performance.now() : 0;
         // 8. Fire contact events
         this._contactRuntime.dispatchEvents();
+        if (profiler) profiler.eventsTime = performance.now() - eventsStart;
 
         // 9. World-level sleeping check
+        const sleepStart = profiler ? performance.now() : 0;
         if (this.config.allowSleep !== false) {
             this._updateSleeping(deltaTime);
         }
-
-        if (this._profiler) {
-            this._profiler.stepTime = performance.now() - t0;
+        if (profiler) {
+            profiler.sleepTime = performance.now() - sleepStart;
+            profiler.solveTime = profiler.solveVelocityTime + profiler.solvePositionTime;
+            profiler.stepTime = performance.now() - t0;
         }
     }
 

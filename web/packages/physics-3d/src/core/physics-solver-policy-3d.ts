@@ -1,0 +1,3 @@
+export const CONTACT_NORMAL_RELAXATION = 1.1;
+export const CONTACT_POSITION_BETA_SOFT = 0.2;
+export const CONTACT_POSITION_BETA_FINAL = 1.0;
