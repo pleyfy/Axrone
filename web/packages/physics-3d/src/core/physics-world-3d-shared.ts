@@ -53,6 +53,8 @@ export const CONSTRAINT_TYPE_CONE_TWIST = 4;
 export const CONSTRAINT_TYPE_GENERIC = 5;
 export const CONSTRAINT_TYPE_SPRING = 6;
 
+export const CONTACT_BREAK_THRESHOLD = 0.02;
+
 export type SupportedShapeDef3D =
     | ({ readonly kind: typeof SHAPE_TYPE_SPHERE } & ISphereShapeDef3D)
     | ({ readonly kind: typeof SHAPE_TYPE_BOX } & IBoxShapeDef3D)

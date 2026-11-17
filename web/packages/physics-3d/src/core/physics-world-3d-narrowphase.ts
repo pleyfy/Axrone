@@ -327,6 +327,51 @@ export class PhysicsWorld3DNarrowphase {
         return { normal: bestN, point: midpointVec3(cA, cB), penetration: minP };
     }
 
+    pairSeparation(dA: IShapeDescriptor3D, dB: IShapeDescriptor3D): { distance: number; normal: IVec3Like; point: IVec3Like } | null {
+        if (!isBoxDef(dA.def) || !isBoxDef(dB.def)) return null;
+        const bDA = dA.def, bDB = dB.def;
+        const frameA = this._frameFor(dA);
+        const frameB = this._frameFor(dB);
+        if (!frameA || !frameB) return null;
+        const cA = frameA.center, cB = frameB.center;
+        const axesA = frameA.axes, axesB = frameB.axes;
+        const xA = axesA[0], yA = axesA[1], zA = axesA[2];
+        const xB = axesB[0], yB = axesB[1], zB = axesB[2];
+        const hA = bDA.halfExtents, hB = bDB.halfExtents;
+        const delta = Vec3.subtract(cB, cA);
+        let best = -Infinity;
+        let bestAxis: IVec3Like | null = null;
+        let bestPositive = false;
+        for (let axisIndex = 0; axisIndex < 6; axisIndex++) {
+            const ax = axisIndex < 3 ? axesA[axisIndex] : axesB[axisIndex - 3];
+            const pA = hA.x * Math.abs(Vec3.dot(xA, ax)) + hA.y * Math.abs(Vec3.dot(yA, ax)) + hA.z * Math.abs(Vec3.dot(zA, ax));
+            const pB = hB.x * Math.abs(Vec3.dot(xB, ax)) + hB.y * Math.abs(Vec3.dot(yB, ax)) + hB.z * Math.abs(Vec3.dot(zB, ax));
+            const projection = Vec3.dot(delta, ax);
+            const pen = pA + pB - Math.abs(projection);
+            if (pen < 0 && pen > best) { best = pen; bestAxis = ax; bestPositive = projection > 0; }
+        }
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                const crossed = Vec3.cross(axesA[i], axesB[j]);
+                const lenSq = Vec3.lengthSquared(crossed);
+                if (lenSq < BOX_EDGE_AXIS_EPSILON_SQ) continue;
+                const invLen = 1 / Math.sqrt(lenSq);
+                const n = { x: crossed.x * invLen, y: crossed.y * invLen, z: crossed.z * invLen };
+                const pA = hA.x * Math.abs(Vec3.dot(xA, n)) + hA.y * Math.abs(Vec3.dot(yA, n)) + hA.z * Math.abs(Vec3.dot(zA, n));
+                const pB = hB.x * Math.abs(Vec3.dot(xB, n)) + hB.y * Math.abs(Vec3.dot(yB, n)) + hB.z * Math.abs(Vec3.dot(zB, n));
+                const projection = Vec3.dot(delta, n);
+                const pen = pA + pB - Math.abs(projection);
+                if (pen < 0 && pen > best) { best = pen; bestAxis = n; bestPositive = projection > 0; }
+            }
+        }
+        if (bestAxis === null) return null;
+        return {
+            distance: -best,
+            normal: bestPositive ? { x: bestAxis.x, y: bestAxis.y, z: bestAxis.z } : Vec3.negate(bestAxis),
+            point: midpointVec3(cA, cB),
+        };
+    }
+
     private edgeEdgePoint(
         cA: IVec3Like, axesA: IVec3Like[], hA: IVec3Like,
         cB: IVec3Like, axesB: IVec3Like[], hB: IVec3Like,
@@ -360,7 +405,7 @@ export class PhysicsWorld3DNarrowphase {
     buildBoxBoxManifold(
         dA: IShapeDescriptor3D, dB: IShapeDescriptor3D,
         normal: IVec3Like, totalPen: number
-    ): { worldPoint: IVec3Like; separation: number }[] {
+    ): { worldPointA: IVec3Like; worldPointB: IVec3Like; separation: number }[] {
         const bDA = dA.def as { center: IVec3Like; halfExtents: IVec3Like; rotation?: IVec3Like };
         const bDB = dB.def as { center: IVec3Like; halfExtents: IVec3Like; rotation?: IVec3Like };
 
@@ -393,23 +438,24 @@ export class PhysicsWorld3DNarrowphase {
         if (bestDotA >= bestDotB) {
             isARef = true;
             refCenter = cA; refAxes = axesA; refHalf = [bDA.halfExtents.x, bDA.halfExtents.y, bDA.halfExtents.z];
-            refSign = Vec3.dot(normal, axesA[bestA]) > 0 ? -1 : 1;
+            refSign = Vec3.dot(normal, axesA[bestA]) > 0 ? 1 : -1;
             incCenter = cB; incAxes = axesB; incHalf = [bDB.halfExtents.x, bDB.halfExtents.y, bDB.halfExtents.z];
-            incSign = Vec3.dot(negNormal, axesB[bestB]) > 0 ? -1 : 1;
+            incSign = Vec3.dot(negNormal, axesB[bestB]) > 0 ? 1 : -1;
         } else {
             isARef = false;
             refCenter = cB; refAxes = axesB; refHalf = [bDB.halfExtents.x, bDB.halfExtents.y, bDB.halfExtents.z];
-            refSign = Vec3.dot(negNormal, axesB[bestB]) > 0 ? -1 : 1;
+            refSign = Vec3.dot(negNormal, axesB[bestB]) > 0 ? 1 : -1;
             incCenter = cA; incAxes = axesA; incHalf = [bDA.halfExtents.x, bDA.halfExtents.y, bDA.halfExtents.z];
-            incSign = Vec3.dot(normal, axesA[bestA]) > 0 ? -1 : 1;
+            incSign = Vec3.dot(normal, axesA[bestA]) > 0 ? 1 : -1;
         }
 
-        const incNormal = incAxes[bestB === bestDotB ? bestB : bestB];
-        const incTangent1 = incAxes[(bestB + 1) % 3];
-        const incTangent2 = incAxes[(bestB + 2) % 3];
-        const incFaceOffset = incSign * incHalf[bestB];
-        const hT1 = incHalf[(bestB + 1) % 3];
-        const hT2 = incHalf[(bestB + 2) % 3];
+        const incFaceIdx = bestDotA >= bestDotB ? bestB : bestA;
+        const incNormal = incAxes[incFaceIdx];
+        const incTangent1 = incAxes[(incFaceIdx + 1) % 3];
+        const incTangent2 = incAxes[(incFaceIdx + 2) % 3];
+        const incFaceOffset = incSign * incHalf[incFaceIdx];
+        const hT1 = incHalf[(incFaceIdx + 1) % 3];
+        const hT2 = incHalf[(incFaceIdx + 2) % 3];
 
         const incVerts: IVec3Like[] = [
             Vec3.add(incCenter, Vec3.add(
@@ -453,13 +499,16 @@ export class PhysicsWorld3DNarrowphase {
         clipped = this.clipSegmentToLine(clipped, Vec3.negate(refT2), refCenter, refH2);
         if (clipped.length < 2) return [];
 
-        const result: { worldPoint: IVec3Like; separation: number }[] = [];
-        const refFaceCenter = Vec3.add(refCenter, Vec3.multiplyScalar(refNormalActual, refFaceDist));
+        const result: { worldPointA: IVec3Like; worldPointB: IVec3Like; separation: number }[] = [];
+        const refFaceCenter = Vec3.add(refCenter, Vec3.multiplyScalar(refAxes[refFaceIdx], refFaceDist));
         for (const pt of clipped) {
             if (result.length >= 4) break;
             const sep = Vec3.dot(Vec3.subtract(pt, refFaceCenter), refNormalActual);
-            if (sep >= -(totalPen * 0.1 + PhysicsConstants.ALLOWED_PENETRATION)) {
-                result.push({ worldPoint: pt, separation: sep - totalPen });
+            if (sep <= totalPen * 0.1 + PhysicsConstants.ALLOWED_PENETRATION) {
+                const refPoint = Vec3.subtract(pt, Vec3.multiplyScalar(refNormalActual, sep));
+                result.push(isARef
+                    ? { worldPointA: refPoint, worldPointB: pt, separation: sep }
+                    : { worldPointA: pt, worldPointB: refPoint, separation: sep });
             }
         }
         return result;

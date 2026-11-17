@@ -42,7 +42,7 @@ export interface IManifoldBuilderHost extends INarrowphaseHost {
         dB: IShapeDescriptor3D,
         normal: IVec3Like,
         totalPen: number
-    ) => { worldPoint: IVec3Like; separation: number }[];
+    ) => { worldPointA: IVec3Like; worldPointB: IVec3Like; separation: number }[];
 }
 
 export class PhysicsWorld3DManifoldBuilder {
@@ -56,9 +56,9 @@ export class PhysicsWorld3DManifoldBuilder {
         return resolveShapeFrame(descriptor, this._host.bodyManager, this._host.getFrameGeneration());
     }
 
-    buildContactManifold(pair: IShapePairCandidate3D): IResolvedContactManifold3D | null {
+    buildContactManifold(pair: IShapePairCandidate3D, gap: ICollisionResult | null): IResolvedContactManifold3D | null {
         const dA = pair.descriptorA, dB = pair.descriptorB;
-        const c = this._host.detectCollision(dA, dB, pair.aabbA, pair.aabbB);
+        const c = gap ?? this._host.detectCollision(dA, dB, pair.aabbA, pair.aabbB);
         if (!c) return null;
         const { tangent1, tangent2 } = buildOrthonormalBasis(c.normal);
         const friction = Math.sqrt(dA.material.friction * dB.material.friction);
@@ -77,8 +77,8 @@ export class PhysicsWorld3DManifoldBuilder {
                 const posB = frameB ? frameB.bodyPosition : bm.getPosition(dB.bodyId);
                 const rotB = frameB ? frameB.bodyRotation : bm.getRotation(dB.bodyId);
                 for (const cp of clipPoints) {
-                    const lA = inverseTransformPoint3D(cp.worldPoint, posA, rotA);
-                    const lB = inverseTransformPoint3D(cp.worldPoint, posB, rotB);
+                    const lA = inverseTransformPoint3D(cp.worldPointA, posA, rotA);
+                    const lB = inverseTransformPoint3D(cp.worldPointB, posB, rotB);
                     points.push({
                         id: (this._nextContactId++ as unknown) as ContactId,
                         localPointA: lA, localPointB: lB,
