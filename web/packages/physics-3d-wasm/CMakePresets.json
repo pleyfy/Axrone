@@ -63,6 +63,21 @@
       }
     },
     {
+      "name": "wasm-timers",
+      "displayName": "WASM phase timers",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm-timers",
+      "toolchainFile": "${sourceDir}/cmake/wasm32-clang.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PHYSICS_BUILD_TESTS": "OFF",
+        "PHYSICS_BUILD_WASM": "ON",
+        "PHYSICS_SIMD": "OFF",
+        "PHYSICS_FAST_MATH": "OFF",
+        "PHYSICS_PHASE_TIMERS": "ON"
+      }
+    },
+    {
       "name": "host-debug",
       "displayName": "Host debug",
       "generator": "Ninja",
@@ -93,6 +108,10 @@
     {
       "name": "wasm-fast-simd",
       "configurePreset": "wasm-fast-simd"
+    },
+    {
+      "name": "wasm-timers",
+      "configurePreset": "wasm-timers"
     },
     {
       "name": "host-debug",

@@ -2,4 +2,7 @@ build/
 node_modules/
 dist/
 .tmp/
-bench/results/
+bench/results/bench-*.json
+bench/results/phases-*.json
+bench/results/compare-recorded-ts-*.json
+bench/results/*.tmp.json

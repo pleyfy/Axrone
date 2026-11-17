@@ -6,6 +6,7 @@ option(PHYSICS_BUILD_TESTS "Build native tests" ON)
 option(PHYSICS_BUILD_WASM "Build the WASM module" ON)
 option(PHYSICS_SIMD "Enable wasm SIMD" OFF)
 option(PHYSICS_FAST_MATH "Enable fast-math" OFF)
+option(PHYSICS_PHASE_TIMERS "Instrument step phase timers" OFF)
 option(PHYSICS_WASM_OPTIMIZE "Run wasm-opt after linking" ON)
 set(PHYSICS_WASM_OPT_LEVEL "-O4" CACHE STRING "wasm-opt optimization level")
 
@@ -45,6 +46,10 @@ target_compile_options(axrone_physics_core PRIVATE
 
 if(PHYSICS_FAST_MATH)
     target_compile_options(axrone_physics_core PRIVATE -ffast-math -ffp-contract=fast)
+endif()
+
+if(PHYSICS_PHASE_TIMERS)
+    target_compile_definitions(axrone_physics_core PUBLIC AXRONE_PHYSICS_PHASE_TIMERS=1)
 endif()
 
 if(PHYSICS_SIMD)
@@ -172,6 +177,111 @@ if(PHYSICS_BUILD_TESTS AND NOT CMAKE_SYSTEM_PROCESSOR MATCHES "wasm32")
         -ffp-contract=off
     )
     add_test(NAME axrone_physics_query_tests COMMAND axrone_physics_query_tests)
+
+    add_executable(axrone_physics_contacts_tests
+        tests/contacts_test.cpp
+    )
+    target_link_libraries(axrone_physics_contacts_tests PRIVATE axrone_physics_core)
+    target_include_directories(axrone_physics_contacts_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_options(axrone_physics_contacts_tests PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wshadow
+        -Wundef
+        -ffp-contract=off
+    )
+    add_test(NAME axrone_physics_contacts_tests COMMAND axrone_physics_contacts_tests)
+
+    add_executable(axrone_physics_warmstart_tests
+        tests/warmstart_test.cpp
+    )
+    target_link_libraries(axrone_physics_warmstart_tests PRIVATE axrone_physics_core)
+    target_include_directories(axrone_physics_warmstart_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_options(axrone_physics_warmstart_tests PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wshadow
+        -Wundef
+        -ffp-contract=off
+    )
+    add_test(NAME axrone_physics_warmstart_tests COMMAND axrone_physics_warmstart_tests)
+
+    add_executable(axrone_physics_counters_tests
+        tests/counters_test.cpp
+    )
+    target_link_libraries(axrone_physics_counters_tests PRIVATE axrone_physics_core)
+    target_include_directories(axrone_physics_counters_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_options(axrone_physics_counters_tests PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wshadow
+        -Wundef
+        -ffp-contract=off
+    )
+    add_test(NAME axrone_physics_counters_tests COMMAND axrone_physics_counters_tests)
+
+    add_executable(axrone_physics_rotation_funnel_tests
+        tests/rotation_funnel_test.cpp
+    )
+    target_link_libraries(axrone_physics_rotation_funnel_tests PRIVATE axrone_physics_core)
+    target_include_directories(axrone_physics_rotation_funnel_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_options(axrone_physics_rotation_funnel_tests PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wshadow
+        -Wundef
+        -ffp-contract=off
+    )
+    add_test(NAME axrone_physics_rotation_funnel_tests COMMAND axrone_physics_rotation_funnel_tests)
+
+    add_executable(axrone_physics_solver_pair_state_tests
+        tests/solver_pair_state_test.cpp
+    )
+    target_link_libraries(axrone_physics_solver_pair_state_tests PRIVATE axrone_physics_core)
+    target_include_directories(axrone_physics_solver_pair_state_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_options(axrone_physics_solver_pair_state_tests PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wshadow
+        -Wundef
+        -ffp-contract=off
+    )
+    add_test(NAME axrone_physics_solver_pair_state_tests COMMAND axrone_physics_solver_pair_state_tests)
+
+    add_executable(axrone_physics_contact_layout_tests
+        tests/contact_layout_test.cpp
+    )
+    target_link_libraries(axrone_physics_contact_layout_tests PRIVATE axrone_physics_core)
+    target_include_directories(axrone_physics_contact_layout_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_options(axrone_physics_contact_layout_tests PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wshadow
+        -Wundef
+        -ffp-contract=off
+    )
+    add_test(NAME axrone_physics_contact_layout_tests COMMAND axrone_physics_contact_layout_tests)
+
+    add_executable(axrone_physics_jointmask_tests
+        tests/jointmask_test.cpp
+    )
+    target_link_libraries(axrone_physics_jointmask_tests PRIVATE axrone_physics_core)
+    target_include_directories(axrone_physics_jointmask_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_options(axrone_physics_jointmask_tests PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -Wshadow
+        -Wundef
+        -ffp-contract=off
+    )
+    add_test(NAME axrone_physics_jointmask_tests COMMAND axrone_physics_jointmask_tests)
 
     add_executable(axrone_physics_events_tests
         tests/events_test.cpp
