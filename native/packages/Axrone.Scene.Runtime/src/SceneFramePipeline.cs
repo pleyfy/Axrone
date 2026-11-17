@@ -195,6 +195,16 @@ public sealed class SceneFramePipeline :
     /// </summary>
     public bool EditorPreview { get; set; }
 
+    /// <summary>
+    /// Real-time directional shadow configuration. Defaults to
+    /// <see cref="ShadowSettings.Default"/> so a scene with a directional light
+    /// shadows out of the box; hosts assign
+    /// <see cref="ShadowSettings.Disabled"/> when scene authoring opts out.
+    /// The atlas is only allocated once this is enabled and a directional light
+    /// is selected.
+    /// </summary>
+    public ShadowSettings ShadowSettings { get; set; } = ShadowSettings.Default;
+
     /// <summary>Rebuilds the ordered pass list after asset changes.</summary>
     public void RebuildPasses()
     {
