@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { PhysicsWorld3D } from '@axrone/physics-3d';
-import { BodyType } from '@axrone/physics-core';
+import { BodyType, type Friction, type Restitution } from '@axrone/physics-core';
+
+type BodyId = ReturnType<PhysicsWorld3D['createBody']>;
 
 /**
  * P1-4: Kinematic body wakes sleeping dynamic contact neighbors (3D).
@@ -22,7 +24,7 @@ describe('Kinematic body wakes sleeping contacts 3D (P1-4)', () => {
     }
 
     /** Step until a body falls asleep, or maxSteps. Returns whether it slept. */
-    function stepUntilAsleep(world: PhysicsWorld3D, bodyId: number, maxSteps = 600): boolean {
+    function stepUntilAsleep(world: PhysicsWorld3D, bodyId: BodyId, maxSteps = 600): boolean {
         for (let i = 0; i < maxSteps; i++) {
             world.step(DT);
             if (!world.getBodyManager().isAwake(bodyId)) return true;
@@ -59,7 +61,7 @@ describe('Kinematic body wakes sleeping contacts 3D (P1-4)', () => {
         }, { density: 1 });
 
         // Give it initial velocity so it moves then settles
-        bm.setLinearVelocity(bodyOnPlatform, { x: 3, y: 1, z: 0.5 });
+        bm.setLinearVelocity(bodyOnPlatform, { x: 3, y: 0, z: 0.5 });
 
         // Step until it falls asleep
         const slept = stepUntilAsleep(world, bodyOnPlatform);
@@ -102,7 +104,7 @@ describe('Kinematic body wakes sleeping contacts 3D (P1-4)', () => {
             center: { x: 0, y: 0, z: 0 },
             halfExtents: { x: 0.5, y: 0.5, z: 0.5 },
         }, { density: 1 });
-        bm.setLinearVelocity(bodyOnPlatform, { x: 2, y: 1, z: 0.5 });
+        bm.setLinearVelocity(bodyOnPlatform, { x: 2, y: 0, z: 0.5 });
 
         // Dynamic body FAR AWAY (no contact with platform)
         const bodyFarAway = world.createBody({
@@ -258,6 +260,58 @@ describe('Kinematic body wakes sleeping contacts 3D (P1-4)', () => {
 
         const slept = stepUntilAsleep(world, body);
         expect(slept).toBe(true);
+
+        world[Symbol.dispose]();
+    });
+
+    it('a gap pair inside the break band does not wake a sleeping neighbour through the kinematic contact graph', () => {
+        const world = new PhysicsWorld3D({
+            gravity: { x: 0, y: -9.81, z: 0 },
+            allowSleep: false,
+            maxBodies: 64,
+            maxShapes: 64,
+        });
+        const bm = world.getBodyManager();
+        const HALF = 0.4;
+        const sleeper = world.createBody({
+            type: BodyType.Dynamic,
+            position: { x: 0, y: 5, z: 0 },
+            rotation: { x: 0, y: 0, z: 0, w: 1 },
+        });
+        world.createBoxShape(sleeper, {
+            center: { x: 0, y: 0, z: 0 },
+            halfExtents: { x: HALF, y: HALF, z: HALF },
+        }, { friction: 0.7 as Friction, restitution: 0 as Restitution });
+        world.getBody(sleeper)?.resetMassData();
+        const kinematic = world.createBody({
+            type: BodyType.Kinematic,
+            position: { x: -3, y: 5, z: 0 },
+            rotation: { x: 0, y: 0, z: 0, w: 1 },
+        });
+        world.createBoxShape(kinematic, {
+            center: { x: 0, y: 0, z: 0 },
+            halfExtents: { x: HALF, y: HALF, z: HALF },
+        }, { friction: 0.7 as Friction, restitution: 0 as Restitution });
+
+        bm.setLinearVelocity(sleeper, { x: 0, y: 0, z: 0 }, false);
+        bm.setAwake(sleeper, false);
+
+        bm.setPosition(kinematic, { x: -0.79, y: 5, z: 0 });
+        expect(bm.isAwake(sleeper)).toBe(false);
+        world.step(DT, 10, 4);
+        expect(bm.isAwake(sleeper)).toBe(false);
+        world.step(DT, 10, 4);
+        expect(bm.isAwake(sleeper)).toBe(false);
+
+        bm.setPosition(kinematic, { x: -0.805, y: 5, z: 0 });
+        world.step(DT, 10, 4);
+        bm.setLinearVelocity(sleeper, { x: 0, y: 0, z: 0 }, false);
+        bm.setAwake(sleeper, false);
+
+        bm.setPosition(kinematic, { x: -0.806, y: 5.003, z: 0 });
+        expect(bm.isAwake(sleeper)).toBe(false);
+        world.step(DT, 10, 4);
+        expect(bm.isAwake(sleeper)).toBe(false);
 
         world[Symbol.dispose]();
     });

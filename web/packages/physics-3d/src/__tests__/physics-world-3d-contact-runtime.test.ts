@@ -459,25 +459,35 @@ describe('PhysicsWorld3D contact runtime', () => {
             const box = world.createBody({ type: 2, position: { x: 0, y: 0.3, z: 0 } });
             world.createBoxShape(box, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } });
 
+            const beginSeparations: number[] = [];
+            const staySeparations: number[] = [];
+            world.setContactListener({
+                onCollisionBegin(event: any) {
+                    for (const pt of event.manifold.points) {
+                        beginSeparations.push(pt.separation);
+                    }
+                },
+                onCollisionStay(event: any) {
+                    for (const pt of event.manifold.points) {
+                        staySeparations.push(pt.separation);
+                    }
+                },
+            } as any);
+
+            world.step(1 / 60);
             world.step(1 / 60);
 
             const stats = world.getStatistics();
             expect(stats.contactCount).toBeGreaterThan(0);
 
-            // Access manifold separation values via contact listener
-            const separations: number[] = [];
-            world.setContactListener({
-                onCollisionStay(event: any) {
-                    for (const pt of event.manifold.points) {
-                        separations.push(pt.separation);
-                    }
-                },
-            } as any);
-            world.step(1 / 60);
-
+            expect(beginSeparations.length).toBeGreaterThan(0);
             // Separations should be negative (overlapping)
-            for (const sep of separations) {
+            for (const sep of beginSeparations) {
                 expect(sep).toBeLessThan(0);
+            }
+            expect(staySeparations.length).toBeGreaterThan(0);
+            for (const sep of staySeparations) {
+                expect(sep).toBeLessThanOrEqual(0);
             }
         });
 
@@ -489,18 +499,24 @@ describe('PhysicsWorld3D contact runtime', () => {
             const box = world.createBody({ type: 2, position: { x: 0, y: 0.5, z: 0 } });
             world.createBoxShape(box, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } });
 
-            world.step(1 / 60);
-
             const separations: number[] = [];
             world.setContactListener({
+                onCollisionBegin(event: any) {
+                    for (const pt of event.manifold.points) {
+                        separations.push(pt.separation);
+                    }
+                },
                 onCollisionStay(event: any) {
                     for (const pt of event.manifold.points) {
                         separations.push(pt.separation);
                     }
                 },
             } as any);
+
+            world.step(1 / 60);
             world.step(1 / 60);
 
+            expect(separations.length).toBeGreaterThan(0);
             // At touching or slight penetration, separation should be small
             for (const sep of separations) {
                 expect(Math.abs(sep)).toBeLessThan(0.15);

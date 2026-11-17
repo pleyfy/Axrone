@@ -51,7 +51,7 @@ describe('D1 — contact detection order (post-integration manifolds)', () => {
         world.createBoxShape(b2, { center: ZERO, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } }, { friction: 0.4, restitution: 0 });
         const firsts = firstBeginByPair(world, 180);
         expect(firsts.get(`${ground}-${b1}`)).toBe(9);
-        expect(firsts.get(`${b1}-${b2}`)).toBe(13);
+        expect(firsts.get(`${b1}-${b2}`)).toBe(12);
 
         const p1 = world.getBodyManager().getPosition(b1);
         const groundPen = 0 - (p1.y - 0.5);

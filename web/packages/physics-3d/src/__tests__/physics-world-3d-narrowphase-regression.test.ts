@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PhysicsWorld3D } from '@axrone/physics-3d';
+import type { Friction, Restitution } from '@axrone/physics-core';
 import { Vec3, Quat } from '@axrone/numeric';
 
 const STEP = 1 / 60;
@@ -19,9 +20,9 @@ const firstOverlapStep = (gap: number): number => {
 function makeCapsuleDropWorld(capPosition: { x: number; y: number; z: number }, boxHalfExtents: { x: number; y: number; z: number }, boxTopY: number) {
     const world = new PhysicsWorld3D({ gravity: { x: 0, y: -G, z: 0 } });
     const box = world.createBody({ type: 0, position: { x: 0, y: boxTopY - boxHalfExtents.y, z: 0 }, allowSleep: false });
-    world.createBoxShape(box, { center: { x: 0, y: 0, z: 0 }, halfExtents: boxHalfExtents }, { friction: 0.8, restitution: 0 });
+    world.createBoxShape(box, { center: { x: 0, y: 0, z: 0 }, halfExtents: boxHalfExtents }, { friction: 0.8 as Friction, restitution: 0 as Restitution });
     const cap = world.createBody({ type: 2, position: capPosition, allowSleep: false });
-    world.createCapsuleShape(cap, { p1: { x: 0, y: -0.2, z: 0 }, p2: { x: 0, y: 0.2, z: 0 }, radius: 0.3 }, { friction: 0.4, restitution: 0 });
+    world.createCapsuleShape(cap, { p1: { x: 0, y: -0.2, z: 0 }, p2: { x: 0, y: 0.2, z: 0 }, radius: 0.3 }, { friction: 0.4 as Friction, restitution: 0 as Restitution });
     return { world, cap };
 }
 
@@ -123,11 +124,11 @@ describe('box-vs-box narrowphase (defect D5)', () => {
         const a = G * (Math.sin(theta) - mu * Math.cos(theta));
         const world = new PhysicsWorld3D({ gravity: { x: 0, y: -G, z: 0 } });
         const ground = world.createBody({ type: 0, position: { x: 0, y: -0.5, z: 0 }, allowSleep: false });
-        world.createBoxShape(ground, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 10, y: 0.5, z: 10 } }, { friction: 0.8, restitution: 0 });
+        world.createBoxShape(ground, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 10, y: 0.5, z: 10 } }, { friction: 0.8 as Friction, restitution: 0 as Restitution });
         const ramp = world.createBody({ type: 0, position: { x: -1.5, y: 1.2, z: 0 }, rotation: R30, allowSleep: false });
-        world.createBoxShape(ramp, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 8, y: 0.3, z: 4 } }, { friction: 0.6, restitution: 0 });
+        world.createBoxShape(ramp, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 8, y: 0.3, z: 4 } }, { friction: 0.6 as Friction, restitution: 0 as Restitution });
         const slide = world.createBody({ type: 2, position: { x: -2.5660254, y: 1.0464102, z: 0 }, rotation: R30, allowSleep: false });
-        world.createBoxShape(slide, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.35, y: 0.35, z: 0.35 } }, { friction: 0.2, restitution: 0 });
+        world.createBoxShape(slide, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.35, y: 0.35, z: 0.35 } }, { friction: 0.2 as Friction, restitution: 0 as Restitution });
         const samples: number[] = [];
         for (let i = 1; i <= 60; i++) {
             world.step(STEP);
@@ -147,14 +148,54 @@ describe('box-vs-box narrowphase (defect D5)', () => {
     it('offset two-box stack keeps lateral drift below one millimetre over 120 steps', () => {
         const world = new PhysicsWorld3D({ gravity: { x: 0, y: -G, z: 0 } });
         const ground = world.createBody({ type: 0, position: { x: 0, y: -0.5, z: 0 }, allowSleep: false });
-        world.createBoxShape(ground, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 10, y: 0.5, z: 10 } }, { friction: 0.4, restitution: 0 });
+        world.createBoxShape(ground, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 10, y: 0.5, z: 10 } }, { friction: 0.4 as Friction, restitution: 0 as Restitution });
         const bottom = world.createBody({ type: 2, position: { x: 0, y: 0.6, z: 0 }, allowSleep: false });
-        world.createBoxShape(bottom, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } }, { friction: 0.4, restitution: 0 });
+        world.createBoxShape(bottom, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } }, { friction: 0.4 as Friction, restitution: 0 as Restitution });
         const top = world.createBody({ type: 2, position: { x: 0.01, y: 1.7, z: 0 }, allowSleep: false });
-        world.createBoxShape(top, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } }, { friction: 0.4, restitution: 0 });
+        world.createBoxShape(top, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } }, { friction: 0.4 as Friction, restitution: 0 as Restitution });
         for (let i = 0; i < 120; i++) world.step(STEP);
         const topPos = world.getBodyManager().getPosition(top);
         expect(Math.abs(topPos.x - 0.01)).toBeLessThan(0.001);
         expect(Math.abs(topPos.z)).toBeLessThan(0.001);
     });
+});
+
+describe('oriented box-box emission (M2 incident face selection)', () => {
+    const TILT_X = Math.PI / 6;
+    const SPIN_Z = Math.PI / 2;
+    const tilt = { x: Math.sin(TILT_X / 2), y: 0, z: 0, w: Math.cos(TILT_X / 2) };
+    const spin = { x: 0, y: 0, z: Math.sin(SPIN_Z / 2), w: Math.cos(SPIN_Z / 2) };
+    const quatMul = (a: { x: number; y: number; z: number; w: number }, b: { x: number; y: number; z: number; w: number }) => ({
+        x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+    });
+
+    it('emits the sphere-path separation convention on an oriented pair whose best-axis indices differ', () => {
+        const world = new PhysicsWorld3D({ gravity: { x: 0, y: -G, z: 0 }, allowSleep: false });
+        const ground = world.createBody({ type: 0, position: { x: 0, y: -0.5, z: 0 } });
+        world.createBoxShape(ground, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 2, y: 0.5, z: 2 } }, { friction: 0.8 as Friction, restitution: 0 as Restitution });
+        const rot = quatMul(tilt, spin);
+        const box = world.createBody({ type: 2, position: { x: 0, y: 0.35, z: 0 }, rotation: rot, allowSleep: false });
+        world.createBoxShape(box, { center: { x: 0, y: 0, z: 0 }, halfExtents: { x: 0.3, y: 0.5, z: 0.4 } }, { friction: 0.7 as Friction, restitution: 0 as Restitution });
+        world.getBody(box)!.resetMassData();
+
+        world.step(STEP);
+
+        const { manifolds } = world.getSolverDiagnostics();
+        expect(manifolds.length).toBeGreaterThan(0);
+        const bodyA = world.getBody(manifolds[0].bodyIdA)!;
+        const bodyB = world.getBody(manifolds[0].bodyIdB)!;
+        const n = manifolds[0].normal;
+        expect(manifolds[0].points.length).toBeGreaterThan(0);
+        for (const pt of manifolds[0].points) {
+            expect(pt.separation).toBeLessThan(0);
+            const wA = bodyA.getWorldPoint(pt.localPointA);
+            const wB = bodyB.getWorldPoint(pt.localPointB);
+            const gap = (wB.x - wA.x) * n.x + (wB.y - wA.y) * n.y + (wB.z - wA.z) * n.z;
+            expect(Math.abs(gap - pt.separation)).toBeLessThan(1e-9);
+        }
+    });
+
 });
