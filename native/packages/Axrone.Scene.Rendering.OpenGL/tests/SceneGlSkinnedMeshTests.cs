@@ -267,6 +267,46 @@ public sealed class SceneGlSkinnedMeshTests
         source.Should().Contain("vec4(ApplySkin(a_Position), 1.0)");
         source.Should().Contain("uniform sampler2D u_SkinBones;");
         source.Should().Contain("layout(location = 6) in ivec4 a_SkinJoints;");
+        source.Should().NotContain(
+            "ApplySkinNormal(a_Normal)",
+            "the fixture declares no normal attribute, so no normal read may be rewritten");
+        source.Should().NotContain("ApplySkinTangent(a_Tangent)");
+    }
+
+    [Fact]
+    public void InjectorSkinsNormalsAndTangentsWithTheRowVectorConvention()
+    {
+        const string Source = """
+            #version 330 core
+            layout(location = 0) in vec3 a_Position;
+            layout(location = 1) in vec3 a_Normal;
+            layout(location = 4) in vec4 a_Tangent;
+            uniform mat4 u_Model;
+            out vec3 v_WorldNormal;
+            out vec4 v_WorldTangent;
+            void main() {
+                v_WorldNormal = normalize(mat3(u_Model) * a_Normal);
+                v_WorldTangent = vec4(normalize(mat3(u_Model) * a_Tangent.xyz), a_Tangent.w);
+                gl_Position = u_Model * vec4(a_Position, 1.0);
+            }
+            """;
+
+        SkinningShaderInjector.TryInject(Source, out string injected, out SkinningInjectionFailure failure)
+            .Should().BeTrue();
+        failure.Should().Be(SkinningInjectionFailure.None);
+
+        injected.Should().Contain("in vec3 a_Normal;", "the declaration must survive the rewrite");
+        injected.Should().Contain("in vec4 a_Tangent;");
+        injected.Should().Contain("ApplySkinNormal(a_Normal)");
+        injected.Should().Contain("ApplySkinTangent(a_Tangent).xyz");
+        injected.Should().Contain("ApplySkinTangent(a_Tangent).w");
+
+        // The bone palette is stored for row-vector position (vec4(p,1.0) * skin),
+        // so the matching normal transform is n * mat3(skin), not mat3(skin) * n.
+        injected.Should().Contain("normal * mat3(skin)");
+        injected.Should().Contain("tangent.xyz * mat3(skin)");
+        injected.Should().NotContain("mat3(skin) * normal");
+        injected.Should().NotContain("mat3(skin) * tangent");
     }
 
     [Fact]
