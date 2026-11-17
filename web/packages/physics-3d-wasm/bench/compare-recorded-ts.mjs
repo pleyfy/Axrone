@@ -3,9 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadWasm } from "../scripts/scene.mjs";
+import { PHYSICS_ITERATION_POLICY as policy } from "../scripts/policy.mjs";
+import { median } from "./lib/median.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const counts = [250, 1000, 2000];
+const recordedAtPolicy = "8/3";
 const recordedTs = new Map([
     [250, 1.83],
     [1000, 8.82],
@@ -14,8 +17,8 @@ const recordedTs = new Map([
 const warmupSteps = 60;
 const measuredSteps = 180;
 const repeats = 3;
-const velocityIterations = 8;
-const positionIterations = 3;
+const velocityIterations = policy.velocityIterations;
+const positionIterations = policy.positionIterations;
 const dt = 1 / 60;
 
 const wasmPath = path.resolve(root, process.argv[2] ?? "build/wasm-release/physics.opt.wasm");
@@ -25,13 +28,8 @@ if (!fs.existsSync(wasmPath)) {
 
 const { exports, byteLength } = await loadWasm(wasmPath);
 
-function median(values) {
-    const sorted = [...values].sort((left, right) => left - right);
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0
-        ? (sorted[middle - 1] + sorted[middle]) * 0.5
-        : sorted[middle];
-}
+const formatMs = (value) => value === null ? "—" : value.toFixed(3);
+const formatSpeedup = (value) => value === null ? "—" : `${value.toFixed(2)}x`;
 
 function measure(count) {
     const maxContacts = Math.max(1024, count * 8 + 64);
@@ -81,27 +79,50 @@ for (const count of counts) {
     }
     const ms = median(samples);
     const ts = recordedTs.get(count);
+    const wasmPolicy = `${velocityIterations}/${positionIterations}`;
     results.push({
         count,
         wasmMs: ms,
         recordedTsMs: ts,
-        speedup: ts / ms,
+        speedup: ms === null ? null : ts / ms,
+        wasmPolicy,
+        recordedTsPolicy: recordedAtPolicy,
+        samePolicyComparison: wasmPolicy === recordedAtPolicy,
         contacts: last.contacts,
         memoryMb: last.memoryMb
     });
 }
 
-const header = "bodies".padStart(8) + "wasm ms".padStart(12) + "ts ms".padStart(10) + "speedup".padStart(10) + "contacts".padStart(10);
+const header = "bodies".padStart(8)
+    + "wasm ms".padStart(12)
+    + "wasm policy".padStart(14)
+    + "ts ms".padStart(10)
+    + "ts policy".padStart(12)
+    + "speedup".padStart(10)
+    + "contacts".padStart(10);
 console.log(header);
 for (const result of results) {
     console.log(
         String(result.count).padStart(8) +
-        result.wasmMs.toFixed(3).padStart(12) +
+        formatMs(result.wasmMs).padStart(12) +
+        result.wasmPolicy.padStart(14) +
         result.recordedTsMs.toFixed(2).padStart(10) +
-        `${result.speedup.toFixed(2)}x`.padStart(10) +
+        result.recordedTsPolicy.padStart(12) +
+        formatSpeedup(result.speedup).padStart(10) +
         String(result.contacts).padStart(10)
     );
 }
+
+console.log(`\nspeedup column: wasm side stepped at ${results[0]?.wasmPolicy ?? "unknown"}, `
+    + `the recorded TypeScript baseline was measured at ${recordedAtPolicy}.`);
+if (results.some((result) => !result.samePolicyComparison)) {
+    console.log("CROSS-POLICY RATIOS: the speedups above are not same-policy comparisons; the wasm column "
+        + `runs the current ${results[0]?.wasmPolicy ?? "unknown"} policy and the ts column is a frozen `
+        + `${recordedAtPolicy} recording, so a ratio here mixes `
+        + "two solver iteration counts and must not be labelled or quoted as a same-policy speedup.");
+}
+console.log("The recorded TypeScript baseline was NOT re-run in this session and needs no wasm rebuild to "
+    + "reproduce; re-recording it against the current policy is a browser/lab job, not a bench job.");
 
 const outputDir = path.join(root, "bench/results");
 fs.mkdirSync(outputDir, { recursive: true });
@@ -119,6 +140,10 @@ fs.writeFileSync(outputPath, JSON.stringify({
         repeats,
         velocityIterations,
         positionIterations,
+        wasmPolicy: `${velocityIterations}/${positionIterations}`,
+        recordedAtPolicy,
+        samePolicyComparison: `${velocityIterations}/${positionIterations}` === recordedAtPolicy,
+        policyComparisonNote: "the wasm column is stepped live at the current policy; the TypeScript column is a frozen recording made at recordedAtPolicy. When samePolicyComparison is false every speedup in results[] is a cross-policy ratio and may not be labelled as same-policy.",
         dt,
         wasm: path.relative(root, wasmPath),
         wasmBytes: byteLength,

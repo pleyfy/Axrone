@@ -72,8 +72,8 @@ describe('step statistics', () => {
         addSettledBox(world);
         world.step(DT);
         const stats = world.getStepStatistics();
-        expect(stats.velocityIterations).toBe(8);
-        expect(stats.positionIterations).toBe(3);
+        expect(stats.velocityIterations).toBe(10);
+        expect(stats.positionIterations).toBe(4);
         world.dispose();
     });
 
@@ -135,7 +135,7 @@ describe('step statistics', () => {
 });
 
 describe('compat profiler', () => {
-    it('measures step time host-side and reports sub-phases as zero', async () => {
+    it('measures step time host-side and reports unmeasured sub-phases as null', async () => {
         const world = await WasmPhysicsWorld3DCompat.create({ maxBodies: 16 });
         const before = world.getProfiler();
         expect(before.stepTime).toBe(0);
@@ -149,13 +149,21 @@ describe('compat profiler', () => {
         const profile = world.getProfiler();
         expect(Number.isFinite(profile.stepTime)).toBe(true);
         expect(profile.stepTime).toBeGreaterThanOrEqual(0);
-        expect(profile.collisionTime).toBe(0);
-        expect(profile.solveTime).toBe(0);
-        expect(profile.broadphaseTime).toBe(0);
-        expect(profile.narrowphaseTime).toBe(0);
-        expect(profile.solveVelocityTime).toBe(0);
-        expect(profile.solvePositionTime).toBe(0);
-        expect(profile.sleepTime).toBe(0);
+        expect(profile.collisionTime).toBeNull();
+        expect(profile.solveTime).toBeNull();
+        expect(profile.broadphaseTime).toBeNull();
+        expect(profile.narrowphaseTime).toBeNull();
+        expect(profile.sweepSortTime).toBeNull();
+        expect(profile.pairLoopTime).toBeNull();
+        expect(profile.solveVelocityTime).toBeNull();
+        expect(profile.solvePositionTime).toBeNull();
+        expect(profile.sleepTime).toBeNull();
+        expect(profile.sleepAndCacheSwapTime).toBeNull();
+        expect(profile.warmStartTime).toBeNull();
+        expect(profile.persistTime).toBeNull();
+        expect(profile.integrateVelocityTime).toBeNull();
+        expect(profile.integratePositionTime).toBeNull();
+        expect(profile.eventsTime).toBeNull();
         world.dispose();
     });
 });

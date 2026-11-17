@@ -1,0 +1,195 @@
+{
+  "record": "contact-layout-exhibit",
+  "purpose": "machine-readable record of the Contact field layout Lever A-lite measured against; a printed exhibit, not a gate: the cache-line placement of these fields is the arrangement this milestone measured to be immaterial, so it may be changed deliberately",
+  "generatedAt": "2026-11-13T05:23:22.887Z",
+  "capturedFrom": "build/host-debug/axrone_physics_contact_layout_tests.exe",
+  "source": {
+    "file": "src/core/contact.h",
+    "bytes": 1189,
+    "sha256": "8203c1c387ee9ccb2b1947d67a52f7baf0c85024f167add16efee91ae8891abb"
+  },
+  "sizeofBytes": 224,
+  "alignofBytes": 16,
+  "hotClusterCacheLines": 4,
+  "contentBytes": 196,
+  "paddingBytes": 28,
+  "hotClusterEndBytes": 216,
+  "hotClusterTouchesCacheLines": 4,
+  "fields": [
+    {
+      "name": "normal",
+      "group": "hot",
+      "offset": 16,
+      "bytes": 16,
+      "cacheLine": 0
+    },
+    {
+      "name": "t1",
+      "group": "hot",
+      "offset": 48,
+      "bytes": 16,
+      "cacheLine": 0
+    },
+    {
+      "name": "t2",
+      "group": "hot",
+      "offset": 64,
+      "bytes": 16,
+      "cacheLine": 1
+    },
+    {
+      "name": "ra",
+      "group": "hot",
+      "offset": 80,
+      "bytes": 16,
+      "cacheLine": 1
+    },
+    {
+      "name": "rb",
+      "group": "hot",
+      "offset": 96,
+      "bytes": 16,
+      "cacheLine": 1
+    },
+    {
+      "name": "a",
+      "group": "hot",
+      "offset": 0,
+      "bytes": 4,
+      "cacheLine": 0
+    },
+    {
+      "name": "b",
+      "group": "hot",
+      "offset": 4,
+      "bytes": 4,
+      "cacheLine": 0
+    },
+    {
+      "name": "massN",
+      "group": "hot",
+      "offset": 112,
+      "bytes": 4,
+      "cacheLine": 1
+    },
+    {
+      "name": "massT1",
+      "group": "hot",
+      "offset": 116,
+      "bytes": 4,
+      "cacheLine": 1
+    },
+    {
+      "name": "massT2",
+      "group": "hot",
+      "offset": 120,
+      "bytes": 4,
+      "cacheLine": 1
+    },
+    {
+      "name": "impN",
+      "group": "hot",
+      "offset": 124,
+      "bytes": 4,
+      "cacheLine": 1
+    },
+    {
+      "name": "impT1",
+      "group": "hot",
+      "offset": 128,
+      "bytes": 4,
+      "cacheLine": 2
+    },
+    {
+      "name": "impT2",
+      "group": "hot",
+      "offset": 132,
+      "bytes": 4,
+      "cacheLine": 2
+    },
+    {
+      "name": "velocityBias",
+      "group": "hot",
+      "offset": 144,
+      "bytes": 4,
+      "cacheLine": 2
+    },
+    {
+      "name": "friction",
+      "group": "hot",
+      "offset": 136,
+      "bytes": 4,
+      "cacheLine": 2
+    },
+    {
+      "name": "normalMode",
+      "group": "hot",
+      "offset": 148,
+      "bytes": 4,
+      "cacheLine": 2
+    },
+    {
+      "name": "sensor",
+      "group": "hot",
+      "offset": 212,
+      "bytes": 4,
+      "cacheLine": 3
+    },
+    {
+      "name": "localNormal",
+      "group": "cold",
+      "offset": 160,
+      "bytes": 16,
+      "cacheLine": 2
+    },
+    {
+      "name": "localA",
+      "group": "cold",
+      "offset": 176,
+      "bytes": 16,
+      "cacheLine": 2
+    },
+    {
+      "name": "localB",
+      "group": "cold",
+      "offset": 192,
+      "bytes": 16,
+      "cacheLine": 3
+    },
+    {
+      "name": "pen",
+      "group": "cold",
+      "offset": 32,
+      "bytes": 4,
+      "cacheLine": 0
+    },
+    {
+      "name": "restitution",
+      "group": "cold",
+      "offset": 140,
+      "bytes": 4,
+      "cacheLine": 2
+    },
+    {
+      "name": "cacheSlot",
+      "group": "cold",
+      "offset": 208,
+      "bytes": 4,
+      "cacheLine": 3
+    },
+    {
+      "name": "shapeA",
+      "group": "cold",
+      "offset": 216,
+      "bytes": 4,
+      "cacheLine": 3
+    },
+    {
+      "name": "shapeB",
+      "group": "cold",
+      "offset": 220,
+      "bytes": 4,
+      "cacheLine": 3
+    }
+  ]
+}

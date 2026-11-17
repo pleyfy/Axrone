@@ -42,7 +42,7 @@ async function main() {
 
     // Body type mapping proof
     console.log('--- Body Type Mapping ---');
-    console.log('Reference surface (WasmBodyType):');
+    console.log('Reference surface (src/types.ts WasmBodyType, internal to the package):');
     console.log('  Static = 0, Kinematic = 1, Dynamic = 2');
     console.log();
     console.log('WASM C ABI:');

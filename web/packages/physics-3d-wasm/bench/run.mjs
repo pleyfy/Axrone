@@ -2,14 +2,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fingerprintHex, loadWasm } from "../scripts/scene.mjs";
+import { addBoxPileScene, fingerprintHex, loadWasm, STANDARD_DT } from "../scripts/scene.mjs";
+import { PHYSICS_ITERATION_POLICY as policy } from "../scripts/policy.mjs";
+import { median } from "./lib/median.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const counts = [250, 1000, 2000, 5000];
 const warmupSteps = 40;
 const measuredSteps = 120;
 const repeats = (count) => (count <= 1000 ? 5 : 3);
-const dt = 1 / 60;
+const dt = STANDARD_DT;
+
+const step = (exports, dt) => exports.step(dt, policy.velocityIterations, policy.positionIterations);
 
 const defaultVariants = [
     "build/wasm-release/physics.wasm",
@@ -33,44 +37,7 @@ function labelFor(filePath) {
     return file.includes(".opt.") ? `${parent}-opt` : parent;
 }
 
-function createScene(exports, count) {
-    const maxContacts = Math.max(1024, count * 24);
-    if (exports.worldInit(count + 1, maxContacts, 0, -9.81, 0) !== 0) {
-        throw new Error(`worldInit failed for ${count} bodies`);
-    }
-
-    const side = Math.ceil(Math.cbrt(count));
-    const ground = exports.bodyCreate(0, 0, -0.5, 0, 0, 0, 0, 1);
-    exports.bodySetBox(ground, 40, 0.5, 40, 0);
-    exports.bodySetMaterial(ground, 0.8, 0);
-
-    const offset = (side - 1) / 2;
-    for (let i = 0; i < count; i += 1) {
-        const xIndex = i % side;
-        const zIndex = Math.floor(i / side) % side;
-        const layer = Math.floor(i / (side * side));
-        const x = xIndex - offset;
-        const y = 1 + layer;
-        const z = zIndex - offset;
-
-        const id = exports.bodyCreate(1, x, y, z, 0, 0, 0, 1);
-        if (id < 0) {
-            throw new Error(`body ${i} creation failed`);
-        }
-        if (exports.bodySetBox(id, 0.4, 0.4, 0.4, 1) !== 0) {
-            throw new Error(`body ${i} shape failed`);
-        }
-        exports.bodySetMaterial(id, 0.7, 0);
-    }
-}
-
-function median(values) {
-    const sorted = [...values].sort((left, right) => left - right);
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0
-        ? (sorted[middle - 1] + sorted[middle]) * 0.5
-        : sorted[middle];
-}
+const formatMs = (value) => value === null ? "—" : value.toFixed(3);
 
 function measure(exports, count) {
     const samples = [];
@@ -79,15 +46,15 @@ function measure(exports, count) {
     let memory = 0;
 
     for (let repeat = 0; repeat < repeats(count); repeat += 1) {
-        createScene(exports, count);
+        addBoxPileScene(exports, count);
 
         for (let i = 0; i < warmupSteps; i += 1) {
-            exports.step(dt, 8, 3);
+            step(exports, dt);
         }
 
         const start = process.hrtime.bigint();
         for (let i = 0; i < measuredSteps; i += 1) {
-            exports.step(dt, 8, 3);
+            step(exports, dt);
         }
         const end = process.hrtime.bigint();
 
@@ -149,7 +116,7 @@ for (const result of results) {
     console.log(
         result.variant.padEnd(20) +
         String(result.count).padStart(8) +
-        result.ms.toFixed(3).padStart(12) +
+        formatMs(result.ms).padStart(12) +
         String(result.contacts).padStart(10) +
         result.memoryMb.toFixed(2).padStart(12) +
         (result.sizeBytes / 1024).toFixed(1).padStart(10) +

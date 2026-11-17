@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { WasmBodyType, WasmPhysicsWorld3DCompat } from '../index';
+import { WasmPhysicsWorld3DCompat } from '../index';
+import { WasmBodyType } from '../types';
 import { WasmPhysicsWorld3D } from '../world';
 import { loadEmbeddedWasm } from '../loader';
 

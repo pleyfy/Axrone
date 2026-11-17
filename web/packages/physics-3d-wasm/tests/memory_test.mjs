@@ -1,6 +1,6 @@
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,15 +34,46 @@ const suiteNames = new Map([
 ]);
 
 function resolveCompiler() {
-  const onPath = spawnSync("clang++", ["--version"], { encoding: "utf8" });
-  if (onPath.status === 0) {
-    return "clang++";
+  const explicit = [];
+  if (process.env.PHYSICS_CLANGXX) {
+    explicit.push(process.env.PHYSICS_CLANGXX);
   }
-  const fallback = "F:/Scoop/apps/llvm/current/bin/clang++.exe";
-  if (existsSync(fallback)) {
-    return fallback;
+  if (process.env.LLVM_ROOT) {
+    explicit.push(join(process.env.LLVM_ROOT, "bin", process.platform === "win32" ? "clang++.exe" : "clang++"));
   }
-  throw new Error("clang++ not found on PATH and fallback " + fallback + " is missing");
+  for (const candidate of explicit) {
+    const probe = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    if (probe.status !== 0) {
+      throw new Error(
+        `the configured compiler "${candidate}" does not run (PHYSICS_CLANGXX / LLVM_ROOT); `
+        + `fix the setting or unset it to fall back to discovery: ${probe.error ? probe.error.message : "non-zero exit"}`
+      );
+    }
+    return candidate;
+  }
+  const discovered = ["clang++"];
+  if (process.platform === "win32") {
+    for (const root of [process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.LOCALAPPDATA]) {
+      if (root) {
+        discovered.push(join(root, "LLVM", "bin", "clang++.exe"));
+      }
+    }
+    if (process.env.SCOOP) {
+      discovered.push(join(process.env.SCOOP, "apps", "llvm", "current", "bin", "clang++.exe"));
+    }
+  } else {
+    discovered.push("/usr/bin/clang++", "/usr/local/bin/clang++", "/opt/homebrew/opt/llvm/bin/clang++");
+  }
+  for (const candidate of discovered) {
+    const probe = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    if (probe.status === 0) {
+      return candidate;
+    }
+  }
+  throw new Error(
+    "clang++ not found; set PHYSICS_CLANGXX (or LLVM_ROOT) to a clang++ that can target wasm32. Tried: "
+    + discovered.join(", ")
+  );
 }
 
 function compile(clang, extraArgs, output) {

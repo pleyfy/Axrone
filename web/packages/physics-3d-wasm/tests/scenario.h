@@ -44,7 +44,7 @@ inline void addStandardBodies(World& world) {
 
 inline void runStandardScene(World& world) {
     for (int32_t stepIndex = 0; stepIndex < kStandardSteps; ++stepIndex) {
-        world.step(kStandardDt, 8, 3);
+        world.step(kStandardDt, 10, 4);
     }
 }
 
