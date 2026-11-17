@@ -38,6 +38,22 @@ function makePairKey2D(a: BodyId, b: BodyId): number {
     return makeCollisionPairKey(Number(a), Number(b));
 }
 
+const MILLISECONDS_PER_SECOND = 1000;
+
+class LoopMillisecondsPhysicsWorld2D extends PhysicsWorld2D {
+    override step(
+        deltaTimeMs: number,
+        velocityIterations?: number,
+        positionIterations?: number
+    ): void {
+        super.step(
+            deltaTimeMs / MILLISECONDS_PER_SECOND,
+            velocityIterations,
+            positionIterations
+        );
+    }
+}
+
 export interface PhysicsBridge2DOptions {
     readonly worldConfig?: IPhysicsWorldConfig;
     readonly velocityIterations?: number;
@@ -83,7 +99,7 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
                 : { x: 0, y: -9.81 },
         };
 
-        this._physicsWorld = new PhysicsWorld2D(config);
+        this._physicsWorld = new LoopMillisecondsPhysicsWorld2D(config);
         this._velocityIterations = options.velocityIterations ?? 8;
         this._positionIterations = options.positionIterations ?? 3;
         this._physicsWorld.setContactListener(this);

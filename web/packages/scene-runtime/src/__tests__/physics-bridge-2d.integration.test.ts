@@ -82,7 +82,7 @@ class CollisionHandler implements IPhysicsCollisionHandler2D {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-const DT = 1 / 60;
+const ENGINE_FIXED_DELTA_MS = 1000 / 60;
 const GRAVITY_2D = -9.81;
 
 function createHarness(gravity = { x: 0, y: GRAVITY_2D }) {
@@ -198,9 +198,9 @@ function createHarness(gravity = { x: 0, y: GRAVITY_2D }) {
     function step(n = 1): void {
         for (let i = 0; i < n; i++) {
             // Register new bodies (bridge beforeUpdate)
-            bridge.beforeUpdate({ fixedDelta: DT } as any);
+            bridge.beforeUpdate({ fixedDelta: ENGINE_FIXED_DELTA_MS } as any);
             // Step physics world
-            bridge.physicsWorld.step(DT, 8, 3);
+            bridge.physicsWorld.step(ENGINE_FIXED_DELTA_MS, 8, 3);
             // Sync transforms from physics for all registered rigidbodies
             for (const rb of rbodies) {
                 if (rb.bodyId != null) {
