@@ -210,7 +210,6 @@ export const PhysicsConstants = Object.freeze({
     MAX_ANGULAR_CORRECTION: (8.0 / 180.0) * Math.PI,
     MAX_TRANSLATION: 2.0,
     MAX_ROTATION: 0.5 * Math.PI,
-    CONTACT_BREAK_THRESHOLD: 0.02,
     SLEEP_TIME: 0.5,
     LINEAR_SLEEP_TOLERANCE: 0.01,
     ANGULAR_SLEEP_TOLERANCE: (2.0 / 180.0) * Math.PI,
