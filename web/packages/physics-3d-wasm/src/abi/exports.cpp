@@ -27,6 +27,10 @@ static_assert(sizeof(axrone::physics::RayHit) == 40, "ray hit record must stay 4
 
 alignas(16) axrone::physics::StepStatistics g_stepStatistics;
 
+#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
+alignas(16) axrone::physics::PhaseTimers g_phaseTimers;
+#endif
+
 constexpr int32_t kEventCapacity = 4096;
 alignas(16) axrone::physics::ContactEvent g_events[kEventCapacity];
 alignas(16) uint64_t g_eventKeys[kEventCapacity];
@@ -111,6 +115,14 @@ AXRONE_PHYSICS_EXPORT(worldSetGravity) int32_t worldSetGravity(float gx, float g
     return g_world.setGravity(gx, gy, gz);
 }
 
+AXRONE_PHYSICS_EXPORT(worldSetBoxManifoldPointCap) int32_t worldSetBoxManifoldPointCap(int32_t cap) {
+    if (cap != 4 && cap != 8) {
+        return -1;
+    }
+    g_world.boxManifoldPointCap = cap;
+    return 0;
+}
+
 AXRONE_PHYSICS_EXPORT(bodyCreate) int32_t bodyCreate(int32_t type, float px, float py, float pz, float qx, float qy, float qz, float qw) {
     return g_world.createBody(type, px, py, pz, qx, qy, qz, qw);
 }
@@ -188,7 +200,8 @@ AXRONE_PHYSICS_EXPORT(step) int32_t step(float dt, int32_t velocityIterations, i
     if (contacts < 0) {
         return contacts;
     }
-    axrone::physics::collectStepStatistics(g_world, velocityIterations, positionIterations, g_stepStatistics);
+    axrone::physics::collectStepStatistics(g_world, velocityIterations, positionIterations, g_world.mutableStepStatistics());
+    g_stepStatistics = g_world.stepStatistics();
     g_eventCount = 0;
     g_eventsDirty = true;
     return contacts;
@@ -554,6 +567,25 @@ AXRONE_PHYSICS_EXPORT(queryPointAll) int32_t queryPointAll(uintptr_t outBodyIds,
 AXRONE_PHYSICS_EXPORT(stepStatisticsView) uint64_t stepStatisticsView(void) {
     return packView(reinterpret_cast<uintptr_t>(&g_stepStatistics), sizeof(g_stepStatistics));
 }
+
+#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
+AXRONE_PHYSICS_EXPORT(phaseTimersView) uint64_t phaseTimersView(void) {
+    g_phaseTimers = g_world.phaseTimers();
+    return packView(reinterpret_cast<uintptr_t>(&g_phaseTimers), sizeof(g_phaseTimers));
+}
+
+AXRONE_PHYSICS_EXPORT(phaseTimerSweptNanoseconds) uint64_t phaseTimerSweptNanoseconds(void) {
+    return g_world.phaseTimerSweptNanoseconds();
+}
+
+AXRONE_PHYSICS_EXPORT(phaseTimerCollideNanoseconds) uint64_t phaseTimerCollideNanoseconds(void) {
+    return g_world.phaseTimerCollideNanoseconds();
+}
+
+AXRONE_PHYSICS_EXPORT(phaseTimerClampFired) int32_t phaseTimerClampFired(void) {
+    return g_world.phaseTimerClampFired();
+}
+#endif
 
 AXRONE_PHYSICS_EXPORT(queryScratchPtr) uintptr_t queryScratchPtr(void) {
     return reinterpret_cast<uintptr_t>(g_queryScratch);

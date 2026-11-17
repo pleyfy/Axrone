@@ -131,8 +131,10 @@ void addContact(
     if (contact.sensor != 0) {
         contact.cacheSlot = -1;
     } else {
+        world.recordCacheLookup();
         const int32_t cached = world.cacheLookup(a, b, feature);
         if (cached >= 0) {
+            world.recordCacheHit();
             const CacheEntry& entry = world.cachePrev[cached];
             contact.impN = entry.impN;
             contact.impT1 = entry.impT1;
@@ -775,9 +777,17 @@ void addFaceContacts(
             addContact(world, a, b, normal, -separation, point, point, referencePoint, 2, localNormal, indexA, indexB, kKindBoxFace * 16 + added);
         }
 
-        if (++added >= 8) {
+        if (++added >= world.boxManifoldPointCap) {
             break;
         }
+    }
+
+    if (added > 0) {
+        StepStatistics& statistics = world.mutableStepStatistics();
+        ++statistics.boxPointBuckets[added - 1];
+        ++statistics.boxPairsTotal;
+        ++statistics.boxFacePairs;
+        statistics.boxClipCandidateTotal += static_cast<uint32_t>(count);
     }
 }
 
@@ -841,6 +851,11 @@ void addEdgeContact(
     const Vec3 pointB = centerB + directionB * t;
 
     addContact(world, a, b, normal, pen, (pointA + pointB) * 0.5f, pointA, pointB, 0, Vec3(), indexA, indexB, kKindBoxEdge * 16);
+
+    StepStatistics& statistics = world.mutableStepStatistics();
+    ++statistics.boxPointBuckets[0];
+    ++statistics.boxPairsTotal;
+    ++statistics.boxEdgePairs;
 }
 
 void collideBoxBox(World& world, int32_t a, int32_t indexA, const ShapeWorld& shapeA, int32_t b, int32_t indexB, const ShapeWorld& shapeB) {

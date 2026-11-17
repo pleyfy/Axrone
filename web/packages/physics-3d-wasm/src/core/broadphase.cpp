@@ -185,10 +185,15 @@ int32_t buildSweep(World& world) {
 }
 
 void broadphase(World& world) {
-    const int32_t count = buildSweep(world);
+    int32_t count = 0;
+    AXRONE_PHASE(sweepSortScope, world.m_phaseNanoseconds.sweepSort);
+    count = buildSweep(world);
+    AXRONE_PHASE_CLOSE(sweepSortScope);
+
     world.statsShapePairs = 0;
     int64_t broadphasePairs = 0;
 
+    AXRONE_PHASE(pairLoopScope, world.m_phaseNanoseconds.pairLoop);
     for (int32_t i = 0; i < count; ++i) {
         const int32_t a = world.sweepOrder[i];
         const SweepRecord& boundsA = world.sweepRecords[a];
@@ -217,9 +222,12 @@ void broadphase(World& world) {
             }
 
             ++broadphasePairs;
+            AXRONE_PHASE(collideScope, world.m_phaseNanoseconds.collide);
             collidePair(world, a, b);
+            AXRONE_PHASE_CLOSE(collideScope);
         }
     }
+    AXRONE_PHASE_CLOSE(pairLoopScope);
 
     world.statsBroadphasePairs = broadphasePairs;
     world.statsSerial = world.stepSerial;

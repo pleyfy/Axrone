@@ -7,6 +7,8 @@
 #include "core/contact.h"
 #include "core/constraints.h"
 #include "core/math.h"
+#include "core/query.h"
+#include "core/timers.h"
 
 namespace axrone::physics {
 
@@ -27,6 +29,7 @@ struct World {
     int32_t constraintFreeCount = 0;
     Vec3 gravity = {};
     int32_t allowSleep = 0;
+    int32_t boxManifoldPointCap = 8;
 
     Arena* bulkArena = nullptr;
     uintptr_t scratchBegin = 0;
@@ -47,6 +50,9 @@ struct World {
     Contact* contacts = nullptr;
     Constraint* constraints = nullptr;
     int32_t* constraintFreeIds = nullptr;
+    int32_t* suppressedKeys = nullptr;
+    uint32_t suppressedMask = 0;
+    bool suppressedTableBuilt = false;
     CacheEntry* cachePrev = nullptr;
     CacheEntry* cacheNext = nullptr;
     int32_t* cachePrevUsed = nullptr;
@@ -58,6 +64,10 @@ struct World {
     int64_t statsSerial = -1;
     int64_t statsBroadphasePairs = 0;
     int64_t statsShapePairs = 0;
+    StepStatistics m_stepStatistics = {};
+#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
+    PhaseNanoseconds m_phaseNanoseconds = {};
+#endif
 
     Vec3 axesA[3] = {};
     Vec3 axesB[3] = {};
@@ -279,13 +289,57 @@ struct World {
         statsSerial = -1;
     }
 
+    const StepStatistics& stepStatistics() const {
+        return m_stepStatistics;
+    }
+
+    StepStatistics& mutableStepStatistics() {
+        return m_stepStatistics;
+    }
+
+#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
+    PhaseTimers phaseTimers() const {
+        PhaseTimers timers{};
+        const uint64_t collide = m_phaseNanoseconds.collide;
+        const uint64_t swept = m_phaseNanoseconds.broadphase;
+        timers.recordVersion = 1;
+        timers.recordBytes = static_cast<uint32_t>(sizeof(PhaseTimers));
+        timers.integrate = phaseSecondsFromNanoseconds(m_phaseNanoseconds.integrate);
+        timers.broadphase = phaseSecondsFromNanoseconds(swept > collide ? swept - collide : 0);
+        timers.collide = phaseSecondsFromNanoseconds(collide);
+        timers.prepare = phaseSecondsFromNanoseconds(m_phaseNanoseconds.prepare);
+        timers.assembleConstraints = phaseSecondsFromNanoseconds(m_phaseNanoseconds.assembleConstraints);
+        timers.solveVelocities = phaseSecondsFromNanoseconds(m_phaseNanoseconds.solveVelocities);
+        timers.solvePositions = phaseSecondsFromNanoseconds(m_phaseNanoseconds.solvePositions);
+        timers.sleepAndCacheSwap = phaseSecondsFromNanoseconds(m_phaseNanoseconds.sleepAndCacheSwap);
+        timers.pack = phaseSecondsFromNanoseconds(m_phaseNanoseconds.pack);
+        timers.sweepSort = phaseSecondsFromNanoseconds(m_phaseNanoseconds.sweepSort);
+        timers.pairLoop = phaseSecondsFromNanoseconds(m_phaseNanoseconds.pairLoop);
+        return timers;
+    }
+
+    uint64_t phaseTimerSweptNanoseconds() const {
+        return m_phaseNanoseconds.broadphase;
+    }
+
+    uint64_t phaseTimerCollideNanoseconds() const {
+        return m_phaseNanoseconds.collide;
+    }
+
+    int32_t phaseTimerClampFired() const {
+        return m_phaseNanoseconds.broadphase < m_phaseNanoseconds.collide ? 1 : 0;
+    }
+#endif
+
     bool isActive(int32_t id) const;
     int32_t cacheLookup(int32_t a, int32_t b, int32_t feature) const;
+    void recordCacheLookup();
+    void recordCacheHit();
     int32_t cacheStore(int32_t a, int32_t b, int32_t feature, float impN, float impT1, float impT2);
 };
 
 bool recomputeMass(Body& body);
 int32_t firstFreeShapeSlot(const Body& body);
-void bumpSlotGeneration(World& world, int32_t bodyId, int32_t slot);;
+void bumpSlotGeneration(World& world, int32_t bodyId, int32_t slot);
 
 }

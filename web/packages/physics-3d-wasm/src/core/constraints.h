@@ -83,6 +83,8 @@ AXRONE_PHYSICS_INLINE int32_t constraintDecodeGeneration(int32_t id) {
 }
 
 bool pairSuppressedByConstraints(const World& world, int32_t a, int32_t b);
+bool referencePairSuppressed(const World& world, int32_t a, int32_t b);
+void buildSuppressedPairTable(World& world);
 void releaseConstraintsForBody(World& world, int32_t bodyId);
 
 void prepareConstraints(World& world, float dt);

@@ -1,6 +1,7 @@
 #include "core/query.h"
 
 #include "core/polytope.h"
+#include "core/world.h"
 
 namespace axrone::physics {
 
@@ -1089,6 +1090,8 @@ void collectStepStatistics(
     out.positionIterations = static_cast<float>(clampIterationCount(positionIterations));
     out.sleepingBodies = 0.0f;
     out.liveBodies = 0.0f;
+    out.recordVersion = 2;
+    out.recordBytes = static_cast<uint32_t>(sizeof(StepStatistics));
 
     if (!worldQueryable(world)) {
         return;

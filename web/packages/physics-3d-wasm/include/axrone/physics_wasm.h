@@ -48,6 +48,7 @@ void worldReset(void);
 void lib_reset(void);
 int32_t worldSetGravity(float gx, float gy, float gz);
 int32_t world_set_gravity(float gx, float gy, float gz);
+int32_t worldSetBoxManifoldPointCap(int32_t cap);
 int32_t bodyCreate(int32_t type, float px, float py, float pz, float qx, float qy, float qz, float qw);
 int32_t body_create(int32_t type, float px, float py, float pz, float qx, float qy, float qz, float qw);
 int32_t bodyDestroy(int32_t id);

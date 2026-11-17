@@ -24,6 +24,39 @@ uint32_t contactHash(int32_t a, int32_t b, int32_t feature) {
            (static_cast<uint32_t>(feature) * 83492791u);
 }
 
+bool cacheContains(const CacheEntry* table, uint32_t mask, int32_t capacity, const CacheEntry& wanted) {
+    if (table == nullptr || wanted.keyA == 0) {
+        return false;
+    }
+    uint32_t index = contactHash(wanted.keyA - 1, wanted.keyB, wanted.feature) & mask;
+    for (int32_t probe = 0; probe < capacity; ++probe) {
+        const CacheEntry& entry = table[index];
+        if (entry.keyA == 0) {
+            return false;
+        }
+        if (entry.keyA == wanted.keyA && entry.keyB == wanted.keyB && entry.feature == wanted.feature) {
+            return true;
+        }
+        index = (index + 1) & mask;
+    }
+    return false;
+}
+
+void resetStepCounters(StepStatistics& statistics) {
+    statistics.boxFacePairs = 0;
+    statistics.boxEdgePairs = 0;
+    statistics.boxPairsTotal = 0;
+    statistics.cacheLookups = 0;
+    statistics.cacheHits = 0;
+    statistics.cacheStores = 0;
+    statistics.pointIdentitiesPrevStep = 0;
+    statistics.pointIdentitiesRepeatingPrevStep = 0;
+    statistics.boxClipCandidateTotal = 0;
+    for (uint32_t& bucket : statistics.boxPointBuckets) {
+        bucket = 0;
+    }
+}
+
 void zeroMass(Body& body) {
     body.invMass = 0.0f;
     body.invInertia = Vec3();
@@ -296,6 +329,7 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
     maxContacts = contactCapacity;
     gravity = initialGravity;
     allowSleep = 0;
+    boxManifoldPointCap = 8;
     highWater = 0;
     liveCount = 0;
     freeCount = 0;
@@ -304,6 +338,10 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
     statsSerial = -1;
     statsBroadphasePairs = 0;
     statsShapePairs = 0;
+    m_stepStatistics = {};
+#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
+    m_phaseNanoseconds = {};
+#endif
 
     cacheCapacity = 64;
     while (cacheCapacity < maxContacts * 2) {
@@ -331,6 +369,19 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
     }
     constraints = allocateArray<Constraint>(arena, constraintCapacity);
     constraintFreeIds = allocateArray<int32_t>(arena, constraintCapacity);
+    static_assert(kMaxConstraints <= ((1 << 30) - 1) / 4, "suppressed pair table size must stay representable");
+    static_assert(kMaxConstraints * 4 > 0, "suppressed pair table target must stay positive");
+    int32_t suppressedTableSize = 16;
+    const int32_t suppressedTableTarget = constraintCapacity * 4;
+    while (suppressedTableSize < suppressedTableTarget && suppressedTableSize < (1 << 30)) {
+        suppressedTableSize <<= 1;
+    }
+    if (suppressedTableSize < suppressedTableTarget) {
+        return false;
+    }
+    suppressedKeys = allocateArray<int32_t>(arena, suppressedTableSize);
+    suppressedMask = static_cast<uint32_t>(suppressedTableSize - 1);
+    suppressedTableBuilt = false;
     cachePrev = allocateArray<CacheEntry>(arena, cacheCapacity);
     cacheNext = allocateArray<CacheEntry>(arena, cacheCapacity);
     cachePrevUsed = allocateArray<int32_t>(arena, maxContacts);
@@ -340,6 +391,7 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
         packedContacts == nullptr || bodies == nullptr || slotGen == nullptr || sweepOrder == nullptr ||
         sweepRecords == nullptr ||
         freeIds == nullptr || contacts == nullptr || constraints == nullptr || constraintFreeIds == nullptr ||
+        suppressedKeys == nullptr ||
         cachePrev == nullptr || cacheNext == nullptr ||
         cachePrevUsed == nullptr || cacheNextUsed == nullptr) {
         return false;
@@ -391,6 +443,10 @@ void World::reset() {
     freeCount = 0;
     contactCount = 0;
     statsSerial = -1;
+    m_stepStatistics = {};
+#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
+    m_phaseNanoseconds = {};
+#endif
     if (constraints != nullptr && constraintFreeIds != nullptr) {
         for (int32_t i = 0; i < maxConstraints; ++i) {
             Constraint& constraint = constraints[i];
@@ -411,6 +467,7 @@ void World::reset() {
     }
     constraintCount = 0;
     constraintFreeCount = maxConstraints;
+    suppressedTableBuilt = false;
     cachePrevUsedCount = 0;
     cacheNextUsedCount = 0;
     memset(cachePrev, 0, sizeof(CacheEntry) * static_cast<size_t>(cacheCapacity));
@@ -419,6 +476,19 @@ void World::reset() {
 
 bool World::isActive(int32_t id) const {
     return initialized && id >= 0 && id < highWater && bodies[id].state != kBodyFree;
+}
+
+void refreshBodyRotation(World& world, int32_t id) {
+    Body& body = world.bodies[id];
+    const Transform& transform = world.transforms[id];
+    body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
+}
+
+void resetBodyRotation(World& world, int32_t id) {
+    Body& body = world.bodies[id];
+    const Transform& transform = world.transforms[id];
+    body.rotation.setIdentity();
+    body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
 }
 
 int32_t World::createBody(int32_t type, float px, float py, float pz, float qx, float qy, float qz, float qw) {
@@ -455,8 +525,7 @@ int32_t World::createBody(int32_t type, float px, float py, float pz, float qx, 
     body.customMass = 0.0f;
     body.flags = 0;
     body.invInertia = Vec3();
-    body.rotation.setIdentity();
-    body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
+    resetBodyRotation(*this, id);
     body.aabb = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
     body.friction = kDefaultFriction;
     body.restitution = 0.0f;
@@ -938,7 +1007,7 @@ int32_t World::setTransform(int32_t id, float px, float py, float pz, float qx, 
     normalizeQuaternion(transform);
     transforms[id] = transform;
     Body& body = bodies[id];
-    body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
+    refreshBodyRotation(*this, id);
     body.awake = 1;
     body.sleepTime = 0.0f;
     return 0;
@@ -1169,9 +1238,14 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
     positionIterations = positionIterations < 0 ? 0 : (positionIterations > kMaxIterations ? kMaxIterations : positionIterations);
 
     ++stepSerial;
+    resetStepCounters(m_stepStatistics);
+#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
+    m_phaseNanoseconds = {};
+#endif
     const Vec3 gravityStep = gravity * dt;
     const bool sleepEnabled = allowSleep != 0;
 
+    AXRONE_PHASE(integrateScope, m_phaseNanoseconds.integrate);
     for (int32_t i = 0; i < highWater; ++i) {
         Body& body = bodies[i];
         const int32_t state = body.state;
@@ -1248,9 +1322,13 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
             transform.pz += velocity.z * dt;
         }
         integrateRotation(transform, angularVelocity, dt);
-        body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
+        refreshBodyRotation(*this, i);
     }
+    AXRONE_PHASE_CLOSE(integrateScope);
 
+    buildSuppressedPairTable(*this);
+
+    AXRONE_PHASE(broadphaseScope, m_phaseNanoseconds.broadphase);
     updateBounds(*this);
     contactCount = 0;
     for (int32_t i = 0; i < cacheNextUsedCount; ++i) {
@@ -1258,14 +1336,31 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
     }
     cacheNextUsedCount = 0;
     broadphase(*this);
+    AXRONE_PHASE_CLOSE(broadphaseScope);
+
+    AXRONE_PHASE(prepareScope, m_phaseNanoseconds.prepare);
     prepareContacts(*this);
+    AXRONE_PHASE_CLOSE(prepareScope);
+
+    AXRONE_PHASE(assembleScope, m_phaseNanoseconds.assembleConstraints);
     prepareConstraints(*this, dt);
+    AXRONE_PHASE_CLOSE(assembleScope);
+
+    AXRONE_PHASE(wakeScope, m_phaseNanoseconds.sleepAndCacheSwap);
     if (sleepEnabled) {
         wakeSleepingOnContacts(*this);
     }
-    solveVelocities(*this, velocityIterations);
-    solvePositions(*this, positionIterations);
+    AXRONE_PHASE_CLOSE(wakeScope);
 
+    AXRONE_PHASE_COND(velocityScope, m_phaseNanoseconds.solveVelocities, velocityIterations > 0);
+    solveVelocities(*this, velocityIterations);
+    AXRONE_PHASE_CLOSE(velocityScope);
+
+    AXRONE_PHASE_COND(positionScope, m_phaseNanoseconds.solvePositions, positionIterations > 0);
+    solvePositions(*this, positionIterations);
+    AXRONE_PHASE_CLOSE(positionScope);
+
+    AXRONE_PHASE(sleepScope, m_phaseNanoseconds.sleepAndCacheSwap);
     if (sleepEnabled) {
         for (int32_t i = 0; i < highWater; ++i) {
             Body& body = bodies[i];
@@ -1274,7 +1369,7 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
             }
             if (body.awake == 0) {
                 transforms[i] = sleepTransforms[i];
-                body.rotation.fromQuaternion(transforms[i].qx, transforms[i].qy, transforms[i].qz, transforms[i].qw);
+                refreshBodyRotation(*this, i);
                 velocities[i] = Vec3();
                 angularVelocities[i] = Vec3();
                 continue;
@@ -1304,6 +1399,13 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
         entry.impT2 = contact.impT2;
     }
 
+    for (int32_t index = 0; index < cachePrevUsedCount; ++index) {
+        ++m_stepStatistics.pointIdentitiesPrevStep;
+        if (cacheContains(cacheNext, cacheMask, cacheCapacity, cachePrev[cachePrevUsed[index]])) {
+            ++m_stepStatistics.pointIdentitiesRepeatingPrevStep;
+        }
+    }
+
     CacheEntry* previousTable = cachePrev;
     cachePrev = cacheNext;
     cacheNext = previousTable;
@@ -1315,8 +1417,13 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
     const int32_t previousUsedCount = cachePrevUsedCount;
     cachePrevUsedCount = cacheNextUsedCount;
     cacheNextUsedCount = previousUsedCount;
+    AXRONE_PHASE_CLOSE(sleepScope);
 
+    AXRONE_PHASE(packScope, m_phaseNanoseconds.pack);
     writePackedContacts(*this);
+    AXRONE_PHASE_CLOSE(packScope);
+
+    ++m_stepStatistics.stepsRecorded;
     return contactCount;
 }
 
@@ -1343,6 +1450,14 @@ int32_t World::cacheLookup(int32_t a, int32_t b, int32_t feature) const {
     return -1;
 }
 
+void World::recordCacheLookup() {
+    ++m_stepStatistics.cacheLookups;
+}
+
+void World::recordCacheHit() {
+    ++m_stepStatistics.cacheHits;
+}
+
 int32_t World::cacheStore(int32_t a, int32_t b, int32_t feature, float impN, float impT1, float impT2) {
     if (cacheNextUsedCount >= maxContacts) {
         return -1;
@@ -1358,6 +1473,7 @@ int32_t World::cacheStore(int32_t a, int32_t b, int32_t feature, float impN, flo
             entry.impT1 = impT1;
             entry.impT2 = impT2;
             cacheNextUsed[cacheNextUsedCount++] = static_cast<int32_t>(index);
+            ++m_stepStatistics.cacheStores;
             return static_cast<int32_t>(index);
         }
         index = (index + 1) & cacheMask;

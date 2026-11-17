@@ -58,7 +58,7 @@ void applyPositionImpulse(World& world, int32_t id, const Vec3& impulse, const V
     const Vec3 rotationalImpulse = body.rotation.transform(local);
 
     integrateRotation(transform, rotationalImpulse, 1.0f);
-    body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
+    refreshBodyRotation(world, id);
 }
 
 Vec3 relativeVelocity(const World& world, const Contact& contact) {

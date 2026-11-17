@@ -107,7 +107,7 @@ void applyRowPositionDelta(World& world, int32_t id, const Vec3& linear, const V
     local.z *= inertia.z;
     const Vec3 rotational = body.rotation.transform(local);
     integrateRotation(transform, rotational, 1.0f);
-    body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
+    refreshBodyRotation(world, id);
 }
 
 void clearRowState(Constraint& constraint, int32_t index) {
@@ -372,12 +372,17 @@ bool constraintUsable(const World& world, const Constraint& constraint) {
     return world.bodies[constraint.bodyA].state != kBodyFree && world.bodies[constraint.bodyB].state != kBodyFree;
 }
 
+uint32_t pairKeyHash(int32_t a, int32_t b) {
+    const uint32_t lo = static_cast<uint32_t>(a < b ? a : b);
+    const uint32_t hi = static_cast<uint32_t>(a < b ? b : a);
+    uint32_t hash = lo * 0x9E3779B9u;
+    hash ^= hi + 0x85EBCA6Bu + (hash << 6) + (hash >> 2);
+    return hash;
 }
 
-bool pairSuppressedByConstraints(const World& world, int32_t a, int32_t b) {
-    if (world.constraintCount == 0) {
-        return false;
-    }
+}
+
+bool referencePairSuppressed(const World& world, int32_t a, int32_t b) {
     for (int32_t slot = 0; slot < world.maxConstraints; ++slot) {
         const Constraint& constraint = world.constraints[slot];
         if (constraint.kind == kConstraintFree) {
@@ -392,6 +397,67 @@ bool pairSuppressedByConstraints(const World& world, int32_t a, int32_t b) {
         }
     }
     return false;
+}
+
+void buildSuppressedPairTable(World& world) {
+    if (world.suppressedKeys == nullptr || world.constraintCount == 0) {
+        world.suppressedTableBuilt = false;
+        return;
+    }
+    const uint32_t slotCount = world.suppressedMask + 1;
+    if (static_cast<int64_t>(slotCount) < static_cast<int64_t>(world.maxConstraints) * 4) {
+        world.suppressedTableBuilt = false;
+        return;
+    }
+    for (uint32_t i = 0; i < slotCount; ++i) {
+        world.suppressedKeys[i] = -1;
+    }
+    world.suppressedTableBuilt = true;
+    for (int32_t slot = 0; slot < world.maxConstraints; ++slot) {
+        const Constraint& constraint = world.constraints[slot];
+        if (constraint.kind == kConstraintFree || constraint.collideConnected != 0) {
+            continue;
+        }
+        uint32_t index = pairKeyHash(constraint.bodyA, constraint.bodyB) & world.suppressedMask;
+        uint32_t probe = 0;
+        while (probe < slotCount && world.suppressedKeys[index] != -1) {
+            index = (index + 1) & world.suppressedMask;
+            ++probe;
+        }
+        if (probe >= slotCount) {
+            world.suppressedTableBuilt = false;
+            return;
+        }
+        world.suppressedKeys[index] = slot;
+    }
+}
+
+bool pairSuppressedByConstraints(const World& world, int32_t a, int32_t b) {
+    if (world.constraintCount == 0) {
+        return false;
+    }
+    if (!world.suppressedTableBuilt || world.suppressedKeys == nullptr) {
+        return referencePairSuppressed(world, a, b);
+    }
+    const uint32_t slotCount = world.suppressedMask + 1;
+    uint32_t index = pairKeyHash(a, b) & world.suppressedMask;
+    for (uint32_t probe = 0; probe < slotCount; ++probe) {
+        const int32_t key = world.suppressedKeys[index];
+        if (key == -1) {
+            return false;
+        }
+        if (key < 0 || key >= world.maxConstraints) {
+            return referencePairSuppressed(world, a, b);
+        }
+        const Constraint& constraint = world.constraints[key];
+        if (constraint.kind != kConstraintFree && constraint.collideConnected == 0 &&
+            ((constraint.bodyA == a && constraint.bodyB == b) ||
+             (constraint.bodyA == b && constraint.bodyB == a))) {
+            return true;
+        }
+        index = (index + 1) & world.suppressedMask;
+    }
+    return referencePairSuppressed(world, a, b);
 }
 
 void prepareConstraints(World& world, float dt) {

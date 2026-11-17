@@ -2,10 +2,12 @@
 
 #include <stdint.h>
 
+#include "core/body.h"
 #include "core/math.h"
-#include "core/world.h"
 
 namespace axrone::physics {
+
+struct World;
 
 struct RayHit {
     int32_t body;
@@ -25,9 +27,22 @@ struct StepStatistics {
     float positionIterations;
     float sleepingBodies;
     float liveBodies;
+    uint32_t recordVersion;
+    uint32_t recordBytes;
+    uint32_t boxPointBuckets[8];
+    uint32_t boxFacePairs;
+    uint32_t boxEdgePairs;
+    uint32_t boxPairsTotal;
+    uint32_t cacheLookups;
+    uint32_t cacheHits;
+    uint32_t cacheStores;
+    uint32_t pointIdentitiesPrevStep;
+    uint32_t pointIdentitiesRepeatingPrevStep;
+    uint32_t stepsRecorded;
+    uint32_t boxClipCandidateTotal;
 };
 
-static_assert(sizeof(StepStatistics) == 32, "step statistics record must stay eight f32 fields");
+static_assert(sizeof(StepStatistics) == 112, "step statistics record v2 must stay 112 bytes");
 static_assert(alignof(StepStatistics) == 4, "step statistics record must stay f32 aligned");
 
 AXRONE_PHYSICS_INLINE bool queryFilterActive(int32_t categoryBits, int32_t maskBits) {

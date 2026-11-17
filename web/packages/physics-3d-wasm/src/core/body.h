@@ -227,6 +227,11 @@ static_assert(alignof(Shape) == 16, "shape must stay vector aligned");
 static_assert(sizeof(Body) == 1072, "body size must stay fixed for arena sizing");
 static_assert(alignof(Body) == 16, "body must stay vector aligned");
 
+struct World;
+
+void refreshBodyRotation(World& world, int32_t id);
+void resetBodyRotation(World& world, int32_t id);
+
 struct SweepRecord {
     float minX;
     float minY;
