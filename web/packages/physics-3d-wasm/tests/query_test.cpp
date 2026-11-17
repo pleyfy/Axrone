@@ -5,6 +5,7 @@
 #include "core/query.h"
 
 #include "core/polytope.h"
+#include "core/world.h"
 
 using axrone::physics::AABB;
 using axrone::physics::applyFractionConvention;
