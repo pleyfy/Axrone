@@ -7,26 +7,60 @@ namespace Axrone.Scene.Gltf.Tests;
 
 /// <summary>
 /// Regression locks for the built-in glTF shader assembly: desktop GL rejects
-/// two-argument <c>clamp</c>, and the ambient term must not be gated by
-/// view-dependent Fresnel or grazing faces render black.
+/// two-argument <c>clamp</c>, the IBL diffuse term must stay energy-conserving
+/// via the same Fresnel that gates IBL specular, and HDR radiance must roll off
+/// through Khronos PBR Neutral instead of hard-clipping in the sRGB encode.
 /// </summary>
 public sealed class SceneGltfShaderAssemblyTests
 {
     private static readonly Regex ClampCall = new(@"clamp\(", RegexOptions.Compiled);
 
     [Fact]
-    public void PbrFragment_AppliesAmbientWithoutFresnelGating()
+    public void PbrFragment_GatesIblDiffuseByFresnelForEnergyConservation()
     {
         SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
 
         shader.FragmentSource.Should().Contain(
-            "vec3 diffuseAmbient = irradiance * albedo * (1.0 - metallic);",
-            "ambient diffuse must not be multiplied by a Fresnel term");
+            "vec3 diffuseAmbient = irradiance * albedo * (vec3(1.0) - envF) * (1.0 - metallic);",
+            "WebGL2 evaluateIBLDiffuse uses kD = (1.0 - F) * (1.0 - metallic); omitting (1 - F) over-brightens dielectric ambient by ~4%");
 
         string diffuseLine = SingleLine(shader.FragmentSource, "vec3 diffuseAmbient");
-        diffuseLine.Should().NotContain("fresnel", "grazing faces must not be gated by Fresnel");
+        diffuseLine.Should().Contain("envF", "the same Fresnel term that gates envSpecular must gate diffuse");
+        diffuseLine.Should().Contain("(1.0 - metallic)");
         diffuseLine.Should().NotContain("0.65", "the native-only hemisphere attenuation must be gone");
         diffuseLine.Should().NotContain("0.25", "the native-only ambient attenuation must be gone");
+
+        int envFDeclaration = shader.FragmentSource.IndexOf("vec3 envF = ", StringComparison.Ordinal);
+        int diffuseUse = shader.FragmentSource.IndexOf("vec3 diffuseAmbient = ", StringComparison.Ordinal);
+        envFDeclaration.Should().BeGreaterThan(-1);
+        envFDeclaration.Should().BeLessThan(
+            diffuseUse,
+            "envF has to be declared before the diffuse term consumes it or the shader will not compile");
+    }
+
+    [Fact]
+    public void HighlightCompressionMatchesKhronosPbrNeutral()
+    {
+        SceneGltfShaderLibrary.TryGetCode(
+            SceneGltfShaderLibrary.PbrLightingBlockId,
+            out string? lighting).Should().BeTrue();
+
+        lighting!.Should().Contain("vec3 gltfSoftCompressHighlights(vec3 color)");
+        lighting.Should().Contain("const float startCompression = 0.76;");
+        lighting.Should().Contain("const float desaturation = 0.15;");
+        lighting.Should().Contain(
+            "float offset = minimumChannel < 0.08",
+            "WebGL2's compressHighlightsNeutral subtracts a black offset before the peak test");
+        lighting.Should().Contain(
+            "minimumChannel - 6.25 * minimumChannel * minimumChannel");
+        lighting.Should().Contain("safe -= offset;");
+        lighting.Should().Contain("float d = 1.0 - startCompression;");
+        lighting.Should().Contain("float newPeak = 1.0 - (d * d) / (peak + d - startCompression);");
+        lighting.Should().Contain("float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);");
+        lighting.Should().Contain("return mix(safe, vec3(newPeak), g);");
+        lighting.Should().Contain(
+            "if (peak < startCompression) {",
+            "peaks below the shoulder return after the offset, exactly like the web reference");
     }
 
     [Fact]
@@ -118,7 +152,6 @@ public sealed class SceneGltfShaderAssemblyTests
 
         shader.FragmentSource.Should().Contain("mix(u_GroundLight, u_SkyLight, hemiFactor)");
         shader.FragmentSource.Should().Contain("u_AmbientLight * 0.45");
-        shader.FragmentSource.Should().Contain("irradiance += u_DirectionalLightAmbientColor;");
         shader.FragmentSource.Should().Contain("evaluateGltfSheen");
         shader.FragmentSource.Should().Contain("linearToSrgb(color)");
         shader.FragmentSource.Should().Contain(
@@ -171,28 +204,32 @@ public sealed class SceneGltfShaderAssemblyTests
     }
 
     [Fact]
-    public void PbrGamePath_AddsTheDirectionalAmbientColorToIrradiance()
+    public void PbrFragment_ExcludesDirectionalAmbientFromIrradiance()
     {
         SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
 
         shader.FragmentSource.Should().Contain(
+            "vec3 irradiance = hemiIrradiance + (u_AmbientLight * 0.45);",
+            "gltf-shader-libraries.ts:222 is the reference for GLTF_PBR_SHADER_EFFECT");
+        shader.FragmentSource.Should().NotContain(
             "irradiance += u_DirectionalLightAmbientColor;",
-            "compiler-generated-pbr.ts:846 folds the directional ambient into the IBL irradiance of the full PBR path");
+            "simple .material.json files resolve to GLTF_PBR_SHADER_EFFECT, which never folds the directional ambient into IBL; adding it pushed the floor past 1.0 linear and clipped to pure white");
         shader.FragmentSource.Should().Contain(
             "uniform vec3 u_DirectionalLightAmbientColor;",
-            "the uniform must be declared, not merely referenced, or the program fails to link");
+            "still declared so the executor's uniform binding stays symmetric");
+        shader.Uniforms.Should().Contain("u_DirectionalLightAmbientColor");
 
         CountOccurrences(shader.FragmentSource, "u_DirectionalLightAmbientColor")
             .Should().Be(
-                2,
-                "one declaration plus exactly one add now that both tabs share the single PBR path");
+                1,
+                "declaration only; the PBR math must not consume it");
     }
 
     [Theory]
     [InlineData("gltf/pbr")]
     [InlineData("gltf/pbr/blend")]
     [InlineData("gltf/pbr/double-sided")]
-    public void PbrShaders_AddDirectionalAmbientOnceInTheUnifiedPath(string shaderName)
+    public void PbrShaders_KeepDirectionalAmbientOutOfPbrIrradiance(string shaderName)
     {
         ArgumentNullException.ThrowIfNull(shaderName);
         SceneGltfShaders.TryCreate(shaderName, names: null, out SceneShaderDefinition? shader)
@@ -201,12 +238,10 @@ public sealed class SceneGltfShaderAssemblyTests
         string source = shader!.FragmentSource;
 
         CountOccurrences(source, "irradiance += u_DirectionalLightAmbientColor;")
-            .Should().Be(1, $"{shaderName} must add the ambient exactly once, with no editor-preview duplicate");
+            .Should().Be(0, $"{shaderName} must match gltf-shader-libraries.ts:222 exactly");
+        source.Should().Contain("vec3 irradiance = hemiIrradiance + (u_AmbientLight * 0.45);");
+        source.Should().Contain("uniform vec3 u_DirectionalLightAmbientColor;");
         source.Should().NotContain("u_EditorPreview == 1", $"{shaderName} must not keep a matte shortcut");
-
-        source.Should().Contain(
-            "if (u_ReceiveLighting) {\n        irradiance += u_DirectionalLightAmbientColor;\n    }",
-            $"{shaderName} must gate the ambient add on receive-lighting, like the WebGL2 reference");
     }
 
     [Theory]
@@ -300,15 +335,24 @@ public sealed class SceneGltfShaderAssemblyTests
     [InlineData("gltf/pbr")]
     [InlineData("gltf/pbr/blend")]
     [InlineData("gltf/pbr/double-sided")]
-    public void PbrShaders_NeverCallHighlightCompression(string shaderName)
+    public void PbrShaders_RollOffHighlightsBeforeTheEncode(string shaderName)
     {
         ArgumentNullException.ThrowIfNull(shaderName);
         SceneGltfShaders.TryCreate(shaderName, names: null, out SceneShaderDefinition? shader)
             .Should().BeTrue();
 
-        shader!.FragmentSource.Should().NotContain(
-            "= gltfSoftCompressHighlights(",
-            "WebGL2 gltf/pbr has no in-shader highlight compression; the rolloff dulled bright floors and speculars");
+        string source = shader!.FragmentSource;
+        source.Should().Contain(
+            "color = gltfSoftCompressHighlights(color);",
+            "white materials otherwise exceed 1.0 linear and hard-clip to pure white");
+
+        int fog = source.IndexOf("gltfApplyFog(color, v_WorldPosition, u_CameraPosition);", StringComparison.Ordinal);
+        int compress = source.IndexOf("color = gltfSoftCompressHighlights(color);", StringComparison.Ordinal);
+        int encode = source.IndexOf("u_OutputGamma < 0.99", StringComparison.Ordinal);
+
+        fog.Should().BeGreaterThan(-1);
+        compress.Should().BeGreaterThan(fog, "compression runs on the final linear radiance, after fog");
+        encode.Should().BeGreaterThan(compress, "compression must precede the sRGB encode");
     }
 
     private static int CountOccurrences(string source, string needle)
