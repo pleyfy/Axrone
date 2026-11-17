@@ -18,7 +18,8 @@
     "scripts": {
         "build": "rollup -c rollup.config.mjs",
         "clean": "rimraf dist",
-        "test": "vitest run"
+        "test": "vitest run",
+        "test:instruments": "node --test tests/ts_solver_dump_test.mjs tests/ts_broadphase_sweep_test.mjs"
     },
     "dependencies": {
         "@axrone/ecs-runtime": "^0.1.0",
