@@ -81,41 +81,49 @@ public sealed class SceneGltfShaderAssemblyTests
     }
 
     [Fact]
-    public void PbrFragment_OffersTheMatteEditorPreviewLighting()
+    public void PbrFragment_HasNoEditorPreviewMatteShortcut()
     {
         SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
 
-        shader.FragmentSource.Should().Contain("u_EditorPreview == 1");
+        shader.FragmentSource.Should().NotContain(
+            "u_EditorPreview == 1",
+            "WebGL2 renders authored materials with the same compiled PBR in both tabs; the matte branch was native-only");
+        shader.FragmentSource.Should().NotContain("editorLighting");
+        shader.FragmentSource.Should().NotContain("editorColor");
+        shader.FragmentSource.Should().NotContain("editorLightDirection");
+    }
+
+    [Fact]
+    public void PbrFragment_KeepsTheFrameUniformsCatalogued()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.Uniforms.Should().Contain(
+            [
+                "u_EditorPreview",
+                "u_OutputGamma",
+                "u_SkyLight",
+                "u_GroundLight",
+                "u_DirectionalLightAmbientColor"
+            ],
+            "the executor still binds these, so they must stay in the catalog even when unused in GLSL");
+        shader.FragmentSource.Should().Contain("uniform int u_EditorPreview;");
+        shader.FragmentSource.Should().Contain("uniform vec3 u_DirectionalLightAmbientColor;");
+    }
+
+    [Fact]
+    public void PbrFragment_UsesOneUnifiedLightingPathForBothTabs()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
         shader.FragmentSource.Should().Contain("mix(u_GroundLight, u_SkyLight, hemiFactor)");
         shader.FragmentSource.Should().Contain("u_AmbientLight * 0.45");
-        shader.Uniforms.Should().Contain(["u_EditorPreview", "u_SkyLight", "u_GroundLight"]);
-    }
-
-    [Fact]
-    public void PbrEditorPreview_MatchesWebEditorLambertEnergy()
-    {
-        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
-
+        shader.FragmentSource.Should().Contain("irradiance += u_DirectionalLightAmbientColor;");
+        shader.FragmentSource.Should().Contain("evaluateGltfSheen");
+        shader.FragmentSource.Should().Contain("linearToSrgb(color)");
         shader.FragmentSource.Should().Contain(
-            "editorLighting += u_LightColor * u_LightIntensity * max(dot(normal, editorLightDirection), 0.0);",
-            "the WebGL2 editor lit shader multiplies color by intensity by NdotL with no PI division");
-        shader.FragmentSource.Should().NotContain(
-            "max(dot(normal, editorLightDirection), 0.0)) / PI",
-            "the native-only /PI made the Scene view roughly three times darker than WebGL2");
-    }
-
-    [Fact]
-    public void PbrEditorPreview_AddsTheDirectionalAmbientColor()
-    {
-        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
-
-        shader.FragmentSource.Should().Contain(
-            "editorLighting += u_DirectionalLightAmbientColor;",
-            "SceneDirectionalLight.Ambient must reach the editor preview lighting");
-        shader.FragmentSource.Should().Contain(
-            "uniform vec3 u_DirectionalLightAmbientColor;",
-            "the uniform must be declared, not merely referenced, or the program fails to link");
-        shader.Uniforms.Should().Contain("u_DirectionalLightAmbientColor");
+            "vec3 diffuse = kD * albedo / PI",
+            "the single PBR path keeps the physical /PI diffuse the editor branch used to bypass");
     }
 
     [Fact]
@@ -128,11 +136,15 @@ public sealed class SceneGltfShaderAssemblyTests
         shader.FragmentSource.Should().Contain(
             "vec3 sheenColor = _SheenColorFactor * sheenFactor;");
         shader.FragmentSource.Should().NotContain(
-            "_SheenFactor > 0.0 ?",
+            "_SheenFactor > 0.0 ? clamp(_SheenFactor, 0.0, 1.0) : 1.0",
             "a zero sheen factor must not fall back to full-strength sheen");
+        shader.FragmentSource.Should().NotContain(
+            "sheenScale",
+            "the inverted sheenScale fallback must never come back");
         shader.FragmentSource.Should().NotContain(
             "sheenColor * (1.0 - max(dot(normal, viewDir), 0.0)) * irradiance",
             "the native-only IBL sheen wash blinded upward-facing normals");
+        shader.FragmentSource.Should().Contain("evaluateGltfSheen");
     }
 
     [Fact]
@@ -156,6 +168,45 @@ public sealed class SceneGltfShaderAssemblyTests
             .Should().Be(3, "WebGL2 gates sheen once per directional, point and spot light");
         CountOccurrences(shader.FragmentSource, "evaluateGltfSheen(normal, viewDir,")
             .Should().Be(3);
+    }
+
+    [Fact]
+    public void PbrGamePath_AddsTheDirectionalAmbientColorToIrradiance()
+    {
+        SceneShaderDefinition shader = SceneGltfShaders.CreatePbr();
+
+        shader.FragmentSource.Should().Contain(
+            "irradiance += u_DirectionalLightAmbientColor;",
+            "compiler-generated-pbr.ts:846 folds the directional ambient into the IBL irradiance of the full PBR path");
+        shader.FragmentSource.Should().Contain(
+            "uniform vec3 u_DirectionalLightAmbientColor;",
+            "the uniform must be declared, not merely referenced, or the program fails to link");
+
+        CountOccurrences(shader.FragmentSource, "u_DirectionalLightAmbientColor")
+            .Should().Be(
+                2,
+                "one declaration plus exactly one add now that both tabs share the single PBR path");
+    }
+
+    [Theory]
+    [InlineData("gltf/pbr")]
+    [InlineData("gltf/pbr/blend")]
+    [InlineData("gltf/pbr/double-sided")]
+    public void PbrShaders_AddDirectionalAmbientOnceInTheUnifiedPath(string shaderName)
+    {
+        ArgumentNullException.ThrowIfNull(shaderName);
+        SceneGltfShaders.TryCreate(shaderName, names: null, out SceneShaderDefinition? shader)
+            .Should().BeTrue();
+
+        string source = shader!.FragmentSource;
+
+        CountOccurrences(source, "irradiance += u_DirectionalLightAmbientColor;")
+            .Should().Be(1, $"{shaderName} must add the ambient exactly once, with no editor-preview duplicate");
+        source.Should().NotContain("u_EditorPreview == 1", $"{shaderName} must not keep a matte shortcut");
+
+        source.Should().Contain(
+            "if (u_ReceiveLighting) {\n        irradiance += u_DirectionalLightAmbientColor;\n    }",
+            $"{shaderName} must gate the ambient add on receive-lighting, like the WebGL2 reference");
     }
 
     [Theory]
