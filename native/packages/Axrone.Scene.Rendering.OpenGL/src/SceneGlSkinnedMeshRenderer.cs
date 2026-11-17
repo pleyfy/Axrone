@@ -391,7 +391,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
         return false;
     }
 
-    private static bool HasSkinAttributes(GLMesh mesh)
+    internal static bool HasSkinAttributes(GLMesh mesh)
     {
         bool hasPosition = false;
         bool hasJoints = false;
