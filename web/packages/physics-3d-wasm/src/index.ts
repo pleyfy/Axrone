@@ -1,4 +1,4 @@
-export { WasmPhysicsWorld3D } from "./world";
+export { readPhaseTimers, readStepStatistics, WasmPhysicsWorld3D } from "./world";
 export { CollisionFlags, WasmCharacterController } from "./character-controller";
 export type {
     CollisionFlagsValue,
@@ -6,7 +6,9 @@ export type {
 } from "./character-controller";
 export { WasmPhysicsWorld3DCompat } from "./compat";
 export { WASM_PHYSICS_CAPABILITIES } from "./capabilities";
-export { BODY_FLAGS, WasmBodyType } from "./types";
+export { PHYSICS_ITERATION_POLICY } from "./policy";
+export type { PhysicsIterationPolicy } from "./policy";
+export { BODY_FLAGS, WasmBodyTypeCode } from "./types";
 export type { WasmPhysicsCapabilities } from "./capabilities";
 export { decodeBase64, instantiateWasm, loadEmbeddedWasm } from "./loader";
 export type {
@@ -49,6 +51,8 @@ export type {
     MeshAttachOptions,
     MutableQuat,
     MutableVec3,
+    PhaseTimerNesting,
+    PhaseTimers,
     QuatTuple,
     QueryFilter,
     RaycastFractionHit,

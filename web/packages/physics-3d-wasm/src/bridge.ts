@@ -6,6 +6,7 @@ import {
     CharacterController,
 } from './components';
 import { WasmPhysicsWorld3DCompat } from './compat';
+import { PHYSICS_ITERATION_POLICY } from './policy';
 import type {
     CompatWorldConfig,
     CompatCollisionEvent,
@@ -110,6 +111,8 @@ function makePairKey(a: number, b: number): number {
     return lo * 0x100000 + hi;
 }
 
+const MILLISECONDS_PER_SECOND = 1000;
+
 // ---------------------------------------------------------------------------
 // WasmPhysicsBridge3D
 // ---------------------------------------------------------------------------
@@ -158,8 +161,8 @@ export class WasmPhysicsBridge3D
     ) {
         this._ecsWorld = ecsWorld;
         this._physicsWorld = physicsWorld;
-        this._velocityIterations = options.velocityIterations ?? 10;
-        this._positionIterations = options.positionIterations ?? 4;
+        this._velocityIterations = options.velocityIterations ?? PHYSICS_ITERATION_POLICY.velocityIterations;
+        this._positionIterations = options.positionIterations ?? PHYSICS_ITERATION_POLICY.positionIterations;
         this._physicsWorld.setContactListener(this);
     }
 
@@ -198,7 +201,7 @@ export class WasmPhysicsBridge3D
         if (this._disposed) return;
 
         this._physicsWorld.step(
-            context.fixedDelta,
+            context.fixedDelta / MILLISECONDS_PER_SECOND,
             this._velocityIterations,
             this._positionIterations,
         );

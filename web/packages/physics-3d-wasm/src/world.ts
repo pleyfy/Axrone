@@ -16,6 +16,8 @@ import type {
     MeshAttachOptions,
     MutableQuat,
     MutableVec3,
+    PhaseTimerNesting,
+    PhaseTimers,
     QueryFilter,
     QuatTuple,
     RaycastFractionHit,
@@ -31,11 +33,11 @@ import type {
     VertexSource,
     WorldOptions
 } from "./types";
+import { WasmBodyTypeCode } from "./types";
+import { PHYSICS_ITERATION_POLICY } from "./policy";
 
 const DEFAULT_FRICTION = 0.6;
 const DEFAULT_RESTITUTION = 0;
-const DEFAULT_VELOCITY_ITERATIONS = 8;
-const DEFAULT_POSITION_ITERATIONS = 3;
 const MAX_BODIES = 262144;
 const MAX_CONTACTS = 262144;
 const TRANSFORM_STRIDE = 7;
@@ -45,7 +47,25 @@ const EVENT_RECORD_STRIDE = 10;
 const EVENT_CAPACITY = 4096;
 const RAY_HIT_STRIDE = 10;
 const DEFAULT_QUERY_CAPACITY = 256;
-const STEP_STATISTICS_BYTES = 32;
+const STEP_STATISTICS_MIN_BYTES = 32;
+const PHASE_TIMER_RECORD_VERSION = 1;
+const PHASE_TIMER_HEADER_WORDS = 2;
+const PHASE_TIMER_FIELD_BYTES = 8;
+const PHASE_TIMER_FIELDS = [
+    "integrate",
+    "broadphase",
+    "collide",
+    "prepare",
+    "assembleConstraints",
+    "solveVelocities",
+    "solvePositions",
+    "sleepAndCacheSwap",
+    "pack",
+    "sweepSort",
+    "pairLoop"
+] as const;
+const PHASE_TIMER_HEADER_BYTES = PHASE_TIMER_HEADER_WORDS * 4;
+const PHASE_TIMERS_BYTES = PHASE_TIMER_HEADER_BYTES + PHASE_TIMER_FIELDS.length * PHASE_TIMER_FIELD_BYTES;
 const SHAPE_ID_MAX = 0x7fffffff;
 const SHAPE_MATERIAL_INHERIT = -1;
 const INT32_MIN = -2147483648;
@@ -65,11 +85,7 @@ const CONTACT_EVENT_KINDS: readonly ContactEventKind[] = [
     "sensorExit"
 ];
 
-const TYPE_CODES: Record<BodyType, number> = {
-    static: 0,
-    dynamic: 1,
-    kinematic: 2
-};
+const TYPE_CODES: Record<BodyType, number> = WasmBodyTypeCode;
 
 function readContactEventKind(kindCode: number): ContactEventKind {
     if (!Number.isInteger(kindCode) || kindCode < 0 || kindCode >= CONTACT_EVENT_KINDS.length) {
@@ -161,6 +177,66 @@ function assertQueryCapacity(capacity: number, limit: number): void {
     }
 }
 
+export function readStepStatistics(view: DataView, bytes: number): StepStatistics {
+    const legacy = {
+        broadphasePairsTested: view.getFloat32(0, true),
+        shapePairsTested: view.getFloat32(4, true),
+        contactsGenerated: view.getFloat32(8, true),
+        sensorContacts: view.getFloat32(12, true),
+        velocityIterations: view.getFloat32(16, true),
+        positionIterations: view.getFloat32(20, true),
+        sleepingBodies: view.getFloat32(24, true),
+        liveBodies: view.getFloat32(28, true)
+    };
+    const statisticsVersion = bytes >= 36 ? view.getUint32(32, true) : 1;
+    const counters = bytes >= 112 && statisticsVersion >= 2
+        ? {
+            recordVersion: statisticsVersion,
+            recordBytes: view.getUint32(36, true),
+            boxPointBuckets: Array.from({ length: 8 }, (_, index) => view.getUint32(40 + index * 4, true)),
+            boxFacePairs: view.getUint32(72, true),
+            boxEdgePairs: view.getUint32(76, true),
+            boxPairsTotal: view.getUint32(80, true),
+            cacheLookups: view.getUint32(84, true),
+            cacheHits: view.getUint32(88, true),
+            cacheStores: view.getUint32(92, true),
+            pointIdentitiesPrevStep: view.getUint32(96, true),
+            pointIdentitiesRepeatingPrevStep: view.getUint32(100, true),
+            stepsRecorded: view.getUint32(104, true),
+            boxClipCandidateTotal: view.getUint32(108, true)
+        }
+        : null;
+    return { ...legacy, statisticsVersion, counters };
+}
+
+export function readPhaseTimers(view: DataView, bytes: number): PhaseTimers | null {
+    if (bytes < PHASE_TIMER_HEADER_BYTES || view.byteLength < PHASE_TIMER_HEADER_BYTES) {
+        return null;
+    }
+    const recordVersion = view.getUint32(0, true);
+    const recordBytes = view.getUint32(PHASE_TIMER_HEADER_BYTES - 4, true);
+    if (recordVersion !== PHASE_TIMER_RECORD_VERSION || recordBytes !== PHASE_TIMERS_BYTES || bytes < recordBytes) {
+        return null;
+    }
+    const milliseconds = (field: (typeof PHASE_TIMER_FIELDS)[number]): number =>
+        view.getFloat64(PHASE_TIMER_HEADER_BYTES + PHASE_TIMER_FIELDS.indexOf(field) * PHASE_TIMER_FIELD_BYTES, true) * 1000;
+    return {
+        recordVersion,
+        recordBytes,
+        integrateMs: milliseconds("integrate"),
+        broadphaseMs: milliseconds("broadphase"),
+        collideMs: milliseconds("collide"),
+        prepareMs: milliseconds("prepare"),
+        assembleConstraintsMs: milliseconds("assembleConstraints"),
+        solveVelocitiesMs: milliseconds("solveVelocities"),
+        solvePositionsMs: milliseconds("solvePositions"),
+        sleepAndCacheSwapMs: milliseconds("sleepAndCacheSwap"),
+        packMs: milliseconds("pack"),
+        sweepSortMs: milliseconds("sweepSort"),
+        pairLoopMs: milliseconds("pairLoop")
+    };
+}
+
 export class WasmPhysicsWorld3D {
     readonly maxBodies: number;
     readonly maxContacts: number;
@@ -212,6 +288,11 @@ export class WasmPhysicsWorld3D {
         const gravity = options.gravity ?? [0, -9.81, 0];
         assertVec3(gravity, "gravity");
 
+        const boxManifoldPointCap = options.boxManifoldPointCap;
+        if (boxManifoldPointCap !== undefined && boxManifoldPointCap !== 4 && boxManifoldPointCap !== 8) {
+            throw new Error(`boxManifoldPointCap must be 4 or 8, got ${String(boxManifoldPointCap)}`);
+        }
+
         const status = wasm.worldInit(
             options.maxBodies,
             maxContacts,
@@ -221,6 +302,12 @@ export class WasmPhysicsWorld3D {
         );
         if (status !== 0) {
             throw new Error("physics world initialization failed");
+        }
+
+        if (boxManifoldPointCap !== undefined) {
+            if (wasm.worldSetBoxManifoldPointCap(boxManifoldPointCap) !== 0) {
+                throw new Error("physics world rejected the box manifold point cap");
+            }
         }
 
         return new WasmPhysicsWorld3D(wasm, options.maxBodies, maxContacts);
@@ -884,8 +971,8 @@ export class WasmPhysicsWorld3D {
             throw new Error("dt must be positive");
         }
 
-        const velocityIterations = options.velocityIterations ?? DEFAULT_VELOCITY_ITERATIONS;
-        const positionIterations = options.positionIterations ?? DEFAULT_POSITION_ITERATIONS;
+        const velocityIterations = options.velocityIterations ?? PHYSICS_ITERATION_POLICY.velocityIterations;
+        const positionIterations = options.positionIterations ?? PHYSICS_ITERATION_POLICY.positionIterations;
         assertInteger(velocityIterations, "velocityIterations");
         assertInteger(positionIterations, "positionIterations");
         if (velocityIterations < 0 || positionIterations < 0) {
@@ -1700,19 +1787,41 @@ export class WasmPhysicsWorld3D {
         const packed = this.wasm.stepStatisticsView();
         const pointer = Number(packed >> 32n);
         const bytes = Number(packed & 0xffffffffn);
-        if (pointer === 0 || bytes < STEP_STATISTICS_BYTES || (pointer & 3) !== 0) {
+        if (pointer === 0 || bytes < STEP_STATISTICS_MIN_BYTES || (pointer & 3) !== 0) {
             throw new Error("step statistics are unavailable");
         }
-        const view = new DataView(this.wasm.memory.buffer, pointer, STEP_STATISTICS_BYTES);
+        const view = new DataView(this.wasm.memory.buffer, pointer, bytes);
+        return readStepStatistics(view, bytes);
+    }
+
+    getPhaseTimers(): PhaseTimers | null {
+        this.ensureAlive();
+        if (typeof this.wasm.phaseTimersView !== "function") {
+            return null;
+        }
+
+        const packed = this.wasm.phaseTimersView();
+        const pointer = Number(packed >> 32n);
+        const bytes = Number(packed & 0xffffffffn);
+        if (pointer === 0 || bytes < PHASE_TIMERS_BYTES || (pointer & 7) !== 0) {
+            throw new Error("phase timers are unavailable");
+        }
+
+        return readPhaseTimers(new DataView(this.wasm.memory.buffer, pointer, bytes), bytes);
+    }
+
+    getPhaseTimerNesting(): PhaseTimerNesting | null {
+        this.ensureAlive();
+        if (typeof this.wasm.phaseTimerSweptNanoseconds !== "function"
+            || typeof this.wasm.phaseTimerCollideNanoseconds !== "function"
+            || typeof this.wasm.phaseTimerClampFired !== "function") {
+            return null;
+        }
+
         return {
-            broadphasePairsTested: view.getFloat32(0, true),
-            shapePairsTested: view.getFloat32(4, true),
-            contactsGenerated: view.getFloat32(8, true),
-            sensorContacts: view.getFloat32(12, true),
-            velocityIterations: view.getFloat32(16, true),
-            positionIterations: view.getFloat32(20, true),
-            sleepingBodies: view.getFloat32(24, true),
-            liveBodies: view.getFloat32(28, true)
+            sweptMs: Number(this.wasm.phaseTimerSweptNanoseconds()) / 1e6,
+            collideMs: Number(this.wasm.phaseTimerCollideNanoseconds()) / 1e6,
+            clampFired: this.wasm.phaseTimerClampFired() !== 0
         };
     }
 

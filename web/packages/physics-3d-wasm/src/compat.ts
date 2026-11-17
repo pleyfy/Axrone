@@ -6,7 +6,8 @@ import type {
     StepStatistics,
     TransformSnapshot,
     Vec3Tuple,
-    WasmProfilerSnapshot
+    WasmProfilerSnapshot,
+    WorldOptions
 } from "./types";
 
 export interface CompatVec3 {
@@ -181,6 +182,20 @@ function assertConfigInteger(value: number | undefined, key: string): void {
     }
 }
 
+function compatWorldOptions(config: CompatWorldConfig): WorldOptions {
+    const maxBodies = config.maxBodies ?? 4096;
+    const maxContacts = config.maxContacts ?? Math.min(262144, Math.max(1024, maxBodies * 16));
+    return {
+        maxBodies,
+        maxContacts,
+        gravity: [
+            config.gravity?.x ?? 0,
+            config.gravity?.y ?? -9.81,
+            config.gravity?.z ?? 0
+        ]
+    };
+}
+
 function assertConfigIterations(value: number | undefined, key: string): void {
     assertConfigInteger(value, key);
     if (value !== undefined && (value < 0 || value > MAX_COMPAT_ITERATIONS)) {
@@ -251,18 +266,16 @@ export class WasmPhysicsWorld3DCompat {
     }
 
     static async create(config: CompatWorldConfig = {}): Promise<WasmPhysicsWorld3DCompat> {
-        const maxBodies = config.maxBodies ?? 4096;
-        const maxContacts = config.maxContacts ?? Math.min(262144, Math.max(1024, maxBodies * 16));
-        const gravity: Vec3Tuple = [
-            config.gravity?.x ?? 0,
-            config.gravity?.y ?? -9.81,
-            config.gravity?.z ?? 0
-        ];
-        const physics = await WasmPhysicsWorld3D.create({
-            maxBodies,
-            maxContacts,
-            gravity
-        });
+        const physics = await WasmPhysicsWorld3D.create(compatWorldOptions(config));
+        return WasmPhysicsWorld3DCompat.attach(physics, config);
+    }
+
+    static async createFromBytes(bytes: Uint8Array, config: CompatWorldConfig = {}): Promise<WasmPhysicsWorld3DCompat> {
+        const physics = await WasmPhysicsWorld3D.createFromBytes(bytes, compatWorldOptions(config));
+        return WasmPhysicsWorld3DCompat.attach(physics, config);
+    }
+
+    private static attach(physics: WasmPhysicsWorld3D, config: CompatWorldConfig): WasmPhysicsWorld3DCompat {
         const velocityIterations = config.velocityIterations ?? DEFAULT_COMPAT_VELOCITY_ITERATIONS;
         const positionIterations = config.positionIterations ?? DEFAULT_COMPAT_POSITION_ITERATIONS;
         const world = new WasmPhysicsWorld3DCompat(physics, velocityIterations, positionIterations);
@@ -548,15 +561,45 @@ export class WasmPhysicsWorld3DCompat {
 
     getProfiler(): WasmProfilerSnapshot {
         this.ensureAlive();
+        const timers = this.physics.getPhaseTimers();
+        if (timers === null) {
+            return {
+                stepTime: this.lastStepTime,
+                collisionTime: null,
+                solveTime: null,
+                broadphaseTime: null,
+                narrowphaseTime: null,
+                sweepSortTime: null,
+                pairLoopTime: null,
+                solveVelocityTime: null,
+                solvePositionTime: null,
+                sleepTime: null,
+                sleepAndCacheSwapTime: null,
+                warmStartTime: null,
+                persistTime: null,
+                integrateVelocityTime: null,
+                integratePositionTime: null,
+                eventsTime: null
+            };
+        }
+
         return {
             stepTime: this.lastStepTime,
-            collisionTime: 0,
-            solveTime: 0,
-            broadphaseTime: 0,
-            narrowphaseTime: 0,
-            solveVelocityTime: 0,
-            solvePositionTime: 0,
-            sleepTime: 0
+            collisionTime: timers.broadphaseMs + timers.collideMs,
+            solveTime: timers.solveVelocitiesMs + timers.solvePositionsMs,
+            broadphaseTime: timers.broadphaseMs,
+            narrowphaseTime: timers.collideMs,
+            sweepSortTime: timers.sweepSortMs,
+            pairLoopTime: timers.pairLoopMs,
+            solveVelocityTime: timers.solveVelocitiesMs,
+            solvePositionTime: timers.solvePositionsMs,
+            sleepTime: null,
+            sleepAndCacheSwapTime: timers.sleepAndCacheSwapMs,
+            warmStartTime: null,
+            persistTime: null,
+            integrateVelocityTime: null,
+            integratePositionTime: null,
+            eventsTime: null
         };
     }
 

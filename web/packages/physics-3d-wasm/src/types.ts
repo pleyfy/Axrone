@@ -12,6 +12,12 @@ export const WasmBodyType = Object.freeze({
     dynamic: 2
 } as const) satisfies Record<BodyType, number>;
 
+export const WasmBodyTypeCode = Object.freeze({
+    static: 0,
+    dynamic: 1,
+    kinematic: 2
+} as const) satisfies Record<BodyType, number>;
+
 export const BODY_FLAGS = Object.freeze({
     freezeRotationX: 1,
     freezeRotationY: 2,
@@ -135,6 +141,7 @@ export interface WorldOptions {
     readonly maxBodies: number;
     readonly maxContacts?: number;
     readonly gravity?: Vec3Tuple;
+    readonly boxManifoldPointCap?: 4 | 8;
 }
 
 export interface StepOptions {
@@ -239,6 +246,22 @@ export interface RaycastFractionHit {
     readonly normal: Vec3Tuple;
 }
 
+export interface PhysicsStepCounters {
+    readonly recordVersion: number;
+    readonly recordBytes: number;
+    readonly boxPointBuckets: readonly number[];
+    readonly boxFacePairs: number;
+    readonly boxEdgePairs: number;
+    readonly boxPairsTotal: number;
+    readonly cacheLookups: number;
+    readonly cacheHits: number;
+    readonly cacheStores: number;
+    readonly pointIdentitiesPrevStep: number;
+    readonly pointIdentitiesRepeatingPrevStep: number;
+    readonly stepsRecorded: number;
+    readonly boxClipCandidateTotal: number;
+}
+
 export interface StepStatistics {
     readonly broadphasePairsTested: number;
     readonly shapePairsTested: number;
@@ -248,15 +271,47 @@ export interface StepStatistics {
     readonly positionIterations: number;
     readonly sleepingBodies: number;
     readonly liveBodies: number;
+    readonly statisticsVersion: number;
+    readonly counters: PhysicsStepCounters | null;
+}
+
+export interface PhaseTimers {
+    readonly recordVersion: number;
+    readonly recordBytes: number;
+    readonly integrateMs: number;
+    readonly broadphaseMs: number;
+    readonly collideMs: number;
+    readonly prepareMs: number;
+    readonly assembleConstraintsMs: number;
+    readonly solveVelocitiesMs: number;
+    readonly solvePositionsMs: number;
+    readonly sleepAndCacheSwapMs: number;
+    readonly packMs: number;
+    readonly sweepSortMs: number;
+    readonly pairLoopMs: number;
+}
+
+export interface PhaseTimerNesting {
+    readonly sweptMs: number;
+    readonly collideMs: number;
+    readonly clampFired: boolean;
 }
 
 export interface WasmProfilerSnapshot {
     readonly stepTime: number;
-    readonly collisionTime: 0;
-    readonly solveTime: 0;
-    readonly broadphaseTime: 0;
-    readonly narrowphaseTime: 0;
-    readonly solveVelocityTime: 0;
-    readonly solvePositionTime: 0;
-    readonly sleepTime: 0;
+    readonly collisionTime: number | null;
+    readonly solveTime: number | null;
+    readonly broadphaseTime: number | null;
+    readonly narrowphaseTime: number | null;
+    readonly sweepSortTime: number | null;
+    readonly pairLoopTime: number | null;
+    readonly solveVelocityTime: number | null;
+    readonly solvePositionTime: number | null;
+    readonly sleepTime: number | null;
+    readonly sleepAndCacheSwapTime: number | null;
+    readonly warmStartTime: number | null;
+    readonly persistTime: number | null;
+    readonly integrateVelocityTime: number | null;
+    readonly integratePositionTime: number | null;
+    readonly eventsTime: number | null;
 }

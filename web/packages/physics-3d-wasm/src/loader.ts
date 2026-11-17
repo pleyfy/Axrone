@@ -1,4 +1,9 @@
 import { WASM_BASE64, WASM_BYTE_LENGTH } from "./generated/wasm";
+import {
+    PHYSICS_CLOCK_NAMES,
+    REQUIRED_PHYSICS_EXPORTS as SHARED_REQUIRED_PHYSICS_EXPORTS,
+    allowedPhysicsImports as sharedAllowedPhysicsImports
+} from "../scripts/import-policy.mjs";
 
 export interface WasmPhysicsExports {
     readonly memory: WebAssembly.Memory;
@@ -10,6 +15,7 @@ export interface WasmPhysicsExports {
     lib_reset(): void;
     worldSetGravity(gx: number, gy: number, gz: number): number;
     world_set_gravity(gx: number, gy: number, gz: number): number;
+    worldSetBoxManifoldPointCap(cap: number): number;
     bodyCreate(type: number, px: number, py: number, pz: number, qx: number, qy: number, qz: number, qw: number): number;
     body_create(type: number, px: number, py: number, pz: number, qx: number, qy: number, qz: number, qw: number): number;
     bodyDestroy(id: number): number;
@@ -330,6 +336,10 @@ export interface WasmPhysicsExports {
     ): number;
     queryPointAll(outBodyIds: number, capacity: number, x: number, y: number, z: number): number;
     stepStatisticsView(): bigint;
+    phaseTimersView?(): bigint;
+    phaseTimerSweptNanoseconds?(): bigint;
+    phaseTimerCollideNanoseconds?(): bigint;
+    phaseTimerClampFired?(): number;
     constraintCreateFixed(
         bodyA: number,
         bodyB: number,
@@ -486,95 +496,7 @@ export interface WasmPhysicsExports {
     queryScratchCapacity(): number;
 }
 
-const REQUIRED_EXPORTS = [
-    "memory",
-    "worldInit",
-    "worldReset",
-    "worldSetGravity",
-    "bodyCreate",
-    "bodyDestroy",
-    "bodySetSphere",
-    "bodyAddSphere",
-    "bodySetBox",
-    "bodySetTransform",
-    "bodySetVelocity",
-    "bodySetAngularVelocity",
-    "bodySetMaterial",
-    "bodySetDamping",
-    "bodySetGravityScale",
-    "bodySetFlags",
-    "bodyApplyForce",
-    "bodyApplyImpulse",
-    "bodyApplyTorque",
-    "bodyApplyAngularImpulse",
-    "bodySetMassData",
-    "step",
-    "bodySetAwake",
-    "bodyIsSleeping",
-    "worldSetAllowSleep",
-    "eventsPtr",
-    "eventCount",
-    "eventsOverflow",
-    "eventsClear",
-    "shapeCreateSphere",
-    "shapeCreateBox",
-    "shapeCreateCapsule",
-    "shapeCreateCylinder",
-    "shapeCreateCone",
-    "shapeCreateHull",
-    "shapeCreateMesh",
-    "shapeCreateHeightField",
-    "worldAlloc",
-    "worldRelease",
-    "shapeSetVertices",
-    "shapeSetIndices",
-    "shapeSetHeightField",
-    "shapeDestroy",
-    "shapeClear",
-    "shapeGetBody",
-    "shapeGetKind",
-    "shapeSetMaterial",
-    "shapeGetMaterial",
-    "shapeSetSensor",
-    "shapeIsSensor",
-    "shapeSetFilter",
-    "shapeGetFilter",
-    "bodyCount",
-    "contactCount",
-    "transformsPtr",
-    "velocitiesPtr",
-    "angularVelocitiesPtr",
-    "contactsPtr",
-    "worldFingerprint",
-    "worldMemoryBytes",
-    "get_transforms_view",
-    "get_velocities_view",
-    "get_angular_velocities_view",
-    "get_contacts_view",
-    "raycastAll",
-    "raycastClosest",
-    "overlapSphere",
-    "raycastAllV2",
-    "raycastClosestV2",
-    "overlapSphereV2",
-    "overlapBoxAll",
-    "queryPointAll",
-    "stepStatisticsView",
-    "queryScratchPtr",
-    "queryScratchCapacity",
-    "constraintCreateFixed",
-    "constraintCreateHinge",
-    "constraintCreateSlider",
-    "constraintCreateSpring",
-    "constraintDestroy",
-    "constraintSetEnabled",
-    "constraintSetHingeMotor",
-    "constraintSetHingeLimit",
-    "constraintSetSliderMotor",
-    "constraintSetSliderLimit",
-    "constraintCount",
-    "constraintGetKind"
-] as const;
+export const REQUIRED_PHYSICS_EXPORTS = SHARED_REQUIRED_PHYSICS_EXPORTS;
 
 export function decodeBase64(base64: string): Uint8Array {
     const binary = globalThis.atob(base64);
@@ -586,20 +508,34 @@ export function decodeBase64(base64: string): Uint8Array {
 }
 
 async function instantiateModule(module: WebAssembly.Module): Promise<WasmPhysicsExports> {
-    const imports = WebAssembly.Module.imports(module);
-    if (imports.length !== 0) {
-        throw new Error(`physics wasm must have zero imports, found ${imports.map((entry) => entry.name).join(", ")}`);
-    }
-
-    const instance = await WebAssembly.instantiate(module, {});
+    const imports = WebAssembly.Module.imports(module).map(toImportDescriptor);
+    const instance = await WebAssembly.instantiate(module, allowedPhysicsImports(imports));
     const exports = instance.exports as unknown as Record<string, unknown>;
-    for (const name of REQUIRED_EXPORTS) {
+    for (const name of REQUIRED_PHYSICS_EXPORTS) {
         if (!(name in exports)) {
             throw new Error(`physics wasm is missing export ${name}`);
         }
     }
 
     return exports as unknown as WasmPhysicsExports;
+}
+
+export interface WasmImportDescriptor {
+    readonly type: string;
+    readonly module: string;
+    readonly name: string;
+}
+
+function toImportDescriptor(entry: { readonly kind: string; readonly module: string; readonly name: string }): WasmImportDescriptor {
+    return { type: entry.kind, module: entry.module, name: entry.name };
+}
+
+export function allowedPhysicsImports(imports: readonly WasmImportDescriptor[]): { env: { now: () => number } } {
+    return sharedAllowedPhysicsImports(
+        imports,
+        PHYSICS_CLOCK_NAMES.performance,
+        "physics wasm may declare zero imports or exactly env.now"
+    );
 }
 
 export async function instantiateWasm(bytes: Uint8Array): Promise<WasmPhysicsExports> {
