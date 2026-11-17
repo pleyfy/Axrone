@@ -21,6 +21,7 @@
         "lint:fix": "lerna run lint:fix --parallel --stream",
         "test": "vitest",
         "test:ci": "vitest run --exclude '**/script-performance-*.test.ts' --exclude '**/webgl-resource-leak-detection.test.ts' --exclude '**/perf-test-utils.test.ts'",
+        "test:physics-3d-wasm": "yarn vitest run packages/physics-3d-wasm && yarn workspace @axrone/physics-3d-wasm run test:memory",
         "test:architecture": "vitest run --config vitest.config.architecture.ts",
         "test:profiles": "vitest run --config vitest.config.architecture.ts tests/architecture/scene-split/runtime-profile-entry.test.ts tests/architecture/scene-split/runtime-profile-smoke.test.ts tests/architecture/scene-split/runtime-profile-capability-graph.test.ts tests/architecture/scene-split/playable-2d-entry-boundary.test.ts",
         "test:render-governance": "vitest run --config vitest.config.architecture.ts tests/architecture/render-split",
