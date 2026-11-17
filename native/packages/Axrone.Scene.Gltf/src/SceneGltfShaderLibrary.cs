@@ -156,13 +156,18 @@ public static class SceneGltfShaderLibrary
             return smoothstep(outerConeCosine, innerConeCosine, cd);
         }
 
-        // Khronos PBR Neutral highlight rolloff: preserves midtones below 0.76
-        // linearly while smoothly compressing HDR peaks so bright speculars
-        // and lights do not clip into harsh white blotches.
+        // Khronos PBR Neutral shoulder, matching WebGL2's compressHighlightsNeutral:
+        // a black offset first, then a smooth rolloff of peaks above 0.76 so
+        // bright speculars and lights roll off instead of clipping to harsh white.
         vec3 gltfSoftCompressHighlights(vec3 color) {
             const float startCompression = 0.76;
             const float desaturation = 0.15;
-            vec3 safe = max(color, vec3(0.0));
+            vec3 safe = max(vec3(0.0), color);
+            float minimumChannel = min(safe.r, min(safe.g, safe.b));
+            float offset = minimumChannel < 0.08
+                ? minimumChannel - 6.25 * minimumChannel * minimumChannel
+                : 0.04;
+            safe -= offset;
             float peak = max(safe.r, max(safe.g, safe.b));
             if (peak < startCompression) {
                 return safe;
