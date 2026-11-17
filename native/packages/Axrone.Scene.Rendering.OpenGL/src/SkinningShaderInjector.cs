@@ -2,8 +2,9 @@ namespace Axrone.Scene.Rendering.OpenGL;
 
 /// <summary>
 /// Injects GPU skinning into an existing material vertex shader. The material
-/// keeps its own attributes, uniforms and fragment stage; only position reads
-/// are routed through a bone-texture skinning helper.
+/// keeps its own attributes, uniforms and fragment stage; position, normal and
+/// tangent reads are routed through bone-texture skinning helpers so deformed
+/// geometry shades with posed normals, matching WebGL2's skinned vertex stage.
 /// </summary>
 internal static class SkinningShaderInjector
 {
@@ -17,7 +18,11 @@ internal static class SkinningShaderInjector
     public const string BoneCountUniform = "u_SkinBoneCount";
 
     private const string PositionDeclaration = "in vec3 a_Position";
+    private const string NormalDeclaration = "in vec3 a_Normal";
+    private const string TangentDeclaration = "in vec4 a_Tangent";
     private const string ProtectedDeclaration = "__AXRONE_SKIN_POSITION__";
+    private const string ProtectedNormalDeclaration = "__AXRONE_SKIN_NORMAL__";
+    private const string ProtectedTangentDeclaration = "__AXRONE_SKIN_TANGENT__";
 
     private const string Prelude = """
         layout(location = 6) in ivec4 a_SkinJoints;
@@ -42,6 +47,24 @@ internal static class SkinningShaderInjector
                       + ReadSkinBone(a_SkinJoints.z) * a_SkinWeights.z
                       + ReadSkinBone(a_SkinJoints.w) * a_SkinWeights.w;
             return (vec4(position, 1.0) * skin).xyz;
+        }
+
+        vec3 ApplySkinNormal(vec3 normal)
+        {
+            mat4 skin = ReadSkinBone(a_SkinJoints.x) * a_SkinWeights.x
+                      + ReadSkinBone(a_SkinJoints.y) * a_SkinWeights.y
+                      + ReadSkinBone(a_SkinJoints.z) * a_SkinWeights.z
+                      + ReadSkinBone(a_SkinJoints.w) * a_SkinWeights.w;
+            return normal * mat3(skin);
+        }
+
+        vec4 ApplySkinTangent(vec4 tangent)
+        {
+            mat4 skin = ReadSkinBone(a_SkinJoints.x) * a_SkinWeights.x
+                      + ReadSkinBone(a_SkinJoints.y) * a_SkinWeights.y
+                      + ReadSkinBone(a_SkinJoints.z) * a_SkinWeights.z
+                      + ReadSkinBone(a_SkinJoints.w) * a_SkinWeights.w;
+            return vec4(tangent.xyz * mat3(skin), tangent.w);
         }
         """;
 
@@ -95,12 +118,44 @@ internal static class SkinningShaderInjector
             return false;
         }
 
-        string rewritten = vertexSource.Replace(PositionDeclaration, ProtectedDeclaration, StringComparison.Ordinal);
-        rewritten = rewritten.Replace("a_Position", "ApplySkin(a_Position)", StringComparison.Ordinal);
-        rewritten = rewritten.Replace(ProtectedDeclaration, PositionDeclaration, StringComparison.Ordinal);
+        string rewritten = ReplaceAttributeReads(
+            vertexSource,
+            PositionDeclaration,
+            "a_Position",
+            ProtectedDeclaration,
+            "ApplySkin(a_Position)");
+        rewritten = ReplaceAttributeReads(
+            rewritten,
+            NormalDeclaration,
+            "a_Normal",
+            ProtectedNormalDeclaration,
+            "ApplySkinNormal(a_Normal)");
+        rewritten = ReplaceAttributeReads(
+            rewritten,
+            TangentDeclaration,
+            "a_Tangent",
+            ProtectedTangentDeclaration,
+            "ApplySkinTangent(a_Tangent)");
         injected = rewritten.Insert(versionEnd + 1, Prelude + "\n");
         failure = SkinningInjectionFailure.None;
         return true;
+    }
+
+    private static string ReplaceAttributeReads(
+        string source,
+        string declaration,
+        string attribute,
+        string guard,
+        string replacement)
+    {
+        if (!source.Contains(declaration, StringComparison.Ordinal))
+        {
+            return source;
+        }
+
+        string protectedSource = source.Replace(declaration, guard, StringComparison.Ordinal);
+        string rewritten = protectedSource.Replace(attribute, replacement, StringComparison.Ordinal);
+        return rewritten.Replace(guard, declaration, StringComparison.Ordinal);
     }
 
     private static bool UsesAttributeLocation(string source, int location)
