@@ -9,6 +9,8 @@ import {
     shouldShapeFiltersCollide,
 } from './physics-world-3d-shared';
 import type { DynamicAABBTree3D } from './broadphase-3d';
+import { broadphaseDiagnostics } from './broadphase-diagnostics-3d';
+import { SweepAndPrune3D, type SweepAxis3D } from './broadphase-sweep-3d';
 
 export interface IBroadphaseHost {
     readonly bodyManager: {
@@ -20,10 +22,37 @@ export interface IBroadphaseHost {
     readonly computeShapeAabb: (descriptor: IShapeDescriptor3D) => IAabb3D;
 }
 
+export type BroadphaseStrategy3D = 'tree' | 'sweep';
+
+interface ICandidateRecord3D {
+    descriptorA: IShapeDescriptor3D;
+    descriptorB: IShapeDescriptor3D;
+    aabbA: IAabb3D;
+    aabbB: IAabb3D;
+    pairKey: number;
+}
+
+let defaultStrategy: BroadphaseStrategy3D = 'tree';
+const defaultSweepAxis: SweepAxis3D = 'x';
+
+export function setDefaultBroadphaseStrategy(strategy: BroadphaseStrategy3D): void {
+    defaultStrategy = strategy;
+}
+
+export function getDefaultBroadphaseStrategy(): BroadphaseStrategy3D {
+    return defaultStrategy;
+}
+
 export class PhysicsWorld3DBroadphase {
     private readonly _shapeProxyMap = new Map<ShapeId3D, number>();
     private readonly _shapePreviousCenter = new Map<ShapeId3D, IVec3Like>();
-    private readonly _candidatePairs: IShapePairCandidate3D[] = [];
+    private readonly _candidateRecords: ICandidateRecord3D[] = [];
+    private readonly _candidatePool: ICandidateRecord3D[] = [];
+    private _candidateCount = 0;
+    private _proxyDescriptors: (IShapeDescriptor3D | undefined)[] = [];
+    private _proxyNumericIds: number[] = [];
+    private readonly _sweep: SweepAndPrune3D;
+    private _strategy: BroadphaseStrategy3D;
     private readonly _scratchAabb: { min: IVec3Like; max: IVec3Like } = {
         min: { x: 0, y: 0, z: 0 },
         max: { x: 0, y: 0, z: 0 },
@@ -31,13 +60,36 @@ export class PhysicsWorld3DBroadphase {
     private readonly _scratchCenter: IVec3Like = { x: 0, y: 0, z: 0 };
     private readonly _scratchDisp: IVec3Like = { x: 0, y: 0, z: 0 };
 
-    constructor(private readonly _broadphase: DynamicAABBTree3D<ShapeId3D>) {}
+    constructor(
+        private readonly _broadphase: DynamicAABBTree3D<ShapeId3D>,
+        strategy?: BroadphaseStrategy3D,
+        sweepAxis?: SweepAxis3D,
+    ) {
+        this._strategy = strategy ?? defaultStrategy;
+        this._sweep = new SweepAndPrune3D(sweepAxis ?? defaultSweepAxis);
+    }
+
+    get strategy(): BroadphaseStrategy3D {
+        return this._strategy;
+    }
+
+    get sweep(): SweepAndPrune3D {
+        return this._sweep;
+    }
+
+    setStrategy(strategy: BroadphaseStrategy3D): void {
+        this._strategy = strategy;
+    }
 
     collectPotentialCollisionPairs(host: IBroadphaseHost): IShapePairCandidate3D[] {
-        this._candidatePairs.length = 0;
+        this._candidateCount = 0;
+        const diag = broadphaseDiagnostics;
+        const traced = diag.enabled;
+        const upkeepStart = traced ? performance.now() : 0;
 
         const filter = host.getCollisionFilter();
         for (const d of host.shapeDescriptors.values()) {
+            if (traced) diag.shapesVisited++;
             if (!host.bodyManager.isEnabled(d.bodyId)) continue;
 
             const rawAabb = host.computeShapeAabb(d);
@@ -53,7 +105,10 @@ export class PhysicsWorld3DBroadphase {
             this._scratchCenter.z = (rawAabb.min.z + rawAabb.max.z) * 0.5;
 
             const existing = this._shapeProxyMap.get(d.id);
+            if (traced) diag.enabledShapes++;
+            let proxyId: number;
             if (existing !== undefined) {
+                proxyId = existing;
                 const prev = this._shapePreviousCenter.get(d.id);
                 if (prev) {
                     this._scratchDisp.x = this._scratchCenter.x - prev.x;
@@ -64,11 +119,18 @@ export class PhysicsWorld3DBroadphase {
                     this._scratchDisp.y = 0;
                     this._scratchDisp.z = 0;
                 }
-                this._broadphase.moveProxy(existing, this._scratchAabb, this._scratchDisp);
+                const reinserted = this._broadphase.moveProxy(existing, this._scratchAabb, this._scratchDisp);
+                if (traced) {
+                    if (reinserted) diag.proxiesReinserted++;
+                    else diag.proxiesContained++;
+                }
             } else {
-                const pid = this._broadphase.createProxy(this._scratchAabb, d.id);
-                this._shapeProxyMap.set(d.id, pid);
+                proxyId = this._broadphase.createProxy(this._scratchAabb, d.id);
+                this._shapeProxyMap.set(d.id, proxyId);
+                if (traced) diag.proxiesCreated++;
             }
+            this._proxyDescriptors[proxyId] = d;
+            this._proxyNumericIds[proxyId] = Number(d.id);
             const prevCenter = this._shapePreviousCenter.get(d.id);
             if (prevCenter) {
                 prevCenter.x = this._scratchCenter.x;
@@ -83,33 +145,81 @@ export class PhysicsWorld3DBroadphase {
             }
         }
 
-        this._broadphase.queryPairs((pA, pB) => {
-            const sA = this._broadphase.getUserData(pA);
-            const sB = this._broadphase.getUserData(pB);
-            if (!sA || !sB) return true;
-            const dA = host.shapeDescriptors.get(sA);
-            const dB = host.shapeDescriptors.get(sB);
-            if (!dA || !dB) return true;
-            if (dA.bodyId === dB.bodyId) return true;
-            if (!host.bodyManager.isEnabled(dA.bodyId)) return true;
-            if (!host.bodyManager.isEnabled(dB.bodyId)) return true;
-            if (!shouldShapeFiltersCollide(dA.filter, dB.filter)) return true;
-            if (filter && !filter.shouldCollide(dA.id, dB.id)) return true;
-            const tA = host.bodyManager.getBodyType(dA.bodyId);
-            const tB = host.bodyManager.getBodyType(dB.bodyId);
-            if (tA === BODY_TYPE_STATIC && tB === BODY_TYPE_STATIC) return true;
+        const pairStart = traced ? performance.now() : 0;
+        if (traced) {
+            diag.upkeepMs += pairStart - upkeepStart;
+        }
 
-            this._candidatePairs.push({
-                descriptorA: dA,
-                descriptorB: dB,
-                aabbA: this._broadphase.getAABB(pA),
-                aabbB: this._broadphase.getAABB(pB),
-                pairKey: makeCollisionPairKey(Number(dA.id), Number(dB.id)),
-            });
-            return true;
-        });
+        if (this._strategy === 'sweep') {
+            this._sweep.sync(this._broadphase);
+            this._sweep.queryPairs((pA, pB) => this._emitCandidate(host, filter, pA, pB, traced));
+        } else {
+            this._broadphase.queryPairs((pA, pB) => this._emitCandidate(host, filter, pA, pB, traced));
+        }
 
-        return this._candidatePairs;
+        if (traced) {
+            const tree = this._broadphase;
+            diag.pairQueryMs += performance.now() - pairStart;
+            if (this._strategy === 'sweep') {
+                diag.pairQueryNodeVisits += 0;
+                diag.pairQueryTestedBoxes += this._sweep.boxTests;
+                diag.leafPairsReported += this._sweep.leafPairs;
+            } else {
+                diag.pairQueryNodeVisits += tree.pairQueryNodeVisits;
+                diag.pairQueryTestedBoxes += tree.pairQueryTestedBoxes;
+                diag.leafPairsReported += tree.pairQueryLeafPairs;
+            }
+            diag.candidates += this._candidateCount;
+            diag.steps++;
+        }
+
+        if (this._candidateRecords.length !== this._candidateCount) {
+            this._candidateRecords.length = this._candidateCount;
+        }
+        return this._candidateRecords;
+    }
+
+    private _emitCandidate(
+        host: IBroadphaseHost,
+        filter: { shouldCollide(a: ShapeId3D, b: ShapeId3D): boolean } | null,
+        pA: number,
+        pB: number,
+        traced: boolean
+    ): boolean {
+        const diag = broadphaseDiagnostics;
+        const dA = this._proxyDescriptors[pA];
+        const dB = this._proxyDescriptors[pB];
+        if (!dA || !dB) { if (traced) diag.filteredOut++; return true; }
+        if (dA.bodyId === dB.bodyId) { if (traced) diag.filteredOut++; return true; }
+        if (!host.bodyManager.isEnabled(dA.bodyId)) { if (traced) diag.filteredOut++; return true; }
+        if (!host.bodyManager.isEnabled(dB.bodyId)) { if (traced) diag.filteredOut++; return true; }
+        if (!shouldShapeFiltersCollide(dA.filter, dB.filter)) { if (traced) diag.filteredOut++; return true; }
+        if (filter && !filter.shouldCollide(dA.id, dB.id)) { if (traced) diag.filteredOut++; return true; }
+        const tA = host.bodyManager.getBodyType(dA.bodyId);
+        const tB = host.bodyManager.getBodyType(dB.bodyId);
+        if (tA === BODY_TYPE_STATIC && tB === BODY_TYPE_STATIC) { if (traced) diag.filteredOut++; return true; }
+
+        const index = this._candidateCount;
+        this._candidateCount = index + 1;
+        const idA = this._proxyNumericIds[pA];
+        const idB = this._proxyNumericIds[pB];
+        const aabbA = this._broadphase.getAABB(pA);
+        const aabbB = this._broadphase.getAABB(pB);
+        const pairKey = makeCollisionPairKey(idA, idB);
+        const pooled = this._candidatePool[index];
+        if (pooled === undefined) {
+            const created: ICandidateRecord3D = { descriptorA: dA, descriptorB: dB, aabbA, aabbB, pairKey };
+            this._candidatePool[index] = created;
+            this._candidateRecords[index] = created;
+        } else {
+            pooled.descriptorA = dA;
+            pooled.descriptorB = dB;
+            pooled.aabbA = aabbA;
+            pooled.aabbB = aabbB;
+            pooled.pairKey = pairKey;
+            this._candidateRecords[index] = pooled;
+        }
+        return true;
     }
 
     pruneShape(shapeId: ShapeId3D): void {
@@ -117,6 +227,7 @@ export class PhysicsWorld3DBroadphase {
         if (proxy !== undefined) {
             this._broadphase.destroyProxy(proxy);
             this._shapeProxyMap.delete(shapeId);
+            this._proxyDescriptors[proxy] = undefined;
         }
         this._shapePreviousCenter.delete(shapeId);
     }

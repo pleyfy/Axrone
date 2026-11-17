@@ -145,6 +145,9 @@ export class DynamicAABBTree3D<TUserData = unknown> {
         min: { x: 0, y: 0, z: 0 },
         max: { x: 0, y: 0, z: 0 },
     };
+    pairQueryNodeVisits = 0;
+    pairQueryTestedBoxes = 0;
+    pairQueryLeafPairs = 0;
 
     constructor(initialCapacity: number = 1024) {
         this._nodeCapacity = initialCapacity;
@@ -246,6 +249,9 @@ export class DynamicAABBTree3D<TUserData = unknown> {
     }
 
     queryPairs(callback: (proxyIdA: number, proxyIdB: number) => boolean): void {
+        this.pairQueryNodeVisits = 0;
+        this.pairQueryTestedBoxes = 0;
+        this.pairQueryLeafPairs = 0;
         if (this._root === NULL_NODE) return;
         const stack = this._stack;
         stack.length = 0;
@@ -255,10 +261,31 @@ export class DynamicAABBTree3D<TUserData = unknown> {
             if (nodeId === NULL_NODE) continue;
             const node = this._nodes[nodeId];
             if (node.child1 === NULL_NODE) continue;
+            this.pairQueryNodeVisits++;
             stack.push(node.child1);
             stack.push(node.child2);
             this._queryPairsInternal(node.child1, node.child2, callback);
         }
+    }
+
+    collectLeafIds(out: number[]): number {
+        out.length = 0;
+        if (this._root === NULL_NODE) return 0;
+        const stack = this._stack;
+        stack.length = 0;
+        stack.push(this._root);
+        while (stack.length > 0) {
+            const nodeId = stack.pop()!;
+            if (nodeId === NULL_NODE) continue;
+            const node = this._nodes[nodeId];
+            if (node.child1 === NULL_NODE) {
+                out.push(nodeId);
+            } else {
+                stack.push(node.child1);
+                stack.push(node.child2);
+            }
+        }
+        return out.length;
     }
 
     private _queryPairsInternal(
@@ -266,12 +293,15 @@ export class DynamicAABBTree3D<TUserData = unknown> {
         nodeIdB: number,
         callback: (proxyIdA: number, proxyIdB: number) => boolean
     ): void {
+        this.pairQueryNodeVisits++;
         const nodeA = this._nodes[nodeIdA];
         const nodeB = this._nodes[nodeIdB];
+        this.pairQueryTestedBoxes++;
         if (!boxesIntersect(nodeA.aabb, nodeB.aabb)) return;
         const isLeafA = nodeA.child1 === NULL_NODE;
         const isLeafB = nodeB.child1 === NULL_NODE;
         if (isLeafA && isLeafB) {
+            this.pairQueryLeafPairs++;
             if (!callback(nodeIdA, nodeIdB)) return;
             return;
         }
