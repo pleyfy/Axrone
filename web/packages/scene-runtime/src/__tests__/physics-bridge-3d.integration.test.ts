@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createGameLoop } from '@axrone/game-loop';
+import { ManualScheduler } from '../../../../tests/shared/test-harness';
 import { PhysicsBridge3D } from '../components/physics-bridge-3d';
 import type { IPhysicsCollisionHandler } from '../components/physics-bridge-3d';
+import type { SceneLoopState } from '../types';
 import {
     Rigidbody3D,
     Collider3D,
@@ -107,7 +110,7 @@ class CollisionHandler implements IPhysicsCollisionHandler {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-const DT = 1 / 60;
+const ENGINE_FIXED_DELTA_MS = 1000 / 60;
 const GRAVITY = -9.81;
 
 /** Wire a mock transform onto a Rigidbody3D so Component.transform returns it. */
@@ -124,6 +127,22 @@ function createHarness(gravity = { x: 0, y: GRAVITY, z: 0 }) {
     const bridge = new PhysicsBridge3D(ecsWorld as any, {
         worldConfig: { gravity },
     });
+    const scheduler = new ManualScheduler();
+    let timestamp = 0;
+    const loop = createGameLoop<SceneLoopState>({
+        state: { sceneId: 'physics-bridge-3d-integration' },
+        scheduler: scheduler as never,
+        autoStart: false,
+        systems: [
+            {
+                id: bridge.id,
+                beforeUpdate: (context) => bridge.beforeUpdate(context),
+                fixedUpdate: (context) => bridge.fixedUpdate(context),
+                dispose: () => bridge.dispose(),
+            },
+        ],
+    });
+    loop.start(0);
 
     function addEntity(
         transform: MockTransformData,
@@ -163,12 +182,12 @@ function createHarness(gravity = { x: 0, y: GRAVITY, z: 0 }) {
 
     function step(n = 1): void {
         for (let i = 0; i < n; i++) {
-            bridge.beforeUpdate({ fixedDelta: DT } as any);
-            bridge.fixedUpdate({ fixedDelta: DT } as any);
+            timestamp += ENGINE_FIXED_DELTA_MS;
+            scheduler.flush(timestamp);
         }
     }
 
-    return { ecsWorld, bridge, addEntity, step };
+    return { ecsWorld, bridge, loop, addEntity, step };
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -177,7 +196,7 @@ describe('PhysicsBridge3D integration', () => {
     // ── 1. Body/shape creation ───────────────────────────────────────────────
     describe('1. body and shape creation via bridge', () => {
         it('creates physics bodies and shapes when new components are discovered', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const t1 = createMockTransform({ x: 0, y: 5, z: 0 });
             const { rb: rb1 } = addEntity(t1, { mass: 1, collider: 'sphere', sphereRadius: 0.5 });
@@ -209,11 +228,11 @@ describe('PhysicsBridge3D integration', () => {
             expect(rb2.bodyId).toBeGreaterThanOrEqual(0);
             expect(rb1.bodyId).not.toBe(rb2.bodyId);
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('does not duplicate bodies on subsequent steps', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const t = createMockTransform({ x: 0, y: 5, z: 0 });
             addEntity(t, { mass: 1, collider: 'sphere' });
@@ -225,14 +244,14 @@ describe('PhysicsBridge3D integration', () => {
             // Still 1 body — WeakSet prevents re-initialization
             expect(bridge.physicsWorld.getBodyManager().bodyCount).toBe(1);
 
-            bridge.dispose();
+            loop.dispose();
         });
     });
 
     // ── 2. Transform synchronization ─────────────────────────────────────────
     describe('2. transform sync from physics to entity', () => {
         it('syncs gravity-driven position back to entity transform after fixedUpdate', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const transform = createMockTransform({ x: 0, y: 10, z: 0 });
             const { rb } = addEntity(transform, { mass: 1, collider: 'sphere', sphereRadius: 0.5 });
@@ -262,11 +281,11 @@ describe('PhysicsBridge3D integration', () => {
             const vel = rb.velocity;
             expect(vel.y).toBeLessThan(-1);
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('does NOT sync when body is static', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const transform = createMockTransform({ x: 0, y: 0, z: 0 });
             const { rb } = addEntity(transform, {
@@ -288,14 +307,14 @@ describe('PhysicsBridge3D integration', () => {
             expect(transform.worldPosition.y).toBe(posBefore.y);
             expect(transform.worldPosition.z).toBe(posBefore.z);
 
-            bridge.dispose();
+            loop.dispose();
         });
     });
 
     // ── 3. Contact event flow ────────────────────────────────────────────────
     describe('3. contact event flow through bridge', () => {
         it('fires onCollisionEnter on user handler when two bodies make contact', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const handlerA = new CollisionHandler();
             const handlerB = new CollisionHandler();
@@ -339,11 +358,11 @@ describe('PhysicsBridge3D integration', () => {
             expect(handlerA.collisionEnters[0].other).toBe(groundRb);
             expect(handlerB.collisionEnters[0].other).toBe(ballRb);
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('does NOT fire collision events when bodies are too far apart', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const handlerA = new CollisionHandler();
             const handlerB = new CollisionHandler();
@@ -366,14 +385,14 @@ describe('PhysicsBridge3D integration', () => {
             expect(handlerA.collisionEnters.length).toBe(0);
             expect(handlerB.collisionEnters.length).toBe(0);
 
-            bridge.dispose();
+            loop.dispose();
         });
     });
 
     // ── 4. Sensor/trigger ────────────────────────────────────────────────────
     describe('4. sensor/trigger events and no physical response', () => {
         it('fires sensor events without deflecting the visitor body', () => {
-            const { bridge, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
+            const { bridge, loop, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
 
             const handlerVisitor = new CollisionHandler();
             const handlerSensor = new CollisionHandler();
@@ -429,11 +448,11 @@ describe('PhysicsBridge3D integration', () => {
             expect(sensorEvent.sensorBodyId).toBeDefined();
             expect(sensorEvent.visitorBodyId).toBeDefined();
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('negative control: normal collider DOES produce physical response', () => {
-            const { bridge, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
+            const { bridge, loop, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
 
             // Same setup but WITHOUT trigger — should deflect
             const tVisitor = createMockTransform({ x: -5, y: 0, z: 0 });
@@ -466,11 +485,11 @@ describe('PhysicsBridge3D integration', () => {
             // Either bounced back or slowed significantly
             expect(vel.x).toBeLessThan(8);
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('fires onSensorExit when visitor leaves sensor zone', () => {
-            const { bridge, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
+            const { bridge, loop, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
 
             const handlerVisitor = new CollisionHandler();
             const handlerSensor = new CollisionHandler();
@@ -513,14 +532,14 @@ describe('PhysicsBridge3D integration', () => {
             const triggerPairs = (bridge as any)._activeTriggerPairs as Set<number>;
             expect(triggerPairs.size).toBe(0);
 
-            bridge.dispose();
+            loop.dispose();
         });
     });
 
     // ── 4b. Collision exit and memory leak ──────────────────────────────────
     describe('4b. collision exit events and memory leak prevention', () => {
         it('fires onCollisionExit when bodies separate', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const handlerA = new CollisionHandler();
             const handlerB = new CollisionHandler();
@@ -567,11 +586,11 @@ describe('PhysicsBridge3D integration', () => {
             const activePairs = (bridge as any)._activeContactPairs as Set<number>;
             expect(activePairs.size).toBe(0);
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('activeContactPairs and activeTriggerPairs are empty after all contacts end', () => {
-            const { bridge, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
+            const { bridge, loop, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
 
             const handler = new CollisionHandler();
 
@@ -598,14 +617,14 @@ describe('PhysicsBridge3D integration', () => {
             // After separation, active contact pairs must be cleared
             expect(activePairs.size).toBe(0);
 
-            bridge.dispose();
+            loop.dispose();
         });
     });
 
     // ── 5. Step order validation (P1-8) ──────────────────────────────────────
     describe('5. step order: contact detection before position integration', () => {
         it('overlapping bodies at spawn detect contact on the FIRST step', () => {
-            const { bridge, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
+            const { bridge, loop, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
 
             const handlerA = new CollisionHandler();
             const handlerB = new CollisionHandler();
@@ -625,11 +644,11 @@ describe('PhysicsBridge3D integration', () => {
             expect(handlerA.collisionEnters.length).toBeGreaterThanOrEqual(1);
             expect(handlerB.collisionEnters.length).toBeGreaterThanOrEqual(1);
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('separated bodies do NOT detect contact on the first step', () => {
-            const { bridge, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
+            const { bridge, loop, addEntity, step } = createHarness({ gravity: { x: 0, y: 0, z: 0 } });
 
             const handlerA = new CollisionHandler();
 
@@ -647,11 +666,11 @@ describe('PhysicsBridge3D integration', () => {
             // No contact should be detected
             expect(handlerA.collisionEnters.length).toBe(0);
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('separated bodies falling under gravity detect contact after multiple steps', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const handlerGround = new CollisionHandler();
 
@@ -679,14 +698,14 @@ describe('PhysicsBridge3D integration', () => {
             step(120);
             expect(handlerGround.collisionEnters.length).toBeGreaterThanOrEqual(1);
 
-            bridge.dispose();
+            loop.dispose();
         });
     });
 
     // ── 6. Sleeping + transform sync ─────────────────────────────────────────
     describe('6. sleeping body transform sync and wake', () => {
         it('maintains transform sync after body sleeps, and resumes after wake', () => {
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const transform = createMockTransform({ x: 0, y: 2, z: 0 });
             const { rb } = addEntity(transform, { mass: 1, collider: 'sphere', sphereRadius: 0.5 });
@@ -733,7 +752,7 @@ describe('PhysicsBridge3D integration', () => {
             const dy = transform.worldPosition.y - posSettled.y;
             expect(Math.abs(dx) + Math.abs(dy)).toBeGreaterThan(0.01);
 
-            bridge.dispose();
+            loop.dispose();
         });
     });
 
@@ -741,7 +760,7 @@ describe('PhysicsBridge3D integration', () => {
     describe('7. pair key: canonical ordering and no duplicates', () => {
         it('produces the same key regardless of body ID order', () => {
             // Access the bridge's internal active contact pairs set
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const handlerA = new CollisionHandler();
             const handlerB = new CollisionHandler();
@@ -790,12 +809,12 @@ describe('PhysicsBridge3D integration', () => {
             }
             expect(pairCount).toBe(1);
 
-            bridge.dispose();
+            loop.dispose();
         });
 
         it('correctly converts BigInt body IDs to Number for pair key computation', () => {
             // BodyId3D may be BigInt at the type level. Verify Number() conversion works.
-            const { bridge, addEntity, step } = createHarness();
+            const { bridge, loop, addEntity, step } = createHarness();
 
             const tA = createMockTransform({ x: 0, y: 0, z: 0 });
             const { rb: rbA } = addEntity(tA, { mass: 1, collider: 'sphere', sphereRadius: 1 });
@@ -817,7 +836,7 @@ describe('PhysicsBridge3D integration', () => {
             const { makeCollisionPairKey } = require('@axrone/physics-core');
             expect(() => makeCollisionPairKey(idA, idB)).not.toThrow();
 
-            bridge.dispose();
+            loop.dispose();
         });
     });
 });

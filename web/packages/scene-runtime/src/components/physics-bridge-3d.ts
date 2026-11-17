@@ -48,6 +48,8 @@ function makePairKey(a: BodyId3D, b: BodyId3D): number {
     return makeCollisionPairKey(Number(a), Number(b));
 }
 
+const MILLISECONDS_PER_SECOND = 1000;
+
 export interface PhysicsBridge3DOptions {
     readonly worldConfig?: IPhysicsWorld3DConfig;
     readonly velocityIterations?: number;
@@ -98,7 +100,7 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         if (this._disposed) return;
 
         this._physicsWorld.step(
-            context.fixedDelta,
+            context.fixedDelta / MILLISECONDS_PER_SECOND,
             this._velocityIterations,
             this._positionIterations
         );
