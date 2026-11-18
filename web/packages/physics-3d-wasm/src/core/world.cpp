@@ -248,6 +248,148 @@ void wakeSleepingOnContacts(World& world) {
     }
 }
 
+void integrateBodies(World& world, float dt, bool sleepEnabled) {
+    const Vec3 gravityStep = world.gravity * dt;
+    for (int32_t i = 0; i < world.highWater; ++i) {
+        Body& body = world.bodies[i];
+        const int32_t state = body.state;
+        if (state != kBodyDynamic && state != kBodyKinematic) {
+            continue;
+        }
+
+        if (state == kBodyDynamic) {
+            if (sleepEnabled && body.awake == 0) {
+                world.sleepTransforms[i] = world.transforms[i];
+                continue;
+            }
+            if (!sleepEnabled) {
+                body.awake = 1;
+                body.sleepTime = 0.0f;
+            }
+        }
+
+        Vec3& velocity = world.velocities[i];
+        Vec3& angularVelocity = world.angularVelocities[i];
+
+        if (state == kBodyDynamic) {
+            if (body.forceAccum.x != 0.0f || body.forceAccum.y != 0.0f || body.forceAccum.z != 0.0f) {
+                velocity += (body.forceAccum * dt) * body.invMass;
+            }
+            if (body.torqueAccum.x != 0.0f || body.torqueAccum.y != 0.0f || body.torqueAccum.z != 0.0f) {
+                addAngularResponse(world, body, i, body.torqueAccum * dt);
+            }
+            body.forceAccum = Vec3();
+            body.torqueAccum = Vec3();
+            velocity += gravityStep * body.gravityScale;
+        }
+
+        float linearFactor = 1.0f - body.linearDamping * dt;
+        if (linearFactor < 0.0f) {
+            linearFactor = 0.0f;
+        }
+        velocity *= linearFactor;
+
+        float angularFactor = 1.0f - body.angularDamping * dt;
+        if (angularFactor < 0.0f) {
+            angularFactor = 0.0f;
+        }
+        angularVelocity *= angularFactor;
+
+        const int32_t flags = body.flags;
+        if ((flags & kBodyFreezePositionX) != 0) {
+            velocity.x = 0.0f;
+        }
+        if ((flags & kBodyFreezePositionY) != 0) {
+            velocity.y = 0.0f;
+        }
+        if ((flags & kBodyFreezePositionZ) != 0) {
+            velocity.z = 0.0f;
+        }
+        if ((flags & kBodyFreezeRotationX) != 0) {
+            angularVelocity.x = 0.0f;
+        }
+        if ((flags & kBodyFreezeRotationY) != 0) {
+            angularVelocity.y = 0.0f;
+        }
+        if ((flags & kBodyFreezeRotationZ) != 0) {
+            angularVelocity.z = 0.0f;
+        }
+
+        Transform& transform = world.transforms[i];
+        if ((flags & kBodyFreezePositionX) == 0) {
+            transform.px += velocity.x * dt;
+        }
+        if ((flags & kBodyFreezePositionY) == 0) {
+            transform.py += velocity.y * dt;
+        }
+        if ((flags & kBodyFreezePositionZ) == 0) {
+            transform.pz += velocity.z * dt;
+        }
+        integrateRotation(transform, angularVelocity, dt);
+        refreshBodyRotation(world, i);
+    }
+}
+
+void updateSleepingBodies(World& world, float dt) {
+    for (int32_t i = 0; i < world.highWater; ++i) {
+        Body& body = world.bodies[i];
+        if (body.state != kBodyDynamic) {
+            continue;
+        }
+        if (body.awake == 0) {
+            world.transforms[i] = world.sleepTransforms[i];
+            refreshBodyRotation(world, i);
+            world.velocities[i] = Vec3();
+            world.angularVelocities[i] = Vec3();
+            continue;
+        }
+        if (lengthSq(world.velocities[i]) < kSleepLinearThresholdSq &&
+            lengthSq(world.angularVelocities[i]) < kSleepAngularThresholdSq) {
+            body.sleepTime += dt;
+            if (body.sleepTime >= kSleepTimeLimit) {
+                body.awake = 0;
+                world.velocities[i] = Vec3();
+                world.angularVelocities[i] = Vec3();
+            }
+        } else {
+            body.sleepTime = 0.0f;
+        }
+    }
+}
+
+void commitContactCache(World& world) {
+    for (int32_t k = 0; k < world.contactCount; ++k) {
+        const Contact& contact = world.contacts[k];
+        if (contact.cacheSlot < 0) {
+            continue;
+        }
+        CacheEntry& entry = world.cacheNext[contact.cacheSlot];
+        entry.impN = contact.impN;
+        entry.impT1 = contact.impT1;
+        entry.impT2 = contact.impT2;
+    }
+
+    for (int32_t index = 0; index < world.cachePrevUsedCount; ++index) {
+        ++world.m_stepStatistics.pointIdentitiesPrevStep;
+        if (cacheContains(world.cacheNext, world.cacheMask, world.cacheCapacity,
+                          world.cachePrev[world.cachePrevUsed[index]])) {
+            ++world.m_stepStatistics.pointIdentitiesRepeatingPrevStep;
+        }
+    }
+
+    CacheEntry* previousTable = world.cachePrev;
+    world.cachePrev = world.cacheNext;
+    world.cacheNext = previousTable;
+
+    int32_t* previousUsed = world.cachePrevUsed;
+    world.cachePrevUsed = world.cacheNextUsed;
+    world.cacheNextUsed = previousUsed;
+
+    const int32_t previousUsedCount = world.cachePrevUsedCount;
+    world.cachePrevUsedCount = world.cacheNextUsedCount;
+    world.cacheNextUsedCount = previousUsedCount;
+}
+
 struct Hasher {
     uint64_t value;
 
@@ -1153,88 +1295,10 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
 #if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
     m_phaseNanoseconds = {};
 #endif
-    const Vec3 gravityStep = gravity * dt;
     const bool sleepEnabled = allowSleep != 0;
 
     AXRONE_PHASE(integrateScope, m_phaseNanoseconds.integrate);
-    for (int32_t i = 0; i < highWater; ++i) {
-        Body& body = bodies[i];
-        const int32_t state = body.state;
-        if (state != kBodyDynamic && state != kBodyKinematic) {
-            continue;
-        }
-
-        if (state == kBodyDynamic) {
-            if (sleepEnabled && body.awake == 0) {
-                sleepTransforms[i] = transforms[i];
-                continue;
-            }
-            if (!sleepEnabled) {
-                body.awake = 1;
-                body.sleepTime = 0.0f;
-            }
-        }
-
-        Vec3& velocity = velocities[i];
-        Vec3& angularVelocity = angularVelocities[i];
-
-        if (state == kBodyDynamic) {
-            if (body.forceAccum.x != 0.0f || body.forceAccum.y != 0.0f || body.forceAccum.z != 0.0f) {
-                velocity += (body.forceAccum * dt) * body.invMass;
-            }
-            if (body.torqueAccum.x != 0.0f || body.torqueAccum.y != 0.0f || body.torqueAccum.z != 0.0f) {
-                addAngularResponse(*this, body, i, body.torqueAccum * dt);
-            }
-            body.forceAccum = Vec3();
-            body.torqueAccum = Vec3();
-            velocity += gravityStep * body.gravityScale;
-        }
-
-        float linearFactor = 1.0f - body.linearDamping * dt;
-        if (linearFactor < 0.0f) {
-            linearFactor = 0.0f;
-        }
-        velocity *= linearFactor;
-
-        float angularFactor = 1.0f - body.angularDamping * dt;
-        if (angularFactor < 0.0f) {
-            angularFactor = 0.0f;
-        }
-        angularVelocity *= angularFactor;
-
-        const int32_t flags = body.flags;
-        if ((flags & kBodyFreezePositionX) != 0) {
-            velocity.x = 0.0f;
-        }
-        if ((flags & kBodyFreezePositionY) != 0) {
-            velocity.y = 0.0f;
-        }
-        if ((flags & kBodyFreezePositionZ) != 0) {
-            velocity.z = 0.0f;
-        }
-        if ((flags & kBodyFreezeRotationX) != 0) {
-            angularVelocity.x = 0.0f;
-        }
-        if ((flags & kBodyFreezeRotationY) != 0) {
-            angularVelocity.y = 0.0f;
-        }
-        if ((flags & kBodyFreezeRotationZ) != 0) {
-            angularVelocity.z = 0.0f;
-        }
-
-        Transform& transform = transforms[i];
-        if ((flags & kBodyFreezePositionX) == 0) {
-            transform.px += velocity.x * dt;
-        }
-        if ((flags & kBodyFreezePositionY) == 0) {
-            transform.py += velocity.y * dt;
-        }
-        if ((flags & kBodyFreezePositionZ) == 0) {
-            transform.pz += velocity.z * dt;
-        }
-        integrateRotation(transform, angularVelocity, dt);
-        refreshBodyRotation(*this, i);
-    }
+    integrateBodies(*this, dt, sleepEnabled);
     AXRONE_PHASE_CLOSE(integrateScope);
 
     buildSuppressedPairTable(*this);
@@ -1273,61 +1337,9 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
 
     AXRONE_PHASE(sleepScope, m_phaseNanoseconds.sleepAndCacheSwap);
     if (sleepEnabled) {
-        for (int32_t i = 0; i < highWater; ++i) {
-            Body& body = bodies[i];
-            if (body.state != kBodyDynamic) {
-                continue;
-            }
-            if (body.awake == 0) {
-                transforms[i] = sleepTransforms[i];
-                refreshBodyRotation(*this, i);
-                velocities[i] = Vec3();
-                angularVelocities[i] = Vec3();
-                continue;
-            }
-            if (lengthSq(velocities[i]) < kSleepLinearThresholdSq &&
-                lengthSq(angularVelocities[i]) < kSleepAngularThresholdSq) {
-                body.sleepTime += dt;
-                if (body.sleepTime >= kSleepTimeLimit) {
-                    body.awake = 0;
-                    velocities[i] = Vec3();
-                    angularVelocities[i] = Vec3();
-                }
-            } else {
-                body.sleepTime = 0.0f;
-            }
-        }
+        updateSleepingBodies(*this, dt);
     }
-
-    for (int32_t k = 0; k < contactCount; ++k) {
-        const Contact& contact = contacts[k];
-        if (contact.cacheSlot < 0) {
-            continue;
-        }
-        CacheEntry& entry = cacheNext[contact.cacheSlot];
-        entry.impN = contact.impN;
-        entry.impT1 = contact.impT1;
-        entry.impT2 = contact.impT2;
-    }
-
-    for (int32_t index = 0; index < cachePrevUsedCount; ++index) {
-        ++m_stepStatistics.pointIdentitiesPrevStep;
-        if (cacheContains(cacheNext, cacheMask, cacheCapacity, cachePrev[cachePrevUsed[index]])) {
-            ++m_stepStatistics.pointIdentitiesRepeatingPrevStep;
-        }
-    }
-
-    CacheEntry* previousTable = cachePrev;
-    cachePrev = cacheNext;
-    cacheNext = previousTable;
-
-    int32_t* previousUsed = cachePrevUsed;
-    cachePrevUsed = cacheNextUsed;
-    cacheNextUsed = previousUsed;
-
-    const int32_t previousUsedCount = cachePrevUsedCount;
-    cachePrevUsedCount = cacheNextUsedCount;
-    cacheNextUsedCount = previousUsedCount;
+    commitContactCache(*this);
     AXRONE_PHASE_CLOSE(sleepScope);
 
     AXRONE_PHASE(packScope, m_phaseNanoseconds.pack);
