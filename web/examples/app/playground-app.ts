@@ -11,6 +11,7 @@ import type {
 
 type ConsoleTone = 'log' | 'info' | 'warn' | 'error' | 'success';
 type ConsoleTab = 'console' | 'problems' | 'output';
+type ExamplesScope = 'all' | 'builtin' | 'user';
 type ConsoleEntry = {
 	readonly tone: ConsoleTone;
 	readonly message: string;
@@ -56,6 +57,9 @@ type RuntimeSession = {
 	readonly handle: PlaygroundSceneHandle;
 	readonly summary?: string;
 	readonly objectCount: number;
+};
+type MutablePlaygroundProject = Omit<PlaygroundProjectRecord, 'files'> & {
+	files: VirtualProjectFile[];
 };
 
 type PlaygroundToolingModule = typeof import('../playground/tooling-entry');
@@ -531,7 +535,7 @@ const renderTemplateCards = (shell: PlaygroundShell, selectedTemplateId: string)
 export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	const shell = renderPlaygroundShell(root);
 	window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
-	const projects = (await loadProjectCatalog()).map((project) => ({
+	const projects: MutablePlaygroundProject[] = (await loadProjectCatalog()).map((project) => ({
 		...project,
 		files: cloneFiles(project.files),
 	}));
@@ -541,7 +545,9 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	let openTabs = currentFilePath ? [currentFilePath] : [];
 	let editor: LiveEditorController | undefined;
 	let runtimeSession: RuntimeSession | undefined;
-	let projectDropdownOpen = false;
+	let examplesModalOpen = false;
+	let examplesScope: ExamplesScope = 'all';
+	let selectedExampleId = currentProjectId;
 	let consoleVisible = true;
 	let sidebarVisible = true;
 	let verticalLayout = false;
@@ -555,22 +561,8 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	const consoleEntries: ConsoleEntry[] = [];
 	const problemEntries: ConsoleEntry[] = [];
 	const outputEntries: ConsoleEntry[] = [];
-	const applyProjectListFilter = (): void => {
-		const query = shell.projectSearchInput.value.trim().toLowerCase();
-		const cards = shell.projectList.querySelectorAll<HTMLElement>('[data-project-search]');
-		let visibleCount = 0;
-		for (const card of cards) {
-			const haystack = card.dataset.projectSearch ?? '';
-			const visible = !query || haystack.includes(query);
-			card.style.display = visible ? '' : 'none';
-			if (visible) {
-				visibleCount += 1;
-			}
-		}
-		shell.projectCount.textContent = `${visibleCount} proje`;
-	};
 
-	const getCurrentProject = (): PlaygroundProjectRecord | undefined =>
+	const getCurrentProject = (): MutablePlaygroundProject | undefined =>
 		projects.find((project) => project.id === currentProjectId);
 
 	const persistCurrentProject = (): void => {
@@ -586,7 +578,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		localStorage.setItem(resolveStorageKey(project.id), JSON.stringify(payload));
 	};
 
-	const hydrateProject = (project: PlaygroundProjectRecord): PlaygroundProjectRecord => {
+	const hydrateProject = (project: MutablePlaygroundProject): MutablePlaygroundProject => {
 		if (typeof localStorage === 'undefined') {
 			return project;
 		}
@@ -718,35 +710,172 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		}
 	};
 
-	const renderProjectList = (): void => {
-		shell.projectList.innerHTML = projects
-			.map((project) => {
-				const selected = project.id === currentProjectId;
+	const getFilteredExamples = (): readonly PlaygroundProjectRecord[] => {
+		const query = shell.examplesSearchInput.value.trim().toLowerCase();
+
+		return projects.filter((project) => {
+			if (examplesScope === 'builtin' && project.builtIn === false) {
+				return false;
+			}
+			if (examplesScope === 'user' && project.builtIn !== false) {
+				return false;
+			}
+			if (!query) {
+				return true;
+			}
+
+			const haystack = [
+				project.name,
+				project.description,
+				resolveProjectCategory(project),
+				...resolveProjectTags(project),
+			]
+				.join(' ')
+				.toLowerCase();
+			return haystack.includes(query);
+		});
+	};
+
+	const updateExamplesScopeState = (): void => {
+		const counts: Record<ExamplesScope, number> = {
+			all: projects.length,
+			builtin: projects.filter((project) => project.builtIn !== false).length,
+			user: projects.filter((project) => project.builtIn === false).length,
+		};
+
+		for (const item of shell.examplesScopeCounts) {
+			const scope = item.dataset.scopeCount as ExamplesScope | undefined;
+			if (scope) {
+				item.textContent = String(counts[scope]);
+			}
+		}
+
+		for (const button of shell.examplesScopeButtons) {
+			const active = button.dataset.exampleScope === examplesScope;
+			button.classList.toggle('is-active', active);
+			button.setAttribute('aria-pressed', String(active));
+		}
+	};
+
+	const renderExamplesDetail = (): void => {
+		const project = projects.find((candidate) => candidate.id === selectedExampleId);
+		if (!project) {
+			shell.examplesDetail.innerHTML = `
+				<div class="examples-detail__empty">
+					<span class="examples-detail__empty-title">No example selected</span>
+					<span class="examples-detail__empty-text">Choose a project from the list to preview its contents.</span>
+				</div>
+			`;
+			return;
+		}
+
+		const tags = resolveProjectTags(project);
+		const isCurrent = project.id === currentProjectId;
+		const fileMarkup = project.files
+			.map((file) => {
+				const visual = resolveFileVisual(file.path);
 				return `
-					<div class="proj-card ${selected ? 'selected' : ''}" data-project-id="${escapeHtml(project.id)}" data-project-search="${escapeHtml(`${project.name} ${project.description}`.toLowerCase())}" style="--project-accent:${project.color}">
-						<div class="proj-card__icon">
-							<span class="proj-card__swatch"></span>
-						</div>
-						<div class="proj-card__body">
-							<div class="proj-card__title-row">
-								<span class="proj-card__title">${escapeHtml(project.name)}</span>
-								${selected ? '<span class="proj-card__badge">Aktif</span>' : ''}
-							</div>
-							<span class="proj-card__desc">${escapeHtml(project.description)}</span>
-							<span class="proj-card__meta">${project.files.length} dosya</span>
-						</div>
+					<div class="example-file">
+						<span class="example-file__icon" style="color:${visual.color}">${renderVisualIcon(visual, 12)}</span>
+						<span class="example-file__path">${escapeHtml(file.path)}</span>
+						${file.path === project.entryFile ? '<span class="example-file__entry">entry</span>' : ''}
 					</div>
 				`;
 			})
 			.join('');
-		applyProjectListFilter();
+
+		shell.examplesDetail.innerHTML = `
+			<div class="example-detail__hero">${renderExampleArt(project, 'hero')}</div>
+			<div class="example-detail__content">
+				<div class="example-detail__eyebrow-row">
+					<span class="example-detail__eyebrow">${escapeHtml(resolveProjectCategory(project))}</span>
+					${isCurrent ? '<span class="example-badge">Currently open</span>' : ''}
+				</div>
+				<h3 class="example-detail__title">${escapeHtml(project.name)}</h3>
+				<p class="example-detail__description">${escapeHtml(project.description)}</p>
+				${
+					tags.length > 0
+						? `<div class="tag-row">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</div>`
+						: ''
+				}
+				<dl class="example-meta">
+					<div class="example-meta__item">
+						<dt>Entry</dt>
+						<dd>${escapeHtml(project.entryFile)}</dd>
+					</div>
+					<div class="example-meta__item">
+						<dt>Files</dt>
+						<dd>${project.files.length}</dd>
+					</div>
+					<div class="example-meta__item">
+						<dt>Language</dt>
+						<dd>${escapeHtml(resolveLanguageLabel(project.entryFile))}</dd>
+					</div>
+					<div class="example-meta__item">
+						<dt>Source</dt>
+						<dd>${project.builtIn === false ? 'Local' : 'Built-in'}</dd>
+					</div>
+				</dl>
+				<div class="example-files">
+					<div class="example-files__header">
+						<span class="example-files__label">Project files</span>
+						<span class="example-files__count">${project.files.length}</span>
+					</div>
+					${fileMarkup}
+				</div>
+			</div>
+		`;
+	};
+
+	const renderExamplesList = (): void => {
+		const filtered = getFilteredExamples();
+		if (!filtered.some((project) => project.id === selectedExampleId)) {
+			selectedExampleId = filtered[0]?.id ?? '';
+		}
+
+		shell.examplesList.innerHTML = filtered
+			.map((project) => {
+				const selected = project.id === selectedExampleId;
+				const isCurrent = project.id === currentProjectId;
+				return `
+					<button
+						type="button"
+						class="example-row${selected ? ' is-selected' : ''}"
+						data-example-id="${escapeHtml(project.id)}"
+						aria-pressed="${selected}"
+					>
+						<span class="example-row__art">${renderExampleArt(project, 'thumb')}</span>
+						<span class="example-row__body">
+							<span class="example-row__title-row">
+								<span class="example-row__title">${escapeHtml(project.name)}</span>
+								${isCurrent ? '<span class="example-row__current"><span class="example-row__current-dot"></span>Open</span>' : ''}
+							</span>
+							<span class="example-row__meta">${escapeHtml(resolveProjectCategory(project))} <span class="example-row__meta-sep">·</span> ${project.files.length} files</span>
+						</span>
+					</button>
+				`;
+			})
+			.join('');
+
+		const hasResults = filtered.length > 0;
+		shell.examplesList.hidden = !hasResults;
+		shell.examplesEmpty.hidden = hasResults;
+		shell.examplesCount.textContent = hasResults ? `${filtered.length} of ${projects.length}` : '0';
+		shell.examplesOpenButton.disabled = !hasResults;
+		updateExamplesScopeState();
+		renderExamplesDetail();
+	};
+
+	const setExamplesScope = (scope: ExamplesScope): void => {
+		examplesScope = scope;
+		renderExamplesList();
 	};
 
 	const renderFileTree = (): void => {
 		const project = getCurrentProject();
 		if (!project) {
 			shell.fileTree.innerHTML = '';
-			shell.fileCountText.textContent = '0 dosya';
+			shell.fileCountText.textContent = '0 files';
 			return;
 		}
 
@@ -870,13 +999,13 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		}
 
 		currentProjectId = project.id;
+		selectedExampleId = project.id;
 		currentFilePath = project.entryFile;
 		openTabs = [currentFilePath];
 		refreshEditorFiles();
-		renderProjectList();
+		renderExamplesList();
 		renderFileTree();
 		renderEditorTabs();
-		setProjectDropdownState(false);
 		void runCurrentProject();
 	};
 
@@ -946,20 +1075,79 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		requestAnimationFrame(fpsLoop);
 	};
 
-	const setProjectDropdownState = (open: boolean): void => {
-		projectDropdownOpen = open;
-		shell.projectDropdown.style.opacity = open ? '1' : '0';
-		shell.projectDropdown.style.transform = open ? 'translateY(0) scale(1)' : 'translateY(-6px) scale(.97)';
-		shell.projectDropdown.style.pointerEvents = open ? 'auto' : 'none';
-		shell.projectChevron.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
-		if (open) {
-			applyProjectListFilter();
-			queueMicrotask(() => shell.projectSearchInput.focus());
+	let examplesReturnFocus: HTMLElement | null = null;
+
+	const moveExampleSelection = (direction: 1 | -1): void => {
+		const filtered = getFilteredExamples();
+		if (filtered.length === 0) {
+			return;
 		}
+
+		const currentIndex = filtered.findIndex((project) => project.id === selectedExampleId);
+		const nextIndex = currentIndex === -1 ? 0 : Math.min(filtered.length - 1, Math.max(0, currentIndex + direction));
+		const nextProject = filtered[nextIndex];
+		if (!nextProject) {
+			return;
+		}
+
+		selectedExampleId = nextProject.id;
+		renderExamplesList();
+		const row = [...shell.examplesList.querySelectorAll<HTMLElement>('[data-example-id]')].find(
+			(candidate) => candidate.dataset.exampleId === nextProject.id,
+		);
+		row?.scrollIntoView({ block: 'nearest' });
 	};
 
-	const toggleProjectDropdown = (): void => {
-		setProjectDropdownState(!projectDropdownOpen);
+	const openExamplesModal = (): void => {
+		if (examplesModalOpen) {
+			return;
+		}
+
+		examplesReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		examplesModalOpen = true;
+		examplesScope = 'all';
+		selectedExampleId = currentProjectId;
+		shell.examplesSearchInput.value = '';
+		shell.examplesModal.classList.add('is-open');
+		shell.examplesModal.setAttribute('aria-hidden', 'false');
+		shell.projectTrigger.setAttribute('aria-expanded', 'true');
+		shell.projectChevron.style.transform = 'rotate(180deg)';
+		renderExamplesList();
+		window.setTimeout(() => {
+			shell.examplesSearchInput.focus();
+			const currentRow = [...shell.examplesList.querySelectorAll<HTMLElement>('[data-example-id]')].find(
+				(candidate) => candidate.dataset.exampleId === currentProjectId,
+			);
+			currentRow?.scrollIntoView({ block: 'nearest' });
+		}, 50);
+	};
+
+	const closeExamplesModal = (restoreFocus = true): void => {
+		if (!examplesModalOpen) {
+			return;
+		}
+
+		examplesModalOpen = false;
+		shell.examplesModal.classList.remove('is-open');
+		shell.examplesModal.setAttribute('aria-hidden', 'true');
+		shell.projectTrigger.setAttribute('aria-expanded', 'false');
+		shell.projectChevron.style.transform = 'rotate(0deg)';
+		if (restoreFocus) {
+			const target = examplesReturnFocus && document.contains(examplesReturnFocus) ? examplesReturnFocus : shell.projectTrigger;
+			window.setTimeout(() => target.focus({ preventScroll: true }), 50);
+		}
+		examplesReturnFocus = null;
+	};
+
+	const openSelectedExample = (): void => {
+		const project = projects.find((candidate) => candidate.id === selectedExampleId);
+		if (!project) {
+			return;
+		}
+
+		closeExamplesModal(false);
+		switchProject(project.id);
+		window.setTimeout(() => editor?.focus(), 50);
 	};
 
 	const toggleConsole = (): void => {
@@ -1026,13 +1214,18 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			id,
 			name,
 			color: palette[projects.length % palette.length]!,
-			description: selectedTemplateId === 'basic' ? 'Basic scene template' : 'Blank scene template',
+			description:
+				selectedTemplateId === 'basic'
+					? 'Starter project created from the Basic Scene template.'
+					: 'Starter project created from the Blank Scene template.',
+			category: selectedTemplateId === 'basic' ? 'Starter' : 'Template',
+			tags: selectedTemplateId === 'basic' ? ['3D', 'Starter', 'TypeScript'] : ['Starter', 'TypeScript'],
 			entryFile: 'main.ts',
 			files: createTemplateFiles(selectedTemplateId),
 			builtIn: false,
 		});
-		closeNewProjectModal();
-		renderProjectList();
+		closeNewProjectModal(false);
+		renderExamplesList();
 		switchProject(id);
 	};
 
@@ -1120,12 +1313,62 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	shell.toggleConsoleButton.addEventListener('click', toggleConsole);
 	shell.toggleSidebarButton.addEventListener('click', toggleSidebar);
 	shell.toggleLayoutButton.addEventListener('click', toggleLayout);
-	requireElement(root, '#proj-trigger').addEventListener('click', toggleProjectDropdown);
-	shell.newProjectOpenButton.addEventListener('click', openNewProjectModal);
+	shell.projectTrigger.addEventListener('click', () => {
+		if (examplesModalOpen) {
+			closeExamplesModal();
+			return;
+		}
+		openExamplesModal();
+	});
+	for (const closeButton of shell.examplesCloseButtons) {
+		closeButton.addEventListener('click', () => closeExamplesModal());
+	}
+	shell.examplesOpenButton.addEventListener('click', openSelectedExample);
+	shell.examplesNewButton.addEventListener('click', openNewProjectModal);
+	shell.examplesSearchInput.addEventListener('input', renderExamplesList);
+	for (const scopeButton of shell.examplesScopeButtons) {
+		scopeButton.addEventListener('click', () => {
+			const scope = scopeButton.dataset.exampleScope as ExamplesScope | undefined;
+			if (scope) {
+				setExamplesScope(scope);
+			}
+		});
+	}
+	shell.examplesList.addEventListener('click', (event) => {
+		const row = (event.target as HTMLElement).closest<HTMLElement>('[data-example-id]');
+		if (!row?.dataset.exampleId) {
+			return;
+		}
+
+		if (row.dataset.exampleId !== selectedExampleId) {
+			selectedExampleId = row.dataset.exampleId;
+			renderExamplesList();
+		}
+
+		if (event.detail === 0) {
+			openSelectedExample();
+		}
+	});
+	shell.examplesList.addEventListener('dblclick', (event) => {
+		const row = (event.target as HTMLElement).closest<HTMLElement>('[data-example-id]');
+		if (row?.dataset.exampleId) {
+			selectedExampleId = row.dataset.exampleId;
+			openSelectedExample();
+		}
+	});
 	for (const closeButton of shell.newProjectCloseButtons) {
-		closeButton.addEventListener('click', closeNewProjectModal);
+		closeButton.addEventListener('click', () => closeNewProjectModal());
 	}
 	shell.newProjectCreateButton.addEventListener('click', createProject);
+	shell.newProjectNameInput.addEventListener('input', () => {
+		shell.newProjectCreateButton.disabled = shell.newProjectNameInput.value.trim().length === 0;
+	});
+	shell.newProjectNameInput.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			createProject();
+		}
+	});
 	shell.newProjectTemplates.addEventListener('click', (event) => {
 		const target = (event.target as HTMLElement).closest<HTMLElement>('[data-template-id]');
 		if (!target?.dataset.templateId) {
@@ -1135,13 +1378,6 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		selectedTemplateId = target.dataset.templateId;
 		renderTemplateCards(shell, selectedTemplateId);
 	});
-	shell.projectList.addEventListener('click', (event) => {
-		const card = (event.target as HTMLElement).closest<HTMLElement>('[data-project-id]');
-		if (card?.dataset.projectId) {
-			switchProject(card.dataset.projectId);
-		}
-	});
-	shell.projectSearchInput.addEventListener('input', applyProjectListFilter);
 	shell.fileTree.addEventListener('click', (event) => {
 		const folder = (event.target as HTMLElement).closest<HTMLElement>('[data-folder-path]');
 		if (folder?.dataset.folderPath) {
@@ -1201,7 +1437,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	initResize(shell.editorResize, shell.editorPanel, 'horizontal', 280);
 	initResize(shell.consoleResize, shell.consolePanel, 'vertical', 80);
 
-	renderProjectList();
+	renderExamplesList();
 	renderFileTree();
 	renderEditorTabs();
 	renderConsoleOutput();
@@ -1219,26 +1455,90 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			return;
 		}
 
-		if (!shell.projectDropdown.contains(target) && !requireElement(root, '#proj-trigger').contains(target)) {
-			setProjectDropdownState(false);
-		}
-
 		if (!shell.cameraDropdown.contains(target) && !shell.cameraButton.contains(target)) {
 			shell.cameraDropdown.classList.remove('open');
 		}
 	});
 
 	document.addEventListener('keydown', (event) => {
-		if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+		const modifier = event.ctrlKey || event.metaKey;
+
+		if (modifier && event.key.toLowerCase() === 'k') {
+			event.preventDefault();
+			if (examplesModalOpen) {
+				closeExamplesModal();
+			} else if (!shell.newProjectModal.classList.contains('is-open')) {
+				openExamplesModal();
+			}
+			return;
+		}
+
+		if (modifier && event.key === 'Enter') {
 			event.preventDefault();
 			void runCurrentProject();
+			return;
 		}
+
 		if (event.key === 'Escape') {
-			closeNewProjectModal();
+			if (examplesModalOpen) {
+				closeExamplesModal();
+				return;
+			}
+			if (shell.newProjectModal.classList.contains('is-open')) {
+				closeNewProjectModal();
+				return;
+			}
 			shell.cameraDropdown.classList.remove('open');
-			setProjectDropdownState(false);
+			return;
 		}
-	});
+
+		if (!examplesModalOpen) {
+			return;
+		}
+
+		if (event.key === 'Tab') {
+			const focusable = [
+				...shell.examplesDialog.querySelectorAll<HTMLElement>(
+					'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+				),
+			].filter((element) => element.offsetParent !== null);
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			if (!first || !last) {
+				return;
+			}
+			if (!shell.examplesDialog.contains(document.activeElement)) {
+				event.preventDefault();
+				first.focus();
+				return;
+			}
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault();
+				last.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault();
+				first.focus();
+			}
+			return;
+		}
+
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			moveExampleSelection(1);
+			return;
+		}
+
+		if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			moveExampleSelection(-1);
+			return;
+		}
+
+		if (event.target === shell.examplesSearchInput && event.key === 'Enter') {
+			event.preventDefault();
+			openSelectedExample();
+		}
+	}, true);
 };
 
 const requireElement = <T extends Element>(root: ParentNode, selector: string): T => {
