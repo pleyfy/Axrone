@@ -31,7 +31,7 @@ alignas(16) axrone::physics::StepStatistics g_stepStatistics;
 alignas(16) axrone::physics::PhaseTimers g_phaseTimers;
 #endif
 
-constexpr int32_t kEventCapacity = 4096;
+using axrone::physics::kEventCapacity;
 alignas(16) axrone::physics::ContactEvent g_events[kEventCapacity];
 alignas(16) uint64_t g_eventKeys[kEventCapacity];
 alignas(16) uint8_t g_eventSensors[kEventCapacity];

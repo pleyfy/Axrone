@@ -1,12 +1,12 @@
 #include "core/events.h"
 
+#include "platform/memory.h"
+
 namespace axrone::physics {
 
 namespace {
 
-constexpr int32_t kEventChunkCapacity = 512;
-
-struct EventChunkData {
+struct EventItemData {
     int32_t sensorBits;
     float nx;
     float ny;
@@ -14,105 +14,67 @@ struct EventChunkData {
     float pen;
 };
 
-struct EventChunk {
-    uint64_t keys[kEventChunkCapacity];
-    EventChunkData data[kEventChunkCapacity];
-    int32_t size;
+struct EventScratch {
+    uint64_t keys[kEventCapacity];
+    EventItemData data[kEventCapacity];
+    int16_t buckets[kEventHashCapacity];
 };
 
-int32_t findSortedKey(const uint64_t* keys, int32_t count, uint64_t key) {
-    int32_t lo = 0;
-    int32_t hi = count;
-    while (lo < hi) {
-        const int32_t mid = lo + (hi - lo) / 2;
-        if (keys[mid] < key) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    if (lo < count && keys[lo] == key) {
-        return lo;
-    }
-    return -1;
+static_assert((kEventHashCapacity & (kEventHashCapacity - 1)) == 0,
+              "event hash capacity must be a power of two");
+static_assert(kEventCapacity <= 32767, "event index must fit in int16_t");
+
+// The collector is called from the single-threaded wasm ABI after a step.
+// Keeping the scratch in .bss avoids a large stack frame and makes collection
+// O(C + U log U) instead of re-scanning the contact list in five passes.
+EventScratch g_eventScratch;
+
+uint32_t eventHash64(uint64_t key) {
+    key ^= key >> 33;
+    key *= 0xff51afd7ed558ccdULL;
+    key ^= key >> 33;
+    return static_cast<uint32_t>(key);
 }
 
-void chunkInsert(EventChunk& chunk, uint64_t key, const EventChunkData& item) {
-    int32_t lo = 0;
-    int32_t hi = chunk.size;
-    while (lo < hi) {
-        const int32_t mid = lo + (hi - lo) / 2;
-        if (chunk.keys[mid] < key) {
-            lo = mid + 1;
+int32_t findSortedKey(const uint64_t* keys, int32_t count, uint64_t key) {
+    int32_t low = 0;
+    int32_t high = count;
+    while (low < high) {
+        const int32_t middle = low + ((high - low) >> 1);
+        if (keys[middle] < key) {
+            low = middle + 1;
         } else {
-            hi = mid;
+            high = middle;
         }
     }
-    if (lo < chunk.size && chunk.keys[lo] == key) {
-        return;
-    }
-    const int32_t count = chunk.size < kEventChunkCapacity ? chunk.size : kEventChunkCapacity - 1;
-    for (int32_t i = count; i > lo; --i) {
-        chunk.keys[i] = chunk.keys[i - 1];
-        chunk.data[i] = chunk.data[i - 1];
-    }
-    chunk.keys[lo] = key;
-    chunk.data[lo] = item;
-    if (chunk.size < kEventChunkCapacity) {
-        ++chunk.size;
+    return (low < count && keys[low] == key) ? low : -1;
+}
+
+void sortEvents(uint64_t* keys, EventItemData* data, int32_t count) {
+    for (int32_t gap = count >> 1; gap > 0; gap >>= 1) {
+        for (int32_t i = gap; i < count; ++i) {
+            const uint64_t key = keys[i];
+            const EventItemData item = data[i];
+            int32_t j = i;
+            while (j >= gap && keys[j - gap] > key) {
+                keys[j] = keys[j - gap];
+                data[j] = data[j - gap];
+                j -= gap;
+            }
+            keys[j] = key;
+            data[j] = item;
+        }
     }
 }
 
 int32_t eventShapeId(const World& world, int32_t bodyId, int32_t slot) {
     int32_t generation = 0;
     if (world.slotGen != nullptr && bodyId >= 0 && bodyId < world.highWater) {
-        const uintptr_t index = static_cast<uintptr_t>(bodyId) * kMaxShapesPerBody + static_cast<uintptr_t>(slot);
+        const uintptr_t index =
+            static_cast<uintptr_t>(bodyId) * kMaxShapesPerBody + static_cast<uintptr_t>(slot);
         generation = static_cast<int32_t>(world.slotGen[index] & kShapeIdGenMask);
     }
     return shapeEncodeId(generation, bodyId, slot);
-}
-
-void buildNextChunk(const World& world, bool hasLower, uint64_t lower, EventChunk& chunk) {
-    chunk.size = 0;
-    const int32_t contactCount = world.contactCount;
-    for (int32_t i = 0; i < contactCount; ++i) {
-        const Contact& contact = world.contacts[i];
-        const int32_t storageA = shapeStorageKey(contact.a, contact.shapeA);
-        const int32_t storageB = shapeStorageKey(contact.b, contact.shapeB);
-        const uint64_t key = contactPairKey(storageA, storageB);
-        if (hasLower && key <= lower) {
-            continue;
-        }
-        if (chunk.size == kEventChunkCapacity && key > chunk.keys[kEventChunkCapacity - 1]) {
-            continue;
-        }
-
-        int32_t lowStorage = storageA;
-        int32_t highStorage = storageB;
-        const bool storageSwapped = storageB < storageA;
-        if (storageSwapped) {
-            lowStorage = storageB;
-            highStorage = storageA;
-        }
-
-        const int32_t lowBody = shapeStorageBody(lowStorage);
-        const int32_t lowSlot = shapeStorageSlot(lowStorage);
-        const int32_t highBody = shapeStorageBody(highStorage);
-        const int32_t highSlot = shapeStorageSlot(highStorage);
-
-        const bool sensorLow = world.bodies[lowBody].shapes[lowSlot].sensor != 0;
-        const bool sensorHigh = world.bodies[highBody].shapes[highSlot].sensor != 0;
-
-        EventChunkData item;
-        item.sensorBits = (sensorLow ? 1 : 0) | (sensorHigh ? 2 : 0);
-        const bool normalSwap = storageSwapped != (item.sensorBits == 2);
-        const float sign = normalSwap ? -1.0f : 1.0f;
-        item.nx = contact.normal.x * sign;
-        item.ny = contact.normal.y * sign;
-        item.nz = contact.normal.z * sign;
-        item.pen = contact.pen;
-        chunkInsert(chunk, key, item);
-    }
 }
 
 void writePairEvent(
@@ -121,13 +83,13 @@ void writePairEvent(
     int32_t index,
     int32_t kind,
     uint64_t key,
-    const EventChunkData* item,
+    const EventItemData* item,
     int32_t sensorBits
 ) {
     events[index].kind = kind;
     events[index].reserved = 0.0f;
-    int32_t storageA = int32_t(key >> 32);
-    int32_t storageB = int32_t(uint32_t(key));
+    int32_t storageA = static_cast<int32_t>(key >> 32);
+    int32_t storageB = static_cast<int32_t>(static_cast<uint32_t>(key));
     if (sensorBits == 2) {
         const int32_t swap = storageA;
         storageA = storageB;
@@ -135,8 +97,8 @@ void writePairEvent(
     }
     events[index].bodyA = shapeStorageBody(storageA);
     events[index].bodyB = shapeStorageBody(storageB);
-    events[index].shapeA = eventShapeId(world, shapeStorageBody(storageA), shapeStorageSlot(storageA));
-    events[index].shapeB = eventShapeId(world, shapeStorageBody(storageB), shapeStorageSlot(storageB));
+    events[index].shapeA = eventShapeId(world, events[index].bodyA, shapeStorageSlot(storageA));
+    events[index].shapeB = eventShapeId(world, events[index].bodyB, shapeStorageSlot(storageB));
     if (item != nullptr) {
         events[index].nx = item->nx;
         events[index].ny = item->ny;
@@ -150,11 +112,11 @@ void writePairEvent(
     events[index].penetration = 0.0f;
 }
 
-int32_t eventKind(const int32_t baseKind, const int32_t sensorBits) {
+int32_t eventKind(int32_t baseKind, int32_t sensorBits) {
     return sensorBits != 0 ? baseKind + 3 : baseKind;
 }
 
-}
+} // namespace
 
 int32_t collectContactEvents(
     const World& world,
@@ -169,107 +131,120 @@ int32_t collectContactEvents(
         return -1;
     }
 
-    const uint64_t* prev = state.keys;
-    const uint8_t* prevSensors = state.sensors;
-    const int32_t prevCount = state.count;
+    EventScratch& scratch = g_eventScratch;
+    int32_t nextCount = 0;
 
-    EventChunk chunk;
-    bool hasLower = false;
-    uint64_t lower = 0;
+    if (world.contactCount > 0) {
+        memset(scratch.buckets, 0xFF, sizeof(scratch.buckets));
+        constexpr uint32_t kMask = static_cast<uint32_t>(kEventHashCapacity - 1);
 
-    int32_t currentCount = 0;
-    int32_t stayCount = 0;
-    buildNextChunk(world, hasLower, lower, chunk);
-    while (chunk.size > 0) {
-        for (int32_t i = 0; i < chunk.size; ++i) {
-            if (findSortedKey(prev, prevCount, chunk.keys[i]) >= 0) {
-                ++stayCount;
+        for (int32_t i = 0; i < world.contactCount; ++i) {
+            const Contact& contact = world.contacts[i];
+            const int32_t storageA = shapeStorageKey(contact.a, contact.shapeA);
+            const int32_t storageB = shapeStorageKey(contact.b, contact.shapeB);
+            const uint64_t key = contactPairKey(storageA, storageB);
+
+            uint32_t slot = eventHash64(key) & kMask;
+            bool exists = false;
+            while (scratch.buckets[slot] >= 0) {
+                if (scratch.keys[scratch.buckets[slot]] == key) {
+                    exists = true;
+                    break;
+                }
+                slot = (slot + 1) & kMask;
             }
+            if (exists) {
+                continue;
+            }
+            if (nextCount >= state.capacity || nextCount >= kEventCapacity) {
+                return -1;
+            }
+
+            const bool swapped = storageB < storageA;
+            const int32_t lowStorage = swapped ? storageB : storageA;
+            const int32_t highStorage = swapped ? storageA : storageB;
+            const int32_t lowBody = shapeStorageBody(lowStorage);
+            const int32_t lowSlot = shapeStorageSlot(lowStorage);
+            const int32_t highBody = shapeStorageBody(highStorage);
+            const int32_t highSlot = shapeStorageSlot(highStorage);
+            const bool sensorLow = world.bodies[lowBody].shapes[lowSlot].sensor != 0;
+            const bool sensorHigh = world.bodies[highBody].shapes[highSlot].sensor != 0;
+            const int32_t sensorBits = (sensorLow ? 1 : 0) | (sensorHigh ? 2 : 0);
+            const bool normalSwap = swapped != (sensorBits == 2);
+            const float sign = normalSwap ? -1.0f : 1.0f;
+
+            scratch.keys[nextCount] = key;
+            EventItemData& item = scratch.data[nextCount];
+            item.sensorBits = sensorBits;
+            item.nx = contact.normal.x * sign;
+            item.ny = contact.normal.y * sign;
+            item.nz = contact.normal.z * sign;
+            item.pen = contact.pen;
+            scratch.buckets[slot] = static_cast<int16_t>(nextCount);
+            ++nextCount;
         }
-        currentCount += chunk.size;
-        hasLower = true;
-        lower = chunk.keys[chunk.size - 1];
-        buildNextChunk(world, hasLower, lower, chunk);
     }
 
-    const int32_t endCount = prevCount - stayCount;
-    const int32_t totalEvents = currentCount + endCount;
-    if (currentCount > state.capacity || totalEvents > capacity) {
+    sortEvents(scratch.keys, scratch.data, nextCount);
+
+    const uint64_t* previous = state.keys;
+    const uint8_t* previousSensors = state.sensors;
+    const int32_t previousCount = state.count;
+
+    int32_t stayCount = 0;
+    {
+        int32_t previousIndex = 0;
+        int32_t nextIndex = 0;
+        while (previousIndex < previousCount && nextIndex < nextCount) {
+            if (previous[previousIndex] == scratch.keys[nextIndex]) {
+                ++stayCount;
+                ++previousIndex;
+                ++nextIndex;
+            } else if (previous[previousIndex] < scratch.keys[nextIndex]) {
+                ++previousIndex;
+            } else {
+                ++nextIndex;
+            }
+        }
+    }
+
+    const int32_t endCount = previousCount - stayCount;
+    if (nextCount + endCount > capacity) {
         return -1;
     }
 
     int32_t written = 0;
-
-    hasLower = false;
-    lower = 0;
-    buildNextChunk(world, hasLower, lower, chunk);
-    while (chunk.size > 0) {
-        for (int32_t i = 0; i < chunk.size; ++i) {
-            if (findSortedKey(prev, prevCount, chunk.keys[i]) < 0) {
-                writePairEvent(world, events, written, eventKind(kContactEventBegin, chunk.data[i].sensorBits), chunk.keys[i], &chunk.data[i], chunk.data[i].sensorBits);
-                ++written;
-            }
+    for (int32_t i = 0; i < nextCount; ++i) {
+        if (findSortedKey(previous, previousCount, scratch.keys[i]) < 0) {
+            writePairEvent(
+                world, events, written++,
+                eventKind(kContactEventBegin, scratch.data[i].sensorBits),
+                scratch.keys[i], &scratch.data[i], scratch.data[i].sensorBits);
         }
-        hasLower = true;
-        lower = chunk.keys[chunk.size - 1];
-        buildNextChunk(world, hasLower, lower, chunk);
     }
-
-    hasLower = false;
-    lower = 0;
-    buildNextChunk(world, hasLower, lower, chunk);
-    while (chunk.size > 0) {
-        for (int32_t i = 0; i < chunk.size; ++i) {
-            if (findSortedKey(prev, prevCount, chunk.keys[i]) >= 0) {
-                writePairEvent(world, events, written, eventKind(kContactEventStay, chunk.data[i].sensorBits), chunk.keys[i], &chunk.data[i], chunk.data[i].sensorBits);
-                ++written;
-            }
+    for (int32_t i = 0; i < nextCount; ++i) {
+        if (findSortedKey(previous, previousCount, scratch.keys[i]) >= 0) {
+            writePairEvent(
+                world, events, written++,
+                eventKind(kContactEventStay, scratch.data[i].sensorBits),
+                scratch.keys[i], &scratch.data[i], scratch.data[i].sensorBits);
         }
-        hasLower = true;
-        lower = chunk.keys[chunk.size - 1];
-        buildNextChunk(world, hasLower, lower, chunk);
     }
-
-    hasLower = false;
-    lower = 0;
-    int32_t prevIndex = 0;
-    buildNextChunk(world, hasLower, lower, chunk);
-    while (chunk.size > 0) {
-        const uint64_t chunkMax = chunk.keys[chunk.size - 1];
-        while (prevIndex < prevCount && prev[prevIndex] <= chunkMax) {
-            if (findSortedKey(chunk.keys, chunk.size, prev[prevIndex]) < 0) {
-                writePairEvent(world, events, written, eventKind(kContactEventEnd, prevSensors[prevIndex]), prev[prevIndex], nullptr, prevSensors[prevIndex]);
-                ++written;
-            }
-            ++prevIndex;
+    for (int32_t i = 0; i < previousCount; ++i) {
+        if (findSortedKey(scratch.keys, nextCount, previous[i]) < 0) {
+            writePairEvent(
+                world, events, written++,
+                eventKind(kContactEventEnd, previousSensors[i]),
+                previous[i], nullptr, previousSensors[i]);
         }
-        hasLower = true;
-        lower = chunkMax;
-        buildNextChunk(world, hasLower, lower, chunk);
-    }
-    while (prevIndex < prevCount) {
-        writePairEvent(world, events, written, eventKind(kContactEventEnd, prevSensors[prevIndex]), prev[prevIndex], nullptr, prevSensors[prevIndex]);
-        ++written;
-        ++prevIndex;
     }
 
-    int32_t stateCount = 0;
-    hasLower = false;
-    lower = 0;
-    buildNextChunk(world, hasLower, lower, chunk);
-    while (chunk.size > 0) {
-        for (int32_t i = 0; i < chunk.size; ++i) {
-            state.keys[stateCount] = chunk.keys[i];
-            state.sensors[stateCount] = static_cast<uint8_t>(chunk.data[i].sensorBits);
-            ++stateCount;
-        }
-        hasLower = true;
-        lower = chunk.keys[chunk.size - 1];
-        buildNextChunk(world, hasLower, lower, chunk);
+    for (int32_t i = 0; i < nextCount; ++i) {
+        state.keys[i] = scratch.keys[i];
+        state.sensors[i] = static_cast<uint8_t>(scratch.data[i].sensorBits);
     }
-    state.count = stateCount;
-
+    state.count = nextCount;
     return written;
 }
 
-}
+} // namespace axrone::physics
