@@ -7,7 +7,7 @@ import type { SceneRenderFrameState } from '../rendering/render-frame-state';
 import type { SceneRenderItem } from '../rendering/render-item-collector';
 import type { SceneRenderPassResource } from '../rendering/render-pass-registry';
 import type { SceneResourceRuntime } from '../scene-resource-runtime';
-import type { SceneShaderDefinition } from '../types';
+import type { SceneMaterialPassDefinition, SceneShaderDefinition } from '../types';
 import type { SceneInstancedShaderResource } from '../rendering/scene-instanced-mesh-program';
 import {
     SceneInstancedMeshRuntime,
@@ -563,3 +563,95 @@ describe('SceneInstancedMeshRuntime', () => {
         expect(harness.gl.deleteBuffer).toHaveBeenCalledTimes(2);
     });
 });
+
+const createPassMaterial = (
+    id: string,
+    shaderId: string,
+    passes: readonly SceneMaterialPassDefinition[]
+): SceneMaterialResource =>
+    ({
+        id,
+        shaderId,
+        uniforms: new Map([['u_Color', [...MATERIAL_WHITE]]]),
+        textureBindings: new Map(),
+        surface: null,
+        passes,
+        keywords: new Map(),
+    }) as unknown as SceneMaterialResource;
+
+const createMaterialPassRenderPass = (
+    materialPassId: string | null
+): SceneRenderPassResource =>
+    ({
+        id: materialPassId ?? 'main',
+        rendererPassId: 'main',
+        materialPassId,
+    }) as unknown as SceneRenderPassResource;
+
+const createToonHarness = () => {
+    const harness = createHarness();
+    harness.materials.set(
+        'material:toon',
+        createPassMaterial('material:toon', 'shader:unlit', [
+            { id: 'main' },
+            { id: 'outline', shaderId: 'shader:outline' },
+            { id: 'same-shader', shaderId: 'shader:unlit' },
+        ])
+    );
+    return harness;
+};
+
+const toonItem = (): SceneRenderItem =>
+    createItem(createFakeRenderer({ materialId: 'material:toon' }), createFakeTransform(1));
+
+describe('SceneInstancedMeshRuntime pass-level shader override', () => {
+    it('declines instancing when the resolved pass overrides the shader', () => {
+        const harness = createToonHarness();
+
+        const plan = harness.build([toonItem()], {
+            renderPass: createMaterialPassRenderPass('outline'),
+        });
+
+        expect(plan.groupCount).toBe(0);
+        expect(plan.individualItems).toHaveLength(1);
+    });
+
+    it('instances the same renderer when the resolved pass declares no override', () => {
+        const harness = createToonHarness();
+
+        const plan = harness.build([toonItem()], {
+            renderPass: createMaterialPassRenderPass('main'),
+        });
+
+        expect(plan.groupCount).toBe(1);
+        expect(plan.individualItems).toHaveLength(0);
+        // The key format carries no override term, so pinned keys stay valid.
+        expect(plan.groups.map((group) => group.key)).toEqual([
+            'mesh:box\u0000material:toon\u00001',
+        ]);
+    });
+
+    it('instances a pass whose override equals the material shader', () => {
+        const harness = createToonHarness();
+
+        const plan = harness.build([toonItem()], {
+            renderPass: createMaterialPassRenderPass('same-shader'),
+        });
+
+        expect(plan.groupCount).toBe(1);
+        expect(plan.individualItems).toHaveLength(0);
+    });
+
+    it('declines instancing only for the overriding pass across frames', () => {
+        const harness = createToonHarness();
+        const outlinePass = createMaterialPassRenderPass('outline');
+        const mainPass = createMaterialPassRenderPass('main');
+
+        const outlinePlan = harness.build([toonItem()], { renderPass: outlinePass });
+        expect(outlinePlan.groupCount).toBe(0);
+
+        const mainPlan = harness.build([toonItem()], { renderPass: mainPass });
+        expect(mainPlan.groupCount).toBe(1);
+    });
+});
+
