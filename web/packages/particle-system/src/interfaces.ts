@@ -569,7 +569,7 @@ export interface IMainConfig {
     readonly deltaTimeScale: number;
     readonly maxParticles: number;
     readonly scalingMode: number;
-    readonly playOnAwake: boolean;
+    readonly playOnLoad: boolean;
     readonly startSize3D: boolean;
     readonly startRotation3D: boolean;
     readonly flipRotation: number;

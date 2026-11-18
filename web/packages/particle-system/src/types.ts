@@ -95,7 +95,7 @@ export enum ModuleFlags {
     SimulationSpace = 1 << 6,
     SimulationSpeed = 1 << 7,
     ScalingMode = 1 << 8,
-    PlayOnAwake = 1 << 9,
+    PlayOnLoad = 1 << 9,
     MaxParticles = 1 << 10,
     All = (1 << 11) - 1,
 }
