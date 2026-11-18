@@ -5,6 +5,8 @@ const project = {
 	description: 'Legacy follow-cube movement rebuilt for the new Axrone examples playground.',
 	entryFile: 'src/main.ts',
 	order: 3,
+	category: 'Controls',
+	tags: ['Input', 'Camera', 'Movement'],
 } as const;
 
 export default project;

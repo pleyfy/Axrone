@@ -5,6 +5,8 @@ const project = {
 	description: 'Three.js-style floating particle cloud rebuilt with Axrone point rendering and emitter utilities.',
 	entryFile: 'src/main.ts',
 	order: 2,
+	category: 'Effects',
+	tags: ['Particles', 'Rendering', 'Animation'],
 } as const;
 
 export default project;

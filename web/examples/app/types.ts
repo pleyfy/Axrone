@@ -15,6 +15,8 @@ export type PlaygroundProjectMetadata = {
 	readonly description: string;
 	readonly entryFile: string;
 	readonly order?: number;
+	readonly category?: string;
+	readonly tags?: readonly string[];
 };
 
 export type PlaygroundProjectRecord = PlaygroundProjectMetadata & {
