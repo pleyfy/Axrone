@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-10T05:41:26.370Z",
+  "generatedAt": "2026-11-18T08:12:30.734Z",
   "engineVersion": "0.0.1",
   "packages": [
     {
@@ -46,9 +46,11 @@
         "AnimationLayerBuilder",
         "AnimationLayerInput",
         "AnimationMask",
+        "AnimationMontage",
         "AnimationMotionEvaluationContext",
         "AnimationMotionInput",
         "AnimationMotionMatchDatabase",
+        "AnimationMotionMatchingMotionBuilder",
         "AnimationParameterStore",
         "AnimationPose",
         "AnimationResolutionError",
@@ -78,6 +80,8 @@
         "DiagnosticCode",
         "IK_CONVERGENCE_EPSILON",
         "MAX_BLEND_DEPTH",
+        "MOTION_MATCH_DEFAULT_CONTINUITY_BIAS",
+        "MOTION_MATCH_DEFAULT_RESELECT_INTERVAL",
         "MOTION_MATCH_FACING_MISSING_PENALTY",
         "MOTION_MATCH_TRAJECTORY_MISSING_PENALTY",
         "NormalizedTime",
@@ -89,6 +93,7 @@
         "assertNever",
         "blendFrame",
         "blendWeightedFrames",
+        "blendWorldPose",
         "brandString",
         "buildAnimationControllerDefinition",
         "buildAnimationIkLayerDefinition",
@@ -122,10 +127,12 @@
         "createAnimationDirectBlendGraph",
         "createAnimationIkLayer",
         "createAnimationLayer",
+        "createAnimationMotionMatchingMotion",
         "createAnimationState",
         "createAnimationStateMachine",
         "createAnimationTransition",
         "createLayerRuntime",
+        "createMotionMatchingSelection",
         "createVisitor",
         "crossFadeLayerState",
         "decodeAnimationClipStreamingChunkPayload",
@@ -145,17 +152,23 @@
         "resolveBlend2DWeightsWithContext",
         "resolveDirectChildWeight",
         "resolveMotionDuration",
+        "resolveMotionMatchingDuration",
+        "resolveMotionMatchingTime",
         "resolveMotionTime",
         "resolveParameterScalar",
         "resolveParameterScalarSafe",
+        "solveGrounding",
         "solvePlanarGrounding",
+        "syncLayerRuntime",
         "unblendWeight",
         "unnormalizedTime",
         "updateLayerRuntime",
+        "updateMotionMatchingSelection",
         "validateAnimationControllerDefinition",
         "validateAnimationLayerDefinition",
         "validateAnimationMotionDefinition",
-        "validateAnimationStateMachineDefinition"
+        "validateAnimationStateMachineDefinition",
+        "validateMotionMatchingDefinition"
       ],
       "typeExports": [
         "AdditiveFrameScratch",
@@ -195,6 +208,7 @@
         "AnimationCompiledDirectChild",
         "AnimationCompiledDirectMotion",
         "AnimationCompiledMotion",
+        "AnimationCompiledMotionMatchingMotion",
         "AnimationCompiledState",
         "AnimationCompiledStateMachine",
         "AnimationCompiledTransition",
@@ -213,6 +227,7 @@
         "AnimationCurveId",
         "AnimationFootContactDefinition",
         "AnimationFootContactState",
+        "AnimationGroundingAxes",
         "AnimationGroundingContactResult",
         "AnimationGroundingResult",
         "AnimationIkJobDefinition",
@@ -228,6 +243,8 @@
         "AnimationLayerInput",
         "AnimationLayerRuntime",
         "AnimationMatrix4Tuple",
+        "AnimationMontageOptions",
+        "AnimationMontageStatus",
         "AnimationMotionBuilder",
         "AnimationMotionClipDefinition",
         "AnimationMotionDefinition",
@@ -236,6 +253,8 @@
         "AnimationMotionInput",
         "AnimationMotionMatchQuery",
         "AnimationMotionMatchResult",
+        "AnimationMotionMatchingDefinition",
+        "AnimationMotionMatchingSelection",
         "AnimationParameterDefinition",
         "AnimationParameterId",
         "AnimationParameterKind",
@@ -263,6 +282,7 @@
         "AnimationTrackDefinition",
         "AnimationTrackPath",
         "AnimationTransitionDefinition",
+        "AnimationTransitionEasing",
         "AnimationTransitionInput",
         "AnimationTransitionOperator",
         "AnimationTransitionRuntime",
@@ -376,6 +396,8 @@
             "AnimationCompiledDirectChild",
             "AnimationCompiledDirectMotion",
             "AnimationCompiledMotion",
+            "AnimationCompiledMotionMatchingMotion",
+            "AnimationMotionMatchingSelection",
             "BlendMotionKind",
             "BlendMotionOfKind",
             "BlendMotionVisitor",
@@ -569,6 +591,7 @@
             "evaluateLayerRuntime",
             "extractLayerRootDelta",
             "forceLayerState",
+            "syncLayerRuntime",
             "updateLayerRuntime"
           ],
           "typeExports": [
@@ -650,6 +673,7 @@
             "AnimationMotionFeatureDefinition",
             "AnimationMotionMatchQuery",
             "AnimationMotionMatchResult",
+            "AnimationMotionMatchingDefinition",
             "AnimationParameterDefinition",
             "AnimationParameterKind",
             "AnimationParameterMap",
@@ -668,6 +692,7 @@
             "AnimationTrackDefinition",
             "AnimationTrackPath",
             "AnimationTransitionDefinition",
+            "AnimationTransitionEasing",
             "AnimationTransitionOperator",
             "AnimationVector2Tuple",
             "AnimationVector3Tuple"
@@ -1320,6 +1345,67 @@
         "ShaderTechniqueReflection",
         "ShaderUniformReflection",
         "ShaderVariant"
+      ],
+      "hasDefaultExport": false,
+      "subpaths": []
+    },
+    {
+      "name": "@axrone/asset-tilemap",
+      "version": "0.1.0",
+      "description": "Tilemap asset schemas, Tiled TMX/TSX importer, native JSON codecs and chunk asset paging.",
+      "exports": [
+        "AssetChunkPager",
+        "TILEMAP_ASSET_FORMAT_VERSION",
+        "TILESET_FORMAT_VERSION",
+        "TilemapAssetErrorCode",
+        "TilemapAssetFault",
+        "attribute",
+        "booleanProperty",
+        "childElements",
+        "chunkAssetCodec",
+        "createAssetTilemapCodecs",
+        "createAssetTilemapImportPipeline",
+        "createNativeTilemapImporter",
+        "createTiledTilemapImporter",
+        "createTilemapAssetDefinition",
+        "createTilesetDefinition",
+        "decodeBase64",
+        "firstChild",
+        "importTiledMap",
+        "integerAttribute",
+        "isTilemapAssetError",
+        "isTilemapAssetFault",
+        "nativeTilemapJsonCodec",
+        "nativeTilesetJsonCodec",
+        "parseTsxElement",
+        "parseTsxTileset",
+        "parseXml",
+        "requiredAttribute",
+        "serializeTilemapAssetDefinition",
+        "serializeTilesetDefinition",
+        "tilemapAssetError",
+        "tilemapAssetJsonCodec",
+        "tilemapChunkAssetKey",
+        "tilesetJsonCodec"
+      ],
+      "typeExports": [
+        "AssetChunkPagerOptions",
+        "AssetTilemapImportPipelineOptions",
+        "AssetTilemapImportResult",
+        "AssetTilemapKind",
+        "AssetTilemapSchema",
+        "TiledCollisionHint",
+        "TiledImportOptions",
+        "TiledImportResult",
+        "TiledImportedChunk",
+        "TiledTilemapImporterOptions",
+        "TiledTilesetEntry",
+        "TilemapAssetDefinition",
+        "TilemapAssetError",
+        "TilemapAssetErrorOptions",
+        "TilemapChunkAssetReference",
+        "TilesetDefinition",
+        "XmlElement"
       ],
       "hasDefaultExport": false,
       "subpaths": []
@@ -5788,7 +5874,6 @@
       "version": "0.1.0",
       "description": "",
       "exports": [
-        "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
         "SCENE_2D_RUNTIME_PROFILE_ID",
         "SceneRuntimeProfile",
         "SceneRuntimeProfileContext",
@@ -5798,13 +5883,6 @@
       "typeExports": [],
       "hasDefaultExport": false,
       "subpaths": [
-        {
-          "path": "@axrone/runtime-profile-2d/capabilities",
-          "exports": [
-            "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES"
-          ],
-          "typeExports": []
-        },
         {
           "path": "@axrone/runtime-profile-2d/profile",
           "exports": [
@@ -9200,6 +9278,395 @@
       ]
     },
     {
+      "name": "@axrone/tilemap",
+      "version": "0.1.0",
+      "description": "Chunked tilemap data model: packed tile words, binary chunk codecs, residency-aware chunk storage, projection-aware queries, pathfinding and autotiling.",
+      "exports": [
+        "BLOB47_CANONICAL_MASKS",
+        "CHUNK_CODEC_HEADER_BYTES",
+        "CHUNK_CODEC_MAGIC",
+        "CHUNK_CODEC_PAIR_BYTES",
+        "CHUNK_CODEC_VERSION",
+        "CHUNK_SHIFT_MAX",
+        "CHUNK_SHIFT_MIN",
+        "COORDINATE_LIMITS",
+        "ChunkLease",
+        "ChunkSlotTable",
+        "ChunkStore",
+        "DEFAULT_MAX_EXPANDED_NODES",
+        "DEFAULT_PROJECTION",
+        "KEY_BITS",
+        "KEY_MASK",
+        "KEY_MAX",
+        "KEY_MIN",
+        "MAX_CHUNK_WORDS",
+        "MAX_LAYER_COUNT",
+        "MAX_LAYER_INDEX",
+        "MemoryChunkPager",
+        "NOOP_TILEMAP_METRICS",
+        "OperationTracker",
+        "ProjectionKind",
+        "ReadOnlyChunkPager",
+        "SWEEP_BACKOFF",
+        "TILEMAP_FORMAT_VERSION",
+        "TILEMAP_PACKAGE_NAME",
+        "TILE_COLLISION_BITS",
+        "TILE_COLLISION_MASK",
+        "TILE_COLLISION_MAX",
+        "TILE_COLLISION_SHIFT",
+        "TILE_ID_BITS",
+        "TILE_ID_MASK",
+        "TILE_ID_MAX",
+        "TILE_ID_SHIFT",
+        "TILE_MATERIAL_BITS",
+        "TILE_MATERIAL_MASK",
+        "TILE_MATERIAL_MAX",
+        "TILE_MATERIAL_SHIFT",
+        "TILE_TRANSFORM_ALL_FLAGS",
+        "TILE_TRANSFORM_BITS",
+        "TILE_TRANSFORM_MASK",
+        "TILE_TRANSFORM_MAX",
+        "TILE_TRANSFORM_SHIFT",
+        "TILE_WORD_BITS",
+        "TILE_WORD_EMPTY",
+        "TILE_WORD_MAX",
+        "TILE_WORD_RESERVED_BIT",
+        "TILE_WORD_RESERVED_MASK",
+        "TileChangeWriter",
+        "TileCodec",
+        "TileTransform",
+        "TilemapBuilder",
+        "TilemapEngine",
+        "TilemapErrorCode",
+        "TilemapFault",
+        "UNBOUNDED_CHUNK_WORDS",
+        "VALID_CHUNK_SHIFTS",
+        "ViewportTileBuffer",
+        "applyAutotileRect",
+        "asChunkGeneration",
+        "asChunkKey",
+        "asChunkX",
+        "asChunkY",
+        "asCollisionMask",
+        "asGridKey",
+        "asGridX",
+        "asGridY",
+        "asLayerIndex",
+        "asLocalX",
+        "asLocalY",
+        "asMaterialId",
+        "asPackedTileWord",
+        "asTileId",
+        "asTransformFlags",
+        "asWorldX",
+        "asWorldY",
+        "assertNever",
+        "canonicalizeBlobMask",
+        "chunkAreaForShift",
+        "chunkKeyFromGrid",
+        "chunkSizeForShift",
+        "chunkWordCount",
+        "clampGridRect",
+        "computeBlob47Index",
+        "crc32Of",
+        "createChunkLease",
+        "createLayerSpec",
+        "createLayerSpecs",
+        "createProfilerTilemapMetricsSink",
+        "createProjectionSpec",
+        "createRaycastHit",
+        "createSweepHit",
+        "createTileChangeSubject",
+        "createTileDefinitionTable",
+        "decodeChunkSnapshot",
+        "decodeChunkSnapshotInto",
+        "describeTilemapError",
+        "encodeChunkSnapshot",
+        "encodeChunkSnapshotInto",
+        "encodedChunkByteLength",
+        "extractViewportInstances",
+        "findLayerIndex",
+        "findPath",
+        "floorTile",
+        "gridKeyFromChunkLocal",
+        "gridToChunkCoordinate",
+        "gridToWorld",
+        "isChunkCoordinateInRange",
+        "isCollisionMask",
+        "isGridCoordinateInRange",
+        "isMaterialId",
+        "isPackedTileWordValue",
+        "isSolidTileWord",
+        "isSpatialKey",
+        "isStaggeredProjection",
+        "isTileId",
+        "isTileTransform",
+        "isTilemapError",
+        "isTilemapFault",
+        "isValidChunkShift",
+        "localTileIndex",
+        "mix32",
+        "mixKeys",
+        "packChunkKey",
+        "packGridKey",
+        "packSpatialKey",
+        "packTileWord",
+        "raycastTilemap",
+        "resolveLayerDefaultWords",
+        "staggerOffset",
+        "sweepTilemapAabb",
+        "tableIndexForHash",
+        "tileFaceNormal",
+        "tilemapError",
+        "unpackChunkX",
+        "unpackChunkY",
+        "unpackGridX",
+        "unpackGridY",
+        "unpackSpatialKeyX",
+        "unpackSpatialKeyY",
+        "unpackTileCollision",
+        "unpackTileId",
+        "unpackTileMaterial",
+        "unpackTileTransform",
+        "validateChunkSnapshot",
+        "viewportGridBounds",
+        "visitViewportTiles",
+        "worldToGrid",
+        "worldToTile"
+      ],
+      "typeExports": [
+        "AssertUniqueLayerNames",
+        "AutotileGroup",
+        "ChunkCoordinate",
+        "ChunkGeneration",
+        "ChunkKey",
+        "ChunkSlotTableOptions",
+        "ChunkSnapshot",
+        "ChunkStoreOptions",
+        "ChunkUnpin",
+        "ChunkX",
+        "ChunkY",
+        "EvictMode",
+        "GridKey",
+        "GridPoint",
+        "GridRect",
+        "GridX",
+        "GridY",
+        "IChunkLease",
+        "IChunkPager",
+        "LayerIndex",
+        "LayerName",
+        "LayerNames",
+        "LayerReference",
+        "LayerSpec",
+        "LocalX",
+        "LocalY",
+        "PackedTileWord",
+        "PathBufferTooSmall",
+        "PathFound",
+        "PathLimit",
+        "PathNoPath",
+        "PathOptions",
+        "PathResult",
+        "ProfilerTilemapMetricsSink",
+        "ProjectionSpec",
+        "RaycastOptions",
+        "Residency",
+        "SnapshotExpectation",
+        "StaggerAxis",
+        "StaggerIndex",
+        "SweepOptions",
+        "TileAabb",
+        "TileAnimationFrame",
+        "TileChangeBatch",
+        "TileChangeSubject",
+        "TileDefinition",
+        "TileDefinitionTable",
+        "TileId",
+        "TileRaycastHit",
+        "TileRead",
+        "TileSolidPredicate",
+        "TileSweepHit",
+        "TileTransformFlags",
+        "TilemapEngineOptions",
+        "TilemapEngineStats",
+        "TilemapError",
+        "TilemapErrorOptions",
+        "TilemapGaugeName",
+        "TilemapMetricsCounters",
+        "TilemapMetricsGauges",
+        "TilemapMetricsSink",
+        "TilemapProfilerSinkOptions",
+        "TilemapStoreStats",
+        "ValidChunkShift",
+        "ViewportTileVisitor",
+        "WorldPoint",
+        "WorldRect",
+        "WorldX",
+        "WorldY"
+      ],
+      "hasDefaultExport": false,
+      "subpaths": [
+        {
+          "path": "@axrone/tilemap/codec",
+          "exports": [
+            "CHUNK_CODEC_HEADER_BYTES",
+            "CHUNK_CODEC_MAGIC",
+            "CHUNK_CODEC_PAIR_BYTES",
+            "CHUNK_CODEC_VERSION",
+            "TileCodec",
+            "chunkKeyFromGrid",
+            "crc32Of",
+            "decodeChunkSnapshot",
+            "decodeChunkSnapshotInto",
+            "encodeChunkSnapshot",
+            "encodeChunkSnapshotInto",
+            "encodedChunkByteLength",
+            "gridKeyFromChunkLocal",
+            "gridToChunkCoordinate",
+            "isSpatialKey",
+            "localTileIndex",
+            "mix32",
+            "mixKeys",
+            "packChunkKey",
+            "packGridKey",
+            "packSpatialKey",
+            "packTileWord",
+            "tableIndexForHash",
+            "unpackChunkX",
+            "unpackChunkY",
+            "unpackGridX",
+            "unpackGridY",
+            "unpackSpatialKeyX",
+            "unpackSpatialKeyY",
+            "unpackTileCollision",
+            "unpackTileId",
+            "unpackTileMaterial",
+            "unpackTileTransform",
+            "validateChunkSnapshot"
+          ],
+          "typeExports": [
+            "ChunkCoordinate",
+            "SnapshotExpectation"
+          ]
+        },
+        {
+          "path": "@axrone/tilemap/errors",
+          "exports": [
+            "TilemapErrorCode",
+            "TilemapFault",
+            "assertNever",
+            "describeTilemapError",
+            "isTilemapError",
+            "isTilemapFault",
+            "tilemapError"
+          ],
+          "typeExports": [
+            "TilemapError",
+            "TilemapErrorOptions"
+          ]
+        },
+        {
+          "path": "@axrone/tilemap/grid",
+          "exports": [
+            "ChunkLease",
+            "ChunkSlotTable",
+            "ChunkStore",
+            "MemoryChunkPager",
+            "ReadOnlyChunkPager",
+            "createChunkLease"
+          ],
+          "typeExports": [
+            "ChunkSlotTableOptions",
+            "ChunkStoreOptions",
+            "ChunkUnpin",
+            "EvictMode",
+            "IChunkLease",
+            "IChunkPager"
+          ]
+        },
+        {
+          "path": "@axrone/tilemap/observer",
+          "exports": [
+            "TileChangeWriter",
+            "createTileChangeSubject"
+          ],
+          "typeExports": [
+            "TileChangeBatch",
+            "TileChangeSubject"
+          ]
+        },
+        {
+          "path": "@axrone/tilemap/path",
+          "exports": [
+            "DEFAULT_MAX_EXPANDED_NODES",
+            "findPath"
+          ],
+          "typeExports": [
+            "PathBufferTooSmall",
+            "PathFound",
+            "PathLimit",
+            "PathNoPath",
+            "PathOptions",
+            "PathResult"
+          ]
+        },
+        {
+          "path": "@axrone/tilemap/profiler",
+          "exports": [
+            "createProfilerTilemapMetricsSink"
+          ],
+          "typeExports": [
+            "ProfilerTilemapMetricsSink",
+            "TilemapMetricsCounters",
+            "TilemapMetricsGauges",
+            "TilemapProfilerSinkOptions"
+          ]
+        },
+        {
+          "path": "@axrone/tilemap/query",
+          "exports": [
+            "BLOB47_CANONICAL_MASKS",
+            "SWEEP_BACKOFF",
+            "ViewportTileBuffer",
+            "applyAutotileRect",
+            "canonicalizeBlobMask",
+            "clampGridRect",
+            "computeBlob47Index",
+            "createRaycastHit",
+            "createSweepHit",
+            "extractViewportInstances",
+            "floorTile",
+            "gridToWorld",
+            "isSolidTileWord",
+            "isStaggeredProjection",
+            "raycastTilemap",
+            "staggerOffset",
+            "sweepTilemapAabb",
+            "tileFaceNormal",
+            "viewportGridBounds",
+            "visitViewportTiles",
+            "worldToGrid",
+            "worldToTile"
+          ],
+          "typeExports": [
+            "AutotileGroup",
+            "GridPoint",
+            "GridRect",
+            "RaycastOptions",
+            "SweepOptions",
+            "TileAabb",
+            "TileRaycastHit",
+            "TileSolidPredicate",
+            "TileSweepHit",
+            "ViewportTileVisitor",
+            "WorldPoint",
+            "WorldRect"
+          ]
+        }
+      ]
+    },
+    {
       "name": "@axrone/tween",
       "version": "0.1.0",
       "description": "",
@@ -10970,6 +11437,18 @@
       "package": "@axrone/scene-runtime"
     },
     {
+      "kind": "TilemapAgent",
+      "package": "@axrone/scene-runtime"
+    },
+    {
+      "kind": "TilemapCollider2D",
+      "package": "@axrone/scene-runtime"
+    },
+    {
+      "kind": "TilemapRenderer",
+      "package": "@axrone/scene-runtime"
+    },
+    {
       "kind": "TrailRenderer",
       "package": "@axrone/scene-runtime"
     },
@@ -11468,6 +11947,11 @@
       "kind": "unknown"
     },
     {
+      "name": "AnimationCompiledMotionMatchingMotion",
+      "package": "@axrone/animation",
+      "kind": "unknown"
+    },
+    {
       "name": "AnimationCompiledState",
       "package": "@axrone/animation",
       "kind": "unknown"
@@ -11608,6 +12092,11 @@
       "kind": "interface"
     },
     {
+      "name": "AnimationGroundingAxes",
+      "package": "@axrone/animation",
+      "kind": "type"
+    },
+    {
       "name": "AnimationGroundingContactResult",
       "package": "@axrone/animation",
       "kind": "unknown"
@@ -11708,6 +12197,21 @@
       "kind": "unknown"
     },
     {
+      "name": "AnimationMontage",
+      "package": "@axrone/animation",
+      "kind": "class"
+    },
+    {
+      "name": "AnimationMontageOptions",
+      "package": "@axrone/animation",
+      "kind": "interface"
+    },
+    {
+      "name": "AnimationMontageStatus",
+      "package": "@axrone/animation",
+      "kind": "type"
+    },
+    {
       "name": "AnimationMotionBuilder",
       "package": "@axrone/animation",
       "kind": "interface"
@@ -11741,6 +12245,21 @@
       "name": "AnimationMotionMatchDatabase",
       "package": "@axrone/animation",
       "kind": "class"
+    },
+    {
+      "name": "AnimationMotionMatchingDefinition",
+      "package": "@axrone/animation",
+      "kind": "unknown"
+    },
+    {
+      "name": "AnimationMotionMatchingMotionBuilder",
+      "package": "@axrone/animation",
+      "kind": "class"
+    },
+    {
+      "name": "AnimationMotionMatchingSelection",
+      "package": "@axrone/animation",
+      "kind": "unknown"
     },
     {
       "name": "AnimationMotionMatchQuery",
@@ -12063,6 +12582,11 @@
       "kind": "unknown"
     },
     {
+      "name": "AnimationTransitionEasing",
+      "package": "@axrone/animation",
+      "kind": "unknown"
+    },
+    {
       "name": "AnimationTransitionInput",
       "package": "@axrone/animation",
       "kind": "unknown"
@@ -12185,6 +12709,11 @@
     {
       "name": "applyAnimationClipStreamingChunkDefinition",
       "package": "@axrone/animation",
+      "kind": "unknown"
+    },
+    {
+      "name": "applyAutotileRect",
+      "package": "@axrone/tilemap",
       "kind": "unknown"
     },
     {
@@ -12478,6 +13007,31 @@
       "kind": "unknown"
     },
     {
+      "name": "asChunkGeneration",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asChunkKey",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asChunkX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asChunkY",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asCollisionMask",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "asDigest128",
       "package": "@axrone/hash",
       "kind": "function"
@@ -12491,6 +13045,21 @@
       "name": "asDigest64",
       "package": "@axrone/hash",
       "kind": "function"
+    },
+    {
+      "name": "asGridKey",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asGridX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asGridY",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "asHash128",
@@ -12538,9 +13107,34 @@
       "kind": "const"
     },
     {
+      "name": "asLayerIndex",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asLocalX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asLocalY",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asMaterialId",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "asNormalizedTime",
       "package": "@axrone/animation",
       "kind": "unknown"
+    },
+    {
+      "name": "asPackedTileWord",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "asRender2DMaterialReference",
@@ -12575,6 +13169,11 @@
     {
       "name": "assertNever",
       "package": "@axrone/animation",
+      "kind": "unknown"
+    },
+    {
+      "name": "assertNever",
+      "package": "@axrone/tilemap",
       "kind": "unknown"
     },
     {
@@ -12621,6 +13220,11 @@
       "name": "assertTimerId",
       "package": "@axrone/profiler",
       "kind": "function"
+    },
+    {
+      "name": "AssertUniqueLayerNames",
+      "package": "@axrone/tilemap",
+      "kind": "type"
     },
     {
       "name": "ASSET_2D_CAPABILITY_ID",
@@ -12871,6 +13475,16 @@
       "name": "AssetChangeEvent",
       "package": "@axrone/scene-2d",
       "kind": "unknown"
+    },
+    {
+      "name": "AssetChunkPager",
+      "package": "@axrone/asset-tilemap",
+      "kind": "class"
+    },
+    {
+      "name": "AssetChunkPagerOptions",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
     },
     {
       "name": "AssetCodec",
@@ -14478,6 +15092,26 @@
       "kind": "unknown"
     },
     {
+      "name": "AssetTilemapImportPipelineOptions",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "AssetTilemapImportResult",
+      "package": "@axrone/asset-tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "AssetTilemapKind",
+      "package": "@axrone/asset-tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "AssetTilemapSchema",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
       "name": "AssetUri",
       "package": "@axrone/asset-2d",
       "kind": "unknown"
@@ -14556,6 +15190,26 @@
       "name": "AssetWriteInput",
       "package": "@axrone/scene-2d",
       "kind": "unknown"
+    },
+    {
+      "name": "asTileId",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asTransformFlags",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asWorldX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "asWorldY",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "AsyncAll",
@@ -14641,6 +15295,11 @@
       "name": "attr",
       "package": "@axrone/render-webgl2",
       "kind": "unknown"
+    },
+    {
+      "name": "attribute",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
     },
     {
       "name": "Attribute",
@@ -15078,6 +15737,11 @@
       "kind": "type"
     },
     {
+      "name": "AutotileGroup",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "avalanche32",
       "package": "@axrone/hash",
       "kind": "const"
@@ -15403,6 +16067,16 @@
       "kind": "unknown"
     },
     {
+      "name": "blendWorldPose",
+      "package": "@axrone/animation",
+      "kind": "const"
+    },
+    {
+      "name": "BLOB47_CANONICAL_MASKS",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "BloomSettings",
       "package": "@axrone/render-core",
       "kind": "unknown"
@@ -15481,6 +16155,11 @@
       "name": "BodyType",
       "package": "@axrone/physics-core",
       "kind": "unknown"
+    },
+    {
+      "name": "booleanProperty",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
     },
     {
       "name": "BorrowedShaderInstance",
@@ -16123,6 +16802,11 @@
       "kind": "unknown"
     },
     {
+      "name": "canonicalizeBlobMask",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "CanvasScaleResult",
       "package": "@axrone/ui",
       "kind": "unknown"
@@ -16263,8 +16947,33 @@
       "kind": "unknown"
     },
     {
+      "name": "childElements",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
       "name": "ChromaticAberrationSettings",
       "package": "@axrone/render-core",
+      "kind": "unknown"
+    },
+    {
+      "name": "CHUNK_CODEC_HEADER_BYTES",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "CHUNK_CODEC_MAGIC",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "CHUNK_CODEC_PAIR_BYTES",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "CHUNK_CODEC_VERSION",
+      "package": "@axrone/tilemap",
       "kind": "unknown"
     },
     {
@@ -16278,9 +16987,34 @@
       "kind": "const"
     },
     {
+      "name": "CHUNK_SHIFT_MAX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "CHUNK_SHIFT_MIN",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "CHUNK_SIZE",
       "package": "@axrone/memory",
       "kind": "const"
+    },
+    {
+      "name": "chunkAreaForShift",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "chunkAssetCodec",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "ChunkCoordinate",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "ChunkedStackIterator",
@@ -16288,9 +17022,29 @@
       "kind": "class"
     },
     {
+      "name": "ChunkGeneration",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
       "name": "ChunkId",
       "package": "@axrone/memory",
       "kind": "function"
+    },
+    {
+      "name": "ChunkKey",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "chunkKeyFromGrid",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "ChunkLease",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "ChunkPool",
@@ -16301,6 +17055,56 @@
       "name": "ChunkPoolOptions",
       "package": "@axrone/memory",
       "kind": "interface"
+    },
+    {
+      "name": "chunkSizeForShift",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "ChunkSlotTable",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "ChunkSlotTableOptions",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "ChunkSnapshot",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "ChunkStore",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "ChunkStoreOptions",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "ChunkUnpin",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "chunkWordCount",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "ChunkX",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "ChunkY",
+      "package": "@axrone/tilemap",
+      "kind": "type"
     },
     {
       "name": "CircleCollider2D",
@@ -16356,6 +17160,11 @@
       "name": "ClampedNumber",
       "package": "@axrone/numeric",
       "kind": "type"
+    },
+    {
+      "name": "clampGridRect",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "clampInt",
@@ -17228,6 +18037,11 @@
       "kind": "unknown"
     },
     {
+      "name": "computeBlob47Index",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "computeDeferredAsync",
       "package": "@axrone/utility",
       "kind": "function"
@@ -17498,6 +18312,11 @@
       "kind": "unknown"
     },
     {
+      "name": "COORDINATE_LIMITS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "CORE_PROFILE_ID",
       "package": "@axrone/profiler",
       "kind": "unknown"
@@ -17561,6 +18380,11 @@
       "name": "Crc32c",
       "package": "@axrone/hash",
       "kind": "class"
+    },
+    {
+      "name": "crc32Of",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "create",
@@ -17641,6 +18465,11 @@
       "name": "createAnimationLayer",
       "package": "@axrone/animation",
       "kind": "unknown"
+    },
+    {
+      "name": "createAnimationMotionMatchingMotion",
+      "package": "@axrone/animation",
+      "kind": "const"
     },
     {
       "name": "createAnimationState",
@@ -17735,6 +18564,16 @@
     {
       "name": "createAssetShaderImportPipeline",
       "package": "@axrone/asset-shader",
+      "kind": "const"
+    },
+    {
+      "name": "createAssetTilemapCodecs",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "createAssetTilemapImportPipeline",
+      "package": "@axrone/asset-tilemap",
       "kind": "const"
     },
     {
@@ -17851,6 +18690,11 @@
       "name": "createCapsule",
       "package": "@axrone/geometry",
       "kind": "const"
+    },
+    {
+      "name": "createChunkLease",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "createCircle",
@@ -18178,6 +19022,16 @@
       "kind": "unknown"
     },
     {
+      "name": "createLayerSpec",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "createLayerSpecs",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "createLazy",
       "package": "@axrone/utility",
       "kind": "function"
@@ -18303,6 +19157,11 @@
       "kind": "unknown"
     },
     {
+      "name": "createMotionMatchingSelection",
+      "package": "@axrone/animation",
+      "kind": "const"
+    },
+    {
       "name": "createMultiRaycaster3D",
       "package": "@axrone/physics",
       "kind": "unknown"
@@ -18316,6 +19175,11 @@
       "name": "createMultisampledRenderTarget",
       "package": "@axrone/render-webgl2",
       "kind": "unknown"
+    },
+    {
+      "name": "createNativeTilemapImporter",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
     },
     {
       "name": "createNoise",
@@ -18443,6 +19307,16 @@
       "kind": "function"
     },
     {
+      "name": "createProfilerTilemapMetricsSink",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "createProjectionSpec",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "createPropertyAccessor",
       "package": "@axrone/utility",
       "kind": "function"
@@ -18481,6 +19355,11 @@
       "name": "createRandom",
       "package": "@axrone/random",
       "kind": "const"
+    },
+    {
+      "name": "createRaycastHit",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "createRaycastSystem2D",
@@ -18943,6 +19822,11 @@
       "kind": "function"
     },
     {
+      "name": "createSweepHit",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "createSystemFontFaceAsset",
       "package": "@axrone/ui",
       "kind": "unknown"
@@ -18996,6 +19880,31 @@
       "name": "createTexturePackerSpriteAtlasImporter",
       "package": "@axrone/scene-2d",
       "kind": "unknown"
+    },
+    {
+      "name": "createTileChangeSubject",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "createTileDefinitionTable",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "createTiledTilemapImporter",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "createTilemapAssetDefinition",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "createTilesetDefinition",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
     },
     {
       "name": "createTorus",
@@ -19334,6 +20243,11 @@
     },
     {
       "name": "decodeBase64",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "decodeBase64",
       "package": "@axrone/hash",
       "kind": "function"
     },
@@ -19341,6 +20255,16 @@
       "name": "decodeBase64",
       "package": "@axrone/physics-3d-wasm",
       "kind": "function"
+    },
+    {
+      "name": "decodeChunkSnapshot",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "decodeChunkSnapshotInto",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "decodeHeightmapFromImageData",
@@ -19503,6 +20427,11 @@
       "kind": "unknown"
     },
     {
+      "name": "DEFAULT_MAX_EXPANDED_NODES",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "DEFAULT_OBSERVER_OPTIONS",
       "package": "@axrone/observer",
       "kind": "const"
@@ -19520,6 +20449,11 @@
     {
       "name": "DEFAULT_PRIORITY",
       "package": "@axrone/event",
+      "kind": "const"
+    },
+    {
+      "name": "DEFAULT_PROJECTION",
+      "package": "@axrone/tilemap",
       "kind": "const"
     },
     {
@@ -19958,6 +20892,11 @@
       "kind": "unknown"
     },
     {
+      "name": "describeTilemapError",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "deserializeLightingRig",
       "package": "@axrone/lighting",
       "kind": "unknown"
@@ -20373,6 +21312,21 @@
       "kind": "function"
     },
     {
+      "name": "encodeChunkSnapshot",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "encodeChunkSnapshotInto",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "encodedChunkByteLength",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "encodeSceneValue",
       "package": "@axrone/scene-3d",
       "kind": "unknown"
@@ -20693,6 +21647,11 @@
       "kind": "const"
     },
     {
+      "name": "EvictMode",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "excludeEvents",
       "package": "@axrone/event",
       "kind": "function"
@@ -20806,6 +21765,11 @@
       "name": "ExtractSingletonType",
       "package": "@axrone/utility",
       "kind": "type"
+    },
+    {
+      "name": "extractViewportInstances",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "factorial",
@@ -20958,6 +21922,16 @@
       "kind": "unknown"
     },
     {
+      "name": "findLayerIndex",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "findPath",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "findScenePrefabComponentIndex",
       "package": "@axrone/scene-prefab",
       "kind": "const"
@@ -20966,6 +21940,11 @@
       "name": "FiniteNumber",
       "package": "@axrone/numeric",
       "kind": "type"
+    },
+    {
+      "name": "firstChild",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
     },
     {
       "name": "FixedJoint2D",
@@ -21061,6 +22040,11 @@
       "name": "floatUtils",
       "package": "@axrone/utility",
       "kind": "const"
+    },
+    {
+      "name": "floorTile",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "fmix32",
@@ -23133,6 +24117,46 @@
       "kind": "const"
     },
     {
+      "name": "GridKey",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "gridKeyFromChunkLocal",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "GridPoint",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "GridRect",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "gridToChunkCoordinate",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "gridToWorld",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "GridX",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "GridY",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
       "name": "group",
       "package": "@axrone/observer",
       "kind": "function"
@@ -23875,6 +24899,16 @@
     {
       "name": "IChunkAllocator",
       "package": "@axrone/memory",
+      "kind": "interface"
+    },
+    {
+      "name": "IChunkLease",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "IChunkPager",
+      "package": "@axrone/tilemap",
       "kind": "interface"
     },
     {
@@ -24683,6 +25717,11 @@
       "kind": "interface"
     },
     {
+      "name": "importTiledMap",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
       "name": "Impulse",
       "package": "@axrone/physics",
       "kind": "unknown"
@@ -25366,6 +26405,11 @@
       "name": "instantiateWasm",
       "package": "@axrone/physics-3d-wasm",
       "kind": "function"
+    },
+    {
+      "name": "integerAttribute",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
     },
     {
       "name": "IntegerDistribution",
@@ -26353,6 +27397,11 @@
       "kind": "interface"
     },
     {
+      "name": "isChunkCoordinateInRange",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "isCircleShape",
       "package": "@axrone/shapes-2d",
       "kind": "unknown"
@@ -26361,6 +27410,11 @@
       "name": "isClockError",
       "package": "@axrone/profiler",
       "kind": "unknown"
+    },
+    {
+      "name": "isCollisionMask",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "isComparer",
@@ -26531,6 +27585,11 @@
       "name": "isGradientPaint",
       "package": "@axrone/shapes-2d",
       "kind": "unknown"
+    },
+    {
+      "name": "isGridCoordinateInRange",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "IShaderCompiler",
@@ -26798,6 +27857,11 @@
       "kind": "unknown"
     },
     {
+      "name": "isMaterialId",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "isMeshRendererSnapshot",
       "package": "@axrone/asset-gltf",
       "kind": "const"
@@ -26851,6 +27915,11 @@
       "name": "isOk",
       "package": "@axrone/utility",
       "kind": "function"
+    },
+    {
+      "name": "isPackedTileWordValue",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "ISpatialConfig",
@@ -27088,6 +28157,16 @@
       "kind": "unknown"
     },
     {
+      "name": "isSolidTileWord",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "isSpatialKey",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "isSpotLightDefinition",
       "package": "@axrone/lighting",
       "kind": "unknown"
@@ -27096,6 +28175,11 @@
       "name": "isSpotLightSnapshot",
       "package": "@axrone/asset-gltf",
       "kind": "const"
+    },
+    {
+      "name": "isStaggeredProjection",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "isStencilFormat",
@@ -27131,6 +28215,36 @@
       "name": "isTerrainSplatResolution",
       "package": "@axrone/terrain",
       "kind": "unknown"
+    },
+    {
+      "name": "isTileId",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "isTilemapAssetError",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "isTilemapAssetFault",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "isTilemapError",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "isTilemapFault",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "isTileTransform",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "isTooltipVisible",
@@ -27181,6 +28295,11 @@
       "name": "ISupportPoint2D",
       "package": "@axrone/physics-core",
       "kind": "interface"
+    },
+    {
+      "name": "isValidChunkShift",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "isValidNotificationType",
@@ -27708,6 +28827,26 @@
       "kind": "unknown"
     },
     {
+      "name": "KEY_BITS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "KEY_MASK",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "KEY_MAX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "KEY_MIN",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "KeyboardControlPath",
       "package": "@axrone/input",
       "kind": "type"
@@ -27753,6 +28892,11 @@
       "kind": "unknown"
     },
     {
+      "name": "LayerIndex",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
       "name": "LayerMask",
       "package": "@axrone/physics",
       "kind": "unknown"
@@ -27771,6 +28915,26 @@
       "name": "LayerMaskBuilder",
       "package": "@axrone/raycast",
       "kind": "class"
+    },
+    {
+      "name": "LayerName",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "LayerNames",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "LayerReference",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "LayerSpec",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
     },
     {
       "name": "layout",
@@ -28288,6 +29452,21 @@
       "kind": "interface"
     },
     {
+      "name": "localTileIndex",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "LocalX",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "LocalY",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
       "name": "LODGroup",
       "package": "@axrone/scene-3d",
       "kind": "unknown"
@@ -28543,6 +29722,21 @@
       "kind": "unknown"
     },
     {
+      "name": "MAX_CHUNK_WORDS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "MAX_LAYER_COUNT",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "MAX_LAYER_INDEX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "MAX_POOLED_CHUNKS",
       "package": "@axrone/memory",
       "kind": "const"
@@ -28591,6 +29785,11 @@
       "name": "memoizeAsync",
       "package": "@axrone/memory",
       "kind": "const"
+    },
+    {
+      "name": "MemoryChunkPager",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "MemoryError",
@@ -28818,6 +30017,16 @@
       "kind": "class"
     },
     {
+      "name": "mix32",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "mixKeys",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "MockGLOptions",
       "package": "@axrone/render-webgl2",
       "kind": "unknown"
@@ -28891,6 +30100,16 @@
       "name": "MonotonicClockOptions",
       "package": "@axrone/profiler",
       "kind": "unknown"
+    },
+    {
+      "name": "MOTION_MATCH_DEFAULT_CONTINUITY_BIAS",
+      "package": "@axrone/animation",
+      "kind": "const"
+    },
+    {
+      "name": "MOTION_MATCH_DEFAULT_RESELECT_INTERVAL",
+      "package": "@axrone/animation",
+      "kind": "const"
     },
     {
       "name": "MOTION_MATCH_FACING_MISSING_PENALTY",
@@ -29013,6 +30232,16 @@
       "kind": "class"
     },
     {
+      "name": "nativeTilemapJsonCodec",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "nativeTilesetJsonCodec",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
       "name": "NAVIGATION_CONTROLLER_TYPE",
       "package": "@axrone/ui",
       "kind": "unknown"
@@ -29106,6 +30335,11 @@
       "name": "NonEmptyReadonlyArray",
       "package": "@axrone/utility",
       "kind": "type"
+    },
+    {
+      "name": "NOOP_TILEMAP_METRICS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "NormalDistribution",
@@ -29498,6 +30732,11 @@
       "kind": "type"
     },
     {
+      "name": "OperationTracker",
+      "package": "@axrone/tilemap",
+      "kind": "class"
+    },
+    {
       "name": "optimizeAnimationClipDefinition",
       "package": "@axrone/animation",
       "kind": "const"
@@ -29578,8 +30817,33 @@
       "kind": "const"
     },
     {
+      "name": "packChunkKey",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "PackedRender2DColor",
       "package": "@axrone/render-2d",
+      "kind": "unknown"
+    },
+    {
+      "name": "PackedTileWord",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "packGridKey",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "packSpatialKey",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "packTileWord",
+      "package": "@axrone/tilemap",
       "kind": "unknown"
     },
     {
@@ -29730,6 +30994,21 @@
     {
       "name": "parseRichTextMarkup",
       "package": "@axrone/ui",
+      "kind": "const"
+    },
+    {
+      "name": "parseTsxElement",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "parseTsxTileset",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "parseXml",
+      "package": "@axrone/asset-tilemap",
       "kind": "const"
     },
     {
@@ -29970,6 +31249,36 @@
     {
       "name": "PathAgentPathStatus",
       "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "PathBufferTooSmall",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "PathFound",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "PathLimit",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "PathNoPath",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "PathOptions",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "PathResult",
+      "package": "@axrone/tilemap",
       "kind": "unknown"
     },
     {
@@ -30573,9 +31882,24 @@
       "kind": "class"
     },
     {
+      "name": "ProfilerTilemapMetricsSink",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "ProfileTimerTree",
       "package": "@axrone/profiler",
       "kind": "unknown"
+    },
+    {
+      "name": "ProjectionKind",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "ProjectionSpec",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
     },
     {
       "name": "prop",
@@ -31088,6 +32412,11 @@
       "kind": "unknown"
     },
     {
+      "name": "RaycastOptions",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "RaycastPredicate2D",
       "package": "@axrone/physics",
       "kind": "unknown"
@@ -31173,6 +32502,11 @@
       "kind": "const"
     },
     {
+      "name": "raycastTilemap",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "RayPrimitiveIntersector2D",
       "package": "@axrone/physics",
       "kind": "unknown"
@@ -31201,6 +32535,11 @@
       "name": "ReadOnlyBufferError",
       "package": "@axrone/memory",
       "kind": "class"
+    },
+    {
+      "name": "ReadOnlyChunkPager",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "ReadonlyCircularBuffer",
@@ -32518,6 +33857,11 @@
       "kind": "class"
     },
     {
+      "name": "requiredAttribute",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
       "name": "RequiredKeys",
       "package": "@axrone/utility",
       "kind": "type"
@@ -32556,6 +33900,11 @@
       "name": "resetGlobalRegistryAsync",
       "package": "@axrone/utility",
       "kind": "function"
+    },
+    {
+      "name": "Residency",
+      "package": "@axrone/tilemap",
+      "kind": "type"
     },
     {
       "name": "resolve",
@@ -32798,6 +34147,11 @@
       "kind": "const"
     },
     {
+      "name": "resolveLayerDefaultWords",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "resolveLength",
       "package": "@axrone/ui",
       "kind": "unknown"
@@ -32816,6 +34170,16 @@
       "name": "resolveMotionDuration",
       "package": "@axrone/animation",
       "kind": "unknown"
+    },
+    {
+      "name": "resolveMotionMatchingDuration",
+      "package": "@axrone/animation",
+      "kind": "const"
+    },
+    {
+      "name": "resolveMotionMatchingTime",
+      "package": "@axrone/animation",
+      "kind": "const"
     },
     {
       "name": "resolveMotionTime",
@@ -33311,11 +34675,6 @@
       "name": "RowMajorMatrixLike",
       "package": "@axrone/ui-webgl2",
       "kind": "interface"
-    },
-    {
-      "name": "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
-      "package": "@axrone/runtime-profile-2d",
-      "kind": "unknown"
     },
     {
       "name": "RUNTIME_PROFILE_3D_CAPABILITY_PACKAGES",
@@ -37373,6 +38732,16 @@
       "kind": "unknown"
     },
     {
+      "name": "serializeTilemapAssetDefinition",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "serializeTilesetDefinition",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
       "name": "serializeUIAsset",
       "package": "@axrone/ui",
       "kind": "function"
@@ -38088,6 +39457,11 @@
       "kind": "unknown"
     },
     {
+      "name": "SnapshotExpectation",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "SOA_EPSILON",
       "package": "@axrone/numeric",
       "kind": "const"
@@ -38171,6 +39545,11 @@
       "name": "SolidPaint",
       "package": "@axrone/shapes-2d",
       "kind": "unknown"
+    },
+    {
+      "name": "solveGrounding",
+      "package": "@axrone/animation",
+      "kind": "const"
     },
     {
       "name": "solvePlanarGrounding",
@@ -38763,6 +40142,21 @@
       "kind": "class"
     },
     {
+      "name": "StaggerAxis",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "StaggerIndex",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "staggerOffset",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "StateNode",
       "package": "@axrone/utility",
       "kind": "class"
@@ -38978,9 +40372,29 @@
       "kind": "interface"
     },
     {
+      "name": "SWEEP_BACKOFF",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "SweepOptions",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "sweepTilemapAabb",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "SyncHook",
       "package": "@axrone/utility",
       "kind": "type"
+    },
+    {
+      "name": "syncLayerRuntime",
+      "package": "@axrone/animation",
+      "kind": "unknown"
     },
     {
       "name": "SyncValidator",
@@ -39040,6 +40454,11 @@
     {
       "name": "TabControllerState",
       "package": "@axrone/ui",
+      "kind": "unknown"
+    },
+    {
+      "name": "tableIndexForHash",
+      "package": "@axrone/tilemap",
       "kind": "unknown"
     },
     {
@@ -39456,6 +40875,376 @@
       "name": "throwExtensionNotSupported",
       "package": "@axrone/scene-3d",
       "kind": "unknown"
+    },
+    {
+      "name": "TILE_COLLISION_BITS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_COLLISION_MASK",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_COLLISION_MAX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_COLLISION_SHIFT",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_ID_BITS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_ID_MASK",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_ID_MAX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_ID_SHIFT",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_MATERIAL_BITS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_MATERIAL_MASK",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_MATERIAL_MAX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_MATERIAL_SHIFT",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_TRANSFORM_ALL_FLAGS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_TRANSFORM_BITS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_TRANSFORM_MASK",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_TRANSFORM_MAX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_TRANSFORM_SHIFT",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_WORD_BITS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_WORD_EMPTY",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_WORD_MAX",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_WORD_RESERVED_BIT",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILE_WORD_RESERVED_MASK",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TileAabb",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TileAnimationFrame",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TileChangeBatch",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TileChangeSubject",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TileChangeWriter",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TileCodec",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TiledCollisionHint",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TileDefinition",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TileDefinitionTable",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TiledImportedChunk",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TiledImportOptions",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TiledImportResult",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TiledTilemapImporterOptions",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TiledTilesetEntry",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "tileFaceNormal",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TileId",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "TILEMAP_ASSET_FORMAT_VERSION",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILEMAP_FORMAT_VERSION",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TILEMAP_PACKAGE_NAME",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TilemapAssetDefinition",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "tilemapAssetError",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TilemapAssetError",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TilemapAssetErrorCode",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TilemapAssetErrorOptions",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TilemapAssetFault",
+      "package": "@axrone/asset-tilemap",
+      "kind": "class"
+    },
+    {
+      "name": "tilemapAssetJsonCodec",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TilemapBuilder",
+      "package": "@axrone/tilemap",
+      "kind": "class"
+    },
+    {
+      "name": "tilemapChunkAssetKey",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TilemapChunkAssetReference",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TilemapEngine",
+      "package": "@axrone/tilemap",
+      "kind": "class"
+    },
+    {
+      "name": "TilemapEngineOptions",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TilemapEngineStats",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "tilemapError",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TilemapError",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TilemapErrorCode",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TilemapErrorOptions",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TilemapFault",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TilemapGaugeName",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "TilemapMetricsCounters",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TilemapMetricsGauges",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TilemapMetricsSink",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TilemapProfilerSinkOptions",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TilemapStoreStats",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TileRaycastHit",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TileRead",
+      "package": "@axrone/tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "TILESET_FORMAT_VERSION",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TilesetDefinition",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
+    },
+    {
+      "name": "tilesetJsonCodec",
+      "package": "@axrone/asset-tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TileSolidPredicate",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TileSweepHit",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "TileTransform",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
+      "name": "TileTransformFlags",
+      "package": "@axrone/tilemap",
+      "kind": "type"
     },
     {
       "name": "TIME_CONVERSION",
@@ -40598,6 +42387,11 @@
       "kind": "const"
     },
     {
+      "name": "UNBOUNDED_CHUNK_WORDS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
+    },
+    {
       "name": "UnexpectedError",
       "package": "@axrone/utility",
       "kind": "class"
@@ -40673,9 +42467,59 @@
       "kind": "type"
     },
     {
+      "name": "unpackChunkX",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "unpackChunkY",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "unpackGridX",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "unpackGridY",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "unpackScenePrefabInstance",
       "package": "@axrone/scene-prefab",
       "kind": "const"
+    },
+    {
+      "name": "unpackSpatialKeyX",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "unpackSpatialKeyY",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "unpackTileCollision",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "unpackTileId",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "unpackTileMaterial",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "unpackTileTransform",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "unregisterCustomAlgorithm",
@@ -40758,9 +42602,19 @@
       "kind": "unknown"
     },
     {
+      "name": "updateMotionMatchingSelection",
+      "package": "@axrone/animation",
+      "kind": "const"
+    },
+    {
       "name": "UVRect",
       "package": "@axrone/ui",
       "kind": "interface"
+    },
+    {
+      "name": "VALID_CHUNK_SHIFTS",
+      "package": "@axrone/tilemap",
+      "kind": "const"
     },
     {
       "name": "validateAllScripts",
@@ -40798,8 +42652,18 @@
       "kind": "type"
     },
     {
+      "name": "validateChunkSnapshot",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "validateInteger",
       "package": "@axrone/random",
+      "kind": "const"
+    },
+    {
+      "name": "validateMotionMatchingDefinition",
+      "package": "@axrone/animation",
       "kind": "const"
     },
     {
@@ -40886,6 +42750,11 @@
       "name": "ValidBlendDepth",
       "package": "@axrone/animation",
       "kind": "unknown"
+    },
+    {
+      "name": "ValidChunkShift",
+      "package": "@axrone/tilemap",
+      "kind": "type"
     },
     {
       "name": "ValueCallback",
@@ -41058,9 +42927,24 @@
       "kind": "type"
     },
     {
+      "name": "viewportGridBounds",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "ViewportString",
       "package": "@axrone/ui",
       "kind": "type"
+    },
+    {
+      "name": "ViewportTileBuffer",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "ViewportTileVisitor",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "VignetteSettings",
@@ -41081,6 +42965,11 @@
       "name": "visitComponent",
       "package": "@axrone/asset-gltf",
       "kind": "const"
+    },
+    {
+      "name": "visitViewportTiles",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
     },
     {
       "name": "VoidCallback",
@@ -41603,6 +43492,11 @@
       "kind": "interface"
     },
     {
+      "name": "WorldPoint",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "WorldQueryArchetype",
       "package": "@axrone/ecs-runtime",
       "kind": "interface"
@@ -41628,6 +43522,11 @@
       "kind": "interface"
     },
     {
+      "name": "WorldRect",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
       "name": "WorldSingletonRegistry",
       "package": "@axrone/ecs-runtime",
       "kind": "class"
@@ -41646,6 +43545,26 @@
       "name": "WorldStorageRuntime",
       "package": "@axrone/ecs-runtime",
       "kind": "class"
+    },
+    {
+      "name": "worldToGrid",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "worldToTile",
+      "package": "@axrone/tilemap",
+      "kind": "unknown"
+    },
+    {
+      "name": "WorldX",
+      "package": "@axrone/tilemap",
+      "kind": "type"
+    },
+    {
+      "name": "WorldY",
+      "package": "@axrone/tilemap",
+      "kind": "type"
     },
     {
       "name": "wrapGLContext",
@@ -41696,6 +43615,11 @@
       "name": "writeU64LE",
       "package": "@axrone/hash",
       "kind": "function"
+    },
+    {
+      "name": "XmlElement",
+      "package": "@axrone/asset-tilemap",
+      "kind": "interface"
     },
     {
       "name": "Xoroshiro128PlusPlus",
@@ -41935,13 +43859,13 @@
     {
       "name": "AnimationBlend2DGraphBuilder",
       "kind": "class",
-      "code": "declare class AnimationBlend2DGraphBuilder implements AnimationMotionBuilder { constructor(_parameterX: string, _parameterY: string); addChild(x: number, y: number, motion: AnimationMotionInput): this; build(): AnimationMotionDefinition; … }",
+      "code": "declare class AnimationBlend2DGraphBuilder implements AnimationMotionBuilder { constructor(_parameterX: string, _parameterY: string, _mode?: 'inverse-distance' | 'freeform'); addChild(x: number, y: number, motion: AnimationMotionInput): this; build(): AnimationMotionDefinition; … }",
       "package": "@axrone/animation"
     },
     {
       "name": "AnimationBlendGraph",
       "kind": "const",
-      "code": "declare const AnimationBlendGraph: Readonly<{ clip: (clipId: string, options?: { timeScale?: number; cycleOffset?: number; }) => AnimationClipMotionBuilder; blend1d: (parameter: string) => AnimationBlend1DGraphBuilder; blend2d: (parameterX: string, parameterY: string) => AnimationBlend2DGraphBuilde…",
+      "code": "declare const AnimationBlendGraph: Readonly<{ clip: (clipId: string, options?: { timeScale?: number; cycleOffset?: number; }) => AnimationClipMotionBuilder; blend1d: (parameter: string) => AnimationBlend1DGraphBuilder; blend2d: (parameterX: string, parameterY: string)",
       "package": "@axrone/animation"
     },
     {
@@ -42053,9 +43977,21 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "AnimationMontage",
+      "kind": "class",
+      "code": "declare class AnimationMontage { constructor(; layerId: string,; clipId: string,; durationSeconds: number, _fadeInSeconds: number, _fadeOutSeconds: number, _speed: number, _loop: boolean); get status(): AnimationMontageStatus; get normalizedTime(): number; get weight(): number; get removeRequested(…",
+      "package": "@axrone/animation"
+    },
+    {
       "name": "AnimationMotionMatchDatabase",
       "kind": "class",
-      "code": "declare class AnimationMotionMatchDatabase { constructor(clips: readonly (AnimationClip | AnimationClipDefinition)[]); get size(): number; query(query: AnimationMotionMatchQuery): readonly AnimationMotionMatchResult[]; … }",
+      "code": "declare class AnimationMotionMatchDatabase { constructor(clips: readonly (AnimationClip | AnimationClipDefinition)[]); get clipIds(): readonly string[]; get size(): number; searchBest(query: AnimationMotionMatchQuery): AnimationMotionMatchResult | null; query(query: AnimationMotionMatchQuery): read…",
+      "package": "@axrone/animation"
+    },
+    {
+      "name": "AnimationMotionMatchingMotionBuilder",
+      "kind": "class",
+      "code": "declare class AnimationMotionMatchingMotionBuilder implements AnimationMotionBuilder { constructor(_database: AnimationMotionMatchDatabase, _trajectoryXParameter: string, _trajectoryZParameter: string, _facingXParameter: string, _facingZParameter: string, _reselectIntervalSeconds?: number | undefin…",
       "package": "@axrone/animation"
     },
     {
@@ -42171,6 +44107,12 @@
       "kind": "const",
       "code": "declare const applyAnimationClipStreamingChunkDefinition: (base: AnimationClipDefinition, payload: AnimationClipStreamingChunkPayload, options?: AnimationClipStreamingChunkApplicationOptions) => AnimationClipDefinition;",
       "package": "@axrone/animation"
+    },
+    {
+      "name": "applyAutotileRect",
+      "kind": "const",
+      "code": "declare const applyAutotileRect: <L extends readonly LayerSpec[]>(engine: TilemapEngine<L>, layer: LayerReference<L>, rect: GridRect, group: AutotileGroup) => number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "applyDirectionalLightPatch",
@@ -42329,6 +44271,36 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "asChunkGeneration",
+      "kind": "const",
+      "code": "declare const asChunkGeneration: (value: number) => ChunkGeneration;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asChunkKey",
+      "kind": "const",
+      "code": "declare const asChunkKey: (value: number) => ChunkKey;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asChunkX",
+      "kind": "const",
+      "code": "declare const asChunkX: (value: number) => ChunkX;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asChunkY",
+      "kind": "const",
+      "code": "declare const asChunkY: (value: number) => ChunkY;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asCollisionMask",
+      "kind": "const",
+      "code": "declare const asCollisionMask: (value: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "asDigest128",
       "kind": "function",
       "code": "declare function asDigest128(value: bigint): Digest128;",
@@ -42345,6 +44317,24 @@
       "kind": "function",
       "code": "declare function asDigest64(value: bigint | number): Digest64;",
       "package": "@axrone/hash"
+    },
+    {
+      "name": "asGridKey",
+      "kind": "const",
+      "code": "declare const asGridKey: (value: number) => GridKey;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asGridX",
+      "kind": "const",
+      "code": "declare const asGridX: (value: number) => GridX;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asGridY",
+      "kind": "const",
+      "code": "declare const asGridY: (value: number) => GridY;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "asHash128",
@@ -42401,10 +44391,40 @@
       "package": "@axrone/input"
     },
     {
+      "name": "asLayerIndex",
+      "kind": "const",
+      "code": "declare const asLayerIndex: (value: number) => LayerIndex;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asLocalX",
+      "kind": "const",
+      "code": "declare const asLocalX: (value: number) => LocalX;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asLocalY",
+      "kind": "const",
+      "code": "declare const asLocalY: (value: number) => LocalY;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asMaterialId",
+      "kind": "const",
+      "code": "declare const asMaterialId: (value: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "asNormalizedTime",
       "kind": "const",
       "code": "declare const asNormalizedTime: (value: number) => NormalizedTime;",
       "package": "@axrone/animation"
+    },
+    {
+      "name": "asPackedTileWord",
+      "kind": "const",
+      "code": "declare const asPackedTileWord: (value: number) => PackedTileWord;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "asRender2DMaterialReference",
@@ -42447,6 +44467,12 @@
       "kind": "const",
       "code": "declare const assertNever: (value: never, message: string) => never;",
       "package": "@axrone/animation"
+    },
+    {
+      "name": "assertNever",
+      "kind": "const",
+      "code": "declare const assertNever: (value: never) => never;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "assertNotDisposed",
@@ -42539,6 +44565,12 @@
       "package": "@axrone/asset-2d"
     },
     {
+      "name": "AssetChunkPager",
+      "kind": "class",
+      "code": "declare class AssetChunkPager implements IChunkPager { constructor(database: AssetDatabase<AssetTilemapSchema$1>, options: AssetChunkPagerOptions); load(key: ChunkKey, signal?: AbortSignal): Promise<Result<ChunkSnapshot | null, TilemapError>>; save(snapshot: ChunkSnapshot, signal?: AbortSignal): Pr…",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
       "name": "AssetConfigurationError",
       "kind": "class",
       "code": "declare class AssetConfigurationError extends AssetError { constructor(code: AssetMessageCode, message: string, options?: ErrorOptions); … }",
@@ -42617,6 +44649,30 @@
       "package": "@axrone/asset-core"
     },
     {
+      "name": "asTileId",
+      "kind": "const",
+      "code": "declare const asTileId: (value: number) => TileId;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asTransformFlags",
+      "kind": "const",
+      "code": "declare const asTransformFlags: (value: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asWorldX",
+      "kind": "const",
+      "code": "declare const asWorldX: (value: number) => WorldX;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "asWorldY",
+      "kind": "const",
+      "code": "declare const asWorldY: (value: number) => WorldY;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "AsyncBuilder",
       "kind": "class",
       "code": "declare class AsyncBuilder<TTarget extends object, in out TSupplied extends keyof TTarget = never> { constructor(seed?: Record<string, unknown>, node?: StateNode, validators?: readonly AnyValidator<TTarget>[], beforeHooks?: readonly AsyncHook<Partial<TTarget>>[], afterHooks?: readonly AsyncHook<TTa…",
@@ -42663,6 +44719,12 @@
       "kind": "const",
       "code": "declare const attr: <N extends string, T extends GLDataType, S extends ComponentCount>(name: N, type: T, size: S, normalized?: boolean, divisor?: number) => Attribute<N, T, S>;",
       "package": "@axrone/render-webgl2"
+    },
+    {
+      "name": "attribute",
+      "kind": "const",
+      "code": "declare const attribute: (element: XmlElement, name: string) => string | undefined;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "AUDIO_CLIP_ASSET_KIND",
@@ -42959,6 +45021,18 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "blendWorldPose",
+      "kind": "const",
+      "code": "declare const blendWorldPose: (rig: AnimationRig, target: AnimationPose, worldPositions: Float32Array, worldRotations: Float32Array, weight?: number) => AnimationPose;",
+      "package": "@axrone/animation"
+    },
+    {
+      "name": "BLOB47_CANONICAL_MASKS",
+      "kind": "const",
+      "code": "declare const BLOB47_CANONICAL_MASKS: readonly number[];",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "BODY_FLAGS",
       "kind": "const",
       "code": "declare const BODY_FLAGS: Readonly<{ freezeRotationX: 1; freezeRotationY: 2; freezeRotationZ: 4; freezePositionX: 8; freezePositionY: 16; freezePositionZ: 32; }",
@@ -42975,6 +45049,12 @@
       "kind": "class",
       "code": "declare class BodyManager3D implements Disposable { constructor(maxBodies?: number); get bodyCount(): number; createBody(def: IPhysicsBodyDef3D): BodyId3D; destroyBody(bodyId: BodyId3D): void; hasBody(bodyId: BodyId3D): boolean; getPosition(bodyId: BodyId3D, out?: IVec3Like): IVec3Like; setPosition…",
       "package": "@axrone/physics-3d"
+    },
+    {
+      "name": "booleanProperty",
+      "kind": "const",
+      "code": "declare const booleanProperty: (value: string) => boolean;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "BoundingVolumeHierarchy",
@@ -43373,6 +45453,12 @@
       "package": "@axrone/asset-core"
     },
     {
+      "name": "canonicalizeBlobMask",
+      "kind": "const",
+      "code": "declare const canonicalizeBlobMask: (mask: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "CapsuleCollider2D",
       "kind": "class",
       "code": "declare class CapsuleCollider2D extends Collider2D { get length(): number; set length(value: number); get radius(): number; set radius(value: number); get direction(): 'vertical' | 'horizontal'; set direction(value: 'vertical' | 'horizontal'); serialize(): Record<string, any>; deserialize(data: Rec…",
@@ -43439,6 +45525,36 @@
       "package": "@axrone/ui"
     },
     {
+      "name": "childElements",
+      "kind": "const",
+      "code": "declare const childElements: (element: XmlElement, name?: string) => readonly XmlElement[];",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "CHUNK_CODEC_HEADER_BYTES",
+      "kind": "const",
+      "code": "declare const CHUNK_CODEC_HEADER_BYTES = 20;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "CHUNK_CODEC_MAGIC",
+      "kind": "const",
+      "code": "declare const CHUNK_CODEC_MAGIC = 1129601089;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "CHUNK_CODEC_PAIR_BYTES",
+      "kind": "const",
+      "code": "declare const CHUNK_CODEC_PAIR_BYTES = 8;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "CHUNK_CODEC_VERSION",
+      "kind": "const",
+      "code": "declare const CHUNK_CODEC_VERSION = 1;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "CHUNK_MASK",
       "kind": "const",
       "code": "declare const CHUNK_MASK: 63;",
@@ -43451,10 +45567,34 @@
       "package": "@axrone/memory"
     },
     {
+      "name": "CHUNK_SHIFT_MAX",
+      "kind": "const",
+      "code": "declare const CHUNK_SHIFT_MAX: 3 | 4 | 5 | 6;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "CHUNK_SHIFT_MIN",
+      "kind": "const",
+      "code": "declare const CHUNK_SHIFT_MIN: 3;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "CHUNK_SIZE",
       "kind": "const",
       "code": "declare const CHUNK_SIZE: 64;",
       "package": "@axrone/memory"
+    },
+    {
+      "name": "chunkAreaForShift",
+      "kind": "const",
+      "code": "declare const chunkAreaForShift: (chunkShift: ValidChunkShift) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "chunkAssetCodec",
+      "kind": "const",
+      "code": "declare const chunkAssetCodec: AssetBinaryCodec<ChunkSnapshot>;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "ChunkedStackIterator",
@@ -43469,10 +45609,46 @@
       "package": "@axrone/memory"
     },
     {
+      "name": "chunkKeyFromGrid",
+      "kind": "const",
+      "code": "declare const chunkKeyFromGrid: (gridX: number, gridY: number, chunkShift: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "ChunkLease",
+      "kind": "class",
+      "code": "declare class ChunkLease implements IChunkLease { constructor(key: ChunkKey, generation: ChunkGeneration, unpin: ChunkUnpin); get key(): ChunkKey; get generation(): ChunkGeneration; get isReleased(): boolean; release(): void; … }",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "ChunkPool",
       "kind": "class",
       "code": "declare class ChunkPool<T> { constructor(options?: ChunkPoolOptions<T>); acquire(): (T | undefined)[]; release(chunk: (T | undefined)[]): void; clear(): void; get available(): number; get allocated(): number; get total(): number; … }",
       "package": "@axrone/memory"
+    },
+    {
+      "name": "chunkSizeForShift",
+      "kind": "const",
+      "code": "declare const chunkSizeForShift: (chunkShift: ValidChunkShift) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "ChunkSlotTable",
+      "kind": "class",
+      "code": "declare class ChunkSlotTable { constructor(options?: ChunkSlotTableOptions); get size(): number; get capacity(): number; find(key: number): number; insert(key: number, slot: number): void; remove(key: number): boolean; clear(): void; forEachLive(callback: (key: number, slot: number) => void): void;…",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "ChunkStore",
+      "kind": "class",
+      "code": "declare class ChunkStore implements Disposable { constructor(options: ChunkStoreOptions); get chunkShift(): ValidChunkShift; get chunkSize(): number; get chunkArea(): number; get layerCount(): number; get wordsPerChunk(): number; get residentChunkCount(): number; get dirtyChunkCount(): number; get …",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "chunkWordCount",
+      "kind": "const",
+      "code": "declare const chunkWordCount: (chunkShift: ValidChunkShift, layerCount: number) => number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "CircleCollider2D",
@@ -43509,6 +45685,12 @@
       "kind": "const",
       "code": "declare const clamp0255: (value: number) => number;",
       "package": "@axrone/numeric"
+    },
+    {
+      "name": "clampGridRect",
+      "kind": "const",
+      "code": "declare const clampGridRect: (rect: GridRect) => GridRect;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "clampInt",
@@ -43897,8 +46079,14 @@
     {
       "name": "computeBlend2DWeights",
       "kind": "const",
-      "code": "declare const computeBlend2DWeights: (x: number, y: number, children: readonly Readonly<IVec2Like>[], outWeights: number[]) => void;",
+      "code": "declare const computeBlend2DWeights: (x: number, y: number, children: readonly Readonly<IVec2Like>[], outWeights: number[], triangles?: Int32Array) => void;",
       "package": "@axrone/animation"
+    },
+    {
+      "name": "computeBlob47Index",
+      "kind": "const",
+      "code": "declare const computeBlob47Index: (mask: number) => number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "computeDeferredAsync",
@@ -44009,6 +46197,12 @@
       "package": "@axrone/scene-runtime"
     },
     {
+      "name": "COORDINATE_LIMITS",
+      "kind": "const",
+      "code": "declare const COORDINATE_LIMITS: Readonly<{ min: -32768; max: 32767; bits: 16; mask: 65535; tileIdMax: 65535; collisionMax: 255; materialMax: 15; transformMax: 7; }",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "CORE_PROFILE_ID",
       "kind": "const",
       "code": "declare const CORE_PROFILE_ID: 0;",
@@ -44037,6 +46231,12 @@
       "kind": "class",
       "code": "declare class Crc32c extends HasherBase<Hash32> { constructor(seed?: Seed32); get seed(): Seed32; updateBytes(bytes: BytesLike, offset?: number, length?: number): this; updateString(input: string): this; updateBoolean(value: boolean): this; updateI64(value: bigint): this; updateU32(value: number): …",
       "package": "@axrone/hash"
+    },
+    {
+      "name": "crc32Of",
+      "kind": "const",
+      "code": "declare const crc32Of: (bytes: Uint8Array, offset?: number, length?: number) => number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "create",
@@ -44129,6 +46329,12 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "createAnimationMotionMatchingMotion",
+      "kind": "const",
+      "code": "declare const createAnimationMotionMatchingMotion: (database: AnimationMotionMatchDatabase, trajectoryXParameter: string, trajectoryZParameter: string, facingXParameter: string, facingZParameter: string) => AnimationMotionMatchingMotionBuilder;",
+      "package": "@axrone/animation"
+    },
+    {
       "name": "createAnimationState",
       "kind": "const",
       "code": "declare const createAnimationState: (id: string, motion: AnimationMotionInput) => AnimationStateBuilder;",
@@ -44181,6 +46387,18 @@
       "kind": "const",
       "code": "declare const createAssetShaderImportPipeline: (options?: AssetShaderImportPipelineOptions) => AssetImportPipeline<AssetShaderImportSchema>;",
       "package": "@axrone/asset-shader"
+    },
+    {
+      "name": "createAssetTilemapCodecs",
+      "kind": "const",
+      "code": "declare const createAssetTilemapCodecs: () => AssetCodecMap<AssetTilemapSchema$1>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "createAssetTilemapImportPipeline",
+      "kind": "const",
+      "code": "declare const createAssetTilemapImportPipeline: (options?: AssetTilemapImportPipelineOptions) => AssetImportPipeline<AssetTilemapSchema$1>;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "createAsync",
@@ -44295,6 +46513,12 @@
       "kind": "const",
       "code": "declare const createCapsule: (config?: Partial<ICapsuleConfig>) => IGeometryBuffers;",
       "package": "@axrone/geometry"
+    },
+    {
+      "name": "createChunkLease",
+      "kind": "const",
+      "code": "declare const createChunkLease: (key: ChunkKey, generation: ChunkGeneration, unpin: ChunkUnpin) => IChunkLease;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "createCircle",
@@ -44609,6 +46833,18 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "createLayerSpec",
+      "kind": "const",
+      "code": "declare const createLayerSpec: (spec: LayerSpec) => Readonly<LayerSpec>;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "createLayerSpecs",
+      "kind": "const",
+      "code": "declare const createLayerSpecs: (layers: readonly LayerSpec[]) => readonly Readonly<LayerSpec>[];",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "createLazy",
       "kind": "function",
       "code": "declare function createLazy<T>(factory: () => T, options?: Omit<SingletonOptions<T>, 'lazy'>): ISingleton<T>;",
@@ -44717,6 +46953,12 @@
       "package": "@axrone/render-webgl2"
     },
     {
+      "name": "createMotionMatchingSelection",
+      "kind": "const",
+      "code": "declare const createMotionMatchingSelection: () => AnimationMotionMatchingSelection;",
+      "package": "@axrone/animation"
+    },
+    {
       "name": "createMultiRaycaster3D",
       "kind": "function",
       "code": "declare function createMultiRaycaster3D(raycastSystem: RaycastSystem3D): MultiRaycaster3D;",
@@ -44727,6 +46969,12 @@
       "kind": "const",
       "code": "declare const createMultisampledRenderTarget: (source: ContextSource, width: number, height: number, samples: number, colorFormat?: GLTextureFormat, depthFormat?: GLTextureFormat) => { msaaTarget: IFramebuffer; resolveTarget: IFramebuffer; }",
       "package": "@axrone/render-webgl2"
+    },
+    {
+      "name": "createNativeTilemapImporter",
+      "kind": "const",
+      "code": "declare const createNativeTilemapImporter: () => AssetImporter<AssetTilemapSchema$1, AssetImportSource>;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "createNoise",
@@ -44867,6 +47115,18 @@
       "package": "@axrone/raycast"
     },
     {
+      "name": "createProfilerTilemapMetricsSink",
+      "kind": "const",
+      "code": "declare const createProfilerTilemapMetricsSink: (recorder: RecorderLike, options?: TilemapProfilerSinkOptions) => ProfilerTilemapMetricsSink;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "createProjectionSpec",
+      "kind": "const",
+      "code": "declare const createProjectionSpec: (spec: ProjectionSpec) => Readonly<ProjectionSpec>;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "createPropertyAccessor",
       "kind": "function",
       "code": "declare function createPropertyAccessor<T, P extends PropertyPath<T>>(path: P): KeySelector<T, ExtractPropertyType<T, P>>;",
@@ -44907,6 +47167,12 @@
       "kind": "const",
       "code": "declare const createRandom: (seed?: any, engineType?: RandomEngineType) => Random;",
       "package": "@axrone/random"
+    },
+    {
+      "name": "createRaycastHit",
+      "kind": "const",
+      "code": "declare const createRaycastHit: () => TileRaycastHit;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "createRaycastSystem2D",
@@ -45269,6 +47535,12 @@
       "package": "@axrone/observer"
     },
     {
+      "name": "createSweepHit",
+      "kind": "const",
+      "code": "declare const createSweepHit: () => TileSweepHit;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "createSystemFontFaceAsset",
       "kind": "const",
       "code": "declare const createSystemFontFaceAsset: (options: SystemFontFaceAssetOptions) => DynamicFontFaceAsset;",
@@ -45315,6 +47587,36 @@
       "kind": "const",
       "code": "declare const createTexturePackerSpriteAtlasImporter: () => AssetImporter<Asset2DImportSchema>;",
       "package": "@axrone/asset-2d"
+    },
+    {
+      "name": "createTileChangeSubject",
+      "kind": "const",
+      "code": "declare const createTileChangeSubject: () => TileChangeSubject;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "createTileDefinitionTable",
+      "kind": "const",
+      "code": "declare const createTileDefinitionTable: (definitions: readonly TileDefinition[]) => TileDefinitionTable;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "createTiledTilemapImporter",
+      "kind": "const",
+      "code": "declare const createTiledTilemapImporter: (options?: TiledTilemapImporterOptions) => AssetImporter<AssetTilemapSchema$1, AssetImportSource>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "createTilemapAssetDefinition",
+      "kind": "const",
+      "code": "declare const createTilemapAssetDefinition: (input: unknown) => Result<TilemapAssetDefinition, TilemapAssetError>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "createTilesetDefinition",
+      "kind": "const",
+      "code": "declare const createTilesetDefinition: (input: unknown) => Result<TilesetDefinition, TilemapAssetError>;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "createTorus",
@@ -45529,7 +47831,7 @@
     {
       "name": "crossFadeLayerState",
       "kind": "const",
-      "code": "declare const crossFadeLayerState: (machine: AnimationCompiledStateMachine, runtime: AnimationLayerRuntime, stateId: string, durationSeconds: number, offset?: number, canInterrupt?: boolean) => void;",
+      "code": "declare const crossFadeLayerState: (machine: AnimationCompiledStateMachine, runtime: AnimationLayerRuntime, stateId: string, durationSeconds: number, offset?: number, canInterrupt?: boolean, easing?: AnimationTransitionEasing) => void;",
       "package": "@axrone/animation"
     },
     {
@@ -45606,6 +47908,12 @@
     },
     {
       "name": "decodeBase64",
+      "kind": "const",
+      "code": "declare const decodeBase64: (input: string) => Result<Uint8Array, TilemapAssetError>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "decodeBase64",
       "kind": "function",
       "code": "declare function decodeBase64(input: string): Uint8Array;",
       "package": "@axrone/hash"
@@ -45615,6 +47923,18 @@
       "kind": "function",
       "code": "declare function decodeBase64(base64: string): Uint8Array;",
       "package": "@axrone/physics-3d-wasm"
+    },
+    {
+      "name": "decodeChunkSnapshot",
+      "kind": "const",
+      "code": "declare const decodeChunkSnapshot: (bytes: Uint8Array) => Result<ChunkSnapshot, TilemapError>;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "decodeChunkSnapshotInto",
+      "kind": "const",
+      "code": "declare const decodeChunkSnapshotInto: (bytes: Uint8Array, out: Uint32Array) => Result<ChunkSnapshot, TilemapError>;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "decodeHeightmapFromImageData",
@@ -45743,6 +48063,12 @@
       "package": "@axrone/lighting"
     },
     {
+      "name": "DEFAULT_MAX_EXPANDED_NODES",
+      "kind": "const",
+      "code": "declare const DEFAULT_MAX_EXPANDED_NODES = 100000;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "DEFAULT_OBSERVER_OPTIONS",
       "kind": "const",
       "code": "declare const DEFAULT_OBSERVER_OPTIONS: NormalizedObserverOptions<any, any>;",
@@ -45765,6 +48091,12 @@
       "kind": "const",
       "code": "declare const DEFAULT_PRIORITY: EventPriority;",
       "package": "@axrone/event"
+    },
+    {
+      "name": "DEFAULT_PROJECTION",
+      "kind": "const",
+      "code": "declare const DEFAULT_PROJECTION: ProjectionSpec;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "DEFAULT_SCENE_2D_BUILT_IN_COMPONENTS",
@@ -46025,6 +48357,12 @@
       "package": "@axrone/utility"
     },
     {
+      "name": "describeTilemapError",
+      "kind": "const",
+      "code": "declare const describeTilemapError: (error: TilemapError) => string;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "deserializeLightingRig",
       "kind": "const",
       "code": "declare const deserializeLightingRig: (input: unknown) => LightingRig;",
@@ -46233,6 +48571,24 @@
       "kind": "function",
       "code": "declare function encodeBase64(bytes: Uint8Array): string;",
       "package": "@axrone/hash"
+    },
+    {
+      "name": "encodeChunkSnapshot",
+      "kind": "const",
+      "code": "declare const encodeChunkSnapshot: (snapshot: ChunkSnapshot) => Result<Uint8Array, TilemapError>;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "encodeChunkSnapshotInto",
+      "kind": "const",
+      "code": "declare const encodeChunkSnapshotInto: (snapshot: ChunkSnapshot, target: Uint8Array) => Result<number, TilemapError>;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "encodedChunkByteLength",
+      "kind": "const",
+      "code": "declare const encodedChunkByteLength: (snapshot: ChunkSnapshot) => Result<number, TilemapError>;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "encodeSceneValue",
@@ -46487,6 +48843,12 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "extractViewportInstances",
+      "kind": "const",
+      "code": "declare const extractViewportInstances: <L extends readonly LayerSpec[]>(engine: TilemapEngine<L>, layer: LayerReference<L>, rect: GridRect, out?: ViewportTileBuffer) => ViewportTileBuffer;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "factorial",
       "kind": "const",
       "code": "declare const factorial: (n: number) => number;",
@@ -46595,10 +48957,28 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "findLayerIndex",
+      "kind": "const",
+      "code": "declare const findLayerIndex: (layers: readonly LayerSpec[], name: string) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "findPath",
+      "kind": "const",
+      "code": "declare const findPath: <L extends readonly LayerSpec[]>(engine: TilemapEngine<L>, layer: LayerReference<L>, startX: number, startY: number, goalX: number, goalY: number, options?: PathOptions) => PathResult;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "findScenePrefabComponentIndex",
       "kind": "const",
       "code": "declare const findScenePrefabComponentIndex: (components: readonly SceneComponentSnapshot[], selector: ScenePrefabComponentSelector) => number;",
       "package": "@axrone/scene-prefab"
+    },
+    {
+      "name": "firstChild",
+      "kind": "const",
+      "code": "declare const firstChild: (element: XmlElement, name: string) => XmlElement | undefined;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "FixedJoint2D",
@@ -46659,6 +49039,12 @@
       "kind": "const",
       "code": "declare const floatUtils: FloatingPointUtils;",
       "package": "@axrone/utility"
+    },
+    {
+      "name": "floorTile",
+      "kind": "const",
+      "code": "declare const floorTile: (value: number) => number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "fmix32",
@@ -46735,7 +49121,7 @@
     {
       "name": "foldMotion",
       "kind": "const",
-      "code": "declare const foldMotion: <TContext, TResult>(motion: AnimationCompiledMotion, context: TContext, handlers: { readonly clip: (motion: BlendMotionOfKind<\"clip\">, context: TContext) => TResult; readonly blend1d: (motion: BlendMotionOfKind<\"blend1d\">, context: TContext, foldChild: (child: AnimationCom…",
+      "code": "declare const foldMotion: <TContext, TResult>(motion: AnimationCompiledMotion, context: TContext, handlers: { readonly clip: (motion: BlendMotionOfKind<\"clip\">, context: TContext) => TResult; readonly blend1d: (motion: BlendMotionOfKind<\"blend1d\">, context: TContext, foldChild: (child: Anima",
       "package": "@axrone/animation"
     },
     {
@@ -46915,7 +49301,7 @@
     {
       "name": "GameLoop",
       "kind": "class",
-      "code": "declare class GameLoop<TState> implements GameLoopController<TState> { constructor(options: GameLoopOptions<TState>); get state(): TState; get status(): GameLoopStatus; get frame(): number; get elapsed(): number; get fixedDelta(): number; get maxDelta(): number; get maxSubSteps(): number; get timeS…",
+      "code": "declare class GameLoop<TState> implements GameLoopController<TState> { constructor(options: GameLoopOptions<TState>); get state(): TState; get status(): GameLoopStatus; get frame(): number; get elapsed(): number; get fixedDelta(): number; get interpolationAlpha(): number; get maxDelta(): number; ge…",
       "package": "@axrone/game-loop"
     },
     {
@@ -47603,6 +49989,24 @@
       "package": "@axrone/utility"
     },
     {
+      "name": "gridKeyFromChunkLocal",
+      "kind": "const",
+      "code": "declare const gridKeyFromChunkLocal: (chunkX: number, chunkY: number, localX: number, localY: number, chunkShift: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "gridToChunkCoordinate",
+      "kind": "const",
+      "code": "declare const gridToChunkCoordinate: (gridX: number, gridY: number, chunkShift: number) => ChunkCoordinate;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "gridToWorld",
+      "kind": "const",
+      "code": "declare const gridToWorld: (projection: ProjectionSpec, gridX: number, gridY: number) => WorldPoint;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "group",
       "kind": "function",
       "code": "declare function group<T>(...subjects: IObservableSubject<T>[]): ISubjectGroup<T>;",
@@ -48023,6 +50427,12 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "importTiledMap",
+      "kind": "const",
+      "code": "declare const importTiledMap: (tmx: string, options?: TiledImportOptions) => Promise<Result<TiledImportResult, TilemapAssetError>>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
       "name": "inferReadFormat",
       "kind": "const",
       "code": "declare const inferReadFormat: (gl: WebGL2RenderingContext, internalFormat: GLTextureFormat) => GLenum;",
@@ -48111,6 +50521,12 @@
       "kind": "function",
       "code": "declare function instantiateWasm(bytes: Uint8Array): Promise<WasmPhysicsExports>;",
       "package": "@axrone/physics-3d-wasm"
+    },
+    {
+      "name": "integerAttribute",
+      "kind": "const",
+      "code": "declare const integerAttribute: (element: XmlElement, name: string, fallback?: number) => Result<number, TilemapAssetError>;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "IntegerDistribution",
@@ -48431,10 +50847,22 @@
       "package": "@axrone/asset-gltf"
     },
     {
+      "name": "isChunkCoordinateInRange",
+      "kind": "const",
+      "code": "declare const isChunkCoordinateInRange: (x: number, y: number) => boolean;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "isCircleShape",
       "kind": "const",
       "code": "declare const isCircleShape: (value: unknown) => value is CircleShape;",
       "package": "@axrone/shapes-2d"
+    },
+    {
+      "name": "isCollisionMask",
+      "kind": "const",
+      "code": "declare const isCollisionMask: (value: unknown) => value is number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "isComparer",
@@ -48563,6 +50991,12 @@
       "package": "@axrone/shapes-2d"
     },
     {
+      "name": "isGridCoordinateInRange",
+      "kind": "const",
+      "code": "declare const isGridCoordinateInRange: (x: number, y: number) => boolean;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "isHash128",
       "kind": "function",
       "code": "declare function isHash128(value: unknown): value is Hash128;",
@@ -48671,6 +51105,12 @@
       "package": "@axrone/shapes-2d"
     },
     {
+      "name": "isMaterialId",
+      "kind": "const",
+      "code": "declare const isMaterialId: (value: unknown) => value is number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "isMeshRendererSnapshot",
       "kind": "const",
       "code": "declare const isMeshRendererSnapshot: (snapshot: GltfComponentSnapshot) => snapshot is { readonly type: \"MeshRenderer\"; readonly data: MeshRendererComponentData; }",
@@ -48693,6 +51133,12 @@
       "kind": "function",
       "code": "declare function isOk<T, E>(value: Result<T, E>): value is Ok<T, E>;",
       "package": "@axrone/utility"
+    },
+    {
+      "name": "isPackedTileWordValue",
+      "kind": "const",
+      "code": "declare const isPackedTileWordValue: (value: unknown) => value is number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "isPlainObject",
@@ -48857,6 +51303,18 @@
       "package": "@axrone/shapes-2d"
     },
     {
+      "name": "isSolidTileWord",
+      "kind": "const",
+      "code": "declare const isSolidTileWord: TileSolidPredicate;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "isSpatialKey",
+      "kind": "const",
+      "code": "declare const isSpatialKey: (value: unknown) => value is number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "isSpotLightDefinition",
       "kind": "const",
       "code": "declare const isSpotLightDefinition: (value: unknown) => value is SpotLightDefinition;",
@@ -48867,6 +51325,12 @@
       "kind": "const",
       "code": "declare const isSpotLightSnapshot: (snapshot: GltfComponentSnapshot) => snapshot is { readonly type: \"SpotLight\"; readonly data: SpotLightComponentData; }",
       "package": "@axrone/asset-gltf"
+    },
+    {
+      "name": "isStaggeredProjection",
+      "kind": "const",
+      "code": "declare const isStaggeredProjection: (projection: ProjectionSpec) => boolean;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "isStencilFormat",
@@ -48905,6 +51369,42 @@
       "package": "@axrone/terrain"
     },
     {
+      "name": "isTileId",
+      "kind": "const",
+      "code": "declare const isTileId: (value: unknown) => value is number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "isTilemapAssetError",
+      "kind": "const",
+      "code": "declare const isTilemapAssetError: (value: unknown) => value is TilemapAssetError;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "isTilemapAssetFault",
+      "kind": "const",
+      "code": "declare const isTilemapAssetFault: (value: unknown) => value is TilemapAssetFault;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "isTilemapError",
+      "kind": "const",
+      "code": "declare const isTilemapError: (value: unknown) => value is TilemapError;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "isTilemapFault",
+      "kind": "const",
+      "code": "declare const isTilemapFault: (value: unknown) => value is TilemapFault;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "isTileTransform",
+      "kind": "const",
+      "code": "declare const isTileTransform: (value: unknown) => value is number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "isTooltipVisible",
       "kind": "const",
       "code": "declare const isTooltipVisible: (runtime: UIRuntime, widget: WidgetId) => boolean | null;",
@@ -48921,6 +51421,12 @@
       "kind": "const",
       "code": "declare const isTriangleShape: (value: unknown) => value is TriangleShape;",
       "package": "@axrone/shapes-2d"
+    },
+    {
+      "name": "isValidChunkShift",
+      "kind": "const",
+      "code": "declare const isValidChunkShift: (value: number) => value is ValidChunkShift;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "isValidNotificationType",
@@ -49017,6 +51523,30 @@
       "kind": "class",
       "code": "declare abstract class Joint3D extends Component { get constraintId(): number; get connectedBody(): Rigidbody3D | null; set connectedBody(value: Rigidbody3D | null); get autoConfigureConnectedAnchor(): boolean; set autoConfigureConnectedAnchor(value: boolean); get anchor(): Readonly<Vec3>; set anch…",
       "package": "@axrone/physics-3d-wasm"
+    },
+    {
+      "name": "KEY_BITS",
+      "kind": "const",
+      "code": "declare const KEY_BITS = 16;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "KEY_MASK",
+      "kind": "const",
+      "code": "declare const KEY_MASK = 65535;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "KEY_MAX",
+      "kind": "const",
+      "code": "declare const KEY_MAX = 32767;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "KEY_MIN",
+      "kind": "const",
+      "code": "declare const KEY_MIN = -32768;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "KeyComparer",
@@ -49265,6 +51795,12 @@
       "package": "@axrone/scene-runtime-gltf"
     },
     {
+      "name": "localTileIndex",
+      "kind": "const",
+      "code": "declare const localTileIndex: (localX: number, localY: number, chunkShift: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "LODGroup",
       "kind": "class",
       "code": "declare class LODGroup extends Component { constructor(config?: LODGroupConfig); get localReferencePoint(): Vec3; set localReferencePoint(value: Vec3 | readonly [number, number, number]); get size(): number; set size(value: number); get fadeMode(): 'none' | 'cross-fade' | 'speed-tree'; set fadeMode…",
@@ -49433,6 +51969,24 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "MAX_CHUNK_WORDS",
+      "kind": "const",
+      "code": "declare const MAX_CHUNK_WORDS: number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "MAX_LAYER_COUNT",
+      "kind": "const",
+      "code": "declare const MAX_LAYER_COUNT = 64;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "MAX_LAYER_INDEX",
+      "kind": "const",
+      "code": "declare const MAX_LAYER_INDEX: number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "MAX_POOLED_CHUNKS",
       "kind": "const",
       "code": "declare const MAX_POOLED_CHUNKS: 4;",
@@ -49485,6 +52039,12 @@
       "kind": "const",
       "code": "declare const memoizeAsync: <TArgs extends readonly unknown[], TResult>(fn: (...args: TArgs) => Promise<TResult>, keySelector?: (...args: TArgs) => string, maxCacheSize?: number) => ((...args: TArgs) => Promise<TResult>);",
       "package": "@axrone/memory"
+    },
+    {
+      "name": "MemoryChunkPager",
+      "kind": "class",
+      "code": "declare class MemoryChunkPager implements IChunkPager { load(key: ChunkKey, _signal?: AbortSignal): Promise<Result<ChunkSnapshot | null, TilemapError>>; save(snapshot: ChunkSnapshot, _signal?: AbortSignal): Promise<Result<void, TilemapError>>; delete(key: ChunkKey): boolean; has(key: ChunkKey): boo…",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "MemoryErrorCode",
@@ -49619,6 +52179,18 @@
       "package": "@axrone/utility"
     },
     {
+      "name": "mix32",
+      "kind": "const",
+      "code": "declare const mix32: (value: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "mixKeys",
+      "kind": "const",
+      "code": "declare const mixKeys: (a: number, b: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "MODAL_CONTROLLER_TYPE",
       "kind": "const",
       "code": "declare const MODAL_CONTROLLER_TYPE = \"modal\";",
@@ -49647,6 +52219,18 @@
       "kind": "const",
       "code": "declare const MonomorphicNoOpMetricsSink: Readonly<IStackMetricsSink>;",
       "package": "@axrone/memory"
+    },
+    {
+      "name": "MOTION_MATCH_DEFAULT_CONTINUITY_BIAS",
+      "kind": "const",
+      "code": "declare const MOTION_MATCH_DEFAULT_CONTINUITY_BIAS = 1;",
+      "package": "@axrone/animation"
+    },
+    {
+      "name": "MOTION_MATCH_DEFAULT_RESELECT_INTERVAL",
+      "kind": "const",
+      "code": "declare const MOTION_MATCH_DEFAULT_RESELECT_INTERVAL = 0.2;",
+      "package": "@axrone/animation"
     },
     {
       "name": "MOTION_MATCH_FACING_MISSING_PENALTY",
@@ -49715,6 +52299,18 @@
       "package": "@axrone/physics-2d"
     },
     {
+      "name": "nativeTilemapJsonCodec",
+      "kind": "const",
+      "code": "declare const nativeTilemapJsonCodec: _axrone_asset_core.AssetJsonCodec<TilemapAssetDefinition>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "nativeTilesetJsonCodec",
+      "kind": "const",
+      "code": "declare const nativeTilesetJsonCodec: _axrone_asset_core.AssetJsonCodec<TilesetDefinition>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
       "name": "NAVIGATION_CONTROLLER_TYPE",
       "kind": "const",
       "code": "declare const NAVIGATION_CONTROLLER_TYPE = \"navigation\";",
@@ -49755,6 +52351,12 @@
       "kind": "class",
       "code": "declare class NoiseModule extends BaseModule<'noise'> { constructor(configuration: NoiseConfiguration); sampleNoise3D(x: number, y: number, z: number): number; sampleNoise4D(x: number, y: number, z: number, t: number): number; sampleCurlNoise(x: number, y: number, z: number): [number, number, numbe…",
       "package": "@axrone/particle-system"
+    },
+    {
+      "name": "NOOP_TILEMAP_METRICS",
+      "kind": "const",
+      "code": "declare const NOOP_TILEMAP_METRICS: TilemapMetricsSink;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "NormalDistribution",
@@ -50015,6 +52617,12 @@
       "package": "@axrone/utility"
     },
     {
+      "name": "OperationTracker",
+      "kind": "class",
+      "code": "declare class OperationTracker { get pending(): number; get isIdle(): boolean; get isOpen(): boolean; get isDisposed(): boolean; begin(): boolean; beginShutdown(): boolean; end(): void; close(): void; dispose(): void; … }",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "optimizeAnimationClipDefinition",
       "kind": "const",
       "code": "declare const optimizeAnimationClipDefinition: (clip: AnimationClipDefinition, compression?: AnimationClipCompressionDefinition) => AnimationClipDefinition;",
@@ -50061,6 +52669,30 @@
       "kind": "const",
       "code": "declare const OverflowStrategy: { /** Reject the write and return QueueFullError. */ readonly Reject: \"REJECT\"; /** Drop the oldest buffered item to make room. */ readonly DropHead: \"DROP_HEAD\"; /** Discard the incoming item when full. */ readonly DropTail: \"DROP_TAIL\"; /** Suspend the producer unt…",
       "package": "@axrone/memory"
+    },
+    {
+      "name": "packChunkKey",
+      "kind": "const",
+      "code": "declare const packChunkKey: (chunkX: number, chunkY: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "packGridKey",
+      "kind": "const",
+      "code": "declare const packGridKey: (gridX: number, gridY: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "packSpatialKey",
+      "kind": "const",
+      "code": "declare const packSpatialKey: (x: number, y: number, label?: \"grid\" | \"chunk\") => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "packTileWord",
+      "kind": "const",
+      "code": "declare const packTileWord: (tileId: number, transform?: number, collision?: number, material?: number) => PackedTileWord;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "PAGE_CONTROLLER_TYPE",
@@ -50115,6 +52747,24 @@
       "kind": "const",
       "code": "declare const parseRichTextMarkup: (markup: string) => RichTextSpan[];",
       "package": "@axrone/ui"
+    },
+    {
+      "name": "parseTsxElement",
+      "kind": "const",
+      "code": "declare const parseTsxElement: (root: XmlElement, options?: { readonly firstGid?: number; readonly fallbackName?: string; }",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "parseTsxTileset",
+      "kind": "const",
+      "code": "declare const parseTsxTileset: (xml: string, options?: { readonly firstGid?: number; readonly fallbackName?: string; }",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "parseXml",
+      "kind": "const",
+      "code": "declare const parseXml: (source: string) => Result<XmlElement, TilemapAssetError>;",
+      "package": "@axrone/asset-tilemap"
     },
     {
       "name": "ParticleMemoryManager",
@@ -50465,6 +53115,12 @@
       "package": "@axrone/profiler"
     },
     {
+      "name": "ProjectionKind",
+      "kind": "const",
+      "code": "declare const ProjectionKind: { readonly Orthogonal: \"orthogonal\"; readonly Isometric: \"isometric\"; readonly StaggeredIsometric: \"staggered-isometric\"; }",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "prop",
       "kind": "const",
       "code": "declare const prop: (name: string, type: RenderShaderValueType, scope?: RenderShaderPropertyDefinition[\"scope\"], defaultValue?: RenderShaderPropertyDefinition[\"defaultValue\"], options?: ShaderEffectPropertyOptions) => RenderShaderPropertyDefinition;",
@@ -50747,6 +53403,12 @@
       "package": "@axrone/terrain"
     },
     {
+      "name": "raycastTilemap",
+      "kind": "const",
+      "code": "declare const raycastTilemap: <L extends readonly LayerSpec[]>(engine: TilemapEngine<L>, layer: LayerReference<L>, originX: number, originY: number, directionX: number, directionY: number, options?: RaycastOptions, out?: TileRaycastHit) => boolean;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "RayPrimitiveIntersector2D",
       "kind": "class",
       "code": "declare class RayPrimitiveIntersector2D { tMin: number; tMax: number; … }",
@@ -50763,6 +53425,12 @@
       "kind": "class",
       "code": "declare class ReadOnlyBufferError extends BaseBufferError { constructor(message?: string); … }",
       "package": "@axrone/memory"
+    },
+    {
+      "name": "ReadOnlyChunkPager",
+      "kind": "class",
+      "code": "declare class ReadOnlyChunkPager implements IChunkPager { constructor(source: IChunkPager); load(key: ChunkKey, signal?: AbortSignal): Promise<Result<ChunkSnapshot | null, TilemapError>>; save(): Promise<Result<void, TilemapError>>; … }",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "readPhaseTimers",
@@ -51161,6 +53829,12 @@
       "package": "@axrone/observer"
     },
     {
+      "name": "requiredAttribute",
+      "kind": "const",
+      "code": "declare const requiredAttribute: (element: XmlElement, name: string) => Result<string, TilemapAssetError>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
       "name": "requireRegisteredComponent",
       "kind": "const",
       "code": "declare const requireRegisteredComponent: (host: SceneCapabilityGuardHost, componentType: ComponentConstructor, message: string) => void;",
@@ -51229,7 +53903,7 @@
     {
       "name": "resolveBlend2DWeightsWithContext",
       "kind": "const",
-      "code": "declare const resolveBlend2DWeightsWithContext: (x: number, y: number, children: readonly Readonly<IVec2Like>[], context: AnimationMotionEvaluationContext, depth: number) => number[];",
+      "code": "declare const resolveBlend2DWeightsWithContext: (x: number, y: number, children: readonly Readonly<IVec2Like>[], context: AnimationMotionEvaluationContext, depth: number, triangles?: Int32Array) => number[];",
       "package": "@axrone/animation"
     },
     {
@@ -51299,6 +53973,12 @@
       "package": "@axrone/input"
     },
     {
+      "name": "resolveLayerDefaultWords",
+      "kind": "const",
+      "code": "declare const resolveLayerDefaultWords: (layers: readonly LayerSpec[]) => Uint32Array;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "resolveLightingCapacity",
       "kind": "const",
       "code": "declare const resolveLightingCapacity: (input?: Partial<LightingCapacity>) => Readonly<LightingCapacity>;",
@@ -51314,6 +53994,18 @@
       "name": "resolveMotionDuration",
       "kind": "const",
       "code": "declare const resolveMotionDuration: (motion: AnimationCompiledMotion, parameters: AnimationParameterStore, depth?: number) => number;",
+      "package": "@axrone/animation"
+    },
+    {
+      "name": "resolveMotionMatchingDuration",
+      "kind": "const",
+      "code": "declare const resolveMotionMatchingDuration: (motion: AnimationCompiledMotionMatchingMotion) => number;",
+      "package": "@axrone/animation"
+    },
+    {
+      "name": "resolveMotionMatchingTime",
+      "kind": "const",
+      "code": "declare const resolveMotionMatchingTime: (motion: AnimationCompiledMotionMatchingMotion, normalizedTime: number) => number;",
       "package": "@axrone/animation"
     },
     {
@@ -51617,12 +54309,6 @@
       "package": "@axrone/numeric"
     },
     {
-      "name": "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
-      "kind": "const",
-      "code": "declare const RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES: readonly string[];",
-      "package": "@axrone/runtime-profile-2d"
-    },
-    {
       "name": "RUNTIME_PROFILE_3D_CAPABILITY_PACKAGES",
       "kind": "const",
       "code": "declare const RUNTIME_PROFILE_3D_CAPABILITY_PACKAGES: readonly string[];",
@@ -51829,7 +54515,7 @@
     {
       "name": "SceneActorLifecycleRunner",
       "kind": "class",
-      "code": "declare class SceneActorLifecycleRunner { constructor(_options: SceneActorLifecycleRunnerOptions); fixedUpdate(deltaSeconds: number): void; update(deltaSeconds: number): void; lateUpdate(deltaSeconds: number): void; … }",
+      "code": "declare class SceneActorLifecycleRunner { constructor(_options: SceneActorLifecycleRunnerOptions); fixedUpdate(deltaMs: number): void; update(deltaMs: number): void; lateUpdate(deltaMs: number): void; … }",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -52319,6 +55005,18 @@
       "package": "@axrone/shapes-2d"
     },
     {
+      "name": "serializeTilemapAssetDefinition",
+      "kind": "const",
+      "code": "declare const serializeTilemapAssetDefinition: (definition: TilemapAssetDefinition) => AssetJsonValue;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "serializeTilesetDefinition",
+      "kind": "const",
+      "code": "declare const serializeTilesetDefinition: (definition: TilesetDefinition) => AssetJsonValue;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
       "name": "serializeUIAsset",
       "kind": "function",
       "code": "declare function serializeUIAsset(asset: UIAsset): string;",
@@ -52679,6 +55377,12 @@
       "package": "@axrone/numeric"
     },
     {
+      "name": "solveGrounding",
+      "kind": "const",
+      "code": "declare const solveGrounding: (clip: AnimationClip, timeSeconds: number, bonePositions: Readonly<Record<string, readonly [number, number, number]>> | ReadonlyMap<string, readonly [number, number, number]>, targetGround?: readonly [number, number, number], axes?: AnimationGroundingAxes) => Animation…",
+      "package": "@axrone/animation"
+    },
+    {
       "name": "solvePlanarGrounding",
       "kind": "const",
       "code": "declare const solvePlanarGrounding: (clip: AnimationClip, timeSeconds: number, boneHeights: Readonly<Record<string, number>> | ReadonlyMap<string, number>, groundHeight?: number) => AnimationGroundingResult;",
@@ -52913,6 +55617,12 @@
       "package": "@axrone/memory"
     },
     {
+      "name": "staggerOffset",
+      "kind": "const",
+      "code": "declare const staggerOffset: (projection: ProjectionSpec, coordinate: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "StateNode",
       "kind": "class",
       "code": "declare class StateNode { constructor(parent: StateNode | null, delta: DeltaRecord | null); materialize(seed: Record<string, unknown>): Record<string, unknown>; … }",
@@ -53009,6 +55719,24 @@
       "package": "@axrone/observer"
     },
     {
+      "name": "SWEEP_BACKOFF",
+      "kind": "const",
+      "code": "declare const SWEEP_BACKOFF = 0.00001;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "sweepTilemapAabb",
+      "kind": "const",
+      "code": "declare const sweepTilemapAabb: <L extends readonly LayerSpec[]>(engine: TilemapEngine<L>, layer: LayerReference<L>, box: TileAabb, deltaX: number, deltaY: number, options?: SweepOptions, out?: TileSweepHit) => boolean;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "syncLayerRuntime",
+      "kind": "const",
+      "code": "declare const syncLayerRuntime: (machine: AnimationCompiledStateMachine, target: AnimationLayerRuntime, sourceMachine: AnimationCompiledStateMachine, source: AnimationLayerRuntime) => void;",
+      "package": "@axrone/animation"
+    },
+    {
       "name": "SystemManager",
       "kind": "class",
       "code": "declare class SystemManager<R extends ComponentRegistry> { constructor(world: World<R>); removeSystem(systemId: SystemId): boolean; setEnabled(enabled: boolean): this; get enabled(): boolean; executeAll(deltaTime?: number): void; executePhase(phase: SystemPhase, deltaTime?: number): void; getSystem…",
@@ -53025,6 +55753,12 @@
       "kind": "const",
       "code": "declare const TAB_VIEW_CONTROLLER_TYPE = \"tab-view\";",
       "package": "@axrone/ui"
+    },
+    {
+      "name": "tableIndexForHash",
+      "kind": "const",
+      "code": "declare const tableIndexForHash: (hash: number, capacity: number) => number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "tabViewController",
@@ -53211,6 +55945,252 @@
       "kind": "const",
       "code": "declare const throwExtensionNotSupported: (name: string, locale?: GLContextLocale, cause?: unknown) => never;",
       "package": "@axrone/render-webgl2"
+    },
+    {
+      "name": "TILE_COLLISION_BITS",
+      "kind": "const",
+      "code": "declare const TILE_COLLISION_BITS = 8;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_COLLISION_MASK",
+      "kind": "const",
+      "code": "declare const TILE_COLLISION_MASK = 133693440;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_COLLISION_MAX",
+      "kind": "const",
+      "code": "declare const TILE_COLLISION_MAX = 255;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_COLLISION_SHIFT",
+      "kind": "const",
+      "code": "declare const TILE_COLLISION_SHIFT = 19;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_ID_BITS",
+      "kind": "const",
+      "code": "declare const TILE_ID_BITS = 16;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_ID_MASK",
+      "kind": "const",
+      "code": "declare const TILE_ID_MASK = 65535;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_ID_MAX",
+      "kind": "const",
+      "code": "declare const TILE_ID_MAX = 65535;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_ID_SHIFT",
+      "kind": "const",
+      "code": "declare const TILE_ID_SHIFT = 0;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_MATERIAL_BITS",
+      "kind": "const",
+      "code": "declare const TILE_MATERIAL_BITS = 4;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_MATERIAL_MASK",
+      "kind": "const",
+      "code": "declare const TILE_MATERIAL_MASK = 2013265920;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_MATERIAL_MAX",
+      "kind": "const",
+      "code": "declare const TILE_MATERIAL_MAX = 15;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_MATERIAL_SHIFT",
+      "kind": "const",
+      "code": "declare const TILE_MATERIAL_SHIFT = 27;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_TRANSFORM_ALL_FLAGS",
+      "kind": "const",
+      "code": "declare const TILE_TRANSFORM_ALL_FLAGS: number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_TRANSFORM_BITS",
+      "kind": "const",
+      "code": "declare const TILE_TRANSFORM_BITS = 3;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_TRANSFORM_MASK",
+      "kind": "const",
+      "code": "declare const TILE_TRANSFORM_MASK = 458752;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_TRANSFORM_MAX",
+      "kind": "const",
+      "code": "declare const TILE_TRANSFORM_MAX = 7;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_TRANSFORM_SHIFT",
+      "kind": "const",
+      "code": "declare const TILE_TRANSFORM_SHIFT = 16;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_WORD_BITS",
+      "kind": "const",
+      "code": "declare const TILE_WORD_BITS = 32;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_WORD_EMPTY",
+      "kind": "const",
+      "code": "declare const TILE_WORD_EMPTY = 0;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_WORD_MAX",
+      "kind": "const",
+      "code": "declare const TILE_WORD_MAX = 2147483647;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_WORD_RESERVED_BIT",
+      "kind": "const",
+      "code": "declare const TILE_WORD_RESERVED_BIT = 31;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILE_WORD_RESERVED_MASK",
+      "kind": "const",
+      "code": "declare const TILE_WORD_RESERVED_MASK = 2147483648;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TileChangeWriter",
+      "kind": "class",
+      "code": "declare class TileChangeWriter<L extends readonly LayerSpec[]> { constructor(engine: TilemapEngine<L>, changes: TileChangeSubject); write(layer: LayerReference<L>, gridX: number, gridY: number, word: PackedTileWord): Result<void, TilemapError>; fillRect(layer: LayerReference<L>, gridX: number, grid…",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TileCodec",
+      "kind": "const",
+      "code": "declare const TileCodec: Readonly<{ pack(tileId: number, transform?: number, collision?: number, material?: number): PackedTileWord; unpackTileId(word: PackedTileWord): TileId; unpackTransform(word: PackedTileWord): number; unpackCollision(word: PackedTileWord): number; unpackMaterial(word: PackedT…",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "tileFaceNormal",
+      "kind": "const",
+      "code": "declare const tileFaceNormal: (projection: ProjectionSpec, gridNormalX: number, gridNormalY: number) => { normalX: number; normalY: number; }",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILEMAP_ASSET_FORMAT_VERSION",
+      "kind": "const",
+      "code": "declare const TILEMAP_ASSET_FORMAT_VERSION = 1;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "TILEMAP_FORMAT_VERSION",
+      "kind": "const",
+      "code": "declare const TILEMAP_FORMAT_VERSION = 1;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILEMAP_PACKAGE_NAME",
+      "kind": "const",
+      "code": "declare const TILEMAP_PACKAGE_NAME = \"@axrone/tilemap\";",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "tilemapAssetError",
+      "kind": "const",
+      "code": "declare const tilemapAssetError: (code: TilemapAssetErrorCode, message: string, options?: TilemapAssetErrorOptions) => TilemapAssetError;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "TilemapAssetErrorCode",
+      "kind": "const",
+      "code": "declare const TilemapAssetErrorCode: { readonly UNSUPPORTED_VERSION: \"UNSUPPORTED_VERSION\"; readonly INVALID_TILESET: \"INVALID_TILESET\"; readonly INVALID_TILEMAP: \"INVALID_TILEMAP\"; readonly MALFORMED_SOURCE: \"MALFORMED_SOURCE\"; readonly UNSUPPORTED_PROJECTION: \"UNSUPPORTED_PROJECTION\"; readonly UN…",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "TilemapAssetFault",
+      "kind": "class",
+      "code": "declare class TilemapAssetFault extends Error { constructor(message: string, code?: TilemapAssetErrorCode, details?: Readonly<Record<string, unknown>>); … }",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "tilemapAssetJsonCodec",
+      "kind": "const",
+      "code": "declare const tilemapAssetJsonCodec: AssetJsonCodec<TilemapAssetDefinition>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "TilemapBuilder",
+      "kind": "class",
+      "code": "declare class TilemapBuilder<Layers extends readonly LayerSpec[] | MissingLayers = MissingLayers> { withProjection(projection: ProjectionSpec): this; withChunkShift(chunkShift: ValidChunkShift): this; withCapacity(maxLoadedChunks: number): this; withDirtyBudget(maxDirtyChunks: number): this; withPa…",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "tilemapChunkAssetKey",
+      "kind": "const",
+      "code": "declare const tilemapChunkAssetKey: (mapKey: string, chunkX: number, chunkY: number) => string;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "TilemapEngine",
+      "kind": "class",
+      "code": "declare class TilemapEngine<L extends readonly LayerSpec[] = readonly LayerSpec[]> implements Disposable { constructor(options: TilemapEngineOptions<L>); get projection(): Readonly<ProjectionSpec>; get layers(): readonly Readonly<LayerSpec>[]; get chunkShift(): ValidChunkShift; get chunkSize(): num…",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "tilemapError",
+      "kind": "const",
+      "code": "declare const tilemapError: (code: TilemapErrorCode, message: string, options?: TilemapErrorOptions) => TilemapError;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TilemapErrorCode",
+      "kind": "const",
+      "code": "declare const TilemapErrorCode: { readonly INVALID_LAYER: \"INVALID_LAYER\"; readonly INVALID_COORDINATE: \"INVALID_COORDINATE\"; readonly INVALID_CONFIGURATION: \"INVALID_CONFIGURATION\"; readonly INVALID_SNAPSHOT: \"INVALID_SNAPSHOT\"; readonly CHUNK_POOL_EXHAUSTED: \"CHUNK_POOL_EXHAUST",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TilemapFault",
+      "kind": "class",
+      "code": "declare class TilemapFault extends Error { constructor(message: string, code?: TilemapErrorCode, details?: Readonly<Record<string, unknown>>); … }",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "TILESET_FORMAT_VERSION",
+      "kind": "const",
+      "code": "declare const TILESET_FORMAT_VERSION = 1;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "tilesetJsonCodec",
+      "kind": "const",
+      "code": "declare const tilesetJsonCodec: AssetJsonCodec<TilesetDefinition>;",
+      "package": "@axrone/asset-tilemap"
+    },
+    {
+      "name": "TileTransform",
+      "kind": "const",
+      "code": "declare const TileTransform: Readonly<{ None: 0; FlipX: 1; FlipY: 2; Rotate90: 4; }",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "TIME_CONVERSION",
@@ -53615,6 +56595,12 @@
       "package": "@axrone/memory"
     },
     {
+      "name": "UNBOUNDED_CHUNK_WORDS",
+      "kind": "const",
+      "code": "declare const UNBOUNDED_CHUNK_WORDS = 0;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "UnexpectedError",
       "kind": "class",
       "code": "declare class UnexpectedError extends Base64Error { constructor(message?: string, options?: ErrorOptions); … }",
@@ -53657,10 +56643,70 @@
       "package": "@axrone/animation"
     },
     {
+      "name": "unpackChunkX",
+      "kind": "const",
+      "code": "declare const unpackChunkX: (key: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "unpackChunkY",
+      "kind": "const",
+      "code": "declare const unpackChunkY: (key: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "unpackGridX",
+      "kind": "const",
+      "code": "declare const unpackGridX: (key: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "unpackGridY",
+      "kind": "const",
+      "code": "declare const unpackGridY: (key: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "unpackScenePrefabInstance",
       "kind": "const",
       "code": "declare const unpackScenePrefabInstance: (definition: ScenePrefabDefinition, overrides?: readonly ScenePrefabOverrideOperation[], unpackedId?: string) => ScenePrefabDefinition;",
       "package": "@axrone/scene-prefab"
+    },
+    {
+      "name": "unpackSpatialKeyX",
+      "kind": "const",
+      "code": "declare const unpackSpatialKeyX: (key: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "unpackSpatialKeyY",
+      "kind": "const",
+      "code": "declare const unpackSpatialKeyY: (key: number) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "unpackTileCollision",
+      "kind": "const",
+      "code": "declare const unpackTileCollision: (word: PackedTileWord) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "unpackTileId",
+      "kind": "const",
+      "code": "declare const unpackTileId: (word: PackedTileWord) => TileId;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "unpackTileMaterial",
+      "kind": "const",
+      "code": "declare const unpackTileMaterial: (word: PackedTileWord) => number;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "unpackTileTransform",
+      "kind": "const",
+      "code": "declare const unpackTileTransform: (word: PackedTileWord) => number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "unregisterCustomAlgorithm",
@@ -53679,6 +56725,18 @@
       "kind": "const",
       "code": "declare const updateLayerRuntime: (machine: AnimationCompiledStateMachine, runtime: AnimationLayerRuntime, parameters: AnimationParameterStore, deltaSeconds: number) => void;",
       "package": "@axrone/animation"
+    },
+    {
+      "name": "updateMotionMatchingSelection",
+      "kind": "const",
+      "code": "declare const updateMotionMatchingSelection: (motion: AnimationCompiledMotionMatchingMotion, normalizedTime: number, parameters: AnimationParameterStore) => void;",
+      "package": "@axrone/animation"
+    },
+    {
+      "name": "VALID_CHUNK_SHIFTS",
+      "kind": "const",
+      "code": "declare const VALID_CHUNK_SHIFTS: readonly [3, 4, 5, 6];",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "validateAllScripts",
@@ -53717,10 +56775,22 @@
       "package": "@axrone/render-webgl2"
     },
     {
+      "name": "validateChunkSnapshot",
+      "kind": "const",
+      "code": "declare const validateChunkSnapshot: (snapshot: ChunkSnapshot, expected?: SnapshotExpectation) => Result<ChunkSnapshot, TilemapError>;",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "validateInteger",
       "kind": "const",
       "code": "declare const validateInteger: (value: number, name?: string) => void;",
       "package": "@axrone/random"
+    },
+    {
+      "name": "validateMotionMatchingDefinition",
+      "kind": "const",
+      "code": "declare const validateMotionMatchingDefinition: (definition: { readonly id?: unknown; readonly reselectIntervalSeconds?: number; readonly continuityBias?: number; readonly trajectoryXParameter?: unknown; readonly trajectoryZParameter?: unknown; readonly facingXParameter?: unknown; readonly facingZP…",
+      "package": "@axrone/animation"
     },
     {
       "name": "validateNonNegative",
@@ -53903,10 +56973,28 @@
       "package": "@axrone/render-webgl2"
     },
     {
+      "name": "viewportGridBounds",
+      "kind": "const",
+      "code": "declare const viewportGridBounds: (projection: ProjectionSpec, camera: WorldRect) => GridRect;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "ViewportTileBuffer",
+      "kind": "class",
+      "code": "declare class ViewportTileBuffer { get count(): number; get gridXs(): Int32Array; get gridYs(): Int32Array; get words(): Uint32Array; reset(): void; push(gridX: number, gridY: number, word: PackedTileWord): void; … }",
+      "package": "@axrone/tilemap"
+    },
+    {
       "name": "visitComponent",
       "kind": "const",
       "code": "declare const visitComponent: <T>(snapshot: GltfComponentSnapshot, visitor: GltfComponentVisitor<T>, fallback: T) => T;",
       "package": "@axrone/asset-gltf"
+    },
+    {
+      "name": "visitViewportTiles",
+      "kind": "const",
+      "code": "declare const visitViewportTiles: <L extends readonly LayerSpec[]>(engine: TilemapEngine<L>, layer: LayerReference<L>, rect: GridRect, visit: ViewportTileVisitor) => number;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "vtxStage",
@@ -54105,6 +57193,18 @@
       "kind": "class",
       "code": "declare class WorldStorageRuntime$1<R extends StorageComponentRegistry, TEntity extends number = number, TArchetypeId extends string = string> { constructor(registry: R); get entityCount(): number; get archetypeCount(): number; get freeEntityCount(): number; get nextEntityId(): number; createEntity…",
       "package": "@axrone/ecs-runtime"
+    },
+    {
+      "name": "worldToGrid",
+      "kind": "const",
+      "code": "declare const worldToGrid: (projection: ProjectionSpec, worldX: number, worldY: number) => GridPoint;",
+      "package": "@axrone/tilemap"
+    },
+    {
+      "name": "worldToTile",
+      "kind": "const",
+      "code": "declare const worldToTile: (projection: ProjectionSpec, worldX: number, worldY: number) => GridPoint;",
+      "package": "@axrone/tilemap"
     },
     {
       "name": "wrapGLContext",
