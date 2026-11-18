@@ -28,18 +28,15 @@ public sealed class SceneShaderDefinition : ISceneAssetDefinition<ShaderAssetTag
                 "Shader definitions require a non-empty id.");
         }
 
-        if (string.IsNullOrWhiteSpace(vertexSource))
+        // Raw sources win when both are present, exactly as in the Web shader factory; an effect
+        // may stand in for either stage because the renderer bakes the effect into real sources.
+        bool hasSourcePair =
+            !string.IsNullOrWhiteSpace(vertexSource) && !string.IsNullOrWhiteSpace(fragmentSource);
+        if (!hasSourcePair && effect is null)
         {
             throw new SceneAssetException(
                 SceneAssetErrorCodes.Invalid,
-                $"Shader '{id}' requires vertex source.");
-        }
-
-        if (string.IsNullOrWhiteSpace(fragmentSource))
-        {
-            throw new SceneAssetException(
-                SceneAssetErrorCodes.Invalid,
-                $"Shader '{id}' requires fragment source.");
+                $"Shader '{id}' requires vertex and fragment source, or an effect to bake them from.");
         }
 
         Id = id;
