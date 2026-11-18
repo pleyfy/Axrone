@@ -514,13 +514,6 @@ void refreshBodyRotation(World& world, int32_t id) {
     body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
 }
 
-void resetBodyRotation(World& world, int32_t id) {
-    Body& body = world.bodies[id];
-    const Transform& transform = world.transforms[id];
-    body.rotation.setIdentity();
-    body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
-}
-
 int32_t World::createBody(int32_t type, float px, float py, float pz, float qx, float qy, float qz, float qw) {
     if (!initialized || (type != kBodyTypeStatic && type != kBodyTypeDynamic && type != kBodyTypeKinematic)) {
         return -1;
@@ -555,7 +548,7 @@ int32_t World::createBody(int32_t type, float px, float py, float pz, float qx, 
     body.customMass = 0.0f;
     body.flags = 0;
     body.invInertia = Vec3();
-    resetBodyRotation(*this, id);
+    refreshBodyRotation(*this, id);
     body.aabb = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
     body.friction = kDefaultFriction;
     body.restitution = 0.0f;

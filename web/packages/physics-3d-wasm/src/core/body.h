@@ -272,26 +272,6 @@ AXRONE_PHYSICS_INLINE bool isBulkKind(int32_t kind) {
     return kind == kShapeHull || kind == kShapeMesh || kind == kShapeHeightField;
 }
 
-AXRONE_PHYSICS_INLINE bool isHullBackedKind(int32_t kind) {
-    return kind == kShapeCylinder || kind == kShapeCone || kind == kShapeHull || kind == kShapeHeightField;
-}
-
-AXRONE_PHYSICS_INLINE bool shapeBulkReady(const Shape& shape, const ShapeBulk* bulk) {
-    if (!isBulkKind(shape.kind)) {
-        return false;
-    }
-    if (bulk == nullptr) {
-        return false;
-    }
-    if (shape.kind == kShapeHull) {
-        return bulk->faceCount > 0 && bulk->vertexCount >= 4;
-    }
-    if (shape.kind == kShapeMesh) {
-        return bulk->triangleCount > 0 && bulk->vertexCount > 0;
-    }
-    return bulk->heightFieldWidth >= 2 && bulk->heightFieldDepth >= 2;
-}
-
 AXRONE_PHYSICS_INLINE bool shapeValid(const Shape& shape) {
     if (shape.kind == kShapeSphere) {
         return shape.extents.x > 0.0f;

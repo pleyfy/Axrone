@@ -155,20 +155,7 @@ inline void* fill(void* dest, int pattern, size_t count) noexcept {
     uint8_t* stream = out + advance;
     uint8_t* const terminal = out + count;
 
-    while (stream + 128 <= terminal) {
-        v128_t* const block = static_cast<v128_t*>(__builtin_assume_aligned(stream, alignBytes));
-        block[0] = vector;
-        block[1] = vector;
-        block[2] = vector;
-        block[3] = vector;
-        block[4] = vector;
-        block[5] = vector;
-        block[6] = vector;
-        block[7] = vector;
-        stream += 128;
-    }
-
-    if (stream + 64 <= terminal) {
+    while (stream + 64 <= terminal) {
         v128_t* const block = static_cast<v128_t*>(__builtin_assume_aligned(stream, alignBytes));
         block[0] = vector;
         block[1] = vector;
@@ -289,31 +276,7 @@ inline void* copy(void* dest, const void* source, size_t count) noexcept {
     const uint8_t* inStream = in + advance;
     uint8_t* const terminal = out + count;
 
-    while (outStream + 128 <= terminal) {
-        v128_t v0 = wasm_v128_load(inStream + 0);
-        v128_t v1 = wasm_v128_load(inStream + 16);
-        v128_t v2 = wasm_v128_load(inStream + 32);
-        v128_t v3 = wasm_v128_load(inStream + 48);
-        v128_t v4 = wasm_v128_load(inStream + 64);
-        v128_t v5 = wasm_v128_load(inStream + 80);
-        v128_t v6 = wasm_v128_load(inStream + 96);
-        v128_t v7 = wasm_v128_load(inStream + 112);
-
-        v128_t* const block = static_cast<v128_t*>(__builtin_assume_aligned(outStream, alignBytes));
-        block[0] = v0;
-        block[1] = v1;
-        block[2] = v2;
-        block[3] = v3;
-        block[4] = v4;
-        block[5] = v5;
-        block[6] = v6;
-        block[7] = v7;
-
-        outStream += 128;
-        inStream += 128;
-    }
-
-    if (outStream + 64 <= terminal) {
+    while (outStream + 64 <= terminal) {
         v128_t v0 = wasm_v128_load(inStream + 0);
         v128_t v1 = wasm_v128_load(inStream + 16);
         v128_t v2 = wasm_v128_load(inStream + 32);
@@ -563,27 +526,28 @@ inline int compare(const void* left, const void* right, size_t count) noexcept {
 
 }
 
-extern "C" __attribute__((no_builtin("memset")))
+// These are compiler runtime libcalls, not part of the public ABI. They must be
+// retained under LTO (used) while staying out of the wasm export table
+// (hidden). no_builtin prevents the definitions from recursing into themselves.
+#define AXRONE_PHYSICS_LIBCALL(name) \
+    __attribute__((used, visibility("hidden"), no_builtin(#name)))
+
+extern "C" AXRONE_PHYSICS_LIBCALL(memset)
 void* memset(void* dest, int value, size_t count) noexcept {
     return axrone::physics::memory::fill(dest, value, count);
 }
 
-extern "C" __attribute__((no_builtin("memcpy")))
+extern "C" AXRONE_PHYSICS_LIBCALL(memcpy)
 void* memcpy(void* dest, const void* source, size_t count) noexcept {
     return axrone::physics::memory::copy(dest, source, count);
 }
 
-extern "C" __attribute__((no_builtin("memmove")))
+extern "C" AXRONE_PHYSICS_LIBCALL(memmove)
 void* memmove(void* dest, const void* source, size_t count) noexcept {
     return axrone::physics::memory::move(dest, source, count);
 }
 
-extern "C" __attribute__((no_builtin("memcmp")))
+extern "C" AXRONE_PHYSICS_LIBCALL(memcmp)
 int memcmp(const void* left, const void* right, size_t count) noexcept {
     return axrone::physics::memory::compare(left, right, count);
-}
-
-extern "C" __attribute__((no_builtin("bzero")))
-void bzero(void* dest, size_t count) noexcept {
-    axrone::physics::memory::fill(dest, 0, count);
 }

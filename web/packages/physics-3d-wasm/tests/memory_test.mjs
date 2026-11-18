@@ -29,7 +29,7 @@ const suiteNames = new Map([
   [2, "memcpy"],
   [4, "memmove"],
   [8, "memcmp"],
-  [16, "bzero"],
+  [16, "zero-fill"],
   [32, "regression"],
 ]);
 

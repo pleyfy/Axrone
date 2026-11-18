@@ -5,7 +5,6 @@ extern "C" void* memset(void* dest, int value, size_t count) noexcept;
 extern "C" void* memcpy(void* dest, const void* source, size_t count) noexcept;
 extern "C" void* memmove(void* dest, const void* source, size_t count) noexcept;
 extern "C" int memcmp(const void* left, const void* right, size_t count) noexcept;
-extern "C" void bzero(void* dest, size_t count) noexcept;
 
 namespace {
 
@@ -223,7 +222,7 @@ NO_BUILTIN uint64_t runMemcmp() noexcept {
     return 0;
 }
 
-NO_BUILTIN uint64_t runBzero() noexcept {
+NO_BUILTIN uint64_t runZeroFill() noexcept {
     static const uint32_t lengths[24] = {0,  1,  2,  3,  4,  7,  8,  15, 16, 17, 23,  24,
                                          31, 32, 33, 47, 63, 64, 65, 127, 128, 129, 159, 160};
     for (uint32_t li = 0; li < 24; ++li) {
@@ -233,7 +232,7 @@ NO_BUILTIN uint64_t runBzero() noexcept {
             seed(dest, length + 1, 173U + li);
             const uint8_t guard = 0x5CU;
             dest[length] = guard;
-            bzero(dest, length);
+            memset(dest, 0, length);
             for (uint32_t i = 0; i < length; ++i) {
                 if (dest[i] != 0U) {
                     return packFailure(4, length, align, i, 0U, dest[i]);
@@ -299,7 +298,7 @@ __attribute__((export_name("run_memory_tests"))) extern "C" uint64_t run_memory_
         failure = runMemcmp();
     }
     if (failure == 0) {
-        failure = runBzero();
+        failure = runZeroFill();
     }
     if (failure == 0) {
         failure = runRegression();
