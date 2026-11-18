@@ -49,7 +49,8 @@ public static class SceneGlBlendStateMapper
         bool enabled = explicitState?.Enabled ??
             materialPass?.Blend ??
             pass.Blend ??
-            (transparent || material.Surface.AlphaMode == SceneMaterialAlphaMode.Blend);
+            (material.ShaderState.Blend || transparent ||
+                material.Surface.AlphaMode == SceneMaterialAlphaMode.Blend);
 
         if (!enabled)
         {

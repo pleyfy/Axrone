@@ -316,15 +316,20 @@ public sealed class SceneGlDrawExecutor
         SceneGlMaterial material,
         SceneRenderPassDefinition pass)
     {
-        SceneMaterialPass? materialPass = material.PrimaryPass;
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(material);
+        ArgumentNullException.ThrowIfNull(pass);
 
-        bool depthTest = materialPass?.DepthTest ?? pass.DepthTest ?? true;
+        SceneMaterialPass? materialPass = material.PrimaryPass;
+        SceneGlShaderState authored = material.ShaderState;
+
+        bool depthTest = materialPass?.DepthTest ?? pass.DepthTest ?? authored.DepthTest;
         bool depthWrite = materialPass?.DepthWrite ?? !transparent;
-        bool cull = materialPass?.Cull ?? pass.Cull ?? true;
+        bool cull = materialPass?.Cull ?? pass.Cull ?? authored.CullEnabled;
         context.State.SetDepthTest(depthTest);
         context.State.SetDepthMask(depthWrite);
         context.State.SetCullFace(cull);
-        context.State.SetCullMode(GLConst.Back);
+        context.State.SetCullMode(MapCullMode(cull ? authored.Cull : SceneGlCullMode.Back));
         SceneGlBlendMapping mapping = SceneGlBlendStateMapper.Resolve(material, pass, transparent);
         context.State.SetBlend(mapping.Enabled);
 
@@ -338,6 +343,12 @@ public sealed class SceneGlDrawExecutor
             context.State.SetBlendEquationSeparate(mapping.ColorEquation, mapping.AlphaEquation);
         }
     }
+
+    private static uint MapCullMode(SceneGlCullMode mode) => mode switch
+    {
+        SceneGlCullMode.Front => GLConst.Front,
+        _ => GLConst.Back
+    };
 
     internal static void ExtractLighting(
         LightingSelectionState? lighting,
