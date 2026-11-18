@@ -33,11 +33,13 @@ run("cmake", ["--build", "--preset", preset]);
 if (preset.startsWith("wasm")) {
     const wasm = path.join(root, "build", preset, "physics.wasm");
     const optimized = path.join(root, "build", preset, "physics.opt.wasm");
+    run("node", [path.join(root, "scripts/check-wasm.mjs"), wasm]);
     const optimizeArgs = [path.join(root, "scripts/optimize.mjs"), wasm, optimized];
     if (preset.includes("simd")) {
         optimizeArgs.push("--simd");
     }
     run("node", optimizeArgs);
+    run("node", [path.join(root, "scripts/check-wasm.mjs"), optimized]);
 
     if (preset === "wasm-release") {
         run("node", [path.join(root, "scripts/embed-wasm.mjs"), optimized]);

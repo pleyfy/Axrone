@@ -57,12 +57,22 @@ if(PHYSICS_SIMD)
 endif()
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "wasm32")
+    # Modern wasm features that both wasm-opt and every supported runtime
+    # understand. They remove libcalls and stack shuffling from hot paths.
+    set(PHYSICS_WASM_FEATURE_FLAGS
+        -mbulk-memory
+        -mnontrapping-fptoint
+        -msign-ext
+        -mmultivalue
+    )
     target_compile_options(axrone_physics_core PRIVATE
         -nostdlib
         -ffreestanding
         -fno-exceptions
         -fno-rtti
         -flto
+        -Wframe-larger-than=8192
+        ${PHYSICS_WASM_FEATURE_FLAGS}
     )
     target_link_options(axrone_physics_core PRIVATE -nostdlib -flto)
 endif()
@@ -88,6 +98,8 @@ if(PHYSICS_BUILD_WASM AND CMAKE_SYSTEM_PROCESSOR MATCHES "wasm32")
         -fno-exceptions
         -fno-rtti
         -flto
+        -Wframe-larger-than=8192
+        ${PHYSICS_WASM_FEATURE_FLAGS}
     )
     if(PHYSICS_FAST_MATH)
         target_compile_options(axrone_physics_wasm PRIVATE -ffast-math -ffp-contract=fast)
