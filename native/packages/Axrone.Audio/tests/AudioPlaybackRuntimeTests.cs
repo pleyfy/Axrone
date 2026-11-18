@@ -46,6 +46,21 @@ public sealed class AudioPlaybackRuntimeTests : IDisposable
         return _clips.Register(record);
     }
 
+    private AudioClipId RegisterRamp(float seconds = 1.0f, int sampleRate = 48000)
+    {
+        int frames = (int)(sampleRate * seconds);
+        var memory = new NativeAudioMemory(sampleRate, 1, frames);
+        Span<float> span = memory.AsSpan();
+        for (int i = 0; i < frames; i++)
+        {
+            span[i] = i / (float)frames;
+        }
+
+        var record = new AudioClipRecord(new AudioClipId((uint)(_records.Count + 1)), memory);
+        _records.Add(record);
+        return _clips.Register(record);
+    }
+
     [Fact]
     public void Mixed_Block_Contains_Signal_Then_Silence()
     {
@@ -273,5 +288,110 @@ public sealed class AudioPlaybackRuntimeTests : IDisposable
         }
 
         return sampleRate * (crossings - 1) / (float)(lastCross - firstCross);
+    }
+
+    [Fact]
+    public void NegativeOffset_IsRejectedWithTypedError()
+    {
+        AudioClipId clip = RegisterSine();
+
+        Action allocate = () => _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(OffsetSeconds: -0.5f),
+            AudioSpatialization.Default2D, loop: false, 1.0f, 1.0f, 0.0f);
+
+        allocate.Should().Throw<AudioConfigurationException>()
+            .Which.Code.Should().Be("audio.invalid-offset");
+    }
+
+    [Fact]
+    public void NonFiniteOffset_IsRejectedWithTypedError()
+    {
+        AudioClipId clip = RegisterSine();
+
+        Action allocate = () => _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(OffsetSeconds: float.NaN),
+            AudioSpatialization.Default2D, loop: false, 1.0f, 1.0f, 0.0f);
+
+        allocate.Should().Throw<AudioConfigurationException>()
+            .Which.Code.Should().Be("audio.invalid-offset");
+    }
+
+    [Fact]
+    public void OffsetPastOneShotEnd_RetiresWithoutReadingPastTheBuffer()
+    {
+        AudioClipId clip = RegisterSine(seconds: 0.001f);
+        AudioPlaybackHandle handle = _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(OffsetSeconds: 10.0f),
+            AudioSpatialization.Default2D, loop: false, 1.0f, 1.0f, 0.0f);
+
+        Span<float> block = stackalloc float[512];
+        _runtime.ProcessGraph(block);
+
+        _runtime.TryGetState(handle, out _).Should().BeFalse();
+        block.ToArray().Should().OnlyContain(v => v == 0.0f);
+    }
+
+    [Fact]
+    public void OffsetPastLoopingClip_WrapsIntoRange()
+    {
+        AudioClipId clip = RegisterRamp(seconds: 1.0f);
+        AudioPlaybackHandle handle = _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(OffsetSeconds: 2.5f),
+            AudioSpatialization.Default2D, loop: true, 1.0f, 1.0f, 0.0f);
+
+        Span<float> block = stackalloc float[64];
+        _runtime.ProcessGraph(block);
+
+        _runtime.TryGetState(handle, out AudioPlaybackState state).Should().BeTrue();
+        state.Should().Be(AudioPlaybackState.Playing);
+        // 2.5 s into a 1 s ramp wraps to 0.5; equal-power centre pan scales it.
+        block[0].Should().BeApproximately(0.5f * 0.70710678f, 1e-3f);
+    }
+
+    [Fact]
+    public void LoopingDuration_RetiresAfterTheScheduledWindow()
+    {
+        AudioClipId clip = RegisterSine(seconds: 0.01f);
+        AudioPlaybackHandle handle = _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(DurationSeconds: 0.05f),
+            AudioSpatialization.Default2D, loop: true, 1.0f, 1.0f, 0.0f);
+
+        // 10 x 256 frames at 48 kHz = 0.0533 s, past the 0.05 s window even
+        // though the clip wraps several times.
+        Span<float> block = stackalloc float[512];
+        for (int i = 0; i < 10; i++)
+        {
+            _runtime.ProcessGraph(block);
+        }
+
+        _runtime.TryGetState(handle, out _).Should().BeFalse("the looping duration window closed");
+    }
+
+    [Fact]
+    public void ReplacingAClipWhilePlaying_KeepsTheVoiceOnItsRetainedRecord()
+    {
+        AudioClipId clip = RegisterSine(seconds: 1.0f);
+        AudioPlaybackHandle handle = _runtime.AllocateVoice(
+            new AudioSourceId(1U), clip, AudioBusId.Master, new AudioSourcePlayRequest(),
+            AudioSpatialization.Default2D, loop: true, 1.0f, 1.0f, 0.0f);
+
+        Span<float> first = stackalloc float[256];
+        _runtime.ProcessGraph(first);
+
+        // Replace the store entry with a different clip under the same id. The
+        // playing voice keeps its own reference, so the old buffer stays alive.
+        var replacementMemory = new NativeAudioMemory(48000, 1, 480);
+        replacementMemory.AsSpan().Fill(0.5f);
+        var replacement = new AudioClipRecord(clip, replacementMemory);
+        _records.Add(replacement);
+        _clips.Register(replacement);
+
+        Span<float> second = stackalloc float[256];
+        _runtime.ProcessGraph(second);
+
+        _runtime.TryGetState(handle, out AudioPlaybackState state).Should().BeTrue();
+        state.Should().Be(AudioPlaybackState.Playing);
+        second.ToArray().Should().OnlyContain(v => float.IsFinite(v));
+        second.ToArray().Should().Contain(v => v != 0.0f);
     }
 }

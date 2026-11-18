@@ -20,12 +20,31 @@ public sealed class AudioClipStoreTests : IDisposable
     [Fact]
     public void Register_TryGet_RoundTrip()
     {
-        using AudioClipRecord record = CreateClip(1U);
+        AudioClipRecord record = CreateClip(1U);
         _store.Register(record).Should().Be(new AudioClipId(1U));
         _store.TryGet(new AudioClipId(1U), out AudioClipRecord? found).Should().BeTrue();
         found.Should().BeSameAs(record);
         found.DurationSeconds.Should().BeApproximately(0.01f, 1e-5f);
         _store.TryGet(new AudioClipId(99U), out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Record_IsFreedOnlyAfterTheLastReferenceIsReleased()
+    {
+        AudioClipRecord record = CreateClip(1U);
+        long liveAfterCreate = NativeAudioMemory.LiveBufferCount;
+
+        _store.Register(record);
+        record.Retain();
+
+        // Removing the store entry drops only the store's reference: a voice
+        // that retained the record must keep its buffer alive.
+        _store.Unregister(record.Id).Should().BeTrue();
+        record.ReferenceCount.Should().Be(1);
+        NativeAudioMemory.LiveBufferCount.Should().Be(liveAfterCreate);
+
+        record.Release();
+        NativeAudioMemory.LiveBufferCount.Should().Be(liveAfterCreate - 1);
     }
 
     [Fact]

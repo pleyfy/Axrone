@@ -1,10 +1,16 @@
 namespace Axrone.Audio;
 
 /// <summary>
-/// Decoded clip with loop points and duration.
+/// Decoded clip with loop points and duration. Ownership is reference counted:
+/// the store holds one reference and every live voice retains its own, so a
+/// replacement or eviction frees the native buffer only when the last reader
+/// releases it.
 /// </summary>
 public sealed class AudioClipRecord : IDisposable
 {
+    private int _refCount = 1;
+    private int _disposed;
+
     /// <summary>Clip identity.</summary>
     public AudioClipId Id { get; }
 
@@ -46,8 +52,45 @@ public sealed class AudioClipRecord : IDisposable
         Metadata = metadata;
     }
 
+    /// <summary>References currently held by the store and live voices.</summary>
+    public int ReferenceCount => Volatile.Read(ref _refCount);
+
+    /// <summary>
+    /// Adds a reference. A caller that keeps the record beyond the call that
+    /// returned it must retain it; the buffer stays alive until every reference
+    /// is released.
+    /// </summary>
+    public AudioClipRecord Retain()
+    {
+        while (true)
+        {
+            int current = Volatile.Read(ref _refCount);
+            ObjectDisposedException.ThrowIf(current <= 0, this);
+
+            if (Interlocked.CompareExchange(ref _refCount, current + 1, current) == current)
+            {
+                return this;
+            }
+        }
+    }
+
+    /// <summary>Drops one reference; the last release frees the native buffer.</summary>
+    public void Release()
+    {
+        if (Interlocked.Decrement(ref _refCount) == 0)
+        {
+            Buffer.Dispose();
+        }
+    }
+
     /// <inheritdoc/>
-    public void Dispose() => Buffer.Dispose();
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            Release();
+        }
+    }
 }
 
 /// <summary>
@@ -155,25 +198,49 @@ public sealed class AudioClipStore : IDisposable
         }
     }
 
-    /// <summary>Looks up a record, promoting it on hit.</summary>
+    /// <summary>Looks up a record, promoting it on hit. The returned reference is borrowed.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public bool TryGet(AudioClipId id, [NotNullWhen(true)] out AudioClipRecord? record)
     {
         lock (_gate)
         {
-            uint bucket = id.Value & _bucketMask;
-            int idx = _buckets[bucket];
-            while (idx != -1)
-            {
-                if (_pool[idx].Key == id)
-                {
-                    Promote(idx);
-                    record = _pool[idx].Value!;
-                    return true;
-                }
+            return TryGetLocked(id, out record);
+        }
+    }
 
-                idx = _pool[idx].HashNext;
+    /// <summary>
+    /// Looks up a record and takes a reference under the store lock, so a
+    /// concurrent replace or eviction cannot free the buffer before the caller
+    /// owns it. The caller must <see cref="AudioClipRecord.Release"/> it.
+    /// </summary>
+    public bool TryRetain(AudioClipId id, [NotNullWhen(true)] out AudioClipRecord? record)
+    {
+        lock (_gate)
+        {
+            if (!TryGetLocked(id, out record))
+            {
+                return false;
             }
+
+            record.Retain();
+            return true;
+        }
+    }
+
+    private bool TryGetLocked(AudioClipId id, [NotNullWhen(true)] out AudioClipRecord? record)
+    {
+        uint bucket = id.Value & _bucketMask;
+        int idx = _buckets[bucket];
+        while (idx != -1)
+        {
+            if (_pool[idx].Key == id)
+            {
+                Promote(idx);
+                record = _pool[idx].Value!;
+                return true;
+            }
+
+            idx = _pool[idx].HashNext;
         }
 
         record = null;
