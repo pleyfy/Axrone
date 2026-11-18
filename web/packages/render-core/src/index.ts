@@ -5,5 +5,6 @@ export * from './graph';
 export * from './post-process';
 export * from './pipeline';
 export * from './shader-effect';
+export * from './material-contract';
 export * from './nine-slice';
 export * from './transform-2d';
