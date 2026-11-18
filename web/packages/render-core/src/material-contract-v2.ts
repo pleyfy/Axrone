@@ -231,11 +231,11 @@ const pbrFeatureSlots = (advanced = true): readonly MaterialOutputSlotDefinition
         'Clearcoat Normal',
         'fragment',
         'clearcoat',
-        'tex',
+        'vec3',
         'clearcoat.normal',
         {
             bindingKey: '_ClearcoatNormalTexture',
-            defaultValue: 'normal',
+            defaultValue: '[0.5, 0.5, 1]',
             optional: true,
             advanced,
         }
