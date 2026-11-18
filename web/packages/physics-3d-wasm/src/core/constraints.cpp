@@ -68,16 +68,7 @@ float rowMass(const World& world, int32_t a, int32_t b, const JointRow& row) {
 }
 
 void applyAngularDelta(World& world, int32_t id, const Vec3& torque) {
-    Body& body = world.bodies[id];
-    const Vec3 inertia = body.invInertia;
-    if (inertia.x == 0.0f && inertia.y == 0.0f && inertia.z == 0.0f) {
-        return;
-    }
-    Vec3 local = body.rotation.transposeTransform(torque);
-    local.x *= inertia.x;
-    local.y *= inertia.y;
-    local.z *= inertia.z;
-    world.angularVelocities[id] += body.rotation.transform(local);
+    world.angularVelocities[id] += worldInvInertiaMul(world.bodies[id], torque);
 }
 
 void applyRowVelocityDelta(World& world, const Constraint& constraint, const JointRow& row, float delta) {
@@ -101,11 +92,7 @@ void applyRowPositionDelta(World& world, int32_t id, const Vec3& linear, const V
     if (inertia.x == 0.0f && inertia.y == 0.0f && inertia.z == 0.0f) {
         return;
     }
-    Vec3 local = body.rotation.transposeTransform(angular * delta);
-    local.x *= inertia.x;
-    local.y *= inertia.y;
-    local.z *= inertia.z;
-    const Vec3 rotational = body.rotation.transform(local);
+    const Vec3 rotational = worldInvInertiaMul(body, angular * delta);
     integrateRotation(transform, rotational, 1.0f);
     refreshBodyRotation(world, id);
 }
@@ -862,68 +849,64 @@ int32_t World::setConstraintEnabled(int32_t id, int32_t enabled) {
     return 0;
 }
 
-int32_t World::setHingeMotor(int32_t id, float speed, float maxTorque) {
+int32_t World::setJointMotor(
+    int32_t id,
+    int32_t expectedKind,
+    float speed,
+    float maxForceOrTorque
+) {
     Constraint* constraint = nullptr;
-    if (!constraintResolve(id, constraint) || constraint->kind != kConstraintHinge) {
+    if (!constraintResolve(id, constraint) || constraint->kind != expectedKind) {
         return -1;
     }
-    if (!finiteScalar(speed) || !finiteScalar(maxTorque) || maxTorque < 0.0f) {
+    if (!finiteScalar(speed) || !finiteScalar(maxForceOrTorque) || maxForceOrTorque < 0.0f) {
         return -1;
     }
     constraint->motorSpeed = speed;
-    constraint->maxMotorForceOrTorque = maxTorque;
-    constraint->enableMotor = maxTorque > kEps ? 1 : 0;
+    constraint->maxMotorForceOrTorque = maxForceOrTorque;
+    constraint->enableMotor = maxForceOrTorque > kEps ? 1 : 0;
     constraint->impulses[2] = 0.0f;
     constraint->impulses[3] = 0.0f;
     return 0;
+}
+
+int32_t World::setJointLimit(
+    int32_t id,
+    int32_t expectedKind,
+    int32_t enable,
+    float lower,
+    float upper
+) {
+    Constraint* constraint = nullptr;
+    if (!constraintResolve(id, constraint) || constraint->kind != expectedKind) {
+        return -1;
+    }
+    if (!booleanFlag(enable) || !finiteScalar(lower) || !finiteScalar(upper) ||
+        (enable != 0 && lower > upper)) {
+        return -1;
+    }
+    constraint->enableLimit = enable;
+    constraint->lower = lower;
+    constraint->upper = upper;
+    constraint->impulses[2] = 0.0f;
+    constraint->impulses[3] = 0.0f;
+    return 0;
+}
+
+int32_t World::setHingeMotor(int32_t id, float speed, float maxTorque) {
+    return setJointMotor(id, kConstraintHinge, speed, maxTorque);
 }
 
 int32_t World::setHingeLimit(int32_t id, int32_t enable, float lower, float upper) {
-    Constraint* constraint = nullptr;
-    if (!constraintResolve(id, constraint) || constraint->kind != kConstraintHinge) {
-        return -1;
-    }
-    if (!booleanFlag(enable) || !finiteScalar(lower) || !finiteScalar(upper) || (enable != 0 && lower > upper)) {
-        return -1;
-    }
-    constraint->enableLimit = enable;
-    constraint->lower = lower;
-    constraint->upper = upper;
-    constraint->impulses[2] = 0.0f;
-    constraint->impulses[3] = 0.0f;
-    return 0;
+    return setJointLimit(id, kConstraintHinge, enable, lower, upper);
 }
 
 int32_t World::setSliderMotor(int32_t id, float speed, float maxForce) {
-    Constraint* constraint = nullptr;
-    if (!constraintResolve(id, constraint) || constraint->kind != kConstraintSlider) {
-        return -1;
-    }
-    if (!finiteScalar(speed) || !finiteScalar(maxForce) || maxForce < 0.0f) {
-        return -1;
-    }
-    constraint->motorSpeed = speed;
-    constraint->maxMotorForceOrTorque = maxForce;
-    constraint->enableMotor = maxForce > kEps ? 1 : 0;
-    constraint->impulses[2] = 0.0f;
-    constraint->impulses[3] = 0.0f;
-    return 0;
+    return setJointMotor(id, kConstraintSlider, speed, maxForce);
 }
 
 int32_t World::setSliderLimit(int32_t id, int32_t enable, float lower, float upper) {
-    Constraint* constraint = nullptr;
-    if (!constraintResolve(id, constraint) || constraint->kind != kConstraintSlider) {
-        return -1;
-    }
-    if (!booleanFlag(enable) || !finiteScalar(lower) || !finiteScalar(upper) || (enable != 0 && lower > upper)) {
-        return -1;
-    }
-    constraint->enableLimit = enable;
-    constraint->lower = lower;
-    constraint->upper = upper;
-    constraint->impulses[2] = 0.0f;
-    constraint->impulses[3] = 0.0f;
-    return 0;
+    return setJointLimit(id, kConstraintSlider, enable, lower, upper);
 }
 
 }

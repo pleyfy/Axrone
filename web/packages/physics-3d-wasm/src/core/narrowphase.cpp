@@ -661,8 +661,16 @@ void buildFace(const Vec3& center, const Vec3 axes[3], const Vec3& half, int32_t
     out[3] = faceCenter + u * hu - v * hv;
 }
 
-int32_t clipPlane(const Vec3 input[], int32_t count, Vec3 output[], const Vec3& reference, const Vec3& normal, float offset) {
-    if (count == 0) {
+int32_t clipPlane(
+    const Vec3 input[],
+    int32_t count,
+    Vec3 output[],
+    int32_t outputCapacity,
+    const Vec3& reference,
+    const Vec3& normal,
+    float offset
+) {
+    if (count == 0 || outputCapacity <= 0) {
         return 0;
     }
 
@@ -677,10 +685,16 @@ int32_t clipPlane(const Vec3 input[], int32_t count, Vec3 output[], const Vec3& 
         const bool currentInside = currentDistance <= 0.0f;
 
         if (previousInside != currentInside) {
+            if (outputCount >= outputCapacity) {
+                return outputCount;
+            }
             const float t = previousDistance / (previousDistance - currentDistance);
             output[outputCount++] = previous + (current - previous) * t;
         }
         if (currentInside) {
+            if (outputCount >= outputCapacity) {
+                return outputCount;
+            }
             output[outputCount++] = current;
         }
 
@@ -703,8 +717,8 @@ void addFaceContacts(
     bool referenceIsA,
     int32_t axisIndex
 ) {
-    const Vec3* referenceAxes = referenceIsA ? world.axesA : world.axesB;
-    const Vec3* incidentAxes = referenceIsA ? world.axesB : world.axesA;
+    const Vec3* referenceAxes = referenceIsA ? world.narrowphaseScratch->axesA : world.narrowphaseScratch->axesB;
+    const Vec3* incidentAxes = referenceIsA ? world.narrowphaseScratch->axesB : world.narrowphaseScratch->axesA;
     const ShapeWorld& referenceShape = referenceIsA ? shapeA : shapeB;
     const ShapeWorld& incidentShape = referenceIsA ? shapeB : shapeA;
     const int32_t reference = referenceIsA ? a : b;
@@ -739,19 +753,19 @@ void addFaceContacts(
         }
     }
 
-    buildFace(incidentShape.center, incidentAxes, incidentShape.half, incidentAxis, incidentSign, world.faceVertices);
+    buildFace(incidentShape.center, incidentAxes, incidentShape.half, incidentAxis, incidentSign, world.narrowphaseScratch->faceVertices);
 
-    int32_t count = clipPlane(world.faceVertices, 4, world.clipA, referencePosition, u, hu);
-    count = clipPlane(world.clipA, count, world.clipB, referencePosition, -u, hu);
-    count = clipPlane(world.clipB, count, world.clipA, referencePosition, v, hv);
-    count = clipPlane(world.clipA, count, world.clipB, referencePosition, -v, hv);
+    int32_t count = clipPlane(world.narrowphaseScratch->faceVertices, 4, world.narrowphaseScratch->clipA, 16, referencePosition, u, hu);
+    count = clipPlane(world.narrowphaseScratch->clipA, count, world.narrowphaseScratch->clipB, 16, referencePosition, -u, hu);
+    count = clipPlane(world.narrowphaseScratch->clipB, count, world.narrowphaseScratch->clipA, 16, referencePosition, v, hv);
+    count = clipPlane(world.narrowphaseScratch->clipA, count, world.narrowphaseScratch->clipB, 16, referencePosition, -v, hv);
 
     const int32_t start = world.contactCount;
     int32_t added = 0;
     const Vec3 localNormal = world.bodies[reference].rotation.transposeTransform(referenceNormal);
 
     for (int32_t i = 0; i < count; ++i) {
-        const Vec3 point = world.clipB[i];
+        const Vec3 point = world.narrowphaseScratch->clipB[i];
         const float separation = dot(point - faceCenter, referenceNormal);
         if (separation > 0.0f) {
             continue;
@@ -777,7 +791,7 @@ void addFaceContacts(
             addContact(world, a, b, normal, -separation, point, point, referencePoint, 2, localNormal, indexA, indexB, kKindBoxFace * 16 + added);
         }
 
-        if (++added >= world.boxManifoldPointCap) {
+        if (++added >= world.boxManifoldPointCap()) {
             break;
         }
     }
@@ -810,12 +824,12 @@ void addEdgeContact(
         if (k == axisA) {
             continue;
         }
-        const float d = dot(world.axesA[k], normal);
+        const float d = dot(world.narrowphaseScratch->axesA[k], normal);
         const float sign = d >= 0.0f ? 1.0f : -1.0f;
         const float half = k == 0 ? halfA.x : (k == 1 ? halfA.y : halfA.z);
-        centerA += world.axesA[k] * (sign * half);
+        centerA += world.narrowphaseScratch->axesA[k] * (sign * half);
     }
-    const Vec3 directionA = world.axesA[axisA];
+    const Vec3 directionA = world.narrowphaseScratch->axesA[axisA];
     const float halfExtentA = axisA == 0 ? halfA.x : (axisA == 1 ? halfA.y : halfA.z);
 
     const Vec3& halfB = shapeB.half;
@@ -824,12 +838,12 @@ void addEdgeContact(
         if (k == axisB) {
             continue;
         }
-        const float d = dot(world.axesB[k], normal);
+        const float d = dot(world.narrowphaseScratch->axesB[k], normal);
         const float sign = d <= 0.0f ? 1.0f : -1.0f;
         const float half = k == 0 ? halfB.x : (k == 1 ? halfB.y : halfB.z);
-        centerB += world.axesB[k] * (sign * half);
+        centerB += world.narrowphaseScratch->axesB[k] * (sign * half);
     }
-    const Vec3 directionB = world.axesB[axisB];
+    const Vec3 directionB = world.narrowphaseScratch->axesB[axisB];
     const float halfExtentB = axisB == 0 ? halfB.x : (axisB == 1 ? halfB.y : halfB.z);
 
     const Vec3 offset = centerA - centerB;
@@ -860,14 +874,14 @@ void addEdgeContact(
 
 void collideBoxBox(World& world, int32_t a, int32_t indexA, const ShapeWorld& shapeA, int32_t b, int32_t indexB, const ShapeWorld& shapeB) {
     const Mat3& rotationA = shapeA.rotation;
-    world.axesA[0] = Vec3(rotationA.m[0], rotationA.m[3], rotationA.m[6]);
-    world.axesA[1] = Vec3(rotationA.m[1], rotationA.m[4], rotationA.m[7]);
-    world.axesA[2] = Vec3(rotationA.m[2], rotationA.m[5], rotationA.m[8]);
+    world.narrowphaseScratch->axesA[0] = Vec3(rotationA.m[0], rotationA.m[3], rotationA.m[6]);
+    world.narrowphaseScratch->axesA[1] = Vec3(rotationA.m[1], rotationA.m[4], rotationA.m[7]);
+    world.narrowphaseScratch->axesA[2] = Vec3(rotationA.m[2], rotationA.m[5], rotationA.m[8]);
 
     const Mat3& rotationB = shapeB.rotation;
-    world.axesB[0] = Vec3(rotationB.m[0], rotationB.m[3], rotationB.m[6]);
-    world.axesB[1] = Vec3(rotationB.m[1], rotationB.m[4], rotationB.m[7]);
-    world.axesB[2] = Vec3(rotationB.m[2], rotationB.m[5], rotationB.m[8]);
+    world.narrowphaseScratch->axesB[0] = Vec3(rotationB.m[0], rotationB.m[3], rotationB.m[6]);
+    world.narrowphaseScratch->axesB[1] = Vec3(rotationB.m[1], rotationB.m[4], rotationB.m[7]);
+    world.narrowphaseScratch->axesB[2] = Vec3(rotationB.m[2], rotationB.m[5], rotationB.m[8]);
 
     const Vec3 offset = shapeB.center - shapeA.center;
     const Vec3& halfA = shapeA.half;
@@ -880,9 +894,9 @@ void collideBoxBox(World& world, int32_t a, int32_t indexA, const ShapeWorld& sh
     Vec3 bestNormal(1.0f, 0.0f, 0.0f);
 
     for (int32_t i = 0; i < 3; ++i) {
-        const Vec3 axis = world.axesA[i];
+        const Vec3 axis = world.narrowphaseScratch->axesA[i];
         const float d = dot(offset, axis);
-        const float separation = fabsf(d) - boxProjection(world.axesA, halfA, axis) - boxProjection(world.axesB, halfB, axis);
+        const float separation = fabsf(d) - boxProjection(world.narrowphaseScratch->axesA, halfA, axis) - boxProjection(world.narrowphaseScratch->axesB, halfB, axis);
         if (separation > 0.0f) {
             return;
         }
@@ -895,9 +909,9 @@ void collideBoxBox(World& world, int32_t a, int32_t indexA, const ShapeWorld& sh
     }
 
     for (int32_t i = 0; i < 3; ++i) {
-        const Vec3 axis = world.axesB[i];
+        const Vec3 axis = world.narrowphaseScratch->axesB[i];
         const float d = dot(offset, axis);
-        const float separation = fabsf(d) - boxProjection(world.axesA, halfA, axis) - boxProjection(world.axesB, halfB, axis);
+        const float separation = fabsf(d) - boxProjection(world.narrowphaseScratch->axesA, halfA, axis) - boxProjection(world.narrowphaseScratch->axesB, halfB, axis);
         if (separation > 0.0f) {
             return;
         }
@@ -911,7 +925,7 @@ void collideBoxBox(World& world, int32_t a, int32_t indexA, const ShapeWorld& sh
 
     for (int32_t i = 0; i < 3; ++i) {
         for (int32_t j = 0; j < 3; ++j) {
-            const Vec3 axis = cross(world.axesA[i], world.axesB[j]);
+            const Vec3 axis = cross(world.narrowphaseScratch->axesA[i], world.narrowphaseScratch->axesB[j]);
             const float lengthSquared = lengthSq(axis);
             if (lengthSquared < kCrossEps) {
                 continue;
@@ -919,7 +933,7 @@ void collideBoxBox(World& world, int32_t a, int32_t indexA, const ShapeWorld& sh
 
             const Vec3 normalized = axis * (1.0f / sqrtf(lengthSquared));
             const float d = dot(offset, normalized);
-            const float separation = fabsf(d) - boxProjection(world.axesA, halfA, normalized) - boxProjection(world.axesB, halfB, normalized);
+            const float separation = fabsf(d) - boxProjection(world.narrowphaseScratch->axesA, halfA, normalized) - boxProjection(world.narrowphaseScratch->axesB, halfB, normalized);
             if (separation > 0.0f) {
                 return;
             }
@@ -964,9 +978,9 @@ void buildShapeHull(const ShapeWorld& shape, Hull& hull) {
 
 void buildBulkHullWorldView(World& world, int32_t side, const ShapeWorld& shape, HullView& view) {
     const ShapeBulk* bulk = shape.bulk;
-    Vec3* vertices = side == 0 ? world.hullVerticesA : world.hullVerticesB;
-    Vec3* normals = side == 0 ? world.hullNormalsA : world.hullNormalsB;
-    float* offsets = side == 0 ? world.hullOffsetsA : world.hullOffsetsB;
+    Vec3* vertices = side == 0 ? world.narrowphaseScratch->hullVerticesA : world.narrowphaseScratch->hullVerticesB;
+    Vec3* normals = side == 0 ? world.narrowphaseScratch->hullNormalsA : world.narrowphaseScratch->hullNormalsB;
+    float* offsets = side == 0 ? world.narrowphaseScratch->hullOffsetsA : world.narrowphaseScratch->hullOffsetsB;
     const int32_t vertexCount = bulk->vertexCount;
     for (int32_t i = 0; i < vertexCount; ++i) {
         vertices[i] = shape.center + shape.rotation.transform(bulk->vertices[i]);
@@ -996,11 +1010,11 @@ void buildFieldHullWorldView(World& world, int32_t side, const ShapeWorld& shape
         { 2, 3, 1, 0 }
     };
 
-    Vec3* vertices = side == 0 ? world.hullVerticesA : world.hullVerticesB;
-    Vec3* normals = side == 0 ? world.hullNormalsA : world.hullNormalsB;
-    float* offsets = side == 0 ? world.hullOffsetsA : world.hullOffsetsB;
-    int32_t* starts = side == 0 ? world.hullStartA : world.hullStartB;
-    int32_t* indices = side == 0 ? world.hullIndicesA : world.hullIndicesB;
+    Vec3* vertices = side == 0 ? world.narrowphaseScratch->hullVerticesA : world.narrowphaseScratch->hullVerticesB;
+    Vec3* normals = side == 0 ? world.narrowphaseScratch->hullNormalsA : world.narrowphaseScratch->hullNormalsB;
+    float* offsets = side == 0 ? world.narrowphaseScratch->hullOffsetsA : world.narrowphaseScratch->hullOffsetsB;
+    int32_t* starts = side == 0 ? world.narrowphaseScratch->hullStartA : world.narrowphaseScratch->hullStartB;
+    int32_t* indices = side == 0 ? world.narrowphaseScratch->hullIndicesA : world.narrowphaseScratch->hullIndicesB;
 
     Vec3 mn = shape.bulk->localMin;
     Vec3 mx = shape.bulk->localMax;
@@ -1309,7 +1323,7 @@ void addHullFaceContacts(
             continue;
         }
         side = side * (1.0f / sqrtf(sideLengthSq));
-        clipCount = clipPlane(clipSource, clipCount, clipTarget, from, side, 0.0f);
+        clipCount = clipPlane(clipSource, clipCount, clipTarget, kHullClipCapacity, from, side, 0.0f);
         for (int32_t j = 0; j < clipCount; ++j) {
             clipSource[j] = clipTarget[j];
         }

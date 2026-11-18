@@ -123,6 +123,7 @@ bool World::ensureBulkPool() {
     scratchBegin = reinterpret_cast<uintptr_t>(scratch);
     scratchCursor = scratchBegin;
     scratchEnd = scratchBegin + static_cast<uintptr_t>(kBulkScratchBytes);
+    bulkPoolBaseOffset = bulkArena->used();
     return true;
 }
 
@@ -134,7 +135,7 @@ uintptr_t World::bulkAlloc(int32_t bytes) {
         return 0;
     }
     const uintptr_t aligned = alignUp(scratchCursor, 8U);
-    if (aligned < scratchCursor) {
+    if (aligned < scratchCursor || aligned > scratchEnd) {
         return 0;
     }
     if (static_cast<uintptr_t>(bytes) > scratchEnd - aligned) {
@@ -188,6 +189,9 @@ void World::clearShapeBulk(int32_t bodyId, int32_t slot) {
         return;
     }
     const size_t blockOffset = static_cast<size_t>(bulk->blockStart - base);
+    if (bulk->blockBytes <= 0 || static_cast<size_t>(bulk->blockBytes) > static_cast<size_t>(-1) - blockOffset) {
+        return;
+    }
     const size_t blockEnd = blockOffset + static_cast<size_t>(bulk->blockBytes);
     if (bulkArena->used() == blockEnd) {
         bulkArena->shrinkTo(blockOffset);
@@ -324,7 +328,11 @@ int32_t World::setShapeVertices(int32_t shapeId, uintptr_t address, int32_t coun
         return 0;
     }
 
-    Vec3 scratchVertices[kBulkMaxVertices];
+    if (hullScratch == nullptr) {
+        return -1;
+    }
+    HullBuildScratch& scratch = *hullScratch;
+    Vec3* const scratchVertices = scratch.uniqueVertices;
     const int32_t uniqueCount = dedupeVertices(source, count, scratchVertices);
     if (uniqueCount < 4) {
         return -1;
@@ -352,13 +360,9 @@ int32_t World::setShapeVertices(int32_t shapeId, uintptr_t address, int32_t coun
         scratchVertices[i] = scratchVertices[i] - middle;
     }
 
-    int32_t faceIndices[kBulkMaxFaceIndices];
-    int32_t faceStart[kBulkMaxFaces + 1];
-    Vec3 faceNormals[kBulkMaxFaces];
-    float faceOffsets[kBulkMaxFaces];
     int32_t faceCount = 0;
     int32_t indexTotal = 0;
-    if (!buildUserHullFaces(scratchVertices, uniqueCount, faceIndices, faceStart, faceNormals, faceOffsets, kBulkMaxFaces, faceCount, indexTotal)) {
+    if (!buildUserHullFaces(scratchVertices, uniqueCount, scratch, faceCount, indexTotal)) {
         return -1;
     }
     const int32_t indexCount = indexTotal;
@@ -403,17 +407,17 @@ int32_t World::setShapeVertices(int32_t shapeId, uintptr_t address, int32_t coun
     bulk->heights = nullptr;
 
     for (int32_t f = 0; f <= faceCount; ++f) {
-        bulk->faceStart[f] = faceStart[f];
+        bulk->faceStart[f] = scratch.outFaceStart[f];
     }
     for (int32_t i = 0; i < indexCount; ++i) {
-        bulk->faceIndices[i] = faceIndices[i];
+        bulk->faceIndices[i] = scratch.outFaceIndices[i];
     }
     for (int32_t i = 0; i < uniqueCount; ++i) {
         bulk->vertices[i] = scratchVertices[i];
     }
     for (int32_t f = 0; f < faceCount; ++f) {
-        bulk->faceNormals[f] = faceNormals[f];
-        bulk->faceOffsets[f] = faceOffsets[f];
+        bulk->faceNormals[f] = scratch.outFaceNormals[f];
+        bulk->faceOffsets[f] = scratch.outFaceOffsets[f];
     }
 
     setBulkAt(bodyId, slot, bulk);
@@ -447,9 +451,11 @@ int32_t World::setShapeIndices(int32_t shapeId, uintptr_t address, int32_t count
         return -1;
     }
     const uint32_t* source = reinterpret_cast<const uint32_t*>(address);
-    const int32_t vertexCount = bulk->vertexCount;
+    const uint32_t vertexCount = static_cast<uint32_t>(bulk->vertexCount);
     for (int32_t i = 0; i < count * 3; ++i) {
-        if (static_cast<int32_t>(source[i]) >= vertexCount) {
+        // Unsigned comparison is deliberate: a high-bit index must be rejected,
+        // not wrapped into a negative value by an int32_t cast.
+        if (source[i] >= vertexCount) {
             return -1;
         }
     }

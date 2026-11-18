@@ -2,6 +2,7 @@
 
 #include "core/broadphase.h"
 #include "core/narrowphase.h"
+#include "core/polytope.h"
 #include "core/solver.h"
 #include "platform/memory.h"
 #include "runtime/arena.h"
@@ -162,6 +163,35 @@ void invalidateAllSlots(World& world, int32_t bodyId) {
     }
 }
 
+void clearBodyBulks(World& world, int32_t bodyId) {
+    for (int32_t slot = 0; slot < kMaxShapesPerBody; ++slot) {
+        world.clearShapeBulk(bodyId, slot);
+    }
+}
+
+[[maybe_unused]] int32_t appendPrimitiveShape(World& world, int32_t id, const Shape& candidate) {
+    Body& body = world.bodies[id];
+    const int32_t slot = firstFreeShapeSlot(body);
+    if (slot < 0) {
+        return -1;
+    }
+
+    const int32_t previousCount = body.shapeCount;
+    body.shapes[slot] = candidate;
+    bumpSlotGeneration(world, id, slot);
+    if (slot + 1 > body.shapeCount) {
+        body.shapeCount = slot + 1;
+    }
+
+    if (!recomputeMass(body)) {
+        body.shapes[slot].kind = kShapeNone;
+        body.shapeCount = previousCount;
+        recomputeMass(body);
+        return -1;
+    }
+    return slot;
+}
+
 int32_t shapeHighWater(const Body& body) {
     int32_t count = body.shapeCount;
     while (count > 0 && !shapeValid(body.shapes[count - 1])) {
@@ -171,16 +201,7 @@ int32_t shapeHighWater(const Body& body) {
 }
 
 void addAngularResponse(World& world, Body& body, int32_t id, const Vec3& angularImpulse) {
-    const Vec3 inertia = body.invInertia;
-    if (inertia.x == 0.0f && inertia.y == 0.0f && inertia.z == 0.0f) {
-        return;
-    }
-
-    Vec3 local = body.rotation.transposeTransform(angularImpulse);
-    local.x *= inertia.x;
-    local.y *= inertia.y;
-    local.z *= inertia.z;
-    world.angularVelocities[id] += body.rotation.transform(local);
+    world.angularVelocities[id] += worldInvInertiaMul(body, angularImpulse);
 }
 
 int32_t shapeSignature(const Body& body) {
@@ -225,6 +246,148 @@ void wakeSleepingOnContacts(World& world) {
             wakeBody(world, contact.b);
         }
     }
+}
+
+void integrateBodies(World& world, float dt, bool sleepEnabled) {
+    const Vec3 gravityStep = world.gravity * dt;
+    for (int32_t i = 0; i < world.highWater; ++i) {
+        Body& body = world.bodies[i];
+        const int32_t state = body.state;
+        if (state != kBodyDynamic && state != kBodyKinematic) {
+            continue;
+        }
+
+        if (state == kBodyDynamic) {
+            if (sleepEnabled && body.awake == 0) {
+                world.sleepTransforms[i] = world.transforms[i];
+                continue;
+            }
+            if (!sleepEnabled) {
+                body.awake = 1;
+                body.sleepTime = 0.0f;
+            }
+        }
+
+        Vec3& velocity = world.velocities[i];
+        Vec3& angularVelocity = world.angularVelocities[i];
+
+        if (state == kBodyDynamic) {
+            if (body.forceAccum.x != 0.0f || body.forceAccum.y != 0.0f || body.forceAccum.z != 0.0f) {
+                velocity += (body.forceAccum * dt) * body.invMass;
+            }
+            if (body.torqueAccum.x != 0.0f || body.torqueAccum.y != 0.0f || body.torqueAccum.z != 0.0f) {
+                addAngularResponse(world, body, i, body.torqueAccum * dt);
+            }
+            body.forceAccum = Vec3();
+            body.torqueAccum = Vec3();
+            velocity += gravityStep * body.gravityScale;
+        }
+
+        float linearFactor = 1.0f - body.linearDamping * dt;
+        if (linearFactor < 0.0f) {
+            linearFactor = 0.0f;
+        }
+        velocity *= linearFactor;
+
+        float angularFactor = 1.0f - body.angularDamping * dt;
+        if (angularFactor < 0.0f) {
+            angularFactor = 0.0f;
+        }
+        angularVelocity *= angularFactor;
+
+        const int32_t flags = body.flags;
+        if ((flags & kBodyFreezePositionX) != 0) {
+            velocity.x = 0.0f;
+        }
+        if ((flags & kBodyFreezePositionY) != 0) {
+            velocity.y = 0.0f;
+        }
+        if ((flags & kBodyFreezePositionZ) != 0) {
+            velocity.z = 0.0f;
+        }
+        if ((flags & kBodyFreezeRotationX) != 0) {
+            angularVelocity.x = 0.0f;
+        }
+        if ((flags & kBodyFreezeRotationY) != 0) {
+            angularVelocity.y = 0.0f;
+        }
+        if ((flags & kBodyFreezeRotationZ) != 0) {
+            angularVelocity.z = 0.0f;
+        }
+
+        Transform& transform = world.transforms[i];
+        if ((flags & kBodyFreezePositionX) == 0) {
+            transform.px += velocity.x * dt;
+        }
+        if ((flags & kBodyFreezePositionY) == 0) {
+            transform.py += velocity.y * dt;
+        }
+        if ((flags & kBodyFreezePositionZ) == 0) {
+            transform.pz += velocity.z * dt;
+        }
+        integrateRotation(transform, angularVelocity, dt);
+        refreshBodyRotation(world, i);
+    }
+}
+
+void updateSleepingBodies(World& world, float dt) {
+    for (int32_t i = 0; i < world.highWater; ++i) {
+        Body& body = world.bodies[i];
+        if (body.state != kBodyDynamic) {
+            continue;
+        }
+        if (body.awake == 0) {
+            world.transforms[i] = world.sleepTransforms[i];
+            refreshBodyRotation(world, i);
+            world.velocities[i] = Vec3();
+            world.angularVelocities[i] = Vec3();
+            continue;
+        }
+        if (lengthSq(world.velocities[i]) < kSleepLinearThresholdSq &&
+            lengthSq(world.angularVelocities[i]) < kSleepAngularThresholdSq) {
+            body.sleepTime += dt;
+            if (body.sleepTime >= kSleepTimeLimit) {
+                body.awake = 0;
+                world.velocities[i] = Vec3();
+                world.angularVelocities[i] = Vec3();
+            }
+        } else {
+            body.sleepTime = 0.0f;
+        }
+    }
+}
+
+void commitContactCache(World& world) {
+    for (int32_t k = 0; k < world.contactCount; ++k) {
+        const Contact& contact = world.contacts[k];
+        if (contact.cacheSlot < 0) {
+            continue;
+        }
+        CacheEntry& entry = world.cacheNext[contact.cacheSlot];
+        entry.impN = contact.impN;
+        entry.impT1 = contact.impT1;
+        entry.impT2 = contact.impT2;
+    }
+
+    for (int32_t index = 0; index < world.cachePrevUsedCount; ++index) {
+        ++world.m_stepStatistics.pointIdentitiesPrevStep;
+        if (cacheContains(world.cacheNext, world.cacheMask, world.cacheCapacity,
+                          world.cachePrev[world.cachePrevUsed[index]])) {
+            ++world.m_stepStatistics.pointIdentitiesRepeatingPrevStep;
+        }
+    }
+
+    CacheEntry* previousTable = world.cachePrev;
+    world.cachePrev = world.cacheNext;
+    world.cacheNext = previousTable;
+
+    int32_t* previousUsed = world.cachePrevUsed;
+    world.cachePrevUsed = world.cacheNextUsed;
+    world.cacheNextUsed = previousUsed;
+
+    const int32_t previousUsedCount = world.cachePrevUsedCount;
+    world.cachePrevUsedCount = world.cacheNextUsedCount;
+    world.cacheNextUsedCount = previousUsedCount;
 }
 
 struct Hasher {
@@ -318,7 +481,11 @@ int32_t firstFreeShapeSlot(const Body& body) {
 }
 
 bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Vec3 initialGravity) {
-    initialized = false;
+    // A second init() must never inherit pointers or scratch offsets from the
+    // previous arena layout. Zeroing the whole descriptor makes that contract
+    // unconditional and keeps the global instance in .bss (all-zero state).
+    *this = World{};
+
     if (bodyCapacity <= 0 || bodyCapacity > kMaxBodies ||
         contactCapacity <= 0 || contactCapacity > kMaxContacts ||
         !isFinite(initialGravity.x) || !isFinite(initialGravity.y) || !isFinite(initialGravity.z)) {
@@ -328,20 +495,6 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
     maxBodies = bodyCapacity;
     maxContacts = contactCapacity;
     gravity = initialGravity;
-    allowSleep = 0;
-    boxManifoldPointCap = 8;
-    highWater = 0;
-    liveCount = 0;
-    freeCount = 0;
-    contactCount = 0;
-    stepSerial = 0;
-    statsSerial = -1;
-    statsBroadphasePairs = 0;
-    statsShapePairs = 0;
-    m_stepStatistics = {};
-#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
-    m_phaseNanoseconds = {};
-#endif
 
     cacheCapacity = 64;
     while (cacheCapacity < maxContacts * 2) {
@@ -386,6 +539,8 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
     cacheNext = allocateArray<CacheEntry>(arena, cacheCapacity);
     cachePrevUsed = allocateArray<int32_t>(arena, maxContacts);
     cacheNextUsed = allocateArray<int32_t>(arena, maxContacts);
+    narrowphaseScratch = allocateArray<NarrowphaseScratch>(arena, 1);
+    hullScratch = allocateArray<HullBuildScratch>(arena, 1);
 
     if (transforms == nullptr || sleepTransforms == nullptr || velocities == nullptr || angularVelocities == nullptr ||
         packedContacts == nullptr || bodies == nullptr || slotGen == nullptr || sweepOrder == nullptr ||
@@ -393,7 +548,8 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
         freeIds == nullptr || contacts == nullptr || constraints == nullptr || constraintFreeIds == nullptr ||
         suppressedKeys == nullptr ||
         cachePrev == nullptr || cacheNext == nullptr ||
-        cachePrevUsed == nullptr || cacheNextUsed == nullptr) {
+        cachePrevUsed == nullptr || cacheNextUsed == nullptr ||
+        narrowphaseScratch == nullptr || hullScratch == nullptr) {
         return false;
     }
 
@@ -442,7 +598,10 @@ void World::reset() {
     liveCount = 0;
     freeCount = 0;
     contactCount = 0;
-    statsSerial = -1;
+    stepSerial = 0;
+    statsSerialPlusOne = 0;
+    statsBroadphasePairs = 0;
+    statsShapePairs = 0;
     m_stepStatistics = {};
 #if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
     m_phaseNanoseconds = {};
@@ -472,6 +631,14 @@ void World::reset() {
     cacheNextUsedCount = 0;
     memset(cachePrev, 0, sizeof(CacheEntry) * static_cast<size_t>(cacheCapacity));
     memset(cacheNext, 0, sizeof(CacheEntry) * static_cast<size_t>(cacheCapacity));
+
+    if (shapeBulks != nullptr) {
+        memset(shapeBulks, 0, sizeof(ShapeBulk*) * static_cast<size_t>(maxBodies) * kMaxShapesPerBody);
+    }
+    scratchCursor = scratchBegin;
+    if (bulkArena != nullptr && bulkPoolBaseOffset > 0) {
+        bulkArena->shrinkTo(bulkPoolBaseOffset);
+    }
 }
 
 bool World::isActive(int32_t id) const {
@@ -481,13 +648,6 @@ bool World::isActive(int32_t id) const {
 void refreshBodyRotation(World& world, int32_t id) {
     Body& body = world.bodies[id];
     const Transform& transform = world.transforms[id];
-    body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
-}
-
-void resetBodyRotation(World& world, int32_t id) {
-    Body& body = world.bodies[id];
-    const Transform& transform = world.transforms[id];
-    body.rotation.setIdentity();
     body.rotation.fromQuaternion(transform.qx, transform.qy, transform.qz, transform.qw);
 }
 
@@ -525,7 +685,7 @@ int32_t World::createBody(int32_t type, float px, float py, float pz, float qx, 
     body.customMass = 0.0f;
     body.flags = 0;
     body.invInertia = Vec3();
-    resetBodyRotation(*this, id);
+    refreshBodyRotation(*this, id);
     body.aabb = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
     body.friction = kDefaultFriction;
     body.restitution = 0.0f;
@@ -554,9 +714,7 @@ int32_t World::destroyBody(int32_t id) {
 
     releaseConstraintsForBody(*this, id);
     Body& body = bodies[id];
-    for (int32_t slot = 0; slot < kMaxShapesPerBody; ++slot) {
-        clearShapeBulk(id, slot);
-    }
+    clearBodyBulks(*this, id);
     body.state = kBodyFree;
     body.shapeCount = 0;
     invalidateAllSlots(*this, id);
@@ -602,6 +760,7 @@ int32_t World::setSphere(int32_t id, float radius, float density) {
         }
     }
 
+    clearBodyBulks(*this, id);
     body.shapeCount = 1;
     invalidateAllSlots(*this, id);
     body.shapes[0].setSphere(radius, density, Vec3());
@@ -648,9 +807,10 @@ int32_t World::setBox(int32_t id, float hx, float hy, float hz, float density) {
         }
     }
 
+    clearBodyBulks(*this, id);
     body.shapeCount = 1;
     invalidateAllSlots(*this, id);
-    body.shapes[0].setBox(hx, hy, hz, density, Vec3(), 0.0f, 0.0f, 0.0f, 1.0f);
+    body.shapes[0].setBoxIdentity(hx, hy, hz, density, Vec3());
     recomputeMass(body);
     return 0;
 }
@@ -662,26 +822,9 @@ int32_t World::addSphere(int32_t id, float radius, float density, float px, floa
         return -1;
     }
 
-    Body& body = bodies[id];
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setSphere(radius, density, Vec3(px, py, pz));
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setSphere(radius, density, Vec3(px, py, pz));
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::addBox(
@@ -705,33 +848,11 @@ int32_t World::addBox(
         return -1;
     }
 
-    Body& body = bodies[id];
-    if (body.shapeCount >= kMaxShapesPerBody) {
-        return -1;
-    }
-
     Transform local = { 0.0f, 0.0f, 0.0f, qx, qy, qz, qw };
     normalizeQuaternion(local);
-
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setBox(hx, hy, hz, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setBox(hx, hy, hz, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::addCapsule(
@@ -754,33 +875,11 @@ int32_t World::addCapsule(
         return -1;
     }
 
-    Body& body = bodies[id];
-    if (body.shapeCount >= kMaxShapesPerBody) {
-        return -1;
-    }
-
     Transform local = { 0.0f, 0.0f, 0.0f, qx, qy, qz, qw };
     normalizeQuaternion(local);
-
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setCapsule(radius, halfSegment, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setCapsule(radius, halfSegment, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::addCylinder(
@@ -803,33 +902,11 @@ int32_t World::addCylinder(
         return -1;
     }
 
-    Body& body = bodies[id];
-    if (body.shapeCount >= kMaxShapesPerBody) {
-        return -1;
-    }
-
     Transform local = { 0.0f, 0.0f, 0.0f, qx, qy, qz, qw };
     normalizeQuaternion(local);
-
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setCylinder(radius, halfHeight, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setCylinder(radius, halfHeight, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::addCone(
@@ -852,33 +929,11 @@ int32_t World::addCone(
         return -1;
     }
 
-    Body& body = bodies[id];
-    if (body.shapeCount >= kMaxShapesPerBody) {
-        return -1;
-    }
-
     Transform local = { 0.0f, 0.0f, 0.0f, qx, qy, qz, qw };
     normalizeQuaternion(local);
-
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setCone(radius, halfHeight, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setCone(radius, halfHeight, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::clearShapes(int32_t id) {
@@ -887,9 +942,7 @@ int32_t World::clearShapes(int32_t id) {
     }
 
     Body& body = bodies[id];
-    for (int32_t slot = 0; slot < kMaxShapesPerBody; ++slot) {
-        clearShapeBulk(id, slot);
-    }
+    clearBodyBulks(*this, id);
     body.shapeCount = 0;
     invalidateAllSlots(*this, id);
     body.aabb = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
@@ -1242,88 +1295,10 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
 #if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
     m_phaseNanoseconds = {};
 #endif
-    const Vec3 gravityStep = gravity * dt;
     const bool sleepEnabled = allowSleep != 0;
 
     AXRONE_PHASE(integrateScope, m_phaseNanoseconds.integrate);
-    for (int32_t i = 0; i < highWater; ++i) {
-        Body& body = bodies[i];
-        const int32_t state = body.state;
-        if (state != kBodyDynamic && state != kBodyKinematic) {
-            continue;
-        }
-
-        if (state == kBodyDynamic) {
-            if (sleepEnabled && body.awake == 0) {
-                sleepTransforms[i] = transforms[i];
-                continue;
-            }
-            if (!sleepEnabled) {
-                body.awake = 1;
-                body.sleepTime = 0.0f;
-            }
-        }
-
-        Vec3& velocity = velocities[i];
-        Vec3& angularVelocity = angularVelocities[i];
-
-        if (state == kBodyDynamic) {
-            if (body.forceAccum.x != 0.0f || body.forceAccum.y != 0.0f || body.forceAccum.z != 0.0f) {
-                velocity += (body.forceAccum * dt) * body.invMass;
-            }
-            if (body.torqueAccum.x != 0.0f || body.torqueAccum.y != 0.0f || body.torqueAccum.z != 0.0f) {
-                addAngularResponse(*this, body, i, body.torqueAccum * dt);
-            }
-            body.forceAccum = Vec3();
-            body.torqueAccum = Vec3();
-            velocity += gravityStep * body.gravityScale;
-        }
-
-        float linearFactor = 1.0f - body.linearDamping * dt;
-        if (linearFactor < 0.0f) {
-            linearFactor = 0.0f;
-        }
-        velocity *= linearFactor;
-
-        float angularFactor = 1.0f - body.angularDamping * dt;
-        if (angularFactor < 0.0f) {
-            angularFactor = 0.0f;
-        }
-        angularVelocity *= angularFactor;
-
-        const int32_t flags = body.flags;
-        if ((flags & kBodyFreezePositionX) != 0) {
-            velocity.x = 0.0f;
-        }
-        if ((flags & kBodyFreezePositionY) != 0) {
-            velocity.y = 0.0f;
-        }
-        if ((flags & kBodyFreezePositionZ) != 0) {
-            velocity.z = 0.0f;
-        }
-        if ((flags & kBodyFreezeRotationX) != 0) {
-            angularVelocity.x = 0.0f;
-        }
-        if ((flags & kBodyFreezeRotationY) != 0) {
-            angularVelocity.y = 0.0f;
-        }
-        if ((flags & kBodyFreezeRotationZ) != 0) {
-            angularVelocity.z = 0.0f;
-        }
-
-        Transform& transform = transforms[i];
-        if ((flags & kBodyFreezePositionX) == 0) {
-            transform.px += velocity.x * dt;
-        }
-        if ((flags & kBodyFreezePositionY) == 0) {
-            transform.py += velocity.y * dt;
-        }
-        if ((flags & kBodyFreezePositionZ) == 0) {
-            transform.pz += velocity.z * dt;
-        }
-        integrateRotation(transform, angularVelocity, dt);
-        refreshBodyRotation(*this, i);
-    }
+    integrateBodies(*this, dt, sleepEnabled);
     AXRONE_PHASE_CLOSE(integrateScope);
 
     buildSuppressedPairTable(*this);
@@ -1362,61 +1337,9 @@ int32_t World::step(float dt, int32_t velocityIterations, int32_t positionIterat
 
     AXRONE_PHASE(sleepScope, m_phaseNanoseconds.sleepAndCacheSwap);
     if (sleepEnabled) {
-        for (int32_t i = 0; i < highWater; ++i) {
-            Body& body = bodies[i];
-            if (body.state != kBodyDynamic) {
-                continue;
-            }
-            if (body.awake == 0) {
-                transforms[i] = sleepTransforms[i];
-                refreshBodyRotation(*this, i);
-                velocities[i] = Vec3();
-                angularVelocities[i] = Vec3();
-                continue;
-            }
-            if (lengthSq(velocities[i]) < kSleepLinearThresholdSq &&
-                lengthSq(angularVelocities[i]) < kSleepAngularThresholdSq) {
-                body.sleepTime += dt;
-                if (body.sleepTime >= kSleepTimeLimit) {
-                    body.awake = 0;
-                    velocities[i] = Vec3();
-                    angularVelocities[i] = Vec3();
-                }
-            } else {
-                body.sleepTime = 0.0f;
-            }
-        }
+        updateSleepingBodies(*this, dt);
     }
-
-    for (int32_t k = 0; k < contactCount; ++k) {
-        const Contact& contact = contacts[k];
-        if (contact.cacheSlot < 0) {
-            continue;
-        }
-        CacheEntry& entry = cacheNext[contact.cacheSlot];
-        entry.impN = contact.impN;
-        entry.impT1 = contact.impT1;
-        entry.impT2 = contact.impT2;
-    }
-
-    for (int32_t index = 0; index < cachePrevUsedCount; ++index) {
-        ++m_stepStatistics.pointIdentitiesPrevStep;
-        if (cacheContains(cacheNext, cacheMask, cacheCapacity, cachePrev[cachePrevUsed[index]])) {
-            ++m_stepStatistics.pointIdentitiesRepeatingPrevStep;
-        }
-    }
-
-    CacheEntry* previousTable = cachePrev;
-    cachePrev = cacheNext;
-    cacheNext = previousTable;
-
-    int32_t* previousUsed = cachePrevUsed;
-    cachePrevUsed = cacheNextUsed;
-    cacheNextUsed = previousUsed;
-
-    const int32_t previousUsedCount = cachePrevUsedCount;
-    cachePrevUsedCount = cacheNextUsedCount;
-    cacheNextUsedCount = previousUsedCount;
+    commitContactCache(*this);
     AXRONE_PHASE_CLOSE(sleepScope);
 
     AXRONE_PHASE(packScope, m_phaseNanoseconds.pack);

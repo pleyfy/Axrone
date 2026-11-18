@@ -93,6 +93,21 @@ struct Shape {
         applyDefaults();
     }
 
+    AXRONE_PHYSICS_INLINE void setBoxIdentity(
+        float hx,
+        float hy,
+        float hz,
+        float shapeDensity,
+        const Vec3& shapeOffset
+    ) {
+        kind = kShapeBox;
+        extents = Vec3(hx, hy, hz);
+        offset = shapeOffset;
+        rotation.setIdentity();
+        density = shapeDensity;
+        applyDefaults();
+    }
+
     AXRONE_PHYSICS_INLINE void setCapsule(
         float radius,
         float halfSegment,
@@ -227,10 +242,21 @@ static_assert(alignof(Shape) == 16, "shape must stay vector aligned");
 static_assert(sizeof(Body) == 1072, "body size must stay fixed for arena sizing");
 static_assert(alignof(Body) == 16, "body must stay vector aligned");
 
+AXRONE_PHYSICS_INLINE Vec3 worldInvInertiaMul(const Body& body, const Vec3& torque) {
+    const Vec3& inverse = body.invInertia;
+    if (inverse.x == 0.0f && inverse.y == 0.0f && inverse.z == 0.0f) {
+        return Vec3();
+    }
+    Vec3 local = body.rotation.transposeTransform(torque);
+    local.x *= inverse.x;
+    local.y *= inverse.y;
+    local.z *= inverse.z;
+    return body.rotation.transform(local);
+}
+
 struct World;
 
 void refreshBodyRotation(World& world, int32_t id);
-void resetBodyRotation(World& world, int32_t id);
 
 struct SweepRecord {
     float minX;
@@ -270,26 +296,6 @@ AXRONE_PHYSICS_INLINE int32_t shapeSlots(const Body& body) {
 
 AXRONE_PHYSICS_INLINE bool isBulkKind(int32_t kind) {
     return kind == kShapeHull || kind == kShapeMesh || kind == kShapeHeightField;
-}
-
-AXRONE_PHYSICS_INLINE bool isHullBackedKind(int32_t kind) {
-    return kind == kShapeCylinder || kind == kShapeCone || kind == kShapeHull || kind == kShapeHeightField;
-}
-
-AXRONE_PHYSICS_INLINE bool shapeBulkReady(const Shape& shape, const ShapeBulk* bulk) {
-    if (!isBulkKind(shape.kind)) {
-        return false;
-    }
-    if (bulk == nullptr) {
-        return false;
-    }
-    if (shape.kind == kShapeHull) {
-        return bulk->faceCount > 0 && bulk->vertexCount >= 4;
-    }
-    if (shape.kind == kShapeMesh) {
-        return bulk->triangleCount > 0 && bulk->vertexCount > 0;
-    }
-    return bulk->heightFieldWidth >= 2 && bulk->heightFieldDepth >= 2;
 }
 
 AXRONE_PHYSICS_INLINE bool shapeValid(const Shape& shape) {

@@ -653,7 +653,80 @@ void insertSorted(RayHit* hits, int32_t capacity, int32_t& count, const RayHit& 
     }
 }
 
+// CRTP sink: the traversal is instantiated once per query policy while the
+// hot loop stays free of virtual dispatch and indirect calls.
+template <typename Derived>
+struct RaycastSinkBase {
+    void collect(const RayHit& hit) {
+        static_cast<Derived*>(this)->onHit(hit);
+    }
+};
+
+struct RaycastAllSink final : RaycastSinkBase<RaycastAllSink> {
+    RayHit* hits;
+    int32_t capacity;
+    int32_t count;
+
+    void onHit(const RayHit& candidate) {
+        if (hasIdenticalShapeHit(hits, count, candidate)) {
+            return;
+        }
+        insertSorted(hits, capacity, count, candidate);
+    }
+};
+
+struct RaycastClosestSink final : RaycastSinkBase<RaycastClosestSink> {
+    RayHit* best;
+    bool found;
+
+    void onHit(const RayHit& candidate) {
+        if (!found || hitBefore(candidate, *best)) {
+            *best = candidate;
+            found = true;
+        }
+    }
+};
+
+template <typename Sink>
+void traverseRaycast(
+    const World& world,
+    Vec3 origin,
+    Vec3 direction,
+    float maxDistance,
+    int32_t categoryBits,
+    int32_t maskBits,
+    RaycastSinkBase<Sink>& sink) {
+    if (!worldQueryable(world)) {
+        return;
+    }
+    QueryRay ray;
+    if (!makeQueryRay(origin, direction, maxDistance, ray)) {
+        return;
+    }
+    for (int32_t id = 0; id < world.highWater; ++id) {
+        const Body& body = world.bodies[id];
+        if (!bodyQueryable(body)) {
+            continue;
+        }
+        const Vec3 position = transformPosition(world.transforms[id]);
+        const int32_t slots = shapeSlots(body);
+        for (int32_t slot = 0; slot < slots; ++slot) {
+            const Shape& shape = body.shapes[slot];
+            if (!shapeValid(shape)) {
+                continue;
+            }
+            if (!queryShapePassesFilter(shape, categoryBits, maskBits)) {
+                continue;
+            }
+            RayHit candidate;
+            if (testShape(world, id, slot, body, position, shape, ray, candidate)) {
+                sink.collect(candidate);
+            }
+        }
+    }
 }
+
+} // namespace
 
 int32_t raycastAll(
     const World& world,
@@ -674,40 +747,12 @@ int32_t raycastAll(
     int32_t maskBits,
     RayHit* hits,
     int32_t capacity) {
-    if (capacity <= 0 || hits == nullptr || !worldQueryable(world)) {
+    if (capacity <= 0 || hits == nullptr) {
         return 0;
     }
-    QueryRay ray;
-    if (!makeQueryRay(origin, direction, maxDistance, ray)) {
-        return 0;
-    }
-    int32_t count = 0;
-    for (int32_t id = 0; id < world.highWater; ++id) {
-        const Body& body = world.bodies[id];
-        if (!bodyQueryable(body)) {
-            continue;
-        }
-        const Vec3 position = transformPosition(world.transforms[id]);
-        const int32_t slots = shapeSlots(body);
-        for (int32_t slot = 0; slot < slots; ++slot) {
-            const Shape& shape = body.shapes[slot];
-            if (!shapeValid(shape)) {
-                continue;
-            }
-            if (!queryShapePassesFilter(shape, categoryBits, maskBits)) {
-                continue;
-            }
-            RayHit candidate;
-            if (!testShape(world, id, slot, body, position, shape, ray, candidate)) {
-                continue;
-            }
-            if (hasIdenticalShapeHit(hits, count, candidate)) {
-                continue;
-            }
-            insertSorted(hits, capacity, count, candidate);
-        }
-    }
-    return count;
+    RaycastAllSink sink{ {}, hits, capacity, 0 };
+    traverseRaycast(world, origin, direction, maxDistance, categoryBits, maskBits, sink);
+    return sink.count;
 }
 
 bool raycastClosest(
@@ -727,40 +772,9 @@ bool raycastClosest(
     int32_t categoryBits,
     int32_t maskBits,
     RayHit& hit) {
-    if (!worldQueryable(world)) {
-        return false;
-    }
-    QueryRay ray;
-    if (!makeQueryRay(origin, direction, maxDistance, ray)) {
-        return false;
-    }
-    bool found = false;
-    for (int32_t id = 0; id < world.highWater; ++id) {
-        const Body& body = world.bodies[id];
-        if (!bodyQueryable(body)) {
-            continue;
-        }
-        const Vec3 position = transformPosition(world.transforms[id]);
-        const int32_t slots = shapeSlots(body);
-        for (int32_t slot = 0; slot < slots; ++slot) {
-            const Shape& shape = body.shapes[slot];
-            if (!shapeValid(shape)) {
-                continue;
-            }
-            if (!queryShapePassesFilter(shape, categoryBits, maskBits)) {
-                continue;
-            }
-            RayHit candidate;
-            if (!testShape(world, id, slot, body, position, shape, ray, candidate)) {
-                continue;
-            }
-            if (!found || hitBefore(candidate, hit)) {
-                hit = candidate;
-                found = true;
-            }
-        }
-    }
-    return found;
+    RaycastClosestSink sink{ {}, &hit, false };
+    traverseRaycast(world, origin, direction, maxDistance, categoryBits, maskBits, sink);
+    return sink.found;
 }
 
 int32_t overlapSphere(
@@ -1099,7 +1113,7 @@ void collectStepStatistics(
 
     int64_t broadphasePairs = 0;
     int64_t shapePairs = 0;
-    if (world.statsSerial == world.stepSerial) {
+    if (world.statsSerialPlusOne == world.stepSerial + 1) {
         broadphasePairs = world.statsBroadphasePairs;
         shapePairs = world.statsShapePairs;
     } else {

@@ -13,6 +13,8 @@
 namespace axrone::physics {
 
 class Arena;
+struct HullBuildScratch;
+struct NarrowphaseScratch;
 
 struct World {
     bool initialized = false;
@@ -29,9 +31,12 @@ struct World {
     int32_t constraintFreeCount = 0;
     Vec3 gravity = {};
     int32_t allowSleep = 0;
-    int32_t boxManifoldPointCap = 8;
+    int32_t boxManifoldPointCapRaw = 0; // zero means the default cap
 
     Arena* bulkArena = nullptr;
+    NarrowphaseScratch* narrowphaseScratch = nullptr;
+    HullBuildScratch* hullScratch = nullptr;
+    size_t bulkPoolBaseOffset = 0;
     uintptr_t scratchBegin = 0;
     uintptr_t scratchCursor = 0;
     uintptr_t scratchEnd = 0;
@@ -61,30 +66,13 @@ struct World {
     int32_t cacheNextUsedCount = 0;
 
     int64_t stepSerial = 0;
-    int64_t statsSerial = -1;
+    int64_t statsSerialPlusOne = 0; // zero means "no statistics for the current step"
     int64_t statsBroadphasePairs = 0;
     int64_t statsShapePairs = 0;
     StepStatistics m_stepStatistics = {};
 #if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
     PhaseNanoseconds m_phaseNanoseconds = {};
 #endif
-
-    Vec3 axesA[3] = {};
-    Vec3 axesB[3] = {};
-    Vec3 faceVertices[4] = {};
-    Vec3 clipA[8] = {};
-    Vec3 clipB[8] = {};
-
-    Vec3 hullVerticesA[kBulkMaxVertices] = {};
-    Vec3 hullVerticesB[kBulkMaxVertices] = {};
-    Vec3 hullNormalsA[kBulkMaxFaces] = {};
-    Vec3 hullNormalsB[kBulkMaxFaces] = {};
-    float hullOffsetsA[kBulkMaxFaces] = {};
-    float hullOffsetsB[kBulkMaxFaces] = {};
-    int32_t hullStartA[kBulkMaxFaces + 1] = {};
-    int32_t hullStartB[kBulkMaxFaces + 1] = {};
-    int32_t hullIndicesA[kBulkMaxFaceIndices] = {};
-    int32_t hullIndicesB[kBulkMaxFaceIndices] = {};
 
     bool init(Arena& arena, int32_t maxBodies, int32_t maxContacts, Vec3 gravity);
     void reset();
@@ -275,6 +263,8 @@ struct World {
         int32_t collideConnected);
     int32_t destroyConstraint(int32_t id);
     int32_t setConstraintEnabled(int32_t id, int32_t enabled);
+    int32_t setJointMotor(int32_t id, int32_t expectedKind, float speed, float maxForceOrTorque);
+    int32_t setJointLimit(int32_t id, int32_t expectedKind, int32_t enable, float lower, float upper);
     int32_t setHingeMotor(int32_t id, float speed, float maxTorque);
     int32_t setHingeLimit(int32_t id, int32_t enable, float lower, float upper);
     int32_t setSliderMotor(int32_t id, float speed, float maxForce);
@@ -285,8 +275,12 @@ struct World {
     int32_t getContactCount() const;
     uint64_t fingerprint() const;
 
+    AXRONE_PHYSICS_INLINE int32_t boxManifoldPointCap() const {
+        return boxManifoldPointCapRaw == 0 ? 8 : boxManifoldPointCapRaw;
+    }
+
     void invalidateStats() {
-        statsSerial = -1;
+        statsSerialPlusOne = 0;
     }
 
     const StepStatistics& stepStatistics() const {
@@ -337,6 +331,9 @@ struct World {
     void recordCacheHit();
     int32_t cacheStore(int32_t a, int32_t b, int32_t feature, float impN, float impT1, float impT2);
 };
+
+static_assert(sizeof(World) <= 1024,
+              "World must remain a small descriptor; large worksets belong in arena-backed scratch");
 
 bool recomputeMass(Body& body);
 int32_t firstFreeShapeSlot(const Body& body);

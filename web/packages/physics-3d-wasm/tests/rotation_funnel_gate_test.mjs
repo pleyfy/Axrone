@@ -76,8 +76,8 @@ const FUNNEL_SHAPED = [
 test("the committed gate passes on the real source tree and counts only the funnel writes", () => {
     const result = runGate(path.join(ROOT, "src"));
     assert.equal(result.status, 0, `the shipped tree must be clean: ${result.stderr}`);
-    assert.match(result.stdout, /clean over \d+ source file\(s\); 3 Body rotation write\(s\)/,
-        "the gate must report the three funnel writes, not a vacuous zero");
+    assert.match(result.stdout, /clean over \d+ source file\(s\); 1 Body rotation write\(s\)/,
+        "the gate must report the single funnel write, not a vacuous zero");
 });
 
 test("the gate fails on a bypassing setRotation entry that recomputes the same matrix", () => {

@@ -31,7 +31,7 @@ alignas(16) axrone::physics::StepStatistics g_stepStatistics;
 alignas(16) axrone::physics::PhaseTimers g_phaseTimers;
 #endif
 
-constexpr int32_t kEventCapacity = 4096;
+using axrone::physics::kEventCapacity;
 alignas(16) axrone::physics::ContactEvent g_events[kEventCapacity];
 alignas(16) uint64_t g_eventKeys[kEventCapacity];
 alignas(16) uint8_t g_eventSensors[kEventCapacity];
@@ -71,19 +71,20 @@ uint64_t packView(uintptr_t pointer, size_t bytes) {
 }
 
 bool queryOutputValid(uintptr_t pointer, size_t elementBytes, int32_t capacity) {
-    if (capacity <= 0 || (pointer & 3U) != 0) {
+    if (capacity <= 0 || elementBytes == 0 || (pointer & 3U) != 0) {
         return false;
     }
 #if AXRONE_PHYSICS_TARGET_WASM
-    const size_t limit = static_cast<size_t>(__builtin_wasm_memory_size(0)) * 65536;
+    const uint64_t limit =
+        static_cast<uint64_t>(__builtin_wasm_memory_size(0)) * 65536ULL;
 #else
-    const size_t limit = g_arena.capacity();
+    const uint64_t limit = static_cast<uint64_t>(g_arena.capacity());
 #endif
-    const size_t start = static_cast<size_t>(pointer);
+    const uint64_t start = static_cast<uint64_t>(pointer);
     if (start == 0 || start >= limit) {
         return false;
     }
-    return static_cast<size_t>(capacity) <= (limit - start) / elementBytes;
+    return static_cast<uint64_t>(capacity) <= (limit - start) / static_cast<uint64_t>(elementBytes);
 }
 
 }
@@ -99,11 +100,15 @@ AXRONE_PHYSICS_EXPORT(worldInit) int32_t worldInit(int32_t maxBodies, int32_t ma
 
 #if AXRONE_PHYSICS_TARGET_WASM
     const uintptr_t heapBase = reinterpret_cast<uintptr_t>(&__heap_base);
-    const size_t memoryBytes = __builtin_wasm_memory_size(0) * 65536;
-    if (memoryBytes <= heapBase) {
+    const uint64_t memoryBytes =
+        static_cast<uint64_t>(__builtin_wasm_memory_size(0)) * 65536ULL;
+    if (memoryBytes < heapBase) {
         return -1;
     }
-    g_arena.init(reinterpret_cast<unsigned char*>(heapBase), memoryBytes - heapBase);
+    const uint64_t available = memoryBytes - heapBase;
+    g_arena.init(
+        reinterpret_cast<unsigned char*>(heapBase),
+        available > 0xFFFFFFFFULL ? static_cast<size_t>(0xFFFFFFFFULL) : static_cast<size_t>(available));
 #else
     g_arena.init(g_hostMemory, sizeof(g_hostMemory));
 #endif
@@ -119,7 +124,7 @@ AXRONE_PHYSICS_EXPORT(worldSetBoxManifoldPointCap) int32_t worldSetBoxManifoldPo
     if (cap != 4 && cap != 8) {
         return -1;
     }
-    g_world.boxManifoldPointCap = cap;
+    g_world.boxManifoldPointCapRaw = cap;
     return 0;
 }
 
@@ -237,7 +242,9 @@ AXRONE_PHYSICS_EXPORT(worldFingerprint) uint64_t worldFingerprint(void) {
 
 AXRONE_PHYSICS_EXPORT(worldMemoryBytes) uintptr_t worldMemoryBytes(void) {
 #if AXRONE_PHYSICS_TARGET_WASM
-    return static_cast<uintptr_t>(__builtin_wasm_memory_size(0) * 65536);
+    const uint64_t bytes =
+        static_cast<uint64_t>(__builtin_wasm_memory_size(0)) * 65536ULL;
+    return bytes > 0xFFFFFFFFULL ? static_cast<uintptr_t>(0xFFFFFFFFULL) : static_cast<uintptr_t>(bytes);
 #else
     return static_cast<uintptr_t>(g_arena.capacity());
 #endif

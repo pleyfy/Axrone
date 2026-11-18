@@ -62,6 +62,11 @@ constexpr int32_t kBulkMaxFaceIndices = 1524;
 constexpr int32_t kBulkMaxTriangles = 4096;
 constexpr int32_t kBulkMaxHeightFieldSide = 128;
 constexpr int32_t kBulkScratchBytes = 8 * 1024 * 1024;
+constexpr int32_t kHullScratchFaces = 3 * kBulkMaxVertices - 8;
+
+constexpr int32_t kBoxClipCapacity = 16;
+constexpr int32_t kEventCapacity = 4096;
+constexpr int32_t kEventHashCapacity = 8192;
 
 constexpr int32_t kCapsuleBoxSamples = 16;
 

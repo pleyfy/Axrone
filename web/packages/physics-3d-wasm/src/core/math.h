@@ -53,6 +53,9 @@ struct alignas(16) Vec3 {
     }
 };
 
+static_assert(sizeof(Vec3) == 16, "Vec3 must remain a 16-byte SIMD value");
+static_assert(alignof(Vec3) == 16, "Vec3 must remain SIMD aligned");
+
 AXRONE_PHYSICS_INLINE float dot(const Vec3& left, const Vec3& right) {
     return left.x * right.x + left.y * right.y + left.z * right.z;
 }
@@ -149,6 +152,15 @@ struct AABB {
     float maxY;
     float maxZ;
 };
+
+AXRONE_PHYSICS_INLINE void expandAabb(AABB& box, const Vec3& point) {
+    if (point.x < box.minX) box.minX = point.x;
+    if (point.y < box.minY) box.minY = point.y;
+    if (point.z < box.minZ) box.minZ = point.z;
+    if (point.x > box.maxX) box.maxX = point.x;
+    if (point.y > box.maxY) box.maxY = point.y;
+    if (point.z > box.maxZ) box.maxZ = point.z;
+}
 
 AXRONE_PHYSICS_INLINE Vec3 transformPosition(const Transform& transform) {
     return Vec3(transform.px, transform.py, transform.pz);
