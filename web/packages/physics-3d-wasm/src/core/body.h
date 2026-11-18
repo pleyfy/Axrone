@@ -93,6 +93,21 @@ struct Shape {
         applyDefaults();
     }
 
+    AXRONE_PHYSICS_INLINE void setBoxIdentity(
+        float hx,
+        float hy,
+        float hz,
+        float shapeDensity,
+        const Vec3& shapeOffset
+    ) {
+        kind = kShapeBox;
+        extents = Vec3(hx, hy, hz);
+        offset = shapeOffset;
+        rotation.setIdentity();
+        density = shapeDensity;
+        applyDefaults();
+    }
+
     AXRONE_PHYSICS_INLINE void setCapsule(
         float radius,
         float halfSegment,

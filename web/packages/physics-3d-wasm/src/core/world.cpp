@@ -674,9 +674,10 @@ int32_t World::setBox(int32_t id, float hx, float hy, float hz, float density) {
         }
     }
 
+    clearBodyBulks(*this, id);
     body.shapeCount = 1;
     invalidateAllSlots(*this, id);
-    body.shapes[0].setBox(hx, hy, hz, density, Vec3(), 0.0f, 0.0f, 0.0f, 1.0f);
+    body.shapes[0].setBoxIdentity(hx, hy, hz, density, Vec3());
     recomputeMass(body);
     return 0;
 }
@@ -688,26 +689,9 @@ int32_t World::addSphere(int32_t id, float radius, float density, float px, floa
         return -1;
     }
 
-    Body& body = bodies[id];
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setSphere(radius, density, Vec3(px, py, pz));
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setSphere(radius, density, Vec3(px, py, pz));
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::addBox(
@@ -731,33 +715,11 @@ int32_t World::addBox(
         return -1;
     }
 
-    Body& body = bodies[id];
-    if (body.shapeCount >= kMaxShapesPerBody) {
-        return -1;
-    }
-
     Transform local = { 0.0f, 0.0f, 0.0f, qx, qy, qz, qw };
     normalizeQuaternion(local);
-
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setBox(hx, hy, hz, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setBox(hx, hy, hz, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::addCapsule(
@@ -780,33 +742,11 @@ int32_t World::addCapsule(
         return -1;
     }
 
-    Body& body = bodies[id];
-    if (body.shapeCount >= kMaxShapesPerBody) {
-        return -1;
-    }
-
     Transform local = { 0.0f, 0.0f, 0.0f, qx, qy, qz, qw };
     normalizeQuaternion(local);
-
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setCapsule(radius, halfSegment, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setCapsule(radius, halfSegment, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::addCylinder(
@@ -829,33 +769,11 @@ int32_t World::addCylinder(
         return -1;
     }
 
-    Body& body = bodies[id];
-    if (body.shapeCount >= kMaxShapesPerBody) {
-        return -1;
-    }
-
     Transform local = { 0.0f, 0.0f, 0.0f, qx, qy, qz, qw };
     normalizeQuaternion(local);
-
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setCylinder(radius, halfHeight, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setCylinder(radius, halfHeight, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::addCone(
@@ -878,33 +796,11 @@ int32_t World::addCone(
         return -1;
     }
 
-    Body& body = bodies[id];
-    if (body.shapeCount >= kMaxShapesPerBody) {
-        return -1;
-    }
-
     Transform local = { 0.0f, 0.0f, 0.0f, qx, qy, qz, qw };
     normalizeQuaternion(local);
-
-    const int32_t slot = firstFreeShapeSlot(body);
-    if (slot < 0) {
-        return -1;
-    }
-
-    const int32_t previousCount = body.shapeCount;
-    body.shapes[slot].setCone(radius, halfHeight, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
-    bumpSlotGeneration(*this, id, slot);
-    if (slot + 1 > body.shapeCount) {
-        body.shapeCount = slot + 1;
-    }
-
-    if (!recomputeMass(body)) {
-        body.shapes[slot].kind = kShapeNone;
-        body.shapeCount = previousCount;
-        recomputeMass(body);
-        return -1;
-    }
-    return slot;
+    Shape shape{};
+    shape.setCone(radius, halfHeight, density, Vec3(px, py, pz), local.qx, local.qy, local.qz, local.qw);
+    return appendPrimitiveShape(*this, id, shape);
 }
 
 int32_t World::clearShapes(int32_t id) {
