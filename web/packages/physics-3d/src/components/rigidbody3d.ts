@@ -640,7 +640,7 @@ export class Rigidbody3D extends Component {
         return position;
     }
 
-    override awake(): void {}
+    override onLoad(): void {}
 
     override start(): void {
         this._storeState();

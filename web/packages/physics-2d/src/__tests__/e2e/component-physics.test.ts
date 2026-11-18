@@ -22,7 +22,7 @@ describe('E2E Component Physics', () => {
     beforeEach(() => {
         worldComponent = new PhysicsWorld2DComponent();
         worldComponent.gravity = { x: 0, y: -9.81 } as any;
-        worldComponent.awake();
+        worldComponent.onLoad();
         world = worldComponent.physicsWorld!;
     });
 

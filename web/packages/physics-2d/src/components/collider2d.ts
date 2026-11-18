@@ -101,7 +101,7 @@ export abstract class Collider2D extends Component {
         this.updateCollisionFilter();
     }
 
-    awake(): void {
+    onLoad(): void {
         const comp = this.getComponent(Rigidbody2D as any);
         this._rigidbody = comp instanceof Rigidbody2D ? comp : null;
     }

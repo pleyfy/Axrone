@@ -19,37 +19,37 @@ describe('PhysicsWorld2DComponent', () => {
             expect(component.gravity.y).toBe(-9.81);
         });
 
-        it('has null physicsWorld before awake', () => {
+        it('has null physicsWorld before onLoad', () => {
             expect(component.physicsWorld).toBeNull();
         });
 
-        it('has null static instance before awake', () => {
+        it('has null static instance before onLoad', () => {
             expect(PhysicsWorld2DComponent.instance).toBeNull();
         });
     });
 
-    describe('awake', () => {
-        it('creates physics world on awake', () => {
-            component.awake();
+    describe('onLoad', () => {
+        it('creates physics world on load', () => {
+            component.onLoad();
             expect(component.physicsWorld).not.toBeNull();
         });
 
-        it('sets static instance on awake', () => {
-            component.awake();
+        it('sets static instance on load', () => {
+            component.onLoad();
             expect(PhysicsWorld2DComponent.instance).toBe(component);
         });
     });
 
     describe('onDestroy', () => {
         it('clears static instance on destroy', () => {
-            component.awake();
+            component.onLoad();
             expect(PhysicsWorld2DComponent.instance).toBe(component);
             component.onDestroy();
             expect(PhysicsWorld2DComponent.instance).toBeNull();
         });
 
         it('clears physics world on destroy', () => {
-            component.awake();
+            component.onLoad();
             expect(component.physicsWorld).not.toBeNull();
             component.onDestroy();
             expect(component.physicsWorld).toBeNull();
@@ -63,8 +63,8 @@ describe('PhysicsWorld2DComponent', () => {
             expect(component.gravity.y).toBe(-20);
         });
 
-        it('propagates gravity to physics world after awake', () => {
-            component.awake();
+        it('propagates gravity to physics world after load', () => {
+            component.onLoad();
             component.gravity = new Vec2(5, -15);
             expect(component.gravity.x).toBe(5);
             expect(component.gravity.y).toBe(-15);
@@ -105,21 +105,21 @@ describe('PhysicsWorld2DComponent', () => {
     });
 
     describe('singleton replacement', () => {
-        it('replaces static instance when a second component awakes', () => {
-            component.awake();
+        it('replaces static instance when a second component loads', () => {
+            component.onLoad();
             expect(PhysicsWorld2DComponent.instance).toBe(component);
 
             const second = new PhysicsWorld2DComponent();
-            second.awake();
+            second.onLoad();
             expect(PhysicsWorld2DComponent.instance).toBe(second);
 
             second.onDestroy();
         });
 
         it('clears static instance only if the destroyed component is the current instance', () => {
-            component.awake();
+            component.onLoad();
             const second = new PhysicsWorld2DComponent();
-            second.awake();
+            second.onLoad();
             expect(PhysicsWorld2DComponent.instance).toBe(second);
 
             component.onDestroy();

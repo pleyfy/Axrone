@@ -57,7 +57,7 @@ export class PhysicsWorld2DComponent extends Component {
         }
     }
 
-    awake(): void {
+    onLoad(): void {
         PhysicsWorld2DComponent._instance = this;
         // If a PhysicsBridge2D is active, reuse its world so that rigidbodies
         // and the bridge share the same PhysicsWorld2D instance.

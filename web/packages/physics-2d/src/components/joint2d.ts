@@ -56,7 +56,7 @@ export type JointCapability2D = typeof JOINT_CAPABILITY_2D[keyof typeof JOINT_CA
  * Mouse, Gear, Rope) have fully functional solvers AND `@script` component
  * wrappers. See {@link JOINT_CAPABILITY_2D} for the complete capability matrix.
  *
- * Lifecycle: `awake()` resolves the local Rigidbody2D → `start()` calls
+ * Lifecycle: `onLoad()` resolves the local Rigidbody2D → `start()` calls
  * `createConstraint()` → `onDestroy()` calls `destroyConstraint()`.
  * Property setters call `recreateConstraint()` which destroys and re-creates.
  *
@@ -131,7 +131,7 @@ export abstract class Joint2D extends Component {
         this._breakTorque = Math.max(0, value);
     }
 
-    awake(): void {
+    onLoad(): void {
         this._rigidbodyA = (this.getComponent(Rigidbody2D as any) as Rigidbody2D | null) ?? null;
         if (!this._rigidbodyA) {
             throw new Error('Joint2D requires Rigidbody2D component');

@@ -189,7 +189,7 @@ export class Rigidbody2D extends Component {
         }
     }
 
-    awake(): void {
+    onLoad(): void {
         this._transform = (this.getComponent(Transform as any) as Transform | null) ?? null;
         if (!this._transform) {
             throw new Error('Rigidbody2D requires Transform component');
