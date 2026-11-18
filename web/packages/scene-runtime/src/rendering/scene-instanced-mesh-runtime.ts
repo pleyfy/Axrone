@@ -609,6 +609,11 @@ export class SceneInstancedMeshRuntime {
         if (renderPass.materialPassId !== null && !materialPass) {
             return null;
         }
+        // The derived program is compiled from the material's shader definition,
+        // so a pass-level override would draw the silhouette with the main program.
+        if (materialPass?.shaderId != null && materialPass.shaderId !== material.shaderId) {
+            return null;
+        }
 
         const shader = this._resolveProgram(material.shaderId);
         if (!shader) {

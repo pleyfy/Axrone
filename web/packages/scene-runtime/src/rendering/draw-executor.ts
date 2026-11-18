@@ -91,6 +91,8 @@ interface SceneDrawStateCache {
     readonly mesh: SceneMeshResource;
     readonly material: SceneMaterialResource;
     readonly materialPass: ReturnType<typeof resolveSceneMaterialPass>;
+    /** Shader override of the resolved pass; a mutated pass must not reuse its program. */
+    readonly materialPassShaderId: string | undefined;
     readonly shader: SceneShaderResource;
     readonly fogEnabled: boolean;
 }
@@ -217,26 +219,24 @@ export class SceneDrawExecutor {
         frameState.markActiveRenderer(item.renderer.id);
 
         const cached = this._lastDrawState;
+        const materialPass = resolveSceneMaterialPass(material, context.renderPass.materialPassId);
+        if (context.renderPass.materialPassId != null && !materialPass) {
+            return;
+        }
+        const materialPassShaderId = materialPass?.shaderId;
         const reuseBindings =
             cached !== null &&
             cached.frame === context.frame &&
             cached.renderPass === context.renderPass &&
             cached.mesh === mesh &&
             cached.material === material &&
+            cached.materialPass === materialPass &&
+            cached.materialPassShaderId === materialPassShaderId &&
             cached.fogEnabled === context.fog.enabled;
 
-        let materialPass: ReturnType<typeof resolveSceneMaterialPass>;
         let shader: SceneShaderResource;
-        if (reuseBindings) {
-            materialPass = cached!.materialPass;
-            shader = cached!.shader;
-        } else {
-            materialPass = resolveSceneMaterialPass(material, context.renderPass.materialPassId);
-            if (context.renderPass.materialPassId != null && !materialPass) {
-                return;
-            }
-
-            const resolvedShader = this._resolveShader(material, context.fog);
+        if (!reuseBindings) {
+            const resolvedShader = this._resolveShader(material, context.fog, materialPassShaderId);
             if (!resolvedShader) {
                 return;
             }
@@ -252,9 +252,12 @@ export class SceneDrawExecutor {
                 mesh,
                 material,
                 materialPass,
+                materialPassShaderId,
                 shader,
                 fogEnabled: context.fog.enabled,
             };
+        } else {
+            shader = cached!.shader;
         }
 
         const uniformState = this._prepareUniformState(shader, context);
@@ -494,11 +497,13 @@ export class SceneDrawExecutor {
 
     private _resolveShader(
         material: SceneMaterialResource,
-        fog: SceneFogState
+        fog: SceneFogState,
+        materialPassShaderId: string | undefined
     ): SceneShaderResource | undefined {
+        const targetShaderId = materialPassShaderId ?? material.shaderId;
         const resolver = this._dependencies.variantResolver;
         if (!resolver || (material.keywords.size === 0 && !fog.enabled)) {
-            return this._dependencies.resources.shaders.get(material.shaderId);
+            return this._dependencies.resources.shaders.get(targetShaderId);
         }
 
         const enabledKeywords: string[] = [];
@@ -513,9 +518,9 @@ export class SceneDrawExecutor {
         }
 
         if (enabledKeywords.length === 0) {
-            return this._dependencies.resources.shaders.get(material.shaderId);
+            return this._dependencies.resources.shaders.get(targetShaderId);
         }
 
-        return resolver.resolve(material.shaderId, enabledKeywords);
+        return resolver.resolve(targetShaderId, enabledKeywords);
     }
 }

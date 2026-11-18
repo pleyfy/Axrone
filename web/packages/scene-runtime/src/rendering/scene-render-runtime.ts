@@ -2,7 +2,8 @@ import type { IGLStateCache } from '@axrone/render-webgl2';
 import { createLightingUniformValueMap } from '@axrone/lighting';
 import type { LightingUniformValueMap } from '@axrone/lighting';
 import { Vec3, Vec4 } from '@axrone/numeric';
-import type { Actor, Transform } from '@axrone/ecs-runtime';
+import type { Actor } from '@axrone/ecs-runtime';
+import { MeshRenderer } from '../components/mesh-renderer';
 import { selectSceneCamera } from '../camera-selector';
 import { Animator } from '../components/animator';
 import { SceneCameraFrameStateCollector } from '../camera-frame-state';
@@ -35,7 +36,9 @@ import { SceneInstancedMeshRuntime } from './scene-instanced-mesh-runtime';
 import { resolveTilemapCameraRect } from './tilemap-render-item-collector';
 import type { SceneTilemapRenderRuntimeLike } from './tilemap-render-runtime';
 import type { SceneMeshResource } from '../mesh-registry';
+import type { SceneRenderPassResource } from './render-pass-registry';
 import type {
+    SceneClearFlag,
     SceneInstancingMode,
     SceneMeshDefinition,
     SceneRenderPlanningOptions,
@@ -48,6 +51,8 @@ import { SceneUniformWriter } from '../uniform-writer';
 
 const EMPTY_ACTORS: readonly Actor[] = Object.freeze([]);
 const EMPTY_RENDER_ITEMS: readonly SceneRenderItem[] = Object.freeze([]);
+const OUTLINE_MATERIAL_PASS_ID = 'outline';
+const NO_CLEAR_FLAGS: readonly SceneClearFlag[] = Object.freeze([]);
 
 export interface SceneRenderRuntimeOptions {
     readonly gl: WebGL2RenderingContext;
@@ -175,6 +180,13 @@ export class SceneRenderRuntime {
     >();
     private _frameMaterialRevision = -1;
     private _frameShaderRevision = -1;
+    private _outlineRenderPass: SceneRenderPassResource | null = null;
+    private _outlineRenderPassOrder = 0;
+    private _outlineRenderPassRendererPassId: string | null = null;
+    private _outlinePassRevision = Number.NaN;
+    private _outlinePassDeclared = false;
+    private _framePassSource: readonly SceneRenderPassResource[] | null = null;
+    private _framePasses: readonly SceneRenderPassResource[] | null = null;
 
     constructor(private readonly _options: SceneRenderRuntimeOptions) {
         this._capabilities = _options.capabilities ?? SCENE_RENDER_CAPABILITIES_ALL;
@@ -298,8 +310,11 @@ export class SceneRenderRuntime {
         const materialId = renderer.materialId;
         const material =
             materialId !== null ? this._options.resources.materials.get(materialId) : undefined;
+        const materialPass = material
+            ? resolveSceneMaterialPass(material, renderPass.materialPassId)
+            : null;
         const shader = material
-            ? this._options.resources.shaders.get(material.shaderId)
+            ? this._options.resources.shaders.get(materialPass?.shaderId ?? material.shaderId)
             : undefined;
 
         const value = this._computeBlendedRenderer(renderer, renderPass, material, shader);
@@ -331,6 +346,122 @@ export class SceneRenderRuntime {
         }
 
         return this._renderStateApplier.resolveBlendEnabled(shader, renderPass, materialPass);
+    }
+
+    /**
+     * Appends the internally owned outline pass when a renderer in view uses a
+     * material declaring one and no registered pass already drives it. The
+     * synthetic pass stays out of the registry on purpose: a caller must keep
+     * seeing exactly the pass set it configured.
+     */
+    private _resolveFramePasses(
+        registeredPasses: readonly SceneRenderPassResource[]
+    ): readonly SceneRenderPassResource[] {
+        if (registeredPasses.length === 0 || !this._capabilities.meshRenderers) {
+            return registeredPasses;
+        }
+
+        for (let index = 0; index < registeredPasses.length; index += 1) {
+            if (registeredPasses[index]!.materialPassId === OUTLINE_MATERIAL_PASS_ID) {
+                return registeredPasses;
+            }
+        }
+
+        if (!this._declaresOutlineMaterialPass()) {
+            return registeredPasses;
+        }
+
+        if (this._framePassSource === registeredPasses && this._framePasses !== null) {
+            return this._framePasses;
+        }
+
+        const combined: SceneRenderPassResource[] = [];
+        for (let index = 0; index < registeredPasses.length; index += 1) {
+            combined.push(registeredPasses[index]!);
+        }
+        combined.push(this._createOutlineRenderPass(registeredPasses));
+
+        this._framePassSource = registeredPasses;
+        this._framePasses = Object.freeze(combined);
+        return this._framePasses;
+    }
+
+    private _declaresOutlineMaterialPass(): boolean {
+        const materials = this._options.resources.materials;
+        const revision = materials.revision;
+        if (typeof revision === 'number' && revision === this._outlinePassRevision) {
+            return this._outlinePassDeclared;
+        }
+
+        const declared = this._scanOutlineMaterialPasses();
+        this._outlinePassRevision = typeof revision === 'number' ? revision : Number.NaN;
+        this._outlinePassDeclared = declared;
+        return declared;
+    }
+
+    private _scanOutlineMaterialPasses(): boolean {
+        const actors = this._options.getActors();
+        const materials = this._options.resources.materials;
+
+        for (let index = 0; index < actors.length; index += 1) {
+            const actor = actors[index];
+            if (!actor?.active) {
+                continue;
+            }
+
+            const materialId = actor.getComponent(MeshRenderer)?.materialId ?? null;
+            if (materialId === null) {
+                continue;
+            }
+
+            const passes = materials.get(materialId)?.passes;
+            if (!passes) {
+                continue;
+            }
+
+            for (let passIndex = 0; passIndex < passes.length; passIndex += 1) {
+                if (passes[passIndex]?.id === OUTLINE_MATERIAL_PASS_ID) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private _createOutlineRenderPass(
+        registeredPasses: readonly SceneRenderPassResource[]
+    ): SceneRenderPassResource {
+        let order = registeredPasses[0]!.order;
+        for (let index = 1; index < registeredPasses.length; index += 1) {
+            const passOrder = registeredPasses[index]!.order;
+            if (passOrder > order) {
+                order = passOrder;
+            }
+        }
+        const rendererPassId = registeredPasses[0]!.rendererPassId;
+
+        if (
+            this._outlineRenderPass !== null &&
+            this._outlineRenderPassOrder === order &&
+            this._outlineRenderPassRendererPassId === rendererPassId
+        ) {
+            return this._outlineRenderPass;
+        }
+
+        this._outlineRenderPassOrder = order;
+        this._outlineRenderPassRendererPassId = rendererPassId;
+        this._outlineRenderPass = Object.freeze({
+            id: OUTLINE_MATERIAL_PASS_ID,
+            order: order + 1,
+            rendererPassId,
+            materialPassId: OUTLINE_MATERIAL_PASS_ID,
+            enabled: true,
+            clearFlags: NO_CLEAR_FLAGS,
+            clearColor: null,
+            clearDepth: null,
+        });
+        return this._outlineRenderPass;
     }
 
     private _resolveLightingValues(lighting: SceneLightingState): LightingUniformValueMap {
@@ -398,7 +529,8 @@ export class SceneRenderRuntime {
         // Sprite / particle / line / billboard passes do not read it, so mesh-
         // free scenes skip building it entirely.
         const lightingValues = this._resolveLightingValues(lighting);
-        const renderPasses = this._options.resources.renderPasses.getEnabledResources();
+        const registeredPasses = this._options.resources.renderPasses.getEnabledResources();
+        const renderPasses = this._resolveFramePasses(registeredPasses);
 
         if (renderPasses.length === 0) {
             return;
