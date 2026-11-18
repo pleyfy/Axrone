@@ -124,6 +124,7 @@ internal sealed class GltfResourceRuntimeCache
 {
     private readonly ReadOnlyMemory<byte>? _glbBinaryChunk;
     private readonly GltfResourceResolver? _resolver;
+    private readonly GltfImportLimits _limits;
     private readonly Dictionary<int, ReadOnlyMemory<byte>> _bufferCache = new();
     private readonly Dictionary<int, ReadOnlyMemory<byte>> _bufferViewCache = new();
     private readonly Lock _gate = new();
@@ -131,10 +132,12 @@ internal sealed class GltfResourceRuntimeCache
     /// <summary>Creates a cache.</summary>
     public GltfResourceRuntimeCache(
         ReadOnlyMemory<byte>? glbBinaryChunk,
-        GltfResourceResolver? resolver)
+        GltfResourceResolver? resolver,
+        GltfImportLimits? limits = null)
     {
         _glbBinaryChunk = glbBinaryChunk;
         _resolver = resolver;
+        _limits = limits ?? GltfImportLimits.Default;
     }
 
     /// <summary>Resolves a buffer to bytes.</summary>
@@ -272,6 +275,11 @@ internal sealed class GltfResourceRuntimeCache
             }
 
             int uncompressedSize = bv.Meshopt.Count * bv.Meshopt.ByteStride;
+            if (uncompressedSize > _limits.MaxParseBytes)
+            {
+                ThrowHelper.ThrowLimit("MaxParseBytes", uncompressedSize, _limits.MaxParseBytes);
+            }
+
             byte[] decompressed = GC.AllocateUninitializedArray<byte>(uncompressedSize, pinned: true);
 
             bool ok;
