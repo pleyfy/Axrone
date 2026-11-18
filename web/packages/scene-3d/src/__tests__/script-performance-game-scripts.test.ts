@@ -100,7 +100,7 @@ class CharacterMovementTest extends Component {
     private readonly _newPosition = new Vec3();
     private readonly _tempRotation = new Quat();
 
-    awake(): void {
+    onLoad(): void {
         this._cachedTransform = this.transform as Transform | null;
 
         const onKeyDown = (event: KeyboardEvent) => this._pressedKeys.add(event.code);

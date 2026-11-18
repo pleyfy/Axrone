@@ -68,7 +68,7 @@ export interface ParticleSystemConfig {
     readonly simulationSpace?: ParticleSimulationSpace;
     readonly simulationSpeed?: number;
     readonly maxParticles?: number;
-    readonly playOnAwake?: boolean;
+    readonly playOnLoad?: boolean;
     readonly stopAction?: ParticleStopAction;
 
     /* Emission */
@@ -249,7 +249,7 @@ export class ParticleSystem extends Component {
     private _simulationSpace: ParticleSimulationSpace;
     private _simulationSpeed: number;
     private _maxParticles: number;
-    private _playOnAwake: boolean;
+    private _playOnLoad: boolean;
     private _stopAction: ParticleStopAction;
 
     /* Emission */
@@ -399,7 +399,7 @@ export class ParticleSystem extends Component {
         this._simulationSpace = 'world';
         this._simulationSpeed = 1;
         this._maxParticles = 700;
-        this._playOnAwake = true;
+        this._playOnLoad = true;
         this._stopAction = 'disable';
 
         /* Emission */
@@ -532,7 +532,7 @@ export class ParticleSystem extends Component {
             }
         }
 
-        if (this._playOnAwake) {
+        if (this._playOnLoad) {
             this._playing = true;
             this._delayRemaining = this._startDelay;
         }
@@ -665,12 +665,12 @@ export class ParticleSystem extends Component {
         this._maxParticles = clamp(Math.floor(value), 1, MAX_PARTICLES_HARD_LIMIT);
     }
 
-    get playOnAwake(): boolean {
-        return this._playOnAwake;
+    get playOnLoad(): boolean {
+        return this._playOnLoad;
     }
 
-    set playOnAwake(value: boolean) {
-        this._playOnAwake = value;
+    set playOnLoad(value: boolean) {
+        this._playOnLoad = value;
     }
 
     get stopAction(): ParticleStopAction {
@@ -1599,7 +1599,7 @@ export class ParticleSystem extends Component {
             simulationSpace: this._simulationSpace,
             simulationSpeed: this._simulationSpeed,
             maxParticles: this._maxParticles,
-            playOnAwake: this._playOnAwake,
+            playOnLoad: this._playOnLoad,
             stopAction: this._stopAction,
             emissionEnabled: this._emissionEnabled,
             rateOverTime: this._rateOverTime,
@@ -1693,7 +1693,7 @@ export class ParticleSystem extends Component {
             simulationSpace: this._simulationSpace,
             simulationSpeed: this._simulationSpeed,
             maxParticles: this._maxParticles,
-            playOnAwake: this._playOnAwake,
+            playOnLoad: this._playOnLoad,
             stopAction: this._stopAction,
 
             emissionEnabled: this._emissionEnabled,

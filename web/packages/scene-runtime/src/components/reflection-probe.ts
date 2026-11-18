@@ -6,7 +6,7 @@ import type { Mutable } from '@axrone/utility';
 
 export type ReflectionProbeMode = 'baked' | 'realtime' | 'custom';
 export type ReflectionProbeShape = 'sphere' | 'box';
-export type ReflectionProbeRefreshMode = 'on-awake' | 'every-frame' | 'via-scripting';
+export type ReflectionProbeRefreshMode = 'on-load' | 'every-frame' | 'via-scripting';
 export type ReflectionProbeTimeSlicingMode = 'all-faces-at-once' | 'individual-faces' | 'no-time-slicing';
 export type ReflectionProbeClearFlags = 'skybox' | 'solid-color' | 'depth-only';
 
@@ -99,7 +99,7 @@ export class ReflectionProbe extends Component {
         super();
         this._mode = 'baked';
         this._shape = 'box';
-        this._refreshMode = 'on-awake';
+        this._refreshMode = 'on-load';
         this._timeSlicingMode = 'all-faces-at-once';
         this._resolution = 256;
         this._clearFlags = 'skybox';

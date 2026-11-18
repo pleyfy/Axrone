@@ -140,7 +140,7 @@ export class SpriteAnimator extends Component {
         return this._atlas?.frames[0] ?? null;
     }
 
-    override awake(): void {
+    override onLoad(): void {
         this._renderer = this.getComponent(SpriteRenderer) ?? null;
         this._applyCurrentFrame();
     }

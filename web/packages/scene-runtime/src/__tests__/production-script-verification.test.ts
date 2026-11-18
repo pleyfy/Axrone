@@ -297,7 +297,7 @@ describe('T-11: Production Script Verification — CharacterMovement (source-lev
         expect(CHARACTER_MOVEMENT_SOURCE).toContain('_cleanupInput');
     });
 
-    it('subscribes to input events in awake() and unsubscribes in onDestroy()', () => {
+    it('subscribes to input events in onLoad() and unsubscribes in onDestroy()', () => {
         expect(CHARACTER_MOVEMENT_SOURCE).toContain('addEventListener');
         expect(CHARACTER_MOVEMENT_SOURCE).toContain('removeEventListener');
     });

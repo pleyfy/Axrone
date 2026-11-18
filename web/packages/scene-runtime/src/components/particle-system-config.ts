@@ -54,7 +54,7 @@ export interface ParticleSystemConfigHost {
     blendMode: ParticleBlendMode;
     spriteMode: ParticleSpriteMode;
     _prewarm: boolean;
-    _playOnAwake: boolean;
+    _playOnLoad: boolean;
     _shapeRadiusThickness: number;
     _shapeLength: number;
     _shapeDonutRadius: number;
@@ -119,7 +119,7 @@ export function applyParticleSystemConfig(host: ParticleSystemConfigHost, config
     if (typeof config.simulationSpace === 'string') host.simulationSpace = config.simulationSpace;
     if (typeof config.simulationSpeed === 'number') host.simulationSpeed = config.simulationSpeed;
     if (typeof config.maxParticles === 'number') host.maxParticles = config.maxParticles;
-    if (typeof config.playOnAwake === 'boolean') host._playOnAwake = config.playOnAwake;
+    if (typeof config.playOnLoad === 'boolean') host._playOnLoad = config.playOnLoad;
     if (typeof config.stopAction === 'string') host.stopAction = config.stopAction;
 
     if (typeof config.emissionEnabled === 'boolean') host.emissionEnabled = config.emissionEnabled;

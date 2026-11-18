@@ -8,7 +8,7 @@ export default class PlayerController extends Component {
     private readonly _pressedKeys = new Set<string>();
     private _yaw = 0;
 
-    awake(): void {
+    onLoad(): void {
         const onKeyDown = (event: KeyboardEvent) => this._pressedKeys.add(event.code);
         const onKeyUp = (event: KeyboardEvent) => this._pressedKeys.delete(event.code);
 

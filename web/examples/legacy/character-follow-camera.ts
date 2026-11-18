@@ -1011,7 +1011,7 @@ class CharacterLocomotionController extends Component {
         return this;
     }
 
-    awake(): void {
+    onLoad(): void {
         const trackedKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
         const clearPressedKeys = () => {
             this._pressedKeys.clear();
