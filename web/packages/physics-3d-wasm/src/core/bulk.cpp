@@ -328,7 +328,11 @@ int32_t World::setShapeVertices(int32_t shapeId, uintptr_t address, int32_t coun
         return 0;
     }
 
-    Vec3 scratchVertices[kBulkMaxVertices];
+    if (hullScratch == nullptr) {
+        return -1;
+    }
+    HullBuildScratch& scratch = *hullScratch;
+    Vec3* const scratchVertices = scratch.uniqueVertices;
     const int32_t uniqueCount = dedupeVertices(source, count, scratchVertices);
     if (uniqueCount < 4) {
         return -1;
@@ -356,13 +360,9 @@ int32_t World::setShapeVertices(int32_t shapeId, uintptr_t address, int32_t coun
         scratchVertices[i] = scratchVertices[i] - middle;
     }
 
-    int32_t faceIndices[kBulkMaxFaceIndices];
-    int32_t faceStart[kBulkMaxFaces + 1];
-    Vec3 faceNormals[kBulkMaxFaces];
-    float faceOffsets[kBulkMaxFaces];
     int32_t faceCount = 0;
     int32_t indexTotal = 0;
-    if (!buildUserHullFaces(scratchVertices, uniqueCount, faceIndices, faceStart, faceNormals, faceOffsets, kBulkMaxFaces, faceCount, indexTotal)) {
+    if (!buildUserHullFaces(scratchVertices, uniqueCount, scratch, faceCount, indexTotal)) {
         return -1;
     }
     const int32_t indexCount = indexTotal;
@@ -407,17 +407,17 @@ int32_t World::setShapeVertices(int32_t shapeId, uintptr_t address, int32_t coun
     bulk->heights = nullptr;
 
     for (int32_t f = 0; f <= faceCount; ++f) {
-        bulk->faceStart[f] = faceStart[f];
+        bulk->faceStart[f] = scratch.outFaceStart[f];
     }
     for (int32_t i = 0; i < indexCount; ++i) {
-        bulk->faceIndices[i] = faceIndices[i];
+        bulk->faceIndices[i] = scratch.outFaceIndices[i];
     }
     for (int32_t i = 0; i < uniqueCount; ++i) {
         bulk->vertices[i] = scratchVertices[i];
     }
     for (int32_t f = 0; f < faceCount; ++f) {
-        bulk->faceNormals[f] = faceNormals[f];
-        bulk->faceOffsets[f] = faceOffsets[f];
+        bulk->faceNormals[f] = scratch.outFaceNormals[f];
+        bulk->faceOffsets[f] = scratch.outFaceOffsets[f];
     }
 
     setBulkAt(bodyId, slot, bulk);

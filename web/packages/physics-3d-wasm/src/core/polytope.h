@@ -24,6 +24,34 @@ struct HullView {
     const float* faceOffsets;
 };
 
+// Hull construction is the largest transient working set in the engine.
+// Keeping it in arena-backed storage instead of the wasm shadow stack avoids a
+// ~57 KiB call chain (bulk scratch + incremental hull scratch). A World owns
+// one instance; the engine is single-threaded by design.
+struct HullBuildScratch {
+    struct FaceRecord {
+        int32_t a;
+        int32_t b;
+        int32_t c;
+        bool alive;
+    };
+
+    Vec3 uniqueVertices[kBulkMaxVertices];
+    int32_t outFaceIndices[kBulkMaxFaceIndices];
+    int32_t outFaceStart[kBulkMaxFaces + 1];
+    Vec3 outFaceNormals[kBulkMaxFaces];
+    float outFaceOffsets[kBulkMaxFaces];
+
+    FaceRecord faces[kHullScratchFaces];
+    bool visible[kHullScratchFaces];
+    int32_t horizonU[kHullScratchFaces];
+    int32_t horizonV[kHullScratchFaces];
+    int32_t srcIndices[3 * kBulkMaxFaces];
+    Vec3 srcNormals[kBulkMaxFaces];
+    float srcOffsets[kBulkMaxFaces];
+    bool consumed[kBulkMaxFaces];
+};
+
 AXRONE_PHYSICS_INLINE HullView makeHullView(const Hull& hull) {
     HullView view;
     view.vertexCount = hull.vertexCount;
@@ -43,11 +71,7 @@ void buildBoxHull(const Vec3& center, const Mat3& rotation, const Vec3& half, Hu
 bool buildUserHullFaces(
     const Vec3* vertices,
     int32_t vertexCount,
-    int32_t* faceIndices,
-    int32_t* faceStart,
-    Vec3* faceNormals,
-    float* faceOffsets,
-    int32_t maxFaces,
+    HullBuildScratch& scratch,
     int32_t& faceCount,
     int32_t& indexTotal
 );

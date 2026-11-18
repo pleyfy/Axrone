@@ -74,23 +74,6 @@ struct World {
     PhaseNanoseconds m_phaseNanoseconds = {};
 #endif
 
-    Vec3 axesA[3] = {};
-    Vec3 axesB[3] = {};
-    Vec3 faceVertices[4] = {};
-    Vec3 clipA[8] = {};
-    Vec3 clipB[8] = {};
-
-    Vec3 hullVerticesA[kBulkMaxVertices] = {};
-    Vec3 hullVerticesB[kBulkMaxVertices] = {};
-    Vec3 hullNormalsA[kBulkMaxFaces] = {};
-    Vec3 hullNormalsB[kBulkMaxFaces] = {};
-    float hullOffsetsA[kBulkMaxFaces] = {};
-    float hullOffsetsB[kBulkMaxFaces] = {};
-    int32_t hullStartA[kBulkMaxFaces + 1] = {};
-    int32_t hullStartB[kBulkMaxFaces + 1] = {};
-    int32_t hullIndicesA[kBulkMaxFaceIndices] = {};
-    int32_t hullIndicesB[kBulkMaxFaceIndices] = {};
-
     bool init(Arena& arena, int32_t maxBodies, int32_t maxContacts, Vec3 gravity);
     void reset();
     int32_t createBody(int32_t type, float px, float py, float pz, float qx, float qy, float qz, float qw);
@@ -346,6 +329,9 @@ struct World {
     void recordCacheHit();
     int32_t cacheStore(int32_t a, int32_t b, int32_t feature, float impN, float impT1, float impT2);
 };
+
+static_assert(sizeof(World) <= 1024,
+              "World must remain a small descriptor; large worksets belong in arena-backed scratch");
 
 bool recomputeMass(Body& body);
 int32_t firstFreeShapeSlot(const Body& body);

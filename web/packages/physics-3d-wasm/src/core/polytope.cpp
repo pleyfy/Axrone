@@ -272,14 +272,9 @@ void hullClosestPoint(
 
 namespace {
 
-struct FaceRecord {
-    int32_t a;
-    int32_t b;
-    int32_t c;
-    bool alive;
-};
+using HullFace = HullBuildScratch::FaceRecord;
 
-bool sameDirectedEdge(const FaceRecord& face, int32_t u, int32_t v) {
+bool sameDirectedEdge(const HullFace& face, int32_t u, int32_t v) {
     if (face.a == u && face.b == v) {
         return true;
     }
@@ -289,7 +284,7 @@ bool sameDirectedEdge(const FaceRecord& face, int32_t u, int32_t v) {
     return face.c == u && face.a == v;
 }
 
-bool faceHasUndirectedEdge(const FaceRecord& face, int32_t u, int32_t v) {
+bool faceHasUndirectedEdge(const HullFace& face, int32_t u, int32_t v) {
     if (face.a == u || face.a == v) {
         if (face.b == u || face.b == v) {
             return true;
@@ -309,18 +304,15 @@ bool faceHasUndirectedEdge(const FaceRecord& face, int32_t u, int32_t v) {
 bool buildUserHullFaces(
     const Vec3* vertices,
     int32_t vertexCount,
-    int32_t* faceIndices,
-    int32_t* faceStart,
-    Vec3* faceNormals,
-    float* faceOffsets,
-    int32_t maxFaces,
+    HullBuildScratch& scratch,
     int32_t& faceCount,
     int32_t& indexTotal
 ) {
-    if (vertices == nullptr || faceIndices == nullptr || faceStart == nullptr || faceNormals == nullptr || faceOffsets == nullptr) {
+    if (vertices == nullptr) {
         return false;
     }
-    if (vertexCount < 4 || maxFaces < 2 * vertexCount - 4) {
+    if (vertexCount < 4 || vertexCount > kBulkMaxVertices ||
+        kBulkMaxFaces < 2 * vertexCount - 4) {
         return false;
     }
 
@@ -374,13 +366,13 @@ bool buildUserHullFaces(
         return false;
     }
 
-    FaceRecord faces[3 * kBulkMaxVertices - 8];
-    for (int32_t i = 0; i < 3 * kBulkMaxVertices - 8; ++i) {
+    HullFace* const faces = scratch.faces;
+    for (int32_t i = 0; i < kHullScratchFaces; ++i) {
         faces[i].alive = false;
     }
     int32_t faceCapacity = 3 * vertexCount - 8;
-    if (faceCapacity > 3 * kBulkMaxVertices - 8) {
-        faceCapacity = 3 * kBulkMaxVertices - 8;
+    if (faceCapacity > kHullScratchFaces) {
+        faceCapacity = kHullScratchFaces;
     }
 
     int32_t faceTotal = 0;
@@ -435,7 +427,7 @@ bool buildUserHullFaces(
             continue;
         }
         const Vec3& point = vertices[p];
-        bool visible[3 * kBulkMaxVertices - 8];
+        bool* const visible = scratch.visible;
         int32_t visibleCount = 0;
         for (int32_t f = 0; f < faceTotal; ++f) {
             visible[f] = false;
@@ -453,14 +445,14 @@ bool buildUserHullFaces(
             continue;
         }
 
-        int32_t horizonU[3 * kBulkMaxVertices - 8];
-        int32_t horizonV[3 * kBulkMaxVertices - 8];
+        int32_t* const horizonU = scratch.horizonU;
+        int32_t* const horizonV = scratch.horizonV;
         int32_t horizonCount = 0;
         for (int32_t f = 0; f < faceTotal; ++f) {
             if (!faces[f].alive || !visible[f]) {
                 continue;
             }
-            const FaceRecord& face = faces[f];
+            const HullFace& face = faces[f];
             const int32_t ring[3][2] = { { face.a, face.b }, { face.b, face.c }, { face.c, face.a } };
             for (int32_t e = 0; e < 3; ++e) {
                 const int32_t u = ring[e][0];
@@ -491,7 +483,7 @@ bool buildUserHullFaces(
                 if (!hasBlocking) {
                     continue;
                 }
-                if (horizonCount >= 3 * kBulkMaxVertices - 8) {
+                if (horizonCount >= kHullScratchFaces) {
                     return false;
                 }
                 horizonU[horizonCount] = u;
@@ -513,9 +505,12 @@ bool buildUserHullFaces(
     }
 
     int32_t produced = 0;
-    int32_t srcIndices[3 * kBulkMaxFaces];
+    int32_t* const srcIndices = scratch.srcIndices;
     for (int32_t f = 0; f < faceTotal; ++f) {
         if (faces[f].alive) {
+            if (produced >= kBulkMaxFaces) {
+                return false;
+            }
             srcIndices[produced * 3 + 0] = faces[f].a;
             srcIndices[produced * 3 + 1] = faces[f].b;
             srcIndices[produced * 3 + 2] = faces[f].c;
@@ -532,8 +527,8 @@ bool buildUserHullFaces(
     }
     centroid *= 1.0f / static_cast<float>(vertexCount);
 
-    Vec3 srcNormals[kBulkMaxFaces];
-    float srcOffsets[kBulkMaxFaces];
+    Vec3* const srcNormals = scratch.srcNormals;
+    float* const srcOffsets = scratch.srcOffsets;
     for (int32_t f = 0; f < produced; ++f) {
         const Vec3& va = vertices[srcIndices[f * 3]];
         const Vec3& vb = vertices[srcIndices[f * 3 + 1]];
@@ -554,7 +549,7 @@ bool buildUserHullFaces(
         srcOffsets[f] = dot(normal, va);
     }
 
-    bool consumed[kBulkMaxFaces];
+    bool* const consumed = scratch.consumed;
     for (int32_t f = 0; f < produced; ++f) {
         consumed[f] = false;
     }
@@ -593,27 +588,36 @@ bool buildUserHullFaces(
             }
         }
 
-        faceStart[outFaces] = outCursor;
+        if (outFaces >= kBulkMaxFaces) {
+            return false;
+        }
+        scratch.outFaceStart[outFaces] = outCursor;
         if (mergeTarget < 0) {
-            faceIndices[outCursor++] = srcIndices[f * 3 + 0];
-            faceIndices[outCursor++] = srcIndices[f * 3 + 1];
-            faceIndices[outCursor++] = srcIndices[f * 3 + 2];
+            if (outCursor + 3 > kBulkMaxFaceIndices) {
+                return false;
+            }
+            scratch.outFaceIndices[outCursor++] = srcIndices[f * 3 + 0];
+            scratch.outFaceIndices[outCursor++] = srcIndices[f * 3 + 1];
+            scratch.outFaceIndices[outCursor++] = srcIndices[f * 3 + 2];
         } else {
+            if (outCursor + 4 > kBulkMaxFaceIndices) {
+                return false;
+            }
             consumed[mergeTarget] = true;
             const int32_t u = srcIndices[f * 3 + mergeEdgeF];
             const int32_t v = srcIndices[f * 3 + (mergeEdgeF + 1) % 3];
             const int32_t pf = srcIndices[f * 3 + (mergeEdgeF + 2) % 3];
             const int32_t pg = srcIndices[mergeTarget * 3 + (mergeEdgeG + 2) % 3];
-            faceIndices[outCursor++] = v;
-            faceIndices[outCursor++] = pf;
-            faceIndices[outCursor++] = u;
-            faceIndices[outCursor++] = pg;
+            scratch.outFaceIndices[outCursor++] = v;
+            scratch.outFaceIndices[outCursor++] = pf;
+            scratch.outFaceIndices[outCursor++] = u;
+            scratch.outFaceIndices[outCursor++] = pg;
         }
-        faceNormals[outFaces] = srcNormals[f];
-        faceOffsets[outFaces] = srcOffsets[f];
+        scratch.outFaceNormals[outFaces] = srcNormals[f];
+        scratch.outFaceOffsets[outFaces] = srcOffsets[f];
         ++outFaces;
     }
-    faceStart[outFaces] = outCursor;
+    scratch.outFaceStart[outFaces] = outCursor;
 
     if (outFaces < 4) {
         return false;

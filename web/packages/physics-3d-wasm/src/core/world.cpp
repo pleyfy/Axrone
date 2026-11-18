@@ -2,6 +2,7 @@
 
 #include "core/broadphase.h"
 #include "core/narrowphase.h"
+#include "core/polytope.h"
 #include "core/solver.h"
 #include "platform/memory.h"
 #include "runtime/arena.h"
@@ -405,6 +406,8 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
     cacheNext = allocateArray<CacheEntry>(arena, cacheCapacity);
     cachePrevUsed = allocateArray<int32_t>(arena, maxContacts);
     cacheNextUsed = allocateArray<int32_t>(arena, maxContacts);
+    narrowphaseScratch = allocateArray<NarrowphaseScratch>(arena, 1);
+    hullScratch = allocateArray<HullBuildScratch>(arena, 1);
 
     if (transforms == nullptr || sleepTransforms == nullptr || velocities == nullptr || angularVelocities == nullptr ||
         packedContacts == nullptr || bodies == nullptr || slotGen == nullptr || sweepOrder == nullptr ||
@@ -412,7 +415,8 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
         freeIds == nullptr || contacts == nullptr || constraints == nullptr || constraintFreeIds == nullptr ||
         suppressedKeys == nullptr ||
         cachePrev == nullptr || cacheNext == nullptr ||
-        cachePrevUsed == nullptr || cacheNextUsed == nullptr) {
+        cachePrevUsed == nullptr || cacheNextUsed == nullptr ||
+        narrowphaseScratch == nullptr || hullScratch == nullptr) {
         return false;
     }
 
