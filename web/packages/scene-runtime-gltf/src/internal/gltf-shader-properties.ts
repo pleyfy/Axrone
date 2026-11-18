@@ -249,3 +249,44 @@ export const createSharedAlphaProperties = (): readonly RenderShaderPropertyDefi
         },
     },
 ];
+
+export const createSharedSurfaceFactorProperties = (): readonly RenderShaderPropertyDefinition[] => [
+    {
+        name: '_OpacityFactor',
+        type: 'float',
+        stages: ['fragment'],
+        scope: 'material',
+        defaultValue: 1,
+        inspector: {
+            label: 'Opacity',
+            group: 'Surface',
+            control: 'slider',
+            min: 0,
+            max: 1,
+            step: 0.01,
+        },
+    },
+    {
+        name: '_EmissiveIntensity',
+        type: 'float',
+        stages: ['fragment'],
+        scope: 'material',
+        defaultValue: 1,
+        inspector: {
+            label: 'Emissive Intensity',
+            group: 'Emission',
+            control: 'slider',
+            min: 0,
+            max: 10,
+            step: 0.05,
+        },
+    },
+    {
+        name: '_VertexOffset',
+        type: 'vec3',
+        stages: ['vertex'],
+        scope: 'material',
+        defaultValue: [0, 0, 0],
+        inspector: HIDDEN_INSPECTOR,
+    },
+];

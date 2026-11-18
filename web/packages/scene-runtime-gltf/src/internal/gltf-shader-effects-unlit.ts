@@ -4,6 +4,7 @@ import {
     HIDDEN_INSPECTOR,
     createSharedAlphaProperties,
     createSharedObjectProperties,
+    createSharedSurfaceFactorProperties,
     createSurfaceTextureProperties,
 } from './gltf-shader-properties';
 
@@ -47,6 +48,20 @@ export const createGltfUnlitShaderEffect = (id: string): RenderShaderEffectDefin
             },
         },
         ...createSurfaceTextureProperties('_BaseColorTexture', 'Base Color Map', 'Maps'),
+        ...createSurfaceTextureProperties('_OpacityTexture', 'Opacity Map', 'Maps'),
+        {
+            name: '_EmissiveFactor',
+            type: 'vec3',
+            stages: ['fragment'],
+            scope: 'material',
+            defaultValue: [0, 0, 0],
+            inspector: {
+                label: 'Emissive',
+                group: 'Emission',
+                control: 'color',
+            },
+        },
+        ...createSharedSurfaceFactorProperties(),
         ...createSharedAlphaProperties(),
         {
             name: 'u_FogEnabled',
@@ -92,7 +107,7 @@ export const createGltfUnlitShaderEffect = (id: string): RenderShaderEffectDefin
         main: [
             'v_UV0 = a_UV0;',
             'v_UV1 = a_UV1;',
-            'vec4 localPosition = vec4(a_Position, 1.0);',
+            'vec4 localPosition = vec4(a_Position + _VertexOffset, 1.0);',
             'if (u_Skinning && u_SkinJointCount > 0) {',
             '    localPosition = resolveSkinMatrix() * localPosition;',
             '}',
@@ -107,9 +122,14 @@ export const createGltfUnlitShaderEffect = (id: string): RenderShaderEffectDefin
         includes: ['gltf.uv', 'gltf.color-space', 'gltf.fog'],
         main: [
             'vec4 baseColor = _BaseColorFactor;',
+            'baseColor.a *= clamp(_OpacityFactor, 0.0, 1.0);',
             'if (_BaseColorTexture_TexCoord >= 0) {',
             '    vec2 uv = transformUV(selectUV(_BaseColorTexture_TexCoord), _BaseColorTexture_ST, _BaseColorTexture_Rotation);',
             '    baseColor *= texture(_BaseColorTexture, uv);',
+            '}',
+            'if (_OpacityTexture_TexCoord >= 0) {',
+            '    vec2 uv = transformUV(selectUV(_OpacityTexture_TexCoord), _OpacityTexture_ST, _OpacityTexture_Rotation);',
+            '    baseColor.a *= texture(_OpacityTexture, uv).r;',
             '}',
             'int alphaMode = int(_AlphaMode + 0.5);',
             'if (alphaMode == 1 && baseColor.a < _AlphaCutoff) {',
@@ -118,7 +138,7 @@ export const createGltfUnlitShaderEffect = (id: string): RenderShaderEffectDefin
             'if (alphaMode == 0 || alphaMode == 1) {',
             '    baseColor.a = 1.0;',
             '}',
-            'vec3 finalColor = baseColor.rgb;',
+            'vec3 finalColor = baseColor.rgb + _EmissiveFactor * max(_EmissiveIntensity, 0.0);',
             '#ifdef FOG',
             'finalColor = applyFog(finalColor, v_WorldPosition, u_CameraPosition);',
             '#endif',
