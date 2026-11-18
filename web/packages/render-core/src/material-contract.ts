@@ -1,8 +1,41 @@
-export type MaterialModelId = 'pbr' | 'unlit' | 'toon';
-export type MaterialDomainId = 'surface';
+export type MaterialModelV1Id = 'pbr' | 'unlit' | 'toon';
+export type MaterialModelV2Id =
+    | MaterialModelV1Id
+    | 'hair'
+    | 'cloth'
+    | 'water'
+    | 'foliage'
+    | 'sprite'
+    | 'particle'
+    | 'composable'
+    | 'decal'
+    | 'post-process';
+export type MaterialModelId = MaterialModelV2Id;
+export type MaterialDomainId = 'surface' | 'decal' | 'post-process' | 'volume';
 export type MaterialStageId = 'vertex' | 'fragment';
-export type MaterialSlotValueType = 'float' | 'vec2' | 'vec3' | 'vec4' | 'tex' | 'bool';
+export type MaterialSlotValueType =
+    | 'float'
+    | 'vec2'
+    | 'vec3'
+    | 'vec4'
+    | 'tex'
+    | 'bool'
+    | 'surfaceAttributes';
 export type MaterialCapabilityStatus = 'supported' | 'partial' | 'unsupported';
+export type MaterialRenderProfileId = 'webgl2-standard' | 'webgl2-minimal' | 'native';
+export type MaterialCompilerFamily =
+    | 'gltf/pbr'
+    | 'gltf/unlit'
+    | 'gltf/toon'
+    | 'gltf/hair'
+    | 'gltf/cloth'
+    | 'gltf/water'
+    | 'gltf/foliage'
+    | 'sprite'
+    | 'particle'
+    | 'gltf/composable'
+    | 'gltf/decal'
+    | 'post-process';
 
 export interface MaterialOutputSlotDefinition {
     readonly key: string;
@@ -56,18 +89,28 @@ export interface MaterialParameterContractEntry {
 }
 
 export interface MaterialModelCapabilityMatrixEntry {
-    readonly profile: 'webgl2-standard' | 'webgl2-minimal' | 'native';
+    readonly profile: MaterialRenderProfileId;
     readonly status: MaterialCapabilityStatus;
     readonly notes?: string;
 }
 
+export interface MaterialDomainDefinition {
+    readonly id: MaterialDomainId;
+    readonly label: string;
+    readonly description: string;
+    readonly defaultModelId?: MaterialModelId;
+    readonly supportsVertexOffset: boolean;
+    readonly supportsDepthOffset: boolean;
+    readonly capabilities: readonly MaterialModelCapabilityMatrixEntry[];
+}
+
 export interface MaterialModelDefinition {
-    readonly contractVersion: 1;
+    readonly contractVersion: 1 | 2;
     readonly id: MaterialModelId;
     readonly label: string;
     readonly description: string;
     readonly domain: MaterialDomainId;
-    readonly compilerFamily: 'gltf/pbr' | 'gltf/unlit' | 'gltf/toon';
+    readonly compilerFamily: MaterialCompilerFamily;
     readonly defaultShaderId: string;
     readonly stages: readonly MaterialStageContractDefinition[];
     readonly outputSlots: readonly MaterialOutputSlotDefinition[];
@@ -77,6 +120,7 @@ export interface MaterialModelDefinition {
 }
 
 export interface MaterialTemplateDefinition {
+    readonly contractVersion?: 1 | 2;
     readonly id: string;
     readonly label: string;
     readonly description: string;
@@ -910,13 +954,63 @@ export const serializeMaterialModelsV1 = (): string =>
         0
     )}\n`;
 
+export const serializeMaterialContractDocument = (
+    contractVersion: 1 | 2,
+    models: readonly MaterialModelDefinition[],
+    domains?: readonly MaterialDomainDefinition[]
+): string => {
+    const entries: (readonly [string, CanonicalJsonValue])[] = [
+        ['contractVersion', contractVersion],
+        ...(domains
+            ? ([
+                  [
+                      'domains',
+                      domains.map(
+                          (domain): CanonicalJsonValue => [
+                              ['id', domain.id],
+                              ['label', domain.label],
+                              ['description', domain.description],
+                              ...optionalEntry('defaultModelId', domain.defaultModelId),
+                              ['supportsVertexOffset', domain.supportsVertexOffset],
+                              ['supportsDepthOffset', domain.supportsDepthOffset],
+                              ['capabilities', domain.capabilities.map(serializeCapabilityEntry)],
+                          ]
+                      ),
+                  ],
+              ] as const)
+            : []),
+        ['models', models.map(serializeModelDefinition)],
+    ];
+    return `${serializeCanonicalValue(entries, 0)}\n`;
+};
+
 const MATERIAL_MODEL_DEFINITIONS_BY_ID: ReadonlyMap<MaterialModelId, MaterialModelDefinition> =
     new Map<MaterialModelId, MaterialModelDefinition>(
         BUILTIN_MATERIAL_MODELS_V1.map((definition) => [definition.id, definition])
     );
 
-const MODEL_ID_VALUES: readonly MaterialModelId[] = ['pbr', 'unlit', 'toon'];
-const DOMAIN_ID_VALUES: readonly MaterialDomainId[] = ['surface'];
+const V1_MODEL_ID_VALUES: readonly MaterialModelV1Id[] = ['pbr', 'unlit', 'toon'];
+const V2_MODEL_ID_VALUES: readonly MaterialModelV2Id[] = [
+    'pbr',
+    'unlit',
+    'toon',
+    'hair',
+    'cloth',
+    'water',
+    'foliage',
+    'sprite',
+    'particle',
+    'composable',
+    'decal',
+    'post-process',
+];
+const V1_DOMAIN_ID_VALUES: readonly MaterialDomainId[] = ['surface'];
+const V2_DOMAIN_ID_VALUES: readonly MaterialDomainId[] = [
+    'surface',
+    'decal',
+    'post-process',
+    'volume',
+];
 const STAGE_ID_VALUES: readonly MaterialStageId[] = ['vertex', 'fragment'];
 const SLOT_VALUE_TYPE_VALUES: readonly MaterialSlotValueType[] = [
     'float',
@@ -926,15 +1020,31 @@ const SLOT_VALUE_TYPE_VALUES: readonly MaterialSlotValueType[] = [
     'tex',
     'bool',
 ];
+const V2_SLOT_VALUE_TYPE_VALUES: readonly MaterialSlotValueType[] = [
+    ...SLOT_VALUE_TYPE_VALUES,
+    'surfaceAttributes',
+];
 const CAPABILITY_STATUS_VALUES: readonly MaterialCapabilityStatus[] = [
     'supported',
     'partial',
     'unsupported',
 ];
-const COMPILER_FAMILY_VALUES: readonly MaterialModelDefinition['compilerFamily'][] = [
+const V1_COMPILER_FAMILY_VALUES: readonly MaterialCompilerFamily[] = [
     'gltf/pbr',
     'gltf/unlit',
     'gltf/toon',
+];
+const V2_COMPILER_FAMILY_VALUES: readonly MaterialCompilerFamily[] = [
+    ...V1_COMPILER_FAMILY_VALUES,
+    'gltf/hair',
+    'gltf/cloth',
+    'gltf/water',
+    'gltf/foliage',
+    'sprite',
+    'particle',
+    'gltf/composable',
+    'gltf/decal',
+    'post-process',
 ];
 const CULL_MODE_VALUES: readonly NonNullable<MaterialPassPlanEntryDefinition['cullMode']>[] = [
     'none',
@@ -949,6 +1059,9 @@ const CAPABILITY_PROFILE_VALUES: readonly MaterialModelCapabilityMatrixEntry['pr
 
 export const isMaterialSlotValueType = (value: unknown): value is MaterialSlotValueType =>
     typeof value === 'string' && SLOT_VALUE_TYPE_VALUES.includes(value as MaterialSlotValueType);
+
+export const isMaterialSlotValueTypeV2 = (value: unknown): value is MaterialSlotValueType =>
+    typeof value === 'string' && V2_SLOT_VALUE_TYPE_VALUES.includes(value as MaterialSlotValueType);
 
 export const getMaterialModelDefinition = (
     id: MaterialModelId
@@ -971,7 +1084,7 @@ const parseDefaultValueForValueType = (
     valueType: MaterialSlotValueType,
     rawValue: string
 ): boolean => {
-    if (valueType === 'tex') {
+    if (valueType === 'tex' || valueType === 'surfaceAttributes') {
         return rawValue.trim().length > 0;
     }
 
@@ -1029,9 +1142,12 @@ const collectDuplicateStageIds = (
 
 const validateOutputSlots = (
     definition: MaterialModelDefinition,
-    errors: string[]
+    errors: string[],
+    allowV2: boolean
 ): ReadonlyMap<string, MaterialOutputSlotDefinition> => {
     const slotsByKey = new Map<string, MaterialOutputSlotDefinition>();
+    const allowedValueTypes = allowV2 ? V2_SLOT_VALUE_TYPE_VALUES : SLOT_VALUE_TYPE_VALUES;
+    const checkSlotType = allowV2 ? isMaterialSlotValueTypeV2 : isMaterialSlotValueType;
 
     for (const duplicate of collectDuplicateKeys(definition.outputSlots.map((slot) => slot.key))) {
         errors.push(`outputSlots contains duplicate slot key '${duplicate}'.`);
@@ -1053,7 +1169,7 @@ const validateOutputSlots = (
         if (!STAGE_ID_VALUES.includes(slot.stage)) {
             errors.push(`outputSlot '${label}' has invalid stage '${slot.stage}'.`);
         }
-        if (!SLOT_VALUE_TYPE_VALUES.includes(slot.valueType)) {
+        if (!allowedValueTypes.includes(slot.valueType)) {
             errors.push(`outputSlot '${label}' has invalid valueType '${slot.valueType}'.`);
         }
         if (!CAPABILITY_STATUS_VALUES.includes(slot.capability)) {
@@ -1071,7 +1187,7 @@ const validateOutputSlots = (
                 );
             }
         }
-        if (slot.defaultValue !== undefined && !isMaterialSlotValueType(slot.valueType)) {
+        if (slot.defaultValue !== undefined && !checkSlotType(slot.valueType)) {
             errors.push(`outputSlot '${label}' has an unsupported valueType declaration.`);
         } else if (
             slot.defaultValue !== undefined &&
@@ -1200,22 +1316,37 @@ const validateCapabilities = (definition: MaterialModelDefinition, errors: strin
     });
 };
 
+export interface MaterialModelValidationOptions {
+    readonly allowV2?: boolean;
+}
+
 export const validateMaterialModelDefinition = (
-    definition: MaterialModelDefinition
+    definition: MaterialModelDefinition,
+    options: MaterialModelValidationOptions = {}
 ): MaterialContractValidationResult => {
     const errors: string[] = [];
+    const allowV2 = options.allowV2 === true;
+    const allowedModels = allowV2 ? V2_MODEL_ID_VALUES : V1_MODEL_ID_VALUES;
+    const allowedDomains = allowV2 ? V2_DOMAIN_ID_VALUES : V1_DOMAIN_ID_VALUES;
+    const allowedFamilies = allowV2 ? V2_COMPILER_FAMILY_VALUES : V1_COMPILER_FAMILY_VALUES;
 
-    if (definition.contractVersion !== CONTRACT_VERSION_V1) {
+    if (
+        allowV2
+            ? definition.contractVersion !== 1 && definition.contractVersion !== 2
+            : definition.contractVersion !== CONTRACT_VERSION_V1
+    ) {
         errors.push(
             `material model '${definition.id}' has contractVersion ${String(
                 definition.contractVersion
-            )}; expected ${CONTRACT_VERSION_V1}.`
+            )}; expected ${allowV2 ? '1 or 2' : CONTRACT_VERSION_V1}.`
         );
     }
     if (definition.id.length === 0) {
         errors.push('material model has an empty id.');
-    } else if (!MODEL_ID_VALUES.includes(definition.id)) {
-        errors.push(`material model id '${definition.id}' is not a V1 model id.`);
+    } else if (!allowedModels.includes(definition.id)) {
+        errors.push(
+            `material model id '${definition.id}' is not a ${allowV2 ? 'V2' : 'V1'} model id.`
+        );
     }
     if (definition.label.length === 0) {
         errors.push(`material model '${definition.id}' has an empty label.`);
@@ -1223,10 +1354,10 @@ export const validateMaterialModelDefinition = (
     if (definition.description.length === 0) {
         errors.push(`material model '${definition.id}' has an empty description.`);
     }
-    if (!DOMAIN_ID_VALUES.includes(definition.domain)) {
+    if (!allowedDomains.includes(definition.domain)) {
         errors.push(`material model '${definition.id}' has invalid domain '${definition.domain}'.`);
     }
-    if (!COMPILER_FAMILY_VALUES.includes(definition.compilerFamily)) {
+    if (!allowedFamilies.includes(definition.compilerFamily)) {
         errors.push(
             `material model '${definition.id}' has invalid compilerFamily '${definition.compilerFamily}'.`
         );
@@ -1247,7 +1378,7 @@ export const validateMaterialModelDefinition = (
         errors.push(`material model '${definition.id}' declares no capability matrix entries.`);
     }
 
-    const slotsByKey = validateOutputSlots(definition, errors);
+    const slotsByKey = validateOutputSlots(definition, errors, allowV2);
     validateStageContracts(definition, slotsByKey, errors);
     validatePassPlan(definition, errors);
     validateCapabilities(definition, errors);
