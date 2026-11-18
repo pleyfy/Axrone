@@ -262,7 +262,7 @@ const pbrFeatureSlots = (advanced = true): readonly MaterialOutputSlotDefinition
     }),
     makeSlot('sheenColor', 'Sheen Color', 'fragment', 'sheen', 'vec3', 'sheen.color', {
         bindingKey: '_SheenColorFactor',
-        defaultValue: '[0, 0, 0]',
+        defaultValue: '[1, 1, 1]',
         optional: true,
         advanced,
     }),
@@ -308,7 +308,7 @@ const pbrFeatureSlots = (advanced = true): readonly MaterialOutputSlotDefinition
         'subsurface.color',
         {
             bindingKey: '_SubsurfaceColorFactor',
-            defaultValue: '[1, 0.25, 0.15]',
+            defaultValue: '[1, 0.8, 0.6]',
             optional: true,
             advanced,
             capability: CAP_PARTIAL,
@@ -938,7 +938,7 @@ const postProcessSlots = [
         }
     ),
     ...baseSurfaceSlots({ includeNormal: false, includeOcclusion: false, includeOpacityMask: false }),
-    makeSlot('tintColor', 'Grade Tint', 'fragment', 'post-process', 'vec3', 'postProcess.tintColor', {
+    makeSlot('postTintColor', 'Grade Tint', 'fragment', 'post-process', 'vec3', 'postProcess.tintColor', {
         bindingKey: '_PostTintColor',
         defaultValue: '[1, 1, 1]',
         optional: true,

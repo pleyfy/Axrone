@@ -363,7 +363,7 @@
                     "valueType": "vec3",
                     "bindingKey": "_SheenColorFactor",
                     "semantic": "sheen.color",
-                    "defaultValue": "[0, 0, 0]",
+                    "defaultValue": "[1, 1, 1]",
                     "optional": true,
                     "advanced": true,
                     "capability": "supported"
@@ -428,7 +428,7 @@
                     "valueType": "vec3",
                     "bindingKey": "_SubsurfaceColorFactor",
                     "semantic": "subsurface.color",
-                    "defaultValue": "[1, 0.25, 0.15]",
+                    "defaultValue": "[1, 0.8, 0.6]",
                     "optional": true,
                     "advanced": true,
                     "capability": "partial"
@@ -2803,7 +2803,7 @@
                     "valueType": "vec3",
                     "bindingKey": "_SheenColorFactor",
                     "semantic": "sheen.color",
-                    "defaultValue": "[0, 0, 0]",
+                    "defaultValue": "[1, 1, 1]",
                     "optional": true,
                     "advanced": true,
                     "capability": "supported"
@@ -2868,7 +2868,7 @@
                     "valueType": "vec3",
                     "bindingKey": "_SubsurfaceColorFactor",
                     "semantic": "subsurface.color",
-                    "defaultValue": "[1, 0.25, 0.15]",
+                    "defaultValue": "[1, 0.8, 0.6]",
                     "optional": true,
                     "advanced": true,
                     "capability": "partial"
@@ -3271,7 +3271,7 @@
                         "opacityMap",
                         "emission",
                         "emissionIntensity",
-                        "tintColor",
+                        "postTintColor",
                         "vignetteIntensity",
                         "saturation",
                         "contrast",
@@ -3356,7 +3356,7 @@
                     "capability": "supported"
                 },
                 {
-                    "key": "tintColor",
+                    "key": "postTintColor",
                     "label": "Grade Tint",
                     "stage": "fragment",
                     "section": "post-process",
