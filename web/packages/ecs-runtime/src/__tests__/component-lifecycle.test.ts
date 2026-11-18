@@ -11,8 +11,8 @@ import { createActor } from './factory-helpers';
 class LifecycleTestComponent extends Component {
     public events: string[] = [];
 
-    awake(): void {
-        this.events.push('awake');
+    onLoad(): void {
+        this.events.push('onLoad');
     }
 
     start(): void {
@@ -84,7 +84,7 @@ class LowPriorityComponent extends Component {
 class DependentComponent extends Component {
     public dependencyResolved = false;
 
-    awake(): void {
+    onLoad(): void {
         this.dependencyResolved = this.actor?.hasComponent(Transform) ?? false;
     }
 }
@@ -95,7 +95,7 @@ class DependentComponent extends Component {
 class DependencyTargetComponent extends Component {
     public initialized = false;
 
-    awake(): void {
+    onLoad(): void {
         this.initialized = true;
     }
 }
@@ -144,11 +144,11 @@ describe('Component Lifecycle Integration', () => {
     });
 
     describe('Test Group 1: Basic Lifecycle Flow', () => {
-        it('should transition through complete lifecycle: uninitialized → awake → enabled → destroyed', async () => {
+        it('should transition through complete lifecycle: uninitialized → loaded → enabled → destroyed', async () => {
             const component = actor.addComponent(LifecycleTestComponent);
 
-            // actor.addComponent triggers awake + start + onEnable automatically
-            expect(component.events).toContain('awake');
+            // actor.addComponent triggers onLoad + start + onEnable automatically
+            expect(component.events).toContain('onLoad');
             expect(component.events).toContain('start');
             expect(component.events).toContain('onEnable');
 
@@ -163,8 +163,8 @@ describe('Component Lifecycle Integration', () => {
         it('should call lifecycle methods in correct order', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
-            expect(component.events[0]).toBe('awake');
+            await component._internalOnLoad();
+            expect(component.events[0]).toBe('onLoad');
 
             await component._internalStart();
             expect(component.events[1]).toBe('start');
@@ -183,7 +183,7 @@ describe('Component Lifecycle Integration', () => {
         it('should pass correct deltaTime to update methods', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             component._internalUpdate(0.016);
@@ -200,7 +200,7 @@ describe('Component Lifecycle Integration', () => {
         it('should handle actor-level lifecycle correctly', () => {
             const component = actor.addComponent(LifecycleTestComponent);
 
-            expect(component.events).toContain('awake');
+            expect(component.events).toContain('onLoad');
 
             actor.start();
             expect(component.events).toContain('start');
@@ -219,7 +219,7 @@ describe('Component Lifecycle Integration', () => {
         it('should call onDisable when component is disabled', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             expect(component.state).toBe('enabled');
@@ -235,7 +235,7 @@ describe('Component Lifecycle Integration', () => {
         it('should call onEnable when component is re-enabled', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             component.enabled = false;
@@ -253,7 +253,7 @@ describe('Component Lifecycle Integration', () => {
         it('should NOT call update when component is disabled', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             component.enabled = false;
@@ -268,7 +268,7 @@ describe('Component Lifecycle Integration', () => {
         it('should call update after re-enabling component', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             component.enabled = false;
@@ -490,22 +490,22 @@ describe('Component Lifecycle Integration', () => {
     });
 
     describe('Test Group 6: Component State Machine', () => {
-        it('should transition: uninitialized → awake (via _internalAwake)', async () => {
+        it('should transition: uninitialized → loaded (via _internalOnLoad)', async () => {
             const component = new LifecycleTestComponent();
 
             expect(component.state).toBe('uninitialized');
 
-            await component._internalAwake();
-            expect(component.state).toBe('awake');
+            await component._internalOnLoad();
+            expect(component.state).toBe('loaded');
 
             component._internalDestroy();
         });
 
-        it('should transition: awake → started → enabled (via _internalStart)', async () => {
+        it('should transition: loaded → started → enabled (via _internalStart)', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
-            expect(component.state).toBe('awake');
+            await component._internalOnLoad();
+            expect(component.state).toBe('loaded');
 
             await component._internalStart();
             expect(component.state).toBe('enabled');
@@ -516,7 +516,7 @@ describe('Component Lifecycle Integration', () => {
         it('should transition: enabled → disabled (via enabled = false)', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
             expect(component.state).toBe('enabled');
 
@@ -529,7 +529,7 @@ describe('Component Lifecycle Integration', () => {
         it('should transition: disabled → enabled (via enabled = true)', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             component.enabled = false;
@@ -544,7 +544,7 @@ describe('Component Lifecycle Integration', () => {
         it('should transition: any → destroyed (via _internalDestroy)', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             await component._internalDestroy();
@@ -554,7 +554,7 @@ describe('Component Lifecycle Integration', () => {
         it('should not allow state changes on destroyed component', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
             await component._internalDestroy();
 
@@ -563,7 +563,7 @@ describe('Component Lifecycle Integration', () => {
             }).toThrow();
         });
 
-        it('should handle invalid transition: awake without _internalAwake', async () => {
+        it('should handle invalid transition: loaded state without _internalOnLoad', async () => {
             const component = new LifecycleTestComponent();
 
             expect(component.state).toBe('uninitialized');
@@ -574,14 +574,14 @@ describe('Component Lifecycle Integration', () => {
             component._internalDestroy();
         });
 
-        it('should handle invalid transition: _internalAwake on already awake component', async () => {
+        it('should handle invalid transition: _internalOnLoad on already loaded component', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
-            expect(component.state).toBe('awake');
+            await component._internalOnLoad();
+            expect(component.state).toBe('loaded');
 
-            await component._internalAwake();
-            expect(component.state).toBe('awake');
+            await component._internalOnLoad();
+            expect(component.state).toBe('loaded');
 
             component._internalDestroy();
         });
@@ -589,7 +589,7 @@ describe('Component Lifecycle Integration', () => {
         it('should handle multiple destroy calls gracefully', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             await component._internalDestroy();
@@ -612,11 +612,11 @@ describe('Component Lifecycle Integration', () => {
             component._internalDestroy();
         });
 
-        it('should prevent update on awake component', async () => {
+        it('should prevent update on loaded component', async () => {
             const component = new LifecycleTestComponent();
 
-            await component._internalAwake();
-            expect(component.state).toBe('awake');
+            await component._internalOnLoad();
+            expect(component.state).toBe('loaded');
 
             component._internalUpdate(0.016);
 

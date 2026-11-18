@@ -9,7 +9,7 @@ import { createActor } from './factory-helpers';
  * T-04: Component Lifecycle Integration Test
  *
  * Validates the full component lifecycle through the ECS:
- * awake → start → update → lateUpdate → fixedUpdate → onEnable → onDisable → onDestroy
+ * onLoad → start → update → lateUpdate → fixedUpdate → onEnable → onDisable → onDestroy
  */
 
 /**
@@ -19,8 +19,8 @@ import { createActor } from './factory-helpers';
 class LifecycleRecorder extends Component {
     public readonly log: string[] = [];
 
-    awake(): void {
-        this.log.push('awake');
+    onLoad(): void {
+        this.log.push('onLoad');
     }
 
     start(): void {
@@ -77,12 +77,12 @@ class GammaComponent extends Component {
 }
 
 /**
- * Component that registers a cleanup task during awake.
+ * Component that registers a cleanup task during onLoad.
  */
 class CleanupTrackingComponent extends Component {
     public cleanupCalled = false;
 
-    awake(): void {
+    onLoad(): void {
         this.addCleanupTask(() => {
             this.cleanupCalled = true;
         });
@@ -90,12 +90,12 @@ class CleanupTrackingComponent extends Component {
 }
 
 /**
- * Component that subscribes to an event during awake.
+ * Component that subscribes to an event during onLoad.
  */
 class EventSubscribingComponent extends Component {
     public receivedEvents: unknown[] = [];
 
-    awake(): void {
+    onLoad(): void {
         this.on('test:event', (data: unknown) => {
             this.receivedEvents.push(data);
         });
@@ -172,19 +172,19 @@ describe('T-04: Component Lifecycle Integration', () => {
     // ─── 1. Lifecycle ordering ───────────────────────────────────────────────
 
     describe('Lifecycle method ordering', () => {
-        it('should call awake → start → onEnable → update → lateUpdate → fixedUpdate → onDisable → onDestroy', () => {
+        it('should call onLoad → start → onEnable → update → lateUpdate → fixedUpdate → onDisable → onDestroy', () => {
             const recorder = actor.addComponent(LifecycleRecorder);
 
-            // addComponent on an already-started actor triggers awake + start + onEnable
-            expect(recorder.log).toContain('awake');
+            // addComponent on an already-started actor triggers onLoad + start + onEnable
+            expect(recorder.log).toContain('onLoad');
             expect(recorder.log).toContain('start');
             expect(recorder.log).toContain('onEnable');
 
-            const awakeIdx = recorder.log.indexOf('awake');
+            const onLoadIdx = recorder.log.indexOf('onLoad');
             const startIdx = recorder.log.indexOf('start');
             const enableIdx = recorder.log.indexOf('onEnable');
 
-            expect(awakeIdx).toBeLessThan(startIdx);
+            expect(onLoadIdx).toBeLessThan(startIdx);
             expect(startIdx).toBeLessThan(enableIdx);
 
             actor.update(0.016);
@@ -457,7 +457,7 @@ describe('T-04: Component Lifecycle Integration', () => {
         it('should clean up event subscriptions when component._internalDestroy is called', async () => {
             const comp = new EventSubscribingComponent();
 
-            await comp._internalAwake();
+            await comp._internalOnLoad();
             await comp._internalStart();
 
             // After _internalDestroy, the component's _cleanup() runs and
@@ -484,7 +484,7 @@ describe('T-04: Component Lifecycle Integration', () => {
         it('should invoke component-level cleanup tasks on _internalDestroy', async () => {
             const comp = new CleanupTrackingComponent();
 
-            await comp._internalAwake();
+            await comp._internalOnLoad();
             await comp._internalStart();
 
             expect(comp.cleanupCalled).toBe(false);
@@ -498,7 +498,7 @@ describe('T-04: Component Lifecycle Integration', () => {
             const order: number[] = [];
 
             class MultiCleanupComponent extends Component {
-                awake(): void {
+                onLoad(): void {
                     this.addCleanupTask(() => order.push(1));
                     this.addCleanupTask(() => order.push(2));
                     this.addCleanupTask(() => order.push(3));
@@ -506,7 +506,7 @@ describe('T-04: Component Lifecycle Integration', () => {
             }
 
             const comp = new MultiCleanupComponent();
-            await comp._internalAwake();
+            await comp._internalOnLoad();
             await comp._internalStart();
 
             await comp._internalDestroy();
@@ -530,14 +530,14 @@ describe('T-04: Component Lifecycle Integration', () => {
     // ─── 9. Component-level lifecycle via _internal* methods ─────────────────
 
     describe('Component-level lifecycle (direct _internal* calls)', () => {
-        it('should transition through states: uninitialized → awake → enabled → destroyed', async () => {
+        it('should transition through states: uninitialized → loaded → enabled → destroyed', async () => {
             const recorder = new LifecycleRecorder();
 
             expect(recorder.state).toBe('uninitialized');
 
-            await recorder._internalAwake();
-            expect(recorder.state).toBe('awake');
-            expect(recorder.log[0]).toBe('awake');
+            await recorder._internalOnLoad();
+            expect(recorder.state).toBe('loaded');
+            expect(recorder.log[0]).toBe('onLoad');
 
             await recorder._internalStart();
             expect(recorder.state).toBe('enabled');
@@ -563,10 +563,10 @@ describe('T-04: Component Lifecycle Integration', () => {
             expect(updates).toHaveLength(0);
         });
 
-        it('should not allow update on awake-only component', async () => {
+        it('should not allow update on loaded-only component', async () => {
             const recorder = new LifecycleRecorder();
-            await recorder._internalAwake();
-            expect(recorder.state).toBe('awake');
+            await recorder._internalOnLoad();
+            expect(recorder.state).toBe('loaded');
 
             recorder._internalUpdate(0.016);
 
@@ -578,7 +578,7 @@ describe('T-04: Component Lifecycle Integration', () => {
 
         it('should skip update when component is disabled', async () => {
             const recorder = new LifecycleRecorder();
-            await recorder._internalAwake();
+            await recorder._internalOnLoad();
             await recorder._internalStart();
 
             recorder.enabled = false;
@@ -594,7 +594,7 @@ describe('T-04: Component Lifecycle Integration', () => {
 
         it('should handle double-destroy gracefully', async () => {
             const recorder = new LifecycleRecorder();
-            await recorder._internalAwake();
+            await recorder._internalOnLoad();
             await recorder._internalStart();
 
             await recorder._internalDestroy();

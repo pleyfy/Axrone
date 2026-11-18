@@ -77,7 +77,7 @@ export interface ActorComponentEntry {
 
 type ActorPreloadedComponentEntry = ActorComponentEntry;
 
-const FINALIZE_FLAG_AWAKE = 1;
+const FINALIZE_FLAG_ON_LOAD = 1;
 const FINALIZE_FLAG_START = 2;
 const FINALIZE_FLAG_ENABLE = 4;
 const FINALIZE_FLAG_EMIT = 8;
@@ -598,7 +598,7 @@ export class Actor<
 
             this.world.addComponent(this.entity, componentName as any, component);
 
-            this._executeComponentLifecycle(component, 'awake');
+            this._executeComponentLifecycle(component, 'onLoad');
 
             if (this._started) {
                 this._executeComponentLifecycle(component, 'start');
@@ -976,7 +976,7 @@ export class Actor<
                 this._componentPriorities.set(entry.componentType, metadata?.priority ?? 0);
 
                 const flags =
-                    (typeof entry.component.awake === 'function' ? FINALIZE_FLAG_AWAKE : 0) |
+                    (typeof entry.component.onLoad === 'function' ? FINALIZE_FLAG_ON_LOAD : 0) |
                     (this._started && typeof entry.component.start === 'function'
                         ? FINALIZE_FLAG_START
                         : 0) |
@@ -998,8 +998,8 @@ export class Actor<
                 const component = finalizeComponents[index]!;
                 const flags = finalizeFlags[index]!;
 
-                if ((flags & FINALIZE_FLAG_AWAKE) !== 0) {
-                    this._executeComponentLifecycle(component, 'awake');
+                if ((flags & FINALIZE_FLAG_ON_LOAD) !== 0) {
+                    this._executeComponentLifecycle(component, 'onLoad');
                 }
 
                 if ((flags & FINALIZE_FLAG_START) !== 0) {

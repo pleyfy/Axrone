@@ -14,7 +14,7 @@ class TestComponent extends Component {
         this.name = name;
     }
 
-    awake(): void {
+    onLoad(): void {
         this.value = 1;
     }
 
@@ -30,7 +30,7 @@ class TestComponent extends Component {
 class DependentComponent extends Component {
     dependency?: TestComponent;
 
-    awake(): void {
+    onLoad(): void {
         this.dependency = this.requireComponent(TestComponent);
     }
 }
@@ -39,7 +39,7 @@ class AsyncComponent extends Component {
     initialized = false;
     started = false;
 
-    async awake(): Promise<void> {
+    async onLoad(): Promise<void> {
         await new Promise((resolve) => setTimeout(resolve, 10));
         this.initialized = true;
     }
@@ -51,12 +51,12 @@ class AsyncComponent extends Component {
 }
 
 class ErrorComponent extends Component {
-    shouldThrowInAwake = false;
+    shouldThrowInOnLoad = false;
     shouldThrowInStart = false;
 
-    awake(): void {
-        if (this.shouldThrowInAwake) {
-            throw new Error('Awake error');
+    onLoad(): void {
+        if (this.shouldThrowInOnLoad) {
+            throw new Error('OnLoad error');
         }
     }
 

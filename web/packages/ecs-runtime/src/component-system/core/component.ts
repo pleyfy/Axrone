@@ -12,7 +12,7 @@ const getComponentTypeName = (componentType: ComponentType): string =>
 
 export type ComponentState =
     | 'uninitialized'
-    | 'awake'
+    | 'loaded'
     | 'started'
     | 'enabled'
     | 'disabled'
@@ -50,7 +50,7 @@ export class ComponentLifecycleError extends ComponentError {
 }
 
 export interface ComponentLifecycle {
-    awake?(): void | Promise<void>;
+    onLoad?(): void | Promise<void>;
     start?(): void | Promise<void>;
     update?(deltaTime: number): void;
     lateUpdate?(deltaTime: number): void;
@@ -554,21 +554,21 @@ export abstract class Component<
         return actors;
     }
 
-    async _internalAwake(): Promise<void> {
+    async _internalOnLoad(): Promise<void> {
         if (this._state !== 'uninitialized') {
             return;
         }
 
         try {
-            this._state = 'awake';
-            await this._executeLifecycleMethod('awake');
-            this._emitEvent('component:awake', { component: this });
+            this._state = 'loaded';
+            await this._executeLifecycleMethod('onLoad');
+            this._emitEvent('component:onLoad', { component: this });
         } catch (error) {
             this._state = 'uninitialized';
             throw new ComponentLifecycleError(
-                'Awake failed',
+                'OnLoad failed',
                 this.constructor.name,
-                'awake',
+                'onLoad',
                 this._id,
                 error instanceof Error ? error : new Error(String(error))
             );
@@ -576,7 +576,7 @@ export abstract class Component<
     }
 
     async _internalStart(): Promise<void> {
-        if (this._state !== 'awake') {
+        if (this._state !== 'loaded') {
             return;
         }
 
@@ -593,7 +593,7 @@ export abstract class Component<
 
             this._emitEvent('component:start', { component: this });
         } catch (error) {
-            this._state = 'awake';
+            this._state = 'loaded';
             throw new ComponentLifecycleError(
                 'Start failed',
                 this.constructor.name,
@@ -791,7 +791,7 @@ export abstract class Component<
 
     protected _initialize(): void {}
 
-    awake?(): void | Promise<void>;
+    onLoad?(): void | Promise<void>;
     start?(): void | Promise<void>;
     update?(deltaTime: number): void;
     lateUpdate?(deltaTime: number): void;

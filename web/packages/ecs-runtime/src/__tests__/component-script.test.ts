@@ -274,7 +274,7 @@ describe('Component Script Decorator', () => {
 
     describe('Integration with Component System', () => {
         test('should work with component lifecycle', async () => {
-            let awakeCallCount = 0;
+            let onLoadCallCount = 0;
             let startCallCount = 0;
 
             @script({
@@ -282,8 +282,8 @@ describe('Component Script Decorator', () => {
                 executeInEditMode: true,
             })
             class LifecycleScriptComponent extends Component {
-                awake(): void {
-                    awakeCallCount++;
+                onLoad(): void {
+                    onLoadCallCount++;
                 }
 
                 start(): void {
@@ -293,10 +293,10 @@ describe('Component Script Decorator', () => {
 
             const component = new LifecycleScriptComponent();
 
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
-            expect(awakeCallCount).toBe(1);
+            expect(onLoadCallCount).toBe(1);
             expect(startCallCount).toBe(1);
 
             const metadata = getComponentMetadata(LifecycleScriptComponent);
