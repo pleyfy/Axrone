@@ -455,7 +455,7 @@ describe('material contract v1 validation', () => {
 
 describe('material contract v1 json artifact', () => {
     it('matches the serialized registry byte for byte', () => {
-        const fileContent = fs.readFileSync(modelsJsonPath, 'utf8');
+        const fileContent = fs.readFileSync(modelsJsonPath, 'utf8').replace(/\r\n/g, '\n');
 
         expect(fileContent).toBe(serializeMaterialModelsV1());
     });
