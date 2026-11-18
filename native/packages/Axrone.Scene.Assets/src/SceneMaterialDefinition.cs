@@ -17,7 +17,8 @@ public sealed class SceneMaterialDefinition : ISceneAssetDefinition<MaterialAsse
         IReadOnlyList<SceneMaterialPass>? passes = null,
         IReadOnlyDictionary<string, SceneUniformValue>? uniforms = null,
         string? techniqueId = null,
-        IReadOnlyDictionary<string, string>? keywords = null)
+        IReadOnlyDictionary<string, string>? keywords = null,
+        IReadOnlyDictionary<string, SceneMaterialTextureBinding>? textureUniforms = null)
     {
         if (!id.IsValid)
         {
@@ -59,6 +60,7 @@ public sealed class SceneMaterialDefinition : ISceneAssetDefinition<MaterialAsse
         Uniforms = CreateUniforms(id, uniforms);
         TechniqueId = techniqueId;
         Keywords = CreateKeywords(id, keywords);
+        TextureUniforms = CreateTextureUniforms(id, textureUniforms);
     }
 
     /// <inheritdoc/>
@@ -85,6 +87,13 @@ public sealed class SceneMaterialDefinition : ISceneAssetDefinition<MaterialAsse
     /// <summary>Keyword selections that pick the shader variant, copied on construction.</summary>
     public IReadOnlyDictionary<string, string> Keywords { get; }
 
+    /// <summary>
+    /// Texture bindings addressed by sampler-uniform name, copied on construction. This is the
+    /// channel a dynamically compiled material graph uses for its own <c>sampler2D</c> inputs;
+    /// the fixed surface maps stay on <see cref="Surface"/> and keep their reserved names.
+    /// </summary>
+    public IReadOnlyDictionary<string, SceneMaterialTextureBinding> TextureUniforms { get; }
+
     private static FrozenDictionary<string, SceneUniformValue> CreateUniforms(
         SceneAssetId<MaterialAssetTag> id,
         IReadOnlyDictionary<string, SceneUniformValue>? uniforms)
@@ -105,6 +114,35 @@ public sealed class SceneMaterialDefinition : ISceneAssetDefinition<MaterialAsse
         }
 
         return uniforms.ToFrozenDictionary(StringComparer.Ordinal);
+    }
+
+    private static FrozenDictionary<string, SceneMaterialTextureBinding> CreateTextureUniforms(
+        SceneAssetId<MaterialAssetTag> id,
+        IReadOnlyDictionary<string, SceneMaterialTextureBinding>? textureUniforms)
+    {
+        if (textureUniforms is null || textureUniforms.Count == 0)
+        {
+            return FrozenDictionary<string, SceneMaterialTextureBinding>.Empty;
+        }
+
+        foreach (KeyValuePair<string, SceneMaterialTextureBinding> pair in textureUniforms)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Key))
+            {
+                throw new SceneAssetException(
+                    SceneAssetErrorCodes.Invalid,
+                    $"Material '{id}' contains an empty texture uniform name.");
+            }
+
+            if (!pair.Value.TextureId.IsValid)
+            {
+                throw new SceneAssetException(
+                    SceneAssetErrorCodes.Invalid,
+                    $"Material '{id}' texture uniform '{pair.Key}' requires a valid texture id.");
+            }
+        }
+
+        return textureUniforms.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
     private static FrozenDictionary<string, string> CreateKeywords(
