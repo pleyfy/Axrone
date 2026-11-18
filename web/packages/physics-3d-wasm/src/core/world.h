@@ -263,6 +263,8 @@ struct World {
         int32_t collideConnected);
     int32_t destroyConstraint(int32_t id);
     int32_t setConstraintEnabled(int32_t id, int32_t enabled);
+    int32_t setJointMotor(int32_t id, int32_t expectedKind, float speed, float maxForceOrTorque);
+    int32_t setJointLimit(int32_t id, int32_t expectedKind, int32_t enable, float lower, float upper);
     int32_t setHingeMotor(int32_t id, float speed, float maxTorque);
     int32_t setHingeLimit(int32_t id, int32_t enable, float lower, float upper);
     int32_t setSliderMotor(int32_t id, float speed, float maxForce);
