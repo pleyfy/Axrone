@@ -57,6 +57,15 @@ export const GLTF_PBR_ATTRIBUTES = Object.freeze({
     weights0: 'a_Weights0',
 } satisfies Partial<Record<GltfMeshSemantic, string>>);
 
+export const GLTF_TOON_ATTRIBUTES = Object.freeze({
+    position: 'a_Position',
+    normal: 'a_Normal',
+    uv0: 'a_UV0',
+    uv1: 'a_UV1',
+    joints0: 'a_Joints0',
+    weights0: 'a_Weights0',
+} satisfies Partial<Record<GltfMeshSemantic, string>>);
+
 export const createSurfaceTextureProperties = (
     uniformName: string,
     label: string,

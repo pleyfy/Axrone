@@ -475,13 +475,15 @@ export const normalizeGltfMaterialDefinition = (
         }
     }
 
+    const shaderId = resolveGltfRuntimeShaderId(asset.definition.shaderId, uniforms);
+
     return {
         ...asset.definition,
         id: key,
-        shaderId: resolveGltfRuntimeShaderId(asset.definition.shaderId, uniforms),
+        shaderId,
         uniforms,
         surface: createRuntimeSurfaceDefinition(asset, uniforms),
-        passes: createGltfRuntimeMaterialPasses(uniforms),
+        passes: createGltfRuntimeMaterialPasses(uniforms, shaderId),
         textures: asset.definition.textures ? { ...asset.definition.textures } : undefined,
     };
 };

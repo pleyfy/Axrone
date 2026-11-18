@@ -16,6 +16,7 @@ export default createMultiEntryConfig({
         pipeline: 'src/pipeline.ts',
         planner: 'src/planner.ts',
         'shader-effect': 'src/shader-effect.ts',
+        'material-contract': 'src/material-contract.ts',
         'nine-slice': 'src/nine-slice.ts',
     },
 });

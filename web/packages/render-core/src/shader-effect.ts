@@ -129,6 +129,8 @@ export interface RenderShaderEffectRenderStateDefinition {
     readonly depthTest?: boolean;
     readonly cull?: boolean;
     readonly blend?: boolean;
+    readonly cullMode?: 'none' | 'front' | 'back';
+    readonly depthWrite?: boolean;
 }
 
 export interface RenderShaderPassDefinition {
@@ -310,6 +312,8 @@ const cloneRenderState = (
               depthTest: value.depthTest,
               cull: value.cull,
               blend: value.blend,
+              cullMode: value.cullMode,
+              depthWrite: value.depthWrite,
           }
         : undefined;
 

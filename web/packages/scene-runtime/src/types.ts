@@ -385,6 +385,7 @@ export interface SceneMaterialBlendStateDefinition {
 
 export interface SceneMaterialPassDefinition {
     readonly id: string;
+    readonly shaderId?: string;
     readonly phase?: string;
     readonly priority?: number;
     readonly primitive?: SceneMaterialPassPrimitive;

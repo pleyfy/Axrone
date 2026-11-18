@@ -173,4 +173,112 @@ describe('render shader effect compiler', () => {
             'SURFACE_MODE',
         ]);
     });
+
+    it('round-trips cullMode and depthWrite at effect level', () => {
+        const effect: RenderShaderEffectDefinition = {
+            ...createEffect(),
+            renderState: {
+                depthTest: true,
+                cull: true,
+                blend: false,
+                cullMode: 'front',
+                depthWrite: false,
+            },
+        };
+
+        const cloned = cloneRenderShaderEffectDefinition(effect);
+
+        expect(cloned.renderState).toEqual({
+            depthTest: true,
+            cull: true,
+            blend: false,
+            cullMode: 'front',
+            depthWrite: false,
+        });
+        expect(cloned.renderState?.cullMode).toBe('front');
+        expect(cloned.renderState?.depthWrite).toBe(false);
+    });
+
+    it('round-trips cullMode and depthWrite at technique pass level', () => {
+        const effect: RenderShaderEffectDefinition = {
+            format: 'axrone.shader/effect',
+            version: 2,
+            id: 'effect/outline-pass-state',
+            defaultTechnique: 'toon',
+            techniques: [
+                {
+                    id: 'toon',
+                    passes: [
+                        {
+                            id: 'outline',
+                            renderState: {
+                                depthTest: true,
+                                cull: true,
+                                blend: false,
+                                cullMode: 'front',
+                                depthWrite: true,
+                            },
+                        },
+                        {
+                            id: 'main',
+                            renderState: { cullMode: 'none', depthWrite: false },
+                        },
+                    ],
+                },
+            ],
+            vertex: { main: ['gl_Position = vec4(0.0);'] },
+            fragment: { main: [''] },
+        };
+
+        const cloned = cloneRenderShaderEffectDefinition(effect);
+        const passes = cloned.techniques?.[0]?.passes ?? [];
+
+        expect(passes[0]?.renderState).toEqual({
+            depthTest: true,
+            cull: true,
+            blend: false,
+            cullMode: 'front',
+            depthWrite: true,
+        });
+        expect(passes[1]?.renderState).toEqual({
+            depthTest: undefined,
+            cull: undefined,
+            blend: undefined,
+            cullMode: 'none',
+            depthWrite: false,
+        });
+    });
+
+    it('keeps undefined cullMode and depthWrite undefined when cloning', () => {
+        const effect: RenderShaderEffectDefinition = {
+            ...createEffect(),
+            renderState: { depthTest: true, cull: true, blend: true },
+        };
+
+        const cloned = cloneRenderShaderEffectDefinition(effect);
+
+        expect(cloned.renderState?.cullMode).toBeUndefined();
+        expect(cloned.renderState?.depthWrite).toBeUndefined();
+        expect(Object.keys(cloned.renderState ?? {})).toEqual([
+            'depthTest',
+            'cull',
+            'blend',
+            'cullMode',
+            'depthWrite',
+        ]);
+    });
+
+    it('does not leak nested render state mutations through cloning', () => {
+        const effect: RenderShaderEffectDefinition = {
+            ...createEffect(),
+            renderState: { cullMode: 'back', depthWrite: true },
+        };
+
+        const cloned = cloneRenderShaderEffectDefinition(effect);
+        (cloned.renderState as any).cullMode = 'front';
+        (effect.renderState as any).depthWrite = false;
+
+        expect(effect.renderState?.cullMode).toBe('back');
+        expect(cloned.renderState?.depthWrite).toBe(true);
+    });
 });
