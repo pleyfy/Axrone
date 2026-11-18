@@ -230,7 +230,7 @@ void broadphase(World& world) {
     AXRONE_PHASE_CLOSE(pairLoopScope);
 
     world.statsBroadphasePairs = broadphasePairs;
-    world.statsSerial = world.stepSerial;
+    world.statsSerialPlusOne = world.stepSerial + 1;
 }
 
 }

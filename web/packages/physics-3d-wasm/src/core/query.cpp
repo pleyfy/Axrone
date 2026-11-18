@@ -1099,7 +1099,7 @@ void collectStepStatistics(
 
     int64_t broadphasePairs = 0;
     int64_t shapePairs = 0;
-    if (world.statsSerial == world.stepSerial) {
+    if (world.statsSerialPlusOne == world.stepSerial + 1) {
         broadphasePairs = world.statsBroadphasePairs;
         shapePairs = world.statsShapePairs;
     } else {

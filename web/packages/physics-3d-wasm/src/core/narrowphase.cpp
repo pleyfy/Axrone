@@ -777,7 +777,7 @@ void addFaceContacts(
             addContact(world, a, b, normal, -separation, point, point, referencePoint, 2, localNormal, indexA, indexB, kKindBoxFace * 16 + added);
         }
 
-        if (++added >= world.boxManifoldPointCap) {
+        if (++added >= world.boxManifoldPointCap()) {
             break;
         }
     }

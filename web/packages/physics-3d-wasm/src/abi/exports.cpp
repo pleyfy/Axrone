@@ -119,7 +119,7 @@ AXRONE_PHYSICS_EXPORT(worldSetBoxManifoldPointCap) int32_t worldSetBoxManifoldPo
     if (cap != 4 && cap != 8) {
         return -1;
     }
-    g_world.boxManifoldPointCap = cap;
+    g_world.boxManifoldPointCapRaw = cap;
     return 0;
 }
 

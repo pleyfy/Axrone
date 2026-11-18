@@ -318,7 +318,11 @@ int32_t firstFreeShapeSlot(const Body& body) {
 }
 
 bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Vec3 initialGravity) {
-    initialized = false;
+    // A second init() must never inherit pointers or scratch offsets from the
+    // previous arena layout. Zeroing the whole descriptor makes that contract
+    // unconditional and keeps the global instance in .bss (all-zero state).
+    *this = World{};
+
     if (bodyCapacity <= 0 || bodyCapacity > kMaxBodies ||
         contactCapacity <= 0 || contactCapacity > kMaxContacts ||
         !isFinite(initialGravity.x) || !isFinite(initialGravity.y) || !isFinite(initialGravity.z)) {
@@ -328,20 +332,6 @@ bool World::init(Arena& arena, int32_t bodyCapacity, int32_t contactCapacity, Ve
     maxBodies = bodyCapacity;
     maxContacts = contactCapacity;
     gravity = initialGravity;
-    allowSleep = 0;
-    boxManifoldPointCap = 8;
-    highWater = 0;
-    liveCount = 0;
-    freeCount = 0;
-    contactCount = 0;
-    stepSerial = 0;
-    statsSerial = -1;
-    statsBroadphasePairs = 0;
-    statsShapePairs = 0;
-    m_stepStatistics = {};
-#if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
-    m_phaseNanoseconds = {};
-#endif
 
     cacheCapacity = 64;
     while (cacheCapacity < maxContacts * 2) {
@@ -442,7 +432,10 @@ void World::reset() {
     liveCount = 0;
     freeCount = 0;
     contactCount = 0;
-    statsSerial = -1;
+    stepSerial = 0;
+    statsSerialPlusOne = 0;
+    statsBroadphasePairs = 0;
+    statsShapePairs = 0;
     m_stepStatistics = {};
 #if AXRONE_PHYSICS_PHASE_TIMERS_ACTIVE
     m_phaseNanoseconds = {};
