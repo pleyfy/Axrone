@@ -248,7 +248,7 @@ const pbrFeatureSlots = (advanced = true): readonly MaterialOutputSlotDefinition
         'float',
         'clearcoat.normalScale',
         {
-            bindingKey: '_ClearcoatNormalScale',
+            bindingKey: '_ClearcoatNormalTexture_Scale',
             defaultValue: '1',
             optional: true,
             advanced,
@@ -387,7 +387,7 @@ const pbrFeatureSlots = (advanced = true): readonly MaterialOutputSlotDefinition
         }
     ),
     makeSlot('ior', 'IOR', 'fragment', 'transmission', 'float', 'transmission.ior', {
-        bindingKey: '_Ior',
+        bindingKey: '_IorFactor',
         defaultValue: '1.5',
         optional: true,
         advanced,
