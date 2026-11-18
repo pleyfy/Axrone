@@ -242,10 +242,21 @@ static_assert(alignof(Shape) == 16, "shape must stay vector aligned");
 static_assert(sizeof(Body) == 1072, "body size must stay fixed for arena sizing");
 static_assert(alignof(Body) == 16, "body must stay vector aligned");
 
+AXRONE_PHYSICS_INLINE Vec3 worldInvInertiaMul(const Body& body, const Vec3& torque) {
+    const Vec3& inverse = body.invInertia;
+    if (inverse.x == 0.0f && inverse.y == 0.0f && inverse.z == 0.0f) {
+        return Vec3();
+    }
+    Vec3 local = body.rotation.transposeTransform(torque);
+    local.x *= inverse.x;
+    local.y *= inverse.y;
+    local.z *= inverse.z;
+    return body.rotation.transform(local);
+}
+
 struct World;
 
 void refreshBodyRotation(World& world, int32_t id);
-void resetBodyRotation(World& world, int32_t id);
 
 struct SweepRecord {
     float minX;

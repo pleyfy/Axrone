@@ -68,16 +68,7 @@ float rowMass(const World& world, int32_t a, int32_t b, const JointRow& row) {
 }
 
 void applyAngularDelta(World& world, int32_t id, const Vec3& torque) {
-    Body& body = world.bodies[id];
-    const Vec3 inertia = body.invInertia;
-    if (inertia.x == 0.0f && inertia.y == 0.0f && inertia.z == 0.0f) {
-        return;
-    }
-    Vec3 local = body.rotation.transposeTransform(torque);
-    local.x *= inertia.x;
-    local.y *= inertia.y;
-    local.z *= inertia.z;
-    world.angularVelocities[id] += body.rotation.transform(local);
+    world.angularVelocities[id] += worldInvInertiaMul(world.bodies[id], torque);
 }
 
 void applyRowVelocityDelta(World& world, const Constraint& constraint, const JointRow& row, float delta) {
@@ -101,11 +92,7 @@ void applyRowPositionDelta(World& world, int32_t id, const Vec3& linear, const V
     if (inertia.x == 0.0f && inertia.y == 0.0f && inertia.z == 0.0f) {
         return;
     }
-    Vec3 local = body.rotation.transposeTransform(angular * delta);
-    local.x *= inertia.x;
-    local.y *= inertia.y;
-    local.z *= inertia.z;
-    const Vec3 rotational = body.rotation.transform(local);
+    const Vec3 rotational = worldInvInertiaMul(body, angular * delta);
     integrateRotation(transform, rotational, 1.0f);
     refreshBodyRotation(world, id);
 }

@@ -19,18 +19,7 @@ float angularTerm(const World& world, int32_t id, const Vec3& r, const Vec3& nor
 void applyImpulse(World& world, int32_t id, const Vec3& impulse, const Vec3& r) {
     Body& body = world.bodies[id];
     world.velocities[id] += impulse * body.invMass;
-
-    const Vec3 inertia = body.invInertia;
-    if (inertia.x == 0.0f && inertia.y == 0.0f && inertia.z == 0.0f) {
-        return;
-    }
-
-    const Vec3 torque = cross(r, impulse);
-    Vec3 local = body.rotation.transposeTransform(torque);
-    local.x *= inertia.x;
-    local.y *= inertia.y;
-    local.z *= inertia.z;
-    world.angularVelocities[id] += body.rotation.transform(local);
+    world.angularVelocities[id] += worldInvInertiaMul(body, cross(r, impulse));
 }
 
 void applyPositionImpulse(World& world, int32_t id, const Vec3& impulse, const Vec3& r) {
@@ -50,14 +39,7 @@ void applyPositionImpulse(World& world, int32_t id, const Vec3& impulse, const V
         return;
     }
 
-    const Vec3 torque = cross(r, impulse);
-    Vec3 local = body.rotation.transposeTransform(torque);
-    local.x *= inertia.x;
-    local.y *= inertia.y;
-    local.z *= inertia.z;
-    const Vec3 rotationalImpulse = body.rotation.transform(local);
-
-    integrateRotation(transform, rotationalImpulse, 1.0f);
+    integrateRotation(transform, worldInvInertiaMul(body, cross(r, impulse)), 1.0f);
     refreshBodyRotation(world, id);
 }
 

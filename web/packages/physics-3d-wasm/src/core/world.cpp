@@ -201,16 +201,7 @@ int32_t shapeHighWater(const Body& body) {
 }
 
 void addAngularResponse(World& world, Body& body, int32_t id, const Vec3& angularImpulse) {
-    const Vec3 inertia = body.invInertia;
-    if (inertia.x == 0.0f && inertia.y == 0.0f && inertia.z == 0.0f) {
-        return;
-    }
-
-    Vec3 local = body.rotation.transposeTransform(angularImpulse);
-    local.x *= inertia.x;
-    local.y *= inertia.y;
-    local.z *= inertia.z;
-    world.angularVelocities[id] += body.rotation.transform(local);
+    world.angularVelocities[id] += worldInvInertiaMul(body, angularImpulse);
 }
 
 int32_t shapeSignature(const Body& body) {
