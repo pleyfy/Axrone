@@ -451,9 +451,11 @@ int32_t World::setShapeIndices(int32_t shapeId, uintptr_t address, int32_t count
         return -1;
     }
     const uint32_t* source = reinterpret_cast<const uint32_t*>(address);
-    const int32_t vertexCount = bulk->vertexCount;
+    const uint32_t vertexCount = static_cast<uint32_t>(bulk->vertexCount);
     for (int32_t i = 0; i < count * 3; ++i) {
-        if (static_cast<int32_t>(source[i]) >= vertexCount) {
+        // Unsigned comparison is deliberate: a high-bit index must be rejected,
+        // not wrapped into a negative value by an int32_t cast.
+        if (source[i] >= vertexCount) {
             return -1;
         }
     }

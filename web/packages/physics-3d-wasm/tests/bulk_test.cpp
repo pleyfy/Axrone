@@ -393,6 +393,12 @@ void testMeshIndexValidation() {
 
     CHECK(world.setShapeIndices(shapeId, 16, 1) == -1);
 
+    uint32_t highBitIndices[3] = { 0, 1, 0x80000000u };
+    const uintptr_t highBitAddress = world.bulkAlloc(sizeof(highBitIndices));
+    std::memcpy(reinterpret_cast<void*>(highBitAddress), highBitIndices, sizeof(highBitIndices));
+    CHECK(world.setShapeIndices(shapeId, highBitAddress, 1) == -1);
+    world.bulkRelease(highBitAddress);
+
     uint32_t goodIndices[3] = { 0, 1, 2 };
     const uintptr_t goodAddress = world.bulkAlloc(sizeof(goodIndices));
     std::memcpy(reinterpret_cast<void*>(goodAddress), goodIndices, sizeof(goodIndices));
