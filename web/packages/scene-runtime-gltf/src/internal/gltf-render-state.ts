@@ -3,6 +3,11 @@ import type { GltfMaterialUniformMap } from './runtime-shaders';
 
 const GLTF_SHADER_DOUBLE_SIDED_SUFFIX = '/double-sided';
 const GLTF_SHADER_BLEND_SUFFIX = '/blend';
+const GLTF_SHADER_TOON_PREFIX = 'gltf/toon';
+const GLTF_SHADER_TOON_OUTLINE_ID = 'gltf/toon-outline';
+
+const toOutlineShaderId = (shaderId: string): string =>
+    `${GLTF_SHADER_TOON_OUTLINE_ID}${shaderId.slice(GLTF_SHADER_TOON_PREFIX.length)}`;
 
 const normalizeNumericUniform = (value: unknown, fallback: number): number => {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -18,14 +23,25 @@ const isGltfBlendAlphaMode = (uniforms: GltfMaterialUniformMap | undefined): boo
 const isGltfDoubleSided = (uniforms: GltfMaterialUniformMap | undefined): boolean =>
     normalizeNumericUniform(uniforms?._DoubleSided, 0) >= 0.5;
 
+const isGltfToonOutlineEnabled = (
+    uniforms: GltfMaterialUniformMap | undefined,
+    shaderId?: string
+): boolean =>
+    shaderId !== undefined &&
+    shaderId.startsWith(GLTF_SHADER_TOON_PREFIX) &&
+    normalizeNumericUniform(uniforms?._OutlineWidth, 0) > 0;
+
 export const createGltfRuntimeMaterialPasses = (
-    uniforms?: GltfMaterialUniformMap
+    uniforms?: GltfMaterialUniformMap,
+    shaderId?: string
 ): readonly SceneMaterialPassDefinition[] => {
     const alphaMode = normalizeNumericUniform(uniforms?._AlphaMode, 0);
     const blendEnabled = alphaMode >= 1.5;
     const alphaTestEnabled = alphaMode >= 0.5 && alphaMode < 1.5;
     const doubleSided = isGltfDoubleSided(uniforms);
     const cullMode = doubleSided ? 'none' : 'back';
+    const outlineEnabled = isGltfToonOutlineEnabled(uniforms, shaderId);
+    const outlineShaderId = shaderId === undefined ? undefined : toOutlineShaderId(shaderId);
 
     return Object.freeze([
         {
@@ -108,6 +124,32 @@ export const createGltfRuntimeMaterialPasses = (
                   }
                 : {}),
         },
+        ...(outlineEnabled
+            ? [
+                  {
+                      id: 'outline',
+                      phase: 'outline',
+                      shaderId: outlineShaderId,
+                      primitive: 'triangle-list',
+                      rasterizerState: {
+                          cullMode: 'front',
+                          frontFace: 'ccw',
+                      },
+                      depthStencilState: {
+                          depthTest: true,
+                          depthWrite: true,
+                          depthFunc: 'less',
+                      },
+                      blendState: {
+                          targets: [
+                              {
+                                  blend: false,
+                              },
+                          ],
+                      },
+                  },
+              ]
+            : []),
     ]);
 };
 

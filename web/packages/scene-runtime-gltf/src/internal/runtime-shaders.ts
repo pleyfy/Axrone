@@ -13,16 +13,27 @@ import {
     resolveVariantRenderState,
 } from './gltf-render-state';
 import { GLTF_PBR_SHADER_EFFECT, createGltfPbrShaderEffect } from './gltf-shader-effects-pbr';
-import { GLTF_TOON_SHADER_EFFECT, createGltfToonShaderEffect } from './gltf-shader-effects-toon';
+import {
+    GLTF_TOON_OUTLINE_SHADER_EFFECT,
+    GLTF_TOON_SHADER_EFFECT,
+    createGltfToonOutlineShaderEffect,
+    createGltfToonShaderEffect,
+} from './gltf-shader-effects-toon';
 import { GLTF_UNLIT_SHADER_EFFECT, createGltfUnlitShaderEffect } from './gltf-shader-effects-unlit';
-import { GLTF_PBR_ATTRIBUTES, GLTF_UNLIT_ATTRIBUTES } from './gltf-shader-properties';
+import {
+    GLTF_PBR_ATTRIBUTES,
+    GLTF_TOON_ATTRIBUTES,
+    GLTF_UNLIT_ATTRIBUTES,
+} from './gltf-shader-properties';
 
 export {
     GLTF_PBR_SHADER_EFFECT,
+    GLTF_TOON_OUTLINE_SHADER_EFFECT,
     GLTF_TOON_SHADER_EFFECT,
     GLTF_UNLIT_SHADER_EFFECT,
     createGltfPbrShaderEffect,
     createGltfRuntimeMaterialPasses,
+    createGltfToonOutlineShaderEffect,
     createGltfToonShaderEffect,
     createGltfUnlitShaderEffect,
     createVariantShaderId,
@@ -31,6 +42,8 @@ export {
 
 const GLTF_SHADER_PBR_ID = 'gltf/pbr';
 const GLTF_SHADER_UNLIT_ID = 'gltf/unlit';
+const GLTF_SHADER_TOON_ID = 'gltf/toon';
+const GLTF_SHADER_TOON_OUTLINE_ID = 'gltf/toon-outline';
 const GLTF_SHADER_DOUBLE_SIDED_SUFFIX = '/double-sided';
 const GLTF_SHADER_BLEND_SUFFIX = '/blend';
 
@@ -121,7 +134,11 @@ export const createGltfRuntimeSurfaceDefinition = (
     shaderId: string,
     uniforms?: GltfMaterialUniformMap
 ): SceneMaterialSurfaceDefinition => ({
-    shadingModel: shaderId.startsWith(GLTF_SHADER_UNLIT_ID) ? 'unlit' : 'pbr',
+    shadingModel: shaderId.startsWith(GLTF_SHADER_UNLIT_ID)
+        ? 'unlit'
+        : shaderId.startsWith(GLTF_SHADER_TOON_ID)
+          ? 'toon'
+          : 'pbr',
     alphaMode:
         normalizeNumericUniform(uniforms?._AlphaMode, 0) >= 1.5
             ? 'blend'
@@ -216,11 +233,49 @@ export const createGltfPbrShaderDefinition = (
     };
 };
 
+export const createGltfToonShaderDefinition = (
+    id: string = GLTF_SHADER_TOON_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition => {
+    const definition = createGltfShaderDefinitionFromEffect(
+        id === GLTF_SHADER_TOON_ID ? GLTF_TOON_SHADER_EFFECT : createGltfToonShaderEffect(id),
+        GLTF_TOON_ATTRIBUTES
+    );
+    const renderState = resolveVariantRenderState(uniforms);
+    return {
+        ...definition,
+        cull: renderState.cull,
+        blend: renderState.blend,
+    };
+};
+
+export const createGltfToonOutlineShaderDefinition = (
+    id: string = GLTF_SHADER_TOON_OUTLINE_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition => {
+    const definition = createGltfShaderDefinitionFromEffect(
+        id === GLTF_SHADER_TOON_OUTLINE_ID
+            ? GLTF_TOON_OUTLINE_SHADER_EFFECT
+            : createGltfToonOutlineShaderEffect(id),
+        GLTF_TOON_ATTRIBUTES
+    );
+    const renderState = resolveVariantRenderState(uniforms);
+    return {
+        ...definition,
+        cull: renderState.cull,
+        blend: renderState.blend,
+    };
+};
+
 export const resolveGltfRuntimeShaderId = (
     shaderId: string,
     uniforms?: GltfMaterialUniformMap
 ): string => {
-    if (shaderId !== GLTF_SHADER_PBR_ID && shaderId !== GLTF_SHADER_UNLIT_ID) {
+    if (
+        shaderId !== GLTF_SHADER_PBR_ID &&
+        shaderId !== GLTF_SHADER_UNLIT_ID &&
+        shaderId !== GLTF_SHADER_TOON_ID
+    ) {
         return shaderId;
     }
 
@@ -234,6 +289,18 @@ export const resolveGltfShaderDefinition = (
     shaderId: string,
     resolveShaderDefinition?: (shaderId: string) => GltfShaderDefinition | undefined
 ): GltfShaderDefinition | undefined => {
+    if (shaderId.startsWith(GLTF_SHADER_TOON_OUTLINE_ID)) {
+        return createGltfToonOutlineShaderDefinition(shaderId, {
+            _AlphaMode: shaderId.includes(GLTF_SHADER_BLEND_SUFFIX) ? 2 : 0,
+            _DoubleSided: shaderId.includes(GLTF_SHADER_DOUBLE_SIDED_SUFFIX) ? 1 : 0,
+        });
+    }
+    if (shaderId.startsWith(GLTF_SHADER_TOON_ID)) {
+        return createGltfToonShaderDefinition(shaderId, {
+            _AlphaMode: shaderId.includes(GLTF_SHADER_BLEND_SUFFIX) ? 2 : 0,
+            _DoubleSided: shaderId.includes(GLTF_SHADER_DOUBLE_SIDED_SUFFIX) ? 1 : 0,
+        });
+    }
     if (shaderId.startsWith(GLTF_SHADER_PBR_ID)) {
         return createGltfPbrShaderDefinition(shaderId, {
             _AlphaMode: shaderId.includes(GLTF_SHADER_BLEND_SUFFIX) ? 2 : 0,
