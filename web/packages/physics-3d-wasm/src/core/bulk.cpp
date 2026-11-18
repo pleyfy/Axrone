@@ -123,6 +123,7 @@ bool World::ensureBulkPool() {
     scratchBegin = reinterpret_cast<uintptr_t>(scratch);
     scratchCursor = scratchBegin;
     scratchEnd = scratchBegin + static_cast<uintptr_t>(kBulkScratchBytes);
+    bulkPoolBaseOffset = bulkArena->used();
     return true;
 }
 
@@ -134,7 +135,7 @@ uintptr_t World::bulkAlloc(int32_t bytes) {
         return 0;
     }
     const uintptr_t aligned = alignUp(scratchCursor, 8U);
-    if (aligned < scratchCursor) {
+    if (aligned < scratchCursor || aligned > scratchEnd) {
         return 0;
     }
     if (static_cast<uintptr_t>(bytes) > scratchEnd - aligned) {
@@ -188,6 +189,9 @@ void World::clearShapeBulk(int32_t bodyId, int32_t slot) {
         return;
     }
     const size_t blockOffset = static_cast<size_t>(bulk->blockStart - base);
+    if (bulk->blockBytes <= 0 || static_cast<size_t>(bulk->blockBytes) > static_cast<size_t>(-1) - blockOffset) {
+        return;
+    }
     const size_t blockEnd = blockOffset + static_cast<size_t>(bulk->blockBytes);
     if (bulkArena->used() == blockEnd) {
         bulkArena->shrinkTo(blockOffset);

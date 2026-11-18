@@ -400,6 +400,53 @@ void testMeshIndexValidation() {
     world.bulkRelease(goodAddress);
 }
 
+void testResetReclaimsBulkStorage() {
+    Arena arena;
+    World world;
+    CHECK(initWorld(world, arena, g_memoryA, 16, 256));
+
+    const int32_t body = world.createBody(kBodyTypeStatic, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+    CHECK(makeHullShape(world, body, kUnitBoxHull, 8) >= 0);
+    const size_t peak = world.bulkArenaUsed();
+    CHECK(peak > 0);
+    CHECK(world.bulkScratchUsed() == 0);
+
+    world.reset();
+    CHECK(world.liveCount == 0);
+    CHECK(world.bulkScratchUsed() == 0);
+    CHECK(world.bulkArenaUsed() <= peak);
+
+    const int32_t reused = world.createBody(kBodyTypeStatic, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+    CHECK(reused >= 0);
+    CHECK(makeHullShape(world, reused, kUnitBoxHull, 8) >= 0);
+    CHECK(world.bulkArenaUsed() > 0);
+}
+
+void testReinitDropsPreviousScratchLayout() {
+    Arena arena;
+    World world;
+    arena.init(g_memoryA, sizeof(g_memoryA));
+    CHECK(world.init(arena, 16, 256, Vec3(0.0f, 0.0f, 0.0f)));
+
+    const int32_t body = world.createBody(kBodyTypeStatic, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+    CHECK(makeHullShape(world, body, kUnitBoxHull, 8) >= 0);
+    CHECK(world.scratchBegin != 0);
+    CHECK(world.shapeBulks != nullptr);
+
+    arena.reset();
+    CHECK(world.init(arena, 16, 256, Vec3(0.0f, 0.0f, 0.0f)));
+    CHECK(world.scratchBegin == 0);
+    CHECK(world.scratchCursor == 0);
+    CHECK(world.shapeBulks == nullptr);
+    CHECK(world.bulkPoolBaseOffset == 0);
+
+    const int32_t rebuilt = world.createBody(kBodyTypeStatic, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+    CHECK(rebuilt >= 0);
+    CHECK(makeHullShape(world, rebuilt, kUnitBoxHull, 8) >= 0);
+    CHECK(world.scratchBegin != 0);
+    CHECK(world.shapeBulks != nullptr);
+}
+
 void testHeightFieldRestAndRay() {
     Arena arena;
     World world;
@@ -488,6 +535,8 @@ int main() {
     testMeshFloorStopsBox();
     testMeshOnDynamicRejected();
     testMeshIndexValidation();
+    testResetReclaimsBulkStorage();
+    testReinitDropsPreviousScratchLayout();
     testHeightFieldRestAndRay();
     testHullQueriesAndOverlap();
     testShapeGetKindBulkCodes();

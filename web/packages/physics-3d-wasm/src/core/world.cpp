@@ -162,6 +162,35 @@ void invalidateAllSlots(World& world, int32_t bodyId) {
     }
 }
 
+void clearBodyBulks(World& world, int32_t bodyId) {
+    for (int32_t slot = 0; slot < kMaxShapesPerBody; ++slot) {
+        world.clearShapeBulk(bodyId, slot);
+    }
+}
+
+[[maybe_unused]] int32_t appendPrimitiveShape(World& world, int32_t id, const Shape& candidate) {
+    Body& body = world.bodies[id];
+    const int32_t slot = firstFreeShapeSlot(body);
+    if (slot < 0) {
+        return -1;
+    }
+
+    const int32_t previousCount = body.shapeCount;
+    body.shapes[slot] = candidate;
+    bumpSlotGeneration(world, id, slot);
+    if (slot + 1 > body.shapeCount) {
+        body.shapeCount = slot + 1;
+    }
+
+    if (!recomputeMass(body)) {
+        body.shapes[slot].kind = kShapeNone;
+        body.shapeCount = previousCount;
+        recomputeMass(body);
+        return -1;
+    }
+    return slot;
+}
+
 int32_t shapeHighWater(const Body& body) {
     int32_t count = body.shapeCount;
     while (count > 0 && !shapeValid(body.shapes[count - 1])) {
@@ -465,6 +494,14 @@ void World::reset() {
     cacheNextUsedCount = 0;
     memset(cachePrev, 0, sizeof(CacheEntry) * static_cast<size_t>(cacheCapacity));
     memset(cacheNext, 0, sizeof(CacheEntry) * static_cast<size_t>(cacheCapacity));
+
+    if (shapeBulks != nullptr) {
+        memset(shapeBulks, 0, sizeof(ShapeBulk*) * static_cast<size_t>(maxBodies) * kMaxShapesPerBody);
+    }
+    scratchCursor = scratchBegin;
+    if (bulkArena != nullptr && bulkPoolBaseOffset > 0) {
+        bulkArena->shrinkTo(bulkPoolBaseOffset);
+    }
 }
 
 bool World::isActive(int32_t id) const {
@@ -547,9 +584,7 @@ int32_t World::destroyBody(int32_t id) {
 
     releaseConstraintsForBody(*this, id);
     Body& body = bodies[id];
-    for (int32_t slot = 0; slot < kMaxShapesPerBody; ++slot) {
-        clearShapeBulk(id, slot);
-    }
+    clearBodyBulks(*this, id);
     body.state = kBodyFree;
     body.shapeCount = 0;
     invalidateAllSlots(*this, id);
@@ -595,6 +630,7 @@ int32_t World::setSphere(int32_t id, float radius, float density) {
         }
     }
 
+    clearBodyBulks(*this, id);
     body.shapeCount = 1;
     invalidateAllSlots(*this, id);
     body.shapes[0].setSphere(radius, density, Vec3());
@@ -880,9 +916,7 @@ int32_t World::clearShapes(int32_t id) {
     }
 
     Body& body = bodies[id];
-    for (int32_t slot = 0; slot < kMaxShapesPerBody; ++slot) {
-        clearShapeBulk(id, slot);
-    }
+    clearBodyBulks(*this, id);
     body.shapeCount = 0;
     invalidateAllSlots(*this, id);
     body.aabb = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
