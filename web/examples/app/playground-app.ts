@@ -513,8 +513,8 @@ const buildFileTree = (
 
 const renderTemplateCards = (shell: PlaygroundShell, selectedTemplateId: string): void => {
 	const templates = [
-		{ id: 'blank', name: 'Blank Scene', desc: 'An empty Axrone scene with a camera and viewport.', accent: '#64748b', badge: 'AX' },
-		{ id: 'basic', name: 'Basic Scene', desc: 'A starter scene with floor, cube, and default lighting.', accent: '#2563eb', badge: '3D' },
+		{ id: 'blank', name: 'Blank Scene', desc: 'An empty project with a single scene entry file.', accent: '#64748b', badge: 'AX' },
+		{ id: 'basic', name: 'Basic Scene', desc: 'A starter project with a scene entry point to build on.', accent: '#2563eb', badge: '3D' },
 	];
 
 	shell.newProjectTemplates.innerHTML = templates
@@ -624,6 +624,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			)
 			.join('');
 		shell.problemCount.textContent = String(problemEntries.length);
+		shell.problemCount.classList.toggle('has-problems', problemEntries.length > 0);
 	};
 
 	const updatePlayIcon = (): void => {
@@ -653,7 +654,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		updateRuntimeSummary();
 		if (!currentSession) {
 			shell.previewStage.replaceChildren();
-			setStatus('Durduruldu', 'stopped');
+			setStatus('Stopped', 'stopped');
 			return;
 		}
 
@@ -951,7 +952,9 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		}
 
 		shell.projectNameDisplay.textContent = project.name;
+		shell.projectCategoryDisplay.textContent = resolveProjectCategory(project);
 		shell.projectDot.style.background = project.color;
+		shell.viewportSceneLabel.textContent = project.name;
 		shell.languageDisplay.textContent = resolveLanguageLabel(currentFilePath);
 		shell.breadcrumbLabel.textContent = currentFilePath;
 	};
@@ -1169,17 +1172,20 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 
 	const openNewProjectModal = (): void => {
 		renderTemplateCards(shell, selectedTemplateId);
-		setProjectDropdownState(false);
-		shell.newProjectModal.style.opacity = '1';
-		shell.newProjectModal.style.pointerEvents = 'auto';
-		shell.newProjectCard.style.transform = 'translateY(0) scale(1)';
+		closeExamplesModal(false);
+		shell.newProjectModal.classList.add('is-open');
+		shell.newProjectModal.setAttribute('aria-hidden', 'false');
 		shell.newProjectNameInput.value = '';
+		shell.newProjectCreateButton.disabled = true;
+		window.setTimeout(() => shell.newProjectNameInput.focus(), 50);
 	};
 
-	const closeNewProjectModal = (): void => {
-		shell.newProjectModal.style.opacity = '0';
-		shell.newProjectModal.style.pointerEvents = 'none';
-		shell.newProjectCard.style.transform = 'translateY(12px) scale(.97)';
+	const closeNewProjectModal = (restoreFocus = true): void => {
+		shell.newProjectModal.classList.remove('is-open');
+		shell.newProjectModal.setAttribute('aria-hidden', 'true');
+		if (restoreFocus) {
+			window.setTimeout(() => shell.projectTrigger.focus({ preventScroll: true }), 50);
+		}
 	};
 
 	const createTemplateFiles = (templateId: string): VirtualProjectFile[] => {
