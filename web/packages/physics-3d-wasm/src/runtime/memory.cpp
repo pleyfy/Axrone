@@ -18,18 +18,19 @@ constexpr size_t alignBytes = 16;
 constexpr size_t alignMask = alignBytes - 1;
 #endif
 
-AXRONE_PHYSICS_INLINE size_t currentCapacity() noexcept {
-    return static_cast<size_t>(__builtin_wasm_memory_size(0)) * pageSize;
+AXRONE_PHYSICS_INLINE uint64_t currentCapacity() noexcept {
+    return static_cast<uint64_t>(__builtin_wasm_memory_size(0)) *
+        static_cast<uint64_t>(pageSize);
 }
 
 AXRONE_PHYSICS_INLINE bool inMemory(uintptr_t origin, size_t extent) noexcept {
     if (extent == 0) {
         return true;
     }
-    if (origin > static_cast<uintptr_t>(-1) - extent) {
-        return false;
-    }
-    return origin + extent <= currentCapacity();
+    const uint64_t start = static_cast<uint64_t>(origin);
+    const uint64_t size = static_cast<uint64_t>(extent);
+    const uint64_t capacity = currentCapacity();
+    return start <= capacity && size <= capacity - start;
 }
 
 AXRONE_PHYSICS_INLINE constexpr uint64_t splat64(uint8_t byte) noexcept {
