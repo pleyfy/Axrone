@@ -1,6 +1,7 @@
 import { script } from '@axrone/ecs-runtime/decorators';
 import { Vec2 } from '@axrone/numeric';
 import { Joint2D } from './joint2d';
+import { finiteNumberOr, finiteOr } from '../core/physics-world-2d-helpers';
 
 /**
  * Distance joint: maintains a fixed distance between two anchor points.
@@ -106,6 +107,17 @@ export class DistanceJoint2D extends Joint2D {
         this.recreateConstraint();
     }
 
+    get autoConfigureDistance(): boolean {
+        return this._autoConfigureDistance;
+    }
+
+    set autoConfigureDistance(value: boolean) {
+        if (this._autoConfigureDistance !== value) {
+            this._autoConfigureDistance = value;
+            this.recreateConstraint();
+        }
+    }
+
     protected createConstraint(): void {
         if (this._constraintId || !this._rigidbodyA || !this._rigidbodyA.bodyId) return;
         if (!this._connectedBody || !this._connectedBody.bodyId) return;
@@ -157,11 +169,14 @@ export class DistanceJoint2D extends Joint2D {
 
     deserialize(data: Record<string, any>): void {
         super.deserialize(data);
-        this._distance = data.distance ?? 1.0;
-        this._minDistance = data.minDistance ?? 0;
-        this._maxDistance = data.maxDistance ?? Infinity;
-        this._stiffness = data.stiffness ?? 0;
-        this._damping = data.damping ?? 0;
+        // Scalars: NaN from a malformed document must not reach the solver.
+        // maxDistance legitimately allows Infinity, so it keeps the Infinity-
+        // tolerant coercion.
+        this._distance = finiteOr(data.distance, 1.0);
+        this._minDistance = finiteOr(data.minDistance, 0);
+        this._maxDistance = finiteNumberOr(data.maxDistance, Infinity);
+        this._stiffness = finiteOr(data.stiffness, 0);
+        this._damping = finiteOr(data.damping, 0);
         // Vec2 fields: Editor writes ARRAY [x,y], engine uses OBJECT {x,y}.
         // normalizeVec2Value accepts both formats for backward compatibility.
         if (data.anchorA !== undefined) {

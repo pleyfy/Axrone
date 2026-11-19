@@ -29,6 +29,8 @@ export class HingeJoint2D extends Joint2D {
     private _motor: { speed: number; maxTorque: number } = { speed: 0, maxTorque: 10000 };
     private _useLimits: boolean = false;
     private _limits: { min: number; max: number } = { min: 0, max: 360 };
+    private _connectedAnchor: Vec2 = Vec2.ZERO.clone();
+    private _autoConfigureConnectedAnchor: boolean = true;
 
     get anchor(): Vec2 {
         return this._anchor;
@@ -89,6 +91,20 @@ export class HingeJoint2D extends Joint2D {
         this.recreateConstraint();
     }
 
+    get connectedAnchor(): Vec2 {
+        return this._connectedAnchor;
+    }
+
+    set connectedAnchor(value: Vec2) {
+        this._connectedAnchor.x = value.x;
+        this._connectedAnchor.y = value.y;
+        this.recreateConstraint();
+    }
+
+    // No public `autoConfigureConnectedAnchor` accessor on purpose: scene-runtime
+    // discriminates 2D from 3D joints by that member name (physics-reference-contract
+    // isJoint3DLike), and `physics-3d` owns it. The flag stays private + authored-only.
+
     protected createConstraint(): void {
         if (this._constraintId || !this._rigidbodyA || !this._rigidbodyA.bodyId) return;
         if (!this._connectedBody || !this._connectedBody.bodyId) return;
@@ -102,7 +118,10 @@ export class HingeJoint2D extends Joint2D {
                 bodyIdA: this._rigidbodyA.bodyId,
                 bodyIdB: this._connectedBody.bodyId,
                 localAnchorA: { x: this._anchor.x, y: this._anchor.y },
-                localAnchorB: { x: 0, y: 0 },
+                // Auto-configured keeps the historical {0,0}; authored value only applies when off.
+                localAnchorB: this._autoConfigureConnectedAnchor
+                    ? { x: 0, y: 0 }
+                    : { x: this._connectedAnchor.x, y: this._connectedAnchor.y },
                 referenceAngle: 0,
                 enableLimit: this._useLimits,
                 lowerAngle: this._limits.min * (Math.PI / 180),
@@ -139,6 +158,8 @@ export class HingeJoint2D extends Joint2D {
             maxMotorTorque: this._motor.maxTorque,
             useLimits: this._useLimits,
             limits: { ...this._limits },
+            connectedAnchor: { x: this._connectedAnchor.x, y: this._connectedAnchor.y },
+            autoConfigureConnectedAnchor: this._autoConfigureConnectedAnchor,
         };
     }
 
@@ -167,5 +188,13 @@ export class HingeJoint2D extends Joint2D {
         } else {
             this._limits = data.limits ?? { min: 0, max: 360 };
         }
+        // anchorB is the Editor alias for the connected-body anchor.
+        const connectedAnchorRaw = data.connectedAnchor ?? data.anchorB;
+        if (connectedAnchorRaw !== undefined) {
+            const v = this.normalizeVec2Value(connectedAnchorRaw);
+            this._connectedAnchor.x = v.x;
+            this._connectedAnchor.y = v.y;
+        }
+        this._autoConfigureConnectedAnchor = data.autoConfigureConnectedAnchor ?? true;
     }
 }

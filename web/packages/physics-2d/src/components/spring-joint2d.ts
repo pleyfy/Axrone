@@ -1,6 +1,7 @@
 import { script } from '@axrone/ecs-runtime/decorators';
 import { Vec2 } from '@axrone/numeric';
 import { Joint2D } from './joint2d';
+import { finiteOr } from '../core/physics-world-2d-helpers';
 
 /**
  * Spring joint: soft distance constraint with Hooke's law restoring force
@@ -64,6 +65,37 @@ export class SpringJoint2D extends Joint2D {
         }
     }
 
+    get anchorA(): Vec2 {
+        return this._anchorA;
+    }
+
+    set anchorA(value: Vec2) {
+        this._anchorA.x = value.x;
+        this._anchorA.y = value.y;
+        this.recreateConstraint();
+    }
+
+    get anchorB(): Vec2 {
+        return this._anchorB;
+    }
+
+    set anchorB(value: Vec2) {
+        this._anchorB.x = value.x;
+        this._anchorB.y = value.y;
+        this.recreateConstraint();
+    }
+
+    get autoConfigureDistance(): boolean {
+        return this._autoConfigureDistance;
+    }
+
+    set autoConfigureDistance(value: boolean) {
+        if (this._autoConfigureDistance !== value) {
+            this._autoConfigureDistance = value;
+            this.recreateConstraint();
+        }
+    }
+
     protected createConstraint(): void {
         if (this._constraintId || !this._rigidbodyA || !this._rigidbodyA.bodyId) return;
         if (!this._connectedBody || !this._connectedBody.bodyId) return;
@@ -111,9 +143,9 @@ export class SpringJoint2D extends Joint2D {
 
     deserialize(data: Record<string, any>): void {
         super.deserialize(data);
-        this._distance = data.distance ?? 1.0;
-        this._stiffness = data.stiffness ?? 10.0;
-        this._damping = data.damping ?? 0.5;
+        this._distance = finiteOr(data.distance, 1.0);
+        this._stiffness = finiteOr(data.stiffness, 10.0);
+        this._damping = finiteOr(data.damping, 0.5);
         // Vec2 fields: Editor writes ARRAY [x,y], engine uses OBJECT {x,y}.
         // normalizeVec2Value accepts both formats for backward compatibility.
         if (data.anchorA !== undefined) {

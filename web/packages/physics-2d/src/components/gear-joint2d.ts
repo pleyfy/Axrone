@@ -1,6 +1,7 @@
 import { script } from '@axrone/ecs-runtime/decorators';
-import { Joint2D } from './joint2d';
+import { isComponentReference, Joint2D } from './joint2d';
 import type { ConstraintId } from '../types';
+import { finiteOr } from '../core/physics-world-2d-helpers';
 
 /**
  * Gear joint: enforces a rotation ratio between two revolute/prismatic joints.
@@ -73,12 +74,17 @@ export class GearJoint2D extends Joint2D {
     private _ratio: number = 1;
     private _pendingCreation: boolean = false;
     private _pendingWarned: boolean = false;
+    private _pendingJointARef: string | null = null;
+    private _pendingJointBRef: string | null = null;
 
     get jointA(): Joint2D | null {
         return this._jointA;
     }
 
     set jointA(value: Joint2D | null) {
+        if (isComponentReference(value)) {
+            this._pendingJointARef = null;
+        }
         if (this._jointA !== value) {
             this._jointA = value;
             this.recreateConstraint();
@@ -90,6 +96,9 @@ export class GearJoint2D extends Joint2D {
     }
 
     set jointB(value: Joint2D | null) {
+        if (isComponentReference(value)) {
+            this._pendingJointBRef = null;
+        }
         if (this._jointB !== value) {
             this._jointB = value;
             this.recreateConstraint();
@@ -113,6 +122,49 @@ export class GearJoint2D extends Joint2D {
      */
     get isPending(): boolean {
         return this._pendingCreation;
+    }
+
+    /**
+     * Unresolved `jointA`/`jointB` entity references from the scene document.
+     *
+     * The gear joint couples two *other* joints, so the bridge must resolve two
+     * references instead of one. Non-null entries mean "resolve me".
+     */
+    getPendingJointRefs(): { jointA: string | null; jointB: string | null } {
+        return { jointA: this._pendingJointARef, jointB: this._pendingJointBRef };
+    }
+
+    /**
+     * Resolve the pending `jointA`/`jointB` references to concrete joints.
+     *
+     * Idempotent: passing the already-linked pair does not recreate the
+     * constraint, and passing `null` clears the corresponding pending ref so a
+     * dangling entity id is not retried forever.
+     */
+    resolveJointRefs(jointA: Joint2D | null, jointB: Joint2D | null): void {
+        const nextA = isComponentReference(jointA) ? jointA : null;
+        const nextB = isComponentReference(jointB) ? jointB : null;
+        const unchanged = this._jointA === nextA && this._jointB === nextB;
+        this._pendingJointARef = null;
+        this._pendingJointBRef = null;
+        if (unchanged) return;
+
+        this._jointA = nextA;
+        this._jointB = nextB;
+        this.recreateConstraint();
+    }
+
+    /**
+     * Idempotently make sure the gear constraint exists, driving the deferred
+     * resolution path when the coupled joints are not ready yet.
+     *
+     * @returns `true` when a constraint id is available after the call.
+     */
+    tryEnsureConstraint(): boolean {
+        const created = super.tryEnsureConstraint();
+        if (created) return true;
+        if (this._pendingCreation) return this.tryResolve();
+        return false;
     }
 
     /**
@@ -202,6 +254,12 @@ export class GearJoint2D extends Joint2D {
                 ratio: this._ratio,
                 collideConnected: this._enableCollision,
             });
+        // Success ends the pending episode; leaving the flag set made
+        // isPending report true for a fully resolved gear joint.
+        if (this._constraintId) {
+            this._pendingCreation = false;
+            this._pendingWarned = false;
+        }
     }
 
     protected destroyConstraint(): void {
@@ -212,9 +270,13 @@ export class GearJoint2D extends Joint2D {
     }
 
     private _resolveConstraintId(joint: Joint2D | null): ConstraintId | null {
-        if (!joint) return null;
+        // An unresolved entity reference may still sit in _jointA/_jointB as a
+        // string; `.constraintId` on it is `undefined`, which previously leaked
+        // into createGearConstraint() as a non-null id. Checked structurally
+        // rather than with instanceof so duck-typed joint stand-ins work.
+        if (!joint || typeof joint !== 'object') return null;
         const id = joint.constraintId;
-        return id !== null ? id : null;
+        return typeof id === 'number' && Number.isFinite(id) ? id : null;
     }
 
     serialize(): Record<string, any> {
@@ -231,7 +293,7 @@ export class GearJoint2D extends Joint2D {
 
     deserialize(data: Record<string, any>): void {
         super.deserialize(data);
-        this._ratio = data.ratio ?? 1;
+        this._ratio = finiteOr(data.ratio, 1);
         // jointA/jointB: normalise empty/whitespace strings to null.
         // "" = "no reference" (Editor convention) — gear constraint is not
         // created and isPending stays false. Non-empty strings are stored
@@ -239,11 +301,14 @@ export class GearJoint2D extends Joint2D {
         const rawA = data.jointA;
         const rawB = data.jointB;
         if (rawA !== undefined) {
-            this._jointA = (this.normalizeReferenceValue(rawA) as Joint2D) ?? null;
+            const normalisedA = this.normalizeReferenceValue(rawA);
+            this._pendingJointARef = typeof normalisedA === 'string' ? normalisedA : null;
+            this._jointA = (normalisedA as Joint2D) ?? null;
         }
         if (rawB !== undefined) {
-            this._jointB = (this.normalizeReferenceValue(rawB) as Joint2D) ?? null;
+            const normalisedB = this.normalizeReferenceValue(rawB);
+            this._pendingJointBRef = typeof normalisedB === 'string' ? normalisedB : null;
+            this._jointB = (normalisedB as Joint2D) ?? null;
         }
-        // jointA/jointB must be re-linked by the scene loader via entity references.
     }
 }
