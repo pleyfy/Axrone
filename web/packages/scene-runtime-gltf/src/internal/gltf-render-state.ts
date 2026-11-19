@@ -5,6 +5,9 @@ const GLTF_SHADER_DOUBLE_SIDED_SUFFIX = '/double-sided';
 const GLTF_SHADER_BLEND_SUFFIX = '/blend';
 const GLTF_SHADER_TOON_PREFIX = 'gltf/toon';
 const GLTF_SHADER_TOON_OUTLINE_ID = 'gltf/toon-outline';
+const GLTF_SHADER_VOLUME_PREFIX = 'gltf/volume';
+const VOLUME_RAYMARCH_PASS_ID = 'volume-raymarch';
+const VOLUME_RAYMARCH_PASS_PHASE = 'volume';
 
 const toOutlineShaderId = (shaderId: string): string =>
     `${GLTF_SHADER_TOON_OUTLINE_ID}${shaderId.slice(GLTF_SHADER_TOON_PREFIX.length)}`;
@@ -31,10 +34,48 @@ const isGltfToonOutlineEnabled = (
     shaderId.startsWith(GLTF_SHADER_TOON_PREFIX) &&
     normalizeNumericUniform(uniforms?._OutlineWidth, 0) > 0;
 
+const isGltfVolumeShader = (shaderId?: string): boolean =>
+    shaderId !== undefined && shaderId.startsWith(GLTF_SHADER_VOLUME_PREFIX);
+
+const createGltfVolumeMaterialPass = (): readonly SceneMaterialPassDefinition[] =>
+    Object.freeze([
+        {
+            id: VOLUME_RAYMARCH_PASS_ID,
+            phase: VOLUME_RAYMARCH_PASS_PHASE,
+            primitive: 'triangle-list',
+            rasterizerState: {
+                cullMode: 'front',
+                frontFace: 'ccw',
+            },
+            depthStencilState: {
+                depthTest: true,
+                depthWrite: false,
+                depthFunc: 'less',
+            },
+            blendState: {
+                targets: [
+                    {
+                        blend: true,
+                        srcColorFactor: 'src-alpha',
+                        dstColorFactor: 'one-minus-src-alpha',
+                        colorOp: 'add',
+                        srcAlphaFactor: 'one',
+                        dstAlphaFactor: 'one-minus-src-alpha',
+                        alphaOp: 'add',
+                    },
+                ],
+            },
+        },
+    ]);
+
 export const createGltfRuntimeMaterialPasses = (
     uniforms?: GltfMaterialUniformMap,
     shaderId?: string
 ): readonly SceneMaterialPassDefinition[] => {
+    if (isGltfVolumeShader(shaderId)) {
+        return createGltfVolumeMaterialPass();
+    }
+
     const alphaMode = normalizeNumericUniform(uniforms?._AlphaMode, 0);
     const blendEnabled = alphaMode >= 1.5;
     const alphaTestEnabled = alphaMode >= 0.5 && alphaMode < 1.5;
