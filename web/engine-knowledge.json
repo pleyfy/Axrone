@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-18T22:24:49.332Z",
+  "generatedAt": "2026-11-19T17:36:04.829Z",
   "engineVersion": "0.0.1",
   "packages": [
     {
@@ -3574,6 +3574,7 @@
         "IRaycastResult3D",
         "InvalidRayError",
         "IslandSolver2D",
+        "JOINT_2D_BREAK_LIMIT",
         "JOINT_CAPABILITY_2D",
         "JOINT_CAPABILITY_3D",
         "Joint2D",
@@ -3647,6 +3648,7 @@
         "SpringJoint3D",
         "TOIState",
         "WheelJoint2D",
+        "_getPhysicsWorld2DBridgeProvider",
         "_setPhysicsWorld2DBridgeProvider",
         "createAdaptiveRaycaster3D",
         "createBoxCastOrigins3D",
@@ -3657,9 +3659,12 @@
         "createRaycastSystem3D",
         "createShapeCaster3D",
         "createSphereCastOrigins3D",
+        "encodeBreakLimit",
         "interpolateHit2D",
         "interpolateHit3D",
-        "makeCollisionPairKey"
+        "isComponentReference",
+        "makeCollisionPairKey",
+        "normalizeBreakLimit"
       ],
       "typeExports": [
         "AngularVelocity",
@@ -3831,6 +3836,7 @@
         "GearJoint2D",
         "HingeJoint2D",
         "IslandSolver2D",
+        "JOINT_2D_BREAK_LIMIT",
         "JOINT_CAPABILITY_2D",
         "Joint2D",
         "MotorJoint2D",
@@ -3848,7 +3854,11 @@
         "SliderJoint2D",
         "SpringJoint2D",
         "WheelJoint2D",
-        "_setPhysicsWorld2DBridgeProvider"
+        "_getPhysicsWorld2DBridgeProvider",
+        "_setPhysicsWorld2DBridgeProvider",
+        "encodeBreakLimit",
+        "isComponentReference",
+        "normalizeBreakLimit"
       ],
       "typeExports": [
         "JointCapability2D",
@@ -4654,12 +4664,7 @@
       "version": "0.1.0",
       "description": "",
       "exports": [
-        "BUILTIN_MATERIAL_MODELS_V1",
-        "BUILTIN_MATERIAL_MODELS_V2",
         "BUILTIN_POST_PROCESS_EFFECTS",
-        "MATERIAL_DOMAINS_V2",
-        "MATERIAL_MODEL_REGISTRY_V1",
-        "MATERIAL_MODEL_REGISTRY_V2",
         "MutableObjectArena",
         "PostProcessStack",
         "RENDER_BAKE_TASK_STATES",
@@ -4695,29 +4700,8 @@
         "createRenderPassName",
         "createRenderPipeline",
         "createRenderResourceName",
-        "getMaterialDomainDefinitionV2",
-        "getMaterialModelDefinition",
-        "getMaterialModelDefinitionV2",
-        "isMaterialSlotValueType",
-        "isMaterialSlotValueTypeV2",
         "isRenderPipelineError",
-        "listMaterialDomainsV2",
-        "listMaterialModelDefinitions",
-        "listMaterialModelDefinitionsV2",
-        "resolveMaterialModelCapability",
-        "resolveModelIdFromLegacyShaderId",
-        "resolveModelOutputSlot",
-        "resolveModelOutputSlotV2",
-        "resolveModelStageSlotsV2",
-        "resolveOutputSlotCapability",
-        "resolveShaderIdFromModelId",
-        "serializeMaterialContractDocument",
-        "serializeMaterialModelsV1",
-        "serializeMaterialModelsV2",
-        "transformPoint2D",
-        "validateBuiltinMaterialModelsV1",
-        "validateBuiltinMaterialModelsV2",
-        "validateMaterialModelDefinition"
+        "transformPoint2D"
       ],
       "typeExports": [
         "AnyPostProcessEffect",
@@ -4735,25 +4719,6 @@
         "DepthOfFieldSettings",
         "FilmGrainSettings",
         "FxaaSettings",
-        "MaterialCapabilityStatus",
-        "MaterialCompilerFamily",
-        "MaterialContractValidationResult",
-        "MaterialDomainDefinition",
-        "MaterialDomainId",
-        "MaterialModelCapabilityMatrixEntry",
-        "MaterialModelDefinition",
-        "MaterialModelId",
-        "MaterialModelV1Id",
-        "MaterialModelV2Id",
-        "MaterialModelValidationOptions",
-        "MaterialOutputSlotDefinition",
-        "MaterialParameterContractEntry",
-        "MaterialPassPlanEntryDefinition",
-        "MaterialRenderProfileId",
-        "MaterialSlotValueType",
-        "MaterialStageContractDefinition",
-        "MaterialStageId",
-        "MaterialTemplateDefinition",
         "ReadonlyRenderList",
         "ReadonlyRenderResourceRegistry",
         "RenderAutomaticExposureSettings",
@@ -4879,64 +4844,6 @@
           "exports": [
             "RenderTextureRegistry",
             "createRenderPassGraph"
-          ],
-          "typeExports": []
-        },
-        {
-          "path": "@axrone/render-core/material-contract",
-          "exports": [
-            "BUILTIN_MATERIAL_MODELS_V1",
-            "MATERIAL_MODEL_REGISTRY_V1",
-            "getMaterialModelDefinition",
-            "isMaterialSlotValueType",
-            "isMaterialSlotValueTypeV2",
-            "listMaterialModelDefinitions",
-            "resolveModelOutputSlot",
-            "serializeMaterialContractDocument",
-            "serializeMaterialModelsV1",
-            "validateBuiltinMaterialModelsV1",
-            "validateMaterialModelDefinition"
-          ],
-          "typeExports": [
-            "MaterialCapabilityStatus",
-            "MaterialCompilerFamily",
-            "MaterialContractValidationResult",
-            "MaterialDomainDefinition",
-            "MaterialDomainId",
-            "MaterialModelCapabilityMatrixEntry",
-            "MaterialModelDefinition",
-            "MaterialModelId",
-            "MaterialModelV1Id",
-            "MaterialModelV2Id",
-            "MaterialModelValidationOptions",
-            "MaterialOutputSlotDefinition",
-            "MaterialParameterContractEntry",
-            "MaterialPassPlanEntryDefinition",
-            "MaterialRenderProfileId",
-            "MaterialSlotValueType",
-            "MaterialStageContractDefinition",
-            "MaterialStageId",
-            "MaterialTemplateDefinition"
-          ]
-        },
-        {
-          "path": "@axrone/render-core/material-contract-v2",
-          "exports": [
-            "BUILTIN_MATERIAL_MODELS_V2",
-            "MATERIAL_DOMAINS_V2",
-            "MATERIAL_MODEL_REGISTRY_V2",
-            "getMaterialDomainDefinitionV2",
-            "getMaterialModelDefinitionV2",
-            "listMaterialDomainsV2",
-            "listMaterialModelDefinitionsV2",
-            "resolveMaterialModelCapability",
-            "resolveModelIdFromLegacyShaderId",
-            "resolveModelOutputSlotV2",
-            "resolveModelStageSlotsV2",
-            "resolveOutputSlotCapability",
-            "resolveShaderIdFromModelId",
-            "serializeMaterialModelsV2",
-            "validateBuiltinMaterialModelsV2"
           ],
           "typeExports": []
         },
@@ -8924,33 +8831,14 @@
       "version": "0.1.0",
       "description": "",
       "exports": [
-        "GLTF_CLOTH_SHADER_EFFECT",
-        "GLTF_DECAL_SHADER_EFFECT",
-        "GLTF_FOLIAGE_SHADER_EFFECT",
-        "GLTF_HAIR_SHADER_EFFECT",
-        "GLTF_PARTICLE_SHADER_EFFECT",
         "GLTF_PBR_SHADER_EFFECT",
-        "GLTF_TOON_OUTLINE_SHADER_EFFECT",
-        "GLTF_TOON_SHADER_EFFECT",
         "GLTF_UNLIT_SHADER_EFFECT",
-        "GLTF_WATER_SHADER_EFFECT",
-        "POST_PROCESS_CONTRACT_SHADER_EFFECT",
-        "V2_BUILTIN_SHADER_EFFECTS",
-        "createGltfClothShaderEffect",
-        "createGltfDecalShaderEffect",
-        "createGltfFoliageShaderEffect",
-        "createGltfHairShaderEffect",
-        "createGltfParticleShaderEffect",
         "createGltfPbrShaderDefinition",
         "createGltfRuntimeMaterialPasses",
         "createGltfRuntimeSurfaceDefinition",
         "createGltfRuntimeSurfaceFeatures",
         "createGltfSceneSnapshot",
-        "createGltfToonOutlineShaderEffect",
-        "createGltfToonShaderEffect",
         "createGltfUnlitShaderDefinition",
-        "createGltfWaterShaderEffect",
-        "createPostProcessContractShaderEffect",
         "loadGltfSceneIntoScene",
         "resolveGltfRuntimeShaderId"
       ],
@@ -11729,6 +11617,16 @@
       "name": "__value_brand",
       "package": "@axrone/memory",
       "kind": "const"
+    },
+    {
+      "name": "_getPhysicsWorld2DBridgeProvider",
+      "package": "@axrone/physics",
+      "kind": "unknown"
+    },
+    {
+      "name": "_getPhysicsWorld2DBridgeProvider",
+      "package": "@axrone/physics-2d",
+      "kind": "function"
     },
     {
       "name": "_setPhysicsWorld2DBridgeProvider",
@@ -16696,16 +16594,6 @@
       "kind": "type"
     },
     {
-      "name": "BUILTIN_MATERIAL_MODELS_V1",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "BUILTIN_MATERIAL_MODELS_V2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
       "name": "BUILTIN_POST_PROCESS_EFFECTS",
       "package": "@axrone/render-core",
       "kind": "unknown"
@@ -19166,33 +19054,8 @@
       "kind": "function"
     },
     {
-      "name": "createGltfClothShaderEffect",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "createGltfDecalShaderEffect",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "createGltfFoliageShaderEffect",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "createGltfHairShaderEffect",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
       "name": "createGltfImporter",
       "package": "@axrone/asset-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "createGltfParticleShaderEffect",
-      "package": "@axrone/scene-runtime-gltf",
       "kind": "const"
     },
     {
@@ -19226,22 +19089,7 @@
       "kind": "const"
     },
     {
-      "name": "createGltfToonOutlineShaderEffect",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "createGltfToonShaderEffect",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
       "name": "createGltfUnlitShaderDefinition",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "createGltfWaterShaderEffect",
       "package": "@axrone/scene-runtime-gltf",
       "kind": "const"
     },
@@ -19553,11 +19401,6 @@
     {
       "name": "createPortableAnimationStreamingClipBundle",
       "package": "@axrone/asset-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "createPostProcessContractShaderEffect",
-      "package": "@axrone/scene-runtime-gltf",
       "kind": "const"
     },
     {
@@ -21621,6 +21464,16 @@
       "kind": "function"
     },
     {
+      "name": "encodeBreakLimit",
+      "package": "@axrone/physics",
+      "kind": "unknown"
+    },
+    {
+      "name": "encodeBreakLimit",
+      "package": "@axrone/physics-2d",
+      "kind": "function"
+    },
+    {
       "name": "encodeChunkSnapshot",
       "package": "@axrone/tilemap",
       "kind": "unknown"
@@ -23316,21 +23169,6 @@
       "kind": "unknown"
     },
     {
-      "name": "getMaterialDomainDefinitionV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "getMaterialModelDefinition",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "getMaterialModelDefinitionV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
       "name": "getMixedSceneRuntimeProfile",
       "package": "@axrone/scene-2d",
       "kind": "unknown"
@@ -23861,52 +23699,12 @@
       "kind": "unknown"
     },
     {
-      "name": "GLTF_CLOTH_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "GLTF_DECAL_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "GLTF_FOLIAGE_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "GLTF_HAIR_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "GLTF_PARTICLE_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
       "name": "GLTF_PBR_SHADER_EFFECT",
       "package": "@axrone/scene-runtime-gltf",
       "kind": "const"
     },
     {
-      "name": "GLTF_TOON_OUTLINE_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "GLTF_TOON_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
       "name": "GLTF_UNLIT_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
-      "name": "GLTF_WATER_SHADER_EFFECT",
       "package": "@axrone/scene-runtime-gltf",
       "kind": "const"
     },
@@ -27791,6 +27589,16 @@
       "kind": "function"
     },
     {
+      "name": "isComponentReference",
+      "package": "@axrone/physics",
+      "kind": "unknown"
+    },
+    {
+      "name": "isComponentReference",
+      "package": "@axrone/physics-2d",
+      "kind": "function"
+    },
+    {
       "name": "isContextLostError",
       "package": "@axrone/render-webgl2",
       "kind": "unknown"
@@ -28229,16 +28037,6 @@
       "name": "isMaterialId",
       "package": "@axrone/tilemap",
       "kind": "const"
-    },
-    {
-      "name": "isMaterialSlotValueType",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "isMaterialSlotValueTypeV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
     },
     {
       "name": "isMeshRendererSnapshot",
@@ -29056,6 +28854,16 @@
       "kind": "interface"
     },
     {
+      "name": "JOINT_2D_BREAK_LIMIT",
+      "package": "@axrone/physics",
+      "kind": "unknown"
+    },
+    {
+      "name": "JOINT_2D_BREAK_LIMIT",
+      "package": "@axrone/physics-2d",
+      "kind": "const"
+    },
+    {
       "name": "JOINT_CAPABILITY_2D",
       "package": "@axrone/physics",
       "kind": "unknown"
@@ -29786,21 +29594,6 @@
       "kind": "function"
     },
     {
-      "name": "listMaterialDomainsV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "listMaterialModelDefinitions",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "listMaterialModelDefinitionsV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
       "name": "listShaderLibraries",
       "package": "@axrone/asset-shader",
       "kind": "const"
@@ -30091,118 +29884,8 @@
       "kind": "unknown"
     },
     {
-      "name": "MATERIAL_DOMAINS_V2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MATERIAL_MODEL_REGISTRY_V1",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MATERIAL_MODEL_REGISTRY_V2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialCapabilityStatus",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialCompilerFamily",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialContractValidationResult",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialDomainDefinition",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialDomainId",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
       "name": "MaterialInstance",
       "package": "@axrone/render-webgl2",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialModelCapabilityMatrixEntry",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialModelDefinition",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialModelId",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialModelV1Id",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialModelV2Id",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialModelValidationOptions",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialOutputSlotDefinition",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialParameterContractEntry",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialPassPlanEntryDefinition",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialRenderProfileId",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialSlotValueType",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialStageContractDefinition",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialStageId",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "MaterialTemplateDefinition",
-      "package": "@axrone/render-core",
       "kind": "unknown"
     },
     {
@@ -30939,6 +30622,16 @@
       "name": "normalizeAudioSourceId",
       "package": "@axrone/audio",
       "kind": "const"
+    },
+    {
+      "name": "normalizeBreakLimit",
+      "package": "@axrone/physics",
+      "kind": "unknown"
+    },
+    {
+      "name": "normalizeBreakLimit",
+      "package": "@axrone/physics-2d",
+      "kind": "function"
     },
     {
       "name": "normalizeColor",
@@ -32174,11 +31867,6 @@
       "name": "PositionMode",
       "package": "@axrone/ui",
       "kind": "type"
-    },
-    {
-      "name": "POST_PROCESS_CONTRACT_SHADER_EFFECT",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
     },
     {
       "name": "PostProcessStack",
@@ -34691,31 +34379,6 @@
       "kind": "const"
     },
     {
-      "name": "resolveMaterialModelCapability",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveModelIdFromLegacyShaderId",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveModelOutputSlot",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveModelOutputSlotV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveModelStageSlotsV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
       "name": "resolveMotionDuration",
       "package": "@axrone/animation",
       "kind": "unknown"
@@ -34733,11 +34396,6 @@
     {
       "name": "resolveMotionTime",
       "package": "@axrone/animation",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveOutputSlotCapability",
-      "package": "@axrone/render-core",
       "kind": "unknown"
     },
     {
@@ -34948,11 +34606,6 @@
     {
       "name": "resolveSceneSurface",
       "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveShaderIdFromModelId",
-      "package": "@axrone/render-core",
       "kind": "unknown"
     },
     {
@@ -39326,21 +38979,6 @@
       "kind": "unknown"
     },
     {
-      "name": "serializeMaterialContractDocument",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "serializeMaterialModelsV1",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "serializeMaterialModelsV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
       "name": "serializePaint",
       "package": "@axrone/shapes-2d",
       "kind": "unknown"
@@ -43366,11 +43004,6 @@
       "kind": "interface"
     },
     {
-      "name": "V2_BUILTIN_SHADER_EFFECTS",
-      "package": "@axrone/scene-runtime-gltf",
-      "kind": "const"
-    },
-    {
       "name": "VALID_CHUNK_SHIFTS",
       "package": "@axrone/tilemap",
       "kind": "const"
@@ -43411,16 +43044,6 @@
       "kind": "type"
     },
     {
-      "name": "validateBuiltinMaterialModelsV1",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
-      "name": "validateBuiltinMaterialModelsV2",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
-    },
-    {
       "name": "validateChunkSnapshot",
       "package": "@axrone/tilemap",
       "kind": "unknown"
@@ -43429,11 +43052,6 @@
       "name": "validateInteger",
       "package": "@axrone/random",
       "kind": "const"
-    },
-    {
-      "name": "validateMaterialModelDefinition",
-      "package": "@axrone/render-core",
-      "kind": "unknown"
     },
     {
       "name": "validateMotionMatchingDefinition",
@@ -44499,9 +44117,15 @@
       "package": "@axrone/memory"
     },
     {
+      "name": "_getPhysicsWorld2DBridgeProvider",
+      "kind": "function",
+      "code": "declare function _getPhysicsWorld2DBridgeProvider(): BridgeWorldProvider;",
+      "package": "@axrone/physics-2d"
+    },
+    {
       "name": "_setPhysicsWorld2DBridgeProvider",
       "kind": "function",
-      "code": "declare function _setPhysicsWorld2DBridgeProvider(provider: (() => PhysicsWorld2D | null) | null): void;",
+      "code": "declare function _setPhysicsWorld2DBridgeProvider(provider: BridgeWorldProvider): void;",
       "package": "@axrone/physics-2d"
     },
     {
@@ -46059,18 +45683,6 @@
       "package": "@axrone/terrain"
     },
     {
-      "name": "BUILTIN_MATERIAL_MODELS_V1",
-      "kind": "const",
-      "code": "declare const BUILTIN_MATERIAL_MODELS_V1: readonly MaterialModelDefinition[];",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "BUILTIN_MATERIAL_MODELS_V2",
-      "kind": "const",
-      "code": "declare const BUILTIN_MATERIAL_MODELS_V2: readonly MaterialModelDefinition[];",
-      "package": "@axrone/render-core"
-    },
-    {
       "name": "BUILTIN_POST_PROCESS_EFFECTS",
       "kind": "const",
       "code": "declare const BUILTIN_POST_PROCESS_EFFECTS: readonly [\"bloom\", \"color-grading\", \"chromatic-aberration\", \"depth-of-field\", \"film-grain\", \"fxaa\", \"ssao\", \"taa\", \"vignette\"];",
@@ -47511,40 +47123,10 @@
       "package": "@axrone/asset-gltf"
     },
     {
-      "name": "createGltfClothShaderEffect",
-      "kind": "const",
-      "code": "declare const createGltfClothShaderEffect: (id: string) => RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "createGltfDecalShaderEffect",
-      "kind": "const",
-      "code": "declare const createGltfDecalShaderEffect: (id: string) => RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "createGltfFoliageShaderEffect",
-      "kind": "const",
-      "code": "declare const createGltfFoliageShaderEffect: (id: string) => RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "createGltfHairShaderEffect",
-      "kind": "const",
-      "code": "declare const createGltfHairShaderEffect: (id: string) => RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
       "name": "createGltfImporter",
       "kind": "const",
       "code": "declare const createGltfImporter: <TSchema extends GltfAssetSchemaLike = GltfAssetSchema>(options?: GltfImporterOptions<TSchema>) => GltfImporter<TSchema>;",
       "package": "@axrone/asset-gltf"
-    },
-    {
-      "name": "createGltfParticleShaderEffect",
-      "kind": "const",
-      "code": "declare const createGltfParticleShaderEffect: (id: string) => RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
     },
     {
       "name": "createGltfPbrShaderDefinition",
@@ -47555,7 +47137,7 @@
     {
       "name": "createGltfRuntimeMaterialPasses",
       "kind": "const",
-      "code": "declare const createGltfRuntimeMaterialPasses: (uniforms?: GltfMaterialUniformMap, shaderId?: string) => readonly SceneMaterialPassDefinition[];",
+      "code": "declare const createGltfRuntimeMaterialPasses: (uniforms?: GltfMaterialUniformMap) => readonly SceneMaterialPassDefinition[];",
       "package": "@axrone/scene-runtime-gltf"
     },
     {
@@ -47583,27 +47165,9 @@
       "package": "@axrone/asset-gltf"
     },
     {
-      "name": "createGltfToonOutlineShaderEffect",
-      "kind": "const",
-      "code": "declare const createGltfToonOutlineShaderEffect: (id: string) => RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "createGltfToonShaderEffect",
-      "kind": "const",
-      "code": "declare const createGltfToonShaderEffect: (id: string) => RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
       "name": "createGltfUnlitShaderDefinition",
       "kind": "const",
       "code": "declare const createGltfUnlitShaderDefinition: (id?: string, uniforms?: GltfMaterialUniformMap) => GltfShaderDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "createGltfWaterShaderEffect",
-      "kind": "const",
-      "code": "declare const createGltfWaterShaderEffect: (id: string) => RenderShaderEffectDefinition;",
       "package": "@axrone/scene-runtime-gltf"
     },
     {
@@ -47923,12 +47487,6 @@
       "kind": "const",
       "code": "declare const createPortableAnimationStreamingClipBundle: (options: PortableAnimationStreamingClipBundleOptions) => PortableAnimationStreamingClipBundle;",
       "package": "@axrone/asset-gltf"
-    },
-    {
-      "name": "createPostProcessContractShaderEffect",
-      "kind": "const",
-      "code": "declare const createPostProcessContractShaderEffect: (id: string) => RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
     },
     {
       "name": "createPostProcessStack",
@@ -49449,6 +49007,12 @@
       "package": "@axrone/hash"
     },
     {
+      "name": "encodeBreakLimit",
+      "kind": "function",
+      "code": "declare function encodeBreakLimit(value: number): number;",
+      "package": "@axrone/physics-2d"
+    },
+    {
       "name": "encodeChunkSnapshot",
       "kind": "const",
       "code": "declare const encodeChunkSnapshot: (snapshot: ChunkSnapshot) => Result<Uint8Array, TilemapError>;",
@@ -49859,7 +49423,7 @@
     {
       "name": "FixedJoint2D",
       "kind": "class",
-      "code": "declare class FixedJoint2D extends Joint2D { get anchor(): Vec2; set anchor(value: Vec2); get dampingRatio(): number; set dampingRatio(value: number); get frequency(): number; set frequency(value: number); serialize(): Record<string, any>; deserialize(data: Record<string, any>): void; … }",
+      "code": "declare class FixedJoint2D extends Joint2D { get anchor(): Vec2; set anchor(value: Vec2); get dampingRatio(): number; set dampingRatio(value: number); get frequency(): number; set frequency(value: number); get connectedAnchor(): Vec2; set connectedAnchor(value: Vec2); serialize(): Record<string, an…",
       "package": "@axrone/physics-2d"
     },
     {
@@ -50219,7 +49783,7 @@
     {
       "name": "GearJoint2D",
       "kind": "class",
-      "code": "declare class GearJoint2D extends Joint2D { get jointA(): Joint2D | null; set jointA(value: Joint2D | null); get jointB(): Joint2D | null; set jointB(value: Joint2D | null); get ratio(): number; set ratio(value: number); get isPending(): boolean; tryResolve(): boolean; serialize(): Record<string, a…",
+      "code": "declare class GearJoint2D extends Joint2D { get jointA(): Joint2D | null; set jointA(value: Joint2D | null); get jointB(): Joint2D | null; set jointB(value: Joint2D | null); get ratio(): number; set ratio(value: number); get isPending(): boolean; getPendingJointRefs(): {; jointA: string | null; … }",
       "package": "@axrone/physics-2d"
     },
     {
@@ -50467,24 +50031,6 @@
       "kind": "const",
       "code": "declare const getListViewStartIndex: (runtime: UIRuntime, widget: WidgetId) => number | null;",
       "package": "@axrone/ui"
-    },
-    {
-      "name": "getMaterialDomainDefinitionV2",
-      "kind": "const",
-      "code": "declare const getMaterialDomainDefinitionV2: (id: string) => MaterialDomainDefinition | undefined;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "getMaterialModelDefinition",
-      "kind": "const",
-      "code": "declare const getMaterialModelDefinition: (id: MaterialModelId) => MaterialModelDefinition | undefined;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "getMaterialModelDefinitionV2",
-      "kind": "const",
-      "code": "declare const getMaterialModelDefinitionV2: (id: string) => MaterialModelDefinition | undefined;",
-      "package": "@axrone/render-core"
     },
     {
       "name": "getModalOpen",
@@ -50805,63 +50351,15 @@
       "package": "@axrone/render-webgl2"
     },
     {
-      "name": "GLTF_CLOTH_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const GLTF_CLOTH_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "GLTF_DECAL_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const GLTF_DECAL_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "GLTF_FOLIAGE_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const GLTF_FOLIAGE_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "GLTF_HAIR_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const GLTF_HAIR_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "GLTF_PARTICLE_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const GLTF_PARTICLE_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
       "name": "GLTF_PBR_SHADER_EFFECT",
       "kind": "const",
       "code": "declare const GLTF_PBR_SHADER_EFFECT: RenderShaderEffectDefinition;",
       "package": "@axrone/scene-runtime-gltf"
     },
     {
-      "name": "GLTF_TOON_OUTLINE_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const GLTF_TOON_OUTLINE_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "GLTF_TOON_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const GLTF_TOON_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
       "name": "GLTF_UNLIT_SHADER_EFFECT",
       "kind": "const",
       "code": "declare const GLTF_UNLIT_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
-      "name": "GLTF_WATER_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const GLTF_WATER_SHADER_EFFECT: RenderShaderEffectDefinition;",
       "package": "@axrone/scene-runtime-gltf"
     },
     {
@@ -51819,6 +51317,12 @@
       "package": "@axrone/utility"
     },
     {
+      "name": "isComponentReference",
+      "kind": "function",
+      "code": "declare function isComponentReference(value: unknown): boolean;",
+      "package": "@axrone/physics-2d"
+    },
+    {
       "name": "isContextLostError",
       "kind": "const",
       "code": "declare const isContextLostError: (value: unknown) => value is GLContextLostError;",
@@ -52057,18 +51561,6 @@
       "kind": "const",
       "code": "declare const isMaterialId: (value: unknown) => value is number;",
       "package": "@axrone/tilemap"
-    },
-    {
-      "name": "isMaterialSlotValueType",
-      "kind": "const",
-      "code": "declare const isMaterialSlotValueType: (value: unknown) => value is MaterialSlotValueType;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "isMaterialSlotValueTypeV2",
-      "kind": "const",
-      "code": "declare const isMaterialSlotValueTypeV2: (value: unknown) => value is MaterialSlotValueType;",
-      "package": "@axrone/render-core"
     },
     {
       "name": "isMeshRendererSnapshot",
@@ -52449,6 +51941,12 @@
       "package": "@axrone/ui"
     },
     {
+      "name": "JOINT_2D_BREAK_LIMIT",
+      "kind": "const",
+      "code": "declare const JOINT_2D_BREAK_LIMIT = 1000000000000000000;",
+      "package": "@axrone/physics-2d"
+    },
+    {
       "name": "JOINT_CAPABILITY_2D",
       "kind": "const",
       "code": "declare const JOINT_CAPABILITY_2D: { readonly DISTANCE: \"full\"; readonly SPRING: \"full\"; readonly REVOLUTE: \"full\"; readonly PRISMATIC: \"full\"; readonly WELD: \"full\"; readonly WHEEL: \"full\"; readonly MOTOR: \"full\"; readonly MOUSE: \"full\"; readonly GEAR: \"full\"; readonly ROPE: \"full\"; }",
@@ -52469,7 +51967,7 @@
     {
       "name": "Joint2D",
       "kind": "class",
-      "code": "declare abstract class Joint2D extends Component { get constraintId(): ConstraintId | null; get connectedBody(): Rigidbody2D | null; set connectedBody(value: Rigidbody2D | null); get enableCollision(): boolean; set enableCollision(value: boolean); get breakForce(): number; set breakForce(value: num…",
+      "code": "declare abstract class Joint2D extends Component { get constraintId(): ConstraintId | null; get connectedBody(): Rigidbody2D | null; set connectedBody(value: Rigidbody2D | null); getPendingConnectedBodyRef(): string | null; resolveConnectedBodyRef(body: Rigidbody2D | null): void; get enableCollisio…",
       "package": "@axrone/physics-2d"
     },
     {
@@ -52725,24 +52223,6 @@
       "package": "@axrone/hash"
     },
     {
-      "name": "listMaterialDomainsV2",
-      "kind": "const",
-      "code": "declare const listMaterialDomainsV2: () => readonly MaterialDomainDefinition[];",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "listMaterialModelDefinitions",
-      "kind": "const",
-      "code": "declare const listMaterialModelDefinitions: () => readonly MaterialModelDefinition[];",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "listMaterialModelDefinitionsV2",
-      "kind": "const",
-      "code": "declare const listMaterialModelDefinitionsV2: () => readonly MaterialModelDefinition[];",
-      "package": "@axrone/render-core"
-    },
-    {
       "name": "listShaderLibraries",
       "kind": "const",
       "code": "declare const listShaderLibraries: () => readonly ShaderLibraryEntry[];",
@@ -52927,24 +52407,6 @@
       "kind": "const",
       "code": "declare const matchShape: <TResult>(shape: Shape2D, matcher: { readonly rectangle: (shape: RectangleShape) => TResult; readonly circle: (shape: CircleShape) => TResult; readonly ellipse: (shape: EllipseShape) => TResult; readonly triangle: (shape: TriangleShape) => TResult; readonly line: (shape: L…",
       "package": "@axrone/shapes-2d"
-    },
-    {
-      "name": "MATERIAL_DOMAINS_V2",
-      "kind": "const",
-      "code": "declare const MATERIAL_DOMAINS_V2: readonly MaterialDomainDefinition[];",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "MATERIAL_MODEL_REGISTRY_V1",
-      "kind": "const",
-      "code": "declare const MATERIAL_MODEL_REGISTRY_V1: ReadonlyMap<MaterialModelId, MaterialModelDefinition>;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "MATERIAL_MODEL_REGISTRY_V2",
-      "kind": "const",
-      "code": "declare const MATERIAL_MODEL_REGISTRY_V2: ReadonlyMap<MaterialModelId, MaterialModelDefinition>;",
-      "package": "@axrone/render-core"
     },
     {
       "name": "MaterialInstance",
@@ -53409,6 +52871,12 @@
       "package": "@axrone/audio"
     },
     {
+      "name": "normalizeBreakLimit",
+      "kind": "function",
+      "code": "declare function normalizeBreakLimit(value: unknown): number;",
+      "package": "@axrone/physics-2d"
+    },
+    {
       "name": "normalizeColor",
       "kind": "const",
       "code": "declare const normalizeColor: (input: ColorInput | undefined, fallback: ReadonlyColor) => ReadonlyColor;",
@@ -53855,7 +53323,7 @@
     {
       "name": "PhysicsWorld2DComponent",
       "kind": "class",
-      "code": "declare class PhysicsWorld2DComponent extends Component { get physicsWorld(): PhysicsWorld2D | null; get gravity(): Readonly<Vec2>; set gravity(value: Readonly<Vec2>); awake(): void; fixedUpdate(deltaTime: number): void; onDestroy(): void; serialize(): Record<string, any>; deserialize(data: Record<…",
+      "code": "declare class PhysicsWorld2DComponent extends Component { get physicsWorld(): PhysicsWorld2D | null; get gravity(): Readonly<Vec2>; set gravity(value: Readonly<Vec2>); onLoad(): void; fixedUpdate(deltaTime: number): void; onDestroy(): void; serialize(): Record<string, any>; deserialize(data: Record…",
       "package": "@axrone/physics-2d"
     },
     {
@@ -53965,12 +53433,6 @@
       "kind": "class",
       "code": "declare class PooledMemoryManager implements IMemoryManager { constructor(_poolSizes?: readonly number[]); allocate(size: number, _alignment?: number): ArrayBuffer | null; deallocate(buffer: ArrayBuffer): void; reallocate(buffer: ArrayBuffer, newSize: number): ArrayBuffer | null; getStats(): {; … }",
       "package": "@axrone/particle-system"
-    },
-    {
-      "name": "POST_PROCESS_CONTRACT_SHADER_EFFECT",
-      "kind": "const",
-      "code": "declare const POST_PROCESS_CONTRACT_SHADER_EFFECT: RenderShaderEffectDefinition;",
-      "package": "@axrone/scene-runtime-gltf"
     },
     {
       "name": "PostProcessStack",
@@ -54999,36 +54461,6 @@
       "package": "@axrone/asset-gltf"
     },
     {
-      "name": "resolveMaterialModelCapability",
-      "kind": "const",
-      "code": "declare const resolveMaterialModelCapability: (modelId: string, profile: MaterialRenderProfileId) => MaterialModelCapabilityMatrixEntry | undefined;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "resolveModelIdFromLegacyShaderId",
-      "kind": "const",
-      "code": "declare const resolveModelIdFromLegacyShaderId: (shaderId: string) => MaterialModelId;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "resolveModelOutputSlot",
-      "kind": "const",
-      "code": "declare const resolveModelOutputSlot: (modelId: MaterialModelId, slotKey: string) => MaterialOutputSlotDefinition | undefined;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "resolveModelOutputSlotV2",
-      "kind": "const",
-      "code": "declare const resolveModelOutputSlotV2: (modelId: string, slotKey: string) => MaterialOutputSlotDefinition | undefined;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "resolveModelStageSlotsV2",
-      "kind": "const",
-      "code": "declare const resolveModelStageSlotsV2: (modelId: string, stage: MaterialStageId) => readonly string[];",
-      "package": "@axrone/render-core"
-    },
-    {
       "name": "resolveMotionDuration",
       "kind": "const",
       "code": "declare const resolveMotionDuration: (motion: AnimationCompiledMotion, parameters: AnimationParameterStore, depth?: number) => number;",
@@ -55051,12 +54483,6 @@
       "kind": "const",
       "code": "declare const resolveMotionTime: (normalizedTime: number, duration: number, cycleOffset: number, loop: boolean) => number;",
       "package": "@axrone/animation"
-    },
-    {
-      "name": "resolveOutputSlotCapability",
-      "kind": "const",
-      "code": "declare const resolveOutputSlotCapability: (modelId: string, slotKey: string, profile: MaterialRenderProfileId) => MaterialCapabilityStatus;",
-      "package": "@axrone/render-core"
     },
     {
       "name": "resolveParameterScalar",
@@ -55171,12 +54597,6 @@
       "kind": "const",
       "code": "declare const resolveSceneSurface: <R extends ComponentRegistry>(options: SceneOptions<R>) => ResolvedSceneSurface;",
       "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "resolveShaderIdFromModelId",
-      "kind": "const",
-      "code": "declare const resolveShaderIdFromModelId: (modelId: MaterialModelId, currentShaderId?: string) => string;",
-      "package": "@axrone/render-core"
     },
     {
       "name": "resolveShaderLibraries",
@@ -56043,24 +55463,6 @@
       "package": "@axrone/lighting"
     },
     {
-      "name": "serializeMaterialContractDocument",
-      "kind": "const",
-      "code": "declare const serializeMaterialContractDocument: (contractVersion: 1 | 2, models: readonly MaterialModelDefinition[], domains?: readonly MaterialDomainDefinition[]) => string;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "serializeMaterialModelsV1",
-      "kind": "const",
-      "code": "declare const serializeMaterialModelsV1: () => string;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "serializeMaterialModelsV2",
-      "kind": "const",
-      "code": "declare const serializeMaterialModelsV2: () => string;",
-      "package": "@axrone/render-core"
-    },
-    {
       "name": "serializePaint",
       "kind": "const",
       "code": "declare const serializePaint: (paint: ShapePaint) => SerializedPaint;",
@@ -56621,7 +56023,7 @@
     {
       "name": "SpringJoint2D",
       "kind": "class",
-      "code": "declare class SpringJoint2D extends Joint2D { get distance(): number; set distance(value: number); get stiffness(): number; set stiffness(value: number); get damping(): number; set damping(value: number); serialize(): Record<string, any>; deserialize(data: Record<string, any>): void; … }",
+      "code": "declare class SpringJoint2D extends Joint2D { get distance(): number; set distance(value: number); get stiffness(): number; set stiffness(value: number); get damping(): number; set damping(value: number); get anchorA(): Vec2; set anchorA(value: Vec2); get anchorB(): Vec2; … }",
       "package": "@axrone/physics-2d"
     },
     {
@@ -57879,12 +57281,6 @@
       "package": "@axrone/animation"
     },
     {
-      "name": "V2_BUILTIN_SHADER_EFFECTS",
-      "kind": "const",
-      "code": "declare const V2_BUILTIN_SHADER_EFFECTS: readonly RenderShaderEffectDefinition[];",
-      "package": "@axrone/scene-runtime-gltf"
-    },
-    {
       "name": "VALID_CHUNK_SHIFTS",
       "kind": "const",
       "code": "declare const VALID_CHUNK_SHIFTS: readonly [3, 4, 5, 6];",
@@ -57927,18 +57323,6 @@
       "package": "@axrone/render-webgl2"
     },
     {
-      "name": "validateBuiltinMaterialModelsV1",
-      "kind": "const",
-      "code": "declare const validateBuiltinMaterialModelsV1: () => MaterialContractValidationResult;",
-      "package": "@axrone/render-core"
-    },
-    {
-      "name": "validateBuiltinMaterialModelsV2",
-      "kind": "const",
-      "code": "declare const validateBuiltinMaterialModelsV2: () => MaterialContractValidationResult;",
-      "package": "@axrone/render-core"
-    },
-    {
       "name": "validateChunkSnapshot",
       "kind": "const",
       "code": "declare const validateChunkSnapshot: (snapshot: ChunkSnapshot, expected?: SnapshotExpectation) => Result<ChunkSnapshot, TilemapError>;",
@@ -57949,12 +57333,6 @@
       "kind": "const",
       "code": "declare const validateInteger: (value: number, name?: string) => void;",
       "package": "@axrone/random"
-    },
-    {
-      "name": "validateMaterialModelDefinition",
-      "kind": "const",
-      "code": "declare const validateMaterialModelDefinition: (definition: MaterialModelDefinition, options?: MaterialModelValidationOptions) => MaterialContractValidationResult;",
-      "package": "@axrone/render-core"
     },
     {
       "name": "validateMotionMatchingDefinition",
