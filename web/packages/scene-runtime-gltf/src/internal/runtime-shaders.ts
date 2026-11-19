@@ -26,6 +26,8 @@ import {
     GLTF_FOLIAGE_SHADER_EFFECT,
     GLTF_HAIR_SHADER_EFFECT,
     GLTF_PARTICLE_SHADER_EFFECT,
+    GLTF_REFRACTION_COPY_SHADER_EFFECT,
+    GLTF_SSS_BLUR_SHADER_EFFECT,
     GLTF_VOLUME_SHADER_EFFECT,
     GLTF_WATER_SHADER_EFFECT,
     POST_PROCESS_CONTRACT_SHADER_EFFECT,
@@ -35,6 +37,8 @@ import {
     createGltfFoliageShaderEffect,
     createGltfHairShaderEffect,
     createGltfParticleShaderEffect,
+    createGltfRefractionCopyShaderEffect,
+    createGltfSssBlurShaderEffect,
     createGltfVolumeShaderEffect,
     createGltfWaterShaderEffect,
     createPostProcessContractShaderEffect,
@@ -52,6 +56,8 @@ export {
     GLTF_HAIR_SHADER_EFFECT,
     GLTF_PARTICLE_SHADER_EFFECT,
     GLTF_PBR_SHADER_EFFECT,
+    GLTF_REFRACTION_COPY_SHADER_EFFECT,
+    GLTF_SSS_BLUR_SHADER_EFFECT,
     GLTF_TOON_OUTLINE_SHADER_EFFECT,
     GLTF_TOON_SHADER_EFFECT,
     GLTF_UNLIT_SHADER_EFFECT,
@@ -65,7 +71,9 @@ export {
     createGltfHairShaderEffect,
     createGltfParticleShaderEffect,
     createGltfPbrShaderEffect,
+    createGltfRefractionCopyShaderEffect,
     createGltfRuntimeMaterialPasses,
+    createGltfSssBlurShaderEffect,
     createGltfToonOutlineShaderEffect,
     createGltfToonShaderEffect,
     createGltfUnlitShaderEffect,
@@ -88,6 +96,8 @@ const GLTF_SHADER_PARTICLE_ID = 'gltf/particle';
 const GLTF_SHADER_DECAL_ID = 'gltf/decal';
 const POST_PROCESS_CONTRACT_ID = 'post-process/contract';
 const GLTF_SHADER_VOLUME_ID = 'gltf/volume';
+const GLTF_SHADER_REFRACTION_COPY_ID = 'gltf/refraction-copy';
+const GLTF_SHADER_SSS_BLUR_ID = 'gltf/sss-blur';
 const GLTF_SHADER_DOUBLE_SIDED_SUFFIX = '/double-sided';
 const GLTF_SHADER_BLEND_SUFFIX = '/blend';
 
@@ -391,6 +401,30 @@ export const createGltfVolumeShaderDefinition = (
 ): GltfShaderDefinition =>
     createV2ShaderDefinition(id, GLTF_SHADER_VOLUME_ID, GLTF_VOLUME_SHADER_EFFECT, createGltfVolumeShaderEffect, uniforms);
 
+export const createGltfRefractionCopyShaderDefinition = (
+    id: string = GLTF_SHADER_REFRACTION_COPY_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(
+        id,
+        GLTF_SHADER_REFRACTION_COPY_ID,
+        GLTF_REFRACTION_COPY_SHADER_EFFECT,
+        createGltfRefractionCopyShaderEffect,
+        uniforms
+    );
+
+export const createGltfSssBlurShaderDefinition = (
+    id: string = GLTF_SHADER_SSS_BLUR_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(
+        id,
+        GLTF_SHADER_SSS_BLUR_ID,
+        GLTF_SSS_BLUR_SHADER_EFFECT,
+        createGltfSssBlurShaderEffect,
+        uniforms
+    );
+
 export const resolveGltfRuntimeShaderId = (
     shaderId: string,
     uniforms?: GltfMaterialUniformMap
@@ -432,6 +466,18 @@ export const resolveGltfShaderDefinition = (
     if (shaderId.startsWith(GLTF_SHADER_PARTICLE_ID)) return createGltfParticleShaderDefinition(shaderId);
     if (shaderId.startsWith(GLTF_SHADER_DECAL_ID)) return createGltfDecalShaderDefinition(shaderId);
     if (shaderId.startsWith(POST_PROCESS_CONTRACT_ID)) return createPostProcessContractShaderDefinition(shaderId);
+    if (shaderId.startsWith(GLTF_SHADER_REFRACTION_COPY_ID)) {
+        return createGltfRefractionCopyShaderDefinition(shaderId, {
+            _AlphaMode: shaderId.includes(GLTF_SHADER_BLEND_SUFFIX) ? 2 : 0,
+            _DoubleSided: shaderId.includes(GLTF_SHADER_DOUBLE_SIDED_SUFFIX) ? 1 : 0,
+        });
+    }
+    if (shaderId.startsWith(GLTF_SHADER_SSS_BLUR_ID)) {
+        return createGltfSssBlurShaderDefinition(shaderId, {
+            _AlphaMode: shaderId.includes(GLTF_SHADER_BLEND_SUFFIX) ? 2 : 0,
+            _DoubleSided: shaderId.includes(GLTF_SHADER_DOUBLE_SIDED_SUFFIX) ? 1 : 0,
+        });
+    }
     if (shaderId.startsWith(GLTF_SHADER_VOLUME_ID)) return createGltfVolumeShaderDefinition(shaderId);
     if (shaderId.startsWith(GLTF_SHADER_PBR_ID)) {
         return createGltfPbrShaderDefinition(shaderId, {

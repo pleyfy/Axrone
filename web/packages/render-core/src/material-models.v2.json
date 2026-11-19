@@ -557,7 +557,7 @@
                 {
                     "id": "refraction-copy",
                     "phase": "refraction",
-                    "shaderId": "post-process/contract",
+                    "shaderId": "gltf/refraction-copy",
                     "depthTest": false,
                     "depthWrite": false,
                     "enabledWhenUniformNonZero": "_TransmissionFactor"
@@ -565,7 +565,7 @@
                 {
                     "id": "sss-blur",
                     "phase": "subsurface",
-                    "shaderId": "post-process/contract",
+                    "shaderId": "gltf/sss-blur",
                     "depthTest": false,
                     "depthWrite": false,
                     "blend": true,
@@ -3014,7 +3014,7 @@
                 {
                     "id": "refraction-copy",
                     "phase": "refraction",
-                    "shaderId": "post-process/contract",
+                    "shaderId": "gltf/refraction-copy",
                     "depthTest": false,
                     "depthWrite": false,
                     "enabledWhenUniformNonZero": "_TransmissionFactor"
@@ -3022,7 +3022,7 @@
                 {
                     "id": "sss-blur",
                     "phase": "subsurface",
-                    "shaderId": "post-process/contract",
+                    "shaderId": "gltf/sss-blur",
                     "depthTest": false,
                     "depthWrite": false,
                     "blend": true,

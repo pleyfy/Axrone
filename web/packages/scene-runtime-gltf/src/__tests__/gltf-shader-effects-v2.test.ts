@@ -11,6 +11,8 @@ import {
     GLTF_HAIR_SHADER_EFFECT,
     GLTF_PARTICLE_SHADER_EFFECT,
     GLTF_PBR_SHADER_EFFECT,
+    GLTF_REFRACTION_COPY_SHADER_EFFECT,
+    GLTF_SSS_BLUR_SHADER_EFFECT,
     GLTF_TOON_OUTLINE_SHADER_EFFECT,
     GLTF_TOON_SHADER_EFFECT,
     GLTF_UNLIT_SHADER_EFFECT,
@@ -204,13 +206,17 @@ describe('V2 runtime material pass plans', () => {
         expect(pbr.map((pass) => pass.id)).not.toContain('outline');
     });
 
-    it('pins refraction-copy and sss-blur as declarative gates over real PBR uniforms', () => {
+    it('gates refraction-copy and sss-blur on real PBR uniforms and emits them as passes', () => {
         const plan = getMaterialModelDefinitionV2('pbr')?.passPlan ?? [];
         const gated = plan.filter((pass) => pass.enabledWhenUniformNonZero !== undefined);
         expect(gated.map((pass) => pass.id)).toEqual(['refraction-copy', 'sss-blur']);
         expect(gated.map((pass) => pass.enabledWhenUniformNonZero)).toEqual([
             '_TransmissionFactor',
             '_SubsurfaceFactor',
+        ]);
+        expect(gated.map((pass) => pass.shaderId)).toEqual([
+            'gltf/refraction-copy',
+            'gltf/sss-blur',
         ]);
 
         const pbrUniforms = compileRenderShaderEffect(GLTF_PBR_SHADER_EFFECT).uniformNames;
@@ -221,7 +227,122 @@ describe('V2 runtime material pass plans', () => {
             { _TransmissionFactor: 1, _SubsurfaceFactor: 0.5 },
             'gltf/pbr'
         );
-        expect(glass.map((pass) => pass.id)).toEqual(['main', 'forward-add', 'shadow-caster']);
+        expect(glass.map((pass) => pass.id)).toEqual([
+            'main',
+            'forward-add',
+            'shadow-caster',
+            'refraction-copy',
+            'sss-blur',
+        ]);
+        expect(glass[0]?.id).toBe('main');
+        expect(Object.isFrozen(glass)).toBe(true);
+
+        const refraction = glass[3]!;
+        expect(refraction.phase).toBe('refraction');
+        expect(refraction.shaderId).toBe('gltf/refraction-copy');
+        expect(refraction.depthStencilState?.depthWrite).toBe(false);
+
+        const subsurface = glass[4]!;
+        expect(subsurface.phase).toBe('subsurface');
+        expect(subsurface.shaderId).toBe('gltf/sss-blur');
+        expect(subsurface.blendState?.targets[0]?.blend).toBe(true);
+    });
+
+    it('omits both offscreen passes when the gating uniforms are zero or absent', () => {
+        expect(
+            createGltfRuntimeMaterialPasses(
+                { _TransmissionFactor: 0, _SubsurfaceFactor: 0 },
+                'gltf/pbr'
+            ).map((pass) => pass.id)
+        ).toEqual(['main', 'forward-add', 'shadow-caster']);
+
+        expect(
+            createGltfRuntimeMaterialPasses({ _AlphaMode: 0 }, 'gltf/pbr').map((pass) => pass.id)
+        ).toEqual(['main', 'forward-add', 'shadow-caster']);
+
+        const transmissionOnly = createGltfRuntimeMaterialPasses(
+            { _TransmissionFactor: 0.8, _SubsurfaceFactor: 0 },
+            'gltf/pbr'
+        );
+        expect(transmissionOnly.map((pass) => pass.id)).toEqual([
+            'main',
+            'forward-add',
+            'shadow-caster',
+            'refraction-copy',
+        ]);
+
+        const subsurfaceOnly = createGltfRuntimeMaterialPasses(
+            { _TransmissionFactor: 0, _SubsurfaceFactor: 0.4 },
+            'gltf/pbr'
+        );
+        expect(subsurfaceOnly.map((pass) => pass.id)).toEqual([
+            'main',
+            'forward-add',
+            'shadow-caster',
+            'sss-blur',
+        ]);
+    });
+
+    it('keeps the offscreen gates scoped to the PBR surface family', () => {
+        const uniforms = { _TransmissionFactor: 1, _SubsurfaceFactor: 1 };
+        expect(
+            createGltfRuntimeMaterialPasses(uniforms, 'gltf/unlit').map((pass) => pass.id)
+        ).toEqual(['main', 'forward-add', 'shadow-caster']);
+        expect(
+            createGltfRuntimeMaterialPasses(uniforms, 'gltf/toon').map((pass) => pass.id)
+        ).toEqual(['main', 'forward-add', 'shadow-caster']);
+        const volume = createGltfRuntimeMaterialPasses(uniforms, 'gltf/volume');
+        expect(volume.map((pass) => pass.id)).toEqual(['volume-raymarch']);
+    });
+
+    it('carries pbr shader variants through to the offscreen pass shaders', () => {
+        const blended = createGltfRuntimeMaterialPasses(
+            { _TransmissionFactor: 1, _SubsurfaceFactor: 1, _AlphaMode: 2 },
+            'gltf/pbr/blend'
+        );
+        expect(blended.map((pass) => pass.shaderId)).toEqual([
+            undefined,
+            undefined,
+            undefined,
+            'gltf/refraction-copy/blend',
+            'gltf/sss-blur/blend',
+        ]);
+        expect(blended[3]?.rasterizerState?.cullMode).toBe('back');
+
+        const doubleSided = createGltfRuntimeMaterialPasses(
+            { _TransmissionFactor: 1, _DoubleSided: 1 },
+            'gltf/pbr/double-sided'
+        );
+        expect(doubleSided[3]?.shaderId).toBe('gltf/refraction-copy/double-sided');
+        expect(doubleSided[3]?.rasterizerState?.cullMode).toBe('none');
+    });
+
+    it('samples the offscreen targets instead of falling back to the base colour texture', () => {
+        const refraction = compileRenderShaderEffect(GLTF_REFRACTION_COPY_SHADER_EFFECT);
+        expect(refraction.uniformNames).toContain('_SceneColorTexture');
+        expect(refraction.uniformNames).toContain('_RenderTargetSize');
+        expect(GLTF_REFRACTION_COPY_SHADER_EFFECT.fragment.main.join('\n')).toContain(
+            'texture(_SceneColorTexture'
+        );
+        expect(GLTF_REFRACTION_COPY_SHADER_EFFECT.fragment.main.join('\n')).not.toContain(
+            'texture(_BaseColorTexture'
+        );
+
+        const sss = compileRenderShaderEffect(GLTF_SSS_BLUR_SHADER_EFFECT);
+        expect(sss.uniformNames).toContain('_SubsurfaceBlurTexture');
+        expect(GLTF_SSS_BLUR_SHADER_EFFECT.fragment.main.join('\n')).toContain(
+            'texture(_SubsurfaceBlurTexture'
+        );
+        expect(GLTF_SSS_BLUR_SHADER_EFFECT.fragment.main.join('\n')).not.toContain(
+            'texture(_BaseColorTexture'
+        );
+
+        expect(resolveGltfShaderDefinition('gltf/refraction-copy')?.id).toBe(
+            'gltf/refraction-copy'
+        );
+        expect(resolveGltfShaderDefinition('gltf/sss-blur')?.id).toBe('gltf/sss-blur');
+        expect(V2_BUILTIN_SHADER_EFFECTS).toContain(GLTF_REFRACTION_COPY_SHADER_EFFECT);
+        expect(V2_BUILTIN_SHADER_EFFECTS).toContain(GLTF_SSS_BLUR_SHADER_EFFECT);
     });
 
     it('binds every volume slot to a compiled uniform with a matching default', () => {

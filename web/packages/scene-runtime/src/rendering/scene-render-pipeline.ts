@@ -27,6 +27,16 @@ import { ScenePrimitiveCache } from './render-cache';
 import type { SceneRenderFrameState } from './render-frame-state';
 import type { SceneRenderItem } from './render-item-collector';
 import type { SceneRenderPassResource } from './render-pass-registry';
+import {
+    planSceneFramebufferPasses,
+    SCENE_FRAMEBUFFER_EMPTY_PLAN,
+    type SceneFramebufferPassDefinition,
+} from './scene-framebuffer-passes';
+import {
+    SceneFramebufferPassRuntime,
+    type SceneFramebufferPassStats,
+    type SceneFramebufferTextureBindings,
+} from './scene-offscreen-framebuffer-passes';
 import type { SceneSpriteBatchRuntime } from './sprite-batch-runtime';
 import type { SceneParticleBatchRuntime } from './particle-batch-runtime';
 import type { SceneLineBatchRuntime } from './line-batch-runtime';
@@ -81,6 +91,13 @@ export interface SceneRenderPipelineParams {
      * unchanged, so an instanced plan may be replayed without rebuilding.
      */
     readonly renderListCacheHit?: boolean;
+    /**
+     * Material-pass ids declared by the materials in view (`refraction-copy`,
+     * `sss-blur`). These schedule the offscreen framebuffer passes that run
+     * between the opaque and transparent draws. Absent or empty keeps the frame
+     * at its existing single-pass cost — no targets, no blit, no filter.
+     */
+    readonly enabledMaterialPassIds?: ReadonlySet<string> | readonly string[];
 }
 
 type SceneSpriteBatchRenderer = Pick<SceneSpriteBatchRuntime, 'render' | 'clear'>;
@@ -368,6 +385,9 @@ interface ActiveExecutionState {
     readonly instancedPlan: SceneInstancedPassPlan | null;
     readonly instancedDrawParams: Parameters<SceneInstancedMeshRuntime['draw']>[1] | null;
     instancedDrawCalls: number;
+    readonly framebufferPlan: readonly SceneFramebufferPassDefinition[];
+    framebufferStats: SceneFramebufferPassStats | null;
+    framebufferResolved: boolean;
 }
 
 /**
@@ -392,12 +412,36 @@ export class SceneRenderPipeline {
     private _activeExecution: ActiveExecutionState | null = null;
     private _backend: ManagedWebGL2RenderPassLibrary;
     private _pipeline: RenderPipeline<WebGL2RenderResourceHandle>;
+    /**
+     * Created on the first frame that actually schedules an offscreen pass, so
+     * a scene without transmission or subsurface scattering never allocates a
+     * framebuffer.
+     */
+    private _framebufferRuntime: SceneFramebufferPassRuntime | null = null;
+    /**
+     * Frame index the offscreen passes last ran for. A frame is drawn as
+     * several scene passes, and the scene-colour copy is a per-frame resolve:
+     * repeating it per scene pass would multiply its cost.
+     */
+    private _framebufferFrame = -1;
 
     constructor(options: SceneRenderPipelineOptions) {
         this._options = options;
         this._capabilities = options.capabilities ?? SCENE_RENDER_CAPABILITIES_ALL;
         this._backend = this._createBackend();
         this._pipeline = this._createPipeline();
+    }
+
+    get framebufferTextureBindings(): SceneFramebufferTextureBindings | null {
+        return this._framebufferRuntime?.getTextureBindings() ?? null;
+    }
+
+    private _ensureFramebufferRuntime(): SceneFramebufferPassRuntime {
+        if (this._framebufferRuntime === null) {
+            this._framebufferRuntime = new SceneFramebufferPassRuntime(this._options.gl);
+        }
+
+        return this._framebufferRuntime;
     }
 
     private _createBackend(): ManagedWebGL2RenderPassLibrary {
@@ -464,6 +508,22 @@ export class SceneRenderPipeline {
         }
 
         const drawCallsBefore = this._activeExecution.frameState.drawCalls;
+        const active = this._activeExecution;
+
+        // The resolved scene colour only exists once the opaque draws landed in
+        // the frame target, and every blended draw has to read it after that.
+        // Resolving here — not in a separate scene pass — is what keeps opaque
+        // and non-transmissive geometry from being drawn and blended twice.
+        if (pass.kind === 'transparent' && !active.framebufferResolved) {
+            active.framebufferResolved = true;
+            if (active.framebufferPlan.length > 0) {
+                active.framebufferStats = this
+                    ._ensureFramebufferRuntime()
+                    .execute(active.framebufferPlan);
+                this._framebufferFrame = active.drawContext.frame;
+            }
+        }
+
         const primitiveLookup = this._activeExecution.primitiveLookup;
         const instancedPlan = this._activeExecution.instancedPlan;
         const instancedDrawParams = this._activeExecution.instancedDrawParams;
@@ -602,6 +662,17 @@ export class SceneRenderPipeline {
             primitiveLookup = lookup;
         }
 
+        const framebufferPlan =
+            params.frame === this._framebufferFrame
+                ? SCENE_FRAMEBUFFER_EMPTY_PLAN
+                : planSceneFramebufferPasses(params.enabledMaterialPassIds);
+        if (framebufferPlan.length > 0) {
+            this._ensureFramebufferRuntime().beginFrame(
+                params.viewportWidth,
+                params.viewportHeight
+            );
+        }
+
         const activeExecution: ActiveExecutionState = {
             drawContext: params.drawContext,
             frameState: params.frameState,
@@ -609,6 +680,9 @@ export class SceneRenderPipeline {
             instancedPlan,
             instancedDrawParams,
             instancedDrawCalls: 0,
+            framebufferPlan,
+            framebufferStats: null,
+            framebufferResolved: false,
         };
         this._activeExecution = activeExecution;
 
@@ -699,6 +773,8 @@ export class SceneRenderPipeline {
                           instancedPlanReused: instancedPlan.reused,
                       }
                     : {}),
+                refractionCopyCount: activeExecution.framebufferStats?.refractionCopyCount ?? 0,
+                sssBlurCount: activeExecution.framebufferStats?.sssBlurCount ?? 0,
                 ...(spriteStats ? { spriteBatchCacheHit: spriteStats.cacheHit === true } : {}),
                 warnings: Object.freeze(warnings),
             });
@@ -755,6 +831,12 @@ export class SceneRenderPipeline {
         }
     }
 
+    private _disposeFramebufferRuntime(): void {
+        this._framebufferRuntime?.dispose();
+        this._framebufferRuntime = null;
+        this._framebufferFrame = -1;
+    }
+
     reset(): void {
         this._activeExecution = null;
         this._primitiveCache.clear();
@@ -766,6 +848,7 @@ export class SceneRenderPipeline {
         this._backend.dispose();
         this._backend = this._createBackend();
         this._pipeline = this._createPipeline();
+        this._disposeFramebufferRuntime();
     }
 
     /**
@@ -786,6 +869,8 @@ export class SceneRenderPipeline {
         this._backend.invalidateContextResources();
         this._pipeline.dispose();
         this._pipeline = this._createPipeline();
+        this._framebufferRuntime?.invalidateContextResources();
+        this._framebufferFrame = -1;
     }
 
     dispose(): void {
@@ -797,6 +882,7 @@ export class SceneRenderPipeline {
         this._options.billboardBatchRuntime?.clear();
         this._activeExecution = null;
         this._primitiveCache.clear();
+        this._disposeFramebufferRuntime();
     }
 }
 
