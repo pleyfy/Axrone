@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-18T22:24:49.332Z",
+  "generatedAt": "2026-11-19T08:25:44.903Z",
   "engineVersion": "0.0.1",
   "packages": [
     {
@@ -8933,6 +8933,7 @@
         "GLTF_TOON_OUTLINE_SHADER_EFFECT",
         "GLTF_TOON_SHADER_EFFECT",
         "GLTF_UNLIT_SHADER_EFFECT",
+        "GLTF_VOLUME_SHADER_EFFECT",
         "GLTF_WATER_SHADER_EFFECT",
         "POST_PROCESS_CONTRACT_SHADER_EFFECT",
         "V2_BUILTIN_SHADER_EFFECTS",
@@ -8949,6 +8950,7 @@
         "createGltfToonOutlineShaderEffect",
         "createGltfToonShaderEffect",
         "createGltfUnlitShaderDefinition",
+        "createGltfVolumeShaderEffect",
         "createGltfWaterShaderEffect",
         "createPostProcessContractShaderEffect",
         "loadGltfSceneIntoScene",
@@ -19241,6 +19243,11 @@
       "kind": "const"
     },
     {
+      "name": "createGltfVolumeShaderEffect",
+      "package": "@axrone/scene-runtime-gltf",
+      "kind": "const"
+    },
+    {
       "name": "createGltfWaterShaderEffect",
       "package": "@axrone/scene-runtime-gltf",
       "kind": "const"
@@ -23902,6 +23909,11 @@
     },
     {
       "name": "GLTF_UNLIT_SHADER_EFFECT",
+      "package": "@axrone/scene-runtime-gltf",
+      "kind": "const"
+    },
+    {
+      "name": "GLTF_VOLUME_SHADER_EFFECT",
       "package": "@axrone/scene-runtime-gltf",
       "kind": "const"
     },
@@ -47601,6 +47613,12 @@
       "package": "@axrone/scene-runtime-gltf"
     },
     {
+      "name": "createGltfVolumeShaderEffect",
+      "kind": "const",
+      "code": "declare const createGltfVolumeShaderEffect: (id: string) => RenderShaderEffectDefinition;",
+      "package": "@axrone/scene-runtime-gltf"
+    },
+    {
       "name": "createGltfWaterShaderEffect",
       "kind": "const",
       "code": "declare const createGltfWaterShaderEffect: (id: string) => RenderShaderEffectDefinition;",
@@ -50856,6 +50874,12 @@
       "name": "GLTF_UNLIT_SHADER_EFFECT",
       "kind": "const",
       "code": "declare const GLTF_UNLIT_SHADER_EFFECT: RenderShaderEffectDefinition;",
+      "package": "@axrone/scene-runtime-gltf"
+    },
+    {
+      "name": "GLTF_VOLUME_SHADER_EFFECT",
+      "kind": "const",
+      "code": "declare const GLTF_VOLUME_SHADER_EFFECT: RenderShaderEffectDefinition;",
       "package": "@axrone/scene-runtime-gltf"
     },
     {

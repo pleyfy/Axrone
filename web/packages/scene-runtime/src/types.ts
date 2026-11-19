@@ -218,7 +218,8 @@ export type SceneMaterialShadingModel =
     | 'particle'
     | 'composable'
     | 'decal'
-    | 'post-process';
+    | 'post-process'
+    | 'volume';
 export type SceneMaterialAlphaMode = 'opaque' | 'mask' | 'blend';
 export type SceneMaterialUvSet = 0 | 1;
 

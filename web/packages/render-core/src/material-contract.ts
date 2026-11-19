@@ -9,7 +9,8 @@ export type MaterialModelV2Id =
     | 'particle'
     | 'composable'
     | 'decal'
-    | 'post-process';
+    | 'post-process'
+    | 'volume';
 export type MaterialModelId = MaterialModelV2Id;
 export type MaterialDomainId = 'surface' | 'decal' | 'post-process' | 'volume';
 export type MaterialStageId = 'vertex' | 'fragment';
@@ -35,7 +36,8 @@ export type MaterialCompilerFamily =
     | 'particle'
     | 'gltf/composable'
     | 'gltf/decal'
-    | 'post-process';
+    | 'post-process'
+    | 'gltf/volume';
 
 export interface MaterialOutputSlotDefinition {
     readonly key: string;
@@ -1003,6 +1005,7 @@ const V2_MODEL_ID_VALUES: readonly MaterialModelV2Id[] = [
     'composable',
     'decal',
     'post-process',
+    'volume',
 ];
 const V1_DOMAIN_ID_VALUES: readonly MaterialDomainId[] = ['surface'];
 const V2_DOMAIN_ID_VALUES: readonly MaterialDomainId[] = [
@@ -1045,6 +1048,7 @@ const V2_COMPILER_FAMILY_VALUES: readonly MaterialCompilerFamily[] = [
     'gltf/composable',
     'gltf/decal',
     'post-process',
+    'gltf/volume',
 ];
 const CULL_MODE_VALUES: readonly NonNullable<MaterialPassPlanEntryDefinition['cullMode']>[] = [
     'none',
