@@ -36,15 +36,24 @@ public static class SceneGlBlendStateMapper
     private const uint EquationMax = 0x8008;
 
     /// <summary>Resolves the blend mapping for one material draw.</summary>
+    /// <param name="material">Material being drawn.</param>
+    /// <param name="pass">Render pass currently executing.</param>
+    /// <param name="transparent">Whether the draw was queued as transparent.</param>
+    /// <param name="materialPass">
+    /// Material pass matched by <paramref name="pass"/>. When omitted the material's
+    /// primary pass is used, which keeps single-pass callers unchanged while letting a
+    /// multi-pass plan enable blending only on the pass that needs it.
+    /// </param>
     public static SceneGlBlendMapping Resolve(
         SceneGlMaterial material,
         SceneRenderPassDefinition pass,
-        bool transparent)
+        bool transparent,
+        SceneMaterialPass? materialPass = null)
     {
         ArgumentNullException.ThrowIfNull(material);
         ArgumentNullException.ThrowIfNull(pass);
 
-        SceneMaterialPass? materialPass = material.PrimaryPass;
+        materialPass ??= material.PrimaryPass;
         SceneBlendState? explicitState = materialPass?.BlendState;
         bool enabled = explicitState?.Enabled ??
             materialPass?.Blend ??
