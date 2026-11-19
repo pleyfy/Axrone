@@ -602,6 +602,13 @@ public sealed class SceneGlAssetCache : IDisposable
             AddTextureSlot(slots, "u_SubsurfaceMap", 13, surface.SubsurfaceMap, materialId, extension: true);
         }
 
+        if (surface.OpacityMap is { } opacityMap &&
+            !definition.TextureUniforms.ContainsKey("_OpacityTexture"))
+        {
+            int opacityUnit = opacityMap.Unit ?? NextFreeTextureUnit(slots);
+            AddTextureSlot(slots, "_OpacityTexture", opacityUnit, opacityMap, materialId, extension: false);
+        }
+
         var textureDiagnostics = new List<SceneGlUniformBindingDiagnostic>();
         BindTextureUniforms(slots, definition, shader, textureDiagnostics);
 

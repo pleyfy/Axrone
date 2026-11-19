@@ -61,7 +61,7 @@ public static class SceneGltfShaders
 
     private static readonly string[] PbrVertexBody =
     [
-        "    vec4 worldPosition = u_Model * vec4(a_Position, 1.0);",
+        "    vec4 worldPosition = u_Model * vec4(a_Position + _VertexOffset, 1.0);",
         "    v_WorldPosition = worldPosition.xyz;",
         "    v_WorldNormal = normalize(mat3(u_Model) * a_Normal);",
         "    v_WorldTangent = vec4(normalize(mat3(u_Model) * a_Tangent.xyz), a_Tangent.w);",
@@ -72,7 +72,7 @@ public static class SceneGltfShaders
 
     private static readonly string[] ToonVertexBody =
     [
-        "    vec4 worldPosition = u_Model * vec4(a_Position, 1.0);",
+        "    vec4 worldPosition = u_Model * vec4(a_Position + _VertexOffset, 1.0);",
         "    v_WorldPosition = worldPosition.xyz;",
         "    v_WorldNormal = normalize(mat3(u_Model) * a_Normal);",
         "    v_UV0 = a_UV0;",
@@ -82,7 +82,7 @@ public static class SceneGltfShaders
 
     private static readonly string[] UnlitVertexBody =
     [
-        "    vec4 worldPosition = u_Model * vec4(a_Position, 1.0);",
+        "    vec4 worldPosition = u_Model * vec4(a_Position + _VertexOffset, 1.0);",
         "    v_WorldPosition = worldPosition.xyz;",
         "    v_UV0 = a_UV0;",
         "    v_UV1 = a_UV1;",
@@ -92,9 +92,14 @@ public static class SceneGltfShaders
     private static readonly string[] PbrFragmentBody =
     [
         "    vec4 baseColor = u_Albedo;",
+        "    baseColor.a *= clamp(_OpacityFactor, 0.0, 1.0);",
         "    if (_BaseColorTexture_TexCoord >= 0) {",
         "        vec2 uv = transformGltfUv(selectGltfUv(_BaseColorTexture_TexCoord, v_UV0, v_UV1), _BaseColorTexture_ST, _BaseColorTexture_Rotation);",
         "        baseColor *= texture(u_AlbedoMap, uv);",
+        "    }",
+        "    if (_OpacityTexture_TexCoord >= 0) {",
+        "        vec2 opUv = transformGltfUv(selectGltfUv(_OpacityTexture_TexCoord, v_UV0, v_UV1), _OpacityTexture_ST, _OpacityTexture_Rotation);",
+        "        baseColor.a *= texture(_OpacityTexture, opUv).r;",
         "    }",
         "    if (_AlphaMode == 1 && baseColor.a < u_AlphaCutoff) {",
         "        discard;",
@@ -179,7 +184,9 @@ public static class SceneGltfShaders
         "    if (_OcclusionTexture_TexCoord >= 0) {",
         "        vec2 uv = transformGltfUv(selectGltfUv(_OcclusionTexture_TexCoord, v_UV0, v_UV1), _OcclusionTexture_ST, _OcclusionTexture_Rotation);",
         "        float occlusion = texture(u_OcclusionMap, uv).r;",
-        "        color *= mix(1.0, occlusion, clamp(u_Occlusion, 0.0, 1.0));",
+        "        color *= mix(1.0, occlusion, clamp(u_Occlusion * clamp(_OcclusionFactor, 0.0, 1.0), 0.0, 1.0));",
+        "    } else {",
+        "        color *= clamp(_OcclusionFactor, 0.0, 1.0);",
         "    }",
         "",
         "    vec3 emissive = u_Emissive;",
@@ -187,7 +194,7 @@ public static class SceneGltfShaders
         "        vec2 uv = transformGltfUv(selectGltfUv(_EmissiveTexture_TexCoord, v_UV0, v_UV1), _EmissiveTexture_ST, _EmissiveTexture_Rotation);",
         "        emissive *= texture(u_EmissiveMap, uv).rgb;",
         "    }",
-        "    color += emissive;",
+        "    color += emissive * max(_EmissiveIntensity, 0.0);",
         "    color = gltfApplyFog(color, v_WorldPosition, u_CameraPosition);",
         "    color = gltfSoftCompressHighlights(color);",
         "    color = u_OutputGamma < 0.99",
@@ -201,9 +208,14 @@ public static class SceneGltfShaders
     private static readonly string[] ToonFragmentBody =
     [
         "    vec4 baseColor = u_Albedo;",
+        "    baseColor.a *= clamp(_OpacityFactor, 0.0, 1.0);",
         "    if (_BaseColorTexture_TexCoord >= 0) {",
         "        vec2 uv = transformGltfUv(selectGltfUv(_BaseColorTexture_TexCoord, v_UV0, v_UV1), _BaseColorTexture_ST, _BaseColorTexture_Rotation);",
         "        baseColor *= texture(u_AlbedoMap, uv);",
+        "    }",
+        "    if (_OpacityTexture_TexCoord >= 0) {",
+        "        vec2 opUv = transformGltfUv(selectGltfUv(_OpacityTexture_TexCoord, v_UV0, v_UV1), _OpacityTexture_ST, _OpacityTexture_Rotation);",
+        "        baseColor.a *= texture(_OpacityTexture, opUv).r;",
         "    }",
         "    if (_AlphaMode == 1 && baseColor.a < u_AlphaCutoff) {",
         "        discard;",
@@ -237,12 +249,13 @@ public static class SceneGltfShaders
         "        color = baseColor.rgb;",
         "    }",
         "",
+        "    color *= clamp(_OcclusionFactor, 0.0, 1.0);",
         "    vec3 emissive = u_Emissive;",
         "    if (_EmissiveTexture_TexCoord >= 0) {",
         "        vec2 uv = transformGltfUv(selectGltfUv(_EmissiveTexture_TexCoord, v_UV0, v_UV1), _EmissiveTexture_ST, _EmissiveTexture_Rotation);",
         "        emissive *= texture(u_EmissiveMap, uv).rgb;",
         "    }",
-        "    color += emissive;",
+        "    color += emissive * max(_EmissiveIntensity, 0.0);",
         "    color = gltfApplyFog(color, v_WorldPosition, u_CameraPosition);",
         "    color = u_OutputGamma < 0.99",
         "        ? linearToSrgb(color)",
@@ -255,15 +268,21 @@ public static class SceneGltfShaders
     private static readonly string[] UnlitFragmentBody =
     [
         "    vec4 baseColor = u_Albedo;",
+        "    baseColor.a *= clamp(_OpacityFactor, 0.0, 1.0);",
         "    if (_BaseColorTexture_TexCoord >= 0) {",
         "        vec2 uv = transformGltfUv(selectGltfUv(_BaseColorTexture_TexCoord, v_UV0, v_UV1), _BaseColorTexture_ST, _BaseColorTexture_Rotation);",
         "        baseColor *= texture(u_AlbedoMap, uv);",
+        "    }",
+        "    if (_OpacityTexture_TexCoord >= 0) {",
+        "        vec2 opUv = transformGltfUv(selectGltfUv(_OpacityTexture_TexCoord, v_UV0, v_UV1), _OpacityTexture_ST, _OpacityTexture_Rotation);",
+        "        baseColor.a *= texture(_OpacityTexture, opUv).r;",
         "    }",
         "    if (_AlphaMode == 1 && baseColor.a < u_AlphaCutoff) {",
         "        discard;",
         "    }",
         "    float alpha = _AlphaMode == 2 ? baseColor.a : 1.0;",
         "    vec3 color = gltfApplyFog(baseColor.rgb, v_WorldPosition, u_CameraPosition);",
+        "    color *= max(_EmissiveIntensity, 1.0);",
         "    color = u_OutputGamma < 0.99",
         "        ? linearToSrgb(color)",
         "        : pow(max(color, vec3(0.0)), vec3(u_OutputGamma));",
@@ -396,8 +415,7 @@ public static class SceneGltfShaders
 
         if (!TryClassify(id, out string? baseName))
         {
-            definition = null;
-            return false;
+            return SceneGltfShadersV2.TryCreate(id, names, out definition);
         }
 
         bool blend = id.AsSpan().Contains(BlendSuffix, StringComparison.Ordinal);
@@ -508,6 +526,18 @@ public static class SceneGltfShaders
         bool doubleSided = id.AsSpan().Contains(DoubleSidedSuffix, StringComparison.Ordinal);
         cache.Add(id, CreateCore(id, baseName, blend, doubleSided, names: null));
     }
+    internal static string BuildVertexSourcePublic(
+        ReadOnlySpan<SceneGltfShaderProperty> properties,
+        ReadOnlySpan<string> attributes,
+        ReadOnlySpan<string> varyings,
+        ReadOnlySpan<string> body) => BuildVertexSource(properties, attributes, varyings, body);
+
+    internal static string BuildFragmentSourcePublic(
+        ReadOnlySpan<SceneGltfShaderProperty> properties,
+        ReadOnlySpan<string> varyings,
+        ReadOnlySpan<string> libraryIds,
+        ReadOnlySpan<string> body) => BuildFragmentSource(properties, varyings, libraryIds, body);
+
     private static string BuildVertexSource(
         ReadOnlySpan<SceneGltfShaderProperty> properties,
         ReadOnlySpan<string> attributes,

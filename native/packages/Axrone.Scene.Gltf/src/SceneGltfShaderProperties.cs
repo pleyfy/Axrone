@@ -213,13 +213,16 @@ public static class SceneGltfShaderProperties
             names.Add(property.Name);
         }
 
+        SceneGltfShadersV2.AppendKnownProperties(names);
+
         return names.ToFrozenSet(StringComparer.Ordinal);
     }
 
     private static SceneGltfShaderProperty[] BuildUnlit()
     {
-        var properties = new List<SceneGltfShaderProperty>(32);
+        var properties = new List<SceneGltfShaderProperty>(40);
         AppendVertexTransform(properties);
+        properties.Add(VertexMaterial("_VertexOffset", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Camera("u_CameraPosition", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Material("u_Albedo", SceneGltfShaderPropertyType.Vec4));
         properties.Add(Material("u_AlphaCutoff", SceneGltfShaderPropertyType.Float));
@@ -228,14 +231,18 @@ public static class SceneGltfShaderProperties
         AppendFog(properties);
         AppendAlphaProperties(properties);
         properties.Add(Material("_BaseColorFactor", SceneGltfShaderPropertyType.Vec4));
+        properties.Add(Material("_OpacityFactor", SceneGltfShaderPropertyType.Float));
+        properties.Add(Material("_EmissiveIntensity", SceneGltfShaderPropertyType.Float));
         AppendTextureProperties(properties, TextureUniformSpecArray[0]);
+        AppendOpacityMapProperties(properties);
         return [.. properties];
     }
 
     private static SceneGltfShaderProperty[] BuildPbr()
     {
-        var properties = new List<SceneGltfShaderProperty>(160);
+        var properties = new List<SceneGltfShaderProperty>(176);
         AppendVertexTransform(properties);
+        properties.Add(VertexMaterial("_VertexOffset", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Camera("u_CameraPosition", SceneGltfShaderPropertyType.Vec3));
         properties.Add(SystemProperty("u_ReceiveLighting", SceneGltfShaderPropertyType.Bool));
         AppendLighting(properties);
@@ -301,13 +308,18 @@ public static class SceneGltfShaderProperties
         properties.Add(Material("_SubsurfaceColorFactor", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Material("_SubsurfaceThickness", SceneGltfShaderPropertyType.Float));
         AppendTextureProperties(properties, TextureUniformSpecArray[17]);
+        properties.Add(Material("_OcclusionFactor", SceneGltfShaderPropertyType.Float));
+        properties.Add(Material("_EmissiveIntensity", SceneGltfShaderPropertyType.Float));
+        properties.Add(Material("_OpacityFactor", SceneGltfShaderPropertyType.Float));
+        AppendOpacityMapProperties(properties);
         return [.. properties];
     }
 
     private static SceneGltfShaderProperty[] BuildToon()
     {
-        var properties = new List<SceneGltfShaderProperty>(64);
+        var properties = new List<SceneGltfShaderProperty>(72);
         AppendVertexTransform(properties);
+        properties.Add(VertexMaterial("_VertexOffset", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Camera("u_CameraPosition", SceneGltfShaderPropertyType.Vec3));
         properties.Add(SystemProperty("u_ReceiveLighting", SceneGltfShaderPropertyType.Bool));
         AppendLighting(properties);
@@ -319,8 +331,12 @@ public static class SceneGltfShaderProperties
         AppendFog(properties);
         AppendAlphaProperties(properties);
         properties.Add(Material("_BaseColorFactor", SceneGltfShaderPropertyType.Vec4));
+        properties.Add(Material("_OpacityFactor", SceneGltfShaderPropertyType.Float));
+        properties.Add(Material("_OcclusionFactor", SceneGltfShaderPropertyType.Float));
         AppendTextureProperties(properties, TextureUniformSpecArray[0]);
+        AppendOpacityMapProperties(properties);
         properties.Add(Material("_EmissiveFactor", SceneGltfShaderPropertyType.Vec3));
+        properties.Add(Material("_EmissiveIntensity", SceneGltfShaderPropertyType.Float));
         AppendTextureProperties(properties, TextureUniformSpecArray[4]);
         properties.Add(Material("_ShadowColor", SceneGltfShaderPropertyType.Vec3));
         properties.Add(Material("_ShadowThreshold", SceneGltfShaderPropertyType.Float));
@@ -423,6 +439,17 @@ public static class SceneGltfShaderProperties
 
     private static SceneGltfShaderProperty Material(string name, SceneGltfShaderPropertyType type) =>
         new(name, type, SceneGltfShaderStage.Fragment, SceneGltfShaderScope.Material);
+
+    private static SceneGltfShaderProperty VertexMaterial(string name, SceneGltfShaderPropertyType type) =>
+        new(name, type, SceneGltfShaderStage.Vertex, SceneGltfShaderScope.Material);
+
+    private static void AppendOpacityMapProperties(List<SceneGltfShaderProperty> properties)
+    {
+        properties.Add(Material("_OpacityTexture", SceneGltfShaderPropertyType.Sampler2D));
+        properties.Add(Material("_OpacityTexture_ST", SceneGltfShaderPropertyType.Vec4));
+        properties.Add(Material("_OpacityTexture_Rotation", SceneGltfShaderPropertyType.Float));
+        properties.Add(Material("_OpacityTexture_TexCoord", SceneGltfShaderPropertyType.Int));
+    }
 
     private static SceneGltfShaderProperty Object(string name, SceneGltfShaderPropertyType type) =>
         new(name, type, SceneGltfShaderStage.Vertex, SceneGltfShaderScope.Object);

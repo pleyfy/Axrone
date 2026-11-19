@@ -118,7 +118,13 @@ public sealed class SceneGlDrawExecutor
                 continue;
             }
 
-            SceneGlShader shader = material.Shader;
+            SceneMaterialPass? matchedPass = ResolveMaterialPass(material.Definition.Passes, pass.Id);
+            if (!IsPassEnabled(matchedPass, material.Definition.Uniforms))
+            {
+                continue;
+            }
+
+            SceneGlShader shader = ResolvePassShader(matchedPass) ?? material.Shader;
             shader.Bind();
 
             Mat4 model = world.GetWorldMatrix3D(item.Actor);
@@ -227,6 +233,10 @@ public sealed class SceneGlDrawExecutor
         shader.SetVec3(EmissiveUniform, in emissive);
         shader.SetVec2(TilingUniform, in tiling);
         shader.SetVec2(OffsetUniform, in offset);
+        shader.SetFloat("_OcclusionFactor", surface.Occlusion);
+        shader.SetFloat("_EmissiveIntensity", surface.EmissiveIntensity);
+        shader.SetFloat("_OpacityFactor", 1.0f);
+        shader.SetInt("_OpacityTexture_TexCoord", -1);
     }
 
     internal static void ApplyLighting(SceneGlShader shader, in LightingValues lights)
@@ -320,7 +330,7 @@ public sealed class SceneGlDrawExecutor
         ArgumentNullException.ThrowIfNull(material);
         ArgumentNullException.ThrowIfNull(pass);
 
-        SceneMaterialPass? materialPass = material.PrimaryPass;
+        SceneMaterialPass? materialPass = ResolveMaterialPass(material.Definition.Passes, pass.Id) ?? material.PrimaryPass;
         SceneGlShaderState authored = material.ShaderState;
 
         bool depthTest = materialPass?.DepthTest ?? pass.DepthTest ?? authored.DepthTest;
@@ -329,7 +339,13 @@ public sealed class SceneGlDrawExecutor
         context.State.SetDepthTest(depthTest);
         context.State.SetDepthMask(depthWrite);
         context.State.SetCullFace(cull);
-        context.State.SetCullMode(MapCullMode(cull ? authored.Cull : SceneGlCullMode.Back));
+        SceneGlCullMode cullMode = materialPass?.CullMode switch
+        {
+            "front" => SceneGlCullMode.Front,
+            "back" => SceneGlCullMode.Back,
+            _ => authored.Cull
+        };
+        context.State.SetCullMode(MapCullMode(cull ? cullMode : SceneGlCullMode.Back));
         SceneGlBlendMapping mapping = SceneGlBlendStateMapper.Resolve(material, pass, transparent);
         context.State.SetBlend(mapping.Enabled);
 
@@ -342,6 +358,57 @@ public sealed class SceneGlDrawExecutor
                 mapping.DestinationAlpha);
             context.State.SetBlendEquationSeparate(mapping.ColorEquation, mapping.AlphaEquation);
         }
+    }
+
+    private SceneGlShader? ResolvePassShader(SceneMaterialPass? materialPass)
+    {
+        if (materialPass?.ShaderId is { Length: > 0 } shaderName &&
+            _assets.TryGetShader(SceneAssetId<ShaderAssetTag>.FromName(shaderName), out SceneGlShader? passShader))
+        {
+            return passShader;
+        }
+
+        return null;
+    }
+
+    private static SceneMaterialPass? ResolveMaterialPass(
+        IReadOnlyList<SceneMaterialPass> passes,
+        SceneAssetId<RenderPassAssetTag> passId)
+    {
+        string targetId = passId.ToString();
+        for (int i = 0; i < passes.Count; i++)
+        {
+            if (string.Equals(passes[i].Id, targetId, StringComparison.Ordinal) ||
+                string.Equals(passes[i].Phase, targetId, StringComparison.Ordinal))
+            {
+                return passes[i];
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsPassEnabled(
+        SceneMaterialPass? materialPass,
+        IReadOnlyDictionary<string, SceneUniformValue> uniforms)
+    {
+        if (materialPass?.EnabledWhenUniformNonZero is not { Length: > 0 } uniformName)
+        {
+            return true;
+        }
+
+        if (!uniforms.TryGetValue(uniformName, out SceneUniformValue value))
+        {
+            return false;
+        }
+
+        return value.Kind switch
+        {
+            SceneUniformKind.Float => MathF.Abs(value.X) > 0.0001f,
+            SceneUniformKind.Int => value.I != 0,
+            SceneUniformKind.Bool => value.B,
+            _ => true
+        };
     }
 
     private static uint MapCullMode(SceneGlCullMode mode) => mode switch
