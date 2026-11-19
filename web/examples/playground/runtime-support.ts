@@ -1,4 +1,4 @@
-import { Transform } from '@axrone/ecs-runtime';
+﻿import { Transform } from '@axrone/ecs-runtime';
 import { Quat, Vec3 } from '@axrone/numeric';
 import {
 	MeshRenderer,
@@ -67,9 +67,11 @@ export const createSceneStage = (
 		readonly height?: number;
 		readonly clearColor?: readonly [number, number, number, number];
 		readonly ambientLight?: readonly [number, number, number];
+		readonly background?: string;
 	},
 ): SceneStage => {
 	container.replaceChildren();
+	container.style.background = options.background ?? '';
 	const width = container.clientWidth || options.width || 960;
 	const height = container.clientHeight || options.height || 540;
 	const scene = new Scene({
@@ -79,6 +81,7 @@ export const createSceneStage = (
 		parent: container,
 		appendToDom: true,
 		createCanvas: () => document.createElement('canvas'),
+		contextAttributes: { alpha: true, premultipliedAlpha: false },
 		clearColor: options.clearColor,
 		ambientLight: options.ambientLight,
 	});
@@ -342,6 +345,161 @@ void main() {
 	});
 
 	return { solid, lit, vertexColorLit, grid };
+};
+
+export const registerStudioLitShader = (scene: Scene, shaderId: string): string => {
+	scene.registerShader({
+		id: shaderId,
+		vertexSource: `#version 300 es
+layout(location = 0) in vec3 a_Position;
+layout(location = 1) in vec3 a_Normal;
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+out vec3 v_WorldNormal;
+out vec3 v_WorldPosition;
+void main() {
+	vec4 worldPosition = u_Model * vec4(a_Position, 1.0);
+	v_WorldPosition = worldPosition.xyz;
+	v_WorldNormal = mat3(u_Model) * a_Normal;
+	gl_Position = u_Projection * u_View * worldPosition;
+}`,
+		fragmentSource: `#version 300 es
+precision highp float;
+uniform vec4 u_Color;
+uniform vec3 u_AmbientColor;
+uniform vec3 u_KeyLightDirection;
+uniform vec3 u_KeyLightColor;
+uniform vec3 u_FillLightDirection;
+uniform vec3 u_FillLightColor;
+uniform vec3 u_RimColor;
+uniform float u_RimStrength;
+uniform float u_Shininess;
+uniform vec3 u_CameraPosition;
+in vec3 v_WorldNormal;
+in vec3 v_WorldPosition;
+out vec4 o_Color;
+
+vec3 softClip(vec3 color) {
+	float peak = max(color.r, max(color.g, color.b));
+	return peak > 0.92 ? color * (0.92 / peak) : color;
+}
+
+void main() {
+	vec3 normal = normalize(v_WorldNormal);
+	vec3 viewDirection = normalize(u_CameraPosition - v_WorldPosition);
+	vec3 keyDirection = normalize(-u_KeyLightDirection);
+	vec3 fillDirection = normalize(-u_FillLightDirection);
+	float keyDiffuse = max(dot(normal, keyDirection), 0.0);
+	float fillDiffuse = max(dot(normal, fillDirection), 0.0);
+	vec3 halfVector = normalize(keyDirection + viewDirection);
+	float specular = pow(max(dot(normal, halfVector), 0.0), max(2.0, u_Shininess)) * 0.08;
+	float rim = pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
+	float topLight = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);
+	vec3 lighting = u_AmbientColor + u_KeyLightColor * keyDiffuse + u_FillLightColor * fillDiffuse;
+	vec3 color = u_Color.rgb * lighting * mix(0.94, 1.06, topLight);
+	color += u_RimColor * rim * u_RimStrength;
+	color += vec3(specular);
+	o_Color = vec4(softClip(color), u_Color.a);
+}`,
+		uniforms: [
+			'u_Model',
+			'u_View',
+			'u_Projection',
+			'u_Color',
+			'u_AmbientColor',
+			'u_KeyLightDirection',
+			'u_KeyLightColor',
+			'u_FillLightDirection',
+			'u_FillLightColor',
+			'u_RimColor',
+			'u_RimStrength',
+			'u_Shininess',
+			'u_CameraPosition',
+		],
+	});
+	return shaderId;
+};
+
+export type ContactShadowHandle = {
+	readonly actor: Actor;
+	readonly transform: Transform;
+};
+
+export const createContactShadow = (
+	scene: Scene,
+	options: {
+		readonly prefix: string;
+		readonly size?: number;
+		readonly y?: number;
+		readonly color?: readonly [number, number, number, number];
+	},
+): ContactShadowHandle => {
+	const meshId = `${options.prefix}/shadow-mesh`;
+	const shaderId = `${options.prefix}/shadow-shader`;
+	const materialId = `${options.prefix}/shadow-material`;
+	const size = options.size ?? 2.4;
+	const color = options.color ?? [0.12, 0.09, 0.06, 0.3];
+
+	scene.createPlaneMesh(meshId, 1, 1);
+	scene.registerShader({
+		id: shaderId,
+		vertexSource: `#version 300 es
+layout(location = 0) in vec3 a_Position;
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+out vec2 v_Local;
+void main() {
+	v_Local = a_Position.xz;
+	gl_Position = u_Projection * u_View * u_Model * vec4(a_Position, 1.0);
+}`,
+		fragmentSource: `#version 300 es
+precision highp float;
+uniform vec4 u_Color;
+in vec2 v_Local;
+out vec4 o_Color;
+void main() {
+	float distanceToCenter = length(v_Local) * 2.0;
+	float alpha = 1.0 - smoothstep(0.05, 1.0, distanceToCenter);
+	alpha = pow(alpha, 1.6);
+	o_Color = vec4(u_Color.rgb, u_Color.a * alpha);
+}`,
+		uniforms: ['u_Model', 'u_View', 'u_Projection', 'u_Color'],
+	});
+	scene.createMaterial({
+		id: materialId,
+		shaderId,
+		uniforms: { u_Color: color },
+		surface: { alphaMode: 'blend' },
+		passes: [
+			{
+				id: `${options.prefix}/shadow-pass`,
+				primitive: 'triangle-list',
+				depthStencilState: { depthTest: true, depthWrite: false },
+				blendState: {
+					targets: [
+						{
+							blend: true,
+							srcColorFactor: 'src-alpha',
+							dstColorFactor: 'one-minus-src-alpha',
+							srcAlphaFactor: 'one',
+							dstAlphaFactor: 'one-minus-src-alpha',
+						},
+					],
+				},
+			},
+		],
+	});
+	const actor = scene.createRenderableActor(
+		{ name: `${options.prefix}-shadow` },
+		{ meshId, materialId, receiveLighting: false },
+	);
+	const transform = actor.requireComponent(Transform);
+	transform.position = new Vec3(0, options.y ?? 0.02, 0);
+	transform.scale = new Vec3(size, 1, size);
+
+	return { actor, transform };
 };
 
 export const createGridOverlay = (

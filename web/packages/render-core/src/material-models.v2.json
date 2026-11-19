@@ -79,19 +79,20 @@
         {
             "id": "volume",
             "label": "Volume",
-            "description": "Planned volumetric density and scattering contract (raymarch pass not yet active).",
+            "description": "Volumetric density raymarching with Beer-Lambert absorption and Henyey-Greenstein phase scattering.",
+            "defaultModelId": "volume",
             "supportsVertexOffset": false,
             "supportsDepthOffset": false,
             "capabilities": [
                 {
                     "profile": "webgl2-standard",
-                    "status": "unsupported",
-                    "notes": "Reserved domain contract; volumetric raymarch pass is not implemented yet."
+                    "status": "supported",
+                    "notes": "Volumetric raymarch pass executes Beer-Lambert density and anisotropic scattering via gltf/volume."
                 },
                 {
                     "profile": "webgl2-minimal",
                     "status": "unsupported",
-                    "notes": "Volumetric materials are unsupported on the minimal profile."
+                    "notes": "Volumetric raymarching is unsupported on the minimal profile."
                 },
                 {
                     "profile": "native",
@@ -552,6 +553,23 @@
                 {
                     "id": "shadow-caster",
                     "phase": "shadow-caster"
+                },
+                {
+                    "id": "refraction-copy",
+                    "phase": "refraction",
+                    "shaderId": "gltf/refraction-copy",
+                    "depthTest": false,
+                    "depthWrite": false,
+                    "enabledWhenUniformNonZero": "_TransmissionFactor"
+                },
+                {
+                    "id": "sss-blur",
+                    "phase": "subsurface",
+                    "shaderId": "gltf/sss-blur",
+                    "depthTest": false,
+                    "depthWrite": false,
+                    "blend": true,
+                    "enabledWhenUniformNonZero": "_SubsurfaceFactor"
                 }
             ],
             "capabilities": [
@@ -2992,6 +3010,23 @@
                 {
                     "id": "shadow-caster",
                     "phase": "shadow-caster"
+                },
+                {
+                    "id": "refraction-copy",
+                    "phase": "refraction",
+                    "shaderId": "gltf/refraction-copy",
+                    "depthTest": false,
+                    "depthWrite": false,
+                    "enabledWhenUniformNonZero": "_TransmissionFactor"
+                },
+                {
+                    "id": "sss-blur",
+                    "phase": "subsurface",
+                    "shaderId": "gltf/sss-blur",
+                    "depthTest": false,
+                    "depthWrite": false,
+                    "blend": true,
+                    "enabledWhenUniformNonZero": "_SubsurfaceFactor"
                 }
             ],
             "capabilities": [
@@ -3460,6 +3495,168 @@
                 }
             ],
             "defaultTemplateId": "post-process-vignette-grade"
+        },
+        {
+            "contractVersion": 2,
+            "id": "volume",
+            "label": "Volume",
+            "description": "Volumetric raymarched medium with Beer-Lambert extinction, 3D FBM density advection, and Henyey-Greenstein phase scattering.",
+            "domain": "volume",
+            "compilerFamily": "gltf/volume",
+            "defaultShaderId": "gltf/volume",
+            "stages": [
+                {
+                    "stage": "vertex",
+                    "label": "Vertex Stage",
+                    "defaultCollapsed": true,
+                    "slots": [
+                        "vertexOffset"
+                    ]
+                },
+                {
+                    "stage": "fragment",
+                    "label": "Volume Raymarch Stage",
+                    "defaultCollapsed": false,
+                    "slots": [
+                        "baseColor",
+                        "volumeDensity",
+                        "volumeAbsorption",
+                        "volumeScatterColor",
+                        "volumeAnisotropy",
+                        "emission",
+                        "emissionIntensity"
+                    ]
+                }
+            ],
+            "outputSlots": [
+                {
+                    "key": "vertexOffset",
+                    "label": "Vertex Offset",
+                    "stage": "vertex",
+                    "section": "vertex",
+                    "valueType": "vec3",
+                    "bindingKey": "_VertexOffset",
+                    "semantic": "vertex.offset",
+                    "defaultValue": "[0, 0, 0]",
+                    "optional": true,
+                    "capability": "unsupported",
+                    "description": "Volumetric bounds ignore per-vertex displacement."
+                },
+                {
+                    "key": "baseColor",
+                    "label": "Albedo Scatter",
+                    "stage": "fragment",
+                    "section": "volume",
+                    "valueType": "vec3",
+                    "bindingKey": "_BaseColorFactor",
+                    "semantic": "volume.albedo",
+                    "defaultValue": "[0.85, 0.9, 0.95]",
+                    "capability": "supported"
+                },
+                {
+                    "key": "volumeDensity",
+                    "label": "Volume Density",
+                    "stage": "fragment",
+                    "section": "volume",
+                    "valueType": "float",
+                    "bindingKey": "_VolumeDensity",
+                    "semantic": "volume.density",
+                    "defaultValue": "1.2",
+                    "optional": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "volumeAbsorption",
+                    "label": "Absorption Rate",
+                    "stage": "fragment",
+                    "section": "volume",
+                    "valueType": "float",
+                    "bindingKey": "_VolumeAbsorption",
+                    "semantic": "volume.absorption",
+                    "defaultValue": "0.85",
+                    "optional": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "volumeScatterColor",
+                    "label": "Scatter Tint",
+                    "stage": "fragment",
+                    "section": "volume",
+                    "valueType": "vec3",
+                    "bindingKey": "_VolumeScatterColor",
+                    "semantic": "volume.scatterColor",
+                    "defaultValue": "[0.95, 0.98, 1]",
+                    "optional": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "volumeAnisotropy",
+                    "label": "Phase Anisotropy (g)",
+                    "stage": "fragment",
+                    "section": "volume",
+                    "valueType": "float",
+                    "bindingKey": "_VolumeAnisotropy",
+                    "semantic": "volume.anisotropy",
+                    "defaultValue": "0.45",
+                    "optional": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "emission",
+                    "label": "Emission",
+                    "stage": "fragment",
+                    "section": "volume",
+                    "valueType": "vec3",
+                    "bindingKey": "_EmissiveFactor",
+                    "semantic": "surface.emission",
+                    "defaultValue": "[0, 0, 0]",
+                    "optional": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "emissionIntensity",
+                    "label": "Emission Intensity",
+                    "stage": "fragment",
+                    "section": "volume",
+                    "valueType": "float",
+                    "bindingKey": "_EmissiveIntensity",
+                    "semantic": "surface.emissionIntensity",
+                    "defaultValue": "1",
+                    "optional": true,
+                    "advanced": true,
+                    "capability": "supported"
+                }
+            ],
+            "passPlan": [
+                {
+                    "id": "volume-raymarch",
+                    "phase": "volume",
+                    "shaderId": "gltf/volume",
+                    "cullMode": "front",
+                    "depthTest": true,
+                    "depthWrite": false,
+                    "blend": true,
+                    "required": true
+                }
+            ],
+            "capabilities": [
+                {
+                    "profile": "webgl2-standard",
+                    "status": "supported",
+                    "notes": "16-step volumetric raymarch, Beer-Lambert optical absorption, and phase scattering execute via gltf/volume."
+                },
+                {
+                    "profile": "webgl2-minimal",
+                    "status": "unsupported",
+                    "notes": "Volumetric raymarching is omitted on the minimal WebGL2 profile."
+                },
+                {
+                    "profile": "native",
+                    "status": "unsupported",
+                    "notes": "C# native runtime parity for V2 models is scheduled for a follow-up wave."
+                }
+            ],
+            "defaultTemplateId": "volume-fog-cloud"
         }
     ]
 }

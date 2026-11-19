@@ -3,8 +3,8 @@ import { createParticleSystemScene } from './scene';
 
 const example: PlaygroundSceneExample = {
 	id: 'particle-system',
-	title: 'Particle System',
-	description: 'Three.js-style floating particle cloud rebuilt with Axrone point rendering and emitter utilities.',
+	title: 'Particle Nebula',
+	description: 'Emerald particle nebula with soft additive embers, drifting dust, and layered depth.',
 	mount({ container }) {
 		return createParticleSystemScene(container);
 	},

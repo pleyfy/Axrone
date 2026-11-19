@@ -27,6 +27,29 @@ export type { SceneRenderRuntimeOptions, SceneRenderRuntimeParams } from './scen
 export { SceneRenderRuntime } from './scene-render-runtime';
 export { SceneRenderPipeline } from './scene-render-pipeline';
 export type {
+    SceneFramebufferPassDefinition,
+    SceneFramebufferPassId,
+} from './scene-framebuffer-passes';
+export {
+    getSceneFramebufferPassDefinition,
+    isSceneFramebufferPassId,
+    planSceneFramebufferPasses,
+    REFRACTION_COPY_PASS_ID,
+    SCENE_COLOR_COPY_TEXTURE_ID,
+    SCENE_COLOR_COPY_UNIFORM_NAME,
+    SCENE_FRAMEBUFFER_PASS_DEFINITIONS,
+    SCENE_FRAMEBUFFER_RENDERER_PASS_ID,
+    SSS_BLUR_PASS_ID,
+    SSS_BLUR_TEXTURE_ID,
+    SSS_BLUR_UNIFORM_NAME,
+    toSceneRenderPassDefinitions,
+} from './scene-framebuffer-passes';
+export type {
+    SceneFramebufferPassStats,
+    SceneFramebufferTextureBindings,
+} from './scene-offscreen-framebuffer-passes';
+export { SceneFramebufferPassRuntime } from './scene-offscreen-framebuffer-passes';
+export type {
     SceneParticleBatchRuntimeOptions,
     SceneParticleBatchRuntimeRenderParams,
     SceneParticleBatchRuntimeRenderStats,

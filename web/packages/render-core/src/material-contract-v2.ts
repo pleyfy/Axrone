@@ -491,11 +491,114 @@ const makeCapabilities = (
 
 const NATIVE_PENDING_NOTE = 'C# native runtime parity for V2 models is scheduled for a follow-up wave.';
 
+export const MATERIAL_PASS_ID_REFRACTION_COPY = 'refraction-copy';
+export const MATERIAL_PASS_ID_SSS_BLUR = 'sss-blur';
+
+const EMPTY_PASS_PLAN: readonly MaterialPassPlanEntryDefinition[] = Object.freeze([]);
+
+const SHADER_ID_REFRACTION_COPY = 'gltf/refraction-copy';
+const SHADER_ID_SSS_BLUR = 'gltf/sss-blur';
+
 const standardSurfacePasses = (): readonly MaterialPassPlanEntryDefinition[] => [
     { id: 'main', phase: 'default', required: true },
     { id: 'forward-add', phase: 'forward-add' },
     { id: 'shadow-caster', phase: 'shadow-caster' },
 ];
+
+const pbrSurfacePasses = (): readonly MaterialPassPlanEntryDefinition[] => [
+    ...standardSurfacePasses(),
+    {
+        id: MATERIAL_PASS_ID_REFRACTION_COPY,
+        phase: 'refraction',
+        shaderId: SHADER_ID_REFRACTION_COPY,
+        depthTest: false,
+        depthWrite: false,
+        enabledWhenUniformNonZero: '_TransmissionFactor',
+    },
+    {
+        id: MATERIAL_PASS_ID_SSS_BLUR,
+        phase: 'subsurface',
+        shaderId: SHADER_ID_SSS_BLUR,
+        depthTest: false,
+        depthWrite: false,
+        blend: true,
+        enabledWhenUniformNonZero: '_SubsurfaceFactor',
+    },
+];
+
+export const findMaterialPassPlanEntryV2 = (
+    passPlan: readonly MaterialPassPlanEntryDefinition[] | undefined,
+    passId: string
+): MaterialPassPlanEntryDefinition | undefined => {
+    if (!passPlan) {
+        return undefined;
+    }
+
+    for (let index = 0; index < passPlan.length; index += 1) {
+        if (passPlan[index]!.id === passId) {
+            return passPlan[index];
+        }
+    }
+
+    return undefined;
+};
+
+const readGateUniform = (
+    uniforms: Readonly<Record<string, unknown>> | undefined,
+    uniformName: string
+): number | null => {
+    if (!uniforms) {
+        return null;
+    }
+
+    const value = uniforms[uniformName];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return null;
+    }
+
+    return value;
+};
+
+/**
+ * Evaluates one `passPlan` gate against live material uniforms. `required`
+ * entries are always enabled; a gate the runtime cannot read (missing or
+ * non-numeric uniform) disables the entry rather than guessing.
+ */
+export const isMaterialPassPlanEntryEnabledV2 = (
+    entry: MaterialPassPlanEntryDefinition,
+    uniforms: Readonly<Record<string, unknown>> | undefined
+): boolean => {
+    const gate = entry.enabledWhenUniformNonZero;
+    if (gate === undefined) {
+        return true;
+    }
+
+    return (readGateUniform(uniforms, gate) ?? 0) > 0;
+};
+
+/**
+ * Resolves the pass plan a material actually contributes to the frame. This is
+ * the only reader of `enabledWhenUniformNonZero`; anything that used to treat
+ * a gated entry as unconditional now has to go through here.
+ */
+export const resolveEnabledMaterialPassPlanV2 = (
+    passPlan: readonly MaterialPassPlanEntryDefinition[] | undefined,
+    uniforms: Readonly<Record<string, unknown>> | undefined
+): readonly MaterialPassPlanEntryDefinition[] => {
+    if (!passPlan || passPlan.length === 0) {
+        return EMPTY_PASS_PLAN;
+    }
+
+    const enabled: MaterialPassPlanEntryDefinition[] = [];
+    for (let index = 0; index < passPlan.length; index += 1) {
+        const entry = passPlan[index]!;
+        if (isMaterialPassPlanEntryEnabledV2(entry, uniforms)) {
+            enabled.push(entry);
+        }
+    }
+
+    return enabled;
+};
 
 const buildStagesFromSlots = (
     slots: readonly MaterialOutputSlotDefinition[],
@@ -567,19 +670,21 @@ export const MATERIAL_DOMAINS_V2: readonly MaterialDomainDefinition[] = Object.f
     {
         id: 'volume',
         label: 'Volume',
-        description: 'Planned volumetric density and scattering contract (raymarch pass not yet active).',
+        description:
+            'Volumetric density raymarching with Beer-Lambert absorption and Henyey-Greenstein phase scattering.',
+        defaultModelId: 'volume',
         supportsVertexOffset: false,
         supportsDepthOffset: false,
         capabilities: [
             {
                 profile: 'webgl2-standard',
-                status: CAP_UNSUPPORTED,
-                notes: 'Reserved domain contract; volumetric raymarch pass is not implemented yet.',
+                status: CAP_SUPPORTED,
+                notes: 'Volumetric raymarch pass executes Beer-Lambert density and anisotropic scattering via gltf/volume.',
             },
             {
                 profile: 'webgl2-minimal',
                 status: CAP_UNSUPPORTED,
-                notes: 'Volumetric materials are unsupported on the minimal profile.',
+                notes: 'Volumetric raymarching is unsupported on the minimal profile.',
             },
             {
                 profile: 'native',
@@ -974,6 +1079,83 @@ const postProcessSlots = [
     depthOffsetSlot('post-process', '0'),
 ];
 
+const volumeSlots = [
+    makeSlot('vertexOffset', 'Vertex Offset', 'vertex', 'vertex', 'vec3', 'vertex.offset', {
+        bindingKey: '_VertexOffset',
+        defaultValue: '[0, 0, 0]',
+        optional: true,
+        capability: CAP_UNSUPPORTED,
+        description: 'Volumetric bounds ignore per-vertex displacement.',
+    }),
+    makeSlot('baseColor', 'Albedo Scatter', 'fragment', 'volume', 'vec3', 'volume.albedo', {
+        bindingKey: '_BaseColorFactor',
+        defaultValue: '[0.85, 0.9, 0.95]',
+    }),
+    makeSlot('volumeDensity', 'Volume Density', 'fragment', 'volume', 'float', 'volume.density', {
+        bindingKey: '_VolumeDensity',
+        defaultValue: '1.2',
+        optional: true,
+    }),
+    makeSlot(
+        'volumeAbsorption',
+        'Absorption Rate',
+        'fragment',
+        'volume',
+        'float',
+        'volume.absorption',
+        {
+            bindingKey: '_VolumeAbsorption',
+            defaultValue: '0.85',
+            optional: true,
+        }
+    ),
+    makeSlot(
+        'volumeScatterColor',
+        'Scatter Tint',
+        'fragment',
+        'volume',
+        'vec3',
+        'volume.scatterColor',
+        {
+            bindingKey: '_VolumeScatterColor',
+            defaultValue: '[0.95, 0.98, 1]',
+            optional: true,
+        }
+    ),
+    makeSlot(
+        'volumeAnisotropy',
+        'Phase Anisotropy (g)',
+        'fragment',
+        'volume',
+        'float',
+        'volume.anisotropy',
+        {
+            bindingKey: '_VolumeAnisotropy',
+            defaultValue: '0.45',
+            optional: true,
+        }
+    ),
+    makeSlot('emission', 'Emission', 'fragment', 'volume', 'vec3', 'surface.emission', {
+        bindingKey: '_EmissiveFactor',
+        defaultValue: '[0, 0, 0]',
+        optional: true,
+    }),
+    makeSlot(
+        'emissionIntensity',
+        'Emission Intensity',
+        'fragment',
+        'volume',
+        'float',
+        'surface.emissionIntensity',
+        {
+            bindingKey: '_EmissiveIntensity',
+            defaultValue: '1',
+            optional: true,
+            advanced: true,
+        }
+    ),
+];
+
 export const BUILTIN_MATERIAL_MODELS_V2: readonly MaterialModelDefinition[] = Object.freeze([
     {
         contractVersion: CONTRACT_VERSION_V2,
@@ -987,7 +1169,7 @@ export const BUILTIN_MATERIAL_MODELS_V2: readonly MaterialModelDefinition[] = Ob
         defaultTemplateId: 'pbr-standard',
         stages: buildStagesFromSlots(pbrSlots),
         outputSlots: pbrSlots,
-        passPlan: standardSurfacePasses(),
+        passPlan: pbrSurfacePasses(),
         capabilities: makeCapabilities(CAP_SUPPORTED, CAP_PARTIAL, {
             standard: 'Surface, AO, opacity map, and advanced lobes compile end-to-end; Vertex Offset runs in generated shaders.',
             minimal: 'Reduced light budget; clearcoat, sheen, anisotropy, subsurface, iridescence, and transmission are dropped.',
@@ -1170,7 +1352,7 @@ export const BUILTIN_MATERIAL_MODELS_V2: readonly MaterialModelDefinition[] = Ob
         defaultTemplateId: 'composable-layered-metal',
         stages: buildStagesFromSlots(composableSlots, true, 'Composable Stage'),
         outputSlots: composableSlots,
-        passPlan: standardSurfacePasses(),
+        passPlan: pbrSurfacePasses(),
         capabilities: makeCapabilities(CAP_SUPPORTED, CAP_PARTIAL, {
             standard: 'Surface Attributes node bundles and ordered layer stacks lower directly to PBR bindings/shaders.',
             minimal: 'Advanced PBR sections trimmed in minimal profile.',
@@ -1232,6 +1414,36 @@ export const BUILTIN_MATERIAL_MODELS_V2: readonly MaterialModelDefinition[] = Ob
         capabilities: makeCapabilities(CAP_SUPPORTED, CAP_PARTIAL, {
             standard: 'Fullscreen tint, vignette, saturation, contrast, and blend execute via post-process/contract.',
             minimal: 'Simplified tint and opacity compositing on minimal profile.',
+            native: NATIVE_PENDING_NOTE,
+        }),
+    },
+    {
+        contractVersion: CONTRACT_VERSION_V2,
+        id: 'volume',
+        label: 'Volume',
+        description:
+            'Volumetric raymarched medium with Beer-Lambert extinction, 3D FBM density advection, and Henyey-Greenstein phase scattering.',
+        domain: 'volume',
+        compilerFamily: 'gltf/volume',
+        defaultShaderId: 'gltf/volume',
+        defaultTemplateId: 'volume-fog-cloud',
+        stages: buildStagesFromSlots(volumeSlots, true, 'Volume Raymarch Stage'),
+        outputSlots: volumeSlots,
+        passPlan: [
+            {
+                id: 'volume-raymarch',
+                phase: 'volume',
+                shaderId: 'gltf/volume',
+                cullMode: 'front',
+                depthTest: true,
+                depthWrite: false,
+                blend: true,
+                required: true,
+            },
+        ],
+        capabilities: makeCapabilities(CAP_SUPPORTED, CAP_UNSUPPORTED, {
+            standard: '16-step volumetric raymarch, Beer-Lambert optical absorption, and phase scattering execute via gltf/volume.',
+            minimal: 'Volumetric raymarching is omitted on the minimal WebGL2 profile.',
             native: NATIVE_PENDING_NOTE,
         }),
     },
@@ -1359,6 +1571,9 @@ export const resolveModelIdFromLegacyShaderId = (shaderId: string): MaterialMode
     }
     if (normalized === 'post-process/contract' || normalized.startsWith('post-process/')) {
         return 'post-process';
+    }
+    if (normalized === 'gltf/volume' || normalized.startsWith('gltf/volume/')) {
+        return 'volume';
     }
     return 'pbr';
 };

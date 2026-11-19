@@ -232,14 +232,41 @@ export abstract class Joint2D extends Component {
         this._breakTorque = normalizeBreakLimit(value);
     }
 
+    private _missingBodyWarned: boolean = false;
+
     onLoad(): void {
-        this._rigidbodyA = (this.getComponent(Rigidbody2D as any) as Rigidbody2D | null) ?? null;
-        if (!this._rigidbodyA) {
-            throw new Error('Joint2D requires Rigidbody2D component');
+        this.resolveRigidbodyA();
+        if (!this._rigidbodyA && !this._missingBodyWarned) {
+            this._missingBodyWarned = true;
+            // The editor adds components in arbitrary order, so a joint may be
+            // created before its body. Keep the component and bind once the
+            // body exists instead of failing the add.
+            console.warn(
+                `[Joint2D] ${this.constructor.name} has no Rigidbody2D on its actor; ` +
+                    'the joint stays inactive until one is added.'
+            );
         }
     }
 
     start(): void {
+        this.resolveRigidbodyA();
+        this.createConstraint();
+    }
+
+    /**
+     * Retries the deferred bind while the joint has no constraint. This covers
+     * the editor path where the Rigidbody2D is added after the joint, and the
+     * scene-loader path where a reference resolves after deserialize.
+     */
+    update(): void {
+        if (this._constraintId) {
+            return;
+        }
+
+        if (!this.resolveRigidbodyA() || !this._connectedBody) {
+            return;
+        }
+
         this.createConstraint();
     }
 
@@ -310,10 +337,24 @@ export abstract class Joint2D extends Component {
             .setEnabled(this._constraintId, next);
     }
 
+    /**
+     * Resolves the local body once. Safe to call every frame while unbound.
+     */
+    protected resolveRigidbodyA(): Rigidbody2D | null {
+        if (this._rigidbodyA) {
+            return this._rigidbodyA;
+        }
+
+        const comp = this.getComponent(Rigidbody2D as any);
+        this._rigidbodyA = comp instanceof Rigidbody2D ? comp : null;
+        return this._rigidbodyA;
+    }
+
     protected abstract createConstraint(): void;
     protected abstract destroyConstraint(): void;
 
     protected recreateConstraint(): void {
+        this.resolveRigidbodyA();
         this.destroyConstraint();
         this.createConstraint();
     }

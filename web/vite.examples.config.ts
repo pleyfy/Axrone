@@ -68,13 +68,15 @@ export default defineConfig({
         alias: workspaceAliases,
     },
     server: {
+        port: 4180,
+        strictPort: true,
         fs: {
             allow: [workspaceDir],
         },
-        open: '/index.html',
     },
     preview: {
-        open: '/index.html',
+        port: 4180,
+        strictPort: true,
     },
     optimizeDeps: {
         exclude: workspacePackageNames,

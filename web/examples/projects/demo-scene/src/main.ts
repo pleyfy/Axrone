@@ -3,8 +3,8 @@ import { createDemoScene } from './scene';
 
 const example: PlaygroundSceneExample = {
 	id: 'demo-scene',
-	title: 'Demo Scene',
-	description: 'Three.js-style reference scene with a box, sphere, torus knot, and floor rebuilt on Axrone.',
+	title: 'Material Study',
+	description: 'Quiet material study with a clay cube, glazed sphere, and brass cylinder on a lit plinth.',
 	mount({ container }) {
 		return createDemoScene(container);
 	},
