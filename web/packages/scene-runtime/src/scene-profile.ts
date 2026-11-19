@@ -65,7 +65,17 @@ export type ScenePhysicsBridgeSelection = {
  * Which physics bridges a scene profile needs. The 2D profile steps 2D only,
  * the mixed profile steps both, everything else (3D / full / core / unknown)
  * steps 3D only so pure-3D runtimes never pay for an idle 2D world.
+ *
+ * The two built-in ids are recognised exactly. Manifest profiles carry
+ * application-chosen ids, so a 2D scene that renamed its profile would lose the
+ * 2D bridge entirely — the dimension tokens below keep a declared 2D scene wired
+ * up no matter what its author called it, while a name that mentions 3D as well
+ * keeps both bridges rather than trading one for the other.
  */
+const MIXED_PROFILE_TOKEN = /mixed/i;
+const TWO_DIMENSION_PROFILE_TOKEN = /2d/i;
+const THREE_DIMENSION_PROFILE_TOKEN = /3d/i;
+
 export const resolvePhysicsBridgesForProfile = (
     profileId: string | undefined
 ): ScenePhysicsBridgeSelection => {
@@ -74,6 +84,14 @@ export const resolvePhysicsBridgesForProfile = (
     }
     if (profileId === SCENE_MIXED_RUNTIME_PROFILE_ID) {
         return { bridge3D: true, bridge2D: true };
+    }
+    if (profileId) {
+        if (MIXED_PROFILE_TOKEN.test(profileId)) {
+            return { bridge3D: true, bridge2D: true };
+        }
+        if (TWO_DIMENSION_PROFILE_TOKEN.test(profileId)) {
+            return { bridge3D: THREE_DIMENSION_PROFILE_TOKEN.test(profileId), bridge2D: true };
+        }
     }
     return { bridge3D: true, bridge2D: false };
 };
