@@ -1046,23 +1046,6 @@
                     "phase": "shadow-caster"
                 },
                 {
-                    "id": "refraction-copy",
-                    "phase": "refraction",
-                    "shaderId": "post-process/contract",
-                    "depthTest": false,
-                    "depthWrite": false,
-                    "enabledWhenUniformNonZero": "_TransmissionFactor"
-                },
-                {
-                    "id": "sss-blur",
-                    "phase": "subsurface",
-                    "shaderId": "post-process/contract",
-                    "depthTest": false,
-                    "depthWrite": false,
-                    "blend": true,
-                    "enabledWhenUniformNonZero": "_SubsurfaceFactor"
-                },
-                {
                     "id": "outline",
                     "phase": "outline",
                     "shaderId": "gltf/toon-outline",
@@ -1341,23 +1324,6 @@
                 {
                     "id": "shadow-caster",
                     "phase": "shadow-caster"
-                },
-                {
-                    "id": "refraction-copy",
-                    "phase": "refraction",
-                    "shaderId": "post-process/contract",
-                    "depthTest": false,
-                    "depthWrite": false,
-                    "enabledWhenUniformNonZero": "_TransmissionFactor"
-                },
-                {
-                    "id": "sss-blur",
-                    "phase": "subsurface",
-                    "shaderId": "post-process/contract",
-                    "depthTest": false,
-                    "depthWrite": false,
-                    "blend": true,
-                    "enabledWhenUniformNonZero": "_SubsurfaceFactor"
                 }
             ],
             "capabilities": [
@@ -1615,23 +1581,6 @@
                 {
                     "id": "shadow-caster",
                     "phase": "shadow-caster"
-                },
-                {
-                    "id": "refraction-copy",
-                    "phase": "refraction",
-                    "shaderId": "post-process/contract",
-                    "depthTest": false,
-                    "depthWrite": false,
-                    "enabledWhenUniformNonZero": "_TransmissionFactor"
-                },
-                {
-                    "id": "sss-blur",
-                    "phase": "subsurface",
-                    "shaderId": "post-process/contract",
-                    "depthTest": false,
-                    "depthWrite": false,
-                    "blend": true,
-                    "enabledWhenUniformNonZero": "_SubsurfaceFactor"
                 }
             ],
             "capabilities": [
@@ -3557,6 +3506,14 @@
             "defaultShaderId": "gltf/volume",
             "stages": [
                 {
+                    "stage": "vertex",
+                    "label": "Vertex Stage",
+                    "defaultCollapsed": true,
+                    "slots": [
+                        "vertexOffset"
+                    ]
+                },
+                {
                     "stage": "fragment",
                     "label": "Volume Raymarch Stage",
                     "defaultCollapsed": false,
@@ -3572,6 +3529,19 @@
                 }
             ],
             "outputSlots": [
+                {
+                    "key": "vertexOffset",
+                    "label": "Vertex Offset",
+                    "stage": "vertex",
+                    "section": "vertex",
+                    "valueType": "vec3",
+                    "bindingKey": "_VertexOffset",
+                    "semantic": "vertex.offset",
+                    "defaultValue": "[0, 0, 0]",
+                    "optional": true,
+                    "capability": "unsupported",
+                    "description": "Volumetric bounds ignore per-vertex displacement."
+                },
                 {
                     "key": "baseColor",
                     "label": "Albedo Scatter",

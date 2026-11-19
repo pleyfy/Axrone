@@ -495,6 +495,10 @@ const standardSurfacePasses = (): readonly MaterialPassPlanEntryDefinition[] => 
     { id: 'main', phase: 'default', required: true },
     { id: 'forward-add', phase: 'forward-add' },
     { id: 'shadow-caster', phase: 'shadow-caster' },
+];
+
+const pbrSurfacePasses = (): readonly MaterialPassPlanEntryDefinition[] => [
+    ...standardSurfacePasses(),
     {
         id: 'refraction-copy',
         phase: 'refraction',
@@ -994,6 +998,13 @@ const postProcessSlots = [
 ];
 
 const volumeSlots = [
+    makeSlot('vertexOffset', 'Vertex Offset', 'vertex', 'vertex', 'vec3', 'vertex.offset', {
+        bindingKey: '_VertexOffset',
+        defaultValue: '[0, 0, 0]',
+        optional: true,
+        capability: CAP_UNSUPPORTED,
+        description: 'Volumetric bounds ignore per-vertex displacement.',
+    }),
     makeSlot('baseColor', 'Albedo Scatter', 'fragment', 'volume', 'vec3', 'volume.albedo', {
         bindingKey: '_BaseColorFactor',
         defaultValue: '[0.85, 0.9, 0.95]',
@@ -1076,7 +1087,7 @@ export const BUILTIN_MATERIAL_MODELS_V2: readonly MaterialModelDefinition[] = Ob
         defaultTemplateId: 'pbr-standard',
         stages: buildStagesFromSlots(pbrSlots),
         outputSlots: pbrSlots,
-        passPlan: standardSurfacePasses(),
+        passPlan: pbrSurfacePasses(),
         capabilities: makeCapabilities(CAP_SUPPORTED, CAP_PARTIAL, {
             standard: 'Surface, AO, opacity map, and advanced lobes compile end-to-end; Vertex Offset runs in generated shaders.',
             minimal: 'Reduced light budget; clearcoat, sheen, anisotropy, subsurface, iridescence, and transmission are dropped.',
@@ -1259,7 +1270,7 @@ export const BUILTIN_MATERIAL_MODELS_V2: readonly MaterialModelDefinition[] = Ob
         defaultTemplateId: 'composable-layered-metal',
         stages: buildStagesFromSlots(composableSlots, true, 'Composable Stage'),
         outputSlots: composableSlots,
-        passPlan: standardSurfacePasses(),
+        passPlan: pbrSurfacePasses(),
         capabilities: makeCapabilities(CAP_SUPPORTED, CAP_PARTIAL, {
             standard: 'Surface Attributes node bundles and ordered layer stacks lower directly to PBR bindings/shaders.',
             minimal: 'Advanced PBR sections trimmed in minimal profile.',
