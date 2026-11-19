@@ -17,6 +17,7 @@ export type PlaygroundProjectMetadata = {
 	readonly order?: number;
 	readonly category?: string;
 	readonly tags?: readonly string[];
+	readonly grid?: boolean;
 };
 
 export type PlaygroundProjectRecord = PlaygroundProjectMetadata & {

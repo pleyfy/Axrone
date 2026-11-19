@@ -299,142 +299,217 @@ const renderExampleArt = (project: PlaygroundProjectRecord, variant: 'thumb' | '
 	const token = `${project.id.replace(/[^a-z0-9-]/gi, '-')}-${variant}`;
 	const gridId = `art-grid-${token}`;
 	const glowId = `art-glow-${token}`;
-	const sphereId = `art-sphere-${token}`;
 
-	const commonDefs = `
-		<defs>
-			<pattern id="${gridId}" width="20" height="20" patternUnits="userSpaceOnUse">
-				<path d="M20 0H0v20" fill="none" stroke="#d9dce3" stroke-width=".5"></path>
-			</pattern>
-			<radialGradient id="${glowId}" cx="50%" cy="50%" r="50%">
-				<stop offset="0" stop-color="${accent}" stop-opacity=".16"></stop>
-				<stop offset="1" stop-color="${accent}" stop-opacity="0"></stop>
-			</radialGradient>
-			<radialGradient id="${sphereId}" cx="34%" cy="28%" r="80%">
-				<stop offset="0" stop-color="#ffffff" stop-opacity=".92"></stop>
-				<stop offset=".32" stop-color="${accent}" stop-opacity=".52"></stop>
-				<stop offset="1" stop-color="${accent}"></stop>
-			</radialGradient>
-		</defs>
-	`;
-
-	const floor = `
-		<g fill="none" stroke="#cdd2db" stroke-width=".7" opacity=".85">
-			<path d="M160 70 20 180M160 70 80 180M160 70 140 180M160 70 180 180M160 70 240 180M160 70 300 180"></path>
-			<path d="M24 144h272M44 159h232M68 173h184"></path>
-		</g>
-	`;
-
-	const shadow = (cx: number, cy: number, rx: number): string =>
-		`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${Math.max(5, Math.round(rx * 0.22))}" fill="#0f172a" opacity=".06"></ellipse>`;
-
-	const cube = (x: number, y: number, size = 28, opacity = 1): string => `
-		<g transform="translate(${x} ${y})" opacity="${opacity}" stroke="${accent}" stroke-opacity=".45" stroke-width=".9">
-			<polygon points="0,${-size * 0.57} ${size} ${-size * 1.14} ${size * 2} ${-size * 0.57} ${size} 0" fill="${accent}" fill-opacity=".12"></polygon>
-			<polygon points="0,${-size * 0.57} ${size} 0 ${size} ${size * 1.14} 0 ${size * 0.57}" fill="${accent}" fill-opacity=".22"></polygon>
-			<polygon points="${size} 0 ${size * 2} ${-size * 0.57} ${size * 2} ${size * 0.57} ${size} ${size * 1.14}" fill="${accent}" fill-opacity=".34"></polygon>
-		</g>
-	`;
-
-	const sphere = (cx: number, cy: number, radius: number): string => `
-		<circle cx="${cx}" cy="${cy}" r="${radius}" fill="url(#${sphereId})"></circle>
-		<ellipse cx="${cx - radius * 0.32}" cy="${cy - radius * 0.34}" rx="${radius * 0.3}" ry="${radius * 0.17}" fill="#ffffff" opacity=".28" transform="rotate(-28 ${cx - radius * 0.32} ${cy - radius * 0.34})"></ellipse>
-	`;
-
-	const torus = (cx: number, cy: number): string => `
-		<g transform="translate(${cx} ${cy})" fill="none" stroke="${accent}" stroke-linecap="round">
-			<ellipse rx="25" ry="10.5" stroke-width="6.5" opacity=".82" transform="rotate(-26)"></ellipse>
-			<ellipse rx="25" ry="10.5" stroke-width="6.5" opacity=".58" transform="rotate(30)"></ellipse>
-			<ellipse rx="25" ry="10.5" stroke-width="6.5" opacity=".4" transform="rotate(88)"></ellipse>
-		</g>
-	`;
-
+	let background = '#f6f7f9';
+	let gridColor = '#d9dce3';
+	let glowColor = accent;
+	let showGrid = true;
 	let scene = '';
+
+	const shadow = (cx: number, cy: number, rx: number, opacity = 0.12): string =>
+		`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${Math.max(4, Math.round(rx * 0.2))}" fill="#0f172a" opacity="${opacity}"></ellipse>`;
+
+	const cube = (x: number, y: number, size = 28, color = accent): string => `
+		<g transform="translate(${x} ${y})" stroke="${color}" stroke-opacity=".5" stroke-width=".9">
+			<polygon points="0,${-size * 0.57} ${size} ${-size * 1.14} ${size * 2} ${-size * 0.57} ${size} 0" fill="${color}" fill-opacity=".16"></polygon>
+			<polygon points="0,${-size * 0.57} ${size} 0 ${size} ${size * 1.14} 0 ${size * 0.57}" fill="${color}" fill-opacity=".28"></polygon>
+			<polygon points="${size} 0 ${size * 2} ${-size * 0.57} ${size * 2} ${size * 0.57} ${size} ${size * 1.14}" fill="${color}" fill-opacity=".4"></polygon>
+		</g>
+	`;
+
+	const sphere = (cx: number, cy: number, radius: number, color = accent): string => `
+		<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${color}"></circle>
+		<ellipse cx="${cx - radius * 0.32}" cy="${cy - radius * 0.34}" rx="${radius * 0.3}" ry="${radius * 0.17}" fill="#ffffff" opacity=".22" transform="rotate(-28 ${cx - radius * 0.32} ${cy - radius * 0.34})"></ellipse>
+		<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#000000" stroke-opacity=".08"></circle>
+	`;
 
 	switch (project.id) {
 		case 'demo-scene':
+			background = '#f3e9de';
+			gridColor = '#d9c8b6';
+			glowColor = '#f0b06b';
+			showGrid = false;
 			scene = `
-				${floor}
-				${shadow(98, 142, 40)}
-				${shadow(168, 141, 36)}
-				${shadow(246, 130, 32)}
-				${cube(70, 115)}
-				${sphere(168, 108, 28)}
-				${torus(246, 105)}
+				${shadow(160, 154, 112, 0.12)}
+				<polygon points="40,126 160,96 280,126 160,156" fill="#e9dfd3" stroke="#cdbba8" stroke-width=".8"></polygon>
+				<polygon points="40,126 160,156 160,172 40,142" fill="#cfc0b0"></polygon>
+				<polygon points="160,156 280,126 280,142 160,172" fill="#ddcebe"></polygon>
+				${shadow(106, 132, 23, 0.18)}
+				${shadow(160, 132, 22, 0.16)}
+				${shadow(232, 134, 16, 0.16)}
+				${cube(86, 108, 20, '#9a401f')}
+				${sphere(160, 108, 20, '#0b3a3c')}
+				<g transform="translate(232 92)">
+					<path d="M-14 0v36c0 4 28 4 28 0V0" fill="#a97836"></path>
+					<ellipse cx="0" cy="0" rx="14" ry="5" fill="#c49245"></ellipse>
+					<ellipse cx="0" cy="36" rx="14" ry="5" fill="#8a5f2a"></ellipse>
+				</g>
 			`;
 			break;
 		case 'solar-system':
+			background = '#070b18';
+			gridColor = '#18213a';
+			glowColor = '#6d5bd0';
+			showGrid = false;
 			scene = `
-				<g fill="${accent}">
-					<circle cx="46" cy="42" r="1.2" opacity=".5"></circle>
-					<circle cx="274" cy="32" r="1.5" opacity=".45"></circle>
-					<circle cx="298" cy="138" r="1.1" opacity=".4"></circle>
-					<circle cx="24" cy="104" r="1.3" opacity=".35"></circle>
-					<circle cx="236" cy="56" r="1" opacity=".5"></circle>
-					<circle cx="102" cy="34" r="1" opacity=".4"></circle>
+				<g fill="#dbe6ff">
+					<circle cx="48" cy="38" r="1.2" opacity=".7"></circle>
+					<circle cx="94" cy="58" r=".9" opacity=".5"></circle>
+					<circle cx="276" cy="34" r="1.5" opacity=".65"></circle>
+					<circle cx="298" cy="132" r="1.1" opacity=".45"></circle>
+					<circle cx="32" cy="116" r="1.2" opacity=".4"></circle>
+					<circle cx="238" cy="54" r=".8" opacity=".6"></circle>
+					<circle cx="208" cy="150" r=".9" opacity=".35"></circle>
 				</g>
-				<circle cx="160" cy="96" r="58" fill="url(#${glowId})"></circle>
-				<g fill="none" stroke="${accent}">
+				<circle cx="160" cy="96" r="62" fill="url(#${glowId})"></circle>
+				<g fill="none" stroke="#8d7cf0">
 					<ellipse cx="160" cy="98" rx="52" ry="18" stroke-opacity=".34"></ellipse>
 					<ellipse cx="160" cy="98" rx="88" ry="31" stroke-opacity=".22"></ellipse>
 					<ellipse cx="160" cy="98" rx="126" ry="44" stroke-opacity=".14"></ellipse>
 				</g>
-				<circle cx="160" cy="94" r="17" fill="#f59e0b"></circle>
-				<circle cx="160" cy="94" r="24" fill="none" stroke="#f59e0b" stroke-opacity=".18"></circle>
-				<circle cx="154" cy="88" r="5" fill="#ffffff" opacity=".28"></circle>
-				<circle cx="211" cy="92" r="4" fill="${accent}"></circle>
-				<circle cx="91" cy="105" r="5.5" fill="#0ea5e9"></circle>
-				<circle cx="248" cy="117" r="3.5" fill="#f59e0b"></circle>
-				<circle cx="61" cy="82" r="2.6" fill="#94a3b8"></circle>
+				<circle cx="160" cy="94" r="18" fill="#ffb84a"></circle>
+				<circle cx="160" cy="94" r="28" fill="none" stroke="#ffb84a" stroke-opacity=".18"></circle>
+				<circle cx="211" cy="92" r="4.2" fill="#c9a376"></circle>
+				<circle cx="91" cy="105" r="5.8" fill="#2f8fa8"></circle>
+				<circle cx="248" cy="117" r="4" fill="#e0c98f"></circle>
+				<circle cx="61" cy="82" r="2.8" fill="#b9ab9a"></circle>
+				<circle cx="124" cy="118" r="3.4" fill="#c8694b"></circle>
+				<circle cx="202" cy="73" r="3.2" fill="#5566c9"></circle>
 			`;
 			break;
 		case 'particle-system':
+			background = '#04120f';
+			gridColor = '#0a2a24';
+			glowColor = '#2dd4bf';
+			showGrid = false;
 			scene = `
-				<circle cx="160" cy="96" r="70" fill="url(#${glowId})"></circle>
-				<path d="M48 135C96 66 216 50 276 110" fill="none" stroke="${accent}" stroke-opacity=".18" stroke-dasharray="3 6"></path>
-				<g fill="${accent}">
-					<circle cx="88" cy="92" r="1.6" opacity=".35"></circle>
-					<circle cx="104" cy="118" r="2.4" opacity=".55"></circle>
-					<circle cx="120" cy="80" r="1.4" opacity=".35"></circle>
-					<circle cx="128" cy="102" r="3.1" opacity=".8"></circle>
-					<circle cx="136" cy="66" r="1.8" opacity=".45"></circle>
-					<circle cx="144" cy="124" r="2.2" opacity=".5"></circle>
-					<circle cx="152" cy="88" r="4.6" opacity=".95"></circle>
-					<circle cx="160" cy="60" r="1.5" opacity=".4"></circle>
-					<circle cx="168" cy="112" r="2.7" opacity=".62"></circle>
-					<circle cx="176" cy="76" r="3.5" opacity=".8"></circle>
-					<circle cx="184" cy="98" r="1.9" opacity=".45"></circle>
-					<circle cx="192" cy="130" r="1.6" opacity=".35"></circle>
-					<circle cx="202" cy="88" r="2.8" opacity=".66"></circle>
-					<circle cx="212" cy="112" r="1.5" opacity=".38"></circle>
-					<circle cx="224" cy="76" r="2.2" opacity=".52"></circle>
-					<circle cx="236" cy="98" r="1.4" opacity=".32"></circle>
-					<circle cx="248" cy="86" r="1.8" opacity=".42"></circle>
-					<circle cx="82" cy="70" r="1.2" opacity=".3"></circle>
-					<circle cx="262" cy="120" r="1.1" opacity=".28"></circle>
-					<circle cx="156" cy="144" r="1.3" opacity=".3"></circle>
+				<circle cx="162" cy="96" r="78" fill="url(#${glowId})"></circle>
+				<path d="M44 136C94 64 214 48 278 108" fill="none" stroke="#2dd4bf" stroke-opacity=".18" stroke-dasharray="3 6"></path>
+				<g>
+					<circle cx="86" cy="92" r="2" fill="#f6a94a" opacity=".75"></circle>
+					<circle cx="104" cy="118" r="2.8" fill="#5ef0b8" opacity=".7"></circle>
+					<circle cx="118" cy="78" r="1.6" fill="#f7b267" opacity=".5"></circle>
+					<circle cx="128" cy="102" r="3.6" fill="#f46f61" opacity=".7"></circle>
+					<circle cx="136" cy="64" r="1.8" fill="#d9fff3" opacity=".5"></circle>
+					<circle cx="144" cy="124" r="2.5" fill="#48cdb0" opacity=".6"></circle>
+					<circle cx="152" cy="88" r="5.2" fill="#f8b45a" opacity=".95"></circle>
+					<circle cx="160" cy="58" r="1.6" fill="#d9fff3" opacity=".5"></circle>
+					<circle cx="168" cy="112" r="3.1" fill="#5ef0b8" opacity=".7"></circle>
+					<circle cx="176" cy="74" r="3.8" fill="#f46f61" opacity=".7"></circle>
+					<circle cx="184" cy="98" r="2.1" fill="#2dd4bf" opacity=".6"></circle>
+					<circle cx="192" cy="132" r="1.8" fill="#f6a94a" opacity=".5"></circle>
+					<circle cx="202" cy="86" r="3" fill="#d9fff3" opacity=".7"></circle>
+					<circle cx="212" cy="112" r="1.7" fill="#f46f61" opacity=".55"></circle>
+					<circle cx="224" cy="76" r="2.5" fill="#5ef0b8" opacity=".65"></circle>
+					<circle cx="236" cy="96" r="1.6" fill="#f8b45a" opacity=".5"></circle>
+					<circle cx="248" cy="84" r="2.1" fill="#2dd4bf" opacity=".55"></circle>
+					<circle cx="82" cy="68" r="1.3" fill="#d9fff3" opacity=".45"></circle>
+					<circle cx="262" cy="122" r="1.2" fill="#5ef0b8" opacity=".4"></circle>
+					<circle cx="156" cy="146" r="1.4" fill="#f6a94a" opacity=".4"></circle>
 				</g>
-				<circle cx="152" cy="88" r="8" fill="none" stroke="${accent}" stroke-opacity=".22"></circle>
-				<circle cx="176" cy="76" r="6" fill="none" stroke="${accent}" stroke-opacity=".18"></circle>
+				<circle cx="152" cy="88" r="9" fill="none" stroke="#f8b45a" stroke-opacity=".22"></circle>
+				<circle cx="176" cy="74" r="7" fill="none" stroke="#f46f61" stroke-opacity=".18"></circle>
 			`;
 			break;
 		case 'follow-cube':
+			background = '#241732';
+			gridColor = '#4b3055';
+			glowColor = '#f0a35e';
+			showGrid = false;
 			scene = `
-				${floor}
-				<path d="M46 144C90 122 138 92 194 88" fill="none" stroke="${accent}" stroke-opacity=".4" stroke-width="1.4" stroke-dasharray="5 6"></path>
-				<path d="m188 80 10 8-12 3" fill="none" stroke="${accent}" stroke-opacity=".55" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>
-				<g fill="none" stroke="#a8aeb9" stroke-width="1.1" opacity=".6">
-					<path d="M18 34v14M18 34h14"></path>
-					<path d="M302 34v14M302 34h-14"></path>
-					<path d="M18 154v-14M18 154h14"></path>
-					<path d="M302 154v-14M302 154h-14"></path>
+				<ellipse cx="160" cy="146" rx="180" ry="64" fill="url(#${glowId})" opacity=".9"></ellipse>
+				<ellipse cx="160" cy="136" rx="122" ry="42" fill="#1b1226"></ellipse>
+				<ellipse cx="160" cy="136" rx="122" ry="42" fill="none" stroke="#f0a35e" stroke-opacity=".32" stroke-width="1.2"></ellipse>
+				<ellipse cx="160" cy="136" rx="92" ry="30" fill="none" stroke="#4b3055" stroke-opacity=".4"></ellipse>
+				${shadow(160, 143, 48, 0.3)}
+				<ellipse cx="160" cy="138" rx="37" ry="13" fill="none" stroke="#4fd1c5" stroke-opacity=".55" stroke-width="1.5"></ellipse>
+				${cube(134, 108, 26, '#f97316')}
+				<g fill="#1b1226" stroke="#4b3055">
+					<rect x="44" y="100" width="7" height="38" rx="2"></rect>
+					<rect x="269" y="100" width="7" height="38" rx="2"></rect>
 				</g>
-				${shadow(224, 136, 38)}
-				${cube(196, 108, 28)}
-				${sphere(88, 104, 10)}
+				<ellipse cx="47.5" cy="100" rx="9" ry="3" fill="#f0a35e"></ellipse>
+				<ellipse cx="272.5" cy="100" rx="9" ry="3" fill="#f0a35e"></ellipse>
+			`;
+			break;
+		case 'physics-stack':
+			background = '#edf2ee';
+			gridColor = '#c8d3c9';
+			glowColor = '#ffffff';
+			showGrid = true;
+			scene = `
+				${shadow(156, 146, 104, 0.12)}
+				${cube(78, 118, 22, '#b34a30')}
+				${cube(124, 118, 22, '#597a51')}
+				${cube(170, 118, 22, '#c79a44')}
+				${cube(101, 94, 22, '#40505e')}
+				${cube(147, 94, 22, '#b34a30')}
+				${cube(124, 70, 22, '#c79a44')}
+				${sphere(224, 92, 12, '#c22d2d')}
+				${sphere(254, 118, 9, '#c22d2d')}
+			`;
+			break;
+		case 'physics-domino':
+			background = '#f3ede5';
+			gridColor = '#dfd2c2';
+			glowColor = '#f0b06b';
+			showGrid = false;
+			scene = `
+				${shadow(160, 152, 116, 0.12)}
+				<polygon points="30,138 160,104 290,138 160,170" fill="#e7dccf"></polygon>
+				<polygon points="30,138 160,170 160,180 30,148" fill="#ccbca8"></polygon>
+				<polygon points="160,170 290,138 290,148 160,180" fill="#dacbb8"></polygon>
+				<g transform="translate(54 140) rotate(-28)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#b45309"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#f6d7b0" opacity=".6"></circle>
+				</g>
+				<g transform="translate(86 140) rotate(-12)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#c08a2e"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#f8e2b8" opacity=".6"></circle>
+				</g>
+				<g transform="translate(118 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#6b7a42"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#dce6c4" opacity=".55"></circle>
+				</g>
+				<g transform="translate(150 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#2f6f66"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#c9efea" opacity=".5"></circle>
+				</g>
+				<g transform="translate(182 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#45505c"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#d7dee6" opacity=".5"></circle>
+				</g>
+				<g transform="translate(214 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#b45309"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#f6d7b0" opacity=".6"></circle>
+				</g>
+				<g transform="translate(246 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#6b7a42"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#dce6c4" opacity=".55"></circle>
+				</g>
+			`;
+			break;
+		case 'physics-bounce':
+			background = '#071317';
+			gridColor = '#0f2d31';
+			glowColor = '#1f9e9e';
+			showGrid = true;
+			scene = `
+				<path d="M48 142C88 64 190 44 272 118" fill="none" stroke="#1f9e9e" stroke-opacity=".16" stroke-dasharray="3 6"></path>
+				<path d="M74 76C128 32 214 46 256 98" fill="none" stroke="#d48b32" stroke-opacity=".12" stroke-dasharray="2 7"></path>
+				${sphere(78, 92, 16, '#0b8e9c')}
+				${sphere(120, 120, 11, '#c98b2e')}
+				${sphere(160, 72, 20, '#2f8f7a')}
+				${sphere(202, 110, 14, '#c2410c')}
+				${sphere(238, 84, 17, '#7c3aed')}
+				${sphere(268, 124, 10, '#cfd8d2')}
 			`;
 			break;
 		default:
+			background = '#f5f6f8';
+			gridColor = '#d9dce3';
+			glowColor = accent;
+			showGrid = true;
 			scene = `
 				<g opacity=".9">
 					<rect x="96" y="48" width="128" height="84" rx="10" fill="#ffffff" stroke="#d8dbe2"></rect>
@@ -455,16 +530,23 @@ const renderExampleArt = (project: PlaygroundProjectRecord, variant: 'thumb' | '
 
 	return `
 		<svg class="example-art" viewBox="${isHero ? '0 0 640 180' : '40 0 240 180'}" preserveAspectRatio="xMidYMid slice" role="img" aria-label="${escapeHtml(project.name)} preview">
-			${commonDefs}
-			<rect width="${canvasWidth}" height="180" fill="#f6f7f9"></rect>
-			<rect width="${canvasWidth}" height="180" fill="url(#${gridId})" opacity=".65"></rect>
+			<defs>
+				<pattern id="${gridId}" width="20" height="20" patternUnits="userSpaceOnUse">
+					<path d="M20 0H0v20" fill="none" stroke="${gridColor}" stroke-width=".5"></path>
+				</pattern>
+				<radialGradient id="${glowId}" cx="50%" cy="50%" r="50%">
+					<stop offset="0" stop-color="${glowColor}" stop-opacity=".24"></stop>
+					<stop offset="1" stop-color="${glowColor}" stop-opacity="0"></stop>
+				</radialGradient>
+			</defs>
+			<rect width="${canvasWidth}" height="180" fill="${background}"></rect>
+			${showGrid ? `<rect width="${canvasWidth}" height="180" fill="url(#${gridId})" opacity=".55"></rect>` : ''}
 			<ellipse cx="${isHero ? 480 : 168}" cy="42" rx="150" ry="92" fill="url(#${glowId})"></ellipse>
 			${sceneMarkup}
-			<rect x=".5" y=".5" width="${canvasWidth - 1}" height="179" fill="none" stroke="#101828" stroke-opacity=".05"></rect>
+			<rect x=".5" y=".5" width="${canvasWidth - 1}" height="179" fill="none" stroke="#000000" stroke-opacity=".06"></rect>
 		</svg>
 	`;
 };
-
 const createFolderNode = (name: string, key: string, order: number): FileTreeFolderNode => ({
 	kind: 'folder',
 	name,
@@ -644,8 +726,9 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	};
 
 	const updateRuntimeSummary = (): void => {
-		shell.objectCountLabel.textContent = runtimeSession ? String(runtimeSession.objectCount) : '—';
-		shell.ctrlInfo.textContent = runtimeSession?.summary ?? '—';
+		const stats = runtimeSession?.handle.getStats?.();
+		shell.objectCountLabel.textContent = stats ? String(stats.objectCount) : '—';
+		shell.ctrlInfo.textContent = stats?.summary ?? '—';
 	};
 
 	const stopCurrentRuntime = async (): Promise<void> => {
@@ -685,11 +768,11 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 				: { dispose() {} };
 			playing = true;
 			wireframe = false;
-			gridVisible = true;
+			gridVisible = project.grid ?? true;
 			axesVisible = false;
 			handle.setPlaying?.(true);
 			handle.setWireframe?.(false);
-			handle.setGridVisible?.(true);
+			handle.setGridVisible?.(gridVisible);
 			handle.setAxesVisible?.(false);
 			const stats = handle.getStats?.();
 			runtimeSession = {
@@ -1074,6 +1157,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			shell.fpsLabel.textContent = String(fpsState.frames);
 			fpsState.frames = 0;
 			fpsState.last = now;
+			updateRuntimeSummary();
 		}
 		requestAnimationFrame(fpsLoop);
 	};
@@ -1226,6 +1310,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 					: 'Starter project created from the Blank Scene template.',
 			category: selectedTemplateId === 'basic' ? 'Starter' : 'Template',
 			tags: selectedTemplateId === 'basic' ? ['3D', 'Starter', 'TypeScript'] : ['Starter', 'TypeScript'],
+			grid: true,
 			entryFile: 'main.ts',
 			files: createTemplateFiles(selectedTemplateId),
 			builtIn: false,
