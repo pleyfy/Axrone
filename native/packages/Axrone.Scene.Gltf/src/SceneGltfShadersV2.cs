@@ -10,13 +10,21 @@ using System.Diagnostics.CodeAnalysis;
 /// </summary>
 public static class SceneGltfShadersV2
 {
+    /// <summary>Shader id of the toon outline pass companion shader.</summary>
     public const string ToonOutlineShaderName = "gltf/toon-outline";
+    /// <summary>Shader id of the anisotropic hair model family.</summary>
     public const string HairShaderName = "gltf/hair";
+    /// <summary>Shader id of the velvet/sheen cloth model family.</summary>
     public const string ClothShaderName = "gltf/cloth";
+    /// <summary>Shader id of the stylized water model family.</summary>
     public const string WaterShaderName = "gltf/water";
+    /// <summary>Shader id of the wind-driven foliage model family.</summary>
     public const string FoliageShaderName = "gltf/foliage";
+    /// <summary>Shader id of the soft additive particle model family.</summary>
     public const string ParticleShaderName = "gltf/particle";
+    /// <summary>Shader id of the deferred decal model family.</summary>
     public const string DecalShaderName = "gltf/decal";
+    /// <summary>Shader id shared by the post-process model and by contract pass overrides.</summary>
     public const string PostProcessShaderName = "post-process/contract";
 
     private static readonly string[] V2BaseNames =
@@ -74,6 +82,9 @@ public static class SceneGltfShadersV2
     }
 
     /// <summary>Checks whether a base shader id is one of the 8 built-in V2 shaders.</summary>
+    /// <param name="id">Shader id to classify, with or without a variant suffix.</param>
+    /// <param name="baseName">The matched V2 base shader id, or <see langword="null"/> when unmatched.</param>
+    /// <returns><see langword="true"/> when <paramref name="id"/> belongs to a built-in V2 shader family.</returns>
     public static bool TryClassify(string id, [NotNullWhen(true)] out string? baseName)
     {
         ArgumentNullException.ThrowIfNull(id);
@@ -95,6 +106,10 @@ public static class SceneGltfShadersV2
     }
 
     /// <summary>Resolves a built-in V2 shader definition by base id or variant suffix.</summary>
+    /// <param name="id">Shader id, optionally carrying <c>/blend</c> or <c>/double-sided</c> variants.</param>
+    /// <param name="names">Name table used when interning uniform and attribute names; <see langword="null"/> takes the shared cache.</param>
+    /// <param name="definition">The resolved shader definition when this method returns <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when <paramref name="id"/> resolves to a built-in V2 shader.</returns>
     public static bool TryCreate(
         string id,
         SceneNameTable? names,
