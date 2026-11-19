@@ -4,6 +4,13 @@ import {
     type ComponentConstructor,
 } from '@axrone/ecs-runtime';
 import { Camera } from '@axrone/scene-runtime/scene-facade';
+import {
+    SCENE_2D_RUNTIME_PROFILE_ID,
+    SCENE_MIXED_RUNTIME_PROFILE_ID,
+    get2DSceneRuntimeProfile,
+    getMixedSceneRuntimeProfile,
+    type SceneRuntimeProfile,
+} from '@axrone/scene-runtime';
 import { PrefabNodeBinding } from '@axrone/scene-prefab';
 import type { SceneSnapshot } from '@axrone/scene-runtime';
 import {
@@ -44,6 +51,10 @@ export type AxroneRuntimeHandle = {
 export type AxroneBootDependencies = {
     readonly createScene: (options: Record<string, unknown>) => BootSceneFacade;
     readonly engineComponentTypes: readonly ComponentConstructor[];
+    readonly resolveSceneProfile?: (
+        snapshot: unknown,
+        engineProfileId?: string
+    ) => SceneRuntimeProfile | undefined;
 };
 
 const DEFAULT_DATA_URL = './game.data.json';
@@ -187,6 +198,130 @@ const applyCameraSelection = (scene: BootSceneFacade, cameraEntityId: string | n
     }
 };
 
+// Component type names that imply 2D physics/rendering, kept in lockstep with
+// PREVIEW_2D_COMPONENT_TYPES in the Editor. The scene kernel arms PhysicsBridge2D
+// purely from the active profile id, so to boot an exported 2D/mixed scene under
+// the generic `Scene` facade (web-full) we must pick the profile from the scene
+// content before constructing it.
+const SCENE_2D_COMPONENT_TYPE_NAMES: ReadonlySet<string> = new Set([
+    'PhysicsWorld2DComponent',
+    'Rigidbody2D',
+    'BoxCollider2D',
+    'CircleCollider2D',
+    'CapsuleCollider2D',
+    'PolygonCollider2D',
+    'DistanceJoint2D',
+    'FixedJoint2D',
+    'HingeJoint2D',
+    'SliderJoint2D',
+    'SpringJoint2D',
+    'WheelJoint2D',
+    'MotorJoint2D',
+    'MouseJoint2D',
+    'GearJoint2D',
+    'RopeJoint2D',
+    'SpriteRenderer',
+    'SpriteAnimator',
+    'SpriteMask',
+]);
+
+const SCENE_3D_COMPONENT_TYPE_NAMES: ReadonlySet<string> = new Set([
+    'Rigidbody3D',
+    'BoxCollider3D',
+    'SphereCollider3D',
+    'CapsuleCollider3D',
+    'MeshCollider3D',
+    'HingeJoint3D',
+    'FixedJoint3D',
+    'MeshRenderer',
+    'SkinnedMeshRenderer',
+    'Terrain',
+    'DirectionalLight',
+    'PointLight',
+    'SpotLight',
+    'ParticleSystem',
+]);
+
+const collectSnapshotComponentTypes = (
+    node: unknown,
+    accumulator: Set<string>
+): void => {
+    if (Array.isArray(node)) {
+        for (const entry of node) {
+            collectSnapshotComponentTypes(entry, accumulator);
+        }
+        return;
+    }
+
+    if (!node || typeof node !== 'object') {
+        return;
+    }
+
+    const record = node as Record<string, unknown>;
+    const components = record.components;
+    if (Array.isArray(components)) {
+        for (const component of components) {
+            if (component && typeof component === 'object') {
+                const type = (component as Record<string, unknown>).type;
+                if (typeof type === 'string') {
+                    accumulator.add(type);
+                }
+            }
+        }
+    }
+
+    for (const value of Object.values(record)) {
+        collectSnapshotComponentTypes(value, accumulator);
+    }
+};
+
+/**
+ * Picks the scene runtime profile that arms the right physics bridges.
+ *
+ * 2D-only content -> 2D profile (bridge2D only)
+ * 2D + 3D content -> mixed profile (both bridges)
+ * 3D-only / none  -> undefined, so the facade keeps its default 3D profile.
+ *
+ * The game-data `engine.profileId` carries the export *template* id (e.g.
+ * '@axrone/runtime-profile-full'), never the per-scene profile id, so it is only
+ * consulted as a fallback hint when the snapshot yields no signal.
+ */
+export const resolveSceneProfile = (
+    snapshot: unknown,
+    engineProfileId?: string
+): SceneRuntimeProfile | undefined => {
+    const types = new Set<string>();
+    collectSnapshotComponentTypes(snapshot, types);
+
+    let has2D = false;
+    let has3D = false;
+    for (const type of types) {
+        if (SCENE_2D_COMPONENT_TYPE_NAMES.has(type)) {
+            has2D = true;
+        } else if (SCENE_3D_COMPONENT_TYPE_NAMES.has(type)) {
+            has3D = true;
+        }
+    }
+
+    if (has2D && has3D) {
+        return getMixedSceneRuntimeProfile();
+    }
+    if (has2D) {
+        return get2DSceneRuntimeProfile();
+    }
+
+    // No 2D/3D discriminator in the snapshot: fall back to explicit ids when the
+    // document carries a scene profile id rather than a template id.
+    if (engineProfileId === SCENE_MIXED_RUNTIME_PROFILE_ID) {
+        return getMixedSceneRuntimeProfile();
+    }
+    if (engineProfileId === SCENE_2D_RUNTIME_PROFILE_ID) {
+        return get2DSceneRuntimeProfile();
+    }
+
+    return undefined;
+};
+
 const fetchGameData = async (dataUrl: string): Promise<AxroneGameData> => {
     const response = await fetch(dataUrl, { cache: 'no-cache' });
     if (!response.ok) {
@@ -213,6 +348,9 @@ export const createAxroneBoot =
             : await fetchGameData(dataUrl);
 
         reportProgress('creating-scene');
+        const sceneProfile = dependencies.resolveSceneProfile
+            ? dependencies.resolveSceneProfile(data.snapshot, data.engine.profileId)
+            : resolveSceneProfile(data.snapshot, data.engine.profileId);
         const scene = dependencies.createScene({
             width: container.clientWidth || data.presentation.width,
             height: container.clientHeight || data.presentation.height,
@@ -224,6 +362,7 @@ export const createAxroneBoot =
             ambientLight: data.environment.ambientLight,
             skyLight: data.environment.skyLight,
             groundLight: data.environment.groundLight,
+            ...(sceneProfile ? { profile: sceneProfile } : {}),
         });
 
         scene.canvas.style.display = 'block';
