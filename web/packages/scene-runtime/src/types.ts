@@ -206,7 +206,19 @@ export type SceneTextureBindingDefinition =
           readonly unit?: number;
       };
 
-export type SceneMaterialShadingModel = 'unlit' | 'pbr' | 'toon';
+export type SceneMaterialShadingModel =
+    | 'unlit'
+    | 'pbr'
+    | 'toon'
+    | 'hair'
+    | 'cloth'
+    | 'water'
+    | 'foliage'
+    | 'sprite'
+    | 'particle'
+    | 'composable'
+    | 'decal'
+    | 'post-process';
 export type SceneMaterialAlphaMode = 'opaque' | 'mask' | 'blend';
 export type SceneMaterialUvSet = 0 | 1;
 
@@ -216,6 +228,7 @@ export interface SceneMaterialSurfaceFeaturesDefinition {
     readonly useNormalMap?: boolean;
     readonly useTwoSided?: boolean;
     readonly useAlbedoMap?: boolean;
+    readonly useOpacityMap?: boolean;
     readonly usePbrMap?: boolean;
     readonly useMetallicRoughnessMap?: boolean;
     readonly useOcclusionMap?: boolean;

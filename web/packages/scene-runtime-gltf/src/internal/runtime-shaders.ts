@@ -21,21 +21,53 @@ import {
 } from './gltf-shader-effects-toon';
 import { GLTF_UNLIT_SHADER_EFFECT, createGltfUnlitShaderEffect } from './gltf-shader-effects-unlit';
 import {
+    GLTF_CLOTH_SHADER_EFFECT,
+    GLTF_DECAL_SHADER_EFFECT,
+    GLTF_FOLIAGE_SHADER_EFFECT,
+    GLTF_HAIR_SHADER_EFFECT,
+    GLTF_PARTICLE_SHADER_EFFECT,
+    GLTF_WATER_SHADER_EFFECT,
+    POST_PROCESS_CONTRACT_SHADER_EFFECT,
+    V2_BUILTIN_SHADER_EFFECTS,
+    createGltfClothShaderEffect,
+    createGltfDecalShaderEffect,
+    createGltfFoliageShaderEffect,
+    createGltfHairShaderEffect,
+    createGltfParticleShaderEffect,
+    createGltfWaterShaderEffect,
+    createPostProcessContractShaderEffect,
+} from './gltf-shader-effects-v2';
+import {
     GLTF_PBR_ATTRIBUTES,
     GLTF_TOON_ATTRIBUTES,
     GLTF_UNLIT_ATTRIBUTES,
 } from './gltf-shader-properties';
 
 export {
+    GLTF_CLOTH_SHADER_EFFECT,
+    GLTF_DECAL_SHADER_EFFECT,
+    GLTF_FOLIAGE_SHADER_EFFECT,
+    GLTF_HAIR_SHADER_EFFECT,
+    GLTF_PARTICLE_SHADER_EFFECT,
     GLTF_PBR_SHADER_EFFECT,
     GLTF_TOON_OUTLINE_SHADER_EFFECT,
     GLTF_TOON_SHADER_EFFECT,
     GLTF_UNLIT_SHADER_EFFECT,
+    GLTF_WATER_SHADER_EFFECT,
+    POST_PROCESS_CONTRACT_SHADER_EFFECT,
+    V2_BUILTIN_SHADER_EFFECTS,
+    createGltfClothShaderEffect,
+    createGltfDecalShaderEffect,
+    createGltfFoliageShaderEffect,
+    createGltfHairShaderEffect,
+    createGltfParticleShaderEffect,
     createGltfPbrShaderEffect,
     createGltfRuntimeMaterialPasses,
     createGltfToonOutlineShaderEffect,
     createGltfToonShaderEffect,
     createGltfUnlitShaderEffect,
+    createGltfWaterShaderEffect,
+    createPostProcessContractShaderEffect,
     createVariantShaderId,
     resolveVariantRenderState,
 };
@@ -44,6 +76,13 @@ const GLTF_SHADER_PBR_ID = 'gltf/pbr';
 const GLTF_SHADER_UNLIT_ID = 'gltf/unlit';
 const GLTF_SHADER_TOON_ID = 'gltf/toon';
 const GLTF_SHADER_TOON_OUTLINE_ID = 'gltf/toon-outline';
+const GLTF_SHADER_HAIR_ID = 'gltf/hair';
+const GLTF_SHADER_CLOTH_ID = 'gltf/cloth';
+const GLTF_SHADER_WATER_ID = 'gltf/water';
+const GLTF_SHADER_FOLIAGE_ID = 'gltf/foliage';
+const GLTF_SHADER_PARTICLE_ID = 'gltf/particle';
+const GLTF_SHADER_DECAL_ID = 'gltf/decal';
+const POST_PROCESS_CONTRACT_ID = 'post-process/contract';
 const GLTF_SHADER_DOUBLE_SIDED_SUFFIX = '/double-sided';
 const GLTF_SHADER_BLEND_SUFFIX = '/blend';
 
@@ -107,6 +146,7 @@ export const createGltfRuntimeSurfaceFeatures = (
         useNormalMap: !unlit && normalizeNumericUniform(uniforms?._NormalTexture_TexCoord, -1) >= 0,
         useTwoSided: isGltfDoubleSided(uniforms),
         useAlbedoMap: normalizeNumericUniform(uniforms?._BaseColorTexture_TexCoord, -1) >= 0,
+        useOpacityMap: normalizeNumericUniform(uniforms?._OpacityTexture_TexCoord, -1) >= 0,
         usePbrMap: false,
         useMetallicRoughnessMap:
             !unlit && normalizeNumericUniform(uniforms?._MetallicRoughnessTexture_TexCoord, -1) >= 0,
@@ -130,15 +170,27 @@ export const createGltfRuntimeSurfaceFeatures = (
     };
 };
 
+const resolveRuntimeShadingModel = (
+    shaderId: string
+): SceneMaterialSurfaceDefinition['shadingModel'] => {
+    if (shaderId.startsWith(GLTF_SHADER_UNLIT_ID)) return 'unlit';
+    if (shaderId.startsWith(GLTF_SHADER_TOON_ID)) return 'toon';
+    if (shaderId.startsWith(GLTF_SHADER_HAIR_ID)) return 'hair';
+    if (shaderId.startsWith(GLTF_SHADER_CLOTH_ID)) return 'cloth';
+    if (shaderId.startsWith(GLTF_SHADER_WATER_ID)) return 'water';
+    if (shaderId.startsWith(GLTF_SHADER_FOLIAGE_ID)) return 'foliage';
+    if (shaderId.startsWith(GLTF_SHADER_PARTICLE_ID)) return 'particle';
+    if (shaderId.startsWith(GLTF_SHADER_DECAL_ID)) return 'decal';
+    if (shaderId.startsWith(POST_PROCESS_CONTRACT_ID)) return 'post-process';
+    if (shaderId === 'Render2D/Sprite') return 'sprite';
+    return 'pbr';
+};
+
 export const createGltfRuntimeSurfaceDefinition = (
     shaderId: string,
     uniforms?: GltfMaterialUniformMap
 ): SceneMaterialSurfaceDefinition => ({
-    shadingModel: shaderId.startsWith(GLTF_SHADER_UNLIT_ID)
-        ? 'unlit'
-        : shaderId.startsWith(GLTF_SHADER_TOON_ID)
-          ? 'toon'
-          : 'pbr',
+    shadingModel: resolveRuntimeShadingModel(shaderId),
     alphaMode:
         normalizeNumericUniform(uniforms?._AlphaMode, 0) >= 1.5
             ? 'blend'
@@ -267,6 +319,66 @@ export const createGltfToonOutlineShaderDefinition = (
     };
 };
 
+const createV2ShaderDefinition = (
+    id: string,
+    baseId: string,
+    singleton: RenderShaderEffectDefinition,
+    factory: (effectId: string) => RenderShaderEffectDefinition,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition => {
+    const definition = createGltfShaderDefinitionFromEffect(
+        id === baseId ? singleton : factory(id),
+        GLTF_PBR_ATTRIBUTES
+    );
+    const renderState = resolveVariantRenderState(uniforms);
+    return {
+        ...definition,
+        ...(uniforms ? { cull: renderState.cull, blend: renderState.blend } : {}),
+    };
+};
+
+export const createGltfHairShaderDefinition = (
+    id: string = GLTF_SHADER_HAIR_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(id, GLTF_SHADER_HAIR_ID, GLTF_HAIR_SHADER_EFFECT, createGltfHairShaderEffect, uniforms);
+
+export const createGltfClothShaderDefinition = (
+    id: string = GLTF_SHADER_CLOTH_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(id, GLTF_SHADER_CLOTH_ID, GLTF_CLOTH_SHADER_EFFECT, createGltfClothShaderEffect, uniforms);
+
+export const createGltfWaterShaderDefinition = (
+    id: string = GLTF_SHADER_WATER_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(id, GLTF_SHADER_WATER_ID, GLTF_WATER_SHADER_EFFECT, createGltfWaterShaderEffect, uniforms);
+
+export const createGltfFoliageShaderDefinition = (
+    id: string = GLTF_SHADER_FOLIAGE_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(id, GLTF_SHADER_FOLIAGE_ID, GLTF_FOLIAGE_SHADER_EFFECT, createGltfFoliageShaderEffect, uniforms);
+
+export const createGltfParticleShaderDefinition = (
+    id: string = GLTF_SHADER_PARTICLE_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(id, GLTF_SHADER_PARTICLE_ID, GLTF_PARTICLE_SHADER_EFFECT, createGltfParticleShaderEffect, uniforms);
+
+export const createGltfDecalShaderDefinition = (
+    id: string = GLTF_SHADER_DECAL_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(id, GLTF_SHADER_DECAL_ID, GLTF_DECAL_SHADER_EFFECT, createGltfDecalShaderEffect, uniforms);
+
+export const createPostProcessContractShaderDefinition = (
+    id: string = POST_PROCESS_CONTRACT_ID,
+    uniforms?: GltfMaterialUniformMap
+): GltfShaderDefinition =>
+    createV2ShaderDefinition(id, POST_PROCESS_CONTRACT_ID, POST_PROCESS_CONTRACT_SHADER_EFFECT, createPostProcessContractShaderEffect, uniforms);
+
 export const resolveGltfRuntimeShaderId = (
     shaderId: string,
     uniforms?: GltfMaterialUniformMap
@@ -301,6 +413,13 @@ export const resolveGltfShaderDefinition = (
             _DoubleSided: shaderId.includes(GLTF_SHADER_DOUBLE_SIDED_SUFFIX) ? 1 : 0,
         });
     }
+    if (shaderId.startsWith(GLTF_SHADER_HAIR_ID)) return createGltfHairShaderDefinition(shaderId);
+    if (shaderId.startsWith(GLTF_SHADER_CLOTH_ID)) return createGltfClothShaderDefinition(shaderId);
+    if (shaderId.startsWith(GLTF_SHADER_WATER_ID)) return createGltfWaterShaderDefinition(shaderId);
+    if (shaderId.startsWith(GLTF_SHADER_FOLIAGE_ID)) return createGltfFoliageShaderDefinition(shaderId);
+    if (shaderId.startsWith(GLTF_SHADER_PARTICLE_ID)) return createGltfParticleShaderDefinition(shaderId);
+    if (shaderId.startsWith(GLTF_SHADER_DECAL_ID)) return createGltfDecalShaderDefinition(shaderId);
+    if (shaderId.startsWith(POST_PROCESS_CONTRACT_ID)) return createPostProcessContractShaderDefinition(shaderId);
     if (shaderId.startsWith(GLTF_SHADER_PBR_ID)) {
         return createGltfPbrShaderDefinition(shaderId, {
             _AlphaMode: shaderId.includes(GLTF_SHADER_BLEND_SUFFIX) ? 2 : 0,
