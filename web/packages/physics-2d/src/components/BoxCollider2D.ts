@@ -1,6 +1,7 @@
 import { Vec2 } from '@axrone/numeric';
 import { script } from '@axrone/ecs-runtime/decorators';
 import { Collider2D } from './collider2d';
+import { finiteOr } from '../core/physics-world-2d-helpers';
 
 @script({
     scriptName: 'BoxCollider2D',
@@ -95,7 +96,9 @@ export class BoxCollider2D extends Collider2D {
 
     deserialize(data: Record<string, any>): void {
         super.deserialize(data);
-        this._size = new Vec2(data.size?.x ?? 1, data.size?.y ?? 1);
-        this._angle = data.angle ?? 0;
+        // The Editor writes size as `[x, y]`, the engine reads `{x, y}`.
+        const size = this.normalizeVec2(data.size, 1, 1);
+        this._size = new Vec2(size.x, size.y);
+        this._angle = finiteOr(data.angle, 0);
     }
 }

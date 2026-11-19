@@ -1108,6 +1108,14 @@ export class PhysicsWorld2D implements IPhysicsWorld2D {
 
     dump(): void {}
 
+    /**
+     * Whether `step()`/`[Symbol.dispose]()` have torn this world down.
+     * Components use this to avoid pushing state into a destroyed world.
+     */
+    get isDisposed(): boolean {
+        return this._disposed;
+    }
+
     [Symbol.dispose](): void {
         if (this._disposed) return;
 

@@ -4,7 +4,13 @@ import { script } from '@axrone/ecs-runtime/decorators';
 import { Vec2, Quat } from '@axrone/numeric';
 import type { BodyId, BodyType } from '../types';
 import type { PhysicsWorld2D } from '../core/physics-world';
+import { quaternionToZRadians } from '../core/physics-world-2d-helpers';
 import { PhysicsWorld2DComponent } from './physics-world-2d-component';
+import {
+    _getRigidbody2DBridgeWorldProvider,
+    _setRigidbody2DBridgeWorldProvider,
+    resolveBridgePhysicsWorld2D,
+} from './physics-world-registry';
 
 export enum RigidbodyType2D {
     Static = 0,
@@ -42,12 +48,29 @@ export interface RigidbodyConfig2D {
 export class Rigidbody2D extends Component {
     private static readonly _tempQuat = Quat.IDENTITY.clone();
 
-    /** @internal Bridge world provider — set by PhysicsBridge2D at construction. */
-    private static _bridgeWorldProvider: (() => PhysicsWorld2D | null) | null = null;
+    /**
+     * @internal Bridge world provider — set by PhysicsBridge2D at construction.
+     * Backed by the shared physics-world registry so Collider2D and Joint2D
+     * resolve the exact same bridge-managed world.
+     */
+    private static get _bridgeWorldProvider(): (() => PhysicsWorld2D | null) | null {
+        return _getRigidbody2DBridgeWorldProvider();
+    }
+
+    private static set _bridgeWorldProvider(
+        provider: (() => PhysicsWorld2D | null) | null
+    ) {
+        _setRigidbody2DBridgeWorldProvider(provider);
+    }
 
     /** @internal Called by PhysicsBridge2D to provide its world directly. */
     static _setBridgeWorldProvider(provider: (() => PhysicsWorld2D | null) | null): void {
         Rigidbody2D._bridgeWorldProvider = provider;
+    }
+
+    /** @internal Current bridge provider, if any. */
+    static _getBridgeWorldProvider(): (() => PhysicsWorld2D | null) | null {
+        return _getRigidbody2DBridgeWorldProvider();
     }
 
     private _bodyId: BodyId | null = null;
@@ -200,6 +223,14 @@ export class Rigidbody2D extends Component {
         this.createPhysicsBody();
     }
 
+    onEnable(): void {
+        this.syncEnabledState(this._rbEnabled);
+    }
+
+    onDisable(): void {
+        this.pushEnabledToPhysics(false);
+    }
+
     fixedUpdate(fixedDeltaTime: number): void {
         if (!this._rbEnabled || !this._bodyId || !this._physicsWorld || !this._transform) return;
 
@@ -214,6 +245,50 @@ export class Rigidbody2D extends Component {
 
     onDestroy(): void {
         this.destroyPhysicsBody();
+    }
+
+    /**
+     * Whether this body should currently take part in the simulation.
+     * Combines the authored `enabled` flag with the ECS component state
+     * (a destroyed or disabled component is never simulatable).
+     */
+    private isSimulatable(): boolean {
+        return this._rbEnabled && this.enabled !== false;
+    }
+
+    /**
+     * Idempotently make sure this component owns a physics body.
+     *
+     * The bridge (or a collider/joint that needs a bodyId) may touch this
+     * component before its own `start()` has run, or before `onLoad()` resolved
+     * the Transform. Safe to call every frame — it is a no-op once a body exists.
+     *
+     * @returns `true` when a body id is available after the call.
+     */
+    tryEnsureBody(): boolean {
+        if (!this._transform) {
+            const comp = this.getComponent(Transform as any) as Transform | null;
+            if (comp) this._transform = comp;
+        }
+        if (!this._bodyId && this.enabled !== false) {
+            this.createPhysicsBody();
+        }
+        return Boolean(this._bodyId);
+    }
+
+    /**
+     * Set the authored enabled state and push it to the physics body so a
+     * disabled rigidbody stops simulating without being destroyed (colliders
+     * and joints keep their bodyId binding).
+     */
+    syncEnabledState(enabled: boolean): void {
+        this._rbEnabled = enabled;
+        this.pushEnabledToPhysics(this.isSimulatable());
+    }
+
+    private pushEnabledToPhysics(enabled: boolean): void {
+        if (!this._bodyId || !this._physicsWorld || this._physicsWorld.isDisposed) return;
+        (this._physicsWorld as any).getBodyManager().setEnabled(this._bodyId, enabled);
     }
 
     applyForce(force: Vec2, worldPoint?: Vec2): void {
@@ -309,7 +384,7 @@ export class Rigidbody2D extends Component {
         }
 
         const position = this._transform.position;
-        const rotation = 0;
+        const rotation = this.getTransformRotationRadians();
 
         this._bodyId = (this._physicsWorld as any).getBodyManager().createBody({
             type: this._bodyType as unknown as BodyType,
@@ -324,7 +399,7 @@ export class Rigidbody2D extends Component {
             bullet: this._bullet,
             allowSleep: this._allowSleep,
             awake: this._awake,
-            enabled: this._rbEnabled,
+            enabled: this.isSimulatable(),
         });
     }
 
@@ -349,16 +424,27 @@ export class Rigidbody2D extends Component {
         this._transform.rotation = q;
     }
 
+    /**
+     * Planar (Z) rotation currently stored on the Transform, in radians.
+     *
+     * A 2D body is authored by rotating the sprite around Z, so the quaternion
+     * must be decoded instead of assumed to be identity. Returns `0` when there
+     * is no Transform or the quaternion is not finite.
+     */
+    getTransformRotationRadians(): number {
+        if (!this._transform) return 0;
+        const rot = this._transform.rotation;
+        if (!rot) return 0;
+        return quaternionToZRadians(rot.w, rot.x, rot.y, rot.z);
+    }
+
     private syncToPhysics(): void {
         if (!this._bodyId || !this._physicsWorld || !this._transform) return;
 
         const bodyManager = (this._physicsWorld as any).getBodyManager();
         const pos = this._transform.position;
         bodyManager.setPosition(this._bodyId, { x: pos.x, y: pos.y });
-
-        const rot = this._transform.rotation;
-        const angle = Math.atan2(2 * (rot.w * rot.z + rot.x * rot.y), 1 - 2 * (rot.y * rot.y + rot.z * rot.z));
-        bodyManager.setRotation(this._bodyId, angle);
+        bodyManager.setRotation(this._bodyId, this.getTransformRotationRadians());
     }
 
     private updateBodyType(): void {
@@ -399,14 +485,15 @@ export class Rigidbody2D extends Component {
     }
 
     private getPhysicsWorld(): PhysicsWorld2D | null {
-        if (this._physicsWorld) return this._physicsWorld;
-        // 1. Check bridge provider first (bridge-managed world)
-        if (Rigidbody2D._bridgeWorldProvider) {
-            const bridgeWorld = Rigidbody2D._bridgeWorldProvider();
-            if (bridgeWorld) {
-                this._physicsWorld = bridgeWorld;
-                return this._physicsWorld;
-            }
+        if (this._physicsWorld) {
+            if (!this._physicsWorld.isDisposed) return this._physicsWorld;
+            this._physicsWorld = null;
+        }
+        // 1. Check bridge providers first (bridge-managed world)
+        const bridgeWorld = resolveBridgePhysicsWorld2D();
+        if (bridgeWorld) {
+            this._physicsWorld = bridgeWorld;
+            return this._physicsWorld;
         }
         // 2. Fall back to PhysicsWorld2DComponent singleton
         const worldComponent = PhysicsWorld2DComponent.instance;
