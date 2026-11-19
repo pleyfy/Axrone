@@ -29,7 +29,7 @@ const testDir = path.dirname(fileURLToPath(import.meta.url));
 const modelsV2JsonPath = path.join(testDir, '..', 'material-models.v2.json');
 
 describe('material contract v2 domains and registry', () => {
-    it('defines all four contract domains including surface, decal, post-process, and planned volume', () => {
+    it('defines all four contract domains including surface, decal, post-process, and supported volume', () => {
         expect(listMaterialDomainsV2()).toBe(MATERIAL_DOMAINS_V2);
         expect(MATERIAL_DOMAINS_V2.map((domain) => domain.id)).toEqual([
             'surface',
@@ -37,12 +37,12 @@ describe('material contract v2 domains and registry', () => {
             'post-process',
             'volume',
         ]);
-        expect(getMaterialDomainDefinitionV2('volume')?.capabilities[0]?.status).toBe('unsupported');
+        expect(getMaterialDomainDefinitionV2('volume')?.capabilities[0]?.status).toBe('supported');
         expect(getMaterialDomainDefinitionV2('decal')?.supportsDepthOffset).toBe(true);
         expect(getMaterialDomainDefinitionV2('post-process')?.supportsVertexOffset).toBe(false);
     });
 
-    it('registers all 12 V2 Material Models cleanly without disturbing V1', () => {
+    it('registers all 13 V2 Material Models cleanly without disturbing V1', () => {
         expect(BUILTIN_MATERIAL_MODELS_V1).toHaveLength(3);
         expect(listMaterialModelDefinitionsV2()).toBe(BUILTIN_MATERIAL_MODELS_V2);
         expect(BUILTIN_MATERIAL_MODELS_V2.map((model) => model.id)).toEqual([
@@ -58,8 +58,11 @@ describe('material contract v2 domains and registry', () => {
             'composable',
             'decal',
             'post-process',
+            'volume',
         ]);
-        expect(MATERIAL_MODEL_REGISTRY_V2.size).toBe(12);
+        expect(MATERIAL_MODEL_REGISTRY_V2.size).toBe(13);
+        expect(getMaterialModelDefinitionV2('pbr')?.passPlan.map((pass) => pass.id)).toContain('refraction-copy');
+        expect(getMaterialModelDefinitionV2('pbr')?.passPlan.map((pass) => pass.id)).toContain('sss-blur');
     });
 
     it('passes structural V2 contract validation across every model', () => {

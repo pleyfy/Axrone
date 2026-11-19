@@ -11,6 +11,7 @@ import {
     GLTF_TOON_OUTLINE_SHADER_EFFECT,
     GLTF_TOON_SHADER_EFFECT,
     GLTF_UNLIT_SHADER_EFFECT,
+    GLTF_VOLUME_SHADER_EFFECT,
     GLTF_WATER_SHADER_EFFECT,
     POST_PROCESS_CONTRACT_SHADER_EFFECT,
     V2_BUILTIN_SHADER_EFFECTS,
@@ -52,6 +53,7 @@ describe('V2 shader effects compilation and contract parity', () => {
             ['gltf/particle', 'particle'],
             ['gltf/decal', 'decal'],
             ['post-process/contract', 'post-process'],
+            ['gltf/volume', 'volume'],
         ];
 
         for (const [shaderId, shadingModel] of expectedPairs) {
@@ -75,6 +77,7 @@ describe('V2 shader effects compilation and contract parity', () => {
                 GLTF_PARTICLE_SHADER_EFFECT,
                 GLTF_DECAL_SHADER_EFFECT,
                 POST_PROCESS_CONTRACT_SHADER_EFFECT,
+                GLTF_VOLUME_SHADER_EFFECT,
             ].map((effect) => [effect.id, compileRenderShaderEffect(effect)])
         );
 

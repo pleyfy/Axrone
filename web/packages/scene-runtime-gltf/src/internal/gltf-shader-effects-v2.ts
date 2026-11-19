@@ -408,6 +408,49 @@ export const createPostProcessContractShaderEffect = (
         { depthTest: false, depthWrite: false, cull: false, blend: true }
     );
 
+export const createGltfVolumeShaderEffect = (id: string): RenderShaderEffectDefinition =>
+    buildEffect(
+        id,
+        [
+            floatProp('_VolumeDensity', 1.2),
+            floatProp('_VolumeAbsorption', 0.85),
+            vec3Prop('_VolumeScatterColor', [0.95, 0.98, 1.0]),
+            floatProp('_VolumeAnisotropy', 0.45),
+        ],
+        standardVertexMain(),
+        [
+            'vec3 rayOrigin = u_CameraPosition;',
+            'vec3 rayDir = normalize(v_WorldPosition - u_CameraPosition);',
+            'float marchLength = max(length(v_WorldPosition - u_CameraPosition), 0.1);',
+            'float stepSize = clamp(marchLength / 16.0, 0.02, 0.35);',
+            'float transmittance = 1.0;',
+            'vec3 inScatter = vec3(0.0);',
+            `vec3 lightDir = ${GLTF_LIGHTING_UNIFORMS.directionalLightCount} > 0 ? normalize(-${GLTF_LIGHTING_UNIFORMS.directionalLightDirection}[0]) : vec3(0.0, 1.0, 0.0);`,
+            `vec3 lightCol = ${GLTF_LIGHTING_UNIFORMS.directionalLightCount} > 0 ? (${GLTF_LIGHTING_UNIFORMS.directionalLightColor}[0] * ${GLTF_LIGHTING_UNIFORMS.directionalLightIntensity}[0]) : vec3(1.0);`,
+            'float cosTheta = dot(rayDir, lightDir);',
+            'float g = clamp(_VolumeAnisotropy, -0.85, 0.85);',
+            'float hgPhase = (1.0 - g * g) / (4.0 * 3.14159265 * pow(max(1.0 + g * g - 2.0 * g * cosTheta, 0.01), 1.5));',
+            'for (int stepIdx = 0; stepIdx < 16; stepIdx += 1) {',
+            '    vec3 p = v_WorldPosition - rayDir * (float(stepIdx) * stepSize);',
+            '    vec3 pAnimated = p * 1.4 + vec3(u_Time * 0.12, u_Time * 0.05, 0.0);',
+            '    float field = 0.5 + 0.5 * (sin(pAnimated.x) * cos(pAnimated.y) * sin(pAnimated.z));',
+            '    float density = max(0.0, field * _VolumeDensity);',
+            '    float sigmaT = max(_VolumeAbsorption, 0.01) * density;',
+            '    float stepExtinction = exp(-sigmaT * stepSize);',
+            '    vec3 scatterSample = _BaseColorFactor.rgb * _VolumeScatterColor * (0.25 + lightCol * hgPhase * 2.5);',
+            '    inScatter += transmittance * scatterSample * (1.0 - stepExtinction);',
+            '    transmittance *= stepExtinction;',
+            '    if (transmittance < 0.02) break;',
+            '}',
+            'vec3 volColor = inScatter + _EmissiveFactor * _EmissiveIntensity * (1.0 - transmittance);',
+            '#ifdef FOG',
+            'volColor = applyFog(volColor, v_WorldPosition, u_CameraPosition);',
+            '#endif',
+            'o_Color = vec4(linearToSrgb(volColor), clamp(1.0 - transmittance, 0.0, 1.0));',
+        ],
+        { depthTest: true, depthWrite: false, cull: true, blend: true }
+    );
+
 export const GLTF_HAIR_SHADER_EFFECT = createGltfHairShaderEffect('gltf/hair');
 export const GLTF_CLOTH_SHADER_EFFECT = createGltfClothShaderEffect('gltf/cloth');
 export const GLTF_WATER_SHADER_EFFECT = createGltfWaterShaderEffect('gltf/water');
@@ -416,6 +459,7 @@ export const GLTF_PARTICLE_SHADER_EFFECT = createGltfParticleShaderEffect('gltf/
 export const GLTF_DECAL_SHADER_EFFECT = createGltfDecalShaderEffect('gltf/decal');
 export const POST_PROCESS_CONTRACT_SHADER_EFFECT =
     createPostProcessContractShaderEffect('post-process/contract');
+export const GLTF_VOLUME_SHADER_EFFECT = createGltfVolumeShaderEffect('gltf/volume');
 
 export const V2_BUILTIN_SHADER_EFFECTS: readonly RenderShaderEffectDefinition[] = Object.freeze([
     GLTF_HAIR_SHADER_EFFECT,
@@ -425,4 +469,5 @@ export const V2_BUILTIN_SHADER_EFFECTS: readonly RenderShaderEffectDefinition[] 
     GLTF_PARTICLE_SHADER_EFFECT,
     GLTF_DECAL_SHADER_EFFECT,
     POST_PROCESS_CONTRACT_SHADER_EFFECT,
+    GLTF_VOLUME_SHADER_EFFECT,
 ]);
