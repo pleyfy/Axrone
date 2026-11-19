@@ -6,8 +6,17 @@ const GLTF_SHADER_BLEND_SUFFIX = '/blend';
 const GLTF_SHADER_TOON_PREFIX = 'gltf/toon';
 const GLTF_SHADER_TOON_OUTLINE_ID = 'gltf/toon-outline';
 const GLTF_SHADER_VOLUME_PREFIX = 'gltf/volume';
+const GLTF_SHADER_PBR_PREFIX = 'gltf/pbr';
 const VOLUME_RAYMARCH_PASS_ID = 'volume-raymarch';
 const VOLUME_RAYMARCH_PASS_PHASE = 'volume';
+const REFRACTION_COPY_PASS_ID = 'refraction-copy';
+const REFRACTION_COPY_PASS_PHASE = 'refraction';
+const REFRACTION_COPY_SHADER_ID = 'gltf/refraction-copy';
+const REFRACTION_GATE_UNIFORM = '_TransmissionFactor';
+const SSS_BLUR_PASS_ID = 'sss-blur';
+const SSS_BLUR_PASS_PHASE = 'subsurface';
+const SSS_BLUR_SHADER_ID = 'gltf/sss-blur';
+const SSS_GATE_UNIFORM = '_SubsurfaceFactor';
 
 const toOutlineShaderId = (shaderId: string): string =>
     `${GLTF_SHADER_TOON_OUTLINE_ID}${shaderId.slice(GLTF_SHADER_TOON_PREFIX.length)}`;
@@ -36,6 +45,65 @@ const isGltfToonOutlineEnabled = (
 
 const isGltfVolumeShader = (shaderId?: string): boolean =>
     shaderId !== undefined && shaderId.startsWith(GLTF_SHADER_VOLUME_PREFIX);
+
+const isGltfPbrSurfaceShader = (shaderId?: string): boolean =>
+    shaderId !== undefined && shaderId.startsWith(GLTF_SHADER_PBR_PREFIX);
+
+/**
+ * Mirrors the contract's `enabledWhenUniformNonZero` gate for a PBR surface
+ * pass. The pbr/composable models declare `_TransmissionFactor` and
+ * `_SubsurfaceFactor` as the gates; the V2 contract test pins these two
+ * constant pairs so the runtime and the contract cannot drift apart.
+ */
+const isGatedSurfacePassEnabled = (
+    uniforms: GltfMaterialUniformMap | undefined,
+    shaderId: string | undefined,
+    gateUniform: string
+): boolean =>
+    isGltfPbrSurfaceShader(shaderId) &&
+    normalizeNumericUniform(uniforms?.[gateUniform], 0) > 0;
+
+const toSurfaceEffectShaderId = (
+    baseShaderId: string,
+    shaderId: string | undefined
+): string | undefined =>
+    shaderId === undefined
+        ? baseShaderId
+        : `${baseShaderId}${shaderId.slice(GLTF_SHADER_PBR_PREFIX.length)}`;
+
+const createSurfaceEffectMaterialPass = (
+    id: string,
+    phase: string,
+    shaderId: string | undefined,
+    cullMode: 'none' | 'back' | 'front'
+): SceneMaterialPassDefinition => ({
+    id,
+    phase,
+    shaderId,
+    primitive: 'triangle-list',
+    rasterizerState: {
+        cullMode,
+        frontFace: 'ccw',
+    },
+    depthStencilState: {
+        depthTest: false,
+        depthWrite: false,
+        depthFunc: 'less',
+    },
+    blendState: {
+        targets: [
+            {
+                blend: true,
+                srcColorFactor: 'src-alpha',
+                dstColorFactor: 'one-minus-src-alpha',
+                colorOp: 'add',
+                srcAlphaFactor: 'one',
+                dstAlphaFactor: 'one-minus-src-alpha',
+                alphaOp: 'add',
+            },
+        ],
+    },
+});
 
 const createGltfVolumeMaterialPass = (): readonly SceneMaterialPassDefinition[] =>
     Object.freeze([
@@ -83,8 +151,14 @@ export const createGltfRuntimeMaterialPasses = (
     const cullMode = doubleSided ? 'none' : 'back';
     const outlineEnabled = isGltfToonOutlineEnabled(uniforms, shaderId);
     const outlineShaderId = shaderId === undefined ? undefined : toOutlineShaderId(shaderId);
+    const refractionCopyEnabled = isGatedSurfacePassEnabled(
+        uniforms,
+        shaderId,
+        REFRACTION_GATE_UNIFORM
+    );
+    const sssBlurEnabled = isGatedSurfacePassEnabled(uniforms, shaderId, SSS_GATE_UNIFORM);
 
-    return Object.freeze([
+    const passes: SceneMaterialPassDefinition[] = [
         {
             id: 'main',
             phase: 'default',
@@ -191,7 +265,29 @@ export const createGltfRuntimeMaterialPasses = (
                   },
               ]
             : []),
-    ]);
+        ...(refractionCopyEnabled
+            ? [
+                  createSurfaceEffectMaterialPass(
+                      REFRACTION_COPY_PASS_ID,
+                      REFRACTION_COPY_PASS_PHASE,
+                      toSurfaceEffectShaderId(REFRACTION_COPY_SHADER_ID, shaderId),
+                      cullMode
+                  ),
+              ]
+            : []),
+        ...(sssBlurEnabled
+            ? [
+                  createSurfaceEffectMaterialPass(
+                      SSS_BLUR_PASS_ID,
+                      SSS_BLUR_PASS_PHASE,
+                      toSurfaceEffectShaderId(SSS_BLUR_SHADER_ID, shaderId),
+                      cullMode
+                  ),
+              ]
+            : []),
+    ];
+
+    return Object.freeze(passes);
 };
 
 export const createVariantShaderId = (

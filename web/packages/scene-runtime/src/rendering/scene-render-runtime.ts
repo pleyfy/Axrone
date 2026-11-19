@@ -9,6 +9,12 @@ import { Animator } from '../components/animator';
 import { SceneCameraFrameStateCollector } from '../camera-frame-state';
 import { SceneDrawExecutionContextCache } from './draw-execution-context';
 import { SceneDrawExecutor } from './draw-executor';
+import {
+    REFRACTION_COPY_PASS_ID,
+    SCENE_COLOR_COPY_TEXTURE_ID,
+    SSS_BLUR_PASS_ID,
+    SSS_BLUR_TEXTURE_ID,
+} from './scene-framebuffer-passes';
 import { SceneFrameUniformBinder } from '../frame-uniform-binder';
 import { SceneFogUniformBinder } from '../fog-uniform-binder';
 import { DEFAULT_SCENE_FOG_STATE, type SceneFogState } from '../fog-state';
@@ -52,6 +58,12 @@ import { SceneUniformWriter } from '../uniform-writer';
 const EMPTY_ACTORS: readonly Actor[] = Object.freeze([]);
 const EMPTY_RENDER_ITEMS: readonly SceneRenderItem[] = Object.freeze([]);
 const OUTLINE_MATERIAL_PASS_ID = 'outline';
+const EMPTY_OPTIONAL_MATERIAL_PASSES: ReadonlySet<string> = new Set<string>();
+const OPTIONAL_MATERIAL_PASS_IDS: ReadonlySet<string> = new Set<string>([
+    OUTLINE_MATERIAL_PASS_ID,
+    REFRACTION_COPY_PASS_ID,
+    SSS_BLUR_PASS_ID,
+]);
 const NO_CLEAR_FLAGS: readonly SceneClearFlag[] = Object.freeze([]);
 
 export interface SceneRenderRuntimeOptions {
@@ -183,8 +195,9 @@ export class SceneRenderRuntime {
     private _outlineRenderPass: SceneRenderPassResource | null = null;
     private _outlineRenderPassOrder = 0;
     private _outlineRenderPassRendererPassId: string | null = null;
-    private _outlinePassRevision = Number.NaN;
-    private _outlinePassDeclared = false;
+    private _optionalPassRevision = Number.NaN;
+    private _optionalPassIds: ReadonlySet<string> = EMPTY_OPTIONAL_MATERIAL_PASSES;
+    private _framebufferTextureKey = '';
     private _framePassSource: readonly SceneRenderPassResource[] | null = null;
     private _framePasses: readonly SceneRenderPassResource[] | null = null;
 
@@ -386,22 +399,95 @@ export class SceneRenderRuntime {
         return this._framePasses;
     }
 
-    private _declaresOutlineMaterialPass(): boolean {
+    /**
+     * Optional material passes (outline, offscreen framebuffer effects) the
+     * scene's materials declare, keyed by material-registry revision. One
+     * traversal feeds every conditional scene pass so adding a gated effect
+     * does not add a per-frame actor scan.
+     */
+    private _getOptionalMaterialPassIds(): ReadonlySet<string> {
         const materials = this._options.resources.materials;
         const revision = materials.revision;
-        if (typeof revision === 'number' && revision === this._outlinePassRevision) {
-            return this._outlinePassDeclared;
+        if (typeof revision === 'number' && revision === this._optionalPassRevision) {
+            return this._optionalPassIds;
         }
 
-        const declared = this._scanOutlineMaterialPasses();
-        this._outlinePassRevision = typeof revision === 'number' ? revision : Number.NaN;
-        this._outlinePassDeclared = declared;
-        return declared;
+        this._optionalPassIds = this._scanOptionalMaterialPasses();
+        this._optionalPassRevision = typeof revision === 'number' ? revision : Number.NaN;
+        return this._optionalPassIds;
     }
 
-    private _scanOutlineMaterialPasses(): boolean {
+    /**
+     * Publishes the offscreen scene-colour copy and subsurface blur targets into
+     * the texture registry under their well-known ids, so a gated material's
+     * `_SceneColorTexture` / `_SubsurfaceBlurTexture` slot resolves to the real
+     * target instead of falling back to the material's own textures. Targets are
+     * persistent, so this runs only when the set or resolution actually changed.
+     */
+    private _syncFramebufferTextures(): void {
+        const bindings = this._renderPipeline.framebufferTextureBindings;
+        const sceneColor = bindings?.sceneColorTexture ?? null;
+        const sssBlur = bindings?.sssBlurTexture ?? null;
+        const key = `${sceneColor === null ? 0 : sceneColor.width}x${
+            sceneColor === null ? 0 : sceneColor.height
+        }/${sssBlur === null ? 0 : sssBlur.width}x${sssBlur === null ? 0 : sssBlur.height}`;
+        if (key === this._framebufferTextureKey) {
+            return;
+        }
+
+        this._framebufferTextureKey = key;
+        const textures = this._options.resources.textures;
+        if (sceneColor !== null) {
+            textures.register(
+                {
+                    id: SCENE_COLOR_COPY_TEXTURE_ID,
+                    source: {
+                        kind: 'color',
+                        color: [0, 0, 0, 1],
+                        width: sceneColor.width,
+                        height: sceneColor.height,
+                    },
+                },
+                {
+                    id: SCENE_COLOR_COPY_TEXTURE_ID,
+                    texture: sceneColor,
+                    width: sceneColor.width,
+                    height: sceneColor.height,
+                    samplerId: null,
+                }
+            );
+        }
+
+        if (sssBlur !== null) {
+            textures.register(
+                {
+                    id: SSS_BLUR_TEXTURE_ID,
+                    source: {
+                        kind: 'color',
+                        color: [0, 0, 0, 1],
+                        width: sssBlur.width,
+                        height: sssBlur.height,
+                    },
+                },
+                {
+                    id: SSS_BLUR_TEXTURE_ID,
+                    texture: sssBlur,
+                    width: sssBlur.width,
+                    height: sssBlur.height,
+                    samplerId: null,
+                }
+            );
+        }
+    }
+
+    private _declaresOutlineMaterialPass(): boolean {
+        return this._getOptionalMaterialPassIds().has(OUTLINE_MATERIAL_PASS_ID);
+    }
+
+    private _scanOptionalMaterialPasses(): ReadonlySet<string> {
         const actors = this._options.getActors();
         const materials = this._options.resources.materials;
+        const declared = new Set<string>();
 
         for (let index = 0; index < actors.length; index += 1) {
             const actor = actors[index];
@@ -420,13 +506,16 @@ export class SceneRenderRuntime {
             }
 
             for (let passIndex = 0; passIndex < passes.length; passIndex += 1) {
-                if (passes[passIndex]?.id === OUTLINE_MATERIAL_PASS_ID) {
-                    return true;
+                const passId = passes[passIndex]?.id;
+                if (passId === undefined || !OPTIONAL_MATERIAL_PASS_IDS.has(passId)) {
+                    continue;
                 }
+
+                declared.add(passId);
             }
         }
 
-        return false;
+        return declared;
     }
 
     private _createOutlineRenderPass(
@@ -535,6 +624,7 @@ export class SceneRenderRuntime {
         if (renderPasses.length === 0) {
             return;
         }
+        this._syncFramebufferTextures();
         this._options.gl.viewport(0, 0, params.viewportWidth, params.viewportHeight);
 
         let planningPassCount = 0;
@@ -629,6 +719,7 @@ export class SceneRenderRuntime {
                 meshRevision,
                 shaderRevision,
                 renderListCacheHit,
+                enabledMaterialPassIds: this._getOptionalMaterialPassIds(),
                 resolveBounds: (renderer) => {
                     const meshId = renderer.meshId;
                     return meshId

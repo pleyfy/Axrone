@@ -634,6 +634,10 @@ export interface SceneRenderPlanningStats {
     readonly spriteTransparentCount: number;
     readonly spriteBatchCount: number;
     readonly skippedSpriteCount: number;
+    /** Offscreen scene-colour copies issued for this pass (transmission). */
+    readonly refractionCopyCount?: number;
+    /** Offscreen subsurface blur passes issued for this pass. */
+    readonly sssBlurCount?: number;
     /** Optional diagnostics: the sprite batch path reused its cached build. */
     readonly spriteBatchCacheHit?: boolean;
     /** Optional diagnostics: the 3D render-item collection was reused. */

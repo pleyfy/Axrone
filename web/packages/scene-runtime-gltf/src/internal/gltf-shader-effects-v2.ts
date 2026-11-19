@@ -451,6 +451,102 @@ export const createGltfVolumeShaderEffect = (id: string): RenderShaderEffectDefi
         { depthTest: true, depthWrite: false, cull: true, blend: true }
     );
 
+const screenSpaceSamplerProp = (
+    name: string,
+    label: string
+): RenderShaderPropertyDefinition => ({
+    name,
+    type: 'sampler2D',
+    stages: ['fragment'],
+    scope: 'material',
+    inspector: {
+        label,
+        group: 'Framebuffers',
+        control: 'texture',
+    },
+});
+
+const renderTargetSizeProp = (): RenderShaderPropertyDefinition => ({
+    name: '_RenderTargetSize',
+    type: 'vec2',
+    stages: ['fragment'],
+    scope: 'system',
+    defaultValue: [1, 1],
+    inspector: HIDDEN_INSPECTOR,
+});
+
+/**
+ * Transmissive draw. The background comes from the frame's resolved scene
+ * colour copy; `_BaseColorTexture` never feeds it. Sampling the copy instead of
+ * re-drawing the scene is what lets glass refract without a second blended pass
+ * over opaque geometry.
+ */
+export const createGltfRefractionCopyShaderEffect = (
+    id: string
+): RenderShaderEffectDefinition =>
+    buildEffect(
+        id,
+        [
+            floatProp('_TransmissionFactor', 1),
+            floatProp('_IorFactor', 1.5),
+            floatProp('_ThicknessFactor', 0.2),
+            floatProp('_RefractionScale', 0.04),
+            renderTargetSizeProp(),
+            screenSpaceSamplerProp('_SceneColorTexture', 'Scene Color (offscreen copy)'),
+        ],
+        standardVertexMain(),
+        [
+            'vec2 screenUV = gl_FragCoord.xy / max(_RenderTargetSize, vec2(1.0));',
+            'vec3 N = normalize(v_WorldNormal);',
+            'float ior = max(_IorFactor, 1.001);',
+            'float parallax = clamp(_ThicknessFactor, 0.0, 4.0) * (1.0 - 1.0 / ior);',
+            'vec2 offset = N.xy * parallax * max(_RefractionScale, 0.0);',
+            'vec4 sceneColor = texture(_SceneColorTexture, clamp(screenUV + offset, vec2(0.0), vec2(1.0)));',
+            'float transmission = clamp(_TransmissionFactor, 0.0, 1.0);',
+            'vec3 tint = _BaseColorFactor.rgb;',
+            'vec3 color = mix(sceneColor.rgb * tint, sceneColor.rgb, 1.0 - transmission);',
+            'color += _EmissiveFactor * _EmissiveIntensity;',
+            'o_Color = vec4(linearToSrgb(color), clamp(_BaseColorFactor.a * (1.0 - transmission * 0.25), 0.0, 1.0));',
+        ],
+        { depthTest: true, depthWrite: false, cull: true, blend: true },
+        ['gltf.uv', 'gltf.color-space']
+    );
+
+/**
+ * Subsurface draw. The scattered term is read from the frame's dedicated blur
+ * target rather than approximated from the albedo, so thin areas pick up real
+ * neighbourhood light instead of a flat tint.
+ */
+export const createGltfSssBlurShaderEffect = (id: string): RenderShaderEffectDefinition =>
+    buildEffect(
+        id,
+        [
+            floatProp('_SubsurfaceFactor', 1),
+            vec3Prop('_SubsurfaceColorFactor', [1, 0.8, 0.6]),
+            floatProp('_SubsurfaceThickness', 1),
+            floatProp('_SubsurfacePower', 2.5),
+            renderTargetSizeProp(),
+            screenSpaceSamplerProp('_SubsurfaceBlurTexture', 'Subsurface Blur (offscreen)'),
+        ],
+        standardVertexMain(),
+        [
+            'vec2 screenUV = gl_FragCoord.xy / max(_RenderTargetSize, vec2(1.0));',
+            'float factor = clamp(_SubsurfaceFactor, 0.0, 1.0);',
+            'float thickness = clamp(_SubsurfaceThickness, 0.0, 4.0);',
+            'vec3 blurred = texture(_SubsurfaceBlurTexture, screenUV).rgb;',
+            'vec3 albedo = _BaseColorFactor.rgb;',
+            'vec3 scattered = pow(max(blurred, vec3(0.0)), vec3(max(_SubsurfacePower, 0.1))) *',
+            '    _SubsurfaceColorFactor * albedo * thickness;',
+            'vec3 lightFacing = max(dot(normalize(v_WorldNormal), normalize(u_CameraPosition - v_WorldPosition)), 0.0);',
+            'vec3 direct = albedo * (0.2 + 0.8 * lightFacing);',
+            'vec3 color = mix(direct, direct * 0.35 + scattered, factor);',
+            'color += _EmissiveFactor * _EmissiveIntensity;',
+            'o_Color = vec4(linearToSrgb(color), _BaseColorFactor.a);',
+        ],
+        { depthTest: true, depthWrite: false, cull: true, blend: true },
+        ['gltf.uv', 'gltf.color-space']
+    );
+
 export const GLTF_HAIR_SHADER_EFFECT = createGltfHairShaderEffect('gltf/hair');
 export const GLTF_CLOTH_SHADER_EFFECT = createGltfClothShaderEffect('gltf/cloth');
 export const GLTF_WATER_SHADER_EFFECT = createGltfWaterShaderEffect('gltf/water');
@@ -460,6 +556,9 @@ export const GLTF_DECAL_SHADER_EFFECT = createGltfDecalShaderEffect('gltf/decal'
 export const POST_PROCESS_CONTRACT_SHADER_EFFECT =
     createPostProcessContractShaderEffect('post-process/contract');
 export const GLTF_VOLUME_SHADER_EFFECT = createGltfVolumeShaderEffect('gltf/volume');
+export const GLTF_REFRACTION_COPY_SHADER_EFFECT =
+    createGltfRefractionCopyShaderEffect('gltf/refraction-copy');
+export const GLTF_SSS_BLUR_SHADER_EFFECT = createGltfSssBlurShaderEffect('gltf/sss-blur');
 
 export const V2_BUILTIN_SHADER_EFFECTS: readonly RenderShaderEffectDefinition[] = Object.freeze([
     GLTF_HAIR_SHADER_EFFECT,
@@ -470,4 +569,6 @@ export const V2_BUILTIN_SHADER_EFFECTS: readonly RenderShaderEffectDefinition[] 
     GLTF_DECAL_SHADER_EFFECT,
     POST_PROCESS_CONTRACT_SHADER_EFFECT,
     GLTF_VOLUME_SHADER_EFFECT,
+    GLTF_REFRACTION_COPY_SHADER_EFFECT,
+    GLTF_SSS_BLUR_SHADER_EFFECT,
 ]);

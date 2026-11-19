@@ -491,6 +491,14 @@ const makeCapabilities = (
 
 const NATIVE_PENDING_NOTE = 'C# native runtime parity for V2 models is scheduled for a follow-up wave.';
 
+export const MATERIAL_PASS_ID_REFRACTION_COPY = 'refraction-copy';
+export const MATERIAL_PASS_ID_SSS_BLUR = 'sss-blur';
+
+const EMPTY_PASS_PLAN: readonly MaterialPassPlanEntryDefinition[] = Object.freeze([]);
+
+const SHADER_ID_REFRACTION_COPY = 'gltf/refraction-copy';
+const SHADER_ID_SSS_BLUR = 'gltf/sss-blur';
+
 const standardSurfacePasses = (): readonly MaterialPassPlanEntryDefinition[] => [
     { id: 'main', phase: 'default', required: true },
     { id: 'forward-add', phase: 'forward-add' },
@@ -500,23 +508,97 @@ const standardSurfacePasses = (): readonly MaterialPassPlanEntryDefinition[] => 
 const pbrSurfacePasses = (): readonly MaterialPassPlanEntryDefinition[] => [
     ...standardSurfacePasses(),
     {
-        id: 'refraction-copy',
+        id: MATERIAL_PASS_ID_REFRACTION_COPY,
         phase: 'refraction',
-        shaderId: 'post-process/contract',
+        shaderId: SHADER_ID_REFRACTION_COPY,
         depthTest: false,
         depthWrite: false,
         enabledWhenUniformNonZero: '_TransmissionFactor',
     },
     {
-        id: 'sss-blur',
+        id: MATERIAL_PASS_ID_SSS_BLUR,
         phase: 'subsurface',
-        shaderId: 'post-process/contract',
+        shaderId: SHADER_ID_SSS_BLUR,
         depthTest: false,
         depthWrite: false,
         blend: true,
         enabledWhenUniformNonZero: '_SubsurfaceFactor',
     },
 ];
+
+export const findMaterialPassPlanEntryV2 = (
+    passPlan: readonly MaterialPassPlanEntryDefinition[] | undefined,
+    passId: string
+): MaterialPassPlanEntryDefinition | undefined => {
+    if (!passPlan) {
+        return undefined;
+    }
+
+    for (let index = 0; index < passPlan.length; index += 1) {
+        if (passPlan[index]!.id === passId) {
+            return passPlan[index];
+        }
+    }
+
+    return undefined;
+};
+
+const readGateUniform = (
+    uniforms: Readonly<Record<string, unknown>> | undefined,
+    uniformName: string
+): number | null => {
+    if (!uniforms) {
+        return null;
+    }
+
+    const value = uniforms[uniformName];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return null;
+    }
+
+    return value;
+};
+
+/**
+ * Evaluates one `passPlan` gate against live material uniforms. `required`
+ * entries are always enabled; a gate the runtime cannot read (missing or
+ * non-numeric uniform) disables the entry rather than guessing.
+ */
+export const isMaterialPassPlanEntryEnabledV2 = (
+    entry: MaterialPassPlanEntryDefinition,
+    uniforms: Readonly<Record<string, unknown>> | undefined
+): boolean => {
+    const gate = entry.enabledWhenUniformNonZero;
+    if (gate === undefined) {
+        return true;
+    }
+
+    return (readGateUniform(uniforms, gate) ?? 0) > 0;
+};
+
+/**
+ * Resolves the pass plan a material actually contributes to the frame. This is
+ * the only reader of `enabledWhenUniformNonZero`; anything that used to treat
+ * a gated entry as unconditional now has to go through here.
+ */
+export const resolveEnabledMaterialPassPlanV2 = (
+    passPlan: readonly MaterialPassPlanEntryDefinition[] | undefined,
+    uniforms: Readonly<Record<string, unknown>> | undefined
+): readonly MaterialPassPlanEntryDefinition[] => {
+    if (!passPlan || passPlan.length === 0) {
+        return EMPTY_PASS_PLAN;
+    }
+
+    const enabled: MaterialPassPlanEntryDefinition[] = [];
+    for (let index = 0; index < passPlan.length; index += 1) {
+        const entry = passPlan[index]!;
+        if (isMaterialPassPlanEntryEnabledV2(entry, uniforms)) {
+            enabled.push(entry);
+        }
+    }
+
+    return enabled;
+};
 
 const buildStagesFromSlots = (
     slots: readonly MaterialOutputSlotDefinition[],
