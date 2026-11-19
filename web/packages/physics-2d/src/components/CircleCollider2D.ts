@@ -1,5 +1,6 @@
 import { script } from '@axrone/ecs-runtime/decorators';
 import { Collider2D } from './collider2d';
+import { finiteOr } from '../core/physics-world-2d-helpers';
 
 @script({
     scriptName: 'CircleCollider2D',
@@ -78,6 +79,6 @@ export class CircleCollider2D extends Collider2D {
 
     deserialize(data: Record<string, any>): void {
         super.deserialize(data);
-        this._radius = data.radius ?? 0.5;
+        this._radius = finiteOr(data.radius, 0.5);
     }
 }

@@ -96,6 +96,11 @@ export class PolygonCollider2D extends Collider2D {
 
     deserialize(data: Record<string, any>): void {
         super.deserialize(data);
-        this._vertices = (data.vertices ?? []).map((v: any) => Vec2.from(v));
+        const vertices = Array.isArray(data.vertices) ? data.vertices : [];
+        // Each vertex may arrive as the Editor's `[x, y]` or the engine's `{x, y}`.
+        this._vertices = vertices.map((v: unknown) => {
+            const point = this.normalizeVec2(v);
+            return new Vec2(point.x, point.y);
+        });
     }
 }
