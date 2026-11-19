@@ -346,7 +346,7 @@ public sealed class SceneGlDrawExecutor
             _ => authored.Cull
         };
         context.State.SetCullMode(MapCullMode(cull ? cullMode : SceneGlCullMode.Back));
-        SceneGlBlendMapping mapping = SceneGlBlendStateMapper.Resolve(material, pass, transparent);
+        SceneGlBlendMapping mapping = SceneGlBlendStateMapper.Resolve(material, pass, transparent, materialPass);
         context.State.SetBlend(mapping.Enabled);
 
         if (mapping.Enabled)
@@ -375,18 +375,27 @@ public sealed class SceneGlDrawExecutor
         IReadOnlyList<SceneMaterialPass> passes,
         SceneAssetId<RenderPassAssetTag> passId)
     {
-        string targetId = passId.ToString();
+        if (!passId.Value.IsValid)
+        {
+            return null;
+        }
+
         for (int i = 0; i < passes.Count; i++)
         {
-            if (string.Equals(passes[i].Id, targetId, StringComparison.Ordinal) ||
-                string.Equals(passes[i].Phase, targetId, StringComparison.Ordinal))
+            SceneMaterialPass candidate = passes[i];
+            if (NamesSymbol(candidate.Id, passId) || NamesSymbol(candidate.Phase, passId))
             {
-                return passes[i];
+                return candidate;
             }
         }
 
         return null;
     }
+
+    // Render-pass identity is a hashed symbol, so the authored pass id or phase has
+    // to be hashed to meet it; comparing against ToString() would read the digest.
+    private static bool NamesSymbol(string? candidateName, SceneAssetId<RenderPassAssetTag> passId) =>
+        !string.IsNullOrEmpty(candidateName) && SceneStringId.FromName(candidateName) == passId.Value;
 
     private static bool IsPassEnabled(
         SceneMaterialPass? materialPass,

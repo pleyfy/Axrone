@@ -25,7 +25,8 @@ public enum MaterialModelId : byte
     Particle = 8,
     Composable = 9,
     Decal = 10,
-    PostProcess = 11
+    PostProcess = 11,
+    Volume = 12
 }
 
 /// <summary>Target profile governed by Material Contract capability checks.</summary>
@@ -73,6 +74,8 @@ public sealed record MaterialPassPlanEntryV2(
     bool Required = false,
     string? CullMode = null,
     bool? DepthWrite = null,
+    bool? DepthTest = null,
+    bool? Blend = null,
     string? EnabledWhenUniformNonZero = null);
 
 /// <summary>Capability verdict across all three Render Profiles.</summary>
@@ -116,12 +119,33 @@ public static class MaterialContractV2
     private static readonly IReadOnlyList<MaterialOutputSlotV2> ComposableSlots = BuildComposableSlots();
     private static readonly IReadOnlyList<MaterialOutputSlotV2> DecalSlots = BuildDecalSlots();
     private static readonly IReadOnlyList<MaterialOutputSlotV2> PostProcessSlots = BuildPostProcessSlots();
+    private static readonly IReadOnlyList<MaterialOutputSlotV2> VolumeSlots = BuildVolumeSlots();
 
     private static readonly MaterialPassPlanEntryV2[] StandardSurfacePassPlan =
     [
         new("main", "default", Required: true),
         new("forward-add", "forward-add"),
         new("shadow-caster", "shadow-caster"),
+    ];
+
+    private static readonly MaterialPassPlanEntryV2[] PbrSurfacePassPlan =
+    [
+        .. StandardSurfacePassPlan,
+        new(
+            "refraction-copy",
+            "refraction",
+            "post-process/contract",
+            DepthTest: false,
+            DepthWrite: false,
+            EnabledWhenUniformNonZero: "_TransmissionFactor"),
+        new(
+            "sss-blur",
+            "subsurface",
+            "post-process/contract",
+            DepthTest: false,
+            DepthWrite: false,
+            Blend: true,
+            EnabledWhenUniformNonZero: "_SubsurfaceFactor"),
     ];
 
     private static readonly MaterialModelDefinitionV2[] ModelList =
@@ -135,7 +159,7 @@ public static class MaterialContractV2
             "gltf/pbr",
             "pbr-standard",
             StandardPbrSlots,
-            StandardSurfacePassPlan,
+            PbrSurfacePassPlan,
             new(MaterialCapabilityStatus.Supported, MaterialCapabilityStatus.Partial, MaterialCapabilityStatus.Supported,
                 "Surface, AO, opacity map, and specular lobes supported on WebGL2 Standard and Native.")),
         new(
@@ -247,7 +271,7 @@ public static class MaterialContractV2
             "gltf/pbr",
             "composable-layered-metal",
             ComposableSlots,
-            StandardSurfacePassPlan,
+            PbrSurfacePassPlan,
             new(MaterialCapabilityStatus.Supported, MaterialCapabilityStatus.Partial, MaterialCapabilityStatus.Supported,
                 "Modular Surface Attributes bundle lowered cleanly into PBR bindings.")),
         new(
@@ -274,6 +298,28 @@ public static class MaterialContractV2
             [new("main", "default", "post-process/contract", Required: true, CullMode: "none", DepthWrite: false)],
             new(MaterialCapabilityStatus.Supported, MaterialCapabilityStatus.Partial, MaterialCapabilityStatus.Supported,
                 "Screen-space tint, vignette, saturation, and contrast grading.")),
+        new(
+            MaterialModelId.Volume,
+            "volume",
+            "Volume",
+            MaterialDomainId.Volume,
+            SceneMaterialShadingModel.Volume,
+            "gltf/volume",
+            "volume-fog-cloud",
+            VolumeSlots,
+            [
+                new(
+                    "volume-raymarch",
+                    "volume",
+                    "gltf/volume",
+                    Required: true,
+                    CullMode: "front",
+                    DepthTest: true,
+                    DepthWrite: false,
+                    Blend: true),
+            ],
+            new(MaterialCapabilityStatus.Supported, MaterialCapabilityStatus.Unsupported, MaterialCapabilityStatus.Unsupported,
+                "16-step volumetric raymarch, Beer-Lambert optical absorption, and phase scattering execute via gltf/volume.")),
     ];
 
     private static readonly FrozenDictionary<MaterialModelId, MaterialModelDefinitionV2> ModelsByEnum =
@@ -282,7 +328,7 @@ public static class MaterialContractV2
     private static readonly FrozenDictionary<string, MaterialModelDefinitionV2> ModelsById =
         ModelList.ToFrozenDictionary(static m => m.Id, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Ordered catalog of all 12 built-in Material Contract v2 models.</summary>
+    /// <summary>Ordered catalog of all 13 built-in Material Contract v2 models.</summary>
     public static IReadOnlyList<MaterialModelDefinitionV2> Models => ModelList;
 
     /// <summary>Returns the definition for <paramref name="modelId"/>.</summary>
@@ -319,6 +365,7 @@ public static class MaterialContractV2
         if (trimmed.StartsWith("gltf/particle", StringComparison.Ordinal)) return MaterialModelId.Particle;
         if (trimmed.StartsWith("gltf/decal", StringComparison.Ordinal)) return MaterialModelId.Decal;
         if (trimmed.StartsWith("post-process/", StringComparison.Ordinal)) return MaterialModelId.PostProcess;
+        if (trimmed.StartsWith("gltf/volume", StringComparison.Ordinal)) return MaterialModelId.Volume;
         return MaterialModelId.Pbr;
     }
 
@@ -334,7 +381,9 @@ public static class MaterialContractV2
         MaterialDomainId.PostProcess => profile == MaterialRenderProfileId.WebGl2Minimal
             ? MaterialCapabilityStatus.Partial
             : MaterialCapabilityStatus.Supported,
-        MaterialDomainId.Volume => MaterialCapabilityStatus.Unsupported,
+        MaterialDomainId.Volume => profile == MaterialRenderProfileId.WebGl2Standard
+            ? MaterialCapabilityStatus.Supported
+            : MaterialCapabilityStatus.Unsupported,
         _ => MaterialCapabilityStatus.Unsupported
     };
 
@@ -415,8 +464,10 @@ public static class MaterialContractV2
             passes[i] = new SceneMaterialPass(
                 id: entry.Id,
                 priority: i,
+                depthTest: entry.DepthTest,
                 depthWrite: entry.DepthWrite,
                 cull: cull,
+                blend: entry.Blend,
                 shaderId: shaderId,
                 phase: entry.Phase,
                 cullMode: entry.CullMode,
@@ -631,5 +682,18 @@ public static class MaterialContractV2
         Slot("contrast", "Contrast", MaterialStageId.Fragment, "post-process", "float", "postProcess.contrast", "_PostContrast", "1", optional: true),
         Slot("blendFactor", "Blend Factor", MaterialStageId.Fragment, "post-process", "float", "postProcess.blendFactor", "_PostBlendFactor", "1", optional: true),
         DepthOffsetSlot("post-process"),
+    ];
+
+    private static IReadOnlyList<MaterialOutputSlotV2> BuildVolumeSlots() =>
+    [
+        Slot("vertexOffset", "Vertex Offset", MaterialStageId.Vertex, "vertex", "vec3", "vertex.offset",
+            "_VertexOffset", "[0, 0, 0]", optional: true, capability: MaterialCapabilityStatus.Unsupported),
+        Slot("baseColor", "Albedo Scatter", MaterialStageId.Fragment, "volume", "vec3", "volume.albedo", "_BaseColorFactor", "[0.85, 0.9, 0.95]"),
+        Slot("volumeDensity", "Volume Density", MaterialStageId.Fragment, "volume", "float", "volume.density", "_VolumeDensity", "1.2", optional: true),
+        Slot("volumeAbsorption", "Absorption Rate", MaterialStageId.Fragment, "volume", "float", "volume.absorption", "_VolumeAbsorption", "0.85", optional: true),
+        Slot("volumeScatterColor", "Scatter Tint", MaterialStageId.Fragment, "volume", "vec3", "volume.scatterColor", "_VolumeScatterColor", "[0.95, 0.98, 1]", optional: true),
+        Slot("volumeAnisotropy", "Phase Anisotropy (g)", MaterialStageId.Fragment, "volume", "float", "volume.anisotropy", "_VolumeAnisotropy", "0.45", optional: true),
+        Slot("emission", "Emission", MaterialStageId.Fragment, "volume", "vec3", "surface.emission", "_EmissiveFactor", "[0, 0, 0]", optional: true),
+        Slot("emissionIntensity", "Emission Intensity", MaterialStageId.Fragment, "volume", "float", "surface.emissionIntensity", "_EmissiveIntensity", "1", optional: true, advanced: true),
     ];
 }

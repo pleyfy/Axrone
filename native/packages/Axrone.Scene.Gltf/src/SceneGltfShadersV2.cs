@@ -6,7 +6,8 @@ using System.Diagnostics.CodeAnalysis;
 /// <summary>
 /// Built-in GLSL 330 core Material Contract v2 shaders (<c>gltf/toon-outline</c>,
 /// <c>gltf/hair</c>, <c>gltf/cloth</c>, <c>gltf/water</c>, <c>gltf/foliage</c>,
-/// <c>gltf/particle</c>, <c>gltf/decal</c>, and <c>post-process/contract</c>).
+/// <c>gltf/particle</c>, <c>gltf/decal</c>, <c>post-process/contract</c>,
+/// and <c>gltf/volume</c>).
 /// </summary>
 public static class SceneGltfShadersV2
 {
@@ -26,6 +27,8 @@ public static class SceneGltfShadersV2
     public const string DecalShaderName = "gltf/decal";
     /// <summary>Shader id shared by the post-process model and by contract pass overrides.</summary>
     public const string PostProcessShaderName = "post-process/contract";
+    /// <summary>Shader id of the raymarched volumetric model family.</summary>
+    public const string VolumeShaderName = "gltf/volume";
 
     private static readonly string[] V2BaseNames =
     [
@@ -36,7 +39,8 @@ public static class SceneGltfShadersV2
         FoliageShaderName,
         ParticleShaderName,
         DecalShaderName,
-        PostProcessShaderName
+        PostProcessShaderName,
+        VolumeShaderName
     ];
 
     private static readonly string[] StandardAttributes =
@@ -81,7 +85,7 @@ public static class SceneGltfShadersV2
             : ReadOnlySpan<SceneGltfShaderProperty>.Empty;
     }
 
-    /// <summary>Checks whether a base shader id is one of the 8 built-in V2 shaders.</summary>
+    /// <summary>Checks whether a base shader id is one of the 9 built-in V2 shaders.</summary>
     /// <param name="id">Shader id to classify, with or without a variant suffix.</param>
     /// <param name="baseName">The matched V2 base shader id, or <see langword="null"/> when unmatched.</param>
     /// <returns><see langword="true"/> when <paramref name="id"/> belongs to a built-in V2 shader family.</returns>
@@ -196,6 +200,7 @@ public static class SceneGltfShadersV2
             WaterShaderName or ParticleShaderName => (true, false, true),
             DecalShaderName => (true, true, true),
             PostProcessShaderName => (false, false, true),
+            VolumeShaderName => (true, true, true),
             _ => (true, true, false)
         };
 
@@ -371,6 +376,35 @@ public static class SceneGltfShadersV2
             "    color = u_OutputGamma < 0.99 ? linearToSrgb(color) : pow(max(color, vec3(0.0)), vec3(u_OutputGamma));",
             "    o_FragColor = vec4(color, clamp(baseColor.a * _DecalBlend * angleAtten, 0.0, 1.0));"
         ],
+        VolumeShaderName =>
+        [
+            "    vec3 rayDir = normalize(v_WorldPosition - u_CameraPosition);",
+            "    float marchLength = max(length(v_WorldPosition - u_CameraPosition), 0.1);",
+            "    float stepSize = clamp(marchLength / 16.0, 0.02, 0.35);",
+            "    float transmittance = 1.0;",
+            "    vec3 inScatter = vec3(0.0);",
+            "    vec3 lightDir = length(u_LightDirection) > 1e-5 ? normalize(-u_LightDirection) : vec3(0.0, 1.0, 0.0);",
+            "    vec3 lightCol = u_LightColor * u_LightIntensity;",
+            "    float cosTheta = dot(rayDir, lightDir);",
+            "    float g = clamp(_VolumeAnisotropy, -0.85, 0.85);",
+            "    float hgPhase = (1.0 - g * g) / (4.0 * 3.14159265 * pow(max(1.0 + g * g - 2.0 * g * cosTheta, 0.01), 1.5));",
+            "    for (int stepIdx = 0; stepIdx < 16; stepIdx += 1) {",
+            "        vec3 p = v_WorldPosition - rayDir * (float(stepIdx) * stepSize);",
+            "        vec3 pAnimated = p * 1.4 + vec3(u_Elapsed * 0.12, u_Elapsed * 0.05, 0.0);",
+            "        float field = 0.5 + 0.5 * (sin(pAnimated.x) * cos(pAnimated.y) * sin(pAnimated.z));",
+            "        float density = max(0.0, field * _VolumeDensity);",
+            "        float sigmaT = max(_VolumeAbsorption, 0.01) * density;",
+            "        float stepExtinction = exp(-sigmaT * stepSize);",
+            "        vec3 scatterSample = _BaseColorFactor.rgb * _VolumeScatterColor * (vec3(0.25) + lightCol * hgPhase * 2.5);",
+            "        inScatter += transmittance * scatterSample * (1.0 - stepExtinction);",
+            "        transmittance *= stepExtinction;",
+            "        if (transmittance < 0.02) { break; }",
+            "    }",
+            "    vec3 volColor = inScatter + _EmissiveFactor * _EmissiveIntensity * (1.0 - transmittance);",
+            "    vec3 finalColor = gltfApplyFog(volColor, v_WorldPosition, u_CameraPosition);",
+            "    finalColor = u_OutputGamma < 0.99 ? linearToSrgb(finalColor) : pow(max(finalColor, vec3(0.0)), vec3(u_OutputGamma));",
+            "    o_FragColor = vec4(finalColor, clamp(1.0 - transmittance, 0.0, 1.0));"
+        ],
         _ =>
         [
             ..BaseColorBlock(),
@@ -464,6 +498,11 @@ public static class SceneGltfShadersV2
             MatFrag("_PostSaturation", SceneGltfShaderPropertyType.Float),
             MatFrag("_PostContrast", SceneGltfShaderPropertyType.Float),
             MatFrag("_PostBlendFactor", SceneGltfShaderPropertyType.Float));
+        map[VolumeShaderName] = BuildSurfaceV2Properties(
+            MatFrag("_VolumeDensity", SceneGltfShaderPropertyType.Float),
+            MatFrag("_VolumeAbsorption", SceneGltfShaderPropertyType.Float),
+            MatFrag("_VolumeScatterColor", SceneGltfShaderPropertyType.Vec3),
+            MatFrag("_VolumeAnisotropy", SceneGltfShaderPropertyType.Float));
         return map.ToFrozenDictionary(StringComparer.Ordinal);
     }
 

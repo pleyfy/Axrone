@@ -536,6 +536,83 @@ public sealed class SceneGlDynamicShaderTests : IDisposable
     }
 
     [Fact]
+    public void ApplyState_DrivesVolumeRaymarchWithFrontCullDepthTestAndBlend()
+    {
+        SceneShaderDefinition shader = _fixture.ShaderDefinition(depthTest: false, cull: false, blend: false);
+        SceneMaterialDefinition material = new(
+            _fixture.Assets.CreateId<MaterialAssetTag>(MaterialName),
+            shader.Id,
+            new SceneMaterialSurface(),
+            MaterialContractV2.BuildPassesFromPlan(MaterialModelId.Volume));
+
+        SceneGlMaterial gpuMaterial = _fixture.Register(shader, material);
+        SceneGlDrawExecutor.ApplyState(
+            _fixture.Context,
+            transparent: false,
+            gpuMaterial,
+            _fixture.Pass("test/pass-silent"));
+
+        _fixture.Context.State.DepthTestEnabled.Should().BeTrue();
+        _fixture.Context.State.DepthMask.Should().BeFalse();
+        _fixture.Context.State.CullFaceEnabled.Should().BeTrue();
+        _fixture.Context.State.CullMode.Should().Be(GLConst.Front);
+        _fixture.Context.State.BlendEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ApplyState_KeepsOpaqueMainPassOutOfTheVolumeBlendAndDepthWrite()
+    {
+        SceneShaderDefinition shader = _fixture.ShaderDefinition();
+        SceneMaterialDefinition material = new(
+            _fixture.Assets.CreateId<MaterialAssetTag>(MaterialName),
+            shader.Id,
+            new SceneMaterialSurface(),
+            [new SceneMaterialPass("main", depthTest: true, depthWrite: true, blend: false)]);
+
+        SceneGlMaterial gpuMaterial = _fixture.Register(shader, material);
+        SceneGlDrawExecutor.ApplyState(
+            _fixture.Context,
+            transparent: false,
+            gpuMaterial,
+            _fixture.Pass("test/pass-silent"));
+
+        _fixture.Context.State.DepthTestEnabled.Should().BeTrue();
+        _fixture.Context.State.DepthMask.Should().BeTrue();
+        _fixture.Context.State.BlendEnabled.Should().BeFalse();
+        _fixture.Context.State.CullMode.Should().Be(GLConst.Back);
+    }
+
+    [Fact]
+    public void BlendMapper_UsesMatchedSecondaryPassBlendWhenProvided()
+    {
+        SceneShaderDefinition shader = _fixture.ShaderDefinition(blend: false);
+        SceneMaterialPass[] passes = MaterialContractV2.BuildPassesFromPlan(MaterialModelId.Pbr);
+        SceneMaterialDefinition material = new(
+            _fixture.Assets.CreateId<MaterialAssetTag>(MaterialName),
+            shader.Id,
+            new SceneMaterialSurface(),
+            passes);
+
+        SceneGlMaterial gpuMaterial = _fixture.Register(shader, material);
+        SceneRenderPassDefinition renderPass = _fixture.Pass("test/pass-silent");
+        SceneMaterialPass sssBlur = passes.Single(pass => pass.Id == "sss-blur");
+
+        SceneGlBlendMapping primary = SceneGlBlendStateMapper.Resolve(
+            gpuMaterial,
+            renderPass,
+            transparent: false);
+        SceneGlBlendMapping matched = SceneGlBlendStateMapper.Resolve(
+            gpuMaterial,
+            renderPass,
+            transparent: false,
+            materialPass: sssBlur);
+
+        primary.Enabled.Should().BeFalse();
+        matched.Enabled.Should().BeTrue();
+        matched.SourceColor.Should().Be(GLConst.SrcAlpha);
+    }
+
+    [Fact]
     public void BindTextures_UploadsEverySamplerUniformWithItsUnit()
     {
         SceneShaderDefinition shader = _fixture.ShaderDefinition();
