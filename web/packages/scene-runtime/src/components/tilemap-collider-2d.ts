@@ -1,4 +1,9 @@
 import { Component, script } from '@axrone/ecs-runtime';
+import {
+    PhysicsWorld2DComponent,
+    resolveBridgePhysicsWorld2D,
+    type PhysicsWorld2D,
+} from '@axrone/physics-2d';
 
 export interface TilemapCollider2DConfig {
     readonly mapId?: string;
@@ -11,6 +16,11 @@ export interface TilemapCollider2DConfig {
 /**
  * Declares that an actor's map contributes static collision. The actual body
  * building lives in the collision builder and never in `@axrone/physics-2d`.
+ *
+ * A scene may author only a `PhysicsBridge2D`, which owns its world outside of
+ * the `PhysicsWorld2DComponent` singleton. `physicsWorld` therefore resolves
+ * through the same shared bridge provider every other 2D physics component uses,
+ * so the builder can reach the live world with no world component in the scene.
  */
 @script({
     scriptName: 'TilemapCollider2D',
@@ -23,6 +33,7 @@ export class TilemapCollider2D extends Component {
     #mapId = '';
     #collisionLayer = '';
     #oneWay = false;
+    #physicsWorld: PhysicsWorld2D | null = null;
 
     constructor(config: TilemapCollider2DConfig = {}) {
         super();
@@ -39,7 +50,7 @@ export class TilemapCollider2D extends Component {
     set mapId(value: string) {
         if (this.#mapId === value) return;
         this.#mapId = value;
-        this.touch();
+        this.invalidateWorldCache();
     }
 
     get collisionLayer(): string {
@@ -49,7 +60,7 @@ export class TilemapCollider2D extends Component {
     set collisionLayer(value: string) {
         if (this.#collisionLayer === value) return;
         this.#collisionLayer = value;
-        this.touch();
+        this.invalidateWorldCache();
     }
 
     get oneWay(): boolean {
@@ -59,7 +70,34 @@ export class TilemapCollider2D extends Component {
     set oneWay(value: boolean) {
         if (this.#oneWay === value) return;
         this.#oneWay = value;
-        this.touch();
+        this.invalidateWorldCache();
+    }
+
+    /**
+     * The live 2D physics world the tilemap's static collision belongs to, or
+     * `null` when neither a bridge nor a world component is active. Resolved
+     * lazily on access and cached; read-only so shape work cannot leak here.
+     */
+    get physicsWorld(): PhysicsWorld2D | null {
+        if (this.#physicsWorld) {
+            if (!this.#physicsWorld.isDisposed) return this.#physicsWorld;
+            // Torn down by a scene reload or bridge dispose: drop the cache so
+            // the next resolve can bind to the live world.
+            this.#physicsWorld = null;
+        }
+
+        const bridgeWorld = resolveBridgePhysicsWorld2D();
+        if (bridgeWorld) {
+            this.#physicsWorld = bridgeWorld;
+            return this.#physicsWorld;
+        }
+
+        const singletonWorld = PhysicsWorld2DComponent.instance?.physicsWorld ?? null;
+        if (singletonWorld && !singletonWorld.isDisposed) {
+            this.#physicsWorld = singletonWorld;
+            return this.#physicsWorld;
+        }
+        return null;
     }
 
     override serialize(): Record<string, unknown> {
@@ -78,6 +116,15 @@ export class TilemapCollider2D extends Component {
         }
         if (typeof data.oneWay === 'boolean') this.#oneWay = data.oneWay;
         if (typeof data.enabled === 'boolean') this.enabled = data.enabled;
+        this.invalidateWorldCache();
+    }
+
+    /**
+     * Authored-data changes mean a rebuild, and a rebuild must target whichever
+     * world is live then — never one cached before a bridge swap.
+     */
+    private invalidateWorldCache(): void {
+        this.#physicsWorld = null;
         this.touch();
     }
 }
