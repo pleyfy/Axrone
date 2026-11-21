@@ -18,6 +18,8 @@ import { JOINT_2D_BREAK_LIMIT } from '../components/joint2d';
 import { DistanceJoint2D } from '../components/distance-joint2d';
 import { SpringJoint2D } from '../components/spring-joint2d';
 import { HingeJoint2D } from '../components/hinge-joint2d';
+import { SliderJoint2D } from '../components/slider-joint2d';
+import { FixedJoint2D } from '../components/fixed-joint2d';
 import { WheelJoint2D } from '../components/wheel-joint2d';
 import { GearJoint2D } from '../components/gear-joint2d';
 
@@ -751,7 +753,7 @@ describe('joint accessor and field parity with the Editor', () => {
         expect(data.autoConfigureConnectedAnchor).toBe(false);
     });
 
-    it('keeps localAnchorB at the origin while auto-configuration is on', () => {
+    it('maps the authored world anchor into body B space while auto-configuration is on', () => {
         const world = track(createWorld());
         registerBridge(world);
         const bodyA = makeRigidbody(world, 0, 0);
@@ -767,9 +769,107 @@ describe('joint accessor and field parity with the Editor', () => {
         );
         joint.resolveConnectedBodyRef(bodyB);
 
-        // Backward compatibility: joints that never author a connected anchor
-        // must produce the exact definition they did before this feature.
+        // The world anchor is body A's position (0,0); body B must express it
+        // in its own space so the two ends stay coincident instead of snapping
+        // B's center onto A.
+        expect(createRevolute.mock.calls[0][0].localAnchorB).toEqual({ x: -1, y: -1 });
+    });
+
+    it('keeps localAnchorB at the origin when both bodies coincide', () => {
+        const world = track(createWorld());
+        registerBridge(world);
+        const bodyA = makeRigidbody(world, 1.5, -0.75);
+        const bodyB = makeRigidbody(world, 1.5, -0.75);
+        bodyA.start();
+        bodyB.start();
+
+        const joint = new HingeJoint2D();
+        (joint as any)._rigidbodyA = bodyA;
+        const createRevolute = vi.spyOn(
+            world.getConstraintManager() as any,
+            'createRevoluteConstraint'
+        );
+        joint.resolveConnectedBodyRef(bodyB);
+
         expect(createRevolute.mock.calls[0][0].localAnchorB).toEqual({ x: 0, y: 0 });
+    });
+
+    it('rotates the resolved world anchor into each body frame', () => {
+        const world = track(createWorld());
+        registerBridge(world);
+        const bodyA = makeRigidbody(world, 0, 0);
+        const bodyB = makeRigidbody(world, 2, 0);
+        bodyA.start();
+        bodyB.start();
+        bodyA.setRotation(Math.PI / 2);
+        bodyB.setRotation(Math.PI);
+
+        const joint = new HingeJoint2D();
+        joint.deserialize({ anchor: [1, 0] });
+        (joint as any)._rigidbodyA = bodyA;
+        const createRevolute = vi.spyOn(
+            world.getConstraintManager() as any,
+            'createRevoluteConstraint'
+        );
+        joint.resolveConnectedBodyRef(bodyB);
+
+        // World anchor (0,1) -> B frame at rot PI -> (dx, dy) rotated by -PI.
+        const def = createRevolute.mock.calls[0][0];
+        expect(def.localAnchorA).toEqual({ x: 1, y: 0 });
+        expect(def.localAnchorB.x).toBeCloseTo(2, 6);
+        expect(def.localAnchorB.y).toBeCloseTo(-1, 6);
+    });
+
+    it('falls back to the origin when the connected body has no solver body', () => {
+        const world = track(createWorld());
+        registerBridge(world);
+        const bodyA = makeRigidbody(world, 0, 0);
+        bodyA.start();
+        const bodyB = makeRigidbody(world, 1, 1);
+
+        const joint = new HingeJoint2D();
+        (joint as any)._rigidbodyA = bodyA;
+        const createRevolute = vi.spyOn(
+            world.getConstraintManager() as any,
+            'createRevoluteConstraint'
+        );
+        joint.resolveConnectedBodyRef(bodyB);
+
+        expect(bodyB.bodyId).toBeNull();
+        expect(joint.constraintId).toBeNull();
+        expect(createRevolute).not.toHaveBeenCalled();
+
+        // The helper itself must not guess an anchor without a real body.
+        (joint as any)._connectedBody = bodyB;
+        expect((joint as any).resolveAutoConnectedAnchor(new Vec2(0, 0))).toEqual({ x: 0, y: 0 });
+    });
+
+    it('slider and fixed joints share the base auto-anchor resolution', () => {
+        const world = track(createWorld());
+        registerBridge(world);
+        const bodyA = makeRigidbody(world, 0, 0);
+        const bodyB = makeRigidbody(world, 1, 1);
+        bodyA.start();
+        bodyB.start();
+
+        const slider = new SliderJoint2D();
+        (slider as any)._rigidbodyA = bodyA;
+        const createPrismatic = vi.spyOn(
+            world.getConstraintManager() as any,
+            'createPrismaticConstraint'
+        );
+        slider.resolveConnectedBodyRef(bodyB);
+
+        expect(createPrismatic).toHaveBeenCalledTimes(1);
+        expect(createPrismatic.mock.calls[0][0].localAnchorB).toEqual({ x: -1, y: -1 });
+
+        const fixed = new FixedJoint2D();
+        (fixed as any)._rigidbodyA = bodyA;
+        const createWeld = vi.spyOn(world.getConstraintManager() as any, 'createWeldConstraint');
+        fixed.resolveConnectedBodyRef(bodyB);
+
+        expect(createWeld).toHaveBeenCalledTimes(1);
+        expect(createWeld.mock.calls[0][0].localAnchorB).toEqual({ x: -1, y: -1 });
     });
 
     it('hinge reads the anchorB alias for connectedAnchor', () => {

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-19T21:01:05.856Z",
+  "generatedAt": "2026-11-21T18:53:26.592Z",
   "engineVersion": "0.0.1",
   "packages": [
     {
@@ -3664,7 +3664,8 @@
         "interpolateHit3D",
         "isComponentReference",
         "makeCollisionPairKey",
-        "normalizeBreakLimit"
+        "normalizeBreakLimit",
+        "resolveBridgePhysicsWorld2D"
       ],
       "typeExports": [
         "AngularVelocity",
@@ -3858,7 +3859,8 @@
         "_setPhysicsWorld2DBridgeProvider",
         "encodeBreakLimit",
         "isComponentReference",
-        "normalizeBreakLimit"
+        "normalizeBreakLimit",
+        "resolveBridgePhysicsWorld2D"
       ],
       "typeExports": [
         "JointCapability2D",
@@ -5884,6 +5886,7 @@
       "version": "0.1.0",
       "description": "",
       "exports": [
+        "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
         "SCENE_2D_RUNTIME_PROFILE_ID",
         "SceneRuntimeProfile",
         "SceneRuntimeProfileContext",
@@ -5893,6 +5896,13 @@
       "typeExports": [],
       "hasDefaultExport": false,
       "subpaths": [
+        {
+          "path": "@axrone/runtime-profile-2d/capabilities",
+          "exports": [
+            "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES"
+          ],
+          "typeExports": []
+        },
         {
           "path": "@axrone/runtime-profile-2d/profile",
           "exports": [
@@ -7488,6 +7498,7 @@
         "ParticleSystem",
         "PathAgent",
         "PointLight",
+        "REFRACTION_COPY_PASS_ID",
         "ReflectionProbe",
         "RenderShaderAttributeDefinition",
         "RenderShaderEffectDefinition",
@@ -7507,13 +7518,20 @@
         "SCENE_3D_RUNTIME_PROFILE_ID",
         "SCENE_ANIMATION_BUILT_IN_MANIFEST",
         "SCENE_ATTRIBUTE_LOCATIONS",
+        "SCENE_COLOR_COPY_TEXTURE_ID",
+        "SCENE_COLOR_COPY_UNIFORM_NAME",
         "SCENE_CORE_BUILT_IN_MANIFEST",
+        "SCENE_FRAMEBUFFER_PASS_DEFINITIONS",
+        "SCENE_FRAMEBUFFER_RENDERER_PASS_ID",
         "SCENE_MIXED_RUNTIME_PROFILE_ID",
         "SCENE_RENDER_CAPABILITIES_ALL",
         "SCENE_RUNTIME_CORE_BUILT_IN_MANIFEST",
         "SCENE_RUNTIME_PROFILER_PHASES",
         "SCENE_TILEMAP_BUILT_IN_MANIFEST",
         "SCENE_UI_BUILT_IN_MANIFEST",
+        "SSS_BLUR_PASS_ID",
+        "SSS_BLUR_TEXTURE_ID",
+        "SSS_BLUR_UNIFORM_NAME",
         "SceneActorLifecycleRunner",
         "SceneActorRuntime",
         "SceneActorSnapshot",
@@ -7540,6 +7558,7 @@
         "SceneError",
         "SceneFogUniformBinder",
         "SceneFrameUniformBinder",
+        "SceneFramebufferPassRuntime",
         "SceneGeometryMeshBuilder",
         "SceneInstancingMode",
         "SceneLifecycleError",
@@ -7729,9 +7748,12 @@
         "getDefaultSceneRuntimeProfile",
         "getMixedSceneRuntimeProfile",
         "getSceneComponentTypeName",
+        "getSceneFramebufferPassDefinition",
         "getSceneUIWidgetRefResolver",
         "getTilemapSceneBuiltInRegistrySource",
+        "isSceneFramebufferPassId",
         "normalizeSceneTextureBinding",
+        "planSceneFramebufferPasses",
         "requireRegisteredComponent",
         "resolveAnimationClipAssets",
         "resolveCameraVerticalFieldOfViewRadians",
@@ -7752,7 +7774,8 @@
         "resolveTilemapCameraRect",
         "sceneAnimationClipAssets",
         "selectSceneCamera",
-        "setSceneUIWidgetRefResolver"
+        "setSceneUIWidgetRefResolver",
+        "toSceneRenderPassDefinitions"
       ],
       "typeExports": [
         "AnimationStreamingBridgeOptions",
@@ -7828,6 +7851,10 @@
         "SceneFogMode",
         "SceneFogState",
         "SceneFrameUniformContext",
+        "SceneFramebufferPassDefinition",
+        "SceneFramebufferPassId",
+        "SceneFramebufferPassStats",
+        "SceneFramebufferTextureBindings",
         "SceneInstancingMode",
         "SceneLifecycle",
         "SceneLifecycleRuntimeOptions",
@@ -8114,7 +8141,15 @@
             "FetchAnimationStreamingResolverOptions",
             "PrefabNodeBinding",
             "PrefabNodeBindingConfig",
+            "REFRACTION_COPY_PASS_ID",
             "ResolvedAnimationStreamingChunk",
+            "SCENE_COLOR_COPY_TEXTURE_ID",
+            "SCENE_COLOR_COPY_UNIFORM_NAME",
+            "SCENE_FRAMEBUFFER_PASS_DEFINITIONS",
+            "SCENE_FRAMEBUFFER_RENDERER_PASS_ID",
+            "SSS_BLUR_PASS_ID",
+            "SSS_BLUR_TEXTURE_ID",
+            "SSS_BLUR_UNIFORM_NAME",
             "SceneAssetFacade",
             "SceneBatchRuntimeFactory",
             "SceneBatchRuntimeFactoryContext",
@@ -8126,6 +8161,7 @@
             "SceneDrawExecutorContext",
             "SceneFogMode",
             "SceneFogState",
+            "SceneFramebufferPassRuntime",
             "SceneGeometryMeshBuilder",
             "SceneLodEvaluator",
             "SceneParticleBatchRuntime",
@@ -8152,11 +8188,19 @@
             "createFetchAnimationStreamingResolver",
             "createRenderCacheCameraKey",
             "createSceneShaderDefinitionFromEffect",
+            "getSceneFramebufferPassDefinition",
+            "isSceneFramebufferPassId",
+            "planSceneFramebufferPasses",
             "requireRegisteredComponent",
-            "resolveSceneFogState"
+            "resolveSceneFogState",
+            "toSceneRenderPassDefinitions"
           ],
           "typeExports": [
             "RenderCacheViewport",
+            "SceneFramebufferPassDefinition",
+            "SceneFramebufferPassId",
+            "SceneFramebufferPassStats",
+            "SceneFramebufferTextureBindings",
             "SceneLodEvaluateParams",
             "SceneLodEvaluateStats",
             "SceneSpriteBatchRuntimeOptions",
@@ -23264,6 +23308,11 @@
       "kind": "unknown"
     },
     {
+      "name": "getSceneFramebufferPassDefinition",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
       "name": "getScenePrefabComponentSelectorKey",
       "package": "@axrone/scene-prefab",
       "kind": "const"
@@ -28264,6 +28313,11 @@
       "kind": "function"
     },
     {
+      "name": "isSceneFramebufferPassId",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
       "name": "isScenePrefabReference",
       "package": "@axrone/scene-prefab",
       "kind": "const"
@@ -31624,6 +31678,11 @@
       "kind": "function"
     },
     {
+      "name": "planSceneFramebufferPasses",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
       "name": "PointFrustumClassification",
       "package": "@axrone/geometry",
       "kind": "type"
@@ -32954,6 +33013,11 @@
       "kind": "const"
     },
     {
+      "name": "REFRACTION_COPY_PASS_ID",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
       "name": "registerCustomAlgorithm",
       "package": "@axrone/hash",
       "kind": "function"
@@ -34169,6 +34233,16 @@
       "kind": "unknown"
     },
     {
+      "name": "resolveBridgePhysicsWorld2D",
+      "package": "@axrone/physics",
+      "kind": "unknown"
+    },
+    {
+      "name": "resolveBridgePhysicsWorld2D",
+      "package": "@axrone/physics-2d",
+      "kind": "function"
+    },
+    {
       "name": "resolveCameraCullingMessage",
       "package": "@axrone/geometry",
       "kind": "const"
@@ -34894,6 +34968,11 @@
       "kind": "interface"
     },
     {
+      "name": "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
+      "package": "@axrone/runtime-profile-2d",
+      "kind": "unknown"
+    },
+    {
       "name": "RUNTIME_PROFILE_3D_CAPABILITY_PACKAGES",
       "package": "@axrone/runtime-profile-3d",
       "kind": "unknown"
@@ -35094,6 +35173,16 @@
       "kind": "unknown"
     },
     {
+      "name": "SCENE_COLOR_COPY_TEXTURE_ID",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SCENE_COLOR_COPY_UNIFORM_NAME",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
       "name": "SCENE_CORE_BUILT_IN_MANIFEST",
       "package": "@axrone/scene-2d",
       "kind": "unknown"
@@ -35105,6 +35194,16 @@
     },
     {
       "name": "SCENE_CORE_BUILT_IN_MANIFEST",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SCENE_FRAMEBUFFER_PASS_DEFINITIONS",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SCENE_FRAMEBUFFER_RENDERER_PASS_ID",
       "package": "@axrone/scene-runtime",
       "kind": "unknown"
     },
@@ -35690,6 +35789,31 @@
     },
     {
       "name": "SceneFogUniformBinder",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SceneFramebufferPassDefinition",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SceneFramebufferPassId",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SceneFramebufferPassRuntime",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SceneFramebufferPassStats",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SceneFramebufferTextureBindings",
       "package": "@axrone/scene-runtime",
       "kind": "unknown"
     },
@@ -40369,6 +40493,21 @@
       "kind": "unknown"
     },
     {
+      "name": "SSS_BLUR_PASS_ID",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SSS_BLUR_TEXTURE_ID",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
+      "name": "SSS_BLUR_UNIFORM_NAME",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
+    },
+    {
       "name": "Stack",
       "package": "@axrone/memory",
       "kind": "class"
@@ -41802,6 +41941,11 @@
       "name": "Torque",
       "package": "@axrone/physics-core",
       "kind": "type"
+    },
+    {
+      "name": "toSceneRenderPassDefinitions",
+      "package": "@axrone/scene-runtime",
+      "kind": "unknown"
     },
     {
       "name": "toShaderEffectSource",
@@ -50117,6 +50261,12 @@
       "package": "@axrone/scene-runtime"
     },
     {
+      "name": "getSceneFramebufferPassDefinition",
+      "kind": "const",
+      "code": "declare const getSceneFramebufferPassDefinition: (id: string) => SceneFramebufferPassDefinition | null;",
+      "package": "@axrone/scene-runtime"
+    },
+    {
       "name": "getScenePrefabComponentSelectorKey",
       "kind": "const",
       "code": "declare const getScenePrefabComponentSelectorKey: (selector: ScenePrefabComponentSelector) => string;",
@@ -51681,6 +51831,12 @@
       "kind": "function",
       "code": "declare function isResult<T, E>(value: unknown): value is Result<T, E>;",
       "package": "@axrone/utility"
+    },
+    {
+      "name": "isSceneFramebufferPassId",
+      "kind": "const",
+      "code": "declare const isSceneFramebufferPassId: (id: string | null | undefined) => id is SceneFramebufferPassId;",
+      "package": "@axrone/scene-runtime"
     },
     {
       "name": "isScenePrefabReference",
@@ -53351,6 +53507,12 @@
       "package": "@axrone/observer"
     },
     {
+      "name": "planSceneFramebufferPasses",
+      "kind": "const",
+      "code": "declare const planSceneFramebufferPasses: (materialPassIds: ReadonlySet<string> | readonly string[] | undefined) => readonly SceneFramebufferPassDefinition[];",
+      "package": "@axrone/scene-runtime"
+    },
+    {
       "name": "pointInConvexPolygon",
       "kind": "const",
       "code": "declare const pointInConvexPolygon: (points: ArrayLike<number>, point: Readonly<IVec2Like>) => boolean;",
@@ -53987,6 +54149,12 @@
       "package": "@axrone/asset-shader"
     },
     {
+      "name": "REFRACTION_COPY_PASS_ID",
+      "kind": "const",
+      "code": "declare const REFRACTION_COPY_PASS_ID = \"refraction-copy\";",
+      "package": "@axrone/scene-runtime"
+    },
+    {
       "name": "registerCustomAlgorithm",
       "kind": "function",
       "code": "declare function registerCustomAlgorithm<H extends HashValue>(name: HashAlgorithmName, ctor: new (seed?: Seed32) => IHasher<H>, metadata: HashAlgorithmMetadata): void;",
@@ -54375,6 +54543,12 @@
       "kind": "const",
       "code": "declare const resolveBlend2DWeightsWithContext: (x: number, y: number, children: readonly Readonly<IVec2Like>[], context: AnimationMotionEvaluationContext, depth: number, triangles?: Int32Array) => number[];",
       "package": "@axrone/animation"
+    },
+    {
+      "name": "resolveBridgePhysicsWorld2D",
+      "kind": "function",
+      "code": "declare function resolveBridgePhysicsWorld2D(): PhysicsWorld2D | null;",
+      "package": "@axrone/physics-2d"
     },
     {
       "name": "resolveCameraCullingMessage",
@@ -54785,6 +54959,12 @@
       "package": "@axrone/numeric"
     },
     {
+      "name": "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
+      "kind": "const",
+      "code": "declare const RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES: readonly string[];",
+      "package": "@axrone/runtime-profile-2d"
+    },
+    {
       "name": "RUNTIME_PROFILE_3D_CAPABILITY_PACKAGES",
       "kind": "const",
       "code": "declare const RUNTIME_PROFILE_3D_CAPABILITY_PACKAGES: readonly string[];",
@@ -54935,9 +55115,33 @@
       "package": "@axrone/scene-runtime"
     },
     {
+      "name": "SCENE_COLOR_COPY_TEXTURE_ID",
+      "kind": "const",
+      "code": "declare const SCENE_COLOR_COPY_TEXTURE_ID = \"scene:framebuffer-scene-color-copy\";",
+      "package": "@axrone/scene-runtime"
+    },
+    {
+      "name": "SCENE_COLOR_COPY_UNIFORM_NAME",
+      "kind": "const",
+      "code": "declare const SCENE_COLOR_COPY_UNIFORM_NAME = \"_SceneColorTexture\";",
+      "package": "@axrone/scene-runtime"
+    },
+    {
       "name": "SCENE_CORE_BUILT_IN_MANIFEST",
       "kind": "const",
       "code": "declare const SCENE_CORE_BUILT_IN_MANIFEST: SceneBuiltInManifest<readonly [\"Hierarchy\", \"Transform\", \"PrefabNodeBinding\"]>;",
+      "package": "@axrone/scene-runtime"
+    },
+    {
+      "name": "SCENE_FRAMEBUFFER_PASS_DEFINITIONS",
+      "kind": "const",
+      "code": "declare const SCENE_FRAMEBUFFER_PASS_DEFINITIONS: readonly SceneFramebufferPassDefinition[];",
+      "package": "@axrone/scene-runtime"
+    },
+    {
+      "name": "SCENE_FRAMEBUFFER_RENDERER_PASS_ID",
+      "kind": "const",
+      "code": "declare const SCENE_FRAMEBUFFER_RENDERER_PASS_ID = \"framebuffer\";",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -55082,6 +55286,12 @@
       "name": "SceneFogUniformBinder",
       "kind": "class",
       "code": "declare class SceneFogUniformBinder { constructor(_writer: SceneUniformWriteTarget); apply(shader: SceneShaderResource, fog: SceneFogState): void; … }",
+      "package": "@axrone/scene-runtime"
+    },
+    {
+      "name": "SceneFramebufferPassRuntime",
+      "kind": "class",
+      "code": "declare class SceneFramebufferPassRuntime { constructor(gl: WebGL2RenderingContext); beginFrame(width: number, height: number): void; get sceneColorTexture(): ITexture | null; get sssBlurTexture(): ITexture | null; getTextureBindings(): SceneFramebufferTextureBindings; execute(plan: readonly SceneF…",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -55255,7 +55465,7 @@
     {
       "name": "SceneRenderPipeline",
       "kind": "class",
-      "code": "declare class SceneRenderPipeline { constructor(options: SceneRenderPipelineOptions); render(params: SceneRenderPipelineParams): SceneRenderPlanningStats; reset(): void; invalidateContextResources(): void; dispose(): void; … }",
+      "code": "declare class SceneRenderPipeline { constructor(options: SceneRenderPipelineOptions); get framebufferTextureBindings(): SceneFramebufferTextureBindings | null; render(params: SceneRenderPipelineParams): SceneRenderPlanningStats; reset(): void; invalidateContextResources(): void; dispose(): void; … }",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -56075,6 +56285,24 @@
       "package": "@axrone/numeric"
     },
     {
+      "name": "SSS_BLUR_PASS_ID",
+      "kind": "const",
+      "code": "declare const SSS_BLUR_PASS_ID = \"sss-blur\";",
+      "package": "@axrone/scene-runtime"
+    },
+    {
+      "name": "SSS_BLUR_TEXTURE_ID",
+      "kind": "const",
+      "code": "declare const SSS_BLUR_TEXTURE_ID = \"scene:framebuffer-sss-blur\";",
+      "package": "@axrone/scene-runtime"
+    },
+    {
+      "name": "SSS_BLUR_UNIFORM_NAME",
+      "kind": "const",
+      "code": "declare const SSS_BLUR_UNIFORM_NAME = \"_SubsurfaceBlurTexture\";",
+      "package": "@axrone/scene-runtime"
+    },
+    {
       "name": "Stack",
       "kind": "class",
       "code": "declare class Stack<T> { constructor(id: StackId, maxCapacity: StackCapacity, metrics: IStackMetricsSink); get size(): number; get isEmpty(): boolean; get isDisposed(): boolean; push(item: T): void; tryPush(item: T): Result<void, StackOverflowError | StackDisposedError>; pop(): T; tryPop(): Result<…",
@@ -56665,7 +56893,7 @@
     {
       "name": "TilemapCollider2D",
       "kind": "class",
-      "code": "declare class TilemapCollider2D extends Component { constructor(config?: TilemapCollider2DConfig); get mapId(): string; set mapId(value: string); get collisionLayer(): string; set collisionLayer(value: string); get oneWay(): boolean; set oneWay(value: boolean); serialize(): Record<string, unknown>;…",
+      "code": "declare class TilemapCollider2D extends Component { constructor(config?: TilemapCollider2DConfig); get mapId(): string; set mapId(value: string); get collisionLayer(): string; set collisionLayer(value: string); get oneWay(): boolean; set oneWay(value: boolean); get physicsWorld(): PhysicsWorld2D | …",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -56841,6 +57069,12 @@
       "kind": "function",
       "code": "declare function toQueueSize(value: number): QueueSize;",
       "package": "@axrone/memory"
+    },
+    {
+      "name": "toSceneRenderPassDefinitions",
+      "kind": "const",
+      "code": "declare const toSceneRenderPassDefinitions: (plan: readonly SceneFramebufferPassDefinition[]) => readonly SceneRenderPassDefinition[];",
+      "package": "@axrone/scene-runtime"
     },
     {
       "name": "toShaderEffectSource",

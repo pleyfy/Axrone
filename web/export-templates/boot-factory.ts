@@ -223,6 +223,13 @@ const SCENE_2D_COMPONENT_TYPE_NAMES: ReadonlySet<string> = new Set([
     'SpriteRenderer',
     'SpriteAnimator',
     'SpriteMask',
+    // Tilemap content is 2D-only (scene-2d builds its registry on the 2D built-in
+    // source), so it has to arm the 2D bridge too. Without these three a scene
+    // that only carries a tilemap keeps the facade default and TilemapCollider2D
+    // can never resolve the bridge world.
+    'TilemapRenderer',
+    'TilemapCollider2D',
+    'TilemapAgent',
 ]);
 
 const SCENE_3D_COMPONENT_TYPE_NAMES: ReadonlySet<string> = new Set([

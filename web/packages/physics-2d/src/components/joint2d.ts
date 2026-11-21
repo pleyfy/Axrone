@@ -350,6 +350,50 @@ export abstract class Joint2D extends Component {
         return this._rigidbodyA;
     }
 
+    /**
+     * Resolve the connected-body local anchor that keeps the authored world
+     * anchor coincident on both ends, used when auto-configuration is on.
+     *
+     * A {0,0} result would only be correct for a body sitting at the world
+     * origin, so any unusable input (missing body, no bodyId, non-finite
+     * numbers) falls back to it instead of guessing.
+     */
+    protected resolveAutoConnectedAnchor(localAnchorA: IVec2Like): { x: number; y: number } {
+        const bodyA = this._rigidbodyA;
+        const bodyB = this._connectedBody;
+        if (!bodyA || !bodyA.bodyId || !bodyB || !bodyB.bodyId) {
+            return { x: 0, y: 0 };
+        }
+
+        const posA = bodyA.getPosition();
+        const posB = bodyB.getPosition();
+        const rotA = bodyA.getRotation();
+        const rotB = bodyB.getRotation();
+        if (
+            !Number.isFinite(posA.x) || !Number.isFinite(posA.y) ||
+            !Number.isFinite(posB.x) || !Number.isFinite(posB.y) ||
+            !Number.isFinite(rotA) || !Number.isFinite(rotB) ||
+            !Number.isFinite(localAnchorA.x) || !Number.isFinite(localAnchorA.y)
+        ) {
+            return { x: 0, y: 0 };
+        }
+
+        const cosA = Math.cos(rotA);
+        const sinA = Math.sin(rotA);
+        const worldX = posA.x + (localAnchorA.x * cosA - localAnchorA.y * sinA);
+        const worldY = posA.y + (localAnchorA.x * sinA + localAnchorA.y * cosA);
+
+        const dx = worldX - posB.x;
+        const dy = worldY - posB.y;
+        const cosB = Math.cos(-rotB);
+        const sinB = Math.sin(-rotB);
+
+        return {
+            x: dx * cosB - dy * sinB,
+            y: dx * sinB + dy * cosB,
+        };
+    }
+
     protected abstract createConstraint(): void;
     protected abstract destroyConstraint(): void;
 

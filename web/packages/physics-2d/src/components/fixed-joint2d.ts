@@ -92,9 +92,9 @@ export class FixedJoint2D extends Joint2D {
                 bodyIdA: this._rigidbodyA.bodyId,
                 bodyIdB: this._connectedBody.bodyId,
                 localAnchorA: { x: this._anchor.x, y: this._anchor.y },
-                // Auto-configured keeps the historical {0,0}; authored value only applies when off.
+                // Auto-configured maps the authored world anchor into B's space.
                 localAnchorB: this._autoConfigureConnectedAnchor
-                    ? { x: 0, y: 0 }
+                    ? this.resolveAutoConnectedAnchor(this._anchor)
                     : { x: this._connectedAnchor.x, y: this._connectedAnchor.y },
                 referenceAngle: 0,
                 stiffness,
