@@ -29,7 +29,10 @@ const MODULES_2D = [
     '@axrone/physics-core',
     '@axrone/physics-2d',
     '@axrone/shapes-2d',
+    '@axrone/tilemap',
     '@axrone/ui',
+    '@axrone/audio',
+    '@axrone/ui-webgl2/scene-host',
     '@axrone/runtime-profile-2d',
 ];
 
@@ -57,11 +60,19 @@ const MODULES_3D = [
 const dedupe = (modules) => [...new Set(modules)];
 
 // 2D engine components registered by the templates that can host 2D content.
-// This list mirrors PREVIEW_2D_COMPONENT_TYPES in the Editor preview build
-// exactly (physics-2d bodies/colliders/joints/world + scene-2d sprites) so an
-// exported 2D or mixed scene can never fail to instantiate a component that the
-// preview happily registered. Registration is idempotent, so re-declaring the
-// built-in sprites is a guarantee, not a duplicate cost.
+// Relationship to the Editor preview build:
+//   - The sprite/physics set is an exact match for PREVIEW_2D_COMPONENT_TYPES,
+//     so nothing the preview can instantiate may be missing from a 2D export.
+//   - AudioSourceComponent/AudioListenerComponent are part of the preview's
+//     PREVIEW_SHARED_COMPONENT_TYPES, which is registered for every profile
+//     including 2D; the template was behind and now matches.
+//   - TilemapRenderer/TilemapCollider2D/TilemapAgent and UIHost are a deliberate
+//     superset: the template already hosts them while the preview does not
+//     register them yet, so a 2D scene exported with tilemap or UI content works.
+//   - ParticleSystem stays out; its owner module lives in @axrone/scene-3d/support,
+//     a 3D-only package, and pinning it would drag the 3D surface into web-2d.
+// Registration is idempotent, so re-declaring the built-in sprites is a
+// guarantee, not a duplicate cost.
 const PHYSICS_2D_COMPONENTS = [
     'PhysicsWorld2DComponent',
     'Rigidbody2D',
@@ -83,17 +94,46 @@ const PHYSICS_2D_COMPONENTS = [
 
 const SCENE_2D_COMPONENTS = ['SpriteRenderer', 'SpriteAnimator', 'SpriteMask'];
 
+const TILEMAP_2D_COMPONENTS = ['TilemapRenderer', 'TilemapCollider2D', 'TilemapAgent'];
+
+const AUDIO_SHARED_COMPONENTS = ['AudioSourceComponent', 'AudioListenerComponent'];
+
 const ENGINE_COMPONENTS_2D = Object.freeze([
     { module: '@axrone/physics-2d', exports: PHYSICS_2D_COMPONENTS },
     { module: '@axrone/scene-2d', exports: SCENE_2D_COMPONENTS },
+    { module: '@axrone/scene-2d/tilemap', exports: TILEMAP_2D_COMPONENTS },
+    { module: '@axrone/scene-runtime/scene-facade', exports: ['UIHost'] },
+    { module: '@axrone/audio', exports: AUDIO_SHARED_COMPONENTS },
 ]);
 
 const ENGINE_COMPONENTS_3D = Object.freeze([
     { module: '@axrone/physics-3d', exports: ['Rigidbody3D', 'BoxCollider3D', 'CapsuleCollider3D', 'HingeJoint3D'] },
-    { module: '@axrone/audio', exports: ['AudioSourceComponent', 'AudioListenerComponent'] },
+    { module: '@axrone/audio', exports: AUDIO_SHARED_COMPONENTS },
     { module: '@axrone/scene-3d/support', exports: ['ParticleSystem'] },
     { module: '@axrone/scene-runtime/scene-facade', exports: ['UIHost'] },
 ]);
+
+// The build script emits one `import { ... } from 'module'` statement per entry,
+// so a template that combines two component sets must not list the same module
+// twice. Bindings are unioned per module and modules keep first-seen order.
+const mergeEngineComponentSets = (...sets) => {
+    const merged = new Map();
+    for (const set of sets.flat()) {
+        const existing = merged.get(set.module);
+        if (existing) {
+            for (const name of set.exports) {
+                if (!existing.includes(name)) {
+                    existing.push(name);
+                }
+            }
+        } else {
+            merged.set(set.module, [...set.exports]);
+        }
+    }
+    return Object.freeze(
+        [...merged].map(([module, exports]) => Object.freeze({ module, exports: Object.freeze(exports) }))
+    );
+};
 
 export const PROFILE_MODULE_CATALOG = Object.freeze({
     '2d': dedupe([...CORE_MODULES, ...MODULES_2D]),
@@ -131,7 +171,7 @@ export const TEMPLATE_DEFINITIONS = Object.freeze([
         // mixed scene from a single bundle, so it registers the union of the 3D
         // and 2D component sets. The 2D bridge is armed at boot from the scene
         // snapshot (see boot-factory resolveSceneProfile).
-        engineComponents: [...ENGINE_COMPONENTS_3D, ...ENGINE_COMPONENTS_2D],
+        engineComponents: mergeEngineComponentSets(ENGINE_COMPONENTS_3D, ENGINE_COMPONENTS_2D),
     },
 ]);
 
