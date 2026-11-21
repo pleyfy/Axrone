@@ -12,6 +12,7 @@ import { normalizeVec2Like } from '../core/physics-world-2d-helpers';
 export {
     _setPhysicsWorld2DBridgeProvider,
     _getPhysicsWorld2DBridgeProvider,
+    resolveBridgePhysicsWorld2D,
 } from './physics-world-registry';
 
 @script({
