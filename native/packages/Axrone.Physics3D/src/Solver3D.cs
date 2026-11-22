@@ -1,17 +1,22 @@
 namespace Axrone.Physics3D;
 
 /// <summary>
-/// Shared solver tuning: Baumgarte stabilization, the linear slop inside
-/// which resting separation is left alone, and the per-sweep correction
-/// cap. One definition so contact and joint solvers push with the same hand.
+/// Shared solver tuning: the linear slop inside which resting separation is
+/// left alone, the fraction of the residual a position sweep removes, and the
+/// per-sweep correction cap. One definition so contact and joint solvers push
+/// with the same hand.
 /// </summary>
 internal static class SolverTuning
 {
-    /// <summary>Fraction of the error corrected per position sweep.</summary>
-    public const float Baumgarte = PhysicsConstants.BaumgarteFactor;
-
     /// <summary>Penetration allowance that never corrects; rests stay quiet.</summary>
     public const float LinearSlop = PhysicsConstants.LinearSlop;
+
+    /// <summary>
+    /// Fraction of the residual penetration removed by one position sweep. The
+    /// pass re-measures depth from the live frames, so a full sweep lands the
+    /// pair on the slop and the next sweep finds nothing to do.
+    /// </summary>
+    public const float PositionCorrectionScale = 1.0f;
 
     /// <summary>Largest position correction applied in one sweep.</summary>
     public const float MaxCorrection = PhysicsConstants.MaxLinearCorrection;
@@ -24,9 +29,9 @@ internal static class SolverTuning
 /// Sequential-impulse contact solver: per step it freezes the restitution
 /// bias from the approach speed, then iterates normal clamping plus two-axis
 /// Coulomb friction over every contact point, and finally pushes positions
-/// apart with Baumgarte stabilization. Sleeping bodies read as infinite
-/// mass, so a quiet stack never pays for motion it does not have. All
-/// scratch lives in the loop; nothing allocates.
+/// apart against penetration re-measured from the live frames. Sleeping
+/// bodies read as infinite mass, so a quiet stack never pays for motion it
+/// does not have. All scratch lives in the loop; nothing allocates.
 /// </summary>
 public static class ContactSolver
 {
@@ -224,31 +229,54 @@ public static class ContactSolver
     }
 
     /// <summary>
-    /// Runs one position sweep of Baumgarte correction over penetrated
-    /// points. Separations inside the linear slop are left alone so resting
-    /// contact never jitters.
+    /// Runs one position sweep of residual correction over penetrated points,
+    /// each witness resolved through the frame its body carries now.
+    /// Separations inside the linear slop are left alone so resting contact
+    /// never jitters.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void SolvePositionPass(BodyStore bodies, Span<Contact3D> contacts)
     {
         ArgumentNullException.ThrowIfNull(bodies);
 
-        for (int i = 0; i < contacts.Length; i++)
+        Span<PositionGeometry3D> window = stackalloc PositionGeometry3D[PositionGeometryWindow.MaxContacts * Manifold3D.MaxPoints];
+        for (int start = 0; start < contacts.Length; start += PositionGeometryWindow.MaxContacts)
         {
-            SolveContactPosition(bodies, ref contacts[i]);
+            int length = Math.Min(PositionGeometryWindow.MaxContacts, contacts.Length - start);
+            Span<Contact3D> slice = contacts.Slice(start, length);
+            Span<PositionGeometry3D> geometry = window.Slice(0, length * Manifold3D.MaxPoints);
+            PositionGeometryWindow.Capture(bodies, slice, geometry);
+            SolvePositionSweep(bodies, slice, geometry);
         }
     }
 
     /// <summary>
-    /// Runs the position pass: <paramref name="iterations"/> sweeps of
-    /// Baumgarte correction over penetrated points.
+    /// Runs the position pass: <paramref name="iterations"/> sweeps of residual
+    /// correction over the geometry captured once for the pass, so every sweep
+    /// measures the corrections its predecessors already applied instead of
+    /// replaying the narrowphase snapshot.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void SolvePositions(BodyStore bodies, Span<Contact3D> contacts, int iterations)
     {
-        for (int iteration = 0; iteration < iterations; iteration++)
+        ArgumentNullException.ThrowIfNull(bodies);
+        if (iterations <= 0)
         {
-            SolvePositionPass(bodies, contacts);
+            return;
+        }
+
+        Span<PositionGeometry3D> window = stackalloc PositionGeometry3D[PositionGeometryWindow.MaxContacts * Manifold3D.MaxPoints];
+        for (int start = 0; start < contacts.Length; start += PositionGeometryWindow.MaxContacts)
+        {
+            int length = Math.Min(PositionGeometryWindow.MaxContacts, contacts.Length - start);
+            Span<Contact3D> slice = contacts.Slice(start, length);
+            Span<PositionGeometry3D> geometry = window.Slice(0, length * Manifold3D.MaxPoints);
+            PositionGeometryWindow.Capture(bodies, slice, geometry);
+
+            for (int iteration = 0; iteration < iterations; iteration++)
+            {
+                SolvePositionSweep(bodies, slice, geometry);
+            }
         }
     }
 
@@ -587,9 +615,24 @@ public static class ContactSolver
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static void SolveContactPosition(BodyStore bodies, ref Contact3D contact)
+    private static void SolvePositionSweep(BodyStore bodies, Span<Contact3D> contacts, Span<PositionGeometry3D> geometry)
+    {
+        for (int i = 0; i < contacts.Length; i++)
+        {
+            SolveContactPosition(bodies, ref contacts[i], geometry.Slice(i * Manifold3D.MaxPoints));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void SolveContactPosition(BodyStore bodies, ref Contact3D contact, Span<PositionGeometry3D> geometry)
     {
         if (contact.IsSensor)
+        {
+            return;
+        }
+
+        Manifold3D manifold = contact.Manifold;
+        if (manifold.Count == 0)
         {
             return;
         }
@@ -609,46 +652,101 @@ public static class ContactSolver
         Vec3 invIA = awakeA ? stateA.InverseInertia : Vec3.Zero;
         Vec3 invIB = awakeB ? stateB.InverseInertia : Vec3.Zero;
 
-        Manifold3D manifold = contact.Manifold;
+        Vec3 normal = manifold.Normal;
+        var frameA = new RigidTransform3D(stateA.Position, stateA.Rotation);
+        var frameB = new RigidTransform3D(stateB.Position, stateB.Rotation);
         Vec3 comA = stateA.Position + (stateA.Rotation * stateA.LocalCenter);
         Vec3 comB = stateB.Position + (stateB.Rotation * stateB.LocalCenter);
 
-        for (int p = 0; p < manifold.Count; p++)
+        ref readonly PositionGeometry3D first = ref geometry[0];
+        Vec3 witnessA0 = first.ResolveA(frameA);
+        Vec3 witnessB0 = first.ResolveB(frameB);
+        Vec3 rA0 = witnessA0 - comA;
+        Vec3 rB0 = witnessB0 - comB;
+        float k11 = FullNormalMass(invMassA, invMassB, invIA, invIB, stateA.Rotation, stateB.Rotation, rA0, rB0, rA0, rB0, normal);
+        if (k11 <= 0.0f)
         {
-            ContactPoint3D point = manifold[p];
-            float correction = Math.Clamp(
-                SolverTuning.Baumgarte * (point.Separation + SolverTuning.LinearSlop),
-                -SolverTuning.MaxCorrection, 0.0f);
-            if (correction == 0.0f)
+            return;
+        }
+
+        float target0 = Target(first, normal, witnessA0, witnessB0);
+        float push0 = target0 / k11;
+        float push1 = 0.0f;
+        Vec3 rnA0 = Vec3.Cross(rA0, normal);
+        Vec3 rnB0 = Vec3.Cross(rB0, normal);
+        Vec3 rnA1 = Vec3.Zero;
+        Vec3 rnB1 = Vec3.Zero;
+
+        if (manifold.Count > 1)
+        {
+            ref readonly PositionGeometry3D second = ref geometry[1];
+            Vec3 witnessA1 = second.ResolveA(frameA);
+            Vec3 witnessB1 = second.ResolveB(frameB);
+            Vec3 rA1 = witnessA1 - comA;
+            Vec3 rB1 = witnessB1 - comB;
+            float k22 = FullNormalMass(invMassA, invMassB, invIA, invIB, stateA.Rotation, stateB.Rotation, rA1, rB1, rA1, rB1, normal);
+            float k12 = FullNormalMass(invMassA, invMassB, invIA, invIB, stateA.Rotation, stateB.Rotation, rA0, rB0, rA1, rB1, normal);
+            float target1 = Target(second, normal, witnessA1, witnessB1);
+            float det = (k11 * k22) - (k12 * k12);
+            if (det <= 0.0f || k22 <= 0.0f)
             {
-                continue;
+                push1 = k22 > 0.0f ? target1 / k22 : 0.0f;
+            }
+            else
+            {
+                float coupled0 = ((k22 * target0) - (k12 * target1)) / det;
+                float coupled1 = ((k11 * target1) - (k12 * target0)) / det;
+                if (coupled0 >= 0.0f && coupled1 >= 0.0f)
+                {
+                    push0 = coupled0;
+                    push1 = coupled1;
+                }
+                else if (coupled0 > 0.0f)
+                {
+                    push0 = target0 / k11;
+                    push1 = 0.0f;
+                }
+                else if (coupled1 > 0.0f)
+                {
+                    push0 = 0.0f;
+                    push1 = target1 / k22;
+                }
+                else
+                {
+                    push0 = 0.0f;
+                    push1 = 0.0f;
+                }
             }
 
-            Vec3 rA = point.PositionA - comA;
-            Vec3 rB = point.PositionB - comB;
-            float k = invMassA + invMassB
-                + Vec3.Dot(Vec3.Cross(rA, manifold.Normal), ApplyInverseInertia(stateA.Rotation, invIA, Vec3.Cross(rA, manifold.Normal)))
-                + Vec3.Dot(Vec3.Cross(rB, manifold.Normal), ApplyInverseInertia(stateB.Rotation, invIB, Vec3.Cross(rB, manifold.Normal)));
-            if (k <= 0.0f)
-            {
-                continue;
-            }
+            rnA1 = Vec3.Cross(rA1, normal);
+            rnB1 = Vec3.Cross(rB1, normal);
+        }
 
-            float lambda = correction / k;
-            float push = -lambda;
-            if (awakeA)
-            {
-                stateA.Position += manifold.Normal * (push * invMassA);
-                Vec3 spinA = ApplyInverseInertia(stateA.Rotation, invIA, Vec3.Cross(rA, manifold.Normal)) * push;
-                stateA.Rotation = RotateBy(stateA.Rotation, spinA);
-            }
+        if (push0 == 0.0f && push1 == 0.0f)
+        {
+            return;
+        }
 
-            if (awakeB)
-            {
-                stateB.Position -= manifold.Normal * (push * invMassB);
-                Vec3 spinB = ApplyInverseInertia(stateB.Rotation, invIB, Vec3.Cross(rB, manifold.Normal)) * push;
-                stateB.Rotation = RotateBy(stateB.Rotation, spinB);
-            }
+        float push = push0 + push1;
+        if (awakeA)
+        {
+            stateA.Position += normal * (push * invMassA);
+            Vec3 spinA = ApplyInverseInertia(stateA.Rotation, invIA, (rnA0 * push0) + (rnA1 * push1));
+            stateA.Rotation = RotateBy(stateA.Rotation, spinA);
+        }
+
+        if (awakeB)
+        {
+            stateB.Position -= normal * (push * invMassB);
+            Vec3 spinB = ApplyInverseInertia(stateB.Rotation, invIB, (rnB0 * push0) + (rnB1 * push1)) * -1.0f;
+            stateB.Rotation = RotateBy(stateB.Rotation, spinB);
         }
     }
+
+    /// <summary>Distance the pair must gain along the normal before one point rests inside the slop.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float Target(in PositionGeometry3D point, Vec3 normal, Vec3 witnessA, Vec3 witnessB) =>
+        -Math.Clamp(
+            SolverTuning.PositionCorrectionScale * (point.ResolveSeparation(normal, witnessA, witnessB) + SolverTuning.LinearSlop),
+            -SolverTuning.MaxCorrection, 0.0f);
 }
