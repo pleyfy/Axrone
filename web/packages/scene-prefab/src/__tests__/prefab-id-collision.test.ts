@@ -284,13 +284,7 @@ describe('T-03.3 — Duplicate Component ID Detection', () => {
         ).toThrow(/already contains component 'cmp_mesh'/);
     });
 
-    it('does NOT detect duplicate component IDs within initial actor definition', () => {
-        // GAP: createScenePrefabState() does not validate that component IDs
-        // are unique within an actor. Two components with the same ID in the
-        // initial definition will silently pass through.
-        // TODO(engine): Add component ID uniqueness validation in
-        // rebuildActorIndex() or validateScenePrefabState() in
-        // scene-prefab-operations.ts.
+    it('rejects duplicate component IDs within initial actor definition', () => {
         const definition = makeDefinition('scn_test', [
             makeActor('ent_root', 'Root', null, [
                 makeComponent('cmp_dup', 'Transform', { x: 1 }),
@@ -298,17 +292,20 @@ describe('T-03.3 — Duplicate Component ID Detection', () => {
             ]),
         ]);
 
-        // This should throw but currently does not.
-        const result = resolveScenePrefab(definition);
-        expect(result.definition.actors[0]!.components).toHaveLength(2);
-        // Both components with the same ID survived resolution.
+        expect(() => resolveScenePrefab(definition)).toThrow(ScenePrefabValidationError);
+        expect(() => resolveScenePrefab(definition)).toThrow(/duplicate component 'cmp_dup'/);
     });
 
-    it.todo('initial definition should reject actors with duplicate component IDs');
-    // Implementation requirement:
-    // In scene-prefab-operations.ts, validateScenePrefabState() should iterate
-    // each actor's components and throw ScenePrefabValidationError if any two
-    // components share the same non-empty ID.
+    it('initial definition should reject actors with duplicate component IDs', () => {
+        const definition = makeDefinition('scn_test', [
+            makeActor('ent_root', 'Root', null, [
+                makeComponent('cmp_dup', 'Transform', { x: 1 }),
+                makeComponent('cmp_dup', 'Transform', { x: 2 }),
+            ]),
+        ]);
+
+        expect(() => resolveScenePrefab(definition)).toThrow(ScenePrefabValidationError);
+    });
 });
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import type {
     TerrainFoliageLayer,
     TerrainSplatResolution,
 } from '../types';
-import { validateTerrainDescriptor, validateTerrainFoliageLayers } from '../types';
+import { TERRAIN_FOLIAGE_CANDIDATES_PER_TEXEL, validateTerrainDescriptor, validateTerrainFoliageLayers } from '../types';
 import type { TerrainHeightmap } from '../heightmap/terrain-heightmap';
 import { sampleTerrainFoliageDensity } from './terrain-foliage-density';
 
@@ -16,9 +16,6 @@ import { sampleTerrainFoliageDensity } from './terrain-foliage-density';
  * sampled from the live heightmap, which means sculpting the terrain reseats
  * every instance for free on the next scatter pass.
  */
-
-/** Candidate points evaluated per density texel at density 1. */
-const CANDIDATES_PER_TEXEL = 0.35;
 
 /** Hard cap keeping a single layer's batch mesh within editor budgets. */
 export const TERRAIN_MAX_FOLIAGE_INSTANCES = 10_000;
@@ -77,7 +74,7 @@ export const scatterTerrainFoliage = ({
     // esiginde uygulanir, boylece instance sayisi yogunlukla lineer artar ve
     // yogunluk degisimleri onceki adaylarin PRNG dizisini kaydirmaz.
     const candidateCount = Math.min(
-        Math.ceil(texelCount * CANDIDATES_PER_TEXEL),
+        Math.ceil(texelCount * TERRAIN_FOLIAGE_CANDIDATES_PER_TEXEL),
         TERRAIN_MAX_FOLIAGE_INSTANCES * 4
     );
 

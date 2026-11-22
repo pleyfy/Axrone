@@ -24,6 +24,48 @@ interface TargetEvents extends EventMap {
 }
 
 describe('EventEmitter - Features', () => {
+    const registry = (() => {
+        const eventToSymbol = new Map<string, symbol>();
+        const symbolToEvent = new Map<symbol, string>();
+        return {
+            register(event: string) {
+                const existing = eventToSymbol.get(event);
+                if (existing) {
+                    return existing;
+                }
+                const created = Symbol(event);
+                eventToSymbol.set(event, created);
+                symbolToEvent.set(created, event);
+                return created;
+            },
+            getSymbol(event: string) {
+                return eventToSymbol.get(event);
+            },
+            getEvent(symbolValue: symbol) {
+                return symbolToEvent.get(symbolValue);
+            },
+            has(event: string) {
+                return eventToSymbol.has(event);
+            },
+            hasSymbol(symbolValue: symbol) {
+                return symbolToEvent.has(symbolValue);
+            },
+            events() {
+                return [...eventToSymbol.keys()];
+            },
+            symbols() {
+                return [...eventToSymbol.values()];
+            },
+            entries() {
+                return [...eventToSymbol.entries()];
+            },
+            clear() {
+                eventToSymbol.clear();
+                symbolToEvent.clear();
+            },
+        };
+    })();
+
     describe('Factory Functions', () => {
         it('should create emitters with correct configurations', () => {
             const emitter1 = createEmitter({ maxListeners: 15 });
@@ -189,7 +231,10 @@ describe('EventEmitter - Features', () => {
                 targetEmitter,
                 { 'test:event': 'target:mapped' },
                 {
-                    'test:event': (data) => ({ transformed: true, original: data }),
+                    'test:event': (data: any) => ({
+                        transformed: true,
+                        original: data,
+                    }),
                 }
             );
 
@@ -339,6 +384,7 @@ describe('EventEmitter - Features', () => {
 
 
         beforeEach(() => {
+            registry.clear();
         });
 
         it('should register and retrieve events correctly', () => {
@@ -380,7 +426,6 @@ describe('EventEmitter - Features', () => {
             expect(registry.events()).toHaveLength(0);
             expect(registry.symbols()).toHaveLength(0);
         });
-    });
 
     describe('EventGroup', () => {
         let baseEmitter: ReturnType<typeof createTypedEmitter<TestEvents>>;

@@ -1,0 +1,210 @@
+{
+  "generatedAt": "2026-11-12T13:05:41.860Z",
+  "preserving": true,
+  "differingSteps": 0,
+  "totalSteps": 1280,
+  "scenes": [
+    {
+      "key": "box250",
+      "steps": 160,
+      "differingSteps": 0,
+      "firstDivergentStep": null,
+      "baseFirstContactStep": 21,
+      "contactBearingInWindow": true,
+      "divergedBeforeBaseContacts": null,
+      "baseFingerprint": "abf8513a7c8a2feb",
+      "candidateFingerprint": "abf8513a7c8a2feb",
+      "baseContacts": 1190,
+      "candidateContacts": 1190,
+      "baseMemoryBytes": 3473408,
+      "candidateMemoryBytes": 3473408
+    },
+    {
+      "key": "box1000",
+      "steps": 160,
+      "differingSteps": 0,
+      "firstDivergentStep": null,
+      "baseFirstContactStep": 21,
+      "contactBearingInWindow": true,
+      "divergedBeforeBaseContacts": null,
+      "baseFingerprint": "5fe528523ae0b090",
+      "candidateFingerprint": "5fe528523ae0b090",
+      "baseContacts": 4752,
+      "candidateContacts": 4752,
+      "baseMemoryBytes": 12189696,
+      "candidateMemoryBytes": 12189696
+    },
+    {
+      "key": "box2000",
+      "steps": 160,
+      "differingSteps": 0,
+      "firstDivergentStep": null,
+      "baseFirstContactStep": 21,
+      "contactBearingInWindow": true,
+      "divergedBeforeBaseContacts": null,
+      "baseFingerprint": "e0ba8d3efc221e7c",
+      "candidateFingerprint": "e0ba8d3efc221e7c",
+      "baseContacts": 9518,
+      "candidateContacts": 9518,
+      "baseMemoryBytes": 23855104,
+      "candidateMemoryBytes": 23855104
+    },
+    {
+      "key": "box5000",
+      "steps": 160,
+      "differingSteps": 0,
+      "firstDivergentStep": null,
+      "baseFirstContactStep": 21,
+      "contactBearingInWindow": true,
+      "divergedBeforeBaseContacts": null,
+      "baseFingerprint": "98ddbd470475b15c",
+      "candidateFingerprint": "98ddbd470475b15c",
+      "baseContacts": 24121,
+      "candidateContacts": 24121,
+      "baseMemoryBytes": 52297728,
+      "candidateMemoryBytes": 52297728
+    },
+    {
+      "key": "standard256",
+      "steps": 160,
+      "differingSteps": 0,
+      "firstDivergentStep": null,
+      "baseFirstContactStep": 21,
+      "contactBearingInWindow": true,
+      "divergedBeforeBaseContacts": null,
+      "baseFingerprint": "3d63a691e4fd4a88",
+      "candidateFingerprint": "3d63a691e4fd4a88",
+      "baseContacts": 1171,
+      "candidateContacts": 1171,
+      "baseMemoryBytes": 7536640,
+      "candidateMemoryBytes": 7536640
+    },
+    {
+      "key": "hinge128",
+      "steps": 160,
+      "differingSteps": 0,
+      "firstDivergentStep": null,
+      "baseFirstContactStep": null,
+      "contactBearingInWindow": false,
+      "divergedBeforeBaseContacts": null,
+      "baseFingerprint": "1c43fc761b29065b",
+      "candidateFingerprint": "1c43fc761b29065b",
+      "baseContacts": 0,
+      "candidateContacts": 0,
+      "baseMemoryBytes": 1900544,
+      "candidateMemoryBytes": 1900544
+    },
+    {
+      "key": "sphere250",
+      "steps": 160,
+      "differingSteps": 0,
+      "firstDivergentStep": null,
+      "baseFirstContactStep": 27,
+      "contactBearingInWindow": true,
+      "divergedBeforeBaseContacts": null,
+      "baseFingerprint": "34414a5cab384631",
+      "candidateFingerprint": "34414a5cab384631",
+      "baseContacts": 372,
+      "candidateContacts": 372,
+      "baseMemoryBytes": 3473408,
+      "candidateMemoryBytes": 3473408
+    },
+    {
+      "key": "capsule250",
+      "steps": 160,
+      "differingSteps": 0,
+      "firstDivergentStep": null,
+      "baseFirstContactStep": 27,
+      "contactBearingInWindow": true,
+      "divergedBeforeBaseContacts": null,
+      "baseFingerprint": "7d5062b9fa7194ee",
+      "candidateFingerprint": "7d5062b9fa7194ee",
+      "baseContacts": 651,
+      "candidateContacts": 651,
+      "baseMemoryBytes": 3473408,
+      "candidateMemoryBytes": 3473408
+    }
+  ],
+  "contactBearingScenes": [
+    "box250",
+    "box1000",
+    "box2000",
+    "box5000",
+    "standard256",
+    "sphere250",
+    "capsule250"
+  ],
+  "identity": {
+    "base": {
+      "file": "build/wasm-release/physics.wasm",
+      "bytes": 218382,
+      "sha256": "48f80fc40eaba79d5f841db02eeeda27ba85c16469fa2164bcbca895fee7012b"
+    },
+    "candidate": {
+      "file": "build/wasm-timers/physics.wasm",
+      "bytes": 219711,
+      "sha256": "44874bb3cab10f3c7fb0ce7a5c17462045649e6a1f7844dc272ed64f426fb9d0"
+    }
+  },
+  "prerequisites": [
+    {
+      "file": "build/wasm-release/physics.wasm",
+      "bytes": 218382,
+      "sha256": "48f80fc40eaba79d5f841db02eeeda27ba85c16469fa2164bcbca895fee7012b"
+    },
+    {
+      "file": "build/wasm-timers/physics.wasm",
+      "bytes": 219711,
+      "sha256": "44874bb3cab10f3c7fb0ce7a5c17462045649e6a1f7844dc272ed64f426fb9d0"
+    },
+    {
+      "file": "build/wasm-fast/physics.wasm",
+      "bytes": 217092,
+      "sha256": "450a585a9c2e242f1165352f1f5baba0e7b3c2926320281b27125b059e66956d"
+    }
+  ],
+  "prerequisitesComplete": true,
+  "pinAttestation": {
+    "pinFile": "bench/results/policy-10-4-fingerprints.json",
+    "pinVariant": "wasm-release",
+    "baseSha256": "48f80fc40eaba79d5f841db02eeeda27ba85c16469fa2164bcbca895fee7012b",
+    "cells": [
+      {
+        "count": 250,
+        "expectedFingerprint": "abf8513a7c8a2feb",
+        "observedFingerprint": "abf8513a7c8a2feb",
+        "expectedContacts": 1190,
+        "observedContacts": 1190
+      },
+      {
+        "count": 1000,
+        "expectedFingerprint": "5fe528523ae0b090",
+        "observedFingerprint": "5fe528523ae0b090",
+        "expectedContacts": 4752,
+        "observedContacts": 4752
+      },
+      {
+        "count": 2000,
+        "expectedFingerprint": "e0ba8d3efc221e7c",
+        "observedFingerprint": "e0ba8d3efc221e7c",
+        "expectedContacts": 9518,
+        "observedContacts": 9518
+      },
+      {
+        "count": 5000,
+        "expectedFingerprint": "98ddbd470475b15c",
+        "observedFingerprint": "98ddbd470475b15c",
+        "expectedContacts": 24121,
+        "observedContacts": 24121
+      }
+    ]
+  },
+  "iterationPolicy": {
+    "velocityIterations": 10,
+    "positionIterations": 4
+  },
+  "window": {
+    "warmupSteps": 40,
+    "measuredSteps": 120
+  }
+}

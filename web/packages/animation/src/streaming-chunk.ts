@@ -77,6 +77,16 @@ const normalizeTrackDefinition = (track: AnimationTrackDefinition): AnimationTra
             `Streaming animation track '${track.target}/${track.path}' times length does not match keyframeCount`
         );
     }
+    let previousTime = Number.NEGATIVE_INFINITY;
+    for (let timeIndex = 0; timeIndex < track.times.length; timeIndex += 1) {
+        const keyTime = track.times[timeIndex]!;
+        if (!Number.isFinite(keyTime) || keyTime < previousTime) {
+            throw new AnimationValidationError(
+                `Streaming animation track '${track.target}/${track.path}' has a non-finite or descending key time at index ${timeIndex}`
+            );
+        }
+        previousTime = keyTime;
+    }
     if (sampleStride * keyframeCount !== track.values.length) {
         throw new AnimationValidationError(
             `Streaming animation track '${track.target}/${track.path}' has inconsistent values length`
@@ -98,6 +108,9 @@ const normalizeTrackDefinition = (track: AnimationTrackDefinition): AnimationTra
 const normalizeChunkPayload = (
     payload: AnimationClipStreamingChunkPayload
 ): AnimationClipStreamingChunkPayload => {
+    if (payload.version !== undefined && payload.version !== 1) {
+        throw new AnimationValidationError(`Unsupported streaming chunk version '${String(payload.version)}'`);
+    }
     if (!Array.isArray(payload.tracks)) {
         throw new AnimationValidationError('Animation streaming chunks require a tracks array');
     }
@@ -302,10 +315,25 @@ export const applyAnimationClipStreamingChunkDefinition = (
     options: AnimationClipStreamingChunkApplicationOptions = {}
 ): AnimationClipDefinition => {
     const normalizedPayload = normalizeChunkPayload(payload);
-    const expectedClipId = options.clipId ?? base.id;
-    if (normalizedPayload.clipId && normalizedPayload.clipId !== expectedClipId) {
+    const expectedClipId = options.clipId;
+    const targetClipId = expectedClipId ?? base.id;
+    if (!targetClipId) {
+        throw new AnimationValidationError('Streaming chunk application requires a target clip id');
+    }
+    if (expectedClipId) {
+        if (!normalizedPayload.clipId) {
+            throw new AnimationValidationError(
+                `Streaming chunk omits clipId, expected '${expectedClipId}'`
+            );
+        }
+        if (normalizedPayload.clipId !== expectedClipId) {
+            throw new AnimationValidationError(
+                `Streaming chunk targets clip '${normalizedPayload.clipId}', expected '${expectedClipId}'`
+            );
+        }
+    } else if (normalizedPayload.clipId && normalizedPayload.clipId !== base.id) {
         throw new AnimationValidationError(
-            `Streaming chunk targets clip '${normalizedPayload.clipId}', expected '${expectedClipId}'`
+            `Streaming chunk targets clip '${normalizedPayload.clipId}', expected '${base.id}'`
         );
     }
 
@@ -346,7 +374,7 @@ export const applyAnimationClipStreamingChunkDefinition = (
 
     return Object.freeze({
         ...base,
-        id: expectedClipId,
+        id: targetClipId,
         duration: resolveDuration(base, normalizedPayload, mergedTracks),
         tracks: Object.freeze(mergedTracks),
     } satisfies AnimationClipDefinition);

@@ -190,11 +190,12 @@ describe('TweenSystem', () => {
             expect(system.getActiveTweenCount()).toBe(0);
         });
 
-        it('handles tweens without getStatus', () => {
+        it('keeps running tweens across updates', () => {
             const system = new TweenSystem();
             const mockTween = {
                 id: 0,
                 isPlaying: () => true,
+                getStatus: () => 'running' as const,
                 getTotalDuration: () => 100,
                 start: function () { return this; },
                 stop: function () { return this; },
@@ -205,6 +206,34 @@ describe('TweenSystem', () => {
             system.add(mockTween as any);
             system.update(50);
             expect(system.getActiveTweenCount()).toBe(1);
+        });
+    });
+
+    describe('maxDelta', () => {
+        it('clamps timestamp jumps instead of teleporting tweens', () => {
+            const system = new TweenSystem();
+            const obj = { x: 0 };
+            const tw = to(obj, { x: 100 }, 100);
+            tw.start(0);
+            system.add(tw);
+            system.setMaxDelta(10);
+            expect(system.getMaxDelta()).toBe(10);
+            system.update(0);
+            system.update(1000);
+            expect(obj.x).toBeCloseTo(10, 5);
+            expect(tw.getStatus()).toBe('running');
+        });
+
+        it('defaults to pass-through without a cap', () => {
+            const system = new TweenSystem();
+            expect(system.getMaxDelta()).toBeUndefined();
+            const obj = { x: 0 };
+            const tw = to(obj, { x: 100 }, 100);
+            tw.start(0);
+            system.add(tw);
+            system.update(0);
+            system.update(1000);
+            expect(obj.x).toBe(100);
         });
     });
 });

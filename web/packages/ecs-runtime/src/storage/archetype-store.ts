@@ -79,6 +79,18 @@ export class ArchetypeStore<
         return this._resolveComponentTransition(currentArchetype, 'add', componentName);
     }
 
+    /**
+     * Allocation-free variant of {@link resolveAddComponentArchetype} for hot
+     * callers that already own a scratch resolution object.
+     */
+    resolveAddComponentArchetypeInto(
+        currentArchetype: Archetype<R, TEntity, TArchetypeId>,
+        componentName: string,
+        out: { archetype: Archetype<R, TEntity, TArchetypeId> | null; created: boolean }
+    ): void {
+        this._resolveComponentTransitionInto(currentArchetype, 'add', componentName, out);
+    }
+
     resolveRemoveComponentArchetype(
         currentArchetype: Archetype<R, TEntity, TArchetypeId>,
         componentName: string
@@ -125,13 +137,30 @@ export class ArchetypeStore<
         action: 'add' | 'remove',
         componentName: string
     ): WorldArchetypeResolution<R, TEntity, TArchetypeId> {
+        const out: { archetype: Archetype<R, TEntity, TArchetypeId> | null; created: boolean } = {
+            archetype: null,
+            created: false,
+        };
+        this._resolveComponentTransitionInto(currentArchetype, action, componentName, out);
+        // The transition always resolves a concrete archetype.
+        return { archetype: out.archetype as Archetype<R, TEntity, TArchetypeId>, created: out.created };
+    }
+
+    private _resolveComponentTransitionInto(
+        currentArchetype: Archetype<R, TEntity, TArchetypeId>,
+        action: 'add' | 'remove',
+        componentName: string,
+        out: { archetype: Archetype<R, TEntity, TArchetypeId> | null; created: boolean }
+    ): void {
         const edgeKey = `${action}:${componentName}`;
         const cachedArchetypeId = currentArchetype.edges.get(edgeKey);
 
         if (cachedArchetypeId) {
             const cachedArchetype = this._archetypes.get(cachedArchetypeId);
             if (cachedArchetype) {
-                return { archetype: cachedArchetype, created: false };
+                out.archetype = cachedArchetype;
+                out.created = false;
+                return;
             }
 
             currentArchetype.edges.delete(edgeKey);
@@ -149,7 +178,8 @@ export class ArchetypeStore<
             currentArchetype.id
         );
 
-        return resolution;
+        out.archetype = resolution.archetype;
+        out.created = resolution.created;
     }
 
     private _createAddSignature(

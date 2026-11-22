@@ -1,8 +1,10 @@
 import { Vec2 } from '@axrone/numeric';
+import type { IVec2Like } from '@axrone/numeric';
 import { Component, script } from '@axrone/ecs-runtime';
-import type { Render2DSizeLike, Render2DVec2Like } from '@axrone/render-2d';
+import type { Render2DSizeLike } from '@axrone/render-2d';
+import { VEC2_MUTATION_KEYS, trackLiveMutations } from './live-value-tracking';
 
-export type SpriteMaskVec2Input = Vec2 | Render2DVec2Like | readonly [number, number];
+export type SpriteMaskVec2Input = Vec2 | Readonly<IVec2Like> | readonly [number, number];
 export type SpriteMaskSizeInput = Vec2 | Render2DSizeLike | readonly [number, number];
 export type SpriteMaskShape = 'rect' | 'circle' | 'rounded-rect';
 
@@ -56,12 +58,17 @@ export class SpriteMask extends Component {
 
     constructor(config: SpriteMaskConfig = {}) {
         super();
-        this._size = toVec2(config.size, 1, 1);
-        this._anchor = toVec2(config.anchor, 0.5, 0.5);
+        this._size = trackLiveMutations(toVec2(config.size, 1, 1), VEC2_MUTATION_KEYS, () =>
+            this.touch()
+        );
+        this._anchor = trackLiveMutations(toVec2(config.anchor, 0.5, 0.5), VEC2_MUTATION_KEYS, () =>
+            this.touch()
+        );
         this._shape = toShape(config.shape);
         this._cornerRadius = config.cornerRadius ?? null;
     }
 
+    /** Live internal state — read-only view. Mutating it bypasses setter normalization; assign via the setter. */
     get size(): Vec2 {
         return this._size;
     }
@@ -72,6 +79,7 @@ export class SpriteMask extends Component {
         this._size.y = next.y;
     }
 
+    /** Live internal state — read-only view. Mutating it bypasses setter normalization; assign via the setter. */
     get anchor(): Vec2 {
         return this._anchor;
     }
@@ -87,7 +95,11 @@ export class SpriteMask extends Component {
     }
 
     set shape(value: SpriteMaskShape) {
+        if (this._shape === value) {
+            return;
+        }
         this._shape = value;
+        this.touch();
     }
 
     get cornerRadius(): number | null {
@@ -95,7 +107,11 @@ export class SpriteMask extends Component {
     }
 
     set cornerRadius(value: number | null) {
+        if (this._cornerRadius === value) {
+            return;
+        }
         this._cornerRadius = value;
+        this.touch();
     }
 
     setSize(width: number, height: number): this {
@@ -111,12 +127,12 @@ export class SpriteMask extends Component {
     }
 
     setShape(shape: SpriteMaskShape): this {
-        this._shape = shape;
+        this.shape = shape;
         return this;
     }
 
     setCornerRadius(cornerRadius: number | null): this {
-        this._cornerRadius = cornerRadius;
+        this.cornerRadius = cornerRadius;
         return this;
     }
 

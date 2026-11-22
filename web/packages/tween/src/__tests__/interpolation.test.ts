@@ -102,8 +102,10 @@ describe('Interpolation', () => {
             expect(Interpolation.Step([10, 20, 30], 0)).toBe(10);
         });
 
-        it('k>0 returns v[last]', () => {
-            expect(Interpolation.Step([10, 20, 30], 0.01)).toBe(30);
+        it('samples the segment holding k', () => {
+            expect(Interpolation.Step([10, 20, 30], 0.01)).toBe(10);
+            expect(Interpolation.Step([10, 20, 30], 0.5)).toBe(20);
+            expect(Interpolation.Step([10, 20, 30], 0.99)).toBe(20);
         });
 
         it('k=1 returns v[last]', () => {

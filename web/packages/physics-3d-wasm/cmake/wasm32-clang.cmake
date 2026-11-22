@@ -1,0 +1,19 @@
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR wasm32)
+
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER clang++)
+
+set(CMAKE_C_COMPILER_TARGET wasm32-unknown-unknown)
+set(CMAKE_CXX_COMPILER_TARGET wasm32-unknown-unknown)
+
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(CMAKE_CXX_FLAGS_INIT "-nostdlib -ffreestanding -fno-exceptions -fno-rtti -fvisibility=hidden")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-nostdlib")

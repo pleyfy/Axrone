@@ -38,9 +38,22 @@ export const cloneSceneMeshDefinition = (definition: SceneMeshDefinition): Scene
 export class SceneMeshRegistry {
     private readonly _resources = new Map<string, SceneMeshResource>();
     private readonly _definitions = new Map<string, SceneMeshDefinition>();
+    private _revision = 0;
 
     get size(): number {
         return this._resources.size;
+    }
+
+    /**
+     * Monotonic revision for render-cache invalidation. Bumped on register and
+     * clear so caches keyed by mesh bounds/resources can decide to rebuild.
+     */
+    get revision(): number {
+        return this._revision;
+    }
+
+    private _touchRevision(): void {
+        this._revision = (this._revision + 1) >>> 0;
     }
 
     register(
@@ -53,6 +66,7 @@ export class SceneMeshRegistry {
             bounds && !definition.bounds ? { ...definition, bounds } : definition;
         this._resources.set(resource.id, resource);
         this._definitions.set(resource.id, cloneSceneMeshDefinition(normalizedDefinition));
+        this._touchRevision();
 
         return {
             handle: toHandle(resource),
@@ -83,6 +97,7 @@ export class SceneMeshRegistry {
         const resources = [...this._resources.values()];
         this._resources.clear();
         this._definitions.clear();
+        this._touchRevision();
         return resources;
     }
 }

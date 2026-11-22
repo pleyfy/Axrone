@@ -1,4 +1,4 @@
-import type { BytesLike } from '../../types';
+import type { BytesLike } from '../types';
 import type { Hash32, Hash64, Hash128, Hash256, Hash512, HashValue, Seed32, Seed64 } from './types';
 import type { HashAlgorithmMetadata } from './types';
 

@@ -276,7 +276,8 @@ export class LineRenderer extends Component {
     }
 
     /**
-     * Gets all positions as an array.
+     * Gets all positions as an array. Live internal storage — do not
+     * mutate the array or its elements; use setPosition/setPositions.
      */
     getPositions(): readonly Vec3[] {
         return this._positions;

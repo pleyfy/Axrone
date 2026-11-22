@@ -417,6 +417,14 @@ export class AnimationStreamingBridge {
                     await this._handleFailure(request, toError(error), actor, animator, entity);
                 }
             })
+            .catch((error) => {
+                // _resolveActor and _handleFailure run outside the inner
+                // try/catch — contain their failures so task promises
+                // tracked in _inFlightTasks never reject unobserved.
+                console.warn(
+                    `[AnimationStreamingBridge] Unhandled streaming task failure for '${request.chunkId}': ${(error as Error)?.message ?? error}`
+                );
+            })
             .finally(() => {
                 this._inFlight.delete(key);
                 this._inFlightTasks.delete(task);
@@ -455,7 +463,15 @@ export class AnimationStreamingBridge {
             error,
         } satisfies FailedAnimationStreamingChunk);
 
-        await this._options.onChunkFailed?.(failure);
+        try {
+            await this._options.onChunkFailed?.(failure);
+        } catch (callbackError) {
+            // A throwing observer must not mask the original streaming
+            // failure or reject the bridge task.
+            console.warn(
+                `[AnimationStreamingBridge] onChunkFailed callback threw for '${request.chunkId}': ${(callbackError as Error)?.message ?? callbackError}`
+            );
+        }
         if (this._disposed) {
             return;
         }

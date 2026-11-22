@@ -5,11 +5,15 @@ import {
 } from './property-accessor';
 import {
     allocateSequenceLike,
+    BlendPair,
     cloneTweenArrayLike,
     isTweenTypedArray,
 } from './runtime-utils';
 
 type TweenInterpolationFunction = (v: ArrayLike<number>, k: number) => number;
+
+/** Writable numeric sequence: arrays, typed arrays and array-likes alike. */
+type MutableSequence = ArrayLike<number> & Record<number, number>;
 
 export interface ObjectTweenTrack {
     readonly path: string;
@@ -17,9 +21,31 @@ export interface ObjectTweenTrack {
         target: object,
         progress: number,
         interpolation: TweenInterpolationFunction,
-        twoValueBuffer: [number, number]
+        twoValueBuffer: BlendPair
     ): void;
     reset(target: object): void;
+}
+
+/**
+ * Walk `accessor.parts` to the parent holder once. The hot path then performs
+ * a single keyed store per channel instead of a per-frame path traversal.
+ */
+function resolveHolder(
+    accessor: TweenPropertyAccessor,
+    target: object
+): { holder: Record<string | number, number>; key: string } | null {
+    const parts = accessor.parts;
+    let current: unknown = target;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+        if (current === undefined || current === null || typeof current !== 'object') {
+            return null;
+        }
+        current = (current as Record<string, unknown>)[parts[index]!];
+    }
+    if (current === undefined || current === null || typeof current !== 'object') {
+        return null;
+    }
+    return { holder: current as Record<string | number, number>, key: parts[parts.length - 1]! };
 }
 
 class NumberTweenTrack implements ObjectTweenTrack {
@@ -27,6 +53,9 @@ class NumberTweenTrack implements ObjectTweenTrack {
     private _accessor: TweenPropertyAccessor;
     private _startValue: number;
     private _delta: number;
+    private _holder: Record<string | number, number> | null = null;
+    private _key = '';
+    private _boundTarget: object | null = null;
 
     constructor(accessor: TweenPropertyAccessor, startValue: number, endValue: number) {
         this.path = accessor.path;
@@ -39,13 +68,36 @@ class NumberTweenTrack implements ObjectTweenTrack {
         target: object,
         progress: number,
         _interpolation: TweenInterpolationFunction,
-        _twoValueBuffer: [number, number]
+        _twoValueBuffer: BlendPair
     ): void {
-        this._accessor.set(target, this._startValue + this._delta * progress);
+        const resolved = this._holderFor(target);
+        if (resolved === null) {
+            this._accessor.set(target, this._startValue + this._delta * progress);
+            return;
+        }
+        resolved.holder[resolved.key] = this._startValue + this._delta * progress;
     }
 
     reset(target: object): void {
-        this._accessor.set(target, this._startValue);
+        const resolved = this._holderFor(target);
+        if (resolved === null) {
+            this._accessor.set(target, this._startValue);
+            return;
+        }
+        resolved.holder[resolved.key] = this._startValue;
+    }
+
+    private _holderFor(target: object): { holder: Record<string | number, number>; key: string } | null {
+        if (this._holder === null || this._boundTarget !== target) {
+            const resolved = resolveHolder(this._accessor, target);
+            if (resolved === null) {
+                return null;
+            }
+            this._holder = resolved.holder;
+            this._key = resolved.key;
+            this._boundTarget = target;
+        }
+        return { holder: this._holder, key: this._key };
     }
 }
 
@@ -55,6 +107,8 @@ class SequenceTweenTrack implements ObjectTweenTrack {
     private _startValues: ArrayLike<number>;
     private _endValues: ArrayLike<number>;
     private _length: number;
+    private _resolved: ArrayLike<number> | null = null;
+    private _boundTarget: object | null = null;
 
     constructor(
         accessor: TweenPropertyAccessor,
@@ -72,9 +126,9 @@ class SequenceTweenTrack implements ObjectTweenTrack {
         target: object,
         progress: number,
         interpolation: TweenInterpolationFunction,
-        twoValueBuffer: [number, number]
+        twoValueBuffer: BlendPair
     ): void {
-        const result = this._resolveTarget(target) as any;
+        const result = this._targetFor(target) as MutableSequence;
 
         if (interpolation !== Interpolation.Linear && this._length > 1) {
             for (let index = 0; index < this._length; index += 1) {
@@ -98,10 +152,24 @@ class SequenceTweenTrack implements ObjectTweenTrack {
         const existing = this._accessor.get(target);
 
         if (assignTweenPropertyValue(existing, this._startValues)) {
+            this._resolved = null;
+            this._boundTarget = null;
             return;
         }
 
         this._accessor.set(target, cloneTweenArrayLike(this._startValues));
+        this._resolved = null;
+        this._boundTarget = null;
+    }
+
+    private _targetFor(target: object): ArrayLike<number> {
+        if (this._resolved !== null && this._boundTarget === target) {
+            return this._resolved;
+        }
+        const resolved = this._resolveTarget(target);
+        this._resolved = resolved;
+        this._boundTarget = target;
+        return resolved;
     }
 
     private _resolveTarget(target: object): ArrayLike<number> {

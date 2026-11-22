@@ -71,8 +71,12 @@ describe('EventGroup - Comprehensive', () => {
         it('should support priority option on once', async () => {
             const order: string[] = [];
 
-            group.once('test:event', () => order.push('low'), { priority: 'low' });
-            group.once('test:event', () => order.push('high'), { priority: 'high' });
+            group.once('test:event', () => {
+                order.push('low');
+            }, { priority: 'low' });
+            group.once('test:event', () => {
+                order.push('high');
+            }, { priority: 'high' });
 
             await group.emit('test:event', { value: 1 });
 
@@ -190,7 +194,9 @@ describe('EventGroup - Comprehensive', () => {
     describe('emitBatch()', () => {
         it('should emit multiple events in batch', async () => {
             let count = 0;
-            group.on('test:event', () => count++);
+            group.on('test:event', () => {
+                count++;
+            });
 
             const results = await group.emitBatch([
                 { event: 'test:event' as const, data: { value: 1 } },
@@ -382,7 +388,9 @@ describe('EventGroup - Comprehensive', () => {
     describe('drain() and flush()', () => {
         it('should drain all pending operations', async () => {
             let processed = 0;
-            group.on('test:event', () => processed++);
+            group.on('test:event', () => {
+                processed++;
+            });
 
             group.pause();
             await group.emit('test:event', { value: 1 });
@@ -398,7 +406,9 @@ describe('EventGroup - Comprehensive', () => {
 
         it('should flush specific event queue', async () => {
             let eventProcessed = 0;
-            group.on('test:event', () => eventProcessed++);
+            group.on('test:event', () => {
+                eventProcessed++;
+            });
 
             group.pause();
             await group.emit('test:event', { value: 1 });

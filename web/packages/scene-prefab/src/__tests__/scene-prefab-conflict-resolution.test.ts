@@ -217,6 +217,33 @@ describe('scene-prefab conflict resolution', () => {
             expect(result.conflicts.length).toBeGreaterThanOrEqual(1);
         });
 
+        it('reports the correct local operation for sequential manual conflicts', () => {
+            const local: ScenePrefabDefinition = {
+                ...baseDefinition,
+                id: 'prefab/local',
+                actors: [
+                    makeActor('root', 'Root', [5, 0, 0]),
+                    makeActor('child', 'Child', [1, 7, 0], 'root'),
+                ],
+            };
+            const incoming: ScenePrefabDefinition = {
+                ...baseDefinition,
+                id: 'prefab/incoming',
+                actors: [
+                    makeActor('root', 'Root', [99, 0, 0]),
+                    makeActor('child', 'Child', [1, 10, 0], 'root'),
+                ],
+            };
+
+            const options: ScenePrefabMergeOptions = { conflictPolicy: 'manual' };
+            const result = mergeScenePrefabDefinitions(baseDefinition, local, incoming, options);
+            expect(result.resolved).toBe(false);
+            expect(result.conflicts).toHaveLength(2);
+            const keys = result.conflicts.map((conflict) => conflict.key);
+            expect(keys.some((key) => key.includes('root'))).toBe(true);
+            expect(keys.some((key) => key.includes('child'))).toBe(true);
+        });
+
         it('merge completes without throwing for add-actor vs remove-actor on same nodeId', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,

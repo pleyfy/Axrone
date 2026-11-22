@@ -75,8 +75,8 @@ describe('@axrone/ui runtime record compiler', () => {
         expect(image?.source.height).toBe(1);
         expect(image?.alignX).toBe(1);
         expect(image?.alignY).toBe(0);
-        expect(image?.uvRect.width).toBe(0.75);
-        expect(image?.uvRect.height).toBe(0.75);
+        expect(image?.uvRect.width).toBe(1);
+        expect(image?.uvRect.height).toBe(1);
         expect(focus.focusable).toBe(true);
     });
 });

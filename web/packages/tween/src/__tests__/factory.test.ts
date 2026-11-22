@@ -69,9 +69,12 @@ describe('TweenFactory', () => {
         });
 
         it('easing forwarded correctly', () => {
+            const obj = { x: 0 };
             const easing = (t: number) => t * t;
-            const tween = TweenFactory.create({ x: 0 }, { easing });
-            expect((tween as any)._easingFunction).toBe(easing);
+            const tween = TweenFactory.create(obj, { to: { x: 100 }, duration: 100, easing });
+            tween.start(0);
+            tween.update(50);
+            expect(obj.x).toBeCloseTo(25, 5);
         });
     });
 });

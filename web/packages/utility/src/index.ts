@@ -4,6 +4,7 @@ export * from './result';
 // Other utilities
 export * from './disposable';
 export * from './freeze';
+export * from './tuple';
 export * from './object';
 export * from './types';
 

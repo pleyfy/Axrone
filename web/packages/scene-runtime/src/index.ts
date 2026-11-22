@@ -12,19 +12,6 @@ export {
 	resolveSceneRuntimeBuiltInComponents,
 } from './scene-runtime-registry';
 export type {
-	SceneRuntimeManifestProfileOptions,
-	SceneRuntimeProfile,
-	SceneRuntimeProfileContext,
-} from './scene-runtime-profile';
-export {
-	CORE_SCENE_RUNTIME_PROFILE_ID,
-	createSceneRuntimeProfile,
-	createSceneRuntimeManifestProfile,
-	getCoreSceneRuntimeProfile,
-	getDefaultSceneRuntimeProfile,
-	resolveSceneRuntimeRegistryFromProfile,
-} from './scene-runtime-profile';
-export type {
 	SceneBuiltInComponentName,
 	SceneBuiltInManifest,
 	SceneManifestRegistryBuilderOptions,
@@ -44,16 +31,57 @@ export {
 	getDefaultSceneBuiltInRegistry,
 	resolveSceneBuiltInComponents,
 } from './scene-registry';
+export type {
+	SceneManifestRuntimeProfileOptions,
+	ScenePhysicsBridgeSelection,
+	SceneRuntimeProfile,
+	SceneRuntimeProfileContext,
+} from './scene-profile';
 export {
-	CORE_SCENE_RUNTIME_PROFILE_ID as CORE_SCENE_PROFILE_ID,
+	CORE_SCENE_RUNTIME_PROFILE_ID,
 	DEFAULT_SCENE_RUNTIME_PROFILE_ID,
 	SCENE_2D_RUNTIME_PROFILE_ID,
 	SCENE_3D_RUNTIME_PROFILE_ID,
+	SCENE_MIXED_RUNTIME_PROFILE_ID,
 	createSceneManifestRuntimeProfile,
+	createSceneRuntimeProfile,
 	get2DSceneRuntimeProfile,
 	get3DSceneRuntimeProfile,
+	getMixedSceneRuntimeProfile,
+	getCoreSceneRuntimeProfile,
+	getDefaultSceneRuntimeProfile,
+	resolvePhysicsBridgesForProfile,
 	resolveSceneRegistryFromProfile,
 } from './scene-profile';
+
+export type {
+	SceneRuntimeComposition,
+	SceneRuntimePhysicsBridge,
+	SceneRuntimePhysicsBridgeInput,
+	SceneRuntimePhysicsBridgeSelection,
+	SceneRuntimePhysicsProfilerStats,
+	SceneRuntimePhysicsWorldView,
+} from './scene-runtime-kernel';
+export {
+	getDefaultSceneRuntimeComposition,
+	resolveSceneRuntimeComposition,
+} from './default-composition';
+export type {
+	SceneBatchRuntimeFactory,
+	SceneBatchRuntimeFactoryContext,
+	SceneBatchRuntimeSet,
+} from './scene-batch-runtimes';
+export { createFullSceneBatchRuntimes } from './scene-batch-runtimes';
+
+/** @deprecated Use `CORE_SCENE_RUNTIME_PROFILE_ID` instead. */
+export { CORE_SCENE_RUNTIME_PROFILE_ID as CORE_SCENE_PROFILE_ID } from './scene-profile';
+
+export type { SceneRenderCapabilities } from './scene-render-capabilities';
+export {
+	SCENE_RENDER_CAPABILITIES_ALL,
+	resolveSceneRenderCapabilities,
+} from './scene-render-capabilities';
+
 export type { SceneActorRuntimeOptions } from './scene-actor-runtime';
 export { SceneActorRuntime } from './scene-actor-runtime';
 export type {
@@ -98,6 +126,16 @@ export type {
 	AnimatorTrackConfig,
 } from './components/animator';
 export { Animator } from './components/animator';
+export { SceneRagdollPoseSource } from './components/ragdoll-pose-source';
+export {
+	SceneAnimationClipAssetLibrary,
+	sceneAnimationClipAssets,
+	resolveAnimationClipAssets,
+} from './scene-animation-clip-assets';
+export type {
+	SceneAnimationClipAsset,
+	AnimatorClipAssetReference,
+} from './scene-animation-clip-assets';
 
 export type {
 	CompiledRenderShaderEffect,
@@ -154,6 +192,7 @@ export type {
 	SceneMorphTargetSemantic,
 	SceneMeshSemantic,
 	SceneMeshTopology,
+	SceneInstancingMode,
 	SceneOptions,
 	ScenePrefabActorField,
 	ScenePrefabActorFieldValue,
@@ -220,6 +259,9 @@ export {
 	ScenePrefabValidationError,
 	SceneShaderError,
 } from './errors';
+
+export type { SceneCapabilityGuardHost } from './scene-capability-guard';
+export { requireRegisteredComponent } from './scene-capability-guard';
 
 export type {
 	SceneRuntimeFrameRecord,

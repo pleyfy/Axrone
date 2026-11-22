@@ -133,8 +133,15 @@ export class TextLayoutEngine implements Disposable {
         while (cursor < clusters.length) {
             const line = this.measureLine(clusters, cursor, maxWidth, block.wrap);
             lines.push(line);
+            const lineStart = line.start;
             cursor = line.end;
             if (cursor < clusters.length && clusters[cursor]?.newline) {
+                cursor += 1;
+            }
+            // Guarantee forward progress: when measureLine strips trailing
+            // whitespace and returns end === start (e.g. text "Hello "), the
+            // outer loop would otherwise spin forever pushing empty lines.
+            if (cursor === lineStart && cursor < clusters.length && !clusters[cursor].newline) {
                 cursor += 1;
             }
             if (lines.length >= block.maxLines && cursor < clusters.length) {

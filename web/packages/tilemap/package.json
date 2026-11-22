@@ -1,0 +1,99 @@
+{
+    "name": "@axrone/tilemap",
+    "version": "0.1.0",
+    "description": "Chunked tilemap data model: packed tile words, binary chunk codecs, residency-aware chunk storage, projection-aware queries, pathfinding and autotiling.",
+    "type": "module",
+    "sideEffects": false,
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./codec": {
+            "types": "./dist/codec.d.ts",
+            "import": "./dist/codec.mjs",
+            "require": "./dist/codec.js"
+        },
+        "./grid": {
+            "types": "./dist/grid.d.ts",
+            "import": "./dist/grid.mjs",
+            "require": "./dist/grid.js"
+        },
+        "./query": {
+            "types": "./dist/query.d.ts",
+            "import": "./dist/query.mjs",
+            "require": "./dist/query.js"
+        },
+        "./path": {
+            "types": "./dist/path.d.ts",
+            "import": "./dist/path.mjs",
+            "require": "./dist/path.js"
+        },
+        "./observer": {
+            "types": "./dist/observer.d.ts",
+            "import": "./dist/observer.mjs",
+            "require": "./dist/observer.js"
+        },
+        "./profiler": {
+            "types": "./dist/profiler.d.ts",
+            "import": "./dist/profiler.mjs",
+            "require": "./dist/profiler.js"
+        },
+        "./errors": {
+            "types": "./dist/errors.d.ts",
+            "import": "./dist/errors.mjs",
+            "require": "./dist/errors.js"
+        }
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run --root ../.. packages/tilemap",
+        "typecheck": "tsc --noEmit -p tsconfig.build.json",
+        "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+        "lint": "eslint src --ext .ts",
+        "bench": "node bench/run.mjs"
+    },
+    "keywords": [
+        "tilemap",
+        "tileset",
+        "chunk",
+        "isometric",
+        "pathfinding",
+        "ecs",
+        "game-engine"
+    ],
+    "author": "Axrone",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "dependencies": {
+        "@axrone/hash": "^0.0.1",
+        "@axrone/memory": "^0.0.1",
+        "@axrone/numeric": "^0.0.1",
+        "@axrone/utility": "^0.0.1"
+    },
+    "peerDependencies": {
+        "@axrone/observer": "^0.1.0",
+        "@axrone/profiler": "^0.1.0"
+    },
+    "peerDependenciesMeta": {
+        "@axrone/observer": {
+            "optional": true
+        },
+        "@axrone/profiler": {
+            "optional": true
+        }
+    }
+}

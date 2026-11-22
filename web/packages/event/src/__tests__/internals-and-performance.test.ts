@@ -58,7 +58,7 @@ describe('internals.ts', () => {
 
         it('should return true for objects with EVENT_EMITTER_TAP as function', () => {
             const tapSource: EventTapSource = {
-                [EVENT_EMITTER_TAP]: () => () => {},
+                [EVENT_EMITTER_TAP]: () => () => true,
             };
             expect(hasEventTapSupport(tapSource)).toBe(true);
         });

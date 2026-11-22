@@ -1,0 +1,1022 @@
+{
+  "disposition": "instrument-exhibit",
+  "subject": "pre-lever-B timers build, before the velocity sub-markers landed",
+  "generatedAt": "2026-11-12T13:35:33.807Z",
+  "driver": "bench/phase-split.mjs",
+  "wasm": {
+    "instrumented": "build/wasm-timers/physics.opt.wasm",
+    "release": "build/wasm-release/physics.opt.wasm"
+  },
+  "moduleIdentity": {
+    "instrumented": {
+      "file": "build/wasm-timers/physics.opt.wasm",
+      "bytes": 145868,
+      "sha256": "199080693a4f5953a19ecd02080212217d6206fda1122a94ed285362bc5b3166"
+    },
+    "release": {
+      "file": "build/wasm-release/physics.opt.wasm",
+      "bytes": 144855,
+      "sha256": "4c77582612c089c42f2387213e593cb94528c82e0f98670420259e0ec513d997"
+    },
+    "preOptimization": {
+      "instrumented": {
+        "file": "build/wasm-timers/physics.wasm",
+        "bytes": 219711,
+        "sha256": "44874bb3cab10f3c7fb0ce7a5c17462045649e6a1f7844dc272ed64f426fb9d0"
+      },
+      "release": {
+        "file": "build/wasm-release/physics.wasm",
+        "bytes": 218382,
+        "sha256": "48f80fc40eaba79d5f841db02eeeda27ba85c16469fa2164bcbca895fee7012b"
+      }
+    },
+    "relation": "instrumented and release are the two modules this driver actually loaded and measured; both are the wasm-opt output of their preset, and physics.wasm beside each is the same preset's pre-wasm-opt module, recorded so the size difference is a stated relation and not a reader's guess. Nothing here is a third build: two presets, two artifacts each."
+  },
+  "phaseKeys": [
+    "integrate",
+    "broadphase",
+    "collide",
+    "prepare",
+    "assembleConstraints",
+    "solveVelocities",
+    "solvePositions",
+    "sleepAndCacheSwap",
+    "pack",
+    "sweepSort",
+    "pairLoop"
+  ],
+  "disjointPhaseKeys": [
+    "integrate",
+    "broadphase",
+    "collide",
+    "prepare",
+    "assembleConstraints",
+    "solveVelocities",
+    "solvePositions",
+    "sleepAndCacheSwap",
+    "pack"
+  ],
+  "nestedPhaseKeys": [
+    "sweepSort",
+    "pairLoop"
+  ],
+  "timerRecord": {
+    "bytes": 96,
+    "unit": "seconds per recorded step in the wasm record; readPhaseTimers converts to milliseconds",
+    "export": "phaseTimersView",
+    "guardedBy": "PHYSICS_PHASE_TIMERS"
+  },
+  "bucketScope": "shares are shares of World::step internals. ABI-side per-step work inside the host-measured span (src/abi/exports.cpp step: collectStepStatistics plus the 112-byte statistics record copy) is in no bucket, so timerSumMsPerStep can exceed hostMsPerStepInstrumented.",
+  "hostClockNote": "the browser and scene-runtime path binds env.now to performance.now(), which is clamped to roughly 100 microseconds; that path is not a measurement path, only this Node driver is.",
+  "invariance": "instrumented and release fingerprints and contact counts are identical for every pile size in results",
+  "nestingNote": "broadphase is published inside the module as swept minus collide. The instrumented build also exports the raw nested values and the inversion flag (phaseTimerSweptNanoseconds, phaseTimerCollideNanoseconds, phaseTimerClampFired), the driver counts clampFired over every measured step as clampFiredSteps and throws when the sampled step reports it, and nestedSweepSingleStep plus teeth.solvedIterationNestedSweep publish the raw swept and collide values beside the bucket, so a marker inversion cannot hide as a plausible broadphase of zero.",
+  "sleepBucketNote": "sleepAndCacheSwap is a catch-all bucket: wake-on-contact before the solve, the warm-start impulse writeback, the point-identity probe and the prev/next table swap all charge it, while persistTime and warmStartTime report null. The compat snapshot exposes it as sleepAndCacheSwapTime and leaves sleepTime null so the label matches the content.",
+  "subMarkerNote": "sweepSort and pairLoop are sub-buckets of the swept scope, not step sections: sweepSort wraps buildSweep and pairLoop wraps the pair enumeration loop, inside which the collide marker already sits. They tile the raw swept value, so they are read beside broadphase and collide and are deliberately excluded from timerSumMsPerStep and sharesOfTimerSum, which stay the sum of the mutually disjoint step sections; a share of the timer sum for either sub-bucket would double count.",
+  "tilingNote": "on one recorded step the two sub-markers are disjoint intervals inside the swept scope, so teeth.solvedIterationNestedSweep publishes sweepSortMs plus pairLoopMs against sweptMs and the residual between them; subMarkersTileSweptScope is the structural check that the sum never exceeds the parent scope, and a marker moved outside broadphase() would fail it rather than quietly shrink a bucket.",
+  "sweepSubSplitNote": "sweepSort and pairLoop are sub-buckets of the swept scope and are excluded from the timer sum; the gate Task 8 Step 2 reads is sortShareOfBroadphaseBucket, computed against publishedBroadphaseBucketMsPerStep, which is the swept-minus-collide bucket, so collideNestedInPairLoopMsPerStep is subtracted from pairLoopMsPerStep before the two sub-buckets are compared with it: 250 boxes: sweepSort 0.01081 ms/step against pairLoop net of collide 0.05815 ms/step, sort share of the published broadphase bucket 14.10 percent, gating fraction 33.33 percent, gate met: false; 1000 boxes: sweepSort 0.05796 ms/step against pairLoop net of collide 0.42024 ms/step, sort share of the published broadphase bucket 12.11 percent, gating fraction 33.33 percent, gate met: false; 2000 boxes: sweepSort 0.10947 ms/step against pairLoop net of collide 0.83624 ms/step, sort share of the published broadphase bucket 11.01 percent, gating fraction 33.33 percent, gate met: false; 5000 boxes: sweepSort 0.42745 ms/step against pairLoop net of collide 3.75687 ms/step, sort share of the published broadphase bucket 9.50 percent, gating fraction 33.33 percent, gate met: false.",
+  "probeCorrectionNote": "The JS-loop per-probe model is withdrawn as an estimate and survives only as a comparison value: 250 boxes: JS-loop model 0.0491 ms/step against measured inflation 0.1516 ms/step, measured/model 3.086, inflation exceeds model: true; 1000 boxes: JS-loop model 0.2246 ms/step against measured inflation 0.5072 ms/step, measured/model 2.259, inflation exceeds model: true; 2000 boxes: JS-loop model 0.3046 ms/step against measured inflation -1.4825 ms/step, measured/model -4.867, inflation exceeds model: false; 5000 boxes: JS-loop model 1.3138 ms/step against measured inflation 6.3926 ms/step, measured/model 4.866, inflation exceeds model: true. Which side wins is host state, not a finding, so the gate records the ratio and the flag instead of asserting the model is larger. The only published corrections are collideShareInterval and collision.broadphasePlusCollideShareInterval, both derived from the measured instrumented-minus-release gap of this same run; raw sharesOfTimerSum are the measurement and no corrected split is presented as measured. Both intervals are clamped at construction so the lower end can never exceed the upper end, and each one publishes lowerClampFired, rawUnclampedLowerShareOfTimerSum and the signed lowerBoundMeasuredInflationMsPerStep that caused it: 250 boxes: lower clamp fired false, signed gap 0.1516 ms/step, unclamped lower 0.0157 against published lower 0.0157; 1000 boxes: lower clamp fired false, signed gap 0.5072 ms/step, unclamped lower 0.0501 against published lower 0.0501; 2000 boxes: lower clamp fired true, signed gap -1.4825 ms/step, unclamped lower 0.2446 against published lower 0.1074; 5000 boxes: lower clamp fired false, signed gap 6.3926 ms/step, unclamped lower 0.0000 against published lower 0.0000.",
+  "sumBoundNote": "The asserted bound on the absolute difference between the disjoint-section timer sum and the host-measured step time, as a fraction of the host-measured step time, is 3 percent. It was tightened from 15 percent after review: a deliberate narrowphase double count of about 11 percent of the step passes 15 percent silently but fails 3 percent. This run recorded 250 boxes 0.31 percent, 1000 boxes 1.49 percent, 2000 boxes 0.05 percent, 5000 boxes 0.37 percent.",
+  "provenance": {
+    "measuredAt": "2026-11-12T13:35:33.807Z",
+    "producedBy": "bench/phase-split.mjs",
+    "editReason": "this file was produced end-to-end by bench/phase-split.mjs in a single run; every note and derived field is recomputed from the values that run measured and nothing was edited outside the driver"
+  },
+  "results": [
+    {
+      "count": 250,
+      "iterationPolicy": {
+        "velocityIterations": 10,
+        "positionIterations": 4
+      },
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120,
+        "repeats": 3
+      },
+      "dtSeconds": 0.016666666666666666,
+      "hostMsPerStepInstrumented": 1.4187333333333332,
+      "hostMsPerStepRelease": 1.267155,
+      "timerSumMsPerStep": 1.4142875,
+      "sumVsStepTimeRelativeError": 0.0031336638315868103,
+      "sumVsStepTimeTolerance": 0.03,
+      "fingerprint": "abf8513a7c8a2feb",
+      "contacts": 1190,
+      "releaseFingerprint": "abf8513a7c8a2feb",
+      "releaseContacts": 1190,
+      "broadphasePairsPerStep": 250,
+      "phasesMsPerStep": {
+        "integrate": 0.006169999999999998,
+        "broadphase": 0.0766516666666667,
+        "collide": 0.17374666666666672,
+        "prepare": 0.06628583333333335,
+        "assembleConstraints": 0.00013583333333333324,
+        "solveVelocities": 0.7829824999999999,
+        "solvePositions": 0.29398749999999985,
+        "sleepAndCacheSwap": 0.012305000000000016,
+        "pack": 0.0020225000000000013,
+        "sweepSort": 0.010809166666666668,
+        "pairLoop": 0.23189999999999997
+      },
+      "sharesOfTimerSum": {
+        "integrate": 0.004362620754266724,
+        "broadphase": 0.05419807971622934,
+        "collide": 0.12285102333625003,
+        "prepare": 0.04686871186610456,
+        "assembleConstraints": 0.00009604364977653641,
+        "solveVelocities": 0.5536232908796832,
+        "solvePositions": 0.20786968703322334,
+        "sleepAndCacheSwap": 0.008700494065032758,
+        "pack": 0.0014300486994334614
+      },
+      "clockProbe": {
+        "hostClockNanosecondsPerCall": 94.0905,
+        "hostClockMeasurement": "a JS loop reading process.hrtime.bigint(); it never crossed the wasm boundary",
+        "estimatedProbesPerStep": 522,
+        "sectionProbesPerStep": 22,
+        "probesPerBroadphasePair": 2,
+        "jsLoopModelProbeMsPerStep": 0.049115241000000004,
+        "jsLoopModelStatus": "withdrawn as an estimate; kept only as the comparison value the ratio below is taken against",
+        "measuredInflationMsPerStep": 0.15157833333333315,
+        "interleavedInflationMsPerStep": 0.12681666666666613,
+        "interleavedInflationNote": "one instrumented window run back to back with one release window; a single pair is dominated by host drift and can come out negative, so it is recorded to show the spread and never quoted as the overhead",
+        "perProbeUpperBoundNanosecondsFromMeasuredGap": 290.3799489144313,
+        "measuredInflationOverJsLoopModelRatio": 3.086177126430737,
+        "measuredInflationExceedsJsLoopModel": true,
+        "jsLoopModelOverMeasuredGap": 0.32402547197818554
+      },
+      "collideShareInterval": {
+        "lowerShareOfTimerSum": 0.01567455933346902,
+        "upperShareOfTimerSum": 0.12285102333625003,
+        "lowerClampFired": false,
+        "rawUnclampedLowerShareOfTimerSum": 0.01567455933346902,
+        "lowerBoundMeasuredInflationMsPerStep": 0.15157833333333315,
+        "lowerClampNote": "the lower bound is clamped to the upper bound whenever the unclamped value would exceed it, which happens when measuredInflationMsPerStep is negative; when lowerClampFired is true the lower bound carries no information and rawUnclampedLowerShareOfTimerSum is what the arithmetic produced before the clamp",
+        "unit": "share of the timer sum",
+        "basis": "upper bound is the raw reported bucket, which contains its own clock probes; lower bound subtracts the whole measured instrumented-minus-release gap from collide, which charges every probe in every bucket to collide alone"
+      },
+      "collideClockOverheadUpperBoundOfBucket": 0.8724100222546223,
+      "probeCorrectionPolicy": "raw shares are the published measurement; the only correction is the collide interval above, derived from the measured A/B gap, never from the JS-loop clock model; no corrected split is presented as measured",
+      "nestedSweepSingleStep": {
+        "sweptMs": 2.4687,
+        "collideMs": 2.3843,
+        "clampFired": false
+      },
+      "clampFiredSteps": 0,
+      "clampFiredStepsSampled": 480,
+      "subClockResolutionRule": "a bucket is below clock resolution when its ms/step is no more than two host clock calls, i.e. it cannot be separated from the probes that measure it",
+      "clockResolutionThreshold": {
+        "thresholdMsPerStep": 0.00018818100000000002,
+        "thresholdNanosecondsPerCall": 94.0905,
+        "clockCallsPerThreshold": 2,
+        "derivedFrom": "this run's own measured host clock cost: clockProbe.hostClockNanosecondsPerCall multiplied by clockCallsPerThreshold, both published beside it, so the classification is recomputable from the artifact alone and moves with the host",
+        "borderlineRelativeBand": 0.25,
+        "borderlineRule": "a bucket whose ms/step is within 0.25 of the published threshold, i.e. |bucket - threshold| / threshold no greater than the band, is published in borderlineClockResolutionPhases; its class is a reading of host clock speed rather than a property of the bucket, so no consumer may assert which side a borderline bucket lands on"
+      },
+      "subClockResolutionPhases": [
+        "assembleConstraints"
+      ],
+      "aboveClockResolutionPhases": [
+        "integrate",
+        "broadphase",
+        "collide",
+        "prepare",
+        "solveVelocities",
+        "solvePositions",
+        "sleepAndCacheSwap",
+        "pack",
+        "sweepSort",
+        "pairLoop"
+      ],
+      "borderlineClockResolutionPhases": [],
+      "solver": {
+        "velocityPlusPositionMsPerStep": 1.0769699999999998,
+        "velocityPlusPositionShare": 0.7614929779129065,
+        "velocityShareOfSolver": 0.7270235011188799,
+        "probeOverhead": {
+          "probesPerStep": 4,
+          "upperBoundMsPerStep": 0.0011615197956577252,
+          "upperBoundShareOfTimerSum": 0.0008212755862282069,
+          "note": "the two solve buckets carry four probes per step, so their own clock cost is bounded by this; the velocity to position ratio is invariant under any remaining denominator shift"
+        },
+        "denominatorShiftIfEntireInflationRemoved": 0.10717646400278101
+      },
+      "collision": {
+        "broadphasePlusCollideMsPerStep": 0.2503983333333334,
+        "broadphasePlusCollideShare": 0.17704910305247937,
+        "broadphasePlusCollideShareInterval": {
+          "lowerShareOfTimerSum": 0.06987263904969836,
+          "upperShareOfTimerSum": 0.17704910305247937,
+          "lowerClampFired": false,
+          "rawUnclampedLowerShareOfTimerSum": 0.06987263904969836,
+          "lowerBoundMeasuredInflationMsPerStep": 0.15157833333333315,
+          "lowerClampNote": "the lower bound is clamped to the upper bound whenever the unclamped value would exceed it, which happens when measuredInflationMsPerStep is negative; when lowerClampFired is true the lower bound carries no information and rawUnclampedLowerShareOfTimerSum is what the arithmetic produced before the clamp",
+          "unit": "share of the timer sum",
+          "basis": "the same interval widened to broadphase plus collide; the sweep bucket carries two probes per step and no pair scaling"
+        }
+      },
+      "sweepSubSplit": {
+        "sweepSortMsPerStep": 0.010809166666666668,
+        "pairLoopMsPerStep": 0.23189999999999997,
+        "collideNestedInPairLoopMsPerStep": 0.17374666666666672,
+        "pairLoopNetOfCollideMsPerStep": 0.05815333333333325,
+        "sweptScopeMsPerStep": 0.24270916666666664,
+        "publishedBroadphaseBucketMsPerStep": 0.0766516666666667,
+        "reconstructedBroadphaseBucketMsPerStep": 0.06896249999999993,
+        "bucketReconstructionResidualMsPerStep": 0.007689166666666775,
+        "bucketReconstructionResidualOverSweptScope": 0.03168057792076295,
+        "sweptSliverAllowanceMs": 0.005,
+        "bucketReconstructionBandMs": 0.036406375,
+        "bucketReconstructionWithinBand": true,
+        "sortShareOfBroadphaseBucket": 0.14101672066273832,
+        "sortShareOfSweptScope": 0.04453546940611364,
+        "pairLoopNetShareOfBroadphaseBucket": 0.7586701745993767,
+        "broadphaseBucketShareOfTimerSum": 0.05419807971622934,
+        "sortShareOfTimerSum": 0.007642835467800337,
+        "gatingFraction": 0.3333333333333333,
+        "sortMeetsGatingFraction": false,
+        "basis": "sweepSortMsPerStep is buildSweep: the highWater scan that fills sweepOrder plus the shell sort that orders it. pairLoopMsPerStep is the whole pair enumeration loop, inside which the collide marker already sits, so collideNestedInPairLoopMsPerStep must be subtracted before either sub-bucket is compared with the published broadphase bucket. sortShareOfBroadphaseBucket is the gate Task 8's Step 2 reads, and it is computed from one run of one instrumented module."
+      },
+      "ablationCrossCheck": {
+        "source": "bench/phases.mjs run in this same process on the release module",
+        "sourceModule": "build/wasm-release/physics.opt.wasm",
+        "ladderRepeats": 3,
+        "ladderMsPerStep": {
+          "zeroIterations": 0.0433325,
+          "velocityOnly": 1.4130208333333334,
+          "solvedIteration": 1.7712783333333335
+        },
+        "ladderContacts": [
+          0,
+          1066,
+          1190
+        ],
+        "ladderFingerprints": [
+          "26f68d9e451d719f",
+          "7f9da1a8cbd7b40f",
+          "abf8513a7c8a2feb"
+        ],
+        "ablationSolverShareUpperBound": 0.9755360300046952,
+        "ablationCollisionShareLowerBound": 0.02446396999530471,
+        "ablationSharesClamped": false,
+        "ablationContactPopulationMatched": false,
+        "timerSolverShareIsBelowAblationUpperBound": true,
+        "timerCollisionShareIsAboveAblationLowerBound": true,
+        "note": "The ablation (0,0) cell generates zero contacts, so its subtraction absorbed narrowphase work into the solver bucket; the timers separate them on one contact population."
+      },
+      "teeth": {
+        "zeroIterationSingleStep": {
+          "recordVersion": 1,
+          "recordBytes": 96,
+          "integrate": 0.007000000000000001,
+          "broadphase": 0.11200000000000002,
+          "collide": 0.233,
+          "prepare": 0.0915,
+          "assembleConstraints": 0.0001,
+          "solveVelocities": 0,
+          "solvePositions": 0,
+          "sleepAndCacheSwap": 0.0137,
+          "pack": 0.0024000000000000002,
+          "sweepSort": 0.0218,
+          "pairLoop": 0.3149
+        },
+        "zeroIterationContacts": 1191,
+        "zeroIterationSampleKind": "one recorded step, not a window median; never average these with phasesMsPerStep",
+        "solvedIterationSingleStep": {
+          "recordVersion": 1,
+          "recordBytes": 96,
+          "integrate": 0.0073,
+          "broadphase": 0.0832,
+          "collide": 0.2031,
+          "prepare": 0.0998,
+          "assembleConstraints": 0.0002,
+          "solveVelocities": 0.8296,
+          "solvePositions": 0.3191,
+          "sleepAndCacheSwap": 0.013800000000000002,
+          "pack": 0.0020000000000000005,
+          "sweepSort": 0.0106,
+          "pairLoop": 0.26680000000000004
+        },
+        "solvedIterationContacts": 1189,
+        "solvedIterationSampleKind": "one recorded step, not a window median; never average these with phasesMsPerStep",
+        "solvedIterationNestedSweep": {
+          "sweptMs": 0.2863,
+          "collideMs": 0.2031,
+          "publishedBroadphaseMs": 0.0832,
+          "clampFired": false,
+          "sweepSortMs": 0.0106,
+          "pairLoopMs": 0.26680000000000004,
+          "subMarkerSumMs": 0.27740000000000004,
+          "sweptScopeResidualMs": 0.008899999999999963,
+          "sweptScopeBandMs": 0.042945,
+          "sweptScopeResidualWithinBand": true,
+          "subMarkersTileSweptScope": true
+        },
+        "solvedIterationSubtractionIsExact": true,
+        "zeroIterationSolverIsExactlyZero": true,
+        "solvedIterationSolverIsPositive": true
+      }
+    },
+    {
+      "count": 1000,
+      "iterationPolicy": {
+        "velocityIterations": 10,
+        "positionIterations": 4
+      },
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120,
+        "repeats": 3
+      },
+      "dtSeconds": 0.016666666666666666,
+      "hostMsPerStepInstrumented": 6.829912500000001,
+      "hostMsPerStepRelease": 6.3227174999999995,
+      "timerSumMsPerStep": 6.728185833333335,
+      "sumVsStepTimeRelativeError": 0.014894285492920453,
+      "sumVsStepTimeTolerance": 0.03,
+      "fingerprint": "5fe528523ae0b090",
+      "contacts": 4752,
+      "releaseFingerprint": "5fe528523ae0b090",
+      "releaseContacts": 4752,
+      "broadphasePairsPerStep": 1221,
+      "phasesMsPerStep": {
+        "integrate": 0.029948333333333323,
+        "broadphase": 0.4787991666666666,
+        "collide": 0.8442833333333336,
+        "prepare": 0.2923958333333335,
+        "assembleConstraints": 0.00017583333333333332,
+        "solveVelocities": 3.5235858333333336,
+        "solvePositions": 1.4582066666666675,
+        "sleepAndCacheSwap": 0.09021166666666665,
+        "pack": 0.010579166666666657,
+        "sweepSort": 0.057960000000000005,
+        "pairLoop": 1.2645266666666666
+      },
+      "sharesOfTimerSum": {
+        "integrate": 0.004451175112459114,
+        "broadphase": 0.07116318997827917,
+        "collide": 0.1254845443106692,
+        "prepare": 0.04345834680794961,
+        "assembleConstraints": 0.000026133840189461663,
+        "solveVelocities": 0.5237051889792481,
+        "solvePositions": 0.21673103311776845,
+        "sleepAndCacheSwap": 0.013408022444881434,
+        "pack": 0.0015723654085555239
+      },
+      "clockProbe": {
+        "hostClockNanosecondsPerCall": 91.141,
+        "hostClockMeasurement": "a JS loop reading process.hrtime.bigint(); it never crossed the wasm boundary",
+        "estimatedProbesPerStep": 2464,
+        "sectionProbesPerStep": 22,
+        "probesPerBroadphasePair": 2,
+        "jsLoopModelProbeMsPerStep": 0.224571424,
+        "jsLoopModelStatus": "withdrawn as an estimate; kept only as the comparison value the ratio below is taken against",
+        "measuredInflationMsPerStep": 0.5071950000000012,
+        "interleavedInflationMsPerStep": 0.34724749999999993,
+        "interleavedInflationNote": "one instrumented window run back to back with one release window; a single pair is dominated by host drift and can come out negative, so it is recorded to show the spread and never quoted as the overhead",
+        "perProbeUpperBoundNanosecondsFromMeasuredGap": 205.84212662337708,
+        "measuredInflationOverJsLoopModelRatio": 2.2585019543715465,
+        "measuredInflationExceedsJsLoopModel": true,
+        "jsLoopModelOverMeasuredGap": 0.4427713680142735
+      },
+      "collideShareInterval": {
+        "lowerShareOfTimerSum": 0.050100924927385555,
+        "upperShareOfTimerSum": 0.1254845443106692,
+        "lowerClampFired": false,
+        "rawUnclampedLowerShareOfTimerSum": 0.050100924927385555,
+        "lowerBoundMeasuredInflationMsPerStep": 0.5071950000000012,
+        "lowerClampNote": "the lower bound is clamped to the upper bound whenever the unclamped value would exceed it, which happens when measuredInflationMsPerStep is negative; when lowerClampFired is true the lower bound carries no information and rawUnclampedLowerShareOfTimerSum is what the arithmetic produced before the clamp",
+        "unit": "share of the timer sum",
+        "basis": "upper bound is the raw reported bucket, which contains its own clock probes; lower bound subtracts the whole measured instrumented-minus-release gap from collide, which charges every probe in every bucket to collide alone"
+      },
+      "collideClockOverheadUpperBoundOfBucket": 0.6007402728152094,
+      "probeCorrectionPolicy": "raw shares are the published measurement; the only correction is the collide interval above, derived from the measured A/B gap, never from the JS-loop clock model; no corrected split is presented as measured",
+      "nestedSweepSingleStep": {
+        "sweptMs": 1.522,
+        "collideMs": 0.9429,
+        "clampFired": false
+      },
+      "clampFiredSteps": 0,
+      "clampFiredStepsSampled": 480,
+      "subClockResolutionRule": "a bucket is below clock resolution when its ms/step is no more than two host clock calls, i.e. it cannot be separated from the probes that measure it",
+      "clockResolutionThreshold": {
+        "thresholdMsPerStep": 0.000182282,
+        "thresholdNanosecondsPerCall": 91.141,
+        "clockCallsPerThreshold": 2,
+        "derivedFrom": "this run's own measured host clock cost: clockProbe.hostClockNanosecondsPerCall multiplied by clockCallsPerThreshold, both published beside it, so the classification is recomputable from the artifact alone and moves with the host",
+        "borderlineRelativeBand": 0.25,
+        "borderlineRule": "a bucket whose ms/step is within 0.25 of the published threshold, i.e. |bucket - threshold| / threshold no greater than the band, is published in borderlineClockResolutionPhases; its class is a reading of host clock speed rather than a property of the bucket, so no consumer may assert which side a borderline bucket lands on"
+      },
+      "subClockResolutionPhases": [
+        "assembleConstraints"
+      ],
+      "aboveClockResolutionPhases": [
+        "integrate",
+        "broadphase",
+        "collide",
+        "prepare",
+        "solveVelocities",
+        "solvePositions",
+        "sleepAndCacheSwap",
+        "pack",
+        "sweepSort",
+        "pairLoop"
+      ],
+      "borderlineClockResolutionPhases": [
+        "assembleConstraints"
+      ],
+      "solver": {
+        "velocityPlusPositionMsPerStep": 4.981792500000001,
+        "velocityPlusPositionShare": 0.7404362220970165,
+        "velocityShareOfSolver": 0.7072927733006409,
+        "probeOverhead": {
+          "probesPerStep": 4,
+          "upperBoundMsPerStep": 0.0008233685064935084,
+          "upperBoundShareOfTimerSum": 0.00012237600549234358,
+          "note": "the two solve buckets carry four probes per step, so their own clock cost is bounded by this; the velocity to position ratio is invariant under any remaining denominator shift"
+        },
+        "denominatorShiftIfEntireInflationRemoved": 0.07538361938328364
+      },
+      "collision": {
+        "broadphasePlusCollideMsPerStep": 1.3230825000000002,
+        "broadphasePlusCollideShare": 0.19664773428894836,
+        "broadphasePlusCollideShareInterval": {
+          "lowerShareOfTimerSum": 0.12126411490566472,
+          "upperShareOfTimerSum": 0.19664773428894836,
+          "lowerClampFired": false,
+          "rawUnclampedLowerShareOfTimerSum": 0.12126411490566472,
+          "lowerBoundMeasuredInflationMsPerStep": 0.5071950000000012,
+          "lowerClampNote": "the lower bound is clamped to the upper bound whenever the unclamped value would exceed it, which happens when measuredInflationMsPerStep is negative; when lowerClampFired is true the lower bound carries no information and rawUnclampedLowerShareOfTimerSum is what the arithmetic produced before the clamp",
+          "unit": "share of the timer sum",
+          "basis": "the same interval widened to broadphase plus collide; the sweep bucket carries two probes per step and no pair scaling"
+        }
+      },
+      "sweepSubSplit": {
+        "sweepSortMsPerStep": 0.057960000000000005,
+        "pairLoopMsPerStep": 1.2645266666666666,
+        "collideNestedInPairLoopMsPerStep": 0.8442833333333336,
+        "pairLoopNetOfCollideMsPerStep": 0.42024333333333297,
+        "sweptScopeMsPerStep": 1.3224866666666666,
+        "publishedBroadphaseBucketMsPerStep": 0.4787991666666666,
+        "reconstructedBroadphaseBucketMsPerStep": 0.478203333333333,
+        "bucketReconstructionResidualMsPerStep": 0.0005958333333336285,
+        "bucketReconstructionResidualOverSweptScope": 0.00045054014407224917,
+        "sweptSliverAllowanceMs": 0.005,
+        "bucketReconstructionBandMs": 0.198373,
+        "bucketReconstructionWithinBand": true,
+        "sortShareOfBroadphaseBucket": 0.12105284226685165,
+        "sortShareOfSweptScope": 0.04382652881188469,
+        "pairLoopNetShareOfBroadphaseBucket": 0.8777027250465133,
+        "broadphaseBucketShareOfTimerSum": 0.07116318997827917,
+        "sortShareOfTimerSum": 0.008614506411646626,
+        "gatingFraction": 0.3333333333333333,
+        "sortMeetsGatingFraction": false,
+        "basis": "sweepSortMsPerStep is buildSweep: the highWater scan that fills sweepOrder plus the shell sort that orders it. pairLoopMsPerStep is the whole pair enumeration loop, inside which the collide marker already sits, so collideNestedInPairLoopMsPerStep must be subtracted before either sub-bucket is compared with the published broadphase bucket. sortShareOfBroadphaseBucket is the gate Task 8's Step 2 reads, and it is computed from one run of one instrumented module."
+      },
+      "ablationCrossCheck": {
+        "source": "bench/phases.mjs run in this same process on the release module",
+        "sourceModule": "build/wasm-release/physics.opt.wasm",
+        "ladderRepeats": 3,
+        "ladderMsPerStep": {
+          "zeroIterations": 0.17356000000000002,
+          "velocityOnly": 3.9532358333333333,
+          "solvedIteration": 5.1739975
+        },
+        "ladderContacts": [
+          0,
+          4546,
+          4752
+        ],
+        "ladderFingerprints": [
+          "c455488f23aa3a86",
+          "bc635b4efed3697d",
+          "5fe528523ae0b090"
+        ],
+        "ablationSolverShareUpperBound": 0.9664553374832515,
+        "ablationCollisionShareLowerBound": 0.03354466251674842,
+        "ablationSharesClamped": false,
+        "ablationContactPopulationMatched": false,
+        "timerSolverShareIsBelowAblationUpperBound": true,
+        "timerCollisionShareIsAboveAblationLowerBound": true,
+        "note": "The ablation (0,0) cell generates zero contacts, so its subtraction absorbed narrowphase work into the solver bucket; the timers separate them on one contact population."
+      },
+      "teeth": {
+        "zeroIterationSingleStep": {
+          "recordVersion": 1,
+          "recordBytes": 96,
+          "integrate": 0.028000000000000004,
+          "broadphase": 0.5547,
+          "collide": 0.8730000000000001,
+          "prepare": 0.23060000000000003,
+          "assembleConstraints": 0.0001,
+          "solveVelocities": 0,
+          "solvePositions": 0,
+          "sleepAndCacheSwap": 0.0534,
+          "pack": 0.0086,
+          "sweepSort": 0.0536,
+          "pairLoop": 1.3374000000000001
+        },
+        "zeroIterationContacts": 4762,
+        "zeroIterationSampleKind": "one recorded step, not a window median; never average these with phasesMsPerStep",
+        "solvedIterationSingleStep": {
+          "recordVersion": 1,
+          "recordBytes": 96,
+          "integrate": 0.0173,
+          "broadphase": 0.3864,
+          "collide": 0.5452,
+          "prepare": 0.22590000000000002,
+          "assembleConstraints": 0.0001,
+          "solveVelocities": 3.0957000000000003,
+          "solvePositions": 1.2577,
+          "sleepAndCacheSwap": 0.08240000000000001,
+          "pack": 0.0095,
+          "sweepSort": 0.0422,
+          "pairLoop": 0.8698
+        },
+        "solvedIterationContacts": 4688,
+        "solvedIterationSampleKind": "one recorded step, not a window median; never average these with phasesMsPerStep",
+        "solvedIterationNestedSweep": {
+          "sweptMs": 0.9316,
+          "collideMs": 0.5452,
+          "publishedBroadphaseMs": 0.3864,
+          "clampFired": false,
+          "sweepSortMs": 0.0422,
+          "pairLoopMs": 0.8698,
+          "subMarkerSumMs": 0.912,
+          "sweptScopeResidualMs": 0.01959999999999995,
+          "sweptScopeBandMs": 0.13974,
+          "sweptScopeResidualWithinBand": true,
+          "subMarkersTileSweptScope": true
+        },
+        "solvedIterationSubtractionIsExact": true,
+        "zeroIterationSolverIsExactlyZero": true,
+        "solvedIterationSolverIsPositive": true
+      }
+    },
+    {
+      "count": 2000,
+      "iterationPolicy": {
+        "velocityIterations": 10,
+        "positionIterations": 4
+      },
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120,
+        "repeats": 3
+      },
+      "dtSeconds": 0.016666666666666666,
+      "hostMsPerStepInstrumented": 10.797934999999999,
+      "hostMsPerStepRelease": 12.280456666666668,
+      "timerSumMsPerStep": 10.803851666666668,
+      "sumVsStepTimeRelativeError": 0.0005479442751479295,
+      "sumVsStepTimeTolerance": 0.03,
+      "fingerprint": "e0ba8d3efc221e7c",
+      "contacts": 9518,
+      "releaseFingerprint": "e0ba8d3efc221e7c",
+      "releaseContacts": 9518,
+      "broadphasePairsPerStep": 2728,
+      "phasesMsPerStep": {
+        "integrate": 0.04124166666666667,
+        "broadphase": 0.9946491666666666,
+        "collide": 1.1603333333333334,
+        "prepare": 0.48267083333333327,
+        "assembleConstraints": 0.00014166666666666654,
+        "solveVelocities": 5.753496666666667,
+        "solvePositions": 2.228616666666667,
+        "sleepAndCacheSwap": 0.12599666666666667,
+        "pack": 0.016705000000000008,
+        "sweepSort": 0.10947000000000001,
+        "pairLoop": 1.996569166666667
+      },
+      "sharesOfTimerSum": {
+        "integrate": 0.003817311449574079,
+        "broadphase": 0.0920643116320707,
+        "collide": 0.10739996893083345,
+        "prepare": 0.044675810833512915,
+        "assembleConstraints": 0.000013112607525310018,
+        "solveVelocities": 0.53254124956362,
+        "solvePositions": 0.20627982828963312,
+        "sleepAndCacheSwap": 0.011662198867039855,
+        "pack": 0.0015462078261903823
+      },
+      "clockProbe": {
+        "hostClockNanosecondsPerCall": 55.602,
+        "hostClockMeasurement": "a JS loop reading process.hrtime.bigint(); it never crossed the wasm boundary",
+        "estimatedProbesPerStep": 5478,
+        "sectionProbesPerStep": 22,
+        "probesPerBroadphasePair": 2,
+        "jsLoopModelProbeMsPerStep": 0.304587756,
+        "jsLoopModelStatus": "withdrawn as an estimate; kept only as the comparison value the ratio below is taken against",
+        "measuredInflationMsPerStep": -1.4825216666666687,
+        "interleavedInflationMsPerStep": 1.279349166666666,
+        "interleavedInflationNote": "one instrumented window run back to back with one release window; a single pair is dominated by host drift and can come out negative, so it is recorded to show the spread and never quoted as the overhead",
+        "perProbeUpperBoundNanosecondsFromMeasuredGap": -270.6319216258979,
+        "measuredInflationOverJsLoopModelRatio": -4.867305521849896,
+        "measuredInflationExceedsJsLoopModel": false,
+        "jsLoopModelOverMeasuredGap": -0.20545248197609223
+      },
+      "collideShareInterval": {
+        "lowerShareOfTimerSum": 0.10739996893083345,
+        "upperShareOfTimerSum": 0.10739996893083345,
+        "lowerClampFired": true,
+        "rawUnclampedLowerShareOfTimerSum": 0.24462155549155248,
+        "lowerBoundMeasuredInflationMsPerStep": -1.4825216666666687,
+        "lowerClampNote": "the lower bound is clamped to the upper bound whenever the unclamped value would exceed it, which happens when measuredInflationMsPerStep is negative; when lowerClampFired is true the lower bound carries no information and rawUnclampedLowerShareOfTimerSum is what the arithmetic produced before the clamp",
+        "unit": "share of the timer sum",
+        "basis": "upper bound is the raw reported bucket, which contains its own clock probes; lower bound subtracts the whole measured instrumented-minus-release gap from collide, which charges every probe in every bucket to collide alone"
+      },
+      "collideClockOverheadUpperBoundOfBucket": -1.2776687733409957,
+      "probeCorrectionPolicy": "raw shares are the published measurement; the only correction is the collide interval above, derived from the measured A/B gap, never from the JS-loop clock model; no corrected split is presented as measured",
+      "nestedSweepSingleStep": {
+        "sweptMs": 3.8171,
+        "collideMs": 2.2834,
+        "clampFired": false
+      },
+      "clampFiredSteps": 0,
+      "clampFiredStepsSampled": 480,
+      "subClockResolutionRule": "a bucket is below clock resolution when its ms/step is no more than two host clock calls, i.e. it cannot be separated from the probes that measure it",
+      "clockResolutionThreshold": {
+        "thresholdMsPerStep": 0.00011120399999999999,
+        "thresholdNanosecondsPerCall": 55.602,
+        "clockCallsPerThreshold": 2,
+        "derivedFrom": "this run's own measured host clock cost: clockProbe.hostClockNanosecondsPerCall multiplied by clockCallsPerThreshold, both published beside it, so the classification is recomputable from the artifact alone and moves with the host",
+        "borderlineRelativeBand": 0.25,
+        "borderlineRule": "a bucket whose ms/step is within 0.25 of the published threshold, i.e. |bucket - threshold| / threshold no greater than the band, is published in borderlineClockResolutionPhases; its class is a reading of host clock speed rather than a property of the bucket, so no consumer may assert which side a borderline bucket lands on"
+      },
+      "subClockResolutionPhases": [],
+      "aboveClockResolutionPhases": [
+        "integrate",
+        "broadphase",
+        "collide",
+        "prepare",
+        "assembleConstraints",
+        "solveVelocities",
+        "solvePositions",
+        "sleepAndCacheSwap",
+        "pack",
+        "sweepSort",
+        "pairLoop"
+      ],
+      "borderlineClockResolutionPhases": [],
+      "solver": {
+        "velocityPlusPositionMsPerStep": 7.982113333333334,
+        "velocityPlusPositionShare": 0.7388210778532531,
+        "velocityShareOfSolver": 0.7207986690241598,
+        "probeOverhead": {
+          "probesPerStep": 4,
+          "upperBoundMsPerStep": -0.0010825276865035916,
+          "upperBoundShareOfTimerSum": -0.00010019831074167143,
+          "note": "the two solve buckets carry four probes per step, so their own clock cost is bounded by this; the velocity to position ratio is invariant under any remaining denominator shift"
+        },
+        "denominatorShiftIfEntireInflationRemoved": -0.13722158656071903
+      },
+      "collision": {
+        "broadphasePlusCollideMsPerStep": 2.1549825,
+        "broadphasePlusCollideShare": 0.19946428056290416,
+        "broadphasePlusCollideShareInterval": {
+          "lowerShareOfTimerSum": 0.19946428056290416,
+          "upperShareOfTimerSum": 0.19946428056290416,
+          "lowerClampFired": true,
+          "rawUnclampedLowerShareOfTimerSum": 0.3366858671236232,
+          "lowerBoundMeasuredInflationMsPerStep": -1.4825216666666687,
+          "lowerClampNote": "the lower bound is clamped to the upper bound whenever the unclamped value would exceed it, which happens when measuredInflationMsPerStep is negative; when lowerClampFired is true the lower bound carries no information and rawUnclampedLowerShareOfTimerSum is what the arithmetic produced before the clamp",
+          "unit": "share of the timer sum",
+          "basis": "the same interval widened to broadphase plus collide; the sweep bucket carries two probes per step and no pair scaling"
+        }
+      },
+      "sweepSubSplit": {
+        "sweepSortMsPerStep": 0.10947000000000001,
+        "pairLoopMsPerStep": 1.996569166666667,
+        "collideNestedInPairLoopMsPerStep": 1.1603333333333334,
+        "pairLoopNetOfCollideMsPerStep": 0.8362358333333335,
+        "sweptScopeMsPerStep": 2.106039166666667,
+        "publishedBroadphaseBucketMsPerStep": 0.9946491666666666,
+        "reconstructedBroadphaseBucketMsPerStep": 0.9457058333333335,
+        "bucketReconstructionResidualMsPerStep": 0.04894333333333312,
+        "bucketReconstructionResidualOverSweptScope": 0.023239517150480237,
+        "sweptSliverAllowanceMs": 0.005,
+        "bucketReconstructionBandMs": 0.31590587500000006,
+        "bucketReconstructionWithinBand": true,
+        "sortShareOfBroadphaseBucket": 0.11005890686749685,
+        "sortShareOfSweptScope": 0.051979090290739285,
+        "pairLoopNetShareOfBroadphaseBucket": 0.8407344633241707,
+        "broadphaseBucketShareOfTimerSum": 0.0920643116320707,
+        "sortShareOfTimerSum": 0.010132497499734276,
+        "gatingFraction": 0.3333333333333333,
+        "sortMeetsGatingFraction": false,
+        "basis": "sweepSortMsPerStep is buildSweep: the highWater scan that fills sweepOrder plus the shell sort that orders it. pairLoopMsPerStep is the whole pair enumeration loop, inside which the collide marker already sits, so collideNestedInPairLoopMsPerStep must be subtracted before either sub-bucket is compared with the published broadphase bucket. sortShareOfBroadphaseBucket is the gate Task 8's Step 2 reads, and it is computed from one run of one instrumented module."
+      },
+      "ablationCrossCheck": {
+        "source": "bench/phases.mjs run in this same process on the release module",
+        "sourceModule": "build/wasm-release/physics.opt.wasm",
+        "ladderRepeats": 3,
+        "ladderMsPerStep": {
+          "zeroIterations": 0.3875733333333333,
+          "velocityOnly": 8.083371666666666,
+          "solvedIteration": 10.670452500000001
+        },
+        "ladderContacts": [
+          0,
+          9587,
+          9518
+        ],
+        "ladderFingerprints": [
+          "1a9502a2d70e28ec",
+          "d67cf752e197f735",
+          "e0ba8d3efc221e7c"
+        ],
+        "ablationSolverShareUpperBound": 0.9636778915108488,
+        "ablationCollisionShareLowerBound": 0.03632210848915107,
+        "ablationSharesClamped": false,
+        "ablationContactPopulationMatched": false,
+        "timerSolverShareIsBelowAblationUpperBound": true,
+        "timerCollisionShareIsAboveAblationLowerBound": true,
+        "note": "The ablation (0,0) cell generates zero contacts, so its subtraction absorbed narrowphase work into the solver bucket; the timers separate them on one contact population."
+      },
+      "teeth": {
+        "zeroIterationSingleStep": {
+          "recordVersion": 1,
+          "recordBytes": 96,
+          "integrate": 0.0325,
+          "broadphase": 1.2736,
+          "collide": 1.4515,
+          "prepare": 0.6387,
+          "assembleConstraints": 0.00030000000000000003,
+          "solveVelocities": 0,
+          "solvePositions": 0,
+          "sleepAndCacheSwap": 0.14240000000000003,
+          "pack": 0.0208,
+          "sweepSort": 0.0965,
+          "pairLoop": 2.5836
+        },
+        "zeroIterationContacts": 9514,
+        "zeroIterationSampleKind": "one recorded step, not a window median; never average these with phasesMsPerStep",
+        "solvedIterationSingleStep": {
+          "recordVersion": 1,
+          "recordBytes": 96,
+          "integrate": 0.056100000000000004,
+          "broadphase": 1.1427,
+          "collide": 1.2212,
+          "prepare": 0.45330000000000004,
+          "assembleConstraints": 0.0001,
+          "solveVelocities": 5.641800000000001,
+          "solvePositions": 2.3649,
+          "sleepAndCacheSwap": 0.1493,
+          "pack": 0.016000000000000004,
+          "sweepSort": 0.10460000000000001,
+          "pairLoop": 2.1866000000000003
+        },
+        "solvedIterationContacts": 9319,
+        "solvedIterationSampleKind": "one recorded step, not a window median; never average these with phasesMsPerStep",
+        "solvedIterationNestedSweep": {
+          "sweptMs": 2.3639,
+          "collideMs": 1.2212,
+          "publishedBroadphaseMs": 1.1427,
+          "clampFired": false,
+          "sweepSortMs": 0.10460000000000001,
+          "pairLoopMs": 2.1866000000000003,
+          "subMarkerSumMs": 2.2912000000000003,
+          "sweptScopeResidualMs": 0.07269999999999976,
+          "sweptScopeBandMs": 0.354585,
+          "sweptScopeResidualWithinBand": true,
+          "subMarkersTileSweptScope": true
+        },
+        "solvedIterationSubtractionIsExact": true,
+        "zeroIterationSolverIsExactlyZero": true,
+        "solvedIterationSolverIsPositive": true
+      }
+    },
+    {
+      "count": 5000,
+      "iterationPolicy": {
+        "velocityIterations": 10,
+        "positionIterations": 4
+      },
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120,
+        "repeats": 3
+      },
+      "dtSeconds": 0.016666666666666666,
+      "hostMsPerStepInstrumented": 37.286253333333335,
+      "hostMsPerStepRelease": 30.893638333333335,
+      "timerSumMsPerStep": 37.14953583333333,
+      "sumVsStepTimeRelativeError": 0.0036666998632919716,
+      "sumVsStepTimeTolerance": 0.03,
+      "fingerprint": "98ddbd470475b15c",
+      "contacts": 24121,
+      "releaseFingerprint": "98ddbd470475b15c",
+      "releaseContacts": 24121,
+      "broadphasePairsPerStep": 7320,
+      "phasesMsPerStep": {
+        "integrate": 0.20720083333333333,
+        "broadphase": 4.498307500000001,
+        "collide": 5.783514166666666,
+        "prepare": 1.6720674999999998,
+        "assembleConstraints": 0.00030000000000000014,
+        "solveVelocities": 17.1915225,
+        "solvePositions": 6.616514166666668,
+        "sleepAndCacheSwap": 1.1164033333333327,
+        "pack": 0.06370583333333332,
+        "sweepSort": 0.427455,
+        "pairLoop": 9.540384999999995
+      },
+      "sharesOfTimerSum": {
+        "integrate": 0.005577481082480102,
+        "broadphase": 0.12108650617281157,
+        "collide": 0.15568200347411248,
+        "prepare": 0.045009108794831734,
+        "assembleConstraints": 0.000008075471019231895,
+        "solveVelocities": 0.46276547241741,
+        "solvePositions": 0.17810489467084642,
+        "sleepAndCacheSwap": 0.0300516092136907,
+        "pack": 0.0017148487027978342
+      },
+      "clockProbe": {
+        "hostClockNanosecondsPerCall": 89.6075,
+        "hostClockMeasurement": "a JS loop reading process.hrtime.bigint(); it never crossed the wasm boundary",
+        "estimatedProbesPerStep": 14662,
+        "sectionProbesPerStep": 22,
+        "probesPerBroadphasePair": 2,
+        "jsLoopModelProbeMsPerStep": 1.3138251650000001,
+        "jsLoopModelStatus": "withdrawn as an estimate; kept only as the comparison value the ratio below is taken against",
+        "measuredInflationMsPerStep": 6.392614999999999,
+        "interleavedInflationMsPerStep": 0.5709549999999979,
+        "interleavedInflationNote": "one instrumented window run back to back with one release window; a single pair is dominated by host drift and can come out negative, so it is recorded to show the spread and never quoted as the overhead",
+        "perProbeUpperBoundNanosecondsFromMeasuredGap": 435.9988405401718,
+        "measuredInflationOverJsLoopModelRatio": 4.865651207099537,
+        "measuredInflationExceedsJsLoopModel": true,
+        "jsLoopModelOverMeasuredGap": 0.2055223355387428
+      },
+      "collideShareInterval": {
+        "lowerShareOfTimerSum": 0,
+        "upperShareOfTimerSum": 0.15568200347411248,
+        "lowerClampFired": false,
+        "rawUnclampedLowerShareOfTimerSum": 0,
+        "lowerBoundMeasuredInflationMsPerStep": 6.392614999999999,
+        "lowerClampNote": "the lower bound is clamped to the upper bound whenever the unclamped value would exceed it, which happens when measuredInflationMsPerStep is negative; when lowerClampFired is true the lower bound carries no information and rawUnclampedLowerShareOfTimerSum is what the arithmetic produced before the clamp",
+        "unit": "share of the timer sum",
+        "basis": "upper bound is the raw reported bucket, which contains its own clock probes; lower bound subtracts the whole measured instrumented-minus-release gap from collide, which charges every probe in every bucket to collide alone"
+      },
+      "collideClockOverheadUpperBoundOfBucket": 1.1053167357735356,
+      "probeCorrectionPolicy": "raw shares are the published measurement; the only correction is the collide interval above, derived from the measured A/B gap, never from the JS-loop clock model; no corrected split is presented as measured",
+      "nestedSweepSingleStep": {
+        "sweptMs": 9.8894,
+        "collideMs": 5.1344,
+        "clampFired": false
+      },
+      "clampFiredSteps": 0,
+      "clampFiredStepsSampled": 480,
+      "subClockResolutionRule": "a bucket is below clock resolution when its ms/step is no more than two host clock calls, i.e. it cannot be separated from the probes that measure it",
+      "clockResolutionThreshold": {
+        "thresholdMsPerStep": 0.000179215,
+        "thresholdNanosecondsPerCall": 89.6075,
+        "clockCallsPerThreshold": 2,
+        "derivedFrom": "this run's own measured host clock cost: clockProbe.hostClockNanosecondsPerCall multiplied by clockCallsPerThreshold, both published beside it, so the classification is recomputable from the artifact alone and moves with the host",
+        "borderlineRelativeBand": 0.25,
+        "borderlineRule": "a bucket whose ms/step is within 0.25 of the published threshold, i.e. |bucket - threshold| / threshold no greater than the band, is published in borderlineClockResolutionPhases; its class is a reading of host clock speed rather than a property of the bucket, so no consumer may assert which side a borderline bucket lands on"
+      },
+      "subClockResolutionPhases": [],
+      "aboveClockResolutionPhases": [
+        "integrate",
+        "broadphase",
+        "collide",
+        "prepare",
+        "assembleConstraints",
+        "solveVelocities",
+        "solvePositions",
+        "sleepAndCacheSwap",
+        "pack",
+        "sweepSort",
+        "pairLoop"
+      ],
+      "borderlineClockResolutionPhases": [],
+      "solver": {
+        "velocityPlusPositionMsPerStep": 23.80803666666667,
+        "velocityPlusPositionShare": 0.6408703670882564,
+        "velocityShareOfSolver": 0.7220890466818557,
+        "probeOverhead": {
+          "probesPerStep": 4,
+          "upperBoundMsPerStep": 0.0017439953621606872,
+          "upperBoundShareOfTimerSum": 0.00004694528001601152,
+          "note": "the two solve buckets carry four probes per step, so their own clock cost is bounded by this; the velocity to position ratio is invariant under any remaining denominator shift"
+        },
+        "denominatorShiftIfEntireInflationRemoved": 0.17207792389869025
+      },
+      "collision": {
+        "broadphasePlusCollideMsPerStep": 10.281821666666666,
+        "broadphasePlusCollideShare": 0.27676850964692407,
+        "broadphasePlusCollideShareInterval": {
+          "lowerShareOfTimerSum": 0.12108650617281157,
+          "upperShareOfTimerSum": 0.276768509646924,
+          "lowerClampFired": false,
+          "rawUnclampedLowerShareOfTimerSum": 0.12108650617281157,
+          "lowerBoundMeasuredInflationMsPerStep": 6.392614999999999,
+          "lowerClampNote": "the lower bound is clamped to the upper bound whenever the unclamped value would exceed it, which happens when measuredInflationMsPerStep is negative; when lowerClampFired is true the lower bound carries no information and rawUnclampedLowerShareOfTimerSum is what the arithmetic produced before the clamp",
+          "unit": "share of the timer sum",
+          "basis": "the same interval widened to broadphase plus collide; the sweep bucket carries two probes per step and no pair scaling"
+        }
+      },
+      "sweepSubSplit": {
+        "sweepSortMsPerStep": 0.427455,
+        "pairLoopMsPerStep": 9.540384999999995,
+        "collideNestedInPairLoopMsPerStep": 5.783514166666666,
+        "pairLoopNetOfCollideMsPerStep": 3.7568708333333296,
+        "sweptScopeMsPerStep": 9.967839999999995,
+        "publishedBroadphaseBucketMsPerStep": 4.498307500000001,
+        "reconstructedBroadphaseBucketMsPerStep": 4.18432583333333,
+        "bucketReconstructionResidualMsPerStep": 0.31398166666667127,
+        "bucketReconstructionResidualOverSweptScope": 0.03149946895883877,
+        "sweptSliverAllowanceMs": 0.005,
+        "bucketReconstructionBandMs": 1.4951759999999992,
+        "bucketReconstructionWithinBand": true,
+        "sortShareOfBroadphaseBucket": 0.09502574023674457,
+        "sortShareOfSweptScope": 0.04288341305638937,
+        "pairLoopNetShareOfBroadphaseBucket": 0.8351743035204527,
+        "broadphaseBucketShareOfTimerSum": 0.12108650617281157,
+        "sortShareOfTimerSum": 0.01150633488175256,
+        "gatingFraction": 0.3333333333333333,
+        "sortMeetsGatingFraction": false,
+        "basis": "sweepSortMsPerStep is buildSweep: the highWater scan that fills sweepOrder plus the shell sort that orders it. pairLoopMsPerStep is the whole pair enumeration loop, inside which the collide marker already sits, so collideNestedInPairLoopMsPerStep must be subtracted before either sub-bucket is compared with the published broadphase bucket. sortShareOfBroadphaseBucket is the gate Task 8's Step 2 reads, and it is computed from one run of one instrumented module."
+      },
+      "ablationCrossCheck": {
+        "source": "bench/phases.mjs run in this same process on the release module",
+        "sourceModule": "build/wasm-release/physics.opt.wasm",
+        "ladderRepeats": 3,
+        "ladderMsPerStep": {
+          "zeroIterations": 1.5343758333333333,
+          "velocityOnly": 21.796399166666667,
+          "solvedIteration": 29.95471416666667
+        },
+        "ladderContacts": [
+          0,
+          24610,
+          24121
+        ],
+        "ladderFingerprints": [
+          "38011f59d652efc5",
+          "d5edaaebb5231833",
+          "98ddbd470475b15c"
+        ],
+        "ablationSolverShareUpperBound": 0.9487768160698802,
+        "ablationCollisionShareLowerBound": 0.05122318393011984,
+        "ablationSharesClamped": false,
+        "ablationContactPopulationMatched": false,
+        "timerSolverShareIsBelowAblationUpperBound": true,
+        "timerCollisionShareIsAboveAblationLowerBound": true,
+        "note": "The ablation (0,0) cell generates zero contacts, so its subtraction absorbed narrowphase work into the solver bucket; the timers separate them on one contact population."
+      },
+      "teeth": {
+        "zeroIterationSingleStep": {
+          "recordVersion": 1,
+          "recordBytes": 96,
+          "integrate": 0.1376,
+          "broadphase": 5.1697,
+          "collide": 5.936100000000001,
+          "prepare": 1.6989,
+          "assembleConstraints": 0.00030000000000000003,
+          "solveVelocities": 0,
+          "solvePositions": 0,
+          "sleepAndCacheSwap": 0.8066000000000001,
+          "pack": 0.0849,
+          "sweepSort": 0.35590000000000005,
+          "pairLoop": 10.485700000000001
+        },
+        "zeroIterationContacts": 24111,
+        "zeroIterationSampleKind": "one recorded step, not a window median; never average these with phasesMsPerStep",
+        "solvedIterationSingleStep": {
+          "recordVersion": 1,
+          "recordBytes": 96,
+          "integrate": 0.1715,
+          "broadphase": 4.4989,
+          "collide": 4.2304,
+          "prepare": 1.3195999999999999,
+          "assembleConstraints": 0.00030000000000000003,
+          "solveVelocities": 14.907100000000002,
+          "solvePositions": 5.746700000000001,
+          "sleepAndCacheSwap": 0.8006000000000001,
+          "pack": 0.038,
+          "sweepSort": 0.3232,
+          "pairLoop": 8.1966
+        },
+        "solvedIterationContacts": 23443,
+        "solvedIterationSampleKind": "one recorded step, not a window median; never average these with phasesMsPerStep",
+        "solvedIterationNestedSweep": {
+          "sweptMs": 8.7293,
+          "collideMs": 4.2304,
+          "publishedBroadphaseMs": 4.4989,
+          "clampFired": false,
+          "sweepSortMs": 0.3232,
+          "pairLoopMs": 8.1966,
+          "subMarkerSumMs": 8.5198,
+          "sweptScopeResidualMs": 0.20950000000000024,
+          "sweptScopeBandMs": 1.309395,
+          "sweptScopeResidualWithinBand": true,
+          "subMarkersTileSweptScope": true
+        },
+        "solvedIterationSubtractionIsExact": true,
+        "zeroIterationSolverIsExactlyZero": true,
+        "solvedIterationSolverIsPositive": true
+      }
+    }
+  ]
+}

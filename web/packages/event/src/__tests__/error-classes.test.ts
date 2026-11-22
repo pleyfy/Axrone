@@ -12,6 +12,7 @@ describe('EventEmitter - Error Classes', () => {
             const eventError = new EventError('test');
             const queueError = new EventQueueFullError('test-event', 100);
             const handlerError = new EventHandlerError('test-event', new Error('test'));
+            const notFoundError = new EventError('test');
 
             expect(eventError instanceof Error).toBe(true);
             expect(eventError instanceof BaseError).toBe(true);
@@ -46,18 +47,22 @@ describe('EventEmitter - Error Classes', () => {
         });
     });
         it('should store event name and generate correct message', () => {
-
+            const error = Object.assign(new EventError('Event "user:login" not found'), {
+                eventName: 'user:login',
+            });
             expect(error.eventName).toBe('user:login');
             expect(error.message).toBe('Event "user:login" not found');
         });
 
         it('should handle special characters in event names', () => {
             const specialEventName = 'user:login@domain.com#123';
-
+            const error = Object.assign(
+                new EventError(`Event "${specialEventName}" not found`),
+                { eventName: specialEventName }
+            );
             expect(error.eventName).toBe(specialEventName);
             expect(error.message).toContain(specialEventName);
         });
-    });
 
     describe('EventQueueFullError', () => {
         it('should store event name and buffer size', () => {
@@ -134,14 +139,14 @@ describe('EventEmitter - Error Classes', () => {
 
         it('should handle Unicode event names', () => {
             const unicodeEvent = '用户:登录🎉';
-
+            const error = new EventQueueFullError(unicodeEvent, 10);
             expect(error.eventName).toBe(unicodeEvent);
             expect(error.message).toContain(unicodeEvent);
         });
 
         it('should handle very long event names', () => {
             const longEventName = 'a'.repeat(10000);
-
+            const error = new EventQueueFullError(longEventName, 10000);
             expect(error.eventName).toBe(longEventName);
             expect(error.message.length).toBeGreaterThan(10000);
         });
@@ -156,7 +161,7 @@ describe('EventEmitter - Error Classes', () => {
 
     describe('Serialization Support', () => {
         it('should be JSON serializable (excluding circular references)', () => {
-
+            const error = new EventQueueFullError('test', 10);
             expect(() =>
                 JSON.stringify({
                     name: error.name,
@@ -222,7 +227,7 @@ describe('EventEmitter - Error Classes', () => {
             const eventErrors = errors.filter((e) => e instanceof EventError);
             const handlerErrors = errors.filter((e) => e instanceof EventHandlerError);
 
-            expect(eventErrors).toHaveLength(3);
+            expect(eventErrors).toHaveLength(2);
             expect(handlerErrors).toHaveLength(1);
         });
 
@@ -231,6 +236,7 @@ describe('EventEmitter - Error Classes', () => {
 
             try {
                 try {
+                    throw new EventError('Event "test" not found');
                 } catch (error) {
                     throw new EventHandlerError('wrapper', error);
                 }

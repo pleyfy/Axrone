@@ -78,6 +78,11 @@
             "types": "./dist/frame-graph.d.ts",
             "import": "./dist/frame-graph.mjs",
             "require": "./dist/frame-graph.js"
+        },
+        "./render-target": {
+            "types": "./dist/render-target.d.ts",
+            "import": "./dist/render-target.mjs",
+            "require": "./dist/render-target.js"
         }
     },
     "scripts": {

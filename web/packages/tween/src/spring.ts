@@ -1,17 +1,29 @@
-import { EventEmitter } from '@axrone/event';
 import { DeepPartial } from '@axrone/utility';
 import {
+    IGroupable,
     SpringConfig,
-    SpringEventMap,
     TweenableValue,
+    TweenStatus,
     UpdateCallback,
     VoidCallback,
 } from './types';
-import { deepCloneTweenValue } from './runtime-utils';
+import { collectTweenLeafPaths, deepCloneTweenValue } from './runtime-utils';
 import {
     getOrCreateTweenPropertyAccessor,
     TweenPropertyAccessor,
 } from './property-accessor';
+import { UnsubscribeFn } from './dispatcher';
+import { nextTweenId } from './id';
+import { RafLoop } from './raf-loop';
+
+export interface SpringStep {
+    position: number;
+    velocity: number;
+    atRest: boolean;
+}
+
+/** Upper bound for a single integration step; prevents teleporting after stalls. */
+export const MAX_SPRING_DT = 0.064;
 
 export class SpringSimulation {
     private _mass: number;
@@ -32,6 +44,23 @@ export class SpringSimulation {
         target: number,
         dt: number
     ): [number, number, boolean] {
+        const out: SpringStep = { position: 0, velocity: 0, atRest: false };
+        this.stepInto(position, velocity, target, dt, out);
+        return [out.position, out.velocity, out.atRest];
+    }
+
+    /**
+     * Allocation-free integration into a caller-owned scratch record.
+     * The hot path reuses one scratch per `Spring` instead of boxing a
+     * tuple per property per frame.
+     */
+    stepInto(
+        position: number,
+        velocity: number,
+        target: number,
+        dt: number,
+        out: SpringStep
+    ): void {
         const displacement = position - target;
         const springForce = -this._stiffness * displacement;
         const dampingForce = -this._damping * velocity;
@@ -40,32 +69,37 @@ export class SpringSimulation {
         const acceleration = force / this._mass;
 
         const newVelocity = velocity + acceleration * dt;
-
         const newPosition = position + newVelocity * dt;
 
-        const isAtRest =
+        out.position = newPosition;
+        out.velocity = newVelocity;
+        out.atRest =
             Math.abs(newPosition - target) < this._precision &&
             Math.abs(newVelocity) < this._precision;
-
-        return [newPosition, newVelocity, isAtRest];
     }
 }
 
-export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMap<T>> {
+export type SpringEventType = 'start' | 'stop' | 'update' | 'complete';
+
+export class Spring<T extends TweenableValue> implements IGroupable {
+    readonly id: number = nextTweenId();
+
     private _target: T;
     private _current: T;
     private _velocity: Record<string, number> = Object.create(null);
     private _simulation: SpringSimulation;
     private _isRunning = false;
-    private _animFrameId?: number;
+    private _status: TweenStatus = 'idle';
     private _lastTime?: number;
     private _props = new Set<string>();
     private _autoUpdate = false;
     private _propertyAccessors = new Map<string, TweenPropertyAccessor>();
+    private _listeners = new Map<SpringEventType, Array<(...args: never[]) => void>>();
+    private _stepScratch: SpringStep = { position: 0, velocity: 0, atRest: false };
+    private _loop: RafLoop;
 
     constructor(initial: T, config: SpringConfig = {}) {
-        super();
-
+        this._loop = new RafLoop(() => this._autoStep(), true);
         this._current = this._deepClone(initial);
         this._target = this._deepClone(initial);
         this._simulation = new SpringSimulation(config);
@@ -73,13 +107,15 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
         const initialVelocity = config.velocity ?? 0;
 
         if (typeof initial === 'number') {
-            this._current = { value: initial } as any;
-            this._target = { value: initial } as any;
+            // Number springs autobox into a `{ value }` holder; the box never
+            // escapes except through getCurrent, which unwraps it back.
+            this._current = { value: initial } as unknown as T;
+            this._target = { value: initial } as unknown as T;
             this._velocity['value'] = initialVelocity;
             this._props.add('value');
             this._getAccessor('value');
         } else {
-            this._collectProps(initial, '', this._props);
+            this._collectProps(initial, this._props);
 
             for (const prop of this._props) {
                 this._velocity[prop] = initialVelocity;
@@ -90,9 +126,8 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
     setAutoUpdate(enabled: boolean): void {
         this._autoUpdate = enabled;
 
-        if (!enabled && this._animFrameId !== undefined) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
+        if (!enabled) {
+            this._loop.stop();
         }
     }
 
@@ -100,39 +135,21 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
         return this._autoUpdate;
     }
 
-    private _collectProps(obj: any, prefix: string, props: Set<string>): void {
-        if (!obj || typeof obj !== 'object') return;
-
-        if (Array.isArray(obj) || ArrayBuffer.isView(obj)) {
-            const length = Array.isArray(obj) ? obj.length : (obj as any).length;
-            for (let i = 0; i < length; i++) {
-                const propPath = prefix ? `${prefix}.${i}` : `${i}`;
-                props.add(propPath);
-                this._getAccessor(propPath);
-            }
-        } else {
-            for (const key in obj) {
-                const value = obj[key];
-                const propPath = prefix ? `${prefix}.${key}` : key;
-
-                if (value !== null && typeof value === 'object') {
-                    this._collectProps(value, propPath, props);
-                } else {
-                    props.add(propPath);
-                    this._getAccessor(propPath);
-                }
-            }
+    private _collectProps(obj: unknown, props: Set<string>): void {
+        for (const path of collectTweenLeafPaths(obj, true)) {
+            props.add(path);
+            this._getAccessor(path);
         }
     }
 
     setTarget(target: DeepPartial<T>): this {
         if (typeof target === 'number') {
-            this._target = { value: target } as any;
+            this._target = { value: target } as unknown as T;
         } else {
             this._updateTarget(this._target, target);
         }
 
-        this._collectProps(target, '', this._props);
+        this._collectProps(target, this._props);
 
         for (const prop of this._props) {
             if (!(prop in this._velocity)) {
@@ -147,11 +164,13 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
         return this;
     }
 
-    private _updateTarget(current: any, target: any): void {
+    private _updateTarget(current: unknown, target: unknown): void {
         if (!target || typeof target !== 'object') return;
+        if (!current || typeof current !== 'object') return;
 
-        for (const key in target) {
-            const value = target[key];
+        const currentRecord = current as Record<string, unknown>;
+        for (const key of Object.keys(target)) {
+            const value = (target as Record<string, unknown>)[key];
 
             if (
                 value !== null &&
@@ -159,39 +178,40 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
                 !Array.isArray(value) &&
                 !ArrayBuffer.isView(value)
             ) {
-                if (!(key in current)) {
-                    current[key] = Array.isArray(value) ? [] : {};
+                if (!Object.prototype.hasOwnProperty.call(currentRecord, key)) {
+                    currentRecord[key] = Array.isArray(value) ? [] : {};
                 }
-                this._updateTarget(current[key], value);
+                this._updateTarget(currentRecord[key], value);
             } else {
-                current[key] = value;
+                currentRecord[key] = value;
             }
         }
     }
 
     getCurrent(): T {
-        if (
-            typeof (this._current as any).value === 'number' &&
-            Object.keys(this._current as any).length === 1
-        ) {
-            return (this._current as any).value;
+        // Number springs store `{ value }` internally; unwrap the box here so
+        // callers see the scalar they constructed the spring with.
+        const boxed = this._current as unknown as Record<string, unknown>;
+        if (typeof boxed.value === 'number' && Object.keys(boxed).length === 1) {
+            return boxed.value as T;
         }
         return this._deepClone(this._current);
     }
 
-    start(): this {
+    start(time?: number): this {
         if (this._isRunning) {
             return this;
         }
 
         this._isRunning = true;
-        this._lastTime = performance.now();
+        this._status = 'running';
+        this._lastTime = time ?? performance.now();
 
-        if (this._autoUpdate) {
+        if (this._autoUpdate && time === undefined) {
             this._startInternalLoop();
         }
 
-        this.emitSync('start', undefined);
+        this.emit('start');
 
         return this;
     }
@@ -199,62 +219,166 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
     updateManual(deltaTime: number): boolean {
         if (!this._isRunning) return false;
 
-        const dt = Math.min(deltaTime / 1000, 0.064);
+        const dt = Math.min(deltaTime / 1000, MAX_SPRING_DT);
         return this._simulateStep(dt);
     }
 
-    stop(): this {
+    /**
+     * Millisecond-clock step so springs ride `TweenSystem`, groups and
+     * timelines like any other `IGroupable`. Shares the clamped integrator
+     * with `updateManual`; the status machine is identical.
+     */
+    update(time?: number): this {
+        if (!this._isRunning) {
+            return this;
+        }
+
+        const now = time ?? performance.now();
+        if (this._lastTime === undefined) {
+            this._lastTime = now;
+        }
+        const dt = Math.min(Math.max(0, (now - this._lastTime) / 1000), MAX_SPRING_DT);
+        this._lastTime = now;
+        this._simulateStep(dt);
+        return this;
+    }
+
+    isPlaying(): boolean {
+        return this._isRunning;
+    }
+
+    getStatus(): TweenStatus {
+        return this._status;
+    }
+
+    getTotalDuration(): number {
+        return Infinity;
+    }
+
+    pause(): this {
         if (!this._isRunning) {
             return this;
         }
 
         this._isRunning = false;
+        this._status = 'paused';
+        return this;
+    }
 
-        if (this._animFrameId !== undefined) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
+    resume(): this {
+        if (this._isRunning || this._status !== 'paused') {
+            return this;
         }
 
-        this.emitSync('stop', undefined);
+        this._isRunning = true;
+        this._status = 'running';
+        this._lastTime = undefined;
+        return this;
+    }
+
+    stop(): this {
+        if (!this._isRunning && this._status !== 'paused') {
+            return this;
+        }
+
+        this._isRunning = false;
+        this._status = 'idle';
+
+        this._loop.stop();
+
+        this.emit('stop');
 
         return this;
     }
 
+    on(event: SpringEventType, callback: (...args: never[]) => void): UnsubscribeFn {
+        let list = this._listeners.get(event);
+        if (list === undefined) {
+            list = [];
+            this._listeners.set(event, list);
+        }
+        list.push(callback);
+        return () => this.off(event, callback);
+    }
+
+    off(event: SpringEventType, callback?: (...args: never[]) => void): boolean {
+        const list = this._listeners.get(event);
+        if (list === undefined) {
+            return false;
+        }
+        if (callback === undefined) {
+            const removed = list.length > 0;
+            this._listeners.delete(event);
+            return removed;
+        }
+        const index = list.indexOf(callback);
+        if (index < 0) {
+            return false;
+        }
+        list.splice(index, 1);
+        if (list.length === 0) {
+            this._listeners.delete(event);
+        }
+        return true;
+    }
+
+    has(event: SpringEventType): boolean {
+        return (this._listeners.get(event)?.length ?? 0) > 0;
+    }
+
+    private emit(event: SpringEventType, value?: T): void {
+        const list = this._listeners.get(event);
+        if (list === undefined) {
+            return;
+        }
+        for (let index = 0; index < list.length; index += 1) {
+            (list[index] as (value?: T) => void)(value);
+        }
+    }
+
     onUpdate(callback: UpdateCallback<T>): this {
-        this.on('update', callback);
+        this.on('update', callback as (...args: never[]) => void);
         return this;
     }
 
     onComplete(callback: VoidCallback): this {
-        this.on('complete', callback);
+        this.on('complete', callback as (...args: never[]) => void);
         return this;
     }
 
     onStart(callback: VoidCallback): this {
-        this.on('start', callback);
+        this.on('start', callback as (...args: never[]) => void);
         return this;
     }
 
     dispose(): void {
         this.stop();
-
-        if (this._animFrameId !== undefined) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
-        }
+        this._loop.stop();
 
         this._lastTime = undefined;
+        this._listeners.clear();
         this._props.clear();
         this._velocity = Object.create(null);
         this._propertyAccessors.clear();
         this._isRunning = false;
+        this._status = 'idle';
         this._autoUpdate = false;
-        super.dispose();
     }
 
     private _startInternalLoop(): void {
-        if (this._animFrameId !== undefined) return;
-        this._tick();
+        this._loop.start();
+    }
+
+    private _autoStep(): boolean {
+        if (!this._isRunning || this._lastTime === undefined || !this._autoUpdate) {
+            return false;
+        }
+
+        const now = performance.now();
+        const dt = Math.min((now - this._lastTime) / 1000, MAX_SPRING_DT);
+        this._lastTime = now;
+
+        return this._simulateStep(dt);
     }
 
     private _simulateStep(dt: number): boolean {
@@ -266,23 +390,25 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
             const target = accessor.get(this._target) ?? 0;
 
             if (typeof position === 'number' && typeof target === 'number') {
-                const [newPosition, newVelocity, atRest] = this._simulation.update(
+                const step = this._stepScratch;
+                this._simulation.stepInto(
                     position,
                     this._velocity[prop] ?? 0,
                     target,
-                    dt
+                    dt,
+                    step
                 );
 
-                accessor.set(this._current, newPosition);
-                this._velocity[prop] = newVelocity;
+                accessor.set(this._current, step.position);
+                this._velocity[prop] = step.velocity;
 
-                if (!atRest) {
+                if (!step.atRest) {
                     allAtRest = false;
                 }
             }
         }
 
-        this.emitSync('update', this._current as T);
+        this.emit('update', this._current);
 
         if (allAtRest) {
             this._current = this._deepClone(this._target);
@@ -292,31 +418,14 @@ export class Spring<T extends TweenableValue> extends EventEmitter<SpringEventMa
             }
 
             this._isRunning = false;
-            this.emitSync('update', this._current as T);
-            this.emitSync('complete', undefined);
+            this._status = 'completed';
+            this.emit('update', this._current);
+            this.emit('complete');
             return false;
         }
 
         return true;
     }
-
-    private _tick = (): void => {
-        if (!this._isRunning || this._lastTime === undefined || !this._autoUpdate) {
-            return;
-        }
-
-        const now = performance.now();
-        const dt = Math.min((now - this._lastTime) / 1000, 0.064);
-        this._lastTime = now;
-
-        const isStillRunning = this._simulateStep(dt);
-
-        if (isStillRunning) {
-            this._animFrameId = requestAnimationFrame(this._tick);
-        } else {
-            this._animFrameId = undefined;
-        }
-    };
 
     private _deepClone<U>(source: U): U {
         return deepCloneTweenValue(source);

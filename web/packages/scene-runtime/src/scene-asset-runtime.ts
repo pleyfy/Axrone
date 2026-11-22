@@ -103,6 +103,9 @@ export class SceneAssetRuntime {
         if (result.previous) {
             this._shaderFactory.delete(result.previous);
         }
+        for (const variant of result.evictedVariants) {
+            this._shaderFactory.delete(variant);
+        }
 
         return result.handle;
     }
@@ -131,6 +134,17 @@ export class SceneAssetRuntime {
         binding: SceneTextureBindingDefinition
     ): boolean {
         return this.resources.materials.setTexture(materialId, name, binding);
+    }
+
+    removeMaterialTexture(materialId: string, name: string): boolean {
+        return this.resources.materials.removeTexture(materialId, name);
+    }
+
+    replaceMaterialTextureOverrides(
+        materialId: string,
+        overrides: Readonly<Record<string, SceneTextureBindingDefinition | null | undefined>>
+    ): boolean {
+        return this.resources.materials.replaceTextureOverrides(materialId, overrides);
     }
 
     getMaterial(materialId: string): SceneMaterialHandle | null {

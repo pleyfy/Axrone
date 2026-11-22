@@ -22,11 +22,11 @@ interface CollisionContext {
 
 interface WritableManifold {
     pointCount: number;
-    normal: { x: number; y: number };
+    normal: IVec2Like;
     points: Array<{
         id: ContactId;
-        localPointA: { x: number; y: number };
-        localPointB: { x: number; y: number };
+        localPointA: IVec2Like;
+        localPointB: IVec2Like;
         normalImpulse: number;
         tangentImpulse: number;
         separation: number;
@@ -60,7 +60,7 @@ type ShapeData = CircleShapeData | BoxShapeData | PolygonShapeData | CapsuleShap
 const _tmpTransformPoint: IVec2Like = { x: 0, y: 0 };
 const _tmpInversePoint: IVec2Like = { x: 0, y: 0 };
 
-function setNormal(out: { x: number; y: number }, dx: number, dy: number): void {
+function setNormal(out: IVec2Like, dx: number, dy: number): void {
     const d = Math.sqrt(dx * dx + dy * dy);
     if (d > EPSILON) {
         out.x = dx / d;

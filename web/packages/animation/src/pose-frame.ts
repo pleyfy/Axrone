@@ -53,6 +53,13 @@ export class AnimationCurveLayout {
     }
 }
 
+const copyInto = (destination: Float32Array, source: ArrayLike<number>): void => {
+    const count = Math.min(destination.length, source.length);
+    for (let index = 0; index < count; index += 1) {
+        destination[index] = source[index]!;
+    }
+};
+
 export class AnimationCurveStore {
     readonly values: Float32Array;
 
@@ -62,14 +69,14 @@ export class AnimationCurveStore {
     ) {
         this.values = new Float32Array(layout.componentCount);
         if (initialValues) {
-            this.values.set(Array.from(initialValues).slice(0, layout.componentCount));
+            copyInto(this.values, initialValues);
         }
     }
 
     reset(defaultValues?: ArrayLike<number>): this {
         this.values.fill(0);
         if (defaultValues) {
-            this.values.set(Array.from(defaultValues).slice(0, this.values.length));
+            copyInto(this.values, defaultValues);
         }
         return this;
     }

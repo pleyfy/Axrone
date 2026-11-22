@@ -5,17 +5,34 @@ export class SceneRenderFrameState {
     private _frame = 0;
     private _drawCalls = 0;
     private _trianglesSubmitted = 0;
+    private _trackActiveRenderers = true;
 
     begin(frame: number): this {
         this._frame = frame;
         this._drawCalls = 0;
         this._trianglesSubmitted = 0;
         this._activeRendererIds.clear();
+        this._trackActiveRenderers = true;
+        return this;
+    }
+
+    /**
+     * Active renderer ids are only consumed by morph-mesh cache pruning. When
+     * the scene has no morph caches, skipping the per-draw Set insert avoids
+     * one string-set operation per object on every frame.
+     */
+    setTrackActiveRenderers(value: boolean): this {
+        this._trackActiveRenderers = value;
+        if (!value) {
+            this._activeRendererIds.clear();
+        }
         return this;
     }
 
     markActiveRenderer(rendererId: string): void {
-        this._activeRendererIds.add(rendererId);
+        if (this._trackActiveRenderers) {
+            this._activeRendererIds.add(rendererId);
+        }
     }
 
     recordDraw(mesh: Pick<SceneMeshResource, 'topology' | 'indexCount' | 'vertexCount'>): void {
@@ -52,5 +69,9 @@ export class SceneRenderFrameState {
 
     get activeRendererIds(): ReadonlySet<string> {
         return this._activeRendererIds;
+    }
+
+    get tracksActiveRenderers(): boolean {
+        return this._trackActiveRenderers;
     }
 }

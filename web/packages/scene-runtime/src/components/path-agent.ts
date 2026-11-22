@@ -28,9 +28,11 @@ export interface PathAgentPath {
 }
 
 /**
- * PathAgent component enables AI-driven navigation on a navigation surface.
- * The agent automatically calculates paths to destinations and moves along them
- * while avoiding obstacles.
+ * PathAgent component steers an agent toward a destination along a corner
+ * list. Destinations resolve to a direct path that the agent follows with
+ * acceleration, auto-braking, and stopping-distance handling. There is no
+ * navigation-mesh backend: obstacle avoidance and area-mask fields are
+ * accepted for API compatibility and currently have no behavioral effect.
  *
  * @example
  * ```ts
@@ -204,6 +206,7 @@ export class PathAgent extends Component {
         return this._pathStatus;
     }
 
+    /** Live steering state — read-only view owned by the movement update. */
     get velocity(): Vec3 {
         return this._velocity;
     }
@@ -249,8 +252,7 @@ export class PathAgent extends Component {
         this._pathStatus = 'computing';
         this._isStopped = false;
 
-        // In a full implementation, this would trigger async path computation
-        // For now, we create a simple direct path
+        // No navigation-mesh backend: steer directly toward the destination.
         const currentPosition = this.getWorldPosition();
         this._path = {
             corners: [currentPosition, targetVec],
@@ -273,8 +275,6 @@ export class PathAgent extends Component {
         this._warpTarget = targetVec;
         this._warpPending = true;
 
-        // In a full implementation, this would validate the position is on the path network
-        // and update the transform
         return true;
     }
 
@@ -362,7 +362,10 @@ export class PathAgent extends Component {
         if (this._warpPending && this._warpTarget) {
             const transform = this.transform as Transform | undefined;
             if (transform) {
-                transform.worldPosition = this._warpTarget.clone();
+                // worldPosition is read-only — move via a world-space delta
+                // so parented agents land on the exact target as well.
+                Vec3.subtract(this._warpTarget, transform.worldPosition, this._tempToCorner);
+                transform.translate(this._tempToCorner, 'world');
             }
             this._warpPending = false;
             this._warpTarget = null;
@@ -413,7 +416,22 @@ export class PathAgent extends Component {
                 currentSpeed + this._acceleration * deltaTime
             );
 
-            this._velocity = Vec3.multiplyScalar(toCorner, newSpeed, this._tempVelocity);
+            Vec3.multiplyScalar(toCorner, newSpeed, this._velocity);
+        }
+
+        // Integrate position — advance the transform by this frame's
+        // velocity, clamped so the agent lands on (never overshoots) the
+        // corner. Uses world-space translation so parented agents move
+        // correctly without any per-frame allocation.
+        const stepLength = Vec3.len(this._velocity) * deltaTime;
+        if (stepLength > 1e-9) {
+            const transform = this.transform as Transform | undefined;
+            if (transform) {
+                const clampedScale =
+                    distanceToCorner > 0 ? Math.min(stepLength, distanceToCorner) / stepLength : 0;
+                Vec3.multiplyScalar(this._velocity, deltaTime * clampedScale, this._tempVelocity);
+                transform.translate(this._tempVelocity, 'world');
+            }
         }
 
         this._updateRemainingDistance();

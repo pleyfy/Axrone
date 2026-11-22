@@ -143,7 +143,7 @@ class CharacterMovementPattern {
     get _testPressedKeys(): Set<string> { return this._pressedKeys; }
     get _testCachedTransform(): Transform | null { return this._cachedTransform; }
 
-    awake(transform: Transform): void {
+    onLoad(transform: Transform): void {
         this._cachedTransform = transform;
     }
 
@@ -270,7 +270,7 @@ describe('T-11: Script Performance Regression — CharacterMovement pattern', ()
         transform.position = new Vec3(0, 0, 0);
 
         const script = new CharacterMovementPattern();
-        script.awake(transform);
+        script.onLoad(transform);
 
         return { script, transform, actor };
     }
@@ -683,7 +683,7 @@ describe('T-11: Script Performance Regression — Frame Timing Consistency', () 
     it('CharacterMovement pattern: 1000 update() iterations within frame budget', () => {
         const { transform } = createActorWithTransform();
         const script = new CharacterMovementPattern();
-        script.awake(transform);
+        script.onLoad(transform);
         script.simulateKeys(['KeyW', 'KeyD']);
 
         const start = performance.now();

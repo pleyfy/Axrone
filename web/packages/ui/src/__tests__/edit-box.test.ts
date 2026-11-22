@@ -1,6 +1,88 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AXRONE_DEFAULT_UI_FONT_FAMILY, UIRuntime, createUIEditBox } from '../index';
+import { deserializeUIAsset } from '../runtime/ui-asset-io';
+import { editBoxController, getEditBoxValue } from '../controls/edit-box-controller';
 import { createTestFontAsset } from './test-font';
+import type { UIAsset } from '../types/ui-asset';
+
+const createEditBoxAssetJson = (props: Record<string, unknown>): string =>
+	JSON.stringify({
+		id: 'ui.edit-box-controller-test',
+		name: 'edit-box-controller-test',
+		version: 1,
+		canvas: {
+			referenceWidth: 400,
+			referenceHeight: 200,
+			scaleMode: 'fixed',
+			matchBias: 0.5,
+		},
+		bindings: {
+			root: 'root',
+			edit: 'edit',
+			'edit-value': 'edit-value',
+			'edit-placeholder': 'edit-placeholder',
+		},
+		root: {
+			role: 'root',
+			key: 'root',
+			enabled: true,
+			interactive: false,
+			layout: { display: 'overlay', width: '100%', height: '100%' },
+			children: [
+				{
+					role: 'custom:edit-box',
+					key: 'edit',
+					enabled: true,
+					interactive: true,
+					controller: 'edit-box',
+					props,
+					layout: {
+						position: 'absolute',
+						inset: { left: 10, top: 10 },
+						width: 200,
+						height: 40,
+					},
+					children: [
+						{
+							role: 'text',
+							key: 'edit-value',
+							enabled: true,
+							interactive: false,
+							layout: { width: '100%', height: '100%' },
+							children: [],
+						},
+						{
+							role: 'text',
+							key: 'edit-placeholder',
+							enabled: true,
+							interactive: false,
+							layout: { width: '100%', height: '100%' },
+							children: [],
+						},
+					],
+				},
+			],
+		},
+	});
+
+const createEditBoxControllerRuntime = (props: Record<string, unknown> = {}) => {
+	const runtime = new UIRuntime({ width: 400, height: 200 });
+	runtime.fonts.registerFace(createTestFontAsset(AXRONE_DEFAULT_UI_FONT_FAMILY));
+	runtime.registry.register(editBoxController);
+	runtime.loadFromAsset(
+		deserializeUIAsset(
+			createEditBoxAssetJson({
+				value: '',
+				placeholder: 'Type here',
+				valueKey: 'edit-value',
+				placeholderKey: 'edit-placeholder',
+				...props,
+			})
+		) as UIAsset
+	);
+	runtime.commit();
+	return runtime;
+};
 
 const prepareRuntime = () => {
 	const runtime = new UIRuntime({ width: 480, height: 240 });
@@ -120,6 +202,45 @@ describe('@axrone/ui edit-box handle', () => {
 			createUIEditBox(runtime, { value: 'hello' });
 			const frame = runtime.commit();
 			expect(frame.commands.length).toBeGreaterThan(0);
+		});
+	});
+
+	describe('edit-box controller update', () => {
+		it('clamps a new authored value to maxLength', () => {
+			const runtime = createEditBoxControllerRuntime({ value: 'abc', maxLength: 10 });
+			const edit = runtime.getBoundWidget('edit')!;
+			expect(getEditBoxValue(runtime, edit)).toBe('abc');
+			runtime.updateWidget(edit, { props: { maxLength: 3, value: 'abcdef' } });
+			runtime.commit();
+			expect(getEditBoxValue(runtime, edit)).toBe('abc');
+			const valueWidget = runtime.getBoundWidget('edit-value')!;
+			runtime.commit();
+			expect(valueWidget).not.toBeNull();
+			runtime.dispose();
+		});
+
+		it('clamps the live value when maxLength shrinks', () => {
+			const runtime = createEditBoxControllerRuntime({ value: 'hello world', maxLength: 20 });
+			const edit = runtime.getBoundWidget('edit')!;
+			expect(getEditBoxValue(runtime, edit)).toBe('hello world');
+			runtime.updateWidget(edit, { props: { maxLength: 5 } });
+			runtime.commit();
+			expect(getEditBoxValue(runtime, edit)).toBe('hello');
+			runtime.dispose();
+		});
+
+		it('preserves value across readOnly toggles', () => {
+			const runtime = createEditBoxControllerRuntime({ value: 'hello', readOnly: false });
+			const edit = runtime.getBoundWidget('edit')!;
+			runtime.updateWidget(edit, { props: { readOnly: true } });
+			runtime.commit();
+			expect(getEditBoxValue(runtime, edit)).toBe('hello');
+			runtime.updateWidget(edit, { props: { readOnly: false } });
+			runtime.commit();
+			expect(getEditBoxValue(runtime, edit)).toBe('hello');
+			const frame = runtime.commit();
+			expect(frame.commands.length).toBeGreaterThan(0);
+			runtime.dispose();
 		});
 	});
 });

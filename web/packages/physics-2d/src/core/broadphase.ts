@@ -1,4 +1,5 @@
 import { AABB2D } from '@axrone/geometry';
+import type { IVec2Like } from '@axrone/numeric';
 import type { ShapeId } from '../types';
 
 interface TreeNode<TUserData = ShapeId> {
@@ -89,7 +90,7 @@ export class DynamicAABBTree2D<TUserData = ShapeId> {
         this._maybeAutoRebalance();
     }
 
-    moveProxy(proxyId: number, aabb: AABB2D, displacement: { x: number; y: number }): boolean {
+    moveProxy(proxyId: number, aabb: AABB2D, displacement: IVec2Like): boolean {
         const node = this._nodes[proxyId];
 
         if (node.aabb.containsAABB(aabb)) {

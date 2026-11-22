@@ -1,0 +1,72 @@
+{
+  "environment": {
+    "date": "2026-11-02T13:33:50.832Z",
+    "node": "v24.18.0",
+    "platform": "win32-x64",
+    "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+    "threads": 16,
+    "warmupSteps": 40,
+    "measuredSteps": 120,
+    "repeats": {
+      "250": 5,
+      "1000": 5,
+      "2000": 3,
+      "5000": 3
+    },
+    "dt": 0.016666666666666666
+  },
+  "results": [
+    {
+      "variant": "wasm-release",
+      "file": "build\\wasm-release\\physics.wasm",
+      "count": 250,
+      "sizeBytes": 102445,
+      "imports": 0,
+      "ms": 1.0066925,
+      "minMs": 1.0054091666666667,
+      "maxMs": 1.04898,
+      "contacts": 1172,
+      "fingerprint": "3814e00ce1b2f604",
+      "memoryMb": 3.25
+    },
+    {
+      "variant": "wasm-release",
+      "file": "build\\wasm-release\\physics.wasm",
+      "count": 1000,
+      "sizeBytes": 102445,
+      "imports": 0,
+      "ms": 4.233975,
+      "minMs": 4.124908333333334,
+      "maxMs": 4.259186666666667,
+      "contacts": 4695,
+      "fingerprint": "70ab76696c084efd",
+      "memoryMb": 11.5625
+    },
+    {
+      "variant": "wasm-release",
+      "file": "build\\wasm-release\\physics.wasm",
+      "count": 2000,
+      "sizeBytes": 102445,
+      "imports": 0,
+      "ms": 9.141825,
+      "minMs": 8.711804166666665,
+      "maxMs": 10.395001666666666,
+      "contacts": 9472,
+      "fingerprint": "392e9f45085fde8a",
+      "memoryMb": 22.625
+    },
+    {
+      "variant": "wasm-release",
+      "file": "build\\wasm-release\\physics.wasm",
+      "count": 5000,
+      "sizeBytes": 102445,
+      "imports": 0,
+      "ms": 25.404895,
+      "minMs": 24.6061225,
+      "maxMs": 25.735108333333333,
+      "contacts": 23308,
+      "fingerprint": "cf238e8120066e7e",
+      "memoryMb": 49.625
+    }
+  ]
+}

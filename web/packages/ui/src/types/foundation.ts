@@ -67,11 +67,6 @@ export type UILengthInput =
 export type FontGlyphBitmapFormat = 'alpha8' | 'rgba8' | 'sdf8';
 export type FontBinaryFormat = 'ttf' | 'otf' | 'woff' | 'woff2';
 
-export interface Vec2Like {
-    readonly x: number;
-    readonly y: number;
-}
-
 export interface SizeLike {
     readonly width: number;
     readonly height: number;

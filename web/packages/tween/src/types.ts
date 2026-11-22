@@ -95,6 +95,11 @@ export type TweenConfig<T> = {
     readonly easing?: EasingFunction;
     readonly repeat?: number;
     readonly yoyo?: boolean;
+    /**
+     * Per-property blend over the resolved `[start, end]` pair.
+     * Multi-waypoint splines are out of scope: pass a custom function
+     * if you need keyframe traversal.
+     */
     readonly interpolation?: (v: ArrayLike<number>, k: number) => number;
     readonly autoStart?: boolean;
 };
@@ -128,7 +133,7 @@ export interface ITween<T> {
 export interface IGroupable {
     id: number;
     isPlaying(): boolean;
-    getStatus(): 'idle' | 'running' | 'paused' | 'completed';
+    getStatus(): TweenStatus;
     getTotalDuration(): number;
     start(time?: number): this;
     stop(): this;

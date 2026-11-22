@@ -1,0 +1,736 @@
+{
+    "contractVersion": 1,
+    "models": [
+        {
+            "contractVersion": 1,
+            "id": "pbr",
+            "label": "PBR",
+            "description": "Physically based surface material model with advanced clearcoat, sheen, anisotropy, subsurface, iridescence and transmission sections.",
+            "domain": "surface",
+            "compilerFamily": "gltf/pbr",
+            "defaultShaderId": "gltf/pbr",
+            "stages": [
+                {
+                    "stage": "vertex",
+                    "label": "Vertex Stage",
+                    "defaultCollapsed": true,
+                    "slots": [
+                        "vertexOffset"
+                    ]
+                },
+                {
+                    "stage": "fragment",
+                    "label": "Fragment Stage",
+                    "defaultCollapsed": false,
+                    "slots": [
+                        "baseColor",
+                        "metallic",
+                        "roughness",
+                        "normal",
+                        "opacity",
+                        "opacityMask",
+                        "emission",
+                        "clearcoat",
+                        "clearcoatRoughness",
+                        "clearcoatNormal",
+                        "clearcoatNormalScale",
+                        "sheen",
+                        "sheenColor",
+                        "sheenRoughness",
+                        "anisotropy",
+                        "anisotropyRotation",
+                        "subsurface",
+                        "subsurfaceColor",
+                        "subsurfaceRadius",
+                        "iridescence",
+                        "iridescenceIor",
+                        "iridescenceThickness",
+                        "transmission",
+                        "ior",
+                        "thickness"
+                    ]
+                }
+            ],
+            "outputSlots": [
+                {
+                    "key": "vertexOffset",
+                    "label": "Vertex Offset",
+                    "stage": "vertex",
+                    "section": "vertex",
+                    "valueType": "vec3",
+                    "bindingKey": "_VertexOffset",
+                    "semantic": "vertex.offset",
+                    "capability": "partial",
+                    "description": "Positional displacement applied before the model transform."
+                },
+                {
+                    "key": "baseColor",
+                    "label": "Base Color",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "vec4",
+                    "bindingKey": "_BaseColorFactor",
+                    "semantic": "surface.baseColor",
+                    "capability": "supported"
+                },
+                {
+                    "key": "metallic",
+                    "label": "Metallic",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "float",
+                    "bindingKey": "_MetallicFactor",
+                    "semantic": "surface.metallic",
+                    "capability": "supported"
+                },
+                {
+                    "key": "roughness",
+                    "label": "Roughness",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "float",
+                    "bindingKey": "_RoughnessFactor",
+                    "semantic": "surface.roughness",
+                    "capability": "supported"
+                },
+                {
+                    "key": "normal",
+                    "label": "Normal",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "tex",
+                    "bindingKey": "_NormalTexture",
+                    "semantic": "surface.normal",
+                    "capability": "supported"
+                },
+                {
+                    "key": "opacity",
+                    "label": "Opacity",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "float",
+                    "bindingKey": "_OpacityFactor",
+                    "semantic": "surface.opacity",
+                    "capability": "partial",
+                    "description": "Single-channel opacity factor; pending a dedicated runtime uniform."
+                },
+                {
+                    "key": "opacityMask",
+                    "label": "Opacity Mask",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "float",
+                    "bindingKey": "_AlphaCutoff",
+                    "semantic": "surface.opacityMask",
+                    "capability": "supported"
+                },
+                {
+                    "key": "emission",
+                    "label": "Emission",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "vec3",
+                    "bindingKey": "_EmissiveFactor",
+                    "semantic": "surface.emission",
+                    "capability": "supported"
+                },
+                {
+                    "key": "clearcoat",
+                    "label": "Clearcoat",
+                    "stage": "fragment",
+                    "section": "clearcoat",
+                    "valueType": "float",
+                    "bindingKey": "_ClearcoatFactor",
+                    "semantic": "clearcoat.clearcoat",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "clearcoatRoughness",
+                    "label": "Clearcoat Roughness",
+                    "stage": "fragment",
+                    "section": "clearcoat",
+                    "valueType": "float",
+                    "bindingKey": "_ClearcoatRoughnessFactor",
+                    "semantic": "clearcoat.clearcoatRoughness",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "clearcoatNormal",
+                    "label": "Clearcoat Normal",
+                    "stage": "fragment",
+                    "section": "clearcoat",
+                    "valueType": "tex",
+                    "bindingKey": "_ClearcoatNormalTexture",
+                    "semantic": "clearcoat.clearcoatNormal",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "clearcoatNormalScale",
+                    "label": "Clearcoat Normal Scale",
+                    "stage": "fragment",
+                    "section": "clearcoat",
+                    "valueType": "float",
+                    "bindingKey": "_ClearcoatNormalTexture_Scale",
+                    "semantic": "clearcoat.clearcoatNormalScale",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "sheen",
+                    "label": "Sheen",
+                    "stage": "fragment",
+                    "section": "sheen",
+                    "valueType": "float",
+                    "bindingKey": "_SheenFactor",
+                    "semantic": "sheen.sheen",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "sheenColor",
+                    "label": "Sheen Color",
+                    "stage": "fragment",
+                    "section": "sheen",
+                    "valueType": "vec3",
+                    "bindingKey": "_SheenColorFactor",
+                    "semantic": "sheen.sheenColor",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "sheenRoughness",
+                    "label": "Sheen Roughness",
+                    "stage": "fragment",
+                    "section": "sheen",
+                    "valueType": "float",
+                    "bindingKey": "_SheenRoughnessFactor",
+                    "semantic": "sheen.sheenRoughness",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "anisotropy",
+                    "label": "Anisotropy",
+                    "stage": "fragment",
+                    "section": "anisotropy",
+                    "valueType": "float",
+                    "bindingKey": "_AnisotropyFactor",
+                    "semantic": "anisotropy.anisotropy",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "anisotropyRotation",
+                    "label": "Anisotropy Rotation",
+                    "stage": "fragment",
+                    "section": "anisotropy",
+                    "valueType": "float",
+                    "bindingKey": "_AnisotropyRotation",
+                    "semantic": "anisotropy.anisotropyRotation",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "subsurface",
+                    "label": "Subsurface",
+                    "stage": "fragment",
+                    "section": "subsurface",
+                    "valueType": "float",
+                    "bindingKey": "_SubsurfaceFactor",
+                    "semantic": "subsurface.subsurface",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "subsurfaceColor",
+                    "label": "Subsurface Color",
+                    "stage": "fragment",
+                    "section": "subsurface",
+                    "valueType": "vec3",
+                    "bindingKey": "_SubsurfaceColorFactor",
+                    "semantic": "subsurface.subsurfaceColor",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "subsurfaceRadius",
+                    "label": "Subsurface Radius",
+                    "stage": "fragment",
+                    "section": "subsurface",
+                    "valueType": "float",
+                    "bindingKey": "_SubsurfaceThickness",
+                    "semantic": "subsurface.subsurfaceRadius",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "iridescence",
+                    "label": "Iridescence",
+                    "stage": "fragment",
+                    "section": "iridescence",
+                    "valueType": "float",
+                    "bindingKey": "_IridescenceFactor",
+                    "semantic": "iridescence.iridescence",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "iridescenceIor",
+                    "label": "Iridescence Index Of Refraction",
+                    "stage": "fragment",
+                    "section": "iridescence",
+                    "valueType": "float",
+                    "bindingKey": "_IridescenceIor",
+                    "semantic": "iridescence.iridescenceIor",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "iridescenceThickness",
+                    "label": "Iridescence Thickness",
+                    "stage": "fragment",
+                    "section": "iridescence",
+                    "valueType": "float",
+                    "bindingKey": "_IridescenceThickness",
+                    "semantic": "iridescence.iridescenceThickness",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "transmission",
+                    "label": "Transmission",
+                    "stage": "fragment",
+                    "section": "transmission",
+                    "valueType": "float",
+                    "bindingKey": "_TransmissionFactor",
+                    "semantic": "transmission.transmission",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "ior",
+                    "label": "Index Of Refraction",
+                    "stage": "fragment",
+                    "section": "transmission",
+                    "valueType": "float",
+                    "bindingKey": "_IorFactor",
+                    "semantic": "transmission.ior",
+                    "advanced": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "thickness",
+                    "label": "Thickness",
+                    "stage": "fragment",
+                    "section": "transmission",
+                    "valueType": "float",
+                    "bindingKey": "_ThicknessFactor",
+                    "semantic": "transmission.thickness",
+                    "advanced": true,
+                    "capability": "supported"
+                }
+            ],
+            "passPlan": [
+                {
+                    "id": "main",
+                    "phase": "default",
+                    "required": true
+                },
+                {
+                    "id": "forward-add",
+                    "phase": "forward-add"
+                },
+                {
+                    "id": "shadow-caster",
+                    "phase": "shadow-caster"
+                }
+            ],
+            "capabilities": [
+                {
+                    "profile": "webgl2-standard",
+                    "status": "supported",
+                    "notes": "Vertex Offset awaits compiler lowering; every other declared section is lowered."
+                },
+                {
+                    "profile": "webgl2-minimal",
+                    "status": "partial",
+                    "notes": "Reduced light budget and disabled advanced sections lower as partial coverage."
+                },
+                {
+                    "profile": "native",
+                    "status": "partial",
+                    "notes": "Native render profile material catalog is not published yet."
+                }
+            ]
+        },
+        {
+            "contractVersion": 1,
+            "id": "unlit",
+            "label": "Unlit",
+            "description": "Unlit surface material model that outputs base color without lighting.",
+            "domain": "surface",
+            "compilerFamily": "gltf/unlit",
+            "defaultShaderId": "gltf/unlit",
+            "stages": [
+                {
+                    "stage": "vertex",
+                    "label": "Vertex Stage",
+                    "defaultCollapsed": true,
+                    "slots": [
+                        "vertexOffset"
+                    ]
+                },
+                {
+                    "stage": "fragment",
+                    "label": "Fragment Stage",
+                    "defaultCollapsed": false,
+                    "slots": [
+                        "baseColor",
+                        "opacity",
+                        "opacityMask",
+                        "emission"
+                    ]
+                }
+            ],
+            "outputSlots": [
+                {
+                    "key": "vertexOffset",
+                    "label": "Vertex Offset",
+                    "stage": "vertex",
+                    "section": "vertex",
+                    "valueType": "vec3",
+                    "bindingKey": "_VertexOffset",
+                    "semantic": "vertex.offset",
+                    "capability": "partial",
+                    "description": "Positional displacement applied before the model transform."
+                },
+                {
+                    "key": "baseColor",
+                    "label": "Base Color",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "vec4",
+                    "bindingKey": "_BaseColorFactor",
+                    "semantic": "surface.baseColor",
+                    "capability": "supported"
+                },
+                {
+                    "key": "opacity",
+                    "label": "Opacity",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "float",
+                    "bindingKey": "_OpacityFactor",
+                    "semantic": "surface.opacity",
+                    "capability": "partial",
+                    "description": "Single-channel opacity factor; pending a dedicated runtime uniform."
+                },
+                {
+                    "key": "opacityMask",
+                    "label": "Opacity Mask",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "float",
+                    "bindingKey": "_AlphaCutoff",
+                    "semantic": "surface.opacityMask",
+                    "capability": "supported"
+                },
+                {
+                    "key": "emission",
+                    "label": "Emission",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "vec3",
+                    "bindingKey": "_EmissiveFactor",
+                    "semantic": "surface.emission",
+                    "capability": "supported"
+                }
+            ],
+            "passPlan": [
+                {
+                    "id": "main",
+                    "phase": "default",
+                    "required": true
+                }
+            ],
+            "capabilities": [
+                {
+                    "profile": "webgl2-standard",
+                    "status": "supported",
+                    "notes": "Vertex Offset awaits compiler lowering; surface slots are lowered completely."
+                },
+                {
+                    "profile": "webgl2-minimal",
+                    "status": "partial",
+                    "notes": "Fog and alpha mode handling are reduced in the minimal WebGL2 render profile."
+                },
+                {
+                    "profile": "native",
+                    "status": "partial",
+                    "notes": "Native render profile material catalog is not published yet."
+                }
+            ]
+        },
+        {
+            "contractVersion": 1,
+            "id": "toon",
+            "label": "Toon",
+            "description": "Stylized toon material model with shadow, highlight and rim bands plus an inverted-hull outline pass.",
+            "domain": "surface",
+            "compilerFamily": "gltf/toon",
+            "defaultShaderId": "gltf/toon",
+            "stages": [
+                {
+                    "stage": "vertex",
+                    "label": "Vertex Stage",
+                    "defaultCollapsed": true,
+                    "slots": [
+                        "vertexOffset"
+                    ]
+                },
+                {
+                    "stage": "fragment",
+                    "label": "Fragment Stage",
+                    "defaultCollapsed": false,
+                    "slots": [
+                        "baseColor",
+                        "normal",
+                        "opacity",
+                        "opacityMask",
+                        "emission",
+                        "shadowColor",
+                        "shadowThreshold",
+                        "shadowSmoothness",
+                        "highlightThreshold",
+                        "highlightColor",
+                        "rimColor",
+                        "rimThreshold",
+                        "rimSmoothness",
+                        "outlineWidth",
+                        "outlineColor"
+                    ]
+                }
+            ],
+            "outputSlots": [
+                {
+                    "key": "vertexOffset",
+                    "label": "Vertex Offset",
+                    "stage": "vertex",
+                    "section": "vertex",
+                    "valueType": "vec3",
+                    "bindingKey": "_VertexOffset",
+                    "semantic": "vertex.offset",
+                    "capability": "partial",
+                    "description": "Positional displacement applied before the model transform."
+                },
+                {
+                    "key": "baseColor",
+                    "label": "Base Color",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "vec4",
+                    "bindingKey": "_BaseColorFactor",
+                    "semantic": "surface.baseColor",
+                    "capability": "supported"
+                },
+                {
+                    "key": "normal",
+                    "label": "Normal",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "tex",
+                    "bindingKey": "_NormalTexture",
+                    "semantic": "surface.normal",
+                    "optional": true,
+                    "capability": "supported"
+                },
+                {
+                    "key": "opacity",
+                    "label": "Opacity",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "float",
+                    "bindingKey": "_OpacityFactor",
+                    "semantic": "surface.opacity",
+                    "capability": "partial",
+                    "description": "Single-channel opacity factor; pending a dedicated runtime uniform."
+                },
+                {
+                    "key": "opacityMask",
+                    "label": "Opacity Mask",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "float",
+                    "bindingKey": "_AlphaCutoff",
+                    "semantic": "surface.opacityMask",
+                    "capability": "supported"
+                },
+                {
+                    "key": "emission",
+                    "label": "Emission",
+                    "stage": "fragment",
+                    "section": "surface",
+                    "valueType": "vec3",
+                    "bindingKey": "_EmissiveFactor",
+                    "semantic": "surface.emission",
+                    "capability": "supported"
+                },
+                {
+                    "key": "shadowColor",
+                    "label": "Shadow Color",
+                    "stage": "fragment",
+                    "section": "toon",
+                    "valueType": "vec3",
+                    "bindingKey": "_ShadowColor",
+                    "semantic": "toon.shadowColor",
+                    "defaultValue": "[0.2, 0.2, 0.3]",
+                    "capability": "supported"
+                },
+                {
+                    "key": "shadowThreshold",
+                    "label": "Shadow Threshold",
+                    "stage": "fragment",
+                    "section": "toon",
+                    "valueType": "float",
+                    "bindingKey": "_ShadowThreshold",
+                    "semantic": "toon.shadowThreshold",
+                    "defaultValue": "0.5",
+                    "capability": "supported"
+                },
+                {
+                    "key": "shadowSmoothness",
+                    "label": "Shadow Smoothness",
+                    "stage": "fragment",
+                    "section": "toon",
+                    "valueType": "float",
+                    "bindingKey": "_ShadowSmoothness",
+                    "semantic": "toon.shadowSmoothness",
+                    "defaultValue": "0.05",
+                    "capability": "supported"
+                },
+                {
+                    "key": "highlightThreshold",
+                    "label": "Highlight Threshold",
+                    "stage": "fragment",
+                    "section": "toon",
+                    "valueType": "float",
+                    "bindingKey": "_HighlightThreshold",
+                    "semantic": "toon.highlightThreshold",
+                    "defaultValue": "0.8",
+                    "capability": "supported"
+                },
+                {
+                    "key": "highlightColor",
+                    "label": "Highlight Color",
+                    "stage": "fragment",
+                    "section": "toon",
+                    "valueType": "vec3",
+                    "bindingKey": "_HighlightColor",
+                    "semantic": "toon.highlightColor",
+                    "defaultValue": "[1, 1, 1]",
+                    "capability": "supported"
+                },
+                {
+                    "key": "rimColor",
+                    "label": "Rim Color",
+                    "stage": "fragment",
+                    "section": "toon",
+                    "valueType": "vec3",
+                    "bindingKey": "_RimColor",
+                    "semantic": "toon.rimColor",
+                    "defaultValue": "[0.8, 0.9, 1.0]",
+                    "capability": "supported"
+                },
+                {
+                    "key": "rimThreshold",
+                    "label": "Rim Threshold",
+                    "stage": "fragment",
+                    "section": "toon",
+                    "valueType": "float",
+                    "bindingKey": "_RimThreshold",
+                    "semantic": "toon.rimThreshold",
+                    "defaultValue": "0.6",
+                    "capability": "supported"
+                },
+                {
+                    "key": "rimSmoothness",
+                    "label": "Rim Smoothness",
+                    "stage": "fragment",
+                    "section": "toon",
+                    "valueType": "float",
+                    "bindingKey": "_RimSmoothness",
+                    "semantic": "toon.rimSmoothness",
+                    "defaultValue": "0.1",
+                    "capability": "supported"
+                },
+                {
+                    "key": "outlineWidth",
+                    "label": "Outline Width",
+                    "stage": "fragment",
+                    "section": "outline",
+                    "valueType": "float",
+                    "bindingKey": "_OutlineWidth",
+                    "semantic": "toon.outlineWidth",
+                    "defaultValue": "0",
+                    "capability": "partial",
+                    "description": "Gates the outline pass; lowered as inverted-hull vertex extrusion."
+                },
+                {
+                    "key": "outlineColor",
+                    "label": "Outline Color",
+                    "stage": "fragment",
+                    "section": "outline",
+                    "valueType": "vec3",
+                    "bindingKey": "_OutlineColor",
+                    "semantic": "toon.outlineColor",
+                    "defaultValue": "[0, 0, 0]",
+                    "capability": "supported"
+                }
+            ],
+            "passPlan": [
+                {
+                    "id": "main",
+                    "phase": "default",
+                    "required": true
+                },
+                {
+                    "id": "forward-add",
+                    "phase": "forward-add"
+                },
+                {
+                    "id": "shadow-caster",
+                    "phase": "shadow-caster"
+                },
+                {
+                    "id": "outline",
+                    "phase": "outline",
+                    "shaderId": "gltf/toon-outline",
+                    "cullMode": "front",
+                    "depthTest": true,
+                    "depthWrite": true,
+                    "enabledWhenUniformNonZero": "_OutlineWidth"
+                }
+            ],
+            "capabilities": [
+                {
+                    "profile": "webgl2-standard",
+                    "status": "supported",
+                    "notes": "Runtime lowers surface, toon and the inverted-hull outline; Editor graph authoring parity is not verified here."
+                },
+                {
+                    "profile": "webgl2-minimal",
+                    "status": "partial",
+                    "notes": "Reduced light budget; advanced sections lower as partial coverage."
+                },
+                {
+                    "profile": "native",
+                    "status": "partial",
+                    "notes": "Native render profile material catalog is not published yet."
+                }
+            ]
+        }
+    ]
+}

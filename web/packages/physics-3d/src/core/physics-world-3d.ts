@@ -73,6 +73,7 @@ import {
 import {
     computeShapeAabb as computeShapeAabbImpl,
     getShapeWorldCenter as getShapeWorldCenterImpl,
+    refreshShapeFrame as refreshShapeFrameImpl,
     rayCastShape as rayCastShapeImpl,
     testPointShape as testPointShapeImpl,
 } from './physics-world-3d-shape-geometry';
@@ -118,6 +119,12 @@ export class PhysicsWorld3D implements Disposable {
     private readonly _contactRuntime: PhysicsWorld3DContactRuntime;
 
     private _profiler: IPhysicsProfiler3D | null = null;
+    /**
+     * Monotonic step token. Shape transform frames are refreshed during the
+     * broadphase pass of the same step and are only trusted while the token
+     * matches, so a frame can never be read after bodies have moved.
+     */
+    private _frameGeneration = 0;
     private _contactListener: IContactListener3D | null = null;
     private _collisionFilter: ICollisionFilter | null = null;
     private _autoClearForces = true;
@@ -157,6 +164,11 @@ export class PhysicsWorld3D implements Disposable {
                 solveVelocityTime: 0,
                 solvePositionTime: 0,
                 sleepTime: 0,
+                warmStartTime: 0,
+                persistTime: 0,
+                integrateVelocityTime: 0,
+                integratePositionTime: 0,
+                eventsTime: 0,
             };
         }
 
@@ -169,6 +181,7 @@ export class PhysicsWorld3D implements Disposable {
             getContactListener: () => this._contactListener,
             getCollisionFilter: () => this._collisionFilter,
             computeShapeAabb: (descriptor) => this._computeShapeAabb(descriptor),
+            getFrameGeneration: () => this._frameGeneration,
             getShapeWorldCenter: (descriptor) => this._getShapeWorldCenter(descriptor),
             getConstraintAnchor: (def, firstBody) => this._getConstraintAnchor(def, firstBody),
         });
@@ -472,42 +485,62 @@ export class PhysicsWorld3D implements Disposable {
         return this._constraintManager;
     }
 
+    getSolverDiagnostics() {
+        return this._contactRuntime.getContactDiagnostics();
+    }
+
     step(deltaTime: number, velocityIterations: number = 10, positionIterations: number = 4): void {
         if (this._disposed) return;
 
+        const profiler = this._profiler;
         const t0 = performance.now();
 
+        const integrateVelocityStart = profiler ? performance.now() : 0;
         // 1. Integrate forces → velocities (gravity, damping, force accumulators)
         this._integrateVelocities(deltaTime);
+        if (profiler) profiler.integrateVelocityTime = performance.now() - integrateVelocityStart;
 
-        // 2. Broadphase + narrowphase → collect contact manifolds
-        this._contactRuntime.collectManifolds();
-
-        // 3. Warm start: apply cached impulses from previous frame
+        // 2-5. Warm start, velocity solve and position solve run on the
+        // manifolds collected at the end of the previous step (their positions
+        // equal the start-of-step transforms). Position integration then moves
+        // the bodies exactly one integration against those anchors, which the
+        // position pass corrects — the same drift relation the old order had.
         this._contactRuntime.warmStart();
-
-        // 4. Velocity solve: sequential impulse iterations
         this._contactRuntime.solveVelocity(velocityIterations, deltaTime);
 
-        // 5. Integrate positions: position += velocity * dt
+        const integratePositionStart = profiler ? performance.now() : 0;
         this._integratePositions(deltaTime);
+        if (profiler) profiler.integratePositionTime = performance.now() - integratePositionStart;
 
-        // 6. Position solve: Baumgarte correction
-        this._contactRuntime.solvePosition(positionIterations);
+        this._contactRuntime.solvePosition(positionIterations, deltaTime);
 
-        // 7. Persist warm impulses for next frame (after full solve, before events)
+        // 6. Persist warm impulses for next frame (after full solve, before events)
         this._contactRuntime.persistWarmImpulses();
 
+        // 7. Broadphase + narrowphase AFTER position integration: manifolds are
+        // detected against the transforms the step actually produced, so a pair
+        // begins contact on the step it starts overlapping (WASM core order:
+        // integrate, update bounds, broadphase, narrowphase, solve). Warm-start
+        // keeps working because these fresh manifolds carry the impulses just
+        // persisted in step 6 and are solved by the next step's phase-2-5 block.
+        // Shape transform frames are valid only for this step.
+        this._frameGeneration += 1;
+        this._contactRuntime.collectManifolds();
+
+        const eventsStart = profiler ? performance.now() : 0;
         // 8. Fire contact events
         this._contactRuntime.dispatchEvents();
+        if (profiler) profiler.eventsTime = performance.now() - eventsStart;
 
         // 9. World-level sleeping check
+        const sleepStart = profiler ? performance.now() : 0;
         if (this.config.allowSleep !== false) {
             this._updateSleeping(deltaTime);
         }
-
-        if (this._profiler) {
-            this._profiler.stepTime = performance.now() - t0;
+        if (profiler) {
+            profiler.sleepTime = performance.now() - sleepStart;
+            profiler.solveTime = profiler.solveVelocityTime + profiler.solvePositionTime;
+            profiler.stepTime = performance.now() - t0;
         }
     }
 
@@ -1014,7 +1047,6 @@ export class PhysicsWorld3D implements Disposable {
         }
 
         let totalMass = 0;
-        let center = { x: 0, y: 0, z: 0 };
         const shapeMassData: IMassData3D[] = [];
 
         for (const shapeId of shapes) {
@@ -1025,7 +1057,6 @@ export class PhysicsWorld3D implements Disposable {
             const massData = computeShapeMassData(descriptor, descriptor.material.density);
             shapeMassData.push(massData);
             totalMass += massData.mass;
-            center = Vec3.add(center, Vec3.multiplyScalar(massData.center, massData.mass));
         }
 
         if (totalMass <= 1e-10) {
@@ -1038,11 +1069,9 @@ export class PhysicsWorld3D implements Disposable {
             };
         }
 
-        center = Vec3.multiplyScalar(center, 1 / totalMass);
-
         let inertiaTensor = { x: 0, y: 0, z: 0 };
         for (const massData of shapeMassData) {
-            const offset = Vec3.subtract(massData.center, center);
+            const offset = massData.center;
             inertiaTensor = {
                 x:
                     inertiaTensor.x +
@@ -1064,18 +1093,23 @@ export class PhysicsWorld3D implements Disposable {
             inverseMass: totalMass > 0 ? 1 / totalMass : 0,
             inertiaTensor,
             inverseInertiaTensor: inverseVec3(inertiaTensor),
-            center,
+            center: { x: 0, y: 0, z: 0 },
         };
     }
 
 
 
     private _computeShapeAabb(descriptor: IShapeDescriptor3D): IAabb3D {
-        return computeShapeAabbImpl(
+        const position = this._bodyManager.getPosition(descriptor.bodyId);
+        const rotation = this._bodyManager.getRotation(descriptor.bodyId);
+        // One derivation per shape per step, shared with the box-box narrowphase.
+        const frame = refreshShapeFrameImpl(
             descriptor,
-            this._bodyManager.getPosition(descriptor.bodyId),
-            this._bodyManager.getRotation(descriptor.bodyId)
+            position,
+            rotation,
+            this._frameGeneration
         );
+        return computeShapeAabbImpl(descriptor, position, rotation, frame);
     }
 
     private _testPointShape(descriptor: IShapeDescriptor3D, point: Readonly<IVec3Like>): boolean {

@@ -92,12 +92,43 @@ const applyMorphTargetsToVertexBytes = (
             }
         }
     }
+
+    // Morph deltas bend the normals and tangents, so the deformed buffer is
+    // renormalized before it is uploaded: lighting stays correct when opposing
+    // targets blend or the weight sum exceeds one.
+    const renormalize = (semantic: 'normal' | 'tangent'): void => {
+        const attribute = baseAttributeMap.get(semantic);
+        if (!attribute || attribute.componentCount < 3) {
+            return;
+        }
+
+        for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+            const base = vertex * attribute.stride + attribute.offset;
+            const x = view.getFloat32(base, true);
+            const y = view.getFloat32(base + Float32Array.BYTES_PER_ELEMENT, true);
+            const z = view.getFloat32(base + Float32Array.BYTES_PER_ELEMENT * 2, true);
+            const length = Math.hypot(x, y, z);
+            if (length <= 1e-8) {
+                continue;
+            }
+            view.setFloat32(base, x / length, true);
+            view.setFloat32(base + Float32Array.BYTES_PER_ELEMENT, y / length, true);
+            view.setFloat32(base + Float32Array.BYTES_PER_ELEMENT * 2, z / length, true);
+        }
+    };
+
+    renormalize('normal');
+    renormalize('tangent');
 };
 
 export class SceneMorphMeshRuntime {
     private readonly _caches = new Map<string, MorphMeshResourceCache>();
 
     constructor(private readonly _options: SceneMorphMeshRuntimeOptions) {}
+
+    get hasCachedMeshes(): boolean {
+        return this._caches.size > 0;
+    }
 
     resolve(
         renderer: Pick<

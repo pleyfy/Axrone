@@ -69,11 +69,15 @@ export function resolveImageCommand(
     clip: LayoutBox | null,
     zIndex: number
 ): ImageRenderCommand | null {
-    const containerWidth = box.contentWidth;
-    const containerHeight = box.contentHeight;
+    // Sprite-backed controls draw their image as the control surface: the
+    // border box, not the padded content box.
+    const containerWidth = image.bleed ? box.width : box.contentWidth;
+    const containerHeight = image.bleed ? box.height : box.contentHeight;
     if (containerWidth <= 0 || containerHeight <= 0) {
         return null;
     }
+    const originX = image.bleed ? box.x : box.contentX;
+    const originY = image.bleed ? box.y : box.contentY;
     const sliced =
         image.border.left > 0 ||
         image.border.top > 0 ||
@@ -104,8 +108,8 @@ export function resolveImageCommand(
         widget: index as WidgetId,
         source: image.source,
         ...(image.material ? { material: image.material } : {}),
-        x: box.contentX + (containerWidth - renderWidth) * image.alignX,
-        y: box.contentY + (containerHeight - renderHeight) * image.alignY,
+        x: originX + (containerWidth - renderWidth) * image.alignX,
+        y: originY + (containerHeight - renderHeight) * image.alignY,
         width: renderWidth,
         height: renderHeight,
         zIndex,

@@ -67,7 +67,9 @@ describe('namespaceEvents - Comprehensive', () => {
     describe('emitBatch() through namespace', () => {
         it('should emit batch events through namespace', async () => {
             let count = 0;
-            namespaced.on('ns:test:event', () => count++);
+            namespaced.on('ns:test:event', () => {
+                count++;
+            });
 
             await namespaced.emitBatch([
                 { event: 'ns:test:event' as any, data: { value: 1 } },
@@ -81,7 +83,9 @@ describe('namespaceEvents - Comprehensive', () => {
     describe('once() through namespace', () => {
         it('should auto-unsubscribe after first invocation', async () => {
             let count = 0;
-            namespaced.once('ns:test:event', () => count++);
+            namespaced.once('ns:test:event', () => {
+                count++;
+            });
 
             await source.emit('test:event', { value: 1 });
             await source.emit('test:event', { value: 2 });
@@ -248,7 +252,9 @@ describe('namespaceEvents - Comprehensive', () => {
     describe('drain/flush/resetMetrics through namespace', () => {
         it('should delegate drain', async () => {
             let processed = 0;
-            namespaced.on('ns:test:event', () => processed++);
+            namespaced.on('ns:test:event', () => {
+                processed++;
+            });
 
             namespaced.pause();
             await namespaced.emit('ns:test:event' as any, { value: 1 });
@@ -261,7 +267,9 @@ describe('namespaceEvents - Comprehensive', () => {
 
         it('should delegate flush', async () => {
             let processed = 0;
-            namespaced.on('ns:test:event', () => processed++);
+            namespaced.on('ns:test:event', () => {
+                processed++;
+            });
 
             namespaced.pause();
             await namespaced.emit('ns:test:event' as any, { value: 1 });

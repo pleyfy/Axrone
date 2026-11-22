@@ -1,4 +1,5 @@
 import { clamp } from '@axrone/numeric';
+import type { IVec2Like } from '@axrone/numeric';
 import type { UICanvasConfig } from '../types/ui-asset';
 
 /** Tracks scale modes that have already produced a console.warn so each mode warns at most once. */
@@ -181,7 +182,7 @@ export function mapViewportPointToCanvas(
     scale: CanvasScaleResult,
     viewportX: number,
     viewportY: number
-): { readonly x: number; readonly y: number } {
+): Readonly<IVec2Like> {
     const x = Math.abs(scale.scaleX) <= INVERSE_SCALE_EPSILON
         ? viewportX
         : (viewportX - scale.offsetX) / scale.scaleX;

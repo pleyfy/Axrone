@@ -14,6 +14,11 @@ const createRenderRuntime = (renderPasses: readonly SceneRenderPassResource[]) =
             renderPasses: {
                 getEnabledResources: () => renderPasses,
             },
+            // The render runtime reads these revisions to decide whether a
+            // retained instanced plan can be replayed. A minimal scene still
+            // owns both registries, so the test double must expose them.
+            materials: { revision: 0 },
+            shaders: { revision: 0 },
         } as any,
         ambientLight: new Vec3(0.05, 0.06, 0.07),
         skyLight: new Vec3(0.11, 0.12, 0.13),

@@ -117,6 +117,37 @@ describe('SceneMaterialRegistry — idempotent create', () => {
         warnSpy.mockRestore();
     });
 
+    it('identical re-create with surface maps is silent despite the texture bridge', () => {
+        const registry = new SceneMaterialRegistry();
+
+        const def: SceneMaterialDefinition = {
+            id: 'surface-mat',
+            shaderId: 'gltf/pbr',
+            surface: {
+                albedoMap: { textureId: 'tex_albedo' },
+                normalMap: { textureId: 'tex_normal', texCoord: 1 },
+            },
+        };
+
+        registry.create(def);
+        const warnSpy = vi.spyOn(console, 'warn');
+
+        const handle2 = registry.create({
+            id: 'surface-mat',
+            shaderId: 'gltf/pbr',
+            surface: {
+                albedoMap: { textureId: 'tex_albedo' },
+                normalMap: { textureId: 'tex_normal', texCoord: 1 },
+            },
+        });
+
+        expect(warnSpy).not.toHaveBeenCalled();
+        expect(handle2.id).toBe('surface-mat');
+        expect(registry.size).toBe(1);
+
+        warnSpy.mockRestore();
+    });
+
     it('identical re-create with textures is silent', () => {
         const registry = new SceneMaterialRegistry();
 

@@ -1,6 +1,7 @@
 import type { AnimationParameterStore } from './parameters';
 import { BLEND_EPSILON, BLEND_DISTANCE_EPSILON_SQ, BLEND1D_LINEAR_SCAN_LIMIT } from './blend-types';
 import type { AnimationMotionEvaluationContext } from './blend-scratch';
+import type { IVec2Like } from '@axrone/numeric';
 
 export const resolveMotionTime = (
     normalizedTime: number,
@@ -119,11 +120,15 @@ export const resolveBlend1DAlpha = (
 export const computeBlend2DWeights = (
     x: number,
     y: number,
-    children: readonly { readonly x: number; readonly y: number }[],
-    outWeights: number[]
+    children: readonly Readonly<IVec2Like>[],
+    outWeights: number[],
+    triangles?: Int32Array
 ): void => {
     const safeX = Number.isFinite(x) ? x : 0;
     const safeY = Number.isFinite(y) ? y : 0;
+    if (triangles && triangles.length >= 3 && computeFreeformWeights(safeX, safeY, children, triangles, outWeights)) {
+        return;
+    }
     let total = 0;
     for (let index = 0; index < children.length; index += 1) {
         const child = children[index]!;
@@ -151,11 +156,61 @@ export const computeBlend2DWeights = (
 export const resolveBlend2DWeightsWithContext = (
     x: number,
     y: number,
-    children: readonly { readonly x: number; readonly y: number }[],
+    children: readonly Readonly<IVec2Like>[],
     context: AnimationMotionEvaluationContext,
-    depth: number
+    depth: number,
+    triangles?: Int32Array
 ): number[] => {
     const weights = context.blendScratch.acquireBlend2DWeights(depth, children.length);
-    computeBlend2DWeights(x, y, children, weights);
+    computeBlend2DWeights(x, y, children, weights, triangles);
     return weights;
+};
+
+const computeFreeformWeights = (
+    x: number,
+    y: number,
+    children: readonly Readonly<IVec2Like>[],
+    triangles: Int32Array,
+    outWeights: number[]
+): boolean => {
+    const epsilon = 1e-5;
+    for (let index = 0; index < outWeights.length; index += 1) {
+        outWeights[index] = 0;
+    }
+
+    for (let t = 0; t < triangles.length; t += 3) {
+        const a = triangles[t]!;
+        const b = triangles[t + 1]!;
+        const c = triangles[t + 2]!;
+        const pa = children[a]!;
+        const pb = children[b]!;
+        const pc = children[c]!;
+        const area = (pb.x - pa.x) * (pc.y - pa.y) - (pb.y - pa.y) * (pc.x - pa.x);
+        if (Math.abs(area) <= epsilon) {
+            continue;
+        }
+
+        let wa = ((pb.x - x) * (pc.y - y) - (pb.y - y) * (pc.x - x)) / area;
+        let wb = ((pc.x - x) * (pa.y - y) - (pc.y - y) * (pa.x - x)) / area;
+        let wc = 1 - wa - wb;
+        if (wa < -epsilon || wb < -epsilon || wc < -epsilon) {
+            continue;
+        }
+
+        wa = Math.max(0, wa);
+        wb = Math.max(0, wb);
+        wc = Math.max(0, wc);
+        const total = wa + wb + wc;
+        if (total <= BLEND_EPSILON) {
+            continue;
+        }
+
+        const inverse = 1 / total;
+        outWeights[a] = wa * inverse;
+        outWeights[b] = wb * inverse;
+        outWeights[c] = wc * inverse;
+        return true;
+    }
+
+    return false;
 };

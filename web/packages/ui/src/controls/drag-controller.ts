@@ -2,6 +2,7 @@ import type { UIRuntime } from '../runtime';
 import type { UIInputEvent, WidgetId } from '../types';
 import type { WidgetController, WidgetControllerContext } from '../widget';
 import { clamp } from '@axrone/numeric';
+import type { IVec2Like } from '@axrone/numeric';
 import { asString, asNumber, asBoolean } from './internals';
 
 /**
@@ -42,7 +43,7 @@ export interface DragControllerState {
     startY: number;
     offsetX: number;
     offsetY: number;
-    originalPosition: { x: number; y: number } | null;
+    originalPosition: IVec2Like | null;
 }
 
 type DragContext = WidgetControllerContext<
@@ -228,34 +229,7 @@ export const dragController: WidgetController<
                     if (!state.dragging) {
                         return false;
                     }
-                    // Cancel drag and restore original position.
-                    state.dragging = false;
-                    applyGhostOpacity(typed, false);
-                    if (state.originalPosition) {
-                        typed.runtime.updateWidget(typed.widget as WidgetId, {
-                            layout: {
-                                position: 'absolute',
-                                inset: {
-                                    left: state.originalPosition.x,
-                                    top: state.originalPosition.y,
-                                },
-                            },
-                        });
-                    }
-
-                    // Dispatch onDragEnd callback (cancelled — no onDrop).
-                    const onCancelEnd = asString(props.onDragEnd);
-                    if (onCancelEnd) {
-                        const restoredBox = state.originalPosition
-                            ? { x: state.originalPosition.x, y: state.originalPosition.y }
-                            : typed.runtime.getLayoutBox(typed.widget as WidgetId);
-                        typed.runtime.emitControllerEvent(typed.widget as WidgetId, onCancelEnd, {
-                            x: restoredBox.x,
-                            y: restoredBox.y,
-                            cancelled: true,
-                        });
-                    }
-
+                    updateDragPosition(typed, event.x, event.y);
                     return true;
                 }
                 default:

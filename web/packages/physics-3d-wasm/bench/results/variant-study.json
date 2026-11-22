@@ -1,0 +1,1573 @@
+{
+  "generatedAt": "2026-11-11T12:43:42.073Z",
+  "host": {
+    "cpus": 16,
+    "processes": 605,
+    "cpuBusyPercent": 74,
+    "freeMemoryMb": 2759,
+    "totalMemoryMb": 31622,
+    "freemem": 3038568448,
+    "totalmem": 33158033408,
+    "node": "v24.18.0",
+    "platform": "win32-x64",
+    "loadSource": "powershell"
+  },
+  "hostAfter": {
+    "cpus": 16,
+    "processes": 599,
+    "cpuBusyPercent": 31,
+    "freeMemoryMb": 2585,
+    "totalMemoryMb": 31622,
+    "freemem": 2795507712,
+    "totalmem": 33158033408,
+    "node": "v24.18.0",
+    "platform": "win32-x64",
+    "loadSource": "powershell"
+  },
+  "hostQuiet": false,
+  "hostLoadNote": "Host busy 74% before / 31% after with 605 / 599 processes, above the 5% quiet bound; every ms column in this artifact is a loaded-host excerpt. Contacts, fingerprints, memory and module identities are load-independent.",
+  "measuredAgainstBase": {
+    "preset": "wasm-release",
+    "wasm": "build/wasm-release/physics.wasm",
+    "bytes": 218257,
+    "sha256": "4c2a6ae640e6ccbcd007c25f780a6fefb2af375e99319dad9257647266b484cc",
+    "optWasm": "build/wasm-release/physics.opt.wasm",
+    "optBytes": 144738,
+    "optSha256": "09085b61c44876c6dfca4c773b1f541ad34db44e4e2ea8fdbe8772b4ab86e494"
+  },
+  "repeats": 3,
+  "counts": [
+    250,
+    1000,
+    2000,
+    5000
+  ],
+  "adoptionGain": 1.15,
+  "pass1Order": [
+    "wasm-release",
+    "wasm-simd",
+    "wasm-fast",
+    "wasm-fast-simd"
+  ],
+  "pass2Order": [
+    "wasm-simd",
+    "wasm-fast",
+    "wasm-fast-simd",
+    "wasm-release"
+  ],
+  "variants": {
+    "wasm-release": {
+      "preset": "wasm-release",
+      "simd": false,
+      "fastMath": false,
+      "wasm": "build/wasm-release/physics.wasm",
+      "wasmBytes": 218257,
+      "wasmSha256": "4c2a6ae640e6ccbcd007c25f780a6fefb2af375e99319dad9257647266b484cc",
+      "optWasm": "build/wasm-release/physics.opt.wasm",
+      "optWasmBytes": 144738,
+      "optWasmSha256": "09085b61c44876c6dfca4c773b1f541ad34db44e4e2ea8fdbe8772b4ab86e494",
+      "invocationSources": [
+        "bench-json"
+      ],
+      "benchReports": [
+        "bench/results/bench-2026-11-11T12-36-26-904Z.json",
+        "bench/results/bench-2026-11-11T12-36-45-371Z.json",
+        "bench/results/bench-2026-11-11T12-37-03-801Z.json"
+      ],
+      "cells": [
+        {
+          "count": 250,
+          "msPerStep": 1.1965783333333333,
+          "samples": [
+            1.1965783333333333,
+            1.2156258333333332,
+            1.1949125
+          ],
+          "spread": 0.02071333333333314,
+          "minMs": 1.1806775,
+          "maxMs": 1.2279575,
+          "msSource": "bench-json",
+          "contacts": 1190,
+          "fingerprint": "abf8513a7c8a2feb",
+          "memoryMb": 3.3125,
+          "memorySamples": [
+            3.3125,
+            3.3125,
+            3.3125
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0055280112044818
+        },
+        {
+          "count": 1000,
+          "msPerStep": 4.997686666666667,
+          "samples": [
+            5.0316125,
+            4.997686666666667,
+            4.98164
+          ],
+          "spread": 0.049972499999999975,
+          "minMs": 4.944524166666667,
+          "maxMs": 5.093638333333333,
+          "msSource": "bench-json",
+          "contacts": 4752,
+          "fingerprint": "5fe528523ae0b090",
+          "memoryMb": 11.625,
+          "memorySamples": [
+            11.625,
+            11.625,
+            11.625
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0517017396184063
+        },
+        {
+          "count": 2000,
+          "msPerStep": 10.405495,
+          "samples": [
+            10.45926,
+            10.287015833333333,
+            10.405495
+          ],
+          "spread": 0.1722441666666672,
+          "minMs": 10.284430833333333,
+          "maxMs": 10.673515,
+          "msSource": "bench-json",
+          "contacts": 9518,
+          "fingerprint": "e0ba8d3efc221e7c",
+          "memoryMb": 22.75,
+          "memorySamples": [
+            22.75,
+            22.75,
+            22.75
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.093243853750788
+        },
+        {
+          "count": 5000,
+          "msPerStep": 27.322040833333332,
+          "samples": [
+            27.133310833333333,
+            27.322040833333332,
+            27.42960833333333
+          ],
+          "spread": 0.2962974999999979,
+          "minMs": 27.08706916666667,
+          "maxMs": 28.391446666666667,
+          "msSource": "bench-json",
+          "contacts": 24121,
+          "fingerprint": "98ddbd470475b15c",
+          "memoryMb": 49.875,
+          "memorySamples": [
+            49.875,
+            49.875,
+            49.875
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.1327076337354725
+        }
+      ],
+      "matchesRelease": {
+        "isRelease": true,
+        "contactsEqual": true,
+        "fingerprintsEqual": true,
+        "behaviourChanged": false,
+        "roundingChanged": false,
+        "perSize": [
+          {
+            "count": 250,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 1000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 2000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 5000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          }
+        ]
+      }
+    },
+    "wasm-simd": {
+      "preset": "wasm-simd",
+      "simd": true,
+      "fastMath": false,
+      "wasm": "build/wasm-simd/physics.wasm",
+      "wasmBytes": 219658,
+      "wasmSha256": "a1cc8cdc101de32d2694f8cfbdbd5e3d2dabc95e40b417f3608220a8d8db35f3",
+      "optWasm": "build/wasm-simd/physics.opt.wasm",
+      "optWasmBytes": 152794,
+      "optWasmSha256": "87c23f48b8e0ba6f192c78fa85904452160c35a2b8eed21e013bc64291c094bb",
+      "invocationSources": [
+        "bench-json"
+      ],
+      "benchReports": [
+        "bench/results/bench-2026-11-11T12-37-22-912Z.json",
+        "bench/results/bench-2026-11-11T12-37-41-806Z.json",
+        "bench/results/bench-2026-11-11T12-38-00-508Z.json"
+      ],
+      "cells": [
+        {
+          "count": 250,
+          "msPerStep": 1.2579016666666667,
+          "samples": [
+            1.26478,
+            1.2579016666666667,
+            1.2200558333333333
+          ],
+          "spread": 0.044724166666666676,
+          "minMs": 1.214515,
+          "maxMs": 1.3669016666666667,
+          "msSource": "bench-json",
+          "contacts": 1190,
+          "fingerprint": "abf8513a7c8a2feb",
+          "memoryMb": 3.3125,
+          "memorySamples": [
+            3.3125,
+            3.3125,
+            3.3125
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0570602240896358
+        },
+        {
+          "count": 1000,
+          "msPerStep": 5.165390833333333,
+          "samples": [
+            5.165390833333333,
+            5.279988333333333,
+            5.1080175
+          ],
+          "spread": 0.17197083333333296,
+          "minMs": 5.06881,
+          "maxMs": 5.385310833333333,
+          "msSource": "bench-json",
+          "contacts": 4752,
+          "fingerprint": "5fe528523ae0b090",
+          "memoryMb": 11.625,
+          "memorySamples": [
+            11.625,
+            11.625,
+            11.625
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0869930204826037
+        },
+        {
+          "count": 2000,
+          "msPerStep": 10.5343425,
+          "samples": [
+            10.710684166666667,
+            10.5343425,
+            10.435505
+          ],
+          "spread": 0.27517916666666764,
+          "minMs": 10.362033333333335,
+          "maxMs": 10.724821666666665,
+          "msSource": "bench-json",
+          "contacts": 9518,
+          "fingerprint": "e0ba8d3efc221e7c",
+          "memoryMb": 22.75,
+          "memorySamples": [
+            22.75,
+            22.75,
+            22.75
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.106781098970372
+        },
+        {
+          "count": 5000,
+          "msPerStep": 27.98237166666667,
+          "samples": [
+            28.21456416666667,
+            27.98237166666667,
+            27.759700833333333
+          ],
+          "spread": 0.4548633333333356,
+          "minMs": 27.453491666666668,
+          "maxMs": 28.864709166666668,
+          "msSource": "bench-json",
+          "contacts": 24121,
+          "fingerprint": "98ddbd470475b15c",
+          "memoryMb": 49.875,
+          "memorySamples": [
+            49.875,
+            49.875,
+            49.875
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.1600833989746142
+        }
+      ],
+      "matchesRelease": {
+        "isRelease": false,
+        "contactsEqual": true,
+        "fingerprintsEqual": true,
+        "behaviourChanged": false,
+        "roundingChanged": false,
+        "perSize": [
+          {
+            "count": 250,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 1000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 2000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 5000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          }
+        ]
+      }
+    },
+    "wasm-fast": {
+      "preset": "wasm-fast",
+      "simd": false,
+      "fastMath": true,
+      "wasm": "build/wasm-fast/physics.wasm",
+      "wasmBytes": 217092,
+      "wasmSha256": "450a585a9c2e242f1165352f1f5baba0e7b3c2926320281b27125b059e66956d",
+      "optWasm": "build/wasm-fast/physics.opt.wasm",
+      "optWasmBytes": 143800,
+      "optWasmSha256": "94c164089d78cf8263e8072ef39057e4afd6588c4032e442a62619ffa67fbd1f",
+      "invocationSources": [
+        "bench-json"
+      ],
+      "benchReports": [
+        "bench/results/bench-2026-11-11T12-38-18-897Z.json",
+        "bench/results/bench-2026-11-11T12-38-37-222Z.json",
+        "bench/results/bench-2026-11-11T12-38-55-744Z.json"
+      ],
+      "cells": [
+        {
+          "count": 250,
+          "msPerStep": 1.2034758333333333,
+          "samples": [
+            1.2034758333333333,
+            1.1881475,
+            1.2196733333333332
+          ],
+          "spread": 0.03152583333333325,
+          "minMs": 1.1721333333333332,
+          "maxMs": 1.2739308333333332,
+          "msSource": "bench-json",
+          "contacts": 1224,
+          "fingerprint": "6b4b9b1f503d8e4e",
+          "memoryMb": 3.3125,
+          "memorySamples": [
+            3.3125,
+            3.3125,
+            3.3125
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 0.9832318899782135
+        },
+        {
+          "count": 1000,
+          "msPerStep": 5.029158333333333,
+          "samples": [
+            5.027985833333333,
+            5.029158333333333,
+            5.0347825
+          ],
+          "spread": 0.006796666666667228,
+          "minMs": 5.006640833333333,
+          "maxMs": 5.128665,
+          "msSource": "bench-json",
+          "contacts": 4854,
+          "fingerprint": "2259226777f2d01d",
+          "memoryMb": 11.625,
+          "memorySamples": [
+            11.625,
+            11.625,
+            11.625
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0360853591539623
+        },
+        {
+          "count": 2000,
+          "msPerStep": 10.123035,
+          "samples": [
+            10.057729166666666,
+            10.123035,
+            10.195824166666666
+          ],
+          "spread": 0.13809499999999986,
+          "minMs": 10.0558375,
+          "maxMs": 10.860605,
+          "msSource": "bench-json",
+          "contacts": 9466,
+          "fingerprint": "d0bf9c21842ab872",
+          "memoryMb": 22.75,
+          "memorySamples": [
+            22.75,
+            22.75,
+            22.75
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0694099936615253
+        },
+        {
+          "count": 5000,
+          "msPerStep": 27.21603,
+          "samples": [
+            27.02095,
+            27.21603,
+            27.680713333333333
+          ],
+          "spread": 0.6597633333333341,
+          "minMs": 26.859624166666666,
+          "maxMs": 27.831496666666666,
+          "msSource": "bench-json",
+          "contacts": 24224,
+          "fingerprint": "929037328592e3ee",
+          "memoryMb": 49.875,
+          "memorySamples": [
+            49.875,
+            49.875,
+            49.875
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.1235151089828268
+        }
+      ],
+      "matchesRelease": {
+        "isRelease": false,
+        "contactsEqual": false,
+        "fingerprintsEqual": false,
+        "behaviourChanged": true,
+        "roundingChanged": true,
+        "perSize": [
+          {
+            "count": 250,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 1000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 2000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 5000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          }
+        ]
+      }
+    },
+    "wasm-fast-simd": {
+      "preset": "wasm-fast-simd",
+      "simd": true,
+      "fastMath": true,
+      "wasm": "build/wasm-fast-simd/physics.wasm",
+      "wasmBytes": 222191,
+      "wasmSha256": "d4ea0b6da02db1e098822031a09cd8d7d51a37be1f1df1958804a1948bad552a",
+      "optWasm": "build/wasm-fast-simd/physics.opt.wasm",
+      "optWasmBytes": 155788,
+      "optWasmSha256": "e768ef7852e802688a1557494539fe341fd0267f407374f1048c9a86c6c83c19",
+      "invocationSources": [
+        "bench-json"
+      ],
+      "benchReports": [
+        "bench/results/bench-2026-11-11T12-39-14-762Z.json",
+        "bench/results/bench-2026-11-11T12-39-33-509Z.json",
+        "bench/results/bench-2026-11-11T12-39-52-288Z.json"
+      ],
+      "cells": [
+        {
+          "count": 250,
+          "msPerStep": 1.2541858333333333,
+          "samples": [
+            1.3109491666666668,
+            1.2370183333333333,
+            1.2541858333333333
+          ],
+          "spread": 0.0739308333333335,
+          "minMs": 1.2258641666666668,
+          "maxMs": 1.3170291666666667,
+          "msSource": "bench-json",
+          "contacts": 1266,
+          "fingerprint": "ab935cd4ca1c5442",
+          "memoryMb": 3.3125,
+          "memorySamples": [
+            3.3125,
+            3.3125,
+            3.3125
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 0.9906681147972616
+        },
+        {
+          "count": 1000,
+          "msPerStep": 5.184126666666667,
+          "samples": [
+            5.2982925,
+            5.111841666666667,
+            5.184126666666667
+          ],
+          "spread": 0.1864508333333328,
+          "minMs": 5.042185833333333,
+          "maxMs": 5.3452475,
+          "msSource": "bench-json",
+          "contacts": 4888,
+          "fingerprint": "cc6ad71ab8c39ce3",
+          "memoryMb": 11.625,
+          "memorySamples": [
+            11.625,
+            11.625,
+            11.625
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0605823786142936
+        },
+        {
+          "count": 2000,
+          "msPerStep": 10.4164875,
+          "samples": [
+            10.478869166666666,
+            10.315656666666666,
+            10.4164875
+          ],
+          "spread": 0.1632125000000002,
+          "minMs": 10.263720833333334,
+          "maxMs": 10.527793333333333,
+          "msSource": "bench-json",
+          "contacts": 9491,
+          "fingerprint": "abe2ac2f48fc07a6",
+          "memoryMb": 22.75,
+          "memorySamples": [
+            22.75,
+            22.75,
+            22.75
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0975121167421769
+        },
+        {
+          "count": 5000,
+          "msPerStep": 28.00845916666667,
+          "samples": [
+            28.00845916666667,
+            28.03465333333333,
+            27.71886166666667
+          ],
+          "spread": 0.31579166666666225,
+          "minMs": 27.22,
+          "maxMs": 28.5263225,
+          "msSource": "bench-json",
+          "contacts": 23867,
+          "fingerprint": "c4ff77e8a69b1ab0",
+          "memoryMb": 49.875,
+          "memorySamples": [
+            49.875,
+            49.875,
+            49.875
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.173522401921761
+        }
+      ],
+      "matchesRelease": {
+        "isRelease": false,
+        "contactsEqual": false,
+        "fingerprintsEqual": false,
+        "behaviourChanged": true,
+        "roundingChanged": true,
+        "perSize": [
+          {
+            "count": 250,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 1000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 2000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 5000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          }
+        ]
+      }
+    }
+  },
+  "pass2": {
+    "wasm-simd": {
+      "preset": "wasm-simd",
+      "simd": true,
+      "fastMath": false,
+      "wasm": "build/wasm-simd/physics.wasm",
+      "wasmBytes": 219658,
+      "wasmSha256": "a1cc8cdc101de32d2694f8cfbdbd5e3d2dabc95e40b417f3608220a8d8db35f3",
+      "optWasm": "build/wasm-simd/physics.opt.wasm",
+      "optWasmBytes": 152794,
+      "optWasmSha256": "87c23f48b8e0ba6f192c78fa85904452160c35a2b8eed21e013bc64291c094bb",
+      "invocationSources": [
+        "bench-json"
+      ],
+      "benchReports": [
+        "bench/results/bench-2026-11-11T12-40-11-106Z.json",
+        "bench/results/bench-2026-11-11T12-40-29-693Z.json",
+        "bench/results/bench-2026-11-11T12-40-48-268Z.json"
+      ],
+      "cells": [
+        {
+          "count": 250,
+          "msPerStep": 1.2360125,
+          "samples": [
+            1.2360125,
+            1.2309558333333332,
+            1.2494408333333333
+          ],
+          "spread": 0.018485000000000085,
+          "minMs": 1.2120816666666667,
+          "maxMs": 1.2700491666666667,
+          "msSource": "bench-json",
+          "contacts": 1190,
+          "fingerprint": "abf8513a7c8a2feb",
+          "memoryMb": 3.3125,
+          "memorySamples": [
+            3.3125,
+            3.3125,
+            3.3125
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0386659663865547
+        },
+        {
+          "count": 1000,
+          "msPerStep": 5.106163333333333,
+          "samples": [
+            5.146469166666667,
+            5.0943241666666665,
+            5.106163333333333
+          ],
+          "spread": 0.05214500000000033,
+          "minMs": 5.055805833333333,
+          "maxMs": 5.307788333333333,
+          "msSource": "bench-json",
+          "contacts": 4752,
+          "fingerprint": "5fe528523ae0b090",
+          "memoryMb": 11.625,
+          "memorySamples": [
+            11.625,
+            11.625,
+            11.625
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0745293209876543
+        },
+        {
+          "count": 2000,
+          "msPerStep": 10.399231666666665,
+          "samples": [
+            10.399231666666665,
+            10.384715,
+            10.411934166666667
+          ],
+          "spread": 0.027219166666666794,
+          "minMs": 10.334840833333335,
+          "maxMs": 10.44877,
+          "msSource": "bench-json",
+          "contacts": 9518,
+          "fingerprint": "e0ba8d3efc221e7c",
+          "memoryMb": 22.75,
+          "memorySamples": [
+            22.75,
+            22.75,
+            22.75
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0925858023394268
+        },
+        {
+          "count": 5000,
+          "msPerStep": 27.5167975,
+          "samples": [
+            28.210965,
+            27.359729166666668,
+            27.5167975
+          ],
+          "spread": 0.8512358333333339,
+          "minMs": 27.03201333333333,
+          "maxMs": 28.513460833333333,
+          "msSource": "bench-json",
+          "contacts": 24121,
+          "fingerprint": "98ddbd470475b15c",
+          "memoryMb": 49.875,
+          "memorySamples": [
+            49.875,
+            49.875,
+            49.875
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.1407817876539115
+        }
+      ],
+      "matchesRelease": {
+        "isRelease": false,
+        "contactsEqual": true,
+        "fingerprintsEqual": true,
+        "behaviourChanged": false,
+        "roundingChanged": false,
+        "perSize": [
+          {
+            "count": 250,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 1000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 2000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 5000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          }
+        ]
+      }
+    },
+    "wasm-fast": {
+      "preset": "wasm-fast",
+      "simd": false,
+      "fastMath": true,
+      "wasm": "build/wasm-fast/physics.wasm",
+      "wasmBytes": 217092,
+      "wasmSha256": "450a585a9c2e242f1165352f1f5baba0e7b3c2926320281b27125b059e66956d",
+      "optWasm": "build/wasm-fast/physics.opt.wasm",
+      "optWasmBytes": 143800,
+      "optWasmSha256": "94c164089d78cf8263e8072ef39057e4afd6588c4032e442a62619ffa67fbd1f",
+      "invocationSources": [
+        "bench-json"
+      ],
+      "benchReports": [
+        "bench/results/bench-2026-11-11T12-41-06-227Z.json",
+        "bench/results/bench-2026-11-11T12-41-25-180Z.json",
+        "bench/results/bench-2026-11-11T12-41-44-654Z.json"
+      ],
+      "cells": [
+        {
+          "count": 250,
+          "msPerStep": 1.17809,
+          "samples": [
+            1.1720091666666668,
+            1.1787683333333332,
+            1.17809
+          ],
+          "spread": 0.006759166666666427,
+          "minMs": 1.15975,
+          "maxMs": 1.2369683333333332,
+          "msSource": "bench-json",
+          "contacts": 1224,
+          "fingerprint": "6b4b9b1f503d8e4e",
+          "memoryMb": 3.3125,
+          "memorySamples": [
+            3.3125,
+            3.3125,
+            3.3125
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 0.9624918300653595
+        },
+        {
+          "count": 1000,
+          "msPerStep": 5.066015833333333,
+          "samples": [
+            5.014046666666667,
+            5.066015833333333,
+            5.102146666666667
+          ],
+          "spread": 0.08809999999999985,
+          "minMs": 4.9519275,
+          "maxMs": 5.1376475,
+          "msSource": "bench-json",
+          "contacts": 4854,
+          "fingerprint": "2259226777f2d01d",
+          "memoryMb": 11.625,
+          "memorySamples": [
+            11.625,
+            11.625,
+            11.625
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0436785812388407
+        },
+        {
+          "count": 2000,
+          "msPerStep": 10.33351,
+          "samples": [
+            10.052121666666666,
+            10.33351,
+            10.35895
+          ],
+          "spread": 0.3068283333333337,
+          "minMs": 9.943873333333334,
+          "maxMs": 10.870155,
+          "msSource": "bench-json",
+          "contacts": 9466,
+          "fingerprint": "d0bf9c21842ab872",
+          "memoryMb": 22.75,
+          "memorySamples": [
+            22.75,
+            22.75,
+            22.75
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0916448341432496
+        },
+        {
+          "count": 5000,
+          "msPerStep": 29.297963333333332,
+          "samples": [
+            26.52382,
+            29.297963333333332,
+            29.941665
+          ],
+          "spread": 3.417845,
+          "minMs": 26.336706666666668,
+          "maxMs": 30.19249333333333,
+          "msSource": "bench-json",
+          "contacts": 24224,
+          "fingerprint": "929037328592e3ee",
+          "memoryMb": 49.875,
+          "memorySamples": [
+            49.875,
+            49.875,
+            49.875
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.2094601772346985
+        }
+      ],
+      "matchesRelease": {
+        "isRelease": false,
+        "contactsEqual": false,
+        "fingerprintsEqual": false,
+        "behaviourChanged": true,
+        "roundingChanged": true,
+        "perSize": [
+          {
+            "count": 250,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 1000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 2000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 5000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          }
+        ]
+      }
+    },
+    "wasm-fast-simd": {
+      "preset": "wasm-fast-simd",
+      "simd": true,
+      "fastMath": true,
+      "wasm": "build/wasm-fast-simd/physics.wasm",
+      "wasmBytes": 222191,
+      "wasmSha256": "d4ea0b6da02db1e098822031a09cd8d7d51a37be1f1df1958804a1948bad552a",
+      "optWasm": "build/wasm-fast-simd/physics.opt.wasm",
+      "optWasmBytes": 155788,
+      "optWasmSha256": "e768ef7852e802688a1557494539fe341fd0267f407374f1048c9a86c6c83c19",
+      "invocationSources": [
+        "bench-json"
+      ],
+      "benchReports": [
+        "bench/results/bench-2026-11-11T12-42-04-260Z.json",
+        "bench/results/bench-2026-11-11T12-42-23-710Z.json",
+        "bench/results/bench-2026-11-11T12-42-43-281Z.json"
+      ],
+      "cells": [
+        {
+          "count": 250,
+          "msPerStep": 1.2794991666666669,
+          "samples": [
+            1.2794991666666669,
+            1.2932483333333333,
+            1.2666541666666666
+          ],
+          "spread": 0.026594166666666696,
+          "minMs": 1.24399,
+          "maxMs": 1.3540233333333334,
+          "msSource": "bench-json",
+          "contacts": 1266,
+          "fingerprint": "ab935cd4ca1c5442",
+          "memoryMb": 3.3125,
+          "memorySamples": [
+            3.3125,
+            3.3125,
+            3.3125
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0106628488678253
+        },
+        {
+          "count": 1000,
+          "msPerStep": 5.400885833333333,
+          "samples": [
+            5.400885833333333,
+            5.468515833333333,
+            5.237116666666667
+          ],
+          "spread": 0.23139916666666593,
+          "minMs": 5.20195,
+          "maxMs": 5.700725833333333,
+          "msSource": "bench-json",
+          "contacts": 4888,
+          "fingerprint": "cc6ad71ab8c39ce3",
+          "memoryMb": 11.625,
+          "memorySamples": [
+            11.625,
+            11.625,
+            11.625
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.104927543644299
+        },
+        {
+          "count": 2000,
+          "msPerStep": 10.582323333333333,
+          "samples": [
+            10.830348333333333,
+            10.582323333333333,
+            10.532188333333334
+          ],
+          "spread": 0.2981599999999993,
+          "minMs": 10.444048333333335,
+          "maxMs": 11.780048333333333,
+          "msSource": "bench-json",
+          "contacts": 9491,
+          "fingerprint": "abe2ac2f48fc07a6",
+          "memoryMb": 22.75,
+          "memorySamples": [
+            22.75,
+            22.75,
+            22.75
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.1149850735784779
+        },
+        {
+          "count": 5000,
+          "msPerStep": 28.854380833333334,
+          "samples": [
+            28.854380833333334,
+            28.563870833333333,
+            29.533584166666667
+          ],
+          "spread": 0.9697133333333348,
+          "minMs": 27.928889166666668,
+          "maxMs": 30.99806416666667,
+          "msSource": "bench-json",
+          "contacts": 23867,
+          "fingerprint": "c4ff77e8a69b1ab0",
+          "memoryMb": 49.875,
+          "memorySamples": [
+            49.875,
+            49.875,
+            49.875
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.2089655521570928
+        }
+      ],
+      "matchesRelease": {
+        "isRelease": false,
+        "contactsEqual": false,
+        "fingerprintsEqual": false,
+        "behaviourChanged": true,
+        "roundingChanged": true,
+        "perSize": [
+          {
+            "count": 250,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 1000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 2000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          },
+          {
+            "count": 5000,
+            "contactsEqual": false,
+            "fingerprintEqual": false
+          }
+        ]
+      }
+    },
+    "wasm-release": {
+      "preset": "wasm-release",
+      "simd": false,
+      "fastMath": false,
+      "wasm": "build/wasm-release/physics.wasm",
+      "wasmBytes": 218257,
+      "wasmSha256": "4c2a6ae640e6ccbcd007c25f780a6fefb2af375e99319dad9257647266b484cc",
+      "optWasm": "build/wasm-release/physics.opt.wasm",
+      "optWasmBytes": 144738,
+      "optWasmSha256": "09085b61c44876c6dfca4c773b1f541ad34db44e4e2ea8fdbe8772b4ab86e494",
+      "invocationSources": [
+        "bench-json"
+      ],
+      "benchReports": [
+        "bench/results/bench-2026-11-11T12-43-03-069Z.json",
+        "bench/results/bench-2026-11-11T12-43-21-479Z.json",
+        "bench/results/bench-2026-11-11T12-43-40-014Z.json"
+      ],
+      "cells": [
+        {
+          "count": 250,
+          "msPerStep": 1.1918208333333333,
+          "samples": [
+            1.2093508333333332,
+            1.1918208333333333,
+            1.1873491666666667
+          ],
+          "spread": 0.022001666666666475,
+          "minMs": 1.1772358333333333,
+          "maxMs": 1.2337666666666667,
+          "msSource": "bench-json",
+          "contacts": 1190,
+          "fingerprint": "abf8513a7c8a2feb",
+          "memoryMb": 3.3125,
+          "memorySamples": [
+            3.3125,
+            3.3125,
+            3.3125
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0015301120448181
+        },
+        {
+          "count": 1000,
+          "msPerStep": 5.044986666666667,
+          "samples": [
+            5.125965,
+            4.995361666666667,
+            5.044986666666667
+          ],
+          "spread": 0.13060333333333318,
+          "minMs": 4.97743,
+          "maxMs": 5.214744166666667,
+          "msSource": "bench-json",
+          "contacts": 4752,
+          "fingerprint": "5fe528523ae0b090",
+          "memoryMb": 11.625,
+          "memorySamples": [
+            11.625,
+            11.625,
+            11.625
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.0616554433221101
+        },
+        {
+          "count": 2000,
+          "msPerStep": 10.47423,
+          "samples": [
+            10.775555,
+            10.420076666666667,
+            10.47423
+          ],
+          "spread": 0.355478333333334,
+          "minMs": 10.272199166666667,
+          "maxMs": 11.367855833333333,
+          "msSource": "bench-json",
+          "contacts": 9518,
+          "fingerprint": "e0ba8d3efc221e7c",
+          "memoryMb": 22.75,
+          "memorySamples": [
+            22.75,
+            22.75,
+            22.75
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.100465433914688
+        },
+        {
+          "count": 5000,
+          "msPerStep": 27.352665,
+          "samples": [
+            27.17964416666667,
+            27.352665,
+            27.600585833333334
+          ],
+          "spread": 0.4209416666666641,
+          "minMs": 27.00096166666667,
+          "maxMs": 27.7907175,
+          "msSource": "bench-json",
+          "contacts": 24121,
+          "fingerprint": "98ddbd470475b15c",
+          "memoryMb": 49.875,
+          "memorySamples": [
+            49.875,
+            49.875,
+            49.875
+          ],
+          "memorySource": "bench-json",
+          "loadedBytesVerified": true,
+          "microsecondsPerContact": 1.1339772397495957
+        }
+      ],
+      "matchesRelease": {
+        "isRelease": true,
+        "contactsEqual": true,
+        "fingerprintsEqual": true,
+        "behaviourChanged": false,
+        "roundingChanged": false,
+        "perSize": [
+          {
+            "count": 250,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 1000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 2000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          },
+          {
+            "count": 5000,
+            "contactsEqual": true,
+            "fingerprintEqual": true
+          }
+        ]
+      }
+    }
+  },
+  "decision": {
+    "adopt": null,
+    "threshold": 1.15,
+    "counts": [
+      250,
+      1000,
+      2000,
+      5000
+    ],
+    "candidates": [
+      {
+        "preset": "wasm-simd",
+        "matched": true,
+        "contactsEqual": true,
+        "fingerprintsEqual": true,
+        "worstGain": 0.9512495014846152,
+        "gains": [
+          0.9512495014846152,
+          0.9675331118055119,
+          0.9877688142378133,
+          0.9764018989812812
+        ],
+        "gainsExceedSpread": [
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      {
+        "preset": "wasm-fast",
+        "matched": false,
+        "contactsEqual": false,
+        "fingerprintsEqual": false,
+        "worstGain": 0.9937421603018398,
+        "gains": [
+          0.9942686842486105,
+          0.9937421603018398,
+          1.0279026991411173,
+          1.0038951615402147
+        ],
+        "gainsExceedSpread": [
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      {
+        "preset": "wasm-fast-simd",
+        "matched": false,
+        "contactsEqual": false,
+        "fingerprintsEqual": false,
+        "worstGain": 0.9540678115882614,
+        "gains": [
+          0.9540678115882614,
+          0.9640363725680571,
+          0.9989447018488717,
+          0.9754924635714965
+        ],
+        "gainsExceedSpread": [
+          false,
+          false,
+          false,
+          false
+        ]
+      }
+    ],
+    "blockedByCrossCheck": false,
+    "crossCheckRan": true,
+    "crossCheckTrustworthy": true,
+    "crossPassAgreementClaimed": true,
+    "reason": "no variant reaches 1.15x on every counted size while matching wasm-release on contact counts AND fingerprints at every counted size"
+  },
+  "pass2Decision": {
+    "adopt": null,
+    "threshold": 1.15,
+    "counts": [
+      250,
+      1000,
+      2000,
+      5000
+    ],
+    "candidates": [
+      {
+        "preset": "wasm-simd",
+        "matched": true,
+        "contactsEqual": true,
+        "fingerprintsEqual": true,
+        "worstGain": 0.9642465859635994,
+        "gains": [
+          0.9642465859635994,
+          0.9880190540973688,
+          1.0072119110081692,
+          0.9940351888696349
+        ],
+        "gainsExceedSpread": [
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      {
+        "preset": "wasm-fast",
+        "matched": false,
+        "contactsEqual": false,
+        "fingerprintsEqual": false,
+        "worstGain": 0.9336029501026749,
+        "gains": [
+          1.0116551649987124,
+          0.9958489733631904,
+          1.0136178316951356,
+          0.9336029501026749
+        ],
+        "gainsExceedSpread": [
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      {
+        "preset": "wasm-fast-simd",
+        "matched": false,
+        "contactsEqual": false,
+        "fingerprintsEqual": false,
+        "worstGain": 0.931474489692907,
+        "gains": [
+          0.931474489692907,
+          0.9341035567776461,
+          0.9897854818900828,
+          0.9479553610244683
+        ],
+        "gainsExceedSpread": [
+          false,
+          false,
+          false,
+          false
+        ]
+      }
+    ],
+    "blockedByCrossCheck": false,
+    "crossCheckRan": true,
+    "crossCheckTrustworthy": true,
+    "crossPassAgreementClaimed": true,
+    "reason": "no variant reaches 1.15x on every counted size while matching wasm-release on contact counts AND fingerprints at every counted size"
+  },
+  "crossCheck": {
+    "adoptAgrees": true,
+    "adoptAgreesOnNullOnly": true,
+    "mediansAgreeWithinSpread": true,
+    "baseColumnAgreesWithinSpread": true,
+    "baseColumnWorstMedianDriftMsPerStep": 0.06873500000000021,
+    "baseColumnWorstToleranceMsPerStep": 0.717239166666662,
+    "trustworthy": true,
+    "perVariant": [
+      {
+        "preset": "wasm-release",
+        "isBaseColumn": true,
+        "perSize": [
+          {
+            "count": 250,
+            "gainPass1": 1,
+            "gainPass2": 1,
+            "medianPass1": 1.1965783333333333,
+            "medianPass2": 1.1918208333333333,
+            "medianDiff": 0.00475749999999997,
+            "combinedSpreadTolerance": 0.042714999999999614,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 1000,
+            "gainPass1": 1,
+            "gainPass2": 1,
+            "medianPass1": 4.997686666666667,
+            "medianPass2": 5.044986666666667,
+            "medianDiff": 0.047300000000000786,
+            "combinedSpreadTolerance": 0.18057583333333316,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 2000,
+            "gainPass1": 1,
+            "gainPass2": 1,
+            "medianPass1": 10.405495,
+            "medianPass2": 10.47423,
+            "medianDiff": 0.06873500000000021,
+            "combinedSpreadTolerance": 0.5277225000000012,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 5000,
+            "gainPass1": 1,
+            "gainPass2": 1,
+            "medianPass1": 27.322040833333332,
+            "medianPass2": 27.352665,
+            "medianDiff": 0.030624166666665786,
+            "combinedSpreadTolerance": 0.717239166666662,
+            "mediansAgreeWithinSpread": true
+          }
+        ]
+      },
+      {
+        "preset": "wasm-simd",
+        "isBaseColumn": false,
+        "perSize": [
+          {
+            "count": 250,
+            "gainPass1": 0.9512495014846152,
+            "gainPass2": 0.9642465859635994,
+            "medianPass1": 1.2579016666666667,
+            "medianPass2": 1.2360125,
+            "medianDiff": 0.021889166666666737,
+            "combinedSpreadTolerance": 0.06320916666666676,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 1000,
+            "gainPass1": 0.9675331118055119,
+            "gainPass2": 0.9880190540973688,
+            "medianPass1": 5.165390833333333,
+            "medianPass2": 5.106163333333333,
+            "medianDiff": 0.05922750000000043,
+            "combinedSpreadTolerance": 0.2241158333333333,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 2000,
+            "gainPass1": 0.9877688142378133,
+            "gainPass2": 1.0072119110081692,
+            "medianPass1": 10.5343425,
+            "medianPass2": 10.399231666666665,
+            "medianDiff": 0.13511083333333396,
+            "combinedSpreadTolerance": 0.30239833333333443,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 5000,
+            "gainPass1": 0.9764018989812812,
+            "gainPass2": 0.9940351888696349,
+            "medianPass1": 27.98237166666667,
+            "medianPass2": 27.5167975,
+            "medianDiff": 0.46557416666666995,
+            "combinedSpreadTolerance": 1.3060991666666695,
+            "mediansAgreeWithinSpread": true
+          }
+        ]
+      },
+      {
+        "preset": "wasm-fast",
+        "isBaseColumn": false,
+        "perSize": [
+          {
+            "count": 250,
+            "gainPass1": 0.9942686842486105,
+            "gainPass2": 1.0116551649987124,
+            "medianPass1": 1.2034758333333333,
+            "medianPass2": 1.17809,
+            "medianDiff": 0.02538583333333322,
+            "combinedSpreadTolerance": 0.03828499999999968,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 1000,
+            "gainPass1": 0.9937421603018398,
+            "gainPass2": 0.9958489733631904,
+            "medianPass1": 5.029158333333333,
+            "medianPass2": 5.066015833333333,
+            "medianDiff": 0.03685749999999999,
+            "combinedSpreadTolerance": 0.09489666666666707,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 2000,
+            "gainPass1": 1.0279026991411173,
+            "gainPass2": 1.0136178316951356,
+            "medianPass1": 10.123035,
+            "medianPass2": 10.33351,
+            "medianDiff": 0.21047500000000063,
+            "combinedSpreadTolerance": 0.44492333333333356,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 5000,
+            "gainPass1": 1.0038951615402147,
+            "gainPass2": 0.9336029501026749,
+            "medianPass1": 27.21603,
+            "medianPass2": 29.297963333333332,
+            "medianDiff": 2.081933333333332,
+            "combinedSpreadTolerance": 4.077608333333334,
+            "mediansAgreeWithinSpread": true
+          }
+        ]
+      },
+      {
+        "preset": "wasm-fast-simd",
+        "isBaseColumn": false,
+        "perSize": [
+          {
+            "count": 250,
+            "gainPass1": 0.9540678115882614,
+            "gainPass2": 0.931474489692907,
+            "medianPass1": 1.2541858333333333,
+            "medianPass2": 1.2794991666666669,
+            "medianDiff": 0.02531333333333352,
+            "combinedSpreadTolerance": 0.1005250000000002,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 1000,
+            "gainPass1": 0.9640363725680571,
+            "gainPass2": 0.9341035567776461,
+            "medianPass1": 5.184126666666667,
+            "medianPass2": 5.400885833333333,
+            "medianDiff": 0.21675916666666595,
+            "combinedSpreadTolerance": 0.4178499999999987,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 2000,
+            "gainPass1": 0.9989447018488717,
+            "gainPass2": 0.9897854818900828,
+            "medianPass1": 10.4164875,
+            "medianPass2": 10.582323333333333,
+            "medianDiff": 0.16583583333333252,
+            "combinedSpreadTolerance": 0.4613724999999995,
+            "mediansAgreeWithinSpread": true
+          },
+          {
+            "count": 5000,
+            "gainPass1": 0.9754924635714965,
+            "gainPass2": 0.9479553610244683,
+            "medianPass1": 28.00845916666667,
+            "medianPass2": 28.854380833333334,
+            "medianDiff": 0.8459216666666656,
+            "combinedSpreadTolerance": 1.285504999999997,
+            "mediansAgreeWithinSpread": true
+          }
+        ]
+      }
+    ]
+  }
+}

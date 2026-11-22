@@ -150,7 +150,7 @@ export class IslandSolver2D {
         positionIterations: number,
         allowSleep: boolean,
         flags: SolverFlags,
-        gravity: { x: number; y: number },
+        gravity: IVec2Like,
         profiler?: ProfilerData,
         limits?: SolverLimits
     ): void {
@@ -248,7 +248,7 @@ export class IslandSolver2D {
         velIters: number,
         posIters: number,
         flags: SolverFlags,
-        gravity: { x: number; y: number },
+        gravity: IVec2Like,
         allowSleep: boolean,
         profiler?: ProfilerData,
         limits?: SolverLimits

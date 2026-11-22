@@ -14,7 +14,7 @@ class TestComponent extends Component {
         this.name = name;
     }
 
-    awake(): void {
+    onLoad(): void {
         this.value = 1;
     }
 
@@ -30,7 +30,7 @@ class TestComponent extends Component {
 class DependentComponent extends Component {
     dependency?: TestComponent;
 
-    awake(): void {
+    onLoad(): void {
         this.dependency = this.requireComponent(TestComponent);
     }
 }
@@ -39,7 +39,7 @@ class AsyncComponent extends Component {
     initialized = false;
     started = false;
 
-    async awake(): Promise<void> {
+    async onLoad(): Promise<void> {
         await new Promise((resolve) => setTimeout(resolve, 10));
         this.initialized = true;
     }
@@ -51,12 +51,12 @@ class AsyncComponent extends Component {
 }
 
 class ErrorComponent extends Component {
-    shouldThrowInAwake = false;
+    shouldThrowInOnLoad = false;
     shouldThrowInStart = false;
 
-    awake(): void {
-        if (this.shouldThrowInAwake) {
-            throw new Error('Awake error');
+    onLoad(): void {
+        if (this.shouldThrowInOnLoad) {
+            throw new Error('OnLoad error');
         }
     }
 
@@ -607,7 +607,9 @@ describe('Actor', () => {
         it('calls fixedUpdate on enabled components of active actor', () => {
             const fixedUpdateSpy = vi.fn();
             class FixedComp extends Component {
-                fixedUpdate(dt: number) { fixedUpdateSpy(dt); }
+                fixedUpdate(dt: number) {
+                    fixedUpdateSpy(dt);
+                }
             }
             world.registerComponentType(FixedComp);
 
@@ -620,7 +622,9 @@ describe('Actor', () => {
         it('skips inactive actors', () => {
             const fixedUpdateSpy = vi.fn();
             class FixedComp2 extends Component {
-                fixedUpdate(dt: number) { fixedUpdateSpy(dt); }
+                fixedUpdate(dt: number) {
+                    fixedUpdateSpy(dt);
+                }
             }
             world.registerComponentType(FixedComp2);
 
@@ -634,7 +638,9 @@ describe('Actor', () => {
         it('skips destroyed actors', () => {
             const fixedUpdateSpy = vi.fn();
             class FixedComp3 extends Component {
-                fixedUpdate(dt: number) { fixedUpdateSpy(dt); }
+                fixedUpdate(dt: number) {
+                    fixedUpdateSpy(dt);
+                }
             }
             world.registerComponentType(FixedComp3);
 
@@ -652,7 +658,9 @@ describe('Actor', () => {
         it('calls lateUpdate on enabled components', () => {
             const lateUpdateSpy = vi.fn();
             class LateComp extends Component {
-                lateUpdate(dt: number) { lateUpdateSpy(dt); }
+                lateUpdate(dt: number) {
+                    lateUpdateSpy(dt);
+                }
             }
             world.registerComponentType(LateComp);
 
@@ -665,7 +673,9 @@ describe('Actor', () => {
         it('skips inactive actors', () => {
             const lateUpdateSpy = vi.fn();
             class LateComp2 extends Component {
-                lateUpdate(dt: number) { lateUpdateSpy(dt); }
+                lateUpdate(dt: number) {
+                    lateUpdateSpy(dt);
+                }
             }
             world.registerComponentType(LateComp2);
 
@@ -747,7 +757,9 @@ describe('Actor', () => {
         it('calls onDestroy on components', () => {
             const onDestroySpy = vi.fn();
             class DestroyComp extends Component {
-                onDestroy() { onDestroySpy(); }
+                onDestroy() {
+                    onDestroySpy();
+                }
             }
             world.registerComponentType(DestroyComp);
 
@@ -797,17 +809,23 @@ describe('Actor', () => {
     describe('property setters on destroyed actor', () => {
         it('name setter throws ActorError', () => {
             actor.destroy();
-            expect(() => { actor.name = 'New'; }).toThrow(ActorError);
+            expect(() => {
+                actor.name = 'New';
+            }).toThrow(ActorError);
         });
 
         it('layer setter throws ActorError', () => {
             actor.destroy();
-            expect(() => { actor.layer = 5; }).toThrow(ActorError);
+            expect(() => {
+                actor.layer = 5;
+            }).toThrow(ActorError);
         });
 
         it('tag setter throws ActorError', () => {
             actor.destroy();
-            expect(() => { actor.tag = 'new'; }).toThrow(ActorError);
+            expect(() => {
+                actor.tag = 'new';
+            }).toThrow(ActorError);
         });
     });
 
@@ -837,6 +855,30 @@ describe('Actor', () => {
             expect(str).toContain(actor.id);
             expect(str).toContain('TestComponent');
             expect(str).toContain('active');
+        });
+    });
+
+    describe('revision tracking', () => {
+        it('increments when components or active state change', () => {
+            const initial = actor.revision;
+
+            const component = actor.addComponent(TestComponent, 10, 'revision');
+            const afterAdd = actor.revision;
+            expect(afterAdd).toBeGreaterThan(initial);
+
+            actor.removeComponent(TestComponent);
+            expect(actor.revision).toBeGreaterThan(afterAdd);
+
+            const afterRemove = actor.revision;
+            actor.active = false;
+            expect(actor.revision).toBeGreaterThan(afterRemove);
+
+            actor.active = false;
+            const afterSameActive = actor.revision;
+            actor.active = true;
+            expect(actor.revision).toBeGreaterThan(afterSameActive);
+
+            expect(component).toBeDefined();
         });
     });
 });

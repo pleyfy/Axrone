@@ -1,0 +1,39 @@
+{
+    "name": "ray-scenes",
+    "skip": null,
+    "world": {
+        "gravity": [0, -9.81, 0],
+        "maxBodies": 16,
+        "maxContacts": 1024,
+        "velocityIterations": 10,
+        "positionIterations": 4,
+        "allowSleep": false
+    },
+    "bodies": [
+        { "type": 0, "position": [0, -0.5, 0] },
+        { "type": 0, "position": [-3, 0.5, 0] },
+        { "type": 0, "position": [2, 1, 0] },
+        { "type": 2, "position": [0, 4, 0] },
+        { "type": 0, "position": [5, 1, -2] }
+    ],
+    "shapes": [
+        { "body": 0, "kind": "box", "halfExtents": [20, 0.5, 20], "center": [0, 0, 0], "material": { "friction": 0.8, "restitution": 0 } },
+        { "body": 1, "kind": "box", "halfExtents": [0.5, 0.5, 0.5], "center": [0, 0, 0], "material": { "friction": 0.4, "restitution": 0 } },
+        { "body": 2, "kind": "sphere", "radius": 0.5, "center": [0, 0, 0], "material": { "friction": 0.4, "restitution": 0 } },
+        { "body": 3, "kind": "box", "halfExtents": [0.4, 0.4, 0.4], "center": [0, 0, 0], "material": { "friction": 0.4, "restitution": 0 } },
+        { "body": 4, "kind": "cylinder", "radius": 0.5, "height": 2, "center": [0, 0, 0], "material": { "friction": 0.4, "restitution": 0 } }
+    ],
+    "joints": [],
+    "rays": [
+        { "atStep": 0, "origin": [0, 8, 0], "direction": [0, -1, 0], "maxDistance": 20 },
+        { "atStep": 0, "origin": [-6, 0.6, 0], "direction": [1, 0, 0], "maxDistance": 20 },
+        { "atStep": 30, "origin": [0, 8, 0], "direction": [0, -1, 0], "maxDistance": 20 },
+        { "atStep": 30, "origin": [-6, 0.6, 0], "direction": [1, 0, 0], "maxDistance": 20 },
+        { "atStep": 60, "origin": [0, 8, 0], "direction": [0, -1, 0], "maxDistance": 20 },
+        { "atStep": 60, "origin": [-6, 0.6, 0], "direction": [1, 0, 0], "maxDistance": 20 },
+        { "atStep": 90, "origin": [0, 8, 0], "direction": [0, -1, 0], "maxDistance": 20 },
+        { "atStep": 90, "origin": [-6, 0.6, 0], "direction": [1, 0, 0], "maxDistance": 20 }
+    ],
+    "snapshotEvery": 30,
+    "steps": 90
+}

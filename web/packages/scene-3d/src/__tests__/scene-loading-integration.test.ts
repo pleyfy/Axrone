@@ -7,8 +7,10 @@ import {
     ManualScheduler,
 } from '../../../../tests/shared/test-harness';
 
-// Static import of the actual scene file for validation tests
-import mainSceneJson from '../../../../../../Main.scene.json';
+// Static import of the scene fixture for validation tests.
+// The fixture is tracked in-repo so validation is hermetic — it must not
+// depend on an untracked Main.scene.json in a parent checkout.
+import mainSceneJson from './fixtures/Main.scene.json';
 
 // ─── Static Scene File Validation (Main.scene.json) ─────────────────────────
 
@@ -54,6 +56,7 @@ const VALID_COMPONENT_KINDS = new Set([
     'point-light',
     'spot-light',
     'mesh-renderer',
+    'script',
     'ui-host',
     'prefab-instance',
     'animator',
@@ -114,8 +117,8 @@ describe('Main.scene.json — Static Validation', () => {
     // ─── 3. Entity Count and Identity ───────────────────────────────────────
 
     describe('Entity Structure', () => {
-        it('contains exactly 10 entities', () => {
-            expect(sceneFile.entities.length).toBe(10);
+        it('contains exactly 9 entities', () => {
+            expect(sceneFile.entities.length).toBe(9);
         });
 
         it('every entity has a unique id', () => {
@@ -145,11 +148,10 @@ describe('Main.scene.json — Static Validation', () => {
                 'World',
                 'Ground',
                 'Player',
-                'UI Host',
                 'Actor',
-                'EN_Character_Stickman_01',
-                'Actor 2',
                 'Cube',
+                'cone_0001',
+                'UI Host',
             ];
             for (const name of expectedNames) {
                 expect(names.has(name)).toBe(true);
@@ -217,19 +219,15 @@ describe('Main.scene.json — Static Validation', () => {
             }
         });
 
-        it('total component count is 13 (10 transforms + 3 extra)', () => {
+        it('total component count matches the scene composition (18)', () => {
             const totalComponents = sceneFile.entities.reduce(
                 (sum, e) => sum + e.components.length,
                 0,
             );
-            // 10 entities x 1 transform each = 10 transforms
-            // Extra: Camera(1) + DirectionalLight(1) + MeshRenderer(2) + UIHost(1) + PrefabInstance(2) = 7
-            // But some entities only have Transform, so: 10 + extras
-            // Main Camera: 2, Dir Light: 2, World: 1, Ground: 2, Player: 2,
-            // UI Host: 2, Actor: 1, Stickman: 2, Actor 2: 1, Cube: 2
-            // Total = 2+2+1+2+2+2+1+2+1+2 = 17
-            // But the task says 13 components — let's just verify the count matches reality
-            expect(totalComponents).toBe(17);
+            // 9 entities x 1 transform each = 9 transforms
+            // Extras: Camera(1) + DirectionalLight(1) + MeshRenderer(4)
+            //         + Script(1) + AudioSource(1) + UIHost(1) = 9
+            expect(totalComponents).toBe(18);
         });
 
         it('Camera component has required properties', () => {
@@ -269,18 +267,20 @@ describe('Main.scene.json — Static Validation', () => {
             }
         });
 
-        it('PrefabInstance components reference valid prefab paths', () => {
-            const prefabInstances = sceneFile.entities.flatMap((e) =>
-                e.components.filter((c) => c.kind === 'prefab-instance'),
+        it('Script components reference a script path and expose property values', () => {
+            const scripts = sceneFile.entities.flatMap((e) =>
+                e.components.filter((c) => c.kind === 'script'),
             );
-            expect(prefabInstances.length).toBe(2);
+            expect(scripts.length).toBeGreaterThan(0);
 
-            for (const pi of prefabInstances) {
-                expect(pi.properties).toHaveProperty('prefabId');
-                expect(pi.properties).toHaveProperty('prefabPath');
-                expect(typeof pi.properties.prefabId).toBe('string');
-                expect(typeof pi.properties.prefabPath).toBe('string');
-                expect((pi.properties.prefabPath as string).length).toBeGreaterThan(0);
+            for (const script of scripts) {
+                expect(script.properties).toHaveProperty('className');
+                expect(script.properties).toHaveProperty('scriptPath');
+                expect(typeof script.properties.className).toBe('string');
+                expect((script.properties.className as string).length).toBeGreaterThan(0);
+                expect((script.properties.scriptPath as string).endsWith('.ts')).toBe(true);
+                expect(script.properties).toHaveProperty('propertyValues');
+                expect(typeof script.properties.propertyValues).toBe('object');
             }
         });
     });
@@ -303,8 +303,7 @@ describe('Main.scene.json — Static Validation', () => {
                     current = entityMap.get(current.parentId);
                 }
             }
-            // If we get here, no cycles were found
-            expect(true).toBe(true);
+            expect(sceneFile.entities.length).toBeGreaterThan(0);
         });
 
         it('has exactly 2 levels (root + one level of children)', () => {

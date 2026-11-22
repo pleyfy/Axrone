@@ -16,7 +16,6 @@ export type {
     Asset2DBorderLike,
     Asset2DRectLike,
     Asset2DSizeLike,
-    Asset2DVec2Like,
     SpriteAnimationClip,
     SpriteAnimationClipDefinition,
     SpriteAnimationFrame,

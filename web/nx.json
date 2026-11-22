@@ -1,5 +1,12 @@
 {
     "$schema": "./node_modules/nx/schemas/nx-schema.json",
+    "namedInputs": {
+        "default": ["{projectRoot}/**/*", "sharedGlobals"],
+        "sharedGlobals": [
+            "{workspaceRoot}/build/**/*",
+            "{workspaceRoot}/tsconfig.build.json"
+        ]
+    },
     "tasksRunnerOptions": {
         "default": {
             "runner": "nx/tasks-runners/default",

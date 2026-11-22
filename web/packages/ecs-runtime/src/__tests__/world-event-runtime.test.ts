@@ -206,9 +206,14 @@ describe('WorldEventRuntime', () => {
             expect(handler).not.toHaveBeenCalled();
 
             runtime.resume();
+            // Resume schedules buffered delivery; settle it before clearing the
+            // spy, otherwise the queued pause-time event can land after the
+            // post-resume emit and inflate the count.
+            await runtime.drain();
+            expect(handler).toHaveBeenCalledTimes(1);
 
-            // Drain pending events: the queued event from pause is delivered,
-            // so handler may fire from the drain. Clear the count.
+            // Clear the drained queued event so the assertion below covers
+            // only the emit issued after resume.
             handler.mockClear();
 
             await runtime.emit('EntityCreated', {

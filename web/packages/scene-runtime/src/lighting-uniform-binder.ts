@@ -1,4 +1,4 @@
-import { createLightingUniformValueMap } from '@axrone/lighting';
+import { createLightingUniformValueMap, type LightingUniformValueMap } from '@axrone/lighting';
 import { Vec3 } from '@axrone/numeric';
 import type { MeshRenderer } from './components/mesh-renderer';
 import type { SceneLightingState } from './lighting-collector';
@@ -11,9 +11,13 @@ export class SceneLightingUniformBinder {
     apply(
         shader: SceneShaderResource,
         renderer: Pick<MeshRenderer, 'receiveLighting'>,
-        lighting: SceneLightingState
+        lighting: SceneLightingState,
+        precomputedValues?: LightingUniformValueMap
     ): void {
-        const values = createLightingUniformValueMap(lighting);
+        // The values map is identical for every draw in a frame — the render
+        // runtime precomputes it once per frame and passes it down, so the
+        // per-draw path only pays for the uniform writes themselves.
+        const values = precomputedValues ?? createLightingUniformValueMap(lighting);
 
         this._writer.write(shader, 'u_ReceiveLighting', renderer.receiveLighting);
 

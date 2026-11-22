@@ -112,19 +112,23 @@ describe('TweenCore', () => {
             expect(tween.isPlaying()).toBe(true);
         });
 
-        it('sets clockMode=manual with explicit time', () => {
+        it('explicit start time drives the master clock', () => {
             const obj = { x: 0 };
             const tween = to(obj, { x: 100 }, 100);
             tween.start(0);
-            expect((tween as any)._clockMode).toBe('manual');
+            tween.update(50);
+            expect(obj.x).toBeCloseTo(50, 5);
         });
 
-        it('sets clockMode=realtime without time', () => {
+        it('realtime start advances without an explicit clock', () => {
             const obj = { x: 0 };
             const tween = to(obj, { x: 100 }, 100);
-            const now = performance.now();
-            tween.start(now);
-            expect((tween as any)._clockMode).toBe('manual');
+            tween.start();
+            expect(tween.isPlaying()).toBe(true);
+            expect(tween.getStatus()).toBe('running');
+            tween.update();
+            expect(Number.isFinite(obj.x)).toBe(true);
+            tween.stop();
         });
     });
 
@@ -165,7 +169,7 @@ describe('TweenCore', () => {
             expect(tween.getStatus()).toBe('running');
         });
 
-        it('realtime pause adjusts _startTime', () => {
+        it('realtime pause and resume continues without jumping', () => {
             const obj = { x: 0 };
             const tween = to(obj, { x: 100 }, 100);
             const now = performance.now();
@@ -173,11 +177,10 @@ describe('TweenCore', () => {
             tween.update(now + 20);
             expect(obj.x).toBeCloseTo(20, 0);
             tween.pause();
-            const pausedAt = performance.now();
             tween.resume();
-            const resumedAt = performance.now();
-            const pauseDuration = resumedAt - pausedAt;
-            expect((tween as any)._startTime).toBeGreaterThan(now + pauseDuration - 10);
+            tween.update(now + 40);
+            expect(obj.x).toBeGreaterThanOrEqual(19);
+            expect(obj.x).toBeLessThanOrEqual(45);
         });
     });
 
@@ -254,7 +257,7 @@ describe('TweenCore', () => {
     });
 
     describe('dispose()', () => {
-        it('stops, clears events, chains, values, wrapper map', () => {
+        it('stops, detaches listeners and chained tweens', () => {
             const obj = { x: 0 };
             const tween = to(obj, { x: 100 }, 100);
             const chained = to(obj, { x: 200 }, 100);
@@ -268,8 +271,13 @@ describe('TweenCore', () => {
             expect(tween.isPlaying()).toBe(false);
             tween.update(50);
             expect(eventFired).toBe(false);
-            expect((tween as any)._chainedTweens).toEqual([]);
-            expect((tween as any)._eventCallbackWrappers.size).toBe(0);
+            expect(chained.isPlaying()).toBe(false);
+            tween.on('update', () => {
+                eventFired = true;
+            });
+            tween.start(0);
+            tween.update(50);
+            expect(eventFired).toBe(true);
         });
     });
 

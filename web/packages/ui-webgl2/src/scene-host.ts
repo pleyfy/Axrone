@@ -1,12 +1,18 @@
 import type { UIAsset, WidgetId, WidgetPatch } from '@axrone/ui/types';
 import { UIRuntime, deserializeUIAsset } from '@axrone/ui/runtime';
 import { resolveCanvasScale, mapViewportPointToCanvas } from '@axrone/ui/layout';
+import type { IVec2Like } from '@axrone/numeric';
 import { buttonFeedbackController, checkboxToggleController, sliderController, dropdownController, tooltipHostController, toggleSwitchController, radioGroupController, segmentedController, dragController, tabViewController, editBoxController } from '@axrone/ui/controls';
 import { UIHost, setSceneUIWidgetRefResolver } from '@axrone/scene-runtime/scene-facade';
 // Re-export UIHost so the module namespace (imported via __AXRONE_RUNTIME__.modules)
 // exposes the class for the boot-factory fallback discovery path.
 export { UIHost };
-import { attachUIOverlayToScene, resolveFramebufferSize } from './scene';
+import {
+    attachUIOverlayToScene,
+    createSceneUIResourceResolver,
+    isSceneUIResourceResolverTarget,
+    resolveFramebufferSize,
+} from './scene';
 import { WebGL2UIRenderer } from './renderer';
 import { createUIWorldSurface } from './world-surface';
 import { createUIWorldQuadRenderer, orientQuadTowardCamera } from './world-quad';
@@ -234,51 +240,31 @@ const installUIWidgetRefResolver = (): void => {
     setSceneUIWidgetRefResolver(uiWidgetRefResolver);
 };
 
-const connectUIHostInput = <TPayload>(
+/**
+ * Screen-overlay input wiring. Shares the Editor Game Preview event matrix
+ * (`mountSceneUIHostOverlay`: down/move/up/cancel/leave/wheel + capture) but
+ * keeps reference-space mapping via the asset canvas config instead of
+ * `dispatchViewportInput()`, so input works before the first
+ * `commitToViewport()` (no `lastViewport` ordering coupling). Fixed vs the old
+ * wiring: fresh bounding rect per event (no stale cache), `pointercancel`
+ * handled as `up`, and `pointerleave` clears hover via an offscreen move
+ * (the dispatcher ignores the `leave` phase entirely).
+ */
+const connectScreenOverlayInput = <TPayload>(
     runtime: UIRuntime<TPayload>,
     scene: SceneUIOverlayTarget,
     input: UIHostInputOptions,
-    getViewportSize?: () => { width: number; height: number }
 ): (() => void) => {
     const target = input.target;
 
-    // Cache the bounding rect to avoid per-pointermove layout reads.
-    // Invalidate on resize so the cache stays fresh.
-    let cachedRect: { left: number; top: number; width: number; height: number } | null = null;
-    const getRect = (): { left: number; top: number; width: number; height: number } => {
-        if (!cachedRect) {
-            cachedRect = target.getBoundingClientRect();
+    const toReferencePoint = (event: UIHostPointerEventLike): IVec2Like | null => {
+        const rect = target.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+            return null;
         }
-        return cachedRect;
-    };
-    const onResize = (): void => {
-        cachedRect = null;
-    };
-    window.addEventListener('resize', onResize);
-
-    // Convert client (CSS) coordinates to reference-space coordinates for the
-    // UI runtime's hit-test. When a canvas config is loaded (match-width-or-height
-    // etc.), we must undo the same scale+offset transform the renderer applies so
-    // that pointer positions align with visually placed widgets regardless of
-    // letterboxing/pillarboxing.
-    //
-    // We call dispatchInput() directly with reference-space coords rather than
-    // dispatchViewportInput() to avoid depending on lastViewport being set by a
-    // prior commitToViewport() call — eliminating a rendering→input ordering
-    // coupling that caused input to silently fall through with framebuffer-
-    // space coordinates hit-tested against reference-space layout boxes.
-    //
-    // getViewportSize (optional): overrides the default framebuffer-based
-    // viewport dimensions. World-space hosts pass the offscreen surface size
-    // because they render via commitToViewport(surface.width, surface.height)
-    // rather than the main canvas framebuffer.
-    const toReferencePoint = (event: UIHostPointerEventLike): { x: number; y: number } => {
-        const rect = getRect();
-        const viewport = getViewportSize
-            ? getViewportSize()
-            : resolveFramebufferSize(scene);
-        const cssToVpScaleX = rect.width > 0 ? viewport.width / rect.width : 1;
-        const cssToVpScaleY = rect.height > 0 ? viewport.height / rect.height : 1;
+        const viewport = resolveFramebufferSize(scene);
+        const cssToVpScaleX = viewport.width / rect.width;
+        const cssToVpScaleY = viewport.height / rect.height;
         const vpX = (event.clientX - rect.left) * cssToVpScaleX;
         const vpY = (event.clientY - rect.top) * cssToVpScaleY;
 
@@ -286,16 +272,18 @@ const connectUIHostInput = <TPayload>(
         if (!canvasConfig) {
             return { x: vpX, y: vpY };
         }
-
         const scaleResult = resolveCanvasScale(canvasConfig, viewport.width, viewport.height);
         return mapViewportPointToCanvas(scaleResult, vpX, vpY);
     };
 
     const dispatchPointer = (
-        phase: 'move' | 'down' | 'up' | 'leave' | 'wheel',
-        event: UIHostPointerEventLike
+        phase: 'move' | 'down' | 'up' | 'wheel',
+        event: UIHostPointerEventLike,
     ): void => {
         const point = toReferencePoint(event);
+        if (!point) {
+            return;
+        }
         runtime.dispatchInput({
             type: 'pointer',
             phase,
@@ -313,10 +301,59 @@ const connectUIHostInput = <TPayload>(
         });
     };
 
-    const onPointerDown = (event: UIHostPointerEventLike): void => dispatchPointer('down', event);
+    const clearHover = (): void => {
+        runtime.dispatchInput({
+            type: 'pointer',
+            phase: 'move',
+            x: -1,
+            y: -1,
+            pointerId: 1,
+            button: 0,
+            buttons: 0,
+            deltaX: 0,
+            deltaY: 0,
+            altKey: false,
+            ctrlKey: false,
+            shiftKey: false,
+            metaKey: false,
+        });
+    };
+
+    type CaptureTarget = UIHostInputTarget & {
+        setPointerCapture?: (pointerId: number) => void;
+        releasePointerCapture?: (pointerId: number) => void;
+        hasPointerCapture?: (pointerId: number) => boolean;
+    };
+    const captureTarget = target as CaptureTarget;
+
+    const onPointerDown = (event: UIHostPointerEventLike): void => {
+        if (event.button !== undefined && event.button !== 0) {
+            return;
+        }
+        if (event.pointerId !== undefined) {
+            try {
+                captureTarget.setPointerCapture?.(event.pointerId);
+            } catch {
+                // Pointer capture is best-effort (already-released pointers).
+            }
+        }
+        dispatchPointer('down', event);
+    };
     const onPointerMove = (event: UIHostPointerEventLike): void => dispatchPointer('move', event);
-    const onPointerUp = (event: UIHostPointerEventLike): void => dispatchPointer('up', event);
-    const onPointerLeave = (event: UIHostPointerEventLike): void => dispatchPointer('leave', event);
+    const onPointerUp = (event: UIHostPointerEventLike): void => {
+        if (event.pointerId !== undefined) {
+            try {
+                if (captureTarget.hasPointerCapture?.(event.pointerId)) {
+                    captureTarget.releasePointerCapture?.(event.pointerId);
+                }
+            } catch {
+                // Ignore release failures for already-released pointers.
+            }
+        }
+        dispatchPointer('up', event);
+    };
+    const onPointerCancel = (event: UIHostPointerEventLike): void => dispatchPointer('up', event);
+    const onPointerLeave = (): void => clearHover();
     const onWheel = (event: UIHostPointerEventLike): void => dispatchPointer('wheel', event);
 
     const dispatchKey = (phase: 'down' | 'up', event: UIHostKeyEventLike): void => {
@@ -342,6 +379,7 @@ const connectUIHostInput = <TPayload>(
     target.addEventListener('pointerdown', onPointerDown);
     target.addEventListener('pointermove', onPointerMove);
     target.addEventListener('pointerup', onPointerUp);
+    target.addEventListener('pointercancel', onPointerCancel);
     target.addEventListener('pointerleave', onPointerLeave);
     target.addEventListener('wheel', onWheel);
     if (input.keyboard) {
@@ -351,10 +389,10 @@ const connectUIHostInput = <TPayload>(
     }
 
     return () => {
-        window.removeEventListener('resize', onResize);
         target.removeEventListener('pointerdown', onPointerDown);
         target.removeEventListener('pointermove', onPointerMove);
         target.removeEventListener('pointerup', onPointerUp);
+        target.removeEventListener('pointercancel', onPointerCancel);
         target.removeEventListener('pointerleave', onPointerLeave);
         target.removeEventListener('wheel', onWheel);
         if (input.keyboard) {
@@ -364,6 +402,148 @@ const connectUIHostInput = <TPayload>(
         }
     };
 };
+
+const connectUIHostInput = <TPayload>(
+    runtime: UIRuntime<TPayload>,
+    scene: SceneUIOverlayTarget,
+    input: UIHostInputOptions,
+    getViewportSize?: () => { width: number; height: number }
+): (() => void) => {
+    const target = input.target;
+
+    // Screen-overlay hosts use the hardened overlay path below (same event
+    // matrix as the Editor Game Preview: down/move/up/cancel/leave/wheel with
+    // pointer capture). The previous wiring had a cached bounding rect (stale
+    // after any layout change), no `pointercancel` listener (stuck pressed
+    // state on touch), and a `leave` phase the dispatcher ignores (hover
+    // never cleared) — all of which silently broke checkbox/radio/dropdown
+    // clicks in exported builds while preview kept working.
+    //
+    // getViewportSize (optional): world-space hosts pass the offscreen surface
+    // size because they render via commitToViewport(surface.width,
+    // surface.height) rather than the main canvas framebuffer.
+    if (!getViewportSize) {
+        return connectScreenOverlayInput(runtime, scene, input);
+    }
+
+    const toReferencePoint = (event: UIHostPointerEventLike): IVec2Like => {
+        const rect = target.getBoundingClientRect();
+        const viewport = getViewportSize();
+        const cssToVpScaleX = rect.width > 0 ? viewport.width / rect.width : 1;
+        const cssToVpScaleY = rect.height > 0 ? viewport.height / rect.height : 1;
+        const vpX = (event.clientX - rect.left) * cssToVpScaleX;
+        const vpY = (event.clientY - rect.top) * cssToVpScaleY;
+
+        const canvasConfig = runtime.getCanvasConfig();
+        if (!canvasConfig) {
+            return { x: vpX, y: vpY };
+        }
+
+        const scaleResult = resolveCanvasScale(canvasConfig, viewport.width, viewport.height);
+        return mapViewportPointToCanvas(scaleResult, vpX, vpY);
+    };
+
+    const dispatchPointer = (
+        phase: 'move' | 'down' | 'up' | 'wheel',
+        event: UIHostPointerEventLike
+    ): void => {
+        const point = toReferencePoint(event);
+        runtime.dispatchInput({
+            type: 'pointer',
+            phase,
+            x: point.x,
+            y: point.y,
+            pointerId: event.pointerId,
+            button: event.button,
+            buttons: event.buttons,
+            deltaX: event.deltaX,
+            deltaY: event.deltaY,
+            altKey: event.altKey,
+            ctrlKey: event.ctrlKey,
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+        });
+    };
+
+    const clearHover = (): void => {
+        runtime.dispatchInput({
+            type: 'pointer',
+            phase: 'move',
+            x: -1,
+            y: -1,
+            pointerId: 1,
+            button: 0,
+            buttons: 0,
+            deltaX: 0,
+            deltaY: 0,
+            altKey: false,
+            ctrlKey: false,
+            shiftKey: false,
+            metaKey: false,
+        });
+    };
+
+    const onPointerDown = (event: UIHostPointerEventLike): void => {
+        if (event.button !== undefined && event.button !== 0) {
+            return;
+        }
+        dispatchPointer('down', event);
+    };
+    const onPointerMove = (event: UIHostPointerEventLike): void => dispatchPointer('move', event);
+    const onPointerUp = (event: UIHostPointerEventLike): void => dispatchPointer('up', event);
+    const onPointerCancel = (event: UIHostPointerEventLike): void => dispatchPointer('up', event);
+    const onPointerLeave = (): void => clearHover();
+    const onWheel = (event: UIHostPointerEventLike): void => dispatchPointer('wheel', event);
+
+    const dispatchKey = (phase: 'down' | 'up', event: UIHostKeyEventLike): void => {
+        runtime.dispatchInput({
+            type: 'key',
+            phase,
+            key: event.key,
+            code: event.code,
+            repeat: event.repeat,
+            altKey: event.altKey,
+            ctrlKey: event.ctrlKey,
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+        });
+    };
+
+    const onKeyDown = (event: UIHostKeyEventLike): void => dispatchKey('down', event);
+    const onKeyUp = (event: UIHostKeyEventLike): void => dispatchKey('up', event);
+    const onBlur = (): void => {
+        runtime.dispatchInput({ type: 'focus', focused: false });
+    };
+
+    target.addEventListener('pointerdown', onPointerDown);
+    target.addEventListener('pointermove', onPointerMove);
+    target.addEventListener('pointerup', onPointerUp);
+    target.addEventListener('pointercancel', onPointerCancel);
+    target.addEventListener('pointerleave', onPointerLeave);
+    target.addEventListener('wheel', onWheel);
+    if (input.keyboard) {
+        target.addEventListener('keydown', onKeyDown);
+        target.addEventListener('keyup', onKeyUp);
+        target.addEventListener('blur', onBlur);
+    }
+
+    return () => {
+        target.removeEventListener('pointerdown', onPointerDown);
+        target.removeEventListener('pointermove', onPointerMove);
+        target.removeEventListener('pointerup', onPointerUp);
+        target.removeEventListener('pointercancel', onPointerCancel);
+        target.removeEventListener('pointerleave', onPointerLeave);
+        target.removeEventListener('wheel', onWheel);
+        if (input.keyboard) {
+            target.removeEventListener('keydown', onKeyDown);
+            target.removeEventListener('keyup', onKeyUp);
+            target.removeEventListener('blur', onBlur);
+        }
+    };
+};
+
+/** Test seam for input-wiring regression tests (not part of the runtime API). */
+export const __testConnectUIHostInput = connectUIHostInput;
 
 const resolveHostAsset = <TPayload>(
     options: UIHostBindingOptions<TPayload>,
@@ -539,7 +719,14 @@ export function bindUIHostToWorld<TPayload = unknown>(
     const initialSize = resolveWorldSurfaceSize(host);
     const surface = createUIWorldSurface(scene.gl, initialSize.width, initialSize.height);
     const quadRenderer = createUIWorldQuadRenderer(scene.gl);
-    const uiRenderer = new WebGL2UIRenderer<TPayload>({ gl: scene.gl });
+    // Mirror the screen-overlay path: when the scene owns a texture registry,
+    // resolve UI images so sprite-backed controls render in world space too.
+    const uiRenderer = new WebGL2UIRenderer<TPayload>({
+        gl: scene.gl,
+        ...(isSceneUIResourceResolverTarget(scene)
+            ? { resolveImageResource: createSceneUIResourceResolver(scene) }
+            : {}),
+    });
     runtime.fonts.setAtlasPageEvictCallback((page) => uiRenderer.handleAtlasPageEviction(page));
 
     const drawWorldFrame = (): void => {

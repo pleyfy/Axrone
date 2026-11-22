@@ -1,4 +1,4 @@
-import type { BytesLike } from '../../../types';
+import type { BytesLike } from '../../types';
 import { readU32LE, rotl32, writeU32LE, encodeBase64 } from '../bits';
 import { u32ToHex } from '../hex';
 import { asHash32, asSeed32, asHash64, type Hash32, type Hash64, type Seed32, type HashAlgorithmMetadata } from '../types';

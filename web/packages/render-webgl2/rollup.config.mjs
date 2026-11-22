@@ -20,5 +20,6 @@ export default createMultiEntryConfig({
         sync: 'src/sync.ts',
         'transform-feedback': 'src/transform-feedback.ts',
         'frame-graph': 'src/frame-graph.ts',
+        'render-target': 'src/render-target/index.ts',
     },
 });

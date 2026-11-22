@@ -25,8 +25,33 @@ interface CachedProgramEntry {
     readonly uniformLocations: Map<string, WebGLUniformLocation>;
     readonly uniformTypes: Map<string, number>;
     readonly uniformNames: string[];
+    /** Full sources retained so cache hits can be verified — a 32-bit key match alone is not trusted. */
+    readonly vertexSource: string;
+    readonly fragmentSource: string;
+    readonly attributeKey: string;
     refcount: number;
 }
+
+export interface ShaderCacheEntrySources {
+    readonly vertexSource: string;
+    readonly fragmentSource: string;
+    readonly attributeKey: string;
+}
+
+/**
+ * Verifies that a cache entry was compiled from the requested sources.
+ * A hash-key match without this check could silently return a program
+ * compiled from different sources on a 32-bit key collision.
+ */
+export const isShaderCacheEntryMatchingSources = (
+    entry: ShaderCacheEntrySources,
+    vertexSource: string,
+    fragmentSource: string,
+    attributeKey: string
+): boolean =>
+    entry.vertexSource === vertexSource &&
+    entry.fragmentSource === fragmentSource &&
+    entry.attributeKey === attributeKey;
 
 const normalizeUniformName = (name: string): string => name.replace(/\[0\]$/, '');
 
@@ -228,14 +253,23 @@ export class SceneShaderFactory {
     create(definition: SceneShaderDefinition): SceneShaderResource {
         const resolved = this._resolveSources(definition);
         const attributeNames = this._resolveAttributeNames(definition);
+        const attributeKey = JSON.stringify(attributeNames);
 
         const cacheKey = this._cacheEnabled
-            ? this._buildCacheKey(resolved.vertexSource, resolved.fragmentSource, attributeNames)
+            ? this._buildCacheKey(resolved.vertexSource, resolved.fragmentSource, attributeKey)
             : null;
 
         if (cacheKey !== null) {
             const cached = this._cache.get(cacheKey);
-            if (cached) {
+            if (
+                cached &&
+                isShaderCacheEntryMatchingSources(
+                    cached,
+                    resolved.vertexSource,
+                    resolved.fragmentSource,
+                    attributeKey
+                )
+            ) {
                 cached.refcount += 1;
                 this._cacheHits += 1;
                 return this._buildResource(definition, cached, attributeNames);
@@ -249,13 +283,13 @@ export class SceneShaderFactory {
             resolved.vertexSource,
             resolved.fragmentSource,
             attributeNames,
+            attributeKey,
             resolved.uniformNames
         );
 
         if (cacheKey !== null) {
             entry.refcount = 1;
-            this._cache.set(cacheKey, entry);
-            this._programToKey.set(entry.program, cacheKey);
+            this._storeCacheEntry(cacheKey, entry);
         }
 
         return this._buildResource(definition, entry, attributeNames);
@@ -273,6 +307,7 @@ export class SceneShaderFactory {
         const variantVertex = injectKeywordDefines(resolved.vertexSource, enabledKeywords);
         const variantFragment = injectKeywordDefines(resolved.fragmentSource, enabledKeywords);
         const attributeNames = this._resolveAttributeNames(definition);
+        const attributeKey = JSON.stringify(attributeNames);
 
         const variantUniformNames = Array.from(
             new Set(
@@ -282,12 +317,20 @@ export class SceneShaderFactory {
         );
 
         const cacheKey = this._cacheEnabled
-            ? this._buildCacheKey(variantVertex, variantFragment, attributeNames)
+            ? this._buildCacheKey(variantVertex, variantFragment, attributeKey)
             : null;
 
         if (cacheKey !== null) {
             const cached = this._cache.get(cacheKey);
-            if (cached) {
+            if (
+                cached &&
+                isShaderCacheEntryMatchingSources(
+                    cached,
+                    variantVertex,
+                    variantFragment,
+                    attributeKey
+                )
+            ) {
                 cached.refcount += 1;
                 this._cacheHits += 1;
                 return this._buildVariantResource(
@@ -306,13 +349,13 @@ export class SceneShaderFactory {
             variantVertex,
             variantFragment,
             attributeNames,
+            attributeKey,
             variantUniformNames
         );
 
         if (cacheKey !== null) {
             entry.refcount = 1;
-            this._cache.set(cacheKey, entry);
-            this._programToKey.set(entry.program, cacheKey);
+            this._storeCacheEntry(cacheKey, entry);
         }
 
         return this._buildVariantResource(
@@ -338,6 +381,7 @@ export class SceneShaderFactory {
             readonly definition: SceneShaderDefinition;
             readonly resolved: ResolvedSources;
             readonly attributeNames: Record<SceneMeshSemantic, string>;
+            readonly attributeKey: string;
             readonly cacheKey: string | null;
             readonly program: WebGLProgram;
         }
@@ -349,13 +393,22 @@ export class SceneShaderFactory {
             const definition = definitions[i]!;
             const resolved = this._resolveSources(definition);
             const attributeNames = this._resolveAttributeNames(definition);
+            const attributeKey = JSON.stringify(attributeNames);
             const cacheKey = this._cacheEnabled
-                ? this._buildCacheKey(resolved.vertexSource, resolved.fragmentSource, attributeNames)
+                ? this._buildCacheKey(resolved.vertexSource, resolved.fragmentSource, attributeKey)
                 : null;
 
             if (cacheKey !== null) {
                 const cached = this._cache.get(cacheKey);
-                if (cached) {
+                if (
+                    cached &&
+                    isShaderCacheEntryMatchingSources(
+                        cached,
+                        resolved.vertexSource,
+                        resolved.fragmentSource,
+                        attributeKey
+                    )
+                ) {
                     cached.refcount += 1;
                     this._cacheHits += 1;
                     results[i] = this._buildResource(definition, cached, attributeNames);
@@ -372,7 +425,7 @@ export class SceneShaderFactory {
                 attributeNames
             );
 
-            pending.push({ index: i, definition, resolved, attributeNames, cacheKey, program });
+            pending.push({ index: i, definition, resolved, attributeNames, attributeKey, cacheKey, program });
         }
 
         if (pending.length === 0) {
@@ -426,12 +479,14 @@ export class SceneShaderFactory {
             const cacheEntry: CachedProgramEntry = {
                 program: entry.program,
                 ...cached,
+                vertexSource: entry.resolved.vertexSource,
+                fragmentSource: entry.resolved.fragmentSource,
+                attributeKey: entry.attributeKey,
                 refcount: 1,
             };
 
             if (entry.cacheKey !== null) {
-                this._cache.set(entry.cacheKey, cacheEntry);
-                this._programToKey.set(entry.program, entry.cacheKey);
+                this._storeCacheEntry(entry.cacheKey, cacheEntry);
             }
 
             results[entry.index] = this._buildResource(entry.definition, cacheEntry, entry.attributeNames);
@@ -509,10 +564,34 @@ export class SceneShaderFactory {
     private _buildCacheKey(
         vertexSource: string,
         fragmentSource: string,
-        attributeNames: Record<SceneMeshSemantic, string>
+        attributeKey: string
     ): string {
-        const attrHash = hashString(JSON.stringify(attributeNames));
+        const attrHash = hashString(attributeKey);
         return `${hashString(vertexSource)}_${hashString(fragmentSource)}_${attrHash}`;
+    }
+
+    /**
+     * Stores a compiled entry unless the key slot is occupied by an entry
+     * compiled from different sources (hash collision). The colliding
+     * program is never cached — it stays usable and `delete()` releases it
+     * directly — so a collision can only cost one redundant compile, never
+     * a wrong program.
+     */
+    private _storeCacheEntry(cacheKey: string, entry: CachedProgramEntry): void {
+        const existing = this._cache.get(cacheKey);
+        if (
+            existing &&
+            !isShaderCacheEntryMatchingSources(
+                existing,
+                entry.vertexSource,
+                entry.fragmentSource,
+                entry.attributeKey
+            )
+        ) {
+            return;
+        }
+        this._cache.set(cacheKey, entry);
+        this._programToKey.set(entry.program, cacheKey);
     }
 
     private _compileShaderObject(type: number, source: string): WebGLShader {
@@ -538,6 +617,7 @@ export class SceneShaderFactory {
         vertexSource: string,
         fragmentSource: string,
         attributeNames: Record<SceneMeshSemantic, string>,
+        attributeKey: string,
         uniformNames: readonly string[]
     ): CachedProgramEntry {
         const program = this._gl.createProgram();
@@ -573,7 +653,7 @@ export class SceneShaderFactory {
                 uniformNames
             );
 
-            return { program, ...reflection, refcount: 0 };
+            return { program, ...reflection, vertexSource, fragmentSource, attributeKey, refcount: 0 };
         } finally {
             this._gl.deleteShader(vertexShader);
             this._gl.deleteShader(fragmentShader);

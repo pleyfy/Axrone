@@ -16,25 +16,13 @@ import {
 
 describe('Tween System', () => {
     beforeEach(() => {
-        if ((TWEEN as any)._animFrameId) {
-            cancelAnimationFrame((TWEEN as any)._animFrameId);
-            (TWEEN as any)._animFrameId = undefined;
-        }
-        (TWEEN as any)._running = false;
-        (TWEEN as any)._tweens.clear?.();
-        (TWEEN as any)._tweensToAdd.clear?.();
-        (TWEEN as any)._tweensToRemove.clear?.();
+        TWEEN.setAutoUpdate(false);
+        TWEEN.clear();
     });
 
     afterEach(() => {
-        if ((TWEEN as any)._animFrameId) {
-            cancelAnimationFrame((TWEEN as any)._animFrameId);
-            (TWEEN as any)._animFrameId = undefined;
-        }
-        (TWEEN as any)._running = false;
-        (TWEEN as any)._tweens.clear?.();
-        (TWEEN as any)._tweensToAdd.clear?.();
-        (TWEEN as any)._tweensToRemove.clear?.();
+        TWEEN.setAutoUpdate(false);
+        TWEEN.clear();
     });
 
     describe('Basic Tweening', () => {
@@ -584,6 +572,10 @@ describe('Tween System', () => {
 
             tw.start(0);
             tw.update(25);
+
+            expect(obj.steps[0]).toBe(0);
+
+            tw.update(100);
 
             expect(obj.steps[0]).toBe(4);
         });

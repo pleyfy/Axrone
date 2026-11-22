@@ -13,6 +13,8 @@ import {
 import { resolveTheme, resolveVariantPalette } from './theme';
 import { createStatefulControl } from './stateful-control';
 
+const SLIDER_PILL_RADIUS = 999;
+
 export const createUISlider = <TRuntime>(
     runtime: UIRuntime<TRuntime>,
     options: UISliderOptions = {}
@@ -244,7 +246,7 @@ export const createUISlider = <TRuntime>(
                 background: theme.trackColor,
                 borderColor: state.focused ? theme.focusColor : theme.borderMutedColor,
                 borderWidth: state.focused ? theme.borderWidth + 1 : theme.borderWidth,
-                radius: 999,
+                radius: SLIDER_PILL_RADIUS,
             },
         });
         runtime.updateWidget(fill, {
@@ -264,7 +266,7 @@ export const createUISlider = <TRuntime>(
                 background: state.disabled ? theme.surfaceDisabledColor : palette.idle,
                 borderColor: '#00000000',
                 borderWidth: 0,
-                radius: 999,
+                radius: SLIDER_PILL_RADIUS,
             },
         });
         runtime.updateWidget(thumb, {
@@ -283,7 +285,7 @@ export const createUISlider = <TRuntime>(
                 background: state.disabled ? theme.textMutedColor : theme.thumbColor,
                 borderColor: state.focused ? theme.focusColor : palette.border,
                 borderWidth: theme.borderWidth,
-                radius: 999,
+                radius: SLIDER_PILL_RADIUS,
             },
         });
     };

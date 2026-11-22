@@ -1,4 +1,4 @@
-import { clamp } from '@axrone/numeric';
+import { Rect } from '@axrone/numeric';
 import type {
     LayoutBox,
     ReadonlyColor,
@@ -160,13 +160,13 @@ export const normalizeIndex = (value: number | undefined): number | null => {
 
 export const normalizeUvRect = (
     input: WidgetImageInput['uvRect']
-): { readonly x: number; readonly y: number; readonly width: number; readonly height: number } => {
-    const x = clamp(input?.x ?? 0, 0, 1);
-    const y = clamp(input?.y ?? 0, 0, 1);
-    const width = clamp(input?.width ?? 1, 0, 1 - x);
-    const height = clamp(input?.height ?? 1, 0, 1 - y);
-    return { x, y, width, height };
-};
+): { readonly x: number; readonly y: number; readonly width: number; readonly height: number } =>
+    Rect.normalize({
+        x: input?.x ?? 0,
+        y: input?.y ?? 0,
+        width: input?.width ?? 1,
+        height: input?.height ?? 1,
+    });
 
 export const intersectsPoint = (box: LayoutBox | null, x: number, y: number): boolean => {
     if (!box) {
@@ -179,21 +179,18 @@ export const intersectRect = (left: LayoutBox | null, right: LayoutBox): LayoutB
     if (!left) {
         return right;
     }
-    const x = Math.max(left.x, right.x);
-    const y = Math.max(left.y, right.y);
-    const maxX = Math.min(left.x + left.width, right.x + right.width);
-    const maxY = Math.min(left.y + left.height, right.y + right.height);
-    if (maxX <= x || maxY <= y) {
+    const result = Rect.intersect(left, right);
+    if (!result) {
         return null;
     }
     return {
-        x,
-        y,
-        width: maxX - x,
-        height: maxY - y,
-        contentX: x,
-        contentY: y,
-        contentWidth: maxX - x,
-        contentHeight: maxY - y,
+        x: result.x,
+        y: result.y,
+        width: result.width,
+        height: result.height,
+        contentX: result.x,
+        contentY: result.y,
+        contentWidth: result.width,
+        contentHeight: result.height,
     };
 };

@@ -82,6 +82,8 @@ export class MemoryPool<T extends PoolableObject>
     #planner: CapacityPlanner;
     #slotFactory: SlotFactory<T>;
     #waitQueue = new WaitQueue<T>();
+    /** Contraction analysis is O(slots); amortize it over a batch of releases. */
+    #releasesSinceContractionCheck = 0;
 
     constructor(options: MemoryPoolOptions<T>) {
         this.#id = ++MemoryPool.#poolIdCounter & MAX_POOL_ID;
@@ -374,7 +376,13 @@ export class MemoryPool<T extends PoolableObject>
 
             this.#freeList.add(id);
             this.#updateLruIndex(id);
-            this.#checkForContraction();
+            // `#checkForContraction` scans every slot; running it per release
+            // makes mass release quadratic. Once per 64 releases keeps the
+            // shrink/compact behaviour without the hot-loop cost.
+            this.#releasesSinceContractionCheck++;
+            if ((this.#releasesSinceContractionCheck & 63) === 0) {
+                this.#checkForContraction();
+            }
         } finally {
             if (timer) this.#metrics.recordReleaseTime(timer.stop());
         }

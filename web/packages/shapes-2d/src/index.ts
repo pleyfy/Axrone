@@ -117,6 +117,7 @@ export {
     polygonSignedArea,
     removeCollinearVertices,
     triangulateEarClipping,
+    triangulatePolygonWithHoles,
 } from './common';
 export type {
     SerializedCircleShape,

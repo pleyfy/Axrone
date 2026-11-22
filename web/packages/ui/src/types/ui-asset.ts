@@ -60,6 +60,26 @@ export interface UICanvasConfig {
  * architecture. A UI asset contains its own canvas configuration and widget tree,
  * independent of any 3D scene. Scenes reference UI assets by ID.
  */
+export interface UIComponentVariant {
+    readonly textOverrides?: Readonly<Record<string, string>>;
+    readonly propOverrides?: Readonly<Record<string, unknown>>;
+}
+
+export interface UIComponentDefinition {
+    readonly name: string;
+    readonly root: WidgetSnapshot;
+    readonly variants?: Readonly<Record<string, UIComponentVariant>>;
+}
+
+export interface UIComponentInstanceProps {
+    readonly componentId: string;
+    readonly variant?: string;
+    readonly textOverrides?: Readonly<Record<string, string>>;
+    readonly propOverrides?: Readonly<Record<string, unknown>>;
+}
+
+export const COMPONENT_INSTANCE_ROLE = 'custom:instance';
+
 export interface UIAsset {
     /** Unique identifier for this UI asset. */
     readonly id: string;
@@ -71,6 +91,7 @@ export interface UIAsset {
     readonly canvas: UICanvasConfig;
     /** Root of the widget tree (same format as UIRuntimeSnapshot.root). */
     readonly root: WidgetSnapshot;
+    readonly components?: Readonly<Record<string, UIComponentDefinition>>;
     /**
      * Optional named bindings that map symbolic names to widget `key` values
      * (as declared on WidgetSnapshot.key). Widget IDs are regenerated on restore,

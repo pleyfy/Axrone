@@ -182,6 +182,11 @@ export const compileWidgetImage = (input: WidgetImageInput | null): ResolvedWidg
     if (!input) {
         return null;
     }
+
+    const materialRef = typeof input.material === 'string' ? input.material.trim() : '';
+    if (input.source.kind === 'texture' && input.source.resourceId.trim() === '' && !materialRef) {
+        return null;
+    }
     const source =
         input.source.kind === 'material'
             ? {
@@ -222,6 +227,7 @@ export const compileWidgetImage = (input: WidgetImageInput | null): ResolvedWidg
         uvRect: normalizeUvRect(input.uvRect),
         border,
         fillCenter: input.fillCenter ?? true,
+        bleed: input.bleed === true,
     };
 };
 

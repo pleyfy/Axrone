@@ -1,367 +1,418 @@
+import { type Brand, ok, err, type Result } from '@axrone/utility';
 import {
-    StackCapacity,
-    StackSize,
-    NodeId,
-    MemoryAddress,
-    AllocatorId,
-    PoolIndex,
-    NonEmptyArray,
-    EmptyArray,
-    ArrayWithLength,
-    StackNode,
-    AlignedStackNode,
-    StackResult,
-    ExtractSuccess,
-    ExtractError,
+    type StackCapacity,
+    type StackId,
+    assertStackCapacity,
+    generateStackId,
+    LIFECYCLE_ACTIVE,
+    LIFECYCLE_DISPOSED,
+    type Lifecycle,
+    type IStackMetricsSink,
+    MonomorphicNoOpMetricsSink,
+    CHUNK_SIZE,
+    CHUNK_MASK,
+    CHUNK_SHIFT,
+    MAX_POOLED_CHUNKS,
+    HYSTERESIS_THRESHOLD,
 } from './types';
-import { createNodeId, createStackCapacity, createStackSize } from './stack-core';
-
 import {
-    StackCapacityError,
-    StackIntegrityError,
-    StackMemoryError,
-    StackErrorUnion,
+    StackUnderflowError,
+    StackOverflowError,
+    StackDisposedError,
+    StackAbortError,
 } from './errors';
+import { ChunkedStackIterator } from './iterator';
 
-import { AbstractStack } from './abstract-stack';
-import {
-    MutableStackInterface,
-    ImmutableStackInterface,
-    StackConfiguration,
-    ReadonlyStackInterface,
-} from './interfaces';
+function allocatePackedChunk<T>(): (T | undefined)[] {
+    const chunk: (T | undefined)[] = new Array(CHUNK_SIZE);
+    for (let i = 0; i < CHUNK_SIZE; i = (i + 1) | 0) {
+        chunk[i] = undefined;
+    }
+    return chunk;
+}
 
-/**
- * Mutable stack backed by a linked list with an internal node memory pool.
- * @beta
- */
-class OptimizedArrayStack<T> extends AbstractStack<T> implements MutableStackInterface<T> {
-    private _disposed = false;
+const OK_VOID: Result<void, never> = ok();
+const EMPTY_UNDERFLOW: Result<never, StackUnderflowError> = err(new StackUnderflowError());
 
-    push(value: T): this {
-        if (this._disposed) {
-            throw new StackIntegrityError('Cannot operate on disposed stack');
+export class Stack<T> {
+    readonly id: StackId;
+    private _chunks: (T | undefined)[][];
+    private _chunkCount: number;
+    private readonly _chunkPool: (T | undefined)[][];
+    private _size: number;
+    private readonly _maxCapacity: number;
+    private _lifecycle: Lifecycle;
+    private _disposedReason: Error | undefined;
+    private readonly _metrics: IStackMetricsSink;
+
+    constructor(
+        id: StackId,
+        maxCapacity: StackCapacity,
+        metrics: IStackMetricsSink
+    ) {
+        this.id = id;
+        this._chunks = [allocatePackedChunk<T>()];
+        this._chunkCount = 1;
+        this._chunkPool = [];
+        this._size = 0;
+        this._maxCapacity = maxCapacity;
+        this._lifecycle = LIFECYCLE_ACTIVE;
+        this._disposedReason = undefined;
+        this._metrics = metrics;
+    }
+
+    get size(): number {
+        return this._size;
+    }
+
+    get isEmpty(): boolean {
+        return this._size === 0;
+    }
+
+    get isDisposed(): boolean {
+        return this._lifecycle === LIFECYCLE_DISPOSED;
+    }
+
+    push(item: T): void {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            this._coldFailDisposed();
+        }
+        const size = this._size;
+        if (size === this._maxCapacity) {
+            this._coldFailOverflow();
+        }
+        const chunkIdx = size >>> CHUNK_SHIFT;
+        const slotIdx = size & CHUNK_MASK;
+
+        if (chunkIdx >= this._chunkCount) {
+            this._allocateChunk();
         }
 
-        if (this.isFull) {
-            throw new StackCapacityError(this._size, this._capacity!, 'push');
+        this._chunks[chunkIdx]![slotIdx] = item;
+        this._size = (size + 1) | 0;
+        this._metrics.onPush();
+    }
+
+    tryPush(item: T): Result<void, StackOverflowError | StackDisposedError> {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            return err(new StackDisposedError(this.id, this._disposedReason));
+        }
+        const size = this._size;
+        if (size === this._maxCapacity) {
+            return err(new StackOverflowError(this._maxCapacity));
+        }
+        const chunkIdx = size >>> CHUNK_SHIFT;
+        const slotIdx = size & CHUNK_MASK;
+
+        if (chunkIdx >= this._chunkCount) {
+            this._allocateChunk();
         }
 
-        return this.pushUnsafe(value);
+        this._chunks[chunkIdx]![slotIdx] = item;
+        this._size = (size + 1) | 0;
+        this._metrics.onPush();
+        return OK_VOID;
     }
 
-    pushUnsafe(value: T): this {
-        const transformedValue = this._config.transformFn(value);
-        const node = this._memoryPool.allocate(transformedValue, this._head, this._generation);
+    pop(): T {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            this._coldFailDisposed();
+        }
+        const size = this._size;
+        if (size === 0) {
+            this._coldFailUnderflow();
+        }
+        const targetIdx = (size - 1) | 0;
+        const chunkIdx = targetIdx >>> CHUNK_SHIFT;
+        const slotIdx = targetIdx & CHUNK_MASK;
 
-        this._head = node;
-        this._size = createStackSize(this._size + 1);
-        this.incrementGeneration();
-        this.updateChecksum();
+        const chunk = this._chunks[chunkIdx]!;
+        const item = chunk[slotIdx] as T;
+        chunk[slotIdx] = undefined;
+        this._size = targetIdx;
+        this._metrics.onPop();
 
-        return this;
-    }
-
-    pushMany(values: readonly T[]): this {
-        if (this._capacity && this._size + values.length > this._capacity) {
-            throw new StackCapacityError(
-                createStackSize(this._size + values.length),
-                this._capacity,
-                'pushMany'
-            );
+        const neededChunks = targetIdx === 0 ? 1 : ((targetIdx >>> CHUNK_SHIFT) + 1) | 0;
+        if ((this._chunkCount - neededChunks) > HYSTERESIS_THRESHOLD) {
+            this._trimExcessChunks(neededChunks);
         }
 
-        for (const value of values) {
-            this.pushUnsafe(value);
+        return item;
+    }
+
+    tryPop(): Result<T, StackUnderflowError | StackDisposedError> {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            return err(new StackDisposedError(this.id, this._disposedReason));
+        }
+        const size = this._size;
+        if (size === 0) {
+            return EMPTY_UNDERFLOW as Result<T, StackUnderflowError>;
+        }
+        const targetIdx = (size - 1) | 0;
+        const chunkIdx = targetIdx >>> CHUNK_SHIFT;
+        const slotIdx = targetIdx & CHUNK_MASK;
+
+        const chunk = this._chunks[chunkIdx]!;
+        const item = chunk[slotIdx] as T;
+        chunk[slotIdx] = undefined;
+        this._size = targetIdx;
+        this._metrics.onPop();
+
+        const neededChunks = targetIdx === 0 ? 1 : ((targetIdx >>> CHUNK_SHIFT) + 1) | 0;
+        if ((this._chunkCount - neededChunks) > HYSTERESIS_THRESHOLD) {
+            this._trimExcessChunks(neededChunks);
         }
 
-        return this;
+        return ok(item);
     }
 
-    pop(): T | undefined {
-        return this.popUnsafe();
+    peek(): T {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            this._coldFailDisposed();
+        }
+        const size = this._size;
+        if (size === 0) {
+            this._coldFailUnderflow();
+        }
+        const targetIdx = (size - 1) | 0;
+        const chunkIdx = targetIdx >>> CHUNK_SHIFT;
+        const slotIdx = targetIdx & CHUNK_MASK;
+        return this._chunks[chunkIdx]![slotIdx] as T;
     }
 
-    popUnsafe(): T | undefined {
-        if (this._head === null) return undefined;
-
-        const { value } = this._head;
-        const oldHead = this._head;
-        this._head = this._head.next;
-        this._size = createStackSize(this._size - 1);
-
-        this._memoryPool.deallocate(oldHead);
-        this.incrementGeneration();
-        this.updateChecksum();
-
-        return value;
+    peekUnsafe(): T | undefined {
+        const size = this._size;
+        if (size === 0) {
+            return undefined;
+        }
+        const targetIdx = (size - 1) | 0;
+        const chunkIdx = targetIdx >>> CHUNK_SHIFT;
+        const slotIdx = targetIdx & CHUNK_MASK;
+        return this._chunks[chunkIdx]![slotIdx] as T;
     }
 
-    popMany(count: number): readonly T[] {
-        const actualCount = Math.min(count, this._size);
-        const result: T[] = new Array(actualCount);
+    tryPeek(): Result<T, StackUnderflowError | StackDisposedError> {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            return err(new StackDisposedError(this.id, this._disposedReason));
+        }
+        const size = this._size;
+        if (size === 0) {
+            return EMPTY_UNDERFLOW as Result<T, StackUnderflowError>;
+        }
+        const targetIdx = (size - 1) | 0;
+        const chunkIdx = targetIdx >>> CHUNK_SHIFT;
+        const slotIdx = targetIdx & CHUNK_MASK;
+        return ok(this._chunks[chunkIdx]![slotIdx] as T);
+    }
 
-        for (let i = 0; i < actualCount; i++) {
-            const value = this.popUnsafe();
-            if (value !== undefined) {
-                result[i] = value;
+    pushMany(items: readonly T[]): void {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            this._coldFailDisposed();
+        }
+        const count = items.length;
+        if (count === 0) {
+            return;
+        }
+        if (this._size + count > this._maxCapacity) {
+            this._coldFailOverflow();
+        }
+
+        for (let i = 0; i < count; i = (i + 1) | 0) {
+            const size = this._size;
+            const chunkIdx = size >>> CHUNK_SHIFT;
+            const slotIdx = size & CHUNK_MASK;
+            if (chunkIdx >= this._chunkCount) {
+                this._allocateChunk();
+            }
+            this._chunks[chunkIdx]![slotIdx] = items[i] as T;
+            this._size = (size + 1) | 0;
+            this._metrics.onPush();
+        }
+    }
+
+    toArray(): T[] {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            this._coldFailDisposed();
+        }
+        const len = this._size;
+        if (len === 0) {
+            return [];
+        }
+        const result: T[] = new Array(len);
+        let readIdx = (len - 1) | 0;
+        let writeIdx = 0;
+
+        while (writeIdx < len) {
+            const chunkIdx = readIdx >>> CHUNK_SHIFT;
+            const slotIdx = readIdx & CHUNK_MASK;
+            result[writeIdx] = this._chunks[chunkIdx]![slotIdx] as T;
+            writeIdx = (writeIdx + 1) | 0;
+            readIdx = (readIdx - 1) | 0;
+        }
+        return result;
+    }
+
+    [Symbol.iterator](): Iterator<T> {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            this._coldFailDisposed();
+        }
+        return new ChunkedStackIterator<T>(this._chunks, this._size);
+    }
+
+    async drain(
+        signal?: AbortSignal | undefined
+    ): Promise<Result<T[], StackAbortError | StackDisposedError>> {
+        if (this._lifecycle !== LIFECYCLE_ACTIVE) {
+            return err(new StackDisposedError(this.id, this._disposedReason));
+        }
+        if (signal?.aborted) {
+            return err(new StackAbortError(signal.reason));
+        }
+
+        const drained: T[] = new Array(this._size);
+        let writeIdx = 0;
+        let batchCounter = 0;
+
+        let abortListener: (() => void) | undefined = undefined;
+        let abortedReason: unknown = undefined;
+
+        if (signal !== undefined) {
+            abortListener = () => {
+                abortedReason = signal.reason;
+            };
+            signal.addEventListener("abort", abortListener, { once: true });
+        }
+
+        try {
+            while (this._size > 0) {
+                if (abortedReason !== undefined) {
+                    return err(new StackAbortError(abortedReason));
+                }
+
+                const targetIdx = (this._size - 1) | 0;
+                const chunkIdx = targetIdx >>> CHUNK_SHIFT;
+                const slotIdx = targetIdx & CHUNK_MASK;
+
+                const chunk = this._chunks[chunkIdx]!;
+                const item = chunk[slotIdx] as T;
+                chunk[slotIdx] = undefined;
+                this._size = targetIdx;
+                this._metrics.onPop();
+
+                drained[writeIdx] = item;
+                writeIdx = (writeIdx + 1) | 0;
+                batchCounter = (batchCounter + 1) | 0;
+
+                if ((batchCounter & 511) === 0 && this._size > 0) {
+                    await new Promise<void>((resolve) => {
+                        queueMicrotask(resolve);
+                    });
+                }
+            }
+
+            this._trimExcessChunks(1);
+            return ok(drained);
+        } finally {
+            if (signal !== undefined && abortListener !== undefined) {
+                signal.removeEventListener("abort", abortListener);
             }
         }
-
-        return Object.freeze(result);
     }
 
-    swap(): this {
-        if (this._size < 2) {
-            throw new StackIntegrityError('Insufficient elements for swap', {
-                size: this._size,
-            });
+    close(error?: Error | undefined): void {
+        if (this._lifecycle === LIFECYCLE_DISPOSED) {
+            return;
+        }
+        this._lifecycle = LIFECYCLE_DISPOSED;
+        this._disposedReason = error;
+
+        const chunks = this._chunks;
+        const total = this._chunkCount;
+        for (let i = 0; i < total; i = (i + 1) | 0) {
+            const chunk = chunks[i]!;
+            for (let j = 0; j < CHUNK_SIZE; j = (j + 1) | 0) {
+                chunk[j] = undefined;
+            }
+            this._metrics.onChunkDeallocated();
         }
 
-        const first = this.popUnsafe()!;
-        const second = this.popUnsafe()!;
-        this.pushUnsafe(first);
-        this.pushUnsafe(second);
-
-        return this;
+        chunks.length = 0;
+        this._chunkPool.length = 0;
+        this._size = 0;
+        this._chunkCount = 0;
     }
 
-    duplicate(): this {
-        if (this.isEmpty) {
-            throw new StackIntegrityError('Cannot duplicate empty stack');
+    [Symbol.dispose](): void {
+        this.close();
+    }
+
+    async [Symbol.asyncDispose](): Promise<void> {
+        if (this._lifecycle === LIFECYCLE_DISPOSED) {
+            return;
         }
-
-        const value = this.peekUnsafe()!;
-        return this.push(value);
+        await this.drain();
+        this.close();
     }
 
-    clear(): this {
-        while (this._head !== null) {
-            const oldHead = this._head;
-            this._head = this._head.next;
-            this._memoryPool.deallocate(oldHead);
+    private _allocateChunk(): void {
+        const pool = this._chunkPool;
+        let chunk = pool.pop();
+        if (chunk === undefined) {
+            chunk = allocatePackedChunk<T>();
+            this._metrics.onChunkAllocated();
         }
-
-        this._size = createStackSize(0);
-        this.incrementGeneration();
-        this.updateChecksum();
-
-        return this;
+        this._chunks.push(chunk);
+        this._chunkCount = (this._chunkCount + 1) | 0;
     }
 
-    compact(): this {
-        const values = this.toArray();
-        this.clear();
-
-        for (let i = values.length - 1; i >= 0; i--) {
-            this.pushUnsafe(values[i]);
-        }
-
-        return this;
-    }
-
-    async defragment(): Promise<this> {
-        return new Promise((resolve) => {
-            const values = this.toArray();
-            this.clear();
-
-            const batchSize = 100;
-            let index = values.length - 1;
-
-            const processBatch = () => {
-                const end = Math.max(0, index - batchSize);
-                for (let i = index; i >= end; i--) {
-                    this.pushUnsafe(values[i]);
+    private _trimExcessChunks(neededChunks: number): void {
+        while (this._chunkCount > neededChunks) {
+            const chunk = this._chunks.pop();
+            this._chunkCount = (this._chunkCount - 1) | 0;
+            if (chunk !== undefined) {
+                for (let i = 0; i < CHUNK_SIZE; i = (i + 1) | 0) {
+                    chunk[i] = undefined;
                 }
-                index = end - 1;
-
-                if (index >= 0) {
-                    setTimeout(processBatch, 0);
+                if (this._chunkPool.length < MAX_POOLED_CHUNKS) {
+                    this._chunkPool.push(chunk);
                 } else {
-                    resolve(this);
+                    this._metrics.onChunkDeallocated();
                 }
-            };
-
-            processBatch();
-        });
+            }
+        }
     }
 
-    async dispose(): Promise<void> {
-        if (!this._disposed) {
-            this.clear();
-            this._memoryPool.clear();
-            this._disposed = true;
-        }
+    private _coldFailOverflow(): never {
+        throw new StackOverflowError(this._maxCapacity);
+    }
+
+    private _coldFailUnderflow(): never {
+        throw new StackUnderflowError();
+    }
+
+    private _coldFailDisposed(): never {
+        throw new StackDisposedError(this.id, this._disposedReason);
+    }
+
+    static create<T>(): Stack<T> {
+        const capacity = Number.MAX_SAFE_INTEGER;
+        assertStackCapacity(capacity);
+        return new Stack<T>(
+            generateStackId(),
+            capacity,
+            MonomorphicNoOpMetricsSink
+        );
+    }
+
+    static from<T>(items: readonly T[]): Stack<T> {
+        const capacity = Number.MAX_SAFE_INTEGER;
+        assertStackCapacity(capacity);
+        const stack = new Stack<T>(
+            generateStackId(),
+            capacity,
+            MonomorphicNoOpMetricsSink
+        );
+        stack.pushMany(items);
+        return stack;
     }
 }
-
-/**
- * Persistent (immutable) stack where push and pop return new stack instances.
- *
- * Each mutation creates a new stack that shares structure with the original via linked nodes,
- * avoiding full copies. The empty stack is cached per configuration via a WeakMap for efficiency.
- * Suitable for undo/redo stacks, expression evaluation, and any scenario requiring structural
- * sharing or safe concurrent reads.
- *
- * For a mutable stack with better write performance, use {@link OptimizedArrayStack}.
- *
- * @example
- * const s0 = ImmutableStack.empty<number>();
- * const s1 = s0.push(1).push(2).push(3);
- * const [top, s2] = s1.pop();   // top = 3, s2 has [1, 2]
- * const s3 = s1.push(99);       // s1 unchanged, s3 has [1, 2, 3, 99]
- *
- * @stable
- */
-class ImmutableStack<T> extends AbstractStack<T> implements ImmutableStackInterface<T> {
-    private static readonly EMPTY_CACHE = new WeakMap<
-        StackConfiguration<any>,
-        ImmutableStack<any>
-    >();
-
-    private constructor(
-        head: StackNode<T> | null,
-        size: StackSize,
-        generation: number,
-        config: StackConfiguration<T>
-    ) {
-        super(config);
-        this._head = head;
-        this._size = size;
-        this._generation = generation;
-        this.updateChecksum();
-    }
-
-    static empty<T>(config: StackConfiguration<T> = {}): ImmutableStack<T> {
-        const cached = this.EMPTY_CACHE.get(config);
-        if (cached) return cached;
-
-        const instance = new ImmutableStack<T>(null, createStackSize(0), 1, config);
-        this.EMPTY_CACHE.set(config, instance);
-        return instance;
-    }
-
-    static of<T>(...values: readonly T[]): ImmutableStack<T> {
-        return values.reduceRight((stack, value) => stack.push(value), ImmutableStack.empty<T>());
-    }
-
-    static fromIterable<T>(
-        iterable: Iterable<T>,
-        config: StackConfiguration<T> = {}
-    ): ImmutableStack<T> {
-        return Array.from(iterable).reduceRight(
-            (stack, value) => stack.push(value),
-            ImmutableStack.empty<T>(config)
-        );
-    }
-
-    push<U extends T>(value: U): ImmutableStack<T | U> {
-        const transformedValue = this._config.transformFn(value);
-        // Use non-pooled plain objects to avoid aliasing corruption
-        const node: StackNode<T | U> = {
-            id: createNodeId(),
-            value: transformedValue,
-            next: this._head,
-            refs: 1,
-            generation: this._generation + 1,
-            memAddr: 0 as MemoryAddress,
-        };
-
-        return new ImmutableStack(
-            node,
-            createStackSize(this._size + 1),
-            this._generation + 1,
-            this._config
-        );
-    }
-
-    pushMany<U extends readonly T[]>(values: U): ImmutableStack<T> {
-        return values.reduceRight((stack, value) => stack.push(value), this as ImmutableStack<T>);
-    }
-
-    pop(): readonly [T | undefined, ImmutableStack<T>] {
-        if (this._head === null) {
-            return [undefined, this] as const;
-        }
-
-        const newStack = new ImmutableStack(
-            this._head.next,
-            createStackSize(this._size - 1),
-            this._generation + 1,
-            this._config
-        );
-
-        return [this._head.value, newStack] as const;
-    }
-
-    popMany(count: number): readonly [readonly T[], ImmutableStack<T>] {
-        const actualCount = Math.min(count, this._size);
-        const result: T[] = new Array(actualCount);
-        let current = this._head;
-
-        for (let i = 0; i < actualCount && current !== null; i++) {
-            result[i] = current.value;
-            current = current.next;
-        }
-
-        const newStack = new ImmutableStack(
-            current,
-            createStackSize(this._size - actualCount),
-            this._generation + 1,
-            this._config
-        );
-
-        return [Object.freeze(result), newStack] as const;
-    }
-
-    concat<U>(other: ReadonlyStackInterface<U>): ImmutableStack<T | U> {
-        const otherValues = other.toReversedArray();
-        return otherValues.reduce(
-            (stack, value) => stack.push(value),
-            this as ImmutableStack<T | U>
-        );
-    }
-
-    filter<U extends T>(predicate: (value: T) => value is U): ImmutableStack<U> {
-        const filtered = this.toReversedArray().filter(predicate);
-        return ImmutableStack.fromIterable(filtered, {} as StackConfiguration<U>);
-    }
-
-    map<U>(fn: (value: T) => U): ImmutableStack<U> {
-        const mapped = this.toReversedArray().map(fn);
-        return ImmutableStack.fromIterable(mapped, {} as StackConfiguration<U>);
-    }
-}
-
-export type {
-    StackCapacity,
-    StackSize,
-    NodeId,
-    MemoryAddress,
-    AllocatorId,
-    PoolIndex,
-    StackNode,
-    AlignedStackNode,
-    StackResult,
-    ExtractSuccess,
-    ExtractError,
-    StackConfiguration,
-    StackErrorUnion,
-    ReadonlyStackInterface,
-    MutableStackInterface,
-    ImmutableStackInterface,
-    NonEmptyArray,
-    EmptyArray,
-    ArrayWithLength,
-};
-
-export {
-    StackCapacityError,
-    StackIntegrityError,
-    StackMemoryError,
-    OptimizedArrayStack,
-    ImmutableStack,
-    createStackCapacity,
-    createStackSize,
-    createNodeId,
-};

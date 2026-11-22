@@ -21,7 +21,7 @@ export const resolveFramebufferSize = (scene: SceneUIOverlayTarget): { width: nu
     height: Math.max(1, scene.canvas.height || scene.gl.drawingBufferHeight || 1),
 });
 
-const isSceneUIResourceResolverTarget = (
+export const isSceneUIResourceResolverTarget = (
     value: SceneUIOverlayTarget
 ): value is SceneUIOverlayTarget & SceneUIResourceResolverTarget =>
     typeof value.getTextureResource === 'function' && typeof value.getMaterialTextureBinding === 'function';

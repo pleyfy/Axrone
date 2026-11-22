@@ -289,4 +289,43 @@ describe('slider-drag controller', () => {
         expect(getSliderValue(runtime, runtime.getBoundWidget('slider-track')!)).toBeNull();
         runtime.dispose();
     });
+
+    it('places vertical min at bottom and max at top', () => {
+        const minRuntime = createSliderRuntime({ value: 0, orientation: 'vertical' });
+        const minSlider = sliderWidget(minRuntime);
+        const minBox = minRuntime.getLayoutBox(minSlider);
+        const minHandle = minRuntime.getBoundWidget('slider-handle')!;
+        const minHandleBox = minRuntime.getLayoutBox(minHandle);
+        expect(minHandleBox.y + minHandleBox.height / 2).toBeCloseTo(minBox.y + minBox.height, 0);
+        minRuntime.dispose();
+        const maxRuntime = createSliderRuntime({ value: 100, orientation: 'vertical' });
+        const maxSlider = sliderWidget(maxRuntime);
+        const maxBox = maxRuntime.getLayoutBox(maxSlider);
+        const maxHandle = maxRuntime.getBoundWidget('slider-handle')!;
+        const maxHandleBox = maxRuntime.getLayoutBox(maxHandle);
+        expect(maxHandleBox.y + maxHandleBox.height / 2).toBeCloseTo(maxBox.y, 0);
+        maxRuntime.dispose();
+    });
+
+    it('maps vertical pointer top to max and bottom to min', () => {
+        const runtime = createSliderRuntime({ value: 50, orientation: 'vertical' });
+        const slider = sliderWidget(runtime);
+        const box = runtime.getLayoutBox(slider);
+        runtime.dispatchInput(pointer('down', box.x + box.width / 2, box.y));
+        expect(getSliderValue(runtime, slider)).toBe(100);
+        runtime.dispatchInput(pointer('up', box.x + box.width / 2, box.y));
+        runtime.dispatchInput(pointer('down', box.x + box.width / 2, box.y + box.height));
+        expect(getSliderValue(runtime, slider)).toBe(0);
+        runtime.dispose();
+    });
+
+    it('anchors vertical fill to the bottom', () => {
+        const runtime = createSliderRuntime({ value: 50, orientation: 'vertical' });
+        const fill = runtime.getBoundWidget('slider-fill')!;
+        const slider = sliderWidget(runtime);
+        const sliderBox = runtime.getLayoutBox(slider);
+        const fillBox = runtime.getLayoutBox(fill);
+        expect(fillBox.y + fillBox.height).toBeCloseTo(sliderBox.y + sliderBox.height, 0);
+        runtime.dispose();
+    });
 });

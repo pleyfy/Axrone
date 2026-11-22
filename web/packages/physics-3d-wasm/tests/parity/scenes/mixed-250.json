@@ -1,0 +1,6000 @@
+{
+  "name": "mixed-250",
+  "skip": null,
+  "world": {
+    "gravity": [
+      0,
+      -9.81,
+      0
+    ],
+    "maxBodies": 512,
+    "maxContacts": 8192,
+    "velocityIterations": 10,
+    "positionIterations": 4,
+    "allowSleep": false
+  },
+  "bodies": [
+    {
+      "type": 0,
+      "position": [
+        0,
+        -0.5,
+        0
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -18,
+        3,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.6,
+        3.35,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.2,
+        3.7,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.8,
+        4.05,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.4,
+        4.4,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -6,
+        4.75,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.6,
+        5.1,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.2,
+        3,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.2,
+        3.35,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.6,
+        3.7,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6,
+        4.05,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.4,
+        4.4,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.8,
+        4.75,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.2,
+        5.1,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.6,
+        3,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18,
+        3.35,
+        -18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.97,
+        3.7,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.57,
+        4.05,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.17,
+        4.4,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.77,
+        4.75,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.37,
+        5.1,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.97,
+        3,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.57,
+        3.35,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.17,
+        3.7,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.23,
+        4.05,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.63,
+        4.4,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.03,
+        4.75,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.43,
+        5.1,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.83,
+        3,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.23,
+        3.35,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.63,
+        3.7,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.03,
+        4.05,
+        -15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.94,
+        4.4,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.54,
+        4.75,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.14,
+        5.1,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.74,
+        3,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.34,
+        3.35,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.94,
+        3.7,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.54,
+        4.05,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.14,
+        4.4,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.26,
+        4.75,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.66,
+        5.1,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.06,
+        3,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.46,
+        3.35,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.86,
+        3.7,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.26,
+        4.05,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.66,
+        4.4,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.06,
+        4.75,
+        -13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -18,
+        5.1,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.6,
+        3,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.2,
+        3.35,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.8,
+        3.7,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.4,
+        4.05,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -6,
+        4.4,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.6,
+        4.75,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.2,
+        5.1,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.2,
+        3,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.6,
+        3.35,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6,
+        3.7,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.4,
+        4.05,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.8,
+        4.4,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.2,
+        4.75,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.6,
+        5.1,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18,
+        3,
+        -10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.97,
+        3.35,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.57,
+        3.7,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.17,
+        4.05,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.77,
+        4.4,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.37,
+        4.75,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.97,
+        5.1,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.57,
+        3,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.17,
+        3.35,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.23,
+        3.7,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.63,
+        4.05,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.03,
+        4.4,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.43,
+        4.75,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.83,
+        5.1,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.23,
+        3,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.63,
+        3.35,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.03,
+        3.7,
+        -8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.94,
+        4.05,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.54,
+        4.4,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.14,
+        4.75,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.74,
+        5.1,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.34,
+        3,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.94,
+        3.35,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.54,
+        3.7,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.14,
+        4.05,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.26,
+        4.4,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.66,
+        4.75,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.06,
+        5.1,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.46,
+        3,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.86,
+        3.35,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.26,
+        3.7,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.66,
+        4.05,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.06,
+        4.4,
+        -6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -18,
+        4.75,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.6,
+        5.1,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.2,
+        3,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.8,
+        3.35,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.4,
+        3.7,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -6,
+        4.05,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.6,
+        4.4,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.2,
+        4.75,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.2,
+        5.1,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.6,
+        3,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6,
+        3.35,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.4,
+        3.7,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.8,
+        4.05,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.2,
+        4.4,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.6,
+        4.75,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18,
+        5.1,
+        -3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.97,
+        3,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.57,
+        3.35,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.17,
+        3.7,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.77,
+        4.05,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.37,
+        4.4,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.97,
+        4.75,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.57,
+        5.1,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.17,
+        3,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.23,
+        3.35,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.63,
+        3.7,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.03,
+        4.05,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.43,
+        4.4,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.83,
+        4.75,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.23,
+        5.1,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.63,
+        3,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.03,
+        3.35,
+        -1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.94,
+        3.7,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.54,
+        4.05,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.14,
+        4.4,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.74,
+        4.75,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.34,
+        5.1,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.94,
+        3,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.54,
+        3.35,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.14,
+        3.7,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.26,
+        4.05,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.66,
+        4.4,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.06,
+        4.75,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.46,
+        5.1,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.86,
+        3,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.26,
+        3.35,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.66,
+        3.7,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.06,
+        4.05,
+        1.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -18,
+        4.4,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.6,
+        4.75,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.2,
+        5.1,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.8,
+        3,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.4,
+        3.35,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -6,
+        3.7,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.6,
+        4.05,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.2,
+        4.4,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.2,
+        4.75,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.6,
+        5.1,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6,
+        3,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.4,
+        3.35,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.8,
+        3.7,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.2,
+        4.05,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.6,
+        4.4,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18,
+        4.75,
+        3.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.97,
+        5.1,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.57,
+        3,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.17,
+        3.35,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.77,
+        3.7,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.37,
+        4.05,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.97,
+        4.4,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.57,
+        4.75,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.17,
+        5.1,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.23,
+        3,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.63,
+        3.35,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.03,
+        3.7,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.43,
+        4.05,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.83,
+        4.4,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.23,
+        4.75,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.63,
+        5.1,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.03,
+        3,
+        6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.94,
+        3.35,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.54,
+        3.7,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.14,
+        4.05,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.74,
+        4.4,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.34,
+        4.75,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.94,
+        5.1,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.54,
+        3,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.14,
+        3.35,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.26,
+        3.7,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.66,
+        4.05,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.06,
+        4.4,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.46,
+        4.75,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.86,
+        5.1,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.26,
+        3,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.66,
+        3.35,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.06,
+        3.7,
+        8.4
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -18,
+        4.05,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.6,
+        4.4,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.2,
+        4.75,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.8,
+        5.1,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.4,
+        3,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -6,
+        3.35,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.6,
+        3.7,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.2,
+        4.05,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.2,
+        4.4,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.6,
+        4.75,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6,
+        5.1,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.4,
+        3,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.8,
+        3.35,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.2,
+        3.7,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.6,
+        4.05,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18,
+        4.4,
+        10.8
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.97,
+        4.75,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.57,
+        5.1,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.17,
+        3,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.77,
+        3.35,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.37,
+        3.7,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.97,
+        4.05,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.57,
+        4.4,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.17,
+        4.75,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.23,
+        5.1,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.63,
+        3,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.03,
+        3.35,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.43,
+        3.7,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.83,
+        4.05,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.23,
+        4.4,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.63,
+        4.75,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.03,
+        5.1,
+        13.2
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -17.94,
+        3,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.54,
+        3.35,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.14,
+        3.7,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.74,
+        4.05,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.34,
+        4.4,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -5.94,
+        4.75,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.54,
+        5.1,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.14,
+        3,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.26,
+        3.35,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.66,
+        3.7,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        6.06,
+        4.05,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        8.46,
+        4.4,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        10.86,
+        4.75,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        13.26,
+        5.1,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        15.66,
+        3,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        18.06,
+        3.35,
+        15.6
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -18,
+        3.7,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -15.6,
+        4.05,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -13.2,
+        4.4,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -10.8,
+        4.75,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -8.4,
+        5.1,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -6,
+        3,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -3.6,
+        3.35,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        -1.2,
+        3.7,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        1.2,
+        4.05,
+        18
+      ]
+    },
+    {
+      "type": 2,
+      "position": [
+        3.6,
+        4.4,
+        18
+      ]
+    }
+  ],
+  "shapes": [
+    {
+      "body": 0,
+      "kind": "box",
+      "halfExtents": [
+        60,
+        0.5,
+        60
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.8,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 1,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 2,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 3,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 4,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 5,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 6,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 7,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 8,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 9,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 10,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 11,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 12,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 13,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 14,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 15,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 16,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 17,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 18,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 19,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 20,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 21,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 22,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 23,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 24,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 25,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 26,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 27,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 28,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 29,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 30,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 31,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 32,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 33,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 34,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 35,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 36,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 37,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 38,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 39,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 40,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 41,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 42,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 43,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 44,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 45,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 46,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 47,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 48,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 49,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 50,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 51,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 52,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 53,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 54,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 55,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 56,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 57,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 58,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 59,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 60,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 61,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 62,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 63,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 64,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 65,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 66,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 67,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 68,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 69,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 70,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 71,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 72,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 73,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 74,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 75,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 76,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 77,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 78,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 79,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 80,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 81,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 82,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 83,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 84,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 85,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 86,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 87,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 88,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 89,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 90,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 91,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 92,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 93,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 94,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 95,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 96,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 97,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 98,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 99,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 100,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 101,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 102,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 103,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 104,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 105,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 106,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 107,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 108,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 109,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 110,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 111,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 112,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 113,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 114,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 115,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 116,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 117,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 118,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 119,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 120,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 121,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 122,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 123,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 124,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 125,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 126,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 127,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 128,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 129,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 130,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 131,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 132,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 133,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 134,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 135,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 136,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 137,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 138,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 139,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 140,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 141,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 142,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 143,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 144,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 145,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 146,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 147,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 148,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 149,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 150,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 151,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 152,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 153,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 154,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 155,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 156,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 157,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 158,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 159,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 160,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 161,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 162,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 163,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 164,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 165,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 166,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 167,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 168,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 169,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 170,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 171,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 172,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 173,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 174,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 175,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 176,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 177,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 178,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 179,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 180,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 181,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 182,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 183,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 184,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 185,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 186,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 187,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 188,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 189,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 190,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 191,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 192,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 193,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 194,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 195,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 196,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 197,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 198,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 199,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 200,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 201,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 202,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 203,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 204,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 205,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 206,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 207,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 208,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 209,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 210,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 211,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 212,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 213,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 214,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 215,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 216,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 217,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 218,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 219,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 220,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 221,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 222,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 223,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 224,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 225,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 226,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 227,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 228,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 229,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 230,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 231,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 232,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 233,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 234,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 235,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 236,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 237,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 238,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 239,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 240,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 241,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 242,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 243,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 244,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 245,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 246,
+      "kind": "sphere",
+      "radius": 0.4,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 247,
+      "kind": "box",
+      "halfExtents": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 248,
+      "kind": "capsule",
+      "radius": 0.3,
+      "height": 1,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 249,
+      "kind": "box",
+      "halfExtents": [
+        0.35,
+        0.5,
+        0.35
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    },
+    {
+      "body": 250,
+      "kind": "sphere",
+      "radius": 0.35,
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "friction": 0.6,
+        "restitution": 0
+      }
+    }
+  ],
+  "joints": [],
+  "rays": [],
+  "snapshotEvery": 30,
+  "steps": 180
+}

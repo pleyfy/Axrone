@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { compileRenderShaderEffect } from '@axrone/scene-runtime';
 import {
     GLTF_PBR_SHADER_EFFECT,
     GLTF_UNLIT_SHADER_EFFECT,
@@ -9,7 +10,15 @@ import {
     createGltfUnlitShaderDefinition,
     resolveGltfRuntimeShaderId,
 } from '@axrone/scene-runtime-gltf';
-import { GLTF_TOON_SHADER_EFFECT, resolveGltfShaderDefinition } from '../internal/runtime-shaders';
+import {
+    GLTF_TOON_OUTLINE_SHADER_EFFECT,
+    GLTF_TOON_SHADER_EFFECT,
+    resolveGltfShaderDefinition,
+} from '../internal/runtime-shaders';
+import { MAX_GLTF_SKIN_JOINTS } from '../internal/gltf-shader-libraries';
+import { GLTF_PBR_SHADER_EFFECT as GLTF_PBR_SHADER_EFFECT_FROM_PBR_MODULE } from '../internal/gltf-shader-effects-pbr';
+import { GLTF_UNLIT_SHADER_EFFECT as GLTF_UNLIT_SHADER_EFFECT_FROM_UNLIT_MODULE } from '../internal/gltf-shader-effects-unlit';
+import { GLTF_TOON_SHADER_EFFECT as GLTF_TOON_SHADER_EFFECT_FROM_TOON_MODULE } from '../internal/gltf-shader-effects-toon';
 
 describe('scene-runtime glTF shader effects', () => {
     it('builds the built-in unlit shader from structured effect metadata', () => {
@@ -36,7 +45,8 @@ describe('scene-runtime glTF shader effects', () => {
         expect(
             definition.effect?.properties?.find((property) => property.name === 'u_JointMatrices')
                 ?.arrayLength
-        ).toBe(128);
+        ).toBe(MAX_GLTF_SKIN_JOINTS);
+        expect(MAX_GLTF_SKIN_JOINTS * 4).toBeLessThanOrEqual(192);
         expect(
             definition.effect?.properties?.find((property) => property.name === 'u_DirectionalLightDirection')
                 ?.arrayLength
@@ -243,6 +253,57 @@ describe('scene-runtime glTF shader effects', () => {
 
             expect(Object.isFrozen(passes)).toBe(true);
         });
+
+        it('appends the outline pass only for toon shaders with a positive outline width', () => {
+            const outlinePasses = createGltfRuntimeMaterialPasses({ _OutlineWidth: 0.02 }, 'gltf/toon');
+
+            expect(outlinePasses).toHaveLength(4);
+            expect(outlinePasses.map((pass) => pass.id)).toEqual([
+                'main',
+                'forward-add',
+                'shadow-caster',
+                'outline',
+            ]);
+
+            const outlinePass = outlinePasses[3];
+            expect(outlinePass.shaderId).toBe('gltf/toon-outline');
+            expect(outlinePass.phase).toBe('outline');
+            expect(outlinePass.rasterizerState.cullMode).toBe('front');
+            expect(outlinePass.depthStencilState.depthWrite).toBe(true);
+
+            const zeroWidthPasses = createGltfRuntimeMaterialPasses({}, 'gltf/toon');
+            expect(zeroWidthPasses).toHaveLength(3);
+            expect(zeroWidthPasses.map((pass) => pass.id)).toEqual([
+                'main',
+                'forward-add',
+                'shadow-caster',
+            ]);
+
+            const pbrPasses = createGltfRuntimeMaterialPasses({ _OutlineWidth: 0.02 }, 'gltf/pbr');
+            expect(pbrPasses).toHaveLength(3);
+            expect(pbrPasses.map((pass) => pass.id)).toEqual([
+                'main',
+                'forward-add',
+                'shadow-caster',
+            ]);
+
+            const legacyPasses = createGltfRuntimeMaterialPasses({ _OutlineWidth: 0.02 });
+            expect(legacyPasses).toHaveLength(3);
+            expect(legacyPasses.map((pass) => pass.id)).toEqual([
+                'main',
+                'forward-add',
+                'shadow-caster',
+            ]);
+        });
+
+        it('maps toon variant shader ids onto the outline shader variant', () => {
+            const passes = createGltfRuntimeMaterialPasses(
+                { _OutlineWidth: 0.02, _AlphaMode: 2 },
+                'gltf/toon/blend'
+            );
+
+            expect(passes[3].shaderId).toBe('gltf/toon-outline/blend');
+        });
     });
 
     describe('resolveGltfShaderDefinition', () => {
@@ -281,6 +342,122 @@ describe('scene-runtime glTF shader effects', () => {
             const result = resolveGltfShaderDefinition('unknown/shader');
 
             expect(result).toBeUndefined();
+        });
+
+        it('resolves the toon outline shader and the toon base shader', () => {
+            const outline = resolveGltfShaderDefinition('gltf/toon-outline');
+
+            expect(outline).toBeDefined();
+            expect(outline!.id).toBe('gltf/toon-outline');
+            expect(outline!.effect?.id).toBe('gltf/toon-outline');
+            expect(outline!.effect).toEqual(GLTF_TOON_OUTLINE_SHADER_EFFECT);
+
+            const toon = resolveGltfShaderDefinition('gltf/toon');
+
+            expect(toon).toBeDefined();
+            expect(toon!.effect?.id).toBe('gltf/toon');
+        });
+    });
+
+    describe('createGltfRuntimeSurfaceDefinition material model reporting', () => {
+        it('reports the toon material model for toon shaders', () => {
+            expect(createGltfRuntimeSurfaceDefinition('gltf/toon').shadingModel).toBe('toon');
+            expect(createGltfRuntimeSurfaceDefinition('gltf/toon/blend').shadingModel).toBe('toon');
+            expect(createGltfRuntimeSurfaceDefinition('gltf/pbr').shadingModel).toBe('pbr');
+            expect(createGltfRuntimeSurfaceDefinition('gltf/unlit').shadingModel).toBe('unlit');
+        });
+    });
+
+    describe('GLTF_TOON_OUTLINE_SHADER_EFFECT', () => {
+        const compiledOutline = compileRenderShaderEffect(GLTF_TOON_OUTLINE_SHADER_EFFECT);
+
+        it('has the outline effect id', () => {
+            expect(GLTF_TOON_OUTLINE_SHADER_EFFECT.id).toBe('gltf/toon-outline');
+        });
+
+        it('compiles a vertex stage that skins, extrudes and guards zero-length normals', () => {
+            expect(compiledOutline.vertexSource).toContain('mat4 skin = resolveSkinMatrix();');
+            expect(compiledOutline.vertexSource).toContain(
+                'vec3 extrudeDirection = length(localNormal) > 0.0001 ? normalize(localNormal) : vec3(0.0);'
+            );
+            expect(compiledOutline.vertexSource).toContain(
+                'localPosition += vec4(extrudeDirection * (_OutlineWidth * 0.01), 0.0);'
+            );
+            expect(compiledOutline.vertexSource).toContain('uniform float _OutlineWidth;');
+            expect(compiledOutline.vertexSource).toContain(
+                'layout(location = 9) in uvec4 a_Joints0;'
+            );
+            expect(compiledOutline.vertexSource).toContain('layout(location = 10) in vec4 a_Weights0;');
+        });
+
+        it('compiles a fragment stage that discards without an outline width and outputs sRGB', () => {
+            expect(compiledOutline.fragmentSource).toContain('if (_OutlineWidth <= 0.0) {');
+            expect(compiledOutline.fragmentSource).toContain('discard;');
+            expect(compiledOutline.fragmentSource).toContain(
+                'o_Color = vec4(linearToSrgb(_OutlineColor), alpha);'
+            );
+            expect(compiledOutline.fragmentSource).toContain('precision mediump float;');
+            expect(compiledOutline.fragmentSource).toContain('uniform float _AlphaCutoff;');
+        });
+
+        it('declares front-face culling with depth writes in its render profile', () => {
+            expect(GLTF_TOON_OUTLINE_SHADER_EFFECT.renderState?.cullMode).toBe('front');
+            expect(GLTF_TOON_OUTLINE_SHADER_EFFECT.renderState?.depthWrite).toBe(true);
+            expect(GLTF_TOON_OUTLINE_SHADER_EFFECT.renderState?.depthTest).toBe(true);
+            expect(GLTF_TOON_OUTLINE_SHADER_EFFECT.renderState?.blend).toBe(false);
+        });
+
+        it('declares the outline and vertex offset properties with defaults', () => {
+            const outlineWidth = GLTF_TOON_OUTLINE_SHADER_EFFECT.properties?.find(
+                (property) => property.name === '_OutlineWidth'
+            );
+            const vertexOffset = GLTF_TOON_OUTLINE_SHADER_EFFECT.properties?.find(
+                (property) => property.name === '_VertexOffset'
+            );
+
+            expect(outlineWidth?.defaultValue).toBe(0);
+            expect(vertexOffset?.type).toBe('vec3');
+            expect(vertexOffset?.defaultValue).toEqual([0, 0, 0]);
+            expect(vertexOffset?.stages).toEqual(['vertex']);
+        });
+    });
+
+    describe('toon vertex offset support', () => {
+        it('declares _VertexOffset on the toon effect and applies it in the vertex stage', () => {
+            const vertexOffset = GLTF_TOON_SHADER_EFFECT.properties?.find(
+                (property) => property.name === '_VertexOffset'
+            );
+
+            expect(vertexOffset?.type).toBe('vec3');
+            expect(vertexOffset?.defaultValue).toEqual([0, 0, 0]);
+
+            const vertexLines = GLTF_TOON_SHADER_EFFECT.vertex.main.join('\n');
+
+            expect(vertexLines).toContain('localPosition += vec4(_VertexOffset, 0.0);');
+            expect(vertexLines).toContain('if (any(greaterThan(abs(_VertexOffset), vec3(0.0)))) {');
+        });
+
+        it('keeps every existing toon property name', () => {
+            const propertyNames = GLTF_TOON_SHADER_EFFECT.properties?.map((p) => p.name) ?? [];
+
+            expect(propertyNames).toContain('_ShadowColor');
+            expect(propertyNames).toContain('_ShadowThreshold');
+            expect(propertyNames).toContain('_ShadowSmoothness');
+            expect(propertyNames).toContain('_HighlightThreshold');
+            expect(propertyNames).toContain('_HighlightColor');
+            expect(propertyNames).toContain('_RimColor');
+            expect(propertyNames).toContain('_RimThreshold');
+            expect(propertyNames).toContain('_RimSmoothness');
+            expect(propertyNames).toContain('_OutlineWidth');
+            expect(propertyNames).toContain('_OutlineColor');
+        });
+
+        it('describes the outline pass through the toon technique', () => {
+            const passes = GLTF_TOON_SHADER_EFFECT.techniques?.[0]?.passes ?? [];
+
+            expect(passes.map((pass) => pass.id)).toEqual(['main', 'outline']);
+            expect(passes[1].renderState?.cullMode).toBe('front');
+            expect(passes[1].fragment?.main.join('\n')).toContain('linearToSrgb(_OutlineColor)');
         });
     });
 
@@ -328,6 +505,14 @@ describe('scene-runtime glTF shader effects', () => {
 
             expect(custom.id).toBe('gltf/pbr/custom');
             expect(custom.effect?.id).toBe('gltf/pbr/custom');
+        });
+    });
+
+    describe('runtime-shaders re-exports', () => {
+        it('re-exports the moved shader effects without rebuilding them', () => {
+            expect(GLTF_UNLIT_SHADER_EFFECT).toBe(GLTF_UNLIT_SHADER_EFFECT_FROM_UNLIT_MODULE);
+            expect(GLTF_PBR_SHADER_EFFECT).toBe(GLTF_PBR_SHADER_EFFECT_FROM_PBR_MODULE);
+            expect(GLTF_TOON_SHADER_EFFECT).toBe(GLTF_TOON_SHADER_EFFECT_FROM_TOON_MODULE);
         });
     });
 });

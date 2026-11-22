@@ -1,33 +1,6 @@
-import { PoolableObject, PoolPerformanceMetrics } from '../pool/mempool';
-import { ObjectPool, ObjectPoolOptions } from '../pool/object-pool';
-import { POOL_DEFAULTS, BUFFER_DEFAULTS } from './constants';
-
-class PoolableArrayBuffer implements PoolableObject {
-    __poolId?: number;
-    __poolStatus?: 'free' | 'allocated' | 'reserved';
-    __lastAccessed?: number;
-    __allocCount?: number;
-
-    /**
-     * @param buffer - The underlying ArrayBuffer to pool.
-     * @param size - The byte length of the buffer.
-     * @param zeroOnRelease - When true (default), the buffer is zeroed on reset
-     *   to prevent stale data from leaking between consumers. Set to false for
-     *   a performance gain when the consumer always overwrites the full buffer
-     *   before reading, making the zero-fill redundant.
-     */
-    constructor(
-        public readonly buffer: ArrayBuffer,
-        public readonly size: number,
-        public readonly zeroOnRelease: boolean = true
-    ) {}
-
-    reset(): void {
-        if (this.zeroOnRelease) {
-            new Uint8Array(this.buffer).fill(0);
-        }
-    }
-}
+import type { PoolPerformanceMetrics } from '../pool/mempool';
+import { BUFFER_DEFAULTS, POOL_DEFAULTS } from './constants';
+import { ByteChunk, ByteChunkPool } from './byte-chunk';
 
 /**
  * Configuration options for BufferPool.
@@ -35,93 +8,51 @@ class PoolableArrayBuffer implements PoolableObject {
  */
 export interface BufferPoolOptions {
     readonly initialCapacityPerBucket?: number;
-
     readonly maxCapacityPerBucket?: number;
-
-    readonly minFreePerBucket?: number;
-
     readonly preallocate?: boolean;
-
-    readonly autoExpand?: boolean;
-
-    readonly evictionPolicy?: 'none' | 'lru' | 'ttl' | 'fifo';
-
-    readonly ttl?: number;
-
-    readonly enableMetrics?: boolean;
-
-    readonly enableInstrumentation?: boolean;
-
-    readonly name?: string;
-
-    readonly highWatermarkRatio?: number;
-
-    readonly lowWatermarkRatio?: number;
-
     /**
-     * When true (default), buffers are zero-filled on release back to the pool.
-     * This prevents stale data from leaking between consumers but adds a small
-     * performance cost proportional to buffer size. Set to false when callers
-     * always overwrite the entire buffer before reading, making the zero-fill
-     * redundant.
+     * When true, buckets may grow past maxCapacityPerBucket; when false,
+     * allocation falls back to a direct (unpooled) ArrayBuffer at the limit.
+     */
+    readonly autoExpand?: boolean;
+    /** Idle eviction age in milliseconds. 0 disables TTL eviction. */
+    readonly ttl?: number;
+    readonly enableInstrumentation?: boolean;
+    readonly name?: string;
+    /**
+     * When true (default), buffers are zero-filled on release.
      * @default true
      */
     readonly zeroOnRelease?: boolean;
-
     readonly validator?: (buffer: ArrayBuffer) => boolean;
-
     readonly onAcquire?: (buffer: ArrayBuffer) => void;
-
     readonly onRelease?: (buffer: ArrayBuffer) => void;
-
     readonly onEvict?: (buffer: ArrayBuffer) => void;
-
     readonly onOutOfMemory?: (requestedSize: number, bucketIndex: number) => void;
 }
 
 /**
- * Singleton pool for ArrayBuffer instances, organized into power-of-two size buckets.
- *
- * Maintains a set of ObjectPool instances, one per bucket size (32B, 64B, 128B, ... up to
- * MAX_CAPACITY). Requests are rounded up to the nearest bucket size, ensuring that returned
- * buffers are always a power-of-two size. This avoids fragmentation and enables fast bucket
- * lookup via log2 arithmetic.
- *
- * The singleton pattern ensures a single shared pool across the engine. Use `getInstance()`
- * to access and `resetInstance()` to tear down (e.g., in tests).
- *
- * @example
- * const pool = BufferPool.getInstance({ evictionPolicy: 'lru', maxCapacityPerBucket: 256 });
- * const buf = pool.allocate(100);  // returns a 128-byte ArrayBuffer from the 128-bucket
- * // ... use buf ...
- * pool.release(buf);               // return to pool
- *
+ * Power-of-two bucket pool for ArrayBuffer instances, backed by ByteChunkPool.
+ * ByteBuffer and direct callers share one chunk-based allocation policy.
  * @stable
  */
 export class BufferPool {
     private static instance: BufferPool | undefined;
-    private readonly pools: Map<number, ObjectPool<PoolableArrayBuffer>>;
+
+    private readonly pools = new Map<number, ByteChunkPool>();
     private readonly options: Required<BufferPoolOptions>;
     private readonly bucketSizes: number[];
-    private readonly bufferToPoolMap: WeakMap<ArrayBuffer, {
-        wrapper: PoolableArrayBuffer;
-        bucketIndex: number;
-    }>;
+    private readonly bufferToChunk = new WeakMap<ArrayBuffer, ByteChunk<'MUT', 'OWNED'>>();
 
     private constructor(options: BufferPoolOptions = {}) {
         this.options = {
             initialCapacityPerBucket: options.initialCapacityPerBucket ?? 32,
             maxCapacityPerBucket: options.maxCapacityPerBucket ?? 512,
-            minFreePerBucket: options.minFreePerBucket ?? 4,
             preallocate: options.preallocate ?? false,
             autoExpand: options.autoExpand ?? true,
-            evictionPolicy: options.evictionPolicy ?? 'lru',
             ttl: options.ttl ?? 0,
-            enableMetrics: options.enableMetrics ?? false,
             enableInstrumentation: options.enableInstrumentation ?? false,
             name: options.name ?? 'BufferPool',
-            highWatermarkRatio: options.highWatermarkRatio ?? 0.85,
-            lowWatermarkRatio: options.lowWatermarkRatio ?? 0.25,
             zeroOnRelease: options.zeroOnRelease ?? true,
             validator: options.validator ?? (() => true),
             onAcquire: options.onAcquire ?? (() => {}),
@@ -133,8 +64,6 @@ export class BufferPool {
         this.bucketSizes = Array.from({ length: POOL_DEFAULTS.BUCKET_COUNT }, (_, i) =>
             Math.pow(2, 5 + i)
         );
-        this.pools = new Map();
-        this.bufferToPoolMap = new WeakMap();
 
         this.initializePools();
     }
@@ -156,60 +85,36 @@ export class BufferPool {
     private initializePools(): void {
         for (let i = 0; i < this.bucketSizes.length; i++) {
             const bucketSize = this.bucketSizes[i];
-
             if (bucketSize > BUFFER_DEFAULTS.MAX_CAPACITY) {
                 break;
             }
 
-            const poolOptions: ObjectPoolOptions<PoolableArrayBuffer> = {
-                initialCapacity: this.options.initialCapacityPerBucket,
-                maxCapacity: this.options.maxCapacityPerBucket,
-                minFree: this.options.minFreePerBucket,
-                preallocate: this.options.preallocate,
-                autoExpand: this.options.autoExpand,
-                evictionPolicy: this.options.evictionPolicy,
+            const pool = new ByteChunkPool({
+                chunkSize: bucketSize,
+                maxIdle: this.options.maxCapacityPerBucket,
+                maxTotal: this.options.autoExpand
+                    ? Number.POSITIVE_INFINITY
+                    : this.options.maxCapacityPerBucket,
+                preallocate: this.options.preallocate ? this.options.initialCapacityPerBucket : 0,
+                clearOnRelease: this.options.zeroOnRelease,
                 ttl: this.options.ttl,
-                enableMetrics: this.options.enableMetrics,
-                enableInstrumentation: this.options.enableInstrumentation,
-                name: `${this.options.name}-Bucket-${bucketSize}`,
-                highWatermarkRatio: this.options.highWatermarkRatio,
-                lowWatermarkRatio: this.options.lowWatermarkRatio,
-                allocationStrategy: 'least-recently-used',
-                expansionStrategy: 'multiplicative',
-                expansionFactor: 1.5,
-
-                factory: () => new PoolableArrayBuffer(new ArrayBuffer(bucketSize), bucketSize, this.options.zeroOnRelease),
-
-                resetHandler: (buffer: PoolableArrayBuffer) => buffer.reset(),
-
-                validateHandler: (buffer: PoolableArrayBuffer) => {
-                    return (
-                        buffer.buffer.byteLength === bucketSize &&
-                        this.options.validator(buffer.buffer)
-                    );
+                validator: (chunk) =>
+                    chunk.byteLength === bucketSize && this.options.validator(chunk.buffer),
+                onAcquire: (chunk) => {
+                    this.bufferToChunk.set(chunk.buffer, chunk);
+                    this.options.onAcquire(chunk.buffer);
                 },
-
-                onAcquireHandler: (buffer: PoolableArrayBuffer) => {
-                    this.bufferToPoolMap.set(buffer.buffer, { wrapper: buffer, bucketIndex: i });
-                    this.options.onAcquire(buffer.buffer);
+                onRelease: (chunk) => {
+                    this.bufferToChunk.delete(chunk.buffer);
+                    this.options.onRelease(chunk.buffer);
                 },
-
-                onReleaseHandler: (buffer: PoolableArrayBuffer) => {
-                    this.bufferToPoolMap.delete(buffer.buffer);
-                    this.options.onRelease(buffer.buffer);
+                onEvict: (chunk) => {
+                    this.bufferToChunk.delete(chunk.buffer);
+                    this.options.onEvict(chunk.buffer);
                 },
+            });
 
-                onEvictHandler: (buffer: PoolableArrayBuffer) => {
-                    this.bufferToPoolMap.delete(buffer.buffer);
-                    this.options.onEvict(buffer.buffer);
-                },
-
-                onOutOfMemory: (requested: number, available: number) => {
-                    this.options.onOutOfMemory(bucketSize, i);
-                },
-            };
-
-            this.pools.set(i, new ObjectPool(poolOptions));
+            this.pools.set(i, pool);
         }
     }
 
@@ -228,27 +133,22 @@ export class BufferPool {
         const actualSize = this.bucketSizes[bucketIndex];
         const pool = this.pools.get(bucketIndex);
 
-        let buffer: ArrayBuffer;
-
         if (!pool) {
-            buffer = new ArrayBuffer(actualSize);
-        } else {
-            try {
-                const poolableBuffer = pool.acquire();
-                buffer = poolableBuffer.buffer;
-            } catch (error) {
-                if (this.options.enableInstrumentation) {
-                    console.debug(
-                        `Pool exhausted for bucket ${bucketIndex}, falling back to direct allocation:`,
-                        error
-                    );
-                }
-                this.options.onOutOfMemory(requestedSize, bucketIndex);
-                buffer = new ArrayBuffer(actualSize);
-            }
+            return new ArrayBuffer(actualSize);
         }
 
-        return buffer;
+        try {
+            return pool.acquire().buffer;
+        } catch (error) {
+            if (this.options.enableInstrumentation) {
+                console.debug(
+                    `Pool exhausted for bucket ${bucketIndex}, falling back to direct allocation:`,
+                    error
+                );
+            }
+            this.options.onOutOfMemory(requestedSize, bucketIndex);
+            return new ArrayBuffer(actualSize);
+        }
     }
 
     tryAllocate(requestedSize: number): ArrayBuffer | null {
@@ -257,55 +157,21 @@ export class BufferPool {
         }
 
         const bucketIndex = this.getBucketIndex(requestedSize);
-        const actualSize = this.bucketSizes[bucketIndex];
         const pool = this.pools.get(bucketIndex);
-
         if (!pool) {
-            const buffer = new ArrayBuffer(actualSize);
-            return buffer;
-        }
-
-        try {
-            const poolableBuffer = pool.tryAcquire();
-            if (poolableBuffer) {
-                const buffer = poolableBuffer.buffer;
-                return buffer;
-            } else {
-                return null;
-            }
-        } catch (error) {
-            if (this.options.enableInstrumentation) {
-                console.debug(
-                    `tryAllocate failed for bucket ${bucketIndex}:`,
-                    error
-                );
-            }
             return null;
         }
+
+        const chunk = pool.tryAcquire();
+        return chunk !== null ? chunk.buffer : null;
     }
 
     release(buffer: ArrayBuffer): void {
-        if (!buffer || buffer.byteLength === 0) {
+        const chunk = this.bufferToChunk.get(buffer);
+        if (chunk === undefined) {
             return;
         }
-
-        const entry = this.bufferToPoolMap.get(buffer);
-        if (!entry) {
-            return;
-        }
-
-        const pool = this.pools.get(entry.bucketIndex);
-        if (!pool) {
-            return;
-        }
-
-        try {
-            pool.release(entry.wrapper);
-        } catch (error) {
-            if (this.options.enableInstrumentation) {
-                console.debug(`Failed to release buffer to pool:`, error);
-            }
-        }
+        chunk.dispose();
     }
 
     getStats(): BufferPoolStats {
@@ -313,12 +179,15 @@ export class BufferPool {
         let totalAllocated = 0;
         let totalAvailable = 0;
         let totalCapacity = 0;
+        let totalHits = 0;
+        let totalAllocations = 0;
+        let totalMemoryUsage = 0;
 
         for (const [bucketIndex, pool] of this.pools) {
-            const metrics = pool.getMetrics();
             const bucketSize = this.bucketSizes[bucketIndex];
+            const metrics = this.toMetrics(pool, bucketSize);
 
-            const stats: BucketStats = {
+            bucketStats.push({
                 bucketIndex,
                 bucketSize,
                 allocated: metrics.allocated,
@@ -332,12 +201,14 @@ export class BufferPool {
                 releases: metrics.releases,
                 evictions: metrics.evictions,
                 fragmentationRatio: metrics.fragmentationRatio,
-            };
+            });
 
-            bucketStats.push(stats);
             totalAllocated += metrics.allocated;
             totalAvailable += metrics.available;
             totalCapacity += metrics.capacity;
+            totalHits += metrics.hitRatio * metrics.allocations;
+            totalAllocations += metrics.allocations;
+            totalMemoryUsage += metrics.capacity * bucketSize;
         }
 
         return {
@@ -346,8 +217,8 @@ export class BufferPool {
             totalAllocated,
             totalAvailable,
             totalCapacity,
-            overallHitRatio: this.calculateOverallHitRatio(),
-            totalMemoryUsage: this.calculateTotalMemoryUsage(),
+            overallHitRatio: totalAllocations > 0 ? totalHits / totalAllocations : 0,
+            totalMemoryUsage,
             buckets: bucketStats,
         };
     }
@@ -355,7 +226,10 @@ export class BufferPool {
     getBucketMetrics(requestedSize: number): PoolPerformanceMetrics | null {
         const bucketIndex = this.getBucketIndex(requestedSize);
         const pool = this.pools.get(bucketIndex);
-        return pool ? pool.getMetrics() : null;
+        if (!pool) {
+            return null;
+        }
+        return this.toMetrics(pool, this.bucketSizes[bucketIndex]);
     }
 
     clear(): void {
@@ -365,23 +239,16 @@ export class BufferPool {
     }
 
     drain(): void {
-        for (const pool of this.pools.values()) {
-            pool.drain();
-        }
+        this.clear();
     }
 
     compact(): void {
-        for (const pool of this.pools.values()) {
-            pool.forceCompact();
-        }
+        // Chunk pools have no movable backing store; idle trimming is handled by TTL/clear.
     }
 
     resizeBucket(requestedSize: number, newCapacity: number): void {
         const bucketIndex = this.getBucketIndex(requestedSize);
-        const pool = this.pools.get(bucketIndex);
-        if (pool) {
-            pool.resize(newCapacity);
-        }
+        this.pools.get(bucketIndex)?.resize(newCapacity);
     }
 
     dispose(): void {
@@ -397,30 +264,47 @@ export class BufferPool {
         return Math.min(bucketIndex, POOL_DEFAULTS.BUCKET_COUNT - 1);
     }
 
-    private calculateOverallHitRatio(): number {
-        let totalHits = 0;
-        let totalRequests = 0;
+    private toMetrics(pool: ByteChunkPool, bucketSize: number): PoolPerformanceMetrics {
+        const capacity = pool.getTotalCount();
+        const allocated = pool.getAllocatedCount();
+        const available = pool.getAvailableCount();
+        const allocations = pool.getAllocations();
+        const releases = pool.getReleases();
+        const evictions = pool.getEvictions();
+        const hitRatio = pool.getHitRatio();
 
-        for (const pool of this.pools.values()) {
-            const metrics = pool.getMetrics();
-            const hits = metrics.allocations * metrics.hitRatio;
-            totalHits += hits;
-            totalRequests += metrics.allocations;
-        }
-
-        return totalRequests > 0 ? totalHits / totalRequests : 0;
-    }
-
-    private calculateTotalMemoryUsage(): number {
-        let totalMemory = 0;
-
-        for (const [bucketIndex, pool] of this.pools) {
-            const metrics = pool.getMetrics();
-            const bucketSize = this.bucketSizes[bucketIndex];
-            totalMemory += metrics.capacity * bucketSize;
-        }
-
-        return totalMemory;
+        return {
+            name: `${this.options.name}-Bucket-${bucketSize}`,
+            capacity,
+            available,
+            allocated,
+            reserved: 0,
+            highWaterMark: capacity,
+            allocations,
+            releases,
+            creations: capacity,
+            evictions,
+            expansions: 0,
+            contractions: 0,
+            validationFailures: 0,
+            fastPath: pool.getHits(),
+            slowPath: allocations - pool.getHits(),
+            averageAllocationTime: 0,
+            averageReleaseTime: 0,
+            peakMemoryUsage: capacity * bucketSize,
+            fragmentationRatio: 0,
+            utilizationRatio: capacity > 0 ? allocated / capacity : 0,
+            turnoverRate: capacity > 0 ? allocations / capacity : 0,
+            missRate: allocations > 0 ? 1 - hitRatio : 0,
+            hitRatio,
+            allocationsPerSecond: 0,
+            releasesPerSecond: 0,
+            lastCompactionDuration: 0,
+            compactionCount: 0,
+            lastResizeDuration: 0,
+            objectCreationTime: { min: 0, max: 0, avg: 0 },
+            objectLifetime: { min: 0, max: 0, avg: 0 },
+        };
     }
 }
 

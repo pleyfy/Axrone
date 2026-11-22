@@ -4,6 +4,8 @@ import { attachToParent, createTextBlock, isPointInside } from './internals';
 import { resolveTheme, resolveVariantPalette } from './theme';
 import { createStatefulControl } from './stateful-control';
 
+const BUTTON_MIN_WIDTH = 88;
+
 export const createUIButton = <TRuntime>(
     runtime: UIRuntime<TRuntime>,
     options: UIButtonOptions = {}
@@ -82,7 +84,7 @@ export const createUIButton = <TRuntime>(
         layout: {
             width: 'content',
             height: 'content',
-            minWidth: Math.max(88, Math.round(theme.controlHeight * 2.1)),
+            minWidth: Math.max(BUTTON_MIN_WIDTH, Math.round(theme.controlHeight * 2.1)),
             minHeight: theme.controlHeight,
             padding: [12, 20],
             ...(options.layout ?? {}),

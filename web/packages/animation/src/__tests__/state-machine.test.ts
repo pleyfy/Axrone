@@ -82,6 +82,39 @@ const makeMachineDefinition = (
     ],
 });
 
+describe('state machine transition easing', () => {
+    it('applies the authored easing to pose and root delta weights', () => {
+        const machine = compileStateMachine(makeMachineDefinition({ easing: 'easeIn', duration: 1, fixedDuration: true }), clips);
+        const runtime = createLayerRuntime(machine);
+        const parameters = makeParameters();
+        const scratch = new AnimationScratchPool(rig, curveLayout);
+        const restFrame = new AnimationFrame(rig, curveLayout);
+        const context = { rig, parameters, restFrame, scratch, blendScratch: new BlendScratchContext() };
+        const out = new AnimationFrame(rig, curveLayout);
+
+        parameters.setTrigger('toB');
+        updateLayerRuntime(machine, runtime, parameters, 0.1);
+        updateLayerRuntime(machine, runtime, parameters, 0.2);
+        expect(runtime.transition?.progress).toBeCloseTo(0.2, 5);
+
+        evaluateLayerRuntime(machine, runtime, context, out);
+        // Source x = 0.3, target x = 0.2, easeIn(0.2) = 0.04.
+        expect(out.pose.translations[0]).toBeCloseTo(0.3 + (0.2 - 0.3) * 0.04, 5);
+
+        const translation = new Float32Array(3);
+        const rotation = new Float32Array(4);
+        extractLayerRootDelta(machine, runtime, 0, context, translation, rotation);
+        expect(translation[0]).toBeCloseTo(0.2, 5);
+        expect(Number.isFinite(translation[0])).toBe(true);
+    });
+
+    it('rejects an unknown easing at compile time', () => {
+        expect(() =>
+            compileStateMachine(makeMachineDefinition({ easing: 'bogus' as never }), clips)
+        ).toThrow(AnimationValidationError);
+    });
+});
+
 describe('state machine transition interruption (canInterrupt)', () => {
     it('keeps non-interruptible transitions running when other conditions fire', () => {
         const machine = compileStateMachine(makeMachineDefinition({ canInterrupt: false }), clips);

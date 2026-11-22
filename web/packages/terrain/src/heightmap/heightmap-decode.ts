@@ -65,8 +65,13 @@ export const decodeHeightmapFromImageData = (
             const x1 = Math.min(x0 + 1, width - 1);
             const tx = sourceX - x0;
 
-            const top = luminanceAt(x0, z0) + (luminanceAt(x1, z0) - luminanceAt(x0, z0)) * tx;
-            const bottom = luminanceAt(x0, z1) + (luminanceAt(x1, z1) - luminanceAt(x0, z1)) * tx;
+            const topLeft = luminanceAt(x0, z0);
+            const topRight = luminanceAt(x1, z0);
+            const bottomLeft = luminanceAt(x0, z1);
+            const bottomRight = luminanceAt(x1, z1);
+
+            const top = topLeft + (topRight - topLeft) * tx;
+            const bottom = bottomLeft + (bottomRight - bottomLeft) * tx;
             heights[gridZ * resolution + gridX] = top + (bottom - top) * tz;
         }
     }

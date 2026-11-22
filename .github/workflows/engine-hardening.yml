@@ -35,6 +35,22 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Run physics-3d-wasm node --test suites
+        run: |
+          yarn workspace @axrone/physics-3d-wasm run test:median
+          yarn workspace @axrone/physics-3d-wasm run test:rotation-funnel-gate
+          yarn workspace @axrone/physics-3d-wasm run test:variants
+
+      - name: Run physics-3d node --test instrument suites
+        run: yarn workspace @axrone/physics-3d run test:instruments
+
+      - name: Run physics-3d-wasm numerical parity suite
+        run: yarn workspace @axrone/physics-3d-wasm run test:parity
+
+      - name: Report physics-3d-wasm strict parity drift
+        continue-on-error: true
+        run: yarn workspace @axrone/physics-3d-wasm run test:parity:strict
+
       - name: Run engine hardening gate
         run: yarn ci:engine-hardening
 

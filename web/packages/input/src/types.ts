@@ -1,5 +1,6 @@
 import type { IEventEmitter } from '@axrone/event';
 import type { Disposable } from '@axrone/utility';
+import type { IVec2Like } from '@axrone/numeric';
 
 export type IDisposable = Disposable;
 
@@ -8,10 +9,7 @@ export type InputActionKind = 'button' | 'axis' | 'vector2';
 export type InputContextCapture = 'none' | 'used';
 export type InputModifierKey = 'shift' | 'ctrl' | 'alt' | 'meta';
 
-export interface InputVector2 {
-    readonly x: number;
-    readonly y: number;
-}
+export type InputVector2 = Readonly<IVec2Like>;
 
 export interface InputScaleProcessor {
     readonly type: 'scale';

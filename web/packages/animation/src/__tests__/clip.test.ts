@@ -414,6 +414,70 @@ describe('AnimationClip tag sanitization', () => {
     });
 });
 
+describe('AnimationClip track validation', () => {
+    it('rejects non-finite or descending key times', () => {
+        expect(() => makeTranslationClip('nan', [0, Number.NaN, 2], new Array(9).fill(0))).toThrow(
+            AnimationValidationError
+        );
+        expect(() => makeTranslationClip('descending', [0, 2, 1], new Array(9).fill(0))).toThrow(
+            /descending|ascending/i
+        );
+    });
+
+    it('shows the final key of a STEP track at and after its time', () => {
+        const clip = makeTranslationClip('step-last', [0, 1], [0, 0, 0, 5, 0, 0], {
+            interpolation: 'STEP',
+        });
+        const frame = new AnimationFrame(rig, curveLayout);
+        clip.sampleTime(1, frame);
+        expect(frame.pose.translations[0]).toBeCloseTo(5, 5);
+        clip.sampleTime(1.5, frame);
+        expect(frame.pose.translations[0]).toBeCloseTo(5, 5);
+    });
+
+    it('treats a zero-key track as inert', () => {
+        const clip = new AnimationClip(
+            {
+                id: 'empty-track',
+                duration: 1,
+                tracks: [
+                    { target: 'root', path: 'translation', times: [], values: [] },
+                    {
+                        target: 'child',
+                        path: 'translation',
+                        times: [0, 1],
+                        values: [0, 0, 0, 4, 0, 0],
+                    },
+                ],
+            },
+            rig,
+            curveLayout
+        );
+        const frame = new AnimationFrame(rig, curveLayout);
+        clip.sampleTime(0.5, frame);
+        expect(frame.pose.translations[0]).toBe(0);
+        expect(frame.pose.translations[3]).toBeCloseTo(2, 5);
+    });
+
+    it('rejects duplicate bone tracks', () => {
+        expect(
+            () =>
+                new AnimationClip(
+                    {
+                        id: 'duplicate-track',
+                        duration: 1,
+                        tracks: [
+                            { target: 'root', path: 'translation', times: [0, 1], values: [0, 0, 0, 1, 0, 0] },
+                            { target: 'root', path: 'translation', times: [0, 1], values: [0, 0, 0, 5, 0, 0] },
+                        ],
+                    },
+                    rig,
+                    curveLayout
+                )
+        ).toThrow(AnimationValidationError);
+    });
+});
+
 describe('AnimationClip sampleBoneTransform', () => {
     it('returns correct transform for bone at time', () => {
         const clip = makeTranslationClip('bone', [0, 1], [0, 0, 0, 10, 0, 0]);

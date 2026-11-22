@@ -1,53 +1,49 @@
-import type { Nominal, NonEmptyReadonlyArray } from '@axrone/utility';
+import type { Brand } from '@axrone/utility';
 
-export type { Nominal };
+export type StackCapacity = Brand<number, "StackCapacity">;
+export type StackSize = Brand<number, "StackSize">;
+export type StackId = Brand<string, "StackId">;
 
-// Variance is a phantom type marker used for documentation and compile-time checks.
-export type Variance<T, V extends 'in' | 'out' | 'invariant'> = T & { readonly __variance?: V };
-export type Phantom<T, P> = T & { readonly __phantom?: P };
-
-/** @stable */
-export type StackCapacity = Nominal<number, 'StackCapacity'>;
-/** @stable */
-export type StackSize = Nominal<number, 'StackSize'>;
-/** @stable */
-export type NodeId = Nominal<number, 'NodeId'>;
-/** @stable */
-export type MemoryAddress = Nominal<number, 'MemoryAddress'>;
-/** @stable */
-export type AllocatorId = Nominal<number, 'AllocatorId'>;
-/** @stable */
-export type PoolIndex = Nominal<number, 'PoolIndex'>;
-
-/** @stable */
-export type NonEmptyArray<T> = NonEmptyReadonlyArray<T>;
-/** @stable */
-export type EmptyArray = readonly [];
-/** @stable */
-export type ArrayWithLength<T, N extends number> = readonly T[] & { readonly length: N };
-
-/** @stable */
-export interface StackNode<T> extends Variance<{}, 'out'> {
-    readonly id: NodeId;
-    readonly value: T;
-    readonly next: StackNode<T> | null;
-    readonly refs: number;
-    readonly generation: number;
-    readonly memAddr: MemoryAddress;
+export function assertStackCapacity(value: number): asserts value is StackCapacity {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new RangeError(`Capacity must be a positive safe integer. Received: ${value}`);
+    }
 }
 
-/** @stable */
-export interface AlignedStackNode<T> extends StackNode<T> {
-    readonly padding: readonly number[];
-    readonly checksum: number;
+export function assertStackId(value: string): asserts value is StackId {
+    if (value.length === 0) {
+        throw new RangeError("Stack identifier cannot be empty.");
+    }
 }
 
-/** @stable */
-export type StackResult<T, E = never> =
-    | { readonly tag: 'success'; readonly value: T; readonly cost: number }
-    | { readonly tag: 'failure'; readonly error: E; readonly recovery?: () => void };
+let globalStackSequence = 0;
+export function generateStackId(): StackId {
+    globalStackSequence = (globalStackSequence + 1) | 0;
+    const candidate = `stk_${Date.now().toString(36)}_${globalStackSequence.toString(36)}`;
+    assertStackId(candidate);
+    return candidate;
+}
 
-/** @stable */
-export type ExtractSuccess<T> = T extends StackResult<infer U, any> ? U : never;
-/** @stable */
-export type ExtractError<T> = T extends StackResult<any, infer E> ? E : never;
+export const LIFECYCLE_ACTIVE = 0 as const;
+export const LIFECYCLE_DISPOSED = 1 as const;
+export type Lifecycle = typeof LIFECYCLE_ACTIVE | typeof LIFECYCLE_DISPOSED;
+
+export interface IStackMetricsSink {
+    onPush(): void;
+    onPop(): void;
+    onChunkAllocated(): void;
+    onChunkDeallocated(): void;
+}
+
+export const MonomorphicNoOpMetricsSink: Readonly<IStackMetricsSink> = Object.freeze({
+    onPush(): void {},
+    onPop(): void {},
+    onChunkAllocated(): void {},
+    onChunkDeallocated(): void {},
+});
+
+export const CHUNK_SIZE = 64 as const;
+export const CHUNK_MASK = 63 as const;
+export const CHUNK_SHIFT = 6 as const;
+export const MAX_POOLED_CHUNKS = 4 as const;
+export const HYSTERESIS_THRESHOLD = 2 as const;

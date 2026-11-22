@@ -4,7 +4,8 @@ import type {
     ResolvedTerrainBrushOptions,
     TerrainDescriptor,
 } from '../types';
-import { validateTerrainDescriptor } from '../types';
+import { validateTerrainDescriptor, TERRAIN_BRUSH_HEIGHT_STAMP_SCALE } from '../types';
+import { smoothstep } from '../internal/math';
 
 /**
  * Working-buffer brush stamp. Sculpt sessions hold a mutable copy of the
@@ -21,9 +22,6 @@ export interface TerrainBrushStamp {
     readonly localX: number;
     readonly localZ: number;
 }
-
-const smoothstep = (t: number): number => t * t * (3 - 2 * t);
-
 
 /**
  * Applies a single brush stamp in place. Returns `true` when at least one
@@ -65,9 +63,9 @@ export const applyTerrainBrushStamp = ({
         return false;
     }
 
-    // Normalized step magnitude: strength 1 moves a sample by ~4% of the
-    // full height range per stamp, keeping drags controllable.
-    const stampDelta = brush.strength * 0.04;
+    // Normalized step magnitude: strength 1 moves a sample by TERRAIN_BRUSH_HEIGHT_STAMP_SCALE
+    // of the full height range per stamp, keeping drags controllable.
+    const stampDelta = brush.strength * TERRAIN_BRUSH_HEIGHT_STAMP_SCALE;
     let changed = false;
 
     // Flatten/smooth reference values are derived from the pre-stamp buffer.
@@ -78,7 +76,33 @@ export const applyTerrainBrushStamp = ({
         flattenTarget = heights[sampleZ * resolution + sampleX]!;
     }
 
-    const source = brush.kind === 'smooth' ? new Float32Array(heights) : heights;
+    // For smooth brush, snapshot only the region we'll read (expanded AABB for 3×3 neighborhoods).
+    let source: Float32Array;
+    let sourceOffsetX = 0;
+    let sourceOffsetZ = 0;
+    let sourceWidth = 0;
+
+    if (brush.kind === 'smooth') {
+        const snapMinX = Math.max(0, minX - 1);
+        const snapMaxX = Math.min(lastIndex, maxX + 1);
+        const snapMinZ = Math.max(0, minZ - 1);
+        const snapMaxZ = Math.min(lastIndex, maxZ + 1);
+        sourceWidth = snapMaxX - snapMinX + 1;
+        const sourceHeight = snapMaxZ - snapMinZ + 1;
+        source = new Float32Array(sourceWidth * sourceHeight);
+        sourceOffsetX = snapMinX;
+        sourceOffsetZ = snapMinZ;
+
+        for (let z = snapMinZ; z <= snapMaxZ; z += 1) {
+            const srcRow = z * resolution + snapMinX;
+            const dstRow = (z - snapMinZ) * sourceWidth;
+            for (let x = 0; x < sourceWidth; x += 1) {
+                source[dstRow + x] = heights[srcRow + x]!;
+            }
+        }
+    } else {
+        source = heights;
+    }
 
     for (let gridZ = minZ; gridZ <= maxZ; gridZ += 1) {
         for (let gridX = minX; gridX <= maxX; gridX += 1) {
@@ -127,7 +151,10 @@ export const applyTerrainBrushStamp = ({
                                 continue;
                             }
 
-                            total += source[neighborZ * resolution + neighborX]!;
+                            // Read from snapshot with adjusted coordinates.
+                            const snapX = neighborX - sourceOffsetX;
+                            const snapZ = neighborZ - sourceOffsetZ;
+                            total += source[snapZ * sourceWidth + snapX]!;
                             count += 1;
                         }
                     }

@@ -1,4 +1,4 @@
-import type { BytesLike } from '../../../../types';
+import type { BytesLike } from '../../../types';
 import { asHash256, asSeed32, type Hash256, type Hash512, type Hash128, type Seed32, type HashAlgorithmMetadata } from '../../types';
 import type { IHasher, IDigestAsync } from '../../interfaces';
 import { HasherBase } from '../../base';

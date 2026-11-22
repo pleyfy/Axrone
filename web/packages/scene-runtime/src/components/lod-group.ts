@@ -72,6 +72,7 @@ export class LODGroup extends Component {
     private _lodEnabled: boolean;
     private _lodLevels: LODLevel[];
     private _currentLODIndex: number = -1;
+    private _forcedLODIndex: number | null = null;
     private _lastScreenHeight: number = 0;
 
     constructor(config: LODGroupConfig = {}) {
@@ -133,6 +134,10 @@ export class LODGroup extends Component {
         return this._currentLODIndex;
     }
 
+    get forcedLODIndex(): number | null {
+        return this._forcedLODIndex;
+    }
+
     get lastScreenHeight(): number {
         return this._lastScreenHeight;
     }
@@ -162,6 +167,7 @@ export class LODGroup extends Component {
                 renderers: [...level.renderers],
             }))
             .sort((a, b) => b.screenRelativeTransitionHeight - a.screenRelativeTransitionHeight);
+        this._clearDanglingForcedLOD();
     }
 
     /**
@@ -174,6 +180,9 @@ export class LODGroup extends Component {
             renderers: [...level.renderers],
         });
         this._lodLevels.sort((a, b) => b.screenRelativeTransitionHeight - a.screenRelativeTransitionHeight);
+        // Re-sorting reshuffles indices, so a pinned index may now address
+        // a different level — drop the override back to automatic selection.
+        this._forcedLODIndex = null;
     }
 
     /**
@@ -182,6 +191,13 @@ export class LODGroup extends Component {
     removeLODLevel(index: number): void {
         if (index >= 0 && index < this._lodLevels.length) {
             this._lodLevels.splice(index, 1);
+            this._clearDanglingForcedLOD();
+        }
+    }
+
+    private _clearDanglingForcedLOD(): void {
+        if (this._forcedLODIndex !== null && this._forcedLODIndex >= this._lodLevels.length) {
+            this._forcedLODIndex = null;
         }
     }
 
@@ -198,9 +214,14 @@ export class LODGroup extends Component {
      * Pass -1 to return to automatic selection.
      */
     forceLOD(index: number): void {
-        if (index < -1 || index >= this._lodLevels.length) {
+        if (index === -1) {
+            this._forcedLODIndex = null;
             return;
         }
+        if (index < 0 || index >= this._lodLevels.length) {
+            return;
+        }
+        this._forcedLODIndex = index;
         this._currentLODIndex = index;
     }
 
@@ -214,6 +235,11 @@ export class LODGroup extends Component {
 
         if (!this._lodEnabled || this._lodLevels.length === 0) {
             return -1;
+        }
+
+        if (this._forcedLODIndex !== null) {
+            this._currentLODIndex = this._forcedLODIndex;
+            return this._forcedLODIndex;
         }
 
         for (let i = 0; i < this._lodLevels.length; i++) {

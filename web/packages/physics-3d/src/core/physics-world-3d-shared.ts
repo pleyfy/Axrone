@@ -53,6 +53,8 @@ export const CONSTRAINT_TYPE_CONE_TWIST = 4;
 export const CONSTRAINT_TYPE_GENERIC = 5;
 export const CONSTRAINT_TYPE_SPRING = 6;
 
+export const CONTACT_BREAK_THRESHOLD = 0.02;
+
 export type SupportedShapeDef3D =
     | ({ readonly kind: typeof SHAPE_TYPE_SPHERE } & ISphereShapeDef3D)
     | ({ readonly kind: typeof SHAPE_TYPE_BOX } & IBoxShapeDef3D)
@@ -80,6 +82,36 @@ export interface IShapeDescriptor3D {
     isSensor: boolean;
     filter: ICollisionFilter3D;
     userData?: unknown;
+    /**
+     * Per-step derived transform data, refreshed while the broadphase computes
+     * this shape's AABB and reused by the box–box narrowphase. Objects are
+     * mutated in place, so callers must not retain them past the current step.
+     */
+    frame?: IShapeFrame3D;
+}
+
+/**
+ * Mutable world-space transform data for one shape, computed once per step.
+ *
+ * Before this cache existed, a box–box pair re-derived the same centre, world
+ * rotation and basis axes three times (SAT test, face clipping, manifold
+ * points), each pass costing several `Map` lookups on bigint body ids plus
+ * temporary vector objects. The fields mirror exactly what
+ * `transformPoint3D` / `Quat.multiply` / `Quat.rotateVector` produce, so the
+ * narrowphase arithmetic is unchanged — only its input lookups disappear.
+ */
+export interface IShapeFrame3D {
+    readonly bodyPosition: { x: number; y: number; z: number };
+    readonly bodyRotation: { x: number; y: number; z: number; w: number };
+    readonly center: { x: number; y: number; z: number };
+    readonly rotation: { x: number; y: number; z: number; w: number };
+    readonly axes: [
+        { x: number; y: number; z: number },
+        { x: number; y: number; z: number },
+        { x: number; y: number; z: number },
+    ];
+    /** Step token this frame was refreshed at; stale frames must be recomputed. */
+    generation: number;
 }
 
 export interface IConstraintDescriptor3D {
@@ -136,6 +168,12 @@ export interface IResolvedContactManifold3D extends IMutableContactManifold3D {
     readonly sensor: boolean;
     readonly friction: number;
     readonly restitution: number;
+    /**
+     * Offset of this manifold's block inside the contact solver cache, or -1
+     * when it has not been prepared for the current step. Internal solver state
+     * (see PhysicsWorld3DSolver.prepareContact); rebuilt manifolds start over.
+     */
+    solverOffset: number;
 }
 
 export interface IShapePairCandidate3D {

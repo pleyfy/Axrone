@@ -1,4 +1,5 @@
 import { AnimationCompilationError, AnimationResolutionError } from './errors';
+import { buildDelaunayTriangles } from './delaunay';
 import { AnimationClip } from './clip';
 import type { DiagnosticCode } from './blend-types';
 import type {
@@ -8,9 +9,16 @@ import type {
     AnimationCompiledDirectMotion,
     AnimationCompiledAdditiveMotion,
     AnimationCompiledClipMotion,
+    AnimationCompiledMotionMatchingMotion,
 } from './blend-types';
 import type { AnimationBlendTreeDefinition, AnimationMotionDefinition } from './types';
 import { assertNever } from './errors';
+import {
+    createMotionMatchingSelection,
+    MOTION_MATCH_DEFAULT_CONTINUITY_BIAS,
+    MOTION_MATCH_DEFAULT_RESELECT_INTERVAL,
+    validateMotionMatchingDefinition,
+} from './motion-matching-node';
 
 const pushDiagnostic = (code: DiagnosticCode, message: string, path: string): never => {
     throw new AnimationCompilationError(message, code, path);
@@ -47,6 +55,16 @@ const compileBlendTree = (
                 kind: 'blend2d',
                 parameterX: definition.parameterX,
                 parameterY: definition.parameterY,
+                mode: definition.mode ?? 'inverse-distance',
+                triangles:
+                    definition.mode === 'freeform'
+                        ? buildDelaunayTriangles(
+                              definition.children.map((child) => ({
+                                  x: child.position[0],
+                                  y: child.position[1],
+                              }))
+                          )
+                        : new Int32Array(0),
                 children: Object.freeze(
                     definition.children.map((child) =>
                         Object.freeze({
@@ -101,6 +119,29 @@ export const compileMotion = (
             timeScale: definition.timeScale ?? 1,
             cycleOffset: definition.cycleOffset ?? 0,
         } satisfies AnimationCompiledClipMotion);
+    }
+    if (definition.kind === 'motionMatching') {
+        validateMotionMatchingDefinition(definition, 'motionMatching');
+        if (definition.database.size === 0) {
+            pushDiagnostic(
+                'animation.blendGraph.empty',
+                'Motion matching requires at least one database entry',
+                definition.kind
+            );
+        }
+        return Object.freeze({
+            kind: 'motionMatching',
+            database: definition.database,
+            clips,
+            trajectoryXParameter: String(definition.trajectoryXParameter),
+            trajectoryZParameter: String(definition.trajectoryZParameter),
+            facingXParameter: String(definition.facingXParameter),
+            facingZParameter: String(definition.facingZParameter),
+            reselectIntervalSeconds:
+                definition.reselectIntervalSeconds ?? MOTION_MATCH_DEFAULT_RESELECT_INTERVAL,
+            continuityBias: definition.continuityBias ?? MOTION_MATCH_DEFAULT_CONTINUITY_BIAS,
+            state: createMotionMatchingSelection(),
+        } satisfies AnimationCompiledMotionMatchingMotion);
     }
     return compileBlendTree(definition, clips);
 };

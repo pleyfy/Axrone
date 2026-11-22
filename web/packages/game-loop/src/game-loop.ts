@@ -178,6 +178,8 @@ export class GameLoop<TState> implements GameLoopController<TState> {
     private _disposed = false;
     private _pauseWhenHiddenEnabled = false;
     private _visibilityHandler: (() => void) | undefined;
+    private _pageHideHandler: (() => void) | undefined;
+    private _pageShowHandler: (() => void) | undefined;
     private readonly _beforeUpdateContext: Mutable<BeforeUpdateContext<TState>>;
     private readonly _fixedUpdateContext: Mutable<FixedUpdateContext<TState>>;
     private readonly _updateContext: Mutable<UpdateContext<TState>>;
@@ -324,7 +326,11 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         if (options.pauseWhenHidden && typeof document !== 'undefined') {
             this._pauseWhenHiddenEnabled = true;
             this._visibilityHandler = () => this._handleVisibilityChange();
+            this._pageHideHandler = () => this._applyHiddenState(true);
+            this._pageShowHandler = () => this._applyHiddenState(false);
             document.addEventListener('visibilitychange', this._visibilityHandler);
+            document.addEventListener('pagehide', this._pageHideHandler);
+            document.addEventListener('pageshow', this._pageShowHandler);
         }
 
         if (options.autoStart) {
@@ -350,6 +356,15 @@ export class GameLoop<TState> implements GameLoopController<TState> {
 
     get fixedDelta(): number {
         return this._fixedDelta;
+    }
+
+    /**
+     * Interpolation factor of the current render phase: 0 is the previous fixed
+     * step, 1 is the current one. Consumers that render between fixed steps use
+     * it to interpolate their state.
+     */
+    get interpolationAlpha(): number {
+        return this._renderContext.alpha;
     }
 
     get maxDelta(): number {
@@ -496,9 +511,13 @@ export class GameLoop<TState> implements GameLoopController<TState> {
             return;
         }
 
-        if (this._visibilityHandler && typeof document !== 'undefined') {
-            document.removeEventListener('visibilitychange', this._visibilityHandler);
+        if (typeof document !== 'undefined') {
+            this._removeHiddenStateListener('visibilitychange', this._visibilityHandler);
             this._visibilityHandler = undefined;
+            this._removeHiddenStateListener('pagehide', this._pageHideHandler);
+            this._pageHideHandler = undefined;
+            this._removeHiddenStateListener('pageshow', this._pageShowHandler);
+            this._pageShowHandler = undefined;
         }
 
         let firstError: Error | undefined;
@@ -876,19 +895,36 @@ export class GameLoop<TState> implements GameLoopController<TState> {
         );
     }
 
+    private _removeHiddenStateListener(type: string, handler: (() => void) | undefined): void {
+        if (typeof document === 'undefined' || handler === undefined) {
+            return;
+        }
+
+        document.removeEventListener(type, handler);
+    }
+
     private _handleVisibilityChange(): void {
-        if (!this._pauseWhenHiddenEnabled || this._disposed) return;
+        if (typeof document === 'undefined') {
+            return;
+        }
 
-        if (typeof document === 'undefined') return;
+        this._applyHiddenState(document.hidden);
+    }
 
-        if (document.hidden) {
+    private _applyHiddenState(hidden: boolean): void {
+        if (!this._pauseWhenHiddenEnabled || this._disposed) {
+            return;
+        }
+
+        if (hidden) {
             if (this._status === 'running') {
                 this.pause();
             }
-        } else {
-            if (this._status === 'paused') {
-                this.resume();
-            }
+            return;
+        }
+
+        if (this._status === 'paused') {
+            this.resume();
         }
     }
 }

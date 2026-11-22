@@ -130,6 +130,7 @@ export class BillboardRenderer extends Component {
         this._height = Math.max(0, value);
     }
 
+    /** Live internal state — read-only view. Mutating it bypasses setter normalization; assign via the setter. */
     get pivot(): Vec3 {
         return this._pivot;
     }
@@ -170,6 +171,7 @@ export class BillboardRenderer extends Component {
         this._alphaTest = Math.max(0, Math.min(1, value));
     }
 
+    /** Live internal state — read-only view. Mutating it bypasses setter normalization; assign via the setter. */
     get color(): Vec3 {
         return this._color;
     }
@@ -202,6 +204,7 @@ export class BillboardRenderer extends Component {
         this._flipY = value;
     }
 
+    /** Live internal tuple — read-only view. Mutating it bypasses setter normalization; assign via the setter. */
     get uvRect(): readonly [number, number, number, number] {
         return this._uvRect;
     }

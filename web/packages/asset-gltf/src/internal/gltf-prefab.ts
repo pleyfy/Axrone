@@ -91,9 +91,34 @@ const createMorphWeights = (
     return weights;
 };
 
+const collectSkinJointNodeIds = (
+    root: GltfRootJson,
+    importedNodeIds: ReadonlySet<string>
+): readonly string[] => {
+    const nodes = root.nodes ?? [];
+    const skins = root.skins ?? [];
+    for (const node of nodes) {
+        if (node.skin === undefined) {
+            continue;
+        }
+        const skin = skins[node.skin];
+        if (!skin) {
+            continue;
+        }
+        const jointNodeIds = skin.joints
+            .map((jointIndex) => `node/${jointIndex}`)
+            .filter((nodeId) => importedNodeIds.has(nodeId));
+        if (jointNodeIds.length > 0) {
+            return Object.freeze(jointNodeIds);
+        }
+    }
+    return Object.freeze([]);
+};
+
 export const createAnimatorSnapshot = (
     animations: readonly GltfAnimationClipAsset[],
-    metadata: GltfAnimationControllerMetadata | undefined
+    metadata: GltfAnimationControllerMetadata | undefined,
+    skinJointNodeIds?: readonly string[]
 ): GltfComponentSnapshot | undefined => {
     type SerializableTrack = Readonly<{
         targetNodeId: string;
@@ -171,6 +196,9 @@ export const createAnimatorSnapshot = (
                 ...(metadata?.layers ? { layers: metadata.layers } : {}),
                 ...(metadata && 'rootMotion' in metadata ? { rootMotion: metadata.rootMotion ?? null } : {}),
                 clipId: clips[0]?.id ?? null,
+                ...(skinJointNodeIds && skinJointNodeIds.length > 0
+                    ? { skinJointNodeIds: Object.freeze([...skinJointNodeIds]) }
+                    : {}),
                 playOnStart: true,
                 playing: true,
                 loop: true,
@@ -428,7 +456,12 @@ export const buildPrefabDefinition = (context: PrefabBuildContext): PrefabBuildR
         true
     );
 
-    const animatorComponent = createAnimatorSnapshot(sceneAnimations, animationController);
+    const skinJointNodeIds = collectSkinJointNodeIds(root, importedNodeIds);
+    const animatorComponent = createAnimatorSnapshot(
+        sceneAnimations,
+        animationController,
+        skinJointNodeIds
+    );
     if (animatorComponent) {
         const firstRootActorIndex = actors.findIndex((actor) => actor.parentNodeId === null);
         if (firstRootActorIndex >= 0) {

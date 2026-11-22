@@ -26,6 +26,7 @@ export interface TrailRendererConfig {
     readonly generateLightingData?: boolean;
     readonly cornerVertices?: number;
     readonly endCapVertices?: number;
+    readonly emitting?: boolean;
     readonly autodestruct?: boolean;
 }
 
@@ -118,6 +119,7 @@ export class TrailRenderer extends Component {
     private _generateLightingData: boolean;
     private _cornerVertices: number;
     private _endCapVertices: number;
+    private _emitting: boolean;
     private _autodestruct: boolean;
 
     // ── Ring buffer for trail points (zero-allocation on hot path) ──
@@ -152,6 +154,7 @@ export class TrailRenderer extends Component {
         this._generateLightingData = false;
         this._cornerVertices = 0;
         this._endCapVertices = 0;
+        this._emitting = true;
         this._autodestruct = false;
 
         // Pre-allocate the ring buffer with reusable TrailPoint objects.
@@ -280,6 +283,14 @@ export class TrailRenderer extends Component {
         this._autodestruct = value;
     }
 
+    get emitting(): boolean {
+        return this._emitting;
+    }
+
+    set emitting(value: boolean) {
+        this._emitting = value;
+    }
+
     get pointCount(): number {
         return this._pointCount;
     }
@@ -393,7 +404,7 @@ export class TrailRenderer extends Component {
         this._tempPosition.y = currentPosition.y;
         this._tempPosition.z = currentPosition.z;
 
-        if (!this._hasLastPosition) {
+        if (this._emitting && !this._hasLastPosition) {
             this._lastPosition.x = this._tempPosition.x;
             this._lastPosition.y = this._tempPosition.y;
             this._lastPosition.z = this._tempPosition.z;
@@ -407,7 +418,7 @@ export class TrailRenderer extends Component {
         const dz = this._tempPosition.z - this._lastPosition.z;
         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-        if (distance >= this._minVertexDistance) {
+        if (this._emitting && distance >= this._minVertexDistance) {
             this._addPoint(this._tempPosition.x, this._tempPosition.y, this._tempPosition.z, this._elapsedTime, this._startWidth);
             this._lastPosition.x = this._tempPosition.x;
             this._lastPosition.y = this._tempPosition.y;
@@ -415,6 +426,10 @@ export class TrailRenderer extends Component {
         }
 
         this._pruneExpiredPoints();
+
+        if (this._autodestruct && !this._emitting && this._pointCount === 0) {
+            this.actor?.destroy();
+        }
     }
 
     override serialize(): Record<string, unknown> {
@@ -438,6 +453,7 @@ export class TrailRenderer extends Component {
             generateLightingData: this._generateLightingData,
             cornerVertices: this._cornerVertices,
             endCapVertices: this._endCapVertices,
+            emitting: this._emitting,
             autodestruct: this._autodestruct,
         };
     }
@@ -486,6 +502,9 @@ export class TrailRenderer extends Component {
         }
         if (typeof data.autodestruct === 'boolean') {
             patch.autodestruct = data.autodestruct;
+        }
+        if (typeof data.emitting === 'boolean') {
+            patch.emitting = data.emitting;
         }
 
         this._applyConfig(patch);
@@ -577,6 +596,9 @@ export class TrailRenderer extends Component {
         }
         if (typeof config.autodestruct === 'boolean') {
             this._autodestruct = config.autodestruct;
+        }
+        if (typeof config.emitting === 'boolean') {
+            this._emitting = config.emitting;
         }
     }
 }

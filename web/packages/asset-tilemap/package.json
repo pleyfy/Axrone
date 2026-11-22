@@ -1,0 +1,49 @@
+{
+    "name": "@axrone/asset-tilemap",
+    "version": "0.1.0",
+    "description": "Tilemap asset schemas, Tiled TMX/TSX importer, native JSON codecs and chunk asset paging.",
+    "type": "module",
+    "sideEffects": false,
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        }
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "scripts": {
+        "build": "rollup -c rollup.config.mjs",
+        "clean": "rimraf dist",
+        "test": "vitest run --root ../.. packages/asset-tilemap",
+        "typecheck": "tsc --noEmit -p tsconfig.build.json",
+        "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+        "lint": "eslint src --ext .ts"
+    },
+    "keywords": [
+        "tilemap",
+        "tileset",
+        "tiled",
+        "tmx",
+        "asset",
+        "game-engine"
+    ],
+    "author": "Axrone",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "dependencies": {
+        "@axrone/asset-core": "^0.1.0",
+        "@axrone/tilemap": "^0.1.0",
+        "@axrone/utility": "^0.0.1"
+    }
+}

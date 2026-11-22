@@ -655,4 +655,40 @@ describe('Transform', () => {
             expect(parent.childCount).toBe(0);
         });
     });
+
+    describe('revision tracking', () => {
+        it('increments on local transform mutation and stays stable when unchanged', () => {
+            const initial = transform.revision;
+
+            transform.position = new Vec3(1, 2, 3);
+            const afterPosition = transform.revision;
+            expect(afterPosition).toBeGreaterThan(initial);
+
+            transform.position = new Vec3(1, 2, 3);
+            expect(transform.revision).toBe(afterPosition);
+
+            transform.rotation = Quat.fromEuler(0, Math.PI / 2, 0);
+            expect(transform.revision).toBeGreaterThan(afterPosition);
+
+            const afterRotation = transform.revision;
+            transform.scale = new Vec3(2, 2, 2);
+            expect(transform.revision).toBeGreaterThan(afterRotation);
+        });
+
+        it('increments on children when a parent transform moves', () => {
+            const parent = new Transform();
+            const child = new Transform();
+            (parent as any).entity = 1;
+            (child as any).entity = 2;
+            child.parent = parent;
+
+            const childRevision = child.revision;
+            parent.position = new Vec3(5, 0, 0);
+
+            expect(child.revision).toBeGreaterThan(childRevision);
+
+            child.onDestroy();
+            parent.onDestroy();
+        });
+    });
 });

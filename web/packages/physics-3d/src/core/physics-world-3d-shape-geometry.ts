@@ -1,6 +1,6 @@
 import { Vec3, Quat } from '@axrone/numeric';
-import type { IVec3Like } from '@axrone/numeric';
-import type { IHeightFieldShapeDef3D } from '../types/physics-3d';
+import type { IQuatLike, IVec3Like } from '@axrone/numeric';
+import type { BodyId3D, IHeightFieldShapeDef3D } from '../types/physics-3d';
 import {
     IDENTITY_ROTATION,
     SHAPE_TYPE_BOX,
@@ -13,12 +13,14 @@ import {
     SHAPE_TYPE_TRIANGLE_MESH,
     type IAabb3D,
     type IShapeDescriptor3D,
+    type IShapeFrame3D,
     type IShapeRayHit3D,
     cylinderConeLocalHalfExtents,
     expandAabb,
     getBoxWorldExtents,
     getHeightFieldLocalVertex,
     inverseTransformPoint3D,
+    isBoxDef,
     linePointDistanceSquared,
     midpointVec3,
     rayAabbHit,
@@ -69,13 +71,107 @@ export function sampleHeightFieldHeight(
     return bottomRight + (bottomLeft - bottomRight) * u + (topRight - bottomRight) * v;
 }
 
+/** Unit basis vectors used to derive a box's world-space face axes. */
+const AXIS_X = { x: 1, y: 0, z: 0 };
+const AXIS_Y = { x: 0, y: 1, z: 0 };
+const AXIS_Z = { x: 0, y: 0, z: 1 };
+
+const createShapeFrame = (): IShapeFrame3D => ({
+    bodyPosition: { x: 0, y: 0, z: 0 },
+    bodyRotation: { x: 0, y: 0, z: 0, w: 1 },
+    center: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 0, z: 0, w: 1 },
+    axes: [{ x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }],
+    generation: -1,
+});
+
+/**
+ * Refreshes the per-step transform frame of a box shape, writing into objects
+ * that are allocated once per shape.
+ *
+ * Every expression matches the allocating helpers the narrowphase used to call
+ * directly: `transformPoint3D` is `Vec3.add(Quat.rotateVector(...), position)`
+ * and the world rotation is `Quat.multiply(bodyRotation, shapeRotation)`. Only
+ * box shapes carry a frame; other kinds return null and keep their existing
+ * computation.
+ */
+export function refreshShapeFrame(
+    descriptor: IShapeDescriptor3D,
+    position: Readonly<IVec3Like>,
+    rotation: Readonly<IQuatLike>,
+    generation: number
+): IShapeFrame3D | null {
+    if (!isBoxDef(descriptor.def)) {
+        return null;
+    }
+    const def = descriptor.def;
+
+    let frame = descriptor.frame;
+    if (!frame) {
+        frame = createShapeFrame();
+        descriptor.frame = frame;
+    }
+
+    frame.bodyPosition.x = position.x;
+    frame.bodyPosition.y = position.y;
+    frame.bodyPosition.z = position.z;
+    frame.bodyRotation.x = rotation.x;
+    frame.bodyRotation.y = rotation.y;
+    frame.bodyRotation.z = rotation.z;
+    frame.bodyRotation.w = rotation.w;
+
+    // center = transformPoint3D(def.center, position, rotation)
+    Quat.rotateVector(rotation, def.center, frame.center);
+    frame.center.x += position.x;
+    frame.center.y += position.y;
+    frame.center.z += position.z;
+
+    Quat.multiply(rotation, def.rotation ?? IDENTITY_ROTATION, frame.rotation);
+
+    Quat.rotateVector(frame.rotation, AXIS_X, frame.axes[0]);
+    Quat.rotateVector(frame.rotation, AXIS_Y, frame.axes[1]);
+    Quat.rotateVector(frame.rotation, AXIS_Z, frame.axes[2]);
+
+    frame.generation = generation;
+    return frame;
+}
+
+/**
+ * Returns the current-step frame for a shape, refreshing it when the broadphase
+ * pass has not filled it yet. Returns null for shape kinds without a frame.
+ */
+export function resolveShapeFrame(
+    descriptor: IShapeDescriptor3D,
+    bodyManager: {
+        getPosition(bodyId: BodyId3D): IVec3Like;
+        getRotation(bodyId: BodyId3D): IQuatLike;
+    },
+    generation: number
+): IShapeFrame3D | null {
+    const existing = descriptor.frame;
+    if (existing && existing.generation === generation) {
+        return existing;
+    }
+    return refreshShapeFrame(
+        descriptor,
+        bodyManager.getPosition(descriptor.bodyId),
+        bodyManager.getRotation(descriptor.bodyId),
+        generation
+    );
+}
+
 /**
  * Computes the world-space AABB for a shape descriptor given its body transform.
+ *
+ * `frame` is the already-refreshed transform frame for this step: the box branch
+ * reuses its centre and world rotation instead of recomputing them, so a box
+ * shape pays for that derivation once per step rather than once per consumer.
  */
 export function computeShapeAabb(
     descriptor: IShapeDescriptor3D,
     position: Readonly<IVec3Like>,
-    rotation: Readonly<IVec3Like>
+    rotation: Readonly<IQuatLike>,
+    frame?: IShapeFrame3D | null
 ): IAabb3D {
     switch (descriptor.def.kind) {
         case SHAPE_TYPE_SPHERE: {
@@ -87,8 +183,12 @@ export function computeShapeAabb(
             };
         }
         case SHAPE_TYPE_BOX: {
-            const center = transformPoint3D(descriptor.def.center, position, rotation);
-            const worldRotation = Quat.multiply(rotation, descriptor.def.rotation ?? IDENTITY_ROTATION);
+            const center = frame
+                ? frame.center
+                : transformPoint3D(descriptor.def.center, position, rotation);
+            const worldRotation = frame
+                ? frame.rotation
+                : Quat.multiply(rotation, descriptor.def.rotation ?? IDENTITY_ROTATION);
             const extents = getBoxWorldExtents(descriptor.def.halfExtents, worldRotation);
             return {
                 min: Vec3.subtract(center, extents),
@@ -176,7 +276,7 @@ export function testPointShape(
     descriptor: IShapeDescriptor3D,
     point: Readonly<IVec3Like>,
     position: Readonly<IVec3Like>,
-    rotation: Readonly<IVec3Like>
+    rotation: Readonly<IQuatLike>
 ): boolean {
     switch (descriptor.def.kind) {
         case SHAPE_TYPE_SPHERE: {
@@ -311,7 +411,7 @@ export function rayCastShape(
     direction: Readonly<IVec3Like>,
     maxFraction: number,
     position: Readonly<IVec3Like>,
-    rotation: Readonly<IVec3Like>
+    rotation: Readonly<IQuatLike>
 ): IShapeRayHit3D | null {
     switch (descriptor.def.kind) {
         case SHAPE_TYPE_SPHERE: {
@@ -427,7 +527,7 @@ export function rayCastShape(
 export function getShapeWorldCenter(
     descriptor: IShapeDescriptor3D,
     position: Readonly<IVec3Like>,
-    rotation: Readonly<IVec3Like>
+    rotation: Readonly<IQuatLike>
 ): IVec3Like {
     switch (descriptor.def.kind) {
         case SHAPE_TYPE_SPHERE:

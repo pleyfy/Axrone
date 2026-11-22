@@ -178,3 +178,25 @@ export const RENDER_2D_SPRITE_INDICES_PER_QUAD = 6;
 export const RENDER_2D_SPRITE_VERTEX_SOURCE = COMPILED_RENDER_2D_SPRITE_EFFECT.vertexSource;
 
 export const RENDER_2D_SPRITE_FRAGMENT_SOURCE = COMPILED_RENDER_2D_SPRITE_EFFECT.fragmentSource;
+
+export const RENDER_2D_SPRITE_MAIN_TEXTURE_UNIFORM = 'u_MainTex';
+
+export const RENDER_2D_SPRITE_VIEW_PROJECTION_UNIFORM = 'u_ViewProjection';
+
+export const RENDER_2D_SPRITE_REQUIRED_UNIFORM_NAMES = Object.freeze([
+    RENDER_2D_SPRITE_MAIN_TEXTURE_UNIFORM,
+    RENDER_2D_SPRITE_VIEW_PROJECTION_UNIFORM,
+] as const);
+
+export const RENDER_2D_SPRITE_MATERIAL_CONTRACT = Object.freeze({
+    shaderId: RENDER_2D_DEFAULT_SPRITE_SHADER_ID,
+    mainTextureUniform: RENDER_2D_SPRITE_MAIN_TEXTURE_UNIFORM,
+    viewProjectionUniform: RENDER_2D_SPRITE_VIEW_PROJECTION_UNIFORM,
+    requiredUniforms: RENDER_2D_SPRITE_REQUIRED_UNIFORM_NAMES,
+});
+
+export const isRender2DSpriteUniformNames = (
+    uniformNames: readonly string[]
+): boolean =>
+    uniformNames.includes(RENDER_2D_SPRITE_MAIN_TEXTURE_UNIFORM) &&
+    uniformNames.includes(RENDER_2D_SPRITE_VIEW_PROJECTION_UNIFORM);

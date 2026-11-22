@@ -50,6 +50,18 @@ const PRESENT_PASS_NOTES = Object.freeze(['builtin-present']) as readonly string
 const DIRECT_PRESENT_PASS_NOTES = Object.freeze(['builtin-present:direct']) as readonly string[];
 const POST_PROCESS_NOTES = new Map<string, readonly string[]>();
 
+// Module-level constants for per-pass notes to avoid per-frame Object.freeze allocation.
+// These are returned by execute() methods every frame, so they must be allocated once.
+const DEPTH_PREPASS_NOTES = Object.freeze(['builtin-depth-prepass']) as readonly string[];
+const SHADOW_PASS_NOTES = Object.freeze(['builtin-shadow']) as readonly string[];
+const OPAQUE_PASS_NOTES = Object.freeze(['builtin-opaque']) as readonly string[];
+const TRANSPARENT_PASS_NOTES = Object.freeze(['builtin-transparent']) as readonly string[];
+const SKYBOX_PASS_NOTES = Object.freeze(['builtin-skybox']) as readonly string[];
+const REFLECTION_PROBE_PASS_NOTES = Object.freeze(['builtin-reflection-probe']) as readonly string[];
+const GLOBAL_ILLUMINATION_PASS_NOTES = Object.freeze(['builtin-global-illumination']) as readonly string[];
+const VOLUMETRIC_PASS_NOTES = Object.freeze(['builtin-volumetric']) as readonly string[];
+const LIGHT_BAKE_PASS_NOTES = Object.freeze(['builtin-light-bake']) as readonly string[];
+
 const getPostProcessNotes = (effectName: string): readonly string[] => {
 	const existing = POST_PROCESS_NOTES.get(effectName);
 	if (existing) {
@@ -200,7 +212,7 @@ export const createBuiltinExecutors = (
 				dependencies.ctx.state.depthMask(true);
 				dependencies.ctx.state.enable(gl.DEPTH_TEST);
 				dependencies.ctx.state.depthFunc(gl.LESS);
-				return { drawCalls: pass.items?.length ?? 0, notes: Object.freeze(['builtin-depth-prepass']) as readonly string[] };
+				return { drawCalls: pass.items?.length ?? 0, notes: DEPTH_PREPASS_NOTES };
 			},
 		}),
 		defineWebGL2RenderPassExecutor({
@@ -217,7 +229,7 @@ export const createBuiltinExecutors = (
 				dependencies.ctx.state.enable(gl.DEPTH_TEST);
 				dependencies.ctx.state.enable(gl.CULL_FACE);
 				dependencies.ctx.state.cullFace(gl.FRONT);
-				const result = { drawCalls: pass.items?.length ?? 0, notes: Object.freeze(['builtin-shadow']) as readonly string[] };
+				const result = { drawCalls: pass.items?.length ?? 0, notes: SHADOW_PASS_NOTES };
 				dependencies.ctx.state.cullFace(gl.BACK);
 				return result;
 			},
@@ -234,7 +246,7 @@ export const createBuiltinExecutors = (
 				dependencies.ctx.state.enable(gl.CULL_FACE);
 				dependencies.ctx.state.cullFace(gl.BACK);
 				dependencies.ctx.state.frontFace(gl.CCW);
-				return { drawCalls: pass.items?.length ?? 0, notes: Object.freeze(['builtin-opaque']) as readonly string[] };
+				return { drawCalls: pass.items?.length ?? 0, notes: OPAQUE_PASS_NOTES };
 			},
 		}),
 		defineWebGL2RenderPassExecutor({
@@ -248,7 +260,7 @@ export const createBuiltinExecutors = (
 				dependencies.ctx.state.enable(gl.BLEND);
 				dependencies.ctx.state.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 				dependencies.ctx.state.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
-				const result = { drawCalls: pass.items?.length ?? 0, notes: Object.freeze(['builtin-transparent']) as readonly string[] };
+				const result = { drawCalls: pass.items?.length ?? 0, notes: TRANSPARENT_PASS_NOTES };
 				dependencies.ctx.state.disable(gl.BLEND);
 				dependencies.ctx.state.depthMask(true);
 				return result;
@@ -264,7 +276,7 @@ export const createBuiltinExecutors = (
 				dependencies.ctx.state.enable(gl.DEPTH_TEST);
 				dependencies.ctx.state.depthFunc(gl.LEQUAL);
 				dependencies.ctx.state.disable(gl.CULL_FACE);
-				const result = { drawCalls: 1, notes: Object.freeze(['builtin-skybox']) as readonly string[] };
+				const result = { drawCalls: 1, notes: SKYBOX_PASS_NOTES };
 				dependencies.ctx.state.depthFunc(gl.LESS);
 				dependencies.ctx.state.depthMask(true);
 				return result;
@@ -278,7 +290,7 @@ export const createBuiltinExecutors = (
 				dependencies.ctx.state.colorMask(true, true, true, true);
 				dependencies.ctx.state.depthMask(true);
 				dependencies.ctx.state.enable(gl.DEPTH_TEST);
-				return { drawCalls: pass.items?.length ?? 0, notes: Object.freeze(['builtin-reflection-probe']) as readonly string[] };
+				return { drawCalls: pass.items?.length ?? 0, notes: REFLECTION_PROBE_PASS_NOTES };
 			},
 		}),
 		defineWebGL2RenderPassExecutor({
@@ -286,7 +298,7 @@ export const createBuiltinExecutors = (
 			name: 'builtin-global-illumination',
 			priority: BUILTIN_EXECUTOR_PRIORITY,
 			execute(pass) {
-				return { drawCalls: pass.items?.length ?? 0, notes: Object.freeze(['builtin-global-illumination']) as readonly string[] };
+				return { drawCalls: pass.items?.length ?? 0, notes: GLOBAL_ILLUMINATION_PASS_NOTES };
 			},
 		}),
 		defineWebGL2RenderPassExecutor({
@@ -296,7 +308,7 @@ export const createBuiltinExecutors = (
 			execute(pass) {
 				dependencies.ctx.state.enable(gl.BLEND);
 				dependencies.ctx.state.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
-				const result = { drawCalls: pass.items?.length ?? 0, notes: Object.freeze(['builtin-volumetric']) as readonly string[] };
+				const result = { drawCalls: pass.items?.length ?? 0, notes: VOLUMETRIC_PASS_NOTES };
 				dependencies.ctx.state.disable(gl.BLEND);
 				return result;
 			},
@@ -306,7 +318,7 @@ export const createBuiltinExecutors = (
 			name: 'builtin-light-bake',
 			priority: BUILTIN_EXECUTOR_PRIORITY,
 			execute(pass) {
-				return { drawCalls: pass.items?.length ?? 0, notes: Object.freeze(['builtin-light-bake']) as readonly string[] };
+				return { drawCalls: pass.items?.length ?? 0, notes: LIGHT_BAKE_PASS_NOTES };
 			},
 		}),
 		defineWebGL2RenderPassExecutor({

@@ -3,10 +3,12 @@ import {
     assertFiniteNumber,
     assertPositiveNumber,
     distanceSquared,
+    float32ToPoints,
     isConvexPolygon,
     isSimplePolygon,
     normalizeContourOrientation,
-    pointInConvexPolygon,
+    pointInPolygon,
+    pointsToFloat32,
     polygonAbsoluteArea,
     polygonSignedArea,
     toPoint,
@@ -121,6 +123,12 @@ export const createLineShape = (input: LineShapeInput): LineShape => {
         throw new ShapeValidationError('Zero-length lines require a stroke');
     }
 
+    if (input.stroke && input.stroke.alignment && input.stroke.alignment !== 'center') {
+        throw new ShapeValidationError(
+            `line.stroke.alignment must be "center", got "${input.stroke.alignment}"`
+        );
+    }
+
     return Object.freeze({
         kind: 'line',
         start,
@@ -132,7 +140,7 @@ export const createLineShape = (input: LineShapeInput): LineShape => {
 const normalizePolygonRing = (
     ring: PolygonRingInput,
     name: string,
-    requireCcw: boolean
+    target: PolygonWinding
 ): PolygonRing => {
     if (!Array.isArray(ring.points) || ring.points.length < 3) {
         throw new ShapeValidationError(`${name} must contain at least 3 points`);
@@ -145,9 +153,6 @@ const normalizePolygonRing = (
         flat[i * 2] = (points[i] as Readonly<IVec2Like>).x;
         flat[i * 2 + 1] = (points[i] as Readonly<IVec2Like>).y;
     }
-    const signedArea = polygonSignedArea(flat);
-    const detectedCcw = signedArea > 0;
-    const winding: PolygonWinding = ring.winding ?? (detectedCcw ? 'ccw' : 'cw');
 
     if (polygonAbsoluteArea(flat) <= EPSILON) {
         throw new ShapeValidationError(`${name} has zero signed area; ring is degenerate`);
@@ -156,26 +161,40 @@ const normalizePolygonRing = (
         throw new ShapeValidationError(`${name} is not a simple polygon (edges self-intersect)`);
     }
 
-    if (requireCcw && winding !== 'ccw') {
-        const reversed = normalizeContourOrientation(flat, true);
-        for (let i = 0; i < points.length; i++) {
-            (points[i] as { x: number; y: number }).x = reversed[i * 2] as number;
-            (points[i] as { x: number; y: number }).y = reversed[i * 2 + 1] as number;
-        }
+    const detected: PolygonWinding = polygonSignedArea(flat) > 0 ? 'ccw' : 'cw';
+    if (ring.winding !== undefined && ring.winding !== detected) {
+        throw new ShapeValidationError(
+            `${name} declares winding "${ring.winding}" but its geometry is wound "${detected}"`
+        );
     }
 
+    const normalized =
+        detected === target ? flat : normalizeContourOrientation(flat, target === 'ccw');
+
     return Object.freeze({
-        points: Object.freeze(points.slice()) as readonly Readonly<IVec2Like>[],
-        winding,
+        points: Object.freeze(float32ToPoints(normalized)),
+        winding: target,
     });
 };
 
 export const createPolygonShape = (input: PolygonShapeInput): PolygonShape => {
     let outerInput: PolygonRingInput | null = null;
     if (input.outer) {
-        outerInput = input.outer;
+        if (input.winding !== undefined) {
+            if (input.outer.winding === undefined) {
+                outerInput = { ...input.outer, winding: input.winding };
+            } else if (input.outer.winding !== input.winding) {
+                throw new ShapeValidationError(
+                    `polygon.winding ("${input.winding}") conflicts with polygon.outer.winding ("${input.outer.winding}")`
+                );
+            } else {
+                outerInput = input.outer;
+            }
+        } else {
+            outerInput = input.outer;
+        }
     } else if (Array.isArray(input.points)) {
-        outerInput = { points: input.points };
+        outerInput = { points: input.points, winding: input.winding };
     }
 
     if (!outerInput) {
@@ -184,43 +203,47 @@ export const createPolygonShape = (input: PolygonShapeInput): PolygonShape => {
         );
     }
 
-    const outer = normalizePolygonRing(outerInput, 'polygon.outer', true);
-    const outerFlat = new Float32Array(outer.points.length * 2);
-    for (let i = 0; i < outer.points.length; i++) {
-        outerFlat[i * 2] = (outer.points[i] as Readonly<IVec2Like>).x;
-        outerFlat[i * 2 + 1] = (outer.points[i] as Readonly<IVec2Like>).y;
-    }
+    const outer = normalizePolygonRing(outerInput, 'polygon.outer', 'ccw');
+    const outerFlat = pointsToFloat32(outer.points);
     const convex = isConvexPolygon(outerFlat);
 
     const holes: PolygonRing[] = [];
     if (input.holes) {
         for (let i = 0; i < input.holes.length; i++) {
-            const hole = normalizePolygonRing(
-                input.holes[i] as PolygonRingInput,
-                `polygon.holes[${i}]`,
-                false
+            holes.push(
+                normalizePolygonRing(
+                    input.holes[i] as PolygonRingInput,
+                    `polygon.holes[${i}]`,
+                    'cw'
+                )
             );
-            if (hole.winding !== 'cw') {
+        }
+
+        for (let i = 0; i < holes.length; i++) {
+            const holeFlat = pointsToFloat32(holes[i]!.points);
+            const holePoint = { x: holeFlat[0] as number, y: holeFlat[1] as number };
+            if (!pointInPolygon(outerFlat, holePoint)) {
                 throw new ShapeValidationError(
-                    `polygon.holes[${i}] must be wound clockwise; got "${hole.winding}"`
+                    `polygon.holes[${i}] is not contained within the outer ring`
                 );
             }
-            holes.push(hole);
-        }
-    }
 
-    if (input.winding && input.winding !== outer.winding) {
-        throw new ShapeValidationError(
-            `Polygon declared winding "${input.winding}" but outer ring detected "${outer.winding}"`
-        );
+            for (let j = 0; j < holes.length; j++) {
+                if (i === j) continue;
+                const otherFlat = pointsToFloat32(holes[j]!.points);
+                if (pointInPolygon(otherFlat, holePoint)) {
+                    throw new ShapeValidationError(
+                        `polygon.holes[${i}] overlaps with polygon.holes[${j}]`
+                    );
+                }
+            }
+        }
     }
 
     const closed = input.closed ?? true;
     if (!closed) {
         throw new ShapeValidationError('Open polygons are not supported by createPolygonShape');
     }
-
-    void pointInConvexPolygon;
 
     return Object.freeze({
         kind: 'polygon',

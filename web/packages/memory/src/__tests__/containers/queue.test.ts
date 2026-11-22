@@ -1,234 +1,383 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+    LifecycleState,
+    ObjectPoolChunkAllocator,
+    OverflowStrategy,
     Queue,
-    EmptyQueueError,
-    InvalidCapacityError,
-    createCapacity,
-    createQueueSize,
-} from '../../containers/queue';
+    QueueBuilder,
+    QueueEmptyError,
+    QueueFullError,
+    NULL_METRICS,
+} from '../../containers/queue/core';
 
-describe('Queue', () => {
-    describe('Constructor', () => {
-        it('should create an empty queue with default options', () => {
+function expectOk<T, E>(result: { isOk(): boolean; get(): T }): T {
+    expect(result.isOk()).toBe(true);
+    return result.get();
+}
+
+describe('Chunked Queue', () => {
+    describe('FIFO ordering', () => {
+        it('preserves order across chunk boundaries', () => {
             const queue = new Queue<number>();
 
-            expect(queue.size).toBe(createQueueSize(0));
-            expect(queue.isEmpty).toBe(true);
-            expect(queue.capacity).toBe(createCapacity(16));
-        });
+            for (let i = 0; i < 2500; i++) {
+                queue.enqueue(i);
+            }
 
-        it('should honor a custom initial capacity', () => {
-            const queue = new Queue<number>({ initialCapacity: createCapacity(32) });
+            for (let i = 0; i < 700; i++) {
+                expect(queue.tryDequeue()).toBe(i);
+            }
 
-            expect(queue.capacity).toBe(createCapacity(32));
-            expect(queue.size).toBe(createQueueSize(0));
-        });
+            for (let i = 2500; i < 4000; i++) {
+                queue.enqueue(i);
+            }
 
-        it('should reject invalid initial capacities', () => {
-            expect(() => new Queue<number>({ initialCapacity: createCapacity(0) })).toThrow(
-                InvalidCapacityError
-            );
-        });
-    });
+            for (let i = 700; i < 4000; i++) {
+                expect(queue.tryDequeue()).toBe(i);
+            }
 
-    describe('FIFO Operations', () => {
-        let queue: Queue<string>;
-
-        beforeEach(() => {
-            queue = new Queue<string>({ initialCapacity: createCapacity(4) });
-        });
-
-        it('should preserve insertion order across enqueue and dequeue', () => {
-            queue.enqueue('first');
-            queue.enqueue('second');
-            queue.enqueue('third');
-
-            expect(queue.dequeue()).toBe('first');
-            expect(queue.dequeue()).toBe('second');
-            expect(queue.dequeue()).toBe('third');
             expect(queue.isEmpty).toBe(true);
         });
 
-        it('should support wrap-around without losing order', () => {
+        it('peek returns head without removing it', () => {
+            const queue = new Queue<string>();
             queue.enqueue('a');
             queue.enqueue('b');
-            queue.enqueue('c');
 
-            expect(queue.dequeue()).toBe('a');
-            expect(queue.dequeue()).toBe('b');
-
-            queue.enqueue('d');
-            queue.enqueue('e');
-            queue.enqueue('f');
-
-            expect(queue.toArray()).toEqual(['c', 'd', 'e', 'f']);
-            expect(queue.dequeue()).toBe('c');
-            expect(queue.dequeue()).toBe('d');
-            expect(queue.dequeue()).toBe('e');
-            expect(queue.dequeue()).toBe('f');
+            expect(queue.peek()).toBe('a');
+            expect(queue.size).toBe(2);
         });
 
-        it('should grow capacity when the ring buffer fills up', () => {
-            const initialCapacity = queue.capacity;
-
-            queue.enqueue('a');
-            queue.enqueue('b');
-            queue.enqueue('c');
-            queue.enqueue('d');
-            queue.enqueue('e');
-
-            expect(queue.capacity).toBeGreaterThan(initialCapacity);
-            expect(queue.toArray()).toEqual(['a', 'b', 'c', 'd', 'e']);
-        });
-    });
-
-    describe('Safe Accessors', () => {
-        let queue: Queue<number>;
-
-        beforeEach(() => {
-            queue = new Queue<number>();
-        });
-
-        it('should throw when dequeuing from an empty queue', () => {
-            expect(() => queue.dequeue()).toThrow(EmptyQueueError);
-        });
-
-        it('should throw when peeking into an empty queue', () => {
-            expect(() => queue.peek()).toThrow(EmptyQueueError);
-        });
-
-        it('should expose undefined-safe accessors for empty queues', () => {
-            expect(queue.tryDequeue()).toBeUndefined();
-            expect(queue.tryPeek()).toBeUndefined();
-        });
-
-        it('should peek without consuming the head item', () => {
-            queue.enqueue(10);
-            queue.enqueue(20);
-
-            expect(queue.peek()).toBe(10);
-            expect(queue.tryPeek()).toBe(10);
-            expect(queue.size).toBe(createQueueSize(2));
-        });
-    });
-
-    describe('Bulk and Utility Operations', () => {
-        it('should enqueue ranges from arrays and iterables', () => {
+        it('toArray and iterator return head-to-tail order', () => {
             const queue = new Queue<number>();
-
-            queue.enqueueRange([1, 2, 3]);
-            queue.enqueueRange(new Set([4, 5]));
+            queue.enqueueBatch([1, 2, 3, 4, 5]);
 
             expect(queue.toArray()).toEqual([1, 2, 3, 4, 5]);
+            expect([...queue]).toEqual([1, 2, 3, 4, 5]);
         });
 
-        it('should report membership using reference equality', () => {
-            const queue = new Queue<object>();
-            const first = { id: 1 };
-            const second = { id: 2 };
-
-            queue.enqueue(first);
-
-            expect(queue.contains(first)).toBe(true);
-            expect(queue.contains(second)).toBe(false);
-        });
-
-        it('should expose a frozen snapshot with toArray', () => {
-            const queue = new Queue<string>();
-            queue.enqueueRange(['alpha', 'beta', 'gamma']);
-
-            const snapshot = queue.toArray();
-
-            expect(snapshot).toEqual(['alpha', 'beta', 'gamma']);
-            expect(Object.isFrozen(snapshot)).toBe(true);
-        });
-
-        it('should iterate in FIFO order', () => {
+        it('contains finds values across chunks', () => {
             const queue = new Queue<number>();
-            queue.enqueueRange([1, 2, 3, 4]);
+            for (let i = 0; i < 1500; i++) queue.enqueue(i);
 
-            expect([...queue]).toEqual([1, 2, 3, 4]);
-        });
-
-        it('should clone queue state without sharing storage', () => {
-            const queue = new Queue<string>({ initialCapacity: createCapacity(8) });
-            queue.enqueueRange(['north', 'south', 'west']);
-
-            const clone = queue.clone();
-            clone.enqueue('east');
-
-            expect(queue.toArray()).toEqual(['north', 'south', 'west']);
-            expect(clone.toArray()).toEqual(['north', 'south', 'west', 'east']);
+            expect(queue.contains(0)).toBe(true);
+            expect(queue.contains(1024)).toBe(true);
+            expect(queue.contains(1499)).toBe(true);
+            expect(queue.contains(1500)).toBe(false);
         });
     });
 
-    describe('Capacity Management', () => {
-        it('should reserve additional capacity when requested', () => {
-            const queue = new Queue<number>({ initialCapacity: createCapacity(4) });
-
-            queue.ensureCapacity(createCapacity(64));
-
-            expect(queue.capacity).toBeGreaterThanOrEqual(createCapacity(64));
-        });
-
-        it('should reject invalid ensureCapacity calls', () => {
+    describe('result-based operations', () => {
+        it('dequeue on empty queue returns QUEUE_EMPTY', () => {
             const queue = new Queue<number>();
+            const result = queue.dequeue();
 
-            expect(() => queue.ensureCapacity(createCapacity(0))).toThrow(InvalidCapacityError);
+            expect(result.isErr()).toBe(true);
+            expect(result.errToOptional()?.code).toBe('QUEUE_EMPTY');
+            expect(result.errToOptional()).toBeInstanceOf(QueueEmptyError);
         });
 
-        it('should trim excess capacity to active size', () => {
-            const queue = new Queue<number>({ initialCapacity: createCapacity(2) });
-
-            for (let index = 0; index < 24; index++) {
-                queue.enqueue(index);
-            }
-
-            for (let index = 0; index < 20; index++) {
-                queue.dequeue();
-            }
-
-            const capacityBeforeTrim = queue.capacity;
-            queue.trimExcess();
-
-            expect(queue.capacity).toBeLessThanOrEqual(capacityBeforeTrim);
-            expect(queue.capacity).toBeGreaterThanOrEqual(createCapacity(4));
-            expect(queue.toArray()).toEqual([20, 21, 22, 23]);
+        it('tryDequeue returns undefined on empty queue', () => {
+            const queue = new Queue<number>();
+            expect(queue.tryDequeue()).toBeUndefined();
         });
 
-        it('should auto-trim back toward minimum capacity when enabled', () => {
-            const queue = new Queue<number>({
-                initialCapacity: createCapacity(4),
-                autoTrim: true,
-            });
-
-            for (let index = 0; index < 40; index++) {
-                queue.enqueue(index);
-            }
-
-            const expandedCapacity = queue.capacity;
-
-            for (let index = 0; index < 39; index++) {
-                queue.dequeue();
-            }
-
-            expect(queue.capacity).toBeLessThanOrEqual(expandedCapacity);
-            expect(queue.capacity).toBeGreaterThanOrEqual(createCapacity(4));
-            expect(queue.toArray()).toEqual([39]);
+        it('tryEnqueue returns false when bounded queue is full', () => {
+            const queue = new Queue<number>(2);
+            expect(queue.tryEnqueue(1)).toBe(true);
+            expect(queue.tryEnqueue(2)).toBe(true);
+            expect(queue.tryEnqueue(3)).toBe(false);
         });
 
-        it('should reset to minimum capacity on clear when auto-trim is enabled', () => {
-            const queue = new Queue<number>({
-                initialCapacity: createCapacity(4),
-                autoTrim: true,
-            });
+        it('dequeueBatch returns a typed batch', () => {
+            const queue = new Queue<number>();
+            queue.enqueueBatch([10, 20, 30, 40]);
 
-            queue.ensureCapacity(createCapacity(64));
-            queue.enqueueRange([1, 2, 3, 4]);
+            const batch = expectOk(queue.dequeueBatch(3));
+            expect(batch).toEqual([10, 20, 30]);
+            expect(queue.size).toBe(1);
+        });
+
+        it('dequeueBatch reports underflow', () => {
+            const queue = new Queue<number>();
+            queue.enqueue(1);
+
+            const result = queue.dequeueBatch(2);
+            expect(result.isErr()).toBe(true);
+            expect(result.errToOptional()?.code).toBe('QUEUE_UNDERFLOW');
+        });
+    });
+
+    describe('bulk enqueue', () => {
+        it('enqueues batches across chunk boundaries', () => {
+            const queue = new Queue<number>();
+            const values = Array.from({ length: 5000 }, (_, i) => i);
+
+            const size = expectOk(queue.enqueueBatch(values));
+            expect(size).toBe(5000);
+            expect(queue.size).toBe(5000);
+            expect(queue.toArray()).toEqual(values);
+        });
+
+        it('drops the tail when DROP_TAIL capacity is exceeded', () => {
+            const queue = new Queue<number>(3, OverflowStrategy.DropTail);
+            expectOk(queue.enqueueBatch([1, 2]));
+
+            expectOk(queue.enqueueBatch([3, 4]));
+            expect(queue.toArray()).toEqual([1, 2, 3]);
+        });
+
+        it('drops the head when DROP_HEAD capacity is exceeded', () => {
+            const queue = new Queue<number>(3, OverflowStrategy.DropHead);
+            expectOk(queue.enqueueBatch([1, 2]));
+
+            expectOk(queue.enqueueBatch([3, 4]));
+            expect(queue.toArray()).toEqual([2, 3, 4]);
+        });
+
+        it('replaces contents when a DROP_HEAD batch exceeds capacity', () => {
+            const queue = new Queue<number>(3, OverflowStrategy.DropHead);
+            expectOk(queue.enqueueBatch([1, 2, 3]));
+
+            expectOk(queue.enqueueBatch([4, 5, 6, 7, 8]));
+            expect(queue.toArray()).toEqual([6, 7, 8]);
+        });
+
+        it('rejects oversized batches with REJECT strategy', () => {
+            const queue = new Queue<number>(3);
+            expectOk(queue.enqueueBatch([1, 2]));
+
+            const result = queue.enqueueBatch([3, 4]);
+            expect(result.isErr()).toBe(true);
+            expect(result.errToOptional()).toBeInstanceOf(QueueFullError);
+            expect(queue.toArray()).toEqual([1, 2]);
+        });
+    });
+
+    describe('lifecycle', () => {
+        it('starts active and rejects work after close', () => {
+            const queue = new Queue<number>();
+            expect(queue.state).toBe(LifecycleState.Active);
+
+            queue.close();
+
+            expect(queue.state).toBe(LifecycleState.Drained);
+            expect(queue.isClosed).toBe(true);
+            expect(queue.enqueue(1).errToOptional()?.code).toBe('QUEUE_CLOSED');
+            expect(queue.dequeue().errToOptional()?.code).toBe('QUEUE_CLOSED');
+        });
+
+        it('drains buffered items while closing', () => {
+            const queue = new Queue<number>();
+            queue.enqueueBatch([1, 2, 3]);
+            queue.close('terminal');
+
+            expect(queue.state).toBe(LifecycleState.Closing);
+            expect(expectOk(queue.dequeue())).toBe(1);
+            expect(expectOk(queue.dequeue())).toBe(2);
+            expect(expectOk(queue.dequeue())).toBe(3);
+            expect(queue.state).toBe(LifecycleState.Drained);
+        });
+
+        it('resolves drain waiters once the queue empties', async () => {
+            const queue = new Queue<number>();
+            queue.enqueueBatch([1, 2]);
+            queue.close();
+
+            const drained = queue.drain();
+            expectOk(queue.dequeue());
+            expectOk(queue.dequeue());
+
+            await expect(drained).resolves.toBeUndefined();
+        });
+
+        it('disposes to terminated state', () => {
+            const queue = new Queue<number>();
+            queue.enqueue(1);
+
+            queue[Symbol.dispose]();
+
+            expect(queue.state).toBe(LifecycleState.Terminated);
+            expect(queue.enqueue(2).errToOptional()?.code).toBe('QUEUE_CLOSED');
+        });
+
+        it('clear releases all buffered items', () => {
+            const queue = new Queue<number>();
+            queue.enqueueBatch([1, 2, 3]);
+
             queue.clear();
 
-            expect(queue.size).toBe(createQueueSize(0));
-            expect(queue.capacity).toBe(createCapacity(4));
+            expect(queue.isEmpty).toBe(true);
+            expect(queue.toArray()).toEqual([]);
+            expect(queue.tryEnqueue(4)).toBe(true);
+        });
+
+        it('clone preserves contents and configuration', () => {
+            const queue = new Queue<number>(10, OverflowStrategy.DropHead);
+            queue.enqueueBatch([1, 2, 3]);
+
+            const copy = queue.clone();
+            expect(copy.toArray()).toEqual([1, 2, 3]);
+            expect(copy.capacity).toBe(10);
+        });
+    });
+
+    describe('async operations', () => {
+        it('dequeueAsync resolves when an item arrives', async () => {
+            const queue = new Queue<number>();
+            const pending = queue.dequeueAsync();
+
+            queue.enqueue(42);
+            const result = await pending;
+
+            expect(expectOk(result)).toBe(42);
+        });
+
+        it('enqueueAsync blocks until capacity frees', async () => {
+            const queue = new Queue<number>(1, OverflowStrategy.Block);
+            queue.enqueue(1);
+
+            let settled = false;
+            const pending = queue.enqueueAsync(2).then((result) => {
+                settled = true;
+                return result;
+            });
+
+            expect(settled).toBe(false);
+            expectOk(queue.dequeue());
+            const result = await pending;
+
+            expect(result.isOk()).toBe(true);
+            expect(queue.toArray()).toEqual([2]);
+        });
+
+        it('enqueueAsync aborts via AbortSignal', async () => {
+            const queue = new Queue<number>(1, OverflowStrategy.Block);
+            queue.enqueue(1);
+
+            const controller = new AbortController();
+            const pending = queue.enqueueAsync(2, controller.signal);
+            controller.abort('stop');
+
+            const result = await pending;
+            expect(result.isErr()).toBe(true);
+            expect(result.errToOptional()?.code).toBe('QUEUE_ABORTED');
+            expect(queue.size).toBe(1);
+        });
+
+        it('dequeueAsync aborts via AbortSignal', async () => {
+            const queue = new Queue<number>();
+            const controller = new AbortController();
+            const pending = queue.dequeueAsync(controller.signal);
+            controller.abort('stop');
+
+            const result = await pending;
+            expect(result.isErr()).toBe(true);
+            expect(result.errToOptional()?.code).toBe('QUEUE_ABORTED');
+        });
+
+        it('async iterator yields until closed', async () => {
+            const queue = new Queue<number>();
+            queue.enqueueBatch([1, 2]);
+            queue.close();
+
+            const seen: number[] = [];
+            for await (const value of queue) {
+                seen.push(value);
+            }
+
+            expect(seen).toEqual([1, 2]);
+        });
+    });
+
+    describe('metrics', () => {
+        it('reports enqueue and dequeue sizes', () => {
+            const onEnqueue = vi.fn();
+            const onDequeue = vi.fn();
+            const queue = new Queue<number>(16, OverflowStrategy.Reject, {
+                ...NULL_METRICS,
+                onEnqueue,
+                onDequeue,
+            });
+
+            queue.enqueue(1);
+            queue.dequeue();
+
+            expect(onEnqueue).toHaveBeenCalledWith(1);
+            expect(onDequeue).toHaveBeenCalledWith(0);
+        });
+    });
+
+    describe('builder', () => {
+        it('builds an unbounded queue', () => {
+            const queue = QueueBuilder.create<number>().unbounded().build();
+            expect(queue.capacity).toBe(Number.MAX_SAFE_INTEGER);
+        });
+
+        it('builds a bounded queue with default REJECT strategy', () => {
+            const queue = QueueBuilder.create<number>().bounded(4).build();
+            queue.enqueueBatch([1, 2, 3, 4]);
+
+            expect(queue.isFull).toBe(true);
+            expect(queue.enqueue(5).errToOptional()?.code).toBe('QUEUE_FULL');
+        });
+
+        it('builds a bounded queue with an explicit strategy', () => {
+            const queue = QueueBuilder.create<number>()
+                .bounded(2)
+                .withOverflowStrategy(OverflowStrategy.DropHead)
+                .build();
+
+            queue.enqueueBatch([1, 2, 3]);
+
+            expect(queue.toArray()).toEqual([2, 3]);
+        });
+    });
+
+    describe('pool integration', () => {
+        it('runs on an injected ObjectPool chunk allocator', () => {
+            const allocator = new ObjectPoolChunkAllocator<number>({
+                initialCapacity: 2,
+                maxCapacity: 64,
+            });
+            const queue = QueueBuilder.create<number>()
+                .unbounded()
+                .withAllocator(allocator)
+                .build();
+
+            const values = Array.from({ length: 2000 }, (_, i) => i);
+            expectOk(queue.enqueueBatch(values));
+
+            for (let i = 0; i < 1500; i++) {
+                expect(queue.tryDequeue()).toBe(i);
+            }
+
+            expect(queue.toArray()).toEqual(values.slice(1500));
+            expect(allocator.totalCount).toBeGreaterThan(0);
+
+            queue.clear();
+            expect(queue.isEmpty).toBe(true);
+
+            allocator[Symbol.dispose]();
+        });
+    });
+
+    describe('stress', () => {
+        it('maintains integrity over 100K mixed operations', () => {
+            const queue = new Queue<number>();
+            let expected = 0;
+
+            for (let i = 0; i < 100_000; i++) {
+                queue.enqueue(i);
+                if ((i & 1) === 0) {
+                    expect(queue.tryDequeue()).toBe(expected++);
+                }
+            }
+
+            for (let i = expected; i < 100_000; i++) {
+                expect(queue.tryDequeue()).toBe(i);
+            }
+
             expect(queue.isEmpty).toBe(true);
         });
     });

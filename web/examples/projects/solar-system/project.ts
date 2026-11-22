@@ -1,10 +1,13 @@
 const project = {
 	id: 'solar-system',
 	name: 'Solar System',
-	color: '#2563eb',
-	description: 'Three.js-style solar system rebuilt with Axrone spheres, orbit rings, and Kepler-inspired motion.',
+	color: '#6d5bd0',
+	description: 'Deep-space orbital system with a glowing sun, banded planets, a moon, and drifting stars.',
 	entryFile: 'src/main.ts',
 	order: 4,
+	category: 'Simulation',
+	tags: ['Space', 'Orbits', 'Lighting'],
+	grid: false,
 } as const;
 
 export default project;

@@ -4,7 +4,7 @@ import { Component } from '@axrone/ecs-runtime';
 import type { ComponentConstructor } from '@axrone/ecs-runtime';
 import { Transform, getComponentPropertyMetadata } from '@axrone/ecs-runtime';
 import type { PropertyMetadata, PropertyTypeId, PropertyTypeReference } from '@axrone/ecs-runtime';
-import { Vec2, Vec3 } from '@axrone/numeric';
+import { Rect, Vec2, Vec3 } from '@axrone/numeric';
 import { PrefabNodeBinding } from '@axrone/scene-prefab';
 import type { SceneComponentTypeResolver } from './component-catalog';
 import { SceneLifecycleError } from './errors';
@@ -13,6 +13,22 @@ import { resolveScenePrefab } from '@axrone/scene-prefab';
 import { decodeSceneValue, encodeSceneValue } from './serialization';
 import { UIHost } from './components/ui-host';
 import { createLazySceneUIWidgetRef } from './ui-widget-ref';
+import {
+    applyBodyReference,
+    applyJointReferences,
+    ensureJointConstraint,
+    hasDeclaredMember,
+    isComponentReferenceField,
+    isGearJointLike,
+    isJoint3DLike,
+    isJointLike,
+    isRigidbody3DLike,
+    isRigidbodyLike,
+    readPendingBodyReference,
+    readPendingJointReferences,
+    readReferenceId,
+    readResolvedJointReference,
+} from './physics-reference-contract';
 import type {
     SceneActorSnapshot,
     SceneComponentSnapshot,
@@ -104,6 +120,19 @@ const resolveVec3Fallback = (value: unknown): readonly [number, number, number] 
     return [asNumber(objectValue.x, 0), asNumber(objectValue.y, 0), asNumber(objectValue.z, 0)];
 };
 
+const resolveRectFallback = (value: unknown): readonly [number, number, number, number] => {
+    if (value instanceof Rect) {
+        return [value.x, value.y, value.width, value.height];
+    }
+
+    if (Array.isArray(value)) {
+        return [asNumber(value[0], 0), asNumber(value[1], 0), asNumber(value[2], 0), asNumber(value[3], 0)];
+    }
+
+    const objectValue = asRecord(value);
+    return [asNumber(objectValue.x, 0), asNumber(objectValue.y, 0), asNumber(objectValue.width, 0), asNumber(objectValue.height, 0)];
+};
+
 const toVec2 = (value: unknown, fallback: unknown): Vec2 => {
     if (value instanceof Vec2) {
         return value;
@@ -137,6 +166,30 @@ const toVec3 = (value: unknown, fallback: unknown): Vec3 => {
         asNumber(objectValue.x, fallbackX),
         asNumber(objectValue.y, fallbackY),
         asNumber(objectValue.z, fallbackZ),
+    );
+};
+
+const toRect = (value: unknown, fallback: unknown): Rect => {
+    if (value instanceof Rect) {
+        return value;
+    }
+
+    const [fallbackX, fallbackY, fallbackWidth, fallbackHeight] = resolveRectFallback(fallback);
+    if (Array.isArray(value)) {
+        return new Rect(
+            asNumber(value[0], fallbackX),
+            asNumber(value[1], fallbackY),
+            asNumber(value[2], fallbackWidth),
+            asNumber(value[3], fallbackHeight),
+        );
+    }
+
+    const objectValue = asRecord(value);
+    return new Rect(
+        asNumber(objectValue.x, fallbackX),
+        asNumber(objectValue.y, fallbackY),
+        asNumber(objectValue.width, fallbackWidth),
+        asNumber(objectValue.height, fallbackHeight),
     );
 };
 
@@ -175,6 +228,10 @@ const normalizePropertyTypeId = (
         return 'vec3';
     }
 
+    if (type === Rect) {
+        return 'rect';
+    }
+
     if (typeof type === 'function') {
         const name = type.name.toLowerCase();
         if (name === 'actor' || name === 'entity') {
@@ -191,6 +248,10 @@ const normalizePropertyTypeId = (
 
         if (name === 'vec3') {
             return 'vec3';
+        }
+
+        if (name === 'rect' || name === 'rectangle') {
+            return 'rect';
         }
 
         if (type.prototype instanceof Component) {
@@ -216,6 +277,9 @@ const normalizePropertyTypeId = (
         case 'vec3':
         case 'vector3':
             return 'vec3';
+        case 'rect':
+        case 'rectangle':
+            return 'rect';
         case 'actor':
         case 'entity':
             return 'entity';
@@ -354,6 +418,8 @@ export class ScenePrefabRuntime {
             actor.start();
             actor.active = actorSnapshot.active;
         }
+
+        this._reconcileDeferredPhysicsReferences(createdActors, createdByNodeId);
 
         return createdActors;
     }
@@ -540,7 +606,15 @@ export class ScenePrefabRuntime {
     ): Record<string, unknown> {
         const propertyMetadata = getComponentPropertyMetadata(componentType as any);
         if (propertyMetadata.length === 0) {
-            return decoded;
+            // Physics components author their references without @property, so
+            // an empty metadata table is exactly where an entity id would be
+            // handed to `deserialize()` as a bare string.
+            return this._resolveComponentReferenceFields(
+                component,
+                decoded,
+                createdByNodeId,
+                createdActors,
+            );
         }
 
         const hasPropertyValues = hasOwn(decoded, 'propertyValues') && decoded.propertyValues !== null;
@@ -581,7 +655,228 @@ export class ScenePrefabRuntime {
             }
         }
 
-        return normalized;
+        return this._resolveComponentReferenceFields(
+            component,
+            normalized,
+            createdByNodeId,
+            createdActors,
+        );
+    }
+
+    /**
+     * Links the physics reference fields a component declares but does not
+     * describe with @property metadata (`connectedBody`, `jointA`, `jointB`).
+     *
+     * An id that cannot be resolved yet is left exactly as authored, because
+     * `PhysicsBridge2D` retries unresolved references on a later pass — the
+     * actor it names may still be waiting for another prefab instance to
+     * create it.
+     */
+    private _resolveComponentReferenceFields(
+        component: Component,
+        values: Record<string, unknown>,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): Record<string, unknown> {
+        let resolvedValues = values;
+
+        for (const [propertyKey, value] of Object.entries(values)) {
+            if (!isComponentReferenceField(propertyKey) || !hasDeclaredMember(component, propertyKey)) {
+                continue;
+            }
+
+            const referenceId = readReferenceId(value);
+            if (referenceId === null) {
+                continue;
+            }
+
+            const target =
+                propertyKey === 'connectedBody'
+                    ? this._findRigidbodyReference(component, referenceId, createdByNodeId, createdActors)
+                    : this._findJointReference(component, referenceId, createdByNodeId, createdActors);
+            if (!target) {
+                continue;
+            }
+
+            if (resolvedValues === values) {
+                resolvedValues = { ...values };
+            }
+            resolvedValues[propertyKey] = target;
+        }
+
+        return resolvedValues;
+    }
+
+    /** Picks the rigidbody that matches the joint's own physics dimension. */
+    private _findRigidbodyReference(
+        component: Component,
+        referenceId: string,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): Component | null {
+        const preferSpatial = isJoint3DLike(component);
+        const matchesDimension = (candidate: Component): boolean =>
+            isRigidbodyLike(candidate) && isRigidbody3DLike(candidate) === preferSpatial;
+
+        const exact = this._findComponentById(referenceId, createdActors);
+        if (exact && matchesDimension(exact)) {
+            return exact;
+        }
+
+        const actor = this._resolveActorReference(referenceId, createdByNodeId, createdActors);
+        if (!actor) {
+            return null;
+        }
+
+        for (const candidate of actor.getAllComponents()) {
+            if (matchesDimension(candidate)) {
+                return candidate;
+            }
+        }
+
+        // No dimension-matching body: leave the id as authored. PhysicsBridge2D
+        // resolves it on its own pass with the exact component class, which
+        // keeps a 2D joint from ever coupling to a spatial body.
+        return null;
+    }
+
+    /**
+     * Picks the joint a gear reference means: an exact component id wins, then
+     * the target actor's first plain joint, then any joint it has. Candidates
+     * from the other physics dimension are skipped, and a gear joint never
+     * resolves to itself.
+     */
+    private _findJointReference(
+        component: Component,
+        referenceId: string,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): Component | null {
+        const preferSpatial = isJoint3DLike(component);
+        const matchesDimension = (candidate: Component): boolean =>
+            isJointLike(candidate) && isJoint3DLike(candidate) === preferSpatial;
+
+        const exact = this._findComponentById(referenceId, createdActors);
+        if (exact && matchesDimension(exact) && exact !== component) {
+            return exact;
+        }
+
+        const actor = this._resolveActorReference(referenceId, createdByNodeId, createdActors);
+        if (!actor) {
+            return null;
+        }
+
+        let gearFallback: Component | null = null;
+        for (const candidate of actor.getAllComponents()) {
+            if (!matchesDimension(candidate) || candidate === component) {
+                continue;
+            }
+            if (isGearJointLike(candidate)) {
+                gearFallback ??= candidate;
+                continue;
+            }
+            return candidate;
+        }
+
+        return gearFallback;
+    }
+
+    private _findComponentById(
+        componentId: string,
+        createdActors: readonly Actor[],
+    ): Component | null {
+        const actorSets: readonly (readonly Actor[])[] = [createdActors, this._host.getAllActors()];
+
+        for (const actors of actorSets) {
+            for (const actor of actors) {
+                for (const component of actor.getAllComponents()) {
+                    if (component.id === componentId) {
+                        return component;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Second chance for joints whose prerequisites only exist after every actor
+     * has started: `Joint2D.start()` builds its constraint, but the connected
+     * body of the last-started actor has not produced its body id yet, and a
+     * gear joint needs the constraints of the joints it couples.
+     *
+     * Plain joints run first so a gear joint can read their constraint ids in
+     * the same pass. `PhysicsBridge2D` repeats this on its own pass, so this
+     * hook only decides how early a scene settles, not whether it does.
+     */
+    private _reconcileDeferredPhysicsReferences(
+        createdActors: readonly Actor[],
+        createdByNodeId: ReadonlyMap<string, Actor>,
+    ): void {
+        for (let pass = 0; pass < 2; pass += 1) {
+            const gearPass = pass === 1;
+            let progressed = false;
+
+            for (const actor of createdActors) {
+                if (!actor.active || actor.isDestroyed) {
+                    continue;
+                }
+
+                for (const component of actor.getAllComponents()) {
+                    if (!isJointLike(component) || isGearJointLike(component) !== gearPass) {
+                        continue;
+                    }
+
+                    const resolved = this._reconcileJoint(
+                        component,
+                        createdByNodeId,
+                        createdActors,
+                    );
+                    progressed = progressed || resolved;
+                }
+            }
+
+            if (!progressed) {
+                return;
+            }
+        }
+    }
+
+    private _reconcileJoint(
+        joint: Component,
+        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdActors: readonly Actor[],
+    ): boolean {
+        const pendingBodyRef = readPendingBodyReference(joint);
+        if (pendingBodyRef !== null) {
+            const body = this._findRigidbodyReference(joint, pendingBodyRef, createdByNodeId, createdActors);
+            if (body) {
+                applyBodyReference(joint, body);
+            }
+        }
+
+        if (isGearJointLike(joint)) {
+            const pending = readPendingJointReferences(joint);
+            // An end that is already linked keeps its link: the typed resolve
+            // API clears whatever it is not given.
+            const coupledA = readResolvedJointReference(joint, 'jointA');
+            const coupledB = readResolvedJointReference(joint, 'jointB');
+            const resolvedA =
+                coupledA ??
+                (pending.jointA === null
+                    ? null
+                    : this._findJointReference(joint, pending.jointA, createdByNodeId, createdActors));
+            const resolvedB =
+                coupledB ??
+                (pending.jointB === null
+                    ? null
+                    : this._findJointReference(joint, pending.jointB, createdByNodeId, createdActors));
+
+            applyJointReferences(joint, resolvedA, resolvedB, pending.jointA, pending.jointB);
+        }
+
+        return ensureJointConstraint(joint);
     }
 
     private _stripEditorScriptMetadata(decoded: Record<string, unknown>): Record<string, unknown> {
@@ -617,6 +912,8 @@ export class ScenePrefabRuntime {
                 return toVec2(value, fallbackValue);
             case 'vec3':
                 return toVec3(value, fallbackValue);
+            case 'rect':
+                return toRect(value, fallbackValue);
             case 'entity':
                 return this._resolveActorReference(value, createdByNodeId, createdActors) ?? null;
             case 'transform': {
@@ -671,6 +968,10 @@ export class ScenePrefabRuntime {
 
         if (currentValue instanceof Vec3) {
             return toVec3(value, currentValue);
+        }
+
+        if (currentValue instanceof Rect) {
+            return toRect(value, currentValue);
         }
 
         if (typeof currentValue === 'number') {

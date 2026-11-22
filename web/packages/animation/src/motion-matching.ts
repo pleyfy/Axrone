@@ -1,5 +1,5 @@
 import { AnimationClip } from './clip';
-import { freezeTuple3 } from './internal';
+import { tuple3 } from '@axrone/utility';
 import { SOA_EPSILON } from '@axrone/numeric';
 import type {
     AnimationClipDefinition,
@@ -71,8 +71,34 @@ const normalizedDot3 = (
     );
 };
 
+const matchesTags = (
+    entry: AnimationMotionMatchEntry,
+    requiredTags: ReadonlySet<string>,
+    excludedTags: ReadonlySet<string>
+): boolean => {
+    for (const tag of requiredTags) {
+        if (entry.tags.includes(tag) === false) {
+            return false;
+        }
+    }
+    for (const tag of excludedTags) {
+        if (entry.tags.includes(tag)) {
+            return false;
+        }
+    }
+    return true;
+};
+
 export class AnimationMotionMatchDatabase {
     private readonly _entries: readonly AnimationMotionMatchEntry[];
+    private readonly _clipIds: readonly string[];
+    private readonly _bestResult = {
+        clipId: '',
+        time: 0,
+        score: 0,
+        tags: EMPTY_TAGS,
+    };
+    private _bestResultValid = false;
 
     constructor(clips: readonly (AnimationClip | AnimationClipDefinition)[]) {
         this._entries = Object.freeze(
@@ -96,7 +122,7 @@ export class AnimationMotionMatchDatabase {
                         tags: normalizeTags([...(metadata.tags ?? EMPTY_TAGS), ...(feature.tags ?? EMPTY_TAGS)]),
                         ...(feature.trajectoryPosition
                             ? {
-                                  trajectoryPosition: freezeTuple3(
+                                  trajectoryPosition: tuple3(
                                       feature.trajectoryPosition[0],
                                       feature.trajectoryPosition[1],
                                       feature.trajectoryPosition[2]
@@ -105,7 +131,7 @@ export class AnimationMotionMatchDatabase {
                             : {}),
                         ...(feature.facingDirection
                             ? {
-                                  facingDirection: freezeTuple3(
+                                  facingDirection: tuple3(
                                       feature.facingDirection[0],
                                       feature.facingDirection[1],
                                       feature.facingDirection[2]
@@ -120,10 +146,76 @@ export class AnimationMotionMatchDatabase {
                 );
             })
         );
+        this._clipIds = Object.freeze([
+            ...new Set(this._entries.map((entry) => entry.clipId)),
+        ]);
+    }
+
+    /** Unique clip ids of the database, in the order they first appear. */
+    get clipIds(): readonly string[] {
+        return this._clipIds;
     }
 
     get size(): number {
         return this._entries.length;
+    }
+
+    /**
+     * Finds the best matching entry without allocating. The returned object is
+     * reused by the next call, so a caller that keeps it must copy the fields
+     * it needs.
+     */
+    searchBest(query: AnimationMotionMatchQuery): AnimationMotionMatchResult | null {
+        const requiredTags = new Set(normalizeTags(query.requiredTags));
+        const excludedTags = new Set(normalizeTags(query.excludedTags));
+        const continuityBias =
+            typeof query.continuityBias === 'number' && Number.isFinite(query.continuityBias)
+                ? query.continuityBias
+                : 0;
+
+        let best: AnimationMotionMatchEntry | null = null;
+        let bestScore = Number.POSITIVE_INFINITY;
+
+        for (let index = 0; index < this._entries.length; index += 1) {
+            const entry = this._entries[index]!;
+            if (!matchesTags(entry, requiredTags, excludedTags)) {
+                continue;
+            }
+
+            let score = entry.costBias;
+            if (query.desiredTrajectoryPosition && entry.trajectoryPosition) {
+                score += squaredDistance3(query.desiredTrajectoryPosition, entry.trajectoryPosition);
+            } else if (query.desiredTrajectoryPosition) {
+                score += MOTION_MATCH_TRAJECTORY_MISSING_PENALTY;
+            }
+
+            if (query.desiredFacingDirection && entry.facingDirection) {
+                score += 1 - normalizedDot3(query.desiredFacingDirection, entry.facingDirection);
+            } else if (query.desiredFacingDirection) {
+                score += MOTION_MATCH_FACING_MISSING_PENALTY;
+            }
+
+            if (query.currentClipId && query.currentClipId === entry.clipId) {
+                score -= continuityBias;
+            }
+
+            if (score < bestScore) {
+                bestScore = score;
+                best = entry;
+            }
+        }
+
+        if (best === null) {
+            this._bestResultValid = false;
+            return null;
+        }
+
+        this._bestResult.clipId = best.clipId;
+        this._bestResult.time = best.time;
+        this._bestResult.score = bestScore;
+        this._bestResult.tags = best.tags;
+        this._bestResultValid = true;
+        return this._bestResult;
     }
 
     query(query: AnimationMotionMatchQuery): readonly AnimationMotionMatchResult[] {
@@ -140,19 +232,7 @@ export class AnimationMotionMatchDatabase {
 
         return Object.freeze(
             this._entries
-                .filter((entry) => {
-                    for (const tag of requiredTags) {
-                        if (entry.tags.includes(tag) === false) {
-                            return false;
-                        }
-                    }
-                    for (const tag of excludedTags) {
-                        if (entry.tags.includes(tag)) {
-                            return false;
-                        }
-                    }
-                    return true;
-                })
+                .filter((entry) => matchesTags(entry, requiredTags, excludedTags))
                 .map((entry) => {
                     let score = entry.costBias;
                     if (query.desiredTrajectoryPosition && entry.trajectoryPosition) {

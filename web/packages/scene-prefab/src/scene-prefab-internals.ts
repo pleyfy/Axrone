@@ -16,7 +16,7 @@ import type {
 const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
 
 const cloneStringArray = (value: readonly string[] | undefined): readonly string[] | undefined =>
-    value ? value.map((entry) => entry) : undefined;
+    value ? [...value] : undefined;
 
 export const isSceneSerializedObjectValue = (
     value: SceneSerializedValue,
@@ -139,6 +139,35 @@ export const cloneSceneComponentSnapshot = (
     ...(component.id ? { id: component.id } : {}),
     type: component.type,
     data: cloneSceneSerializedValue(component.data),
+});
+
+/**
+ * Shallow view copy — shares `data`/`source` references instead of cloning.
+ * For diff/indexing snapshots that are only read, never mutated.
+ */
+export const copySceneComponentSnapshot = (
+    component: SceneComponentSnapshot,
+): SceneComponentSnapshot => ({
+    ...(component.id ? { id: component.id } : {}),
+    type: component.type,
+    data: component.data,
+});
+
+/**
+ * Shallow view copy of an actor snapshot — shares component `data` references.
+ * For diff/indexing passes that never mutate the view.
+ */
+export const copySceneActorSnapshot = (actor: SceneActorSnapshot): SceneActorSnapshot => ({
+    ...(actor.nodeId ? { nodeId: actor.nodeId } : {}),
+    ...(actor.parentNodeId !== undefined ? { parentNodeId: actor.parentNodeId ?? null } : {}),
+    name: actor.name,
+    layer: actor.layer,
+    tag: actor.tag,
+    active: actor.active,
+    persistent: actor.persistent,
+    pooled: actor.pooled,
+    ...(actor.source ? { source: actor.source } : {}),
+    components: actor.components.map((component) => copySceneComponentSnapshot(component)),
 });
 
 export const cloneSceneActorSnapshot = (actor: SceneActorSnapshot): SceneActorSnapshot => ({
@@ -395,7 +424,7 @@ export const findScenePrefabComponentIndex = (
         }
     }
 
-    const typeName = selector.kind === 'type' ? selector.type : selector.type;
+    const typeName = selector.type;
     if (!typeName) {
         return -1;
     }

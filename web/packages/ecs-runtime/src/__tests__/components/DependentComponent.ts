@@ -11,7 +11,7 @@ import TestComponent from './TestComponent';
 export default class DependentComponent extends Component {
     public testComponent?: TestComponent;
 
-    awake(): void {
+    onLoad(): void {
         this.testComponent = this.requireComponent(TestComponent);
     }
 }

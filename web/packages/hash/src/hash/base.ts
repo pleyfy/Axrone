@@ -1,4 +1,4 @@
-import type { BytesLike } from '../../types';
+import type { BytesLike } from '../types';
 import { float32ToBits, float64ToBitsPair } from './bits';
 import type { IHasher } from './interfaces';
 import type { HashValue, Seed32, Seed64, HashAlgorithmMetadata } from './types';

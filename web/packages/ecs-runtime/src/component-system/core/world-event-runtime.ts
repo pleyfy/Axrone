@@ -53,6 +53,14 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
     private readonly _trackedEvents = new Set<string>();
     private readonly _lastEmittedAt = new Map<string, number>();
     private readonly _bridgedComponents = new Set<ECSComponentName<R>>();
+    /**
+     * Per bridged event, a probe reporting whether the observable it feeds has
+     * any observers. The bridge itself is always subscribed; this probe lets
+     * structural mutations treat "bridge only, nobody listening" as no
+     * subscriber at all, so a 50k-actor build does not pay one payload and
+     * dispatch per component for observables nobody reads.
+     */
+    private readonly _bridgeLiveness = new Map<string, () => boolean>();
 
     constructor(
         componentNames: readonly string[],
@@ -221,6 +229,32 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
         this._registerComponentEventBridge(componentName as ECSComponentName<R>);
     }
 
+    /**
+     * True when at least one handler is registered for `event`.
+     *
+     * Structural mutations emit one event per entity/component, so callers use
+     * this to skip building payloads for events nobody observes — the common
+     * case while bulk-creating a large scene. Negative answers are cached and
+     * invalidated on subscription changes, which keeps 200k probes during a
+     * 50k-actor build down to a set lookup.
+     */
+    hasSubscribers(event: EventKey<ECSEventMap<R>>): boolean {
+        const listenerCount = this._eventBus.listenerCount(event);
+        if (listenerCount === 0) {
+            return false;
+        }
+
+        const liveness = this._bridgeLiveness.get(String(event));
+        // Exactly one listener plus a bridge probe means the only listener is
+        // the bridge itself: it is a real subscriber only while its observable
+        // has observers.
+        if (liveness !== undefined && listenerCount === 1) {
+            return liveness();
+        }
+
+        return true;
+    }
+
     dispose(): void {
         try {
             this._eventBus.dispose();
@@ -244,6 +278,7 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
 
         this._disposables.clear();
         this._bridgedComponents.clear();
+        this._bridgeLiveness.clear();
         this._trackedEvents.clear();
         this._lastEmittedAt.clear();
     }
@@ -303,21 +338,39 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
     }
 
     private _setupEventObserverBridge(componentNames: readonly ECSComponentName<R>[]): void {
-        this._subscribe(this._getEntityCreatedEventKey(), (data) => {
+        const entityCreated = this._observables.entityCreated;
+        const entityDestroyed = this._observables.entityDestroyed;
+
+        const createdEvent = this._getEntityCreatedEventKey();
+        const destroyedEvent = this._getEntityDestroyedEventKey();
+
+        this._subscribe(createdEvent, (data) => {
+            if (entityCreated.getObserverCount() === 0) {
+                return;
+            }
             this._notifyObservable(
-                this._observables.entityCreated,
+                entityCreated,
                 data as ECSEntityLifecycleEvent,
                 'entity created'
             );
         });
 
-        this._subscribe(this._getEntityDestroyedEventKey(), (data) => {
+        this._subscribe(destroyedEvent, (data) => {
+            if (entityDestroyed.getObserverCount() === 0) {
+                return;
+            }
             this._notifyObservable(
-                this._observables.entityDestroyed,
+                entityDestroyed,
                 data as ECSEntityLifecycleEvent,
                 'entity destroyed'
             );
         });
+
+        this._bridgeLiveness.set(createdEvent as string, () => entityCreated.getObserverCount() > 0);
+        this._bridgeLiveness.set(
+            destroyedEvent as string,
+            () => entityDestroyed.getObserverCount() > 0
+        );
 
         for (const componentName of componentNames) {
             this._registerComponentEventBridge(componentName);
@@ -333,11 +386,15 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
 
         this._bridgedComponents.add(componentName);
 
+        // Resolve the observable pair once instead of per event.
+        const observables = this._observables.getComponentObservables(componentName);
         const addedEvent = this._getAddedEventKey(componentName);
         const removedEvent = this._getRemovedEventKey(componentName);
 
         this._subscribe(addedEvent, (data) => {
-            const observables = this._observables.getComponentObservables(componentName);
+            if (observables.added.getObserverCount() === 0) {
+                return;
+            }
             this._notifyObservable(
                 observables.added,
                 data as ECSComponentChangeEvent<R>,
@@ -346,13 +403,21 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
         });
 
         this._subscribe(removedEvent, (data) => {
-            const observables = this._observables.getComponentObservables(componentName);
+            if (observables.removed.getObserverCount() === 0) {
+                return;
+            }
             this._notifyObservable(
                 observables.removed,
                 data as ECSComponentChangeEvent<R>,
                 `${componentName} removed`
             );
         });
+
+        this._bridgeLiveness.set(String(addedEvent), () => observables.added.getObserverCount() > 0);
+        this._bridgeLiveness.set(
+            String(removedEvent),
+            () => observables.removed.getObserverCount() > 0
+        );
     }
 
     private _notifyObservable<T>(

@@ -118,24 +118,25 @@ const resolveWindowRanges = (
     duration: number,
     loop: boolean
 ): readonly (readonly [number, number])[] => {
+    // Hot path: avoid Object.freeze overhead. Compile-time readonly is sufficient.
     if (duration <= 0) {
-        return Object.freeze([[0, 0] as const]);
+        return [[0, 0]] as const;
     }
     const start = normalizeTime(time, duration, loop);
     if (preloadWindow <= 0) {
-        return Object.freeze([[start, start] as const]);
+        return [[start, start]] as const;
     }
     if (!loop) {
-        return Object.freeze([[start, clamp(start + preloadWindow, 0, duration)] as const]);
+        return [[start, clamp(start + preloadWindow, 0, duration)]] as const;
     }
     const end = start + preloadWindow;
     if (end <= duration) {
-        return Object.freeze([[start, end] as const]);
+        return [[start, end]] as const;
     }
-    return Object.freeze([
-        [start, duration] as const,
-        [0, end % duration] as const,
-    ]);
+    return [
+        [start, duration],
+        [0, end % duration],
+    ] as const;
 };
 
 const chunkContainsTime = (

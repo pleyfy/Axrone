@@ -26,6 +26,7 @@ import type { Hierarchy } from '@axrone/ecs-runtime';
 import type { Transform } from '@axrone/ecs-runtime';
 import type { ColorSpace, FilterMode, TextureFormat, WrapMode } from '@axrone/render-webgl2';
 import type { SceneRuntimeProfile } from './scene-profile';
+import type { SceneRuntimeComposition } from './scene-runtime-kernel';
 import type { SceneRuntimeProfilerOptions } from './runtime-profiler';
 
 export type SceneMeshSemantic =
@@ -205,7 +206,20 @@ export type SceneTextureBindingDefinition =
           readonly unit?: number;
       };
 
-export type SceneMaterialShadingModel = 'unlit' | 'pbr' | 'toon';
+export type SceneMaterialShadingModel =
+    | 'unlit'
+    | 'pbr'
+    | 'toon'
+    | 'hair'
+    | 'cloth'
+    | 'water'
+    | 'foliage'
+    | 'sprite'
+    | 'particle'
+    | 'composable'
+    | 'decal'
+    | 'post-process'
+    | 'volume';
 export type SceneMaterialAlphaMode = 'opaque' | 'mask' | 'blend';
 export type SceneMaterialUvSet = 0 | 1;
 
@@ -215,6 +229,7 @@ export interface SceneMaterialSurfaceFeaturesDefinition {
     readonly useNormalMap?: boolean;
     readonly useTwoSided?: boolean;
     readonly useAlbedoMap?: boolean;
+    readonly useOpacityMap?: boolean;
     readonly usePbrMap?: boolean;
     readonly useMetallicRoughnessMap?: boolean;
     readonly useOcclusionMap?: boolean;
@@ -384,6 +399,7 @@ export interface SceneMaterialBlendStateDefinition {
 
 export interface SceneMaterialPassDefinition {
     readonly id: string;
+    readonly shaderId?: string;
     readonly phase?: string;
     readonly priority?: number;
     readonly primitive?: SceneMaterialPassPrimitive;
@@ -452,8 +468,24 @@ export interface SceneOptions<R extends ComponentRegistry = Record<string, never
     extends SceneCanvasOptions {
     readonly registry?: R;
     readonly profile?: SceneRuntimeProfile<R>;
+    /**
+     * Optional runtime composition (default-registry fallback and physics
+     * bridge factories). The root scene entries install the full composition;
+     * lean entries omit it to keep physics and the full manifest chain out of
+     * their module graph.
+     */
+    readonly composition?: SceneRuntimeComposition<R>;
     readonly renderPlanning?: SceneRenderPlanningOptions;
     readonly renderPipeline?: SceneRenderPipelineSettings;
+    /**
+     * Opt-in derived instanced draw path for homogeneous opaque `MeshRenderer`
+     * scenes. Default `off` keeps one draw call per actor; `auto` groups
+     * eligible actors by mesh/material/render state into one instanced draw
+     * per group while leaving the ECS/actor model, culling and per-component
+     * API untouched. Ineligible actors (morph, skin, transparency, per-object
+     * uniforms, unsupported shader shapes) keep the individual draw path.
+     */
+    readonly instancing?: SceneInstancingMode;
     readonly profiler?: boolean | SceneRuntimeProfilerOptions;
     readonly worldConfig?: {
         readonly maxEntities?: number;
@@ -564,6 +596,9 @@ export type SceneBuiltInRegistry = {
     readonly OrbitCameraController: typeof OrbitCameraController;
     readonly FollowCameraController: typeof FollowCameraController;
     readonly UIHost: typeof import('./components/ui-host').UIHost;
+    readonly TilemapRenderer: typeof import('./components/tilemap-renderer').TilemapRenderer;
+    readonly TilemapCollider2D: typeof import('./components/tilemap-collider-2d').TilemapCollider2D;
+    readonly TilemapAgent: typeof import('./components/tilemap-agent').TilemapAgent;
 };
 
 export type SceneRegistry<R extends ComponentRegistry = Record<string, never>> = R &
@@ -576,6 +611,13 @@ export interface SceneLoopState {
 export interface SceneRenderPlanningOptions {
     readonly maxTransparentPrimitives?: number;
 }
+
+/**
+ * Scene-level render mode for homogeneous `MeshRenderer` batching.
+ * `off` (default) submits one draw per actor; `auto` derives instanced groups
+ * for eligible opaque actors and falls back per actor otherwise.
+ */
+export type SceneInstancingMode = 'off' | 'auto';
 
 export interface SceneRenderPipelineSettings {
     readonly hdr?: boolean | Partial<RenderHdrSettings>;
@@ -592,6 +634,26 @@ export interface SceneRenderPlanningStats {
     readonly spriteTransparentCount: number;
     readonly spriteBatchCount: number;
     readonly skippedSpriteCount: number;
+    /** Offscreen scene-colour copies issued for this pass (transmission). */
+    readonly refractionCopyCount?: number;
+    /** Offscreen subsurface blur passes issued for this pass. */
+    readonly sssBlurCount?: number;
+    /** Optional diagnostics: the sprite batch path reused its cached build. */
+    readonly spriteBatchCacheHit?: boolean;
+    /** Optional diagnostics: the 3D render-item collection was reused. */
+    readonly renderListCacheHit?: boolean;
+    /** Optional diagnostics: the 3D primitive list/material snapshots were reused. */
+    readonly primitiveCacheHit?: boolean;
+    /** Present when the opt-in instanced path is active for this pass. */
+    readonly instancing?: SceneInstancingMode;
+    /** Number of derived instance groups drawn (one draw call each). */
+    readonly instancedGroupCount?: number;
+    /** Number of actors submitted through the instanced path. */
+    readonly instancedInstanceCount?: number;
+    /** Draw calls issued by the instanced path this frame. */
+    readonly instancedDrawCalls?: number;
+    /** Optional diagnostics: the retained instance plan was replayed unchanged. */
+    readonly instancedPlanReused?: boolean;
     readonly warnings: readonly string[];
 }
 

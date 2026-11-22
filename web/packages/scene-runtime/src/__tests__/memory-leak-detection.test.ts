@@ -879,22 +879,53 @@ describe('Shader Program Lifecycle', () => {
         expect(runtime.shaders.size).toBe(1);
         expect(runtime.shaders.variantCount).toBe(2);
 
-        // clear() returns only base resources; variants are cleared separately
-        const baseResources = runtime.shaders.clear();
-        runtime.shaders.clearVariants();
-
-        // Dispose base program
-        for (const shader of baseResources) {
+        // clear() returns base resources and variants so the disposal
+        // loop can delete every program.
+        const resources = runtime.shaders.clear();
+        for (const shader of resources) {
             callbacks.deleteProgram(shader);
         }
 
-        // Variants were cleared from the registry but their GL programs
-        // need explicit deletion. In a real engine, the disposal loop
-        // would also iterate variants. Here we verify the registry is empty.
         expect(runtime.shaders.size).toBe(0);
         expect(runtime.shaders.variantCount).toBe(0);
 
-        // Base program was deleted
+        // Base and variant programs were all deleted
         expect(gl._programs.has(baseProgram as unknown as object)).toBe(false);
+        expect(gl._programs.has(variant1Program as unknown as object)).toBe(false);
+        expect(gl._programs.has(variant2Program as unknown as object)).toBe(false);
+        expect(gl._programs.size).toBe(0);
+    });
+
+    it('re-registering a shader evicts stale variants', () => {
+        const oldProgram = gl.createProgram();
+        const variantProgram = gl.createProgram();
+        const newProgram = gl.createProgram();
+
+        const resource = {
+            id: 'lit-shader',
+            program: oldProgram,
+            uniformLocations: new Map(),
+            uniformTypes: new Map(),
+            uniformNames: [],
+            attributeNames: {} as any,
+            depthTest: true,
+            cull: true,
+            blend: false,
+        };
+        runtime.shaders.register({ id: 'lit-shader' }, resource);
+        runtime.shaders.registerVariant('lit-shader', 'SKINNING=1', {
+            ...resource,
+            id: 'lit-shader|SKINNING=1',
+            program: variantProgram,
+        });
+
+        const result = runtime.shaders.register({ id: 'lit-shader' }, {
+            ...resource,
+            program: newProgram,
+        });
+
+        expect(result.previous!.program).toBe(oldProgram);
+        expect(result.evictedVariants.map((v) => v.program)).toEqual([variantProgram]);
+        expect(runtime.shaders.getVariant('lit-shader', 'SKINNING=1')).toBeUndefined();
     });
 });

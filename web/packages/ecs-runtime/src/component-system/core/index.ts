@@ -8,6 +8,7 @@ export {
 export * from '../decorators';
 export { World } from './world';
 export { Actor } from './actor';
+export type { ActorComponentEntry } from './actor';
 export { WorldActorRegistry } from './world-actor-registry';
 export { WorldDiagnostics } from './world-diagnostics';
 export { WorldMetricsService } from './world-diagnostics';
@@ -17,3 +18,13 @@ export { WorldQueryExecutionRuntime } from './world-query-execution-runtime';
 export { WorldQueryRuntime } from './world-query-runtime';
 export { WorldSingletonRegistry } from './world-singleton-registry';
 export { WorldStorageRuntime } from './world-storage-runtime';
+export {
+	createRenderMutationClock,
+	bumpRenderMutationClock,
+} from './render-mutation-clock';
+export type { RenderMutationClock } from './render-mutation-clock';
+export {
+	getCreationTimestamp,
+	isCreationBatchOpen,
+	runWithinCreationBatch,
+} from './creation-clock';

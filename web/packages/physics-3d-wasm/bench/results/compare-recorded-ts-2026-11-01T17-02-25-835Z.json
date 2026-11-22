@@ -1,0 +1,44 @@
+{
+  "environment": {
+    "date": "2026-11-01T17:02:25.836Z",
+    "node": "v24.18.0",
+    "platform": "win32-x64",
+    "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+    "threads": 16,
+    "warmupSteps": 60,
+    "measuredSteps": 180,
+    "repeats": 3,
+    "velocityIterations": 8,
+    "positionIterations": 3,
+    "dt": 0.016666666666666666,
+    "wasm": "build\\wasm-release\\physics.opt.wasm",
+    "wasmBytes": 31879,
+    "note": "TypeScript baseline is the recorded same-scene median from the discarded AS package BENCHMARKS.md (2026-11-01); it was not re-run in this session."
+  },
+  "results": [
+    {
+      "count": 250,
+      "wasmMs": 0.6613066666666668,
+      "recordedTsMs": 1.83,
+      "speedup": 2.7672486793822326,
+      "contacts": 1000,
+      "memoryMb": 1.1875
+    },
+    {
+      "count": 1000,
+      "wasmMs": 2.7549816666666667,
+      "recordedTsMs": 8.82,
+      "speedup": 3.20147321004556,
+      "contacts": 4000,
+      "memoryMb": 3.1875
+    },
+    {
+      "count": 2000,
+      "wasmMs": 5.561469444444442,
+      "recordedTsMs": 23.29,
+      "speedup": 4.187742148482942,
+      "contacts": 8000,
+      "memoryMb": 6.0625
+    }
+  ]
+}

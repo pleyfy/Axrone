@@ -41,7 +41,23 @@ const CLEANUP_THRESHOLD = 1000;
 
 const componentMetadataMap = new WeakMap<ComponentType, ScriptMetadata>();
 
+/**
+ * Per-type shortcut to the registry entry. Reads used to pay a string hash
+ * lookup on every call; component construction resolves metadata three or
+ * more times per instance, which made this a measurable share of a 50k-actor
+ * build.
+ */
+let componentEntryMap = new WeakMap<ComponentType, ScriptRegistryEntry>();
+
 const scriptRegistry = new Map<string, ScriptRegistryEntry>();
+
+/**
+ * `lastAccessed` only feeds LRU eviction and a coarse "time since
+ * registration" metric, while `performance.now()` per read is measurable at
+ * component-construction rates. Sampling 1 in 64 reads preserves the ordering
+ * with a 64× cheaper read path.
+ */
+const LAST_ACCESSED_SAMPLE_MASK = 63;
 
 const dependencyGraph = new Map<ComponentType, Set<ComponentType>>();
 
@@ -261,6 +277,7 @@ export function script<T extends ComponentType>(
             };
 
             scriptRegistry.set(metadata.scriptName, registryEntry);
+            componentEntryMap.set(target, registryEntry);
 
             if (metadata.dependencies && metadata.dependencies.length > 0) {
                 dependencyGraph.set(target, new Set(metadata.dependencies));
@@ -299,11 +316,14 @@ export function getComponentMetadata<T extends Component>(
 ): ScriptMetadata | undefined {
     const metadata = componentMetadataMap.get(componentType);
 
-    if (metadata) {
-        const registryEntry = scriptRegistry.get(metadata.scriptName);
-        if (registryEntry) {
-            registryEntry.accessCount++;
-            registryEntry.lastAccessed = performance.now();
+    if (metadata !== undefined) {
+        const registryEntry = componentEntryMap.get(componentType);
+        if (registryEntry !== undefined) {
+            const accessCount = registryEntry.accessCount + 1;
+            registryEntry.accessCount = accessCount;
+            if ((accessCount & LAST_ACCESSED_SAMPLE_MASK) === 0) {
+                registryEntry.lastAccessed = performance.now();
+            }
         }
     }
 
@@ -322,16 +342,18 @@ export function setComponentMetadata<T extends Component>(
 
     componentMetadataMap.set(componentType, metadata);
 
+    const registrationTime = performance.now();
     const registryEntry: ScriptRegistryEntry = {
         metadata,
         componentType,
-        registrationTime: performance.now(),
+        registrationTime,
         validationResult,
         accessCount: 0,
-        lastAccessed: performance.now(),
+        lastAccessed: registrationTime,
     };
 
     scriptRegistry.set(metadata.scriptName, registryEntry);
+    componentEntryMap.set(componentType, registryEntry);
 }
 
 export function getAllScripts(filter?: {
@@ -471,6 +493,7 @@ export function clearScriptCaches(): void {
 
 export function clearScriptRegistry(): void {
     scriptRegistry.clear();
+    componentEntryMap = new WeakMap<ComponentType, ScriptRegistryEntry>();
 }
 
 export function __debugScriptSystem(): {

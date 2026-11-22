@@ -22,7 +22,7 @@ class TestComponent extends Component {
         return super.validate() && this.value >= 0;
     }
 
-    awake(): void {
+    onLoad(): void {
         this.value = 1;
     }
 
@@ -51,7 +51,7 @@ class AsyncComponent extends Component {
     initialized = false;
     started = false;
 
-    async awake(): Promise<void> {
+    async onLoad(): Promise<void> {
         await new Promise((resolve) => setTimeout(resolve, 10));
         this.initialized = true;
     }
@@ -180,8 +180,8 @@ describe('Component', () => {
         it('should transition through lifecycle states correctly', async () => {
             expect(component.state).toBe('uninitialized');
 
-            await component._internalAwake();
-            expect(component.state).toBe('awake');
+            await component._internalOnLoad();
+            expect(component.state).toBe('loaded');
             expect(component.value).toBe(1);
 
             await component._internalStart();
@@ -196,7 +196,7 @@ describe('Component', () => {
             expect(asyncComp.initialized).toBe(false);
             expect(asyncComp.started).toBe(false);
 
-            await asyncComp._internalAwake();
+            await asyncComp._internalOnLoad();
             expect(asyncComp.initialized).toBe(true);
 
             await asyncComp._internalStart();
@@ -206,7 +206,7 @@ describe('Component', () => {
         });
 
         it('should handle enable/disable correctly', async () => {
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             expect(component.enabled).toBe(true);
@@ -254,7 +254,7 @@ describe('Component', () => {
 
     describe('update lifecycle', () => {
         it('should call update when enabled', async () => {
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             const initialValue = component.value;
@@ -264,7 +264,7 @@ describe('Component', () => {
         });
 
         it('should not call update when disabled', async () => {
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             component.enabled = false;
@@ -281,7 +281,7 @@ describe('Component', () => {
                 }
             })();
 
-            await errorComponent._internalAwake();
+            await errorComponent._internalOnLoad();
             await errorComponent._internalStart();
 
             const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -381,7 +381,7 @@ describe('Component', () => {
 
     describe('reset functionality', () => {
         it('should reset component to initial state', async () => {
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             component.enabled = false;
@@ -450,7 +450,7 @@ describe('Component', () => {
 
     describe('cleanup and memory management', () => {
         it('should cleanup properly on destroy', async () => {
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             const cleanupSpy = vi.fn();
@@ -488,12 +488,12 @@ describe('Component', () => {
     describe('error handling', () => {
         it('should handle lifecycle errors gracefully', async () => {
             const errorComponent = new (class extends Component {
-                awake(): void {
-                    throw new Error('Awake error');
+                onLoad(): void {
+                    throw new Error('OnLoad error');
                 }
             })();
 
-            await expect(errorComponent._internalAwake()).rejects.toThrow('Awake failed');
+            await expect(errorComponent._internalOnLoad()).rejects.toThrow('OnLoad failed');
             expect(errorComponent.state).toBe('uninitialized');
 
             errorComponent._internalDestroy();
@@ -506,9 +506,9 @@ describe('Component', () => {
                 }
             })();
 
-            await asyncErrorComponent._internalAwake();
+            await asyncErrorComponent._internalOnLoad();
             await expect(asyncErrorComponent._internalStart()).rejects.toThrow('Start failed');
-            expect(asyncErrorComponent.state).toBe('awake');
+            expect(asyncErrorComponent.state).toBe('loaded');
 
             asyncErrorComponent._internalDestroy();
         });
@@ -520,7 +520,7 @@ describe('Component', () => {
                 }
             })();
 
-            await errorComponent._internalAwake();
+            await errorComponent._internalOnLoad();
 
             // Start should fail because onEnable throws
             await expect(errorComponent._internalStart()).rejects.toThrow('Start failed');
@@ -531,7 +531,7 @@ describe('Component', () => {
 
     describe('performance', () => {
         it('should handle rapid state changes', async () => {
-            await component._internalAwake();
+            await component._internalOnLoad();
             await component._internalStart();
 
             const iterations = 1000;
@@ -588,13 +588,26 @@ describe('Component', () => {
 
         it('should handle concurrent lifecycle operations', async () => {
             const promises = [
-                component._internalAwake(),
-                component._internalAwake(),
-                component._internalAwake(),
+                component._internalOnLoad(),
+                component._internalOnLoad(),
+                component._internalOnLoad(),
             ];
 
             await Promise.all(promises);
-            expect(component.state).toBe('awake');
+            expect(component.state).toBe('loaded');
+        });
+
+        it('exposes a monotonic revision for render caches', () => {
+            const initial = component.revision;
+            component.enabled = false;
+            const afterDisable = component.revision;
+            expect(afterDisable).toBeGreaterThan(initial);
+
+            component.enabled = false;
+            expect(component.revision).toBe(afterDisable);
+
+            component.enabled = true;
+            expect(component.revision).toBeGreaterThan(afterDisable);
         });
     });
 });

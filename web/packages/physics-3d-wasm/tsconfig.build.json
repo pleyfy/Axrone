@@ -1,0 +1,17 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "composite": false,
+        "declaration": true,
+        "declarationMap": false,
+        "sourceMap": true
+    },
+    "include": ["src/**/*.ts", "../../types/**/*.d.ts"],
+    "exclude": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "dist",
+        "build"
+    ]
+}

@@ -155,8 +155,25 @@ describe('EventEmitter - Subscription Interfaces', () => {
                 priority: 'normal',
             };
 
-            expect(queuedEvent.data.users).toHaveLength(1000);
-            expect(queuedEvent.data.metadata.source).toBe('bulk-import');
+            const eventData = queuedEvent.data;
+            if (
+                typeof eventData !== 'object' ||
+                eventData === null ||
+                !('users' in eventData) ||
+                !('metadata' in eventData)
+            ) {
+                throw new Error('Invalid event data shape');
+            }
+            expect(eventData.users).toHaveLength(1000);
+            const eventMetadata = eventData.metadata;
+            if (
+                typeof eventMetadata !== 'object' ||
+                eventMetadata === null ||
+                !('source' in eventMetadata)
+            ) {
+                throw new Error('Invalid metadata shape');
+            }
+            expect(eventMetadata.source).toBe('bulk-import');
         });
 
         it('should maintain event ordering within same priority', () => {

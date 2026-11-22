@@ -1,4 +1,4 @@
-import type { BytesLike } from '../../../types';
+import type { BytesLike } from '../../types';
 import { writeU32LE, encodeBase64 } from '../bits';
 import { fnv1aMix32, fnv1aMixBytes32, FNV_PRIME_32 } from '../mixing';
 import { u32ToHex, bigIntToHex } from '../hex';

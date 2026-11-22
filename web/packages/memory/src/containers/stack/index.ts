@@ -1,35 +1,28 @@
+export { Stack } from './stack';
+export { ChunkedStackIterator } from './iterator';
 export {
-    StackCapacityError,
-    StackIntegrityError,
-    StackMemoryError,
-    OptimizedArrayStack,
-    ImmutableStack,
-    createStackCapacity,
-    createStackSize,
-    createNodeId,
-} from './stack';
-
-export type {
-    StackCapacity,
-    StackSize,
-    NodeId,
-    MemoryAddress,
-    AllocatorId,
-    PoolIndex,
-    StackNode,
-    AlignedStackNode,
-    StackResult,
-    ExtractSuccess,
-    ExtractError,
-    StackConfiguration,
-    StackErrorUnion,
-    ReadonlyStackInterface,
-    MutableStackInterface,
-    ImmutableStackInterface,
-    NonEmptyArray,
-    EmptyArray,
-    ArrayWithLength,
-} from './stack';
-
-export { StackMemoryPool } from './pool-adapter';
-export { StackIterator } from './stack-iterator';
+    StackUnderflowError,
+    StackOverflowError,
+    StackDisposedError,
+    StackAbortError,
+    type StackError,
+} from './errors';
+export {
+    type StackCapacity,
+    type StackSize,
+    type StackId,
+    assertStackCapacity,
+    assertStackId,
+    generateStackId,
+    LIFECYCLE_ACTIVE,
+    LIFECYCLE_DISPOSED,
+    type Lifecycle,
+    type IStackMetricsSink,
+    MonomorphicNoOpMetricsSink,
+    CHUNK_SIZE,
+    CHUNK_MASK,
+    CHUNK_SHIFT,
+    MAX_POOLED_CHUNKS,
+    HYSTERESIS_THRESHOLD,
+} from './types';
+export { ChunkPool, StackChunkPoolAdapter, type ChunkPoolOptions } from './pool-adapter';

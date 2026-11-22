@@ -37,7 +37,9 @@ describe('extras - Advanced Coverage', () => {
             const filtered = filterEvents(source, ['test:event']);
             let count = 0;
 
-            filtered.on('test:filtered' as any, () => count++);
+            filtered.on('test:filtered' as any, () => {
+                count++;
+            });
 
             const result = filtered.emitSync('test:filtered' as any, { text: 'blocked' });
             expect(result).toBe(false);
@@ -50,7 +52,9 @@ describe('extras - Advanced Coverage', () => {
             const filtered = filterEvents(source, ['test:event']);
             let count = 0;
 
-            filtered.on('test:event', () => count++);
+            filtered.on('test:event', () => {
+                count++;
+            });
 
             await source.emit('test:event', { value: 1 });
             expect(count).toBe(1);
@@ -86,7 +90,9 @@ describe('extras - Advanced Coverage', () => {
             const excluded = excludeEvents(source, ['test:excluded']);
             let count = 0;
 
-            excluded.on('test:event', () => count++);
+            excluded.on('test:event', () => {
+                count++;
+            });
 
             await source.emit('test:event', { value: 1 });
             expect(count).toBe(1);
@@ -98,7 +104,9 @@ describe('extras - Advanced Coverage', () => {
             const excluded = excludeEvents(source, ['test:excluded']);
             let count = 0;
 
-            excluded.once('test:event', () => count++);
+            excluded.once('test:event', () => {
+                count++;
+            });
 
             await source.emit('test:event', { value: 1 });
             await source.emit('test:event', { value: 2 });
@@ -111,7 +119,9 @@ describe('extras - Advanced Coverage', () => {
             const excluded = excludeEvents(source, ['test:excluded']);
             let count = 0;
 
-            excluded.on('test:event', () => count++);
+            excluded.on('test:event', () => {
+                count++;
+            });
 
             await source.emit('test:event', { value: 1 });
             expect(count).toBe(1);
@@ -139,7 +149,9 @@ describe('extras - Advanced Coverage', () => {
 
         it('should release all source subscriptions when unsubscribe is called', async () => {
             let targetCount = 0;
-            target.on('target:mapped', () => targetCount++);
+            target.on('target:mapped', () => {
+                targetCount++;
+            });
 
             const unsub = createEventProxy(source, target, {
                 'test:event': 'target:mapped',
@@ -158,8 +170,12 @@ describe('extras - Advanced Coverage', () => {
             let mappedCount = 0;
             let directCount = 0;
 
-            target.on('target:mapped', () => mappedCount++);
-            target.on('target:direct', () => directCount++);
+            target.on('target:mapped', () => {
+                mappedCount++;
+            });
+            target.on('target:direct', () => {
+                directCount++;
+            });
 
             const unsub = createEventProxy(source, target, {
                 'test:event': 'target:mapped',
@@ -198,9 +214,15 @@ describe('extras - Advanced Coverage', () => {
             let bCount = 0;
             let cCount = 0;
 
-            merged.on('e1:a' as any, () => aCount++);
-            merged.on('e2:b' as any, () => bCount++);
-            merged.on('e3:c' as any, () => cCount++);
+            merged.on('e1:a' as any, () => {
+                aCount++;
+            });
+            merged.on('e2:b' as any, () => {
+                bCount++;
+            });
+            merged.on('e3:c' as any, () => {
+                cCount++;
+            });
 
             await e1.emit('e1:a', { x: 1 });
             await e2.emit('e2:b', { y: 2 });
@@ -223,7 +245,9 @@ describe('extras - Advanced Coverage', () => {
             const merged = mergeEmitters(e1, e2);
             let count = 0;
 
-            merged.on('e1:a' as any, () => count++);
+            merged.on('e1:a' as any, () => {
+                count++;
+            });
 
             await e1.emit('e1:a', { x: 1 });
             expect(count).toBe(1);

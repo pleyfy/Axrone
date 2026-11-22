@@ -6,54 +6,16 @@ import {
     installWebGL2Constants,
     ManualScheduler,
 } from '../../../../tests/shared/test-harness';
+import {
+    forceGcIfAvailable,
+    hasMemoryApi,
+    linearSlope,
+    readHeapBytes,
+    runFrames,
+} from './perf-test-utils';
 
 let Scene: typeof import('@axrone/scene-3d').Scene;
 let Animator: typeof import('@axrone/scene-3d').Animator;
-
-// ---------------------------------------------------------------------------
-// Helpers (reimplemented from script-performance-regression.test.ts)
-// ---------------------------------------------------------------------------
-
-function readHeapBytes(): number | null {
-    const perfMemory = (performance as unknown as Record<string, unknown>).memory as
-        | Record<string, number>
-        | undefined;
-    if (perfMemory && typeof perfMemory.usedJSHeapSize === 'number') {
-        return perfMemory.usedJSHeapSize;
-    }
-    if (typeof process !== 'undefined' && typeof process.memoryUsage === 'function') {
-        return process.memoryUsage().heapUsed;
-    }
-    return null;
-}
-
-function hasMemoryApi(): boolean {
-    return readHeapBytes() !== null;
-}
-
-function linearSlope(samples: number[]): number {
-    const n = samples.length;
-    if (n < 2) return 0;
-    let sumX = 0;
-    let sumY = 0;
-    let sumXY = 0;
-    let sumXX = 0;
-    for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += samples[i]!;
-        sumXY += i * samples[i]!;
-        sumXX += i * i;
-    }
-    const denom = n * sumXX - sumX * sumX;
-    if (denom === 0) return 0;
-    return (n * sumXY - sumX * sumY) / denom;
-}
-
-function runFrames(scheduler: ManualScheduler, count: number, startMs = 0, stepMs = 16): void {
-    for (let i = 0; i < count; i++) {
-        scheduler.flush(startMs + i * stepMs);
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Test Components — replicate game script zero-allocation patterns
@@ -138,7 +100,7 @@ class CharacterMovementTest extends Component {
     private readonly _newPosition = new Vec3();
     private readonly _tempRotation = new Quat();
 
-    awake(): void {
+    onLoad(): void {
         this._cachedTransform = this.transform as Transform | null;
 
         const onKeyDown = (event: KeyboardEvent) => this._pressedKeys.add(event.code);
@@ -289,7 +251,7 @@ describe('Script Performance Regression — Game Scripts', () => {
             }
 
             const slope = linearSlope(samples);
-            expect(slope).toBeLessThan(5_000_000);
+            expect(slope).toBeLessThan(500_000);
 
             scene.dispose();
         });
@@ -334,7 +296,7 @@ describe('Script Performance Regression — Game Scripts', () => {
             }
 
             const slope = linearSlope(samples);
-            expect(slope).toBeLessThan(5_000_000);
+            expect(slope).toBeLessThan(500_000);
 
             scene.dispose();
         });
@@ -397,16 +359,18 @@ describe('Script Performance Regression — Game Scripts', () => {
             }
 
             const slope = linearSlope(samples);
-            expect(slope).toBeLessThan(5_000_000);
+            expect(slope).toBeLessThan(500_000);
 
             scene.dispose();
         });
     });
 
-    // --- 4. GC pause estimation ---
+    // --- 4. Frame spike detection (wall-clock, GC pauses included) ---
 
-    describe('GC Pause Estimation', () => {
-        it('no frame exceeds 2ms GC spike over 100 frames', () => {
+    // NOTE: wall-clock frame timing cannot isolate GC pauses from work time;
+    // this suite asserts the combined frame budget, which is what players feel.
+    describe('Frame Spike Detection', () => {
+        it('no frame exceeds the 16.6ms budget over 100 scripted frames', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(
                 createSceneOptions(scheduler, canvas, {
@@ -425,6 +389,8 @@ describe('Script Performance Regression — Game Scripts', () => {
 
             scene.start(0);
             runFrames(scheduler, 50, 0);
+            // Settle setup garbage before the timed region.
+            forceGcIfAvailable();
 
             const frameTimes: number[] = [];
             for (let i = 0; i < 100; i++) {
@@ -436,8 +402,6 @@ describe('Script Performance Regression — Game Scripts', () => {
                 frameTimes.push(elapsed);
             }
 
-            // No single frame should have a GC spike > 2ms
-            // (In practice, we check that no frame exceeds a reasonable threshold)
             const maxFrameTime = Math.max(...frameTimes);
             expect(maxFrameTime).toBeLessThan(16.6);
 
@@ -495,7 +459,7 @@ describe('Script Performance Regression — Game Scripts', () => {
             }
 
             const slope = linearSlope(samples);
-            expect(slope).toBeLessThan(5_000_000);
+            expect(slope).toBeLessThan(500_000);
         });
     });
 
@@ -545,7 +509,7 @@ describe('Script Performance Regression — Game Scripts', () => {
             }
 
             const slope = linearSlope(samples);
-            expect(slope).toBeLessThan(5_000_000);
+            expect(slope).toBeLessThan(500_000);
         });
     });
 
@@ -654,7 +618,7 @@ describe('Script Performance Regression — Game Scripts', () => {
             }
 
             const slope = linearSlope(samples);
-            expect(slope).toBeLessThan(5_000_000);
+            expect(slope).toBeLessThan(500_000);
 
             scene.dispose();
         });

@@ -47,12 +47,26 @@ export const Interpolation = {
     },
 
     Bezier: (v: ArrayLike<number>, k: number): number => {
-        let b = 0;
         const n = v.length - 1;
+        if (n <= 0) return v[0] ?? 0;
+        if (k <= 0) return v[0]!;
+        if (k >= 1) return v[n]!;
 
+        // Iterative Bernstein powers: one linear pass of multiplies replaces
+        // 2n Math.pow calls per evaluation on the hot path.
+        const oneMinusK = 1 - k;
+        let powK = 1;
+        let powOneMinusK = 1;
+        for (let p = 0; p < n; p++) {
+            powOneMinusK *= oneMinusK;
+        }
+
+        let b = 0;
         for (let i = 0; i <= n; i++) {
             const binomialCoeff = BINOMIAL[n]?.[i] ?? bernstein(n, i);
-            b += Math.pow(1 - k, n - i) * Math.pow(k, i) * v[i] * binomialCoeff;
+            b += binomialCoeff * powOneMinusK * powK * (v[i] ?? 0);
+            powOneMinusK /= oneMinusK;
+            powK *= k;
         }
 
         return b;
@@ -95,10 +109,14 @@ export const Interpolation = {
     },
 
     Step: (v: ArrayLike<number>, k: number): number => {
-        const m = v.length - 1;
-        if (m === 0) return v[0];
+        if (v.length === 0) return 0;
+        if (v.length === 1) return v[0]!;
+        if (k <= 0) return v[0]!;
 
-        return k > 0 ? v[m] : v[0];
+        const m = v.length - 1;
+        if (k >= 1) return v[m]!;
+
+        return v[Math.min(m, Math.floor(m * k))]!;
     },
 
     Smoothstep: (v: ArrayLike<number>, k: number): number => {

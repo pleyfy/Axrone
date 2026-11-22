@@ -22,6 +22,7 @@ export interface IReadableBuffer {
     getBigUint64(): bigint;
     getString(encoding?: 'utf8' | 'utf16'): string;
     slice(begin?: number, end?: number): IReadableBuffer;
+    subarray(begin?: number, end?: number): Uint8Array;
 }
 
 /** @stable */

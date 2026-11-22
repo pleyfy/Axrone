@@ -4,29 +4,39 @@ import {
     type AnimationMotionBuilder,
 } from './blend-graph';
 import {
+    cloneBehaviourAction,
     cloneClipDefinition,
     cloneCondition,
     cloneParameterDefinition,
     cloneRigDefinition,
     cloneRootMotionDefinition,
+    cloneStateBehaviour,
 } from './controller-clone';
 import { spreadIfFinite } from './internal';
 import type {
     AnimationConditionDefinition,
+    AnimationConditionMatch,
     AnimationControllerDefinition,
     AnimationIkJobDefinition,
     AnimationIkLayerDefinition,
+    AnimationInterruptHandoff,
+    AnimationInterruptMode,
     AnimationLayerBlendMode,
     AnimationLayerDefinition,
+    AnimationLayerSyncMode,
     AnimationMotionDefinition,
     AnimationParameterDefinition,
     AnimationParameterKind,
     AnimationParameterValue,
     AnimationRigDefinition,
     AnimationRootMotionDefinition,
+    AnimationStateBehaviourActionDefinition,
+    AnimationStateBehaviourDefinition,
+    AnimationStateBehaviourPhase,
     AnimationStateDefinition,
     AnimationStateMachineDefinition,
     AnimationTransitionDefinition,
+    AnimationTransitionEasing,
     AnimationTransitionOperator,
 } from './types';
 
@@ -69,6 +79,22 @@ export class AnimationTransitionBuilder<
         return this.set('canInterrupt', canInterrupt) as unknown as AnimationTransitionBuilder<'to' | 'canInterrupt'>;
     }
 
+    withEasing(easing: AnimationTransitionEasing): AnimationTransitionBuilder<'to' | 'easing'> {
+        return this.set('easing', easing) as unknown as AnimationTransitionBuilder<'to' | 'easing'>;
+    }
+
+    withInterruptMode(interruptMode: AnimationInterruptMode): AnimationTransitionBuilder<'to' | 'interruptMode'> {
+        return this.set('interruptMode', interruptMode) as unknown as AnimationTransitionBuilder<'to' | 'interruptMode'>;
+    }
+
+    withInterruptHandoff(interruptHandoff: AnimationInterruptHandoff): AnimationTransitionBuilder<'to' | 'interruptHandoff'> {
+        return this.set('interruptHandoff', interruptHandoff) as unknown as AnimationTransitionBuilder<'to' | 'interruptHandoff'>;
+    }
+
+    withConditionMatch(conditionMatch: AnimationConditionMatch): AnimationTransitionBuilder<'to' | 'conditionMatch'> {
+        return this.set('conditionMatch', conditionMatch) as unknown as AnimationTransitionBuilder<'to' | 'conditionMatch'>;
+    }
+
     withPriority(priority: number): AnimationTransitionBuilder<'to' | 'priority'> {
         return this.set('priority', priority) as unknown as AnimationTransitionBuilder<'to' | 'priority'>;
     }
@@ -94,21 +120,120 @@ export class AnimationTransitionBuilder<
     }
 }
 
+// ─── AnimationStateBehaviourBuilder ──────────────────────────────────────────
+
+export class AnimationStateBehaviourBuilder<
+    TSupplied extends keyof AnimationStateBehaviourDefinition = 'phase' | 'actions',
+> extends Builder<AnimationStateBehaviourDefinition, TSupplied> {
+    constructor(phase: AnimationStateBehaviourPhase, actions: readonly AnimationStateBehaviourActionDefinition[]) {
+        super({
+            phase,
+            actions: Object.freeze(actions.map(cloneBehaviourAction)),
+            conditions: Object.freeze([]) as readonly AnimationConditionDefinition[],
+        });
+    }
+
+    withId(id: string): AnimationStateBehaviourBuilder<'phase' | 'actions' | 'id'> {
+        return this.set('id', id) as unknown as AnimationStateBehaviourBuilder<'phase' | 'actions' | 'id'>;
+    }
+
+    withConditionMatch(
+        conditionMatch: AnimationConditionMatch
+    ): AnimationStateBehaviourBuilder<'phase' | 'actions' | 'conditionMatch'> {
+        return this.set(
+            'conditionMatch',
+            conditionMatch
+        ) as unknown as AnimationStateBehaviourBuilder<'phase' | 'actions' | 'conditionMatch'>;
+    }
+
+    /** `phase: 'update'` only: fire at most once every `intervalSeconds`. */
+    withInterval(
+        intervalSeconds: number
+    ): AnimationStateBehaviourBuilder<'phase' | 'actions' | 'intervalSeconds'> {
+        return this.set(
+            'intervalSeconds',
+            intervalSeconds
+        ) as unknown as AnimationStateBehaviourBuilder<'phase' | 'actions' | 'intervalSeconds'>;
+    }
+
+    addAction(
+        action: AnimationStateBehaviourActionDefinition
+    ): AnimationStateBehaviourBuilder<'phase' | 'actions'> {
+        return this._append('actions', cloneBehaviourAction(action)) as unknown as AnimationStateBehaviourBuilder<
+            'phase' | 'actions'
+        >;
+    }
+
+    addCondition(condition: AnimationConditionDefinition): AnimationStateBehaviourBuilder<'phase' | 'actions' | 'conditions'> {
+        return this._append('conditions', cloneCondition(condition)) as unknown as AnimationStateBehaviourBuilder<
+            'phase' | 'actions' | 'conditions'
+        >;
+    }
+}
+
 // ─── AnimationStateBuilder ───────────────────────────────────────────────────
 
 export class AnimationStateBuilder<
     TSupplied extends keyof AnimationStateDefinition = 'id' | 'motion',
 > extends Builder<AnimationStateDefinition, TSupplied> {
-    constructor(id: string, motion: AnimationMotionInput) {
+    constructor(id: string, motion?: AnimationMotionInput) {
         super({
             id,
-            motion: buildAnimationMotionDefinition(motion),
+            ...(motion ? { motion: buildAnimationMotionDefinition(motion) } : {}),
             transitions: Object.freeze([]) as readonly AnimationTransitionDefinition[],
         });
     }
 
     withMotion(motion: AnimationMotionInput): AnimationStateBuilder<'id' | 'motion'> {
         return this.set('motion', buildAnimationMotionDefinition(motion)) as unknown as AnimationStateBuilder<'id' | 'motion'>;
+    }
+
+    /** Turns this state into a group: the child machine supplies the playable states. */
+    withChildMachine(stateMachine: AnimationStateMachineInput): AnimationStateBuilder<'id' | 'childMachine'> {
+        return this.set(
+            'childMachine',
+            buildAnimationStateMachineDefinition(stateMachine)
+        ) as unknown as AnimationStateBuilder<'id' | 'childMachine'>;
+    }
+
+    addBehaviour(behaviour: AnimationStateBehaviourDefinition): AnimationStateBuilder<'id' | 'behaviours'> {
+        return this._append(
+            'behaviours',
+            cloneStateBehaviour(behaviour)
+        ) as unknown as AnimationStateBuilder<'id' | 'behaviours'>;
+    }
+
+    onEnter(
+        actions: readonly AnimationStateBehaviourActionDefinition[],
+        configure?: (behaviour: AnimationStateBehaviourBuilder) => AnimationStateBehaviourBuilder
+    ): AnimationStateBuilder<'id' | 'behaviours'> {
+        return this._addPhaseBehaviour('enter', actions, configure);
+    }
+
+    onUpdate(
+        actions: readonly AnimationStateBehaviourActionDefinition[],
+        configure?: (behaviour: AnimationStateBehaviourBuilder) => AnimationStateBehaviourBuilder
+    ): AnimationStateBuilder<'id' | 'behaviours'> {
+        return this._addPhaseBehaviour('update', actions, configure);
+    }
+
+    onExit(
+        actions: readonly AnimationStateBehaviourActionDefinition[],
+        configure?: (behaviour: AnimationStateBehaviourBuilder) => AnimationStateBehaviourBuilder
+    ): AnimationStateBuilder<'id' | 'behaviours'> {
+        return this._addPhaseBehaviour('exit', actions, configure);
+    }
+
+    private _addPhaseBehaviour(
+        phase: AnimationStateBehaviourPhase,
+        actions: readonly AnimationStateBehaviourActionDefinition[],
+        configure?: (behaviour: AnimationStateBehaviourBuilder) => AnimationStateBehaviourBuilder
+    ): AnimationStateBuilder<'id' | 'behaviours'> {
+        let behaviour = new AnimationStateBehaviourBuilder(phase, actions);
+        if (configure) {
+            behaviour = configure(behaviour) as AnimationStateBehaviourBuilder;
+        }
+        return this.addBehaviour(behaviour.buildUnsafe() as AnimationStateBehaviourDefinition);
     }
 
     withSpeed(speed: number): AnimationStateBuilder<'id' | 'motion' | 'speed'> {
@@ -165,13 +290,29 @@ export class AnimationStateMachineBuilder<
 
     state(
         id: string,
-        motion: AnimationMotionInput,
+        motion?: AnimationMotionInput,
         configure?: (state: AnimationStateBuilder) => AnimationStateBuilder
     ): AnimationStateMachineBuilder<'entryState' | 'states'> {
         let stateBuilder = new AnimationStateBuilder(id, motion);
         if (configure) {
             const configured = configure(stateBuilder);
             stateBuilder = configured as AnimationStateBuilder;
+        }
+        return this.addState(stateBuilder);
+    }
+
+    /**
+     * Adds a group state: a state that owns `childMachine` instead of a motion.
+     * Transitions authored on the group fire from any state inside the child.
+     */
+    group(
+        id: string,
+        childMachine: AnimationStateMachineInput,
+        configure?: (state: AnimationStateBuilder) => AnimationStateBuilder
+    ): AnimationStateMachineBuilder<'entryState' | 'states'> {
+        let stateBuilder = new AnimationStateBuilder(id).withChildMachine(childMachine);
+        if (configure) {
+            stateBuilder = configure(stateBuilder) as AnimationStateBuilder;
         }
         return this.addState(stateBuilder);
     }
@@ -233,6 +374,35 @@ export class AnimationLayerBuilder<
 
     withBoneMask(bones: readonly string[]): AnimationLayerBuilder<'id' | 'stateMachine' | 'boneMask'> {
         return this.set('boneMask', Object.freeze([...bones])) as unknown as AnimationLayerBuilder<'id' | 'stateMachine' | 'boneMask'>;
+    }
+
+    /**
+     * Makes this layer follow another one. `mode` selects what is borrowed:
+     * state and clock (default), just the state identity, or just the clock.
+     */
+    withSyncSource(
+        layerId: string,
+        mode: AnimationLayerSyncMode = 'stateAndTime',
+        timeOffset = 0
+    ): AnimationLayerBuilder<'id' | 'stateMachine' | 'syncSourceLayerId'> {
+        return this.set('syncSourceLayerId', layerId)
+            .set('syncMode', mode)
+            .set('syncTimeOffset', timeOffset) as unknown as AnimationLayerBuilder<
+            'id' | 'stateMachine' | 'syncSourceLayerId'
+        >;
+    }
+
+    withSyncMode(mode: AnimationLayerSyncMode): AnimationLayerBuilder<'id' | 'stateMachine' | 'syncMode'> {
+        return this.set('syncMode', mode) as unknown as AnimationLayerBuilder<'id' | 'stateMachine' | 'syncMode'>;
+    }
+
+    withSyncTimeOffset(
+        timeOffset: number
+    ): AnimationLayerBuilder<'id' | 'stateMachine' | 'syncTimeOffset'> {
+        return this.set(
+            'syncTimeOffset',
+            timeOffset
+        ) as unknown as AnimationLayerBuilder<'id' | 'stateMachine' | 'syncTimeOffset'>;
     }
 
     withStateMachine(stateMachine: AnimationStateMachineInput): AnimationLayerBuilder<'id' | 'stateMachine'> {
@@ -309,8 +479,18 @@ export const createAnimationTransition = (to: string): AnimationTransitionBuilde
 
 export const createAnimationState = (
     id: string,
-    motion: AnimationMotionInput
+    motion?: AnimationMotionInput
 ): AnimationStateBuilder => new AnimationStateBuilder(id, motion);
+
+export const createAnimationGroupState = (
+    id: string,
+    childMachine: AnimationStateMachineInput
+): AnimationStateBuilder => new AnimationStateBuilder(id).withChildMachine(childMachine);
+
+export const createAnimationStateBehaviour = (
+    phase: AnimationStateBehaviourPhase,
+    actions: readonly AnimationStateBehaviourActionDefinition[]
+): AnimationStateBehaviourBuilder => new AnimationStateBehaviourBuilder(phase, actions);
 
 export const createAnimationStateMachine = (
     entryState?: string
@@ -340,12 +520,16 @@ export const buildAnimationTransitionDefinition = (
               ...spreadIfFinite('duration', transition.duration),
               ...spreadIfFinite('offset', transition.offset),
               ...spreadIfFinite('exitTime', transition.exitTime),
-              ...(typeof transition.fixedDuration === 'boolean'
+              ...(transition.fixedDuration !== undefined
                   ? { fixedDuration: transition.fixedDuration }
                   : {}),
-              ...(typeof transition.canInterrupt === 'boolean'
+              ...(transition.canInterrupt !== undefined
                   ? { canInterrupt: transition.canInterrupt }
                   : {}),
+              ...(transition.conditionMatch !== undefined ? { conditionMatch: transition.conditionMatch } : {}),
+              ...(transition.easing !== undefined ? { easing: transition.easing } : {}),
+              ...(transition.interruptMode !== undefined ? { interruptMode: transition.interruptMode } : {}),
+              ...(transition.interruptHandoff !== undefined ? { interruptHandoff: transition.interruptHandoff } : {}),
               ...spreadIfFinite('priority', transition.priority),
               ...(transition.conditions
                   ? { conditions: Object.freeze(transition.conditions.map(cloneCondition)) }
@@ -357,7 +541,13 @@ export const buildAnimationStateDefinition = (state: AnimationStateInput): Anima
         ? state.buildUnsafe() as AnimationStateDefinition
         : Object.freeze({
               id: state.id,
-              motion: buildAnimationMotionDefinition(state.motion),
+              ...(state.motion ? { motion: buildAnimationMotionDefinition(state.motion) } : {}),
+              ...(state.childMachine
+                  ? { childMachine: buildAnimationStateMachineDefinition(state.childMachine) }
+                  : {}),
+              ...(state.behaviours
+                  ? { behaviours: Object.freeze(state.behaviours.map(cloneStateBehaviour)) }
+                  : {}),
               ...spreadIfFinite('speed', state.speed),
               ...(typeof state.loop === 'boolean' ? { loop: state.loop } : {}),
               ...(state.transitions
@@ -405,6 +595,9 @@ export const buildAnimationLayerDefinition = (layer: AnimationLayerInput): Anima
               ...spreadIfFinite('weight', layer.weight),
               ...(layer.mode ? { mode: layer.mode } : {}),
               ...(layer.boneMask ? { boneMask: Object.freeze([...layer.boneMask]) } : {}),
+              ...(layer.syncSourceLayerId !== undefined ? { syncSourceLayerId: layer.syncSourceLayerId } : {}),
+              ...(layer.syncMode !== undefined ? { syncMode: layer.syncMode } : {}),
+              ...spreadIfFinite('syncTimeOffset', layer.syncTimeOffset),
               stateMachine: buildAnimationStateMachineDefinition(layer.stateMachine),
               ...(layer.ikLayers
                   ? { ikLayers: Object.freeze(layer.ikLayers.map(buildAnimationIkLayerDefinition)) }

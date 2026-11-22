@@ -1,5 +1,5 @@
 import type { BoundingSphere } from '@axrone/geometry';
-import { Mat4, Quat, Vec2, Vec3, Vec4, encodeValue } from '@axrone/numeric';
+import { Mat4, Quat, Rect, Vec2, Vec3, Vec4, encodeValue } from '@axrone/numeric';
 import { cloneSceneMeshBounds, isBoundingSphereCenterTuple } from './scene-mesh-bounds';
 import type {
     SceneMorphTargetDefinition,
@@ -84,6 +84,8 @@ export const decodeSceneValue = (value: SceneSerializedValue): unknown => {
                 return Quat.fromArray(encodedValue);
             case 'Mat4':
                 return new Mat4(encodedValue.map((entry) => Number(entry)));
+            case 'Rect':
+                return new Rect(encodedValue[0], encodedValue[1], encodedValue[2], encodedValue[3]);
             case 'Float32Array':
                 return new Float32Array(encodedValue.map((entry) => Number(entry)));
             case 'Int32Array':

@@ -182,8 +182,6 @@ void main() {
     float mask = 1.0 - smoothstep(-aa, aa, sdf);
     vec4 color = texture(u_Image, v_Uv) * v_Tint;
     color *= mask;
-    if (color.a <= 0.0) {
-        discard;
-    }
+    if (color.a <= 0.0) { discard; }
     o_Color = color;
 }`;

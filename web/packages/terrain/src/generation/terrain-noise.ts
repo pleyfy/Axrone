@@ -2,6 +2,7 @@ import { createRandom } from '@axrone/random';
 import type { ResolvedTerrainNoiseOptions, TerrainDescriptor, TerrainNoiseOptions } from '../types';
 import { resolveTerrainNoiseOptions, validateTerrainDescriptor } from '../types';
 import { TerrainHeightmap } from '../heightmap/terrain-heightmap';
+import { smoothstep } from '../internal/math';
 
 const LATTICE_SIZE = 256;
 const LATTICE_MASK = LATTICE_SIZE - 1;
@@ -37,8 +38,6 @@ const createValueNoiseLattice = (seed: number): ValueNoiseLattice => {
 
     return { permutation, values };
 };
-
-const smoothstep = (t: number): number => t * t * (3 - 2 * t);
 
 const latticeValueAt = (lattice: ValueNoiseLattice, x: number, z: number): number => {
     const hashed = lattice.permutation[lattice.permutation[x & LATTICE_MASK]! + (z & LATTICE_MASK)]!;

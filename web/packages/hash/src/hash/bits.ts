@@ -1,4 +1,4 @@
-import type { BytesLike } from '../../types';
+import type { BytesLike } from '../types';
 
 const F32_BUF = new Float32Array(1);
 const I32_BUF = new Int32Array(F32_BUF.buffer);

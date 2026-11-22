@@ -139,7 +139,6 @@ const normalizeStops = (stops: readonly GradientStopInput[]): readonly GradientS
     return Object.freeze(
         stops
             .map(normalizeGradientStop)
-            .slice()
             .sort((left, right) => left.offset - right.offset)
     );
 };
@@ -197,10 +196,7 @@ const sampleStops = (
     };
 };
 
-const createGradientCacheKey = (
-    paint: LinearGradientPaint | RadialGradientPaint,
-    size: number
-): number => {
+const createGradientCacheKey = (size: number): number => {
     if (size < 2 || !Number.isFinite(size)) {
         throw new PaintValidationError('Gradient lookup table size must be at least 2');
     }
@@ -340,7 +336,7 @@ export const createGradientLookupTable = (
     paint: LinearGradientPaint | RadialGradientPaint,
     size: number = DEFAULT_GRADIENT_LOOKUP_SIZE
 ): Float32Array => {
-    const cacheKey = createGradientCacheKey(paint, size);
+    const cacheKey = createGradientCacheKey(size);
     let cacheBySize = gradientLookupCache.get(paint);
     if (!cacheBySize) {
         cacheBySize = new Map<number, Float32Array>();
@@ -355,7 +351,7 @@ export const createGradientLookupTable = (
     const table = new Float32Array(cacheKey * 4);
 
     for (let index = 0; index < cacheKey; index++) {
-        const time = cacheKey === 1 ? 0 : index / (cacheKey - 1);
+        const time = index / (cacheKey - 1);
         const sampled = sampleStops(paint.stops, time, paint.colorSpace);
         const offset = index * 4;
         table[offset] = sampled.r;
@@ -446,26 +442,24 @@ export const modulatePaintAlpha = (color: Readonly<IColorLike>, opacity: number)
     a: clamp01((color.a ?? 1) * clamp01(opacity)),
 });
 
+const formatStopsKey = (stops: readonly GradientStop[]): string =>
+    stops
+        .map(
+            (stop) =>
+                `${normalizeNumberKey(stop.offset)}:${normalizeNumberKey(stop.color.r)}:${normalizeNumberKey(stop.color.g)}:${normalizeNumberKey(stop.color.b)}:${normalizeNumberKey(stop.color.a)}`
+        )
+        .join('|');
+
 export const createPaintFingerprint = (paint: ShapePaint): string => {
     if (paint.kind === 'solid') {
         return `solid:${normalizeNumberKey(paint.color.r)}:${normalizeNumberKey(paint.color.g)}:${normalizeNumberKey(paint.color.b)}:${normalizeNumberKey(paint.color.a)}`;
     }
 
     if (paint.kind === 'linear-gradient') {
-        const stops = paint.stops
-            .map(
-                (stop) =>
-                    `${normalizeNumberKey(stop.offset)}:${normalizeNumberKey(stop.color.r)}:${normalizeNumberKey(stop.color.g)}:${normalizeNumberKey(stop.color.b)}:${normalizeNumberKey(stop.color.a)}`
-            )
-            .join('|');
-        return `linear:${formatPointKey(paint.start)}:${formatPointKey(paint.end)}:${paint.units}:${paint.spread}:${paint.colorSpace}:${hashString(stops)}`;
+        const stops = hashString(formatStopsKey(paint.stops));
+        return `linear:${formatPointKey(paint.start)}:${formatPointKey(paint.end)}:${paint.units}:${paint.spread}:${paint.colorSpace}:${stops}`;
     }
 
-    const stops = paint.stops
-        .map(
-            (stop) =>
-                `${normalizeNumberKey(stop.offset)}:${normalizeNumberKey(stop.color.r)}:${normalizeNumberKey(stop.color.g)}:${normalizeNumberKey(stop.color.b)}:${normalizeNumberKey(stop.color.a)}`
-        )
-        .join('|');
-    return `radial:${formatPointKey(paint.center)}:${normalizeNumberKey(paint.radius)}:${paint.units}:${paint.spread}:${paint.colorSpace}:${hashString(stops)}`;
+    const stops = hashString(formatStopsKey(paint.stops));
+    return `radial:${formatPointKey(paint.center)}:${normalizeNumberKey(paint.radius)}:${paint.units}:${paint.spread}:${paint.colorSpace}:${stops}`;
 };

@@ -1,7 +1,7 @@
 import type { UIRuntime } from '../runtime';
 import type { UIInputEvent, WidgetId } from '../types';
 import type { WidgetController, WidgetControllerContext } from '../widget';
-import { asString, asNumber } from './internals';
+import { asString, asNumber, setWidgetVisible } from './internals';
 
 /**
  * Declarative tooltip-host controller for `.ui.json` authored widgets.
@@ -175,7 +175,7 @@ const showTooltip = (context: TooltipContext): void => {
         applyTooltipText(context, textWidget);
     }
 
-    context.runtime.updateWidget(tooltipWidget, { enabled: true });
+    setWidgetVisible(context.runtime, tooltipWidget, true);
     state.visible = true;
     state.pendingShow = false;
 };
@@ -190,7 +190,7 @@ const hideTooltip = (context: TooltipContext): void => {
         return;
     }
 
-    context.runtime.updateWidget(tooltipWidget, { enabled: false });
+    setWidgetVisible(context.runtime, tooltipWidget, false);
     state.visible = false;
     state.pendingShow = false;
 };
@@ -231,7 +231,7 @@ export const tooltipHostController: WidgetController<
         // Start with the tooltip hidden.
         const tooltipWidget = typed.state.cachedTooltip;
         if (tooltipWidget !== null) {
-            typed.runtime.updateWidget(tooltipWidget, { enabled: false });
+            setWidgetVisible(typed.runtime, tooltipWidget, false);
         }
 
     },

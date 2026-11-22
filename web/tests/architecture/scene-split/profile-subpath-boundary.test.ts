@@ -41,7 +41,9 @@ const rules: readonly ProfileImportRule[] = [
         requiredSpecifiers: ['@axrone/scene-runtime/scene-full-profile'],
     },
     {
-        filePath: path.resolve(workspaceDir, 'packages/scene-2d/src/scene-2d.ts'),
+        // Root Scene2D lives in the full-composition subclass; the base
+        // `scene-2d.ts` intentionally imports no profile so lean stays light.
+        filePath: path.resolve(workspaceDir, 'packages/scene-2d/src/scene-2d-full.ts'),
         requiredSpecifiers: ['@axrone/scene-runtime/scene-2d-profile'],
     },
     {

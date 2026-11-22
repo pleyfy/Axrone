@@ -10,10 +10,8 @@ describe('Professional BufferPool', () => {
         const options: BufferPoolOptions = {
             initialCapacityPerBucket: 8,
             maxCapacityPerBucket: 32,
-            minFreePerBucket: 2,
             preallocate: true,
             autoExpand: true,
-            enableMetrics: true,
             name: 'TestBufferPool',
         };
         pool = BufferPool.getInstance(options);
@@ -193,7 +191,6 @@ describe('Professional BufferPool', () => {
 
             const options: BufferPoolOptions = {
                 ttl: 100,
-                enableMetrics: true,
                 name: 'TTLPool',
             };
             const ttlPool = BufferPool.getInstance(options);
@@ -283,9 +280,7 @@ describe('Professional BufferPool', () => {
                 initialCapacityPerBucket: 2,
                 maxCapacityPerBucket: 4,
                 autoExpand: false,
-                evictionPolicy: 'none',
                 preallocate: false,
-                enableMetrics: true,
                 name: 'ExhaustPool',
                 onOutOfMemory,
             });
@@ -318,7 +313,6 @@ describe('Professional BufferPool', () => {
                 initialCapacityPerBucket: 2,
                 maxCapacityPerBucket: 2,
                 autoExpand: false,
-                evictionPolicy: 'none',
                 preallocate: false,
                 name: 'SmallPool',
             });

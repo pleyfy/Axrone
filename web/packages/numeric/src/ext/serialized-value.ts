@@ -7,6 +7,7 @@ import { Vec3 } from '../vec3';
 import { Vec4 } from '../vec4';
 import { Quat } from '../quat';
 import { Mat4 } from '../mat4';
+import { Rect } from '../rect';
 
 
 /**
@@ -76,6 +77,10 @@ export const encodeValue = (
 
     if (value instanceof Mat4) {
         return { $type: 'Mat4', value: [...value.data] };
+    }
+
+    if (value instanceof Rect) {
+        return { $type: 'Rect', value: [value.x, value.y, value.width, value.height] };
     }
 
     if (value instanceof Float32Array) {

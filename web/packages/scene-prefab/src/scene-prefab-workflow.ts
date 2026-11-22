@@ -1,8 +1,13 @@
 import { ScenePrefabResolutionError } from './errors';
-import { isInlineScenePrefabReference, isScenePrefabReference } from './scene-prefab-internals';
+import {
+    cloneScenePrefabDefinition,
+    isInlineScenePrefabReference,
+    isScenePrefabReference,
+} from './scene-prefab-internals';
 import {
     applyScenePrefabOverrideOperations,
     createScenePrefabState,
+    getScenePrefabLineage,
     materializeScenePrefabResolvedDefinition,
     mergeScenePrefabActors,
     scopeScenePrefabActors,
@@ -33,11 +38,6 @@ export interface ScenePrefabWorkflowOptions {
 export interface ResolveScenePrefabOptions extends ScenePrefabResolveOptions {
     readonly registry?: ScenePrefabRegistrySource;
 }
-
-const getDefinitionLineage = (definition: ScenePrefabDefinition): readonly string[] =>
-    definition.kind === 'resolved' && 'lineage' in definition && Array.isArray(definition.lineage)
-        ? definition.lineage
-        : [definition.id];
 
 export class ScenePrefabWorkflow implements ScenePrefabResolver, ScenePrefabRegistrySource {
     private readonly _definitions = new Map<string, ScenePrefabDefinition>();
@@ -104,7 +104,7 @@ export class ScenePrefabWorkflow implements ScenePrefabResolver, ScenePrefabRegi
             const cached = this._resolutionCache.get(cacheKey);
             if (cached) {
                 return {
-                    definition: cached,
+                    definition: cloneScenePrefabDefinition(cached) as ScenePrefabResolvedDefinition,
                     conflicts: [],
                     cacheHit: true,
                 };
@@ -120,7 +120,10 @@ export class ScenePrefabWorkflow implements ScenePrefabResolver, ScenePrefabRegi
                 : definition;
 
         if (cacheKey) {
-            this._resolutionCache.set(cacheKey, resolvedDefinition);
+            this._resolutionCache.set(
+                cacheKey,
+                cloneScenePrefabDefinition(resolvedDefinition) as ScenePrefabResolvedDefinition,
+            );
         }
 
         return {
@@ -198,6 +201,16 @@ export class ScenePrefabWorkflow implements ScenePrefabResolver, ScenePrefabRegi
             );
         }
 
+        if (
+            reference.revision !== undefined &&
+            definition.metadata?.revision !== undefined &&
+            definition.metadata.revision !== reference.revision
+        ) {
+            throw new ScenePrefabResolutionError(
+                `Prefab '${reference.prefabId}' revision mismatch: expected '${reference.revision}' but found '${definition.metadata.revision}'`,
+            );
+        }
+
         return this._resolveDefinition(definition, stack);
     }
 
@@ -213,7 +226,7 @@ export class ScenePrefabWorkflow implements ScenePrefabResolver, ScenePrefabRegi
 
         const nextStack = [...stack, definition.id];
         const baseDefinition = definition.base ? this._resolveReference(definition.base, nextStack) : undefined;
-        const lineage = baseDefinition ? [...baseDefinition.lineage, definition.id] : getDefinitionLineage(definition);
+        const lineage = baseDefinition ? [...baseDefinition.lineage, definition.id] : getScenePrefabLineage(definition);
         const state = baseDefinition
             ? createScenePrefabState(baseDefinition, baseDefinition.id, baseDefinition.lineage)
             : createScenePrefabState(definition, definition.id, lineage);

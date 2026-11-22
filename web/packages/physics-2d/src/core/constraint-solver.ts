@@ -8,11 +8,11 @@ interface SolverBody {
     bodyId: BodyId;
     invMass: number;
     invI: number;
-    linearVelocity: { x: number; y: number };
+    linearVelocity: IVec2Like;
     angularVelocity: number;
-    position: { x: number; y: number };
+    position: IVec2Like;
     rotation: number;
-    localCenter: { x: number; y: number };
+    localCenter: IVec2Like;
 }
 
 interface JacobianRow {

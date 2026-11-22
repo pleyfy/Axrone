@@ -3,18 +3,17 @@ import { script } from '@axrone/ecs-runtime/decorators';
 import { Vec2 } from '@axrone/numeric';
 import { PhysicsWorld2D } from '../core/physics-world';
 import type { IPhysicsWorldConfig } from '../types';
+import { _getPhysicsWorld2DBridgeProvider } from './physics-world-registry';
+import { normalizeVec2Like } from '../core/physics-world-2d-helpers';
 
-// Forward reference to avoid circular import — PhysicsBridge2D lives in
-// @axrone/scene-runtime which depends on @axrone/physics-2d. We resolve it
-// lazily through a registration callback set by the bridge at construction.
-let _bridgeWorldProvider: (() => PhysicsWorld2D | null) | null = null;
-
-/** @internal Called by PhysicsBridge2D to provide its world to this component. */
-export function _setPhysicsWorld2DBridgeProvider(
-    provider: (() => PhysicsWorld2D | null) | null
-): void {
-    _bridgeWorldProvider = provider;
-}
+// The bridge provider lives in a shared registry so that Rigidbody2D, Collider2D
+// and Joint2D all resolve the same bridge-managed world. This module keeps
+// re-exporting the setter to preserve its public import path.
+export {
+    _setPhysicsWorld2DBridgeProvider,
+    _getPhysicsWorld2DBridgeProvider,
+    resolveBridgePhysicsWorld2D,
+} from './physics-world-registry';
 
 @script({
     scriptName: 'PhysicsWorld2D',
@@ -57,12 +56,13 @@ export class PhysicsWorld2DComponent extends Component {
         }
     }
 
-    awake(): void {
+    onLoad(): void {
         PhysicsWorld2DComponent._instance = this;
         // If a PhysicsBridge2D is active, reuse its world so that rigidbodies
         // and the bridge share the same PhysicsWorld2D instance.
-        if (_bridgeWorldProvider) {
-            const bridgeWorld = _bridgeWorldProvider();
+        const provider = _getPhysicsWorld2DBridgeProvider();
+        if (provider) {
+            const bridgeWorld = provider();
             if (bridgeWorld) {
                 this._physicsWorld = bridgeWorld;
                 return;
@@ -99,8 +99,10 @@ export class PhysicsWorld2DComponent extends Component {
 
     deserialize(data: Record<string, any>): void {
         if (data.gravity) {
-            this._gravity.x = data.gravity.x ?? 0;
-            this._gravity.y = data.gravity.y ?? -9.81;
+            // Editor vec2 may arrive as [x, y] as well as { x, y }.
+            const gravity = normalizeVec2Like(data.gravity, 0, -9.81);
+            this._gravity.x = gravity.x;
+            this._gravity.y = gravity.y;
         }
         this._velocityIterations = data.velocityIterations ?? 8;
         this._positionIterations = data.positionIterations ?? 3;

@@ -89,6 +89,82 @@ export function cloneVec2(vector: Readonly<IVec2Like>): IVec2Like {
     return { x: vector.x, y: vector.y };
 }
 
+/**
+ * Normalise a serialised 2D vector to `{x, y}`, accepting BOTH the Editor's
+ * array form `[x, y]` and the engine's object form `{x, y}`.
+ *
+ * Non-finite components (NaN/Infinity/null/omitted) fall back to the given
+ * defaults so a malformed scene value can never poison a body or shape.
+ *
+ * @see Joint2D.normalizeVec2Value — thin wrapper kept for subclass compatibility.
+ */
+export function normalizeVec2Like(
+    value: unknown,
+    fallbackX: number = 0,
+    fallbackY: number = 0
+): IVec2Like {
+    if (Array.isArray(value) && value.length >= 2) {
+        const x = value[0];
+        const y = value[1];
+        return {
+            x: typeof x === 'number' && Number.isFinite(x) ? x : fallbackX,
+            y: typeof y === 'number' && Number.isFinite(y) ? y : fallbackY,
+        };
+    }
+    if (value && typeof value === 'object') {
+        const v = value as Record<string, unknown>;
+        const x = v.x;
+        const y = v.y;
+        return {
+            x: typeof x === 'number' && Number.isFinite(x) ? x : fallbackX,
+            y: typeof y === 'number' && Number.isFinite(y) ? y : fallbackY,
+        };
+    }
+    return { x: fallbackX, y: fallbackY };
+}
+
+/**
+ * Coerce a value coming from a deserialised scene document to a finite number,
+ * preserving an explicit `Infinity` (used by break limits and max distances)
+ * and falling back to `fallback` for null/NaN/garbage.
+ */
+export function finiteNumberOr(value: unknown, fallback: number): number {
+    if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
+    return value;
+}
+
+/**
+ * Coerce a value from a deserialised scene document to a strictly finite
+ * number. Unlike {@link finiteNumberOr}, `Infinity` is rejected: use this for
+ * solver inputs (lengths, torques, damping) where an unbounded value would
+ * poison the constraint.
+ */
+export function finiteOr(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Extract the planar (Z) angle in radians from a quaternion.
+ *
+ * Returns `0` for a degenerate/non-finite quaternion so a corrupted transform
+ * can never inject NaN rotation into a physics body.
+ */
+export function quaternionToZRadians(
+    w: number,
+    x: number,
+    y: number,
+    z: number
+): number {
+    if (!Number.isFinite(w) || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        return 0;
+    }
+    const angle = Math.atan2(
+        2 * (w * z + x * y),
+        1 - 2 * (y * y + z * z)
+    );
+    return Number.isFinite(angle) ? angle : 0;
+}
+
 export function rotateVec2(vector: Readonly<IVec2Like>, angle: number): IVec2Like {
     const cosine = Math.cos(angle);
     const sine = Math.sin(angle);

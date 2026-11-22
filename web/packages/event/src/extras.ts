@@ -537,7 +537,7 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
         callback: EventCallback<NamespacedEventMap<Prefix, T>[K]>,
         options?: SubscriptionOptions
     ): UnsubscribeFn {
-        return this.target.on(this.#resolveSourceEvent(event), callback as any, options);
+        return this.#actualSource.on(this.#resolveSourceEvent(event), callback as any, options);
     }
 
     once<K extends EventKey<NamespacedEventMap<Prefix, T>>>(
@@ -545,14 +545,14 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
         callback: EventCallback<NamespacedEventMap<Prefix, T>[K]>,
         options?: Omit<SubscriptionOptions, 'once'>
     ): UnsubscribeFn {
-        return this.target.once(this.#resolveSourceEvent(event), callback as any, options);
+        return this.#actualSource.once(this.#resolveSourceEvent(event), callback as any, options);
     }
 
     off<K extends EventKey<NamespacedEventMap<Prefix, T>>>(
         event: K,
         callback?: EventCallback<NamespacedEventMap<Prefix, T>[K]>
     ): boolean {
-        return this.target.off(this.#resolveSourceEvent(event), callback as any);
+        return this.#actualSource.off(this.#resolveSourceEvent(event), callback as any);
     }
 
     pipe<K extends EventKey<NamespacedEventMap<Prefix, T>>>(
@@ -561,7 +561,7 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
         targetEvent?: string
     ): UnsubscribeFn {
         return pipeToEmitter(
-            (callback) => this.target.on(this.#resolveSourceEvent(event), callback),
+            (callback) => this.#actualSource.on(this.#resolveSourceEvent(event), callback as EventCallback<T[EventKey<T>]>),
             emitter,
             targetEvent ?? (event as string)
         );
@@ -572,7 +572,7 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
         data: NamespacedEventMap<Prefix, T>[K],
         options?: { priority?: EventPriority }
     ): Promise<boolean> {
-        return this.target.emit(this.#resolveSourceEvent(event), data as any, options);
+        return this.#actualSource.emit(this.#resolveSourceEvent(event), data as any, options);
     }
 
     emitSync<K extends EventKey<NamespacedEventMap<Prefix, T>>>(
@@ -580,13 +580,13 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
         data: NamespacedEventMap<Prefix, T>[K],
         options?: { priority?: EventPriority }
     ): boolean {
-        return this.target.emitSync(this.#resolveSourceEvent(event), data as any, options);
+        return this.#actualSource.emitSync(this.#resolveSourceEvent(event), data as any, options);
     }
 
     emitBatch(
         events: ReadonlyArray<EventDispatchItem<NamespacedEventMap<Prefix, T>>>
     ): Promise<ReadonlyArray<EventDispatchResult>> {
-        return this.target.emitBatch(
+        return this.#actualSource.emitBatch(
             events.map(({ event, data, priority }) => ({
                 event: this.#resolveSourceEvent(event),
                 data: data as unknown as T[EventKey<T>],
@@ -596,15 +596,15 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
     }
 
     has<K extends EventKey<NamespacedEventMap<Prefix, T>>>(event: K): boolean {
-        return this.target.has(this.#resolveSourceEvent(event));
+        return this.#actualSource.has(this.#resolveSourceEvent(event));
     }
 
     listenerCount<K extends EventKey<NamespacedEventMap<Prefix, T>>>(event: K): number {
-        return this.target.listenerCount(this.#resolveSourceEvent(event));
+        return this.#actualSource.listenerCount(this.#resolveSourceEvent(event));
     }
 
     eventNames(): EventKey<NamespacedEventMap<Prefix, T>>[] {
-        return this.target
+        return this.#actualSource
             .eventNames()
             .map((event) => this.#createNamespacedEvent(event));
     }
@@ -612,7 +612,7 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
     getSubscriptions<K extends EventKey<NamespacedEventMap<Prefix, T>>>(
         event: K
     ): ReadonlyArray<Subscription<NamespacedEventMap<Prefix, T>[K]>> {
-        return this.target
+        return this.#actualSource
             .getSubscriptions(this.#resolveSourceEvent(event))
             .map((subscription) => ({
                 ...subscription,
@@ -621,15 +621,15 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
     }
 
     getMetrics<K extends EventKey<NamespacedEventMap<Prefix, T>>>(event: K) {
-        return this.target.getMetrics(this.#resolveSourceEvent(event));
+        return this.#actualSource.getMetrics(this.#resolveSourceEvent(event));
     }
 
     getQueuedEvents<K extends EventKey<NamespacedEventMap<Prefix, T>>>(
         event?: K
     ): ReadonlyArray<QueuedEvent<any>> {
         const queuedEvents = event
-            ? this.target.getQueuedEvents(this.#resolveSourceEvent(event))
-            : this.target.getQueuedEvents();
+            ? this.#actualSource.getQueuedEvents(this.#resolveSourceEvent(event))
+            : this.#actualSource.getQueuedEvents();
 
         return queuedEvents.map((queuedEvent) => ({
             ...queuedEvent,
@@ -639,21 +639,21 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
 
     getPendingCount<K extends EventKey<NamespacedEventMap<Prefix, T>>>(event?: K): number {
         return event
-            ? this.target.getPendingCount(this.#resolveSourceEvent(event))
-            : this.target.getPendingCount();
+            ? this.#actualSource.getPendingCount(this.#resolveSourceEvent(event))
+            : this.#actualSource.getPendingCount();
     }
 
     clearBuffer<K extends EventKey<NamespacedEventMap<Prefix, T>>>(event?: K): number {
         return event
-            ? this.target.clearBuffer(this.#resolveSourceEvent(event))
-            : this.target.clearBuffer();
+            ? this.#actualSource.clearBuffer(this.#resolveSourceEvent(event))
+            : this.#actualSource.clearBuffer();
     }
 
     removeAllListeners<K extends EventKey<NamespacedEventMap<Prefix, T>>>(event?: K): this {
         if (event) {
-            this.target.removeAllListeners(this.#resolveSourceEvent(event));
+            this.#actualSource.removeAllListeners(this.#resolveSourceEvent(event));
         } else {
-            this.target.removeAllListeners();
+            this.#actualSource.removeAllListeners();
         }
 
         return this;
@@ -664,7 +664,7 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
         callbacks: ReadonlyArray<EventCallback<NamespacedEventMap<Prefix, T>[K]>>,
         options?: SubscriptionOptions
     ): ReadonlyArray<symbol> {
-        return this.target.batchSubscribe(
+        return this.#actualSource.batchSubscribe(
             this.#resolveSourceEvent(event),
             callbacks as any,
             options
@@ -672,14 +672,14 @@ class NamespacedEmitter<Prefix extends string, T extends EventMap>
     }
 
     flush<K extends EventKey<NamespacedEventMap<Prefix, T>>>(event: K): Promise<void> {
-        return this.target.flush(this.#resolveSourceEvent(event));
+        return this.#actualSource.flush(this.#resolveSourceEvent(event));
     }
 
     resetMetrics<K extends EventKey<NamespacedEventMap<Prefix, T>>>(event?: K): void {
         if (event) {
-            this.target.resetMetrics(this.#resolveSourceEvent(event));
+            this.#actualSource.resetMetrics(this.#resolveSourceEvent(event));
         } else {
-            this.target.resetMetrics();
+            this.#actualSource.resetMetrics();
         }
     }
 

@@ -115,10 +115,23 @@ const rebuildActorIndex = (state: ScenePrefabState): void => {
             );
         }
         state.actorIndex.set(actor.nodeId, actor);
+
+        const seenComponentIds = new Set<string>();
+        for (const component of actor.components) {
+            if (!component.id) {
+                continue;
+            }
+            if (seenComponentIds.has(component.id)) {
+                throw new ScenePrefabValidationError(
+                    `Prefab '${state.id}' actor '${actor.nodeId}' contains duplicate component '${component.id}'`,
+                );
+            }
+            seenComponentIds.add(component.id);
+        }
     }
 };
 
-const getScenePrefabLineage = (definition: ScenePrefabDefinition): readonly string[] =>
+export const getScenePrefabLineage = (definition: ScenePrefabDefinition): readonly string[] =>
     definition.kind === 'resolved' && 'lineage' in definition && Array.isArray(definition.lineage)
         ? definition.lineage
         : [definition.id];
@@ -173,13 +186,18 @@ export const mergeScenePrefabActors = (
     sourcePrefabId: string,
     lineage: readonly string[] = [sourcePrefabId],
 ): void => {
+    const actorPositions = new Map<string, number>();
+    for (let position = 0; position < state.actors.length; position += 1) {
+        actorPositions.set(state.actors[position]!.nodeId, position);
+    }
+
     for (let index = 0; index < actors.length; index += 1) {
         const actor = toMutableActor(actors[index]!, index, sourcePrefabId, lineage);
-        const existingActor = state.actorIndex.get(actor.nodeId);
-        if (existingActor) {
-            const actorIndex = state.actors.indexOf(existingActor);
-            state.actors.splice(actorIndex, 1, actor);
+        const existingPosition = actorPositions.get(actor.nodeId);
+        if (existingPosition !== undefined) {
+            state.actors.splice(existingPosition, 1, actor);
         } else {
+            actorPositions.set(actor.nodeId, state.actors.length);
             state.actors.push(actor);
         }
 
@@ -264,8 +282,20 @@ const ensureComponentIndex = (
 
 const collectSubtreeIds = (state: ScenePrefabState, rootNodeId: string): Set<string> => {
     const collected = new Set<string>();
-    const pending = [rootNodeId];
+    const childrenByParent = new Map<string, string[]>();
+    for (const actor of state.actors) {
+        if (actor.parentNodeId === null) {
+            continue;
+        }
+        const siblings = childrenByParent.get(actor.parentNodeId);
+        if (siblings) {
+            siblings.push(actor.nodeId);
+        } else {
+            childrenByParent.set(actor.parentNodeId, [actor.nodeId]);
+        }
+    }
 
+    const pending = [rootNodeId];
     while (pending.length > 0) {
         const currentNodeId = pending.pop()!;
         if (collected.has(currentNodeId)) {
@@ -274,10 +304,8 @@ const collectSubtreeIds = (state: ScenePrefabState, rootNodeId: string): Set<str
 
         collected.add(currentNodeId);
 
-        for (const actor of state.actors) {
-            if (actor.parentNodeId === currentNodeId) {
-                pending.push(actor.nodeId);
-            }
+        for (const childNodeId of childrenByParent.get(currentNodeId) ?? []) {
+            pending.push(childNodeId);
         }
     }
 
@@ -454,56 +482,24 @@ const applyScenePrefabOverrideOperation = (
             validateActorFieldValue(operation);
             const actor = ensureActor(state, operation.nodeId);
             switch (operation.field) {
-                case 'name': {
-                    const nextValue = operation.value;
-                    if (typeof nextValue !== 'string') {
-                        throw new ScenePrefabValidationError("Actor field 'name' expects a string value");
-                    }
-                    actor.name = nextValue;
+                case 'name':
+                    actor.name = operation.value as string;
                     return;
-                }
-                case 'layer': {
-                    const nextValue = operation.value;
-                    if (typeof nextValue !== 'number') {
-                        throw new ScenePrefabValidationError("Actor field 'layer' expects a number value");
-                    }
-                    actor.layer = nextValue;
+                case 'layer':
+                    actor.layer = operation.value as number;
                     return;
-                }
-                case 'tag': {
-                    const nextValue = operation.value;
-                    if (typeof nextValue !== 'string') {
-                        throw new ScenePrefabValidationError("Actor field 'tag' expects a string value");
-                    }
-                    actor.tag = nextValue;
+                case 'tag':
+                    actor.tag = operation.value as string;
                     return;
-                }
-                case 'active': {
-                    const nextValue = operation.value;
-                    if (typeof nextValue !== 'boolean') {
-                        throw new ScenePrefabValidationError("Actor field 'active' expects a boolean value");
-                    }
-                    actor.active = nextValue;
+                case 'active':
+                    actor.active = operation.value as boolean;
                     return;
-                }
-                case 'persistent': {
-                    const nextValue = operation.value;
-                    if (typeof nextValue !== 'boolean') {
-                        throw new ScenePrefabValidationError(
-                            "Actor field 'persistent' expects a boolean value",
-                        );
-                    }
-                    actor.persistent = nextValue;
+                case 'persistent':
+                    actor.persistent = operation.value as boolean;
                     return;
-                }
-                case 'pooled': {
-                    const nextValue = operation.value;
-                    if (typeof nextValue !== 'boolean') {
-                        throw new ScenePrefabValidationError("Actor field 'pooled' expects a boolean value");
-                    }
-                    actor.pooled = nextValue;
+                case 'pooled':
+                    actor.pooled = operation.value as boolean;
                     return;
-                }
             }
             return;
         }

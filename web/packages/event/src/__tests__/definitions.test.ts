@@ -11,7 +11,7 @@ import {
     EventNames,
 } from '@axrone/event';
 
-interface TestUserEvents {
+interface TestUserEvents extends EventMap {
     'user:login': {
         userId: string;
         timestamp: number;
@@ -22,7 +22,7 @@ interface TestUserEvents {
     };
 }
 
-interface TestSystemEvents {
+interface TestSystemEvents extends EventMap {
     'system:error': {
         error: Error;
         context: string;
@@ -42,7 +42,6 @@ describe('EventEmitter: Type Definitions', () => {
 
         it('Handle edge cases correctly', () => {
         });
-    });
 
         it('Must correctly recognize valid callback functions', () => {
             const syncCallback = (data: any) => {};
@@ -57,7 +56,6 @@ describe('EventEmitter: Type Definitions', () => {
 
         it('Must recognize built-in functions', () => {
         });
-    });
 
         it('must correctly recognize valid priority values', () => {
         });
@@ -67,7 +65,6 @@ describe('EventEmitter: Type Definitions', () => {
 
         it('should test case sensitivity', () => {
         });
-    });
 });
 
 // Constants Tests
@@ -287,12 +284,18 @@ describe('Integration Tests', () => {
             callback: unknown,
             priority: unknown
         ) {
+            if (typeof eventName !== 'string' || eventName.length === 0) {
                 throw new Error('Invalid event name');
             }
 
+            if (typeof callback !== 'function') {
                 throw new Error('Invalid callback');
             }
 
+            const validPriority: EventPriority =
+                typeof priority === 'string' && priority in PRIORITY_VALUES
+                    ? (priority as EventPriority)
+                    : 'normal';
 
             return {
                 event: eventName,

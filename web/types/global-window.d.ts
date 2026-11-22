@@ -13,6 +13,12 @@ declare global {
         };
         cleanupTestElements?: () => void;
     }
+
+    // Engine DIAG gate — when true, [DIAG] console.warn calls in the
+    // ui / ui-webgl2 packages are allowed to emit. Otherwise they are
+    // silently suppressed so production builds stay quiet.
+    // eslint-disable-next-line no-var
+    var __AXRONE_DIAG__: boolean | undefined;
 }
 
 export {};

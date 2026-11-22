@@ -1,4 +1,4 @@
-import { clamp01 } from '@axrone/numeric';
+import { clamp01, Rect } from '@axrone/numeric';
 import { transformPoint2D } from '@axrone/render-core';
 import {
     RENDER_2D_SPRITE_INDICES_PER_QUAD,
@@ -78,18 +78,6 @@ const cloneSource = <TSource extends Render2DSpriteSource>(source: TSource): TSo
     } as TSource;
 };
 
-const cloneRect = (
-    value: Render2DRectLike | null | undefined
-): Readonly<Render2DRectLike> | null =>
-    value
-        ? Object.freeze({
-              x: value.x,
-              y: value.y,
-              width: value.width,
-              height: value.height,
-          })
-        : null;
-
 const cloneMask = (
     value: Render2DSpriteMask | null | undefined
 ): Readonly<Render2DSpriteMask> | null =>
@@ -136,22 +124,6 @@ const areSourcesEqual = (
         ? left.textureId === (right as typeof left).textureId
         : (left as Extract<Render2DSpriteSource, { kind: 'material' }>).materialId ===
               (right as Extract<Render2DSpriteSource, { kind: 'material' }>).materialId;
-};
-
-const areRectsEqual = (
-    left: Render2DRectLike | null | undefined,
-    right: Render2DRectLike | null | undefined
-): boolean => {
-    if (!left || !right) {
-        return left == null && right == null;
-    }
-
-    return (
-        left.x === right.x &&
-        left.y === right.y &&
-        left.width === right.width &&
-        left.height === right.height
-    );
 };
 
 const areMaskMatricesEqual = (
@@ -426,7 +398,7 @@ export class Render2DSpriteBatchBuilder {
             if (
                 !lastSource ||
                 !areSourcesEqual(lastSource, submission.source) ||
-                !areRectsEqual(lastClipRect, submissionClipRect) ||
+                !Rect.equals(lastClipRect, submissionClipRect) ||
                 !areMasksEqual(lastMask, submission.mask ?? null) ||
                 this._batches[batchIndex]!.quadCount + submissionQuadCount > this._maxBatchQuads
             ) {
@@ -439,7 +411,7 @@ export class Render2DSpriteBatchBuilder {
                     key = {
                         source: cloneSource(submission.source),
                         sourceKey,
-                        clipRect: cloneRect(submissionClipRect),
+                        clipRect: submissionClipRect ? Rect.from(submissionClipRect) : null,
                         mask: cloneMask(submission.mask),
                     } satisfies Render2DSpriteBatchKey;
                     this._keyCache.set(cacheKey, key);

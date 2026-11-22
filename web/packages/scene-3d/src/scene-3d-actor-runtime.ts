@@ -6,12 +6,14 @@ import {
 } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
-import {
-    SceneCapabilityError,
-    type SceneRegistry,
-} from '@axrone/scene-runtime';
-import { Camera, type CameraConfig } from '@axrone/scene-runtime/scene-facade';
-import { MeshRenderer, type MeshRendererConfig } from '@axrone/scene-runtime/scene-3d-support';
+import { type SceneRegistry } from '@axrone/scene-runtime';
+import { Camera, type CameraConfig } from '@axrone/scene-runtime/scene-camera';
+import { requireRegisteredComponent } from '@axrone/scene-runtime/scene-capability-guard';
+import { MeshRenderer, type MeshRendererConfig } from '@axrone/scene-runtime/scene-mesh-renderer';
+
+export interface SceneProfilerProbe {
+    resolveHotRefsMs?: number;
+}
 
 interface SceneActorBatchComponentEntry {
     readonly type: ComponentConstructor;
@@ -27,7 +29,7 @@ interface Scene3DActorRuntimeHost<R extends ComponentRegistry = Record<string, n
     createActor(config?: ActorConfig): Actor<World<SceneRegistry<R>>>;
     createActorsWithComponents(
         configs: readonly SceneActorBatchEntry[],
-        profiling?: Record<string, number>
+        profiling?: SceneProfilerProbe
     ): readonly Actor<World<SceneRegistry<R>>>[];
     runInStructureBatch<T>(callback: () => T): T;
     isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean;
@@ -63,7 +65,8 @@ export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, ne
         actorConfig: ActorConfig = {},
         cameraConfig: CameraConfig = {}
     ): Actor<World<SceneRegistry<R>>> {
-        this._requireRegisteredComponent(
+        requireRegisteredComponent(
+            this._actors,
             Camera,
             'camera actor creation requires the 3D scene capability/profile'
         );
@@ -76,7 +79,8 @@ export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, ne
         actorConfig: ActorConfig = {},
         rendererConfig: MeshRendererConfig = {}
     ): Actor<World<SceneRegistry<R>>> {
-        this._requireRegisteredComponent(
+        requireRegisteredComponent(
+            this._actors,
             MeshRenderer,
             'renderable actor creation requires the 3D scene capability/profile'
         );
@@ -87,9 +91,10 @@ export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, ne
 
     createRenderableActors(
         configs: readonly SceneRenderableActorCreateOptions[],
-        profiling?: Record<string, number>
+        profiling?: SceneProfilerProbe
     ): readonly SceneRenderableActorInstance<R>[] {
-        this._requireRegisteredComponent(
+        requireRegisteredComponent(
+            this._actors,
             MeshRenderer,
             'renderable actor creation requires the 3D scene capability/profile'
         );
@@ -123,16 +128,5 @@ export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, ne
 
             return created;
         });
-    }
-
-    private _requireRegisteredComponent(
-        componentType: typeof Camera | typeof MeshRenderer,
-        message: string
-    ): void {
-        if (this._actors.isComponentRegistered(componentType)) {
-            return;
-        }
-
-        throw new SceneCapabilityError(message);
     }
 }

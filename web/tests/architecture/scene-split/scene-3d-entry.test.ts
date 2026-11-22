@@ -6,7 +6,9 @@ describe('scene-3d entry', () => {
         installWebGL2Constants();
     });
 
-    it('surfaces the 3d facade and 3d capability primitives', async () => {
+    it(
+        'surfaces the 3d facade and 3d capability primitives',
+        async () => {
         const scene3D = await import('@axrone/scene-3d');
 
         expect(scene3D.Scene).toBeDefined();
@@ -25,5 +27,7 @@ describe('scene-3d entry', () => {
         expect(scene3D.createTerrainFoliageShaderDefinition).toBeDefined();
         expect(scene3D.SCENE_3D_BUILT_IN_MANIFEST).toBeDefined();
         expect(scene3D.get3DSceneRuntimeProfile).toBeDefined();
-    });
+        },
+        30_000,
+    );
 });

@@ -48,6 +48,8 @@ function makePairKey(a: BodyId3D, b: BodyId3D): number {
     return makeCollisionPairKey(Number(a), Number(b));
 }
 
+const MILLISECONDS_PER_SECOND = 1000;
+
 export interface PhysicsBridge3DOptions {
     readonly worldConfig?: IPhysicsWorld3DConfig;
     readonly velocityIterations?: number;
@@ -98,7 +100,7 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         if (this._disposed) return;
 
         this._physicsWorld.step(
-            context.fixedDelta,
+            context.fixedDelta / MILLISECONDS_PER_SECOND,
             this._velocityIterations,
             this._positionIterations
         );
@@ -248,11 +250,19 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
     }
 
     private _syncAllTransforms(): void {
-        const actors = this._ecsWorld.getAllActors();
-        for (const actor of actors) {
-            if (!actor.active || actor.isDestroyed) continue;
-            const rigidbody = actor.getComponent(Rigidbody3D);
-            if (rigidbody && this._initializedBodies.has(rigidbody)) {
+        // Iterate tracked bodies instead of scanning every actor: every
+        // initialized rigidbody is registered in _componentToActor, so this
+        // is O(bodies) rather than O(actors x components) per fixed step.
+        // Entries whose actor died are pruned — the strong maps would
+        // otherwise retain destroyed bodies until bridge disposal.
+        for (const [rigidbody, actor] of this._componentToActor) {
+            if (actor.isDestroyed) {
+                this._componentToActor.delete(rigidbody);
+                this._bodyIdToComponent.delete(rigidbody.bodyId);
+                continue;
+            }
+            if (!actor.active) continue;
+            if (this._initializedBodies.has(rigidbody)) {
                 rigidbody.syncTransformFromWorld();
             }
         }

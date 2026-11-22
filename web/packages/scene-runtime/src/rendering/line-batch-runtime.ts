@@ -72,10 +72,6 @@ export class SceneLineBatchRuntime {
     private _vertexArray: WebGLVertexArrayObject | null = null;
     private _vertexBuffer: WebGLBuffer | null = null;
     private _indexBuffer: WebGLBuffer | null = null;
-    private _vertexData: Float32Array;
-    private _indexData: Uint16Array;
-    private _vertexCapacity: number;
-    private _indexCapacity: number;
     private readonly _lineSubjects: LineSubject[] = [];
     private readonly _trailSubjects: TrailSubject[] = [];
 
@@ -87,10 +83,6 @@ export class SceneLineBatchRuntime {
             stateCache: _options.stateCache,
             label: 'line-batch',
         });
-        this._vertexCapacity = 2048;
-        this._indexCapacity = 3072;
-        this._vertexData = new Float32Array(this._vertexCapacity * LINE_VERTEX_FLOATS);
-        this._indexData = new Uint16Array(this._indexCapacity);
     }
 
     render(params: SceneLineBatchRuntimeRenderParams): SceneLineBatchRuntimeRenderStats {
@@ -238,25 +230,7 @@ export class SceneLineBatchRuntime {
             return null;
         }
 
-        this._ensureVertexCapacity(ribbon.vertexCount);
-        this._ensureIndexCapacity(ribbon.indexCount);
-
-        this._vertexData.set(ribbon.vertexData.subarray(0, ribbon.vertexCount * LINE_VERTEX_FLOATS));
-        this._indexData.set(ribbon.indexData.subarray(0, ribbon.indexCount));
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this._vertexBuffer);
-        gl.bufferData(
-            gl.ARRAY_BUFFER,
-            this._vertexData.subarray(0, ribbon.vertexCount * LINE_VERTEX_FLOATS),
-            gl.DYNAMIC_DRAW
-        );
-
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this._indexBuffer);
-        gl.bufferData(
-            gl.ELEMENT_ARRAY_BUFFER,
-            this._indexData.subarray(0, ribbon.indexCount),
-            gl.DYNAMIC_DRAW
-        );
+        this._uploadRibbon(gl, ribbon);
 
         const modelMatrix = worldMatrix ?? _identityMatrix;
         this._options.uniformWriter.write(shader, 'u_Model', modelMatrix);
@@ -317,25 +291,7 @@ export class SceneLineBatchRuntime {
             return null;
         }
 
-        this._ensureVertexCapacity(ribbon.vertexCount);
-        this._ensureIndexCapacity(ribbon.indexCount);
-
-        this._vertexData.set(ribbon.vertexData.subarray(0, ribbon.vertexCount * LINE_VERTEX_FLOATS));
-        this._indexData.set(ribbon.indexData.subarray(0, ribbon.indexCount));
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this._vertexBuffer);
-        gl.bufferData(
-            gl.ARRAY_BUFFER,
-            this._vertexData.subarray(0, ribbon.vertexCount * LINE_VERTEX_FLOATS),
-            gl.DYNAMIC_DRAW
-        );
-
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this._indexBuffer);
-        gl.bufferData(
-            gl.ELEMENT_ARRAY_BUFFER,
-            this._indexData.subarray(0, ribbon.indexCount),
-            gl.DYNAMIC_DRAW
-        );
+        this._uploadRibbon(gl, ribbon);
 
         this._options.uniformWriter.write(shader, 'u_Model', _identityMatrix);
         this._options.uniformWriter.write(shader, 'u_UseTexture', 0);
@@ -351,21 +307,26 @@ export class SceneLineBatchRuntime {
         return { vertexCount: ribbon.vertexCount, indexCount: ribbon.indexCount };
     }
 
-    private _ensureVertexCapacity(vertexCount: number): void {
-        const requiredFloats = vertexCount * LINE_VERTEX_FLOATS;
-        if (requiredFloats <= this._vertexCapacity * LINE_VERTEX_FLOATS) {
-            return;
-        }
-        this._vertexCapacity = vertexCount;
-        this._vertexData = new Float32Array(this._vertexCapacity * LINE_VERTEX_FLOATS);
-    }
+    /**
+     * Uploads a freshly built ribbon straight to the dynamic buffers.
+     * The builder already returns exact-fit arrays, so the previous
+     * copy through persistent staging arrays (build → .set() → upload)
+     * only doubled per-subject memory traffic — it is gone.
+     */
+    private _uploadRibbon(gl: WebGL2RenderingContext, ribbon: LineRibbonResult): void {
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._vertexBuffer);
+        gl.bufferData(
+            gl.ARRAY_BUFFER,
+            ribbon.vertexData.subarray(0, ribbon.vertexCount * LINE_VERTEX_FLOATS),
+            gl.DYNAMIC_DRAW
+        );
 
-    private _ensureIndexCapacity(indexCount: number): void {
-        if (indexCount <= this._indexCapacity) {
-            return;
-        }
-        this._indexCapacity = indexCount;
-        this._indexData = new Uint16Array(this._indexCapacity);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this._indexBuffer);
+        gl.bufferData(
+            gl.ELEMENT_ARRAY_BUFFER,
+            ribbon.indexData.subarray(0, ribbon.indexCount),
+            gl.DYNAMIC_DRAW
+        );
     }
 
     private _ensureResources(): void {

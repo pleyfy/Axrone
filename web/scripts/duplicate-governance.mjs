@@ -157,6 +157,14 @@ const approvedCrossPackageDebt = [
         maxLines: 110,
         reason: 'Approved debt: DynamicAABBTree2D/3D simulation kernels stay per-dimension packages; the raycast subsystem extraction (@axrone/raycast, plan 2.2) confirmed these are distinct simulation trees, consolidation deferred.',
     },
+    {
+        files: [
+            'packages/scene-2d/src/errors.ts',
+            'packages/scene-3d/src/errors.ts',
+        ],
+        maxLines: 10,
+        reason: 'Approved debt: scene-2d/scene-3d are thin facade packages over scene-runtime; errors.ts re-exports the same 8 error classes. Consolidation pending shared SceneCapabilityGuard extraction (P1-5).',
+    },
 ];
 
 const normalizePath = (filePath) => filePath.replace(/\\/g, '/');

@@ -49,6 +49,7 @@ export class DirectionalLight extends Component {
         this._applyConfig(config);
     }
 
+    /** Live internal state — read-only view. Mutating it bypasses setter normalization; assign via the setter. */
     get color(): Vec3 {
         return this._color;
     }

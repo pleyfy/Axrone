@@ -51,32 +51,25 @@ export function raycast(
 }
 
 /**
- * Returns the closest raycast hit, or null if nothing was hit.
+ * Shared traversal for rayCastClosest / rayCastAll.
+ *
+ * `clip=false`: the BVH callback returns the query's `maxFraction` after every
+ * hit, so no farther leaf is pruned and every overlapping shape is tested. This
+ * is required for the all-hits query so that `rayCastAll` semantics are stable
+ * before and after the first step (the pre-step fallback path never clipped).
+ * `clip=true`: the callback returns `hit.fraction`, tightening the traversal
+ * window for the closest-hit path.
  */
-export function rayCastClosest(
+function collectRaycastHits(
     origin: Readonly<IVec3Like>,
     direction: Readonly<IVec3Like>,
     maxFraction: number,
     shapeDescriptors: ReadonlyMap<ShapeId3D, IShapeDescriptor3D>,
     broadphase: DynamicAABBTree3D<ShapeId3D>,
     bodyManager: BodyManager3D,
-    filter?: IQueryFilter3D
-): ISingleRaycastResult3D | null {
-    return rayCastAll(origin, direction, maxFraction, shapeDescriptors, broadphase, bodyManager, filter)[0] ?? null;
-}
-
-/**
- * Raycasts against all shapes and returns sorted hits.
- */
-export function rayCastAll(
-    origin: Readonly<IVec3Like>,
-    direction: Readonly<IVec3Like>,
-    maxFraction: number,
-    shapeDescriptors: ReadonlyMap<ShapeId3D, IShapeDescriptor3D>,
-    broadphase: DynamicAABBTree3D<ShapeId3D>,
-    bodyManager: BodyManager3D,
-    filter?: IQueryFilter3D
-): readonly ISingleRaycastResult3D[] {
+    filter: IQueryFilter3D | undefined,
+    clip: boolean
+): ISingleRaycastResult3D[] {
     const results: ISingleRaycastResult3D[] = [];
 
     // BVH-backed ray cast: traverse tree for O(log N) candidate selection
@@ -96,7 +89,8 @@ export function rayCastAll(
             normal: hit.normal,
             fraction: hit.fraction,
         });
-        return hit.fraction; // clip to tighten pruning
+        // All-hits query must not prune; closest-hit query tightens with the found fraction.
+        return clip ? hit.fraction : maxFraction;
     });
 
     // Fallback: shapes not yet in BVH (before first step)
@@ -117,6 +111,42 @@ export function rayCastAll(
 
     results.sort((left, right) => left.fraction - right.fraction);
     return results;
+}
+
+/**
+ * Returns the closest raycast hit, or null if nothing was hit.
+ * Keeps the closest-hit clipping optimization.
+ */
+export function rayCastClosest(
+    origin: Readonly<IVec3Like>,
+    direction: Readonly<IVec3Like>,
+    maxFraction: number,
+    shapeDescriptors: ReadonlyMap<ShapeId3D, IShapeDescriptor3D>,
+    broadphase: DynamicAABBTree3D<ShapeId3D>,
+    bodyManager: BodyManager3D,
+    filter?: IQueryFilter3D
+): ISingleRaycastResult3D | null {
+    return collectRaycastHits(origin, direction, maxFraction, shapeDescriptors, broadphase, bodyManager, filter, true)[0] ?? null;
+}
+
+/**
+ * Raycasts against all shapes and returns hits sorted by ascending `fraction`.
+ * The result ordering contract is: strictly ascending by hit fraction; ties are
+ * preserved in the order returned by the BVH traversal / fallback scan.
+ *
+ * No BVH pruning on hit — every overlapping shape is tested. The pre-first-step
+ * fallback path has always been non-clipping, so both paths now agree.
+ */
+export function rayCastAll(
+    origin: Readonly<IVec3Like>,
+    direction: Readonly<IVec3Like>,
+    maxFraction: number,
+    shapeDescriptors: ReadonlyMap<ShapeId3D, IShapeDescriptor3D>,
+    broadphase: DynamicAABBTree3D<ShapeId3D>,
+    bodyManager: BodyManager3D,
+    filter?: IQueryFilter3D
+): readonly ISingleRaycastResult3D[] {
+    return collectRaycastHits(origin, direction, maxFraction, shapeDescriptors, broadphase, bodyManager, filter, false);
 }
 
 /**

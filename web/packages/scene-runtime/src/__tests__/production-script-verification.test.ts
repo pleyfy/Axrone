@@ -260,8 +260,8 @@ describe('T-11: Production Script Verification — CharacterMovement (source-lev
         expect(CHARACTER_MOVEMENT_SOURCE).toMatch(/private\s+readonly\s+_pressedKeys\s*=\s*new\s+Set/);
     });
 
-    it('has awake() lifecycle method that caches the transform', () => {
-        expect(CHARACTER_MOVEMENT_SOURCE).toMatch(/awake\s*\(\s*\)\s*:\s*void/);
+    it('has onLoad() lifecycle method that caches the transform', () => {
+        expect(CHARACTER_MOVEMENT_SOURCE).toMatch(/onLoad\s*\(\s*\)\s*:\s*void/);
         expect(CHARACTER_MOVEMENT_SOURCE).toContain('_cachedTransform');
     });
 
@@ -297,7 +297,7 @@ describe('T-11: Production Script Verification — CharacterMovement (source-lev
         expect(CHARACTER_MOVEMENT_SOURCE).toContain('_cleanupInput');
     });
 
-    it('subscribes to input events in awake() and unsubscribes in onDestroy()', () => {
+    it('subscribes to input events in onLoad() and unsubscribes in onDestroy()', () => {
         expect(CHARACTER_MOVEMENT_SOURCE).toContain('addEventListener');
         expect(CHARACTER_MOVEMENT_SOURCE).toContain('removeEventListener');
     });
@@ -801,8 +801,8 @@ describe('T-11: Production Script Verification — lifecycle method contracts', 
         expect(hasOwnUpdate).toBe(false);
     });
 
-    it('CharacterMovement source has awake(), update(), onDestroy()', () => {
-        expect(CHARACTER_MOVEMENT_SOURCE).toMatch(/awake\s*\(/);
+    it('CharacterMovement source has onLoad(), update(), onDestroy()', () => {
+        expect(CHARACTER_MOVEMENT_SOURCE).toMatch(/onLoad\s*\(/);
         expect(CHARACTER_MOVEMENT_SOURCE).toMatch(/update\s*\(/);
         expect(CHARACTER_MOVEMENT_SOURCE).toMatch(/onDestroy\s*\(/);
     });
@@ -813,11 +813,11 @@ describe('T-11: Production Script Verification — lifecycle method contracts', 
 // ===========================================================================
 
 describe('T-11: Production Script Verification — event lifecycle patterns', () => {
-    it('CharacterMovement subscribes in awake() and unsubscribes in onDestroy()', () => {
-        // Verify addEventListener in awake context
-        const awakeBody = extractMethodBody(CHARACTER_MOVEMENT_SOURCE, 'awake');
-        expect(awakeBody).not.toBeNull();
-        expect(awakeBody!).toContain('addEventListener');
+    it('CharacterMovement subscribes in onLoad() and unsubscribes in onDestroy()', () => {
+        // Verify addEventListener in onLoad context
+        const onLoadBody = extractMethodBody(CHARACTER_MOVEMENT_SOURCE, 'onLoad');
+        expect(onLoadBody).not.toBeNull();
+        expect(onLoadBody!).toContain('addEventListener');
 
         // Verify removeEventListener in onDestroy context
         const destroyBody = extractMethodBody(CHARACTER_MOVEMENT_SOURCE, 'onDestroy');

@@ -266,7 +266,8 @@ function writeVertex(
  * (2 triangles per segment as indexed triangles, not triangle strip,
  *  for compatibility with the engine's TRIANGLES topology).
  *
- * Zero per-frame allocation: reuses pre-allocated typed arrays.
+ * Allocates exact-fit typed arrays per call — treat the result as
+ * transient and upload it directly instead of copying it again.
  */
 export function buildLineRibbon(
     input: LineRibbonInput,

@@ -1,4 +1,4 @@
-import type { IColorLike, IRectLike } from '@axrone/numeric';
+import type { IColorLike, IRectLike, IVec2Like } from '@axrone/numeric';
 
 declare const __render2DColorBrand: unique symbol;
 declare const __render2DTextureReferenceBrand: unique symbol;
@@ -11,11 +11,6 @@ export type Render2DTextureReference = string & {
 export type Render2DMaterialReference = string & {
     readonly [__render2DMaterialReferenceBrand]: true;
 };
-
-export interface Render2DVec2Like {
-    readonly x: number;
-    readonly y: number;
-}
 
 export interface Render2DSizeLike {
     readonly width: number;
@@ -49,7 +44,7 @@ export interface Render2DSpriteMask {
     readonly shape: Render2DSpriteMaskShape;
     readonly inverseWorldMatrix: Render2DReadonlyMat4Like;
     readonly size: Render2DSizeLike;
-    readonly anchor: Render2DVec2Like;
+    readonly anchor: Readonly<IVec2Like>;
     readonly cornerRadius?: number;
 }
 
@@ -84,7 +79,7 @@ export interface Render2DSpriteSubmission<
     readonly source: TSource;
     readonly worldMatrix: Render2DReadonlyMat4Like;
     readonly size: Render2DSizeLike;
-    readonly anchor: Render2DVec2Like;
+    readonly anchor: Readonly<IVec2Like>;
     readonly uvRect: Render2DRectLike;
     readonly color: Render2DColorLike;
     readonly clipRect?: Render2DRectLike | null;

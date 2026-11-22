@@ -4,6 +4,8 @@ import { attachToParent, createTextBlock, isPointInside } from './internals';
 import { resolveTheme, resolveThemeScale, resolveVariantPalette } from './theme';
 import { createStatefulControl } from './stateful-control';
 
+const TOGGLE_PILL_RADIUS = 999;
+
 export const createUIToggle = <TRuntime>(
     runtime: UIRuntime<TRuntime>,
     options: UIToggleOptions = {}
@@ -152,7 +154,7 @@ export const createUIToggle = <TRuntime>(
                 background: currentColor,
                 borderColor: state.focused ? theme.focusColor : state.checked ? palette.border : theme.borderColor,
                 borderWidth: state.focused ? theme.borderWidth + 1 : theme.borderWidth,
-                radius: 999,
+                radius: TOGGLE_PILL_RADIUS,
             },
         });
         runtime.updateWidget(thumb, {
@@ -173,7 +175,7 @@ export const createUIToggle = <TRuntime>(
                 background: state.disabled ? theme.textMutedColor : theme.thumbColor,
                 borderColor: '#00000018',
                 borderWidth: 1,
-                radius: 999,
+                radius: TOGGLE_PILL_RADIUS,
             },
         });
         runtime.updateWidget(label, {

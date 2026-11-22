@@ -1,0 +1,534 @@
+{
+  "schemaVersion": 2,
+  "id": "scn_01a051bb680c7741b67c35c13f857e58",
+  "name": "Main.scene",
+  "createdAtMs": 1788077631500,
+  "updatedAtMs": 1789045763648,
+  "activeEntityId": "ent_01a086a29e937971b2d1c3bb3831f726",
+  "settings": {
+    "environment": {
+      "skyColor": "#c9d6eb",
+      "skyIntensity": 1.0,
+      "ambientColor": "#e4ecff",
+      "ambientIntensity": 0.26,
+      "skyboxMaterial": "Default_Skybox.mat",
+      "skyboxRotation": 0.0,
+      "skyboxExposure": 1.0,
+      "skyboxHdr": true,
+      "lightingAmbientSource": "Gradient",
+      "lightingAmbientColor": "#404060",
+      "lightingIntensity": 1.0,
+      "shadowType": "Soft Shadows",
+      "shadowDistance": 150.0,
+      "shadowColor": "#202030",
+      "shadowBias": [
+        0.05,
+        0.02
+      ],
+      "shadowNearPlane": 0.2,
+      "reflectionResolution": "128",
+      "reflectionCompression": false,
+      "fogEnabled": true,
+      "fogColor": "#8899aa",
+      "fogMode": "Exponential",
+      "fogDensity": 0.015,
+      "fogRange": [
+        0.0,
+        300.0
+      ],
+      "physicsEnabled": true,
+      "gravity": [
+        0.0,
+        -9.81,
+        0.0
+      ],
+      "fixedTimestep": 0.02,
+      "maxAngularVelocity": 7.0,
+      "solverIterations": 6,
+      "autoSimulation": true,
+      "colorSpace": "Linear",
+      "renderPipeline": "URP",
+      "vSync": true,
+      "targetFps": 60,
+      "occlusionCulling": true,
+      "lodBias": 1.0,
+      "maxLodLevel": 0,
+      "msaa": "4x",
+      "gridBaseColor": "#b8c7e0",
+      "gridMinorLineColor": "#9eb0cc",
+      "gridMajorLineColor": "#8096ba",
+      "gridAxisXColor": "#e05e6b",
+      "gridAxisZColor": "#5291f0",
+      "gridMinorCellSize": 1.0,
+      "gridMajorCellStep": 5,
+      "showGrid": true,
+      "showAxes": true
+    }
+  },
+  "entities": [
+    {
+      "id": "ent_01a051bb680c7741b67c35dd58d63cf4",
+      "name": "Main Camera",
+      "parentId": null,
+      "enabled": true,
+      "tag": "Camera",
+      "layer": "Default",
+      "components": [
+        {
+          "id": "cmp_01a051bb680c7741b67c35e9ad2f608f",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              0,
+              2.5,
+              8
+            ],
+            "rotation": [
+              -12,
+              0,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "id": "cmp_01a051bb680c7741b67c35f86ddac923",
+          "kind": "camera",
+          "name": "Camera",
+          "enabled": true,
+          "properties": {
+            "backgroundColor": "#314d79",
+            "clearFlags": "skybox",
+            "cullingMask": "mixed",
+            "depth": -1,
+            "farClip": 1000,
+            "fieldOfView": 60,
+            "fieldOfViewAxis": "vertical",
+            "hdr": false,
+            "msaa": "useGraphicsSettings",
+            "nearClip": 0.10000000149011612,
+            "occlusionCulling": true,
+            "orthographicSize": 5,
+            "physicalCamera": false,
+            "primary": true,
+            "projection": "Perspective",
+            "targetTexture": "",
+            "viewportHeight": 1,
+            "viewportWidth": 1,
+            "viewportX": 0,
+            "viewportY": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "ent_01a051bb680d7540bb72741394e7d3da",
+      "name": "Directional Light",
+      "parentId": null,
+      "enabled": true,
+      "tag": "Lighting",
+      "layer": "Lighting",
+      "components": [
+        {
+          "id": "cmp_01a051bb680d7540bb727420d155309d",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              4,
+              6,
+              2
+            ],
+            "rotation": [
+              48,
+              -32,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "id": "cmp_01a051bb680d7540bb7274373e5b2e9f",
+          "kind": "directional-light",
+          "name": "Directional Light",
+          "enabled": true,
+          "properties": {
+            "ambientColor": "#d9e4ff",
+            "castShadows": true,
+            "color": "#fff4d6",
+            "intensity": 1.149999976158142
+          }
+        }
+      ]
+    },
+    {
+      "id": "ent_01a051bb680d7540bb727447f70592f1",
+      "name": "World",
+      "parentId": null,
+      "enabled": true,
+      "tag": "Environment",
+      "layer": "Default",
+      "components": [
+        {
+          "id": "cmp_01a051bb680d7540bb7274532fdc75f6",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              0,
+              0,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "ent_01a051bb680d7540bb7274686d402105",
+      "name": "Ground",
+      "parentId": "ent_01a051bb680d7540bb727447f70592f1",
+      "enabled": true,
+      "tag": "Environment",
+      "layer": "Default",
+      "components": [
+        {
+          "id": "cmp_01a051bb680d7540bb727473d46a9808",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              0,
+              0,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              12,
+              1,
+              12
+            ]
+          }
+        },
+        {
+          "id": "cmp_01a051bb680d7540bb72748f986f9b2d",
+          "kind": "mesh-renderer",
+          "name": "Mesh Renderer",
+          "enabled": true,
+          "properties": {
+            "castShadows": true,
+            "material": "Materials/default-floor.mat",
+            "mesh": "BuiltIn/Plane"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ent_01a051bb680d7540bb72749eefb978e4",
+      "name": "Player",
+      "parentId": "ent_01a051bb680d7540bb727447f70592f1",
+      "enabled": true,
+      "tag": "Player",
+      "layer": "Gameplay",
+      "components": [
+        {
+          "id": "cmp_01a051bb680d7540bb7274a7925d9840",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              0,
+              0.5,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "id": "cmp_01a051bb680d7540bb7274b8b7685337",
+          "kind": "mesh-renderer",
+          "name": "Mesh Renderer",
+          "enabled": true,
+          "properties": {
+            "castShadows": true,
+            "material": "Materials/player-default.mat",
+            "mesh": "BuiltIn/Capsule",
+            "uniformOverrides": {
+              "newUniform": 0
+            }
+          }
+        },
+        {
+          "id": "cmp_01a05dc29f8b78429746f5ec0c5560ed",
+          "kind": "script",
+          "name": "PlayerMovement",
+          "enabled": true,
+          "properties": {
+            "className": "PlayerMovement",
+            "executeInEditMode": true,
+            "propertyValues": {
+              "speed": 5,
+              "sprintMultiplier": 1.5
+            },
+            "references": [],
+            "scriptPath": "Scripts/PlayerMovement.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ent_01a051cfd78c7350a5ee23a4e411730f",
+      "name": "Actor",
+      "parentId": null,
+      "enabled": true,
+      "tag": "Untagged",
+      "layer": "Default",
+      "components": [
+        {
+          "id": "cmp_01a051cfd78c7350a5ee23b0e4c761a8",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              0,
+              0,
+              1.639
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "id": "cmp_01a051cfedc375b29ce1e32802e823fe",
+          "kind": "audio-source",
+          "name": "Audio Source",
+          "enabled": true,
+          "properties": {
+            "busId": "Master",
+            "bypassFx": false,
+            "bypassListener": false,
+            "bypassReverb": false,
+            "category": "Music",
+            "channels": "stereo",
+            "clipId": "Assets/Audio/color_light_booster_.mp3",
+            "clipName": "color_light_booster_.mp3",
+            "dopplerLevel": 1,
+            "eqBands": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "eqPreset": "Flat",
+            "highPassEnabled": false,
+            "highPassFrequency": 200,
+            "loop": false,
+            "lowPassEnabled": false,
+            "lowPassFrequency": 5000,
+            "maxDistance": 500,
+            "maxInstances": 4,
+            "minDistance": 1,
+            "mute": false,
+            "onEnded": "",
+            "onInterrupted": "",
+            "onLooped": "",
+            "onStarted": "",
+            "pan": 0,
+            "pitch": 1,
+            "playOnAwake": true,
+            "priority": 128,
+            "reverbMix": 0,
+            "rolloffMode": "log",
+            "spatialBlend": 0,
+            "spatialize": false,
+            "spread": 0,
+            "stream": false,
+            "volume": 0.8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ent_01a0623dadb97e4099c0763ee5f38111",
+      "name": "Cube",
+      "parentId": null,
+      "enabled": true,
+      "tag": "Untagged",
+      "layer": "Default",
+      "components": [
+        {
+          "id": "cmp_01a0623dadb97e4099c07640f8ed788d",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              0,
+              0.892,
+              6.169
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        {
+          "id": "cmp_01a0623dadba7660a380ad4ee4c6e78a",
+          "kind": "mesh-renderer",
+          "name": "Mesh Renderer",
+          "enabled": true,
+          "properties": {
+            "castShadows": true,
+            "material": "Materials/default.mat",
+            "mesh": "BuiltIn/Cube"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ent_01a0787cf9f37d92b63a622b515dd19a",
+      "name": "cone_0001",
+      "parentId": null,
+      "enabled": true,
+      "tag": "Untagged",
+      "layer": "Default",
+      "components": [
+        {
+          "id": "cmp_01a0787cf9f37d92b63a6233d30324f4",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              0,
+              0,
+              1.663
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        {
+          "id": "cmp_01a0787cf9f37d92b63a624ebef0abc0",
+          "kind": "mesh-renderer",
+          "name": "Mesh Renderer",
+          "enabled": true,
+          "properties": {
+            "castShadows": true,
+            "material": "Materials/default.mat",
+            "mesh": "BuiltIn/Cone"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ent_01a086a29e937971b2d1c3bb3831f726",
+      "name": "UI Host",
+      "parentId": null,
+      "enabled": true,
+      "tag": "UI",
+      "layer": "UI",
+      "components": [
+        {
+          "id": "cmp_01a086a29e937971b2d1c3ce67a56dea",
+          "kind": "transform",
+          "name": "Transform",
+          "enabled": true,
+          "properties": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        {
+          "id": "cmp_01a086a29e937971b2d1c3d2387aa8bc",
+          "kind": "ui-host",
+          "name": "UI Host",
+          "enabled": true,
+          "properties": {
+            "assetId": "Assets/test.ui.json",
+            "billboard": "none",
+            "receiveInput": true,
+            "renderMode": "screen-overlay",
+            "textureScale": 512.0,
+            "worldHeight": 0.5,
+            "worldWidth": 1.0
+          }
+        }
+      ]
+    }
+  ]
+}

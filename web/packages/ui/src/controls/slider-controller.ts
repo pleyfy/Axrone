@@ -89,7 +89,13 @@ const applyVisuals = (context: SliderContext, ratio: number): boolean => {
         const fill = runtime.getBoundWidget(fillKey);
         if (fill !== null) {
             runtime.updateWidget(fill, {
-                layout: vertical ? { height: `${percent}%` } : { width: `${percent}%` },
+                layout: vertical
+                    ? {
+                        height: `${percent}%`,
+                        anchor: { x: 0, y: 1, maxX: 0, maxY: 1, pivotX: 0, pivotY: 1 },
+                        inset: { left: 0, bottom: 0 },
+                    }
+                    : { width: `${percent}%` },
             });
             applied = true;
         }
@@ -105,7 +111,7 @@ const applyVisuals = (context: SliderContext, ratio: number): boolean => {
                 layout: {
                     position: 'absolute',
                     anchor: vertical
-                        ? { x: 0.5, y: ratio, maxX: 0.5, maxY: ratio, pivotX: 0.5, pivotY: 0.5 }
+                        ? { x: 0.5, y: 1 - ratio, maxX: 0.5, maxY: 1 - ratio, pivotX: 0.5, pivotY: 0.5 }
                         : { x: ratio, y: 0.5, maxX: ratio, maxY: 0.5, pivotX: 0.5, pivotY: 0.5 },
                 },
             });
@@ -132,10 +138,11 @@ const valueFromPointer = (context: SliderContext, x: number, y: number): number 
     const props = context.props as SliderControllerProps;
     const range = resolveRange(props);
     const box = context.runtime.getLayoutBox(context.widget as WidgetId);
-    const ratio =
+    const rawRatio =
         props.orientation === 'vertical'
             ? clamp((y - box.y) / Math.max(box.height, 1), 0, 1)
             : clamp((x - box.x) / Math.max(box.width, 1), 0, 1);
+    const ratio = props.orientation === 'vertical' ? 1 - rawRatio : rawRatio;
     return range.min + (range.max - range.min) * ratio;
 };
 

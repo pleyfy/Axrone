@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="1" height="1" tilewidth="16" tileheight="16" name="missing">
+ <tileset firstgid="1" source="missing.tsx"/>
+ <layer id="1" name="ground" width="1" height="1">
+  <data encoding="csv">1</data>
+ </layer>
+</map>

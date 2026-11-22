@@ -23,7 +23,7 @@ export const isFiniteNumber = (value: unknown): value is number =>
     typeof value === 'number' && Number.isFinite(value);
 
 export const normalizeNumberKey = (value: number): string =>
-    Object.is(value, -0) ? '0' : Number.isInteger(value) ? `${value}` : `${value}`;
+    Object.is(value, -0) ? '0' : `${value}`;
 
 export const assertFiniteNumber = (value: unknown, name: string): number => {
     if (!isFiniteNumber(value)) {
@@ -61,10 +61,12 @@ export const toPoint = (value: ShapePointInput, name: string): Readonly<IVec2Lik
     }
 
     if (value && typeof value === 'object' && 'x' in value && 'y' in value) {
-        return Object.freeze({
-            x: assertFiniteNumber(value.x, `${name}.x`),
-            y: assertFiniteNumber(value.y, `${name}.y`),
-        });
+        const x = assertFiniteNumber(value.x, `${name}.x`);
+        const y = assertFiniteNumber(value.y, `${name}.y`);
+        if (Object.isFrozen(value) && (value as { x: unknown }).x === x && (value as { y: unknown }).y === y) {
+            return value as Readonly<IVec2Like>;
+        }
+        return Object.freeze({ x, y });
     }
 
     throw new ShapeValidationError(`${name} must be a point-like value`);
@@ -339,7 +341,6 @@ export const isSimplePolygon = (points: ArrayLike<number>): boolean => {
         const a1 = i * 2;
         const a2 = ((i + 1) % count) * 2;
         for (let j = i + 1; j < count; j++) {
-            if (i === j) continue;
             const b1 = j * 2;
             const b2 = ((j + 1) % count) * 2;
             if (i === 0 && j === count - 1) continue;
@@ -543,7 +544,23 @@ export const triangulateEarClipping = (
     }
 
     const working = new Float32Array(points.length);
-    working.set(points);
+    const reversed = polygonSignedArea(points) < -EPSILON;
+    if (reversed) {
+        working.set(normalizeContourOrientation(new Float32Array(points), true));
+    } else {
+        working.set(points);
+    }
+    const vertexIds = new Uint32Array(initialCount);
+    if (reversed) {
+        vertexIds[0] = 0;
+        for (let i = 1; i < initialCount; i++) {
+            vertexIds[i] = initialCount - i;
+        }
+    } else {
+        for (let i = 0; i < initialCount; i++) {
+            vertexIds[i] = i;
+        }
+    }
     let vertexCount = initialCount;
     const indices: number[] = [];
     const useUint32 = initialCount > 65535;
@@ -583,12 +600,14 @@ export const triangulateEarClipping = (
 
             if (!isEar) continue;
 
-            indices.push(a, b, c);
+            indices.push(vertexIds[a] as number, vertexIds[b] as number, vertexIds[c] as number);
             working[b * 2] = working[c * 2] as number;
             working[b * 2 + 1] = working[c * 2 + 1] as number;
+            vertexIds[b] = vertexIds[c] as number;
             for (let k = c; k < vertexCount - 1; k++) {
                 working[k * 2] = working[(k + 1) * 2] as number;
                 working[k * 2 + 1] = working[(k + 1) * 2 + 1] as number;
+                vertexIds[k] = vertexIds[k + 1] as number;
             }
             vertexCount--;
             earFound = true;
@@ -600,18 +619,613 @@ export const triangulateEarClipping = (
         }
     }
 
-    if (vertexCount === 3) {
-        indices.push(0, 1, 2);
+    if (vertexCount !== 3) {
+        throw new ShapeValidationError(
+            `Polygon triangulation failed with ${vertexCount} vertices remaining; ring may be degenerate`
+        );
     }
+
+    indices.push(vertexIds[0] as number, vertexIds[1] as number, vertexIds[2] as number);
 
     return useUint32 ? new Uint32Array(indices) : new Uint16Array(indices);
 };
 
-export const pointInRing = (
-    outer: ArrayLike<number>,
-    holes: ReadonlyArray<ArrayLike<number>>,
-    point: Readonly<IVec2Like>
-): boolean => pointInPolygonWithHoles(outer, holes, point);
+export interface TriangulatedPolygonWithHoles {
+    readonly positions: Float32Array;
+    readonly indices: Uint16Array | Uint32Array;
+}
+
+/**
+ * Triangulates a polygon with holes into a triangle mesh. Holes are bridged
+ * into the outer boundary with zero-width keyhole seams (Eberly's bridge
+ * search as implemented in mapbox/earcut, MIT) and the merged ring is ear
+ * clipped — a typed-array port of earcut's linked-list core (filterPoints,
+ * isEar, cureLocalIntersections, splitEarcut), minus its z-order hashing.
+ * Outer ring is normalized to CCW and holes to CW; indices reference the
+ * returned positions buffer.
+ */
+export const triangulatePolygonWithHoles = (
+    outer: Float32Array,
+    holes: ReadonlyArray<Float32Array>
+): TriangulatedPolygonWithHoles => {
+    const outerCount = Math.floor(outer.length / 2);
+    if (outerCount < 3) {
+        throw new ShapeValidationError(
+            'Polygon outer ring must contain at least 3 vertices for triangulation'
+        );
+    }
+
+    const outerRing =
+        polygonSignedArea(outer) < -EPSILON
+            ? normalizeContourOrientation(outer, true)
+            : outer;
+
+    const holeRings = holes.map((hole) => {
+        if (Math.floor(hole.length / 2) < 3) {
+            throw new ShapeValidationError(
+                'Polygon hole ring must contain at least 3 vertices for triangulation'
+            );
+        }
+        if (Math.abs(polygonSignedArea(hole)) <= EPSILON) {
+            throw new ShapeValidationError('Polygon hole ring is degenerate (zero area)');
+        }
+        return polygonSignedArea(hole) > EPSILON
+            ? normalizeContourOrientation(hole, false)
+            : hole;
+    });
+
+    // Positions buffer in normalized ring order; vertex ids are buffer offsets.
+    const holeVertexTotal = holeRings.reduce((sum, hole) => sum + hole.length / 2, 0);
+    const originalCount = outerCount + holeVertexTotal;
+    const positions = new Float32Array(originalCount * 2);
+    positions.set(outerRing, 0);
+    let bufferOffset = outerCount;
+    for (const hole of holeRings) {
+        positions.set(hole, bufferOffset * 2);
+        bufferOffset += hole.length / 2;
+    }
+
+    // Flat typed-array node pool standing in for earcut's linked Node objects.
+    // Capacity: one node per source vertex + 2 seam duplicates per bridge +
+    // headroom for the splitEarcut fallback (2 nodes per diagonal split).
+    const nodeCapacity = 2 * originalCount + 4 * holeRings.length;
+    const nodeX = new Float64Array(nodeCapacity);
+    const nodeY = new Float64Array(nodeCapacity);
+    const nodePrev = new Int32Array(nodeCapacity);
+    const nodeNext = new Int32Array(nodeCapacity);
+    const nodeVertex = new Int32Array(nodeCapacity);
+    let nodeCount = 0;
+
+    const addNode = (x: number, y: number, vertex: number): number => {
+        if (nodeCount >= nodeCapacity) {
+            throw new ShapeValidationError(
+                'Polygon triangulation exceeded its internal node pool; rings may be degenerate'
+            );
+        }
+        const id = nodeCount++;
+        nodeX[id] = x;
+        nodeY[id] = y;
+        nodeVertex[id] = vertex;
+        return id;
+    };
+
+    const pointsEqual = (a: number, b: number): boolean =>
+        nodeX[a] === nodeX[b] && nodeY[a] === nodeY[b];
+
+    // Negated shoelace cross product (earcut convention): negative = left turn.
+    const areaOf = (p: number, q: number, r: number): number =>
+        ((nodeY[q] as number) - (nodeY[p] as number)) *
+            ((nodeX[r] as number) - (nodeX[q] as number)) -
+        ((nodeX[q] as number) - (nodeX[p] as number)) *
+            ((nodeY[r] as number) - (nodeY[q] as number));
+
+    const insertAfter = (last: number, x: number, y: number, vertex: number): number => {
+        const p = addNode(x, y, vertex);
+        const next = nodeNext[last] as number;
+        nodeNext[p] = next;
+        nodePrev[p] = last;
+        nodePrev[next] = p;
+        nodeNext[last] = p;
+        return p;
+    };
+
+    const removeNodeAt = (p: number): void => {
+        const prev = nodePrev[p] as number;
+        const next = nodeNext[p] as number;
+        nodeNext[prev] = next;
+        nodePrev[next] = prev;
+    };
+
+    let filteredOut = false;
+
+    // Remove collinear or coincident nodes: a full fixpoint sweep when end
+    // equals start, otherwise heal only the dirty window up to end.
+    const filterPoints = (start: number, endIn: number): number => {
+        const full = endIn === start;
+        let end = endIn;
+        let p = start;
+        let again: boolean;
+        do {
+            again = false;
+            if (
+                p !== nodeNext[p] &&
+                (pointsEqual(p, nodeNext[p] as number) ||
+                    areaOf(nodePrev[p] as number, p, nodeNext[p] as number) === 0)
+            ) {
+                if (full || p === end) {
+                    end = nodePrev[p] as number;
+                }
+                filteredOut = true;
+                removeNodeAt(p);
+                p = nodePrev[p] as number;
+                again = true;
+            } else if (full || p !== end) {
+                p = nodeNext[p] as number;
+                again = !full;
+            }
+        } while (again || p !== end);
+        return end;
+    };
+
+    // Boundary-inclusive triangle containment (earcut's pointInTriangle).
+    const pointInTriangleInclusive = (
+        ax: number,
+        ay: number,
+        bx: number,
+        by: number,
+        cx: number,
+        cy: number,
+        px: number,
+        py: number
+    ): boolean =>
+        (cx - px) * (ay - py) >= (ax - px) * (cy - py) &&
+        (ax - px) * (by - py) >= (bx - px) * (ay - py) &&
+        (bx - px) * (cy - py) >= (cx - px) * (by - py);
+
+    // For collinear points p, q, r: does q lie on segment pr?
+    const onSegment = (p: number, q: number, r: number): boolean =>
+        (nodeX[q] as number) <= Math.max(nodeX[p] as number, nodeX[r] as number) &&
+        (nodeX[q] as number) >= Math.min(nodeX[p] as number, nodeX[r] as number) &&
+        (nodeY[q] as number) <= Math.max(nodeY[p] as number, nodeY[r] as number) &&
+        (nodeY[q] as number) >= Math.min(nodeY[p] as number, nodeY[r] as number);
+
+    const segmentsIntersectNodes = (
+        p1: number,
+        q1: number,
+        p2: number,
+        q2: number,
+        includeBoundary: boolean
+    ): boolean => {
+        const o1 = areaOf(p1, q1, p2);
+        const o2 = areaOf(p1, q1, q2);
+        const o3 = areaOf(p2, q2, p1);
+        const o4 = areaOf(p2, q2, q1);
+
+        if (((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) && ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0))) {
+            return true;
+        }
+
+        if (!includeBoundary) {
+            return false;
+        }
+
+        if (o1 === 0 && onSegment(p1, p2, q1)) return true;
+        if (o2 === 0 && onSegment(p1, q2, q1)) return true;
+        if (o3 === 0 && onSegment(p2, p1, q2)) return true;
+        if (o4 === 0 && onSegment(p2, q1, q2)) return true;
+        return false;
+    };
+
+    // Is the diagonal a->b locally inside the polygon at both endpoints?
+    const locallyInside = (a: number, b: number): boolean =>
+        areaOf(nodePrev[a] as number, a, nodeNext[a] as number) < 0
+            ? areaOf(a, b, nodeNext[a] as number) >= 0 &&
+              areaOf(a, nodePrev[a] as number, b) >= 0
+            : areaOf(a, b, nodePrev[a] as number) < 0 ||
+              areaOf(a, nodeNext[a] as number, b) < 0;
+
+    const middleInside = (a: number, b: number): boolean => {
+        let p = a;
+        let inside = false;
+        const px = ((nodeX[a] as number) + (nodeX[b] as number)) / 2;
+        const py = ((nodeY[a] as number) + (nodeY[b] as number)) / 2;
+        do {
+            const n = nodeNext[p] as number;
+            if (
+                ((nodeY[p] as number) > py) !== ((nodeY[n] as number) > py) &&
+                px <
+                    (((nodeX[n] as number) - (nodeX[p] as number)) *
+                        (py - (nodeY[p] as number))) /
+                        ((nodeY[n] as number) - (nodeY[p] as number)) +
+                        (nodeX[p] as number)
+            ) {
+                inside = !inside;
+            }
+            p = n;
+        } while (p !== a);
+        return inside;
+    };
+
+    // Does the diagonal a-b intersect any other ring segment?
+    const intersectsPolygon = (a: number, b: number): boolean => {
+        const minX = Math.min(nodeX[a] as number, nodeX[b] as number);
+        const maxX = Math.max(nodeX[a] as number, nodeX[b] as number);
+        const minY = Math.min(nodeY[a] as number, nodeY[b] as number);
+        const maxY = Math.max(nodeY[a] as number, nodeY[b] as number);
+
+        let p = a;
+        do {
+            const n = nodeNext[p] as number;
+            if (
+                ((nodeX[p] as number) > maxX && (nodeX[n] as number) > maxX) ||
+                ((nodeX[p] as number) < minX && (nodeX[n] as number) < minX) ||
+                ((nodeY[p] as number) > maxY && (nodeY[n] as number) > maxY) ||
+                ((nodeY[p] as number) < minY && (nodeY[n] as number) < minY)
+            ) {
+                p = n;
+                continue;
+            }
+            if (
+                nodeVertex[p] !== nodeVertex[a] &&
+                nodeVertex[n] !== nodeVertex[a] &&
+                nodeVertex[p] !== nodeVertex[b] &&
+                nodeVertex[n] !== nodeVertex[b] &&
+                segmentsIntersectNodes(p, n, a, b, true)
+            ) {
+                return true;
+            }
+            p = n;
+        } while (p !== a);
+        return false;
+    };
+
+    const isValidDiagonal = (a: number, b: number): boolean => {
+        const zeroLength =
+            pointsEqual(a, b) &&
+            areaOf(nodePrev[a] as number, a, nodeNext[a] as number) > 0 &&
+            areaOf(nodePrev[b] as number, b, nodeNext[b] as number) > 0;
+        return (
+            nodeVertex[nodeNext[a] as number] !== nodeVertex[b] &&
+            (zeroLength ||
+                (locallyInside(a, b) &&
+                    locallyInside(b, a) &&
+                    (areaOf(nodePrev[a] as number, a, nodePrev[b] as number) !== 0 ||
+                        areaOf(a, nodePrev[b] as number, b) !== 0))) &&
+            !intersectsPolygon(a, b) &&
+            (zeroLength || middleInside(a, b))
+        );
+    };
+
+    // Link two ring vertices with a zero-width bridge (duplicating both).
+    const splitPolygon = (a: number, b: number): number => {
+        const a2 = addNode(nodeX[a] as number, nodeY[a] as number, nodeVertex[a] as number);
+        const b2 = addNode(nodeX[b] as number, nodeY[b] as number, nodeVertex[b] as number);
+        const an = nodeNext[a] as number;
+        const bp = nodePrev[b] as number;
+
+        nodeNext[a] = b;
+        nodePrev[b] = a;
+
+        nodeNext[a2] = an;
+        nodePrev[an] = a2;
+
+        nodeNext[b2] = a2;
+        nodePrev[a2] = b2;
+
+        nodeNext[bp] = b2;
+        nodePrev[b2] = bp;
+
+        return b2;
+    };
+
+    const getLeftmost = (start: number): number => {
+        let p = start;
+        let leftmost = start;
+        do {
+            if (
+                (nodeX[p] as number) < (nodeX[leftmost] as number) ||
+                ((nodeX[p] as number) === (nodeX[leftmost] as number) &&
+                    (nodeY[p] as number) < (nodeY[leftmost] as number))
+            ) {
+                leftmost = p;
+            }
+            p = nodeNext[p] as number;
+        } while (p !== start);
+        return leftmost;
+    };
+
+    const compareXYSlope = (a: number, b: number): number =>
+        (nodeX[a] as number) - (nodeX[b] as number) ||
+        (nodeY[a] as number) - (nodeY[b] as number) ||
+        ((nodeY[nodeNext[a] as number] as number) - (nodeY[a] as number)) /
+            ((nodeX[nodeNext[a] as number] as number) - (nodeX[a] as number)) -
+            ((nodeY[nodeNext[b] as number] as number) - (nodeY[b] as number)) /
+                ((nodeX[nodeNext[b] as number] as number) - (nodeX[b] as number));
+
+    // Whether the sector at vertex m contains the sector at vertex p.
+    const sectorContainsSector = (m: number, p: number): boolean =>
+        areaOf(nodePrev[m] as number, m, nodePrev[p] as number) < 0 &&
+        areaOf(nodeNext[p] as number, m, nodeNext[m] as number) < 0;
+
+    // Eberly's hole bridge search: cast a leftward ray from the hole's leftmost
+    // vertex, take the crossed ring segment's lesser-x endpoint as the seed,
+    // then refine to the best vertex inside the seed triangle.
+    const findHoleBridge = (hole: number, ringNode: number): number | null => {
+        const hx = nodeX[hole] as number;
+        const hy = nodeY[hole] as number;
+        let qx = -Infinity;
+        let m: number | null = null;
+
+        if (pointsEqual(hole, ringNode)) {
+            return ringNode;
+        }
+
+        let p = ringNode;
+        do {
+            const py = nodeY[p] as number;
+            const n = nodeNext[p] as number;
+            const ny = nodeY[n] as number;
+            if (hy <= py && hy >= ny && ny !== py) {
+                const x =
+                    (nodeX[p] as number) +
+                    ((hy - py) * ((nodeX[n] as number) - (nodeX[p] as number))) / (ny - py);
+                if (x <= hx && x > qx) {
+                    qx = x;
+                    m = (nodeX[p] as number) < (nodeX[n] as number) ? p : n;
+                    if (x === hx) {
+                        return m;
+                    }
+                }
+            }
+            p = n;
+        } while (p !== ringNode);
+
+        if (m === null) {
+            return null;
+        }
+
+        const mx = nodeX[m] as number;
+        const my = nodeY[m] as number;
+        let tanMin = Infinity;
+
+        p = ringNode;
+        do {
+            const px = nodeX[p] as number;
+            const py = nodeY[p] as number;
+            if (
+                hx >= px &&
+                px >= mx &&
+                hx !== px &&
+                pointInTriangleInclusive(
+                    hy < my ? hx : qx,
+                    hy,
+                    mx,
+                    my,
+                    hy < my ? qx : hx,
+                    hy,
+                    px,
+                    py
+                )
+            ) {
+                const tan = Math.abs(hy - py) / (hx - px);
+                const tJunction =
+                    py === hy &&
+                    (nodeY[nodeNext[p] as number] as number) === hy &&
+                    (nodeX[nodeNext[p] as number] as number) > hx;
+                if (
+                    (locallyInside(p, hole) || tJunction) &&
+                    (tan < tanMin ||
+                        (tan === tanMin &&
+                            (px > mx || (px === mx && sectorContainsSector(m, p)))))
+                ) {
+                    m = p;
+                    tanMin = tan;
+                }
+            }
+            p = nodeNext[p] as number;
+        } while (p !== ringNode);
+
+        return m;
+    };
+
+    const eliminateHole = (hole: number, ringNode: number): number => {
+        const bridge = findHoleBridge(hole, ringNode);
+        if (bridge === null) {
+            throw new ShapeValidationError(
+                'Polygon hole triangulation failed: no bridge between hole and outer ring'
+            );
+        }
+        const bridgeReverse = splitPolygon(bridge, hole);
+        filterPoints(bridgeReverse, nodeNext[bridgeReverse] as number);
+        return filterPoints(bridge, nodeNext[bridge] as number);
+    };
+
+    // Build the outer ring (CCW traversal in storage order).
+    const outerFirst = addNode(positions[0] as number, positions[1] as number, 0);
+    nodeNext[outerFirst] = outerFirst;
+    nodePrev[outerFirst] = outerFirst;
+    let ringLast = outerFirst;
+    for (let i = 1; i < outerCount; i++) {
+        ringLast = insertAfter(
+            ringLast,
+            positions[i * 2] as number,
+            positions[i * 2 + 1] as number,
+            i
+        );
+    }
+
+    // Build each hole as its own CW-traversed ring, then bridge the holes into
+    // the merged ring left to right (earcut's elimination order).
+    const holeQueue: number[] = [];
+    let holeVertexBase = outerCount;
+    for (const hole of holeRings) {
+        const holeCount = hole.length / 2;
+        const holeFirst = addNode(hole[0] as number, hole[1] as number, holeVertexBase);
+        nodeNext[holeFirst] = holeFirst;
+        nodePrev[holeFirst] = holeFirst;
+        let holeLast = holeFirst;
+        for (let k = 1; k < holeCount; k++) {
+            holeLast = insertAfter(
+                holeLast,
+                hole[k * 2] as number,
+                hole[k * 2 + 1] as number,
+                holeVertexBase + k
+            );
+        }
+        holeQueue.push(getLeftmost(holeFirst));
+        holeVertexBase += holeCount;
+    }
+    holeQueue.sort(compareXYSlope);
+
+    let merged = outerFirst;
+    for (const holeNode of holeQueue) {
+        merged = eliminateHole(holeNode, merged);
+    }
+    const mergedRing = filterPoints(merged, merged);
+
+
+    // Ear clipping over the merged ring (earcut fallback ladder).
+    const indices: number[] = [];
+
+    // Is the candidate ear a valid convex triangle with no reflex/collinear
+    // vertex inside it? Boundary-inclusive containment matches earcut.
+    const isEar = (ear: number): boolean => {
+        const a = nodePrev[ear] as number;
+        const c = nodeNext[ear] as number;
+        const ax = nodeX[a] as number;
+        const ay = nodeY[a] as number;
+        const bx = nodeX[ear] as number;
+        const by = nodeY[ear] as number;
+        const cx = nodeX[c] as number;
+        const cy = nodeY[c] as number;
+        const x0 = Math.min(ax, bx, cx);
+        const y0 = Math.min(ay, by, cy);
+        const x1 = Math.max(ax, bx, cx);
+        const y1 = Math.max(ay, by, cy);
+
+        let p = nodeNext[c] as number;
+        while (p !== a) {
+            if (
+                (nodeX[p] as number) >= x0 &&
+                (nodeX[p] as number) <= x1 &&
+                (nodeY[p] as number) >= y0 &&
+                (nodeY[p] as number) <= y1 &&
+                !(ax === nodeX[p] && ay === nodeY[p]) &&
+                pointInTriangleInclusive(ax, ay, bx, by, cx, cy, nodeX[p] as number, nodeY[p] as number) &&
+                areaOf(nodePrev[p] as number, p, nodeNext[p] as number) >= 0
+            ) {
+                return false;
+            }
+            p = nodeNext[p] as number;
+        }
+        return true;
+    };
+
+    // Cure small local self-intersections introduced by the keyhole seams.
+    const cureLocalIntersections = (start: number): number => {
+        let p = start;
+        let cured = false;
+        do {
+            const a = nodePrev[p] as number;
+            const pNext = nodeNext[p] as number;
+            const b = nodeNext[pNext] as number;
+
+            if (
+                segmentsIntersectNodes(a, p, pNext, b, false) &&
+                locallyInside(a, b) &&
+                locallyInside(b, a)
+            ) {
+                indices.push(nodeVertex[a] as number, nodeVertex[p] as number, nodeVertex[b] as number);
+                removeNodeAt(p);
+                removeNodeAt(pNext);
+                p = start = b;
+                cured = true;
+            }
+            p = nodeNext[p] as number;
+        } while (p !== start);
+        return cured ? filterPoints(p, p) : p;
+    };
+
+    // Try splitting the polygon into two along a valid diagonal and ear-clip
+    // each half independently — the last-resort fallback for weakly-simple
+    // rings that cannot be ear-clipped as a single loop.
+    function splitEarcut(start: number): void {
+        let a = start;
+        do {
+            let b = nodeNext[nodeNext[a] as number] as number;
+            while (b !== nodePrev[a] as number) {
+                if (nodeVertex[a] !== nodeVertex[b] && isValidDiagonal(a, b)) {
+                    const c = splitPolygon(a, b);
+                    a = filterPoints(a, nodeNext[a] as number);
+                    const cFixed = filterPoints(c, nodeNext[c] as number);
+                    earcutLinked(a);
+                    earcutLinked(cFixed);
+                    return;
+                }
+                b = nodeNext[b] as number;
+            }
+            a = nodeNext[a] as number;
+        } while (a !== start);
+    }
+
+    // Main ear slicing loop: slice convex ears one by one, with a fallback
+    // ladder (filterPoints → cureLocalIntersections → splitEarcut) that
+    // handles the weakly-simple keyhole ring produced by hole bridging.
+    function earcutLinked(earStart: number): void {
+        let ear = earStart;
+        let stop = ear;
+        let cured = false;
+
+        while (nodePrev[ear] !== nodeNext[ear]) {
+            const prev = nodePrev[ear] as number;
+            const next = nodeNext[ear] as number;
+
+            if (areaOf(prev, ear, next) < 0 && isEar(ear)) {
+                indices.push(nodeVertex[prev] as number, nodeVertex[ear] as number, nodeVertex[next] as number);
+                removeNodeAt(ear);
+                ear = next;
+                stop = next;
+                continue;
+            }
+
+            ear = next;
+
+            if (ear === stop) {
+                filteredOut = false;
+                ear = filterPoints(ear, ear);
+                if (filteredOut) {
+                    stop = ear;
+                    continue;
+                }
+                if (!cured) {
+                    ear = cureLocalIntersections(ear);
+                    stop = ear;
+                    cured = true;
+                    continue;
+                }
+                splitEarcut(ear);
+                break;
+            }
+        }
+    }
+
+    earcutLinked(mergedRing);
+
+
+    for (let i = 0; i < indices.length; i++) {
+        if (indices[i] as number < 0 || (indices[i] as number) >= originalCount) {
+            throw new ShapeValidationError(
+                'Polygon with holes triangulation produced an out-of-range vertex index'
+            );
+        }
+    }
+
+    const useUint32 = originalCount > 65535;
+    return {
+        positions,
+        indices: useUint32 ? new Uint32Array(indices) : new Uint16Array(indices),
+    };
+};
 
 export const normalizeContourOrientation = (
     contour: Float32Array,
@@ -715,11 +1329,3 @@ export const hashString = (value: string): string => {
 
 export const formatPointKey = (point: Readonly<IVec2Like>): string =>
     `${normalizeNumberKey(point.x)},${normalizeNumberKey(point.y)}`;
-
-export const formatBoundsKey = (bounds: ShapeBounds): string =>
-    `${normalizeNumberKey(bounds.minX)},${normalizeNumberKey(bounds.minY)},${normalizeNumberKey(bounds.maxX)},${normalizeNumberKey(bounds.maxY)}`;
-
-export const withFingerprintPrefix = <K extends string>(
-    prefix: K,
-    value: string
-): `${K}:${string}` => `${prefix}:${value}`;

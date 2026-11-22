@@ -7,6 +7,23 @@ export * from './buffer-pool';
 export { BufferView } from './buffer-view';
 export { BufferUtils } from './utils';
 export { ByteBuffer } from './byte-buffer-core';
+export {
+    ByteChunk,
+    ByteChunkLease,
+    ByteChunkPool,
+    ByteChunkPoolSet,
+    ByteCursor,
+    ByteOffset,
+    ByteLength,
+    ChunkId,
+    MemoryErrorCode,
+} from './byte-chunk';
+export type {
+    ByteChunkPoolSetOptions,
+    ByteChunkPoolOptions,
+    MemoryError,
+    IChunkPoolRecycler,
+} from './byte-chunk';
 
 export type { BufferPoolOptions, BufferPoolStats, BucketStats } from './buffer-pool';
 

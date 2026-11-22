@@ -376,6 +376,13 @@ export interface AudioSystemOptions<TSchema extends AudioAssetSchema = AudioAsse
     readonly listeners?: readonly AudioListenerDescriptor[];
     readonly sources?: readonly AudioSourceDefinition<TSchema>[];
     readonly autoResume?: boolean;
+    /**
+     * When true, suspends the context while the document is hidden and
+     * resumes it when the document becomes visible again (Android
+     * onPause/onResume, background tabs). Default: false. No-op without a
+     * DOM document.
+     */
+    readonly suspendOnHidden?: boolean;
     readonly resumeRetryPolicy?: AudioRetryPolicy<TSchema>;
     readonly assetRetryPolicy?: AudioRetryPolicy<TSchema>;
 }

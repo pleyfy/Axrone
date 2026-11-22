@@ -64,6 +64,11 @@
             "import": "./dist/scene-full-profile.mjs",
             "require": "./dist/scene-full-profile.js"
         },
+        "./default-composition": {
+            "types": "./dist/default-composition.d.ts",
+            "import": "./dist/default-composition.mjs",
+            "require": "./dist/default-composition.js"
+        },
         "./scene-facade": {
             "types": "./dist/scene-facade.d.ts",
             "import": "./dist/scene-facade.mjs",
@@ -88,6 +93,56 @@
             "types": "./dist/scene-3d-support.d.ts",
             "import": "./dist/scene-3d-support.mjs",
             "require": "./dist/scene-3d-support.js"
+        },
+        "./scene-asset-facade": {
+            "types": "./dist/scene-asset-facade.d.ts",
+            "import": "./dist/scene-asset-facade.mjs",
+            "require": "./dist/scene-asset-facade.js"
+        },
+        "./scene-camera": {
+            "types": "./dist/scene-camera.d.ts",
+            "import": "./dist/scene-camera.mjs",
+            "require": "./dist/scene-camera.js"
+        },
+        "./scene-capability-guard": {
+            "types": "./dist/scene-capability-guard.d.ts",
+            "import": "./dist/scene-capability-guard.mjs",
+            "require": "./dist/scene-capability-guard.js"
+        },
+        "./scene-geometry-mesh-builder": {
+            "types": "./dist/scene-geometry-mesh-builder.d.ts",
+            "import": "./dist/scene-geometry-mesh-builder.mjs",
+            "require": "./dist/scene-geometry-mesh-builder.js"
+        },
+        "./scene-mesh-renderer": {
+            "types": "./dist/scene-mesh-renderer.d.ts",
+            "import": "./dist/scene-mesh-renderer.mjs",
+            "require": "./dist/scene-mesh-renderer.js"
+        },
+        "./scene-shader-effect": {
+            "types": "./dist/scene-shader-effect.d.ts",
+            "import": "./dist/scene-shader-effect.mjs",
+            "require": "./dist/scene-shader-effect.js"
+        },
+        "./scene-sprite-renderer": {
+            "types": "./dist/scene-sprite-renderer.d.ts",
+            "import": "./dist/scene-sprite-renderer.mjs",
+            "require": "./dist/scene-sprite-renderer.js"
+        },
+        "./scene-batch-runtimes": {
+            "types": "./dist/scene-batch-runtimes.d.ts",
+            "import": "./dist/scene-batch-runtimes.mjs",
+            "require": "./dist/scene-batch-runtimes.js"
+        },
+        "./scene-2d-lean-composition": {
+            "types": "./dist/scene-2d-lean-composition.d.ts",
+            "import": "./dist/scene-2d-lean-composition.mjs",
+            "require": "./dist/scene-2d-lean-composition.js"
+        },
+        "./scene-tilemap": {
+            "types": "./dist/scene-tilemap.d.ts",
+            "import": "./dist/scene-tilemap.mjs",
+            "require": "./dist/scene-tilemap.js"
         }
     },
     "scripts": {
@@ -98,6 +153,7 @@
     "dependencies": {
         "@axrone/animation": "^0.1.0",
         "@axrone/asset-2d": "^0.1.0",
+        "@axrone/asset-tilemap": "^0.1.0",
         "@axrone/ecs-runtime": "^0.1.0",
         "@axrone/game-loop": "^0.1.0",
         "@axrone/geometry": "^0.1.0",
@@ -116,6 +172,7 @@
         "@axrone/render-webgl2": "^0.1.0",
         "@axrone/scene-prefab": "^0.1.0",
         "@axrone/terrain": "^0.1.0",
+        "@axrone/tilemap": "^0.1.0",
         "@axrone/utility": "^0.0.1"
     }
 }

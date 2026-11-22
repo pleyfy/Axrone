@@ -41,16 +41,15 @@ describe('PrefabNodeBinding', () => {
     });
 
     describe('serialize', () => {
-        it('returns object with only nodeId (instanceId excluded)', () => {
+        it('returns object with nodeId and instanceId', () => {
             const binding = new PrefabNodeBinding({ nodeId: 'n1', instanceId: 'i1' });
             const serialized = binding.serialize();
-            expect(serialized).toEqual({ nodeId: 'n1' });
-            expect(serialized).not.toHaveProperty('instanceId');
+            expect(serialized).toEqual({ nodeId: 'n1', instanceId: 'i1' });
         });
 
         it('serializes null nodeId', () => {
             const binding = new PrefabNodeBinding();
-            expect(binding.serialize()).toEqual({ nodeId: null });
+            expect(binding.serialize()).toEqual({ nodeId: null, instanceId: null });
         });
     });
 
@@ -86,21 +85,22 @@ describe('PrefabNodeBinding', () => {
             expect(binding.instanceId).toBe('i');
         });
 
-        it('round-trip excludes instanceId from serialized form', () => {
+        it('round-trip preserves instanceId in serialized form', () => {
             const binding = new PrefabNodeBinding({ nodeId: 'n1', instanceId: 'i1' });
             const serialized = binding.serialize();
-            expect(serialized).not.toHaveProperty('instanceId');
+            expect(serialized).toHaveProperty('instanceId', 'i1');
         });
     });
 
     describe('round-trip', () => {
-        it('serialize -> deserialize restores nodeId', () => {
-            const original = new PrefabNodeBinding({ nodeId: 'round-trip', instanceId: 'ignored' });
+        it('serialize -> deserialize restores nodeId and instanceId', () => {
+            const original = new PrefabNodeBinding({ nodeId: 'round-trip', instanceId: 'inst-7' });
             const serialized = original.serialize();
 
             const restored = new PrefabNodeBinding();
             restored.deserialize(serialized);
             expect(restored.nodeId).toBe('round-trip');
+            expect(restored.instanceId).toBe('inst-7');
         });
     });
 });

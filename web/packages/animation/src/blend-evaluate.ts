@@ -5,6 +5,7 @@ import type {
     AnimationCompiledBlend2DMotion,
     AnimationCompiledDirectMotion,
     AnimationCompiledAdditiveMotion,
+    AnimationCompiledMotionMatchingMotion,
 } from './blend-types';
 import { AnimationFrame } from './pose-frame';
 import { blendFrame as blendFrameOp, blendWeightedFrames as blendWeightedFramesOp, applyAdditiveFrame as applyAdditiveFrameOp } from './pose-blend';
@@ -20,6 +21,10 @@ import {
 } from './blend-helpers';
 import { dispatchMotion } from './blend-visitor';
 import type { BlendMotionVisitor } from './blend-types';
+import {
+    resolveMotionMatchingTime,
+    updateMotionMatchingSelection,
+} from './motion-matching-node';
 
 function evaluateClipMotion(
     motion: AnimationCompiledClipMotion,
@@ -31,6 +36,25 @@ function evaluateClipMotion(
     out.reset(context.rig, context.restFrame.curves.values);
     const time = resolveMotionTime(normalizedTime * motion.timeScale, motion.clip.duration, motion.cycleOffset, loop);
     return motion.clip.sampleTime(time, out);
+}
+
+function evaluateMotionMatchingMotion(
+    motion: AnimationCompiledMotionMatchingMotion,
+    normalizedTime: number,
+    context: AnimationMotionEvaluationContext,
+    out: AnimationFrame,
+    loop: boolean
+): AnimationFrame {
+    updateMotionMatchingSelection(motion, normalizedTime, context.parameters);
+    const clip = motion.state.clip;
+    if (clip === null) {
+        out.reset(context.rig, context.restFrame.curves.values);
+        return out;
+    }
+
+    out.reset(context.rig, context.restFrame.curves.values);
+    const time = resolveMotionTime(resolveMotionMatchingTime(motion, normalizedTime), clip.duration, 0, loop);
+    return clip.sampleTime(time, out);
 }
 
 function evaluateBlend1DMotion(
@@ -67,7 +91,8 @@ function evaluateBlend2DMotion(
         resolveParameterScalar(context.parameters, motion.parameterY),
         motion.children,
         context,
-        depth
+        depth,
+        motion.triangles
     );
     const frames = context.scratch.acquireFrameArray(motion.children.length);
     for (let index = 0; index < motion.children.length; index += 1) {
@@ -135,11 +160,11 @@ function evaluateAdditiveMotion(
 }
 
 interface EvaluateContext {
-    readonly normalizedTime: number;
-    readonly context: AnimationMotionEvaluationContext;
-    readonly out: AnimationFrame;
-    readonly loop: boolean;
-    readonly depth: number;
+    normalizedTime: number;
+    context: AnimationMotionEvaluationContext;
+    out: AnimationFrame;
+    loop: boolean;
+    depth: number;
 }
 
 const evaluateVisitor: BlendMotionVisitor<EvaluateContext, AnimationFrame> = {
@@ -148,7 +173,10 @@ const evaluateVisitor: BlendMotionVisitor<EvaluateContext, AnimationFrame> = {
     visitBlend2d: (motion: AnimationCompiledBlend2DMotion, ctx: EvaluateContext) => evaluateBlend2DMotion(motion, ctx.normalizedTime, ctx.context, ctx.out, ctx.loop, ctx.depth),
     visitDirect: (motion: AnimationCompiledDirectMotion, ctx: EvaluateContext) => evaluateDirectMotion(motion, ctx.normalizedTime, ctx.context, ctx.out, ctx.loop, ctx.depth),
     visitAdditive: (motion: AnimationCompiledAdditiveMotion, ctx: EvaluateContext) => evaluateAdditiveMotion(motion, ctx.normalizedTime, ctx.context, ctx.out, ctx.loop, ctx.depth),
+    visitMotionMatching: (motion: AnimationCompiledMotionMatchingMotion, ctx: EvaluateContext) => evaluateMotionMatchingMotion(motion, ctx.normalizedTime, ctx.context, ctx.out, ctx.loop),
 };
+
+let evaluateContext: EvaluateContext | null = null;
 
 export const evaluateMotion = (
     motion: AnimationCompiledMotion,
@@ -157,4 +185,15 @@ export const evaluateMotion = (
     out: AnimationFrame,
     loop: boolean = true,
     depth: number = 0
-): AnimationFrame => dispatchMotion(motion, evaluateVisitor, { normalizedTime, context, out, loop, depth });
+): AnimationFrame => {
+    if (evaluateContext === null) {
+        evaluateContext = { normalizedTime, context, out, loop, depth };
+    } else {
+        evaluateContext.normalizedTime = normalizedTime;
+        evaluateContext.context = context;
+        evaluateContext.out = out;
+        evaluateContext.loop = loop;
+        evaluateContext.depth = depth;
+    }
+    return dispatchMotion(motion, evaluateVisitor, evaluateContext);
+};

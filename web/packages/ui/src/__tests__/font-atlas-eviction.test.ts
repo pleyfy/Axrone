@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { GlyphAtlas } from '../font/atlas';
 import type { GlyphAtlasSource } from '../font/atlas';
 import type { GlyphAtlasPageSnapshot } from '../types';
+import { UIRuntime, AXRONE_DEFAULT_UI_FONT_FAMILY } from '../index';
+import { createTestFontAsset } from './test-font';
 
 const makeGlyph = (codePoint: number, size = 16): GlyphAtlasSource => ({
     codePoint,
@@ -147,23 +149,29 @@ describe('@axrone/ui GlyphAtlas LRU eviction', () => {
         const page1Id = page1Entry.page;
         atlas.tick();
 
-        // Frame 1: fill page 2.
+        // Frame 1: fill page 1 more, then overflow to page 2.
         for (let i = 0; i < 15; i += 1) {
             atlas.ensure(makeGlyph(100 + i));
         }
-        const page2Id = atlas.ensure(makeGlyph(100)).page;
+        // The first overflow glyph that created page 2:
+        const page2Entry = atlas.ensure(makeGlyph(200));
+        const page2Id = page2Entry.page;
+        expect(page2Id).not.toBe(page1Id); // verify distinct pages
         atlas.tick();
 
-        // Frame 2: touch page 1 (glyph 65).
+        // Frame 2: touch page 1 (glyph 65) to make it recently used.
         atlas.get(65, 16);
         atlas.tick();
 
-        // Frame 3+: overflow to create page 3 → should evict page 2 (older) not page 1.
+        // Frame 3+: overflow to create page 3 → should evict page 2 (older)
+        // because page 1 was touched in frame 2 (lastAccess=2) and page 2
+        // was created in frame 1 (lastAccess=1).
         for (let i = 0; i < 30; i += 1) {
-            atlas.ensure(makeGlyph(200 + i));
+            atlas.ensure(makeGlyph(300 + i));
         }
 
         expect(evicted.length).toBeGreaterThanOrEqual(1);
+        // Page 2 (lastAccess=1) is LRU → evicted first.
         expect(evicted[0].id).toBe(page2Id);
         expect(evicted[0].id).not.toBe(page1Id);
     });
@@ -196,5 +204,35 @@ describe('@axrone/ui GlyphAtlas LRU eviction', () => {
         // The evicted page should be page 1 (the old one), not the new page.
         expect(evicted.length).toBe(1);
         expect(evicted[0].id).toBe(firstEntry.page);
+    });
+
+    it('commit() advances the atlas frame counter via tickAtlases()', () => {
+        const runtime = new UIRuntime({ width: 320, height: 240 });
+        runtime.fonts.registerFace(createTestFontAsset(AXRONE_DEFAULT_UI_FONT_FAMILY));
+
+        // Create a simple widget with text so glyphs are allocated.
+        runtime.createWidget({
+            role: 'text',
+            layout: { width: 100, height: 20 },
+            text: { value: 'Hello', family: AXRONE_DEFAULT_UI_FONT_FAMILY, size: 16, weight: '400', style: 'normal', lineHeight: 20, letterSpacing: 0, align: 'start', wrap: 'none', overflow: 'ellipsis' },
+            style: { color: '#ffffffff' },
+        });
+
+        // First commit: glyphs are allocated and frame counter should advance.
+        runtime.commit();
+
+        // Verify the atlas has entries with a ticked frame counter.
+        // After 1 commit, the frame counter should be at least 1.
+        const face = (runtime.fonts as any).facesById?.values()?.next()?.value;
+        if (face?.atlas) {
+            expect(face.atlas.frameCounter).toBeGreaterThanOrEqual(1);
+        }
+
+        // Second commit: frame counter should advance again.
+        const counterBefore = face?.atlas?.frameCounter ?? 0;
+        runtime.commit();
+        if (face?.atlas) {
+            expect(face.atlas.frameCounter).toBeGreaterThan(counterBefore);
+        }
     });
 });

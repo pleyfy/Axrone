@@ -96,6 +96,20 @@ describe('TweenGroup', () => {
             expect(obj1.x).toBeCloseTo(50, 0);
             expect(obj2.y).toBeCloseTo(50, 0);
         });
+
+        it('retains completed members for restart', () => {
+            const group = new TweenGroup();
+            const obj = { x: 0 };
+            const tw = to(obj, { x: 100 }, 100);
+            group.add(tw);
+            group.start(0);
+            group.update(100);
+            expect(tw.getStatus()).toBe('completed');
+            expect(group.getSize()).toBe(1);
+            group.start(0);
+            group.update(50);
+            expect(obj.x).toBeCloseTo(50, 0);
+        });
     });
 
     describe('dispose()', () => {

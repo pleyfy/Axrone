@@ -1,14 +1,11 @@
-export interface Asset2DVec2Like {
-    readonly x: number;
-    readonly y: number;
-}
+import type { IVec2Like } from '@axrone/numeric';
 
 export interface Asset2DSizeLike {
     readonly width: number;
     readonly height: number;
 }
 
-export interface Asset2DRectLike extends Asset2DVec2Like, Asset2DSizeLike {}
+export type Asset2DRectLike = Readonly<IVec2Like> & Asset2DSizeLike;
 
 export interface Asset2DBorderLike {
     readonly left: number;
@@ -21,11 +18,11 @@ export interface SpriteAtlasFrameDefinition {
     readonly id: string;
     readonly region: Asset2DRectLike;
     readonly sourceSize?: Asset2DSizeLike;
-    readonly pivot?: Asset2DVec2Like;
+    readonly pivot?: Readonly<IVec2Like>;
     readonly sliceBorder?: Asset2DBorderLike;
     readonly durationMs?: number;
     readonly rotated?: boolean;
-    readonly trimOffset?: Asset2DVec2Like;
+    readonly trimOffset?: Readonly<IVec2Like>;
 }
 
 export interface SpriteAnimationFrameDefinition {
@@ -54,7 +51,7 @@ export interface SpriteAtlasFrame {
     readonly region: Readonly<Asset2DRectLike>;
     readonly sourceSize: Readonly<Asset2DSizeLike>;
     readonly uvRect: Readonly<Asset2DRectLike>;
-    readonly pivot: Readonly<Asset2DVec2Like>;
+    readonly pivot: Readonly<IVec2Like>;
     readonly sliceBorder: Readonly<Asset2DBorderLike> | null;
     readonly durationMs: number | null;
 }
@@ -96,7 +93,7 @@ export class Asset2DValidationError extends Asset2DError {
     }
 }
 
-const freezeVec2 = (value: Asset2DVec2Like): Readonly<Asset2DVec2Like> =>
+const freezeVec2 = (value: Readonly<IVec2Like>): Readonly<IVec2Like> =>
     Object.freeze({ x: value.x, y: value.y });
 
 const freezeSize = (value: Asset2DSizeLike): Readonly<Asset2DSizeLike> =>

@@ -339,12 +339,17 @@ export const deserializeShape = (shape: SerializedShape): Shape2D => {
                 c: shape.c,
                 ...appearance,
             });
-        case 'shape/line':
+        case 'shape/line': {
+            const lineStroke = appearance.stroke
+                ? { ...appearance.stroke, alignment: 'center' as const }
+                : null;
             return createLineShape({
                 start: shape.start,
                 end: shape.end,
                 ...appearance,
+                stroke: lineStroke,
             });
+        }
         case 'shape/polygon': {
             const holeInputs: PolygonRingInput[] = shape.holes.map((hole) => ({
                 points: hole.map((p) => p as readonly [number, number]),

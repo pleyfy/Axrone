@@ -1,5 +1,7 @@
 import { assertNever } from './errors';
-import { freezeTuple2, isFiniteNumber, spreadIfFinite } from './internal';
+import { isFiniteNumber, spreadIfFinite } from './internal';
+import { tuple2 } from '@axrone/utility';
+import type { AnimationMotionMatchDatabase } from './motion-matching';
 import type { AnimationBlendTreeDefinition, AnimationMotionDefinition } from './types';
 
 export interface AnimationBlendGraphDiagnostic {
@@ -51,10 +53,11 @@ const freezeMotionDefinition = (motion: AnimationMotionDefinition): AnimationMot
                 kind: 'blend2d',
                 parameterX: motion.parameterX,
                 parameterY: motion.parameterY,
+                mode: motion.mode,
                 children: Object.freeze(
                     motion.children.map((child) =>
                         Object.freeze({
-                            position: freezeTuple2(child.position[0], child.position[1]),
+                            position: tuple2(child.position[0], child.position[1]),
                             motion: freezeMotionDefinition(child.motion),
                         })
                     )
@@ -82,6 +85,17 @@ const freezeMotionDefinition = (motion: AnimationMotionDefinition): AnimationMot
                 additive: freezeMotionDefinition(motion.additive),
                 ...spreadIfFinite('weight', motion.weight),
                 ...(typeof motion.parameter === 'string' ? { parameter: motion.parameter } : {}),
+            });
+        case 'motionMatching':
+            return Object.freeze({
+                kind: 'motionMatching',
+                database: motion.database,
+                trajectoryXParameter: motion.trajectoryXParameter,
+                trajectoryZParameter: motion.trajectoryZParameter,
+                facingXParameter: motion.facingXParameter,
+                facingZParameter: motion.facingZParameter,
+                ...spreadIfFinite('reselectIntervalSeconds', motion.reselectIntervalSeconds),
+                ...spreadIfFinite('continuityBias', motion.continuityBias),
             });
         default:
             return assertNever(motion, 'Unsupported motion kind');
@@ -125,6 +139,55 @@ export class AnimationClipMotionBuilder implements AnimationMotionBuilder {
     }
 }
 
+export class AnimationMotionMatchingMotionBuilder implements AnimationMotionBuilder {
+    constructor(
+        private readonly _database: AnimationMotionMatchDatabase,
+        private readonly _trajectoryXParameter: string,
+        private readonly _trajectoryZParameter: string,
+        private readonly _facingXParameter: string,
+        private readonly _facingZParameter: string,
+        private readonly _reselectIntervalSeconds?: number,
+        private readonly _continuityBias?: number
+    ) {}
+
+    withReselectInterval(seconds: number): AnimationMotionMatchingMotionBuilder {
+        return new AnimationMotionMatchingMotionBuilder(
+            this._database,
+            this._trajectoryXParameter,
+            this._trajectoryZParameter,
+            this._facingXParameter,
+            this._facingZParameter,
+            seconds,
+            this._continuityBias
+        );
+    }
+
+    withContinuityBias(bias: number): AnimationMotionMatchingMotionBuilder {
+        return new AnimationMotionMatchingMotionBuilder(
+            this._database,
+            this._trajectoryXParameter,
+            this._trajectoryZParameter,
+            this._facingXParameter,
+            this._facingZParameter,
+            this._reselectIntervalSeconds,
+            bias
+        );
+    }
+
+    build(): AnimationMotionDefinition {
+        return {
+            kind: 'motionMatching',
+            database: this._database,
+            trajectoryXParameter: this._trajectoryXParameter,
+            trajectoryZParameter: this._trajectoryZParameter,
+            facingXParameter: this._facingXParameter,
+            facingZParameter: this._facingZParameter,
+            reselectIntervalSeconds: this._reselectIntervalSeconds,
+            continuityBias: this._continuityBias,
+        };
+    }
+}
+
 export class AnimationBlend1DGraphBuilder implements AnimationMotionBuilder {
     private readonly _children: { threshold: number; motion: AnimationMotionInput }[] = [];
 
@@ -154,7 +217,8 @@ export class AnimationBlend2DGraphBuilder implements AnimationMotionBuilder {
 
     constructor(
         private readonly _parameterX: string,
-        private readonly _parameterY: string
+        private readonly _parameterY: string,
+        private readonly _mode: 'inverse-distance' | 'freeform' = 'inverse-distance'
     ) {}
 
     addChild(x: number, y: number, motion: AnimationMotionInput): this {
@@ -167,8 +231,9 @@ export class AnimationBlend2DGraphBuilder implements AnimationMotionBuilder {
             kind: 'blend2d',
             parameterX: this._parameterX,
             parameterY: this._parameterY,
+            mode: this._mode,
             children: this._children.map((child) => ({
-                position: freezeTuple2(child.x, child.y),
+                position: tuple2(child.x, child.y),
                 motion: toMotionDefinition(child.motion),
             })),
         };
@@ -255,6 +320,21 @@ export const createAnimationAdditiveBlendGraph = (
     base: AnimationMotionInput,
     additive: AnimationMotionInput
 ): AnimationAdditiveBlendGraphBuilder => new AnimationAdditiveBlendGraphBuilder(base, additive);
+
+export const createAnimationMotionMatchingMotion = (
+    database: AnimationMotionMatchDatabase,
+    trajectoryXParameter: string,
+    trajectoryZParameter: string,
+    facingXParameter: string,
+    facingZParameter: string
+): AnimationMotionMatchingMotionBuilder =>
+    new AnimationMotionMatchingMotionBuilder(
+        database,
+        trajectoryXParameter,
+        trajectoryZParameter,
+        facingXParameter,
+        facingZParameter
+    );
 
 export const buildAnimationMotionDefinition = (motion: AnimationMotionInput): AnimationMotionDefinition =>
     toMotionDefinition(motion);
@@ -348,6 +428,31 @@ const validateMotion = (
             validateMotion(motion.base, diagnostics, options, `${path}.base`);
             validateMotion(motion.additive, diagnostics, options, `${path}.additive`);
             break;
+        case 'motionMatching': {
+            const parameters: readonly [string, string][] = [
+                ['trajectoryXParameter', String(motion.trajectoryXParameter)],
+                ['trajectoryZParameter', String(motion.trajectoryZParameter)],
+                ['facingXParameter', String(motion.facingXParameter)],
+                ['facingZParameter', String(motion.facingZParameter)],
+            ];
+            for (const [field, parameter] of parameters) {
+                if (options.knownParameters && options.knownParameters.includes(parameter) === false) {
+                    pushDiagnostic(
+                        diagnostics,
+                        'animation.blendGraph.parameter.unknown',
+                        `Unknown parameter '${parameter}'`,
+                        `${path}.${field}`
+                    );
+                }
+            }
+            if (motion.reselectIntervalSeconds !== undefined && !isFiniteNumber(motion.reselectIntervalSeconds)) {
+                pushDiagnostic(diagnostics, 'animation.blendGraph.weight.invalid', 'Motion-matching reselect interval must be finite', `${path}.reselectIntervalSeconds`);
+            }
+            if (motion.continuityBias !== undefined && !isFiniteNumber(motion.continuityBias)) {
+                pushDiagnostic(diagnostics, 'animation.blendGraph.weight.invalid', 'Motion-matching continuity bias must be finite', `${path}.continuityBias`);
+            }
+            break;
+        }
         default:
             pushDiagnostic(diagnostics, 'animation.blendGraph.kind.unsupported', `Unsupported motion kind '${String((motion as AnimationBlendTreeDefinition).kind)}'`, path);
             break;
@@ -369,6 +474,7 @@ export const AnimationBlendGraph = Object.freeze({
     blend2d: createAnimationBlend2DGraph,
     direct: createAnimationDirectBlendGraph,
     additive: createAnimationAdditiveBlendGraph,
+    motionMatching: createAnimationMotionMatchingMotion,
     build: buildAnimationMotionDefinition,
     validate: validateAnimationMotionDefinition,
 });

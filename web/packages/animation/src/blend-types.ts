@@ -46,13 +46,40 @@ export type DiagnosticSeverity =
 
 export type DiagnosticCode = `animation.${DiagnosticCategory}.${DiagnosticSeverity}`;
 
-export type BlendMotionKind = 'clip' | 'blend1d' | 'blend2d' | 'direct' | 'additive';
+export type BlendMotionKind = 'clip' | 'blend1d' | 'blend2d' | 'direct' | 'additive' | 'motionMatching';
 
 export interface AnimationCompiledClipMotion {
     readonly kind: 'clip';
     readonly clip: import('./clip').AnimationClip;
     readonly timeScale: number;
     readonly cycleOffset: number;
+}
+
+/**
+ * Mutable selection state of a motion-matching leaf. The state belongs to the
+ * compiled motion, so every consumer of the graph - duration, evaluation,
+ * events, root delta - observes the same selection.
+ */
+export interface AnimationMotionMatchingSelection {
+    clipId: string | null;
+    clip: import('./clip').AnimationClip | null;
+    startTime: number;
+    duration: number;
+    lastNormalizedTime: number;
+    hasSelection: boolean;
+}
+
+export interface AnimationCompiledMotionMatchingMotion {
+    readonly kind: 'motionMatching';
+    readonly database: import('./motion-matching').AnimationMotionMatchDatabase;
+    readonly clips: ReadonlyMap<string, import('./clip').AnimationClip>;
+    readonly trajectoryXParameter: string;
+    readonly trajectoryZParameter: string;
+    readonly facingXParameter: string;
+    readonly facingZParameter: string;
+    readonly reselectIntervalSeconds: number;
+    readonly continuityBias: number;
+    readonly state: AnimationMotionMatchingSelection;
 }
 
 export interface AnimationCompiledBlend1DChild {
@@ -77,6 +104,8 @@ export interface AnimationCompiledBlend2DMotion {
     readonly parameterX: string;
     readonly parameterY: string;
     readonly children: readonly AnimationCompiledBlend2DChild[];
+    readonly mode: 'inverse-distance' | 'freeform';
+    readonly triangles: Int32Array;
 }
 
 export interface AnimationCompiledDirectChild {
@@ -103,7 +132,8 @@ export type AnimationCompiledMotion =
     | AnimationCompiledBlend1DMotion
     | AnimationCompiledBlend2DMotion
     | AnimationCompiledDirectMotion
-    | AnimationCompiledAdditiveMotion;
+    | AnimationCompiledAdditiveMotion
+    | AnimationCompiledMotionMatchingMotion;
 
 export type BlendMotionOfKind<K extends BlendMotionKind> = Extract<AnimationCompiledMotion, { kind: K }>;
 

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.11.0" orientation="orthogonal" renderorder="right-down" width="8" height="8" tilewidth="16" tileheight="16" infinite="0" name="demo">
+ <tileset firstgid="1" source="atlas.tsx"/>
+ <layer id="1" name="ground" width="8" height="8">
+  <properties>
+   <property name="collision" type="bool" value="true"/>
+  </properties>
+  <data encoding="csv">
+1,2,3,4,1,2,3,4,
+1,2,3,4,1,2,3,4,
+1,2,3,4,1,2,3,4,
+1,2,3,4,1,2,3,4,
+1,2,3,4,1,2,3,4,
+1,2,3,4,1,2,3,4,
+1,2,3,4,1,2,3,4,
+1,2,3,4,1,2,3,4
+  </data>
+ </layer>
+ <imagelayer id="2" name="decoration">
+  <image source="decoration.png" width="128" height="128"/>
+ </imagelayer>
+ <objectgroup id="3" name="collision">
+  <object id="1" name="wall" type="wall" x="16" y="16" width="32" height="16"/>
+ </objectgroup>
+</map>

@@ -33,6 +33,7 @@ import { Component } from '@axrone/ecs-runtime';
 import { script } from '@axrone/ecs-runtime';
 import { MeshRenderer } from './mesh-renderer';
 import { PrefabNodeBinding } from '@axrone/scene-prefab';
+import { resolveAnimationClipAssets } from '../scene-animation-clip-assets';
 
 export interface AnimatorTrackConfig {
     readonly targetNodeId?: string;
@@ -58,6 +59,7 @@ export interface AnimatorClipConfig {
     readonly streaming?: AnimationClipStreamingDefinition;
 }
 
+export type AnimatorRootMotionConsumer = (delta: AnimationRootMotionDelta) => void;
 export type AnimatorUpdateMode = 'Normal' | 'Animate Physics' | 'Unscaled Time';
 export type AnimatorCullingMode = 'Always Animate' | 'Cull Update Transforms' | 'Cull Completely';
 
@@ -85,6 +87,12 @@ const normalizeAnimatorCullingMode = (value: unknown): AnimatorCullingMode =>
 
 export interface AnimatorConfig {
     readonly clips?: readonly AnimatorClipConfig[];
+    /**
+     * Addressable clip asset ids resolved through the clip asset library. A
+     * document stores these instead of embedding keyframes, so scene size stays
+     * flat when many prefabs share one clip set.
+     */
+    readonly clipAssetIds?: readonly string[];
     readonly parameters?: readonly AnimationParameterDefinition[];
     readonly layers?: readonly AnimationLayerDefinition[];
     readonly rootMotion?: AnimationRootMotionDefinition | null;
@@ -95,6 +103,18 @@ export interface AnimatorConfig {
     readonly speed?: number;
     readonly time?: number;
     readonly applyRootMotion?: boolean;
+    readonly rootMotionConsumer?: AnimatorRootMotionConsumer;
+    /**
+     * Opt-in render-phase interpolation. Enable it when the host ticks animation
+     * on a fixed step; the render phase then blends the previous and current poses.
+     */
+    readonly interpolateOnRender?: boolean;
+    /**
+     * Ordered joint ids of the skin this animator drives. When present the rig is
+     * built from this list instead of the scene node scan, so joint order and
+     * rest pose match the skin.
+     */
+    readonly skinJointNodeIds?: readonly string[];
     readonly updateMode?: AnimatorUpdateMode;
     readonly cullingMode?: AnimatorCullingMode;
 }
@@ -165,6 +185,8 @@ const normalizeClipDefinitions = (
 })
 export class Animator extends Component {
     private _clipDefinitions: readonly AnimationClipDefinition[] = Object.freeze([]);
+    private _inlineClipDefinitions: readonly AnimationClipDefinition[] = Object.freeze([]);
+    private _clipAssetIds: readonly string[] = Object.freeze([]);
     private _parameterDefinitions: readonly AnimationParameterDefinition[] = Object.freeze([]);
     private _layerDefinitions: readonly AnimationLayerDefinition[] | null = null;
     private _rootMotion: AnimationRootMotionDefinition | null = null;
@@ -182,12 +204,16 @@ export class Animator extends Component {
     private _speed: number;
     private _time: number;
     private _applyRootMotionEnabled: boolean;
+    private _rootMotionConsumer: AnimatorRootMotionConsumer | null = null;
+    private _interpolateOnRender: boolean = false;
+    private _skinJointNodeIds: readonly string[] = [];
     private _updateMode: AnimatorUpdateMode;
     private _cullingMode: AnimatorCullingMode;
     private readonly _tempVec3 = new Vec3();
     private readonly _tempQuat = new Quat();
     private _stepAnimationWarned = false;
     private _cullingModeWarned = false;
+    private _rebuildWarned = false;
 
     constructor(config: AnimatorConfig = {}) {
         super();
@@ -197,6 +223,9 @@ export class Animator extends Component {
         this._speed = Number.isFinite(config.speed ?? 1) ? config.speed ?? 1 : 1;
         this._time = Number.isFinite(config.time ?? 0) ? Math.max(0, config.time ?? 0) : 0;
         this._applyRootMotionEnabled = config.applyRootMotion ?? true;
+        this._rootMotionConsumer = config.rootMotionConsumer ?? null;
+        this._interpolateOnRender = config.interpolateOnRender ?? false;
+        this._skinJointNodeIds = Object.freeze([...(config.skinJointNodeIds ?? [])]);
         this._updateMode = normalizeAnimatorUpdateMode(config.updateMode);
         this._cullingMode = normalizeAnimatorCullingMode(config.cullingMode);
         this._applyConfig(config);
@@ -245,6 +274,7 @@ export class Animator extends Component {
             this._loop = value;
             if (this._layerDefinitions === null) {
                 this._controllerDirty = true;
+                this._rebuildWarned = false;
             }
         }
     }
@@ -283,10 +313,28 @@ export class Animator extends Component {
         }
         this._applyRootMotionEnabled = value;
         this._controllerDirty = true;
+        this._rebuildWarned = false;
         this._controller = null;
         this._streamingScheduler = null;
         this._streamingSnapshot = null;
         this._pendingStreamingRequests = Object.freeze([]);
+    }
+
+    get rootMotionConsumer(): AnimatorRootMotionConsumer | null {
+        return this._rootMotionConsumer;
+    }
+
+    /** Whether the render phase blends the previous and current animation poses. */
+    get interpolateOnRender(): boolean {
+        return this._interpolateOnRender;
+    }
+
+    set interpolateOnRender(value: boolean) {
+        this._interpolateOnRender = value;
+    }
+
+    set rootMotionConsumer(value: AnimatorRootMotionConsumer | null) {
+        this._rootMotionConsumer = value;
     }
 
     get updateMode(): AnimatorUpdateMode {
@@ -564,7 +612,7 @@ export class Animator extends Component {
 
     override serialize(): Record<string, unknown> {
         return {
-            clips: this._clipDefinitions.map((clip) => ({
+            clips: this._inlineClipDefinitions.map((clip) => ({
                 id: clip.id,
                 duration: clip.duration,
                 ...(clip.events ? { events: cloneSerializable(clip.events) } : {}),
@@ -584,6 +632,7 @@ export class Animator extends Component {
                     values: cloneSerializable(track.values),
                 })),
             })),
+            ...(this._clipAssetIds.length > 0 ? { clipAssetIds: [...this._clipAssetIds] } : {}),
             parameters: cloneSerializable(this._parameterDefinitions),
             layers: this._layerDefinitions ? cloneSerializable(this._layerDefinitions) : null,
             rootMotion: this._rootMotion ? cloneSerializable(this._rootMotion) : null,
@@ -594,6 +643,8 @@ export class Animator extends Component {
             speed: this._speed,
             time: this._time,
             applyRootMotion: this._applyRootMotionEnabled,
+            interpolateOnRender: this._interpolateOnRender,
+            skinJointNodeIds: this._skinJointNodeIds,
             updateMode: this._updateMode,
             cullingMode: this._cullingMode,
         };
@@ -608,6 +659,8 @@ export class Animator extends Component {
             speed: this._speed,
             time: this._time,
             applyRootMotion: this._applyRootMotionEnabled,
+            interpolateOnRender: this._interpolateOnRender,
+            skinJointNodeIds: this._skinJointNodeIds,
             updateMode: this._updateMode,
             cullingMode: this._cullingMode,
             profile: controller?.profile ?? null,
@@ -621,6 +674,9 @@ export class Animator extends Component {
     override deserialize(data: Record<string, any>): void {
         this._applyConfig({
             clips: Array.isArray(data.clips) ? data.clips : [],
+            clipAssetIds: Array.isArray(data.clipAssetIds)
+                ? data.clipAssetIds.filter((id: unknown): id is string => typeof id === 'string')
+                : undefined,
             parameters: Array.isArray(data.parameters) ? data.parameters : [],
             layers: Array.isArray(data.layers) ? data.layers : undefined,
             rootMotion: isRecord(data.rootMotion) && typeof data.rootMotion.bone === 'string'
@@ -635,6 +691,11 @@ export class Animator extends Component {
             speed: typeof data.speed === 'number' ? data.speed : undefined,
             time: typeof data.time === 'number' ? data.time : undefined,
             applyRootMotion: typeof data.applyRootMotion === 'boolean' ? data.applyRootMotion : undefined,
+            interpolateOnRender:
+                typeof data.interpolateOnRender === 'boolean' ? data.interpolateOnRender : undefined,
+            skinJointNodeIds: Array.isArray(data.skinJointNodeIds)
+                ? data.skinJointNodeIds.filter((id: unknown): id is string => typeof id === 'string')
+                : undefined,
             updateMode: typeof data.updateMode === 'string' ? normalizeAnimatorUpdateMode(data.updateMode) : undefined,
             cullingMode:
                 typeof data.cullingMode === 'string'
@@ -644,7 +705,16 @@ export class Animator extends Component {
     }
 
     private _applyConfig(config: AnimatorConfig): void {
-        this._clipDefinitions = normalizeClipDefinitions(config.clips);
+        this._inlineClipDefinitions = normalizeClipDefinitions(config.clips);
+        this._clipAssetIds = Object.freeze(
+            (config.clipAssetIds ?? []).filter(
+                (id): id is string => typeof id === 'string' && id.length > 0
+            )
+        );
+        this._clipDefinitions = Object.freeze([
+            ...this._inlineClipDefinitions,
+            ...normalizeClipDefinitions(resolveAnimationClipAssets(this._clipAssetIds)),
+        ]);
         this._parameterDefinitions = Object.freeze(
             (config.parameters ?? []).filter(
                 (entry): entry is AnimationParameterDefinition =>
@@ -661,6 +731,9 @@ export class Animator extends Component {
         this._speed = Number.isFinite(config.speed ?? this._speed) ? config.speed ?? this._speed : 1;
         this._time = Number.isFinite(config.time ?? this._time) ? Math.max(0, config.time ?? this._time) : 0;
         this._applyRootMotionEnabled = config.applyRootMotion ?? this._applyRootMotionEnabled;
+        if (config.rootMotionConsumer !== undefined) {
+            this._rootMotionConsumer = config.rootMotionConsumer;
+        }
         this._updateMode =
             config.updateMode !== undefined
                 ? normalizeAnimatorUpdateMode(config.updateMode)
@@ -681,6 +754,7 @@ export class Animator extends Component {
         }
         this._controllerDirty = true;
         this._controller = null;
+        this._rebuildWarned = false;
         this._streamingScheduler = null;
         this._streamingSnapshot = null;
         this._pendingStreamingRequests = Object.freeze([]);
@@ -696,20 +770,23 @@ export class Animator extends Component {
 
         this._rebuildTargetMap(instanceId);
         if (this._clipDefinitions.length === 0 || this._resolvedTargets.size === 0) {
-            console.warn(
-                `[Animator] _ensureController: Cannot build AnimationController. ` +
-                `clipDefinitions=${this._clipDefinitions.length}, resolvedTargets=${this._resolvedTargets.size}. ` +
-                `instanceId=${instanceId ?? 'null'}. ` +
-                `Animation will NOT play.`,
-            );
-            if (this._clipDefinitions.length > 0 && this._resolvedTargets.size === 0) {
-                const requiredNodeIds = this._getRequiredTargetNodeIds();
+            if (!this._rebuildWarned) {
+                this._rebuildWarned = true;
                 console.warn(
-                    `[Animator] _ensureController: Clips reference ${requiredNodeIds.length} target node(s) ` +
-                    `[${requiredNodeIds.slice(0, 10).join(', ')}${requiredNodeIds.length > 10 ? '...' : ''}] ` +
-                    `but no PrefabNodeBinding matches were found in the actor hierarchy. ` +
-                    `Verify that imported GLB bone nodes exist as scene entities with correct PrefabNodeBinding.nodeId.`,
+                    `[Animator] _ensureController: Cannot build AnimationController. ` +
+                    `clipDefinitions=${this._clipDefinitions.length}, resolvedTargets=${this._resolvedTargets.size}. ` +
+                    `instanceId=${instanceId ?? 'null'}. ` +
+                    `Animation will NOT play. (This warning will not repeat.)`,
                 );
+                if (this._clipDefinitions.length > 0 && this._resolvedTargets.size === 0) {
+                    const requiredNodeIds = this._getRequiredTargetNodeIds();
+                    console.warn(
+                        `[Animator] _ensureController: Clips reference ${requiredNodeIds.length} target node(s) ` +
+                        `[${requiredNodeIds.slice(0, 10).join(', ')}${requiredNodeIds.length > 10 ? '...' : ''}] ` +
+                        `but no PrefabNodeBinding matches were found in the actor hierarchy. ` +
+                        `Verify that imported GLB bone nodes exist as scene entities with correct PrefabNodeBinding.nodeId.`,
+                    );
+                }
             }
             this._controller = null;
             this._controllerDirty = this._clipDefinitions.length > 0;
@@ -724,40 +801,51 @@ export class Animator extends Component {
             const missingTargets = this._getRequiredRigTargetNodeIds().filter(
                 (id) => !this._resolvedTargets.has(id)
             );
-            const availableTargets = [...this._resolvedTargets.keys()].slice(0, 15).join(', ');
-            console.warn(
-                `[Animator] _ensureController: ${missingTargets.length} required rig target(s) not resolved: ` +
-                `[${missingTargets.slice(0, 10).join(', ')}${missingTargets.length > 10 ? '...' : ''}]. ` +
-                `Available targets: [${availableTargets}${this._resolvedTargets.size > 15 ? '...' : ''}]. ` +
-                `Controller will NOT be created.`,
-            );
+            if (!this._rebuildWarned) {
+                this._rebuildWarned = true;
+                const availableTargets = [...this._resolvedTargets.keys()].slice(0, 15).join(', ');
+                console.warn(
+                    `[Animator] _ensureController: ${missingTargets.length} required rig target(s) not resolved: ` +
+                    `[${missingTargets.slice(0, 10).join(', ')}${missingTargets.length > 10 ? '...' : ''}]. ` +
+                    `Available targets: [${availableTargets}${this._resolvedTargets.size > 15 ? '...' : ''}]. ` +
+                    `Controller will NOT be created. (This warning will not repeat.)`,
+                );
+            }
             this._controller = null;
             this._controllerDirty = true;
             return null;
         }
 
-        const bones = [...this._resolvedTargets.entries()]
-            .filter(([, target]) => Boolean(target.transform))
-            .map(([nodeId, target]) => ({
-                name: nodeId,
-                parent: target.parentNodeId ?? null,
-                translation: [
-                    target.transform!.position.x,
-                    target.transform!.position.y,
-                    target.transform!.position.z,
-                ] as const,
-                rotation: [
-                    target.transform!.rotation.x,
-                    target.transform!.rotation.y,
-                    target.transform!.rotation.z,
-                    target.transform!.rotation.w,
-                ] as const,
-                scale: [
-                    target.transform!.scale.x,
-                    target.transform!.scale.y,
-                    target.transform!.scale.z,
-                ] as const,
-            }));
+        const boneEntries =
+            this._skinJointNodeIds.length > 0
+                ? this._skinJointNodeIds.flatMap((nodeId) => {
+                      const target = this._resolvedTargets.get(nodeId);
+                      return target?.transform ? ([[nodeId, target]] as const) : [];
+                  })
+                : [...this._resolvedTargets.entries()].filter(([, target]) =>
+                      Boolean(target.transform)
+                  );
+
+        const bones = boneEntries.map(([nodeId, target]) => ({
+            name: nodeId,
+            parent: target.parentNodeId ?? null,
+            translation: [
+                target.transform!.position.x,
+                target.transform!.position.y,
+                target.transform!.position.z,
+            ] as const,
+            rotation: [
+                target.transform!.rotation.x,
+                target.transform!.rotation.y,
+                target.transform!.rotation.z,
+                target.transform!.rotation.w,
+            ] as const,
+            scale: [
+                target.transform!.scale.x,
+                target.transform!.scale.y,
+                target.transform!.scale.z,
+            ] as const,
+        }));
 
         if (bones.length === 0) {
             this._controller = null;
@@ -789,6 +877,7 @@ export class Animator extends Component {
         this._streamingSnapshot = null;
         this._pendingStreamingRequests = Object.freeze([]);
         this._controllerDirty = false;
+        this._rebuildWarned = false;
         const streaming = this._syncStreamingState(this._controller);
         if (!this._isStreamingBlocked(streaming)) {
             this._applyFrame(this._controller.currentFrame);
@@ -895,6 +984,11 @@ export class Animator extends Component {
                     this._motionContainsClip(motion.base, clipId) ||
                     this._motionContainsClip(motion.additive, clipId)
                 );
+            case 'motionMatching':
+                // The database selects a clip at runtime; no static reference.
+                return false;
+            default:
+                return false;
         }
     }
 
@@ -1250,6 +1344,37 @@ export class Animator extends Component {
         }
     }
 
+    /**
+     * Applies the pose interpolated between the previous and the current fixed
+     * step. The render phase calls this with the frame alpha so a fixed-step
+     * simulation does not judder on a faster display.
+     */
+    applyInterpolatedPose(alpha: number): void {
+        const controller = this._ensureController();
+        if (!controller) {
+            return;
+        }
+        this._applyFrame(controller.sampleInterpolatedPose(alpha));
+    }
+
+    /** Controller the animator drives, if one could be built. */
+    get controller(): AnimationController | null {
+        return this._ensureController();
+    }
+
+    /**
+     * Writes the current animation pose to the scene transforms again. A
+     * physics pose source calls this after blending its world pose into the
+     * controller frame.
+     */
+    applyCurrentPose(): void {
+        const controller = this._ensureController();
+        if (!controller) {
+            return;
+        }
+        this._applyFrame(controller.currentFrame);
+    }
+
     private _applyFrame(frame: AnimationFrame): void {
         const controller = this._controller;
         if (!controller) {
@@ -1291,6 +1416,10 @@ export class Animator extends Component {
     }
 
     private _applyRootMotion(rootMotion: AnimationRootMotionDelta): void {
+        if (this._rootMotionConsumer) {
+            this._rootMotionConsumer(rootMotion);
+            return;
+        }
         const transform = this.transform as Transform | undefined;
         if (!transform) {
             return;

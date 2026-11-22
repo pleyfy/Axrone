@@ -6,6 +6,12 @@ import {
 } from '../../../../tests/shared/test-harness';
 import type { MockGLContext } from '../../../../tests/shared/test-harness';
 import type { SceneSnapshot } from '@axrone/scene-3d';
+import {
+    hasMemoryApi,
+    linearSlope,
+    readHeapBytes,
+    runFrames,
+} from './perf-test-utils';
 
 // ─── Dynamic imports ────────────────────────────────────────────────────────
 
@@ -123,55 +129,6 @@ function buildTexturedSnapshot(textureCount = 2, overrides?: Partial<SceneSnapsh
 
 function getGl(scene: InstanceType<typeof Scene>): MockGLContext {
     return scene.gl as unknown as MockGLContext;
-}
-
-/**
- * Read heap usage from the best available source.
- * Returns null when no memory API is reachable (e.g. some CI envs).
- */
-function readHeapBytes(): number | null {
-    const perfMemory = (performance as unknown as Record<string, unknown>).memory as
-        | Record<string, number>
-        | undefined;
-    if (perfMemory && typeof perfMemory.usedJSHeapSize === 'number') {
-        return perfMemory.usedJSHeapSize;
-    }
-    if (typeof process !== 'undefined' && typeof process.memoryUsage === 'function') {
-        return process.memoryUsage().heapUsed;
-    }
-    return null;
-}
-
-function runFrames(scheduler: ManualScheduler, count: number, startMs = 0, stepMs = 16): void {
-    for (let i = 0; i < count; i++) {
-        scheduler.flush(startMs + i * stepMs);
-    }
-}
-
-function hasMemoryApi(): boolean {
-    return readHeapBytes() !== null;
-}
-
-/**
- * Compute the linear regression slope of an array of numbers.
- * Returns bytes-per-index growth rate.
- */
-function linearSlope(samples: number[]): number {
-    const n = samples.length;
-    if (n < 2) return 0;
-    let sumX = 0;
-    let sumY = 0;
-    let sumXY = 0;
-    let sumXX = 0;
-    for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += samples[i]!;
-        sumXY += i * samples[i]!;
-        sumXX += i * i;
-    }
-    const denom = n * sumXX - sumX * sumX;
-    if (denom === 0) return 0;
-    return (n * sumXY - sumX * sumY) / denom;
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -534,8 +491,8 @@ describe('T-13: WebGL Resource Leak Detection', () => {
             }
 
             const slope = linearSlope(samples);
-            // Node.js V8 heap naturally expands; allow up to 5 MB per sample-step
-            expect(slope).toBeLessThan(5_000_000);
+            // Node.js V8 heap naturally expands; allow up to 500 KB per sample-step
+            expect(slope).toBeLessThan(500_000);
 
             scene.dispose();
         });
@@ -566,7 +523,7 @@ describe('T-13: WebGL Resource Leak Detection', () => {
             }
 
             const slope = linearSlope(samples);
-            expect(slope).toBeLessThan(5_000_000);
+            expect(slope).toBeLessThan(500_000);
         });
     });
 

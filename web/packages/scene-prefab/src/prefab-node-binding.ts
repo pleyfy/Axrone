@@ -41,6 +41,7 @@ export class PrefabNodeBinding extends Component {
     override serialize(): Record<string, unknown> {
         return {
             nodeId: this._nodeId,
+            instanceId: this._instanceId,
         };
     }
 

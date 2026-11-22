@@ -8,15 +8,28 @@ import type {
     AnimationRigId,
     AnimationStateId,
 } from './brands';
+import type { AnimationMotionMatchDatabase } from './motion-matching';
 
 export type AnimationTrackPath = 'translation' | 'rotation' | 'scale' | 'weights';
 export type AnimationInterpolation = 'LINEAR' | 'STEP' | 'CUBICSPLINE';
 export type AnimationLayerBlendMode = 'override' | 'additive';
 export type AnimationTransitionOperator = '<' | '<=' | '>' | '>=' | '==' | '!=';
 export type AnimationParameterKind = 'float' | 'int' | 'bool' | 'trigger';
-export type AnimationIkSolver = 'fabrik' | 'ccd';
+export type AnimationIkSolver = 'fabrik' | 'ccd' | 'twoBone' | 'aim';
+export type AnimationTransitionEasing = 'linear' | 'smoothStep' | 'easeIn' | 'easeOut' | 'easeInOut';
+export type AnimationConditionMatch = 'all' | 'any';
+export type AnimationInterruptMode = 'blocked' | 'open' | 'priorityGated';
+export type AnimationInterruptHandoff = 'auto' | 'source' | 'target';
 export type AnimationRetargetTranslationMode = 'none' | 'absolute' | 'scaled';
 export type AnimationRetargetRotationMode = 'copy' | 'offset';
+export type AnimationStateBehaviourPhase = 'enter' | 'update' | 'exit';
+/**
+ * How a layer that declares `syncSourceLayerId` tracks its source.
+ * `stateAndTime` mirrors the source outright, `stateOnly` adopts just the state
+ * so the layer keeps its own clock, `timeOnly` keeps its own state and borrows
+ * the source clock.
+ */
+export type AnimationLayerSyncMode = 'stateAndTime' | 'stateOnly' | 'timeOnly';
 
 export type AnimationVector2Tuple = readonly [number, number];
 export type AnimationVector3Tuple = readonly [number, number, number];
@@ -200,6 +213,27 @@ export interface AnimationMotionClipDefinition {
     readonly cycleOffset?: number;
 }
 
+/**
+ * Motion-matching leaf: the runtime searches a pose database for the sample
+ * that best matches the query parameters, then samples the owning clip.
+ */
+export interface AnimationMotionMatchingDefinition {
+    readonly kind: 'motionMatching';
+    readonly database: AnimationMotionMatchDatabase;
+    /** Parameter holding the world-space trajectory X of the actor. */
+    readonly trajectoryXParameter: AnimationParameterId | string;
+    /** Parameter holding the world-space trajectory Z of the actor. */
+    readonly trajectoryZParameter: AnimationParameterId | string;
+    /** Parameter holding the world-space facing X of the actor. */
+    readonly facingXParameter: AnimationParameterId | string;
+    /** Parameter holding the world-space facing Z of the actor. */
+    readonly facingZParameter: AnimationParameterId | string;
+    /** Minimum seconds between two searches. */
+    readonly reselectIntervalSeconds?: number;
+    /** Score bonus for staying on the currently selected clip. */
+    readonly continuityBias?: number;
+}
+
 export interface AnimationBlendTreeChild1D {
     readonly threshold: number;
     readonly motion: AnimationMotionDefinition;
@@ -226,6 +260,7 @@ export interface AnimationBlendTree2DDefinition {
     readonly kind: 'blend2d';
     readonly parameterX: AnimationParameterId | string;
     readonly parameterY: AnimationParameterId | string;
+    readonly mode?: 'inverse-distance' | 'freeform';
     readonly children: readonly AnimationBlendTreeChild2D[];
 }
 
@@ -250,6 +285,7 @@ export type AnimationBlendTreeDefinition =
 
 export type AnimationMotionDefinition =
     | AnimationMotionClipDefinition
+    | AnimationMotionMatchingDefinition
     | AnimationBlendTreeDefinition;
 
 export type AnimationConditionDefinition =
@@ -276,16 +312,66 @@ export interface AnimationTransitionDefinition {
     readonly exitTime?: number;
     readonly fixedDuration?: boolean;
     readonly canInterrupt?: boolean;
+    /** When the crossfade this transition started may be superseded. Wins over `canInterrupt`. */
+    readonly interruptMode?: AnimationInterruptMode;
+    /** Which side of a superseded crossfade becomes the next blend's source. */
+    readonly interruptHandoff?: AnimationInterruptHandoff;
     readonly priority?: number;
+    readonly easing?: AnimationTransitionEasing;
+    /** How multiple conditions combine: every condition, or at least one. Defaults to 'all'. */
+    readonly conditionMatch?: AnimationConditionMatch;
     readonly conditions?: readonly AnimationConditionDefinition[];
+}
+
+/**
+ * Declarative work a state performs on itself. Actions are a closed set of
+ * engine operations; there is no callback, script reference or code execution.
+ */
+export type AnimationStateBehaviourActionDefinition =
+    | {
+          readonly kind: 'writeParameter';
+          readonly parameter: AnimationParameterId | string;
+          readonly value: number | boolean;
+      }
+    | {
+          readonly kind: 'pulseTrigger';
+          readonly parameter: AnimationParameterId | string;
+      }
+    | {
+          readonly kind: 'emitSignal';
+          readonly signal: string;
+          readonly payload?: Readonly<Record<string, unknown>> | null;
+      };
+
+export interface AnimationStateBehaviourDefinition {
+    readonly id?: string;
+    /** Which point of the state's lifetime this behaviour is dispatched at. */
+    readonly phase: AnimationStateBehaviourPhase;
+    readonly actions: readonly AnimationStateBehaviourActionDefinition[];
+    readonly conditions?: readonly AnimationConditionDefinition[];
+    /** How multiple conditions combine. Defaults to 'all'. */
+    readonly conditionMatch?: AnimationConditionMatch;
+    /** `phase: 'update'` only: minimum seconds between two dispatches. Defaults to 0. */
+    readonly intervalSeconds?: number;
 }
 
 export interface AnimationStateDefinition {
     readonly id: AnimationStateId | string;
-    readonly motion: AnimationMotionDefinition;
+    /**
+     * A state either plays a motion or refines its lifetime with a
+     * `childMachine`. Exactly one of the two is required.
+     */
+    readonly motion?: AnimationMotionDefinition;
+    /**
+     * A machine owned by this state. While any of its states is active, this
+     * state stays active too, so its transitions and behaviours bracket the
+     * whole group instead of a single clip.
+     */
+    readonly childMachine?: AnimationStateMachineDefinition;
     readonly speed?: number;
     readonly loop?: boolean;
     readonly transitions?: readonly AnimationTransitionDefinition[];
+    readonly behaviours?: readonly AnimationStateBehaviourDefinition[];
 }
 
 export interface AnimationStateMachineDefinition {
@@ -306,6 +392,20 @@ export interface AnimationIkJobDefinition {
     readonly maxIterations?: number;
     readonly weight?: number;
     readonly preserveTipRotation?: boolean;
+    /** World-space point the two-bone mid joint bends toward. */
+    readonly polePosition?: AnimationVector3Tuple;
+    /** Bone whose world position selects the two-bone bend plane. */
+    readonly poleBone?: string;
+    /** Minimum interior angle at the two-bone root, in degrees. */
+    readonly minBendDegrees?: number;
+    /** Maximum interior angle at the two-bone root, in degrees. */
+    readonly maxBendDegrees?: number;
+    /** Twist around the root-to-target axis, in degrees. */
+    readonly twistDegrees?: number;
+    /** World up used by the aim solver to remove roll. */
+    readonly aimUp?: AnimationVector3Tuple;
+    /** Maximum turn of the aim solver, in degrees. */
+    readonly maxAimAngleDegrees?: number;
 }
 
 export interface AnimationIkLayerDefinition {
@@ -319,6 +419,11 @@ export interface AnimationLayerDefinition {
     readonly weight?: number;
     readonly mode?: AnimationLayerBlendMode;
     readonly boneMask?: readonly string[];
+    readonly syncSourceLayerId?: AnimationLayerId | string;
+    /** Defaults to `stateAndTime` when `syncSourceLayerId` is present. */
+    readonly syncMode?: AnimationLayerSyncMode;
+    /** Normalized fraction added to the borrowed source clock. Defaults to 0. */
+    readonly syncTimeOffset?: number;
     readonly stateMachine: AnimationStateMachineDefinition;
     readonly ikLayers?: readonly AnimationIkLayerDefinition[];
 }
@@ -363,6 +468,16 @@ export interface AnimationControllerEvent extends AnimationClipEventOccurrence {
     readonly stateId: string;
     readonly layerWeight: number;
     readonly motionWeight: number;
+}
+
+export interface AnimationStateSignal {
+    readonly layerId: string;
+    readonly stateId: string;
+    readonly behaviourId: string;
+    readonly phase: AnimationStateBehaviourPhase;
+    readonly signal: string;
+    readonly payload: Readonly<Record<string, unknown>> | null;
+    readonly normalizedTime: number;
 }
 
 export interface AnimationControllerClipActivity {

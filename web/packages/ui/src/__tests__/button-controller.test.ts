@@ -336,8 +336,125 @@ describe('button-feedback controller — sprite mode', () => {
 		expect(sourceId(widget)).toBe('btn_default.png');
 	});
 
-	it('supports material sources in sprite entries', () => {
+	it('draws the sprite as the button surface (fill suppressed, image bled)', () => {
 		const runtime = createRuntime({
+			controller: BUTTON_FEEDBACK_CONTROLLER_TYPE,
+			style: { background: '#0a74daff', borderColor: '#ffffffff', borderWidth: 2 },
+			image: {
+				source: { kind: 'texture', resourceId: 'btn_normal.png', width: 120, height: 40 },
+			},
+			props: {
+				transition: 'sprite',
+				sprites: {
+					normal: { kind: 'texture', resourceId: 'btn_normal.png', width: 120, height: 40 },
+				},
+			},
+		});
+		const widget = buttonWidget(runtime);
+
+		const style = getStyleInput(runtime, widget);
+		expect(style.background).toBe('#00000000');
+		expect(style.borderColor).toBe('#00000000');
+		expect(style.borderWidth).toBe(0);
+		expect(getImageInput(runtime, widget)?.bleed).toBe(true);
+	});
+
+	it('restores the authored fill when leaving sprite mode', () => {
+		const runtime = createRuntime({
+			controller: BUTTON_FEEDBACK_CONTROLLER_TYPE,
+			style: { background: '#0a74daff', borderColor: '#ffffffff', borderWidth: 2 },
+			image: {
+				source: { kind: 'texture', resourceId: 'btn_normal.png', width: 120, height: 40 },
+			},
+			props: {
+				transition: 'sprite',
+				sprites: {
+					normal: { kind: 'texture', resourceId: 'btn_normal.png', width: 120, height: 40 },
+				},
+			},
+		});
+		const widget = buttonWidget(runtime);
+
+		runtime.updateWidget(widget, { props: { transition: 'none' } });
+		runtime.commit();
+
+		const style = getStyleInput(runtime, widget);
+		expect(style.background).toBe('#0a74daff');
+		expect(style.borderColor).toBe('#ffffffff');
+		expect(style.borderWidth).toBe(2);
+		expect(getImageInput(runtime, widget)?.bleed).toBe(false);
+	});
+
+	it('ends the sprite surface when the authored image is removed', () => {
+		const runtime = createRuntime({
+			controller: BUTTON_FEEDBACK_CONTROLLER_TYPE,
+			style: { background: '#0a74daff' },
+			image: {
+				source: { kind: 'texture', resourceId: 'btn_normal.png', width: 120, height: 40 },
+			},
+			props: {
+				transition: 'sprite',
+				sprites: {
+					normal: { kind: 'texture', resourceId: 'btn_normal.png', width: 120, height: 40 },
+				},
+			},
+		});
+		const widget = buttonWidget(runtime);
+		expect(getStyleInput(runtime, widget).background).toBe('#00000000');
+
+		runtime.updateWidget(widget, { image: null });
+		runtime.commit();
+
+		expect(getStyleInput(runtime, widget).background).toBe('#0a74daff');
+
+		// A later pointer interaction must not resurrect the deleted image.
+		hoverSequence(runtime);
+		runtime.commit();
+		expect(getImageInput(runtime, widget)).toBeNull();
+	});
+
+	it('keeps the authored fill when sprite mode has no usable source', () => {
+		const runtime = createRuntime({
+			controller: BUTTON_FEEDBACK_CONTROLLER_TYPE,
+			style: { background: '#0a74daff' },
+			props: { transition: 'sprite' },
+		});
+		const widget = buttonWidget(runtime);
+
+		expect(getStyleInput(runtime, widget).background).toBe('#0a74daff');
+		expect(getImageInput(runtime, widget)).toBeNull();
+	});
+
+	it('restores the authored fill, not a transient state color, after sprite mode', () => {
+		const runtime = createRuntime({
+			controller: BUTTON_FEEDBACK_CONTROLLER_TYPE,
+			style: { background: '#0a74daff' },
+			image: {
+				source: { kind: 'texture', resourceId: 'btn_normal.png', width: 120, height: 40 },
+			},
+			props: {
+				states: { normal: '#0a74daff', hover: '#1b85ebff' },
+				sprites: {
+					normal: { kind: 'texture', resourceId: 'btn_normal.png', width: 120, height: 40 },
+				},
+			},
+		});
+		const widget = buttonWidget(runtime);
+
+		// Color mode writes the hover color into the widget style.
+		hoverSequence(runtime);
+		runtime.commit();
+		expect(getStyleInput(runtime, widget).background).toBe('#1b85ebff');
+
+		runtime.updateWidget(widget, { props: { transition: 'sprite' } });
+		runtime.commit();
+		runtime.updateWidget(widget, { props: { transition: 'none' } });
+		runtime.commit();
+
+		expect(getStyleInput(runtime, widget).background).toBe('#0a74daff');
+	});
+
+	it('supports material sources in sprite entries', () => {		const runtime = createRuntime({
 			controller: BUTTON_FEEDBACK_CONTROLLER_TYPE,
 			image: {
 				source: { kind: 'texture', resourceId: 'btn.png', width: 120, height: 40 },

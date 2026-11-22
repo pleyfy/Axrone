@@ -34,7 +34,9 @@ export const buildTerrainMesh = (
     const positions = new Float32Array(vertexCount * 3);
     const normals = new Float32Array(vertexCount * 3);
     const uvs = new Float32Array(vertexCount * 2);
-    const indices = new Uint32Array(triangleCount * 3);
+    const indices: Uint16Array | Uint32Array = vertexCount <= 65536
+        ? new Uint16Array(triangleCount * 3)
+        : new Uint32Array(triangleCount * 3);
 
     const stepX = width / (resolution - 1);
     const stepZ = length / (resolution - 1);

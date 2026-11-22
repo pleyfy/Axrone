@@ -21,6 +21,16 @@ export interface WorldCreatedEntity<
     readonly createdArchetype: boolean;
 }
 
+/** Mutable form of {@link WorldArchetypeResolution} for allocation-free reuse. */
+export interface MutableWorldArchetypeResolution<
+    R extends StorageComponentRegistry,
+    TEntity extends number = number,
+    TArchetypeId extends string = string,
+> {
+    archetype: Archetype<R, TEntity, TArchetypeId> | null;
+    created: boolean;
+}
+
 export interface WorldStorageDebugInfo<
     R extends StorageComponentRegistry,
     TEntity extends number = number,
@@ -77,6 +87,20 @@ export class WorldStorageRuntime<
         return entity;
     }
 
+    /**
+     * Appends one entity to an already resolved archetype. Used by bulk
+     * creation, which resolves the shared archetype once for a whole batch.
+     */
+    createEntityInArchetype(
+        archetype: Archetype<R, TEntity, TArchetypeId>,
+        components: Record<string, any>
+    ): TEntity {
+        const { entity } = this._entityStore.createEntity();
+        archetype.addEntity(entity, components);
+        this._entityStore.setEntityArchetype(entity, archetype.id);
+        return entity;
+    }
+
     createEntityWithComponents(
         components: Record<string, any>
     ): WorldCreatedEntity<TEntity, TArchetypeId> {
@@ -127,6 +151,23 @@ export class WorldStorageRuntime<
         componentName: string
     ): WorldArchetypeResolution<R, TEntity, TArchetypeId> {
         return this._archetypeStore.resolveAddComponentArchetype(currentArchetype, componentName);
+    }
+
+    /**
+     * @internal Scratch-target variant of {@link resolveAddComponentArchetype}
+     * for the add-component hot path: writes into a caller-owned object so a
+     * per-mutation resolution never allocates.
+     */
+    resolveAddComponentArchetypeInto(
+        currentArchetype: Archetype<R, TEntity, TArchetypeId>,
+        componentName: string,
+        out: MutableWorldArchetypeResolution<R, TEntity, TArchetypeId>
+    ): void {
+        this._archetypeStore.resolveAddComponentArchetypeInto(
+            currentArchetype,
+            componentName,
+            out
+        );
     }
 
     resolveRemoveComponentArchetype(

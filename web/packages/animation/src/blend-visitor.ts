@@ -22,6 +22,8 @@ export const dispatchMotion = <TContext, TResult>(
             return visitor.visitDirect(motion as BlendMotionOfKind<'direct'>, context);
         case 'additive':
             return visitor.visitAdditive(motion as BlendMotionOfKind<'additive'>, context);
+        case 'motionMatching':
+            return visitor.visitMotionMatching(motion as BlendMotionOfKind<'motionMatching'>, context);
         default:
             return assertNever(motion, 'Unsupported motion kind');
     }
@@ -46,6 +48,7 @@ export const foldMotion = <TContext, TResult>(
         readonly blend2d: (motion: BlendMotionOfKind<'blend2d'>, context: TContext, foldChild: (child: AnimationCompiledMotion) => TResult) => TResult;
         readonly direct: (motion: BlendMotionOfKind<'direct'>, context: TContext, foldChild: (child: AnimationCompiledMotion) => TResult) => TResult;
         readonly additive: (motion: BlendMotionOfKind<'additive'>, context: TContext, foldBase: (base: AnimationCompiledMotion) => TResult, foldAdditive: (additive: AnimationCompiledMotion) => TResult) => TResult;
+        readonly motionMatching: (motion: BlendMotionOfKind<'motionMatching'>, context: TContext) => TResult;
     }
 ): TResult => {
     switch (motion.kind) {
@@ -72,6 +75,8 @@ export const foldMotion = <TContext, TResult>(
                 (additive) => foldMotion(additive, context, handlers)
             );
         }
+        case 'motionMatching':
+            return handlers.motionMatching(motion as BlendMotionOfKind<'motionMatching'>, context);
         default:
             return assertNever(motion, 'Unsupported motion kind');
     }

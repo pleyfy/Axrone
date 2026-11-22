@@ -2,6 +2,7 @@ import { Component } from '../core/component';
 import { script } from '../decorators/script';
 import { Mat4, Vec3, Quat } from '@axrone/numeric';
 import type { Hierarchy } from './hierarchy';
+import type { Actor } from '../core/actor';
 import type { ComponentType } from '../types/component';
 
 const WORLD_TRANSLATION_EPSILON = 1e-8;
@@ -46,6 +47,17 @@ export class Transform extends Component {
     private _worldRotation?: Quat;
     private _worldScale?: Vec3;
 
+    /**
+     * Cached `Hierarchy` component for the current actor revision. Every
+     * `children` walk (and therefore every local-TRS write) used to resolve it
+     * through `actor.getComponent`. `actor.revision` bumps whenever the
+     * component set changes, so a revision match is a sound cache key.
+     */
+    private _hierarchyCache: Hierarchy | null = null;
+    private _hierarchyCacheActor?: Actor;
+    private _hierarchyCacheActorRevision = -1;
+    private _hierarchyCacheValid = false;
+
     get position(): Vec3 {
         return this._position;
     }
@@ -84,6 +96,65 @@ export class Transform extends Component {
             this._scale.z = value.z;
             this.markLocalDirty();
         }
+    }
+
+    /**
+     * Atomically writes the local position, rotation and scale and marks the
+     * transform dirty exactly once (one revision bump, one hierarchy walk).
+     *
+     * Unlike the individual setters this performs no equality checks, so it is
+     * the intended hot-path API for per-frame motion where the caller already
+     * knows the values changed. Use the setters when an unchanged write should
+     * stay revision-neutral.
+     */
+    setLocalTRS(position: Readonly<Vec3>, rotation: Readonly<Quat>, scale: Readonly<Vec3>): void {
+        this._position.x = position.x;
+        this._position.y = position.y;
+        this._position.z = position.z;
+
+        this._rotation.x = rotation.x;
+        this._rotation.y = rotation.y;
+        this._rotation.z = rotation.z;
+        this._rotation.w = rotation.w;
+
+        this._scale.x = scale.x;
+        this._scale.y = scale.y;
+        this._scale.z = scale.z;
+
+        this.markLocalDirty();
+    }
+
+    /**
+     * Atomically writes a 2D local transform: XY translation, rotation about
+     * +Z in radians and XY scale. Z translation and Z scale are left untouched
+     * (2D scenes keep them at their rest values).
+     *
+     * Produces exactly the quaternion `Quat.fromAxisAngle((0, 0, 1), rotationZ)`
+     * without the axis normalization, and bumps the revision once. Callers in
+     * the 2D hot path use this instead of three setters plus a quaternion
+     * conversion per sprite per frame.
+     */
+    setLocalTRS2D(
+        x: number,
+        y: number,
+        rotationZ: number,
+        scaleX: number,
+        scaleY: number
+    ): void {
+        const halfAngle = rotationZ * 0.5;
+
+        this._position.x = x;
+        this._position.y = y;
+
+        this._rotation.x = 0;
+        this._rotation.y = 0;
+        this._rotation.z = Math.sin(halfAngle);
+        this._rotation.w = Math.cos(halfAngle);
+
+        this._scale.x = scaleX;
+        this._scale.y = scaleY;
+
+        this.markLocalDirty();
     }
 
     get parent(): Transform | undefined {
@@ -203,17 +274,11 @@ export class Transform extends Component {
         const parentScale = parent.worldScale;
 
         this._position.x +=
-            Math.abs(parentScale.x) > WORLD_TRANSLATION_EPSILON
-                ? localDelta.x / parentScale.x
-                : 0;
+            Math.abs(parentScale.x) > WORLD_TRANSLATION_EPSILON ? localDelta.x / parentScale.x : 0;
         this._position.y +=
-            Math.abs(parentScale.y) > WORLD_TRANSLATION_EPSILON
-                ? localDelta.y / parentScale.y
-                : 0;
+            Math.abs(parentScale.y) > WORLD_TRANSLATION_EPSILON ? localDelta.y / parentScale.y : 0;
         this._position.z +=
-            Math.abs(parentScale.z) > WORLD_TRANSLATION_EPSILON
-                ? localDelta.z / parentScale.z
-                : 0;
+            Math.abs(parentScale.z) > WORLD_TRANSLATION_EPSILON ? localDelta.z / parentScale.z : 0;
 
         this.markLocalDirty();
     }
@@ -311,9 +376,7 @@ export class Transform extends Component {
         return undefined;
     }
 
-    findChildrenWithComponent<T extends Component>(
-        componentType: ComponentType<T>
-    ): Transform[] {
+    findChildrenWithComponent<T extends Component>(componentType: ComponentType<T>): Transform[] {
         const results: Transform[] = [];
 
         for (const child of this.children) {
@@ -443,10 +506,12 @@ export class Transform extends Component {
     }
 
     override onDestroy(): void {
-        const detachedChildren = [...this._detachedChildren];
+        if (this._detachedChildren.size > 0) {
+            const detachedChildren = [...this._detachedChildren];
 
-        for (const child of detachedChildren) {
-            child.parent = undefined;
+            for (const child of detachedChildren) {
+                child.parent = undefined;
+            }
         }
 
         if (this._detachedParent) {
@@ -466,6 +531,11 @@ export class Transform extends Component {
         this._worldScale = undefined;
         this._worldDirty = true;
         this._localDirty = true;
+
+        this._hierarchyCache = null;
+        this._hierarchyCacheActor = undefined;
+        this._hierarchyCacheActorRevision = -1;
+        this._hierarchyCacheValid = false;
     }
 
     private static _copyMatrix(source: Mat4, target: Mat4): void {
@@ -491,18 +561,32 @@ export class Transform extends Component {
     }
 
     private _getHierarchy(): Hierarchy | undefined {
-        if (!this.actor) {
+        const actor = this.actor;
+        if (!actor) {
             return undefined;
+        }
+
+        if (
+            this._hierarchyCacheValid &&
+            this._hierarchyCacheActor === actor &&
+            this._hierarchyCacheActorRevision === actor.revision
+        ) {
+            return this._hierarchyCache ?? undefined;
         }
 
         const HierarchyClass =
             (this.world as any)?.registry?.Hierarchy || (globalThis as any).Hierarchy;
 
-        if (!HierarchyClass) {
-            return undefined;
-        }
+        const hierarchy = HierarchyClass
+            ? (actor.getComponent(HierarchyClass) as Hierarchy | undefined)
+            : undefined;
 
-        return this.actor.getComponent(HierarchyClass) as Hierarchy | undefined;
+        this._hierarchyCache = hierarchy ?? null;
+        this._hierarchyCacheActor = actor;
+        this._hierarchyCacheActorRevision = actor.revision;
+        this._hierarchyCacheValid = true;
+
+        return hierarchy;
     }
 
     private _resolveTransformFromHierarchy(hierarchy?: Hierarchy): Transform | undefined {
@@ -586,6 +670,7 @@ export class Transform extends Component {
     }
 
     private markWorldDirty(): void {
+        this.touch();
         this._worldDirty = true;
 
         for (const child of this.children) {

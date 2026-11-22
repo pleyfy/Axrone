@@ -150,10 +150,13 @@ export class Hierarchy extends Component {
     }
 
     override onDestroy(): void {
-        const children = [...this.children];
+        // Leaf nodes are the overwhelming majority; skip the snapshot array.
+        if (this._children.size > 0) {
+            const children = [...this.children];
 
-        for (const child of children) {
-            child.parent = undefined;
+            for (const child of children) {
+                child.parent = undefined;
+            }
         }
 
         if (this._parent) {

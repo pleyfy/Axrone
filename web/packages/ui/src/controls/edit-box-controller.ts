@@ -2,7 +2,7 @@ import type { UIRuntime } from '../runtime';
 import type { UIInputEvent, WidgetId } from '../types';
 import type { WidgetController, WidgetControllerContext } from '../widget';
 import { clamp } from '@axrone/numeric';
-import { asString, asNumber, asBoolean } from './internals';
+import { asString, asNumber, asBoolean, setWidgetVisible } from './internals';
 import { defaultUIControlTheme } from './theme';
 
 /**
@@ -106,7 +106,7 @@ const applyVisuals = (context: EditBoxContext): void => {
         const placeholderWidget = runtime.getBoundWidget(placeholderKey);
         if (placeholderWidget !== null) {
             const showPlaceholder = state.value.length === 0;
-            runtime.updateWidget(placeholderWidget, { enabled: showPlaceholder });
+            setWidgetVisible(runtime, placeholderWidget, showPlaceholder);
             if (showPlaceholder) {
                 const placeholderText = asString(props.placeholder);
                 runtime.updateWidget(placeholderWidget, {
@@ -287,10 +287,36 @@ export const editBoxController: WidgetController<
             props.blurColor !== previous.blurColor ||
             props.password !== previous.password ||
             props.valueKey !== previous.valueKey ||
-            props.placeholderKey !== previous.placeholderKey
+            props.placeholderKey !== previous.placeholderKey ||
+            props.maxLength !== previous.maxLength ||
+            props.readOnly !== previous.readOnly
         ) {
             if (props.value !== previous.value) {
-                typed.state.value = asString(props.value);
+                const rawValue = asString(props.value);
+                const maxLength = asNumber(props.maxLength, Infinity);
+                const clampedValue =
+                    rawValue.length > maxLength
+                        ? rawValue.slice(0, Math.max(0, maxLength))
+                        : rawValue;
+                typed.state.value = clampedValue;
+                if (typed.state.selectionStart > clampedValue.length) {
+                    typed.state.selectionStart = clampedValue.length;
+                }
+                if (typed.state.selectionEnd > clampedValue.length) {
+                    typed.state.selectionEnd = clampedValue.length;
+                }
+            } else if (props.maxLength !== previous.maxLength) {
+                const maxLength = asNumber(props.maxLength, Infinity);
+                if (typed.state.value.length > maxLength) {
+                    const clampedValue = typed.state.value.slice(0, Math.max(0, maxLength));
+                    typed.state.value = clampedValue;
+                    if (typed.state.selectionStart > clampedValue.length) {
+                        typed.state.selectionStart = clampedValue.length;
+                    }
+                    if (typed.state.selectionEnd > clampedValue.length) {
+                        typed.state.selectionEnd = clampedValue.length;
+                    }
+                }
             }
             applyVisuals(typed);
         }

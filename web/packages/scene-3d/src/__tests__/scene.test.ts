@@ -44,10 +44,10 @@ class PulseComponent extends Component {
 }
 
 class ParentAwareComponent extends Component {
-    parentNameAtAwake: string | null = null;
+    parentNameAtOnLoad: string | null = null;
 
-    awake(): void {
-        this.parentNameAtAwake = this.actor?.parent?.name ?? null;
+    onLoad(): void {
+        this.parentNameAtOnLoad = this.actor?.parent?.name ?? null;
     }
 }
 
@@ -686,7 +686,7 @@ void main() {
         const restoredComponent = restoredChild?.getComponent(ParentAwareComponent);
 
         expect(restoredChild?.parent?.name).toBe('Copy Parent');
-        expect(restoredComponent?.parentNameAtAwake).toBe('Copy Parent');
+        expect(restoredComponent?.parentNameAtOnLoad).toBe('Copy Parent');
 
         scene.dispose();
     });

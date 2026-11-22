@@ -198,6 +198,29 @@ export const isPointInside = <TRuntime>(runtime: UIRuntime<TRuntime>, widget: Wi
     return x >= box.x && y >= box.y && x <= box.x + box.width && y <= box.y + box.height;
 };
 
+export const hitTestBoundWidget = <TRuntime>(
+    runtime: UIRuntime<TRuntime>,
+    widget: WidgetId,
+    x: number,
+    y: number
+): boolean => {
+    const box = runtime.getLayoutBox(widget);
+    return x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height;
+};
+
+export const asArray = (value: unknown): readonly string[] =>
+    Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+
+export const asFiniteNumber = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+export const asColorString = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() !== '' ? value : null;
+
+export const setWidgetVisible = <TRuntime>(runtime: UIRuntime<TRuntime>, widget: WidgetId, visible: boolean): void => {
+    runtime.updateWidget(widget, { enabled: visible, style: { visible } });
+};
+
 export const createBaseHandle = <TRuntime>(runtime: UIRuntime<TRuntime>, root: WidgetId): UIHandle => ({
     root,
     dispose() {

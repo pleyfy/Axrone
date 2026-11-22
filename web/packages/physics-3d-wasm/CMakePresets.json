@@ -1,0 +1,130 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "wasm-release",
+      "displayName": "WASM release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm-release",
+      "toolchainFile": "${sourceDir}/cmake/wasm32-clang.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PHYSICS_BUILD_TESTS": "OFF",
+        "PHYSICS_BUILD_WASM": "ON",
+        "PHYSICS_SIMD": "OFF",
+        "PHYSICS_FAST_MATH": "OFF"
+      }
+    },
+    {
+      "name": "wasm-simd",
+      "displayName": "WASM SIMD",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm-simd",
+      "toolchainFile": "${sourceDir}/cmake/wasm32-clang.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PHYSICS_BUILD_TESTS": "OFF",
+        "PHYSICS_BUILD_WASM": "ON",
+        "PHYSICS_SIMD": "ON",
+        "PHYSICS_FAST_MATH": "OFF"
+      }
+    },
+    {
+      "name": "wasm-fast",
+      "displayName": "WASM fast-math",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm-fast",
+      "toolchainFile": "${sourceDir}/cmake/wasm32-clang.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PHYSICS_BUILD_TESTS": "OFF",
+        "PHYSICS_BUILD_WASM": "ON",
+        "PHYSICS_SIMD": "OFF",
+        "PHYSICS_FAST_MATH": "ON"
+      }
+    },
+    {
+      "name": "wasm-fast-simd",
+      "displayName": "WASM fast-math SIMD",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm-fast-simd",
+      "toolchainFile": "${sourceDir}/cmake/wasm32-clang.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PHYSICS_BUILD_TESTS": "OFF",
+        "PHYSICS_BUILD_WASM": "ON",
+        "PHYSICS_SIMD": "ON",
+        "PHYSICS_FAST_MATH": "ON"
+      }
+    },
+    {
+      "name": "wasm-timers",
+      "displayName": "WASM phase timers",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm-timers",
+      "toolchainFile": "${sourceDir}/cmake/wasm32-clang.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PHYSICS_BUILD_TESTS": "OFF",
+        "PHYSICS_BUILD_WASM": "ON",
+        "PHYSICS_SIMD": "OFF",
+        "PHYSICS_FAST_MATH": "OFF",
+        "PHYSICS_PHASE_TIMERS": "ON"
+      }
+    },
+    {
+      "name": "host-debug",
+      "displayName": "Host debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "PHYSICS_BUILD_TESTS": "ON",
+        "PHYSICS_BUILD_WASM": "OFF",
+        "PHYSICS_SIMD": "OFF",
+        "PHYSICS_FAST_MATH": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "wasm-release",
+      "configurePreset": "wasm-release"
+    },
+    {
+      "name": "wasm-simd",
+      "configurePreset": "wasm-simd"
+    },
+    {
+      "name": "wasm-fast",
+      "configurePreset": "wasm-fast"
+    },
+    {
+      "name": "wasm-fast-simd",
+      "configurePreset": "wasm-fast-simd"
+    },
+    {
+      "name": "wasm-timers",
+      "configurePreset": "wasm-timers"
+    },
+    {
+      "name": "host-debug",
+      "configurePreset": "host-debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "host-debug",
+      "configurePreset": "host-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

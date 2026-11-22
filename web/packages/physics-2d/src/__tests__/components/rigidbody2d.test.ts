@@ -200,7 +200,7 @@ describe('Rigidbody2D', () => {
             // Set up world component singleton
             worldComponent = new PhysicsWorld2DComponent();
             worldComponent.gravity = { x: 0, y: -10 } as any;
-            worldComponent.awake();
+            worldComponent.onLoad();
             world = worldComponent.physicsWorld!;
 
             // Create body in the world

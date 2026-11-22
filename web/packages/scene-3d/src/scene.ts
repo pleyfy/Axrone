@@ -6,29 +6,31 @@ import {
     type SceneOptions,
     type SceneRegistry,
 } from '@axrone/scene-runtime';
-import {
-    SceneAssetFacade,
-    type CameraConfig,
-} from '@axrone/scene-runtime/scene-facade';
-import { type MeshRendererConfig } from '@axrone/scene-runtime/scene-3d-support';
-import { getDefaultSceneRuntimeProfile } from './profile';
+import { SceneAssetFacade } from '@axrone/scene-runtime/scene-asset-facade';
+import type { CameraConfig } from '@axrone/scene-runtime/scene-camera';
+import type { MeshRendererConfig } from '@axrone/scene-runtime/scene-mesh-renderer';
 import {
     Scene3DActorRuntime,
-    type Scene3DActorRuntimeOptions,
+    type SceneProfilerProbe,
     type SceneRenderableActorCreateOptions,
     type SceneRenderableActorInstance,
 } from './scene-3d-actor-runtime';
 
+/**
+ * Base 3D scene facade.
+ *
+ * The base class installs no default profile and no runtime composition, so it
+ * stays free of physics packages and the full built-in manifest chain. The
+ * root entry exports the full-composition subclass from `./scene-full`; the
+ * lean entry exports the lean-profile subclass from `./scene-lean`.
+ */
 export class Scene<R extends ComponentRegistry = Record<string, never>> extends SceneAssetFacade<R> {
     private readonly _actors3d: Scene3DActorRuntime<R>;
 
     constructor(options: SceneOptions<R> = {}) {
-        super({
-            ...options,
-            profile: options.profile ?? getDefaultSceneRuntimeProfile<R>(),
-        } as any);
+        super(options);
         this._actors3d = new Scene3DActorRuntime({
-            actors: this._kernel.actors as unknown as Scene3DActorRuntimeOptions<R>['actors'],
+            actors: this._kernel.actors,
         });
     }
 
@@ -50,7 +52,7 @@ export class Scene<R extends ComponentRegistry = Record<string, never>> extends 
 
     createRenderableActors(
         configs: readonly SceneRenderableActorCreateOptions[],
-        profiling?: Record<string, number>
+        profiling?: SceneProfilerProbe
     ): readonly SceneRenderableActorInstance<R>[] {
         this.assertNotDisposed();
         return this._actors3d.createRenderableActors(configs, profiling);

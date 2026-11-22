@@ -1,58 +1,68 @@
-import {
-    DisposedUIError,
-    InvalidUIAssetError,
-    UIError,
-    UIErrorCode,
-    WidgetNotFoundError,
-    WidgetTreeIntegrityError,
-} from './errors';
+import { DisposedUIError, UIError, UIErrorCode } from './errors';
 import { FontRegistry, ensureDefaultUIFont } from './font';
-import { UILayoutEngine, compileLayoutInput } from './layout';
+import { UILayoutEngine } from './layout';
 import type { LayoutTreeAdapter } from './layout';
-import {
-    type CanvasScaleResult,
-    resolveCanvasScale,
-    canvasScaleToTransform,
-    mapViewportPointToCanvas,
-} from './layout/canvas-scaler';
 import { NodeFlag } from './runtime/node-flags';
 import { ControllerEventBus, type ControllerEventHandler } from './runtime/controller-event-bus';
-import { FocusController, type FocusControllerHost } from './runtime/focus-controller';
+import { FocusController } from './runtime/focus-controller';
 import { AutoSizeService } from './runtime/autosize-service';
 import { RenderCommandBuilder, type RenderCommandBuilderHost } from './runtime/render-command-builder';
-import {
-    type StoredWidgetRecord,
-    compileWidgetFocus,
-    compileWidgetImage,
-    compileWidgetStyle,
-    compileWidgetText,
-    normalizeWidgetRecord,
-} from './runtime/records';
-import {
-    type UIInputDispatchHost,
-    dispatchKeyEvent,
-    dispatchPointerEvent,
-    dispatchTextEvent,
-} from './runtime/runtime-input';
-import { measureImageContent } from './runtime/runtime-frame';
+import { normalizeWidgetRecord, type StoredWidgetRecord } from './runtime/records';
 import {
     EMPTY_FOCUS_INPUT,
     EMPTY_LAYOUT_INPUT,
     EMPTY_RECORD_OBJECT,
     EMPTY_STYLE_INPUT,
     cloneData,
-    intersectRect,
-    intersectsPoint,
-    mergeFocusInput,
-    mergeHandlers,
-    mergeImageInput,
-    mergeLayoutInput,
-    mergeProps,
-    mergeStyleInput,
-    mergeTextInput,
 } from './runtime/internals';
 import { TextLayoutEngine } from './text';
 import { WidgetRegistry, type WidgetController } from './widget';
+import type { RuntimeTreeStoreHost } from './runtime/runtime-tree';
+import {
+    collectSubtreeWidgetIds as collectSubtreeIds,
+    insertChildBefore as insertChildBeforeNode,
+    isAncestor as isAncestorIndex,
+    isFocusable as isFocusableFlag,
+    isVisible as isVisibleFlag,
+    removeWidgetNode,
+    requireWidget as requireWidgetIndex,
+} from './runtime/runtime-tree';
+import type { RuntimeRecordHost } from './runtime/runtime-record-apply';
+import {
+    applyRecord as applyWidgetRecord,
+    applyWidgetPatch,
+    resolveControllerCached as resolveControllerCachedByName,
+} from './runtime/runtime-record-apply';
+import type { RuntimeBindingHost } from './runtime/runtime-binding';
+import { rebuildBindingTable, remountControllers } from './runtime/runtime-binding';
+import type { RuntimeLayoutHost } from './runtime/runtime-layout';
+import {
+    createLayoutAdapter as buildLayoutAdapter,
+    readBox as readWidgetBox,
+    resolveTextLayoutForRender as resolveRenderTextLayout,
+    setContentOffset as applyContentOffset,
+    translateWidgetBox as applyWidgetTranslation,
+} from './runtime/runtime-layout';
+import type { RuntimeSnapshotHost } from './runtime/runtime-snapshot';
+import {
+    restoreChildSnapshot as restoreChildSnapshotNode,
+    snapshotNode as snapshotWidgetNode,
+} from './runtime/runtime-snapshot';
+import type { RuntimeComponentHost } from './runtime/runtime-component-instances';
+import { expandComponentInstances as expandComponentInstanceNodes } from './runtime/runtime-component-instances';
+import type { RuntimeInputSourceHost, RuntimeViewportInputHost } from './runtime/runtime-event';
+import {
+    bubbleEvent as bubbleEventUp,
+    createInputHost,
+    dispatchInput as dispatchInputEvent,
+    dispatchViewportInput as dispatchViewportInputEvent,
+    hitTest as hitTestTree,
+    updateHover as updateHoverState,
+} from './runtime/runtime-event';
+import type { RuntimeFocusHost } from './runtime/runtime-focus';
+import { moveFocus as moveFocusOnTree, setFocus as setFocusOnTree } from './runtime/runtime-focus';
+import type { RuntimeFrameHost } from './runtime/runtime-frame-commit';
+import { commitFrame, commitToViewportFrame } from './runtime/runtime-frame-commit';
 import type {
     ColorInput,
     FocusMoveDirection,
@@ -60,22 +70,17 @@ import type {
     LayoutBox,
     RenderCommand,
     ResolvedFocusPolicy,
-    ResolvedWidgetImage,
     ResolvedLayout,
     ResolvedTextBlock,
+    ResolvedWidgetImage,
     ResolvedWidgetStyle,
-    RectLike,
     SizeLike,
     TextLayoutResult,
-    TextLayoutConstraint,
     UIFrame,
     UIFrameMetrics,
     UIInputEvent,
     UIPointerEvent,
-    UIKeyEvent,
-    UITextInputEvent,
     WidgetConfig,
-    WidgetEventContext,
     WidgetEventHandlers,
     WidgetFocusChangeEvent,
     WidgetImageInput,
@@ -85,7 +90,6 @@ import type {
     WidgetKey,
     WidgetLayoutInput,
     WidgetPatch,
-    WidgetSerializableKey,
     WidgetSnapshot,
     WidgetStyleInput,
     UIRuntimeSnapshot,
@@ -161,20 +165,6 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     private readonly dirtyNodes = new Set<number>();
     private structuralDirty = false;
 
-    private readonly inputHost: UIInputDispatchHost = {
-        getPressed: () => this.pressed,
-        setPressed: (widget) => {
-            this.pressed = widget;
-        },
-        getFocused: () => this.focusController.getFocused(),
-        hitTest: (x, y) => this.hitTest(x, y),
-        updateHover: (target, event) => this.updateHover(target, event),
-        bubbleEvent: (index, event) => this.bubbleEvent(index, event),
-        isFocusable: (index) => this.isFocusable(index),
-        setFocus: (widget, reason) => this.setFocus(widget, reason),
-        moveFocus: (direction) => this.moveFocus(direction),
-    };
-
     constructor(options: UIRuntimeOptions<TPayload> = {}) {
         this.locale = options.locale ?? 'en';
         this.viewportWidth = Math.max(0, options.width ?? 0);
@@ -249,30 +239,21 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             locale: this.locale,
             root: asset.root,
         });
-        this.rebuildBindingTable(asset.bindings);
-        this.remountControllers();
-        return this;
-    }
-
-    /**
-     * Re-runs controller `mount` hooks after the binding table exists.
-     *
-     * Widgets are created before bindings are resolved, so a controller that
-     * reaches sibling widgets through `getBoundWidget` (a slider syncing its
-     * fill and handle, for example) cannot do so during the initial mount.
-     * Replaying `mount` once the table is ready gives controllers a chance to
-     * push their authored state into the tree before the first layout pass, so
-     * `mount` implementations must be idempotent.
-     */
-    private remountControllers(): void {
-        for (let index = 0; index < this.records.length; index += 1) {
-            const record = this.records[index];
-            if (!record?.controller) {
-                continue;
+        const expansion = expandComponentInstanceNodes(this.getComponentHost(), asset.components);
+        const bindings = asset.bindings ? { ...asset.bindings } : undefined;
+        if (bindings) {
+            for (const name of Object.keys(bindings)) {
+                if (expansion.replaced.has(bindings[name] as WidgetKey)) {
+                    delete bindings[name];
+                }
             }
-            const controller = this.registry.resolve(record.controller);
-            controller?.mount?.(this.createControllerContext(index));
         }
+        rebuildBindingTable(this.getBindingHost(), bindings);
+        for (const [name, widget] of expansion.created) {
+            this.bindingTable.set(name, widget);
+        }
+        remountControllers(this.getBindingHost());
+        return this;
     }
 
     /**
@@ -330,6 +311,12 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         return (this.states[index] as TState | undefined) ?? null;
     }
 
+    isWidgetEnabled(widget: WidgetId): boolean {
+        this.ensureActive();
+        const index = this.requireWidget(widget);
+        return this.records[index]!.enabled;
+    }
+
     /**
      * Returns a clone of the widget's current image input, or null when the
      * widget has no image. Lets controllers read the authored image source
@@ -380,54 +367,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
 
     insertChildBefore(parent: WidgetId, child: WidgetId, before: WidgetId | null): this {
         this.ensureActive();
-        const parentIndex = this.requireWidget(parent);
-        const childIndex = this.requireWidget(child);
-        if (childIndex === this.rootId) {
-            throw new WidgetTreeIntegrityError('The root widget cannot be re-parented.');
-        }
-        if (parentIndex === childIndex || this.isAncestor(childIndex, parentIndex)) {
-            throw new WidgetTreeIntegrityError('Re-parenting would create a cycle.', {
-                parent,
-                child,
-                before,
-            });
-        }
-        if (before !== null) {
-            const beforeIndex = this.requireWidget(before);
-            if (this.parent[beforeIndex] !== parentIndex) {
-                throw new WidgetTreeIntegrityError('The insertion reference must already belong to the parent.', {
-                    parent,
-                    child,
-                    before,
-                });
-            }
-        }
-        this.detachNode(childIndex);
-        this.parent[childIndex] = parentIndex;
-        if (before === null) {
-            const last = this.lastChild[parentIndex];
-            if (last === 0) {
-                this.firstChild[parentIndex] = childIndex;
-                this.lastChild[parentIndex] = childIndex;
-            } else {
-                this.nextSibling[last] = childIndex;
-                this.previousSibling[childIndex] = last;
-                this.lastChild[parentIndex] = childIndex;
-            }
-        } else {
-            const beforeIndex = before as number;
-            const previous = this.previousSibling[beforeIndex];
-            this.nextSibling[childIndex] = beforeIndex;
-            this.previousSibling[beforeIndex] = childIndex;
-            if (previous !== 0) {
-                this.nextSibling[previous] = childIndex;
-                this.previousSibling[childIndex] = previous;
-            } else {
-                this.firstChild[parentIndex] = childIndex;
-            }
-        }
-        this.refreshDepths(childIndex, this.depth[parentIndex] + 1);
-        this.markTreeChanged(childIndex);
+        insertChildBeforeNode(this.getTreeHost(), parent, child, before);
         return this;
     }
 
@@ -436,33 +376,11 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         patch: WidgetPatch<TProps, UIRuntime<TPayload>>
     ): this {
         this.ensureActive();
-        const index = this.requireWidget(widget);
-        const current = this.records[index];
-        if (!current) {
-            throw new WidgetNotFoundError(index);
-        }
-        const previousController = current.controller;
-        const previousProps = current.props;
-        const merged: StoredWidgetRecord<UIRuntime<TPayload>> = {
-            role: patch.role ?? current.role,
-            controller: patch.controller ?? current.controller,
-            key: patch.key ?? current.key,
-            props: mergeProps(current.props, patch.props as Readonly<Record<string, unknown>> | undefined),
-            enabled: patch.enabled ?? current.enabled,
-            interactive: patch.interactive ?? current.interactive,
-            layoutInput: mergeLayoutInput(current.layoutInput, patch.layout),
-            styleInput: mergeStyleInput(current.styleInput, patch.style),
-            textInput: mergeTextInput(current.textInput, patch.text),
-            imageInput: mergeImageInput(current.imageInput, patch.image),
-            focusInput: mergeFocusInput(current.focusInput, patch.focus),
-            handlers: mergeHandlers(
-                current.handlers,
-                patch.handlers as WidgetEventHandlers<Record<string, unknown>, UIRuntime<TPayload>> | undefined
-            ),
-        };
-        this.records[index] = merged;
-        const styleOnly = !patch.layout && !patch.text && !patch.image && !patch.focus && !patch.controller && !patch.role && patch.enabled === undefined && patch.interactive === undefined;
-        this.applyRecord(index, previousProps, previousController, false, styleOnly);
+        applyWidgetPatch(
+            this.getRecordHost(),
+            widget,
+            patch as unknown as WidgetPatch<Record<string, unknown>, unknown>
+        );
         return this;
     }
 
@@ -480,35 +398,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
      */
     setContentOffset(widget: WidgetId, offsetX: number, offsetY: number): this {
         this.ensureActive();
-        const index = this.requireWidget(widget);
-        const layout = this.layouts[index];
-        if (!layout) {
-            return this;
-        }
-        const deltaX = offsetX - layout.contentOffsetX;
-        const deltaY = offsetY - layout.contentOffsetY;
-        if (deltaX === 0 && deltaY === 0) {
-            return this;
-        }
-        this.layouts[index] = { ...layout, contentOffsetX: offsetX, contentOffsetY: offsetY };
-        const record = this.records[index];
-        if (
-            record &&
-            (record.layoutInput.contentOffsetX !== undefined || record.layoutInput.contentOffsetY !== undefined)
-        ) {
-            this.records[index] = {
-                ...record,
-                layoutInput: { ...record.layoutInput, contentOffsetX: offsetX, contentOffsetY: offsetY },
-            };
-        }
-        // The content origin moves opposite to the offset; children follow it.
-        const contentShiftX = -deltaX;
-        const contentShiftY = -deltaY;
-        this.contentX[index] += contentShiftX;
-        this.contentY[index] += contentShiftY;
-        for (let child = this.firstChild[index]; child !== 0; child = this.nextSibling[child]) {
-            this.translateSubtreeBoxes(child, contentShiftX, contentShiftY);
-        }
+        applyContentOffset(this.getLayoutHost(), widget, offsetX, offsetY);
         return this;
     }
 
@@ -521,37 +411,13 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
      */
     translateWidgetBox(widget: WidgetId, dx: number, dy: number): this {
         this.ensureActive();
-        const index = this.requireWidget(widget);
-        if (dx === 0 && dy === 0) {
-            return this;
-        }
-        // Store translation as absolute offset (accumulated)
-        this.translateSubtreeOffsets(index, dx, dy);
+        applyWidgetTranslation(this.getLayoutHost(), widget, dx, dy);
         return this;
     }
 
     removeWidget(widget: WidgetId): this {
         this.ensureActive();
-        const index = this.requireWidget(widget);
-        if (index === this.rootId) {
-            throw new WidgetTreeIntegrityError('The root widget cannot be removed.');
-        }
-        const traversal: number[] = [];
-        const stack = [index];
-        while (stack.length > 0) {
-            const current = stack.pop()!;
-            traversal.push(current);
-            for (let child = this.firstChild[current]; child !== 0; child = this.nextSibling[child]) {
-                stack.push(child);
-            }
-        }
-        this.detachNode(index);
-        for (let offset = traversal.length - 1; offset >= 0; offset -= 1) {
-            this.destroyNode(traversal[offset]);
-        }
-        this.layoutDirty = true;
-        this.focusController.markDirty();
-        this.structuralDirty = true;
+        removeWidgetNode(this.getTreeHost(), widget);
         return this;
     }
 
@@ -584,44 +450,12 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     }
 
     collectSubtreeWidgetIds(widget: WidgetId): WidgetId[] {
-        const index = this.requireWidget(widget);
-        const widgets: WidgetId[] = [];
-        const stack = [index];
-
-        while (stack.length > 0) {
-            const current = stack.pop()!;
-            widgets.push(current as WidgetId);
-            for (let child = this.lastChild[current]; child !== 0; child = this.previousSibling[child]) {
-                stack.push(child);
-            }
-        }
-
-        return widgets;
+        return collectSubtreeIds(this.getTreeHost(), widget);
     }
 
     commit(viewport?: Partial<SizeLike>): UIFrame<TPayload> {
         this.ensureActive();
-        if (viewport) {
-            this.setViewport(viewport.width ?? this.viewportWidth, viewport.height ?? this.viewportHeight);
-        }
-        if (this.layoutDirty) {
-            const adapter = this.createLayoutAdapter();
-            const viewportSize = { width: this.viewportWidth, height: this.viewportHeight };
-            if (this.canScopedRelayout()) {
-                this.scopedRelayout(adapter, viewportSize);
-            } else {
-                this.layoutEngine.compute(adapter, viewportSize);
-            }
-            // Clear translation offsets after any layout pass — they're baked
-            // into the new boxes by writeBox() and must not leak into the next
-            // frame's readBox() calls.
-            this.clearTranslationOffsets();
-            this.layoutDirty = false;
-            this.dirtyNodes.clear();
-            this.structuralDirty = false;
-            this.lastLayoutPasses = this.layoutEngine.getLayoutPassCount();
-        }
-        return this.renderFrame();
+        return commitFrame<TPayload, unknown>(this.getFrameHost(), viewport);
     }
 
     /**
@@ -634,56 +468,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
      */
     commitToViewport(actualWidth: number, actualHeight: number): UIFrame<TPayload> {
         this.ensureActive();
-        this.lastViewport = { width: actualWidth, height: actualHeight };
-        if (!this.canvasConfig) {
-            return this.commit({ width: actualWidth, height: actualHeight });
-        }
-        // Ensure layout is computed at reference resolution
-        if (this.layoutDirty) {
-            const adapter = this.createLayoutAdapter();
-            const viewportSize = { width: this.viewportWidth, height: this.viewportHeight };
-            if (this.canScopedRelayout()) {
-                this.scopedRelayout(adapter, viewportSize);
-            } else {
-                this.layoutEngine.compute(adapter, viewportSize);
-            }
-            this.clearTranslationOffsets();
-            this.layoutDirty = false;
-            this.dirtyNodes.clear();
-            this.structuralDirty = false;
-            this.lastLayoutPasses = this.layoutEngine.getLayoutPassCount();
-        }
-        // Render frame at reference resolution
-        const frame = this.renderFrame();
-        // Compute canvas scale from reference to actual viewport
-        const scaleResult = resolveCanvasScale(this.canvasConfig, actualWidth, actualHeight);
-        const transform = canvasScaleToTransform(scaleResult);
-        // Commands keep their reference-resolution geometry; the canvas scale is
-        // carried by `transform` and applied once by the renderer. Pre-scaling the
-        // geometry here as well would double-apply the scale. Clip rects are the
-        // exception: they feed the scissor test, which operates in viewport space.
-        // RenderCommand declares clip/transform readonly, but the frame and its
-        // commands are owned by this call — mutate in place to avoid rebuilding
-        // every command array on each commitToViewport().
-        //
-        // SAFETY: The frame returned by renderFrame() is freshly built this call
-        // (a new commands array with new command objects). It has a single
-        // consumer — the caller of commitToViewport() — and is never frozen or
-        // shared. Mutating clip/transform in place is therefore safe and avoids
-        // allocating a parallel command array on every viewport commit.
-        for (const command of frame.commands) {
-            const mutable = command as { clip: RectLike | null; transform?: unknown };
-            mutable.clip = command.clip ? scaleClipRect(command.clip, scaleResult) : null;
-            if (command.kind === 'quad' || command.kind === 'text' || command.kind === 'image' || command.kind === 'stroke') {
-                mutable.transform = transform;
-            }
-        }
-        return {
-            viewportWidth: actualWidth,
-            viewportHeight: actualHeight,
-            commands: frame.commands,
-            metrics: frame.metrics,
-        };
+        return commitToViewportFrame<TPayload, unknown>(this.getFrameHost(), actualWidth, actualHeight);
     }
 
     /**
@@ -694,60 +479,17 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
      */
     dispatchViewportInput(event: Readonly<UIInputEvent>): boolean {
         this.ensureActive();
-        if (event.type !== 'pointer' || !this.canvasConfig || !this.lastViewport) {
-            return this.dispatchInput(event);
-        }
-        const scale = resolveCanvasScale(
-            this.canvasConfig,
-            this.lastViewport.width,
-            this.lastViewport.height
-        );
-        const mapped = mapViewportPointToCanvas(scale, event.x, event.y);
-        return this.dispatchInput({ ...event, x: mapped.x, y: mapped.y });
+        return dispatchViewportInputEvent(this.getEventHost(), event);
     }
 
     dispatchInput(event: Readonly<UIInputEvent>): boolean {
         this.ensureActive();
-        switch (event.type) {
-            case 'pointer':
-                return dispatchPointerEvent(this.inputHost, event);
-            case 'key':
-                return dispatchKeyEvent(this.inputHost, event);
-            case 'text':
-                return dispatchTextEvent(this.inputHost, event);
-            case 'focus':
-                if (!event.focused && this.focusController.getFocused()) {
-                    this.setFocus(null, 'window');
-                }
-                return false;
-            default:
-                return false;
-        }
+        return dispatchInputEvent(this.getEventHost(), event);
     }
 
     setFocus(widget: WidgetId | null, reason: WidgetFocusChangeEvent['reason'] = 'api', direction?: FocusMoveDirection): boolean {
         this.ensureActive();
-        if (widget !== null) {
-            const target = this.requireWidget(widget);
-            if (!this.isFocusable(target)) {
-                return false;
-            }
-            widget = target as WidgetId;
-        }
-        const previous = this.focusController.getFocused();
-        const changed = this.focusController.setFocus(widget, this.getFocusHost(), {
-            reason,
-            direction,
-            onFocusedChange: (next, prev) => {
-                if (prev !== null) {
-                    this.emitFocusChange(prev as number, false, reason, direction);
-                }
-                if (next !== null) {
-                    this.emitFocusChange(next as number, true, reason, direction);
-                }
-            },
-        });
-        return changed;
+        return setFocusOnTree(this.getFocusHost(), widget, reason, direction);
     }
 
     /** Returns the currently focused widget, or null if nothing is focused. */
@@ -757,21 +499,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
 
     moveFocus(direction: FocusMoveDirection): WidgetId | null {
         this.ensureActive();
-        return this.focusController.moveFocus(direction, this.getFocusHost(), (w, r, d) => this.setFocus(w, r, d));
-    }
-
-    private getFocusHost(): FocusControllerHost {
-        return {
-            flags: this.flags,
-            parent: this.parent,
-            sequence: this.sequence,
-            focuses: this.focuses,
-            rootId: this.rootId,
-            nextId: this.nextId,
-            isFocusable: (index) => this.isFocusable(index),
-            isAncestor: (ancestor, candidate) => this.isAncestor(ancestor, candidate),
-            readBox: (index) => this.readBox(index),
-        };
+        return moveFocusOnTree(this.getFocusHost(), direction);
     }
 
     snapshot(): UIRuntimeSnapshot {
@@ -780,7 +508,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
             viewportWidth: this.viewportWidth,
             viewportHeight: this.viewportHeight,
             locale: this.locale,
-            root: this.snapshotNode(this.rootId),
+            root: snapshotWidgetNode(this.getSnapshotHost(), this.rootId),
         };
     }
 
@@ -808,7 +536,7 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         });
         this.applyRecord(this.rootId, null, null, true);
         for (const child of rootSnapshot.children) {
-            this.restoreChildSnapshot(this.rootId, child);
+            restoreChildSnapshotNode(this.getSnapshotHost(), this.rootId, child);
         }
         return this;
     }
@@ -835,53 +563,354 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         this.dispose();
     }
 
-    private ensureActive(): void {
-        if (this.disposed) {
-            throw new DisposedUIError('UIRuntime');
-        }
+    /* ------------------------------------------------------------------ */
+    /* Host adapters                                                        */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Widget-tree storage/links adapter consumed by `./runtime/runtime-tree`.
+     * Mutable scalars (dirty flags) are exposed as accessors so writes made by
+     * the delegated functions land on this runtime.
+     */
+    private getTreeHost(): RuntimeTreeStoreHost {
+        const self = this;
+        return {
+            parent: this.parent,
+            firstChild: this.firstChild,
+            lastChild: this.lastChild,
+            previousSibling: this.previousSibling,
+            nextSibling: this.nextSibling,
+            depth: this.depth,
+            rootId: this.rootId,
+            flags: this.flags,
+            sequence: this.sequence,
+            boxX: this.boxX,
+            boxY: this.boxY,
+            boxWidth: this.boxWidth,
+            boxHeight: this.boxHeight,
+            contentX: this.contentX,
+            contentY: this.contentY,
+            contentWidth: this.contentWidth,
+            contentHeight: this.contentHeight,
+            translateX: this.translateX,
+            translateY: this.translateY,
+            records: this.records as unknown as Array<StoredWidgetRecord | null>,
+            layouts: this.layouts,
+            styles: this.styles,
+            texts: this.texts,
+            images: this.images,
+            focuses: this.focuses,
+            textLayouts: this.textLayouts,
+            textLayoutWidths: this.textLayoutWidths,
+            states: this.states,
+            freeList: this.freeList,
+            nextId: this.nextId,
+            nextSequence: this.nextSequence,
+            get liveCount(): number {
+                return self.liveCount;
+            },
+            set liveCount(value: number) {
+                self.liveCount = value;
+            },
+            get layoutDirty(): boolean {
+                return self.layoutDirty;
+            },
+            set layoutDirty(value: boolean) {
+                self.layoutDirty = value;
+            },
+            get structuralDirty(): boolean {
+                return self.structuralDirty;
+            },
+            set structuralDirty(value: boolean) {
+                self.structuralDirty = value;
+            },
+            dirtyNodes: this.dirtyNodes,
+            focusController: this.focusController,
+            controllerEventBus: this.controllerEventBus,
+            registry: this.registry,
+            getRuntime: () => this,
+            getHovered: () => this.hovered,
+            setHovered: (widget) => {
+                this.hovered = widget;
+            },
+            getPressed: () => this.pressed,
+            setPressed: (widget) => {
+                this.pressed = widget;
+            },
+            isAncestor: (ancestor, candidate) => this.isAncestor(ancestor, candidate),
+        };
     }
 
     /**
-     * Resolves asset bindings (binding name -> widget key) against the restored
-     * widget tree. Ambiguous keys (shared by multiple widgets) and missing keys
-     * are treated as malformed asset data.
+     * Widget-record adapter consumed by `./runtime/runtime-record-apply` and
+     * `./runtime/runtime-binding`.
      */
-    private rebuildBindingTable(bindings: UIAsset['bindings']): void {
-        this.bindingTable.clear();
-        if (!bindings) {
-            return;
-        }
-        const widgetsByKey = new Map<WidgetKey, WidgetId>();
-        const duplicateKeys = new Set<WidgetKey>();
-        for (let index = 0; index < this.records.length; index += 1) {
-            const record = this.records[index];
-            if (!record || record.key === undefined || record.key === null) {
-                continue;
-            }
-            if (widgetsByKey.has(record.key)) {
-                duplicateKeys.add(record.key);
-            } else {
-                widgetsByKey.set(record.key, index as WidgetId);
-            }
-        }
-        for (const [name, key] of Object.entries(bindings)) {
-            if (key === null) {
-                continue;
-            }
-            if (duplicateKeys.has(key)) {
-                throw new InvalidUIAssetError(
-                    `Binding "${name}" is ambiguous: multiple widgets share the key "${String(key)}".`,
-                    { name, key }
-                );
-            }
-            const widget = widgetsByKey.get(key);
-            if (widget === undefined) {
-                throw new InvalidUIAssetError(
-                    `Binding "${name}" refers to a widget key "${String(key)}" that does not exist in the asset tree.`,
-                    { name, key }
-                );
-            }
-            this.bindingTable.set(name, widget);
+    private getRecordHost(): RuntimeRecordHost {
+        const self = this;
+        return {
+            records: this.records as unknown as Array<StoredWidgetRecord | null>,
+            layouts: this.layouts,
+            styles: this.styles,
+            texts: this.texts,
+            images: this.images,
+            focuses: this.focuses,
+            textLayouts: this.textLayouts,
+            textLayoutWidths: this.textLayoutWidths,
+            states: this.states,
+            flags: this.flags,
+            fonts: this.fonts,
+            locale: this.locale,
+            registry: this.registry,
+            focusController: this.focusController,
+            controllerResolveCache: this.controllerResolveCache,
+            get layoutDirty(): boolean {
+                return self.layoutDirty;
+            },
+            set layoutDirty(value: boolean) {
+                self.layoutDirty = value;
+            },
+            dirtyNodes: this.dirtyNodes,
+            getRuntime: () => this,
+            requireWidget: (widget) => requireWidgetIndex(this.flags, widget),
+        };
+    }
+
+    /** Asset-binding adapter; adds the binding table to the record host. */
+    private getBindingHost(): RuntimeBindingHost {
+        const self = this;
+        return {
+            ...this.getRecordHost(),
+            get layoutDirty(): boolean {
+                return self.layoutDirty;
+            },
+            set layoutDirty(value: boolean) {
+                self.layoutDirty = value;
+            },
+            bindingTable: this.bindingTable,
+        };
+    }
+
+    /** Layout adapter consumed by `./runtime/runtime-layout`. */
+    private getLayoutHost(): RuntimeLayoutHost {
+        const self = this;
+        return {
+            layoutEngine: this.layoutEngine,
+            autoSizeService: this.autoSizeService,
+            fonts: this.fonts,
+            textEngine: this.textEngine,
+            rootId: this.rootId,
+            viewportWidth: this.viewportWidth,
+            viewportHeight: this.viewportHeight,
+            get lastLayoutPasses(): number {
+                return self.lastLayoutPasses;
+            },
+            set lastLayoutPasses(value: number) {
+                self.lastLayoutPasses = value;
+            },
+            liveCount: this.liveCount,
+            flags: this.flags,
+            records: this.records as unknown as Array<StoredWidgetRecord | null>,
+            parent: this.parent,
+            depth: this.depth,
+            firstChild: this.firstChild,
+            nextSibling: this.nextSibling,
+            boxX: this.boxX,
+            boxY: this.boxY,
+            boxWidth: this.boxWidth,
+            boxHeight: this.boxHeight,
+            contentX: this.contentX,
+            contentY: this.contentY,
+            contentWidth: this.contentWidth,
+            contentHeight: this.contentHeight,
+            translateX: this.translateX,
+            translateY: this.translateY,
+            layouts: this.layouts,
+            texts: this.texts,
+            images: this.images,
+            states: this.states,
+            textLayouts: this.textLayouts,
+            textLayoutWidths: this.textLayoutWidths,
+            registry: this.registry,
+            get layoutDirty(): boolean {
+                return self.layoutDirty;
+            },
+            set layoutDirty(value: boolean) {
+                self.layoutDirty = value;
+            },
+            get structuralDirty(): boolean {
+                return self.structuralDirty;
+            },
+            set structuralDirty(value: boolean) {
+                self.structuralDirty = value;
+            },
+            dirtyNodes: this.dirtyNodes,
+            getRuntime: () => this,
+        };
+    }
+
+    /** Snapshot/restore adapter consumed by `./runtime/runtime-snapshot`. */
+    private getSnapshotHost(): RuntimeSnapshotHost {
+        return {
+            records: this.records as unknown as Array<StoredWidgetRecord | null>,
+            firstChild: this.firstChild,
+            nextSibling: this.nextSibling,
+            createWidget: (config) => this.createWidget(config),
+            appendChild: (parent, child) => {
+                this.appendChild(parent, child);
+            },
+        };
+    }
+
+    /** Component-instance expansion adapter consumed by `./runtime/runtime-component-instances`. */
+    private getComponentHost(): RuntimeComponentHost {
+        return {
+            ...this.getSnapshotHost(),
+            flags: this.flags,
+            parent: this.parent,
+            nextSibling: this.nextSibling,
+            removeWidget: (widget) => {
+                this.removeWidget(widget);
+            },
+            insertChildBefore: (parent, child, before) => {
+                this.insertChildBefore(parent, child, before);
+            },
+        };
+    }
+
+    /** Input-dispatch adapter consumed by `./runtime/runtime-event`. */
+    private getEventHost(): RuntimeViewportInputHost {
+        const source: RuntimeInputSourceHost = {
+            rootId: this.rootId,
+            flags: this.flags,
+            parent: this.parent,
+            firstChild: this.firstChild,
+            nextSibling: this.nextSibling,
+            depth: this.depth,
+            sequence: this.sequence,
+            styles: this.styles,
+            layouts: this.layouts,
+            records: this.records as unknown as Array<StoredWidgetRecord | null>,
+            states: this.states,
+            focusController: this.focusController,
+            registry: this.registry,
+            getRuntime: () => this,
+            getHovered: () => this.hovered,
+            setHovered: (widget) => {
+                this.hovered = widget;
+            },
+            getPressed: () => this.pressed,
+            setPressed: (widget) => {
+                this.pressed = widget;
+            },
+            isFocusable: (index) => this.isFocusable(index),
+            readBox: (index) => this.readBox(index),
+            hitTest: (x, y) => this.hitTest(x, y),
+            updateHover: (target, event) => this.updateHover(target, event),
+            bubbleEvent: (index, event) => this.bubbleEvent(index, event),
+            setFocus: (widget, reason) => this.setFocus(widget, reason),
+            moveFocus: (direction) => this.moveFocus(direction),
+        };
+        return {
+            ...source,
+            inputHost: createInputHost(source),
+            canvasConfig: this.canvasConfig,
+            lastViewport: this.lastViewport,
+        };
+    }
+
+    /** Focus adapter consumed by `./runtime/runtime-focus`. */
+    private getFocusHost(): RuntimeFocusHost {
+        return {
+            flags: this.flags,
+            parent: this.parent,
+            sequence: this.sequence,
+            focuses: this.focuses,
+            rootId: this.rootId,
+            nextId: this.nextId,
+            records: this.records as unknown as Array<StoredWidgetRecord | null>,
+            states: this.states,
+            focusController: this.focusController,
+            registry: this.registry,
+            getRuntime: () => this,
+            isFocusable: (index) => this.isFocusable(index),
+            isAncestor: (ancestor, candidate) => this.isAncestor(ancestor, candidate),
+            readBox: (index) => this.readBox(index),
+        };
+    }
+
+    /** Frame-commit adapter consumed by `./runtime/runtime-frame-commit`. */
+    private getFrameHost(): RuntimeFrameHost<TPayload> {
+        const self = this;
+        return {
+            ...this.getLayoutHost(),
+            get lastLayoutPasses(): number {
+                return self.lastLayoutPasses;
+            },
+            set lastLayoutPasses(value: number) {
+                self.lastLayoutPasses = value;
+            },
+            get layoutDirty(): boolean {
+                return self.layoutDirty;
+            },
+            set layoutDirty(value: boolean) {
+                self.layoutDirty = value;
+            },
+            get structuralDirty(): boolean {
+                return self.structuralDirty;
+            },
+            set structuralDirty(value: boolean) {
+                self.structuralDirty = value;
+            },
+            fonts: this.fonts,
+            canvasConfig: this.canvasConfig,
+            get lastViewport() {
+                return self.lastViewport;
+            },
+            set lastViewport(value: { readonly width: number; readonly height: number } | null) {
+                self.lastViewport = value;
+            },
+            setViewport: (width, height) => {
+                this.setViewport(width, height);
+            },
+            renderFrame: () => this.renderFrame(),
+        };
+    }
+
+    private getRenderHost(): RenderCommandBuilderHost<TPayload> {
+        return {
+            flags: this.flags,
+            parent: this.parent,
+            firstChild: this.firstChild,
+            nextSibling: this.nextSibling,
+            sequence: this.sequence,
+            styles: this.styles,
+            layouts: this.layouts,
+            images: this.images,
+            texts: this.texts,
+            focuses: this.focuses,
+            records: this.records as Array<{ controller: string | null; props: Record<string, unknown> } | null>,
+            states: this.states,
+            rootId: this.rootId,
+            viewportWidth: this.viewportWidth,
+            viewportHeight: this.viewportHeight,
+            lastLayoutPasses: this.lastLayoutPasses,
+            isVisible: (index) => this.isVisible(index),
+            readBox: (index) => this.readBox(index),
+            resolveTextLayoutForRender: (index) => this.resolveTextLayoutForRender(index),
+            resolveControllerCached: (name) => this.resolveControllerCached(name),
+            getFocused: () => this.focusController.getFocused(),
+            getWidgetCount: () => this.getWidgetCount(),
+            getRuntime: () => this,
+        };
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Delegated runtime operations                                         */
+    /* ------------------------------------------------------------------ */
+
+    private ensureActive(): void {
+        if (this.disposed) {
+            throw new DisposedUIError('UIRuntime');
         }
     }
 
@@ -892,62 +921,14 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
         initial: boolean,
         styleOnly = false
     ): void {
-        const record = this.records[index];
-        if (!record) {
-            throw new WidgetNotFoundError(index);
-        }
-        const previousResolvedController = previousController ? this.registry.resolve(previousController) : null;
-        const nextResolvedController = record.controller ? this.registry.resolve(record.controller) : null;
-        if (!initial && previousResolvedController && previousResolvedController !== nextResolvedController) {
-            previousResolvedController.disposeState?.(this.states[index], this, index as WidgetId);
-            this.states[index] = undefined;
-        }
-        this.layouts[index] = compileLayoutInput(record.layoutInput);
-        this.styles[index] = compileWidgetStyle(record.styleInput);
-        this.texts[index] = compileWidgetText(record.textInput, {
-            defaultFamily: this.fonts.getDefaultFamily(),
-            locale: this.locale,
-            fallbackColor: this.styles[index]!.color,
-        });
-        this.images[index] = compileWidgetImage(record.imageInput);
-        this.focuses[index] = compileWidgetFocus(record.focusInput, record.interactive);
-        this.textLayouts[index] = null;
-        this.textLayoutWidths[index] = Number.NaN;
-        this.updateFlags(index);
-        if (!initial && previousResolvedController === nextResolvedController && nextResolvedController && previousProps) {
-            nextResolvedController.update?.(this.createControllerContext(index), previousProps);
-        } else if (nextResolvedController) {
-            this.states[index] = nextResolvedController.createState?.(record.props, this, index as WidgetId);
-            nextResolvedController.mount?.(this.createControllerContext(index));
-        }
-        if (!styleOnly) {
-            this.layoutDirty = true;
-            this.dirtyNodes.add(index);
-        }
-        this.focusController.markDirty();
+        applyWidgetRecord(this.getRecordHost(), index, previousProps, previousController, initial, styleOnly);
     }
 
-    private updateFlags(index: number): void {
-        const style = this.styles[index]!;
-        const focus = this.focuses[index]!;
-        const record = this.records[index]!;
-        let flags = NodeFlag.Allocated;
-        if (style.visible) {
-            flags |= NodeFlag.Visible;
-        }
-        if (record.enabled) {
-            flags |= NodeFlag.Enabled;
-        }
-        if (record.interactive) {
-            flags |= NodeFlag.Interactive;
-        }
-        if (focus.focusable) {
-            flags |= NodeFlag.Focusable;
-        }
-        flags |= NodeFlag.TextDirty;
-        this.flags[index] = flags;
-    }
-
+    /**
+     * Capacity management reallocates the parallel typed arrays, so it stays
+     * bound to the runtime instance; every other tree operation goes through
+     * `getTreeHost()`.
+     */
     private allocate(): number {
         const id = this.freeList.pop() ?? this.nextId++;
         this.ensureCapacity(id + 1);
@@ -1007,595 +988,52 @@ export class UIRuntime<TPayload = unknown> implements Disposable {
     }
 
     private requireWidget(widget: WidgetId | null): number {
-        if (widget === null) {
-            throw new WidgetNotFoundError(-1);
-        }
-        const index = widget as number;
-        if ((this.flags[index] & NodeFlag.Allocated) === 0) {
-            throw new WidgetNotFoundError(index);
-        }
-        return index;
+        return requireWidgetIndex(this.flags, widget);
     }
 
     private isVisible(index: number): boolean {
-        return (this.flags[index] & NodeFlag.Visible) !== 0;
+        return isVisibleFlag(this.flags, index);
     }
 
     private isFocusable(index: number): boolean {
-        return (
-            (this.flags[index] & NodeFlag.Focusable) !== 0 &&
-            (this.flags[index] & NodeFlag.Enabled) !== 0 &&
-            (this.flags[index] & NodeFlag.Visible) !== 0
-        );
+        return isFocusableFlag(this.flags, index);
     }
 
     private isAncestor(ancestor: number, candidate: number): boolean {
-        for (let current = candidate; current !== 0; current = this.parent[current]) {
-            if (current === ancestor) {
-                return true;
-            }
-        }
-        return false;
+        return isAncestorIndex(this.parent, ancestor, candidate);
     }
 
-    private detachNode(index: number): void {
-        const parent = this.parent[index];
-        if (parent === 0) {
-            return;
-        }
-        const previous = this.previousSibling[index];
-        const next = this.nextSibling[index];
-        if (previous !== 0) {
-            this.nextSibling[previous] = next;
-        } else {
-            this.firstChild[parent] = next;
-        }
-        if (next !== 0) {
-            this.previousSibling[next] = previous;
-        } else {
-            this.lastChild[parent] = previous;
-        }
-        this.parent[index] = 0;
-        this.previousSibling[index] = 0;
-        this.nextSibling[index] = 0;
-    }
-
-    private refreshDepths(index: number, depth: number): void {
-        const queue = [index];
-        this.depth[index] = depth;
-        while (queue.length > 0) {
-            const current = queue.shift()!;
-            const currentDepth = this.depth[current];
-            for (let child = this.firstChild[current]; child !== 0; child = this.nextSibling[child]) {
-                this.depth[child] = currentDepth + 1;
-                queue.push(child);
-            }
-        }
-    }
-
-    private markTreeChanged(index: number): void {
-        this.dirtyNodes.add(index);
-        this.layoutDirty = true;
-        this.focusController.markDirty();
-        this.structuralDirty = true;
-    }
-
-    private createLayoutAdapter(): LayoutTreeAdapter<number> {
-        return {
-            root: this.rootId,
-            getLayout: (node) => this.layouts[node as number]!,
-            getFirstChild: (node) => {
-                const child = this.firstChild[node as number];
-                return child === 0 ? null : (child as WidgetId);
-            },
-            getNextSibling: (node) => {
-                const sibling = this.nextSibling[node as number];
-                return sibling === 0 ? null : (sibling as WidgetId);
-            },
-            measureContent: (node, constraints) => this.measureContent(node as number, constraints),
-            setBox: (node, box) => this.writeBox(node as number, box),
-            isVisible: (node) => this.isVisible(node as number),
-        };
-    }
-
-    /**
-     * Returns true when scoped relayout is safe:
-     * - dirtyNodes is non-empty
-     * - no structural changes (insert/remove/reparent) since last commit
-     * - root is not among the dirty nodes
-     * - dirtyNodes.size <= 50% of live node count
-     */
-    private canScopedRelayout(): boolean {
-        if (this.dirtyNodes.size === 0 || this.structuralDirty) {
-            return false;
-        }
-        if (this.dirtyNodes.has(this.rootId)) {
-            return false;
-        }
-        return this.dirtyNodes.size <= this.liveCount * 0.5;
-    }
-
-    private scopedRelayout(adapter: LayoutTreeAdapter<number>, viewport: Readonly<SizeLike>): void {
-        // Collect unique parents of dirty nodes. Re-laying out the parent
-        // (rather than the dirty node itself) ensures that siblings are
-        // re-positioned when a dirty node's measured size changes.
-        const parents = new Set<number>();
-        for (const nodeId of this.dirtyNodes) {
-            const parent = this.parent[nodeId];
-            if (parent !== 0) {
-                parents.add(parent);
-            }
-        }
-        // Sort parents by depth ascending so grandparents are processed before
-        // their descendants. This prevents stale availWidth propagation when
-        // a dirty grandparent is processed after its descendant.
-        const sortedParents = Array.from(parents).sort((left, right) => this.depth[left] - this.depth[right]);
-        for (const parentId of sortedParents) {
-            const box = this.readBox(parentId);
-            const grandparent = this.parent[parentId];
-            const gpBox = grandparent !== 0 ? this.readBox(grandparent) : null;
-            const availWidth = gpBox ? gpBox.contentWidth : viewport.width;
-            const availHeight = gpBox ? gpBox.contentHeight : viewport.height;
-            this.layoutEngine.computeSubtree(adapter, viewport, parentId, box.x, box.y, availWidth, availHeight);
-        }
-    }
-
-    /** Translates the stored boxes of a subtree by a pixel delta (no relayout). */
-    private translateSubtreeBoxes(index: number, dx: number, dy: number): void {
-        const stack = [index];
-        while (stack.length > 0) {
-            const current = stack.pop()!;
-            this.boxX[current] += dx;
-            this.boxY[current] += dy;
-            this.contentX[current] += dx;
-            this.contentY[current] += dy;
-            for (let child = this.firstChild[current]; child !== 0; child = this.nextSibling[child]) {
-                stack.push(child);
-            }
-        }
-    }
-
-    /** Accumulates translation offsets for a subtree (prevents float drift). */
-    private translateSubtreeOffsets(index: number, dx: number, dy: number): void {
-        const stack = [index];
-        while (stack.length > 0) {
-            const current = stack.pop()!;
-            this.translateX[current] += dx;
-            this.translateY[current] += dy;
-            for (let child = this.firstChild[current]; child !== 0; child = this.nextSibling[child]) {
-                stack.push(child);
-            }
-        }
-    }
-
-    /** Clears translation offsets for live widgets only (called after full layout). */
-    private clearTranslationOffsets(): void {
-        for (let i = 0; i < this.records.length; i++) {
-            this.translateX[i] = 0;
-            this.translateY[i] = 0;
-        }
-    }
-
-    private createControllerContext(index: number): WidgetEventContext<Record<string, unknown>, UIRuntime<TPayload>> & {
-        readonly state: unknown;
-    } {
-        const record = this.records[index]!;
-        return {
-            runtime: this,
-            widget: index as WidgetId,
-            props: record.props,
-            state: this.states[index],
-        };
-    }
-
-    private measureContent(index: number, constraints: Readonly<SizeLike>): SizeLike {
-        const text = this.texts[index];
-        const image = this.images[index];
-        const controllerType = this.records[index]?.controller;
-        if (controllerType) {
-            const controller = this.registry.resolve(controllerType);
-            const measured = controller?.measure?.({
-                runtime: this,
-                widget: index as WidgetId,
-                props: this.records[index]!.props,
-                state: this.states[index],
-                availableWidth: constraints.width,
-                availableHeight: constraints.height,
-            });
-            if (measured) {
-                return measured;
-            }
-        }
-        let measuredWidth = 0;
-        let measuredHeight = 0;
-        if (image) {
-            const imageSize = measureImageContent(image, constraints);
-            measuredWidth = Math.max(measuredWidth, imageSize.width);
-            measuredHeight = Math.max(measuredHeight, imageSize.height);
-        }
-        if (text && text.value.length > 0) {
-            const width = Number.isFinite(constraints.width)
-                ? Math.max(0, constraints.width)
-                : Number.POSITIVE_INFINITY;
-            if (!this.textLayouts[index] || this.textLayoutWidths[index] !== width) {
-                this.textLayouts[index] = this.measureTextWithAutoSize(text, {
-                    width,
-                    height: constraints.height,
-                });
-                this.textLayoutWidths[index] = width;
-            }
-            measuredWidth = Math.max(measuredWidth, this.textLayouts[index]!.width);
-            measuredHeight = Math.max(measuredHeight, this.textLayouts[index]!.height);
-        }
-        return { width: measuredWidth, height: measuredHeight };
-    }
-
-    private writeBox(index: number, box: LayoutBox): void {
-        this.boxX[index] = box.x;
-        this.boxY[index] = box.y;
-        this.boxWidth[index] = box.width;
-        this.boxHeight[index] = box.height;
-        this.contentX[index] = box.contentX;
-        this.contentY[index] = box.contentY;
-        this.contentWidth[index] = box.contentWidth;
-        this.contentHeight[index] = box.contentHeight;
+    private createLayoutAdapter(): LayoutTreeAdapter<WidgetId> {
+        return buildLayoutAdapter(this.getLayoutHost());
     }
 
     private readBox(index: number): LayoutBox {
-        return {
-            x: this.boxX[index] + this.translateX[index],
-            y: this.boxY[index] + this.translateY[index],
-            width: this.boxWidth[index],
-            height: this.boxHeight[index],
-            contentX: this.contentX[index] + this.translateX[index],
-            contentY: this.contentY[index] + this.translateY[index],
-            contentWidth: this.contentWidth[index],
-            contentHeight: this.contentHeight[index],
-        };
+        return readWidgetBox(this.getLayoutHost(), index);
     }
 
     private resolveControllerCached(controllerName: string | null): WidgetController<any, any, any> | null {
-        if (!controllerName) {
-            return null;
-        }
-        const cached = this.controllerResolveCache.get(controllerName);
-        if (cached !== undefined) {
-            return cached;
-        }
-        const resolved = this.registry.resolve(controllerName);
-        this.controllerResolveCache.set(controllerName, resolved);
-        return resolved;
+        return resolveControllerCachedByName(this.getRecordHost(), controllerName);
     }
 
     private renderFrame(): UIFrame<TPayload> {
         return this.renderCommandBuilder.build(this.getRenderHost());
     }
 
-    private getRenderHost(): RenderCommandBuilderHost<TPayload> {
-        return {
-            flags: this.flags,
-            parent: this.parent,
-            firstChild: this.firstChild,
-            nextSibling: this.nextSibling,
-            sequence: this.sequence,
-            styles: this.styles,
-            layouts: this.layouts,
-            images: this.images,
-            texts: this.texts,
-            focuses: this.focuses,
-            records: this.records as Array<{ controller: string | null; props: Record<string, unknown> } | null>,
-            states: this.states,
-            rootId: this.rootId,
-            viewportWidth: this.viewportWidth,
-            viewportHeight: this.viewportHeight,
-            lastLayoutPasses: this.lastLayoutPasses,
-            isVisible: (index) => this.isVisible(index),
-            readBox: (index) => this.readBox(index),
-            resolveTextLayoutForRender: (index) => this.resolveTextLayoutForRender(index),
-            resolveControllerCached: (name) => this.resolveControllerCached(name),
-            getFocused: () => this.focusController.getFocused(),
-            getWidgetCount: () => this.getWidgetCount(),
-            getRuntime: () => this,
-        };
-    }
-
-    private measureTextWithAutoSize(
-        text: ResolvedTextBlock,
-        constraints: TextLayoutConstraint
-    ): TextLayoutResult {
-        return this.autoSizeService.measure(this, text, constraints);
-    }
-
     private resolveTextLayoutForRender(index: number): TextLayoutResult | null {
-        const text = this.texts[index];
-        if (!text) {
-            return null;
-        }
-        const width = this.contentWidth[index];
-        if (!this.textLayouts[index] || this.textLayoutWidths[index] !== width) {
-            this.textLayouts[index] = this.measureTextWithAutoSize(text, {
-                width,
-                height: this.contentHeight[index],
-            });
-            this.textLayoutWidths[index] = width;
-        }
-        return this.textLayouts[index];
+        return resolveRenderTextLayout(this.getLayoutHost(), index);
     }
 
     private hitTest(x: number, y: number): WidgetId | null {
-        let bestId = 0;
-        let bestZIndex = Number.NEGATIVE_INFINITY;
-        let bestDepth = -1;
-        let bestOrder = -1;
-        const visit = (index: number, clip: LayoutBox | null): void => {
-            if (!this.isVisible(index)) {
-                return;
-            }
-            const box = this.readBox(index);
-            const nextClip = this.styles[index]!.clip ? intersectRect(clip, box) : clip;
-            if (this.styles[index]!.clip && nextClip === null) {
-                return;
-            }
-            if (intersectsPoint(box, x, y) && (!nextClip || intersectsPoint(nextClip, x, y))) {
-                if (
-                    (this.flags[index] & NodeFlag.Interactive) !== 0 &&
-                    (this.flags[index] & NodeFlag.Enabled) !== 0
-                ) {
-                    const candidateZIndex = this.layouts[index]!.zIndex;
-                    const candidateDepth = this.depth[index];
-                    const candidateOrder = this.sequence[index];
-                    if (
-                        bestId === 0 ||
-                        candidateZIndex > bestZIndex ||
-                        (candidateZIndex === bestZIndex && candidateDepth > bestDepth) ||
-                        (candidateZIndex === bestZIndex &&
-                            candidateDepth === bestDepth &&
-                            candidateOrder > bestOrder)
-                    ) {
-                        bestId = index;
-                        bestZIndex = candidateZIndex;
-                        bestDepth = candidateDepth;
-                        bestOrder = candidateOrder;
-                    }
-                }
-                for (let child = this.firstChild[index]; child !== 0; child = this.nextSibling[child]) {
-                    visit(child, nextClip);
-                }
-            }
-        };
-        visit(this.rootId, null);
-        return bestId === 0 ? null : (bestId as WidgetId);
+        return hitTestTree(this.getEventHost(), x, y);
     }
 
     private updateHover(target: WidgetId | null, event: Readonly<UIPointerEvent>): void {
-        if (this.hovered === target) {
-            return;
-        }
-        const previous = this.hovered;
-        this.hovered = target;
-        if (previous) {
-            this.invokeEvent(previous as number, { ...event, phase: 'leave' });
-        }
-        if (target) {
-            this.invokeEvent(target as number, { ...event, phase: 'enter' });
-        }
+        updateHoverState(this.getEventHost(), target, event);
     }
 
     private bubbleEvent(index: number, event: Readonly<UIInputEvent>): boolean {
-        for (let current = index; current !== 0; current = this.parent[current]) {
-            if (this.invokeEvent(current, event)) {
-                return true;
-            }
-        }
-        return false;
+        return bubbleEventUp(this.getEventHost(), index, event);
     }
-
-    private invokeEvent(index: number, event: Readonly<UIInputEvent>): boolean {
-        const record = this.records[index];
-        if (!record || !record.enabled) {
-            return false;
-        }
-        const context: WidgetEventContext<Record<string, unknown>, UIRuntime<TPayload>> = {
-            runtime: this,
-            widget: index as WidgetId,
-            props: record.props,
-        };
-        const handlers = record.handlers;
-        let handled = false;
-        switch (event.type) {
-            case 'pointer':
-                switch (event.phase) {
-                    case 'move':
-                        handled = Boolean(handlers?.pointerMove?.(event, context));
-                        break;
-                    case 'down':
-                        handled = Boolean(handlers?.pointerDown?.(event, context));
-                        break;
-                    case 'up':
-                        handled = Boolean(handlers?.pointerUp?.(event, context));
-                        break;
-                    case 'enter':
-                        handled = Boolean(handlers?.pointerEnter?.(event, context));
-                        break;
-                    case 'leave':
-                        handled = Boolean(handlers?.pointerLeave?.(event, context));
-                        break;
-                    case 'wheel':
-                        handled = Boolean(handlers?.wheel?.(event, context));
-                        break;
-                    default:
-                        break;
-                }
-                break;
-            case 'key':
-                handled = event.phase === 'down'
-                    ? Boolean(handlers?.keyDown?.(event, context))
-                    : Boolean(handlers?.keyUp?.(event, context));
-                break;
-            case 'text':
-                handled = Boolean(handlers?.textInput?.(event, context));
-                break;
-            default:
-                break;
-        }
-        const controller = record.controller ? this.registry.resolve(record.controller) : null;
-        if (!handled && controller?.input) {
-            handled = Boolean(
-                controller.input(event, {
-                    runtime: this,
-                    widget: index as WidgetId,
-                    props: record.props,
-                    state: this.states[index],
-                })
-            );
-        }
-        return handled;
-    }
-
-    private emitFocusChange(
-        index: number,
-        focused: boolean,
-        reason: WidgetFocusChangeEvent['reason'],
-        direction?: FocusMoveDirection
-    ): void {
-        const record = this.records[index];
-        if (!record) {
-            return;
-        }
-        const event: WidgetFocusChangeEvent = {
-            type: 'widget-focus',
-            focused,
-            reason,
-        };
-        const context: WidgetEventContext<Record<string, unknown>, UIRuntime<TPayload>> = {
-            runtime: this,
-            widget: index as WidgetId,
-            props: record.props,
-        };
-        if (focused) {
-            void record.handlers?.focus?.(event, context);
-        } else {
-            void record.handlers?.blur?.(event, context);
-        }
-        const controller = record.controller ? this.registry.resolve(record.controller) : null;
-        if (controller) {
-            const controllerContext = {
-                runtime: this,
-                widget: index as WidgetId,
-                props: record.props,
-                state: this.states[index],
-                reason,
-                direction,
-            };
-            if (focused) {
-                controller.focus?.(controllerContext);
-            } else {
-                controller.blur?.(controllerContext);
-            }
-        }
-    }
-
-    private snapshotNode(index: number): WidgetSnapshot {
-        const record = this.records[index]!;
-        const children: WidgetSnapshot[] = [];
-        for (let child = this.firstChild[index]; child !== 0; child = this.nextSibling[child]) {
-            children.push(this.snapshotNode(child));
-        }
-        return {
-            role: record.role,
-            controller: record.controller ?? undefined,
-            key: this.serializeKey(record.key),
-            props: cloneData(record.props),
-            enabled: record.enabled,
-            interactive: record.interactive,
-            layout: cloneData(record.layoutInput),
-            style: cloneData(record.styleInput),
-            text: cloneData(record.textInput),
-            image: cloneData(record.imageInput),
-            focus: cloneData(record.focusInput),
-            children,
-        };
-    }
-
-    private serializeKey(key: WidgetKey | undefined): WidgetSerializableKey | undefined {
-        if (key === undefined) {
-            return undefined;
-        }
-        if (typeof key === 'symbol') {
-            return null;
-        }
-        return key;
-    }
-
-    private restoreChildSnapshot(parent: WidgetId, snapshot: WidgetSnapshot): WidgetId {
-        const child = this.createWidget({
-            role: snapshot.role,
-            controller: snapshot.controller,
-            key: snapshot.key ?? undefined,
-            props: cloneData(snapshot.props ?? EMPTY_RECORD_OBJECT),
-            enabled: snapshot.enabled,
-            interactive: snapshot.interactive,
-            layout: cloneData(snapshot.layout ?? EMPTY_LAYOUT_INPUT),
-            style: cloneData(snapshot.style ?? EMPTY_STYLE_INPUT),
-            text: cloneData(snapshot.text ?? null),
-            image: cloneData(snapshot.image ?? null),
-            focus: cloneData(snapshot.focus ?? EMPTY_FOCUS_INPUT),
-        });
-        this.appendChild(parent, child);
-        for (const grandChild of snapshot.children) {
-            this.restoreChildSnapshot(child, grandChild);
-        }
-        return child;
-    }
-
-    private destroyNode(index: number): void {
-        const focusedWidget = this.focusController.getFocused();
-        if (focusedWidget && this.isAncestor(index, focusedWidget as number)) {
-            this.focusController.clearFocus();
-        }
-        if (this.hovered && this.isAncestor(index, this.hovered as number)) {
-            this.hovered = null;
-        }
-        if (this.pressed && this.isAncestor(index, this.pressed as number)) {
-            this.pressed = null;
-        }
-        const controller = this.records[index]?.controller
-            ? this.registry.resolve(this.records[index]!.controller)
-            : null;
-        controller?.disposeState?.(this.states[index], this, index as WidgetId);
-        this.controllerEventBus.clear(index as WidgetId);
-        this.records[index] = null;
-        this.layouts[index] = null;
-        this.styles[index] = null;
-        this.texts[index] = null;
-        this.images[index] = null;
-        this.focuses[index] = null;
-        this.states[index] = undefined;
-        this.textLayouts[index] = null;
-        this.textLayoutWidths[index] = Number.NaN;
-        this.parent[index] = 0;
-        this.firstChild[index] = 0;
-        this.lastChild[index] = 0;
-        this.previousSibling[index] = 0;
-        this.nextSibling[index] = 0;
-        this.flags[index] = 0;
-        this.freeList.push(index);
-        this.liveCount -= 1;
-    }
-}
-
-// ─── Canvas-scale helpers (module-private) ──────────────────────────────────
-
-function scaleClipRect(
-    rect: RectLike,
-    scale: CanvasScaleResult
-): RectLike {
-    return {
-        x: rect.x * scale.scaleX + scale.offsetX,
-        y: rect.y * scale.scaleY + scale.offsetY,
-        width: rect.width * scale.scaleX,
-        height: rect.height * scale.scaleY,
-    };
 }
 
 export type {

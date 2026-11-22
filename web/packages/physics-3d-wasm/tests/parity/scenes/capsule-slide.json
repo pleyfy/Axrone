@@ -1,0 +1,26 @@
+{
+    "name": "capsule-slide",
+    "skip": null,
+    "world": {
+        "gravity": [0, -9.81, 0],
+        "maxBodies": 16,
+        "maxContacts": 1024,
+        "velocityIterations": 10,
+        "positionIterations": 4,
+        "allowSleep": false
+    },
+    "bodies": [
+        { "type": 0, "position": [0, -0.5, 0] },
+        { "type": 0, "position": [-1, 1.4, 0], "rotation": [0, 0, 0.25881904510252074, 0.9659258262890683] },
+        { "type": 2, "position": [0.1240381, 2.4531089, 0], "rotation": [0, 0, 0.8660254037844386, 0.5] }
+    ],
+    "shapes": [
+        { "body": 0, "kind": "box", "halfExtents": [10, 0.5, 10], "center": [0, 0, 0], "material": { "friction": 0.8, "restitution": 0 } },
+        { "body": 1, "kind": "box", "halfExtents": [8, 0.3, 4], "center": [0, 0, 0], "material": { "friction": 0.4, "restitution": 0 } },
+        { "body": 2, "kind": "capsule", "radius": 0.3, "height": 1.2, "center": [0, 0, 0], "material": { "friction": 0.05, "restitution": 0 } }
+    ],
+    "joints": [],
+    "rays": [],
+    "snapshotEvery": 10,
+    "steps": 240
+}

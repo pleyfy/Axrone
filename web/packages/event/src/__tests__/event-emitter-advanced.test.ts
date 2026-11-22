@@ -57,7 +57,9 @@ describe('EventEmitter - Advanced Methods', () => {
             const target = new EventEmitter<TestEvents>();
             let count = 0;
 
-            target.on('test:event', () => count++);
+            target.on('test:event', () => {
+                count++;
+            });
 
             const unsub = emitter.pipe('test:event', target as IEventPublisher<any>);
 
@@ -98,9 +100,15 @@ describe('EventEmitter - Advanced Methods', () => {
         it('should respect priority ordering', () => {
             const order: string[] = [];
 
-            emitter.on('test:event', () => order.push('low'), { priority: 'low' });
-            emitter.on('test:event', () => order.push('high'), { priority: 'high' });
-            emitter.on('test:event', () => order.push('normal'), { priority: 'normal' });
+            emitter.on('test:event', () => {
+                order.push('low');
+            }, { priority: 'low' });
+            emitter.on('test:event', () => {
+                order.push('high');
+            }, { priority: 'high' });
+            emitter.on('test:event', () => {
+                order.push('normal');
+            }, { priority: 'normal' });
 
             emitter.emitSync('test:event', { value: 1 });
 
@@ -110,7 +118,9 @@ describe('EventEmitter - Advanced Methods', () => {
         it('should handle once listeners correctly', () => {
             let count = 0;
 
-            emitter.once('test:event', () => count++);
+            emitter.once('test:event', () => {
+                count++;
+            });
 
             emitter.emitSync('test:event', { value: 1 });
             emitter.emitSync('test:event', { value: 2 });
@@ -272,7 +282,9 @@ describe('EventEmitter - Advanced Methods', () => {
     describe('flush()', () => {
         it('should flush buffered events for a specific event while paused', async () => {
             let processed = 0;
-            emitter.on('test:event', () => processed++);
+            emitter.on('test:event', () => {
+                processed++;
+            });
 
             emitter.pause();
             await emitter.emit('test:event', { value: 1 });
@@ -355,7 +367,9 @@ describe('EventEmitter - Advanced Methods', () => {
         it('should wait for buffer processing and scheduler completion', async () => {
             let processed = 0;
 
-            emitter.on('test:event', () => processed++);
+            emitter.on('test:event', () => {
+                processed++;
+            });
 
             emitter.pause();
             await emitter.emit('test:event', { value: 1 });

@@ -1,6 +1,7 @@
 import { clamp } from '@axrone/numeric';
 import type { UIRuntime } from '../runtime';
 import type { LayoutBox, WidgetId } from '../types';
+import { setWidgetVisible } from './internals';
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -266,7 +267,7 @@ export const createPopupManager = (runtime: UIRuntime): PopupManager => {
         const popupBox = tryGetLayoutBox(runtime, entry.popupWidget);
         if (popupBox !== null) {
             runtime.appendChild(entry.originalParent, entry.popupWidget);
-            runtime.updateWidget(entry.popupWidget, { enabled: false });
+            setWidgetVisible(runtime, entry.popupWidget, false);
         }
 
         // Remove the backdrop widget if it was created.

@@ -6,9 +6,11 @@ import type {
 } from '../types';
 import {
     TERRAIN_MAX_LAYERS,
+    TERRAIN_SPLAT_STAMP_SCALE,
     isTerrainSplatResolution,
     validateTerrainDescriptor,
 } from '../types';
+import { smoothstep } from '../internal/math';
 
 /**
  * Splat weight buffers: RGBA texels where each channel carries one layer's
@@ -60,8 +62,6 @@ export interface TerrainSplatBrushStamp {
     readonly localX: number;
     readonly localZ: number;
 }
-
-const smoothstep = (t: number): number => t * t * (3 - 2 * t);
 
 /**
  * Paints one brush stamp of the target layer into the weight buffer in
@@ -124,56 +124,45 @@ export const applyTerrainSplatBrushStamp = ({
 
             const offset = (texelZ * resolution + texelX) * 4;
             const current = splat[offset + layerIndex]!;
-            // strength 1 + tam agirlikta texel tek stamp'te hedefe %35 yaklasir.
+            // Strength 1 at full weight approaches target by TERRAIN_SPLAT_STAMP_SCALE per stamp.
             const target = Math.min(
                 WEIGHT_TOTAL,
-                Math.round(current + (WEIGHT_TOTAL - current) * brush.strength * weight * 0.35)
+                Math.round(current + (WEIGHT_TOTAL - current) * brush.strength * weight * TERRAIN_SPLAT_STAMP_SCALE)
             );
             if (target === current) {
                 continue;
             }
 
+            splat[offset + layerIndex] = target;
+            const remaining = WEIGHT_TOTAL - target;
             const othersTotal = WEIGHT_TOTAL - current;
-            const nextOthersTotal = WEIGHT_TOTAL - target;
 
-            let redistributed = 0;
+            let distributed = 0;
             let lastOtherChannel = -1;
             for (let channel = 0; channel < 4; channel += 1) {
                 if (channel === layerIndex) {
                     continue;
                 }
-
+                lastOtherChannel = channel;
                 const value = splat[offset + channel]!;
                 const scaled =
                     othersTotal > 0
-                        ? Math.round((value / othersTotal) * nextOthersTotal)
+                        ? Math.round((value / othersTotal) * remaining)
                         : channel === (layerIndex + 1) % 4
-                          ? nextOthersTotal
+                          ? remaining
                           : 0;
                 splat[offset + channel] = scaled;
-                redistributed += scaled;
-                if (scaled > 0) {
-                    lastOtherChannel = channel;
-                }
+                distributed += scaled;
             }
 
-            // Yuvarlama artigini son pozitif kanala (yoksa hedef kanala) ekle.
-            const remainder = nextOthersTotal - redistributed;
+            // Absorb rounding remainder into the last other channel.
+            const remainder = remaining - distributed;
             if (remainder !== 0 && lastOtherChannel >= 0) {
                 splat[offset + lastOtherChannel] = Math.max(
                     0,
                     splat[offset + lastOtherChannel]! + remainder
                 );
             }
-
-            // Toplami kesin 255'e sabitle: hedef kanal kalan bakiyeyi alir.
-            let othersSum = 0;
-            for (let channel = 0; channel < 4; channel += 1) {
-                if (channel !== layerIndex) {
-                    othersSum += splat[offset + channel]!;
-                }
-            }
-            splat[offset + layerIndex] = WEIGHT_TOTAL - othersSum;
 
             changed = true;
         }

@@ -1,0 +1,67 @@
+{
+  "policy": {
+    "velocityIterations": 10,
+    "positionIterations": 4
+  },
+  "variant": "wasm-release",
+  "wasm": "build/wasm-release/physics.wasm",
+  "recordedAt": "2026-11-09T15:53:14Z",
+  "runsRecorded": 3,
+  "fingerprintsStable": true,
+  "stability": "Each cell produced byte-identical fingerprints across three independent `node bench/run.mjs build/wasm-release/physics.wasm` invocations; only whole-step ms varied with host noise, which is the intended behaviour.",
+  "note": "10/4 iteration policy pins recorded by bench/run.mjs after M1 Task 1 unified the iteration policy to a single source; they replace the 8/3 pins (250=3814e00ce1b2f604, 1000=70ab76696c084efd, 2000=392e9f45085fde8a, 5000=cf238e8120066e7e) recorded while the bench stepped at 8/3. Fingerprints and contact counts are identical across the three runs; ms/step shifts because the solver now runs 10/4, which is the intended policy change, not a regression.",
+  "cells": [
+    {
+      "count": 250,
+      "msPerStep": 1.180,
+      "contacts": 1190,
+      "fingerprint": "abf8513a7c8a2feb",
+      "fingerprints": [
+        "abf8513a7c8a2feb",
+        "abf8513a7c8a2feb",
+        "abf8513a7c8a2feb"
+      ],
+      "fingerprintsAgree": true,
+      "previousFingerprint8_3": "3814e00ce1b2f604"
+    },
+    {
+      "count": 1000,
+      "msPerStep": 5.022,
+      "contacts": 4752,
+      "fingerprint": "5fe528523ae0b090",
+      "fingerprints": [
+        "5fe528523ae0b090",
+        "5fe528523ae0b090",
+        "5fe528523ae0b090"
+      ],
+      "fingerprintsAgree": true,
+      "previousFingerprint8_3": "70ab76696c084efd"
+    },
+    {
+      "count": 2000,
+      "msPerStep": 10.172,
+      "contacts": 9518,
+      "fingerprint": "e0ba8d3efc221e7c",
+      "fingerprints": [
+        "e0ba8d3efc221e7c",
+        "e0ba8d3efc221e7c",
+        "e0ba8d3efc221e7c"
+      ],
+      "fingerprintsAgree": true,
+      "previousFingerprint8_3": "392e9f45085fde8a"
+    },
+    {
+      "count": 5000,
+      "msPerStep": 28.692,
+      "contacts": 24121,
+      "fingerprint": "98ddbd470475b15c",
+      "fingerprints": [
+        "98ddbd470475b15c",
+        "98ddbd470475b15c",
+        "98ddbd470475b15c"
+      ],
+      "fingerprintsAgree": true,
+      "previousFingerprint8_3": "cf238e8120066e7e"
+    }
+  ]
+}

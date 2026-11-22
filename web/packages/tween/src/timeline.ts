@@ -1,16 +1,17 @@
-import { EventEmitter } from '@axrone/event';
-import { ITimeline, IGroupable, TimelineOptions, TimelineEventMap, VoidCallback } from './types';
+import { EventFanOut, UnsubscribeFn } from './dispatcher';
+import { ITimeline, IGroupable, TimelineOptions, TimelineEventMap, TweenStatus, VoidCallback } from './types';
+import { nextTweenId } from './id';
+import { RafLoop } from './raf-loop';
 
-let _nextId = 0;
-
-export class Timeline extends EventEmitter<TimelineEventMap> implements ITimeline {
-    readonly id: number = _nextId++;
+export class Timeline implements ITimeline {
+    readonly id: number = nextTweenId();
 
     private _timelineItems: Array<{
         target: IGroupable;
         start: number;
         end: number;
         originalDuration: number;
+        finished: boolean;
     }> = [];
     private _duration = 0;
     private _currentTime = 0;
@@ -18,21 +19,24 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
     private _isPaused = false;
     private _timeScale = 1;
     private _lastUpdateTime = 0;
-    private _animFrameId?: number;
     private _autoUpdate = false;
     private _clockMode: 'manual' | 'realtime' | undefined;
-    private _status: 'idle' | 'running' | 'paused' | 'completed' = 'idle';
+    private _status: TweenStatus = 'idle';
+    private _events = new EventFanOut<TimelineEventMap>();
+    private _loop: RafLoop;
 
-    constructor() {
-        super();
+    public constructor() {
+        this._loop = new RafLoop(() => {
+            this.update();
+            return this._isPlaying && !this._isPaused;
+        });
     }
 
     setAutoUpdate(enabled: boolean): void {
         this._autoUpdate = enabled;
 
-        if (!enabled && this._animFrameId !== undefined) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
+        if (!enabled) {
+            this._loop.stop();
         }
     }
 
@@ -44,7 +48,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         return this._isPlaying;
     }
 
-    getStatus(): 'idle' | 'running' | 'paused' | 'completed' {
+    getStatus(): TweenStatus {
         return this._status;
     }
 
@@ -60,6 +64,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
             start: startPosition,
             end: endPosition,
             originalDuration: duration,
+            finished: false,
         });
 
         this._duration = Math.max(this._duration, endPosition);
@@ -81,12 +86,13 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         this._lastUpdateTime = time ?? (this._autoUpdate ? 0 : performance.now());
 
         for (const item of this._timelineItems) {
+            item.finished = false;
             item.target.stop();
         }
 
         this._currentTime = 0;
 
-        this.emitSync('start', undefined);
+        this._events.emit('start', undefined);
 
         if (time === undefined && this._autoUpdate) {
             this._startInternalLoop();
@@ -104,16 +110,13 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         this._isPaused = false;
         this._status = 'idle';
 
-        if (this._animFrameId) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
-        }
+        this._loop.stop();
 
         for (const item of this._timelineItems) {
             item.target.stop();
         }
 
-        this.emitSync('stop', undefined);
+        this._events.emit('stop', undefined);
 
         return this;
     }
@@ -126,10 +129,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         this._isPaused = true;
         this._status = 'paused';
 
-        if (this._animFrameId) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
-        }
+        this._loop.stop();
 
         for (const item of this._timelineItems) {
             if (item.target.isPlaying()) {
@@ -137,7 +137,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
             }
         }
 
-        this.emitSync('pause', undefined);
+        this._events.emit('pause', undefined);
 
         return this;
     }
@@ -163,7 +163,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
             this._startInternalLoop();
         }
 
-        this.emitSync('resume', undefined);
+        this._events.emit('resume', undefined);
 
         return this;
     }
@@ -172,11 +172,16 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         if (!this._isPlaying || this._isPaused) return this;
 
         if (time !== undefined) {
-            this._clockMode = 'manual';
-            this._currentTime = time * this._timeScale;
+            if (this._clockMode !== 'manual') {
+                this._clockMode = 'manual';
+                this._lastUpdateTime = 0;
+            }
+            this._currentTime += (time - this._lastUpdateTime) * this._timeScale;
+            this._lastUpdateTime = time;
         } else {
-            if (!this._clockMode) {
+            if (this._clockMode !== 'realtime') {
                 this._clockMode = 'realtime';
+                this._lastUpdateTime = performance.now();
             }
 
             const now = performance.now();
@@ -185,7 +190,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
             this._lastUpdateTime = now;
         }
 
-        this.emitSync('update', this._currentTime);
+        this._events.emit('update', this._currentTime);
 
         this._updateItems();
 
@@ -193,7 +198,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
             this._isPlaying = false;
             this._isPaused = false;
             this._status = 'completed';
-            this.emitSync('complete', undefined);
+            this._events.emit('complete', undefined);
             return this;
         }
 
@@ -213,6 +218,24 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         return this;
     }
 
+    on<K extends keyof TimelineEventMap & string>(
+        event: K,
+        callback: (payload: TimelineEventMap[K]) => void
+    ): UnsubscribeFn {
+        return this._events.on(event, callback);
+    }
+
+    off<K extends keyof TimelineEventMap & string>(
+        event: K,
+        callback?: (payload: TimelineEventMap[K]) => void
+    ): boolean {
+        return this._events.off(event, callback);
+    }
+
+    has<K extends keyof TimelineEventMap & string>(event: K): boolean {
+        return this._events.has(event);
+    }
+
     onComplete(callback: VoidCallback): this {
         this.on('complete', callback);
         return this;
@@ -226,10 +249,7 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
     dispose(): void {
         this.stop();
 
-        if (this._animFrameId) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
-        }
+        this._loop.stop();
 
         for (const item of this._timelineItems) {
             item.target.stop();
@@ -242,26 +262,26 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
         this._autoUpdate = false;
         this._clockMode = undefined;
         this._status = 'idle';
-        super.dispose();
+        this._events.clear();
     }
 
     private _startInternalLoop(): void {
-        if (this._animFrameId !== undefined) return;
+        if (this._loop.isRunning) return;
         this._lastUpdateTime = performance.now();
-        this._internalUpdate();
-    }
-
-    private _internalUpdate(): void {
-        if (!this._isPlaying || this._isPaused || !this._autoUpdate) return;
-
-        this._animFrameId = requestAnimationFrame(() => this._internalUpdate());
-
-        this.update();
+        this._loop.start();
     }
 
     private _updateItems(): void {
         for (const item of this._timelineItems) {
             const { target, start, end } = item;
+
+            if (item.finished) {
+                if (this._currentTime < start) {
+                    item.finished = false;
+                } else {
+                    continue;
+                }
+            }
 
             if (this._currentTime >= start && this._currentTime <= end) {
                 if (!target.isPlaying()) {
@@ -275,12 +295,13 @@ export class Timeline extends EventEmitter<TimelineEventMap> implements ITimelin
                     const tweenDuration = item.originalDuration;
                     target.update(tweenDuration);
                     target.stop();
-                } else {
+                } else if (target.getStatus() !== 'completed') {
                     target.start(0);
                     const tweenDuration = item.originalDuration;
                     target.update(tweenDuration);
                     target.stop();
                 }
+                item.finished = true;
             } else if (this._currentTime < start) {
                 if (target.isPlaying()) {
                     target.stop();

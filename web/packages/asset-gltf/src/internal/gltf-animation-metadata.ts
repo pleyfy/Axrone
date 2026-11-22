@@ -876,14 +876,16 @@ export const sampleAnimationTrackValues = (
     const duration = Math.max(0, endTime - startTime);
     const alpha = duration > 0 ? Math.max(0, Math.min(1, (time - startTime) / duration)) : 0;
 
+    // Zero-allocation hot path: avoid Object.freeze and Array.from overhead.
+    // Compile-time readonly is sufficient for immutability guarantee.
     if (track.interpolation === 'STEP' || frameIndex === nextIndex) {
         const baseOffset =
             frameIndex * track.sampleStride + (track.interpolation === 'CUBICSPLINE' ? componentCount : 0);
-        return Object.freeze(
-            Array.from({ length: componentCount }, (_, componentIndex) =>
-                track.values[baseOffset + componentIndex] ?? (componentIndex === 3 ? 1 : 0)
-            )
-        );
+        const result = new Array(componentCount);
+        for (let componentIndex = 0; componentIndex < componentCount; componentIndex++) {
+            result[componentIndex] = track.values[baseOffset + componentIndex] ?? (componentIndex === 3 ? 1 : 0);
+        }
+        return result;
     }
 
     if (track.interpolation === 'CUBICSPLINE') {
@@ -896,26 +898,26 @@ export const sampleAnimationTrackValues = (
         const h10 = s3 - 2 * s2 + s;
         const h01 = -2 * s3 + 3 * s2;
         const h11 = s3 - s2;
-        return Object.freeze(
-            Array.from({ length: componentCount }, (_, componentIndex) => {
-                const inTangent = track.values[rightBase + componentIndex] ?? 0;
-                const value0 = track.values[leftBase + componentCount + componentIndex] ?? 0;
-                const outTangent = track.values[leftBase + componentCount * 2 + componentIndex] ?? 0;
-                const value1 = track.values[rightBase + componentCount + componentIndex] ?? 0;
-                return h00 * value0 + h10 * duration * outTangent + h01 * value1 + h11 * duration * inTangent;
-            })
-        );
+        const result = new Array(componentCount);
+        for (let componentIndex = 0; componentIndex < componentCount; componentIndex++) {
+            const inTangent = track.values[rightBase + componentIndex] ?? 0;
+            const value0 = track.values[leftBase + componentCount + componentIndex] ?? 0;
+            const outTangent = track.values[leftBase + componentCount * 2 + componentIndex] ?? 0;
+            const value1 = track.values[rightBase + componentCount + componentIndex] ?? 0;
+            result[componentIndex] = h00 * value0 + h10 * duration * outTangent + h01 * value1 + h11 * duration * inTangent;
+        }
+        return result;
     }
 
     const leftOffset = frameIndex * track.sampleStride;
     const rightOffset = nextIndex * track.sampleStride;
-    return Object.freeze(
-        Array.from({ length: componentCount }, (_, componentIndex) => {
-            const left = track.values[leftOffset + componentIndex] ?? 0;
-            const right = track.values[rightOffset + componentIndex] ?? left;
-            return left + (right - left) * alpha;
-        })
-    );
+    const result = new Array(componentCount);
+    for (let componentIndex = 0; componentIndex < componentCount; componentIndex++) {
+        const left = track.values[leftOffset + componentIndex] ?? 0;
+        const right = track.values[rightOffset + componentIndex] ?? left;
+        result[componentIndex] = left + (right - left) * alpha;
+    }
+    return result;
 };
 
 export const resolveFeatureExportSampleTimes = (

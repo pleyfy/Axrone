@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PhysicsWorld3D } from '@axrone/physics-3d';
 
 describe('PhysicsWorld3D Integration', () => {
@@ -470,6 +470,82 @@ describe('PhysicsWorld3D Integration', () => {
             const profiler = profiledWorld.getProfiler();
             expect(profiler).not.toBeNull();
             expect(profiler!.stepTime).toBeGreaterThanOrEqual(0);
+        });
+
+        it('attributes warm start, persistence and both integrations to named phases', () => {
+            const profiledWorld = new PhysicsWorld3D({
+                gravity: { x: 0, y: -9.81, z: 0 },
+                enableProfiler: true,
+            });
+
+            const ground = profiledWorld.createBody({ type: 0, position: { x: 0, y: -0.5, z: 0 } });
+            profiledWorld.createBoxShape(ground, {
+                center: { x: 0, y: 0, z: 0 },
+                halfExtents: { x: 10, y: 0.5, z: 10 },
+            });
+
+            for (let i = 0; i < 6; i++) {
+                const body = profiledWorld.createBody({
+                    type: 2,
+                    position: { x: (i % 3) - 1, y: 0.6 + Math.floor(i / 3) * 1.1, z: 0 },
+                });
+                profiledWorld.createBoxShape(body, {
+                    center: { x: 0, y: 0, z: 0 },
+                    halfExtents: { x: 0.5, y: 0.5, z: 0.5 },
+                });
+                profiledWorld.getBody(body)?.resetMassData();
+            }
+
+            let clockTicks = 0;
+            const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => (clockTicks += 1));
+            let profiler: ReturnType<typeof profiledWorld.getProfiler> = null;
+
+            try {
+                for (let i = 0; i < 3; i++) profiledWorld.step(1 / 60);
+                profiler = profiledWorld.getProfiler();
+            } finally {
+                nowSpy.mockRestore();
+            }
+
+            expect(profiler).not.toBeNull();
+            expect(profiledWorld.getStatistics().contactCount).toBeGreaterThan(0);
+
+            const phases: Record<string, number> = {
+                broadphaseTime: profiler!.broadphaseTime,
+                narrowphaseTime: profiler!.narrowphaseTime,
+                solveVelocityTime: profiler!.solveVelocityTime,
+                solvePositionTime: profiler!.solvePositionTime,
+                warmStartTime: profiler!.warmStartTime,
+                persistTime: profiler!.persistTime,
+                integrateVelocityTime: profiler!.integrateVelocityTime,
+                integratePositionTime: profiler!.integratePositionTime,
+                eventsTime: profiler!.eventsTime,
+                sleepTime: profiler!.sleepTime,
+            };
+
+            for (const [name, phase] of Object.entries(phases)) {
+                expect(phase, name).toBeGreaterThanOrEqual(1);
+            }
+
+            expect(profiler!.solveTime).toBe(profiler!.solveVelocityTime + profiler!.solvePositionTime);
+            expect(profiler!.collisionTime).toBe(profiler!.broadphaseTime + profiler!.narrowphaseTime);
+
+            const phaseSum = Object.values(phases).reduce((total, phase) => total + phase, 0);
+            expect(phaseSum).toBeLessThanOrEqual(profiler!.stepTime);
+
+            profiledWorld[Symbol.dispose]();
+        });
+
+        it('keeps the profiler off when enableProfiler is not set', () => {
+            const unprofiledWorld = new PhysicsWorld3D({ gravity: { x: 0, y: -9.81, z: 0 } });
+            const body = unprofiledWorld.createBody({ type: 2, position: { x: 0, y: 2, z: 0 } });
+            unprofiledWorld.createSphereShape(body, { center: { x: 0, y: 0, z: 0 }, radius: 0.5 });
+
+            unprofiledWorld.step(1 / 60);
+
+            expect(unprofiledWorld.getProfiler()).toBeNull();
+            expect(unprofiledWorld.getStatistics().solveTime).toBe(0);
+            unprofiledWorld[Symbol.dispose]();
         });
     });
 

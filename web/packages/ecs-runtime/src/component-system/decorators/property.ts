@@ -7,6 +7,7 @@ export type PropertyTypeId =
     | 'string'
     | 'vec2'
     | 'vec3'
+    | 'rect'
     | 'entity'
     | 'transform'
     | 'component'

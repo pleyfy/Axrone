@@ -32,6 +32,7 @@ export class ShapeRegistry implements Disposable {
     private readonly _fingerprintsById = new Map<ShapeId, ShapeFingerprint>();
     private readonly _idsByFingerprint = new Map<ShapeFingerprint, ShapeId>();
     private readonly _compiledByKey = new Map<string, CompiledShape2D>();
+    private readonly _compiledKeysByFingerprint = new Map<ShapeFingerprint, Set<string>>();
     private _disposed = false;
     private _nextId = 1;
 
@@ -99,10 +100,12 @@ export class ShapeRegistry implements Disposable {
         this._idsByFingerprint.delete(fingerprint);
         this._shapesById.delete(id);
 
-        for (const key of this._compiledByKey.keys()) {
-            if (key.startsWith(`${fingerprint}|`)) {
+        const compiledKeys = this._compiledKeysByFingerprint.get(fingerprint);
+        if (compiledKeys) {
+            for (const key of compiledKeys) {
                 this._compiledByKey.delete(key);
             }
+            this._compiledKeysByFingerprint.delete(fingerprint);
         }
 
         return true;
@@ -126,6 +129,12 @@ export class ShapeRegistry implements Disposable {
 
         const compiled = compileShape(shape, resolvedOptions);
         this._compiledByKey.set(cacheKey, compiled);
+        let keys = this._compiledKeysByFingerprint.get(fingerprint);
+        if (!keys) {
+            keys = new Set<string>();
+            this._compiledKeysByFingerprint.set(fingerprint, keys);
+        }
+        keys.add(cacheKey);
         this.trimCompiledCache();
         return compiled;
     }
@@ -141,6 +150,7 @@ export class ShapeRegistry implements Disposable {
         this._fingerprintsById.clear();
         this._idsByFingerprint.clear();
         this._compiledByKey.clear();
+        this._compiledKeysByFingerprint.clear();
     }
 
     dispose(): void {
@@ -173,6 +183,17 @@ export class ShapeRegistry implements Disposable {
                 return;
             }
             this._compiledByKey.delete(oldestKey);
+            const pipeIndex = oldestKey.indexOf('|');
+            if (pipeIndex >= 0) {
+                const fingerprint = oldestKey.slice(0, pipeIndex) as ShapeFingerprint;
+                const keys = this._compiledKeysByFingerprint.get(fingerprint);
+                if (keys) {
+                    keys.delete(oldestKey);
+                    if (keys.size === 0) {
+                        this._compiledKeysByFingerprint.delete(fingerprint);
+                    }
+                }
+            }
         }
     }
 

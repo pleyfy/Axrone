@@ -1,7 +1,9 @@
 import { Component, Transform, script } from '@axrone/ecs-runtime';
-import { clamp, Color } from '@axrone/numeric';
+import { clamp } from '@axrone/numeric';
 import type { ParticleSystem as CoreParticleSystem } from '@axrone/particle-system';
 import { createCoreParticleSystem, syncCoreRenderData, spawnToCoreBuffer } from './particle-system-bridge';
+import { applyParticleSystemConfig, type ParticleSystemConfigHost } from './particle-system-config';
+import { evaluateCurve, hexToRgb, rgbToHex } from './particle-system-utils';
 
 /* ------------------------------------------------------------------ */
 /* Public types                                                        */
@@ -66,7 +68,7 @@ export interface ParticleSystemConfig {
     readonly simulationSpace?: ParticleSimulationSpace;
     readonly simulationSpeed?: number;
     readonly maxParticles?: number;
-    readonly playOnAwake?: boolean;
+    readonly playOnLoad?: boolean;
     readonly stopAction?: ParticleStopAction;
 
     /* Emission */
@@ -184,48 +186,6 @@ const DEFAULT_SIZE_CURVE: readonly number[] = Object.freeze([0.35, 1, 0.75, 0.05
 const MAX_PARTICLES_HARD_LIMIT = 4096;
 const DEG_TO_RAD = Math.PI / 180;
 
-const hexToRgb = (hex: string): [number, number, number] => {
-    try {
-        const c = Color.fromHex(hex);
-        return [c.r, c.g, c.b];
-    } catch {
-        return [1, 1, 1];
-    }
-};
-
-/** Catmull-Rom segment interpolation used by the curve evaluators. */
-const catmullRom = (p0: number, p1: number, p2: number, p3: number, t: number): number => {
-    const v0 = (p2 - p0) * 0.5;
-    const v1 = (p3 - p1) * 0.5;
-    const t2 = t * t;
-    const t3 = t2 * t;
-    return (
-        (2 * p1 - 2 * p2 + v0 + v1) * t3 +
-        (-3 * p1 + 3 * p2 - 2 * v0 - v1) * t2 +
-        v0 * t +
-        p1
-    );
-};
-
-const evaluateCurve = (points: readonly number[], t: number): number => {
-    if (points.length === 0) {
-        return 1;
-    }
-    if (points.length === 1) {
-        return points[0] ?? 1;
-    }
-    const clamped = clamp(t, 0, 1);
-    const segments = points.length - 1;
-    const scaled = clamped * segments;
-    const index = Math.min(segments - 1, Math.floor(scaled));
-    const local = scaled - index;
-    const p0 = points[Math.max(0, index - 1)] ?? 0;
-    const p1 = points[index] ?? 0;
-    const p2 = points[index + 1] ?? 0;
-    const p3 = points[Math.min(points.length - 1, index + 2)] ?? 0;
-    return Math.max(0, catmullRom(p0, p1, p2, p3, local));
-};
-
 /**
  * Snapshot of the live particle buffers, ready to be consumed by a renderer.
  * All arrays are tightly packed: only the first {@link ParticleRenderData.count}
@@ -289,7 +249,7 @@ export class ParticleSystem extends Component {
     private _simulationSpace: ParticleSimulationSpace;
     private _simulationSpeed: number;
     private _maxParticles: number;
-    private _playOnAwake: boolean;
+    private _playOnLoad: boolean;
     private _stopAction: ParticleStopAction;
 
     /* Emission */
@@ -439,7 +399,7 @@ export class ParticleSystem extends Component {
         this._simulationSpace = 'world';
         this._simulationSpeed = 1;
         this._maxParticles = 700;
-        this._playOnAwake = true;
+        this._playOnLoad = true;
         this._stopAction = 'disable';
 
         /* Emission */
@@ -572,7 +532,7 @@ export class ParticleSystem extends Component {
             }
         }
 
-        if (this._playOnAwake) {
+        if (this._playOnLoad) {
             this._playing = true;
             this._delayRemaining = this._startDelay;
         }
@@ -705,12 +665,12 @@ export class ParticleSystem extends Component {
         this._maxParticles = clamp(Math.floor(value), 1, MAX_PARTICLES_HARD_LIMIT);
     }
 
-    get playOnAwake(): boolean {
-        return this._playOnAwake;
+    get playOnLoad(): boolean {
+        return this._playOnLoad;
     }
 
-    set playOnAwake(value: boolean) {
-        this._playOnAwake = value;
+    set playOnLoad(value: boolean) {
+        this._playOnLoad = value;
     }
 
     get stopAction(): ParticleStopAction {
@@ -1066,6 +1026,42 @@ export class ParticleSystem extends Component {
         this._coreSystem?.reset();
     }
 
+    override onDestroy(): void {
+        if (this._coreSystem) {
+            this._coreSystem.destroy();
+            this._coreSystem = null;
+        }
+    }
+
+    private _handleSystemStopped(): void {
+        if (!this._playing) {
+            return;
+        }
+        this._playing = false;
+        switch (this._stopAction) {
+            case 'disable':
+                this.enabled = false;
+                break;
+            case 'destroy':
+                this.actor?.destroy();
+                break;
+            case 'callback':
+                (
+                    this.world as
+                        | {
+                              emitSync?: (event: string, data: Record<string, unknown>) => boolean;
+                          }
+                        | undefined
+                )?.emitSync?.('particle:stopped', {
+                    actorId: this.actor?.id,
+                    entity: this.entity,
+                });
+                break;
+            default:
+                break;
+        }
+    }
+
     /** Immediately emits `count` particles, bypassing the rate limiter. */
     emitBurst(count: number): void {
         const total = Math.max(0, Math.floor(count));
@@ -1149,6 +1145,10 @@ export class ParticleSystem extends Component {
 
         this._integrate(dt);
         this.advanceTextureFrame(dt);
+
+        if (!this._looping && this._loopTime >= this._duration && this._aliveCount <= 0) {
+            this._handleSystemStopped();
+        }
     }
 
     private _emitOverTime(dt: number): void {
@@ -1490,7 +1490,10 @@ export class ParticleSystem extends Component {
             if (this._playing) {
                 this._coreSystem.play();
             }
-        } catch {
+        } catch (error) {
+            console.warn(
+                `[ParticleSystem] Core simulation init failed, falling back to CPU simulation: ${(error as Error)?.message ?? error}`
+            );
             this._coreSystem = null;
         }
     }
@@ -1575,7 +1578,7 @@ export class ParticleSystem extends Component {
         this.advanceTextureFrame(dt);
 
         if (!this._looping && this._elapsed >= this._duration && alive === 0) {
-            this._playing = false;
+            this._handleSystemStopped();
         }
     }
 
@@ -1596,7 +1599,7 @@ export class ParticleSystem extends Component {
             simulationSpace: this._simulationSpace,
             simulationSpeed: this._simulationSpeed,
             maxParticles: this._maxParticles,
-            playOnAwake: this._playOnAwake,
+            playOnLoad: this._playOnLoad,
             stopAction: this._stopAction,
             emissionEnabled: this._emissionEnabled,
             rateOverTime: this._rateOverTime,
@@ -1690,7 +1693,7 @@ export class ParticleSystem extends Component {
             simulationSpace: this._simulationSpace,
             simulationSpeed: this._simulationSpeed,
             maxParticles: this._maxParticles,
-            playOnAwake: this._playOnAwake,
+            playOnLoad: this._playOnLoad,
             stopAction: this._stopAction,
 
             emissionEnabled: this._emissionEnabled,
@@ -1782,205 +1785,6 @@ export class ParticleSystem extends Component {
     }
 
     private _applyConfig(config: ParticleSystemConfig): void {
-        if (typeof config.duration === 'number') this.duration = config.duration;
-        if (typeof config.looping === 'boolean') this.looping = config.looping;
-        if (typeof config.prewarm === 'boolean') this._prewarm = config.prewarm;
-        if (typeof config.startDelay === 'number') this.startDelay = config.startDelay;
-        if (typeof config.startLifetime === 'number') this.startLifetime = config.startLifetime;
-        if (typeof config.startSpeed === 'number') this.startSpeed = config.startSpeed;
-        if (typeof config.startSize === 'number') this.startSize = config.startSize;
-        if (typeof config.startRotation === 'number') this.startRotation = config.startRotation;
-        if (typeof config.startColor === 'string') this.startColor = config.startColor;
-        if (typeof config.endColor === 'string') this.endColor = config.endColor;
-        if (typeof config.colorMode === 'string') this.colorMode = config.colorMode;
-        if (typeof config.gravityModifier === 'number') this.gravityModifier = config.gravityModifier;
-        if (typeof config.simulationSpace === 'string') this.simulationSpace = config.simulationSpace;
-        if (typeof config.simulationSpeed === 'number') this.simulationSpeed = config.simulationSpeed;
-        if (typeof config.maxParticles === 'number') this.maxParticles = config.maxParticles;
-        if (typeof config.playOnAwake === 'boolean') this._playOnAwake = config.playOnAwake;
-        if (typeof config.stopAction === 'string') this.stopAction = config.stopAction;
-
-        if (typeof config.emissionEnabled === 'boolean') this.emissionEnabled = config.emissionEnabled;
-        if (typeof config.rateOverTime === 'number') this.rateOverTime = config.rateOverTime;
-        if (typeof config.rateOverDistance === 'number') this.rateOverDistance = config.rateOverDistance;
-        if (Array.isArray(config.bursts)) {
-            this.bursts = config.bursts.map((burst) => ({
-                time: typeof burst?.time === 'number' ? burst.time : 0,
-                count: typeof burst?.count === 'number' ? burst.count : 10,
-                cycles: typeof burst?.cycles === 'number' ? burst.cycles : 1,
-                interval: typeof burst?.interval === 'number' ? burst.interval : 0.01,
-                probability: typeof burst?.probability === 'number' ? burst.probability : 1,
-            }));
-        }
-
-        if (typeof config.shapeEnabled === 'boolean') this.shapeEnabled = config.shapeEnabled;
-        if (typeof config.shapeType === 'string') this.shapeType = config.shapeType;
-        if (typeof config.shapeRadius === 'number') this.shapeRadius = config.shapeRadius;
-        if (typeof config.shapeRadiusThickness === 'number') {
-            this._shapeRadiusThickness = clamp(config.shapeRadiusThickness, 0, 1);
-        }
-        if (typeof config.shapeAngle === 'number') this.shapeAngle = config.shapeAngle;
-        if (typeof config.shapeArc === 'number') this.shapeArc = config.shapeArc;
-        if (typeof config.shapeLength === 'number') this._shapeLength = Math.max(0.1, config.shapeLength);
-        if (typeof config.shapeDonutRadius === 'number') {
-            this._shapeDonutRadius = Math.max(0.01, config.shapeDonutRadius);
-        }
-        if (config.emitFrom) this._emitFrom = config.emitFrom;
-        if (typeof config.randomDirectionAmount === 'number') {
-            this._randomDirectionAmount = clamp(config.randomDirectionAmount, 0, 1);
-        }
-        if (typeof config.spherizeDirection === 'number') {
-            this._spherizeDirection = clamp(config.spherizeDirection, 0, 1);
-        }
-
-        if (typeof config.velocityEnabled === 'boolean') this.velocityEnabled = config.velocityEnabled;
-        if (Array.isArray(config.velocityLinear) && config.velocityLinear.length === 3) {
-            this._velocityLinear = [
-                config.velocityLinear[0] ?? 0,
-                config.velocityLinear[1] ?? 0,
-                config.velocityLinear[2] ?? 0,
-            ];
-        }
-        if (Array.isArray(config.velocityOrbital) && config.velocityOrbital.length === 3) {
-            this._velocityOrbital = [
-                config.velocityOrbital[0] ?? 0,
-                config.velocityOrbital[1] ?? 0,
-                config.velocityOrbital[2] ?? 0,
-            ];
-        }
-        if (typeof config.velocityRadial === 'number') this._velocityRadial = config.velocityRadial;
-        if (typeof config.velocitySpeedModifier === 'number') {
-            this._velocitySpeedModifier = config.velocitySpeedModifier;
-        }
-
-        if (typeof config.forceEnabled === 'boolean') this.forceEnabled = config.forceEnabled;
-        if (Array.isArray(config.force) && config.force.length === 3) {
-            this._force = [config.force[0] ?? 0, config.force[1] ?? 0, config.force[2] ?? 0];
-        }
-
-        if (typeof config.limitVelocityEnabled === 'boolean') {
-            this.limitVelocityEnabled = config.limitVelocityEnabled;
-        }
-        if (typeof config.speedLimit === 'number') this._speedLimit = Math.max(0, config.speedLimit);
-        if (typeof config.limitDampen === 'number') this._limitDampen = clamp(config.limitDampen, 0, 1);
-        if (typeof config.drag === 'number') this._drag = Math.max(0, config.drag);
-
-        if (typeof config.colorOverLifetimeEnabled === 'boolean') {
-            this.colorOverLifetimeEnabled = config.colorOverLifetimeEnabled;
-        }
-
-        if (typeof config.sizeOverLifetimeEnabled === 'boolean') {
-            this.sizeOverLifetimeEnabled = config.sizeOverLifetimeEnabled;
-        }
-        if (Array.isArray(config.sizeCurve)) {
-            this._sizeCurve = config.sizeCurve.map((value) =>
-                typeof value === 'number' ? value : 1
-            );
-        }
-
-        if (typeof config.rotationOverLifetimeEnabled === 'boolean') {
-            this.rotationOverLifetimeEnabled = config.rotationOverLifetimeEnabled;
-        }
-        if (typeof config.angularVelocity === 'number') this._angularVelocity = config.angularVelocity;
-
-        if (typeof config.noiseEnabled === 'boolean') this.noiseEnabled = config.noiseEnabled;
-        if (Array.isArray(config.noiseStrength) && config.noiseStrength.length === 3) {
-            this._noiseStrength = [
-                config.noiseStrength[0] ?? 0,
-                config.noiseStrength[1] ?? 0,
-                config.noiseStrength[2] ?? 0,
-            ];
-        }
-        if (typeof config.noiseFrequency === 'number') this.noiseFrequency = config.noiseFrequency;
-        if (typeof config.noiseDamping === 'boolean') this._noiseDamping = config.noiseDamping;
-
-        if (typeof config.collisionEnabled === 'boolean') this.collisionEnabled = config.collisionEnabled;
-        if (typeof config.collisionBounce === 'number') this.collisionBounce = config.collisionBounce;
-        if (typeof config.collisionDampen === 'number') this.collisionDampen = config.collisionDampen;
-        if (typeof config.collisionLifetimeLoss === 'number') {
-            this._collisionLifetimeLoss = clamp(config.collisionLifetimeLoss, 0, 1);
-        }
-        if (typeof config.minKillSpeed === 'number') this._minKillSpeed = Math.max(0, config.minKillSpeed);
-
-        if (typeof config.renderMode === 'string') this.renderMode = config.renderMode;
-        if (typeof config.blendMode === 'string') this.blendMode = config.blendMode;
-        if (typeof config.spriteMode === 'string') this.spriteMode = config.spriteMode;
-        if (typeof config.minParticleSize === 'number') {
-            this._minParticleSize = clamp(config.minParticleSize, 0, 1);
-        }
-        if (typeof config.maxParticleSize === 'number') {
-            this._maxParticleSize = clamp(config.maxParticleSize, 0, 1);
-        }
-        if (typeof config.sortingFudge === 'number') this._sortingFudge = config.sortingFudge;
-
-        /* Texture */
-        if (typeof config.textureEnabled === 'boolean') this._textureEnabled = config.textureEnabled;
-        if (typeof config.textureSheetTilesX === 'number') {
-            this._textureSheetTilesX = Math.max(1, Math.floor(config.textureSheetTilesX));
-        }
-        if (typeof config.textureSheetTilesY === 'number') {
-            this._textureSheetTilesY = Math.max(1, Math.floor(config.textureSheetTilesY));
-        }
-        if (typeof config.textureSheetFps === 'number') {
-            this._textureSheetFps = Math.max(1, config.textureSheetFps);
-        }
-        if (typeof config.textureSheetLoop === 'boolean') this._textureSheetLoop = config.textureSheetLoop;
-        if (config.textureRegion && config.textureRegion.length === 4) {
-            this._textureRegion = [
-                config.textureRegion[0],
-                config.textureRegion[1],
-                config.textureRegion[2],
-                config.textureRegion[3],
-            ];
-        }
-
-        if (typeof config.trailEnabled === 'boolean') this._trailEnabled = config.trailEnabled;
-        if (config.trailMode === 'particles' || config.trailMode === 'ribbon') {
-            this._trailMode = config.trailMode;
-        }
-        if (typeof config.trailLifetime === 'number') this._trailLifetime = Math.max(0, config.trailLifetime);
-        if (typeof config.trailWidth === 'number') this._trailWidth = Math.max(0, config.trailWidth);
-        if (typeof config.trailMinVertexDistance === 'number') {
-            this._trailMinVertexDistance = Math.max(0, config.trailMinVertexDistance);
-        }
-        if (typeof config.trailRatio === 'number') this._trailRatio = clamp(config.trailRatio, 0, 1);
-        if (typeof config.trailDieWithParticles === 'boolean') {
-            this._trailDieWithParticles = config.trailDieWithParticles;
-        }
-        if (typeof config.trailInheritColor === 'boolean') this._trailInheritColor = config.trailInheritColor;
-        if (typeof config.trailSizeAffectsWidth === 'boolean') {
-            this._trailSizeAffectsWidth = config.trailSizeAffectsWidth;
-        }
-
-        if (typeof config.lightsEnabled === 'boolean') this._lightsEnabled = config.lightsEnabled;
-        if (typeof config.lightsMaxCount === 'number') {
-            this._lightsMaxCount = Math.max(0, Math.min(64, config.lightsMaxCount));
-        }
-        if (typeof config.lightsRange === 'number') this._lightsRange = Math.max(0, config.lightsRange);
-        if (typeof config.lightsIntensity === 'number') {
-            this._lightsIntensity = Math.max(0, config.lightsIntensity);
-        }
-        if (typeof config.lightsUseParticleColor === 'boolean') {
-            this._lightsUseParticleColor = config.lightsUseParticleColor;
-        }
-        if (typeof config.lightsShadowCasting === 'boolean') {
-            this._lightsShadowCasting = config.lightsShadowCasting;
-        }
-
-        if (typeof config.customDataEnabled === 'boolean') {
-            this._customDataEnabled = config.customDataEnabled;
-        }
-
-        if (this._coreSystem) {
-            this._rebuildCoreSystem();
-        }
+        applyParticleSystemConfig(this as unknown as ParticleSystemConfigHost, config);
     }
 }
-
-const rgbToHex = (rgb: readonly [number, number, number]): string => {
-    const to = (channel: number) =>
-        Math.round(clamp(channel, 0, 1) * 255)
-            .toString(16)
-            .padStart(2, '0');
-    return `#${to(rgb[0])}${to(rgb[1])}${to(rgb[2])}`.toUpperCase();
-};

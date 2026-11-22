@@ -1,3 +1,4 @@
+import type { IVec2Like } from '@axrone/numeric';
 import type {
     ColorInput,
     TextBlockInput,
@@ -220,7 +221,7 @@ export interface UIScrollViewOptions extends UIBaseOptions {
 }
 
 export interface UIScrollViewHandle extends UISlotHandle {
-    getScroll(): Readonly<{ x: number; y: number }>;
+    getScroll(): Readonly<IVec2Like>;
     setScroll(x: number, y: number): void;
     scrollBy(deltaX: number, deltaY: number): void;
     clampToBounds(): void;

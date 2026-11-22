@@ -816,6 +816,150 @@ describe('GameLoop - Visibility Change', () => {
     });
 });
 
+describe('GameLoop - Page Lifecycle', () => {
+    it('pauses a running loop when pagehide fires even while document stays visible', () => {
+        const scheduler = new ManualScheduler();
+        const loop = createGameLoop({
+            state: {},
+            scheduler,
+            pauseWhenHidden: true,
+        });
+
+        loop.start(0);
+        expect(loop.status).toBe('running');
+
+        Object.defineProperty(document, 'hidden', { value: false, writable: true, configurable: true });
+        document.dispatchEvent(new Event('pagehide'));
+
+        expect(loop.status).toBe('paused');
+        expect(scheduler.hasPending()).toBe(false);
+    });
+
+    it('resumes a paused loop when pageshow fires even while document stays hidden', () => {
+        const scheduler = new ManualScheduler();
+        const loop = createGameLoop({
+            state: {},
+            scheduler,
+            pauseWhenHidden: true,
+        });
+
+        loop.start(0);
+        loop.pause();
+        expect(loop.status).toBe('paused');
+
+        Object.defineProperty(document, 'hidden', { value: true, writable: true, configurable: true });
+        document.dispatchEvent(new Event('pageshow'));
+
+        expect(loop.status).toBe('running');
+        expect(scheduler.hasPending()).toBe(true);
+
+        Object.defineProperty(document, 'hidden', { value: false, writable: true, configurable: true });
+    });
+
+    it('round-trips running through pagehide then pageshow', () => {
+        const scheduler = new ManualScheduler();
+        const loop = createGameLoop({
+            state: {},
+            scheduler,
+            pauseWhenHidden: true,
+        });
+
+        loop.start(0);
+        document.dispatchEvent(new Event('pagehide'));
+        expect(loop.status).toBe('paused');
+
+        document.dispatchEvent(new Event('pageshow'));
+        expect(loop.status).toBe('running');
+        expect(scheduler.hasPending()).toBe(true);
+    });
+
+    it('ignores pagehide when pauseWhenHidden is not set', () => {
+        const scheduler = new ManualScheduler();
+        const loop = createGameLoop({ state: {}, scheduler });
+
+        loop.start(0);
+
+        document.dispatchEvent(new Event('pagehide'));
+
+        expect(loop.status).toBe('running');
+        expect(scheduler.hasPending()).toBe(true);
+    });
+
+    it('ignores pageshow when pauseWhenHidden is not set', () => {
+        const scheduler = new ManualScheduler();
+        const loop = createGameLoop({ state: {}, scheduler });
+
+        loop.start(0);
+        loop.pause();
+        expect(loop.status).toBe('paused');
+
+        document.dispatchEvent(new Event('pageshow'));
+
+        expect(loop.status).toBe('paused');
+        expect(scheduler.hasPending()).toBe(false);
+    });
+
+    it('removes pagehide and pageshow listeners on dispose', () => {
+        const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
+        const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener');
+
+        const scheduler = new ManualScheduler();
+        const loop = createGameLoop({
+            state: {},
+            scheduler,
+            pauseWhenHidden: true,
+        });
+
+        const addedTypes = addEventListenerSpy.mock.calls.map(([type]) => type);
+        expect(addedTypes).toContain('pagehide');
+        expect(addedTypes).toContain('pageshow');
+
+        const addedPageHideHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'pagehide'
+        )?.[1];
+        const addedPageShowHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'pageshow'
+        )?.[1];
+        const addedVisibilityHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'visibilitychange'
+        )?.[1];
+
+        loop.dispose();
+
+        const removedCalls = removeEventListenerSpy.mock.calls;
+        expect(removedCalls.map(([type]) => type)).toContain('pagehide');
+        expect(removedCalls.map(([type]) => type)).toContain('pageshow');
+        expect(removedCalls.find(([type]) => type === 'pagehide')?.[1]).toBe(addedPageHideHandler);
+        expect(removedCalls.find(([type]) => type === 'pageshow')?.[1]).toBe(addedPageShowHandler);
+        expect(removedCalls.find(([type]) => type === 'visibilitychange')?.[1]).toBe(
+            addedVisibilityHandler
+        );
+
+        addEventListenerSpy.mockRestore();
+        removeEventListenerSpy.mockRestore();
+    });
+
+    it('leaves the loop untouched when pagehide or pageshow fire after dispose', () => {
+        const scheduler = new ManualScheduler();
+        const loop = createGameLoop({
+            state: {},
+            scheduler,
+            pauseWhenHidden: true,
+        });
+
+        loop.start(0);
+        loop.dispose();
+
+        expect(() => document.dispatchEvent(new Event('pagehide'))).not.toThrow();
+        expect(() => document.dispatchEvent(new Event('pageshow'))).not.toThrow();
+        expect(() => document.dispatchEvent(new Event('visibilitychange'))).not.toThrow();
+
+        expect(loop.isDisposed).toBe(true);
+        expect(loop.status).toBe('disposed');
+        expect(scheduler.hasPending()).toBe(false);
+    });
+});
+
 describe('GameLoop - System Management', () => {
     it('addSystem returns this for chaining', () => {
         const scheduler = new ManualScheduler();

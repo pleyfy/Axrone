@@ -97,6 +97,8 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
     #appliedGlobalVolume?: number;
     #voiceStealCount = 0;
     #disposed = false;
+    #suspendOnHidden = false;
+    #visibilityHandler: (() => void) | undefined;
 
     constructor(options: AudioSystemOptions<TSchema> = {}) {
         const ownsContext = !options.context;
@@ -124,6 +126,13 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         this.#locale = options.locale ?? 'en';
         this.#autoResume = options.autoResume ?? true;
         this.#resumeRetryPolicy = options.resumeRetryPolicy;
+        this.#suspendOnHidden = options.suspendOnHidden ?? false;
+        if (this.#suspendOnHidden && typeof document !== 'undefined') {
+            this.#visibilityHandler = () => {
+                void this.#handleDocumentVisibilityChange();
+            };
+            document.addEventListener('visibilitychange', this.#visibilityHandler);
+        }
 
         this.#clips = new AudioClipStore({
             context,
@@ -773,6 +782,27 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         });
     }
 
+    /**
+     * Bridges document visibility into the context lifecycle. suspend() and
+     * resume() already emit lifecycle events and retry internally, so a
+     * background transition must never throw into the DOM listener.
+     */
+    async #handleDocumentVisibilityChange(): Promise<void> {
+        if (this.#disposed || typeof document === 'undefined') {
+            return;
+        }
+        try {
+            if (document.hidden) {
+                await this.suspend();
+            } else {
+                await this.resume();
+            }
+        } catch {
+            // Suspend/resume failures are already reported through the
+            // observability runtime; swallowing here only guards the listener.
+        }
+    }
+
     async suspend(): Promise<void> {
         this.#assertNotDisposed();
         await withRetry(
@@ -833,6 +863,10 @@ export class AudioSystem<TSchema extends AudioAssetSchema = AudioAssetSchema> {
         }
 
         this.context.removeEventListener?.('statechange', this.#handleContextStateChange);
+        if (this.#visibilityHandler && typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', this.#visibilityHandler);
+            this.#visibilityHandler = undefined;
+        }
         this.#clearSources();
         this.#listeners.clear();
         this.#buses.clear();

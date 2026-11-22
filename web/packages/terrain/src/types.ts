@@ -99,7 +99,7 @@ export interface TerrainMeshData {
     readonly positions: Float32Array;
     readonly normals: Float32Array;
     readonly uvs: Float32Array;
-    readonly indices: Uint32Array;
+    readonly indices: Uint16Array | Uint32Array;
     readonly vertexCount: number;
     readonly triangleCount: number;
 }
@@ -119,6 +119,27 @@ export interface TerrainHeightfieldSource {
 }
 
 export type TerrainBrushKind = 'raise' | 'lower' | 'smooth' | 'flatten';
+
+/** All supported brush kinds as a runtime array (single source of truth). */
+export const TERRAIN_BRUSH_KINDS: readonly TerrainBrushKind[] = ['raise', 'lower', 'smooth', 'flatten'] as const;
+
+/** Height brush: strength 1 moves a sample by this fraction of full height range per stamp. */
+export const TERRAIN_BRUSH_HEIGHT_STAMP_SCALE = 0.04;
+
+/** Splat paint: strength 1 at full weight approaches target by this fraction per stamp. */
+export const TERRAIN_SPLAT_STAMP_SCALE = 0.35;
+
+/** Foliage density: strength 1 at full weight approaches target by this fraction per stamp. */
+export const TERRAIN_FOLIAGE_DENSITY_STAMP_SCALE = 0.45;
+
+/** Foliage scatter: candidate points evaluated per density texel at density 1. */
+export const TERRAIN_FOLIAGE_CANDIDATES_PER_TEXEL = 0.35;
+
+/** Raycast: bisection refinement iterations after marching step crossing. */
+export const TERRAIN_RAYCAST_REFINE_STEPS = 24;
+
+/** Raycast: default maximum march distance in world units. */
+export const TERRAIN_RAYCAST_DEFAULT_MAX_DISTANCE = 10_000;
 
 export interface TerrainBrushOptions {
     readonly kind?: TerrainBrushKind;
@@ -265,7 +286,7 @@ export const resolveTerrainBrushOptions = (
 };
 
 export const validateTerrainBrushOptions = (options: ResolvedTerrainBrushOptions): void => {
-    if (!['raise', 'lower', 'smooth', 'flatten'].includes(options.kind)) {
+    if (!TERRAIN_BRUSH_KINDS.includes(options.kind)) {
         throw new TerrainError(
             `Invalid brush kind: ${options.kind}`,
             TerrainErrorCode.VALIDATION_FAILED,

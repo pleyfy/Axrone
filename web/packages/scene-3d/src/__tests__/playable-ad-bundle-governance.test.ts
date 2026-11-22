@@ -157,6 +157,24 @@ const packagesWithDist = allPackages.filter((pkg) => {
 	return fs.existsSync(distDir) && fs.readdirSync(distDir).length > 0;
 });
 
+// Dist-dependent assertions are meaningless (or vacuously true) without a
+// prior build. Gate them so local dev runs skip honestly; CI builds first
+// and still enforces the budgets.
+const hasBuiltPackages = packagesWithDist.length > 0;
+
+// Payload budgets measure the deployable surface: .js/.mjs only. Sourcemaps
+// and .d.ts are dev-time artifacts (SOP-07: source maps generated but not
+// deployed). Default budget is the 2 MB playable-ad hard limit;
+// scene-runtime is the consolidated engine core (measured ~2.9 MB
+// uncompressed JS on a full build) and is gated at baseline + 20% headroom.
+const PACKAGE_PAYLOAD_BUDGET_BYTES = new Map<string, number>([
+	['scene-runtime', 3584 * 1024],
+]);
+const DEFAULT_PACKAGE_PAYLOAD_BUDGET_BYTES = 2 * 1024 * 1024;
+
+const payloadBudgetFor = (pkg: string): number =>
+	PACKAGE_PAYLOAD_BUDGET_BYTES.get(pkg) ?? DEFAULT_PACKAGE_PAYLOAD_BUDGET_BYTES;
+
 const dependencyGraph = new Map<string, string[]>();
 for (const pkg of allPackages) {
 	const deps = getAxroneDependencies(pkg).map((d) => d.replace('@axrone/', ''));
@@ -167,7 +185,7 @@ for (const pkg of allPackages) {
 // 1. Package Size Inventory
 // ---------------------------------------------------------------------------
 
-describe('Package Size Inventory', () => {
+describe.skipIf(!hasBuiltPackages)('Package Size Inventory', () => {
 	it('should discover all packages with dist/ directories', () => {
 		expect(packagesWithDist.length).toBeGreaterThan(0);
 		// Most packages should have been built
@@ -181,23 +199,17 @@ describe('Package Size Inventory', () => {
 		}
 	});
 
-	it('no single package should exceed 500 KB uncompressed in dist/', () => {
+	it('no single package should exceed its shippable JS payload budget', () => {
 		const violations: string[] = [];
-		for (const [pkg, size] of packageDistSizes) {
-			if (size > MAX_SINGLE_PACKAGE_UNCOMPRESSED_BYTES) {
-				violations.push(`${pkg}: ${(size / 1024).toFixed(1)} KB`);
+		for (const [pkg, size] of packageJsSizes) {
+			const budget = payloadBudgetFor(pkg);
+			if (size > budget) {
+				violations.push(
+					`${pkg}: ${(size / 1024).toFixed(1)} KB / ${(budget / 1024).toFixed(0)} KB`
+				);
 			}
 		}
-		// Note: some packages legitimately exceed 500 KB (scene-runtime, ecs-runtime, etc.)
-		// This test documents which ones do and flags them for review
-		if (violations.length > 0) {
-			// Soft assertion — log but don't fail for known large packages
-			console.warn(
-				`Packages exceeding ${MAX_SINGLE_PACKAGE_UNCOMPRESSED_BYTES / 1024} KB uncompressed:\n${violations.join('\n')}`,
-			);
-		}
-		// The test passes — it serves as an inventory/audit mechanism
-		expect(true).toBe(true);
+		expect(violations).toEqual([]);
 	});
 
 	it('total engine JS payload should be under 15 MB uncompressed', () => {
@@ -271,9 +283,14 @@ describe('Dependency Graph Analysis', () => {
 		expect(violations).toEqual([]);
 	});
 
-	it('leaf utility packages should have minimal dependencies', () => {
-		// utility, random, hash should have 0 or very few @axrone deps
-		const utilityDeps = dependencyGraph.get('utility') ?? [];
+	it('leaf utility packages should depend at most on the hash leaf', () => {
+		// utility's comparer needs Fnv1a32 — hash is the bottom of the
+		// dependency graph, so utility→hash is the only permitted edge from
+		// a leaf utility package. Any other dependency is a violation.
+		const allowedLeafDeps = new Set(['hash']);
+		const utilityDeps = (dependencyGraph.get('utility') ?? []).filter(
+			(dep) => !allowedLeafDeps.has(dep),
+		);
 		const randomDeps = dependencyGraph.get('random') ?? [];
 		expect(utilityDeps.length).toBe(0);
 		expect(randomDeps.length).toBe(0);
@@ -357,29 +374,19 @@ describe('Budget Governance', () => {
 		expect(baseline.gzipBytes).toBeLessThanOrEqual(BUDGETS['playable-ad'].gzipBytes);
 	});
 
-	it('should flag packages approaching budget limit (> 80%)', () => {
-		// For playable-ad, the budget is 2 MB gzip.
-		// Check if any individual package's dist size exceeds 80% of budget uncompressed.
-		// This is a forward-looking warning — uncompressed size correlates with gzip size.
-		const warningThreshold = BUDGETS['playable-ad'].gzipBytes * BUDGET_WARNING_THRESHOLD;
+	it.skipIf(!hasBuiltPackages)('should flag packages approaching budget limit (> 80%)', () => {
 		const approaching: string[] = [];
 
-		for (const [pkg, size] of packageDistSizes) {
-			if (size > warningThreshold) {
+		for (const [pkg, size] of packageJsSizes) {
+			if (size > payloadBudgetFor(pkg) * BUDGET_WARNING_THRESHOLD) {
 				approaching.push(`${pkg}: ${(size / 1024).toFixed(1)} KB`);
 			}
 		}
 
-		// Log but don't fail — this is an early warning system
-		if (approaching.length > 0) {
-			console.warn(
-				`Packages approaching playable-ad budget (> ${BUDGET_WARNING_THRESHOLD * 100}%):\n${approaching.join('\n')}`,
-			);
-		}
-		expect(true).toBe(true);
+		expect(approaching.length).toBeLessThan(5);
 	});
 
-	it('total engine JS payload should be within web-mobile budget', () => {
+	it.skipIf(!hasBuiltPackages)('total engine JS payload should be within web-mobile budget', () => {
 		const totalJsSize = Array.from(packageJsSizes.values()).reduce((sum, s) => sum + s, 0);
 		// Uncompressed JS payload should be well under web-mobile budget (15 MB)
 		expect(totalJsSize).toBeLessThan(BUDGETS['web-mobile'].gzipBytes);
@@ -390,7 +397,7 @@ describe('Budget Governance', () => {
 // 6. Compression Ratio
 // ---------------------------------------------------------------------------
 
-describe('Compression Ratio', () => {
+describe.skipIf(!hasBuiltPackages)('Compression Ratio', () => {
 	it('should measure raw vs gzip sizes for key packages', () => {
 		// Pick a few representative packages to test compression
 		const keyPackages = ['utility', 'render-3d', 'scene-3d', 'physics-core'];
@@ -461,14 +468,11 @@ describe('Asset Budget', () => {
 
 	it('texture atlas total should be within mobile budget (128 MB)', () => {
 		if (!fs.existsSync(ASSETS_DIR)) {
-			// Assets directory may not exist in all checkouts
-			expect(true).toBe(true);
 			return;
 		}
 
 		const texturesDir = path.join(ASSETS_DIR, 'Textures');
 		if (!fs.existsSync(texturesDir)) {
-			expect(true).toBe(true);
 			return;
 		}
 
@@ -478,13 +482,11 @@ describe('Asset Budget', () => {
 
 	it('audio assets should be within playable-ad budget (4 MB)', () => {
 		if (!fs.existsSync(ASSETS_DIR)) {
-			expect(true).toBe(true);
 			return;
 		}
 
 		const audioDir = path.join(ASSETS_DIR, 'Audio');
 		if (!fs.existsSync(audioDir)) {
-			expect(true).toBe(true);
 			return;
 		}
 
@@ -494,13 +496,11 @@ describe('Asset Budget', () => {
 
 	it('model assets should be tracked and within reasonable bounds', () => {
 		if (!fs.existsSync(ASSETS_DIR)) {
-			expect(true).toBe(true);
 			return;
 		}
 
 		const modelsDir = path.join(ASSETS_DIR, 'Models');
 		if (!fs.existsSync(modelsDir)) {
-			expect(true).toBe(true);
 			return;
 		}
 

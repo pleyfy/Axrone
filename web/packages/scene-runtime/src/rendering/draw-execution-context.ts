@@ -1,3 +1,4 @@
+import type { LightingUniformValueMap } from '@axrone/lighting';
 import type { SceneCameraFrameState } from '../camera-frame-state';
 import type { SceneDrawExecutorContext } from './draw-executor';
 import type { SceneFogState } from '../fog-state';
@@ -12,6 +13,7 @@ export class SceneDrawExecutionContextCache {
         renderPass: null as unknown as SceneRenderPassResource,
         cameraFrame: null as unknown as SceneCameraFrameState,
         lighting: null as unknown as SceneLightingState,
+        lightingValues: null as unknown as LightingUniformValueMap,
         fog: null as unknown as SceneFogState,
         elapsedSeconds: 0,
         deltaSeconds: 0,
@@ -24,6 +26,7 @@ export class SceneDrawExecutionContextCache {
         this._context.renderPass = context.renderPass;
         this._context.cameraFrame = context.cameraFrame;
         this._context.lighting = context.lighting;
+        this._context.lightingValues = context.lightingValues;
         this._context.fog = context.fog;
         this._context.elapsedSeconds = context.elapsedSeconds;
         this._context.deltaSeconds = context.deltaSeconds;

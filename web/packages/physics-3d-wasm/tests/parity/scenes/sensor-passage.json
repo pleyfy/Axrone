@@ -1,0 +1,26 @@
+{
+    "name": "sensor-passage",
+    "skip": null,
+    "world": {
+        "gravity": [0, -9.81, 0],
+        "maxBodies": 16,
+        "maxContacts": 1024,
+        "velocityIterations": 10,
+        "positionIterations": 4,
+        "allowSleep": false
+    },
+    "bodies": [
+        { "type": 0, "position": [0, -0.5, 0] },
+        { "type": 0, "position": [0, 2.5, 0] },
+        { "type": 2, "position": [0, 6, 0] }
+    ],
+    "shapes": [
+        { "body": 0, "kind": "box", "halfExtents": [10, 0.5, 10], "center": [0, 0, 0], "material": { "friction": 0.8, "restitution": 0 } },
+        { "body": 1, "kind": "sphere", "radius": 1.2, "center": [0, 0, 0], "material": { "friction": 0.4, "restitution": 0 }, "isSensor": true },
+        { "body": 2, "kind": "sphere", "radius": 0.3, "center": [0, 0, 0], "material": { "friction": 0.4, "restitution": 0.2 } }
+    ],
+    "joints": [],
+    "rays": [],
+    "snapshotEvery": 5,
+    "steps": 180
+}

@@ -11,6 +11,7 @@ import type {
 
 type ConsoleTone = 'log' | 'info' | 'warn' | 'error' | 'success';
 type ConsoleTab = 'console' | 'problems' | 'output';
+type ExamplesScope = 'all' | 'builtin' | 'user';
 type ConsoleEntry = {
 	readonly tone: ConsoleTone;
 	readonly message: string;
@@ -56,6 +57,9 @@ type RuntimeSession = {
 	readonly handle: PlaygroundSceneHandle;
 	readonly summary?: string;
 	readonly objectCount: number;
+};
+type MutablePlaygroundProject = Omit<PlaygroundProjectRecord, 'files'> & {
+	files: VirtualProjectFile[];
 };
 
 type PlaygroundToolingModule = typeof import('../playground/tooling-entry');
@@ -285,6 +289,264 @@ const resolveFileVisual = (path: string): FileVisual => {
 	}
 };
 
+const resolveProjectCategory = (project: PlaygroundProjectRecord): string =>
+	project.category ?? (project.builtIn === false ? 'Your project' : 'Example');
+
+const resolveProjectTags = (project: PlaygroundProjectRecord): readonly string[] => project.tags ?? [];
+
+const renderExampleArt = (project: PlaygroundProjectRecord, variant: 'thumb' | 'hero'): string => {
+	const accent = escapeHtml(project.color);
+	const token = `${project.id.replace(/[^a-z0-9-]/gi, '-')}-${variant}`;
+	const gridId = `art-grid-${token}`;
+	const glowId = `art-glow-${token}`;
+
+	let background = '#f6f7f9';
+	let gridColor = '#d9dce3';
+	let glowColor = accent;
+	let showGrid = true;
+	let scene = '';
+
+	const shadow = (cx: number, cy: number, rx: number, opacity = 0.12): string =>
+		`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${Math.max(4, Math.round(rx * 0.2))}" fill="#0f172a" opacity="${opacity}"></ellipse>`;
+
+	const cube = (x: number, y: number, size = 28, color = accent): string => `
+		<g transform="translate(${x} ${y})" stroke="${color}" stroke-opacity=".5" stroke-width=".9">
+			<polygon points="0,${-size * 0.57} ${size} ${-size * 1.14} ${size * 2} ${-size * 0.57} ${size} 0" fill="${color}" fill-opacity=".16"></polygon>
+			<polygon points="0,${-size * 0.57} ${size} 0 ${size} ${size * 1.14} 0 ${size * 0.57}" fill="${color}" fill-opacity=".28"></polygon>
+			<polygon points="${size} 0 ${size * 2} ${-size * 0.57} ${size * 2} ${size * 0.57} ${size} ${size * 1.14}" fill="${color}" fill-opacity=".4"></polygon>
+		</g>
+	`;
+
+	const sphere = (cx: number, cy: number, radius: number, color = accent): string => `
+		<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${color}"></circle>
+		<ellipse cx="${cx - radius * 0.32}" cy="${cy - radius * 0.34}" rx="${radius * 0.3}" ry="${radius * 0.17}" fill="#ffffff" opacity=".22" transform="rotate(-28 ${cx - radius * 0.32} ${cy - radius * 0.34})"></ellipse>
+		<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#000000" stroke-opacity=".08"></circle>
+	`;
+
+	switch (project.id) {
+		case 'demo-scene':
+			background = '#f3e9de';
+			gridColor = '#d9c8b6';
+			glowColor = '#f0b06b';
+			showGrid = false;
+			scene = `
+				${shadow(160, 154, 112, 0.12)}
+				<polygon points="40,126 160,96 280,126 160,156" fill="#e9dfd3" stroke="#cdbba8" stroke-width=".8"></polygon>
+				<polygon points="40,126 160,156 160,172 40,142" fill="#cfc0b0"></polygon>
+				<polygon points="160,156 280,126 280,142 160,172" fill="#ddcebe"></polygon>
+				${shadow(106, 132, 23, 0.18)}
+				${shadow(160, 132, 22, 0.16)}
+				${shadow(232, 134, 16, 0.16)}
+				${cube(86, 108, 20, '#9a401f')}
+				${sphere(160, 108, 20, '#0b3a3c')}
+				<g transform="translate(232 92)">
+					<path d="M-14 0v36c0 4 28 4 28 0V0" fill="#a97836"></path>
+					<ellipse cx="0" cy="0" rx="14" ry="5" fill="#c49245"></ellipse>
+					<ellipse cx="0" cy="36" rx="14" ry="5" fill="#8a5f2a"></ellipse>
+				</g>
+			`;
+			break;
+		case 'solar-system':
+			background = '#070b18';
+			gridColor = '#18213a';
+			glowColor = '#6d5bd0';
+			showGrid = false;
+			scene = `
+				<g fill="#dbe6ff">
+					<circle cx="48" cy="38" r="1.2" opacity=".7"></circle>
+					<circle cx="94" cy="58" r=".9" opacity=".5"></circle>
+					<circle cx="276" cy="34" r="1.5" opacity=".65"></circle>
+					<circle cx="298" cy="132" r="1.1" opacity=".45"></circle>
+					<circle cx="32" cy="116" r="1.2" opacity=".4"></circle>
+					<circle cx="238" cy="54" r=".8" opacity=".6"></circle>
+					<circle cx="208" cy="150" r=".9" opacity=".35"></circle>
+				</g>
+				<circle cx="160" cy="96" r="62" fill="url(#${glowId})"></circle>
+				<g fill="none" stroke="#8d7cf0">
+					<ellipse cx="160" cy="98" rx="52" ry="18" stroke-opacity=".34"></ellipse>
+					<ellipse cx="160" cy="98" rx="88" ry="31" stroke-opacity=".22"></ellipse>
+					<ellipse cx="160" cy="98" rx="126" ry="44" stroke-opacity=".14"></ellipse>
+				</g>
+				<circle cx="160" cy="94" r="18" fill="#ffb84a"></circle>
+				<circle cx="160" cy="94" r="28" fill="none" stroke="#ffb84a" stroke-opacity=".18"></circle>
+				<circle cx="211" cy="92" r="4.2" fill="#c9a376"></circle>
+				<circle cx="91" cy="105" r="5.8" fill="#2f8fa8"></circle>
+				<circle cx="248" cy="117" r="4" fill="#e0c98f"></circle>
+				<circle cx="61" cy="82" r="2.8" fill="#b9ab9a"></circle>
+				<circle cx="124" cy="118" r="3.4" fill="#c8694b"></circle>
+				<circle cx="202" cy="73" r="3.2" fill="#5566c9"></circle>
+			`;
+			break;
+		case 'particle-system':
+			background = '#04120f';
+			gridColor = '#0a2a24';
+			glowColor = '#2dd4bf';
+			showGrid = false;
+			scene = `
+				<circle cx="162" cy="96" r="78" fill="url(#${glowId})"></circle>
+				<path d="M44 136C94 64 214 48 278 108" fill="none" stroke="#2dd4bf" stroke-opacity=".18" stroke-dasharray="3 6"></path>
+				<g>
+					<circle cx="86" cy="92" r="2" fill="#f6a94a" opacity=".75"></circle>
+					<circle cx="104" cy="118" r="2.8" fill="#5ef0b8" opacity=".7"></circle>
+					<circle cx="118" cy="78" r="1.6" fill="#f7b267" opacity=".5"></circle>
+					<circle cx="128" cy="102" r="3.6" fill="#f46f61" opacity=".7"></circle>
+					<circle cx="136" cy="64" r="1.8" fill="#d9fff3" opacity=".5"></circle>
+					<circle cx="144" cy="124" r="2.5" fill="#48cdb0" opacity=".6"></circle>
+					<circle cx="152" cy="88" r="5.2" fill="#f8b45a" opacity=".95"></circle>
+					<circle cx="160" cy="58" r="1.6" fill="#d9fff3" opacity=".5"></circle>
+					<circle cx="168" cy="112" r="3.1" fill="#5ef0b8" opacity=".7"></circle>
+					<circle cx="176" cy="74" r="3.8" fill="#f46f61" opacity=".7"></circle>
+					<circle cx="184" cy="98" r="2.1" fill="#2dd4bf" opacity=".6"></circle>
+					<circle cx="192" cy="132" r="1.8" fill="#f6a94a" opacity=".5"></circle>
+					<circle cx="202" cy="86" r="3" fill="#d9fff3" opacity=".7"></circle>
+					<circle cx="212" cy="112" r="1.7" fill="#f46f61" opacity=".55"></circle>
+					<circle cx="224" cy="76" r="2.5" fill="#5ef0b8" opacity=".65"></circle>
+					<circle cx="236" cy="96" r="1.6" fill="#f8b45a" opacity=".5"></circle>
+					<circle cx="248" cy="84" r="2.1" fill="#2dd4bf" opacity=".55"></circle>
+					<circle cx="82" cy="68" r="1.3" fill="#d9fff3" opacity=".45"></circle>
+					<circle cx="262" cy="122" r="1.2" fill="#5ef0b8" opacity=".4"></circle>
+					<circle cx="156" cy="146" r="1.4" fill="#f6a94a" opacity=".4"></circle>
+				</g>
+				<circle cx="152" cy="88" r="9" fill="none" stroke="#f8b45a" stroke-opacity=".22"></circle>
+				<circle cx="176" cy="74" r="7" fill="none" stroke="#f46f61" stroke-opacity=".18"></circle>
+			`;
+			break;
+		case 'follow-cube':
+			background = '#241732';
+			gridColor = '#4b3055';
+			glowColor = '#f0a35e';
+			showGrid = false;
+			scene = `
+				<ellipse cx="160" cy="146" rx="180" ry="64" fill="url(#${glowId})" opacity=".9"></ellipse>
+				<ellipse cx="160" cy="136" rx="122" ry="42" fill="#1b1226"></ellipse>
+				<ellipse cx="160" cy="136" rx="122" ry="42" fill="none" stroke="#f0a35e" stroke-opacity=".32" stroke-width="1.2"></ellipse>
+				<ellipse cx="160" cy="136" rx="92" ry="30" fill="none" stroke="#4b3055" stroke-opacity=".4"></ellipse>
+				${shadow(160, 143, 48, 0.3)}
+				<ellipse cx="160" cy="138" rx="37" ry="13" fill="none" stroke="#4fd1c5" stroke-opacity=".55" stroke-width="1.5"></ellipse>
+				${cube(134, 108, 26, '#f97316')}
+				<g fill="#1b1226" stroke="#4b3055">
+					<rect x="44" y="100" width="7" height="38" rx="2"></rect>
+					<rect x="269" y="100" width="7" height="38" rx="2"></rect>
+				</g>
+				<ellipse cx="47.5" cy="100" rx="9" ry="3" fill="#f0a35e"></ellipse>
+				<ellipse cx="272.5" cy="100" rx="9" ry="3" fill="#f0a35e"></ellipse>
+			`;
+			break;
+		case 'physics-stack':
+			background = '#edf2ee';
+			gridColor = '#c8d3c9';
+			glowColor = '#ffffff';
+			showGrid = true;
+			scene = `
+				${shadow(156, 146, 104, 0.12)}
+				${cube(78, 118, 22, '#b34a30')}
+				${cube(124, 118, 22, '#597a51')}
+				${cube(170, 118, 22, '#c79a44')}
+				${cube(101, 94, 22, '#40505e')}
+				${cube(147, 94, 22, '#b34a30')}
+				${cube(124, 70, 22, '#c79a44')}
+				${sphere(224, 92, 12, '#c22d2d')}
+				${sphere(254, 118, 9, '#c22d2d')}
+			`;
+			break;
+		case 'physics-domino':
+			background = '#f3ede5';
+			gridColor = '#dfd2c2';
+			glowColor = '#f0b06b';
+			showGrid = false;
+			scene = `
+				${shadow(160, 152, 116, 0.12)}
+				<polygon points="30,138 160,104 290,138 160,170" fill="#e7dccf"></polygon>
+				<polygon points="30,138 160,170 160,180 30,148" fill="#ccbca8"></polygon>
+				<polygon points="160,170 290,138 290,148 160,180" fill="#dacbb8"></polygon>
+				<g transform="translate(54 140) rotate(-28)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#b45309"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#f6d7b0" opacity=".6"></circle>
+				</g>
+				<g transform="translate(86 140) rotate(-12)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#c08a2e"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#f8e2b8" opacity=".6"></circle>
+				</g>
+				<g transform="translate(118 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#6b7a42"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#dce6c4" opacity=".55"></circle>
+				</g>
+				<g transform="translate(150 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#2f6f66"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#c9efea" opacity=".5"></circle>
+				</g>
+				<g transform="translate(182 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#45505c"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#d7dee6" opacity=".5"></circle>
+				</g>
+				<g transform="translate(214 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#b45309"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#f6d7b0" opacity=".6"></circle>
+				</g>
+				<g transform="translate(246 140)">
+					<rect x="-6" y="-48" width="12" height="48" rx="3" fill="#6b7a42"></rect>
+					<circle cx="0" cy="-36" r="1.8" fill="#dce6c4" opacity=".55"></circle>
+				</g>
+			`;
+			break;
+		case 'physics-bounce':
+			background = '#071317';
+			gridColor = '#0f2d31';
+			glowColor = '#1f9e9e';
+			showGrid = true;
+			scene = `
+				<path d="M48 142C88 64 190 44 272 118" fill="none" stroke="#1f9e9e" stroke-opacity=".16" stroke-dasharray="3 6"></path>
+				<path d="M74 76C128 32 214 46 256 98" fill="none" stroke="#d48b32" stroke-opacity=".12" stroke-dasharray="2 7"></path>
+				${sphere(78, 92, 16, '#0b8e9c')}
+				${sphere(120, 120, 11, '#c98b2e')}
+				${sphere(160, 72, 20, '#2f8f7a')}
+				${sphere(202, 110, 14, '#c2410c')}
+				${sphere(238, 84, 17, '#7c3aed')}
+				${sphere(268, 124, 10, '#cfd8d2')}
+			`;
+			break;
+		default:
+			background = '#f5f6f8';
+			gridColor = '#d9dce3';
+			glowColor = accent;
+			showGrid = true;
+			scene = `
+				<g opacity=".9">
+					<rect x="96" y="48" width="128" height="84" rx="10" fill="#ffffff" stroke="#d8dbe2"></rect>
+					<rect x="110" y="63" width="58" height="8" rx="4" fill="${accent}" opacity=".26"></rect>
+					<rect x="110" y="80" width="100" height="6" rx="3" fill="#c7ccd6"></rect>
+					<rect x="110" y="94" width="78" height="6" rx="3" fill="#d7dbe3"></rect>
+					<rect x="110" y="112" width="34" height="10" rx="5" fill="${accent}" opacity=".5"></rect>
+					<circle cx="214" cy="60" r="10" fill="${accent}" opacity=".18"></circle>
+					<circle cx="214" cy="60" r="4" fill="${accent}" opacity=".65"></circle>
+				</g>
+			`;
+			break;
+	}
+
+	const isHero = variant === 'hero';
+	const canvasWidth = isHero ? 640 : 320;
+	const sceneMarkup = isHero ? `<g transform="translate(160 0)">${scene}</g>` : scene;
+
+	return `
+		<svg class="example-art" viewBox="${isHero ? '0 0 640 180' : '40 0 240 180'}" preserveAspectRatio="xMidYMid slice" role="img" aria-label="${escapeHtml(project.name)} preview">
+			<defs>
+				<pattern id="${gridId}" width="20" height="20" patternUnits="userSpaceOnUse">
+					<path d="M20 0H0v20" fill="none" stroke="${gridColor}" stroke-width=".5"></path>
+				</pattern>
+				<radialGradient id="${glowId}" cx="50%" cy="50%" r="50%">
+					<stop offset="0" stop-color="${glowColor}" stop-opacity=".24"></stop>
+					<stop offset="1" stop-color="${glowColor}" stop-opacity="0"></stop>
+				</radialGradient>
+			</defs>
+			<rect width="${canvasWidth}" height="180" fill="${background}"></rect>
+			${showGrid ? `<rect width="${canvasWidth}" height="180" fill="url(#${gridId})" opacity=".55"></rect>` : ''}
+			<ellipse cx="${isHero ? 480 : 168}" cy="42" rx="150" ry="92" fill="url(#${glowId})"></ellipse>
+			${sceneMarkup}
+			<rect x=".5" y=".5" width="${canvasWidth - 1}" height="179" fill="none" stroke="#000000" stroke-opacity=".06"></rect>
+		</svg>
+	`;
+};
 const createFolderNode = (name: string, key: string, order: number): FileTreeFolderNode => ({
 	kind: 'folder',
 	name,
@@ -333,8 +595,8 @@ const buildFileTree = (
 
 const renderTemplateCards = (shell: PlaygroundShell, selectedTemplateId: string): void => {
 	const templates = [
-		{ id: 'blank', name: 'Blank Scene', desc: 'An empty Axrone scene with a camera and viewport.', accent: '#64748b', badge: 'AX' },
-		{ id: 'basic', name: 'Basic Scene', desc: 'A starter scene with floor, cube, and default lighting.', accent: '#2563eb', badge: '3D' },
+		{ id: 'blank', name: 'Blank Scene', desc: 'An empty project with a single scene entry file.', accent: '#64748b', badge: 'AX' },
+		{ id: 'basic', name: 'Basic Scene', desc: 'A starter project with a scene entry point to build on.', accent: '#2563eb', badge: '3D' },
 	];
 
 	shell.newProjectTemplates.innerHTML = templates
@@ -355,7 +617,7 @@ const renderTemplateCards = (shell: PlaygroundShell, selectedTemplateId: string)
 export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	const shell = renderPlaygroundShell(root);
 	window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
-	const projects = (await loadProjectCatalog()).map((project) => ({
+	const projects: MutablePlaygroundProject[] = (await loadProjectCatalog()).map((project) => ({
 		...project,
 		files: cloneFiles(project.files),
 	}));
@@ -365,7 +627,9 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	let openTabs = currentFilePath ? [currentFilePath] : [];
 	let editor: LiveEditorController | undefined;
 	let runtimeSession: RuntimeSession | undefined;
-	let projectDropdownOpen = false;
+	let examplesModalOpen = false;
+	let examplesScope: ExamplesScope = 'all';
+	let selectedExampleId = currentProjectId;
 	let consoleVisible = true;
 	let sidebarVisible = true;
 	let verticalLayout = false;
@@ -379,22 +643,8 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	const consoleEntries: ConsoleEntry[] = [];
 	const problemEntries: ConsoleEntry[] = [];
 	const outputEntries: ConsoleEntry[] = [];
-	const applyProjectListFilter = (): void => {
-		const query = shell.projectSearchInput.value.trim().toLowerCase();
-		const cards = shell.projectList.querySelectorAll<HTMLElement>('[data-project-search]');
-		let visibleCount = 0;
-		for (const card of cards) {
-			const haystack = card.dataset.projectSearch ?? '';
-			const visible = !query || haystack.includes(query);
-			card.style.display = visible ? '' : 'none';
-			if (visible) {
-				visibleCount += 1;
-			}
-		}
-		shell.projectCount.textContent = `${visibleCount} proje`;
-	};
 
-	const getCurrentProject = (): PlaygroundProjectRecord | undefined =>
+	const getCurrentProject = (): MutablePlaygroundProject | undefined =>
 		projects.find((project) => project.id === currentProjectId);
 
 	const persistCurrentProject = (): void => {
@@ -410,7 +660,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		localStorage.setItem(resolveStorageKey(project.id), JSON.stringify(payload));
 	};
 
-	const hydrateProject = (project: PlaygroundProjectRecord): PlaygroundProjectRecord => {
+	const hydrateProject = (project: MutablePlaygroundProject): MutablePlaygroundProject => {
 		if (typeof localStorage === 'undefined') {
 			return project;
 		}
@@ -456,6 +706,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			)
 			.join('');
 		shell.problemCount.textContent = String(problemEntries.length);
+		shell.problemCount.classList.toggle('has-problems', problemEntries.length > 0);
 	};
 
 	const updatePlayIcon = (): void => {
@@ -475,8 +726,9 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	};
 
 	const updateRuntimeSummary = (): void => {
-		shell.objectCountLabel.textContent = runtimeSession ? String(runtimeSession.objectCount) : '—';
-		shell.ctrlInfo.textContent = runtimeSession?.summary ?? '—';
+		const stats = runtimeSession?.handle.getStats?.();
+		shell.objectCountLabel.textContent = stats ? String(stats.objectCount) : '—';
+		shell.ctrlInfo.textContent = stats?.summary ?? '—';
 	};
 
 	const stopCurrentRuntime = async (): Promise<void> => {
@@ -485,7 +737,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		updateRuntimeSummary();
 		if (!currentSession) {
 			shell.previewStage.replaceChildren();
-			setStatus('Durduruldu', 'stopped');
+			setStatus('Stopped', 'stopped');
 			return;
 		}
 
@@ -516,11 +768,11 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 				: { dispose() {} };
 			playing = true;
 			wireframe = false;
-			gridVisible = true;
+			gridVisible = project.grid ?? true;
 			axesVisible = false;
 			handle.setPlaying?.(true);
 			handle.setWireframe?.(false);
-			handle.setGridVisible?.(true);
+			handle.setGridVisible?.(gridVisible);
 			handle.setAxesVisible?.(false);
 			const stats = handle.getStats?.();
 			runtimeSession = {
@@ -542,35 +794,172 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		}
 	};
 
-	const renderProjectList = (): void => {
-		shell.projectList.innerHTML = projects
-			.map((project) => {
-				const selected = project.id === currentProjectId;
+	const getFilteredExamples = (): readonly PlaygroundProjectRecord[] => {
+		const query = shell.examplesSearchInput.value.trim().toLowerCase();
+
+		return projects.filter((project) => {
+			if (examplesScope === 'builtin' && project.builtIn === false) {
+				return false;
+			}
+			if (examplesScope === 'user' && project.builtIn !== false) {
+				return false;
+			}
+			if (!query) {
+				return true;
+			}
+
+			const haystack = [
+				project.name,
+				project.description,
+				resolveProjectCategory(project),
+				...resolveProjectTags(project),
+			]
+				.join(' ')
+				.toLowerCase();
+			return haystack.includes(query);
+		});
+	};
+
+	const updateExamplesScopeState = (): void => {
+		const counts: Record<ExamplesScope, number> = {
+			all: projects.length,
+			builtin: projects.filter((project) => project.builtIn !== false).length,
+			user: projects.filter((project) => project.builtIn === false).length,
+		};
+
+		for (const item of shell.examplesScopeCounts) {
+			const scope = item.dataset.scopeCount as ExamplesScope | undefined;
+			if (scope) {
+				item.textContent = String(counts[scope]);
+			}
+		}
+
+		for (const button of shell.examplesScopeButtons) {
+			const active = button.dataset.exampleScope === examplesScope;
+			button.classList.toggle('is-active', active);
+			button.setAttribute('aria-pressed', String(active));
+		}
+	};
+
+	const renderExamplesDetail = (): void => {
+		const project = projects.find((candidate) => candidate.id === selectedExampleId);
+		if (!project) {
+			shell.examplesDetail.innerHTML = `
+				<div class="examples-detail__empty">
+					<span class="examples-detail__empty-title">No example selected</span>
+					<span class="examples-detail__empty-text">Choose a project from the list to preview its contents.</span>
+				</div>
+			`;
+			return;
+		}
+
+		const tags = resolveProjectTags(project);
+		const isCurrent = project.id === currentProjectId;
+		const fileMarkup = project.files
+			.map((file) => {
+				const visual = resolveFileVisual(file.path);
 				return `
-					<div class="proj-card ${selected ? 'selected' : ''}" data-project-id="${escapeHtml(project.id)}" data-project-search="${escapeHtml(`${project.name} ${project.description}`.toLowerCase())}" style="--project-accent:${project.color}">
-						<div class="proj-card__icon">
-							<span class="proj-card__swatch"></span>
-						</div>
-						<div class="proj-card__body">
-							<div class="proj-card__title-row">
-								<span class="proj-card__title">${escapeHtml(project.name)}</span>
-								${selected ? '<span class="proj-card__badge">Aktif</span>' : ''}
-							</div>
-							<span class="proj-card__desc">${escapeHtml(project.description)}</span>
-							<span class="proj-card__meta">${project.files.length} dosya</span>
-						</div>
+					<div class="example-file">
+						<span class="example-file__icon" style="color:${visual.color}">${renderVisualIcon(visual, 12)}</span>
+						<span class="example-file__path">${escapeHtml(file.path)}</span>
+						${file.path === project.entryFile ? '<span class="example-file__entry">entry</span>' : ''}
 					</div>
 				`;
 			})
 			.join('');
-		applyProjectListFilter();
+
+		shell.examplesDetail.innerHTML = `
+			<div class="example-detail__hero">${renderExampleArt(project, 'hero')}</div>
+			<div class="example-detail__content">
+				<div class="example-detail__eyebrow-row">
+					<span class="example-detail__eyebrow">${escapeHtml(resolveProjectCategory(project))}</span>
+					${isCurrent ? '<span class="example-badge">Currently open</span>' : ''}
+				</div>
+				<h3 class="example-detail__title">${escapeHtml(project.name)}</h3>
+				<p class="example-detail__description">${escapeHtml(project.description)}</p>
+				${
+					tags.length > 0
+						? `<div class="tag-row">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</div>`
+						: ''
+				}
+				<dl class="example-meta">
+					<div class="example-meta__item">
+						<dt>Entry</dt>
+						<dd>${escapeHtml(project.entryFile)}</dd>
+					</div>
+					<div class="example-meta__item">
+						<dt>Files</dt>
+						<dd>${project.files.length}</dd>
+					</div>
+					<div class="example-meta__item">
+						<dt>Language</dt>
+						<dd>${escapeHtml(resolveLanguageLabel(project.entryFile))}</dd>
+					</div>
+					<div class="example-meta__item">
+						<dt>Source</dt>
+						<dd>${project.builtIn === false ? 'Local' : 'Built-in'}</dd>
+					</div>
+				</dl>
+				<div class="example-files">
+					<div class="example-files__header">
+						<span class="example-files__label">Project files</span>
+						<span class="example-files__count">${project.files.length}</span>
+					</div>
+					${fileMarkup}
+				</div>
+			</div>
+		`;
+	};
+
+	const renderExamplesList = (): void => {
+		const filtered = getFilteredExamples();
+		if (!filtered.some((project) => project.id === selectedExampleId)) {
+			selectedExampleId = filtered[0]?.id ?? '';
+		}
+
+		shell.examplesList.innerHTML = filtered
+			.map((project) => {
+				const selected = project.id === selectedExampleId;
+				const isCurrent = project.id === currentProjectId;
+				return `
+					<button
+						type="button"
+						class="example-row${selected ? ' is-selected' : ''}"
+						data-example-id="${escapeHtml(project.id)}"
+						aria-pressed="${selected}"
+					>
+						<span class="example-row__art">${renderExampleArt(project, 'thumb')}</span>
+						<span class="example-row__body">
+							<span class="example-row__title-row">
+								<span class="example-row__title">${escapeHtml(project.name)}</span>
+								${isCurrent ? '<span class="example-row__current"><span class="example-row__current-dot"></span>Open</span>' : ''}
+							</span>
+							<span class="example-row__meta">${escapeHtml(resolveProjectCategory(project))} <span class="example-row__meta-sep">·</span> ${project.files.length} files</span>
+						</span>
+					</button>
+				`;
+			})
+			.join('');
+
+		const hasResults = filtered.length > 0;
+		shell.examplesList.hidden = !hasResults;
+		shell.examplesEmpty.hidden = hasResults;
+		shell.examplesCount.textContent = hasResults ? `${filtered.length} of ${projects.length}` : '0';
+		shell.examplesOpenButton.disabled = !hasResults;
+		updateExamplesScopeState();
+		renderExamplesDetail();
+	};
+
+	const setExamplesScope = (scope: ExamplesScope): void => {
+		examplesScope = scope;
+		renderExamplesList();
 	};
 
 	const renderFileTree = (): void => {
 		const project = getCurrentProject();
 		if (!project) {
 			shell.fileTree.innerHTML = '';
-			shell.fileCountText.textContent = '0 dosya';
+			shell.fileCountText.textContent = '0 files';
 			return;
 		}
 
@@ -646,7 +1035,9 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		}
 
 		shell.projectNameDisplay.textContent = project.name;
+		shell.projectCategoryDisplay.textContent = resolveProjectCategory(project);
 		shell.projectDot.style.background = project.color;
+		shell.viewportSceneLabel.textContent = project.name;
 		shell.languageDisplay.textContent = resolveLanguageLabel(currentFilePath);
 		shell.breadcrumbLabel.textContent = currentFilePath;
 	};
@@ -694,13 +1085,13 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		}
 
 		currentProjectId = project.id;
+		selectedExampleId = project.id;
 		currentFilePath = project.entryFile;
 		openTabs = [currentFilePath];
 		refreshEditorFiles();
-		renderProjectList();
+		renderExamplesList();
 		renderFileTree();
 		renderEditorTabs();
-		setProjectDropdownState(false);
 		void runCurrentProject();
 	};
 
@@ -766,24 +1157,84 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			shell.fpsLabel.textContent = String(fpsState.frames);
 			fpsState.frames = 0;
 			fpsState.last = now;
+			updateRuntimeSummary();
 		}
 		requestAnimationFrame(fpsLoop);
 	};
 
-	const setProjectDropdownState = (open: boolean): void => {
-		projectDropdownOpen = open;
-		shell.projectDropdown.style.opacity = open ? '1' : '0';
-		shell.projectDropdown.style.transform = open ? 'translateY(0) scale(1)' : 'translateY(-6px) scale(.97)';
-		shell.projectDropdown.style.pointerEvents = open ? 'auto' : 'none';
-		shell.projectChevron.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
-		if (open) {
-			applyProjectListFilter();
-			queueMicrotask(() => shell.projectSearchInput.focus());
+	let examplesReturnFocus: HTMLElement | null = null;
+
+	const moveExampleSelection = (direction: 1 | -1): void => {
+		const filtered = getFilteredExamples();
+		if (filtered.length === 0) {
+			return;
 		}
+
+		const currentIndex = filtered.findIndex((project) => project.id === selectedExampleId);
+		const nextIndex = currentIndex === -1 ? 0 : Math.min(filtered.length - 1, Math.max(0, currentIndex + direction));
+		const nextProject = filtered[nextIndex];
+		if (!nextProject) {
+			return;
+		}
+
+		selectedExampleId = nextProject.id;
+		renderExamplesList();
+		const row = [...shell.examplesList.querySelectorAll<HTMLElement>('[data-example-id]')].find(
+			(candidate) => candidate.dataset.exampleId === nextProject.id,
+		);
+		row?.scrollIntoView({ block: 'nearest' });
 	};
 
-	const toggleProjectDropdown = (): void => {
-		setProjectDropdownState(!projectDropdownOpen);
+	const openExamplesModal = (): void => {
+		if (examplesModalOpen) {
+			return;
+		}
+
+		examplesReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		examplesModalOpen = true;
+		examplesScope = 'all';
+		selectedExampleId = currentProjectId;
+		shell.examplesSearchInput.value = '';
+		shell.examplesModal.classList.add('is-open');
+		shell.examplesModal.setAttribute('aria-hidden', 'false');
+		shell.projectTrigger.setAttribute('aria-expanded', 'true');
+		shell.projectChevron.style.transform = 'rotate(180deg)';
+		renderExamplesList();
+		window.setTimeout(() => {
+			shell.examplesSearchInput.focus();
+			const currentRow = [...shell.examplesList.querySelectorAll<HTMLElement>('[data-example-id]')].find(
+				(candidate) => candidate.dataset.exampleId === currentProjectId,
+			);
+			currentRow?.scrollIntoView({ block: 'nearest' });
+		}, 50);
+	};
+
+	const closeExamplesModal = (restoreFocus = true): void => {
+		if (!examplesModalOpen) {
+			return;
+		}
+
+		examplesModalOpen = false;
+		shell.examplesModal.classList.remove('is-open');
+		shell.examplesModal.setAttribute('aria-hidden', 'true');
+		shell.projectTrigger.setAttribute('aria-expanded', 'false');
+		shell.projectChevron.style.transform = 'rotate(0deg)';
+		if (restoreFocus) {
+			const target = examplesReturnFocus && document.contains(examplesReturnFocus) ? examplesReturnFocus : shell.projectTrigger;
+			window.setTimeout(() => target.focus({ preventScroll: true }), 50);
+		}
+		examplesReturnFocus = null;
+	};
+
+	const openSelectedExample = (): void => {
+		const project = projects.find((candidate) => candidate.id === selectedExampleId);
+		if (!project) {
+			return;
+		}
+
+		closeExamplesModal(false);
+		switchProject(project.id);
+		window.setTimeout(() => editor?.focus(), 50);
 	};
 
 	const toggleConsole = (): void => {
@@ -805,17 +1256,20 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 
 	const openNewProjectModal = (): void => {
 		renderTemplateCards(shell, selectedTemplateId);
-		setProjectDropdownState(false);
-		shell.newProjectModal.style.opacity = '1';
-		shell.newProjectModal.style.pointerEvents = 'auto';
-		shell.newProjectCard.style.transform = 'translateY(0) scale(1)';
+		closeExamplesModal(false);
+		shell.newProjectModal.classList.add('is-open');
+		shell.newProjectModal.setAttribute('aria-hidden', 'false');
 		shell.newProjectNameInput.value = '';
+		shell.newProjectCreateButton.disabled = true;
+		window.setTimeout(() => shell.newProjectNameInput.focus(), 50);
 	};
 
-	const closeNewProjectModal = (): void => {
-		shell.newProjectModal.style.opacity = '0';
-		shell.newProjectModal.style.pointerEvents = 'none';
-		shell.newProjectCard.style.transform = 'translateY(12px) scale(.97)';
+	const closeNewProjectModal = (restoreFocus = true): void => {
+		shell.newProjectModal.classList.remove('is-open');
+		shell.newProjectModal.setAttribute('aria-hidden', 'true');
+		if (restoreFocus) {
+			window.setTimeout(() => shell.projectTrigger.focus({ preventScroll: true }), 50);
+		}
 	};
 
 	const createTemplateFiles = (templateId: string): VirtualProjectFile[] => {
@@ -850,13 +1304,19 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			id,
 			name,
 			color: palette[projects.length % palette.length]!,
-			description: selectedTemplateId === 'basic' ? 'Basic scene template' : 'Blank scene template',
+			description:
+				selectedTemplateId === 'basic'
+					? 'Starter project created from the Basic Scene template.'
+					: 'Starter project created from the Blank Scene template.',
+			category: selectedTemplateId === 'basic' ? 'Starter' : 'Template',
+			tags: selectedTemplateId === 'basic' ? ['3D', 'Starter', 'TypeScript'] : ['Starter', 'TypeScript'],
+			grid: true,
 			entryFile: 'main.ts',
 			files: createTemplateFiles(selectedTemplateId),
 			builtIn: false,
 		});
-		closeNewProjectModal();
-		renderProjectList();
+		closeNewProjectModal(false);
+		renderExamplesList();
 		switchProject(id);
 	};
 
@@ -944,12 +1404,62 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	shell.toggleConsoleButton.addEventListener('click', toggleConsole);
 	shell.toggleSidebarButton.addEventListener('click', toggleSidebar);
 	shell.toggleLayoutButton.addEventListener('click', toggleLayout);
-	requireElement(root, '#proj-trigger').addEventListener('click', toggleProjectDropdown);
-	shell.newProjectOpenButton.addEventListener('click', openNewProjectModal);
+	shell.projectTrigger.addEventListener('click', () => {
+		if (examplesModalOpen) {
+			closeExamplesModal();
+			return;
+		}
+		openExamplesModal();
+	});
+	for (const closeButton of shell.examplesCloseButtons) {
+		closeButton.addEventListener('click', () => closeExamplesModal());
+	}
+	shell.examplesOpenButton.addEventListener('click', openSelectedExample);
+	shell.examplesNewButton.addEventListener('click', openNewProjectModal);
+	shell.examplesSearchInput.addEventListener('input', renderExamplesList);
+	for (const scopeButton of shell.examplesScopeButtons) {
+		scopeButton.addEventListener('click', () => {
+			const scope = scopeButton.dataset.exampleScope as ExamplesScope | undefined;
+			if (scope) {
+				setExamplesScope(scope);
+			}
+		});
+	}
+	shell.examplesList.addEventListener('click', (event) => {
+		const row = (event.target as HTMLElement).closest<HTMLElement>('[data-example-id]');
+		if (!row?.dataset.exampleId) {
+			return;
+		}
+
+		if (row.dataset.exampleId !== selectedExampleId) {
+			selectedExampleId = row.dataset.exampleId;
+			renderExamplesList();
+		}
+
+		if (event.detail === 0) {
+			openSelectedExample();
+		}
+	});
+	shell.examplesList.addEventListener('dblclick', (event) => {
+		const row = (event.target as HTMLElement).closest<HTMLElement>('[data-example-id]');
+		if (row?.dataset.exampleId) {
+			selectedExampleId = row.dataset.exampleId;
+			openSelectedExample();
+		}
+	});
 	for (const closeButton of shell.newProjectCloseButtons) {
-		closeButton.addEventListener('click', closeNewProjectModal);
+		closeButton.addEventListener('click', () => closeNewProjectModal());
 	}
 	shell.newProjectCreateButton.addEventListener('click', createProject);
+	shell.newProjectNameInput.addEventListener('input', () => {
+		shell.newProjectCreateButton.disabled = shell.newProjectNameInput.value.trim().length === 0;
+	});
+	shell.newProjectNameInput.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			createProject();
+		}
+	});
 	shell.newProjectTemplates.addEventListener('click', (event) => {
 		const target = (event.target as HTMLElement).closest<HTMLElement>('[data-template-id]');
 		if (!target?.dataset.templateId) {
@@ -959,13 +1469,6 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 		selectedTemplateId = target.dataset.templateId;
 		renderTemplateCards(shell, selectedTemplateId);
 	});
-	shell.projectList.addEventListener('click', (event) => {
-		const card = (event.target as HTMLElement).closest<HTMLElement>('[data-project-id]');
-		if (card?.dataset.projectId) {
-			switchProject(card.dataset.projectId);
-		}
-	});
-	shell.projectSearchInput.addEventListener('input', applyProjectListFilter);
 	shell.fileTree.addEventListener('click', (event) => {
 		const folder = (event.target as HTMLElement).closest<HTMLElement>('[data-folder-path]');
 		if (folder?.dataset.folderPath) {
@@ -1025,7 +1528,7 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 	initResize(shell.editorResize, shell.editorPanel, 'horizontal', 280);
 	initResize(shell.consoleResize, shell.consolePanel, 'vertical', 80);
 
-	renderProjectList();
+	renderExamplesList();
 	renderFileTree();
 	renderEditorTabs();
 	renderConsoleOutput();
@@ -1043,26 +1546,90 @@ export const startPlaygroundApp = async (root: HTMLElement): Promise<void> => {
 			return;
 		}
 
-		if (!shell.projectDropdown.contains(target) && !requireElement(root, '#proj-trigger').contains(target)) {
-			setProjectDropdownState(false);
-		}
-
 		if (!shell.cameraDropdown.contains(target) && !shell.cameraButton.contains(target)) {
 			shell.cameraDropdown.classList.remove('open');
 		}
 	});
 
 	document.addEventListener('keydown', (event) => {
-		if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+		const modifier = event.ctrlKey || event.metaKey;
+
+		if (modifier && event.key.toLowerCase() === 'k') {
+			event.preventDefault();
+			if (examplesModalOpen) {
+				closeExamplesModal();
+			} else if (!shell.newProjectModal.classList.contains('is-open')) {
+				openExamplesModal();
+			}
+			return;
+		}
+
+		if (modifier && event.key === 'Enter') {
 			event.preventDefault();
 			void runCurrentProject();
+			return;
 		}
+
 		if (event.key === 'Escape') {
-			closeNewProjectModal();
+			if (examplesModalOpen) {
+				closeExamplesModal();
+				return;
+			}
+			if (shell.newProjectModal.classList.contains('is-open')) {
+				closeNewProjectModal();
+				return;
+			}
 			shell.cameraDropdown.classList.remove('open');
-			setProjectDropdownState(false);
+			return;
 		}
-	});
+
+		if (!examplesModalOpen) {
+			return;
+		}
+
+		if (event.key === 'Tab') {
+			const focusable = [
+				...shell.examplesDialog.querySelectorAll<HTMLElement>(
+					'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+				),
+			].filter((element) => element.offsetParent !== null);
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			if (!first || !last) {
+				return;
+			}
+			if (!shell.examplesDialog.contains(document.activeElement)) {
+				event.preventDefault();
+				first.focus();
+				return;
+			}
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault();
+				last.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault();
+				first.focus();
+			}
+			return;
+		}
+
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			moveExampleSelection(1);
+			return;
+		}
+
+		if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			moveExampleSelection(-1);
+			return;
+		}
+
+		if (event.target === shell.examplesSearchInput && event.key === 'Enter') {
+			event.preventDefault();
+			openSelectedExample();
+		}
+	}, true);
 };
 
 const requireElement = <T extends Element>(root: ParentNode, selector: string): T => {

@@ -12,6 +12,7 @@ import {
 } from '@axrone/scene-2d';
 import { SceneComponentCatalog } from '@axrone/scene-runtime/scene-3d-support';
 import { Scene2DActorRuntime } from '../scene-2d-actor-runtime';
+import { createScene2DAnimationRuntime } from '../scene-2d-animation-runtime';
 
 const create2DActorRuntime = (
     registry = get2DSceneRuntimeProfile().resolveRegistry({})
@@ -22,7 +23,10 @@ const create2DActorRuntime = (
         componentCatalog: new SceneComponentCatalog(registry),
     });
 
-    return new Scene2DActorRuntime({ actors });
+    return new Scene2DActorRuntime({
+        actors,
+        animation: createScene2DAnimationRuntime(actors),
+    });
 };
 
 describe('Scene2DActorRuntime', () => {

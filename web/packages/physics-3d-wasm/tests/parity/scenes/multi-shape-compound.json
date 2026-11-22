@@ -1,0 +1,25 @@
+{
+    "name": "multi-shape-compound",
+    "skip": null,
+    "world": {
+        "gravity": [0, -9.81, 0],
+        "maxBodies": 16,
+        "maxContacts": 1024,
+        "velocityIterations": 10,
+        "positionIterations": 4,
+        "allowSleep": false
+    },
+    "bodies": [
+        { "type": 0, "position": [0, -0.5, 0] },
+        { "type": 2, "position": [0, 3, 0] }
+    ],
+    "shapes": [
+        { "body": 0, "kind": "box", "halfExtents": [10, 0.5, 10], "center": [0, 0, 0], "material": { "friction": 0.8, "restitution": 0 } },
+        { "body": 1, "kind": "box", "halfExtents": [0.8, 0.1, 0.5], "center": [0, 0.1, 0], "material": { "friction": 0.5, "restitution": 0 } },
+        { "body": 1, "kind": "box", "halfExtents": [0.1, 0.6, 0.5], "center": [0.7, 0.7, 0], "material": { "friction": 0.5, "restitution": 0 } }
+    ],
+    "joints": [],
+    "rays": [],
+    "snapshotEvery": 10,
+    "steps": 180
+}

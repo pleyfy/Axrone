@@ -92,7 +92,7 @@ function prepareFixedOrDistance(
         { x: -1, y: 0, z: 0 }, // j1Linear
         { x: 0, y: rA.z, z: -rA.y }, // j1Angular = -(rA × xHat)
         { x: 1, y: 0, z: 0 }, // j2Linear
-        { x: 0, y: -rB.z, z: rB.y }, // j2Angular = rB × xHat
+        { x: 0, y: rB.z, z: -rB.y }, // j2Angular = +(rB × xHat)
         BAUMGARTE * errorX / h, // Baumgarte bias (positive for positive error → convergence)
         -errorX, // positionError (negated for position solver convention)
     );
@@ -103,7 +103,7 @@ function prepareFixedOrDistance(
         { x: 0, y: -1, z: 0 },
         { x: -rA.z, y: 0, z: rA.x }, // j1Angular for Y: -(rA × yHat)
         { x: 0, y: 1, z: 0 },
-        { x: rB.z, y: 0, z: -rB.x }, // j2Angular for Y
+        { x: -rB.z, y: 0, z: rB.x }, // j2Angular for Y: +(rB × yHat)
         BAUMGARTE * errorY / h,
         -errorY,
     );
@@ -114,7 +114,7 @@ function prepareFixedOrDistance(
         { x: 0, y: 0, z: -1 },
         { x: rA.y, y: -rA.x, z: 0 }, // j1Angular for Z: -(rA × zHat)
         { x: 0, y: 0, z: 1 },
-        { x: -rB.y, y: rB.x, z: 0 }, // j2Angular for Z
+        { x: rB.y, y: -rB.x, z: 0 }, // j2Angular for Z: +(rB × zHat)
         BAUMGARTE * errorZ / h,
         -errorZ,
     );

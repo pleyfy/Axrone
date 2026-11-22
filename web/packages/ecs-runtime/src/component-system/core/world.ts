@@ -20,6 +20,7 @@ import { WorldEventRuntime } from './world-event-runtime';
 import { WorldMutationRuntime } from './world-mutation-runtime';
 import { WorldQueryExecutionRuntime } from './world-query-execution-runtime';
 import { WorldSingletonRegistry } from './world-singleton-registry';
+import { createRenderMutationClock, type RenderMutationClock } from './render-mutation-clock';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
 export type EntityId = Entity & { readonly __entityBrand: unique symbol };
@@ -81,6 +82,7 @@ export class World<R extends ComponentRegistry> {
     private readonly _actorRegistry = new WorldActorRegistry();
     private readonly _mutations: WorldMutationRuntime<R>;
     private readonly _singletonRegistry = new WorldSingletonRegistry();
+    private readonly _renderClock = createRenderMutationClock();
 
     private _state: WorldState = 'initializing';
     private readonly _config: Required<WorldConfig>;
@@ -129,8 +131,13 @@ export class World<R extends ComponentRegistry> {
                 actorRegistry: this._actorRegistry,
                 singletonRegistry: this._singletonRegistry,
                 emitEvent: (event, data) => this._safeEmitEvent(event, data),
-                onMutation: () => this._metricsService.markMutation(),
+                onMutation: () => {
+                    this._metricsService.markMutation();
+                    this._bumpRenderRevision();
+                },
                 onStructureChange: () => this._invalidateStructureCaches(),
+                hasEventSubscribers: (event) =>
+                    this._events.hasSubscribers(event as EventKey<ECSEventMap<R>>),
             });
 
             this._state = 'ready';
@@ -158,6 +165,28 @@ export class World<R extends ComponentRegistry> {
 
     get isDisposed(): boolean {
         return this._state === 'disposed';
+    }
+
+    /**
+     * Monotonic render-mutation revision for this world.
+     *
+     * Advances on structural mutations (entity/component add, remove, destroy)
+     * and on every component `touch()` or actor active-state change, which is
+     * exactly the set of events that can invalidate derived render data.
+     * Render caches compare this single number to skip per-object revalidation
+     * on frames where nothing they observe can have changed.
+     *
+     * It is a change *signal*, not a version of the scene: two different
+     * mutations may or may not produce distinct values within one frame, so a
+     * changed value only means "revalidate", never "what changed".
+     */
+    get renderRevision(): number {
+        return this._renderClock.value;
+    }
+
+    /** @internal Shared clock handed to components so `touch()` costs one increment. */
+    get renderMutationClock(): RenderMutationClock {
+        return this._renderClock;
     }
 
     get metrics(): Readonly<WorldMetrics> | null {
@@ -230,6 +259,108 @@ export class World<R extends ComponentRegistry> {
                 error instanceof Error ? error : new Error(String(error))
             );
         }
+    }
+
+    /**
+     * Creates one entity per component set with a single archetype
+     * resolution for the whole batch.
+     *
+     * Every set must carry the same component names (the first set's keys);
+     * the values are the component instances to attach. Component lifecycle
+     * and actor registration are the caller's responsibility — this is the
+     * entity/archetype half of the bulk actor-creation path, not a replacement
+     * for `Actor`.
+     */
+    createEntitiesWithComponentsBulk(
+        componentSets: readonly Readonly<Record<string, unknown>>[]
+    ): readonly Entity[] {
+        this._validateWorldState('createEntitiesWithComponentsBulk');
+
+        if (componentSets.length === 0) {
+            return [];
+        }
+
+        if (this._storage.entityCount + componentSets.length > this._config.maxEntities) {
+            throw new WorldError(
+                `Maximum entity limit (${this._config.maxEntities}) reached`,
+                'createEntitiesWithComponentsBulk'
+            );
+        }
+
+        const signature = Object.keys(componentSets[0]!);
+        const signatureLength = signature.length;
+        for (const componentName of signature) {
+            this._validateComponentName(
+                componentName as keyof R,
+                'createEntitiesWithComponentsBulk'
+            );
+        }
+
+        // One shared signature is what makes the single archetype pass valid.
+        // Counting keys with `for…in` keeps the check allocation-free.
+        for (let index = 0; index < componentSets.length; index += 1) {
+            const set = componentSets[index]!;
+            let keyCount = 0;
+            for (const setName in set) {
+                keyCount += 1;
+                if (set[setName] === undefined) {
+                    throw new WorldError(
+                        `Bulk creation requires one shared component signature: set ${index} has no value for '${setName}'`,
+                        'createEntitiesWithComponentsBulk'
+                    );
+                }
+            }
+
+            if (keyCount !== signatureLength) {
+                throw new WorldError(
+                    `Bulk creation requires one shared component signature: set ${index} has ${keyCount} components, expected ${signatureLength}`,
+                    'createEntitiesWithComponentsBulk'
+                );
+            }
+
+            for (let key = 0; key < signatureLength; key += 1) {
+                const componentName = signature[key]!;
+                if (set[componentName] === undefined) {
+                    throw new WorldError(
+                        `Bulk creation requires one shared component signature: set ${index} is missing '${componentName}'`,
+                        'createEntitiesWithComponentsBulk'
+                    );
+                }
+            }
+        }
+
+        try {
+            return this._mutations.createEntitiesWithComponentsBulk(componentSets);
+        } catch (error) {
+            throw new WorldError(
+                'Failed to create entities with components',
+                'createEntitiesWithComponentsBulk',
+                error instanceof Error ? error : new Error(String(error))
+            );
+        }
+    }
+
+    /**
+     * True when at least one handler is registered for `event`.
+     *
+     * Bulk helpers use this to skip building per-entity event payloads that
+     * nobody reads — the usual case while constructing a large scene.
+     */
+    hasEventSubscribers(event: string): boolean {
+        return this._events.hasSubscribers(event as EventKey<ECSEventMap<R>>);
+    }
+
+    /**
+     * @internal Emits the per-component `Added` events that `addComponent`
+     * would have emitted for components placed by a bulk creation path.
+     */
+    notifyComponentsAttached(
+        entity: Entity,
+        actor: Actor,
+        componentNames: readonly string[],
+        components: readonly { readonly component: unknown }[]
+    ): void {
+        this._mutations.notifyComponentsAttached(entity, actor, componentNames, components);
     }
 
     destroyEntity(entity: Entity): void {
@@ -449,6 +580,9 @@ export class World<R extends ComponentRegistry> {
         registry[componentName] = componentType;
         this._mutations.registerComponentType(componentName, componentType);
         this._events.registerComponent(componentName);
+        // A new component type can add a renderable family (masks, cameras,
+        // lights) to the scene, so derived render state must revalidate.
+        this._bumpRenderRevision();
     }
 
     isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean {
@@ -683,6 +817,10 @@ export class World<R extends ComponentRegistry> {
                 operation
             );
         }
+    }
+
+    private _bumpRenderRevision(): void {
+        this._renderClock.value = (this._renderClock.value + 1) >>> 0;
     }
 
     private _safeEmitEvent<T extends EventKey<ECSEventMap<R>>>(

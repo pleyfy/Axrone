@@ -1,4 +1,4 @@
-import type { BytesLike } from '../../../types';
+import type { BytesLike } from '../../types';
 import { rotl32, writeU32LE, encodeBase64 } from '../bits';
 import { fmix32, murmur3Scramble } from '../mixers';
 import { u32ToHex, bigIntToHex } from '../hex';

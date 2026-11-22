@@ -1,0 +1,50 @@
+{
+  "name": "@axrone/physics-3d-wasm",
+  "version": "0.1.0",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@axrone/ecs-runtime": "^0.1.0",
+    "@axrone/numeric": "^0.0.1"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rollup -c rollup.config.mjs",
+    "build:wasm": "node scripts/build.mjs wasm-release",
+    "smoke:dist": "node scripts/smoke-dist.mjs",
+    "clean": "rimraf dist",
+    "test": "vitest run",
+    "test:median": "node --test tests/median_test.mjs",
+    "test:memory": "node tests/memory_test.mjs",
+    "test:simd-parity": "node tests/simd_parity_test.mjs",
+    "test:phases": "node tests/phases_test.mjs",
+    "test:phase-split": "node tests/phase_split_test.mjs",
+    "bench:identity-oracle": "node bench/identity-oracle.mjs",
+    "bench:events": "node bench/event-collector.mjs",
+    "test:identity-oracle": "node --test tests/identity_oracle_test.mjs",
+    "bench:paired-ratio": "node bench/paired-ratio.mjs",
+    "test:paired-ratio": "node --test tests/paired_ratio_test.mjs",
+    "gate:rotation-funnel": "node scripts/rotation-funnel-gate.mjs",
+    "test:rotation-funnel-gate": "node --test tests/rotation_funnel_gate_test.mjs",
+    "exhibit:contact-layout": "node scripts/contact-layout-exhibit.mjs",
+    "test:contact-layout-exhibit": "node --test tests/contact_layout_exhibit_test.mjs",
+    "test:parity": "vitest run --config vitest.parity.config.mjs",
+    "test:parity:strict": "vitest run --config vitest.parity-strict.config.mjs",
+    "parity": "node scripts/parity.mjs",
+    "bench": "node bench/run.mjs",
+    "bench:phase-split": "node bench/phase-split.mjs",
+    "bench:variants": "node bench/variants.mjs",
+    "test:variants": "node --test tests/variants_test.mjs"
+  }
+}

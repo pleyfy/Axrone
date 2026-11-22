@@ -21,6 +21,7 @@ import type {
     InputVector2State,
 } from '../types';
 import { EPSILON as NUMERIC_EPSILON, clamp } from '@axrone/numeric';
+import type { IVec2Like } from '@axrone/numeric';
 import { isRecord } from '@axrone/utility';
 
 export { isRecord };
@@ -45,11 +46,6 @@ export const DEFAULT_MULTI_TAP_COUNT = 2;
 export const DEFAULT_MULTI_TAP_DELAY_MS = 300;
 export const DEFAULT_REPEAT_DELAY_MS = 450;
 export const DEFAULT_REPEAT_INTERVAL_MS = 60;
-
-export interface MutableVector2 {
-    x: number;
-    y: number;
-}
 
 export interface ButtonStateStore {
     readonly kind: 'button';
@@ -91,9 +87,9 @@ export interface AxisStateStore {
 
 export interface Vector2StateStore {
     readonly kind: 'vector2';
-    value: MutableVector2;
-    previousValue: MutableVector2;
-    delta: MutableVector2;
+    value: IVec2Like;
+    previousValue: IVec2Like;
+    delta: IVec2Like;
     magnitude: number;
     previousMagnitude: number;
     active: boolean;
@@ -458,9 +454,9 @@ export const applyScalarProcessors = (
 };
 
 export const applyVectorProcessors = (
-    value: MutableVector2,
+    value: IVec2Like,
     processors: readonly InternalVectorProcessor[]
-): MutableVector2 => {
+): IVec2Like => {
     let nextX = value.x;
     let nextY = value.y;
 
@@ -510,7 +506,7 @@ export const applyVectorProcessors = (
     };
 };
 
-const createVectorView = (source: MutableVector2): InputVector2 =>
+const createVectorView = (source: IVec2Like): InputVector2 =>
     Object.freeze({
         get x(): number {
             return source.x;

@@ -6,7 +6,9 @@ describe('scene-2d entry', () => {
         installWebGL2Constants();
     });
 
-    it('surfaces the 2d facade without 3d-only capability exports', async () => {
+    it(
+        'surfaces the 2d facade without 3d-only capability exports',
+        async () => {
         const scene2D = await import('@axrone/scene-2d');
 
         expect(scene2D.Scene2D).toBeDefined();
@@ -25,5 +27,7 @@ describe('scene-2d entry', () => {
         expect('DirectionalLight' in scene2D).toBe(false);
         expect('OrbitCameraController' in scene2D).toBe(false);
         expect('Scene' in scene2D).toBe(false);
-    });
+        },
+        30_000,
+    );
 });

@@ -16,6 +16,7 @@ export default defineConfig({
             'tests/**/*.{test,spec}.{js,ts}',
         ],
         exclude: [
+            '**/.tmp/**',
             // Compiled test copies under dist/ are stale build artifacts;
             // the authoritative suites live under src/.
             'packages/**/dist/**',

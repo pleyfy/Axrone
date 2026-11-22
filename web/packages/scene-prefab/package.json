@@ -18,7 +18,7 @@
     "scripts": {
         "build": "rollup -c rollup.config.mjs",
         "clean": "rimraf dist",
-        "test": "vitest run"
+        "test": "vitest run --root ../.. packages/scene-prefab"
     },
     "dependencies": {
         "@axrone/ecs-runtime": "^0.1.0",

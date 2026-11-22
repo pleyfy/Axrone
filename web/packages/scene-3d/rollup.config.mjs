@@ -12,6 +12,7 @@ export default createMultiEntryConfig({
         support: 'src/support.ts',
         profile: 'src/profile.ts',
         types: 'src/types.ts',
+        lean: 'src/lean.ts',
         errors: 'src/errors.ts',
     },
 });

@@ -35,6 +35,25 @@ const ROTATION_OFFSET = 3;
 const LINEAR_VEL_OFFSET = 0;
 const ANGULAR_VEL_OFFSET = 3;
 
+/**
+ * Row layout of the body manager structure-of-arrays. Exported for the contact
+ * solver, which reads and writes rows directly (see `resolveIndex` and the
+ * `*Raw()` views on {@link BodyManager3D}).
+ */
+export const BODY_LAYOUT = {
+    positionStride: POSITION_STRIDE,
+    velocityStride: VELOCITY_STRIDE,
+    massStride: MASS_STRIDE,
+    positionOffset: POSITION_OFFSET,
+    rotationOffset: ROTATION_OFFSET,
+    linearVelocityOffset: LINEAR_VEL_OFFSET,
+    angularVelocityOffset: ANGULAR_VEL_OFFSET,
+    mass: 0,
+    inverseMass: 1,
+    inertia: 2,
+    inverseInertia: 5,
+} as const;
+
 type ErrorCode3D =
     | 'INVALID_STATE'
     | 'NOT_FOUND'
@@ -533,7 +552,10 @@ export class BodyManager3D implements Disposable {
 
     /**
      * Compute composite inertia tensor for a body from its attached shape geometries.
-     * Uses parallel-axis theorem to offset each shape's contribution by its center offset.
+     * Inertia is accumulated about the body origin (parallel-axis per shape), the
+     * same policy the contact solver's lever arms use. Per-shape mass comes from the
+     * shape's density and volume; the distribution is scaled so the shape masses sum
+     * to the body's configured mass.
      */
     computeInertiaForBody(bodyId: BodyId3D, shapeManager: ShapeManager3D): IVec3Like {
         const mass = this.getMass(bodyId);
@@ -542,11 +564,20 @@ export class BodyManager3D implements Disposable {
         const shapes = shapeManager.getShapesForBodyWithDefs(bodyId);
         if (shapes.length === 0) return { x: 1, y: 1, z: 1 };
 
-        const perShapeMass = mass / shapes.length;
-        let ix = 0, iy = 0, iz = 0;
+        let totalShapeMass = 0;
+        for (const { kind, def, density } of shapes) {
+            totalShapeMass += _computeShapeMass(kind, def as Record<string, unknown>, density);
+        }
+        const massScale = totalShapeMass > 1e-10 ? mass / totalShapeMass : 0;
 
-        for (const { kind, def } of shapes) {
-            const inertia = _computeShapeInertia(kind, def as Record<string, unknown>, perShapeMass);
+        let ix = 0, iy = 0, iz = 0;
+        const fallbackMass = mass / shapes.length;
+
+        for (const { kind, def, density } of shapes) {
+            const shapeMass = massScale > 0
+                ? _computeShapeMass(kind, def as Record<string, unknown>, density) * massScale
+                : fallbackMass;
+            const inertia = _computeShapeInertia(kind, def as Record<string, unknown>, shapeMass);
             ix += inertia.x;
             iy += inertia.y;
             iz += inertia.z;
@@ -565,6 +596,33 @@ export class BodyManager3D implements Disposable {
         if (index === undefined) throw new PhysicsError3D('Body not found', 'INVALID_STATE');
         return index;
     }
+
+    /**
+     * Row index for a body id, or -1 when the body no longer exists.
+     *
+     * Internal to physics-3d. The contact solver resolves each body once per
+     * step and then works against the returned row (`*Raw()` views below),
+     * instead of paying a Map lookup per accessor call inside the solve
+     * iterations.
+     */
+    resolveIndex(bodyId: BodyId3D): number {
+        const index = this._bodyIdToIndex.get(bodyId);
+        return index === undefined ? -1 : index;
+    }
+
+    /**
+     * Structure-of-arrays backing stores, keyed by row index.
+     *
+     * Internal to physics-3d: owned by this manager, never reallocated, and
+     * must not be retained across a body destroy or handed to package
+     * consumers. Written through these views only by the contact solver, which
+     * reproduces the exact arithmetic of the accessor methods above.
+     */
+    positionsRaw(): Float64Array { return this._positions; }
+    velocitiesRaw(): Float64Array { return this._velocities; }
+    massDataRaw(): Float64Array { return this._massData; }
+    bodyTypesRaw(): Uint8Array { return this._bodyTypes; }
+    bodyFlagsRaw(): Uint32Array { return this._bodyFlags; }
 
     private _readVec(arr: Float64Array, offset: number, out?: IVec3Like): IVec3Like {
         if (out) {
@@ -803,13 +861,19 @@ export class ShapeManager3D implements Disposable {
         return shapeId;
     }
 
-    getShapesForBodyWithDefs(bodyId: BodyId3D): Array<{ kind: number; def: unknown }> {
+    getShapesForBodyWithDefs(bodyId: BodyId3D): Array<{ kind: number; def: unknown; density: number }> {
         const shapes = this._bodyToShapes.get(bodyId);
         if (!shapes) return [];
-        const result: Array<{ kind: number; def: unknown }> = [];
+        const result: Array<{ kind: number; def: unknown; density: number }> = [];
         for (const sid of shapes) {
             const entry = this._shapeDefs.get(sid);
-            if (entry) result.push(entry);
+            if (entry) {
+                result.push({
+                    kind: entry.kind,
+                    def: entry.def,
+                    density: this._materials[this._getShapeIndex(sid) * 4 + 2],
+                });
+            }
         }
         return result;
     }
@@ -1027,6 +1091,47 @@ export class ConstraintManager3D implements Disposable {
 }
 
 /**
+ * Shape mass from density and shape volume, matching the formulas in
+ * computeShapeMassData (physics-world-3d-shape-mass-properties.ts).
+ */
+function _computeShapeMass(
+    kind: number,
+    def: Record<string, unknown>,
+    density: number
+): number {
+    const safeDensity = Math.max(0, density);
+    if (safeDensity <= 0) return 0;
+
+    switch (kind) {
+        case ShapeType.Sphere: {
+            const r = (def.radius as number) || 0;
+            return (4 / 3) * Math.PI * r * r * r * safeDensity;
+        }
+        case ShapeType.Box: {
+            const he = def.halfExtents as IVec3Like;
+            if (!he) return 0;
+            return 8 * he.x * he.y * he.z * safeDensity;
+        }
+        case ShapeType.Capsule: {
+            const p1 = def.p1 as IVec3Like;
+            const p2 = def.p2 as IVec3Like;
+            const r = (def.radius as number) || 0;
+            if (!p1 || !p2) return 0;
+            const dx = p2.x - p1.x, dy = p2.y - p1.y, dz = p2.z - p1.z;
+            const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            return (Math.PI * r * r * segLen + (4 / 3) * Math.PI * r * r * r) * safeDensity;
+        }
+        case ShapeType.Cylinder: {
+            const r = (def.radius as number) || 0;
+            const h = (def.height as number) || 0;
+            return Math.PI * r * r * h * safeDensity;
+        }
+        default:
+            return 0;
+    }
+}
+
+/**
  * Compute inertia tensor diagonal for a single shape about the body origin.
  * Uses parallel-axis theorem to offset by shape center position.
  */
@@ -1041,7 +1146,12 @@ function _computeShapeInertia(
         case ShapeType.Sphere: {
             const r = (def.radius as number) || 0;
             const i = 0.4 * mass * r * r; // (2/5)*m*r²
-            return { x: i, y: i, z: i };
+            const c = (def.center as IVec3Like) || { x: 0, y: 0, z: 0 };
+            return {
+                x: i + mass * (c.y * c.y + c.z * c.z),
+                y: i + mass * (c.x * c.x + c.z * c.z),
+                z: i + mass * (c.x * c.x + c.y * c.y),
+            };
         }
 
         case ShapeType.Box: {

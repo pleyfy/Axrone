@@ -2,6 +2,9 @@ import type { IVec2Like } from '@axrone/numeric';
 import {
     EPSILON,
     TAU,
+    DEFAULT_CURVE_TOLERANCE,
+    DEFAULT_MAX_CURVE_SEGMENTS,
+    DEFAULT_MIN_CURVE_SEGMENTS,
     approximateCurveSegments,
     createBounds,
     distance,
@@ -9,6 +12,7 @@ import {
     distanceToSegmentSquared,
     expandBounds,
     float32ToPoints,
+    isConvexPolygon,
     normalizeContourOrientation,
     pointInConvexPolygon,
     pointInBounds,
@@ -23,6 +27,7 @@ import {
     polygonSignedArea,
     toIndexArray,
     triangulateEarClipping,
+    triangulatePolygonWithHoles,
 } from './common';
 import type {
     CircleShape,
@@ -78,12 +83,19 @@ const buildConvexFanMesh = (contour: Float32Array): ShapeMesh2D => {
     return createMesh(contour.slice(), indices);
 };
 
+const ringFloat32Cache = new WeakMap<ReadonlyArray<Readonly<IVec2Like>>, Float32Array>();
+
 const polygonRingToFloat32 = (ring: ReadonlyArray<Readonly<IVec2Like>>): Float32Array => {
+    const cached = ringFloat32Cache.get(ring);
+    if (cached) {
+        return cached;
+    }
     const buffer = new Float32Array(ring.length * 2);
     for (let i = 0; i < ring.length; i++) {
         buffer[i * 2] = (ring[i] as Readonly<IVec2Like>).x;
         buffer[i * 2 + 1] = (ring[i] as Readonly<IVec2Like>).y;
     }
+    ringFloat32Cache.set(ring, buffer);
     return buffer;
 };
 
@@ -98,29 +110,12 @@ const buildPolygonMesh = (polygon: PolygonShape): ShapeMesh2D => {
         return createMesh(outer, Array.from(indices as ArrayLike<number>));
     }
 
-    const outerOffset = outer.length;
-    let allPositions = new Float32Array(outerOffset);
-    allPositions.set(outer, 0);
-    const indices: number[] = [];
-    const holeOffset: number[] = [];
-    let runningOffset = outerOffset;
-
-    for (let h = 0; h < polygon.holes.length; h++) {
-        const hole = polygonRingToFloat32(polygon.holes[h]!.points);
-        const newPositions = new Float32Array(allPositions.length + hole.length);
-        newPositions.set(allPositions, 0);
-        newPositions.set(hole, allPositions.length);
-        allPositions = newPositions;
-        holeOffset.push(runningOffset);
-        runningOffset += hole.length;
-    }
-
-    const outerCount = outer.length / 2;
-    for (let i = 1; i < outerCount - 1; i++) {
-        indices.push(0, i, i + 1);
-    }
-
-    return createMesh(allPositions, indices);
+    const holeRings = polygon.holes.map((hole) => polygonRingToFloat32(hole!.points));
+    const triangulated = triangulatePolygonWithHoles(outer, holeRings);
+    return createMesh(
+        triangulated.positions,
+        Array.from(triangulated.indices as ArrayLike<number>)
+    );
 };
 
 const buildRingMesh = (outer: Float32Array, inner: Float32Array | null): ShapeMesh2D => {
@@ -145,6 +140,44 @@ const buildRingMesh = (outer: Float32Array, inner: Float32Array | null): ShapeMe
     return createMesh(positions, indices);
 };
 
+const combineMeshes = (meshes: ShapeMesh2D[]): ShapeMesh2D => {
+    if (meshes.length === 0) {
+        return createMesh(new Float32Array(0), []);
+    }
+    if (meshes.length === 1) {
+        return meshes[0]!;
+    }
+
+    let totalVertices = 0;
+    let totalIndices = 0;
+    for (const mesh of meshes) {
+        totalVertices += mesh.vertexCount;
+        totalIndices += mesh.indexCount;
+    }
+
+    const positions = new Float32Array(totalVertices * 2);
+    const useUint32 = totalVertices > 65535;
+    const indices = useUint32 ? new Uint32Array(totalIndices) : new Uint16Array(totalIndices);
+    let vertexOffset = 0;
+    let indexOffset = 0;
+    let positionOffset = 0;
+
+    for (const mesh of meshes) {
+        positions.set(mesh.positions, positionOffset);
+        const meshIndices = mesh.indices;
+        for (let i = 0; i < meshIndices.length; i++) {
+            indices[indexOffset + i] = (meshIndices[i] as number) + vertexOffset;
+        }
+        vertexOffset += mesh.vertexCount;
+        positionOffset += mesh.positions.length;
+        indexOffset += meshIndices.length;
+    }
+
+    return createMesh(positions, Array.from(indices));
+};
+
+const MITER_LIMIT = 4;
+
 const getStrokeOffsets = (
     stroke: ShapeStroke
 ): { readonly outer: number; readonly inner: number } => {
@@ -156,21 +189,6 @@ const getStrokeOffsets = (
         default:
             return { outer: stroke.width * 0.5, inner: stroke.width * 0.5 };
     }
-};
-
-const normalizeEdge = (
-    fromX: number,
-    fromY: number,
-    toX: number,
-    toY: number
-): readonly [number, number] => {
-    const dx = toX - fromX;
-    const dy = toY - fromY;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    if (length <= EPSILON) {
-        return [0, 0];
-    }
-    return [dx / length, dy / length];
 };
 
 const offsetConvexContour = (contour: Float32Array, distanceValue: number): Float32Array => {
@@ -190,8 +208,31 @@ const offsetConvexContour = (contour: Float32Array, distanceValue: number): Floa
         const nextX = contour[next * 2]!;
         const nextY = contour[next * 2 + 1]!;
 
-        const [prevDirX, prevDirY] = normalizeEdge(prevX, prevY, px, py);
-        const [nextDirX, nextDirY] = normalizeEdge(px, py, nextX, nextY);
+        let prevDx = px - prevX;
+        let prevDy = py - prevY;
+        let prevLen = Math.sqrt(prevDx * prevDx + prevDy * prevDy);
+        let prevDirX: number;
+        let prevDirY: number;
+        if (prevLen <= EPSILON) {
+            prevDirX = 0;
+            prevDirY = 0;
+        } else {
+            prevDirX = prevDx / prevLen;
+            prevDirY = prevDy / prevLen;
+        }
+
+        let nextDx = nextX - px;
+        let nextDy = nextY - py;
+        let nextLen = Math.sqrt(nextDx * nextDx + nextDy * nextDy);
+        let nextDirX: number;
+        let nextDirY: number;
+        if (nextLen <= EPSILON) {
+            nextDirX = 0;
+            nextDirY = 0;
+        } else {
+            nextDirX = nextDx / nextLen;
+            nextDirY = nextDy / nextLen;
+        }
 
         const prevNormalX = winding >= 0 ? prevDirY : -prevDirY;
         const prevNormalY = winding >= 0 ? -prevDirX : prevDirX;
@@ -212,7 +253,7 @@ const offsetConvexContour = (contour: Float32Array, distanceValue: number): Floa
         const normalizedMiterY = miterY / miterLength;
         const projection = normalizedMiterX * prevNormalX + normalizedMiterY * prevNormalY;
 
-        if (Math.abs(projection) <= EPSILON) {
+        if (Math.abs(projection) <= EPSILON || 1 / Math.abs(projection) > MITER_LIMIT) {
             offset[index * 2] = px + prevNormalX * distanceValue;
             offset[index * 2 + 1] = py + prevNormalY * distanceValue;
             continue;
@@ -224,6 +265,85 @@ const offsetConvexContour = (contour: Float32Array, distanceValue: number): Floa
     }
 
     return offset;
+};
+
+const computeStrokeOffsetPositions = (
+    contour: Float32Array,
+    outerOffset: number,
+    innerOffset: number
+): { readonly outer: Float32Array; readonly inner: Float32Array } => {
+    const count = contour.length / 2;
+    const signedArea = polygonSignedArea(contour);
+    const windingSign = signedArea >= 0 ? 1 : -1;
+
+    const outer = new Float32Array(count * 2);
+    const inner = new Float32Array(count * 2);
+
+    for (let i = 0; i < count; i++) {
+        const prev = (i + count - 1) % count;
+        const next = (i + 1) % count;
+
+        const px = contour[i * 2] as number;
+        const py = contour[i * 2 + 1] as number;
+
+        const prevEdgeDx = px - (contour[prev * 2] as number);
+        const prevEdgeDy = py - (contour[prev * 2 + 1] as number);
+        const prevEdgeLen = Math.sqrt(prevEdgeDx * prevEdgeDx + prevEdgeDy * prevEdgeDy);
+        const prevDirX = prevEdgeLen <= EPSILON ? 0 : prevEdgeDx / prevEdgeLen;
+        const prevDirY = prevEdgeLen <= EPSILON ? 0 : prevEdgeDy / prevEdgeLen;
+
+        const nextEdgeDx = (contour[next * 2] as number) - px;
+        const nextEdgeDy = (contour[next * 2 + 1] as number) - py;
+        const nextEdgeLen = Math.sqrt(nextEdgeDx * nextEdgeDx + nextEdgeDy * nextEdgeDy);
+        const nextDirX = nextEdgeLen <= EPSILON ? 0 : nextEdgeDx / nextEdgeLen;
+        const nextDirY = nextEdgeLen <= EPSILON ? 0 : nextEdgeDy / nextEdgeLen;
+
+        const prevNormalX = windingSign * prevDirY;
+        const prevNormalY = windingSign * -prevDirX;
+        const nextNormalX = windingSign * nextDirY;
+        const nextNormalY = windingSign * -nextDirX;
+
+        const miterX = prevNormalX + nextNormalX;
+        const miterY = prevNormalY + nextNormalY;
+        const miterLength = Math.sqrt(miterX * miterX + miterY * miterY);
+
+        let outerX: number;
+        let outerY: number;
+        let innerX: number;
+        let innerY: number;
+
+        if (miterLength <= EPSILON) {
+            outerX = px + prevNormalX * outerOffset;
+            outerY = py + prevNormalY * outerOffset;
+            innerX = px - prevNormalX * innerOffset;
+            innerY = py - prevNormalY * innerOffset;
+        } else {
+            const normalizedMiterX = miterX / miterLength;
+            const normalizedMiterY = miterY / miterLength;
+            const projection =
+                normalizedMiterX * prevNormalX + normalizedMiterY * prevNormalY;
+
+            if (projection > EPSILON && 1 / projection <= MITER_LIMIT) {
+                const scale = 1 / projection;
+                outerX = px + normalizedMiterX * outerOffset * scale;
+                outerY = py + normalizedMiterY * outerOffset * scale;
+                innerX = px - normalizedMiterX * innerOffset * scale;
+                innerY = py - normalizedMiterY * innerOffset * scale;
+            } else {
+                outerX = px + prevNormalX * outerOffset;
+                outerY = py + prevNormalY * outerOffset;
+                innerX = px - prevNormalX * innerOffset;
+                innerY = py - prevNormalY * innerOffset;
+            }
+        }
+
+        outer[i * 2] = outerX;
+        outer[i * 2 + 1] = outerY;
+        inner[i * 2] = innerX;
+        inner[i * 2 + 1] = innerY;
+    }
+
+    return { outer, inner };
 };
 
 const isValidContour = (contour: Float32Array | null): contour is Float32Array =>
@@ -275,23 +395,73 @@ const createTriangleContour = (shape: TriangleShape): Float32Array =>
         ])
     );
 
+const contourCache = new WeakMap<Shape2D, Float32Array>();
+const contourCacheByOptions = new WeakMap<Shape2D, Map<string, Float32Array>>();
+
+const serializeContourOptions = (options: ShapeApproximationOptions): string =>
+    `${options.curveTolerance ?? DEFAULT_CURVE_TOLERANCE}|${options.minCurveSegments ?? DEFAULT_MIN_CURVE_SEGMENTS}|${options.maxCurveSegments ?? DEFAULT_MAX_CURVE_SEGMENTS}`;
+
 export const getShapeContour = (
     shape: Shape2D,
     options: ShapeApproximationOptions = {}
 ): Float32Array => {
     switch (shape.kind) {
         case 'rectangle':
-            return createRectangleContour(shape);
-        case 'circle':
-            return createEllipseContour(shape.cx, shape.cy, shape.radius, shape.radius, options);
-        case 'ellipse':
-            return createEllipseContour(shape.cx, shape.cy, shape.radiusX, shape.radiusY, options);
         case 'triangle':
-            return createTriangleContour(shape);
         case 'line':
-            return new Float32Array([shape.start.x, shape.start.y, shape.end.x, shape.end.y]);
-        case 'polygon':
-            return polygonRingToFloat32(shape.outer.points);
+        case 'polygon': {
+            const cached = contourCache.get(shape);
+            if (cached) {
+                return cached;
+            }
+            let result: Float32Array;
+            switch (shape.kind) {
+                case 'rectangle':
+                    result = createRectangleContour(shape);
+                    break;
+                case 'triangle':
+                    result = createTriangleContour(shape);
+                    break;
+                case 'line':
+                    result = new Float32Array([shape.start.x, shape.start.y, shape.end.x, shape.end.y]);
+                    break;
+                case 'polygon':
+                    result = polygonRingToFloat32(shape.outer.points);
+                    break;
+            }
+            contourCache.set(shape, result);
+            return result;
+        }
+        case 'circle': {
+            const key = serializeContourOptions(options);
+            let innerCache = contourCacheByOptions.get(shape);
+            if (!innerCache) {
+                innerCache = new Map();
+                contourCacheByOptions.set(shape, innerCache);
+            }
+            const cached = innerCache.get(key);
+            if (cached) {
+                return cached;
+            }
+            const result = createEllipseContour(shape.cx, shape.cy, shape.radius, shape.radius, options);
+            innerCache.set(key, result);
+            return result;
+        }
+        case 'ellipse': {
+            const key = serializeContourOptions(options);
+            let innerCache = contourCacheByOptions.get(shape);
+            if (!innerCache) {
+                innerCache = new Map();
+                contourCacheByOptions.set(shape, innerCache);
+            }
+            const cached = innerCache.get(key);
+            if (cached) {
+                return cached;
+            }
+            const result = createEllipseContour(shape.cx, shape.cy, shape.radiusX, shape.radiusY, options);
+            innerCache.set(key, result);
+            return result;
+        }
     }
 };
 
@@ -516,6 +686,22 @@ export const containsStrokePoint = (
 
     const contour = getShapeContour(shape, options);
     const { outer, inner } = getStrokeOffsets(shape.stroke);
+    const isConcave = !isConvexPolygon(contour);
+
+    if (isConcave) {
+        const edgeDistance = pointToPolygonEdgeDistance(contour, point);
+        const halfWidth = shape.stroke.width * 0.5;
+
+        switch (shape.stroke.alignment) {
+            case 'inside':
+                return pointInPolygon(contour, point) && edgeDistance <= shape.stroke.width + EPSILON;
+            case 'outside':
+                return !pointInPolygon(contour, point) && edgeDistance <= shape.stroke.width + EPSILON;
+            default:
+                return edgeDistance <= halfWidth + EPSILON;
+        }
+    }
+
     const outerContour = outer <= EPSILON ? contour : offsetConvexContour(contour, outer);
     if (!pointInConvexPolygon(outerContour, point)) {
         return false;
@@ -607,19 +793,43 @@ export const buildStrokeMeshInternal = (
 
     if (shape.kind === 'polygon') {
         const outerRing = polygonRingToFloat32(shape.outer.points);
-        const { outer, inner } = getStrokeOffsets(shape.stroke);
-        const outerContour =
-            outer <= EPSILON ? outerRing : offsetConvexContour(outerRing, outer);
-        const innerContour =
-            inner <= EPSILON || shape.holes.length === 0
-                ? null
-                : offsetConvexContour(outerRing, -inner);
-        return buildRingMesh(outerContour, isValidContour(innerContour) ? innerContour : null);
+        const { outer: outerOffset, inner: innerOffset } = getStrokeOffsets(shape.stroke);
+
+        const buildRingStroke = (ring: Float32Array): ShapeMesh2D => {
+            if (isConvexPolygon(ring)) {
+                const outerContour =
+                    outerOffset <= EPSILON ? ring : offsetConvexContour(ring, outerOffset);
+                const innerContour =
+                    innerOffset <= EPSILON ? null : offsetConvexContour(ring, -innerOffset);
+                return buildRingMesh(
+                    outerContour,
+                    isValidContour(innerContour) ? innerContour : null
+                );
+            }
+            const { outer: outerContour, inner: innerContour } = computeStrokeOffsetPositions(
+                ring,
+                outerOffset,
+                innerOffset
+            );
+            return buildRingMesh(
+                outerContour,
+                isValidContour(innerContour) ? innerContour : null
+            );
+        };
+
+        const meshes: ShapeMesh2D[] = [buildRingStroke(outerRing)];
+
+        for (const hole of shape.holes) {
+            const holeRing = polygonRingToFloat32(hole.points);
+            meshes.push(buildRingStroke(holeRing));
+        }
+
+        return combineMeshes(meshes);
     }
 
     const contour = getShapeContour(shape, options);
-    const { outer, inner } = getStrokeOffsets(shape.stroke);
-    const outerContour = outer <= EPSILON ? contour : offsetConvexContour(contour, outer);
-    const innerContour = inner <= EPSILON ? null : offsetConvexContour(contour, -inner);
+    const { outer: outerOffset, inner: innerOffset } = getStrokeOffsets(shape.stroke);
+    const outerContour = outerOffset <= EPSILON ? contour : offsetConvexContour(contour, outerOffset);
+    const innerContour = innerOffset <= EPSILON ? null : offsetConvexContour(contour, -innerOffset);
     return buildRingMesh(outerContour, isValidContour(innerContour) ? innerContour : null);
 };

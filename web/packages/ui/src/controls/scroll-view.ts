@@ -242,7 +242,14 @@ export const createUIScrollView = <TRuntime>(
                 applyOffsets();
 
                 // Cancel any existing momentum animation
-                cancelMomentum();
+                if (momentumRafId !== null) {
+                    cancelAnimationFrame(momentumRafId);
+                    momentumRafId = null;
+                }
+                if (wheelTimeoutId !== null) {
+                    clearTimeout(wheelTimeoutId);
+                    wheelTimeoutId = null;
+                }
 
                 // Record time and schedule momentum start after wheel events stop
                 lastWheelTime = now;

@@ -1,20 +1,25 @@
+import { RafLoop } from './raf-loop';
 import { IGroupable } from './types';
 
 export class TweenSystem {
-    private _tweens = new Set<IGroupable>();
-    private _tweensToAdd = new Set<IGroupable>();
-    private _tweensToRemove = new Set<IGroupable>();
-    private _isUpdating = false;
+    private _active: IGroupable[] = [];
+    private _count = 0;
     private _autoUpdate = false;
     private _lastTime = 0;
-    private _animFrameId?: number;
+    private _lastUpdateTime?: number;
+    private _maxDelta?: number;
+    private _loop: RafLoop;
+    private _autoRemove = true;
+
+    public constructor() {
+        this._loop = new RafLoop(() => this.update());
+    }
 
     setAutoUpdate(enabled: boolean): void {
         this._autoUpdate = enabled;
 
-        if (!enabled && this._animFrameId !== undefined) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
+        if (!enabled) {
+            this._loop.stop();
         }
     }
 
@@ -22,109 +27,116 @@ export class TweenSystem {
         return this._autoUpdate;
     }
 
-    add(tween: IGroupable): void {
-        if (this._isUpdating) {
-            this._tweensToAdd.add(tween);
-        } else {
-            this._tweens.add(tween);
-        }
+    /**
+     * Cap the timestamp jump applied in a single `update`, in the same units
+     * as the driven clock. After a background-tab stall the excess is
+     * discarded instead of fast-forwarding every tween to its end state.
+     * `undefined` (default) preserves the legacy pass-through behavior.
+     */
+    setMaxDelta(maxDelta?: number): void {
+        this._maxDelta = maxDelta === undefined ? undefined : Math.max(0, maxDelta);
+    }
 
-        if (this._autoUpdate && !this._isInternalLoopRunning() && this._tweens.size > 0) {
+    getMaxDelta(): number | undefined {
+        return this._maxDelta;
+    }
+
+    /**
+     * Membership policy for finished members. The shared system evicts
+     * completed tweens by default; `TweenGroup` disables eviction so members
+     * survive completion and can be restarted as a unit.
+     */
+    setAutoRemove(enabled: boolean): void {
+        this._autoRemove = enabled;
+    }
+
+    getAutoRemove(): boolean {
+        return this._autoRemove;
+    }
+
+    forEach(member: (tween: IGroupable) => void): void {
+        for (let index = 0; index < this._count; index += 1) {
+            member(this._active[index]!);
+        }
+    }
+
+    add(tween: IGroupable): void {
+        if (this._active.indexOf(tween) >= 0) {
+            return;
+        }
+        this._active[this._count] = tween;
+        this._count += 1;
+
+        if (this._autoUpdate && !this._isInternalLoopRunning() && this._count > 0) {
             this._startInternalLoop();
         }
     }
 
     remove(tween: IGroupable): void {
-        if (this._isUpdating) {
-            this._tweensToRemove.add(tween);
-        } else {
-            this._tweens.delete(tween);
+        const index = this._active.indexOf(tween);
+        if (index < 0 || index >= this._count) {
+            return;
         }
+        this._swapAndPop(index);
     }
 
     update(time?: number): boolean {
-        if (this._tweens.size === 0 && this._tweensToAdd.size === 0) {
+        if (this._count === 0) {
             return false;
         }
 
-        const now = time !== undefined ? time : performance.now();
+        let now = time !== undefined ? time : performance.now();
 
-        this._isUpdating = true;
+        if (
+            this._maxDelta !== undefined &&
+            this._lastUpdateTime !== undefined &&
+            now - this._lastUpdateTime > this._maxDelta
+        ) {
+            now = this._lastUpdateTime + this._maxDelta;
+        }
+        this._lastUpdateTime = now;
 
-        for (const tween of this._tweens) {
+        for (let index = this._count - 1; index >= 0; index -= 1) {
+            const tween = this._active[index]!;
             tween.update(now);
 
-            if (this._hasCompleted(tween)) {
-                this._tweensToRemove.add(tween);
+            if (this._autoRemove && tween.getStatus() === 'completed') {
+                this._swapAndPop(index);
             }
         }
 
-        this._isUpdating = false;
-
-        if (this._tweensToRemove.size > 0) {
-            for (const tween of this._tweensToRemove) {
-                this._tweens.delete(tween);
-            }
-            this._tweensToRemove.clear();
-        }
-
-        if (this._tweensToAdd.size > 0) {
-            for (const tween of this._tweensToAdd) {
-                this._tweens.add(tween);
-            }
-            this._tweensToAdd.clear();
-        }
-
-        return this._tweens.size > 0;
+        return this._count > 0;
     }
 
     getActiveTweenCount(): number {
-        return this._tweens.size;
+        return this._count;
     }
 
     clear(): void {
-        for (const tween of this._tweens) {
-            tween.stop();
+        for (let index = 0; index < this._count; index += 1) {
+            this._active[index]!.stop();
+            this._active[index] = undefined as unknown as IGroupable;
         }
-        this._tweens.clear();
-        this._tweensToAdd.clear();
-        this._tweensToRemove.clear();
+        this._count = 0;
+        this._lastUpdateTime = undefined;
+        this._loop.stop();
+    }
 
-        if (this._animFrameId !== undefined) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = undefined;
-        }
+    private _swapAndPop(index: number): void {
+        const last = this._count - 1;
+        this._active[index] = this._active[last]!;
+        this._active[last] = undefined as unknown as IGroupable;
+        this._count = last;
     }
 
     private _isInternalLoopRunning(): boolean {
-        return this._animFrameId !== undefined;
+        return this._loop.isRunning;
     }
 
     private _startInternalLoop(): void {
         if (this._isInternalLoopRunning()) return;
 
         this._lastTime = performance.now();
-        this._tick();
-    }
-
-    private _tick = (): void => {
-        if (!this._autoUpdate) return;
-
-        this._animFrameId = requestAnimationFrame(this._tick);
-
-        const now = performance.now();
-        const hasActiveTweens = this.update(now);
-
-        if (!hasActiveTweens) {
-            cancelAnimationFrame(this._animFrameId!);
-            this._animFrameId = undefined;
-        }
-    };
-
-    private _hasCompleted(tween: IGroupable): boolean {
-        const tweenWithStatus = tween as unknown as { getStatus?: () => string };
-        return typeof tweenWithStatus.getStatus === 'function'
-            ? tweenWithStatus.getStatus() === 'completed'
-            : false;
+        this._loop.start();
     }
 }

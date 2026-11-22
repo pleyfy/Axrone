@@ -91,13 +91,17 @@ function prepareHinge(
     const errorY = worldAnchorB.y - worldAnchorA.y;
     const errorZ = worldAnchorB.z - worldAnchorA.z;
 
+    // Convention (matches configurable + cone-twist):
+    //   j1Angular = -(rA × j1Linear)
+    //   j2Angular = +(rB × j2Linear)
+    //
     // Row 1: X constraint
     out.push(createRow(
         bodyIdA, bodyIdB,
         { x: -1, y: 0, z: 0 },
         { x: 0, y: rA.z, z: -rA.y },
         { x: 1, y: 0, z: 0 },
-        { x: 0, y: -rB.z, z: rB.y },
+        { x: 0, y: rB.z, z: -rB.y },
         BAUMGARTE * errorX / h,
         -errorX,
     ));
@@ -108,7 +112,7 @@ function prepareHinge(
         { x: 0, y: -1, z: 0 },
         { x: -rA.z, y: 0, z: rA.x },
         { x: 0, y: 1, z: 0 },
-        { x: rB.z, y: 0, z: -rB.x },
+        { x: -rB.z, y: 0, z: rB.x },
         BAUMGARTE * errorY / h,
         -errorY,
     ));
@@ -119,7 +123,7 @@ function prepareHinge(
         { x: 0, y: 0, z: -1 },
         { x: rA.y, y: -rA.x, z: 0 },
         { x: 0, y: 0, z: 1 },
-        { x: -rB.y, y: rB.x, z: 0 },
+        { x: rB.y, y: -rB.x, z: 0 },
         BAUMGARTE * errorZ / h,
         -errorZ,
     ));

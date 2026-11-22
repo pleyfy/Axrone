@@ -1,4 +1,7 @@
 export * from './types';
+export * from './id';
+export * from './dispatcher';
+export * from './raf-loop';
 export * from './core';
 export * from './factory';
 export * from './timeline';

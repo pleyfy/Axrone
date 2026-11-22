@@ -156,6 +156,12 @@ export interface WidgetImageInput {
     readonly uvRect?: Readonly<Partial<UVRect>>;
     readonly border?: UIImageBorderInput | number;
     readonly fillCenter?: boolean;
+    /**
+     * Draw the image across the widget's full border box instead of the padded
+     * content box. Used by sprite-backed controls whose image is the control
+     * surface, not an inset decoration.
+     */
+    readonly bleed?: boolean;
 }
 
 export interface ResolvedTextBlock {
@@ -210,6 +216,7 @@ export interface ResolvedWidgetImage {
     readonly uvRect: UVRect;
     readonly border: EdgeInsets;
     readonly fillCenter: boolean;
+    readonly bleed: boolean;
 }
 
 export interface WidgetFocusPolicyInput {

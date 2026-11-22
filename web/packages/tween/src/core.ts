@@ -1,22 +1,25 @@
-import { EventEmitter } from '@axrone/event';
 import { DeepPartial } from '@axrone/utility';
+import { deepCloneTweenValue } from './runtime-utils';
 import { Easing, EasingFunction } from './easing-functions';
 import { Interpolation } from './interpolation';
+import { TweenDispatcher } from './dispatcher';
 import {
     ITween,
     TweenConfig,
-    TweenEventMap,
     TweenEventType,
     TweenEventCallback,
     TweenStatus,
 } from './types';
-
-let _nextId = 0;
+import { nextTweenId } from './id';
 
 export abstract class TweenCore<T> implements ITween<T> {
-    readonly id: number = _nextId++;
+    readonly id: number = nextTweenId();
 
     protected _object: T;
+    // Null-prototype maps: config keys are user-controlled (`constructor`,
+    // `__proto__`), so plain `{}` would collide with the prototype chain.
+    // The dictionary-mode cost is setup-only; per-frame reads go through
+    // compiled tracks, never these maps.
     protected _valuesStart = Object.create(null) as DeepPartial<T>;
     protected _valuesEnd = Object.create(null) as DeepPartial<T>;
     protected _duration = 1000;
@@ -33,14 +36,13 @@ export abstract class TweenCore<T> implements ITween<T> {
     protected _chainedTweens: ITween<any>[] = [];
     protected _onStartCallbackFired = false;
     protected _remainingRepeat = 0;
-    protected _events = new EventEmitter<TweenEventMap<T>>();
+    protected _dispatcher = new TweenDispatcher<T>();
     protected _status: TweenStatus = 'idle';
     protected _waitingForRepeatDelay = false;
     protected _repeatDelayEndTime?: number;
     protected _clockMode: 'manual' | 'realtime' | undefined;
     protected _lastUpdateTime?: number;
     protected _pauseStartedAt?: number;
-    protected _eventCallbackWrappers = new Map<TweenEventType, Map<TweenEventCallback<T>, (payload: any) => void>>();
 
     constructor(object: T, config?: TweenConfig<T>) {
         this._object = object;
@@ -70,7 +72,13 @@ export abstract class TweenCore<T> implements ITween<T> {
     }
 
     getTotalDuration(): number {
-        return this._duration * (this._repeat + 1);
+        const cycles = this._repeat === Infinity ? Infinity : this._repeat + 1;
+        if (cycles === Infinity) {
+            return Infinity;
+        }
+        const repeatDelay = this._repeatDelayTime && this._repeatDelayTime > 0 ? this._repeatDelayTime : 0;
+        const repeats = this._repeat === Infinity ? 0 : this._repeat;
+        return this._duration * cycles + repeatDelay * repeats;
     }
 
     from(properties: DeepPartial<T>): this {
@@ -133,6 +141,9 @@ export abstract class TweenCore<T> implements ITween<T> {
     }
 
     end(): this {
+        this._remainingRepeat = 0;
+        this._waitingForRepeatDelay = false;
+        this._repeatDelayEndTime = undefined;
         this.update(Infinity);
         return this;
     }
@@ -151,28 +162,45 @@ export abstract class TweenCore<T> implements ITween<T> {
         return this;
     }
 
-    resume(): this {
+    resume(time?: number): this {
         if (this._isPlaying || this._status !== 'paused') {
             return this;
         }
 
         if (
-            this._clockMode !== 'manual' &&
             this._startTime !== undefined &&
             this._pauseStartedAt !== undefined
         ) {
-            const now = performance.now();
-            const pausedDuration = Math.max(0, now - this._pauseStartedAt);
-            this._startTime += pausedDuration;
+            if (this._clockMode === 'manual') {
+                // Manual clock: the paused span is only known when the caller
+                // passes the resume time. Without it we keep following the
+                // master clock (zero paused duration, backwards compatible).
+                if (time !== undefined) {
+                    const pausedDuration = Math.max(0, time - this._pauseStartedAt);
+                    this._startTime += pausedDuration;
 
-            if (typeof this._repeatDelayEndTime === 'number') {
-                this._repeatDelayEndTime += pausedDuration;
+                    if (typeof this._repeatDelayEndTime === 'number') {
+                        this._repeatDelayEndTime += pausedDuration;
+                    }
+
+                    this._lastUpdateTime = time;
+                }
+                this._pauseStartedAt = undefined;
+            } else {
+                const now = performance.now();
+                const pausedDuration = Math.max(0, now - this._pauseStartedAt);
+                this._startTime += pausedDuration;
+
+                if (typeof this._repeatDelayEndTime === 'number') {
+                    this._repeatDelayEndTime += pausedDuration;
+                }
+
+                this._lastUpdateTime = now;
+                this._pauseStartedAt = undefined;
             }
-
-            this._lastUpdateTime = now;
+        } else {
+            this._pauseStartedAt = undefined;
         }
-
-        this._pauseStartedAt = undefined;
         this._status = 'running';
         this._isPlaying = true;
 
@@ -214,48 +242,27 @@ export abstract class TweenCore<T> implements ITween<T> {
     }
 
     chain(...tweens: ITween<any>[]): this {
-        this._chainedTweens = tweens;
+        this._chainedTweens.push(...tweens);
         return this;
     }
 
     on(event: TweenEventType, callback: TweenEventCallback<T>): this {
-        let wrappers = this._eventCallbackWrappers.get(event);
-
-        if (!wrappers) {
-            wrappers = new Map();
-            this._eventCallbackWrappers.set(event, wrappers);
+        if (event === 'update') {
+            this._dispatcher.onUpdate(callback);
+        } else {
+            this._dispatcher.on(event, callback);
         }
-
-        const wrapper =
-            event === 'update'
-                ? (payload: TweenEventMap<T>['update']) => callback(payload.tween, payload.elapsed)
-                : (payload: TweenEventMap<T>[Exclude<TweenEventType, 'update'>]) =>
-                      callback(payload as ITween<T>);
-
-        wrappers.set(callback, wrapper as (payload: any) => void);
-        this._events.on(event, wrapper as any);
         return this;
     }
 
     off(event: TweenEventType, callback?: TweenEventCallback<T>): this {
-        if (!callback) {
-            this._eventCallbackWrappers.delete(event);
-            this._events.off(event);
-            return this;
+        if (event === 'update') {
+            this._dispatcher.offUpdate(callback);
+        } else if (callback === undefined) {
+            this._dispatcher.off(event);
+        } else {
+            this._dispatcher.off(event, callback);
         }
-
-        const wrappers = this._eventCallbackWrappers.get(event);
-        const wrapper = wrappers?.get(callback);
-
-        if (wrapper) {
-            this._events.off(event, wrapper as any);
-            wrappers?.delete(callback);
-
-            if (wrappers && wrappers.size === 0) {
-                this._eventCallbackWrappers.delete(event);
-            }
-        }
-
         return this;
     }
 
@@ -279,7 +286,11 @@ export abstract class TweenCore<T> implements ITween<T> {
         }
 
         if (this._waitingForRepeatDelay) {
-            if (this._repeatDelayEndTime && now >= this._repeatDelayEndTime) {
+            if (!Number.isFinite(now)) {
+                this._waitingForRepeatDelay = false;
+                this._remainingRepeat = 0;
+                this._repeatDelayEndTime = undefined;
+            } else if (this._repeatDelayEndTime && now >= this._repeatDelayEndTime) {
                 this._waitingForRepeatDelay = false;
                 this._reset();
                 this._updateProperties(0);
@@ -333,32 +344,29 @@ export abstract class TweenCore<T> implements ITween<T> {
 
     dispose(): void {
         this.stop();
-        this._events.dispose();
+        this._dispatcher.clear();
         this._chainedTweens = [];
         this._valuesStart = Object.create(null);
         this._valuesEnd = Object.create(null);
         this._lastUpdateTime = undefined;
         this._pauseStartedAt = undefined;
         this._clockMode = undefined;
-        this._eventCallbackWrappers.clear();
     }
 
-    protected _emit(event: TweenEventType, ...args: any[]): void {
-        if (event === 'update') {
-            this._events.emitSync(event, {
-                tween: args[0],
-                elapsed: args[1],
-            } as TweenEventMap<T>[typeof event]);
+    protected _emit(event: TweenEventType, tween?: ITween<T>, elapsed?: number): void {
+        if (tween === undefined) {
             return;
         }
-
-        this._events.emitSync(event, args[0]);
+        this._dispatcher.emit(event, tween, elapsed);
     }
 
     protected abstract _initStartEndValues(): void;
     protected abstract _updateProperties(progress: number): void;
     protected abstract _reset(): void;
-    protected abstract _deepClone<U>(source: U): U;
+
+    protected _deepClone<U>(source: U): U {
+        return deepCloneTweenValue(source);
+    }
 
     private _startChainedTweens(time?: number): void {
         for (const tween of this._chainedTweens) {

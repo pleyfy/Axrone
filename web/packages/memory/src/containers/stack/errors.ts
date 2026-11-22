@@ -1,52 +1,47 @@
-import { StackSize, StackCapacity } from './types';
+import type { StackId } from './types';
 
-/** @stable */
-export abstract class StackError extends Error {
-    abstract readonly code: string;
-    abstract readonly severity: 'low' | 'medium' | 'high' | 'critical';
-    abstract readonly recoverable: boolean;
-    readonly timestamp = performance.now();
-}
-
-/** @stable */
-export class StackCapacityError extends StackError {
-    readonly code = 'E_CAPACITY_EXCEEDED';
-    readonly severity = 'high' as const;
-    readonly recoverable = false;
-    constructor(
-        readonly current: StackSize,
-        readonly capacity: StackCapacity,
-        readonly operation: string
-    ) {
-        super(`Capacity exceeded: ${operation} would exceed ${capacity} (current: ${current})`);
+export class StackUnderflowError extends Error {
+    readonly _tag = "StackUnderflowError" as const;
+    constructor() {
+        super("Stack underflow: cannot pop or peek from an empty stack.");
+        this.name = "StackUnderflowError";
     }
 }
 
-/** @stable */
-export class StackIntegrityError extends StackError {
-    readonly code = 'E_INTEGRITY_VIOLATION';
-    readonly severity = 'critical' as const;
-    readonly recoverable = false;
-    constructor(
-        readonly details: string,
-        readonly context?: Record<string, unknown>
-    ) {
-        super(`Stack integrity violation: ${details}`);
+export class StackOverflowError extends Error {
+    readonly _tag = "StackOverflowError" as const;
+    readonly limit: number;
+    constructor(limit: number) {
+        super(`Stack overflow: maximum capacity ${limit} reached.`);
+        this.name = "StackOverflowError";
+        this.limit = limit;
     }
 }
 
-/** @stable */
-export class StackMemoryError extends StackError {
-    readonly code = 'E_MEMORY_EXHAUSTED';
-    readonly severity = 'critical' as const;
-    readonly recoverable = true;
-    constructor(
-        readonly requested: number,
-        readonly available: number
-    ) {
-        super(`Memory exhausted: requested ${requested} bytes, available ${available}`);
+export class StackDisposedError extends Error {
+    readonly _tag = "StackDisposedError" as const;
+    readonly id: StackId;
+    readonly cause: Error | undefined;
+    constructor(id: StackId, cause?: Error | undefined) {
+        super(`Stack '${id}' is disposed and cannot process operations.`);
+        this.name = "StackDisposedError";
+        this.id = id;
+        this.cause = cause;
     }
 }
 
-/** @stable */
-export type StackErrorUnion = StackCapacityError | StackIntegrityError | StackMemoryError;
+export class StackAbortError extends Error {
+    readonly _tag = "StackAbortError" as const;
+    readonly reason: unknown;
+    constructor(reason: unknown) {
+        super(`Stack operation was aborted: ${String(reason)}`);
+        this.name = "StackAbortError";
+        this.reason = reason;
+    }
+}
+
+export type StackError =
+    | StackUnderflowError
+    | StackOverflowError
+    | StackDisposedError
+    | StackAbortError;

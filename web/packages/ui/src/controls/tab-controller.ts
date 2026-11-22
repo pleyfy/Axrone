@@ -2,7 +2,7 @@ import type { UIRuntime } from '../runtime';
 import type { UIInputEvent, WidgetId } from '../types';
 import type { WidgetController, WidgetControllerContext } from '../widget';
 import { clamp } from '@axrone/numeric';
-import { isPointInside, asString, asNumber } from './internals';
+import { hitTestBoundWidget, asString, asNumber, asArray, asBoolean, asFiniteNumber, asColorString, setWidgetVisible } from './internals';
 import { defaultUIControlTheme } from './theme';
 
 /**
@@ -39,6 +39,13 @@ export interface TabControllerProps {
     readonly inactiveColor?: string;
     readonly activeTextColor?: string;
     readonly inactiveTextColor?: string;
+    readonly pageKey?: string;
+    readonly pageNames?: readonly string[];
+    readonly panelHeight?: number;
+    readonly panelRadius?: number;
+    readonly panelBackground?: string;
+    readonly switchOnHover?: boolean;
+    readonly keyboardNav?: boolean;
 }
 
 export interface TabControllerState {
@@ -64,6 +71,19 @@ const resolveTabKey = (props: TabControllerProps, index: number): string =>
 const resolvePanelKey = (props: TabControllerProps, index: number): string =>
     `${asString(props.panelPrefix) || 'panel-'}${index}`;
 
+const syncPage = (context: TabContext, index: number): void => {
+    const props = context.props as TabControllerProps;
+    const pageKey = asString(props.pageKey);
+    if (!pageKey) return;
+    const pageNames = asArray(props.pageNames);
+    if (index < 0 || index >= pageNames.length) return;
+    const page = pageNames[index];
+    if (!page) return;
+    const pageWidget = context.runtime.getBoundWidget(pageKey);
+    if (pageWidget === null) return;
+    context.runtime.updateWidget(pageWidget, { props: { page } });
+};
+
 /**
  * Pushes the visual state onto all tab and panel widgets.
  * Active tab gets the active background/text color; inactive tabs get the
@@ -80,13 +100,15 @@ const applyVisuals = (context: TabContext): boolean => {
     const inactiveColor = (asString(props.inactiveColor) || DEFAULT_INACTIVE_COLOR) as `#${string}`;
     const activeTextColor = (asString(props.activeTextColor) || DEFAULT_ACTIVE_TEXT_COLOR) as `#${string}`;
     const inactiveTextColor = (asString(props.inactiveTextColor) || DEFAULT_INACTIVE_TEXT_COLOR) as `#${string}`;
+    const panelHeight = asFiniteNumber(props.panelHeight);
+    const panelRadius = asFiniteNumber(props.panelRadius);
+    const panelBackground = asColorString(props.panelBackground);
 
     let applied = false;
 
     for (let i = 0; i < count; i++) {
         const isActive = i === state.selectedIndex;
 
-        // --- tab widget ---
         const tabKey = resolveTabKey(props, i);
         const tab = runtime.getBoundWidget(tabKey);
         if (tab !== null) {
@@ -99,13 +121,24 @@ const applyVisuals = (context: TabContext): boolean => {
             applied = true;
         }
 
-        // --- panel widget ---
         const panelKey = resolvePanelKey(props, i);
         const panel = runtime.getBoundWidget(panelKey);
         if (panel !== null) {
-            runtime.updateWidget(panel, {
-                enabled: isActive,
-            });
+            setWidgetVisible(runtime, panel, isActive);
+            const layoutPatch: Record<string, unknown> = {};
+            const stylePatch: Record<string, unknown> = {};
+            if (panelHeight !== null && panelHeight > 0) layoutPatch.height = panelHeight;
+            if (panelRadius !== null && panelRadius >= 0) stylePatch.radius = panelRadius;
+            if (panelBackground !== null) stylePatch.background = panelBackground as `#${string}`;
+            if (Object.keys(layoutPatch).length > 0 || Object.keys(stylePatch).length > 0) {
+                runtime.updateWidget(
+                    panel,
+                    {
+                        ...(Object.keys(layoutPatch).length > 0 ? { layout: layoutPatch } : {}),
+                        ...(Object.keys(stylePatch).length > 0 ? { style: stylePatch } : {}),
+                    },
+                );
+            }
             applied = true;
         }
     }
@@ -125,7 +158,7 @@ const hitTestTab = (context: TabContext, x: number, y: number): number => {
     for (let i = 0; i < count; i++) {
         const tabKey = resolveTabKey(props, i);
         const tab = runtime.getBoundWidget(tabKey);
-        if (tab !== null && isPointInside(runtime, tab, x, y)) {
+        if (tab !== null && hitTestBoundWidget(runtime, tab, x, y)) {
             return i;
         }
     }
@@ -166,12 +199,27 @@ export const tabViewController: WidgetController<
             props.activeColor !== previous.activeColor ||
             props.inactiveColor !== previous.inactiveColor ||
             props.activeTextColor !== previous.activeTextColor ||
-            props.inactiveTextColor !== previous.inactiveTextColor
+            props.inactiveTextColor !== previous.inactiveTextColor ||
+            props.pageKey !== previous.pageKey ||
+            props.pageNames !== previous.pageNames ||
+            props.panelHeight !== previous.panelHeight ||
+            props.panelRadius !== previous.panelRadius ||
+            props.panelBackground !== previous.panelBackground ||
+            props.switchOnHover !== previous.switchOnHover ||
+            props.keyboardNav !== previous.keyboardNav
         ) {
+            const previousSelected = typed.state.selectedIndex;
             const count = Math.max(0, asNumber(props.tabCount, 0) | 0);
             const authored = asNumber(props.selectedIndex, typed.state.selectedIndex);
             typed.state.selectedIndex = count > 0 ? clamp(authored, 0, count - 1) : 0;
             applyVisuals(typed);
+            if (
+                typed.state.selectedIndex !== previousSelected ||
+                props.pageKey !== previous.pageKey ||
+                props.pageNames !== previous.pageNames
+            ) {
+                syncPage(typed, typed.state.selectedIndex);
+            }
         }
     },
     input: (event: Readonly<UIInputEvent>, context) => {
@@ -190,6 +238,18 @@ export const tabViewController: WidgetController<
                     if (hit >= 0 && hit !== state.selectedIndex) {
                         state.selectedIndex = hit;
                         applyVisuals(typed);
+                        syncPage(typed, hit);
+                        return true;
+                    }
+                    return false;
+                }
+                case 'move': {
+                    if (!asBoolean(props.switchOnHover, false)) return false;
+                    const hit = hitTestTab(typed, event.x, event.y);
+                    if (hit >= 0 && hit !== state.selectedIndex) {
+                        state.selectedIndex = hit;
+                        applyVisuals(typed);
+                        syncPage(typed, hit);
                         return true;
                     }
                     return false;
@@ -200,17 +260,20 @@ export const tabViewController: WidgetController<
         }
 
         if (event.type === 'key' && event.phase === 'down') {
+            if (!asBoolean(props.keyboardNav, true)) return false;
             switch (event.key) {
                 case 'ArrowRight': {
                     const next = state.selectedIndex + 1;
                     state.selectedIndex = next < count ? next : 0;
                     applyVisuals(typed);
+                    syncPage(typed, state.selectedIndex);
                     return true;
                 }
                 case 'ArrowLeft': {
                     const prev = state.selectedIndex - 1;
                     state.selectedIndex = prev >= 0 ? prev : count - 1;
                     applyVisuals(typed);
+                    syncPage(typed, state.selectedIndex);
                     return true;
                 }
                 default:

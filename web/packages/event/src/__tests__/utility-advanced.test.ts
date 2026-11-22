@@ -42,8 +42,12 @@ describe('utility - Advanced Coverage', () => {
             const hooks = createHooks<TestEvents>();
             let count = 0;
 
-            hooks.on('test:event', () => count++);
-            hooks.on('test:event', () => count++);
+            hooks.on('test:event', () => {
+                count++;
+            });
+            hooks.on('test:event', () => {
+                count++;
+            });
 
             await hooks.emit('test:event', { value: 1 });
             expect(count).toBe(2);

@@ -1,44 +1,50 @@
-import { TweenCore } from './core';
+import { TweenSystem } from './system';
 import { IGroupable } from './types';
 
+/**
+ * Named membership over the shared system core. The group owns pause
+ * bookkeeping and the restartable-member policy (`autoRemove` off); driving,
+ * clamping and deferred edits come from `TweenSystem`, so the two containers
+ * cannot drift apart again.
+ */
 export class TweenGroup {
-    private _tweens = new Set<IGroupable>();
+    private _system = new TweenSystem();
     private _pausedTweens = new Set<IGroupable>();
 
+    public constructor() {
+        this._system.setAutoRemove(false);
+    }
+
     add(tween: IGroupable): this {
-        this._tweens.add(tween);
+        this._system.add(tween);
         return this;
     }
 
     remove(tween: IGroupable): this {
-        this._tweens.delete(tween);
+        this._system.remove(tween);
         return this;
     }
 
     start(time?: number): this {
         this._pausedTweens.clear();
-        for (const tween of this._tweens) {
-            tween.start(time);
-        }
+        this._system.forEach((tween) => tween.start(time));
         return this;
     }
 
     stop(): this {
-        for (const tween of this._tweens) {
-            tween.stop();
-        }
+        this._system.forEach((tween) => tween.stop());
         this._pausedTweens.clear();
         return this;
     }
 
     pause(): this {
         this._pausedTweens.clear();
-        for (const tween of this._tweens) {
+        this._system.forEach((tween) => {
             if (tween.isPlaying()) {
                 this._pausedTweens.add(tween);
                 tween.pause();
             }
-        }
+        });
         return this;
     }
 
@@ -51,15 +57,17 @@ export class TweenGroup {
     }
 
     update(time?: number): this {
-        for (const tween of this._tweens) {
-            tween.update(time);
-        }
+        this._system.update(time);
         return this;
+    }
+
+    getSize(): number {
+        return this._system.getActiveTweenCount();
     }
 
     dispose(): void {
         this.stop();
-        this._tweens.clear();
+        this._system.clear();
         this._pausedTweens.clear();
     }
 }

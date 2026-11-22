@@ -52,7 +52,10 @@ export class SceneSpriteRenderItemCollector {
                 continue;
             }
 
-            if (options.cameraFrustum && !this._intersectsCameraFrustum(transform, renderer, options.cameraFrustum)) {
+            if (
+                options.cameraFrustum &&
+                !this._intersectsCameraFrustum(transform, renderer, options.cameraFrustum)
+            ) {
                 continue;
             }
 
@@ -99,9 +102,11 @@ export class SceneSpriteRenderItemCollector {
         renderer: SpriteRenderer,
         frustum: Readonly<CameraFrustum>
     ): boolean {
-        const localCenterX = (0.5 - renderer.anchor.x) * renderer.size.x;
-        const localCenterY = (0.5 - renderer.anchor.y) * renderer.size.y;
-        const localRadius = 0.5 * Math.hypot(renderer.size.x, renderer.size.y);
+        const size = renderer.getRenderSize();
+        const anchor = renderer.getRenderAnchor();
+        const localCenterX = (0.5 - anchor.x) * size.x;
+        const localCenterY = (0.5 - anchor.y) * size.y;
+        const localRadius = 0.5 * Math.hypot(size.x, size.y);
         const worldScale = transform.worldScale;
 
         this._cullingSphereOffset.x = localCenterX * worldScale.x;
@@ -110,7 +115,8 @@ export class SceneSpriteRenderItemCollector {
         transform.worldRotation.rotateVector(this._cullingSphereOffset, this._cullingSphereOffset);
         Vec3.add(transform.worldPosition, this._cullingSphereOffset, this._cullingSphereCenter);
         this._cullingSphere.radius =
-            localRadius * Math.max(Math.abs(worldScale.x), Math.abs(worldScale.y), Math.abs(worldScale.z));
+            localRadius *
+            Math.max(Math.abs(worldScale.x), Math.abs(worldScale.y), Math.abs(worldScale.z));
 
         return frustum.intersectsSphere(this._cullingSphere);
     }

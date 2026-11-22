@@ -1,0 +1,264 @@
+{
+  "generatedAt": "2026-11-12T13:37:29.059Z",
+  "base": "/build/wasm-release/physics.wasm",
+  "candidate": "/build/wasm-release/physics.wasm",
+  "repeats": 3,
+  "hostBefore": {
+    "cpus": 16,
+    "freemem": 2304901120,
+    "totalmem": 33158033408,
+    "node": "v24.18.0",
+    "platform": "win32-x64",
+    "processes": 563,
+    "cpuBusyPercent": 99,
+    "freeMemoryMb": 1835,
+    "totalMemoryMb": 31622,
+    "loadSource": "powershell"
+  },
+  "hostAfter": {
+    "cpus": 16,
+    "freemem": 1981726720,
+    "totalmem": 33158033408,
+    "node": "v24.18.0",
+    "platform": "win32-x64",
+    "processes": 559,
+    "cpuBusyPercent": 51,
+    "freeMemoryMb": 1872,
+    "totalMemoryMb": 31622,
+    "loadSource": "powershell"
+  },
+  "subject": "self-noise re-baseline",
+  "cells": [
+    {
+      "key": "box250",
+      "count": 250,
+      "kind": "box",
+      "ratio": 1.161738815554486,
+      "gainExceedsNoise": false,
+      "noiseMargin": 0.43372261675704393,
+      "baseSpread": 0.5557450000000002,
+      "candidateSpread": 0.034665833333333396,
+      "baseContacts": 1190,
+      "candidateContacts": 1190,
+      "baseFingerprint": "abf8513a7c8a2feb",
+      "candidateFingerprint": "abf8513a7c8a2feb",
+      "contactsPerBody": 4.76,
+      "populationEqual": true,
+      "fingerprintEqual": true,
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120
+      }
+    },
+    {
+      "key": "box1000",
+      "count": 1000,
+      "kind": "box",
+      "ratio": 1.3307996296243343,
+      "gainExceedsNoise": true,
+      "noiseMargin": 0.29232835589460326,
+      "baseSpread": 1.5219725000000004,
+      "candidateSpread": 0.30466749999999987,
+      "baseContacts": 4752,
+      "candidateContacts": 4752,
+      "baseFingerprint": "5fe528523ae0b090",
+      "candidateFingerprint": "5fe528523ae0b090",
+      "contactsPerBody": 4.752,
+      "populationEqual": true,
+      "fingerprintEqual": true,
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120
+      }
+    },
+    {
+      "key": "box2000",
+      "count": 2000,
+      "kind": "box",
+      "ratio": 1.1164976267342217,
+      "gainExceedsNoise": false,
+      "noiseMargin": 0.1198877601331719,
+      "baseSpread": 0.9439624999999996,
+      "candidateSpread": 0.4108008333333313,
+      "baseContacts": 9518,
+      "candidateContacts": 9518,
+      "baseFingerprint": "e0ba8d3efc221e7c",
+      "candidateFingerprint": "e0ba8d3efc221e7c",
+      "contactsPerBody": 4.759,
+      "populationEqual": true,
+      "fingerprintEqual": true,
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120
+      }
+    },
+    {
+      "key": "box5000",
+      "count": 5000,
+      "kind": "box",
+      "ratio": 0.9849901139158982,
+      "gainExceedsNoise": false,
+      "noiseMargin": 0.03264083461373767,
+      "baseSpread": 0.364408333333337,
+      "candidateSpread": 0.5344966666666693,
+      "baseContacts": 24121,
+      "candidateContacts": 24121,
+      "baseFingerprint": "98ddbd470475b15c",
+      "candidateFingerprint": "98ddbd470475b15c",
+      "contactsPerBody": 4.8242,
+      "populationEqual": true,
+      "fingerprintEqual": true,
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120
+      }
+    },
+    {
+      "key": "sphere250",
+      "count": 250,
+      "kind": "sphere",
+      "ratio": 0.9633414719927789,
+      "gainExceedsNoise": false,
+      "noiseMargin": 0.04194509784869796,
+      "baseSpread": 0.0074766666666666315,
+      "candidateSpread": 0.009432499999999955,
+      "baseContacts": 372,
+      "candidateContacts": 372,
+      "baseFingerprint": "34414a5cab384631",
+      "candidateFingerprint": "34414a5cab384631",
+      "contactsPerBody": 1.488,
+      "populationEqual": true,
+      "fingerprintEqual": true,
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120
+      }
+    },
+    {
+      "key": "capsule250",
+      "count": 250,
+      "kind": "capsule",
+      "ratio": 0.9826955647720094,
+      "gainExceedsNoise": false,
+      "noiseMargin": 0.2771262593506018,
+      "baseSpread": 0.013913333333333222,
+      "candidateSpread": 0.1441475000000001,
+      "baseContacts": 651,
+      "candidateContacts": 651,
+      "baseFingerprint": "7d5062b9fa7194ee",
+      "candidateFingerprint": "7d5062b9fa7194ee",
+      "contactsPerBody": 2.604,
+      "populationEqual": true,
+      "fingerprintEqual": true,
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120
+      }
+    },
+    {
+      "key": "hinge128",
+      "count": 128,
+      "kind": "hinge",
+      "ratio": 0.9841053126230361,
+      "gainExceedsNoise": false,
+      "noiseMargin": 0.3037810309211447,
+      "baseSpread": 0.005449166666666672,
+      "candidateSpread": 0.03432749999999998,
+      "baseContacts": 0,
+      "candidateContacts": 0,
+      "baseFingerprint": "1c43fc761b29065b",
+      "candidateFingerprint": "1c43fc761b29065b",
+      "contactsPerBody": 0,
+      "populationEqual": true,
+      "fingerprintEqual": true,
+      "window": {
+        "warmupSteps": 40,
+        "measuredSteps": 120
+      }
+    }
+  ],
+  "verdict": {
+    "adopt": null,
+    "decidedOn": "self-noise",
+    "leverBar": 1.087,
+    "noRegressionBar": 0.95,
+    "vetoes": [],
+    "coverageGaps": [
+      "sphere250 carries only 1.49 contacts per body, below the 1.5 coverage floor: its contact graph is too thin to load the solver the way a pile does, so it cannot be quoted as contact coverage for spec 2's no-regression row",
+      "hinge128 makes no contacts at all in this window: it can only ever witness the jointed path, so it must not be quoted as contact coverage for spec 2's no-regression row"
+    ],
+    "note": "every pinned box cell computed identical fingerprints and identical contact populations, so this run compares two builds that simulate the same thing. It measures harness scatter only: it supports no adoption claim, no no-regression breach and no regression claim. Pass --preserving with --noise-floor <self-noise artifact> to turn a numerically-preserving lever into a speed verdict."
+  },
+  "selfNoiseFloor": {
+    "measuredOn": "self-vs-self: one binary measured twice on one host, interleaved, order rotated",
+    "maxRatioDeviation": 0.3307996296243343,
+    "decidingBox1000Deviation": 0.3307996296243343,
+    "leverBarOverNoise": 0.26299908527346205,
+    "perCell": [
+      {
+        "key": "box250",
+        "ratio": 1.161738815554486,
+        "deviation": 0.1617388155544861,
+        "noiseMargin": 0.43372261675704393,
+        "contactsPerBody": 4.76
+      },
+      {
+        "key": "box1000",
+        "ratio": 1.3307996296243343,
+        "deviation": 0.3307996296243343,
+        "noiseMargin": 0.29232835589460326,
+        "contactsPerBody": 4.752
+      },
+      {
+        "key": "box2000",
+        "ratio": 1.1164976267342217,
+        "deviation": 0.1164976267342217,
+        "noiseMargin": 0.1198877601331719,
+        "contactsPerBody": 4.759
+      },
+      {
+        "key": "box5000",
+        "ratio": 0.9849901139158982,
+        "deviation": 0.015009886084101809,
+        "noiseMargin": 0.03264083461373767,
+        "contactsPerBody": 4.8242
+      },
+      {
+        "key": "sphere250",
+        "ratio": 0.9633414719927789,
+        "deviation": 0.036658528007221136,
+        "noiseMargin": 0.04194509784869796,
+        "contactsPerBody": 1.488
+      },
+      {
+        "key": "capsule250",
+        "ratio": 0.9826955647720094,
+        "deviation": 0.017304435227990633,
+        "noiseMargin": 0.2771262593506018,
+        "contactsPerBody": 2.604
+      },
+      {
+        "key": "hinge128",
+        "ratio": 0.9841053126230361,
+        "deviation": 0.015894687376963867,
+        "noiseMargin": 0.3037810309211447,
+        "contactsPerBody": 0
+      }
+    ]
+  },
+  "hostQuiet": false,
+  "absoluteMsPublished": false,
+  "moduleIdentity": {
+    "base": {
+      "file": "build/wasm-release/physics.wasm",
+      "bytes": 218382,
+      "sha256": "48f80fc40eaba79d5f841db02eeeda27ba85c16469fa2164bcbca895fee7012b"
+    },
+    "candidate": {
+      "file": "build/wasm-release/physics.wasm",
+      "bytes": 218382,
+      "sha256": "48f80fc40eaba79d5f841db02eeeda27ba85c16469fa2164bcbca895fee7012b"
+    }
+  },
+  "hostNote": "Host busy 99% before / 51% after with 563 / 559 processes, above the 5% quiet bound; every ms column in this artifact is a loaded-host excerpt. Contacts, fingerprints, memory and module identities are load-independent."
+}

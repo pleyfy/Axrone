@@ -11,6 +11,11 @@ import { deepCloneTweenValue } from './runtime-utils';
 
 export const TWEEN = new TweenSystem();
 
+/**
+ * Create a tween without starting it. The caller owns both lifecycle steps:
+ * `tw.start(time)` begins it and `TWEEN.add(tw)` (or `group.add`) drives it.
+ * Only `config.autoStart` performs both at once.
+ */
 export function tween<T extends TweenableValue>(object: T, config?: TweenConfig<T>): ITween<T> {
     const tween = TweenFactory.create(object, config);
     if (config?.autoStart) {
@@ -35,12 +40,21 @@ export function spring<T extends TweenableValue>(initial: T, config?: SpringConf
     return new Spring<T>(initial, config);
 }
 
+/**
+ * Wall-clock sleep. Deliberately independent of the tween clock: it ignores
+ * pause, timeScale and tab throttling. For tween-driven sequencing use
+ * chains, timelines or `waitFor` instead.
+ */
 export function delay(ms: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(resolve, ms);
     });
 }
 
+/**
+ * Build an unstarted, unregistered tween toward `properties`.
+ * Call `.start(time)` and register it (`TWEEN.add`, group, system) to run it.
+ */
 export function to<T extends TweenableValue>(
     object: T,
     properties: DeepPartial<T>,
@@ -91,6 +105,14 @@ export async function waitFor(tween: ITween<any>): Promise<void> {
     }
 
     return new Promise((resolve) => {
-        tween.on('complete', () => resolve());
+        const settle = (): void => {
+            tween.off('complete', onComplete);
+            tween.off('stop', onStop);
+            resolve();
+        };
+        const onComplete = (): void => settle();
+        const onStop = (): void => settle();
+        tween.on('complete', onComplete);
+        tween.on('stop', onStop);
     });
 }

@@ -22,8 +22,8 @@ import type {
     InternalDualAxisBinding,
     MutableGamepadState,
     MutableTouchPoint,
-    MutableVector2,
 } from './shared';
+import type { IVec2Like } from '@axrone/numeric';
 import type { InputActionSchema, InputContextId, InputControlPath, InputUserId } from '../types';
 
 let cachedModifierMask = -1;
@@ -249,7 +249,7 @@ const evaluateDirectionalBinding = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
     binding: InternalDirectionalBinding,
     user?: InputUserId
-): MutableVector2 => {
+): IVec2Like => {
     let x =
         sampleDirectional(runtime, binding.right, 'positive', user) -
         sampleDirectional(runtime, binding.left, 'negative', user);
@@ -285,7 +285,7 @@ const evaluateDualAxisBinding = <TSchema extends InputActionSchema>(
     runtime: InputEvaluationRuntime<TSchema>,
     binding: InternalDualAxisBinding,
     user?: InputUserId
-): MutableVector2 => {
+): IVec2Like => {
     let x = sampleControl(runtime, binding.x, user) * binding.scale;
     let y = sampleControl(runtime, binding.y, user) * binding.scale;
     const length = magnitude(x, y);

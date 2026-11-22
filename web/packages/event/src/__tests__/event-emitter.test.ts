@@ -571,6 +571,7 @@ describe('EventEmitter - Main Implementation', () => {
             });
             emitter.on('test:error', () => {
                 threwCount++;
+                throw new Error('boom');
             });
             emitter.on('test:batch', () => {
                 noListenerCount++;

@@ -33,7 +33,6 @@ export type {
     Render2DSpriteSubmission,
     Render2DSpriteTextureSource,
     Render2DTextureReference,
-    Render2DVec2Like,
 } from './types';
 export {
     asRender2DMaterialReference,
@@ -49,10 +48,15 @@ export {
     RENDER_2D_SPRITE_FLOAT_STRIDE,
     RENDER_2D_SPRITE_FRAGMENT_SOURCE,
     RENDER_2D_SPRITE_INDICES_PER_QUAD,
+    RENDER_2D_SPRITE_MAIN_TEXTURE_UNIFORM,
+    RENDER_2D_SPRITE_MATERIAL_CONTRACT,
+    RENDER_2D_SPRITE_REQUIRED_UNIFORM_NAMES,
     RENDER_2D_SPRITE_UNIFORM_NAMES,
     RENDER_2D_SPRITE_VERTEX_SOURCE,
     RENDER_2D_SPRITE_VERTEX_STRIDE,
     RENDER_2D_SPRITE_VERTICES_PER_QUAD,
+    RENDER_2D_SPRITE_VIEW_PROJECTION_UNIFORM,
+    isRender2DSpriteUniformNames,
 } from './sprite-shader';
 export {
     Render2DCapacityError,

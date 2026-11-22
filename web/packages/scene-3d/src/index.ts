@@ -29,6 +29,7 @@ export type {
 	Scene3DActorRuntimeOptions,
 	SceneRenderableActorCreateOptions,
 	SceneRenderableActorInstance,
+	SceneProfilerProbe,
 } from './scene-3d-actor-runtime';
 export { Scene3DActorRuntime } from './scene-3d-actor-runtime';
 export { createScene } from './scene-factory';
@@ -40,4 +41,4 @@ export {
 	WrapMode,
 } from '@axrone/render-webgl2';
 export { createUnlitColorShaderDefinition } from './scene-default-shaders';
-export { Scene } from './scene';
+export { Scene } from './scene-full';

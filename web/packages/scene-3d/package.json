@@ -34,6 +34,11 @@
             "import": "./dist/types.mjs",
             "require": "./dist/types.js"
         },
+        "./lean": {
+            "types": "./dist/lean.d.ts",
+            "import": "./dist/lean.mjs",
+            "require": "./dist/lean.js"
+        },
         "./errors": {
             "types": "./dist/errors.d.ts",
             "import": "./dist/errors.mjs",
@@ -47,10 +52,7 @@
     },
     "dependencies": {
         "@axrone/ecs-runtime": "^0.1.0",
-        "@axrone/numeric": "^0.0.1",
-        "@axrone/random": "^0.0.1",
         "@axrone/render-webgl2": "^0.1.0",
-        "@axrone/scene-runtime": "^0.1.0",
-        "@axrone/utility": "^0.0.1"
+        "@axrone/scene-runtime": "^0.1.0"
     }
 }

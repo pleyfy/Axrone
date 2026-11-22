@@ -232,6 +232,20 @@ describe('@axrone/shapes-2d serialization (comprehensive)', () => {
             expect(result.kind).toBe('line');
         });
 
+        it('coerces non-center line stroke alignment to center on deserialize', () => {
+            const serialized = {
+                type: 'shape/line' as const,
+                start: [0, 0],
+                end: [5, 5],
+                stroke: { paint: { type: 'paint/solid' as const, color: '#000000' }, width: 2, alignment: 'inside' as const },
+            };
+            const result = deserializeShape(serialized);
+            expect(result.kind).toBe('line');
+            if (result.kind === 'line' && result.stroke) {
+                expect(result.stroke.alignment).toBe('center');
+            }
+        });
+
         it('round-trips polygon', () => {
             const original = createPolygonShape({
                 outer: { points: [[0, 0], [10, 0], [5, 10]] as readonly [number, number][] },

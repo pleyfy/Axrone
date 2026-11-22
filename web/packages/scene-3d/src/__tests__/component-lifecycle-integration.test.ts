@@ -19,8 +19,8 @@ let Scene: typeof import('@axrone/scene-3d').Scene;
 class LifecycleTracker extends Component {
     readonly calls: string[] = [];
 
-    awake(): void {
-        this.calls.push('awake');
+    onLoad(): void {
+        this.calls.push('onLoad');
     }
 
     start(): void {
@@ -59,8 +59,8 @@ class LifecycleTracker extends Component {
 class SecondaryTracker extends Component {
     readonly calls: string[] = [];
 
-    awake(): void {
-        this.calls.push('awake');
+    onLoad(): void {
+        this.calls.push('onLoad');
     }
 
     start(): void {
@@ -170,36 +170,36 @@ describe('Component lifecycle integration', () => {
     };
 
     // -----------------------------------------------------------------------
-    // 1. awake() is called when a component is added to an actor
+    // 1. onLoad() is called when a component is added to an actor
     // -----------------------------------------------------------------------
-    it('calls awake() when a component is added to an actor', () => {
+    it('calls onLoad() when a component is added to an actor', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'AwakeActor' });
+        const actor = scene.createActor({ name: 'OnLoadActor' });
         const tracker = actor.addComponent(LifecycleTracker);
 
-        expect(tracker.calls).toContain('awake');
+        expect(tracker.calls).toContain('onLoad');
 
         scene.dispose();
     });
 
     // -----------------------------------------------------------------------
-    // 2. start() is called after awake() completes
+    // 2. start() is called after onLoad() completes
     // -----------------------------------------------------------------------
-    it('calls start() after awake()', () => {
+    it('calls start() after onLoad()', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
         const actor = scene.createActor({ name: 'StartActor' });
         const tracker = actor.addComponent(LifecycleTracker);
 
-        expect(tracker.calls).toContain('awake');
+        expect(tracker.calls).toContain('onLoad');
         expect(tracker.calls).toContain('start');
 
-        const awakeIdx = tracker.calls.indexOf('awake');
+        const onLoadIdx = tracker.calls.indexOf('onLoad');
         const startIdx = tracker.calls.indexOf('start');
-        expect(awakeIdx).toBeLessThan(startIdx);
+        expect(onLoadIdx).toBeLessThan(startIdx);
 
         scene.dispose();
     });
@@ -299,10 +299,10 @@ describe('Component lifecycle integration', () => {
 
         expect(tracker.calls).toContain('onDestroy');
 
-        // onDestroy should come after awake and start
-        const awakeIdx = tracker.calls.indexOf('awake');
+        // onDestroy should come after onLoad and start
+        const onLoadIdx = tracker.calls.indexOf('onLoad');
         const destroyIdx = tracker.calls.indexOf('onDestroy');
-        expect(awakeIdx).toBeLessThan(destroyIdx);
+        expect(onLoadIdx).toBeLessThan(destroyIdx);
 
         scene.dispose();
     });
@@ -347,16 +347,16 @@ describe('Component lifecycle integration', () => {
         const primary = actor.addComponent(LifecycleTracker);
         const secondary = actor.addComponent(SecondaryTracker);
 
-        // Both should have awake, start, onEnable
+        // Both should have onLoad, start, onEnable
         for (const tracker of [primary, secondary]) {
-            expect(tracker.calls).toContain('awake');
+            expect(tracker.calls).toContain('onLoad');
             expect(tracker.calls).toContain('start');
             expect(tracker.calls).toContain('onEnable');
 
-            const awakeIdx = tracker.calls.indexOf('awake');
+            const onLoadIdx = tracker.calls.indexOf('onLoad');
             const startIdx = tracker.calls.indexOf('start');
             const enableIdx = tracker.calls.indexOf('onEnable');
-            expect(awakeIdx).toBeLessThan(startIdx);
+            expect(onLoadIdx).toBeLessThan(startIdx);
             expect(startIdx).toBeLessThan(enableIdx);
         }
 
@@ -445,7 +445,7 @@ describe('Component lifecycle integration', () => {
     });
 
     // -----------------------------------------------------------------------
-    // 12. Full lifecycle ordering: awake → start → onEnable → update → lateUpdate → onDisable → onDestroy
+    // 12. Full lifecycle ordering: onLoad → start → onEnable → update → lateUpdate → onDisable → onDestroy
     // -----------------------------------------------------------------------
     it('runs the full lifecycle in the correct order from creation to destruction', () => {
         const { scene } = createTestScene();
@@ -460,7 +460,7 @@ describe('Component lifecycle integration', () => {
         actor.destroy();
 
         const expected = [
-            'awake',
+            'onLoad',
             'start',
             'onEnable',
             'update:16',
@@ -516,8 +516,8 @@ describe('Component lifecycle integration', () => {
         const actor = scene.createActor({ name: 'DeferredStartActor', autoStart: false });
         const tracker = actor.addComponent(LifecycleTracker);
 
-        // awake should have been called, but not start (actor hasn't started yet)
-        expect(tracker.calls).toContain('awake');
+        // onLoad should have been called, but not start (actor hasn't started yet)
+        expect(tracker.calls).toContain('onLoad');
         expect(tracker.calls).not.toContain('start');
 
         // Manually start the actor
@@ -525,9 +525,9 @@ describe('Component lifecycle integration', () => {
 
         expect(tracker.calls).toContain('start');
 
-        const awakeIdx = tracker.calls.indexOf('awake');
+        const onLoadIdx = tracker.calls.indexOf('onLoad');
         const startIdx = tracker.calls.indexOf('start');
-        expect(awakeIdx).toBeLessThan(startIdx);
+        expect(onLoadIdx).toBeLessThan(startIdx);
 
         scene.dispose();
     });

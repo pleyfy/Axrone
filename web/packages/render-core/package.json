@@ -54,6 +54,16 @@
             "import": "./dist/shader-effect.mjs",
             "require": "./dist/shader-effect.js"
         },
+        "./material-contract": {
+            "types": "./dist/material-contract.d.ts",
+            "import": "./dist/material-contract.mjs",
+            "require": "./dist/material-contract.js"
+        },
+        "./material-contract-v2": {
+            "types": "./dist/material-contract-v2.d.ts",
+            "import": "./dist/material-contract-v2.mjs",
+            "require": "./dist/material-contract-v2.js"
+        },
         "./nine-slice": {
             "types": "./dist/nine-slice.d.ts",
             "import": "./dist/nine-slice.mjs",

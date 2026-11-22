@@ -108,6 +108,6 @@ export const DEFAULT_OPTIONS = Object.freeze({
     concurrencyLimit: Infinity,
     bufferSize: 1000,
     gcIntervalMs: 60000,
-    bufferOverflow: 'drop-oldest',
-    metrics: false,
+    bufferOverflow: 'throw',
+    metrics: true,
 } satisfies Required<EventOptions>);

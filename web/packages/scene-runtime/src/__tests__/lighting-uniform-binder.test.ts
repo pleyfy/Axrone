@@ -1,4 +1,5 @@
 import { Vec3 } from '@axrone/numeric';
+import type { LightingUniformValueMap } from '@axrone/lighting';
 import { describe, expect, it, vi } from 'vitest';
 import { SceneLightingUniformBinder } from '../lighting-uniform-binder';
 import type { SceneLightingState } from '../lighting-collector';
@@ -102,6 +103,26 @@ describe('SceneLightingUniformBinder', () => {
         expect(target.writes.get('u_PointLightCount')).toBe(0);
         expect(target.writes.get('u_SpotLightCount')).toBe(0);
         expect(target.writes.get('u_LocalLightCount')).toBe(0);
+    });
+
+    it('uses precomputed frame values instead of rebuilding the map', () => {
+        const target = createMockWriteTarget();
+        const shader = createMockShader();
+        const binder = new SceneLightingUniformBinder(target);
+        const lighting = createNeutralLightingState();
+
+        const precomputed = {
+            u_AmbientLight: new Vec3(9, 9, 9),
+            u_DirectionalLightCount: 42,
+        } as unknown as LightingUniformValueMap;
+
+        binder.apply(shader, { receiveLighting: true }, lighting, precomputed);
+
+        // Values come from the precomputed frame map, not from the state
+        // (which would yield the neutral ambient and a zero count).
+        const ambient = target.writes.get('u_AmbientLight') as Vec3;
+        expect(ambient.x).toBe(9);
+        expect(target.writes.get('u_DirectionalLightCount')).toBe(42);
     });
 
     it('writes the receiveLighting flag to the shader', () => {

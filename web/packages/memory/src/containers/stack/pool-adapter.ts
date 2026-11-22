@@ -1,98 +1,113 @@
-import { MemoryPool as UtilityMemoryPool, MemoryPoolOptions } from '../../pool';
-import { StackNode, MemoryAddress, NodeId } from './types';
+import type { IStackMetricsSink } from './types';
+import { ObjectPool, type ObjectPoolOptions } from '../../pool';
 
-class PoolNode<T> implements StackNode<T> {
-    public __poolId?: number;
-    public __poolStatus?: any;
-    public __lastAccessed?: number;
-    public __allocCount?: number;
+export interface ChunkPoolOptions<T>
+    extends Omit<ObjectPoolOptions<(T | undefined)[]>, 'factory'> {
+    readonly chunkSize?: number;
+}
 
-    public id: NodeId = 0 as NodeId;
-    public value!: T;
-    public next: PoolNode<T> | null = null;
-    public refs: number = 0;
-    public generation: number = 0;
-    public memAddr: MemoryAddress = 0 as MemoryAddress;
+export class ChunkPool<T> {
+    private readonly _pool: ObjectPool<(T | undefined)[]>;
+    private readonly _chunkSize: number;
+    private readonly _metrics: IStackMetricsSink | undefined;
 
-    reset(): void {
-        this.value = undefined as unknown as T;
-        this.next = null;
-        this.refs = 0;
-        this.generation = 0;
-        this.memAddr = 0 as MemoryAddress;
+    constructor(options: ChunkPoolOptions<T> = {}) {
+        const chunkSize = options.chunkSize ?? 64;
+        this._chunkSize = chunkSize;
+        this._metrics = options.onAcquireHandler
+            ? {
+                  onPush: () => {},
+                  onPop: () => {},
+                  onChunkAllocated: () => options.onAcquireHandler?.([] as any),
+                  onChunkDeallocated: () => options.onEvictHandler?.([] as any),
+              }
+            : undefined;
+
+        this._pool = new ObjectPool<(T | undefined)[]>({
+            ...options,
+            factory: () => {
+                const chunk: (T | undefined)[] = new Array(chunkSize);
+                for (let i = 0; i < chunkSize; i++) {
+                    chunk[i] = undefined;
+                }
+                return chunk;
+            },
+            resetHandler: (chunk) => {
+                for (let i = 0; i < chunkSize; i++) {
+                    chunk[i] = undefined;
+                }
+            },
+        });
+    }
+
+    acquire(): (T | undefined)[] {
+        this._metrics?.onChunkAllocated();
+        return this._pool.acquire();
+    }
+
+    release(chunk: (T | undefined)[]): void {
+        this._metrics?.onChunkDeallocated();
+        this._pool.release(chunk);
+    }
+
+    clear(): void {
+        this._pool.clear();
+    }
+
+    get available(): number {
+        return this._pool.getAvailableCount();
+    }
+
+    get allocated(): number {
+        return this._pool.getAllocatedCount();
+    }
+
+    get total(): number {
+        return this._pool.getTotalCount();
+    }
+
+    [Symbol.dispose](): void {
+        this._pool[Symbol.dispose]();
     }
 }
 
-/**
- * Internal adapter bridging stack node allocation to the general-purpose MemoryPool.
- * @beta
- */
-export class StackMemoryPool {
-    static #instanceCounter = 0;
-    readonly #pool: UtilityMemoryPool<PoolNode<any>>;
-    readonly #idCounter: () => number = (() => {
-        let n = 0;
-        return () => ++n >>> 0;
-    })();
+export class StackChunkPoolAdapter<T> {
+    private readonly _pool: ChunkPool<T>;
+    private readonly _maxPooledChunks: number;
+    private _pooledChunks: (T | undefined)[][];
 
-    constructor(options?: Partial<MemoryPoolOptions<PoolNode<any>>>) {
-        const opts: MemoryPoolOptions<PoolNode<any>> = Object.assign(
-            {
-                initialCapacity: 64,
-                maxCapacity: 4096,
-                factory: () => new PoolNode<any>(),
-                resetOnRecycle: true,
-                autoExpand: true,
-                enableMetrics: false,
-                name: `StackMemoryPool-${++StackMemoryPool.#instanceCounter}`,
-            },
-            options || {}
-        );
-
-        this.#pool = new UtilityMemoryPool<PoolNode<any>>(opts);
+    constructor(maxPooledChunks: number = 4, options?: ChunkPoolOptions<T>) {
+        this._pool = new ChunkPool<T>(options);
+        this._maxPooledChunks = maxPooledChunks;
+        this._pooledChunks = [];
     }
 
-    allocate<T>(value: T, next: StackNode<T> | null, generation: number): StackNode<T> {
-        const node = this.#pool.acquire() as PoolNode<T>;
-        node.id = this.#idCounter() as unknown as NodeId;
-        node.value = value;
-        node.next = next as PoolNode<T> | null;
-        node.refs = 1;
-        node.generation = generation;
-        node.memAddr = (node.__poolId ?? 0) as unknown as MemoryAddress;
-
-        return node as unknown as StackNode<T>;
+    acquireChunk(): (T | undefined)[] {
+        const pooled = this._pooledChunks.pop();
+        if (pooled !== undefined) {
+            return pooled;
+        }
+        return this._pool.acquire();
     }
 
-    deallocate<T>(node: StackNode<T>): void {
-        if ((node as unknown as PoolNode<T>).refs > 1) return;
-
-        try {
-            this.#pool.release(node as unknown as PoolNode<any>);
-        } catch (e) {
-            // ignore pool errors
+    releaseChunk(chunk: (T | undefined)[]): void {
+        if (this._pooledChunks.length < this._maxPooledChunks) {
+            this._pooledChunks.push(chunk);
+        } else {
+            this._pool.release(chunk);
         }
     }
 
     clear(): void {
-        try {
-            this.#pool.clear();
-        } catch (e) {
-            // ignore
+        for (const chunk of this._pooledChunks) {
+            this._pool.release(chunk);
         }
+        this._pooledChunks = [];
+        this._pool.clear();
     }
 
-    getStats() {
-        try {
-            const m = this.#pool.getMetrics();
-            return {
-                totalAllocated: m.allocations,
-                totalDeallocated: m.releases,
-                poolSizes: [{ sizeKey: 'capacity', poolSize: m.capacity }],
-                fragmentation: m.fragmentationRatio ?? 0,
-            };
-        } catch (e) {
-            return { totalAllocated: 0, totalDeallocated: 0, poolSizes: [], fragmentation: 0 };
-        }
+    [Symbol.dispose](): void {
+        this.clear();
+        this._pool[Symbol.dispose]();
     }
 }

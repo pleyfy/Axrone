@@ -467,6 +467,16 @@ export class FontRegistry implements Disposable {
         const rasterSize = Math.max(1, Math.round(fontSize ?? 16));
         const cached = face.atlas.get(resolved.codePoint, rasterSize);
         if (cached) {
+            // Re-rasterize if the cached entry lost its pixel data (e.g. after
+            // atlas page eviction + re-creation with a whitespace source, or if
+            // the entry was originally created without data). This ensures the
+            // renderer always has CPU-side data for GPU re-upload.
+            if (!cached.data) {
+                const reRaster = face.runtime.rasterizeGlyph(resolved.codePoint, rasterSize);
+                if (reRaster?.data) {
+                    cached.data = reRaster.data;
+                }
+            }
             return cached;
         }
         const raster = face.runtime.rasterizeGlyph(resolved.codePoint, rasterSize);

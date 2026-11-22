@@ -233,6 +233,7 @@ export interface IPhysicsWorld3DConfig {
     readonly maxContacts?: number;
     readonly solverIterations?: number;
     readonly enableProfiler?: boolean;
+    readonly allowSleep?: boolean;
 }
 
 export interface IPhysicsProfiler3D {
@@ -244,6 +245,11 @@ export interface IPhysicsProfiler3D {
     solveVelocityTime: number;
     solvePositionTime: number;
     sleepTime: number;
+    warmStartTime: number;
+    persistTime: number;
+    integrateVelocityTime: number;
+    integratePositionTime: number;
+    eventsTime: number;
     // ccdTime removed: 3D CCD is not implemented (separate scope).
     // Consistent with enableCCD removal (commit d2f7310f).
 }

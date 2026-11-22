@@ -2,27 +2,8 @@ import type { UIRuntime } from '../runtime';
 import type { UIInputEvent, WidgetId } from '../types';
 import type { WidgetController, WidgetControllerContext } from '../widget';
 import { clamp } from '@axrone/numeric';
-import { isPointInside, asString, asNumber } from './internals';
+import { hitTestBoundWidget, asString, asNumber, asFiniteNumber, asColorString } from './internals';
 
-/**
- * Declarative segmented-control controller for `.ui.json` authored tab selectors.
- *
- * The authored widget acts as the interaction surface and its `props` name the
- * child widgets that visualise segment selection:
- *
- *   props: {
- *     selectedIndex: number,
- *     segmentCount: number,
- *     segmentPrefix: string,       // e.g. 'seg-' resolves 'seg-0', 'seg-1', ...
- *     selectedBackground: string,
- *     unselectedBackground: string,
- *   }
- *
- * For each index i, the controller resolves:
- *   - segment widget: `${segmentPrefix}${i}`
- *
- * Child widgets are resolved through the asset's binding table.
- */
 export const SEGMENTED_CONTROL_CONTROLLER_TYPE = 'segmented-control';
 
 export interface SegmentedControllerProps {
@@ -31,6 +12,13 @@ export interface SegmentedControllerProps {
     readonly segmentPrefix?: string;
     readonly selectedBackground?: string;
     readonly unselectedBackground?: string;
+    readonly barHeight?: number;
+    readonly segmentSpacing?: number;
+    readonly cornerRadius?: number;
+    readonly backgroundColor?: string;
+    readonly paddingH?: number;
+    readonly idleTextColor?: string;
+    readonly activeTextColor?: string;
 }
 
 export interface SegmentedControllerState {
@@ -46,16 +34,15 @@ type SegmentedContext = WidgetControllerContext<
 
 const DEFAULT_SELECTED_BACKGROUND = '#334155ff';
 const DEFAULT_UNSELECTED_BACKGROUND = '#00000000';
+const DEFAULT_IDLE_TEXT_COLOR = '#888888ff';
+const DEFAULT_ACTIVE_TEXT_COLOR = '#ffffffff';
 
-/** Resolves the segment widget key for a given index. */
 const resolveSegmentKey = (props: SegmentedControllerProps, index: number): string =>
     `${asString(props.segmentPrefix)}${index}`;
 
-/**
- * Pushes the visual state onto all segment widgets.
- * Selected segment gets the selected background; others get the unselected background.
- * Returns true once at least one visual was applied.
- */
+const resolveSegmentTextKey = (props: SegmentedControllerProps, index: number): string =>
+    `${asString(props.segmentPrefix)}${index}-text`;
+
 const applyVisuals = (context: SegmentedContext): boolean => {
     const props = context.props as SegmentedControllerProps;
     const runtime = context.runtime;
@@ -64,16 +51,27 @@ const applyVisuals = (context: SegmentedContext): boolean => {
     const count = Math.max(0, asNumber(props.segmentCount, 0) | 0);
     const selectedBg = (asString(props.selectedBackground) || DEFAULT_SELECTED_BACKGROUND) as `#${string}`;
     const unselectedBg = (asString(props.unselectedBackground) || DEFAULT_UNSELECTED_BACKGROUND) as `#${string}`;
+    const idleText = (asColorString(props.idleTextColor) ?? DEFAULT_IDLE_TEXT_COLOR) as `#${string}`;
+    const activeText = (asColorString(props.activeTextColor) ?? DEFAULT_ACTIVE_TEXT_COLOR) as `#${string}`;
 
     let applied = false;
 
     for (let i = 0; i < count; i++) {
+        const isSelected = i === state.selectedIndex;
         const segmentKey = resolveSegmentKey(props, i);
         const segment = runtime.getBoundWidget(segmentKey);
         if (segment !== null) {
-            const color = i === state.selectedIndex ? selectedBg : unselectedBg;
+            const color = isSelected ? selectedBg : unselectedBg;
             runtime.updateWidget(segment, {
                 style: { background: color },
+            });
+            applied = true;
+        }
+        const textKey = resolveSegmentTextKey(props, i);
+        const textWidget = runtime.getBoundWidget(textKey);
+        if (textWidget !== null) {
+            runtime.updateWidget(textWidget, {
+                style: { color: isSelected ? activeText : idleText },
             });
             applied = true;
         }
@@ -82,10 +80,39 @@ const applyVisuals = (context: SegmentedContext): boolean => {
     return applied || count === 0;
 };
 
-/**
- * Determines which segment the pointer is over by hit-testing each segment
- * widget's layout box. Returns -1 when no segment contains the point.
- */
+const applyRootAppearance = (context: SegmentedContext): void => {
+    const props = context.props as SegmentedControllerProps;
+    const runtime = context.runtime;
+    const layoutPatch: Record<string, unknown> = {};
+    const stylePatch: Record<string, unknown> = {};
+    const barHeight = asFiniteNumber(props.barHeight);
+    if (barHeight !== null && barHeight > 0) {
+        layoutPatch.height = barHeight;
+    }
+    const spacing = asFiniteNumber(props.segmentSpacing);
+    if (spacing !== null && spacing >= 0) {
+        layoutPatch.gap = spacing;
+    }
+    const paddingH = asFiniteNumber(props.paddingH);
+    if (paddingH !== null && paddingH >= 0) {
+        layoutPatch.padding = { left: paddingH, right: paddingH, top: 0, bottom: 0 };
+    }
+    const cornerRadius = asFiniteNumber(props.cornerRadius);
+    if (cornerRadius !== null && cornerRadius >= 0) {
+        stylePatch.radius = cornerRadius;
+    }
+    const backgroundColor = asColorString(props.backgroundColor);
+    if (backgroundColor !== null) {
+        stylePatch.background = backgroundColor;
+    }
+    if (Object.keys(layoutPatch).length > 0 || Object.keys(stylePatch).length > 0) {
+        runtime.updateWidget(context.widget, {
+            ...(Object.keys(layoutPatch).length > 0 ? { layout: layoutPatch } : {}),
+            ...(Object.keys(stylePatch).length > 0 ? { style: stylePatch } : {}),
+        });
+    }
+};
+
 const hitTestSegment = (context: SegmentedContext, x: number, y: number): number => {
     const props = context.props as SegmentedControllerProps;
     const runtime = context.runtime;
@@ -94,7 +121,7 @@ const hitTestSegment = (context: SegmentedContext, x: number, y: number): number
     for (let i = 0; i < count; i++) {
         const segmentKey = resolveSegmentKey(props, i);
         const segment = runtime.getBoundWidget(segmentKey);
-        if (segment !== null && isPointInside(runtime, segment, x, y)) {
+        if (segment !== null && hitTestBoundWidget(runtime, segment, x, y)) {
             return i;
         }
     }
@@ -122,23 +149,39 @@ export const segmentedController: WidgetController<
     mount: (context) => {
         const typed = context as SegmentedContext;
         applyVisuals(typed);
+        applyRootAppearance(typed);
     },
     update: (context, previousProps) => {
         const typed = context as SegmentedContext;
         const props = typed.props as SegmentedControllerProps;
         const previous = previousProps as SegmentedControllerProps;
 
-        if (
+        const selectionChanged =
             props.selectedIndex !== previous.selectedIndex ||
             props.segmentCount !== previous.segmentCount ||
-            props.segmentPrefix !== previous.segmentPrefix ||
+            props.segmentPrefix !== previous.segmentPrefix;
+        const visualsChanged =
             props.selectedBackground !== previous.selectedBackground ||
-            props.unselectedBackground !== previous.unselectedBackground
-        ) {
+            props.unselectedBackground !== previous.unselectedBackground ||
+            props.idleTextColor !== previous.idleTextColor ||
+            props.activeTextColor !== previous.activeTextColor;
+        const rootChanged =
+            props.barHeight !== previous.barHeight ||
+            props.segmentSpacing !== previous.segmentSpacing ||
+            props.cornerRadius !== previous.cornerRadius ||
+            props.backgroundColor !== previous.backgroundColor ||
+            props.paddingH !== previous.paddingH;
+
+        if (selectionChanged) {
             const count = Math.max(0, asNumber(props.segmentCount, 0) | 0);
             const authored = asNumber(props.selectedIndex, typed.state.selectedIndex);
             typed.state.selectedIndex = count > 0 ? clamp(authored, 0, count - 1) : 0;
             applyVisuals(typed);
+        } else if (visualsChanged) {
+            applyVisuals(typed);
+        }
+        if (rootChanged) {
+            applyRootAppearance(typed);
         }
     },
     input: (event: Readonly<UIInputEvent>, context) => {
@@ -199,10 +242,6 @@ export const segmentedController: WidgetController<
     },
 };
 
-/**
- * Reads the live selected index of a segmented control driven by `segmented-control`.
- * Returns null when the widget has no segmented-control state.
- */
 export const getSegmentedSelectedIndex = (
     runtime: UIRuntime,
     widget: WidgetId

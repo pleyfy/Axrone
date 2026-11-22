@@ -36,7 +36,9 @@ export interface MeshRendererConfig {
     readonly skin?: MeshRendererSkinConfig | null;
 }
 
-const toFloat32Array = (value: readonly number[] | Float32Array | undefined): Float32Array | undefined => {
+const toFloat32Array = (
+    value: readonly number[] | Float32Array | undefined
+): Float32Array | undefined => {
     if (!value) {
         return undefined;
     }
@@ -44,22 +46,25 @@ const toFloat32Array = (value: readonly number[] | Float32Array | undefined): Fl
     return value instanceof Float32Array ? new Float32Array(value) : new Float32Array(value);
 };
 
-const normalizeSkin = (value: MeshRendererSkinConfig | null | undefined): MeshRendererSkinState | null => {
+const normalizeSkin = (
+    value: MeshRendererSkinConfig | null | undefined
+): MeshRendererSkinState | null => {
     if (!value || !Array.isArray(value.jointNodeIds) || value.jointNodeIds.length === 0) {
         return null;
     }
 
     const inverseBindMatrices = toFloat32Array(value.inverseBindMatrices);
-    if (
-        inverseBindMatrices &&
-        inverseBindMatrices.length !== value.jointNodeIds.length * 16
-    ) {
+    if (inverseBindMatrices && inverseBindMatrices.length !== value.jointNodeIds.length * 16) {
         throw new Error('Skin inverse bind matrices must contain 16 values per joint');
     }
 
     return Object.freeze({
-        jointNodeIds: Object.freeze(value.jointNodeIds.filter((entry): entry is string => typeof entry === 'string')),
-        ...(typeof value.skeletonNodeId === 'string' ? { skeletonNodeId: value.skeletonNodeId } : {}),
+        jointNodeIds: Object.freeze(
+            value.jointNodeIds.filter((entry): entry is string => typeof entry === 'string')
+        ),
+        ...(typeof value.skeletonNodeId === 'string'
+            ? { skeletonNodeId: value.skeletonNodeId }
+            : {}),
         ...(inverseBindMatrices ? { inverseBindMatrices } : {}),
     });
 };
@@ -120,6 +125,8 @@ export class MeshRenderer extends Component {
     private _resolvedJointTransforms: readonly (Transform | null)[] | null = null;
     private _resolvedJointWorldMatrices: ArrayLike<number>[] | null = null;
     private _skinPaletteCache: Float32Array | null = null;
+    private _jointResolutionFirstAttemptMs: number | null = null;
+    private _jointResolutionWarned = false;
 
     constructor(config: MeshRendererConfig = {}) {
         super();
@@ -138,7 +145,12 @@ export class MeshRenderer extends Component {
     }
 
     set meshId(value: string | null) {
+        if (this._meshId === value) {
+            return;
+        }
+
         this._meshId = value;
+        this.touch();
     }
 
     get materialId(): string | null {
@@ -146,7 +158,12 @@ export class MeshRenderer extends Component {
     }
 
     set materialId(value: string | null) {
+        if (this._materialId === value) {
+            return;
+        }
+
         this._materialId = value;
+        this.touch();
     }
 
     get visible(): boolean {
@@ -154,7 +171,12 @@ export class MeshRenderer extends Component {
     }
 
     set visible(value: boolean) {
+        if (this._visible === value) {
+            return;
+        }
+
         this._visible = value;
+        this.touch();
     }
 
     get renderOrder(): number {
@@ -162,7 +184,12 @@ export class MeshRenderer extends Component {
     }
 
     set renderOrder(value: number) {
+        if (this._renderOrder === value) {
+            return;
+        }
+
         this._renderOrder = value;
+        this.touch();
     }
 
     get passId(): string {
@@ -170,7 +197,12 @@ export class MeshRenderer extends Component {
     }
 
     set passId(value: string) {
+        if (this._passId === value) {
+            return;
+        }
+
         this._passId = value;
+        this.touch();
     }
 
     get receiveLighting(): boolean {
@@ -178,7 +210,12 @@ export class MeshRenderer extends Component {
     }
 
     set receiveLighting(value: boolean) {
+        if (this._receiveLighting === value) {
+            return;
+        }
+
         this._receiveLighting = value;
+        this.touch();
     }
 
     get morph(): MeshRendererMorphConfig | null {
@@ -197,6 +234,7 @@ export class MeshRenderer extends Component {
 
         this._morph = normalized;
         this._morphVersion += 1;
+        this.touch();
     }
 
     get morphWeights(): Float32Array | null {
@@ -238,6 +276,9 @@ export class MeshRenderer extends Component {
         this._resolvedJointTransforms = null;
         this._resolvedJointWorldMatrices = null;
         this._skinPaletteCache = null;
+        this._jointResolutionFirstAttemptMs = null;
+        this._jointResolutionWarned = false;
+        this.touch();
     }
 
     get hasSkin(): boolean {
@@ -265,7 +306,10 @@ export class MeshRenderer extends Component {
 
         const jointWorldMatrices = this._refreshResolvedJointWorldMatrices(jointTransforms);
 
-        if (!this._skinPaletteCache || this._skinPaletteCache.length !== jointTransforms.length * 16) {
+        if (
+            !this._skinPaletteCache ||
+            this._skinPaletteCache.length !== jointTransforms.length * 16
+        ) {
             this._skinPaletteCache = new Float32Array(jointTransforms.length * 16);
         }
 
@@ -279,15 +323,25 @@ export class MeshRenderer extends Component {
 
     setUniform(name: string, value: SceneUniformValue): this {
         this._uniformOverrides.set(name, value);
+        this.touch();
         return this;
     }
 
     deleteUniform(name: string): boolean {
-        return this._uniformOverrides.delete(name);
+        const removed = this._uniformOverrides.delete(name);
+        if (removed) {
+            this.touch();
+        }
+        return removed;
     }
 
     clearUniforms(): void {
+        if (this._uniformOverrides.size === 0) {
+            return;
+        }
+
         this._uniformOverrides.clear();
+        this.touch();
     }
 
     forEachUniformEntry(visitor: (name: string, value: SceneUniformValue) => void): void {
@@ -350,7 +404,11 @@ export class MeshRenderer extends Component {
 
         if (data.morph === null) {
             this.morph = null;
-        } else if (typeof data.morph === 'object' && data.morph !== null && Array.isArray(data.morph) === false) {
+        } else if (
+            typeof data.morph === 'object' &&
+            data.morph !== null &&
+            Array.isArray(data.morph) === false
+        ) {
             this.morph = {
                 ...(data.morph.weights instanceof Float32Array
                     ? { weights: data.morph.weights }
@@ -362,10 +420,16 @@ export class MeshRenderer extends Component {
 
         if (data.skin === null) {
             this.skin = null;
-        } else if (typeof data.skin === 'object' && data.skin !== null && Array.isArray(data.skin) === false) {
+        } else if (
+            typeof data.skin === 'object' &&
+            data.skin !== null &&
+            Array.isArray(data.skin) === false
+        ) {
             this.skin = {
                 jointNodeIds: Array.isArray(data.skin.jointNodeIds)
-                    ? data.skin.jointNodeIds.filter((entry: unknown): entry is string => typeof entry === 'string')
+                    ? data.skin.jointNodeIds.filter(
+                          (entry: unknown): entry is string => typeof entry === 'string'
+                      )
                     : [],
                 ...(typeof data.skin.skeletonNodeId === 'string'
                     ? { skeletonNodeId: data.skin.skeletonNodeId }
@@ -373,7 +437,11 @@ export class MeshRenderer extends Component {
                 ...(data.skin.inverseBindMatrices instanceof Float32Array
                     ? { inverseBindMatrices: data.skin.inverseBindMatrices }
                     : Array.isArray(data.skin.inverseBindMatrices)
-                      ? { inverseBindMatrices: new Float32Array(data.skin.inverseBindMatrices.map((entry: unknown) => Number(entry))) }
+                      ? {
+                            inverseBindMatrices: new Float32Array(
+                                data.skin.inverseBindMatrices.map((entry: unknown) => Number(entry))
+                            ),
+                        }
                       : {}),
             };
         }
@@ -384,6 +452,8 @@ export class MeshRenderer extends Component {
                 this._uniformOverrides.set(name, value as SceneUniformValue);
             }
         }
+
+        this.touch();
     }
 
     private _resolveJointTransforms(): readonly Transform[] | null {
@@ -401,7 +471,21 @@ export class MeshRenderer extends Component {
             return this._resolvedJointTransforms as readonly Transform[];
         }
 
-        const actors = (this.world as { getAllActors?: () => readonly { getComponent: (type: any) => any }[] } | undefined)?.getAllActors?.() ?? [];
+        if (this._jointResolutionFirstAttemptMs !== null) {
+            const elapsedMs = performance.now() - this._jointResolutionFirstAttemptMs;
+            if (elapsedMs >= 1000) {
+                return null;
+            }
+        } else {
+            this._jointResolutionFirstAttemptMs = performance.now();
+        }
+
+        const actors =
+            (
+                this.world as
+                    | { getAllActors?: () => readonly { getComponent: (type: any) => any }[] }
+                    | undefined
+            )?.getAllActors?.() ?? [];
         const transformsByNodeId = new Map<string, Transform>();
 
         for (const actor of actors) {
@@ -425,28 +509,31 @@ export class MeshRenderer extends Component {
         );
 
         if (this._resolvedJointTransforms.some((entry) => entry === null)) {
-            const missingIndices: number[] = [];
-            const missingNodeIds: string[] = [];
-            for (let i = 0; i < this._resolvedJointTransforms.length; i++) {
-                if (this._resolvedJointTransforms[i] === null) {
-                    missingIndices.push(i);
-                    missingNodeIds.push(this._skin.jointNodeIds[i]!);
+            if (!this._jointResolutionWarned) {
+                this._jointResolutionWarned = true;
+                const missingIndices: number[] = [];
+                const missingNodeIds: string[] = [];
+                for (let i = 0; i < this._resolvedJointTransforms.length; i++) {
+                    if (this._resolvedJointTransforms[i] === null) {
+                        missingIndices.push(i);
+                        missingNodeIds.push(this._skin.jointNodeIds[i]!);
+                    }
                 }
+                const availableNodeIds = [...transformsByNodeId.keys()].slice(0, 10);
+                console.warn(
+                    `[MeshRenderer] _resolveJointTransforms: ${missingIndices.length}/${this._skin.jointNodeIds.length} joint(s) not resolved. ` +
+                        `Missing: [${missingNodeIds.slice(0, 5).join(', ')}${missingNodeIds.length > 5 ? '...' : ''}]. ` +
+                        `Available: [${availableNodeIds.join(', ')}${transformsByNodeId.size > 10 ? '...' : ''}]. ` +
+                        `Skinning will be disabled for this mesh. instanceId=${instanceId ?? 'null'}.`
+                );
             }
-            const availableNodeIds = [...transformsByNodeId.keys()].slice(0, 10);
-            console.warn(
-                `[MeshRenderer] _resolveJointTransforms: ${missingIndices.length}/${this._skin.jointNodeIds.length} joint(s) not resolved. ` +
-                `Missing: [${missingNodeIds.slice(0, 5).join(', ')}${missingNodeIds.length > 5 ? '...' : ''}]. ` +
-                `Available: [${availableNodeIds.join(', ')}${transformsByNodeId.size > 10 ? '...' : ''}]. ` +
-                `Skinning will be disabled for this mesh. instanceId=${instanceId ?? 'null'}.`,
-            );
             this._resolvedJointWorldMatrices = null;
             return null;
         }
 
-        this._resolvedJointWorldMatrices = (this._resolvedJointTransforms as readonly Transform[]).map(
-            (transform) => transform.worldMatrix.data
-        );
+        this._resolvedJointWorldMatrices = (
+            this._resolvedJointTransforms as readonly Transform[]
+        ).map((transform) => transform.worldMatrix.data);
 
         return this._resolvedJointTransforms as readonly Transform[];
     }
@@ -454,7 +541,10 @@ export class MeshRenderer extends Component {
     private _refreshResolvedJointWorldMatrices(
         jointTransforms: readonly Transform[]
     ): readonly ArrayLike<number>[] {
-        if (!this._resolvedJointWorldMatrices || this._resolvedJointWorldMatrices.length !== jointTransforms.length) {
+        if (
+            !this._resolvedJointWorldMatrices ||
+            this._resolvedJointWorldMatrices.length !== jointTransforms.length
+        ) {
             this._resolvedJointWorldMatrices = new Array<ArrayLike<number>>(jointTransforms.length);
         }
 

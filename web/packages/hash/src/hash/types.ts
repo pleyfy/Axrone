@@ -1,4 +1,4 @@
-import type { BytesLike, Int64, UInt64 } from '../../types';
+import type { BytesLike, Int64, UInt64 } from '../types';
 
 declare const __hash32: unique symbol;
 declare const __hash64: unique symbol;

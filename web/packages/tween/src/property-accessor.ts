@@ -16,7 +16,9 @@ export const assignTweenPropertyValue = (existing: unknown, value: unknown): boo
         isTweenTypedArray(value) &&
         existing.length === value.length
     ) {
-        (existing as any).set(value as any);
+        // Narrowed by the guards above, but TypedArray union has no shared
+        // `.set` signature, so the call goes through this minimal interface.
+        (existing as { set(values: ArrayLike<number>): void }).set(value as ArrayLike<number>);
         return true;
     }
 
@@ -41,14 +43,16 @@ export const createTweenPropertyAccessor = (path: string): TweenPropertyAccessor
                 return undefined;
             }
 
-            let current = target as any;
+            // `unknown` in, dynamic walk out: each hop is reflectively read,
+            // so the cursor is a string-keyed record by construction.
+            let current: unknown = target;
 
             for (let index = 0; index < parts.length; index += 1) {
                 if (current === undefined || current === null) {
                     return undefined;
                 }
 
-                current = current[parts[index]];
+                current = (current as Record<string, unknown>)[parts[index]!];
             }
 
             return current;
