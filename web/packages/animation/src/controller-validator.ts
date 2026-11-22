@@ -7,12 +7,24 @@ import {
     type AnimationLayerInput,
     type AnimationStateMachineInput,
 } from './controller-builder';
+import {
+    ANIMATION_MAX_STATE_NESTING_DEPTH,
+    ANIMATION_NESTED_STATE_SEPARATOR,
+} from './state-machine';
 import { isFiniteNumber } from './internal';
 import type {
     AnimationConditionDefinition,
+    AnimationConditionMatch,
     AnimationIkLayerDefinition,
+    AnimationInterruptHandoff,
+    AnimationInterruptMode,
     AnimationLayerBlendMode,
+    AnimationLayerSyncMode,
+    AnimationStateBehaviourActionDefinition,
+    AnimationStateBehaviourDefinition,
+    AnimationStateBehaviourPhase,
     AnimationStateDefinition,
+    AnimationStateMachineDefinition,
     AnimationTransitionDefinition,
 } from './types';
 
@@ -29,6 +41,19 @@ export interface AnimationControllerGraphValidationOptions {
 }
 
 const VALID_LAYER_MODES: readonly AnimationLayerBlendMode[] = ['override', 'additive'] as const;
+const VALID_CONDITION_MATCH: readonly AnimationConditionMatch[] = ['all', 'any'] as const;
+const VALID_INTERRUPT_MODES: readonly AnimationInterruptMode[] = ['blocked', 'open', 'priorityGated'] as const;
+const VALID_INTERRUPT_HANDOFFS: readonly AnimationInterruptHandoff[] = ['auto', 'source', 'target'] as const;
+const VALID_LAYER_SYNC_MODES: readonly AnimationLayerSyncMode[] = [
+    'stateAndTime',
+    'stateOnly',
+    'timeOnly',
+] as const;
+const VALID_BEHAVIOUR_PHASES: readonly AnimationStateBehaviourPhase[] = [
+    'enter',
+    'update',
+    'exit',
+] as const;
 
 const pushDiagnostic = (
     diagnostics: AnimationControllerGraphDiagnostic[],
@@ -129,6 +154,55 @@ const validateTransition = (
             `${path}.priority`
         );
     }
+    if (
+        transition.conditionMatch !== undefined &&
+        VALID_CONDITION_MATCH.includes(transition.conditionMatch) === false
+    ) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.transition.conditionMatch.invalid',
+            `Unsupported transition condition match '${String(transition.conditionMatch)}'`,
+            `${path}.conditionMatch`
+        );
+    }
+    if (
+        transition.interruptMode !== undefined &&
+        VALID_INTERRUPT_MODES.includes(transition.interruptMode) === false
+    ) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.transition.interruptMode.invalid',
+            `Unsupported transition interrupt mode '${String(transition.interruptMode)}'`,
+            `${path}.interruptMode`
+        );
+    }
+    if (
+        transition.interruptHandoff !== undefined &&
+        VALID_INTERRUPT_HANDOFFS.includes(transition.interruptHandoff) === false
+    ) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.transition.interruptHandoff.invalid',
+            `Unsupported transition interrupt handoff '${String(transition.interruptHandoff)}'`,
+            `${path}.interruptHandoff`
+        );
+    }
+    if (transition.fixedDuration !== undefined && typeof transition.fixedDuration !== 'boolean') {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.transition.fixedDuration.invalid',
+            'Transition fixedDuration must be a boolean',
+            `${path}.fixedDuration`
+        );
+    }
+    if (transition.canInterrupt !== undefined && typeof transition.canInterrupt !== 'boolean') {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.transition.canInterrupt.invalid',
+            'Transition canInterrupt must be a boolean',
+            `${path}.canInterrupt`
+        );
+    }
     for (let index = 0; index < (transition.conditions?.length ?? 0); index += 1) {
         validateCondition(
             transition.conditions![index]!,
@@ -139,18 +213,171 @@ const validateTransition = (
     }
 };
 
+const validateBehaviourAction = (
+    action: AnimationStateBehaviourActionDefinition,
+    diagnostics: AnimationControllerGraphDiagnostic[],
+    options: AnimationControllerGraphValidationOptions,
+    path: string
+): void => {
+    if (!action) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.state.behaviour.action.empty',
+            'State behaviour actions may not be null',
+            path
+        );
+        return;
+    }
+    switch (action.kind) {
+        case 'writeParameter':
+            if (typeof action.value !== 'number' && typeof action.value !== 'boolean') {
+                pushDiagnostic(
+                    diagnostics,
+                    'animation.controller.state.behaviour.action.value.invalid',
+                    "A 'writeParameter' action requires a number or boolean value",
+                    `${path}.value`
+                );
+            }
+            break;
+        case 'pulseTrigger':
+            break;
+        case 'emitSignal':
+            if (typeof action.signal !== 'string' || action.signal.length === 0) {
+                pushDiagnostic(
+                    diagnostics,
+                    'animation.controller.state.behaviour.action.signal.empty',
+                    "An 'emitSignal' action requires a non-empty signal",
+                    `${path}.signal`
+                );
+            }
+            break;
+        default:
+            pushDiagnostic(
+                diagnostics,
+                'animation.controller.state.behaviour.action.unsupported',
+                `Unsupported state behaviour action '${String((action as { kind?: unknown }).kind)}'`,
+                path
+            );
+            return;
+    }
+    if (
+        action.kind !== 'emitSignal' &&
+        options.knownParameters &&
+        options.knownParameters.includes(String(action.parameter)) === false
+    ) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.parameter.unknown',
+            `Unknown parameter '${action.parameter}'`,
+            `${path}.parameter`
+        );
+    }
+};
+
+const validateStateBehaviour = (
+    behaviour: AnimationStateBehaviourDefinition,
+    diagnostics: AnimationControllerGraphDiagnostic[],
+    options: AnimationControllerGraphValidationOptions,
+    path: string
+): void => {
+    if (!behaviour) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.state.behaviour.empty',
+            'State behaviours require a definition object',
+            path
+        );
+        return;
+    }
+    if (VALID_BEHAVIOUR_PHASES.includes(behaviour.phase) === false) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.state.behaviour.phase.invalid',
+            `Unsupported state behaviour phase '${String(behaviour.phase)}'`,
+            `${path}.phase`
+        );
+    }
+    if (!Array.isArray(behaviour.actions) || behaviour.actions.length === 0) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.state.behaviour.actions.empty',
+            'State behaviours require at least one action',
+            `${path}.actions`
+        );
+    }
+    if (
+        behaviour.conditionMatch !== undefined &&
+        VALID_CONDITION_MATCH.includes(behaviour.conditionMatch) === false
+    ) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.state.behaviour.conditionMatch.invalid',
+            `Unsupported state behaviour condition match '${String(behaviour.conditionMatch)}'`,
+            `${path}.conditionMatch`
+        );
+    }
+    if (
+        behaviour.intervalSeconds !== undefined &&
+        (!isFiniteNumber(behaviour.intervalSeconds) || behaviour.intervalSeconds < 0)
+    ) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.state.behaviour.interval.invalid',
+            'State behaviour intervalSeconds must be a finite non-negative number',
+            `${path}.intervalSeconds`
+        );
+    }
+    for (let index = 0; index < (behaviour.actions?.length ?? 0); index += 1) {
+        validateBehaviourAction(
+            behaviour.actions![index]!,
+            diagnostics,
+            options,
+            `${path}.actions[${index}]`
+        );
+    }
+    for (let index = 0; index < (behaviour.conditions?.length ?? 0); index += 1) {
+        validateCondition(
+            behaviour.conditions![index]!,
+            diagnostics,
+            options,
+            `${path}.conditions[${index}]`
+        );
+    }
+};
+
+const machineHasChildMachine = (machine: AnimationStateMachineDefinition): boolean => {
+    for (let index = 0; index < (machine?.states?.length ?? 0); index += 1) {
+        const state = machine.states![index]!;
+        if (state?.childMachine) {
+            return true;
+        }
+    }
+    return false;
+};
+
 const validateState = (
     state: AnimationStateDefinition,
     diagnostics: AnimationControllerGraphDiagnostic[],
     options: AnimationControllerGraphValidationOptions,
     knownStates: ReadonlySet<string>,
-    path: string
+    path: string,
+    outerKnownStates: ReadonlySet<string>,
+    nested: boolean,
+    depth: number
 ): void => {
     if (!String(state.id)) {
         pushDiagnostic(
             diagnostics,
             'animation.controller.state.id.empty',
             'States require a non-empty id',
+            `${path}.id`
+        );
+    }
+    if (nested && String(state.id).indexOf(ANIMATION_NESTED_STATE_SEPARATOR) >= 0) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.state.id.separator',
+            `State ids may not contain '${ANIMATION_NESTED_STATE_SEPARATOR}' in a nested machine`,
             `${path}.id`
         );
     }
@@ -162,18 +389,58 @@ const validateState = (
             `${path}.speed`
         );
     }
-    const motionDiagnostics = validateAnimationMotionDefinition(state.motion, {
-        knownClipIds: options.knownClipIds,
-        knownParameters: options.knownParameters,
-    });
-    for (let index = 0; index < motionDiagnostics.length; index += 1) {
-        const diagnostic = motionDiagnostics[index]!;
+
+    const hasChildMachine = state.childMachine !== undefined;
+    if (hasChildMachine) {
+        if (state.motion !== undefined) {
+            pushDiagnostic(
+                diagnostics,
+                'animation.controller.state.source.conflict',
+                `State '${state.id}' declares both a motion and a child machine`,
+                `${path}.childMachine`
+            );
+        }
+        if (depth >= ANIMATION_MAX_STATE_NESTING_DEPTH) {
+            pushDiagnostic(
+                diagnostics,
+                'animation.controller.state.nesting.depth',
+                `State nesting may not exceed ${ANIMATION_MAX_STATE_NESTING_DEPTH} levels`,
+                `${path}.childMachine`
+            );
+        } else {
+            collectMachineDiagnostics(
+                state.childMachine,
+                diagnostics,
+                options,
+                mergeVisible(knownStates, outerKnownStates),
+                `${path}.childMachine`,
+                depth + 1,
+                true
+            );
+        }
+    } else if (state.motion === undefined) {
         pushDiagnostic(
             diagnostics,
-            diagnostic.code.replace('animation.blendGraph', 'animation.controller.motion'),
-            diagnostic.message,
-            `${path}.motion${diagnostic.path === 'motion' ? '' : diagnostic.path.slice('motion'.length)}`
+            'animation.controller.state.motion.missing',
+            `State '${state.id}' requires a motion or a child machine`,
+            `${path}.motion`
         );
+    }
+
+    if (state.motion !== undefined) {
+        const motionDiagnostics = validateAnimationMotionDefinition(state.motion, {
+            knownClipIds: options.knownClipIds,
+            knownParameters: options.knownParameters,
+        });
+        for (let index = 0; index < motionDiagnostics.length; index += 1) {
+            const diagnostic = motionDiagnostics[index]!;
+            pushDiagnostic(
+                diagnostics,
+                diagnostic.code.replace('animation.blendGraph', 'animation.controller.motion'),
+                diagnostic.message,
+                `${path}.motion${diagnostic.path === 'motion' ? '' : diagnostic.path.slice('motion'.length)}`
+            );
+        }
     }
     for (let index = 0; index < (state.transitions?.length ?? 0); index += 1) {
         validateTransition(
@@ -184,6 +451,102 @@ const validateState = (
             `${path}.transitions[${index}]`
         );
     }
+    for (let index = 0; index < (state.behaviours?.length ?? 0); index += 1) {
+        validateStateBehaviour(
+            state.behaviours![index]!,
+            diagnostics,
+            options,
+            `${path}.behaviours[${index}]`
+        );
+    }
+};
+
+const mergeVisible = (
+    own: ReadonlySet<string>,
+    outer: ReadonlySet<string>
+): ReadonlySet<string> => {
+    if (outer.size === 0) {
+        return own;
+    }
+    const merged = new Set<string>(outer);
+    own.forEach((id) => merged.add(id));
+    return merged;
+};
+
+const collectMachineDiagnostics = (
+    machine: AnimationStateMachineDefinition,
+    diagnostics: AnimationControllerGraphDiagnostic[],
+    options: AnimationControllerGraphValidationOptions,
+    outerKnownStates: ReadonlySet<string>,
+    path: string,
+    depth: number,
+    nested: boolean
+): void => {
+    if (!machine || !Array.isArray(machine.states)) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.states.missing',
+            'State machines require a state list',
+            `${path}.states`
+        );
+        return;
+    }
+    if (machine.states.length === 0) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.states.empty',
+            'State machines require at least one state',
+            `${path}.states`
+        );
+    }
+
+    const ownStates = new Set<string>();
+    for (let index = 0; index < machine.states.length; index += 1) {
+        const state = machine.states[index]!;
+        if (!state || ownStates.has(String(state.id))) {
+            pushDiagnostic(
+                diagnostics,
+                'animation.controller.state.duplicate',
+                `Duplicate state '${String(state?.id)}'`,
+                `${path}.states[${index}].id`
+            );
+            continue;
+        }
+        ownStates.add(String(state.id));
+    }
+    const knownStates = mergeVisible(ownStates, outerKnownStates);
+
+    if (knownStates.has(String(machine.entryState)) === false) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.state.entry.unknown',
+            `Unknown entry state '${machine.entryState}'`,
+            `${path}.entryState`
+        );
+    }
+
+    for (let index = 0; index < machine.states.length; index += 1) {
+        validateState(
+            machine.states[index]!,
+            diagnostics,
+            options,
+            knownStates,
+            `${path}.states[${index}]`,
+            outerKnownStates,
+            nested,
+            depth
+        );
+    }
+
+    for (let index = 0; index < (machine.anyStateTransitions?.length ?? 0); index += 1) {
+        validateTransition(
+            machine.anyStateTransitions![index]!,
+            diagnostics,
+            options,
+            knownStates,
+            `${path}.anyStateTransitions[${index}]`
+        );
+    }
 };
 
 export const validateAnimationStateMachineDefinition = (
@@ -192,61 +555,19 @@ export const validateAnimationStateMachineDefinition = (
 ): readonly AnimationControllerGraphDiagnostic[] => {
     const diagnostics: AnimationControllerGraphDiagnostic[] = [];
     const resolved = buildAnimationStateMachineDefinition(stateMachine);
-
-    if (resolved.states.length === 0) {
-        pushDiagnostic(
-            diagnostics,
-            'animation.controller.states.empty',
-            'State machines require at least one state',
-            'stateMachine.states'
-        );
-    }
-
-    const knownStates = new Set<string>();
-    for (let index = 0; index < resolved.states.length; index += 1) {
-        const state = resolved.states[index]!;
-        if (knownStates.has(String(state.id))) {
-            pushDiagnostic(
-                diagnostics,
-                'animation.controller.state.duplicate',
-                `Duplicate state '${state.id}'`,
-                `stateMachine.states[${index}].id`
-            );
-        }
-        knownStates.add(String(state.id));
-    }
-
-    if (knownStates.has(String(resolved.entryState)) === false) {
-        pushDiagnostic(
-            diagnostics,
-            'animation.controller.state.entry.unknown',
-            `Unknown entry state '${resolved.entryState}'`,
-            'stateMachine.entryState'
-        );
-    }
-
-    for (let index = 0; index < resolved.states.length; index += 1) {
-        validateState(
-            resolved.states[index]!,
-            diagnostics,
-            options,
-            knownStates,
-            `stateMachine.states[${index}]`
-        );
-    }
-
-    for (let index = 0; index < (resolved.anyStateTransitions?.length ?? 0); index += 1) {
-        validateTransition(
-            resolved.anyStateTransitions![index]!,
-            diagnostics,
-            options,
-            knownStates,
-            `stateMachine.anyStateTransitions[${index}]`
-        );
-    }
-
+    collectMachineDiagnostics(
+        resolved,
+        diagnostics,
+        options,
+        EMPTY_STATE_NAMES,
+        'stateMachine',
+        0,
+        machineHasChildMachine(resolved)
+    );
     return Object.freeze(diagnostics);
 };
+
+const EMPTY_STATE_NAMES: ReadonlySet<string> = new Set<string>();
 
 const validateIkLayer = (
     layer: AnimationIkLayerDefinition,
@@ -358,6 +679,36 @@ export const validateAnimationLayerDefinition = (
                 `layer.boneMask[${index}]`
             );
         }
+    }
+    if (
+        resolved.syncMode !== undefined &&
+        VALID_LAYER_SYNC_MODES.includes(resolved.syncMode) === false
+    ) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.layer.syncMode.invalid',
+            `Unsupported layer sync mode '${String(resolved.syncMode)}'`,
+            'layer.syncMode'
+        );
+    }
+    if (resolved.syncTimeOffset !== undefined && !isFiniteNumber(resolved.syncTimeOffset)) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.layer.syncTimeOffset.invalid',
+            'Layer syncTimeOffset must be finite',
+            'layer.syncTimeOffset'
+        );
+    }
+    if (
+        resolved.syncSourceLayerId === undefined &&
+        (resolved.syncMode !== undefined || resolved.syncTimeOffset !== undefined)
+    ) {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.layer.sync.source.missing',
+            'Sync options require a syncSourceLayerId to be meaningful',
+            'layer.syncMode'
+        );
     }
 
     diagnostics.push(
@@ -489,6 +840,60 @@ export const validateAnimationControllerDefinition = (
             )
         );
     }
+
+    const layerIndexById = new Map<string, number>();
+    for (let index = 0; index < resolved.layers.length; index += 1) {
+        layerIndexById.set(String(resolved.layers[index]!.id), index);
+    }
+    const syncEdges = new Map<string, string>();
+    for (let index = 0; index < resolved.layers.length; index += 1) {
+        const layer = resolved.layers[index]!;
+        if (layer.syncSourceLayerId === undefined) {
+            continue;
+        }
+        const sourceId = String(layer.syncSourceLayerId);
+        const layerId = String(layer.id);
+        if (sourceId === layerId) {
+            pushDiagnostic(
+                diagnostics,
+                'animation.controller.layer.sync.self',
+                `Layer '${layerId}' cannot sync to itself`,
+                `controller.layers[${index}].syncSourceLayerId`
+            );
+            continue;
+        }
+        if (seenLayers.has(sourceId) === false) {
+            pushDiagnostic(
+                diagnostics,
+                'animation.controller.layer.sync.unknown',
+                `Layer '${layerId}' syncs to unknown layer '${sourceId}'`,
+                `controller.layers[${index}].syncSourceLayerId`
+            );
+            continue;
+        }
+        syncEdges.set(layerId, sourceId);
+    }
+    const cyclicLayers = new Set<string>();
+    syncEdges.forEach((_sourceId, startId) => {
+        const walked = new Set<string>();
+        let cursor: string | undefined = startId;
+        while (cursor !== undefined) {
+            if (walked.has(cursor)) {
+                walked.forEach((member) => cyclicLayers.add(member));
+                return;
+            }
+            walked.add(cursor);
+            cursor = syncEdges.get(cursor);
+        }
+    });
+    cyclicLayers.forEach((layerId) => {
+        pushDiagnostic(
+            diagnostics,
+            'animation.controller.layer.sync.cycle',
+            `Layer '${layerId}' takes part in a synchronization cycle`,
+            `controller.layers[${layerIndexById.get(layerId) ?? 0}].syncSourceLayerId`
+        );
+    });
 
     if (
         resolved.rootMotion &&
