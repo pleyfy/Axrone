@@ -7,6 +7,8 @@ import type {
     AnimationParameterDefinition,
     AnimationRigDefinition,
     AnimationRootMotionDefinition,
+    AnimationStateBehaviourActionDefinition,
+    AnimationStateBehaviourDefinition,
 } from './types';
 
 export const cloneCondition = (condition: AnimationConditionDefinition): AnimationConditionDefinition => {
@@ -77,6 +79,43 @@ export const cloneParameterDefinition = (
         name: parameter.name,
         kind: parameter.kind,
         ...(parameter.defaultValue !== undefined ? { defaultValue: parameter.defaultValue } : {}),
+    });
+
+export const cloneBehaviourAction = (
+    action: AnimationStateBehaviourActionDefinition
+): AnimationStateBehaviourActionDefinition => {
+    switch (action.kind) {
+        case 'writeParameter':
+            return Object.freeze({
+                kind: 'writeParameter',
+                parameter: action.parameter,
+                value: action.value,
+            });
+        case 'pulseTrigger':
+            return Object.freeze({ kind: 'pulseTrigger', parameter: action.parameter });
+        case 'emitSignal':
+            return Object.freeze({
+                kind: 'emitSignal',
+                signal: action.signal,
+                ...(action.payload ? { payload: Object.freeze({ ...action.payload }) } : {}),
+            });
+        default:
+            return assertNever(action, 'Unsupported animation state behaviour action');
+    }
+};
+
+export const cloneStateBehaviour = (
+    behaviour: AnimationStateBehaviourDefinition
+): AnimationStateBehaviourDefinition =>
+    Object.freeze({
+        ...(typeof behaviour.id === 'string' ? { id: behaviour.id } : {}),
+        phase: behaviour.phase,
+        actions: Object.freeze((behaviour.actions ?? []).map(cloneBehaviourAction)),
+        ...(behaviour.conditionMatch !== undefined ? { conditionMatch: behaviour.conditionMatch } : {}),
+        ...(behaviour.conditions
+            ? { conditions: Object.freeze(behaviour.conditions.map(cloneCondition)) }
+            : {}),
+        ...(behaviour.intervalSeconds !== undefined ? { intervalSeconds: behaviour.intervalSeconds } : {}),
     });
 
 export const cloneRootMotionDefinition = (
