@@ -49,14 +49,14 @@ public sealed class SleepWakeChain2DTests : IDisposable
         return ground;
     }
 
-    private static BodyId AddBox(World world, Vec2 center, bool allowSleep = true, BodyType type = BodyType.Dynamic)
+    private static BodyId AddBox(World world, Vec2 center, float half = BoxHalf, bool allowSleep = true, BodyType type = BodyType.Dynamic)
     {
         BodyId body = world.Bodies.Create(new BodyDef { Type = type, Position = center, AllowSleep = allowSleep });
         world.Shapes.AttachPolygon(
             world.Bodies,
             world.Broadphase,
             body,
-            new Vec2[] { new(-BoxHalf, -BoxHalf), new(BoxHalf, -BoxHalf), new(BoxHalf, BoxHalf), new(-BoxHalf, BoxHalf) },
+            new Vec2[] { new(-half, -half), new(half, -half), new(half, half), new(-half, half) },
             material: new PhysicsMaterial(0.7f, 0.0f));
         return body;
     }
@@ -67,7 +67,7 @@ public sealed class SleepWakeChain2DTests : IDisposable
         BodyId[] boxes = new BodyId[count];
         for (int i = 0; i < count; i++)
         {
-            boxes[i] = AddBox(_world, new Vec2(x, BoxHalf + (2.0f * BoxHalf) * i), allowSleep);
+            boxes[i] = AddBox(_world, new Vec2(x, BoxHalf + (2.0f * BoxHalf) * i), allowSleep: allowSleep);
         }
 
         return boxes;
@@ -323,5 +323,44 @@ public sealed class SleepWakeChain2DTests : IDisposable
             1,
             WakeWindow,
             $"the stack the wall actually touched must wake from the withdrawal; {Row(first, sleepStep)}");
+    }
+
+    /// <summary>
+    /// The propagation reaches dynamic bodies and nothing else. A script-driven
+    /// platform that is parked and asleep sits inside the volume the withdrawn
+    /// support sweeps, and waking it would hand the world motion its owner put
+    /// to sleep on purpose; the scenery immunity rule is the same one the solver
+    /// rows and the island pass already hold.
+    /// </summary>
+    [Fact]
+    public void RelocationSweep_WakesTheDynamicNeighbourAndLeavesASleepingPlatformAsleep()
+    {
+        AddGround(_world, halfWidth: 40.0f);
+        BodyId box = AddBox(_world, new Vec2(0.0f, BoxHalf));
+        BodyId platform = AddBox(_world, new Vec2(1.0f, BoxHalf), type: BodyType.Kinematic);
+        BodyId wall = AddBox(_world, new Vec2(0.5f, BoxHalf), half: 0.4f, type: BodyType.Static);
+        int sleepStep = SleepStepAll([box], SleepLimit);
+        sleepStep.Should().BeGreaterThan(0, $"precondition: the box never slept; {Row([box], sleepStep)}");
+        _world.Bodies.SetAwake(platform, awake: false);
+        _world.Bodies.IsAwake(platform).Should().BeFalse("the platform has to start the row asleep for it to mean anything");
+
+        Vec2 platformBefore = _world.Bodies.GetTransform(platform).Position;
+        _world.Bodies.SetTransform(wall, new Vec2(5.0f, BoxHalf), 0.0f);
+        int boxWake = -1;
+        for (int step = 1; step <= 30; step++)
+        {
+            _world.Step(Dt);
+            if (boxWake < 0 && _world.Bodies.IsAwake(box))
+            {
+                boxWake = step;
+            }
+
+            _world.Bodies.IsAwake(platform).Should().BeFalse(
+                $"the withdrawal sweep woke the parked kinematic at step {step}; the propagation is allowed to write the awake flag only onto dynamic bodies; " +
+                $"boxWake={boxWake} sleepStep={sleepStep}");
+        }
+
+        _world.Bodies.GetTransform(platform).Position.Should().Be(platformBefore, "a kinematic left asleep must not be dragged by the sweep that passed through it");
+        boxWake.Should().BeInRange(1, WakeWindow, $"the dynamic neighbour of the withdrawn wall has to wake; sleepStep={sleepStep}");
     }
 }
