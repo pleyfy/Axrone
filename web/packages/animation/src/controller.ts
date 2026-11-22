@@ -20,6 +20,7 @@ import {
     compileStateMachine,
     createLayerRuntime,
     crossFadeLayerState,
+    dispatchLayerStateBehaviours,
     evaluateLayerRuntime,
     extractLayerRootDelta,
     forceLayerState,
@@ -38,8 +39,10 @@ import type {
     AnimationControllerProfile,
     AnimationCurveBindingDefinition,
     AnimationLayerBlendMode,
+    AnimationLayerSyncMode,
     AnimationParameterDefinition,
     AnimationRootMotionDelta,
+    AnimationStateSignal,
 } from './types';
 
 interface AnimationCompiledLayer {
@@ -49,6 +52,8 @@ interface AnimationCompiledLayer {
     readonly mask: AnimationMask | null;
     readonly ikLayers: readonly AnimationIkLayer[];
     readonly syncSourceIndex: number;
+    readonly syncMode: AnimationLayerSyncMode;
+    readonly syncTimeOffset: number;
 }
 
 export interface AnimationControllerUpdateResult {
@@ -142,6 +147,9 @@ export class AnimationController<
     private _layers: AnimationCompiledLayer[];
     private _layerRuntimes: AnimationLayerRuntime[];
     private _layerWeights: number[];
+    private _layerSyncOrder: number[];
+    private readonly _stateSignalScratch: AnimationStateSignal[] = [];
+    private _stateSignals: readonly AnimationStateSignal[] = [];
     private readonly _evaluationContext: AnimationMotionEvaluationContext;
     private readonly _rootMotionTranslation = new Float32Array(3);
     private readonly _rootMotionRotation = new Float32Array([0, 0, 0, 1]);
@@ -208,6 +216,11 @@ export class AnimationController<
                     (layer.ikLayers ?? []).map((ikLayer) => new AnimationIkLayer(this.rig, ikLayer))
                 ),
                 syncSourceIndex: -1,
+                syncMode: layer.syncMode ?? 'stateAndTime',
+                syncTimeOffset:
+                    typeof layer.syncTimeOffset === 'number' && Number.isFinite(layer.syncTimeOffset)
+                        ? layer.syncTimeOffset
+                        : 0,
             } satisfies AnimationCompiledLayer);
         });
         if (this._layers.length === 0) {
@@ -235,6 +248,7 @@ export class AnimationController<
             return Object.freeze({ ...layer, syncSourceIndex });
         });
         this._layerRuntimes = this._layers.map((layer) => createLayerRuntime(layer.machine));
+        this._layerSyncOrder = this._buildLayerSyncOrder();
         this._layerWeights = this._layers.map((_, layerIndex) => definition.layers[layerIndex]?.weight ?? 1);
         this._rootMotionConfig = definition.rootMotion ?? null;
         this._rootMotionBoneIndex =
@@ -263,6 +277,11 @@ export class AnimationController<
 
     get activeClips(): readonly AnimationControllerClipActivity[] {
         return this._activeClips;
+    }
+
+    /** Signals raised by state behaviours during the last update. */
+    get stateSignals(): readonly AnimationStateSignal[] {
+        return this._stateSignals;
     }
 
     get profile(): AnimationControllerProfile {
@@ -320,6 +339,8 @@ export class AnimationController<
             mask,
             ikLayers: Object.freeze([]) as readonly AnimationIkLayer[],
             syncSourceIndex: -1,
+            syncMode: 'stateAndTime' as const,
+            syncTimeOffset: 0,
         });
 
         this._layers.push(layer);
@@ -360,16 +381,22 @@ export class AnimationController<
         this._previousFrame.pose.copyFrom(this.currentFrame.pose);
         this._previousFrame.curves.copyFrom(this.currentFrame.curves);
         this._advanceMontages(Math.max(0, deltaSeconds));
-        for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
+        if (this._layerSyncOrder.length !== this._layers.length) {
+            this._layerSyncOrder = this._buildLayerSyncOrder();
+        }
+        for (let order = 0; order < this._layerSyncOrder.length; order += 1) {
+            const layerIndex = this._layerSyncOrder[order]!;
             const layer = this._layers[layerIndex]!;
-            if (layer.syncSourceIndex >= 0) {
-                syncLayerRuntime(
-                    layer.machine,
-                    this._layerRuntimes[layerIndex]!,
-                    this._layers[layer.syncSourceIndex]!.machine,
-                    this._layerRuntimes[layer.syncSourceIndex]!
-                );
+            if (layer.syncSourceIndex < 0) {
+                continue;
             }
+            syncLayerRuntime(
+                layer.machine,
+                this._layerRuntimes[layerIndex]!,
+                this._layers[layer.syncSourceIndex]!.machine,
+                this._layerRuntimes[layer.syncSourceIndex]!,
+                { mode: layer.syncMode, timeOffset: layer.syncTimeOffset }
+            );
         }
         for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
             updateLayerRuntime(
@@ -379,6 +406,23 @@ export class AnimationController<
                 Math.max(0, deltaSeconds)
             );
         }
+        const signals = this._stateSignalScratch;
+        signals.length = 0;
+        for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
+            const layer = this._layers[layerIndex]!;
+            if (!layer.machine.hasStateBehaviours) {
+                continue;
+            }
+            dispatchLayerStateBehaviours(
+                layer.machine,
+                this._layerRuntimes[layerIndex]!,
+                this.parameters,
+                layer.id,
+                Math.max(0, deltaSeconds),
+                signals
+            );
+        }
+        this._stateSignals = signals;
         this._composeCurrentFrame(true);
         for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
             commitLayerRuntime(this._layerRuntimes[layerIndex]!);
@@ -549,6 +593,30 @@ export class AnimationController<
             write += 1;
         }
         this._montages.length = write;
+    }
+
+    /**
+     * Layers ordered so a sync source is always mirrored before the layers that
+     * borrow from it. Cycles, which the validator rejects, fall back to declaration order.
+     */
+    private _buildLayerSyncOrder(): number[] {
+        const order: number[] = [];
+        const visited = new Uint8Array(this._layers.length);
+        const visit = (layerIndex: number): void => {
+            if (visited[layerIndex] === 1) {
+                return;
+            }
+            visited[layerIndex] = 1;
+            const sourceIndex = this._layers[layerIndex]?.syncSourceIndex ?? -1;
+            if (sourceIndex >= 0 && sourceIndex !== layerIndex) {
+                visit(sourceIndex);
+            }
+            order.push(layerIndex);
+        };
+        for (let layerIndex = 0; layerIndex < this._layers.length; layerIndex += 1) {
+            visit(layerIndex);
+        }
+        return order;
     }
 
     private _removeLayer(layerId: string): void {
