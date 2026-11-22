@@ -18,6 +18,9 @@ public sealed class BodyStore
     private int _highWater;
     private int _count;
     private int _capacity;
+    private int[] _relocatedSlots;
+    private bool[] _relocationMarked;
+    private int _relocatedCount;
 
     /// <summary>Creates a store with room for sixteen bodies.</summary>
     public BodyStore()
@@ -25,9 +28,12 @@ public sealed class BodyStore
         _capacity = InitialCapacity;
         _bodies = new BodyState[_capacity];
         _freeStack = new int[_capacity];
+        _relocatedSlots = new int[_capacity];
+        _relocationMarked = new bool[_capacity];
         _freeCount = 0;
         _highWater = 0;
         _count = 0;
+        _relocatedCount = 0;
     }
 
     /// <summary>Live bodies.</summary>
@@ -100,6 +106,7 @@ public sealed class BodyStore
     public void Destroy(BodyId id)
     {
         int slot = Validate(id);
+        _relocationMarked[slot] = false;
         _bodies[slot] = default;
         _freeStack[_freeCount++] = slot;
         _count--;
@@ -121,14 +128,58 @@ public sealed class BodyStore
         return new RigidTransform3D(body.Position, body.Rotation);
     }
 
-    /// <summary>Moves a body without touching its velocities; wakes it.</summary>
+    /// <summary>
+    /// Moves a body without touching its velocities; wakes it. A static or
+    /// kinematic placement is recorded as a pending relocation so the owning
+    /// world can refresh its broadphase nodes and wake the bodies that were
+    /// resting on it before the next pair collection.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SetTransform(BodyId id, Vec3 position, Quat rotation)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         body.Position = position;
         body.Rotation = rotation;
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        if (body.Type != BodyType.Dynamic)
+        {
+            MarkRelocated(slot);
+        }
+    }
+
+    /// <summary>Queues an immovable body whose frame was placed outside the integrator.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void MarkRelocated(int slot)
+    {
+        if (_relocationMarked[slot])
+        {
+            return;
+        }
+
+        _relocationMarked[slot] = true;
+        _relocatedSlots[_relocatedCount++] = slot;
+    }
+
+    /// <summary>Slots placed by <see cref="SetTransform"/> since the world last drained them.</summary>
+    internal ReadOnlySpan<int> RelocatedSlots => _relocatedSlots.AsSpan(0, _relocatedCount);
+
+    /// <summary>Pending relocation entries.</summary>
+    internal int RelocationCount
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _relocatedCount;
+    }
+
+    /// <summary>Empties the pending relocation queue.</summary>
+    internal void ClearRelocations()
+    {
+        for (int i = 0; i < _relocatedCount; i++)
+        {
+            _relocationMarked[_relocatedSlots[i]] = false;
+        }
+
+        _relocatedCount = 0;
     }
 
     /// <summary>Reads the linear velocity of a body.</summary>
@@ -586,6 +637,10 @@ public sealed class BodyStore
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int SlotOf(BodyId id) => id.ToIndex();
 
+    /// <summary>Type stored in a raw slot without validation; the caller holds the liveness invariant.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal BodyType SlotType(int slot) => _bodies[slot].Type;
+
     /// <summary>Slot capacity for internal iteration.</summary>
     internal int SlotCapacity
     {
@@ -619,6 +674,8 @@ public sealed class BodyStore
         int newCapacity = _capacity * 2;
         Array.Resize(ref _bodies, newCapacity);
         Array.Resize(ref _freeStack, newCapacity);
+        Array.Resize(ref _relocatedSlots, newCapacity);
+        Array.Resize(ref _relocationMarked, newCapacity);
         _capacity = newCapacity;
     }
 
