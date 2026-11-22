@@ -1,4 +1,4 @@
-namespace Axrone.Physics2D;
+﻿namespace Axrone.Physics2D;
 
 using System.Buffers;
 using System.Threading;
@@ -136,7 +136,7 @@ public readonly struct WorldDef
 
             field = value;
         }
-    } = 8;
+    } = PhysicsConstants.MaxSubSteps;
 
     /// <summary>Solver capabilities; clearing <see cref="SolverFlags.SleepingBodies"/> skips the sleep pass.</summary>
     public SolverFlags Flags { get; init; } = SolverFlags.Default;
@@ -343,6 +343,9 @@ public sealed class World : IDisposable
 
     /// <summary>CCD substep cap per step.</summary>
     public int MaxCcdSubsteps { get; set; }
+
+    /// <summary>Slices the last step actually ran; one when nothing forced a subdivision.</summary>
+    internal int LastCcdSlices { get; private set; } = 1;
 
     /// <summary>Solver capabilities.</summary>
     public SolverFlags Flags { get; set; }
@@ -935,6 +938,7 @@ public sealed class World : IDisposable
         }
 
         int slices = CcdSliceCount(dt);
+        LastCcdSlices = slices;
         float h = dt / slices;
 
         _eventCount = 0;
@@ -960,6 +964,7 @@ public sealed class World : IDisposable
         }
 
         int slices = CcdSliceCount(dt);
+        LastCcdSlices = slices;
         float h = dt / slices;
 
         _eventCount = 0;
