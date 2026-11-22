@@ -1064,7 +1064,11 @@ public sealed class World : IDisposable
         return share + (slice < (iterations - (share * slices)) ? 1 : 0);
     }
 
-    /// <summary>Integrates one slice inside the translation and rotation budget the step owns.</summary>
+    /// <summary>
+    /// Integrates one slice inside the translation and rotation budget the step
+    /// owns, then drains the relocations that integration produced while the
+    /// broadphase still holds the pre-move bounds.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void IntegrateSlicePositions(float h, int slices)
     {
@@ -1072,6 +1076,7 @@ public sealed class World : IDisposable
             h,
             PhysicsConstants.MaxTranslation / slices,
             PhysicsConstants.MaxRotation / slices);
+        DrainWakeTriggers();
         SyncAwakeBodies();
     }
 

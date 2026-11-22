@@ -729,6 +729,12 @@ public sealed class BodyStore
                 Quat increment = Quat.CreateFromAxisAngle(body.AngularVelocity / spin, angle);
                 body.Rotation = (increment * body.Rotation).Normalize();
             }
+
+            // A kinematic frame the integrator advanced is a frame placed outside the caller's hands.
+            if (body.Type == BodyType.Kinematic && (travel.LengthSquared() > 0.0f || spinSq > 0.0f))
+            {
+                MarkRelocated(i);
+            }
         }
     }
 
