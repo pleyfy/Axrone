@@ -460,6 +460,49 @@ public sealed class SleepingContact2DTests : IDisposable
     }
 
     /// <summary>
+    /// The other side of the same rule: a platform that is awake and simply
+    /// waiting is not driving. Reading the drive test off rather than onto the
+    /// motion would let every parked kinematic in the level stir the piles
+    /// resting on it every single frame, and the island pass already refuses to
+    /// block sleep for scenery that is not moving.
+    /// </summary>
+    [Fact]
+    public void ParkedAwakePlatform_DoesNotStirTheBoxSleepingOnIt()
+    {
+        BodyId platform = AddBox(
+            new Vec2(0.0f, -0.5f),
+            new Vec2(4.0f, 0.5f),
+            BodyType.Kinematic,
+            friction: 0.9f);
+        BodyId box = AddBox(new Vec2(0.0f, BoxHalf), new Vec2(BoxHalf, BoxHalf), friction: 0.9f);
+
+        int sleepStep = -1;
+        for (int step = 1; step <= 120 && sleepStep < 0; step++)
+        {
+            _world.Step(Dt);
+            if (!_world.Bodies.IsAwake(box))
+            {
+                sleepStep = step;
+            }
+        }
+
+        sleepStep.Should().BeGreaterThan(0,
+            $"precondition: the box must fall asleep on the parked platform; awake={_world.Bodies.IsAwake(box)}");
+        _world.Bodies.IsAwake(platform).Should().BeTrue("the platform is awake; only its motion may reach the rider");
+
+        Vec2 rested = _world.Bodies.GetTransform(box).Position;
+        for (int step = 1; step <= 240; step++)
+        {
+            _world.Step(Dt);
+            _world.Bodies.IsAwake(box).Should().BeFalse(
+                $"a waiting platform woke its rider at step {step}; the drive test is the velocity, not the body type; sleepStep={sleepStep}");
+        }
+
+        _world.Bodies.GetTransform(box).Position.Should().Be(rested,
+            $"a sleeper that was never woken may not drift either; sleepStep={sleepStep}");
+    }
+
+    /// <summary>
     /// The sleep policy must survive the guards: a body that may not sleep stays
     /// awake, its neighbour on the same support still sleeps, and the support
     /// itself stays exactly at zero.
