@@ -1116,6 +1116,7 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void StepSlice(float h, bool emitImpulseNotices)
     {
+        DrainRelocations();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
         CollectPairs();
@@ -1156,6 +1157,7 @@ public sealed class World : IDisposable
         where THandler : IContactSolverCallbacks<Contact, ContactManifold, TContext>
         where TContext : allows ref struct
     {
+        DrainRelocations();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
         CollectPairs();
@@ -1321,6 +1323,125 @@ public sealed class World : IDisposable
                 impulses.Count, impulses.NormalAt(0), impulses.TangentAt(0),
                 manifold.Count > 1 ? impulses.NormalAt(1) : 0.0f,
                 manifold.Count > 1 ? impulses.TangentAt(1) : 0.0f);
+        }
+    }
+
+    /// <summary>
+    /// Dilation of the swept volume used to find the bodies a placement passed
+    /// through: one linear slop, the same tolerance the solver rests on.
+    /// </summary>
+    private const float RelocationWakeMargin = SolverTuning.LinearSlop;
+
+    /// <summary>
+    /// Places every static or kinematic support that was moved outside the
+    /// integrator: its broadphase nodes are refreshed before pair collection,
+    /// and the dynamic bodies inside the volume the placement swept are woken.
+    /// Runs as the first statement of a slice, and costs one integer read and
+    /// one branch when nothing was placed.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void DrainRelocations()
+    {
+        int count = _bodies.RelocationCount;
+        if (count == 0)
+        {
+            return;
+        }
+
+        ReadOnlySpan<int> slots = _bodies.RelocatedSlots;
+        for (int i = 0; i < count; i++)
+        {
+            int slot = slots[i];
+            if (_bodies.IsSlotLive(slot) && _bodies.SlotType(slot) != BodyType.Dynamic)
+            {
+                RelocateBody(BodyId.FromIndex(slot));
+            }
+        }
+
+        _bodies.ClearRelocations();
+    }
+
+    /// <summary>
+    /// Re-inserts one relocated body's shapes and wakes what the move swept
+    /// through. The union of the cached and the refreshed bounds is the
+    /// smallest volume that contains every body the placement could have been
+    /// touching before it moved, so a support withdrawn from under a sleeper
+    /// still reaches it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void RelocateBody(BodyId bodyId)
+    {
+        ref BodyState body = ref _bodies.Slot(bodyId);
+        if (body.FirstShape == -1)
+        {
+            return;
+        }
+
+        Aabb2D swept = Aabb2D.Empty;
+        int current = body.FirstShape;
+        while (current != -1)
+        {
+            ref ShapeRecord record = ref _shapes.Slot(ShapeId.FromIndex(current));
+            swept = swept.MergedWith(in record.WorldAabb);
+            current = record.NextShape;
+        }
+
+        _shapes.SyncBody(_bodies, _tree, bodyId);
+
+        current = body.FirstShape;
+        while (current != -1)
+        {
+            ref ShapeRecord record = ref _shapes.Slot(ShapeId.FromIndex(current));
+            swept = swept.MergedWith(in record.WorldAabb);
+            current = record.NextShape;
+        }
+
+        Aabb2D volume = swept.Expanded(RelocationWakeMargin);
+        WakeTargets targets = new(this, bodyId);
+        RelocationWakeCollector collector = default;
+        _tree.QueryOverlaps(in volume, ref collector, ref targets);
+    }
+
+    /// <summary>Wake targets of a relocation sweep: the dynamic owners of the visited shapes.</summary>
+    private ref struct WakeTargets
+    {
+        private readonly World _world;
+        private readonly BodyId _moved;
+
+        public WakeTargets(World world, BodyId moved)
+        {
+            _world = world;
+            _moved = moved;
+        }
+
+        public readonly void Wake(ShapeId shapeId)
+        {
+            if (!_world._shapes.IsValid(shapeId))
+            {
+                return;
+            }
+
+            BodyId owner = _world._shapes.Slot(shapeId).Body;
+            if (owner == _moved)
+            {
+                return;
+            }
+
+            ref BodyState state = ref _world._bodies.Slot(owner);
+            if (state.Type == BodyType.Dynamic && (state.Flags & BodyFlags.Awake) == 0)
+            {
+                _world._bodies.SetAwake(owner, true);
+            }
+        }
+    }
+
+    /// <summary>Reports every shape overlapping the swept volume of a relocated support.</summary>
+    private struct RelocationWakeCollector : ISpatialVisitor2D<ShapeId, WakeTargets>
+    {
+        public readonly bool OnOverlap(SpatialItemId itemId, ShapeId userData, in Aabb2D box, ref WakeTargets context)
+        {
+            context.Wake(userData);
+            return true;
         }
     }
 

@@ -13,6 +13,9 @@ public sealed class BodyStore
 
     private BodyState[] _bodies;
     private int[] _freeStack;
+    private int[] _relocatedSlots;
+    private bool[] _relocationMarked;
+    private int _relocatedCount;
     private int _freeCount;
     private int _highWater;
     private int _count;
@@ -24,6 +27,9 @@ public sealed class BodyStore
         _capacity = InitialCapacity;
         _bodies = new BodyState[_capacity];
         _freeStack = new int[_capacity];
+        _relocatedSlots = new int[_capacity];
+        _relocationMarked = new bool[_capacity];
+        _relocatedCount = 0;
         _freeCount = 0;
         _highWater = 0;
         _count = 0;
@@ -103,6 +109,7 @@ public sealed class BodyStore
     public void Destroy(BodyId id)
     {
         int slot = Validate(id);
+        _relocationMarked[slot] = false;
         _bodies[slot] = default;
         _freeStack[_freeCount++] = slot;
         _count--;
@@ -124,15 +131,59 @@ public sealed class BodyStore
         return Transform2D.FromRotation(body.Position, body.Cos, body.Sin);
     }
 
-    /// <summary>Moves a body without touching its velocities; wakes it.</summary>
+    /// <summary>
+    /// Moves a body without touching its velocities; wakes it. A static or
+    /// kinematic placement is recorded as a pending relocation so the owning
+    /// world can refresh its broadphase nodes and wake the bodies that were
+    /// resting on it before the next pair collection.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SetTransform(BodyId id, Vec2 position, float angle)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         body.Position = position;
         body.Cos = MathF.Cos(angle);
         body.Sin = MathF.Sin(angle);
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        if (body.Type != BodyType.Dynamic)
+        {
+            MarkRelocated(slot);
+        }
+    }
+
+    /// <summary>Queues an immovable body whose frame was placed outside the integrator.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void MarkRelocated(int slot)
+    {
+        if (_relocationMarked[slot])
+        {
+            return;
+        }
+
+        _relocationMarked[slot] = true;
+        _relocatedSlots[_relocatedCount++] = slot;
+    }
+
+    /// <summary>Slots placed by <see cref="SetTransform"/> since the world last drained them.</summary>
+    internal ReadOnlySpan<int> RelocatedSlots => _relocatedSlots.AsSpan(0, _relocatedCount);
+
+    /// <summary>Pending relocation entries.</summary>
+    internal int RelocationCount
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _relocatedCount;
+    }
+
+    /// <summary>Empties the pending relocation queue.</summary>
+    internal void ClearRelocations()
+    {
+        for (int i = 0; i < _relocatedCount; i++)
+        {
+            _relocationMarked[_relocatedSlots[i]] = false;
+        }
+
+        _relocatedCount = 0;
     }
 
     /// <summary>Reads the linear velocity of a body.</summary>
@@ -699,6 +750,10 @@ public sealed class BodyStore
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsSlotLive(int slot) => slot >= 0 && slot < _capacity && _bodies[slot].Live;
 
+    /// <summary>Body type held by a slot; the caller holds the liveness invariant.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal BodyType SlotType(int slot) => _bodies[slot].Type;
+
     /// <summary>Raw slot view for internal iteration; the caller holds the liveness invariant.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal ref BodyState SlotAt(int slot) => ref _bodies[slot];
@@ -725,6 +780,8 @@ public sealed class BodyStore
         int newCapacity = _capacity * 2;
         Array.Resize(ref _bodies, newCapacity);
         Array.Resize(ref _freeStack, newCapacity);
+        Array.Resize(ref _relocatedSlots, newCapacity);
+        Array.Resize(ref _relocationMarked, newCapacity);
         _capacity = newCapacity;
     }
 
