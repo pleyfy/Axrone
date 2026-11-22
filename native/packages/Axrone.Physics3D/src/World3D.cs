@@ -274,6 +274,7 @@ public sealed class World : IDisposable
     private int _stepPairCount;
     private CarriedTuning[] _carriedTunings;
     private int _carriedTuningCount;
+    private int[] _matchedPrevious;
     private int _disposed;
 
     /// <summary>Gravity of the world.</summary>
@@ -354,6 +355,7 @@ public sealed class World : IDisposable
         _stepPairCount = 0;
         _carriedTunings = new CarriedTuning[InitialContactCapacity];
         _carriedTuningCount = 0;
+        _matchedPrevious = new int[InitialContactCapacity];
         _disposed = 0;
     }
 
@@ -1038,7 +1040,8 @@ public sealed class World : IDisposable
 
     /// <summary>
     /// Sweeps one pass may run so that a step spends its configured budget once
-    /// however many slices it split into: the allotments of the slices sum to
+    /// however many slices it split into: every slice gets the same share and
+    /// the remainder goes to the leading slices, so the allotments sum to
     /// <paramref name="iterations"/> exactly.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1049,7 +1052,8 @@ public sealed class World : IDisposable
             return iterations;
         }
 
-        return (((slice + 1) * iterations) / slices) - ((slice * iterations) / slices);
+        int share = iterations / slices;
+        return share + (slice < (iterations - (share * slices)) ? 1 : 0);
     }
 
     /// <summary>Integrates one slice inside the translation and rotation budget the step owns.</summary>
@@ -1097,6 +1101,12 @@ public sealed class World : IDisposable
         }
 
         bool carryImpulses = (Flags & SolverFlags.WarmStarting) != 0;
+        if (_matchedPrevious.Length < _previousCount)
+        {
+            Array.Resize(ref _matchedPrevious, Math.Max(_previousCount, _contacts.Length));
+        }
+
+        Array.Clear(_matchedPrevious, 0, _previousCount);
         for (int i = 0; i < _contactCount; i++)
         {
             int match = FindPrevious(_contacts[i].ShapeA, _contacts[i].ShapeB);
@@ -1106,6 +1116,7 @@ public sealed class World : IDisposable
                 continue;
             }
 
+            _matchedPrevious[match] = 1;
             if (carryImpulses)
             {
                 WarmStart(ref _contacts[i], in _previous[match]);
@@ -1131,7 +1142,7 @@ public sealed class World : IDisposable
         for (int j = 0; j < _previousCount; j++)
         {
             Contact3D carried = _previous[j];
-            if (carried.IsSensor || ContainsPair(_contacts, _contactCount, carried.ShapeA, carried.ShapeB))
+            if (carried.IsSensor || _matchedPrevious[j] != 0)
             {
                 continue;
             }
@@ -1157,6 +1168,11 @@ public sealed class World : IDisposable
             }
 
             if (!CollisionFilter.ShouldCollide(in recordA.Filter, in recordB.Filter))
+            {
+                continue;
+            }
+
+            if (OutsideBand(_shapes.GetWorldAabb(carried.ShapeA), _shapes.GetWorldAabb(carried.ShapeB)))
             {
                 continue;
             }
@@ -1194,6 +1210,21 @@ public sealed class World : IDisposable
             IsSensor = false,
             Manifold = manifold,
         };
+    }
+
+    /// <summary>
+    /// Whether the two cached boxes are already further apart than the break
+    /// band. The box gap is a floor on the shape distance, so a pair failing it
+    /// never needs the distance query at all.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool OutsideBand(in Aabb3D boxA, in Aabb3D boxB)
+    {
+        const float BandSquared = PhysicsConstants.ContactBreakThreshold * PhysicsConstants.ContactBreakThreshold;
+        float x = MathF.Max(MathF.Max(boxA.Min.X - boxB.Max.X, boxB.Min.X - boxA.Max.X), 0.0f);
+        float y = MathF.Max(MathF.Max(boxA.Min.Y - boxB.Max.Y, boxB.Min.Y - boxA.Max.Y), 0.0f);
+        float z = MathF.Max(MathF.Max(boxA.Min.Z - boxB.Max.Z, boxB.Min.Z - boxA.Max.Z), 0.0f);
+        return (x * x) + (y * y) + (z * z) > BandSquared;
     }
 
     /// <summary>Appends a contact to the slice's set, growing the buffer on demand.</summary>

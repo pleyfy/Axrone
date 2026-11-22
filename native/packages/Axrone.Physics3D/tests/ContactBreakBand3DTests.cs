@@ -152,6 +152,81 @@ public sealed class ContactBreakBand3DTests
         }
     }
 
+    [Fact]
+    public void Band_NeverInventsAPair_ThatNeverTouched()
+    {
+        using World world = new(new WorldDef { Gravity = Vec3.Zero });
+        Ground(world);
+        BodyId box = Placed(world, HairGap);
+
+        int mostTracked = 0;
+        int began = 0;
+        for (int step = 0; step < 10; step++)
+        {
+            world.Step(Dt);
+            mostTracked = Math.Max(mostTracked, world.ContactCount);
+            began += CountEvents(world, ContactEventType.Began);
+        }
+
+        _output.WriteLine($"pair that started {HairGap:0.#####} m apart and never touched: most contacts " +
+            $"{mostTracked}, Began events {began}");
+        mostTracked.Should().Be(0,
+            $"a pair sitting {HairGap:0.#####} m apart with no prior touch was tracked as a contact.");
+        began.Should().Be(0, $"the band raised {began} Began event(s) for a pair that never met.");
+    }
+
+    [Fact]
+    public void Band_SkipsSensorPairs()
+    {
+        using World world = new(new WorldDef { Gravity = Vec3.Zero });
+        BodyId scenery = world.Bodies.Create(new BodyDef { Type = BodyType.Static });
+        world.Shapes.AttachBox(world.Bodies, world.Broadphase, scenery,
+            new Vec3(0.0f, -0.5f, 0.0f), new Vec3(10.0f, 0.5f, 10.0f), 1.0f, default,
+            new PhysicsMaterial(0.8f, 0.0f), isSensor: true);
+        BodyId box = Placed(world, -0.005f);
+
+        world.Step(Dt);
+        int whileOverlapping = world.SensorEventCount;
+        MoveToGap(world, box, HairGap);
+        world.Step(Dt);
+        int exits = 0;
+        int tracked = world.ContactCount;
+        for (int i = 0; i < world.SensorEventCount; i++)
+        {
+            if (world.GetSensorEvent(i).Type == SensorEventType.Exit)
+            {
+                exits++;
+            }
+        }
+
+        _output.WriteLine($"sensor pair one hair of daylight apart: tracked contacts {tracked}, Exit events {exits}, " +
+            $"sensor notices on the overlap step {whileOverlapping}");
+        whileOverlapping.Should().Be(1, "the overlap step must have raised exactly one sensor notice.");
+        tracked.Should().Be(0, $"the band carried a sensor pair across a {HairGap:0.#####} m gap.");
+        exits.Should().Be(1, $"a sensor pair that split raised {exits} Exit event(s) instead of exactly one.");
+    }
+
+    [Fact]
+    public void Band_SkipsBodiesThatLeftTheSimulation()
+    {
+        using World world = new(new WorldDef { Gravity = Vec3.Zero });
+        Ground(world);
+        BodyId box = Placed(world, -0.005f);
+        world.Step(Dt);
+
+        MoveToGap(world, box, HairGap);
+        world.Bodies.SetEnabled(box, false);
+        world.Step(Dt);
+        int tracked = world.ContactCount;
+        int ended = CountEvents(world, ContactEventType.Ended);
+
+        _output.WriteLine($"disabled body inside the band: tracked contacts {tracked}, Ended events {ended}");
+        tracked.Should().Be(0,
+            $"a body that left the simulation still held a pair in the contact set ({tracked}).");
+        ended.Should().Be(1, $"the disabled pair raised {ended} Ended event(s) instead of exactly one.");
+        world.Validate().Should().BeTrue("the contact set no longer names only live entities.");
+    }
+
     private static BodyId Ground(World world)
     {
         BodyId ground = world.Bodies.Create(new BodyDef { Type = BodyType.Static });
