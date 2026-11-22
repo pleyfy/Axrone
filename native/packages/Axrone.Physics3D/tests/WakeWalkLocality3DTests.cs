@@ -129,6 +129,92 @@ public sealed class WakeWalkLocality3DTests : IDisposable
             $"(box0 to box1, box1 to box0, box1 to box2, box2 to box1) for {_world.ContactCount} contacts.");
     }
 
+    [Fact]
+    public void WakeQueue_RefusesEveryNonDynamicSlot()
+    {
+        BodyId ground = CreateGround();
+        BodyId scenery = CreateSlab(new Vec3(6.0f, CubeHalf, 0.0f), BodyType.Kinematic);
+        BodyId[] boxes = CreateStack(0.0f);
+        int sleepStep = StepUntilAllAsleep(boxes);
+
+        Assert.True(
+            sleepStep > 0,
+            $"precondition: the three stack never slept within {SleepLimit} steps; awake=[{AwakeState(boxes)}].");
+
+        _world.Bodies.SetAwake(ground, false);
+        _world.Bodies.SetAwake(scenery, false);
+        Assert.True(
+            !_world.Bodies.IsAwake(ground) && !_world.Bodies.IsAwake(scenery),
+            $"precondition: a Static ground and a Kinematic slab must be put to sleep by the caller to make the walk's write observable; " +
+            $"ground awake={_world.Bodies.IsAwake(ground)}, kinematic awake={_world.Bodies.IsAwake(scenery)}.");
+
+        _world.BeginWakePropagation();
+        _world.EnqueueWakeSlot(BodyStore.SlotOf(ground));
+        _world.EnqueueWakeSlot(BodyStore.SlotOf(scenery));
+
+        Assert.True(
+            _world.WakeQueueLength == 0,
+            $"the walk queued {_world.WakeQueueLength} slot(s) offered as Static and Kinematic scenery, expected 0: nothing the integrator will not " +
+            $"simulate may enter the worklist (sleepStep={sleepStep}, contacts={_world.ContactCount}).");
+        Assert.True(
+            !_world.Bodies.IsAwake(ground) && !_world.Bodies.IsAwake(scenery),
+            $"the walk wrote the awake bit into non-dynamic bodies: ground awake={_world.Bodies.IsAwake(ground)}, " +
+            $"kinematic awake={_world.Bodies.IsAwake(scenery)}, queued={_world.WakeQueueLength}.");
+
+        _world.EnqueueWakeSlot(BodyStore.SlotOf(boxes[2]));
+
+        Assert.True(
+            _world.WakeQueueLength == 1,
+            $"control: the walk queued {_world.WakeQueueLength} slot(s) for a sleeping dynamic body, expected 1 — the two scenery slots above must be " +
+            $"refused while a simulating body is accepted.");
+        Assert.True(
+            _world.Bodies.IsAwake(boxes[2]) && !_world.Bodies.IsSleeping(boxes[2]),
+            $"control: the sleeping top box was not woken by the queue that accepted it: awake={_world.Bodies.IsAwake(boxes[2])}, " +
+            $"sleeping={_world.Bodies.IsSleeping(boxes[2])}.");
+    }
+
+    [Fact]
+    public void SharedSupportWithdrawal_WakesBodiesButNeverTheSceneryItPassed()
+    {
+        BodyId ground = CreateGround();
+        BodyId conveyor = CreateSlab(new Vec3(2.5f, CubeHalf, 0.0f), BodyType.Kinematic);
+        BodyId[] touched = CreateStack(0.0f);
+        BodyId[] neighbour = CreateStack(NeighbourX);
+        BodyId wall = CreateWall();
+        int sleepStep = StepUntilAllAsleep(touched.Concat(neighbour).ToArray());
+
+        Assert.True(
+            sleepStep > 0,
+            $"precondition: the two stacks never both slept within {SleepLimit} steps; awake=[{AwakeState(touched.Concat(neighbour).ToArray())}].");
+
+        _world.Bodies.SetAwake(ground, false);
+        _world.Bodies.SetAwake(conveyor, false);
+
+        _world.Bodies.SetTransform(wall, new Vec3(WallEndX, CubeHalf, 0.0f), Quat.Identity);
+        for (int step = 1; step <= WatchSteps; step++)
+        {
+            _world.Step(Dt);
+        }
+
+        Assert.True(
+            touched.All(id => _world.Bodies.IsAwake(id)),
+            $"precondition: the withdrawn wall must still wake the stack it touched; awake=[{AwakeState(touched)}], sleepStep={sleepStep}.");
+        Assert.True(
+            !_world.Bodies.IsAwake(ground) && !_world.Bodies.IsAwake(conveyor),
+            $"the wake walk wrote the awake bit into scenery it swept through: ground awake={_world.Bodies.IsAwake(ground)} " +
+            $"(sleeping={_world.Bodies.IsSleeping(ground)}), kinematic conveyor awake={_world.Bodies.IsAwake(conveyor)} " +
+            $"(sleeping={_world.Bodies.IsSleeping(conveyor)}) after {WatchSteps} steps of a withdrawal that woke {touched.Length} boxes and left " +
+            $"{neighbour.Length} asleep; sleepStep={sleepStep}, contacts={_world.ContactCount}, groundVel={_world.Bodies.GetLinearVelocity(ground)}.");
+    }
+
+    private BodyId CreateSlab(Vec3 center, BodyType type)
+    {
+        BodyId slab = _world.Bodies.Create(new BodyDef { Type = type });
+        _world.Shapes.AttachBox(_world.Bodies, _world.Broadphase, slab, Vec3.Zero, new Vec3(CubeHalf, CubeHalf, CubeHalf));
+        _world.Bodies.SetTransform(slab, center, Quat.Identity);
+        return slab;
+    }
+
     private BodyId CreateGround()
     {
         BodyId slab = _world.Bodies.Create(new BodyDef { Type = BodyType.Static });

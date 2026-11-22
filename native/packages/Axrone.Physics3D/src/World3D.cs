@@ -1620,11 +1620,7 @@ public sealed class World : IDisposable
                 return;
             }
 
-            ref BodyState state = ref _world._bodies.Slot(owner);
-            if (state.Type == BodyType.Dynamic)
-            {
-                _world.EnqueueWakeSlot(BodyStore.SlotOf(owner));
-            }
+            _world.EnqueueWakeSlot(BodyStore.SlotOf(owner));
         }
     }
 
@@ -1642,7 +1638,7 @@ public sealed class World : IDisposable
     /// Opens one bounded wake propagation: a body is marked and queued at most
     /// once per pass, so nothing rescans the contact graph per wake.
     /// </summary>
-    private void BeginWakePropagation()
+    internal void BeginWakePropagation()
     {
         EnsureWakeCapacity(_bodies.SlotCapacity);
         _wakeTop = 0;
@@ -1655,11 +1651,17 @@ public sealed class World : IDisposable
         _wakeGeneration++;
     }
 
+    /// <summary>Slots the open wake pass has queued and not yet walked.</summary>
+    internal int WakeQueueLength => _wakeTop;
+
     /// <summary>
-    /// Queues a wake target; already-awake bodies enter the queue too, because
-    /// the sleeping bodies resting on them are reached only through them.
+    /// Queues a wake target and marks it awake; this is the only place the walk
+    /// writes the awake bit. Already-awake bodies enter the queue too, because
+    /// the sleeping bodies resting on them are reached only through them, and a
+    /// body the integrator will not simulate never enters it: scenery and
+    /// kinematics keep the sleep bits the caller gave them.
     /// </summary>
-    private void EnqueueWakeSlot(int slot)
+    internal void EnqueueWakeSlot(int slot)
     {
         if (!_bodies.IsSlotLive(slot) || _bodies.SlotType(slot) != BodyType.Dynamic || _wakeMarks[slot] == _wakeGeneration)
         {
