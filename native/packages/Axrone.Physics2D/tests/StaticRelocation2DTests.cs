@@ -124,7 +124,17 @@ public sealed class StaticRelocation2DTests : IDisposable
             $"the cube must come to rest on the new surface top at y = -1, i.e. centre {analytic:R}; measured ({rest.X:R},{rest.Y:R})");
         _world.Bodies.IsAwake(box).Should().BeFalse(
             $"it must also go back to sleep on the new support; measured awake = {_world.Bodies.IsAwake(box)}");
+
+        // In 3D this wake path is what finally makes the degenerate-row NaN
+        // reachable, because the woken cube re-enters a contact it slept on.
+        Vec2 groundVelocity = _world.Bodies.GetLinearVelocity(ground);
+        (IsFinite(groundVelocity.X) && IsFinite(groundVelocity.Y) && groundVelocity == Vec2.Zero).Should().BeTrue(
+            $"a support that wakes a sleeper then carries it again must still be exactly clean; measured ground velocity {groundVelocity}");
+        _world.Bodies.GetAngularVelocity(ground).Should().Be(0.0f,
+            $"the relocated support gained no couple from the cube it caught; measured {_world.Bodies.GetAngularVelocity(ground):R}");
     }
+
+    private static bool IsFinite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
     /// <summary>
     /// Negative control: a support that was never placed must not disturb a
