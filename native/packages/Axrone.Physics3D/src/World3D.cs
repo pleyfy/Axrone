@@ -1701,7 +1701,7 @@ public sealed class World : IDisposable
     /// the same rule that keeps the island pass from unioning through scenery, so
     /// a withdrawn wall can never drag every body on the ground awake with it.
     /// </summary>
-    private void BuildContactAdjacency()
+    internal void BuildContactAdjacency()
     {
         int capacity = _bodies.SlotCapacity;
         EnsureWakeCapacity(capacity);
@@ -1755,6 +1755,27 @@ public sealed class World : IDisposable
     private bool IsWakeWalkablePair(int slotA, int slotB) =>
         _bodies.IsSlotLive(slotA) && _bodies.IsSlotLive(slotB) &&
         _bodies.SlotType(slotA) == BodyType.Dynamic && _bodies.SlotType(slotB) == BodyType.Dynamic;
+
+    /// <summary>Adjacency entries of the last build that lead to a body of <paramref name="target"/>.</summary>
+    internal int CountWakeAdjacencyEntries(BodyType target)
+    {
+        int capacity = _bodies.SlotCapacity;
+        int entries = 0;
+        for (int slot = 0; slot < capacity; slot++)
+        {
+            int rowEnd = _wakeRowStart[slot + 1];
+            for (int edge = _wakeRowStart[slot]; edge < rowEnd; edge++)
+            {
+                int neighbour = _wakeAdjacency[edge];
+                if (_bodies.IsSlotLive(neighbour) && _bodies.SlotType(neighbour) == target)
+                {
+                    entries++;
+                }
+            }
+        }
+
+        return entries;
+    }
 
     private void EnsureWakeCapacity(int capacity)
     {
