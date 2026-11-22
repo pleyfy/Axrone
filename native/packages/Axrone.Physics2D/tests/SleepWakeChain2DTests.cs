@@ -135,4 +135,193 @@ public sealed class SleepWakeChain2DTests : IDisposable
     private static int SleepFloorSteps() => (int)MathF.Ceiling(PhysicsConstants.SleepTime / Dt);
 
     private const int SleepWindowSteps = 40;
+
+    private const float SurfaceY = -1.0f;
+
+    /// <summary>
+    /// Analytic resting centre of stack member <paramref name="index"/> after the
+    /// ground drops to surface y = -1: the pile settles one linear slop deep at
+    /// every interface below and including the member.
+    /// </summary>
+    private static float AnalyticRestY(int index) =>
+        SurfaceY + BoxHalf + (2.0f * BoxHalf) * index - ((index + 1) * PhysicsConstants.LinearSlop);
+
+    private const float RestTolerance = 2.0f * PhysicsConstants.LinearSlop;
+
+    private int[] WakeSteps(BodyId[] boxes, int limit, out int resleepStep, out long awakeBodySteps)
+    {
+        int[] wake = new int[boxes.Length];
+        Array.Fill(wake, -1);
+        resleepStep = -1;
+        awakeBodySteps = 0;
+        for (int step = 1; step <= limit; step++)
+        {
+            _world.Step(Dt);
+            for (int i = 0; i < boxes.Length; i++)
+            {
+                if (_world.Bodies.IsAwake(boxes[i]))
+                {
+                    awakeBodySteps++;
+                    if (wake[i] < 0)
+                    {
+                        wake[i] = step;
+                    }
+                }
+            }
+
+            if (resleepStep < 0 && step > WakeWindow && AllAsleep(boxes))
+            {
+                resleepStep = step;
+            }
+        }
+
+        return wake;
+    }
+
+    private const int WakeWindow = 3;
+    private const int SettleLimit = 600;
+
+    private string ChainRow(BodyId[] boxes, int[] wake, int sleepStep, int resleepStep)
+    {
+        string wakeText = string.Join(" ", wake);
+        string ys = string.Join(" ", boxes.Select(id => _world.Bodies.GetTransform(id).Position.Y.ToString("0.0000", Inv)));
+        string awake = string.Join(" ", boxes.Select(id => _world.Bodies.IsAwake(id) ? "A" : "S"));
+        return $"sleepStep={sleepStep} wake=[{wakeText}] resleep={resleepStep} awake=[{awake}] y=[{ys}] contacts={_world.ContactCount}";
+    }
+
+    /// <summary>
+    /// The 2D face of MAJOR-R2-C: the support is withdrawn from under the base of
+    /// a sleeping stack, so only the base is inside the volume the placement
+    /// swept. Everything above it is reachable only by walking the contact graph,
+    /// and without that walk it stays asleep and hangs where it was.
+    /// </summary>
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(8)]
+    public void SupportWithdrawnFromStack_WakesEveryBoxThroughTheContactGraph(int count)
+    {
+        BodyId ground = AddGround(_world);
+        BodyId[] boxes = AddStack(count);
+        int sleepStep = SleepStepAll(boxes, SleepLimit);
+        sleepStep.Should().BeGreaterThan(0, $"precondition: a {count}-box stack never slept within {SleepLimit} steps; {Row(boxes, sleepStep)}");
+        float[] resting = boxes.Select(id => _world.Bodies.GetTransform(id).Position.Y).ToArray();
+
+        _world.Bodies.SetTransform(ground, new Vec2(0.0f, -2.0f), 0.0f);
+        int[] wake = WakeSteps(boxes, SettleLimit, out int resleepStep, out _);
+
+        wake.Should().OnlyContain(
+            step => step >= 1 && step <= WakeWindow,
+            $"withdrawing the support of a {count}-box stack must wake every box within {WakeWindow} steps by walking the contact graph; " +
+            $"box0 was inside the swept volume and every higher box is reached only through the pair below it; {ChainRow(boxes, wake, sleepStep, resleepStep)}");
+
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            float y = _world.Bodies.GetTransform(boxes[i]).Position.Y;
+            y.Should().BeApproximately(
+                AnalyticRestY(i),
+                RestTolerance,
+                $"box{i} was resting at {resting[i]:0.0000} and its support moved to surface y = {SurfaceY:0.0000}, so it must land on the new surface; {ChainRow(boxes, wake, sleepStep, resleepStep)}");
+        }
+
+        resleepStep.Should().BeGreaterThan(0, $"the landed stack must come back to rest; {ChainRow(boxes, wake, sleepStep, resleepStep)}");
+        _world.Bodies.GetLinearVelocity(ground).Should().Be(Vec2.Zero, "the withdrawn scenery must not pick up velocity from waking the stack that rested on it");
+    }
+
+    /// <summary>
+    /// Control for the same scene with sleep disabled: the boxes must still end up
+    /// on the new surface, so the wake assertions above cannot be satisfied by a
+    /// stack that never rests anywhere.
+    /// </summary>
+    [Fact]
+    public void SupportWithdrawnFromSleepDisabledStack_KeepsTheStackCorrectAsControl()
+    {
+        BodyId ground = AddGround(_world);
+        BodyId[] boxes = AddStack(3, allowSleep: false);
+        _world.Bodies.SetTransform(ground, new Vec2(0.0f, -2.0f), 0.0f);
+        for (int step = 1; step <= SettleLimit; step++)
+        {
+            _world.Step(Dt);
+        }
+
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            _world.Bodies.GetTransform(boxes[i]).Position.Y.Should().BeApproximately(
+                AnalyticRestY(i), RestTolerance,
+                $"a stack that is never allowed to sleep still has to land on the moved surface at member {i}; {Row(boxes, -1)}");
+        }
+    }
+
+    /// <summary>
+    /// Nothing relocated means nothing woken: a supported stack that is left alone
+    /// must stay asleep with byte-identical frames and an unchanged contact list.
+    /// </summary>
+    [Fact]
+    public void UntouchedSupport_KeepsTheWholeStackAsleepAsControl()
+    {
+        AddGround(_world);
+        BodyId[] boxes = AddStack(3);
+        int sleepStep = SleepStepAll(boxes, SleepLimit);
+        sleepStep.Should().BeGreaterThan(0, $"precondition: the three stack never slept within {SleepLimit} steps; {Row(boxes, sleepStep)}");
+
+        Vec2[] before = boxes.Select(id => _world.Bodies.GetTransform(id).Position).ToArray();
+        int contactsBefore = _world.ContactCount;
+        for (int step = 1; step <= 300; step++)
+        {
+            _world.Step(Dt);
+            AllAsleep(boxes).Should().BeTrue(
+                $"a supported stack woke at step {step} with nothing relocated; {Row(boxes, sleepStep)}");
+        }
+
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            _world.Bodies.GetTransform(boxes[i]).Position.Should().Be(before[i], $"a supported stack drifted from {before[i]} to {_world.Bodies.GetTransform(boxes[i]).Position}");
+        }
+
+        _world.ContactCount.Should().Be(contactsBefore, "nothing relocated, so the pair set of a resting stack must not change");
+    }
+
+    /// <summary>
+    /// The locality half of the walk: two stacks rest on one slab and only the
+    /// wall under the first is withdrawn. A shared support couples nothing — the
+    /// same rule that keeps the island pass from unioning through scenery — so
+    /// the second stack must keep sleeping at the exact frames it held.
+    /// </summary>
+    [Fact]
+    public void NeighbourStackWithdrawal_LeavesTheSecondSleepingStackUntouched()
+    {
+        AddGround(_world, halfWidth: 40.0f);
+        BodyId[] first = AddStack(3);
+        BodyId[] second = AddStack(3, x: 6.0f);
+        BodyId wall = AddBox(_world, new Vec2(0.9f, BoxHalf), type: BodyType.Static);
+        BodyId[] all = [.. first, .. second];
+        int sleepStep = SleepStepAll(all, SleepLimit);
+        sleepStep.Should().BeGreaterThan(0, $"precondition: neither stack slept within {SleepLimit} steps; {Row(all, sleepStep)}");
+
+        Vec2[] before = second.Select(id => _world.Bodies.GetTransform(id).Position).ToArray();
+        _world.Bodies.SetTransform(wall, new Vec2(3.0f, BoxHalf), 0.0f);
+        int firstWakeOfNeighbour = -1;
+        for (int step = 1; step <= 60; step++)
+        {
+            _world.Step(Dt);
+            if (firstWakeOfNeighbour < 0 && first.Any(id => _world.Bodies.IsAwake(id)))
+            {
+                firstWakeOfNeighbour = step;
+            }
+
+            AllAsleep(second).Should().BeTrue(
+                $"withdrawing a wall touching only the first stack woke the second one at step {step}; walking through a shared support is not propagation; {Row(second, sleepStep)}");
+        }
+
+        for (int i = 0; i < second.Length; i++)
+        {
+            _world.Bodies.GetTransform(second[i]).Position.Should().Be(
+                before[i], $"the untouched stack moved box{i} from {before[i]} to {_world.Bodies.GetTransform(second[i]).Position}");
+        }
+
+        firstWakeOfNeighbour.Should().BeInRange(
+            1,
+            WakeWindow,
+            $"the stack the wall actually touched must wake from the withdrawal; {Row(first, sleepStep)}");
+    }
 }

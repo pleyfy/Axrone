@@ -296,6 +296,14 @@ public sealed class World : IDisposable
     private readonly JointStore _joints;
     private readonly DynamicAabbTree2D<ShapeId, SurfaceAreaHeuristicStrategy2D, NullSpatialMetricsSink> _tree;
     private readonly IslandSolver<DefaultSleepPolicy> _islands = new();
+    private int[] _wakeWorklist = [];
+    private int[] _wakeMarks = [];
+    private int[] _wakeRowStart = [];
+    private int[] _wakeFill = [];
+    private int[] _wakeAdjacency = [];
+    private int _wakeTop;
+    private int _wakeGeneration;
+    private int _wakeSlotCapacity;
     private Contact[] _contacts;
     private Contact[] _previous;
     private PositionGeometry2D[] _positionGeometry;
@@ -1382,6 +1390,7 @@ public sealed class World : IDisposable
         }
 
         ReadOnlySpan<int> slots = _bodies.RelocatedSlots;
+        BeginWakePropagation();
         for (int i = 0; i < count; i++)
         {
             int slot = slots[i];
@@ -1391,6 +1400,7 @@ public sealed class World : IDisposable
             }
         }
 
+        PropagateWakes();
         _bodies.ClearRelocations();
     }
 
@@ -1461,9 +1471,9 @@ public sealed class World : IDisposable
             }
 
             ref BodyState state = ref _world._bodies.Slot(owner);
-            if (state.Type == BodyType.Dynamic && (state.Flags & BodyFlags.Awake) == 0)
+            if (state.Type == BodyType.Dynamic)
             {
-                _world._bodies.SetAwake(owner, true);
+                _world.EnqueueWakeSlot(BodyStore.SlotOf(owner));
             }
         }
     }
@@ -1476,6 +1486,138 @@ public sealed class World : IDisposable
             context.Wake(userData);
             return true;
         }
+    }
+
+    /// <summary>
+    /// Opens one bounded wake propagation: a body is marked and queued at most
+    /// once per pass, so nothing rescans the contact graph per wake.
+    /// </summary>
+    private void BeginWakePropagation()
+    {
+        EnsureWakeCapacity(_bodies.SlotCapacity);
+        _wakeTop = 0;
+        if (_wakeGeneration == int.MaxValue)
+        {
+            Array.Clear(_wakeMarks, 0, _wakeMarks.Length);
+            _wakeGeneration = 0;
+        }
+
+        _wakeGeneration++;
+    }
+
+    /// <summary>
+    /// Queues a wake target; already-awake bodies enter the queue too, because
+    /// the sleeping bodies resting on them are reached only through them.
+    /// </summary>
+    private void EnqueueWakeSlot(int slot)
+    {
+        if (!_bodies.IsSlotLive(slot) || _bodies.SlotType(slot) != BodyType.Dynamic || _wakeMarks[slot] == _wakeGeneration)
+        {
+            return;
+        }
+
+        _wakeMarks[slot] = _wakeGeneration;
+        _wakeWorklist[_wakeTop++] = slot;
+        BodyId bodyId = BodyId.FromIndex(slot);
+        if ((_bodies.Slot(bodyId).Flags & BodyFlags.Awake) == 0)
+        {
+            _bodies.SetAwake(bodyId, true);
+        }
+    }
+
+    /// <summary>Drains the worklist across the contact graph, visiting every body once.</summary>
+    private void PropagateWakes()
+    {
+        if (_wakeTop == 0)
+        {
+            return;
+        }
+
+        BuildContactAdjacency();
+        while (_wakeTop > 0)
+        {
+            int slot = _wakeWorklist[--_wakeTop];
+            int rowEnd = _wakeRowStart[slot + 1];
+            for (int edge = _wakeRowStart[slot]; edge < rowEnd; edge++)
+            {
+                EnqueueWakeSlot(_wakeAdjacency[edge]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Packs the live contact pairs into per-body rows once per propagation.
+    /// Only dynamic-dynamic edges are walkable: a shared support couples nothing,
+    /// the same rule that keeps the island pass from unioning through scenery, so
+    /// a withdrawn wall can never drag every body on the ground awake with it.
+    /// </summary>
+    private void BuildContactAdjacency()
+    {
+        int capacity = _bodies.SlotCapacity;
+        EnsureWakeCapacity(capacity);
+        Array.Clear(_wakeFill, 0, capacity);
+
+        int edgeCount = 0;
+        for (int i = 0; i < _contactCount; i++)
+        {
+            int slotA = BodyStore.SlotOf(_contacts[i].BodyA);
+            int slotB = BodyStore.SlotOf(_contacts[i].BodyB);
+            if (!IsWakeWalkablePair(slotA, slotB))
+            {
+                continue;
+            }
+
+            _wakeFill[slotA]++;
+            _wakeFill[slotB]++;
+            edgeCount += 2;
+        }
+
+        if (_wakeAdjacency.Length < edgeCount)
+        {
+            Array.Resize(ref _wakeAdjacency, Math.Max(edgeCount, InitialContactCapacity));
+        }
+
+        int running = 0;
+        for (int slot = 0; slot < capacity; slot++)
+        {
+            _wakeRowStart[slot] = running;
+            running += _wakeFill[slot];
+            _wakeFill[slot] = _wakeRowStart[slot];
+        }
+
+        _wakeRowStart[capacity] = running;
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            int slotA = BodyStore.SlotOf(_contacts[i].BodyA);
+            int slotB = BodyStore.SlotOf(_contacts[i].BodyB);
+            if (!IsWakeWalkablePair(slotA, slotB))
+            {
+                continue;
+            }
+
+            _wakeAdjacency[_wakeFill[slotA]++] = slotB;
+            _wakeAdjacency[_wakeFill[slotB]++] = slotA;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsWakeWalkablePair(int slotA, int slotB) =>
+        _bodies.IsSlotLive(slotA) && _bodies.IsSlotLive(slotB) &&
+        _bodies.SlotType(slotA) == BodyType.Dynamic && _bodies.SlotType(slotB) == BodyType.Dynamic;
+
+    private void EnsureWakeCapacity(int capacity)
+    {
+        if (capacity <= _wakeSlotCapacity)
+        {
+            return;
+        }
+
+        Array.Resize(ref _wakeWorklist, capacity);
+        Array.Resize(ref _wakeMarks, capacity);
+        Array.Resize(ref _wakeFill, capacity);
+        Array.Resize(ref _wakeRowStart, capacity + 1);
+        _wakeSlotCapacity = capacity;
     }
 
     /// <summary>
@@ -2312,13 +2454,6 @@ public sealed class World : IDisposable
             bool enabledA = (stateA.Flags & BodyFlags.Active) != 0;
             bool enabledB = (stateB.Flags & BodyFlags.Active) != 0;
             if (!enabledA || !enabledB)
-            {
-                return true;
-            }
-
-            bool awakeA = (stateA.Flags & BodyFlags.Awake) != 0;
-            bool awakeB = (stateB.Flags & BodyFlags.Awake) != 0;
-            if (!awakeA && !awakeB)
             {
                 return true;
             }
