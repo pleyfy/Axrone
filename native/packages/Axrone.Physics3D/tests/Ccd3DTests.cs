@@ -2,12 +2,16 @@ using Axrone.Numeric;
 using Axrone.Physics3D;
 using FluentAssertions;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Axrone.Physics3D.Tests;
 
 public sealed class Ccd3DTests : IDisposable
 {
     private readonly World _world = new();
+    private readonly ITestOutputHelper _output;
+
+    public Ccd3DTests(ITestOutputHelper output) => _output = output;
 
     public void Dispose() => _world.Dispose();
 
@@ -58,6 +62,9 @@ public sealed class Ccd3DTests : IDisposable
             }
 
             float x = tame.Bodies.GetTransform(mover).Position.X;
+            _output.WriteLine(
+                $"600 m/s capped to {PhysicsConstants.MaxVelocity:0} m/s and {PhysicsConstants.MaxTranslation:0.##} m " +
+                $"per step: x={x:0.#####} m after 3 steps, past the wall at |x|<=0.1 m.");
             x.Should().BeGreaterThan(0.6f,
                 $"three capped steps of {PhysicsConstants.MaxTranslation:0.##} m from x=-5 put the body at " +
                 $"{x:0.#####} m, short of the far face of the wall.");
