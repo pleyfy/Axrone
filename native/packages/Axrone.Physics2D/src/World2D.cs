@@ -1137,6 +1137,8 @@ public sealed class World : IDisposable
             ContactSolver.ReportPostSolve(_contacts.AsSpan(0, _contactCount), ref notices, ref unusedState);
         }
 
+        PersistWarmStartImpulses();
+
         _bodies.IntegratePositions(h);
         SyncAwakeBodies();
 
@@ -1185,6 +1187,8 @@ public sealed class World : IDisposable
             PostSolveContext<THandler, TContext> post = new();
             ContactSolver.ReportPostSolve(_contacts.AsSpan(0, _contactCount), ref post, ref context);
         }
+
+        PersistWarmStartImpulses();
 
         _bodies.IntegratePositions(h);
         SyncAwakeBodies();
@@ -1240,11 +1244,40 @@ public sealed class World : IDisposable
 
             Contact updated = _contacts[i];
             ContactManifold manifold = updated.Manifold;
-            carried.WarmStart(ref manifold);
-            updated.Manifold = manifold;
-            carried.Store(in manifold);
-            updated.Cache = carried;
+            if ((Flags & SolverFlags.WarmStarting) != 0)
+            {
+                carried.WarmStart(ref manifold);
+                updated.Manifold = manifold;
+            }
+
             _contacts[i] = updated;
+        }
+    }
+
+    /// <summary>
+    /// Writes the impulses the velocity pass just converged to into each pair's
+    /// carry. The snapshot has to be taken after the sweeps: a cache captured
+    /// before them holds the values the pair arrived with, so the next step
+    /// restores those, every pair restarts its impulse at zero, and a stack has
+    /// to re-earn each interface from the base by Gauss-Seidel instead of
+    /// starting the step already balanced.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PersistWarmStartImpulses()
+    {
+        if ((Flags & SolverFlags.WarmStarting) == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            Contact contact = _contacts[i];
+            ContactManifold manifold = contact.Manifold;
+            ContactCache cache = contact.Cache;
+            cache.Store(in manifold);
+            contact.Cache = cache;
+            _contacts[i] = contact;
         }
     }
 

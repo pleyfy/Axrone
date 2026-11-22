@@ -136,8 +136,17 @@ public static class ContactSolver
 
         ref BodyState stateA = ref bodies.Slot(contact.BodyA);
         ref BodyState stateB = ref bodies.Slot(contact.BodyB);
+
+        bool awakeA = (stateA.Flags & BodyFlags.Awake) != 0;
+        bool awakeB = (stateB.Flags & BodyFlags.Awake) != 0;
+        float invMassA = awakeA ? stateA.InverseMass : 0.0f;
+        float invMassB = awakeB ? stateB.InverseMass : 0.0f;
+        float invIA = awakeA ? stateA.InverseInertia : 0.0f;
+        float invIB = awakeB ? stateB.InverseInertia : 0.0f;
+
         Vec2 comA = stateA.Position + Rotate(stateA.Cos, stateA.Sin, stateA.LocalCenter);
         Vec2 comB = stateB.Position + Rotate(stateB.Cos, stateB.Sin, stateB.LocalCenter);
+        Vec2 tangent = new(-manifold.Normal.Y, manifold.Normal.X);
 
         for (int p = 0; p < manifold.Count; p++)
         {
@@ -148,6 +157,18 @@ public static class ContactSolver
             Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
             float approach = Vec2.Dot(manifold.Normal, vB - vA);
             manifold.SetVelocityBias(p, approach < -tuning.RestitutionThreshold ? -tuning.Restitution * approach : 0.0f);
+
+            // The carried impulses are momentum the pair already holds, so they
+            // have to enter the bodies here: a pile that starts each step at zero
+            // relative velocity needs one sweep to stay there, while a pile that
+            // starts at free-fall has to re-earn every interface impulse from the
+            // base up and converges only geometrically.
+            ApplyNormalImpulse(
+                ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
+                rA, rB, manifold.Normal, point.NormalImpulse);
+            ApplyTangentImpulse(
+                ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
+                rA, rB, tangent, point.TangentImpulse);
         }
 
         contact.Manifold = manifold;
@@ -542,7 +563,20 @@ public static class ContactSolver
         float newTangent = Math.Clamp(point.TangentImpulse + (-tangentMass * vt * slideScale), -maxFriction, maxFriction);
         float delta = newTangent - point.TangentImpulse;
         manifold.SetImpulses(p, point.NormalImpulse, newTangent);
+        ApplyTangentImpulse(
+            ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB, rA, rB, tangent, delta);
+    }
 
+    /// <summary>
+    /// Applies one signed tangent-impulse delta to both bodies. Only dynamic
+    /// bodies are written, for the same reason as the normal row.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void ApplyTangentImpulse(
+        ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
+        float invMassA, float invMassB, float invIA, float invIB,
+        Vec2 rA, Vec2 rB, Vec2 tangent, float delta)
+    {
         Vec2 impulse = tangent * delta;
         if (awakeA && stateA.Type == BodyType.Dynamic)
         {
