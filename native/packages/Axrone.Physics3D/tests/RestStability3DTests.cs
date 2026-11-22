@@ -103,13 +103,12 @@ public sealed class RestStability3DTests
     public void DiagonalAndAdjacentPairing_RestWithoutNetSpin()
     {
         using var harness = new PairHarness();
-        Manifold3D diagonal = harness.RealPair();
-        diagonal.Count.Should().Be(2, "the settling stack is expected to present a two-point face pair.");
-        Manifold3D adjacent = Manifold3D.Pair(
-            diagonal.Normal, diagonal[0], EdgePartner(diagonal[1], id: 37u));
+        Face diagonal = harness.WidestFace();
+        Manifold3D asClipped = diagonal.Pairing(adjacent: false);
+        Manifold3D asAdjacent = diagonal.Pairing(adjacent: true);
 
-        RestOutcome same = harness.Solve(diagonal, sweeps: 1);
-        RestOutcome edge = harness.Solve(adjacent, sweeps: 1);
+        RestOutcome same = harness.Solve(asClipped, sweeps: 1);
+        RestOutcome edge = harness.Solve(asAdjacent, sweeps: 1);
 
         same.SignedTwistDegrees.Should().BeApproximately(0.0f, 1e-4f,
             $"the diagonal pair spun the upper box by {same.SignedTwistDegrees:0.#####} deg in one sweep.");
@@ -120,8 +119,8 @@ public sealed class RestStability3DTests
             $"the diagonal pair lifted the box by {same.NormalGain:0.#####} m and the adjacent pair by " +
             $"{edge.NormalGain:0.#####} m; the correction must not depend on how the face was paired.");
 
-        RestOutcome sameAgain = harness.Solve(diagonal, sweeps: 8);
-        RestOutcome edgeAgain = harness.Solve(adjacent, sweeps: 8);
+        RestOutcome sameAgain = harness.Solve(asClipped, sweeps: 8);
+        RestOutcome edgeAgain = harness.Solve(asAdjacent, sweeps: 8);
         sameAgain.NormalGain.Should().BeApproximately(same.NormalGain, 1e-6f,
             $"eight sweeps lifted the diagonal pair by {sameAgain.NormalGain:0.#####} m against one sweep's " +
             $"{same.NormalGain:0.#####} m, so the pass is paying for geometry it already corrected.");
@@ -131,14 +130,39 @@ public sealed class RestStability3DTests
     }
 
     [Fact]
+    public void Pairing_SwapsNothingAtTheWindowBoundary()
+    {
+        using var harness = new PairHarness();
+        Face face = harness.WidestFace();
+        Manifold3D asClipped = face.Pairing(adjacent: false);
+        Manifold3D asAdjacent = face.Pairing(adjacent: true);
+        int window = PositionGeometryWindow.MaxContacts;
+
+        Contact3D[] clipped = harness.Contacts(asClipped, window + 1);
+        Contact3D[] adjacent = harness.Contacts(asAdjacent, window + 1);
+
+        harness.Bodies.SetTransform(harness.Lower, new Vec3(0.0f, 0.4f, 0.0f), Quat.Identity);
+        harness.Bodies.SetTransform(harness.Upper, new Vec3(0.0f, 1.15f, 0.0f), Quat.Identity);
+        ContactSolver.SolvePositions(harness.Bodies, clipped, 1);
+        Vec3 clippedLift = harness.Bodies.GetTransform(harness.Upper).Position;
+
+        harness.Bodies.SetTransform(harness.Lower, new Vec3(0.0f, 0.4f, 0.0f), Quat.Identity);
+        harness.Bodies.SetTransform(harness.Upper, new Vec3(0.0f, 1.15f, 0.0f), Quat.Identity);
+        ContactSolver.SolvePositions(harness.Bodies, adjacent, 1);
+        Vec3 adjacentLift = harness.Bodies.GetTransform(harness.Upper).Position;
+
+        (adjacentLift - clippedLift).Length().Should().BeLessThan(1e-6f,
+            $"{window + 1} copies of the same face lifted the box by {clippedLift.Y - 1.15f:0.#####} m as clipped and " +
+            $"{adjacentLift.Y - 1.15f:0.#####} m as an adjacent pair across {window} contact windows; the pairing may " +
+            "not change an answer, and no copy may be dropped or duplicated at a window boundary.");
+    }
+
+    [Fact]
     public void ObservableWedgeDifferential_IsStillClosed()
     {
         using var harness = new PairHarness();
-        Manifold3D diagonal = harness.RealPair();
-        ContactPoint3D first = diagonal[0];
-        ContactPoint3D second = EdgePartner(diagonal[1], id: 37u);
-        second.Separation -= 0.01f;
-        Manifold3D wedge = Manifold3D.Pair(diagonal.Normal, first, second);
+        Face face = harness.WidestFace();
+        Manifold3D wedge = face.Pairing(adjacent: true, deeperSecond: 0.01f);
 
         RestOutcome outcome = harness.Solve(wedge, sweeps: 1);
 
@@ -205,7 +229,7 @@ public sealed class RestStability3DTests
     public void PositionPass_ResolvesTheResidualInOneSweep_WithoutAllocation()
     {
         using var harness = new PairHarness();
-        Manifold3D diagonal = harness.RealPair();
+        Manifold3D diagonal = harness.WidestFace().Pairing(adjacent: false);
         Contact3D[] contacts = harness.Contacts(diagonal);
 
         ContactSolver.SolvePositions(harness.Bodies, contacts, 1);
@@ -231,14 +255,16 @@ public sealed class RestStability3DTests
             ContactSolver.SolvePositions(harness.Bodies, contacts, 4);
         }
 
-        (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0L, "1000 sweeps of the two-point stack allocated this many bytes.");
+        long sweptOneSweep = GC.GetAllocatedBytesForCurrentThread() - before;
+        sweptOneSweep.Should().Be(0L,
+            $"1000 sweeps of a {diagonal.Count}-witness face pair allocated {sweptOneSweep} bytes.");
     }
 
     [Fact]
     public void PositionPass_SweepsLongContactLists_WithoutAllocation()
     {
         using var harness = new PairHarness();
-        Contact3D[] contacts = harness.Contacts(harness.RealPair(), 600);
+        Contact3D[] contacts = harness.Contacts(harness.WidestFace().Pairing(adjacent: false), 600);
 
         ContactSolver.SolvePositions(harness.Bodies, contacts, 4);
 
@@ -253,10 +279,16 @@ public sealed class RestStability3DTests
             ContactSolver.SolvePositions(harness.Bodies, contacts, 4);
         }
 
-        (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0L, "200 passes over 600 contacts allocated this many bytes.");
+        long swept = GC.GetAllocatedBytesForCurrentThread() - before;
+        int windows = (contacts.Length + PositionGeometryWindow.MaxContacts - 1) / PositionGeometryWindow.MaxContacts;
+        swept.Should().Be(0L,
+            $"{contacts.Length} contacts are {windows} windows of at most {PositionGeometryWindow.MaxContacts}; " +
+            $"200 passes over them allocated {swept} bytes.");
         Vec3 lower = harness.Bodies.GetTransform(harness.Lower).Position;
         Vec3 upper = harness.Bodies.GetTransform(harness.Upper).Position;
-        (IsFinite(lower) && IsFinite(upper)).Should().BeTrue("a windowed pass left non-finite body frames behind.");
+        (IsFinite(lower) && IsFinite(upper)).Should().BeTrue(
+            $"a windowed pass over {contacts.Length} contacts left non-finite body frames behind: lower " +
+            $"{Format(lower)}, upper {Format(upper)}.");
     }
 
     private static string Because(int count, int positionIterations, string warm, RestReport report) =>
@@ -356,13 +388,74 @@ public sealed class RestStability3DTests
     private static string Format(Vec3 vector) => $"({vector.X:0.#####},{vector.Y:0.#####},{vector.Z:0.#####})";
 
     /// <summary>
-    /// Second witness of a face pair, moved onto the same edge as the first so
-    /// the pair spans one axis only instead of a diagonal.
+    /// Second witness of a face pair, moved onto the dominant axis of the pair's
+    /// own chord so both witnesses share a line through the bodies instead of a
+    /// diagonal. Derived from the measured chord, so it holds however many
+    /// witnesses the narrowphase clipped and whichever way the face points.
     /// </summary>
-    private static ContactPoint3D EdgePartner(ContactPoint3D point, uint id) => new(
-        new Vec3(point.PositionA.X, point.PositionA.Y, -point.PositionA.Z),
-        new Vec3(point.PositionB.X, point.PositionB.Y, -point.PositionB.Z),
-        point.Separation, id);
+    private static ContactPoint3D SameEdge(ContactPoint3D first, ContactPoint3D second)
+    {
+        Vec3 chord = second.PositionA - first.PositionA;
+        Vec3 axis = DominantAxis(chord);
+        Vec3 offAxis = chord - (axis * Vec3.Dot(chord, axis));
+        return new ContactPoint3D(
+            second.PositionA - offAxis,
+            second.PositionB - offAxis,
+            second.Separation,
+            37u);
+    }
+
+    private static Vec3 DominantAxis(Vec3 vector)
+    {
+        float magnitudeX = MathF.Abs(vector.X);
+        float magnitudeY = MathF.Abs(vector.Y);
+        float magnitudeZ = MathF.Abs(vector.Z);
+        if (magnitudeX >= magnitudeY && magnitudeX >= magnitudeZ)
+        {
+            return new Vec3(1.0f, 0.0f, 0.0f);
+        }
+
+        return magnitudeY >= magnitudeZ ? new Vec3(0.0f, 1.0f, 0.0f) : new Vec3(0.0f, 0.0f, 1.0f);
+    }
+
+    private static ContactPoint3D[] LivePoints(in Manifold3D manifold)
+    {
+        var points = new ContactPoint3D[manifold.Count];
+        for (int index = 0; index < manifold.Count; index++)
+        {
+            points[index] = manifold[index];
+        }
+
+        return points;
+    }
+
+    /// <summary>
+    /// The two witnesses of <paramref name="points"/> furthest apart, which is a
+    /// diagonal of the clipped face whenever the face has any width at all.
+    /// </summary>
+    private static (int First, int Second) WidestPair(ContactPoint3D[] points)
+    {
+        points.Length.Should().BeGreaterThanOrEqualTo(2,
+            "every pairing gate compares two ways of pairing one face, so it needs at least two witnesses; " +
+            $"the narrowphase reported {points.Length}.");
+
+        int widest = 0;
+        float width = 0.0f;
+        for (int index = 1; index < points.Length; index++)
+        {
+            float span = (points[index].PositionA - points[0].PositionA).LengthSquared();
+            if (span > width)
+            {
+                width = span;
+                widest = index;
+            }
+        }
+
+        width.Should().BeGreaterThan(0.0f,
+            $"witness 0 and its widest partner are {(width > 0.0f ? MathF.Sqrt(width) : width):0.#####} m apart; a face " +
+            "pair whose witnesses coincide cannot show what a pairing does.");
+        return (0, widest);
+    }
 
     private struct NoWarmContext
     {
@@ -396,6 +489,31 @@ public sealed class RestStability3DTests
         float SignedTwistDegrees, float TwistAboutObservableAxis, float NormalGain);
 
     /// <summary>
+    /// The two widest witnesses of the face the narrowphase actually clipped,
+    /// kept with the shared normal and the witness count so a gate can say how
+    /// wide the face was without naming a number of points.
+    /// </summary>
+    private readonly record struct Face(
+        Vec3 Normal, ContactPoint3D First, ContactPoint3D Second, int WitnessCount)
+    {
+        /// <summary>
+        /// A two-witness manifold out of this face: as clipped, or with the
+        /// second witness pulled onto the same edge; <paramref name="deeperSecond"/>
+        /// opens a wedge between the two separations.
+        /// </summary>
+        public Manifold3D Pairing(bool adjacent, float deeperSecond = 0.0f)
+        {
+            ContactPoint3D second = adjacent ? SameEdge(First, Second) : Second;
+            if (deeperSecond != 0.0f)
+            {
+                second.Separation -= deeperSecond;
+            }
+
+            return Manifold3D.Pair(Normal, First, second);
+        }
+    }
+
+    /// <summary>
     /// Two stacked boxes plus hand-built manifolds, so a pairing can be swapped
     /// without the narrowphase quietly picking a different one.
     /// </summary>
@@ -417,12 +535,14 @@ public sealed class RestStability3DTests
             UpperShape = Shapes.AttachBox(Bodies, Tree, Upper, Vec3.Zero, BoxHalf, 1.0f, default, new PhysicsMaterial(0.7f, 0.0f));
         }
 
-        public Manifold3D RealPair()
+        public Face WidestFace()
         {
             Sync();
             var box = new Box3(Vec3.Zero, BoxHalf);
             Penetration3D.BoxBox(in box, Shapes.GetWorldFrame(LowerShape), in box, Shapes.GetWorldFrame(UpperShape), out Manifold3D manifold);
-            return manifold;
+            ContactPoint3D[] points = LivePoints(manifold);
+            (int first, int second) = WidestPair(points);
+            return new Face(manifold.Normal, points[first], points[second], points.Length);
         }
 
         public Contact3D[] Contacts(Manifold3D manifold, int count = 1)
@@ -453,7 +573,9 @@ public sealed class RestStability3DTests
             Quat before = Bodies.GetTransform(Upper).Rotation;
             Vec3 positionBefore = Bodies.GetTransform(Upper).Position;
 
-            Vec3 chord = Vec3.Normalize(manifold[0].PositionA - manifold[1].PositionA);
+            ContactPoint3D[] witnesses = LivePoints(manifold);
+            (int wide, int wider) = WidestPair(witnesses);
+            Vec3 chord = Vec3.Normalize(witnesses[wide].PositionA - witnesses[wider].PositionA);
             Vec3 observable = Vec3.Normalize(Vec3.Cross(manifold.Normal, chord));
 
             ContactSolver.SolvePositions(Bodies, contacts, sweeps);
