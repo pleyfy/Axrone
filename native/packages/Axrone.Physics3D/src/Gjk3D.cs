@@ -10,6 +10,14 @@ namespace Axrone.Physics3D;
 public static class Gjk3D
 {
     /// <summary>
+    /// Length resolution a Minkowski difference offers, as a fraction of the
+    /// working scale of the simplex. Sits just under two orders above float32
+    /// epsilon, covering the cancellation in supportA - supportB plus the dot
+    /// products of the reduction. A gap below it is rounding, not geometry.
+    /// </summary>
+    private const float RelativeResolution = 1e-5f;
+
+    /// <summary>
     /// Executes the monomorphized GJK distance query between any two support-mapped shapes.
     /// </summary>
     /// <param name="shapeA">The first shape.</param>
@@ -76,19 +84,16 @@ public static class Gjk3D
     {
         GjkResult result = Core<TShapeA, TShapeB, TPolicy, NullGjkObserver>(
             shapeA, shapeB, true, simplex, out count, out _, out _, out _);
-        if (!result.IsOverlapping || count != 4)
+        if (!result.IsOverlapping)
         {
-            if (result.IsOverlapping && ExpandToTetrahedron(shapeA, shapeB, simplex, ref count))
-            {
-                return count == 4
-                    && SimplexKernel3D.TetrahedronContainsOrigin(
-                        simplex[0].Difference, simplex[1].Difference, simplex[2].Difference, simplex[3].Difference);
-            }
-
             return false;
         }
 
-        return true;
+        // ExpandToTetrahedron validates each seed it builds; a simplex that
+        // already closed on the origin only needs the same check once.
+        return count == 4
+            ? EnclosesSeed(simplex)
+            : ExpandToTetrahedron(shapeA, shapeB, simplex, ref count);
     }
 
     /// <summary>
@@ -140,7 +145,9 @@ public static class Gjk3D
 
         Vec3 firstA = TShapeA.Support(in shapeA, initialDirection);
         Vec3 firstB = TShapeB.Support(in shapeB, initialDirection * -1.0f);
-        simplex.Add(SimplexVertex.Create(firstA, firstB));
+        SimplexVertex first = SimplexVertex.Create(firstA, firstB);
+        simplex.Add(first);
+        float workingScaleSq = LengthSquared(first.Difference).Value.Value;
 
         DistanceSquared bestDistSq = DistanceSquared.PositiveInfinity;
         Vec3 bestA = firstA;
@@ -169,7 +176,7 @@ public static class Gjk3D
             DistanceSquared distSq = LengthSquared(closest);
             TObserver.OnIteration(currentIteration, distSq, closest * -1.0f);
 
-            if (distSq <= TPolicy.OverlapTolerance)
+            if (distSq.Value.Value <= OriginToleranceSq(TPolicy.OverlapTolerance.Value.Value, workingScaleSq))
             {
                 exitStatus = GjkStatus.TouchingOrOverlapping;
                 FinishCapture(capture, ref simplex, captured, out capturedCount);
@@ -203,6 +210,7 @@ public static class Gjk3D
                 break;
             }
 
+            workingScaleSq = MathF.Max(workingScaleSq, LengthSquared(candidate.Difference).Value.Value);
             simplex.Add(candidate);
         }
 
@@ -414,10 +422,21 @@ public static class Gjk3D
             Vec3 axis = d.LengthSquared() > 1e-12f ? Vec3.Normalize(d) : new Vec3(1.0f, 0.0f, 0.0f);
             Vec3 perp = MathF.Abs(axis.Y) < 0.99f ? new Vec3(0.0f, 1.0f, 0.0f) : new Vec3(1.0f, 0.0f, 0.0f);
             Vec3 side = Vec3.Normalize(Vec3.Cross(axis, perp));
+            Vec3 other = Vec3.Normalize(Vec3.Cross(axis, side));
+            int apex = count;
             AddSupport(shapeA, shapeB, axis, simplex, ref count);
             AddSupport(shapeA, shapeB, axis * -1.0f, simplex, ref count);
             AddSupport(shapeA, shapeB, side, simplex, ref count);
-            return count == 4;
+            if (count == 4 && EnclosesSeed(simplex))
+            {
+                return true;
+            }
+
+            count = apex;
+            AddSupport(shapeA, shapeB, axis, simplex, ref count);
+            AddSupport(shapeA, shapeB, axis * -1.0f, simplex, ref count);
+            AddSupport(shapeA, shapeB, other, simplex, ref count);
+            return count == 4 && EnclosesSeed(simplex);
         }
 
         if (count == 2)
@@ -431,9 +450,18 @@ public static class Gjk3D
             Vec3 reference = MathF.Abs(edge.Y) < 0.99f ? new Vec3(0.0f, 1.0f, 0.0f) : new Vec3(1.0f, 0.0f, 0.0f);
             Vec3 n1 = Vec3.Normalize(Vec3.Cross(edge, reference));
             Vec3 n2 = Vec3.Cross(edge, n1);
+            int apex = count;
             AddSupport(shapeA, shapeB, n1, simplex, ref count);
             AddSupport(shapeA, shapeB, n2, simplex, ref count);
-            return count == 4;
+            if (count == 4 && EnclosesSeed(simplex))
+            {
+                return true;
+            }
+
+            count = apex;
+            AddSupport(shapeA, shapeB, n1 * -1.0f, simplex, ref count);
+            AddSupport(shapeA, shapeB, n2, simplex, ref count);
+            return count == 4 && EnclosesSeed(simplex);
         }
 
         Vec3 ab = simplex[1].Difference - simplex[0].Difference;
@@ -445,13 +473,16 @@ public static class Gjk3D
         }
 
         normal = Vec3.Normalize(normal);
+        int apexSlot = count;
         AddSupport(shapeA, shapeB, normal, simplex, ref count);
-        if (count < 4)
+        if (count == 4 && EnclosesSeed(simplex))
         {
-            AddSupport(shapeA, shapeB, normal * -1.0f, simplex, ref count);
+            return true;
         }
 
-        return count == 4;
+        count = apexSlot;
+        AddSupport(shapeA, shapeB, normal * -1.0f, simplex, ref count);
+        return count == 4 && EnclosesSeed(simplex);
     }
 
     /// <summary>Adds a Minkowski support vertex along a direction.</summary>
@@ -471,10 +502,35 @@ public static class Gjk3D
         simplex[count++] = new SimplexVertex(supportA - supportB, supportA, supportB);
     }
 
+    /// <summary>Validates a bootstrapped EPA seed: real volume, origin inside or within the resolution band.</summary>
+    private static bool EnclosesSeed(Span<SimplexVertex> simplex) =>
+        SimplexKernel3D.TetrahedronEnclosesOriginForSeed(
+            simplex[0].Difference, simplex[1].Difference, simplex[2].Difference, simplex[3].Difference,
+            RelativeResolution);
+
     /// <summary>Squared length as a domain nominal.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static DistanceSquared LengthSquared(in Vec3 vector) =>
         DistanceSquared.From(Vec3.Dot(vector, vector));
+
+    /// <summary>
+    /// Squared distance below which a remaining gap is float32 rounding rather
+    /// than geometry. Minkowski supports are differences of world coordinates,
+    /// so the resolution of the stored distance scales with the simplex: a
+    /// half-metre prism inside a twenty-metre slab resolves nothing below about
+    /// 1.4e-4 m, roughly thirty times under the engine's own 5 mm contact slop.
+    /// Flat-faced pairs cannot enclose the origin at all, which makes this the
+    /// only overlap signal they have; an absolute threshold under the
+    /// cancellation floor turns the decision into rounding noise. The policy
+    /// tolerance remains the absolute floor so scale-free probes keep their
+    /// declared precision.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float OriginToleranceSq(float absolute, float workingScaleSq)
+    {
+        float relative = workingScaleSq * (RelativeResolution * RelativeResolution);
+        return absolute > relative ? absolute : relative;
+    }
 
     /// <summary>Unit vector with a fallback for degenerate inputs.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
