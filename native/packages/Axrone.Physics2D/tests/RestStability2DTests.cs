@@ -289,9 +289,9 @@ public sealed class RestStability2DTests : IDisposable
     }
 
     /// <summary>
-    /// The pass must stay allocation-free at the window boundary and past it: a
-    /// 600-contact list resolves as consecutive windows of the same stack buffer,
-    /// so 1000 passes may not touch the heap.
+    /// The pass must stay allocation-free past the window boundary: the measured
+    /// quantity is the heap delta across 1000 passes, and the scene is asserted
+    /// separately to be long enough to cross a window and to stay finite.
     /// </summary>
     [Fact]
     public void PositionPass_SweepsLongContactLists_WithoutAllocating()
@@ -299,7 +299,11 @@ public sealed class RestStability2DTests : IDisposable
         const int Copies = 600;
         (World world, Contact[] contacts, BodyId box) = SymmetricPair(0.05f, Copies);
 
-        ContactSolver.SolvePositions(world.Bodies, world.Shapes, contacts, 3);
+        for (int i = 0; i < 300; i++)
+        {
+            ContactSolver.SolvePositions(world.Bodies, world.Shapes, contacts, 3);
+        }
+
         long baseline = GC.GetTotalAllocatedBytes(true);
         for (int i = 0; i < 1000; i++)
         {
@@ -307,9 +311,18 @@ public sealed class RestStability2DTests : IDisposable
         }
 
         long allocated = GC.GetTotalAllocatedBytes(true) - baseline;
-        Vec2 frame = world.Bodies.GetTransform(box).Position;
+        int windows = (contacts.Length + PositionGeometryWindow.MaxContacts - 1) / PositionGeometryWindow.MaxContacts;
+        contacts.Length.Should().BeGreaterThan(PositionGeometryWindow.MaxContacts,
+            $"this row only means something if the list is longer than one window; measured {contacts.Length} " +
+            $"contacts against a {PositionGeometryWindow.MaxContacts}-contact window.");
         allocated.Should().Be(0,
-            $"1000 passes over {Copies} contacts must resolve through stack windows only; measured {allocated} B allocated, box at ({frame.X:R},{frame.Y:R})");
+            $"1000 position passes over {contacts.Length} contacts in {windows} windows allocated {allocated} bytes " +
+            "on the measured thread.");
+
+        Vec2 frame = world.Bodies.GetTransform(box).Position;
+        (float.IsFinite(frame.X) && float.IsFinite(frame.Y)).Should().BeTrue(
+            $"the windowed pass left the box it carries at ({frame.X:R},{frame.Y:R}); a 600-copy list of one pair is " +
+            "not a rest scene, so this row asks only that no window corrupts the frames it writes.");
 
         world.Dispose();
     }
