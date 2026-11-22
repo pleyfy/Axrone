@@ -319,7 +319,7 @@ public static class ContactSolver
 
         float rnA = Vec2.Cross(rA, normal);
         float rnB = Vec2.Cross(rB, normal);
-        float normalMass = 1.0f / (invMassA + invMassB + (invIA * rnA * rnA) + (invIB * rnB * rnB));
+        float normalMass = ComputeNormalMass(invMassA, invMassB, invIA, invIB, rnA, rnB);
 
         Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * Perp(rA));
         Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
@@ -429,7 +429,12 @@ public static class ContactSolver
         }
     }
 
-    /// <summary>Applies one signed normal-impulse delta to both bodies.</summary>
+    /// <summary>
+    /// Applies one signed normal-impulse delta to both bodies. Only dynamic
+    /// bodies are written: scenery and script-driven bodies carry the awake
+    /// flag yet react with infinite mass, so a flag test alone would let a
+    /// degenerate row write straight through them.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static void ApplyNormalImpulse(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
@@ -437,13 +442,13 @@ public static class ContactSolver
         Vec2 rA, Vec2 rB, Vec2 normal, float delta)
     {
         Vec2 impulse = normal * delta;
-        if (awakeA)
+        if (awakeA && stateA.Type == BodyType.Dynamic)
         {
             stateA.LinearVelocity -= impulse * invMassA;
             stateA.AngularVelocity -= invIA * Vec2.Cross(rA, impulse);
         }
 
-        if (awakeB)
+        if (awakeB && stateB.Type == BodyType.Dynamic)
         {
             stateB.LinearVelocity += impulse * invMassB;
             stateB.AngularVelocity += invIB * Vec2.Cross(rB, impulse);
@@ -464,7 +469,7 @@ public static class ContactSolver
 
         float rtA = Vec2.Cross(rA, tangent);
         float rtB = Vec2.Cross(rB, tangent);
-        float tangentMass = 1.0f / (invMassA + invMassB + (invIA * rtA * rtA) + (invIB * rtB * rtB));
+        float tangentMass = ComputeTangentMass(invMassA, invMassB, invIA, invIB, rtA, rtB);
 
         Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * Perp(rA));
         Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
@@ -483,13 +488,13 @@ public static class ContactSolver
         manifold.SetImpulses(p, point.NormalImpulse, newTangent);
 
         Vec2 impulse = tangent * delta;
-        if (awakeA)
+        if (awakeA && stateA.Type == BodyType.Dynamic)
         {
             stateA.LinearVelocity -= impulse * invMassA;
             stateA.AngularVelocity -= invIA * Vec2.Cross(rA, impulse);
         }
 
-        if (awakeB)
+        if (awakeB && stateB.Type == BodyType.Dynamic)
         {
             stateB.LinearVelocity += impulse * invMassB;
             stateB.AngularVelocity += invIB * Vec2.Cross(rB, impulse);
@@ -533,12 +538,12 @@ public static class ContactSolver
 
             float rnA = Vec2.Cross(rA, normal);
             float rnB = Vec2.Cross(rB, normal);
-            float mass = 1.0f / (invMassA + invMassB + (invIA * rnA * rnA) + (invIB * rnB * rnB));
+            float mass = ComputeNormalMass(invMassA, invMassB, invIA, invIB, rnA, rnB);
 
             float correction = Math.Clamp(SolverTuning.Baumgarte * (point.Separation + SolverTuning.LinearSlop), -SolverTuning.MaxCorrection, 0.0f);
             Vec2 impulse = normal * (-mass * correction);
 
-            if (awakeA)
+            if (awakeA && stateA.Type == BodyType.Dynamic)
             {
                 stateA.Position -= impulse * invMassA;
                 float angleA = MathF.Atan2(stateA.Sin, stateA.Cos) - (invIA * Vec2.Cross(rA, impulse));
@@ -546,7 +551,7 @@ public static class ContactSolver
                 stateA.Sin = MathF.Sin(angleA);
             }
 
-            if (awakeB)
+            if (awakeB && stateB.Type == BodyType.Dynamic)
             {
                 stateB.Position += impulse * invMassB;
                 float angleB = MathF.Atan2(stateB.Sin, stateB.Cos) + (invIB * Vec2.Cross(rB, impulse));
@@ -554,6 +559,30 @@ public static class ContactSolver
                 stateB.Sin = MathF.Sin(angleB);
             }
         }
+    }
+
+    /// <summary>
+    /// Effective mass of one point along the normal. Guarded reciprocal: a
+    /// sleeping dynamic body over scenery has no movable surface at all, and
+    /// an unguarded reciprocal turns its zero approach speed into an infinite
+    /// mass times a zero speed, which every later clamp carries as NaN.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float ComputeNormalMass(float invMassA, float invMassB, float invIA, float invIB, float rnA, float rnB)
+    {
+        float k = invMassA + invMassB + (invIA * rnA * rnA) + (invIB * rnB * rnB);
+        return k > 0.0f ? 1.0f / k : 0.0f;
+    }
+
+    /// <summary>
+    /// Effective mass of one point along the tangent, guarded for the same
+    /// reason as the normal row.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float ComputeTangentMass(float invMassA, float invMassB, float invIA, float invIB, float rtA, float rtB)
+    {
+        float k = invMassA + invMassB + (invIA * rtA * rtA) + (invIB * rtB * rtB);
+        return k > 0.0f ? 1.0f / k : 0.0f;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
