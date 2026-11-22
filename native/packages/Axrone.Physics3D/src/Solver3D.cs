@@ -491,9 +491,8 @@ public static class ContactSolver
 
         Vec3 rtA = Vec3.Cross(rA, tangent);
         Vec3 rtB = Vec3.Cross(rB, tangent);
-        float tangentMass = 1.0f / (invMassA + invMassB
-            + Vec3.Dot(rtA, ApplyInverseInertia(stateA.Rotation, invIA, rtA))
-            + Vec3.Dot(rtB, ApplyInverseInertia(stateB.Rotation, invIB, rtB)));
+        float tangentMass = ComputeTangentMass(invMassA, invMassB, invIA, invIB,
+            stateA.Rotation, stateB.Rotation, rtA, rtB);
 
         Vec3 vA = stateA.LinearVelocity + Vec3.Cross(stateA.AngularVelocity, rA);
         Vec3 vB = stateB.LinearVelocity + Vec3.Cross(stateB.AngularVelocity, rB);
@@ -537,6 +536,22 @@ public static class ContactSolver
         return k > 0.0f ? 1.0f / k : 0.0f;
     }
 
+    /// <summary>
+    /// Effective mass of one point along a tangent. Guarded like the normal
+    /// row: a sleeping pair over scenery has no movable surface at all, and an
+    /// unguarded reciprocal would turn its zero sliding speed into NaN.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float ComputeTangentMass(
+        float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
+        Quat rotA, Quat rotB, Vec3 rtA, Vec3 rtB)
+    {
+        float k = invMassA + invMassB
+            + Vec3.Dot(rtA, ApplyInverseInertia(rotA, invIA, rtA))
+            + Vec3.Dot(rtB, ApplyInverseInertia(rotB, invIB, rtB));
+        return k > 0.0f ? 1.0f / k : 0.0f;
+    }
+
     /// <summary>Coupled effective mass between two points along the normal.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static float FullNormalMass(
@@ -552,40 +567,45 @@ public static class ContactSolver
             + Vec3.Dot(rnB0, ApplyInverseInertia(rotB, invIB, rnB1));
     }
 
-    /// <summary>Applies a normal impulse; the normal points from B toward A.</summary>
+    /// <summary>
+    /// Applies a normal impulse; the normal points from B toward A. Only
+    /// dynamic bodies are written: scenery and script-driven bodies carry the
+    /// awake flag yet react with infinite mass, so a flag test alone would let
+    /// a degenerate row write straight through them.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static void ApplyNormalImpulse(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
         float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
         Vec3 rA, Vec3 rB, Vec3 normal, float delta)
     {
-        if (awakeA)
+        if (awakeA && stateA.Type == BodyType.Dynamic)
         {
             stateA.LinearVelocity += normal * (delta * invMassA);
             stateA.AngularVelocity += ApplyInverseInertia(stateA.Rotation, invIA, Vec3.Cross(rA, normal) * delta);
         }
 
-        if (awakeB)
+        if (awakeB && stateB.Type == BodyType.Dynamic)
         {
             stateB.LinearVelocity -= normal * (delta * invMassB);
             stateB.AngularVelocity -= ApplyInverseInertia(stateB.Rotation, invIB, Vec3.Cross(rB, normal) * delta);
         }
     }
 
-    /// <summary>Applies a tangent impulse.</summary>
+    /// <summary>Applies a tangent impulse to dynamic bodies only.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static void ApplyTangentImpulse(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
         float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
         Vec3 rA, Vec3 rB, Vec3 tangent, float delta)
     {
-        if (awakeA)
+        if (awakeA && stateA.Type == BodyType.Dynamic)
         {
             stateA.LinearVelocity += tangent * (delta * invMassA);
             stateA.AngularVelocity += ApplyInverseInertia(stateA.Rotation, invIA, Vec3.Cross(rA, tangent) * delta);
         }
 
-        if (awakeB)
+        if (awakeB && stateB.Type == BodyType.Dynamic)
         {
             stateB.LinearVelocity -= tangent * (delta * invMassB);
             stateB.AngularVelocity -= ApplyInverseInertia(stateB.Rotation, invIB, Vec3.Cross(rB, tangent) * delta);
@@ -674,6 +694,8 @@ public static class ContactSolver
         float push1 = 0.0f;
         Vec3 rnA0 = Vec3.Cross(rA0, normal);
         Vec3 rnB0 = Vec3.Cross(rB0, normal);
+        Vec3 rA1 = Vec3.Zero;
+        Vec3 rB1 = Vec3.Zero;
         Vec3 rnA1 = Vec3.Zero;
         Vec3 rnB1 = Vec3.Zero;
 
@@ -682,8 +704,8 @@ public static class ContactSolver
             ref readonly PositionGeometry3D second = ref geometry[1];
             Vec3 witnessA1 = second.ResolveA(frameA);
             Vec3 witnessB1 = second.ResolveB(frameB);
-            Vec3 rA1 = witnessA1 - comA;
-            Vec3 rB1 = witnessB1 - comB;
+            rA1 = witnessA1 - comA;
+            rB1 = witnessB1 - comB;
             float k22 = FullNormalMass(invMassA, invMassB, invIA, invIB, stateA.Rotation, stateB.Rotation, rA1, rB1, rA1, rB1, normal);
             float k12 = FullNormalMass(invMassA, invMassB, invIA, invIB, stateA.Rotation, stateB.Rotation, rA0, rB0, rA1, rB1, normal);
             float target1 = Target(second, normal, witnessA1, witnessB1);
@@ -727,20 +749,48 @@ public static class ContactSolver
             return;
         }
 
+        Vec3 momentA = (rnA0 * push0) + (rnA1 * push1);
+        Vec3 momentB = (rnB0 * push0) + (rnB1 * push1);
+        float massSum = invMassA + invMassB;
         float push = push0 + push1;
-        if (awakeA)
+
+        if (manifold.Count > 1 && massSum > 0.0f)
+        {
+            Vec3 droppedA = ChordComponent(momentA, rA0 - rA1);
+            Vec3 droppedB = ChordComponent(momentB, rB0 - rB1);
+            float lost = Vec3.Dot(ApplyInverseInertia(stateA.Rotation, invIA, droppedA), rnA0)
+                + Vec3.Dot(ApplyInverseInertia(stateB.Rotation, invIB, droppedB), rnB0);
+            push += lost / massSum;
+            momentA -= droppedA;
+            momentB -= droppedB;
+        }
+
+        if (awakeA && stateA.Type == BodyType.Dynamic)
         {
             stateA.Position += normal * (push * invMassA);
-            Vec3 spinA = ApplyInverseInertia(stateA.Rotation, invIA, (rnA0 * push0) + (rnA1 * push1));
+            Vec3 spinA = ApplyInverseInertia(stateA.Rotation, invIA, momentA);
             stateA.Rotation = RotateBy(stateA.Rotation, spinA);
         }
 
-        if (awakeB)
+        if (awakeB && stateB.Type == BodyType.Dynamic)
         {
             stateB.Position -= normal * (push * invMassB);
-            Vec3 spinB = ApplyInverseInertia(stateB.Rotation, invIB, (rnB0 * push0) + (rnB1 * push1)) * -1.0f;
-            stateB.Rotation = RotateBy(stateB.Rotation, spinB);
+            Vec3 spinB = ApplyInverseInertia(stateB.Rotation, invIB, momentB);
+            stateB.Rotation = RotateBy(stateB.Rotation, spinB * -1.0f);
         }
+    }
+
+    /// <summary>Component of a couple along the witness chord; zero when the chord has no direction.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static Vec3 ChordComponent(Vec3 couple, Vec3 chord)
+    {
+        float lengthSq = chord.LengthSquared();
+        if (lengthSq <= 1e-12f)
+        {
+            return Vec3.Zero;
+        }
+
+        return chord * (Vec3.Dot(couple, chord) / lengthSq);
     }
 
     /// <summary>Distance the pair must gain along the normal before one point rests inside the slop.</summary>
