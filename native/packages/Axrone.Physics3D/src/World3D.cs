@@ -1009,7 +1009,7 @@ public sealed class World : IDisposable
         bool solveVelocities = (Flags & SolverFlags.VelocityConstraints) != 0;
         bool pushPositions = (Flags & SolverFlags.PositionCorrection) != 0;
 
-        DrainRelocations();
+        DrainWakeTriggers();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         CollectSliceContacts();
 
@@ -1115,6 +1115,7 @@ public sealed class World : IDisposable
         }
 
         Array.Clear(_matchedPrevious, 0, _previousCount);
+        BeginWakePropagation();
         for (int i = 0; i < _contactCount; i++)
         {
             int match = FindPrevious(_contacts[i].ShapeA, _contacts[i].ShapeB);
@@ -1131,6 +1132,7 @@ public sealed class World : IDisposable
             }
         }
 
+        PropagateWakes();
         PersistBrokenPairs();
     }
 
@@ -1511,53 +1513,58 @@ public sealed class World : IDisposable
         }
     }
 
+    /// <summary>
+    /// Wakes both sides of a pair that just appeared and queues them as seeds, so
+    /// the propagation that follows carries the wake on to whatever rests on the
+    /// bodies the collision struck.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WakePair(BodyId bodyA, BodyId bodyB)
     {
-        ref BodyState stateA = ref _bodies.Slot(bodyA);
-        ref BodyState stateB = ref _bodies.Slot(bodyB);
-
-        if (stateA.Type == BodyType.Dynamic && (stateA.Flags & BodyFlags.Awake) == 0)
-        {
-            _bodies.SetAwake(bodyA, true);
-        }
-
-        if (stateB.Type == BodyType.Dynamic && (stateB.Flags & BodyFlags.Awake) == 0)
-        {
-            _bodies.SetAwake(bodyB, true);
-        }
+        EnqueueWakeSlot(BodyStore.SlotOf(bodyA));
+        EnqueueWakeSlot(BodyStore.SlotOf(bodyB));
     }
 
     /// <summary>
-    /// Places every immovable body moved outside the integrator into the
-    /// broadphase, then wakes the dynamic bodies overlapping the volume that
-    /// placement swept. <see cref="SyncAwakeBodies"/> skips immovable bodies and
-    /// <see cref="WakePair"/> only fires on a pair that disappeared, so without
-    /// this pass a support withdrawn from under a resting body leaves it asleep
-    /// on nothing.
+    /// Opens the step's wake propagation. Immovable bodies placed outside the
+    /// integrator are put into the broadphase and wake the dynamic bodies
+    /// overlapping the volume their placement swept; dynamic bodies a caller set
+    /// into motion seed the walk directly. <see cref="SyncAwakeBodies"/> skips
+    /// immovable bodies and <see cref="WakePair"/> only fires on a pair that
+    /// appeared, so without this pass a support withdrawn from under a resting
+    /// body leaves it asleep on nothing, and a body shoved into a sleeping stack
+    /// drags no one with it.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void DrainRelocations()
+    private void DrainWakeTriggers()
     {
-        int count = _bodies.RelocationCount;
-        if (count == 0)
+        int relocations = _bodies.RelocationCount;
+        int seeds = _bodies.WakeSeedCount;
+        if (relocations == 0 && seeds == 0)
         {
             return;
         }
 
-        ReadOnlySpan<int> slots = _bodies.RelocatedSlots;
         BeginWakePropagation();
-        for (int i = 0; i < count; i++)
+        ReadOnlySpan<int> relocated = _bodies.RelocatedSlots;
+        for (int i = 0; i < relocated.Length; i++)
         {
-            int slot = slots[i];
+            int slot = relocated[i];
             if (_bodies.IsSlotLive(slot) && _bodies.SlotType(slot) != BodyType.Dynamic)
             {
                 RelocateBody(BodyId.FromIndex(slot));
             }
         }
 
+        ReadOnlySpan<int> motionSeeds = _bodies.WakeSeedSlots;
+        for (int i = 0; i < motionSeeds.Length; i++)
+        {
+            EnqueueWakeSlot(motionSeeds[i]);
+        }
+
         PropagateWakes();
         _bodies.ClearRelocations();
+        _bodies.ClearWakeSeeds();
     }
 
     /// <summary>Re-inserts one relocated body's shapes and wakes what the move swept through.</summary>
@@ -1957,7 +1964,7 @@ public sealed class World : IDisposable
         bool solveVelocities = (Flags & SolverFlags.VelocityConstraints) != 0;
         bool pushPositions = (Flags & SolverFlags.PositionCorrection) != 0;
 
-        DrainRelocations();
+        DrainWakeTriggers();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         CollectSliceContacts();
 
