@@ -298,6 +298,7 @@ public sealed class World : IDisposable
     private readonly IslandSolver<DefaultSleepPolicy> _islands = new();
     private Contact[] _contacts;
     private Contact[] _previous;
+    private PositionGeometry2D[] _positionGeometry;
     private int _contactCount;
     private int _previousCount;
     private ContactEvent[] _events;
@@ -376,6 +377,7 @@ public sealed class World : IDisposable
         _tree = new DynamicAabbTree2D<ShapeId, SurfaceAreaHeuristicStrategy2D, NullSpatialMetricsSink>(definition.BroadphaseOptions);
         _contacts = new Contact[InitialContactCapacity];
         _previous = new Contact[InitialContactCapacity];
+        _positionGeometry = new PositionGeometry2D[InitialContactCapacity * PositionGeometryWindow.PointsPerContact];
         _contactCount = 0;
         _previousCount = 0;
         _events = new ContactEvent[InitialContactCapacity];
@@ -1137,10 +1139,15 @@ public sealed class World : IDisposable
         _bodies.IntegratePositions(h);
         SyncAwakeBodies();
 
-        for (int iteration = 0; iteration < PositionIterations; iteration++)
+        if (PositionIterations > 0)
         {
-            ContactSolver.SolvePositionPass(_bodies, _shapes, _contacts.AsSpan(0, _contactCount));
-            JointSolver.SolvePositionPass(_bodies, _joints, 1);
+            Span<Contact> span = _contacts.AsSpan(0, _contactCount);
+            Span<PositionGeometry2D> geometry = CapturePositionGeometry(span);
+            for (int iteration = 0; iteration < PositionIterations; iteration++)
+            {
+                ContactSolver.SolvePositionPass(_bodies, _shapes, span, geometry);
+                JointSolver.SolvePositionPass(_bodies, _joints, 1);
+            }
         }
     }
 
@@ -1180,10 +1187,15 @@ public sealed class World : IDisposable
         _bodies.IntegratePositions(h);
         SyncAwakeBodies();
 
-        for (int iteration = 0; iteration < PositionIterations; iteration++)
+        if (PositionIterations > 0)
         {
-            ContactSolver.SolvePositionPass(_bodies, _shapes, _contacts.AsSpan(0, _contactCount));
-            JointSolver.SolvePositionPass(_bodies, _joints, 1);
+            Span<Contact> span = _contacts.AsSpan(0, _contactCount);
+            Span<PositionGeometry2D> geometry = CapturePositionGeometry(span);
+            for (int iteration = 0; iteration < PositionIterations; iteration++)
+            {
+                ContactSolver.SolvePositionPass(_bodies, _shapes, span, geometry);
+                JointSolver.SolvePositionPass(_bodies, _joints, 1);
+            }
         }
     }
 
@@ -1310,6 +1322,26 @@ public sealed class World : IDisposable
                 manifold.Count > 1 ? impulses.NormalAt(1) : 0.0f,
                 manifold.Count > 1 ? impulses.TangentAt(1) : 0.0f);
         }
+    }
+
+    /// <summary>
+    /// Binds every live contact point to the frame its body carries now, so
+    /// each sweep of the position pass measures the moment instead of replaying
+    /// the narrowphase snapshot. The window grows with the contact list and is
+    /// reallocated only while the scene is still growing.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Span<PositionGeometry2D> CapturePositionGeometry(Span<Contact> contacts)
+    {
+        int needed = contacts.Length * PositionGeometryWindow.PointsPerContact;
+        if (_positionGeometry.Length < needed)
+        {
+            Array.Resize(ref _positionGeometry, needed);
+        }
+
+        Span<PositionGeometry2D> geometry = _positionGeometry.AsSpan(0, needed);
+        ContactSolver.CapturePositionGeometry(_bodies, contacts, geometry);
+        return geometry;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
