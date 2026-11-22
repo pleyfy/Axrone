@@ -364,6 +364,105 @@ public sealed class StaticRelocation2DTests : IDisposable
             "the restless body itself must still never sleep; pinning was not deleted");
     }
 
+    /// <summary>
+    /// Multi-body case for this suite, which was entirely single-body at base: a
+    /// stack of three on the withdrawn slab. Only the base box is inside the
+    /// volume the placement swept, so every higher box is a witness that the
+    /// propagation walked, and the pair set is a witness that a sleeping stack
+    /// keeps its graph at all.
+    /// </summary>
+    [Fact]
+    public void StackOnDroppedSupport_WakesEveryMemberAndLandsTheWholeStack()
+    {
+        BodyId ground = AddGround(_world);
+        BodyId[] boxes = [.. Enumerable.Range(0, 3).Select(i => AddBox(_world, new Vec2(0.0f, StackRestY(i))))];
+        int sleepStep = SleepStep(_world, boxes[0], 120);
+        sleepStep.Should().BeGreaterThan(-1, "precondition: the stack never came to rest before the withdrawal");
+        boxes.All(id => !_world.Bodies.IsAwake(id)).Should().BeTrue(
+            $"precondition: the stack was not fully asleep at step {sleepStep}; awake=[{AwakeState(boxes)}]");
+        int graphBefore = _world.ContactCount;
+
+        _world.Bodies.SetTransform(ground, new Vec2(0.0f, -2.0f), 0.0f);
+
+        int[] wake = [-1, -1, -1];
+        int resleepStep = -1;
+        for (int step = 0; step < 300; step++)
+        {
+            _world.Step(Dt);
+            for (int i = 0; i < boxes.Length; i++)
+            {
+                if (wake[i] < 0 && _world.Bodies.IsAwake(boxes[i]))
+                {
+                    wake[i] = step;
+                }
+            }
+
+            if (resleepStep < 0 && step > 3 && boxes.All(id => !_world.Bodies.IsAwake(id)))
+            {
+                resleepStep = step;
+            }
+        }
+
+        graphBefore.Should().Be(3,
+            $"a sleeping three-stack must keep both interfaces and the ground pair, or the walk has no edges to cross; measured {_world.ContactCount} now");
+        wake.Should().OnlyContain(step => step >= 0 && step <= 2,
+            $"every box resting on a withdrawn support has to wake through the contact graph; awake=[{AwakeState(boxes)}] y=[{YState(boxes)}]");
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            _world.Bodies.GetTransform(boxes[i]).Position.Y.Should().BeApproximately(
+                StackRestY(i) - 1.0f, 2.0f * LinearSlop,
+                $"box{i} must land one metre lower with its slab; y=[{YState(boxes)}], wake=[{string.Join(" ", wake)}]");
+        }
+
+        resleepStep.Should().BeGreaterThan(0, $"the landed stack must come back to rest; y=[{YState(boxes)}]");
+        _world.Bodies.GetLinearVelocity(ground).Should().Be(Vec2.Zero, "scenery dragged awake by the wake pass must not be given velocity");
+    }
+
+    /// <summary>
+    /// A stack whose support is slid out sideways: the base falls, and the boxes
+    /// above it may only be left hanging if something woke them to catch up.
+    /// </summary>
+    [Fact]
+    public void StackOnSupportSlidSideways_WakesTheBoxesThatFollowTheBaseDown()
+    {
+        BodyId ground = AddGround(_world);
+        BodyId[] boxes = [.. Enumerable.Range(0, 3).Select(i => AddBox(_world, new Vec2(0.0f, StackRestY(i))))];
+        SleepStep(_world, boxes[0], 120);
+        Vec2[] before = boxes.Select(id => _world.Bodies.GetTransform(id).Position).ToArray();
+
+        _world.Bodies.SetTransform(ground, new Vec2(20.0f, -1.0f), 0.0f);
+
+        int[] wake = [-1, -1, -1];
+        for (int step = 0; step < 120; step++)
+        {
+            _world.Step(Dt);
+            for (int i = 0; i < boxes.Length; i++)
+            {
+                if (wake[i] < 0 && _world.Bodies.IsAwake(boxes[i]))
+                {
+                    wake[i] = step;
+                }
+            }
+        }
+
+        wake.Should().OnlyContain(step => step >= 0 && step <= 2,
+            $"withdrawing the slab sideways leaves nothing under any of the three boxes; awake=[{AwakeState(boxes)}] y=[{YState(boxes)}]");
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            Vec2 after = _world.Bodies.GetTransform(boxes[i]).Position;
+            (before[i].Y - after.Y).Should().BeGreaterThan(0.5f,
+                $"box{i} had nothing under it and must have fallen; y {before[i].Y:R} to {after.Y:R}");
+            float.IsFinite(after.X + after.Y).Should().BeTrue($"box{i} went non-finite during the drop");
+        }
+    }
+
+    private static float StackRestY(int index) => BoxHalf + (2.0f * BoxHalf) * index - ((index + 1) * LinearSlop);
+
+    private string AwakeState(BodyId[] boxes) => string.Join(" ", boxes.Select(id => _world.Bodies.IsAwake(id) ? "A" : "S"));
+
+    private string YState(BodyId[] boxes) =>
+        string.Join(" ", boxes.Select(id => _world.Bodies.GetTransform(id).Position.Y.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)));
+
     private static float ReportSeparation(World world)
     {
         for (int c = 0; c < world.ContactCount; c++)
