@@ -227,6 +227,32 @@ public sealed class ContactBreakBand3DTests
         world.Validate().Should().BeTrue("the contact set no longer names only live entities.");
     }
 
+    [Fact]
+    public void Band_Bookkeeping_AllocatesNothingPerStep()
+    {
+        using World world = new(new WorldDef { Gravity = Vec3.Zero });
+        Ground(world);
+        BodyId box = Placed(world, -0.005f);
+        world.Step(Dt);
+        MoveToGap(world, box, HairGap);
+
+        for (int warm = 0; warm < 8; warm++)
+        {
+            world.Step(Dt);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int step = 0; step < 1000; step++)
+        {
+            world.Step(Dt);
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        _output.WriteLine($"1000 steps with one pair parked in the band allocated {allocated} B");
+        allocated.Should().Be(0L,
+            $"{allocated} B allocated over 1000 steady steps of a world holding one band-tracked pair.");
+    }
+
     private static BodyId Ground(World world)
     {
         BodyId ground = world.Bodies.Create(new BodyDef { Type = BodyType.Static });
