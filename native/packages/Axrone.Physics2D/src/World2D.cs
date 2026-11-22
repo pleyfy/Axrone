@@ -1129,7 +1129,7 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void StepSlice(float h, bool emitImpulseNotices)
     {
-        DrainRelocations();
+        DrainPendingWakes();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
         CollectPairs();
@@ -1172,7 +1172,7 @@ public sealed class World : IDisposable
         where THandler : IContactSolverCallbacks<Contact, ContactManifold, TContext>
         where TContext : allows ref struct
     {
-        DrainRelocations();
+        DrainPendingWakes();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
         CollectPairs();
@@ -1425,34 +1425,46 @@ public sealed class World : IDisposable
     private const float RelocationWakeMargin = SolverTuning.LinearSlop;
 
     /// <summary>
-    /// Places every static or kinematic support that was moved outside the
-    /// integrator: its broadphase nodes are refreshed before pair collection,
-    /// and the dynamic bodies inside the volume the placement swept are woken.
-    /// Runs as the first statement of a slice, and costs one integer read and
-    /// one branch when nothing was placed.
+    /// Drains everything the caller changed outside the integrator. A static or
+    /// kinematic support that was moved gets its broadphase nodes refreshed
+    /// before pair collection, and the dynamic bodies inside the volume the
+    /// placement swept seed the wake propagation; a dynamic body that a force, an
+    /// impulse or a velocity pulled out of sleep seeds it directly. Both reach
+    /// whatever rests on them through the same bounded walk. Runs as the first
+    /// statement of a slice, and costs one integer read and one branch when the
+    /// caller touched nothing.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void DrainRelocations()
+    private void DrainPendingWakes()
     {
-        int count = _bodies.RelocationCount;
+        int count = _bodies.PendingWakeCount;
         if (count == 0)
         {
             return;
         }
 
-        ReadOnlySpan<int> slots = _bodies.RelocatedSlots;
+        ReadOnlySpan<int> slots = _bodies.PendingWakeSlots;
         BeginWakePropagation();
         for (int i = 0; i < count; i++)
         {
             int slot = slots[i];
-            if (_bodies.IsSlotLive(slot) && _bodies.SlotType(slot) != BodyType.Dynamic)
+            if (!_bodies.IsSlotLive(slot))
+            {
+                continue;
+            }
+
+            if (_bodies.SlotType(slot) != BodyType.Dynamic)
             {
                 RelocateBody(BodyId.FromIndex(slot));
+            }
+            else
+            {
+                EnqueueWakeSlot(slot);
             }
         }
 
         PropagateWakes();
-        _bodies.ClearRelocations();
+        _bodies.ClearPendingWakes();
     }
 
     /// <summary>

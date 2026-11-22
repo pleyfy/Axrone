@@ -1,4 +1,4 @@
-namespace Axrone.Physics2D;
+﻿namespace Axrone.Physics2D;
 
 /// <summary>
 /// Dense slot store of simulated bodies: identities are slot plus one, freed
@@ -13,9 +13,9 @@ public sealed class BodyStore
 
     private BodyState[] _bodies;
     private int[] _freeStack;
-    private int[] _relocatedSlots;
-    private bool[] _relocationMarked;
-    private int _relocatedCount;
+    private int[] _pendingWakeSlots;
+    private bool[] _pendingWakeMarked;
+    private int _pendingWakeCount;
     private int _freeCount;
     private int _highWater;
     private int _count;
@@ -27,9 +27,9 @@ public sealed class BodyStore
         _capacity = InitialCapacity;
         _bodies = new BodyState[_capacity];
         _freeStack = new int[_capacity];
-        _relocatedSlots = new int[_capacity];
-        _relocationMarked = new bool[_capacity];
-        _relocatedCount = 0;
+        _pendingWakeSlots = new int[_capacity];
+        _pendingWakeMarked = new bool[_capacity];
+        _pendingWakeCount = 0;
         _freeCount = 0;
         _highWater = 0;
         _count = 0;
@@ -109,7 +109,7 @@ public sealed class BodyStore
     public void Destroy(BodyId id)
     {
         int slot = Validate(id);
-        _relocationMarked[slot] = false;
+        _pendingWakeMarked[slot] = false;
         _bodies[slot] = default;
         _freeStack[_freeCount++] = slot;
         _count--;
@@ -148,42 +148,63 @@ public sealed class BodyStore
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
         if (body.Type != BodyType.Dynamic)
         {
-            MarkRelocated(slot);
+            MarkPendingWake(slot);
         }
     }
 
     /// <summary>Queues an immovable body whose frame was placed outside the integrator.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void MarkRelocated(int slot)
+    private void MarkPendingWake(int slot)
     {
-        if (_relocationMarked[slot])
+        if (_pendingWakeMarked[slot])
         {
             return;
         }
 
-        _relocationMarked[slot] = true;
-        _relocatedSlots[_relocatedCount++] = slot;
+        _pendingWakeMarked[slot] = true;
+        _pendingWakeSlots[_pendingWakeCount++] = slot;
     }
 
-    /// <summary>Slots placed by <see cref="SetTransform"/> since the world last drained them.</summary>
-    internal ReadOnlySpan<int> RelocatedSlots => _relocatedSlots.AsSpan(0, _relocatedCount);
+    /// <summary>
+    /// Raises the awake flag for caller input, and queues the body for wake
+    /// propagation only when that flag was not already up. A body that was
+    /// already awake is being pushed through the solver, which transmits the
+    /// push to whatever rests on it mechanically; a sleeper dragged awake by a
+    /// force carries neighbours that are still asleep and reachable only through
+    /// the contact graph, so that transition is the one worth walking for. The
+    /// test keeps a continuously forced body — a hover, a conveyor — from
+    /// turning the walk into a per-frame graph scan.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WakeForInput(BodyId id, ref BodyState body)
+    {
+        if ((body.Flags & BodyFlags.Awake) == 0)
+        {
+            MarkPendingWake(SlotOf(id));
+        }
 
-    /// <summary>Pending relocation entries.</summary>
-    internal int RelocationCount
+        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+    }
+
+    /// <summary>Slots placed or woken since the world last drained them.</summary>
+    internal ReadOnlySpan<int> PendingWakeSlots => _pendingWakeSlots.AsSpan(0, _pendingWakeCount);
+
+    /// <summary>Pending entries in the wake queue.</summary>
+    internal int PendingWakeCount
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _relocatedCount;
+        get => _pendingWakeCount;
     }
 
     /// <summary>Empties the pending relocation queue.</summary>
-    internal void ClearRelocations()
+    internal void ClearPendingWakes()
     {
-        for (int i = 0; i < _relocatedCount; i++)
+        for (int i = 0; i < _pendingWakeCount; i++)
         {
-            _relocationMarked[_relocatedSlots[i]] = false;
+            _pendingWakeMarked[_pendingWakeSlots[i]] = false;
         }
 
-        _relocatedCount = 0;
+        _pendingWakeCount = 0;
     }
 
     /// <summary>Reads the linear velocity of a body.</summary>
@@ -198,7 +219,7 @@ public sealed class BodyStore
         if (body.Type != BodyType.Static)
         {
             body.LinearVelocity = velocity;
-            body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+            WakeForInput(id, ref body);
         }
     }
 
@@ -214,7 +235,7 @@ public sealed class BodyStore
         if (body.Type != BodyType.Static && (body.Flags & BodyFlags.FixedRotation) == 0)
         {
             body.AngularVelocity = velocity;
-            body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+            WakeForInput(id, ref body);
         }
     }
 
@@ -263,7 +284,7 @@ public sealed class BodyStore
         }
 
         body.Force += force;
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForInput(id, ref body);
     }
 
     /// <summary>
@@ -287,7 +308,7 @@ public sealed class BodyStore
         Vec2 center = WorldCenterOf(in body);
         Vec2 r = point - center;
         body.Torque += (r.X * force.Y) - (r.Y * force.X);
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForInput(id, ref body);
     }
 
     /// <summary>Accumulates a world force at the center of mass; identical to the point-free overload.</summary>
@@ -307,7 +328,7 @@ public sealed class BodyStore
         }
 
         body.Torque += torque;
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForInput(id, ref body);
     }
 
     /// <summary>Applies an instantaneous linear impulse at the center of mass; wakes the body.</summary>
@@ -321,7 +342,7 @@ public sealed class BodyStore
         }
 
         body.LinearVelocity += impulse * body.InverseMass;
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForInput(id, ref body);
     }
 
     /// <summary>
@@ -346,7 +367,7 @@ public sealed class BodyStore
         Vec2 center = WorldCenterOf(in body);
         Vec2 r = point - center;
         body.AngularVelocity += body.InverseInertia * ((r.X * impulse.Y) - (r.Y * impulse.X));
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForInput(id, ref body);
     }
 
     /// <summary>Applies an instantaneous angular impulse; wakes the body.</summary>
@@ -361,7 +382,7 @@ public sealed class BodyStore
         }
 
         body.AngularVelocity += impulse * body.InverseInertia;
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForInput(id, ref body);
     }
 
     /// <summary>Overwrites the mass properties; zero mass means infinite (static-like response).</summary>
@@ -780,8 +801,8 @@ public sealed class BodyStore
         int newCapacity = _capacity * 2;
         Array.Resize(ref _bodies, newCapacity);
         Array.Resize(ref _freeStack, newCapacity);
-        Array.Resize(ref _relocatedSlots, newCapacity);
-        Array.Resize(ref _relocationMarked, newCapacity);
+        Array.Resize(ref _pendingWakeSlots, newCapacity);
+        Array.Resize(ref _pendingWakeMarked, newCapacity);
         _capacity = newCapacity;
     }
 

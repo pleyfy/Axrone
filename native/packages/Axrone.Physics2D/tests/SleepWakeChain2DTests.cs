@@ -363,4 +363,64 @@ public sealed class SleepWakeChain2DTests : IDisposable
         _world.Bodies.GetTransform(platform).Position.Should().Be(platformBefore, "a kinematic left asleep must not be dragged by the sweep that passed through it");
         boxWake.Should().BeInRange(1, WakeWindow, $"the dynamic neighbour of the withdrawn wall has to wake; sleepStep={sleepStep}");
     }
+
+    /// <summary>
+    /// The same propagation has to run for the other way a support changes under
+    /// a pile: caller input. A force, an impulse or a velocity applied to one
+    /// body of a sleeping stack reaches the bodies above it only through the
+    /// contact graph, and a sleeper does not get re-evaluated by the solver until
+    /// something wakes it.
+    /// </summary>
+    [Theory]
+    [InlineData("impulseX")]
+    [InlineData("impulseUp")]
+    [InlineData("forceX")]
+    [InlineData("velocity")]
+    public void InputOnStackBase_WakesEverythingRestingOnIt(string kind)
+    {
+        AddGround(_world);
+        BodyId[] boxes = AddStack(3);
+        int sleepStep = SleepStepAll(boxes, SleepLimit);
+        sleepStep.Should().BeGreaterThan(0, $"precondition: the three stack never slept; {Row(boxes, sleepStep)}");
+
+        switch (kind)
+        {
+            case "impulseX":
+                _world.Bodies.ApplyLinearImpulse(boxes[0], new Vec2(2.4f, 0.0f));
+                break;
+            case "impulseUp":
+                _world.Bodies.ApplyLinearImpulse(boxes[0], new Vec2(0.0f, 6.0f));
+                break;
+            case "forceX":
+                _world.Bodies.ApplyForce(boxes[0], new Vec2(60.0f, 0.0f));
+                break;
+            default:
+                _world.Bodies.SetLinearVelocity(boxes[0], new Vec2(1.2f, 0.0f));
+                break;
+        }
+
+        int[] wake = [-1, -1, -1];
+        int resleepStep = -1;
+        for (int step = 1; step <= 120; step++)
+        {
+            _world.Step(Dt);
+            for (int i = 0; i < wake.Length; i++)
+            {
+                if (wake[i] < 0 && _world.Bodies.IsAwake(boxes[i]))
+                {
+                    wake[i] = step;
+                }
+            }
+
+            if (resleepStep < 0 && step > WakeWindow && AllAsleep(boxes))
+            {
+                resleepStep = step;
+            }
+        }
+
+        wake.Should().OnlyContain(
+            step => step >= 1 && step <= WakeWindow,
+            $"pushing the base of a sleeping stack with {kind} must wake the boxes resting on it, and only the contact graph reaches them; {ChainRow(boxes, wake, sleepStep, resleepStep)}");
+        resleepStep.Should().BeGreaterThan(0, $"the disturbed stack must come back to rest after {kind}; {ChainRow(boxes, wake, sleepStep, resleepStep)}");
+    }
 }
