@@ -336,6 +336,130 @@ public sealed class SleepingContact2DTests : IDisposable
     }
 
     /// <summary>
+    /// The sleeping half of the carry claim the gate above could not make,
+    /// because that gate authored its box with <c>allowSleep: false</c>: a box
+    /// that has come to rest on a platform the platform is still driving must be
+    /// picked up, carried, and put back to sleep on the platform once the drive
+    /// stops.
+    /// </summary>
+    [Fact]
+    public void SleepingBox_RidesAContinuouslyDrivenPlatform_AndReSleepsOnceItStops()
+    {
+        const float Drive = 0.6f;
+        BodyId platform = AddBox(
+            new Vec2(0.0f, -0.5f),
+            new Vec2(4.0f, 0.5f),
+            BodyType.Kinematic,
+            friction: 0.9f);
+        BodyId box = AddBox(new Vec2(0.0f, BoxHalf), new Vec2(BoxHalf, BoxHalf), friction: 0.9f);
+
+        int sleepStep = -1;
+        for (int step = 1; step <= 120 && sleepStep < 0; step++)
+        {
+            _world.Step(Dt);
+            if (!_world.Bodies.IsAwake(box))
+            {
+                sleepStep = step;
+            }
+        }
+
+        sleepStep.Should().BeGreaterThan(0,
+            $"precondition: the box never came to rest on the parked platform; awake={_world.Bodies.IsAwake(box)} y={_world.Bodies.GetTransform(box).Position.Y:R}");
+        Vec2 carried = _world.Bodies.GetTransform(box).Position;
+
+        int wakeStep = -1;
+        for (int step = 1; step <= 60; step++)
+        {
+            _world.Bodies.SetLinearVelocity(platform, new Vec2(Drive, 0.0f));
+            _world.Step(Dt);
+            if (wakeStep < 0 && _world.Bodies.IsAwake(box))
+            {
+                wakeStep = step;
+            }
+        }
+
+        Vec2 rideEnd = _world.Bodies.GetTransform(box).Position;
+        wakeStep.Should().BeInRange(1, 3,
+            $"a sleeper resting on a platform that starts moving must be picked up by it, not left where it was; sleepStep={sleepStep}, box y {carried.Y:R}");
+        (rideEnd.X - carried.X).Should().BeGreaterThan(Drive * 60 * Dt * 0.5f,
+            $"the platform travelled {Drive * 60 * Dt:R} m while the box had been asleep on it; the box only moved {(rideEnd.X - carried.X):R} m; wakeStep={wakeStep}");
+        rideEnd.Y.Should().BeGreaterThan(0.0f,
+            $"the carried box must stay on top of the platform, whose surface is y = 0; measured y {rideEnd.Y:R}");
+        _world.Bodies.GetLinearVelocity(platform).Should().Be(new Vec2(Drive, 0.0f),
+            "the drive is authored, and waking the rider may not spend any of it");
+
+        _world.Bodies.SetLinearVelocity(platform, Vec2.Zero);
+        int resleepStep = -1;
+        for (int step = 1; step <= 200; step++)
+        {
+            _world.Step(Dt);
+            if (resleepStep < 0 && !_world.Bodies.IsAwake(box))
+            {
+                resleepStep = step;
+            }
+        }
+
+        resleepStep.Should().BeGreaterThan(0,
+            $"once the platform stops the rider must be allowed back to rest; awake={_world.Bodies.IsAwake(box)} box=({rideEnd.X:R},{rideEnd.Y:R})");
+        _world.Bodies.GetTransform(box).Position.Y.Should().BeGreaterThan(0.0f,
+            "the re-slept box must still be on the platform");
+    }
+
+    /// <summary>
+    /// The other direction of the same claim: a sleeping stack whose only support
+    /// is a kinematic platform backing away must be woken to fall with it, exactly
+    /// like the static case, or it hangs in the air over an empty gap.
+    /// </summary>
+    [Fact]
+    public void SleepingStack_RetractingKinematicSupport_WakesTheWholeStack()
+    {
+        BodyId platform = AddBox(
+            new Vec2(0.0f, -1.0f),
+            new Vec2(2.0f, 1.0f),
+            BodyType.Kinematic,
+            friction: 0.9f);
+        BodyId[] boxes =
+        [
+            AddBox(new Vec2(0.0f, BoxHalf), new Vec2(BoxHalf, BoxHalf), friction: 0.7f),
+            AddBox(new Vec2(0.0f, (3.0f * BoxHalf)), new Vec2(BoxHalf, BoxHalf), friction: 0.7f),
+            AddBox(new Vec2(0.0f, (5.0f * BoxHalf)), new Vec2(BoxHalf, BoxHalf), friction: 0.7f),
+        ];
+
+        int sleepStep = -1;
+        for (int step = 1; step <= 200 && sleepStep < 0; step++)
+        {
+            _world.Step(Dt);
+            if (boxes.All(id => !_world.Bodies.IsAwake(id)))
+            {
+                sleepStep = step;
+            }
+        }
+
+        sleepStep.Should().BeGreaterThan(0,
+            $"precondition: the stack on the platform never slept; awake=[{string.Join(" ", boxes.Select(id => _world.Bodies.IsAwake(id) ? "A" : "S"))}]");
+
+        _world.Bodies.SetLinearVelocity(platform, new Vec2(0.0f, -1.2f));
+        int[] wake = [-1, -1, -1];
+        for (int step = 1; step <= 60; step++)
+        {
+            _world.Step(Dt);
+            for (int i = 0; i < boxes.Length; i++)
+            {
+                if (wake[i] < 0 && _world.Bodies.IsAwake(boxes[i]))
+                {
+                    wake[i] = step;
+                }
+            }
+        }
+
+        float dropped = boxes.Select(id => _world.Bodies.GetTransform(id).Position.Y).Min();
+        wake.Should().OnlyContain(step => step >= 1 && step <= 3,
+            $"a platform backing out from under a sleeping stack must wake all of it; sleepStep={sleepStep}, lowest y {dropped:R}");
+        dropped.Should().BeLessThan(BoxHalf - 0.3f,
+            $"the stack had nothing left under it and must have descended; lowest y measured {dropped:R}, sleepStep={sleepStep}");
+    }
+
+    /// <summary>
     /// The sleep policy must survive the guards: a body that may not sleep stays
     /// awake, its neighbour on the same support still sleeps, and the support
     /// itself stays exactly at zero.

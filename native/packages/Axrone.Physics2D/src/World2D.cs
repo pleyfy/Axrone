@@ -1216,7 +1216,8 @@ public sealed class World : IDisposable
     /// <summary>
     /// Rotates the contact buffers, collects the candidate pairs through the
     /// broadphase and carries warm-start impulses across by pair identity;
-    /// fresh pairs wake sleeping dynamics.
+    /// fresh pairs wake sleeping dynamics, and so does a platform that is being
+    /// driven under them.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void CollectPairs()
@@ -1231,6 +1232,7 @@ public sealed class World : IDisposable
         World self = this;
         _tree.FindPairs(ref collector, ref self);
 
+        BeginWakePropagation();
         for (int i = 0; i < _contactCount; i++)
         {
             ContactCache carried = default;
@@ -1249,6 +1251,10 @@ public sealed class World : IDisposable
             {
                 WakePair(_contacts[i].BodyA, _contacts[i].BodyB);
             }
+            else
+            {
+                SeedDrivenKinematicWake(_contacts[i]);
+            }
 
             Contact updated = _contacts[i];
             ContactManifold manifold = updated.Manifold;
@@ -1260,6 +1266,46 @@ public sealed class World : IDisposable
 
             _contacts[i] = updated;
         }
+
+        PropagateWakes();
+    }
+
+    /// <summary>
+    /// Feeds the wake propagation from a pair that survived into this frame:
+    /// kinematic scenery is integrated rather than relocated, so a platform
+    /// sliding out from under a sleeper, or starting to slide with one on it,
+    /// changes no pair identity and sweeps nothing the relocation pass sees. The
+    /// moving side is read with the same tolerance pair the island pass blocks
+    /// sleep on, so whichever platforms those two systems call moving are the
+    /// ones that carry.
+    /// </summary>
+    private void SeedDrivenKinematicWake(in Contact contact)
+    {
+        ref readonly BodyState stateA = ref _bodies.Slot(contact.BodyA);
+        ref readonly BodyState stateB = ref _bodies.Slot(contact.BodyB);
+
+        if (IsDrivingKinematic(in stateA) && stateB.Type == BodyType.Dynamic)
+        {
+            EnqueueWakeSlot(BodyStore.SlotOf(contact.BodyB));
+        }
+        else if (IsDrivingKinematic(in stateB) && stateA.Type == BodyType.Dynamic)
+        {
+            EnqueueWakeSlot(BodyStore.SlotOf(contact.BodyA));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsDrivingKinematic(in BodyState state)
+    {
+        if (state.Type != BodyType.Kinematic)
+        {
+            return false;
+        }
+
+        float linearTolerance = LinearSleepTolerance;
+        float angularTolerance = AngularSleepTolerance;
+        return state.LinearVelocity.LengthSquared() > (linearTolerance * linearTolerance) ||
+            (state.AngularVelocity * state.AngularVelocity) > (angularTolerance * angularTolerance);
     }
 
     /// <summary>
