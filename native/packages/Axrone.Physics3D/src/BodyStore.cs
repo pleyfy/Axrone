@@ -512,7 +512,10 @@ public sealed class BodyStore
     /// <summary>
     /// Force half of the step: gravity and accumulated forces integrate into
     /// velocities with damping applied, then forces clear when
-    /// <paramref name="clearForces"/> is set. Positions untouched.
+    /// <paramref name="clearForces"/> is set. Speeds are capped to
+    /// <see cref="PhysicsConstants.MaxVelocity"/> and
+    /// <see cref="PhysicsConstants.MaxAngularVelocity"/> so no pair of impulses
+    /// can store energy the position half cannot spend. Positions untouched.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void IntegrateVelocities(float dt, Vec3 gravity, bool clearForces = true)
@@ -547,12 +550,28 @@ public sealed class BodyStore
                 body.AngularVelocity = Vec3.Zero;
             }
 
+            body.LinearVelocity = CapSpeed(body.LinearVelocity, PhysicsConstants.MaxVelocity);
+            body.AngularVelocity = CapSpeed(body.AngularVelocity, PhysicsConstants.MaxAngularVelocity);
+
             if (clearForces)
             {
                 body.Force = Vec3.Zero;
                 body.Torque = Vec3.Zero;
             }
         }
+    }
+
+    /// <summary>Rescales a velocity vector onto a speed cap; anything already inside passes through.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vec3 CapSpeed(Vec3 velocity, float cap)
+    {
+        float speedSq = velocity.LengthSquared();
+        if (speedSq <= cap * cap)
+        {
+            return velocity;
+        }
+
+        return velocity * (cap / MathF.Sqrt(speedSq));
     }
 
     /// <summary>Zeroes accumulated forces and torques on every body.</summary>
@@ -593,10 +612,14 @@ public sealed class BodyStore
     /// Position half of the step: velocities integrate into frames. Static and
     /// sleeping bodies never move; kinematic bodies translate on velocity
     /// alone. Orientation advances through an incremental axis-angle
-    /// quaternion, renormalized every step against drift.
+    /// quaternion, renormalized every step against drift. The travelled
+    /// distance and the swept angle are capped, so an enormous velocity buys a
+    /// capped displacement instead of a teleport; the caps default to unlimited
+    /// because the budget is a property of the <b>step</b>, and only a step
+    /// knows how many slices it split itself into.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public void IntegratePositions(float dt)
+    public void IntegratePositions(float dt, float maxTranslation = float.PositiveInfinity, float maxRotation = float.PositiveInfinity)
     {
         if (!(dt > 0.0f))
         {
@@ -617,13 +640,21 @@ public sealed class BodyStore
                 continue;
             }
 
-            body.Position += body.LinearVelocity * dt;
+            Vec3 travel = body.LinearVelocity * dt;
+            float travelSq = travel.LengthSquared();
+            if (travelSq > maxTranslation * maxTranslation)
+            {
+                travel *= maxTranslation / MathF.Sqrt(travelSq);
+            }
+
+            body.Position += travel;
 
             float spinSq = body.AngularVelocity.LengthSquared();
             if (spinSq > 0.0f)
             {
                 float spin = MathF.Sqrt(spinSq);
-                Quat increment = Quat.CreateFromAxisAngle(body.AngularVelocity / spin, spin * dt);
+                float angle = MathF.Min(spin * dt, maxRotation);
+                Quat increment = Quat.CreateFromAxisAngle(body.AngularVelocity / spin, angle);
                 body.Rotation = (increment * body.Rotation).Normalize();
             }
         }

@@ -136,10 +136,15 @@ public readonly struct WorldDef
 
             field = value;
         }
-    } = 8;
+    } = PhysicsConstants.MaxSubSteps;
 
-    /// <summary>Solver capabilities; clearing <see cref="SolverFlags.SleepingBodies"/> skips the sleep pass.</summary>
-    public SolverFlags Flags { get; init; } = SolverFlags.Default;
+    /// <summary>
+    /// Solver capabilities. The shipped 3D default is the shared steady-state
+    /// set plus <see cref="SolverFlags.ContinuousDetection"/>, so sweep-marked
+    /// bodies keep being subdivided; clearing <see cref="SolverFlags"/> members
+    /// takes the matching pass out of the step.
+    /// </summary>
+    public SolverFlags Flags { get; init; } = SolverFlags.Default | SolverFlags.ContinuousDetection;
 
     /// <summary>Whether each step clears accumulated forces after applying them.</summary>
     public bool AutoClearForces { get; init; } = true;
@@ -267,6 +272,8 @@ public sealed class World : IDisposable
     private int _currentPairCount;
     private BroadPair[] _stepPairs;
     private int _stepPairCount;
+    private CarriedTuning[] _carriedTunings;
+    private int _carriedTuningCount;
     private int _disposed;
 
     /// <summary>Gravity of the world.</summary>
@@ -298,6 +305,15 @@ public sealed class World : IDisposable
 
     /// <summary>Whether each step clears accumulated forces after applying them.</summary>
     public bool AutoClearForces { get; set; }
+
+    /// <summary>Slices the last step actually ran; one when nothing forced a subdivision.</summary>
+    internal int LastCcdSlices { get; private set; } = 1;
+
+    /// <summary>Velocity sweeps the last step actually ran, summed over its slices.</summary>
+    internal int LastVelocitySweeps { get; private set; }
+
+    /// <summary>Position sweeps the last step actually ran, summed over its slices.</summary>
+    internal int LastPositionSweeps { get; private set; }
 
     /// <summary>Creates a world with default tuning.</summary>
     public World()
@@ -336,6 +352,8 @@ public sealed class World : IDisposable
         _currentPairCount = 0;
         _stepPairs = new BroadPair[InitialContactCapacity];
         _stepPairCount = 0;
+        _carriedTunings = new CarriedTuning[InitialContactCapacity];
+        _carriedTuningCount = 0;
         _disposed = 0;
     }
 
@@ -841,6 +859,9 @@ public sealed class World : IDisposable
 
         int slices = CcdSliceCount(dt);
         float h = dt / slices;
+        LastCcdSlices = slices;
+        LastVelocitySweeps = 0;
+        LastPositionSweeps = 0;
 
         _eventCount = 0;
         _sensorEventCount = 0;
@@ -849,7 +870,7 @@ public sealed class World : IDisposable
 
         for (int slice = 0; slice < slices; slice++)
         {
-            StepSlice(h, emitImpulseNotices: slice == slices - 1);
+            StepSlice(h, slice, slices, emitImpulseNotices: slice == slices - 1);
         }
 
         UpdateIslands(dt);
@@ -882,15 +903,19 @@ public sealed class World : IDisposable
 
         int slices = CcdSliceCount(dt);
         float h = dt / slices;
+        LastCcdSlices = slices;
+        LastVelocitySweeps = 0;
+        LastPositionSweeps = 0;
 
         _eventCount = 0;
         _sensorEventCount = 0;
         _impulseEventCount = 0;
+        _carriedTuningCount = 0;
         SnapshotStepPairs();
 
         for (int slice = 0; slice < slices; slice++)
         {
-            StepSliceCallback(h, slice == 0, slice == slices - 1, handler, ref context);
+            StepSliceCallback(h, slice, slices, slice == 0, slice == slices - 1, handler, ref context);
         }
 
         UpdateIslands(dt);
@@ -945,6 +970,9 @@ public sealed class World : IDisposable
     /// <summary>Canonical shape pair, ordered by raw identity.</summary>
     private readonly record struct BroadPair(ShapeId First, ShapeId Second);
 
+    /// <summary>A shape pair and the pair tuning the step's single pre-solve callback left behind.</summary>
+    private readonly record struct CarriedTuning(ShapeId ShapeA, ShapeId ShapeB, ContactTuning Tuning);
+
     /// <summary>Collects broadphase pairs into the world's pair buffer.</summary>
     private struct PairCollector : IPairVisitor<ShapeId, World>
     {
@@ -964,10 +992,88 @@ public sealed class World : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void StepSlice(float h, bool emitImpulseNotices)
+    private void StepSlice(float h, int slice, int slices, bool emitImpulseNotices)
     {
+        int velocitySweeps = SweepBudget(VelocityIterations, slice, slices);
+        int positionSweeps = SweepBudget(PositionIterations, slice, slices);
+        bool solveVelocities = (Flags & SolverFlags.VelocityConstraints) != 0;
+        bool pushPositions = (Flags & SolverFlags.PositionCorrection) != 0;
+
         DrainRelocations();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
+        CollectSliceContacts();
+
+        Span<Contact3D> span = _contacts.AsSpan(0, _contactCount);
+        if (solveVelocities)
+        {
+            ContactSolver.InitVelocityConstraints(_bodies, _shapes, span);
+            LastVelocitySweeps += velocitySweeps;
+            ContactSolver.SolveVelocityPass(_bodies, _shapes, span, velocitySweeps);
+        }
+
+        JointSolver.SolveSpringPass(_bodies, _joints, h);
+
+        for (int iteration = 0; iteration < velocitySweeps; iteration++)
+        {
+            JointSolver.SolveVelocityPass(_bodies, _joints, h);
+        }
+
+        if (emitImpulseNotices)
+        {
+            NoSolveState unusedState;
+            ImpulseNoticeContext notices = new(this);
+            ContactSolver.ReportPostSolve(span, ref notices, ref unusedState);
+        }
+
+        IntegrateSlicePositions(h, slices);
+
+        if (pushPositions)
+        {
+            LastPositionSweeps += positionSweeps;
+            ContactSolver.SolvePositions(_bodies, span, positionSweeps);
+        }
+
+        JointSolver.SolvePositionPass(_bodies, _joints);
+    }
+
+    /// <summary>
+    /// Sweeps one pass may run so that a step spends its configured budget once
+    /// however many slices it split into: the allotments of the slices sum to
+    /// <paramref name="iterations"/> exactly.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int SweepBudget(int iterations, int slice, int slices)
+    {
+        if (slices <= 1)
+        {
+            return iterations;
+        }
+
+        return (((slice + 1) * iterations) / slices) - ((slice * iterations) / slices);
+    }
+
+    /// <summary>Integrates one slice inside the translation and rotation budget the step owns.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void IntegrateSlicePositions(float h, int slices)
+    {
+        _bodies.IntegratePositions(
+            h,
+            PhysicsConstants.MaxTranslation / slices,
+            PhysicsConstants.MaxRotation / slices);
+        SyncAwakeBodies();
+    }
+
+    /// <summary>
+    /// Refreshes the broadphase, rebuilds this slice's contact set from the
+    /// live pairs and carries identity across: a pair that survived from the
+    /// previous slice keeps its impulses unless
+    /// <see cref="SolverFlags.WarmStarting"/> is clear, and a pair that lost its
+    /// manifold but stayed inside the break band is carried on as a persisted
+    /// witness of the same touch.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void CollectSliceContacts()
+    {
         SyncAwakeBodies();
 
         Contact3D[] built = _previous;
@@ -986,55 +1092,52 @@ public sealed class World : IDisposable
             BroadPair pair = _currentPairs[i];
             if (TryBuildContact(pair.First, pair.Second, out Contact3D contact))
             {
-                if (_contactCount >= _contacts.Length)
-                {
-                    Array.Resize(ref _contacts, _contacts.Length * 2);
-                }
-
-                _contacts[_contactCount++] = contact;
+                AddContact(contact);
             }
         }
 
+        bool carryImpulses = (Flags & SolverFlags.WarmStarting) != 0;
         for (int i = 0; i < _contactCount; i++)
         {
-            bool matched = false;
-            for (int j = 0; j < _previousCount; j++)
-            {
-                if (_previous[j].ShapeA == _contacts[i].ShapeA && _previous[j].ShapeB == _contacts[i].ShapeB)
-                {
-                    WarmStart(ref _contacts[i], in _previous[j]);
-                    matched = true;
-                    break;
-                }
-            }
-
-            if (!matched)
+            int match = FindPrevious(_contacts[i].ShapeA, _contacts[i].ShapeB);
+            if (match < 0)
             {
                 WakePair(_contacts[i].BodyA, _contacts[i].BodyB);
+                continue;
+            }
+
+            if (carryImpulses)
+            {
+                WarmStart(ref _contacts[i], in _previous[match]);
+            }
+        }
+    }
+
+    /// <summary>Appends a contact to the slice's set, growing the buffer on demand.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void AddContact(in Contact3D contact)
+    {
+        if (_contactCount >= _contacts.Length)
+        {
+            Array.Resize(ref _contacts, _contacts.Length * 2);
+        }
+
+        _contacts[_contactCount++] = contact;
+    }
+
+    /// <summary>Index of a carried contact naming the same shape pair, or -1.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int FindPrevious(ShapeId shapeA, ShapeId shapeB)
+    {
+        for (int j = 0; j < _previousCount; j++)
+        {
+            if (_previous[j].ShapeA == shapeA && _previous[j].ShapeB == shapeB)
+            {
+                return j;
             }
         }
 
-        ContactSolver.InitVelocityConstraints(_bodies, _shapes, _contacts.AsSpan(0, _contactCount));
-        ContactSolver.SolveVelocityPass(_bodies, _shapes, _contacts.AsSpan(0, _contactCount), VelocityIterations);
-        JointSolver.SolveSpringPass(_bodies, _joints, h);
-
-        for (int iteration = 0; iteration < VelocityIterations; iteration++)
-        {
-            JointSolver.SolveVelocityPass(_bodies, _joints, h);
-        }
-
-        if (emitImpulseNotices)
-        {
-            NoSolveState unusedState;
-            ImpulseNoticeContext notices = new(this);
-            ContactSolver.ReportPostSolve(_contacts.AsSpan(0, _contactCount), ref notices, ref unusedState);
-        }
-
-        _bodies.IntegratePositions(h);
-        SyncAwakeBodies();
-
-        ContactSolver.SolvePositions(_bodies, _contacts.AsSpan(0, _contactCount), PositionIterations);
-        JointSolver.SolvePositionPass(_bodies, _joints);
+        return -1;
     }
 
     /// <summary>Carries previous impulses into matching points by feature id.</summary>
@@ -1389,10 +1492,24 @@ public sealed class World : IDisposable
         }
     }
 
-    /// <summary>Counts the slices so no awake bullet outruns <see cref="CcdSweepStep"/> in one slice.</summary>
+    /// <summary>
+    /// Counts the slices so no awake body the world is watching outruns
+    /// <see cref="CcdSweepStep"/> in one slice.
+    /// <see cref="SolverFlags.ContinuousDetection"/> puts the sweep-marked
+    /// bodies under that rule and <see cref="SolverFlags.SubStepping"/> extends
+    /// it to every fast awake dynamic body; with neither set the step never
+    /// subdivides.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private int CcdSliceCount(float dt)
     {
+        bool sweepBullets = (Flags & SolverFlags.ContinuousDetection) != 0;
+        bool sliceFastBodies = (Flags & SolverFlags.SubStepping) != 0;
+        if (!sweepBullets && !sliceFastBodies)
+        {
+            return 1;
+        }
+
         float furthest = 0.0f;
 
         for (int slot = 0; slot < _bodies.SlotCapacity; slot++)
@@ -1404,8 +1521,13 @@ public sealed class World : IDisposable
 
             BodyId bodyId = BodyId.FromIndex(slot);
             ref readonly BodyState body = ref _bodies.Slot(bodyId);
-            if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Awake) == 0 ||
-                (body.Flags & BodyFlags.Bullet) == 0)
+            if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Awake) == 0)
+            {
+                continue;
+            }
+
+            bool watched = (body.Flags & BodyFlags.Bullet) != 0 ? sweepBullets : sliceFastBodies;
+            if (!watched)
             {
                 continue;
             }
@@ -1525,73 +1647,41 @@ public sealed class World : IDisposable
 
     /// <summary>Runs one slice with the caller's callback surface: pre-solve on the first slice, post-solve on the last.</summary>
     private void StepSliceCallback<THandler, TContext>(
-        float h, bool emitPreSolve, bool emitPostSolve, THandler handler, ref TContext context)
+        float h, int slice, int slices, bool emitPreSolve, bool emitPostSolve, THandler handler, ref TContext context)
         where THandler : IContactSolverCallbacks<Contact3D, Manifold3D, TContext>
         where TContext : allows ref struct
     {
+        int velocitySweeps = SweepBudget(VelocityIterations, slice, slices);
+        int positionSweeps = SweepBudget(PositionIterations, slice, slices);
+        bool solveVelocities = (Flags & SolverFlags.VelocityConstraints) != 0;
+        bool pushPositions = (Flags & SolverFlags.PositionCorrection) != 0;
+
         DrainRelocations();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
-        SyncAwakeBodies();
-
-        Contact3D[] built = _previous;
-        _previous = _contacts;
-        _previousCount = _contactCount;
-        _contacts = built;
-        _contactCount = 0;
-        _currentPairCount = 0;
-
-        var collector = new PairCollector();
-        World self = this;
-        _tree.FindPairs(ref collector, ref self);
-
-        for (int i = 0; i < _currentPairCount; i++)
-        {
-            BroadPair pair = _currentPairs[i];
-            if (TryBuildContact(pair.First, pair.Second, out Contact3D contact))
-            {
-                if (_contactCount >= _contacts.Length)
-                {
-                    Array.Resize(ref _contacts, _contacts.Length * 2);
-                }
-
-                _contacts[_contactCount++] = contact;
-            }
-        }
-
-        for (int i = 0; i < _contactCount; i++)
-        {
-            bool matched = false;
-            for (int j = 0; j < _previousCount; j++)
-            {
-                if (_previous[j].ShapeA == _contacts[i].ShapeA && _previous[j].ShapeB == _contacts[i].ShapeB)
-                {
-                    WarmStart(ref _contacts[i], in _previous[j]);
-                    matched = true;
-                    break;
-                }
-            }
-
-            if (!matched)
-            {
-                WakePair(_contacts[i].BodyA, _contacts[i].BodyB);
-            }
-        }
+        CollectSliceContacts();
 
         Span<Contact3D> span = _contacts.AsSpan(0, _contactCount);
-        if (emitPreSolve)
+        if (solveVelocities)
         {
-            PreSolveContext<THandler, TContext> pre = new(_shapes);
-            ContactSolver.InitVelocityConstraints(_bodies, _shapes, span, ref pre, ref context);
-        }
-        else
-        {
-            ContactSolver.InitVelocityConstraints(_bodies, _shapes, span);
+            if (emitPreSolve)
+            {
+                PreSolveContext<THandler, TContext> pre = new(_shapes);
+                ContactSolver.InitVelocityConstraints(_bodies, _shapes, span, ref pre, ref context);
+                RecordCarriedTunings();
+            }
+            else
+            {
+                FrozenTuningContext<TContext> frozen = new(this);
+                ContactSolver.InitVelocityConstraints(_bodies, _shapes, span, ref frozen, ref context);
+            }
+
+            LastVelocitySweeps += velocitySweeps;
+            ContactSolver.SolveVelocityPass(_bodies, _shapes, span, velocitySweeps);
         }
 
-        ContactSolver.SolveVelocityPass(_bodies, _shapes, span, VelocityIterations);
         JointSolver.SolveSpringPass(_bodies, _joints, h);
 
-        for (int iteration = 0; iteration < VelocityIterations; iteration++)
+        for (int iteration = 0; iteration < velocitySweeps; iteration++)
         {
             JointSolver.SolveVelocityPass(_bodies, _joints, h);
         }
@@ -1602,11 +1692,78 @@ public sealed class World : IDisposable
             ContactSolver.ReportPostSolve(span, ref post, ref context);
         }
 
-        _bodies.IntegratePositions(h);
-        SyncAwakeBodies();
+        IntegrateSlicePositions(h, slices);
 
-        ContactSolver.SolvePositions(_bodies, span, PositionIterations);
+        if (pushPositions)
+        {
+            LastPositionSweeps += positionSweeps;
+            ContactSolver.SolvePositions(_bodies, span, positionSweeps);
+        }
+
         JointSolver.SolvePositionPass(_bodies, _joints);
+    }
+
+    /// <summary>Records the tuning the pre-solve callback left behind, per shape pair, for the slices that follow it.</summary>
+    private void RecordCarriedTunings()
+    {
+        _carriedTuningCount = 0;
+        for (int i = 0; i < _contactCount; i++)
+        {
+            if (_carriedTuningCount >= _carriedTunings.Length)
+            {
+                Array.Resize(ref _carriedTunings, _carriedTunings.Length * 2);
+            }
+
+            _carriedTunings[_carriedTuningCount++] = new CarriedTuning(
+                _contacts[i].ShapeA, _contacts[i].ShapeB, _contacts[i].Tuning);
+        }
+    }
+
+    /// <summary>Index of the recorded tuning of a shape pair, or -1.</summary>
+    private int FindCarriedTuning(ShapeId shapeA, ShapeId shapeB)
+    {
+        for (int i = 0; i < _carriedTuningCount; i++)
+        {
+            if (_carriedTunings[i].ShapeA == shapeA && _carriedTunings[i].ShapeB == shapeB)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Sink for the slices that follow the pre-solve one: it re-seeds each pair
+    /// with the tuning the callback left behind and never calls the handler
+    /// again, so a rewrite made once per step holds for every slice of the step.
+    /// </summary>
+    private readonly struct FrozenTuningContext<TContext>(World world)
+        : IContactSolveContext<Contact3D, Manifold3D, TContext>
+        where TContext : allows ref struct
+    {
+        private readonly World _world = world;
+
+        public readonly ContactTuning Tune(ref readonly Contact3D contact, ref TContext context)
+        {
+            int carried = _world.FindCarriedTuning(contact.ShapeA, contact.ShapeB);
+            if (carried >= 0)
+            {
+                return _world._carriedTunings[carried].Tuning;
+            }
+
+            ref readonly ShapeRecord recordA = ref _world._shapes.Record(contact.ShapeA);
+            ref readonly ShapeRecord recordB = ref _world._shapes.Record(contact.ShapeB);
+            return ContactSolver.DefaultTuning(in recordA.Material, in recordB.Material);
+        }
+
+        public readonly void PreSolve(ref Contact3D contact, ref Manifold3D manifold, ref ContactTuning tuning, ref TContext context)
+        {
+        }
+
+        public readonly void PostSolve(ref readonly Contact3D contact, in Manifold3D manifold, in ContactImpulses impulses, ref TContext context)
+        {
+        }
     }
 
     /// <summary>Unit caller state for sink contexts that need none.</summary>

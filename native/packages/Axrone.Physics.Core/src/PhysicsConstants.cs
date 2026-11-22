@@ -52,6 +52,30 @@ public static class PhysicsConstants
     /// <summary>Eight degrees in radians; largest angular correction per sweep.</summary>
     public const float MaxAngularCorrection = 8.0f / 180.0f * MathF.PI;
 
+    /// <summary>
+    /// Metres of integration travel one step may buy a body, whatever its
+    /// velocity. Anti-teleport budget: a body over the cap advances along its
+    /// velocity direction and stops there instead of vanishing across scenery.
+    /// </summary>
+    public const float MaxTranslation = 2.0f;
+
+    /// <summary>Quarter turn in radians; largest integrated rotation one step may buy a body.</summary>
+    public const float MaxRotation = 0.5f * MathF.PI;
+
+    /// <summary>
+    /// Gap in metres a tracked solid pair may open and still be carried to the
+    /// next step. Below it the pair keeps its identity, warm start and Stay
+    /// events; above it the pair breaks and reports Ended.
+    /// </summary>
+    public const float ContactBreakThreshold = 0.02f;
+
+    /// <summary>
+    /// Squared metres a contact point's witness may travel in one step and keep
+    /// its accumulated impulses. A point that jumped further is a different
+    /// piece of geometry, so its carry is dropped instead of misapplied.
+    /// </summary>
+    public const float ContactPersistentThresholdSq = 0.01f;
+
     /// <summary>Quiet seconds before an island sleeps.</summary>
     public const float SleepTime = 0.5f;
 
