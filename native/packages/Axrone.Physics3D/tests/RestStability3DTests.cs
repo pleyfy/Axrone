@@ -21,6 +21,7 @@ public sealed class RestStability3DTests
     private const float Dt = 1.0f / 60.0f;
     private const float Half = 0.4f;
     private const int Steps = 900;
+    private const int ScenerySteps = 200;
     private const int SettleStep = 300;
     private const float WarmAgreementMetres = 0.005f;
     private static readonly Vec3 GroundHalf = new(40.0f, 0.5f, 40.0f);
@@ -159,23 +160,30 @@ public sealed class RestStability3DTests
         BodyId ground = AddBox(world, BodyType.Static, new Vec3(0.0f, -0.5f, 0.0f), new Vec3(10.0f, 0.5f, 10.0f), 0.8f);
         BodyId box = AddBox(world, BodyType.Dynamic, new Vec3(0.0f, 0.8f, 0.0f), BoxHalf, 0.7f, allowSleep: true);
 
+        int corruptionStep = -1;
+        Vec3 corruptGroundVelocity = Vec3.Zero;
+        Vec3 corruptGroundAngular = Vec3.Zero;
         float worstGroundSpeed = 0.0f;
-        string firstCorruption = "none";
-        for (int step = 0; step < 200; step++)
+        for (int step = 0; step < ScenerySteps; step++)
         {
             world.Step(Dt);
             Vec3 groundVelocity = world.Bodies.GetLinearVelocity(ground);
             Vec3 groundAngular = world.Bodies.GetAngularVelocity(ground);
             if (!IsFinite(groundVelocity) || !IsFinite(groundAngular))
             {
-                firstCorruption = $"step {step}: ground velocity {Format(groundVelocity)} angular {Format(groundAngular)}";
+                corruptionStep = step;
+                corruptGroundVelocity = groundVelocity;
+                corruptGroundAngular = groundAngular;
                 break;
             }
 
             worstGroundSpeed = MathF.Max(worstGroundSpeed, groundVelocity.Length());
         }
 
-        firstCorruption.Should().Be("none", "a box coming to rest over scenery must not write through it.");
+        corruptionStep.Should().Be(-1,
+            $"a box coming to rest over scenery must not write through it; the shared ground first went non-finite " +
+            $"at step {corruptionStep} of {ScenerySteps} with linear velocity {Format(corruptGroundVelocity)} and " +
+            $"angular velocity {Format(corruptGroundAngular)}.");
         worstGroundSpeed.Should().Be(0.0f,
             $"the shared static ground accumulated {worstGroundSpeed:0.#####} m/s of solver velocity while the box slept on it.");
 
