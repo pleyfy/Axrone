@@ -524,7 +524,7 @@ public static class ContactSolver
 
     /// <summary>Effective mass of one point along the normal.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private static float ComputeNormalMass(
+    internal static float ComputeNormalMass(
         float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
         Quat rotA, Quat rotB, Vec3 rA, Vec3 rB, Vec3 normal)
     {
@@ -542,7 +542,7 @@ public static class ContactSolver
     /// unguarded reciprocal would turn its zero sliding speed into NaN.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private static float ComputeTangentMass(
+    internal static float ComputeTangentMass(
         float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
         Quat rotA, Quat rotB, Vec3 rtA, Vec3 rtB)
     {
@@ -574,7 +574,7 @@ public static class ContactSolver
     /// a degenerate row write straight through them.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void ApplyNormalImpulse(
+    internal static void ApplyNormalImpulse(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
         float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
         Vec3 rA, Vec3 rB, Vec3 normal, float delta)
@@ -594,7 +594,7 @@ public static class ContactSolver
 
     /// <summary>Applies a tangent impulse to dynamic bodies only.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void ApplyTangentImpulse(
+    internal static void ApplyTangentImpulse(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
         float invMassA, float invMassB, Vec3 invIA, Vec3 invIB,
         Vec3 rA, Vec3 rB, Vec3 tangent, float delta)
