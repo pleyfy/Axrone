@@ -1111,6 +1111,89 @@ public sealed class World : IDisposable
                 WarmStart(ref _contacts[i], in _previous[match]);
             }
         }
+
+        PersistBrokenPairs();
+    }
+
+    /// <summary>
+    /// Re-tracks the solid pairs this slice lost while the distance query still
+    /// calls them touching, or measures a gap no wider than
+    /// <see cref="PhysicsConstants.ContactBreakThreshold"/>; a query that returns
+    /// no verdict lets the pair break. Without the band a pair dies at the first
+    /// metre of daylight, so a body crossing it pays an Ended/Began pair, loses
+    /// its identity in the event stream and is woken as if it were new. A
+    /// persisted pair keeps that identity and carries no points: nothing that is
+    /// not touching may push.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void PersistBrokenPairs()
+    {
+        for (int j = 0; j < _previousCount; j++)
+        {
+            Contact3D carried = _previous[j];
+            if (carried.IsSensor || ContainsPair(_contacts, _contactCount, carried.ShapeA, carried.ShapeB))
+            {
+                continue;
+            }
+
+            if (!_shapes.IsValid(carried.ShapeA) || !_shapes.IsValid(carried.ShapeB))
+            {
+                continue;
+            }
+
+            ref ShapeRecord recordA = ref _shapes.Record(carried.ShapeA);
+            ref ShapeRecord recordB = ref _shapes.Record(carried.ShapeB);
+            if (recordA.Body == recordB.Body)
+            {
+                continue;
+            }
+
+            ref BodyState stateA = ref _bodies.Slot(recordA.Body);
+            ref BodyState stateB = ref _bodies.Slot(recordB.Body);
+            if ((stateA.Type == BodyType.Static && stateB.Type == BodyType.Static) ||
+                (stateA.Flags & BodyFlags.Active) == 0 || (stateB.Flags & BodyFlags.Active) == 0)
+            {
+                continue;
+            }
+
+            if (!CollisionFilter.ShouldCollide(in recordA.Filter, in recordB.Filter))
+            {
+                continue;
+            }
+
+            AnyCollider colliderA = AnyCollider.FromRecord(in recordA, _shapes.GetWorldFrame(carried.ShapeA));
+            AnyCollider colliderB = AnyCollider.FromRecord(in recordB, _shapes.GetWorldFrame(carried.ShapeB));
+            GjkResult probe = Gjk3D.ComputeDistance<AnyCollider, AnyCollider, StandardGjkPolicy, NullGjkObserver>(
+                colliderA, colliderB);
+            if (probe.Status != GjkStatus.Disjoint && probe.Status != GjkStatus.TouchingOrOverlapping)
+            {
+                continue;
+            }
+
+            float gap = probe.Status == GjkStatus.Disjoint ? probe.Distance.Value.Value : 0.0f;
+            if (gap > PhysicsConstants.ContactBreakThreshold)
+            {
+                continue;
+            }
+
+            AddContact(Persisted(carried));
+        }
+    }
+
+    /// <summary>Rebuilds a lost contact as its band survivor: the pair, without its points.</summary>
+    private static Contact3D Persisted(in Contact3D carried)
+    {
+        Manifold3D manifold = carried.Manifold;
+        manifold.Count = 0;
+        return new Contact3D
+        {
+            BodyA = carried.BodyA,
+            BodyB = carried.BodyB,
+            ShapeA = carried.ShapeA,
+            ShapeB = carried.ShapeB,
+            IsSensor = false,
+            Manifold = manifold,
+        };
     }
 
     /// <summary>Appends a contact to the slice's set, growing the buffer on demand.</summary>
@@ -1140,7 +1223,13 @@ public sealed class World : IDisposable
         return -1;
     }
 
-    /// <summary>Carries previous impulses into matching points by feature id.</summary>
+    /// <summary>
+    /// Carries previous impulses into matching points by feature id, unless the
+    /// matched point's witnesses moved further in one step than
+    /// <see cref="PhysicsConstants.ContactPersistentThresholdSq"/> allows: a
+    /// feature that jumped is a different piece of geometry, and spending an
+    /// impulse earned elsewhere on it is how a solver invents motion.
+    /// </summary>
     private static void WarmStart(ref Contact3D current, in Contact3D previous)
     {
         Manifold3D manifold = current.Manifold;
@@ -1151,19 +1240,35 @@ public sealed class World : IDisposable
             for (int q = 0; q < old.Count; q++)
             {
                 ContactPoint3D carried = old[q];
-                if (carried.Id == point.Id)
+                if (carried.Id != point.Id)
+                {
+                    continue;
+                }
+
+                if (SameWitnessPlace(carried, point))
                 {
                     ContactPoint3D updated = point;
                     updated.NormalImpulse = carried.NormalImpulse;
                     updated.TangentImpulse1 = carried.TangentImpulse1;
                     updated.TangentImpulse2 = carried.TangentImpulse2;
                     manifold.SetPoint(p, updated);
-                    break;
                 }
+
+                break;
             }
         }
 
         current.Manifold = manifold;
+    }
+
+    /// <summary>Whether both witnesses of a carried point stayed inside the persistence threshold.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool SameWitnessPlace(in ContactPoint3D carried, in ContactPoint3D point)
+    {
+        Vec3 driftA = point.PositionA - carried.PositionA;
+        Vec3 driftB = point.PositionB - carried.PositionB;
+        return driftA.LengthSquared() <= PhysicsConstants.ContactPersistentThresholdSq &&
+            driftB.LengthSquared() <= PhysicsConstants.ContactPersistentThresholdSq;
     }
 
     /// <summary>Builds a contact from a broadphase pair; filters and narrowphase run here.</summary>

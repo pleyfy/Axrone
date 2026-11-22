@@ -64,8 +64,8 @@ public static class PhysicsConstants
 
     /// <summary>
     /// Gap in metres a tracked solid pair may open and still be carried to the
-    /// next step. Below it the pair keeps its identity, warm start and Stay
-    /// events; above it the pair breaks and reports Ended.
+    /// next step. Inside it the pair keeps its identity and its Stay events;
+    /// beyond it the pair breaks and reports Ended.
     /// </summary>
     public const float ContactBreakThreshold = 0.02f;
 
