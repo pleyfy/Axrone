@@ -2,6 +2,7 @@ namespace Axrone.Physics2D.Tests;
 
 using Axrone.Geometry;
 using Axrone.Numeric;
+using Axrone.Physics.Core;
 using FluentAssertions;
 using Xunit;
 
@@ -17,7 +18,7 @@ public sealed class SleepingContact2DTests : IDisposable
 {
     private const float Dt = 1f / 60f;
     private const float BoxHalf = 0.5f;
-    private const float LinearSlop = 0.005f;
+    private const float LinearSlop = PhysicsConstants.LinearSlop;
 
     /// <summary>Analytic resting centre of a box of <see cref="BoxHalf"/> on the ground top (y = 0).</summary>
     private const float AnalyticRestY = BoxHalf - LinearSlop;
