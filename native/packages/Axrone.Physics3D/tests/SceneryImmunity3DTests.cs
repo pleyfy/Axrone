@@ -1,4 +1,5 @@
 using Axrone.Numeric;
+using Axrone.Physics.Core;
 using Axrone.Physics3D;
 using FluentAssertions;
 using Xunit;
@@ -159,9 +160,61 @@ public sealed class SceneryImmunity3DTests
             $"one sweep of a poisoned position row moved scenery: {WriteFrame(sceneryType, sceneryIsA, sceneryFrame)}.");
         IsFinite(sceneryFrame.Rotation).Should().BeTrue(
             $"one sweep of a poisoned position row spun scenery: {WriteFrame(sceneryType, sceneryIsA, sceneryFrame)}.");
-        IsFinite(bodies.GetTransform(mover).Position).Should().BeFalse(
-            "the poisoned row has to reach the movable body or the scenery rows above prove nothing; the mover " +
+        IsFinite(bodies.GetTransform(mover).Position).Should().BeTrue(
+            "a non-finite position row must be rejected before it can poison the movable body; the mover " +
             $"reports {Format(bodies.GetTransform(mover).Position)}.");
+    }
+
+    [Theory]
+    [InlineData(BodyType.Static, true)]
+    [InlineData(BodyType.Static, false)]
+    [InlineData(BodyType.Kinematic, true)]
+    [InlineData(BodyType.Kinematic, false)]
+    public void AwakeScenery_IsNotWrittenByAnExtremeFinitePositionCorrection(BodyType sceneryType, bool sceneryIsA)
+    {
+        var bodies = new BodyStore();
+        BodyId scenery = bodies.Create(new BodyDef
+        {
+            Type = sceneryType,
+            Position = new Vec3(0.0f, -0.5f, 0.0f),
+            Rotation = Quat.Identity,
+            AllowSleep = false,
+        });
+        BodyId mover = bodies.Create(new BodyDef
+        {
+            Type = BodyType.Dynamic,
+            Position = new Vec3(0.0f, 0.4f, 0.0f),
+            Rotation = Quat.Identity,
+            AllowSleep = false,
+        });
+        ref BodyState moverState = ref bodies.Slot(mover);
+        moverState.Mass = 1.0f;
+        moverState.InverseMass = 1.0f;
+        moverState.InverseInertia = new Vec3(0.5f, 0.5f, 0.5f);
+
+        Contact3D[] contacts =
+        {
+            new()
+            {
+                BodyA = sceneryIsA ? scenery : mover,
+                BodyB = sceneryIsA ? mover : scenery,
+                IsSensor = false,
+                Manifold = ExtremeFiniteRow(sceneryIsA),
+            },
+        };
+
+        ContactSolver.SolvePositions(bodies, contacts, 1);
+
+        RigidTransform3D sceneryFrame = bodies.GetTransform(scenery);
+        IsFinite(sceneryFrame.Position).Should().BeTrue(
+            $"an extreme finite row moved scenery: {WriteFrame(sceneryType, sceneryIsA, sceneryFrame)}.");
+        IsFinite(sceneryFrame.Rotation).Should().BeTrue(
+            $"an extreme finite row spun scenery: {WriteFrame(sceneryType, sceneryIsA, sceneryFrame)}.");
+        float lift = bodies.GetTransform(mover).Position.Y - 0.4f;
+        lift.Should().BeGreaterThan(0.0f,
+            "the finite control row has to reach the movable body or the scenery assertions prove nothing.");
+        lift.Should().BeLessThanOrEqualTo(PhysicsConstants.MaxLinearCorrection + 1e-5f,
+            $"the finite control row moved the mover {lift:0.#####} m, past the per-sweep cap.");
     }
 
     [Fact]
@@ -205,6 +258,13 @@ public sealed class SceneryImmunity3DTests
     {
         var first = new ContactPoint3D(
             new Vec3(-Half, 0.0f, -Half), new Vec3(-Half, -Depth, -Half), float.NaN, 0u);
+        return Manifold3D.One(sceneryIsA ? -Up : Up, first);
+    }
+
+    private static Manifold3D ExtremeFiniteRow(bool sceneryIsA)
+    {
+        var first = new ContactPoint3D(
+            new Vec3(-Half, 0.0f, -Half), new Vec3(-Half, -Depth, -Half), float.MinValue, 0u);
         return Manifold3D.One(sceneryIsA ? -Up : Up, first);
     }
 

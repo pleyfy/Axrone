@@ -778,6 +778,49 @@ public static class ContactSolver
                 momentA *= scale;
                 momentB *= scale;
             }
+
+            Vec3 linearA = normal * (push * invMassA);
+            Vec3 linearB = normal * (-push * invMassB);
+            bool bounded = false;
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                Quat nextA = RotateBy(stateA.Rotation, ApplyInverseInertia(stateA.Rotation, invIA, momentA));
+                Quat nextB = RotateBy(stateB.Rotation, ApplyInverseInertia(stateB.Rotation, invIB, momentB) * -1.0f);
+                float gain0 = MeasureWitnessGain(stateA.Position, stateA.Rotation, first.LocalA, linearA, nextA,
+                    stateB.Position, stateB.Rotation, first.LocalB, linearB, nextB, normal);
+                float gain1 = 0.0f;
+                if (manifold.Count > 1)
+                {
+                    gain1 = MeasureWitnessGain(stateA.Position, stateA.Rotation, geometry[1].LocalA, linearA, nextA,
+                        stateB.Position, stateB.Rotation, geometry[1].LocalB, linearB, nextB, normal);
+                }
+
+                float worst = MathF.Max(MathF.Abs(gain0), MathF.Abs(gain1));
+                if (float.IsFinite(worst) && worst <= SolverTuning.MaxCorrection)
+                {
+                    bounded = true;
+                    break;
+                }
+
+                if (!float.IsFinite(worst) || worst <= 0.0f)
+                {
+                    break;
+                }
+
+                float witnessScale = SolverTuning.MaxCorrection / worst;
+                push *= witnessScale;
+                momentA *= witnessScale;
+                momentB *= witnessScale;
+                linearA = normal * (push * invMassA);
+                linearB = normal * (-push * invMassB);
+            }
+
+            if (!bounded)
+            {
+                push = 0.0f;
+                momentA = Vec3.Zero;
+                momentB = Vec3.Zero;
+            }
         }
 
         if (awakeA && stateA.Type == BodyType.Dynamic)
@@ -810,6 +853,18 @@ public static class ContactSolver
 
     /// <summary>Distance the pair must gain along the normal before one point rests inside the slop.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    internal static float MeasureWitnessGain(
+        Vec3 positionA, Quat rotationA, Vec3 localA, Vec3 linearA, Quat nextRotationA,
+        Vec3 positionB, Quat rotationB, Vec3 localB, Vec3 linearB, Quat nextRotationB,
+        Vec3 normal)
+    {
+        Vec3 beforeA = positionA + (rotationA * localA);
+        Vec3 beforeB = positionB + (rotationB * localB);
+        Vec3 afterA = positionA + linearA + (nextRotationA * localA);
+        Vec3 afterB = positionB + linearB + (nextRotationB * localB);
+        return Vec3.Dot(normal, (afterA - afterB) - (beforeA - beforeB));
+    }
+
     private static float Target(in PositionGeometry3D point, Vec3 normal, Vec3 witnessA, Vec3 witnessB) =>
         -Math.Clamp(
             SolverTuning.PositionCorrectionScale * (point.ResolveSeparation(normal, witnessA, witnessB) + SolverTuning.LinearSlop),
