@@ -21,6 +21,8 @@ internal static class SolverTuning
     /// <summary>Largest position correction applied in one sweep.</summary>
     public const float MaxCorrection = PhysicsConstants.MaxLinearCorrection;
 
+    public const float RelativeConditionEpsilon = 1e-5f;
+
     /// <summary>Approach speed above which restitution kicks in.</summary>
     public const float RestitutionThreshold = PhysicsConstants.VelocityThreshold;
 }
@@ -239,12 +241,12 @@ public static class ContactSolver
     {
         ArgumentNullException.ThrowIfNull(bodies);
 
-        Span<PositionGeometry3D> window = stackalloc PositionGeometry3D[PositionGeometryWindow.MaxContacts * Manifold3D.MaxPoints];
+        Span<PositionGeometry3D> window = stackalloc PositionGeometry3D[PositionGeometryWindow.MaxContacts * PositionGeometryWindow.PointsPerContact];
         for (int start = 0; start < contacts.Length; start += PositionGeometryWindow.MaxContacts)
         {
             int length = Math.Min(PositionGeometryWindow.MaxContacts, contacts.Length - start);
             Span<Contact3D> slice = contacts.Slice(start, length);
-            Span<PositionGeometry3D> geometry = window.Slice(0, length * Manifold3D.MaxPoints);
+            Span<PositionGeometry3D> geometry = window.Slice(0, length * PositionGeometryWindow.PointsPerContact);
             PositionGeometryWindow.Capture(bodies, slice, geometry);
             SolvePositionSweep(bodies, slice, geometry);
         }
@@ -265,12 +267,12 @@ public static class ContactSolver
             return;
         }
 
-        Span<PositionGeometry3D> window = stackalloc PositionGeometry3D[PositionGeometryWindow.MaxContacts * Manifold3D.MaxPoints];
+        Span<PositionGeometry3D> window = stackalloc PositionGeometry3D[PositionGeometryWindow.MaxContacts * PositionGeometryWindow.PointsPerContact];
         for (int start = 0; start < contacts.Length; start += PositionGeometryWindow.MaxContacts)
         {
             int length = Math.Min(PositionGeometryWindow.MaxContacts, contacts.Length - start);
             Span<Contact3D> slice = contacts.Slice(start, length);
-            Span<PositionGeometry3D> geometry = window.Slice(0, length * Manifold3D.MaxPoints);
+            Span<PositionGeometry3D> geometry = window.Slice(0, length * PositionGeometryWindow.PointsPerContact);
             PositionGeometryWindow.Capture(bodies, slice, geometry);
 
             for (int iteration = 0; iteration < iterations; iteration++)
@@ -639,7 +641,7 @@ public static class ContactSolver
     {
         for (int i = 0; i < contacts.Length; i++)
         {
-            SolveContactPosition(bodies, ref contacts[i], geometry.Slice(i * Manifold3D.MaxPoints));
+            SolveContactPosition(bodies, ref contacts[i], geometry.Slice(i * PositionGeometryWindow.PointsPerContact));
         }
     }
 
@@ -710,7 +712,7 @@ public static class ContactSolver
             float k12 = FullNormalMass(invMassA, invMassB, invIA, invIB, stateA.Rotation, stateB.Rotation, rA0, rB0, rA1, rB1, normal);
             float target1 = Target(second, normal, witnessA1, witnessB1);
             float det = (k11 * k22) - (k12 * k12);
-            if (det <= 0.0f || k22 <= 0.0f)
+            if (det <= (k11 * k22 * SolverTuning.RelativeConditionEpsilon) || k22 <= 0.0f)
             {
                 push1 = k22 > 0.0f ? target1 / k22 : 0.0f;
             }
@@ -763,6 +765,19 @@ public static class ContactSolver
             push += lost / massSum;
             momentA -= droppedA;
             momentB -= droppedB;
+        }
+
+        if (massSum > 0.0f)
+        {
+            float correction = push * massSum;
+            float capped = Math.Clamp(correction, -SolverTuning.MaxCorrection, SolverTuning.MaxCorrection);
+            if (capped != correction && correction != 0.0f)
+            {
+                float scale = capped / correction;
+                push *= scale;
+                momentA *= scale;
+                momentB *= scale;
+            }
         }
 
         if (awakeA && stateA.Type == BodyType.Dynamic)

@@ -71,6 +71,8 @@ internal static class PositionGeometryWindow
     /// <summary>Contacts resolved per window; at most two points each.</summary>
     public const int MaxContacts = 128;
 
+    public const int PointsPerContact = 2;
+
     /// <summary>
     /// Binds every live point of <paramref name="contacts"/> to the frames its
     /// body carries right now, writing <see cref="MaxContacts"/> windows of
@@ -92,7 +94,9 @@ internal static class PositionGeometryWindow
             ref BodyState stateB = ref bodies.Slot(contact.BodyB);
             var frameA = new RigidTransform3D(stateA.Position, stateA.Rotation);
             var frameB = new RigidTransform3D(stateB.Position, stateB.Rotation);
-            int baseIndex = i * Manifold3D.MaxPoints;
+            int baseIndex = i * PointsPerContact;
+            System.Diagnostics.Debug.Assert(manifold.Count <= PointsPerContact,
+                "the coupled position solve reads at most two witnesses per contact");
 
             for (int p = 0; p < manifold.Count; p++)
             {
