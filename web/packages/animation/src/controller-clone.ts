@@ -99,8 +99,13 @@ export const cloneBehaviourAction = (
                 signal: action.signal,
                 ...(action.payload ? { payload: Object.freeze({ ...action.payload }) } : {}),
             });
-        default:
-            return assertNever(action, 'Unsupported animation state behaviour action');
+        default: {
+            // An action outside the closed vocabulary must survive cloning: validation
+            // reports it as `...behaviour.action.unsupported` and compilation rejects it.
+            // Throwing here would hide every diagnostic behind an exception.
+            const unknown = { ...(action as unknown as Record<string, unknown>) };
+            return Object.freeze(unknown) as unknown as AnimationStateBehaviourActionDefinition;
+        }
     }
 };
 
