@@ -173,7 +173,10 @@ public sealed class BodyStore
     /// force carries neighbours that are still asleep and reachable only through
     /// the contact graph, so that transition is the one worth walking for. The
     /// test keeps a continuously forced body — a hover, a conveyor — from
-    /// turning the walk into a per-frame graph scan.
+    /// turning the walk into a per-frame graph scan. The sleep timer restarts
+    /// with the command, exactly as the 3D motion path does: a body the caller is
+    /// still driving is a body that tried to move, not one that was never awake,
+    /// and without the reset a quiet command stream leaves it asleep and inert.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WakeForInput(BodyId id, ref BodyState body)
@@ -184,6 +187,7 @@ public sealed class BodyStore
         }
 
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        body.SleepTime = 0.0f;
     }
 
     /// <summary>Slots placed or woken since the world last drained them.</summary>
