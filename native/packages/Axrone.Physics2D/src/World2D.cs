@@ -1574,6 +1574,9 @@ public sealed class World : IDisposable
         _wakeGeneration++;
     }
 
+    /// <summary>Slots the open wake pass has queued and not yet walked.</summary>
+    internal int WakeQueueLength => _wakeTop;
+
     /// <summary>Most slots the open wake pass ever held queued at once.</summary>
     internal int WakeQueuePeakLength => _wakePeakTop;
 
@@ -1605,7 +1608,12 @@ public sealed class World : IDisposable
         }
     }
 
-    /// <summary>Drains the worklist across the contact graph, visiting every body once.</summary>
+    /// <summary>
+    /// Drains the worklist across the contact graph, visiting every body once and
+    /// never more bodies than there are slots: the bound is enforced here, so a
+    /// pass that rescanned a body would stop with a count to report instead of
+    /// spinning on a reconvergent graph.
+    /// </summary>
     internal void PropagateWakes()
     {
         if (_wakeTop == 0)
@@ -1614,7 +1622,8 @@ public sealed class World : IDisposable
         }
 
         BuildContactAdjacency();
-        while (_wakeTop > 0)
+        int visitBound = _wakeMarks.Length;
+        while (_wakeTop > 0 && _wakeVisits < visitBound)
         {
             int slot = _wakeWorklist[--_wakeTop];
             _wakeVisits++;
