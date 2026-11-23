@@ -114,7 +114,7 @@ describe('state scoped behaviours', () => {
         expect(signalNames(controller)).toEqual([]);
     });
 
-    it.skip('enters the whole group chain outward-in and exits it inward-out', () => {
+    it('enters the whole group chain outward-in and exits it inward-out', () => {
         const machine: AnimationStateMachineDefinition = {
             entryState: 'Locomotion',
             states: [
@@ -135,6 +135,9 @@ describe('state scoped behaviours', () => {
                             {
                                 id: 'Walk',
                                 motion: { kind: 'clip', clipId: 'walk' },
+                                behaviours: [
+                                    { phase: 'exit', actions: [{ kind: 'emitSignal', signal: 'out' }] },
+                                ],
                             },
                         ],
                     },
@@ -155,14 +158,22 @@ describe('state scoped behaviours', () => {
             'Locomotion/Idle:enter:in',
         ]);
 
+        // A sibling swap stops the leaf it leaves and starts the leaf it enters;
+        // the group above them keeps its own enter undispatched.
         controller.parameters.setTrigger('move');
+        controller.update(0.1);
+        expect(signalNames(controller)).toEqual(['Locomotion/Idle:exit:out']);
+
+        // A zero-length crossfade settles on the following step without touching the
+        // lifecycle again, and only then can the group be left.
         controller.update(0.1);
         expect(signalNames(controller)).toEqual([]);
 
+        // Leaving the group exits the whole remaining chain, innermost first.
         controller.parameters.setTrigger('fire');
         controller.update(0.1);
         expect(signalNames(controller)).toEqual([
-            'Locomotion/Idle:exit:out',
+            'Locomotion/Walk:exit:out',
             'Locomotion:exit:out',
         ]);
     });
@@ -193,7 +204,7 @@ describe('state scoped behaviours', () => {
         expect(controller.parameters.get('ready')).toBe(true);
     });
 
-    it.skip('pulses a trigger that a later transition can consume', () => {
+    it('pulses a trigger that a later transition can consume', () => {
         const machine: AnimationStateMachineDefinition = {
             entryState: 'Idle',
             states: [
@@ -241,7 +252,7 @@ describe('state scoped behaviours', () => {
         expect(signalNames(allowed)).toEqual(['Idle:enter:armed']);
     });
 
-    it.skip('throttles update behaviours by intervalSeconds', () => {
+    it('throttles update behaviours by intervalSeconds', () => {
         const machine: AnimationStateMachineDefinition = {
             entryState: 'Idle',
             states: [
@@ -270,7 +281,7 @@ describe('state scoped behaviours', () => {
         expect(signalNames(controller)).toEqual(['Idle:update:beat']);
     });
 
-    it.skip('keeps behaviours out of the loop when a machine declares none', () => {
+    it('keeps behaviours out of the loop when a machine declares none', () => {
         const machine: AnimationStateMachineDefinition = {
             entryState: 'Idle',
             states: [{ id: 'Idle', motion: { kind: 'clip', clipId: 'idle' } }],
@@ -282,7 +293,7 @@ describe('state scoped behaviours', () => {
         expect(controller.stateSignals).toEqual([]);
     });
 
-    it.skip('dispatches exit before enter inside a single step', () => {
+    it('dispatches exit before enter inside a single step', () => {
         const machine: AnimationStateMachineDefinition = {
             entryState: 'Idle',
             states: [
@@ -363,7 +374,7 @@ describe('state scoped behaviours', () => {
         expect(Object.isFrozen(raw.behaviours?.[0]?.actions?.[0])).toBe(true);
     });
 
-    it.skip('rejects actions that are not part of the closed vocabulary', () => {
+    it('rejects actions that are not part of the closed vocabulary', () => {
         const machine: AnimationStateMachineDefinition = {
             entryState: 'Idle',
             states: [
@@ -434,9 +445,129 @@ describe('state scoped behaviours', () => {
     it('accepts a fully authored behaviour set', () => {
         expect(validateAnimationControllerDefinition(controllerOf(flatMachine()))).toEqual([]);
     });
+
+    it('runs the update phase once per step when a pulse starts a crossfade', () => {
+        const machine: AnimationStateMachineDefinition = {
+            entryState: 'Idle',
+            states: [
+                {
+                    id: 'Idle',
+                    motion: { kind: 'clip', clipId: 'idle' },
+                    behaviours: [
+                        { phase: 'enter', actions: [{ kind: 'pulseTrigger', parameter: 'move' }] },
+                        { phase: 'update', actions: [{ kind: 'emitSignal', signal: 'tick' }] },
+                    ],
+                    transitions: [
+                        { to: 'Walk', duration: 0.2, fixedDuration: true, conditions: [{ kind: 'trigger', parameter: 'move' }] },
+                    ],
+                },
+                {
+                    id: 'Walk',
+                    motion: { kind: 'clip', clipId: 'walk' },
+                    behaviours: [{ phase: 'enter', actions: [{ kind: 'emitSignal', signal: 'landed' }] }],
+                },
+            ],
+        };
+        const controller = new AnimationController(controllerOf(machine));
+        controller.update(0.1);
+
+        expect(signalNames(controller)).toEqual(['Idle:update:tick', 'Walk:enter:landed']);
+        expect(controller.parameters.get('move')).toBe(false);
+    });
+
+    it('bounds the pulse feedback loop between two states', () => {
+        const machine: AnimationStateMachineDefinition = {
+            entryState: 'Idle',
+            states: [
+                {
+                    id: 'Idle',
+                    motion: { kind: 'clip', clipId: 'idle' },
+                    behaviours: [
+                        {
+                            phase: 'enter',
+                            actions: [
+                                { kind: 'emitSignal', signal: 'i' },
+                                { kind: 'pulseTrigger', parameter: 'move' },
+                            ],
+                        },
+                    ],
+                    transitions: [
+                        { to: 'Walk', duration: 0.2, fixedDuration: true, conditions: [{ kind: 'trigger', parameter: 'move' }] },
+                    ],
+                },
+                {
+                    id: 'Walk',
+                    motion: { kind: 'clip', clipId: 'walk' },
+                    behaviours: [
+                        {
+                            phase: 'enter',
+                            actions: [
+                                { kind: 'emitSignal', signal: 'w' },
+                                { kind: 'pulseTrigger', parameter: 'fire' },
+                            ],
+                        },
+                    ],
+                    transitions: [
+                        { to: 'Idle', duration: 0.2, fixedDuration: true, conditions: [{ kind: 'trigger', parameter: 'fire' }] },
+                    ],
+                },
+            ],
+        };
+        const controller = new AnimationController(controllerOf(machine));
+
+        controller.update(0.1);
+        expect(signalNames(controller)).toEqual(['Idle:enter:i', 'Walk:enter:w']);
+        expect(controller.profile.activeLayers[0]!.stateId).toContain('Walk');
+    });
+
+    it('enters and exits the entry chain it superseded inside the same step', () => {
+        const machine: AnimationStateMachineDefinition = {
+            entryState: 'Locomotion',
+            states: [
+                {
+                    id: 'Locomotion',
+                    childMachine: {
+                        entryState: 'Idle',
+                        states: [
+                            {
+                                id: 'Idle',
+                                motion: { kind: 'clip', clipId: 'idle' },
+                                behaviours: [
+                                    { phase: 'enter', actions: [{ kind: 'emitSignal', signal: 'in' }] },
+                                    { phase: 'exit', actions: [{ kind: 'emitSignal', signal: 'out' }] },
+                                ],
+                                transitions: [{ to: 'Walk', duration: 0 }],
+                            },
+                            {
+                                id: 'Walk',
+                                motion: { kind: 'clip', clipId: 'walk' },
+                                behaviours: [{ phase: 'enter', actions: [{ kind: 'emitSignal', signal: 'in' }] }],
+                            },
+                        ],
+                    },
+                    behaviours: [{ phase: 'enter', actions: [{ kind: 'emitSignal', signal: 'in' }] }],
+                },
+            ],
+        };
+        const compiled = compileStateMachine(machine, CLIP_MAP);
+        const runtime = createLayerRuntime(compiled);
+        const parameters = new AnimationParameterStore(CONTROLLER_PARAMETERS);
+        const sink: AnimationStateSignal[] = [];
+
+        updateLayerRuntime(compiled, runtime, parameters, 0.1);
+        dispatchLayerStateBehaviours(compiled, runtime, parameters, 'base', 0.1, sink);
+
+        expect(sink.map((signal) => `${signal.stateId}:${signal.phase}:${signal.signal}`)).toEqual([
+            'Locomotion:enter:in',
+            'Locomotion/Idle:enter:in',
+            'Locomotion/Idle:exit:out',
+            'Locomotion/Walk:enter:in',
+        ]);
+    });
 });
 
 const machineHasBehaviours = (machine: AnimationStateMachineDefinition): boolean => {
     const compiled = compileStateMachine(machine, CLIP_MAP);
     return compiled.hasStateBehaviours;
 };
+
