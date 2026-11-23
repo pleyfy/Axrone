@@ -11,10 +11,30 @@ namespace Axrone.Physics3D;
 /// </summary>
 public static class Epa3D
 {
-    private const int MaxIterations = 24;
-    private const int MaxVertices = 32;
-    private const int MaxFaces = 64;
+    // Caps sized so a rounded difference set can be inscribed closely enough to
+    // hold 1e-4 m at deep immersion (48 vertices bound the face count at
+    // 2V - 4 = 92). The loop exits on convergence long before them, so raising
+    // them costs stack, not measured time.
+    private const int MaxIterations = 48;
+    private const int MaxVertices = 48;
+    private const int MaxFaces = 96;
     private const float AdvanceTolerance = 1e-4f;
+
+    /// <summary>Keeps curved-point ids out of the clipped-face namespaces.</summary>
+    private const uint EpaIdTag = 0x4500_0000u;
+
+    /// <summary>Grid bits per normal axis; 64 cells is ~1.8 degrees.</summary>
+    private const int NormalAxisBits = 6;
+
+    /// <summary>Id path bit of a depth produced by expanding the polytope face.</summary>
+    private const uint ExpandedFacePath = 0u;
+
+    /// <summary>
+    /// Id path bit of the zero-depth feature a disjoint-but-touching GJK run
+    /// reports. It carries no penetration, so letting warm start move impulses
+    /// across the boundary between the two would reuse the wrong contact.
+    /// </summary>
+    private const uint TouchFeaturePath = 1u;
 
     /// <summary>Polytope face: vertex indices with an outward unit normal and plane offset.</summary>
     private readonly record struct Face(int A, int B, int C, Vec3 Normal, float Offset);
@@ -43,7 +63,7 @@ public static class Epa3D
             Vec3 touchNormal = pointA - pointB;
             float touchLenSq = touchNormal.LengthSquared();
             Vec3 axis = touchLenSq > 1e-12f ? touchNormal / MathF.Sqrt(touchLenSq) : new Vec3(1.0f, 0.0f, 0.0f);
-            manifold = Manifold3D.One(axis, new ContactPoint3D(pointA, pointB, 0.0f, 0u));
+            manifold = Manifold3D.One(axis, new ContactPoint3D(pointA, pointB, 0.0f, PointId(FaceKey(axis), TouchFeaturePath)));
             return true;
         }
 
@@ -186,10 +206,50 @@ public static class Epa3D
         Vec3 witnessB = (vertices[closestA].WitnessB * closestWa)
             + (vertices[closestB].WitnessB * closestWb)
             + (vertices[closestC].WitnessB * closestWc);
-        var contact = new ContactPoint3D(witnessA, witnessB, -depth, 0u);
-        manifold = Manifold3D.One(normal * -1.0f, contact);
+        Vec3 contactNormal = normal * -1.0f;
+        manifold = Manifold3D.One(
+            contactNormal,
+            new ContactPoint3D(witnessA, witnessB, -depth, PointId(FaceKey(contactNormal), ExpandedFacePath)));
         return true;
     }
+
+    /// <summary>
+    /// Feature key of the contact: the converged face normal on a coarse grid.
+    /// Translating either shape leaves the normal bit-identical, which simplex
+    /// vertex indices are not — the expansion path reorders on a millimetre
+    /// slide. The grid is ~1.8 degrees wide, far above the sub-degree jitter of
+    /// a settling contact, so ordinary drift cannot cross a boundary and drop
+    /// the impulses the id exists to protect, while a genuine feature change
+    /// (face to rim, cap to side) lands in a different cell and stops the carry.
+    /// </summary>
+    private static uint FaceKey(in Vec3 normal) =>
+        (QuantizeAxis(normal.X) << (2 * NormalAxisBits))
+        | (QuantizeAxis(normal.Y) << NormalAxisBits)
+        | QuantizeAxis(normal.Z);
+
+    /// <summary>
+    /// Maps one unit-vector component onto the normal grid. The half-cell bias
+    /// matters: truncation puts the boundary exactly on every axis-aligned
+    /// normal, so a contact sitting at x = -1e-8 one step and +1e-8 the next
+    /// reads as a different feature and loses its carried impulses.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint QuantizeAxis(float component)
+    {
+        uint cells = 1u << NormalAxisBits;
+        float scaled = (component + 1.0f) * (cells * 0.5f);
+        if (scaled <= 0.0f)
+        {
+            return 0u;
+        }
+
+        uint cell = (uint)(scaled + 0.5f);
+        return cell < cells ? cell : cells - 1u;
+    }
+
+    /// <summary>Point id: tagged normal key with the emission-path bit in the low bit, so no curved pair collapses onto the old zero and a zero-depth touch feature never donates impulses to a penetrated face.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint PointId(uint faceKey, uint path) => EpaIdTag | ((faceKey << 1) | path);
 
     /// <summary>Adds a face oriented away from the opposite vertex.</summary>
     private static void AddFace(

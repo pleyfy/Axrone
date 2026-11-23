@@ -136,10 +136,15 @@ public readonly struct WorldDef
 
             field = value;
         }
-    } = 8;
+    } = PhysicsConstants.MaxSubSteps;
 
-    /// <summary>Solver capabilities; clearing <see cref="SolverFlags.SleepingBodies"/> skips the sleep pass.</summary>
-    public SolverFlags Flags { get; init; } = SolverFlags.Default;
+    /// <summary>
+    /// Solver capabilities. The shipped 3D default is the shared steady-state
+    /// set plus <see cref="SolverFlags.ContinuousDetection"/>, so sweep-marked
+    /// bodies keep being subdivided; clearing <see cref="SolverFlags"/> members
+    /// takes the matching pass out of the step.
+    /// </summary>
+    public SolverFlags Flags { get; init; } = SolverFlags.Default | SolverFlags.ContinuousDetection;
 
     /// <summary>Whether each step clears accumulated forces after applying them.</summary>
     public bool AutoClearForces { get; init; } = true;
@@ -246,6 +251,7 @@ public readonly record struct ClosestPointHit3D(ShapeId Shape, BodyId Body, Vec3
 public sealed class World : IDisposable
 {
     private const int InitialContactCapacity = 16;
+    private const float RelocationWakeMargin = PhysicsConstants.LinearSlop;
 
     private readonly BodyStore _bodies;
     private readonly ShapeStore _shapes;
@@ -266,6 +272,20 @@ public sealed class World : IDisposable
     private int _currentPairCount;
     private BroadPair[] _stepPairs;
     private int _stepPairCount;
+    private CarriedTuning[] _carriedTunings;
+    private int _carriedTuningCount;
+    private int[] _matchedPrevious;
+    private int[] _wakeWorklist = [];
+    private int[] _wakeMarks = [];
+    private int[] _wakeRowStart = [];
+    private int[] _wakeFill = [];
+    private int[] _wakeAdjacency = [];
+    private int _wakeTop;
+    private int _wakePeakTop;
+    private int _wakePushes;
+    private int _wakeVisits;
+    private int _wakeGeneration;
+    private int _wakeSlotCapacity;
     private int _disposed;
 
     /// <summary>Gravity of the world.</summary>
@@ -297,6 +317,15 @@ public sealed class World : IDisposable
 
     /// <summary>Whether each step clears accumulated forces after applying them.</summary>
     public bool AutoClearForces { get; set; }
+
+    /// <summary>Slices the last step actually ran; one when nothing forced a subdivision.</summary>
+    internal int LastCcdSlices { get; private set; } = 1;
+
+    /// <summary>Velocity sweeps the last step actually ran, summed over its slices.</summary>
+    internal int LastVelocitySweeps { get; private set; }
+
+    /// <summary>Position sweeps the last step actually ran, summed over its slices.</summary>
+    internal int LastPositionSweeps { get; private set; }
 
     /// <summary>Creates a world with default tuning.</summary>
     public World()
@@ -335,6 +364,9 @@ public sealed class World : IDisposable
         _currentPairCount = 0;
         _stepPairs = new BroadPair[InitialContactCapacity];
         _stepPairCount = 0;
+        _carriedTunings = new CarriedTuning[InitialContactCapacity];
+        _carriedTuningCount = 0;
+        _matchedPrevious = new int[InitialContactCapacity];
         _disposed = 0;
     }
 
@@ -840,6 +872,9 @@ public sealed class World : IDisposable
 
         int slices = CcdSliceCount(dt);
         float h = dt / slices;
+        LastCcdSlices = slices;
+        LastVelocitySweeps = 0;
+        LastPositionSweeps = 0;
 
         _eventCount = 0;
         _sensorEventCount = 0;
@@ -848,7 +883,7 @@ public sealed class World : IDisposable
 
         for (int slice = 0; slice < slices; slice++)
         {
-            StepSlice(h, emitImpulseNotices: slice == slices - 1);
+            StepSlice(h, slice, slices, emitImpulseNotices: slice == slices - 1);
         }
 
         UpdateIslands(dt);
@@ -881,15 +916,19 @@ public sealed class World : IDisposable
 
         int slices = CcdSliceCount(dt);
         float h = dt / slices;
+        LastCcdSlices = slices;
+        LastVelocitySweeps = 0;
+        LastPositionSweeps = 0;
 
         _eventCount = 0;
         _sensorEventCount = 0;
         _impulseEventCount = 0;
+        _carriedTuningCount = 0;
         SnapshotStepPairs();
 
         for (int slice = 0; slice < slices; slice++)
         {
-            StepSliceCallback(h, slice == 0, slice == slices - 1, handler, ref context);
+            StepSliceCallback(h, slice, slices, slice == 0, slice == slices - 1, handler, ref context);
         }
 
         UpdateIslands(dt);
@@ -944,6 +983,9 @@ public sealed class World : IDisposable
     /// <summary>Canonical shape pair, ordered by raw identity.</summary>
     private readonly record struct BroadPair(ShapeId First, ShapeId Second);
 
+    /// <summary>A shape pair and the pair tuning the step's single pre-solve callback left behind.</summary>
+    private readonly record struct CarriedTuning(ShapeId ShapeA, ShapeId ShapeB, ContactTuning Tuning);
+
     /// <summary>Collects broadphase pairs into the world's pair buffer.</summary>
     private struct PairCollector : IPairVisitor<ShapeId, World>
     {
@@ -963,9 +1005,95 @@ public sealed class World : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void StepSlice(float h, bool emitImpulseNotices)
+    private void StepSlice(float h, int slice, int slices, bool emitImpulseNotices)
     {
+        int velocitySweeps = SweepBudget(VelocityIterations, slice, slices);
+        int positionSweeps = SweepBudget(PositionIterations, slice, slices);
+        bool solveVelocities = (Flags & SolverFlags.VelocityConstraints) != 0;
+        bool pushPositions = (Flags & SolverFlags.PositionCorrection) != 0;
+
+        DrainWakeTriggers();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
+        CollectSliceContacts();
+
+        Span<Contact3D> span = _contacts.AsSpan(0, _contactCount);
+        if (solveVelocities)
+        {
+            ContactSolver.InitVelocityConstraints(_bodies, _shapes, span);
+            LastVelocitySweeps += velocitySweeps;
+            ContactSolver.SolveVelocityPass(_bodies, _shapes, span, velocitySweeps);
+        }
+
+        JointSolver.SolveSpringPass(_bodies, _joints, h);
+
+        for (int iteration = 0; iteration < velocitySweeps; iteration++)
+        {
+            JointSolver.SolveVelocityPass(_bodies, _joints, h);
+        }
+
+        if (emitImpulseNotices)
+        {
+            NoSolveState unusedState;
+            ImpulseNoticeContext notices = new(this);
+            ContactSolver.ReportPostSolve(span, ref notices, ref unusedState);
+        }
+
+        IntegrateSlicePositions(h, slices);
+
+        if (pushPositions)
+        {
+            LastPositionSweeps += positionSweeps;
+            ContactSolver.SolvePositions(_bodies, span, positionSweeps);
+        }
+
+        JointSolver.SolvePositionPass(_bodies, _joints);
+    }
+
+    /// <summary>
+    /// Sweeps one pass may run so that a step spends its configured budget once
+    /// however many slices it split into: every slice gets the same share and
+    /// the remainder goes to the leading slices, so the allotments sum to
+    /// <paramref name="iterations"/> exactly.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int SweepBudget(int iterations, int slice, int slices)
+    {
+        if (slices <= 1)
+        {
+            return iterations;
+        }
+
+        int share = iterations / slices;
+        return share + (slice < (iterations - (share * slices)) ? 1 : 0);
+    }
+
+    /// <summary>
+    /// Integrates one slice inside the translation and rotation budget the step
+    /// owns, then drains the relocations that integration produced while the
+    /// broadphase still holds the pre-move bounds.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void IntegrateSlicePositions(float h, int slices)
+    {
+        _bodies.IntegratePositions(
+            h,
+            PhysicsConstants.MaxTranslation / slices,
+            PhysicsConstants.MaxRotation / slices);
+        DrainWakeTriggers();
+        SyncAwakeBodies();
+    }
+
+    /// <summary>
+    /// Refreshes the broadphase, rebuilds this slice's contact set from the
+    /// live pairs and carries identity across: a pair that survived from the
+    /// previous slice keeps its impulses unless
+    /// <see cref="SolverFlags.WarmStarting"/> is clear, and a pair that lost its
+    /// manifold but stayed inside the break band is carried on as a persisted
+    /// witness of the same touch.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void CollectSliceContacts()
+    {
         SyncAwakeBodies();
 
         Contact3D[] built = _previous;
@@ -984,58 +1112,173 @@ public sealed class World : IDisposable
             BroadPair pair = _currentPairs[i];
             if (TryBuildContact(pair.First, pair.Second, out Contact3D contact))
             {
-                if (_contactCount >= _contacts.Length)
-                {
-                    Array.Resize(ref _contacts, _contacts.Length * 2);
-                }
-
-                _contacts[_contactCount++] = contact;
+                AddContact(contact);
             }
         }
 
+        bool carryImpulses = (Flags & SolverFlags.WarmStarting) != 0;
+        if (_matchedPrevious.Length < _previousCount)
+        {
+            Array.Resize(ref _matchedPrevious, Math.Max(_previousCount, _contacts.Length));
+        }
+
+        Array.Clear(_matchedPrevious, 0, _previousCount);
+        BeginWakePropagation();
         for (int i = 0; i < _contactCount; i++)
         {
-            bool matched = false;
-            for (int j = 0; j < _previousCount; j++)
-            {
-                if (_previous[j].ShapeA == _contacts[i].ShapeA && _previous[j].ShapeB == _contacts[i].ShapeB)
-                {
-                    WarmStart(ref _contacts[i], in _previous[j]);
-                    matched = true;
-                    break;
-                }
-            }
-
-            if (!matched)
+            int match = FindPrevious(_contacts[i].ShapeA, _contacts[i].ShapeB);
+            if (match < 0)
             {
                 WakePair(_contacts[i].BodyA, _contacts[i].BodyB);
+                continue;
+            }
+
+            _matchedPrevious[match] = 1;
+            if (carryImpulses)
+            {
+                WarmStart(ref _contacts[i], in _previous[match]);
             }
         }
 
-        ContactSolver.InitVelocityConstraints(_bodies, _shapes, _contacts.AsSpan(0, _contactCount));
-        ContactSolver.SolveVelocityPass(_bodies, _shapes, _contacts.AsSpan(0, _contactCount), VelocityIterations);
-        JointSolver.SolveSpringPass(_bodies, _joints, h);
-
-        for (int iteration = 0; iteration < VelocityIterations; iteration++)
-        {
-            JointSolver.SolveVelocityPass(_bodies, _joints, h);
-        }
-
-        if (emitImpulseNotices)
-        {
-            NoSolveState unusedState;
-            ImpulseNoticeContext notices = new(this);
-            ContactSolver.ReportPostSolve(_contacts.AsSpan(0, _contactCount), ref notices, ref unusedState);
-        }
-
-        _bodies.IntegratePositions(h);
-        SyncAwakeBodies();
-
-        ContactSolver.SolvePositions(_bodies, _contacts.AsSpan(0, _contactCount), PositionIterations);
-        JointSolver.SolvePositionPass(_bodies, _joints);
+        PropagateWakes();
+        PersistBrokenPairs();
     }
 
-    /// <summary>Carries previous impulses into matching points by feature id.</summary>
+    /// <summary>
+    /// Re-tracks the solid pairs this slice lost while the distance query still
+    /// calls them touching, or measures a gap no wider than
+    /// <see cref="PhysicsConstants.ContactBreakThreshold"/>; a query that returns
+    /// no verdict lets the pair break. Without the band a pair dies at the first
+    /// metre of daylight, so a body crossing it pays an Ended/Began pair, loses
+    /// its identity in the event stream and is woken as if it were new. A
+    /// persisted pair keeps that identity and carries no points: nothing that is
+    /// not touching may push.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void PersistBrokenPairs()
+    {
+        for (int j = 0; j < _previousCount; j++)
+        {
+            Contact3D carried = _previous[j];
+            if (carried.IsSensor || _matchedPrevious[j] != 0)
+            {
+                continue;
+            }
+
+            if (!_shapes.IsValid(carried.ShapeA) || !_shapes.IsValid(carried.ShapeB))
+            {
+                continue;
+            }
+
+            ref ShapeRecord recordA = ref _shapes.Record(carried.ShapeA);
+            ref ShapeRecord recordB = ref _shapes.Record(carried.ShapeB);
+            if (recordA.Body == recordB.Body)
+            {
+                continue;
+            }
+
+            ref BodyState stateA = ref _bodies.Slot(recordA.Body);
+            ref BodyState stateB = ref _bodies.Slot(recordB.Body);
+            if ((stateA.Type == BodyType.Static && stateB.Type == BodyType.Static) ||
+                (stateA.Flags & BodyFlags.Active) == 0 || (stateB.Flags & BodyFlags.Active) == 0)
+            {
+                continue;
+            }
+
+            if (!CollisionFilter.ShouldCollide(in recordA.Filter, in recordB.Filter))
+            {
+                continue;
+            }
+
+            if (OutsideBand(_shapes.GetWorldAabb(carried.ShapeA), _shapes.GetWorldAabb(carried.ShapeB)))
+            {
+                continue;
+            }
+
+            AnyCollider colliderA = AnyCollider.FromRecord(in recordA, _shapes.GetWorldFrame(carried.ShapeA));
+            AnyCollider colliderB = AnyCollider.FromRecord(in recordB, _shapes.GetWorldFrame(carried.ShapeB));
+            GjkResult probe = Gjk3D.ComputeDistance<AnyCollider, AnyCollider, StandardGjkPolicy, NullGjkObserver>(
+                colliderA, colliderB);
+            if (probe.Status != GjkStatus.Disjoint && probe.Status != GjkStatus.TouchingOrOverlapping)
+            {
+                continue;
+            }
+
+            float gap = probe.Status == GjkStatus.Disjoint ? probe.Distance.Value.Value : 0.0f;
+            if (gap > PhysicsConstants.ContactBreakThreshold)
+            {
+                continue;
+            }
+
+            AddContact(Persisted(carried));
+        }
+    }
+
+    /// <summary>Rebuilds a lost contact as its band survivor: the pair, without its points.</summary>
+    private static Contact3D Persisted(in Contact3D carried)
+    {
+        Manifold3D manifold = carried.Manifold;
+        manifold.Count = 0;
+        return new Contact3D
+        {
+            BodyA = carried.BodyA,
+            BodyB = carried.BodyB,
+            ShapeA = carried.ShapeA,
+            ShapeB = carried.ShapeB,
+            IsSensor = false,
+            Manifold = manifold,
+        };
+    }
+
+    /// <summary>
+    /// Whether the two cached boxes are already further apart than the break
+    /// band. The box gap is a floor on the shape distance, so a pair failing it
+    /// never needs the distance query at all.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool OutsideBand(in Aabb3D boxA, in Aabb3D boxB)
+    {
+        const float BandSquared = PhysicsConstants.ContactBreakThreshold * PhysicsConstants.ContactBreakThreshold;
+        float x = MathF.Max(MathF.Max(boxA.Min.X - boxB.Max.X, boxB.Min.X - boxA.Max.X), 0.0f);
+        float y = MathF.Max(MathF.Max(boxA.Min.Y - boxB.Max.Y, boxB.Min.Y - boxA.Max.Y), 0.0f);
+        float z = MathF.Max(MathF.Max(boxA.Min.Z - boxB.Max.Z, boxB.Min.Z - boxA.Max.Z), 0.0f);
+        return (x * x) + (y * y) + (z * z) > BandSquared;
+    }
+
+    /// <summary>Appends a contact to the slice's set, growing the buffer on demand.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void AddContact(in Contact3D contact)
+    {
+        if (_contactCount >= _contacts.Length)
+        {
+            Array.Resize(ref _contacts, _contacts.Length * 2);
+        }
+
+        _contacts[_contactCount++] = contact;
+    }
+
+    /// <summary>Index of a carried contact naming the same shape pair, or -1.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int FindPrevious(ShapeId shapeA, ShapeId shapeB)
+    {
+        for (int j = 0; j < _previousCount; j++)
+        {
+            if (_previous[j].ShapeA == shapeA && _previous[j].ShapeB == shapeB)
+            {
+                return j;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Carries previous impulses into matching points by feature id, unless the
+    /// matched point's witnesses moved further in one step than
+    /// <see cref="PhysicsConstants.ContactPersistentThresholdSq"/> allows: a
+    /// feature that jumped is a different piece of geometry, and spending an
+    /// impulse earned elsewhere on it is how a solver invents motion.
+    /// </summary>
     private static void WarmStart(ref Contact3D current, in Contact3D previous)
     {
         Manifold3D manifold = current.Manifold;
@@ -1046,19 +1289,35 @@ public sealed class World : IDisposable
             for (int q = 0; q < old.Count; q++)
             {
                 ContactPoint3D carried = old[q];
-                if (carried.Id == point.Id)
+                if (carried.Id != point.Id)
+                {
+                    continue;
+                }
+
+                if (SameWitnessPlace(carried, point))
                 {
                     ContactPoint3D updated = point;
                     updated.NormalImpulse = carried.NormalImpulse;
                     updated.TangentImpulse1 = carried.TangentImpulse1;
                     updated.TangentImpulse2 = carried.TangentImpulse2;
                     manifold.SetPoint(p, updated);
-                    break;
                 }
+
+                break;
             }
         }
 
         current.Manifold = manifold;
+    }
+
+    /// <summary>Whether both witnesses of a carried point stayed inside the persistence threshold.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool SameWitnessPlace(in ContactPoint3D carried, in ContactPoint3D point)
+    {
+        Vec3 driftA = point.PositionA - carried.PositionA;
+        Vec3 driftB = point.PositionB - carried.PositionB;
+        return driftA.LengthSquared() <= PhysicsConstants.ContactPersistentThresholdSq &&
+            driftB.LengthSquared() <= PhysicsConstants.ContactPersistentThresholdSq;
     }
 
     /// <summary>Builds a contact from a broadphase pair; filters and narrowphase run here.</summary>
@@ -1262,27 +1521,332 @@ public sealed class World : IDisposable
         }
     }
 
+    /// <summary>
+    /// Wakes both sides of a pair that just appeared and queues them as seeds, so
+    /// the propagation that follows carries the wake on to whatever rests on the
+    /// bodies the collision struck.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WakePair(BodyId bodyA, BodyId bodyB)
     {
-        ref BodyState stateA = ref _bodies.Slot(bodyA);
-        ref BodyState stateB = ref _bodies.Slot(bodyB);
+        EnqueueWakeSlot(BodyStore.SlotOf(bodyA));
+        EnqueueWakeSlot(BodyStore.SlotOf(bodyB));
+    }
 
-        if (stateA.Type == BodyType.Dynamic && (stateA.Flags & BodyFlags.Awake) == 0)
+    /// <summary>
+    /// Opens the step's wake propagation. Immovable bodies placed outside the
+    /// integrator are put into the broadphase and wake the dynamic bodies
+    /// overlapping the volume their placement swept; dynamic bodies a caller set
+    /// into motion seed the walk directly. <see cref="SyncAwakeBodies"/> skips
+    /// immovable bodies and <see cref="WakePair"/> only fires on a pair that
+    /// appeared, so without this pass a support withdrawn from under a resting
+    /// body leaves it asleep on nothing, and a body shoved into a sleeping stack
+    /// drags no one with it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void DrainWakeTriggers()
+    {
+        int relocations = _bodies.RelocationCount;
+        int seeds = _bodies.WakeSeedCount;
+        if (relocations == 0 && seeds == 0)
         {
-            _bodies.SetAwake(bodyA, true);
+            return;
         }
 
-        if (stateB.Type == BodyType.Dynamic && (stateB.Flags & BodyFlags.Awake) == 0)
+        BeginWakePropagation();
+        ReadOnlySpan<int> relocated = _bodies.RelocatedSlots;
+        for (int i = 0; i < relocated.Length; i++)
         {
-            _bodies.SetAwake(bodyB, true);
+            int slot = relocated[i];
+            if (_bodies.IsSlotLive(slot) && _bodies.SlotType(slot) != BodyType.Dynamic)
+            {
+                RelocateBody(BodyId.FromIndex(slot));
+            }
+        }
+
+        ReadOnlySpan<int> motionSeeds = _bodies.WakeSeedSlots;
+        for (int i = 0; i < motionSeeds.Length; i++)
+        {
+            EnqueueWakeSlot(motionSeeds[i]);
+        }
+
+        PropagateWakes();
+        _bodies.ClearRelocations();
+        _bodies.ClearWakeSeeds();
+    }
+
+    /// <summary>Re-inserts one relocated body's shapes and wakes what the move swept through.</summary>
+    private void RelocateBody(BodyId bodyId)
+    {
+        ref BodyState body = ref _bodies.Slot(bodyId);
+        if (body.FirstShape == -1)
+        {
+            return;
+        }
+
+        // Cached bounds hold the pre-placement box until SyncBody refreshes them, so the two passes bracket the move.
+        Aabb3D swept = Aabb3D.Empty;
+        int current = body.FirstShape;
+        while (current != -1)
+        {
+            ref ShapeRecord record = ref _shapes.Record(ShapeId.FromIndex(current));
+            swept = Aabb3D.CreateMerged(in swept, in record.WorldAabb);
+            current = record.NextShape;
+        }
+
+        _shapes.SyncBody(_bodies, _tree, bodyId);
+
+        current = body.FirstShape;
+        while (current != -1)
+        {
+            ref ShapeRecord record = ref _shapes.Record(ShapeId.FromIndex(current));
+            swept = Aabb3D.CreateMerged(in swept, in record.WorldAabb);
+            current = record.NextShape;
+        }
+
+        Aabb3D volume = swept.Expanded(RelocationWakeMargin);
+        WakeTargets targets = new(this, bodyId);
+        RelocationWakeCollector collector = default;
+        _tree.QueryOverlaps(in volume, ref collector, ref targets);
+    }
+
+    /// <summary>Wake targets of a relocation sweep: the dynamic owners of the visited shapes.</summary>
+    private ref struct WakeTargets
+    {
+        private readonly World _world;
+        private readonly BodyId _moved;
+
+        public WakeTargets(World world, BodyId moved)
+        {
+            _world = world;
+            _moved = moved;
+        }
+
+        public readonly void Wake(ShapeId shapeId)
+        {
+            if (!_world._shapes.IsValid(shapeId))
+            {
+                return;
+            }
+
+            BodyId owner = _world._shapes.Record(shapeId).Body;
+            if (owner == _moved)
+            {
+                return;
+            }
+
+            _world.EnqueueWakeSlot(BodyStore.SlotOf(owner));
         }
     }
 
-    /// <summary>Counts the slices so no awake bullet outruns <see cref="CcdSweepStep"/> in one slice.</summary>
+    /// <summary>Reports every shape overlapping the swept volume of a relocated support.</summary>
+    private struct RelocationWakeCollector : ISpatialVisitor<ShapeId, WakeTargets>
+    {
+        public readonly bool OnOverlap(SpatialItemId itemId, ShapeId userData, in Aabb3D box, ref WakeTargets context)
+        {
+            context.Wake(userData);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Opens one bounded wake propagation: a body is marked and queued at most
+    /// once per pass, so nothing rescans the contact graph per wake.
+    /// </summary>
+    internal void BeginWakePropagation()
+    {
+        EnsureWakeCapacity(_bodies.SlotCapacity);
+        _wakeTop = 0;
+        _wakePeakTop = 0;
+        _wakePushes = 0;
+        _wakeVisits = 0;
+        if (_wakeGeneration == int.MaxValue)
+        {
+            Array.Clear(_wakeMarks, 0, _wakeMarks.Length);
+            _wakeGeneration = 0;
+        }
+
+        _wakeGeneration++;
+    }
+
+    /// <summary>Slots the open wake pass has queued and not yet walked.</summary>
+    internal int WakeQueueLength => _wakeTop;
+
+    /// <summary>Most slots the open wake pass ever held queued at once.</summary>
+    internal int WakeQueuePeakLength => _wakePeakTop;
+
+    /// <summary>Slots the open wake pass has queued, counting the seed.</summary>
+    internal int WakePushCount => _wakePushes;
+
+    /// <summary>Slots the open wake pass has popped off the worklist.</summary>
+    internal int WakeVisitCount => _wakeVisits;
+
+    /// <summary>
+    /// Queues a wake target and marks it awake; this is the only place the walk
+    /// writes the awake bit. Already-awake bodies enter the queue too, because
+    /// the sleeping bodies resting on them are reached only through them, and a
+    /// body the integrator will not simulate never enters it: scenery and
+    /// kinematics keep the sleep bits the caller gave them.
+    /// </summary>
+    internal void EnqueueWakeSlot(int slot)
+    {
+        if (!_bodies.IsSlotLive(slot) || _bodies.SlotType(slot) != BodyType.Dynamic || _wakeMarks[slot] == _wakeGeneration)
+        {
+            return;
+        }
+
+        _wakeMarks[slot] = _wakeGeneration;
+        _wakeWorklist[_wakeTop++] = slot;
+        _wakePushes++;
+        _wakePeakTop = Math.Max(_wakePeakTop, _wakeTop);
+        BodyId bodyId = BodyId.FromIndex(slot);
+        if ((_bodies.Slot(bodyId).Flags & BodyFlags.Awake) == 0)
+        {
+            _bodies.SetAwake(bodyId, true);
+        }
+    }
+
+    /// <summary>
+    /// Drains the worklist across the contact graph, visiting every body once and
+    /// never more bodies than there are slots: the bound is enforced here, so a
+    /// pass that rescanned a body would stop with a count to report instead of
+    /// spinning on a reconvergent graph.
+    /// </summary>
+    internal void PropagateWakes()
+    {
+        if (_wakeTop == 0)
+        {
+            return;
+        }
+
+        BuildContactAdjacency();
+        int visitBound = _wakeMarks.Length;
+        while (_wakeTop > 0 && _wakeVisits < visitBound)
+        {
+            int slot = _wakeWorklist[--_wakeTop];
+            _wakeVisits++;
+            int rowEnd = _wakeRowStart[slot + 1];
+            for (int edge = _wakeRowStart[slot]; edge < rowEnd; edge++)
+            {
+                EnqueueWakeSlot(_wakeAdjacency[edge]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Packs the live contact pairs into per-body rows once per propagation.
+    /// Only dynamic-dynamic edges are walkable: a shared support couples nothing,
+    /// the same rule that keeps the island pass from unioning through scenery, so
+    /// a withdrawn wall can never drag every body on the ground awake with it.
+    /// </summary>
+    internal void BuildContactAdjacency()
+    {
+        int capacity = _bodies.SlotCapacity;
+        EnsureWakeCapacity(capacity);
+        Array.Clear(_wakeFill, 0, capacity);
+
+        int edgeCount = 0;
+        for (int i = 0; i < _contactCount; i++)
+        {
+            int slotA = BodyStore.SlotOf(_contacts[i].BodyA);
+            int slotB = BodyStore.SlotOf(_contacts[i].BodyB);
+            if (!IsWakeWalkablePair(slotA, slotB))
+            {
+                continue;
+            }
+
+            _wakeFill[slotA]++;
+            _wakeFill[slotB]++;
+            edgeCount += 2;
+        }
+
+        if (_wakeAdjacency.Length < edgeCount)
+        {
+            Array.Resize(ref _wakeAdjacency, Math.Max(edgeCount, InitialContactCapacity));
+        }
+
+        int running = 0;
+        for (int slot = 0; slot < capacity; slot++)
+        {
+            _wakeRowStart[slot] = running;
+            running += _wakeFill[slot];
+            _wakeFill[slot] = _wakeRowStart[slot];
+        }
+
+        _wakeRowStart[capacity] = running;
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            int slotA = BodyStore.SlotOf(_contacts[i].BodyA);
+            int slotB = BodyStore.SlotOf(_contacts[i].BodyB);
+            if (!IsWakeWalkablePair(slotA, slotB))
+            {
+                continue;
+            }
+
+            _wakeAdjacency[_wakeFill[slotA]++] = slotB;
+            _wakeAdjacency[_wakeFill[slotB]++] = slotA;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsWakeWalkablePair(int slotA, int slotB) =>
+        _bodies.IsSlotLive(slotA) && _bodies.IsSlotLive(slotB) &&
+        _bodies.SlotType(slotA) == BodyType.Dynamic && _bodies.SlotType(slotB) == BodyType.Dynamic;
+
+    /// <summary>Adjacency entries of the last build that lead to a body of <paramref name="target"/>.</summary>
+    internal int CountWakeAdjacencyEntries(BodyType target)
+    {
+        int capacity = _bodies.SlotCapacity;
+        int entries = 0;
+        for (int slot = 0; slot < capacity; slot++)
+        {
+            int rowEnd = _wakeRowStart[slot + 1];
+            for (int edge = _wakeRowStart[slot]; edge < rowEnd; edge++)
+            {
+                int neighbour = _wakeAdjacency[edge];
+                if (_bodies.IsSlotLive(neighbour) && _bodies.SlotType(neighbour) == target)
+                {
+                    entries++;
+                }
+            }
+        }
+
+        return entries;
+    }
+
+    private void EnsureWakeCapacity(int capacity)
+    {
+        if (capacity <= _wakeSlotCapacity)
+        {
+            return;
+        }
+
+        Array.Resize(ref _wakeWorklist, capacity);
+        Array.Resize(ref _wakeMarks, capacity);
+        Array.Resize(ref _wakeFill, capacity);
+        Array.Resize(ref _wakeRowStart, capacity + 1);
+        _wakeSlotCapacity = capacity;
+    }
+
+    /// <summary>
+    /// Counts the slices so no awake body the world is watching outruns
+    /// <see cref="CcdSweepStep"/> in one slice.
+    /// <see cref="SolverFlags.ContinuousDetection"/> puts the sweep-marked
+    /// bodies under that rule and <see cref="SolverFlags.SubStepping"/> extends
+    /// it to every fast awake dynamic body; with neither set the step never
+    /// subdivides.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private int CcdSliceCount(float dt)
     {
+        bool sweepBullets = (Flags & SolverFlags.ContinuousDetection) != 0;
+        bool sliceFastBodies = (Flags & SolverFlags.SubStepping) != 0;
+        if (!sweepBullets && !sliceFastBodies)
+        {
+            return 1;
+        }
+
         float furthest = 0.0f;
 
         for (int slot = 0; slot < _bodies.SlotCapacity; slot++)
@@ -1294,8 +1858,13 @@ public sealed class World : IDisposable
 
             BodyId bodyId = BodyId.FromIndex(slot);
             ref readonly BodyState body = ref _bodies.Slot(bodyId);
-            if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Awake) == 0 ||
-                (body.Flags & BodyFlags.Bullet) == 0)
+            if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Awake) == 0)
+            {
+                continue;
+            }
+
+            bool watched = (body.Flags & BodyFlags.Bullet) != 0 ? sweepBullets : sliceFastBodies;
+            if (!watched)
             {
                 continue;
             }
@@ -1415,72 +1984,41 @@ public sealed class World : IDisposable
 
     /// <summary>Runs one slice with the caller's callback surface: pre-solve on the first slice, post-solve on the last.</summary>
     private void StepSliceCallback<THandler, TContext>(
-        float h, bool emitPreSolve, bool emitPostSolve, THandler handler, ref TContext context)
+        float h, int slice, int slices, bool emitPreSolve, bool emitPostSolve, THandler handler, ref TContext context)
         where THandler : IContactSolverCallbacks<Contact3D, Manifold3D, TContext>
         where TContext : allows ref struct
     {
+        int velocitySweeps = SweepBudget(VelocityIterations, slice, slices);
+        int positionSweeps = SweepBudget(PositionIterations, slice, slices);
+        bool solveVelocities = (Flags & SolverFlags.VelocityConstraints) != 0;
+        bool pushPositions = (Flags & SolverFlags.PositionCorrection) != 0;
+
+        DrainWakeTriggers();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
-        SyncAwakeBodies();
-
-        Contact3D[] built = _previous;
-        _previous = _contacts;
-        _previousCount = _contactCount;
-        _contacts = built;
-        _contactCount = 0;
-        _currentPairCount = 0;
-
-        var collector = new PairCollector();
-        World self = this;
-        _tree.FindPairs(ref collector, ref self);
-
-        for (int i = 0; i < _currentPairCount; i++)
-        {
-            BroadPair pair = _currentPairs[i];
-            if (TryBuildContact(pair.First, pair.Second, out Contact3D contact))
-            {
-                if (_contactCount >= _contacts.Length)
-                {
-                    Array.Resize(ref _contacts, _contacts.Length * 2);
-                }
-
-                _contacts[_contactCount++] = contact;
-            }
-        }
-
-        for (int i = 0; i < _contactCount; i++)
-        {
-            bool matched = false;
-            for (int j = 0; j < _previousCount; j++)
-            {
-                if (_previous[j].ShapeA == _contacts[i].ShapeA && _previous[j].ShapeB == _contacts[i].ShapeB)
-                {
-                    WarmStart(ref _contacts[i], in _previous[j]);
-                    matched = true;
-                    break;
-                }
-            }
-
-            if (!matched)
-            {
-                WakePair(_contacts[i].BodyA, _contacts[i].BodyB);
-            }
-        }
+        CollectSliceContacts();
 
         Span<Contact3D> span = _contacts.AsSpan(0, _contactCount);
-        if (emitPreSolve)
+        if (solveVelocities)
         {
-            PreSolveContext<THandler, TContext> pre = new(_shapes);
-            ContactSolver.InitVelocityConstraints(_bodies, _shapes, span, ref pre, ref context);
-        }
-        else
-        {
-            ContactSolver.InitVelocityConstraints(_bodies, _shapes, span);
+            if (emitPreSolve)
+            {
+                PreSolveContext<THandler, TContext> pre = new(_shapes);
+                ContactSolver.InitVelocityConstraints(_bodies, _shapes, span, ref pre, ref context);
+                RecordCarriedTunings();
+            }
+            else
+            {
+                FrozenTuningContext<TContext> frozen = new(this);
+                ContactSolver.InitVelocityConstraints(_bodies, _shapes, span, ref frozen, ref context);
+            }
+
+            LastVelocitySweeps += velocitySweeps;
+            ContactSolver.SolveVelocityPass(_bodies, _shapes, span, velocitySweeps);
         }
 
-        ContactSolver.SolveVelocityPass(_bodies, _shapes, span, VelocityIterations);
         JointSolver.SolveSpringPass(_bodies, _joints, h);
 
-        for (int iteration = 0; iteration < VelocityIterations; iteration++)
+        for (int iteration = 0; iteration < velocitySweeps; iteration++)
         {
             JointSolver.SolveVelocityPass(_bodies, _joints, h);
         }
@@ -1491,11 +2029,78 @@ public sealed class World : IDisposable
             ContactSolver.ReportPostSolve(span, ref post, ref context);
         }
 
-        _bodies.IntegratePositions(h);
-        SyncAwakeBodies();
+        IntegrateSlicePositions(h, slices);
 
-        ContactSolver.SolvePositions(_bodies, span, PositionIterations);
+        if (pushPositions)
+        {
+            LastPositionSweeps += positionSweeps;
+            ContactSolver.SolvePositions(_bodies, span, positionSweeps);
+        }
+
         JointSolver.SolvePositionPass(_bodies, _joints);
+    }
+
+    /// <summary>Records the tuning the pre-solve callback left behind, per shape pair, for the slices that follow it.</summary>
+    private void RecordCarriedTunings()
+    {
+        _carriedTuningCount = 0;
+        for (int i = 0; i < _contactCount; i++)
+        {
+            if (_carriedTuningCount >= _carriedTunings.Length)
+            {
+                Array.Resize(ref _carriedTunings, _carriedTunings.Length * 2);
+            }
+
+            _carriedTunings[_carriedTuningCount++] = new CarriedTuning(
+                _contacts[i].ShapeA, _contacts[i].ShapeB, _contacts[i].Tuning);
+        }
+    }
+
+    /// <summary>Index of the recorded tuning of a shape pair, or -1.</summary>
+    private int FindCarriedTuning(ShapeId shapeA, ShapeId shapeB)
+    {
+        for (int i = 0; i < _carriedTuningCount; i++)
+        {
+            if (_carriedTunings[i].ShapeA == shapeA && _carriedTunings[i].ShapeB == shapeB)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Sink for the slices that follow the pre-solve one: it re-seeds each pair
+    /// with the tuning the callback left behind and never calls the handler
+    /// again, so a rewrite made once per step holds for every slice of the step.
+    /// </summary>
+    private readonly struct FrozenTuningContext<TContext>(World world)
+        : IContactSolveContext<Contact3D, Manifold3D, TContext>
+        where TContext : allows ref struct
+    {
+        private readonly World _world = world;
+
+        public readonly ContactTuning Tune(ref readonly Contact3D contact, ref TContext context)
+        {
+            int carried = _world.FindCarriedTuning(contact.ShapeA, contact.ShapeB);
+            if (carried >= 0)
+            {
+                return _world._carriedTunings[carried].Tuning;
+            }
+
+            ref readonly ShapeRecord recordA = ref _world._shapes.Record(contact.ShapeA);
+            ref readonly ShapeRecord recordB = ref _world._shapes.Record(contact.ShapeB);
+            return ContactSolver.DefaultTuning(in recordA.Material, in recordB.Material);
+        }
+
+        public readonly void PreSolve(ref Contact3D contact, ref Manifold3D manifold, ref ContactTuning tuning, ref TContext context)
+        {
+        }
+
+        public readonly void PostSolve(ref readonly Contact3D contact, in Manifold3D manifold, in ContactImpulses impulses, ref TContext context)
+        {
+        }
     }
 
     /// <summary>Unit caller state for sink contexts that need none.</summary>

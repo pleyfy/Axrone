@@ -39,9 +39,11 @@ internal readonly struct DefaultSleepPolicy3D : ISleepPolicy3D
 public readonly record struct IslandMetrics3D(int Islands, int SleptBodies);
 
 /// <summary>
-/// Island sleep solver: unions bodies linked by contacts and joints into
-/// disjoint islands, tracks per-island quiet time, and sleeps islands that
-/// stay quiet past the threshold. A single restless body keeps its whole
+/// Island sleep solver: unions dynamic bodies linked by contacts and joints
+/// into disjoint islands, tracks per-island quiet time, and sleeps islands
+/// that stay quiet past the threshold. Static and kinematic bodies carry no
+/// island of their own and are never unioned through, so scenery shared by
+/// many bodies cannot keep them awake. A single restless body keeps its own
 /// island awake, so jointed assemblies and stacks fall asleep together and
 /// wake together. Union-find lives in rented buffers; nothing allocates.
 /// </summary>
@@ -164,12 +166,18 @@ internal sealed class IslandSolver3D<TPolicy>
         Metrics = new IslandMetrics3D(islands, _totalSlept += slept);
     }
 
-    /// <summary>Unions the islands of two bodies; dead slots never join.</summary>
+    /// <summary>Unions the islands of two dynamic bodies; dead slots and immovable supports never join.</summary>
     private void Union(BodyStore bodies, BodyId a, BodyId b)
     {
         int slotA = a.ToIndex();
         int slotB = b.ToIndex();
         if (!bodies.IsSlotLive(slotA) || !bodies.IsSlotLive(slotB))
+        {
+            return;
+        }
+
+        // A shared support is not a coupling: unioning through it would let one restless body pin every body on the same scenery.
+        if (bodies.SlotType(slotA) != BodyType.Dynamic || bodies.SlotType(slotB) != BodyType.Dynamic)
         {
             return;
         }

@@ -18,6 +18,12 @@ public sealed class BodyStore
     private int _highWater;
     private int _count;
     private int _capacity;
+    private int[] _relocatedSlots;
+    private bool[] _relocationMarked;
+    private int _relocatedCount;
+    private int[] _wakeSeeds;
+    private bool[] _wakeSeedMarked;
+    private int _wakeSeedCount;
 
     /// <summary>Creates a store with room for sixteen bodies.</summary>
     public BodyStore()
@@ -25,9 +31,15 @@ public sealed class BodyStore
         _capacity = InitialCapacity;
         _bodies = new BodyState[_capacity];
         _freeStack = new int[_capacity];
+        _relocatedSlots = new int[_capacity];
+        _relocationMarked = new bool[_capacity];
+        _wakeSeeds = new int[_capacity];
+        _wakeSeedMarked = new bool[_capacity];
         _freeCount = 0;
         _highWater = 0;
         _count = 0;
+        _relocatedCount = 0;
+        _wakeSeedCount = 0;
     }
 
     /// <summary>Live bodies.</summary>
@@ -100,6 +112,8 @@ public sealed class BodyStore
     public void Destroy(BodyId id)
     {
         int slot = Validate(id);
+        _relocationMarked[slot] = false;
+        _wakeSeedMarked[slot] = false;
         _bodies[slot] = default;
         _freeStack[_freeCount++] = slot;
         _count--;
@@ -121,14 +135,114 @@ public sealed class BodyStore
         return new RigidTransform3D(body.Position, body.Rotation);
     }
 
-    /// <summary>Moves a body without touching its velocities; wakes it.</summary>
+    /// <summary>
+    /// Moves a body without touching its velocities; wakes it. A static or
+    /// kinematic placement is recorded as a pending relocation so the owning
+    /// world can refresh its broadphase nodes and wake the bodies that were
+    /// resting on it before the next pair collection.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SetTransform(BodyId id, Vec3 position, Quat rotation)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         body.Position = position;
         body.Rotation = rotation;
         body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        if (body.Type != BodyType.Dynamic)
+        {
+            MarkRelocated(slot);
+        }
+    }
+
+    /// <summary>Queues an immovable body whose frame was placed outside the integrator.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void MarkRelocated(int slot)
+    {
+        if (_relocationMarked[slot])
+        {
+            return;
+        }
+
+        _relocationMarked[slot] = true;
+        _relocatedSlots[_relocatedCount++] = slot;
+    }
+
+    /// <summary>Slots placed by <see cref="SetTransform"/> since the world last drained them.</summary>
+    internal ReadOnlySpan<int> RelocatedSlots => _relocatedSlots.AsSpan(0, _relocatedCount);
+
+    /// <summary>Pending relocation entries.</summary>
+    internal int RelocationCount
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _relocatedCount;
+    }
+
+    /// <summary>Empties the pending relocation queue.</summary>
+    internal void ClearRelocations()
+    {
+        for (int i = 0; i < _relocatedCount; i++)
+        {
+            _relocationMarked[_relocatedSlots[i]] = false;
+        }
+
+        _relocatedCount = 0;
+    }
+
+    /// <summary>
+    /// Records that a caller put a dynamic body into motion outside the
+    /// integrator, so the owning world wakes what rests on it before it moves.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void MarkWakeSeed(int slot)
+    {
+        if (_wakeSeedMarked[slot])
+        {
+            return;
+        }
+
+        _wakeSeedMarked[slot] = true;
+        if (_wakeSeedCount == _wakeSeeds.Length)
+        {
+            Array.Resize(ref _wakeSeeds, _wakeSeeds.Length * 2);
+        }
+
+        _wakeSeeds[_wakeSeedCount++] = slot;
+    }
+
+    /// <summary>Slots a caller set into motion since the world last drained them.</summary>
+    internal ReadOnlySpan<int> WakeSeedSlots => _wakeSeeds.AsSpan(0, _wakeSeedCount);
+
+    /// <summary>Pending motion-seed entries.</summary>
+    internal int WakeSeedCount
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _wakeSeedCount;
+    }
+
+    /// <summary>Empties the pending motion-seed queue.</summary>
+    internal void ClearWakeSeeds()
+    {
+        for (int i = 0; i < _wakeSeedCount; i++)
+        {
+            _wakeSeedMarked[_wakeSeeds[i]] = false;
+        }
+
+        _wakeSeedCount = 0;
+    }
+
+    /// <summary>
+    /// Wakes a body a caller just set into motion and queues it as a
+    /// propagation seed. The sleep timer restarts with the wake: a command that
+    /// the contact solver answers with zero velocity is a body that tried to
+    /// move, not one that was never awake.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WakeForMotion(ref BodyState body, int slot)
+    {
+        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        body.SleepTime = 0.0f;
+        MarkWakeSeed(slot);
     }
 
     /// <summary>Reads the linear velocity of a body.</summary>
@@ -139,11 +253,12 @@ public sealed class BodyStore
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SetLinearVelocity(BodyId id, Vec3 velocity)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Static)
         {
             body.LinearVelocity = velocity;
-            body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+            WakeForMotion(ref body, slot);
         }
     }
 
@@ -155,11 +270,12 @@ public sealed class BodyStore
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SetAngularVelocity(BodyId id, Vec3 velocity)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Static && (body.Flags & BodyFlags.FixedRotation) == 0)
         {
             body.AngularVelocity = velocity;
-            body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+            WakeForMotion(ref body, slot);
         }
     }
 
@@ -193,25 +309,27 @@ public sealed class BodyStore
         body.Torque = Vec3.Zero;
     }
 
-    /// <summary>Accumulates a world force at the center of mass; wakes the body.</summary>
+    /// <summary>Accumulates a world force at the center of mass; wakes the body and what rests on it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyForce(BodyId id, Vec3 force)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
 
         body.Force += force;
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForMotion(ref body, slot);
     }
 
-    /// <summary>Accumulates a world force applied at a world-space point; the offset from the center of mass adds torque; wakes the body.</summary>
+    /// <summary>Accumulates a world force applied at a world-space point; the offset from the center of mass adds torque; wakes the body and what rests on it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyForce(BodyId id, Vec3 force, Vec3 point)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
@@ -220,56 +338,60 @@ public sealed class BodyStore
         Vec3 lever = point - CenterOfMass(in body);
         body.Force += force;
         body.Torque += Vec3.Cross(lever, force);
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForMotion(ref body, slot);
     }
 
-    /// <summary>Accumulates a world force through the center of mass; produces no torque; wakes the body.</summary>
+    /// <summary>Accumulates a world force through the center of mass; produces no torque; wakes the body and what rests on it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyForceToCenter(BodyId id, Vec3 force)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
 
         body.Force += force;
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForMotion(ref body, slot);
     }
 
-    /// <summary>Accumulates a world-space torque; wakes the body.</summary>
+    /// <summary>Accumulates a world-space torque; wakes the body and what rests on it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyTorque(BodyId id, Vec3 torque)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
 
         body.Torque += torque;
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForMotion(ref body, slot);
     }
 
-    /// <summary>Applies an instantaneous linear impulse at the center of mass; wakes the body.</summary>
+    /// <summary>Applies an instantaneous linear impulse at the center of mass; wakes the body and what rests on it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyLinearImpulse(BodyId id, Vec3 impulse)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
 
         body.LinearVelocity += impulse * body.InverseMass;
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForMotion(ref body, slot);
     }
 
-    /// <summary>Applies an instantaneous linear impulse at a world-space point; the offset from the center of mass spins the body; wakes it.</summary>
+    /// <summary>Applies an instantaneous linear impulse at a world-space point; the offset from the center of mass spins the body; wakes it and what rests on it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyLinearImpulse(BodyId id, Vec3 impulse, Vec3 point)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
@@ -278,21 +400,22 @@ public sealed class BodyStore
         Vec3 lever = point - CenterOfMass(in body);
         body.LinearVelocity += impulse * body.InverseMass;
         body.AngularVelocity += ContactSolver.ApplyInverseInertia(body.Rotation, body.InverseInertia, Vec3.Cross(lever, impulse));
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForMotion(ref body, slot);
     }
 
-    /// <summary>Applies an instantaneous angular impulse; wakes the body.</summary>
+    /// <summary>Applies an instantaneous angular impulse; wakes the body and what rests on it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ApplyAngularImpulse(BodyId id, Vec3 impulse)
     {
-        ref BodyState body = ref Slot(id);
+        int slot = Validate(id);
+        ref BodyState body = ref _bodies[slot];
         if (body.Type != BodyType.Dynamic || (body.Flags & BodyFlags.FixedRotation) != 0 || (body.Flags & BodyFlags.Active) == 0)
         {
             return;
         }
 
         body.AngularVelocity += ContactSolver.ApplyInverseInertia(body.Rotation, body.InverseInertia, impulse);
-        body.Flags = (body.Flags | BodyFlags.Awake) & ~BodyFlags.Sleeping;
+        WakeForMotion(ref body, slot);
     }
 
     /// <summary>Overwrites the mass properties; zero mass means infinite (static-like response).</summary>
@@ -461,7 +584,10 @@ public sealed class BodyStore
     /// <summary>
     /// Force half of the step: gravity and accumulated forces integrate into
     /// velocities with damping applied, then forces clear when
-    /// <paramref name="clearForces"/> is set. Positions untouched.
+    /// <paramref name="clearForces"/> is set. Speeds are capped to
+    /// <see cref="PhysicsConstants.MaxVelocity"/> and
+    /// <see cref="PhysicsConstants.MaxAngularVelocity"/> so no pair of impulses
+    /// can store energy the position half cannot spend. Positions untouched.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void IntegrateVelocities(float dt, Vec3 gravity, bool clearForces = true)
@@ -496,12 +622,28 @@ public sealed class BodyStore
                 body.AngularVelocity = Vec3.Zero;
             }
 
+            body.LinearVelocity = CapSpeed(body.LinearVelocity, PhysicsConstants.MaxVelocity);
+            body.AngularVelocity = CapSpeed(body.AngularVelocity, PhysicsConstants.MaxAngularVelocity);
+
             if (clearForces)
             {
                 body.Force = Vec3.Zero;
                 body.Torque = Vec3.Zero;
             }
         }
+    }
+
+    /// <summary>Rescales a velocity vector onto a speed cap; anything already inside passes through.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vec3 CapSpeed(Vec3 velocity, float cap)
+    {
+        float speedSq = velocity.LengthSquared();
+        if (speedSq <= cap * cap)
+        {
+            return velocity;
+        }
+
+        return velocity * (cap / MathF.Sqrt(speedSq));
     }
 
     /// <summary>Zeroes accumulated forces and torques on every body.</summary>
@@ -542,10 +684,14 @@ public sealed class BodyStore
     /// Position half of the step: velocities integrate into frames. Static and
     /// sleeping bodies never move; kinematic bodies translate on velocity
     /// alone. Orientation advances through an incremental axis-angle
-    /// quaternion, renormalized every step against drift.
+    /// quaternion, renormalized every step against drift. The travelled
+    /// distance and the swept angle are capped, so an enormous velocity buys a
+    /// capped displacement instead of a teleport; the caps default to unlimited
+    /// because the budget is a property of the <b>step</b>, and only a step
+    /// knows how many slices it split itself into.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public void IntegratePositions(float dt)
+    public void IntegratePositions(float dt, float maxTranslation = float.PositiveInfinity, float maxRotation = float.PositiveInfinity)
     {
         if (!(dt > 0.0f))
         {
@@ -566,14 +712,28 @@ public sealed class BodyStore
                 continue;
             }
 
-            body.Position += body.LinearVelocity * dt;
+            Vec3 travel = body.LinearVelocity * dt;
+            float travelSq = travel.LengthSquared();
+            if (travelSq > maxTranslation * maxTranslation)
+            {
+                travel *= maxTranslation / MathF.Sqrt(travelSq);
+            }
+
+            body.Position += travel;
 
             float spinSq = body.AngularVelocity.LengthSquared();
             if (spinSq > 0.0f)
             {
                 float spin = MathF.Sqrt(spinSq);
-                Quat increment = Quat.CreateFromAxisAngle(body.AngularVelocity / spin, spin * dt);
+                float angle = MathF.Min(spin * dt, maxRotation);
+                Quat increment = Quat.CreateFromAxisAngle(body.AngularVelocity / spin, angle);
                 body.Rotation = (increment * body.Rotation).Normalize();
+            }
+
+            // A kinematic frame the integrator advanced is a frame placed outside the caller's hands.
+            if (body.Type == BodyType.Kinematic && (travel.LengthSquared() > 0.0f || spinSq > 0.0f))
+            {
+                MarkRelocated(i);
             }
         }
     }
@@ -585,6 +745,10 @@ public sealed class BodyStore
     /// <summary>Raw slot of an identity without validation; the caller holds the invariant.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int SlotOf(BodyId id) => id.ToIndex();
+
+    /// <summary>Type stored in a raw slot without validation; the caller holds the liveness invariant.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal BodyType SlotType(int slot) => _bodies[slot].Type;
 
     /// <summary>Slot capacity for internal iteration.</summary>
     internal int SlotCapacity
@@ -619,6 +783,9 @@ public sealed class BodyStore
         int newCapacity = _capacity * 2;
         Array.Resize(ref _bodies, newCapacity);
         Array.Resize(ref _freeStack, newCapacity);
+        Array.Resize(ref _relocatedSlots, newCapacity);
+        Array.Resize(ref _relocationMarked, newCapacity);
+        Array.Resize(ref _wakeSeedMarked, newCapacity);
         _capacity = newCapacity;
     }
 
