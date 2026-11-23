@@ -302,6 +302,9 @@ public sealed class World : IDisposable
     private int[] _wakeFill = [];
     private int[] _wakeAdjacency = [];
     private int _wakeTop;
+    private int _wakePeakTop;
+    private int _wakePushes;
+    private int _wakeVisits;
     private int _wakeGeneration;
     private int _wakeSlotCapacity;
     private Contact[] _contacts;
@@ -1555,10 +1558,13 @@ public sealed class World : IDisposable
     /// Opens one bounded wake propagation: a body is marked and queued at most
     /// once per pass, so nothing rescans the contact graph per wake.
     /// </summary>
-    private void BeginWakePropagation()
+    internal void BeginWakePropagation()
     {
         EnsureWakeCapacity(_bodies.SlotCapacity);
         _wakeTop = 0;
+        _wakePeakTop = 0;
+        _wakePushes = 0;
+        _wakeVisits = 0;
         if (_wakeGeneration == int.MaxValue)
         {
             Array.Clear(_wakeMarks, 0, _wakeMarks.Length);
@@ -1568,11 +1574,20 @@ public sealed class World : IDisposable
         _wakeGeneration++;
     }
 
+    /// <summary>Most slots the open wake pass ever held queued at once.</summary>
+    internal int WakeQueuePeakLength => _wakePeakTop;
+
+    /// <summary>Slots the open wake pass has queued, counting the seed.</summary>
+    internal int WakePushCount => _wakePushes;
+
+    /// <summary>Slots the open wake pass has popped off the worklist.</summary>
+    internal int WakeVisitCount => _wakeVisits;
+
     /// <summary>
     /// Queues a wake target; already-awake bodies enter the queue too, because
     /// the sleeping bodies resting on them are reached only through them.
     /// </summary>
-    private void EnqueueWakeSlot(int slot)
+    internal void EnqueueWakeSlot(int slot)
     {
         if (!_bodies.IsSlotLive(slot) || _bodies.SlotType(slot) != BodyType.Dynamic || _wakeMarks[slot] == _wakeGeneration)
         {
@@ -1581,6 +1596,8 @@ public sealed class World : IDisposable
 
         _wakeMarks[slot] = _wakeGeneration;
         _wakeWorklist[_wakeTop++] = slot;
+        _wakePushes++;
+        _wakePeakTop = Math.Max(_wakePeakTop, _wakeTop);
         BodyId bodyId = BodyId.FromIndex(slot);
         if ((_bodies.Slot(bodyId).Flags & BodyFlags.Awake) == 0)
         {
@@ -1589,7 +1606,7 @@ public sealed class World : IDisposable
     }
 
     /// <summary>Drains the worklist across the contact graph, visiting every body once.</summary>
-    private void PropagateWakes()
+    internal void PropagateWakes()
     {
         if (_wakeTop == 0)
         {
@@ -1600,6 +1617,7 @@ public sealed class World : IDisposable
         while (_wakeTop > 0)
         {
             int slot = _wakeWorklist[--_wakeTop];
+            _wakeVisits++;
             int rowEnd = _wakeRowStart[slot + 1];
             for (int edge = _wakeRowStart[slot]; edge < rowEnd; edge++)
             {

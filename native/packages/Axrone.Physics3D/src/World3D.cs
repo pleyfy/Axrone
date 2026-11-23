@@ -281,6 +281,9 @@ public sealed class World : IDisposable
     private int[] _wakeFill = [];
     private int[] _wakeAdjacency = [];
     private int _wakeTop;
+    private int _wakePeakTop;
+    private int _wakePushes;
+    private int _wakeVisits;
     private int _wakeGeneration;
     private int _wakeSlotCapacity;
     private int _disposed;
@@ -1654,6 +1657,9 @@ public sealed class World : IDisposable
     {
         EnsureWakeCapacity(_bodies.SlotCapacity);
         _wakeTop = 0;
+        _wakePeakTop = 0;
+        _wakePushes = 0;
+        _wakeVisits = 0;
         if (_wakeGeneration == int.MaxValue)
         {
             Array.Clear(_wakeMarks, 0, _wakeMarks.Length);
@@ -1665,6 +1671,15 @@ public sealed class World : IDisposable
 
     /// <summary>Slots the open wake pass has queued and not yet walked.</summary>
     internal int WakeQueueLength => _wakeTop;
+
+    /// <summary>Most slots the open wake pass ever held queued at once.</summary>
+    internal int WakeQueuePeakLength => _wakePeakTop;
+
+    /// <summary>Slots the open wake pass has queued, counting the seed.</summary>
+    internal int WakePushCount => _wakePushes;
+
+    /// <summary>Slots the open wake pass has popped off the worklist.</summary>
+    internal int WakeVisitCount => _wakeVisits;
 
     /// <summary>
     /// Queues a wake target and marks it awake; this is the only place the walk
@@ -1682,6 +1697,8 @@ public sealed class World : IDisposable
 
         _wakeMarks[slot] = _wakeGeneration;
         _wakeWorklist[_wakeTop++] = slot;
+        _wakePushes++;
+        _wakePeakTop = Math.Max(_wakePeakTop, _wakeTop);
         BodyId bodyId = BodyId.FromIndex(slot);
         if ((_bodies.Slot(bodyId).Flags & BodyFlags.Awake) == 0)
         {
@@ -1690,7 +1707,7 @@ public sealed class World : IDisposable
     }
 
     /// <summary>Drains the worklist across the contact graph, visiting every body once.</summary>
-    private void PropagateWakes()
+    internal void PropagateWakes()
     {
         if (_wakeTop == 0)
         {
@@ -1701,6 +1718,7 @@ public sealed class World : IDisposable
         while (_wakeTop > 0)
         {
             int slot = _wakeWorklist[--_wakeTop];
+            _wakeVisits++;
             int rowEnd = _wakeRowStart[slot + 1];
             for (int edge = _wakeRowStart[slot]; edge < rowEnd; edge++)
             {
