@@ -64,7 +64,7 @@ const createMinimalPrefab = (
     sceneIndex: 0,
     definition: {
         id: 'prefab/test',
-        actors: [],
+        entities: [],
     },
     rootNodeIds: ['node/0'],
     nodeIds: ['node/0'],

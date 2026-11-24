@@ -578,7 +578,7 @@ describe('T-06: GLTF Full Pipeline Integration', () => {
     // 6. Scene / Prefab Structure
     // -----------------------------------------------------------------------
     describe('Scene / Prefab Structure', () => {
-        it('preserves node hierarchy with parent-child relationships in prefab actors', async () => {
+        it('preserves node hierarchy with parent-child relationships in prefab entities', async () => {
             const json: GltfRootJson = {
                 ...createTriangleJson(),
                 nodes: [
@@ -588,12 +588,12 @@ describe('T-06: GLTF Full Pipeline Integration', () => {
             };
             const receipt = await importGlb(json, createBinaryBlob());
             const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-            const parentActor = prefab?.data.definition.actors.find((a) => a.name === 'Parent');
-            const childActor = prefab?.data.definition.actors.find((a) => a.name === 'Child');
-            expect(parentActor).toBeDefined();
-            expect(childActor).toBeDefined();
-            // The child should have a parent reference to the parent actor
-            expect(childActor?.parent).toBe(parentActor?.id);
+            const parentEntity = prefab?.data.definition.entities.find((a) => a.name === 'Parent');
+            const childEntity = prefab?.data.definition.entities.find((a) => a.name === 'Child');
+            expect(parentEntity).toBeDefined();
+            expect(childEntity).toBeDefined();
+            // The child should have a parent reference to the parent entity
+            expect(childEntity?.parent).toBe(parentEntity?.id);
         });
 
         it('decomposes TRS transforms from node translation/rotation/scale', async () => {
@@ -611,8 +611,8 @@ describe('T-06: GLTF Full Pipeline Integration', () => {
             };
             const receipt = await importGlb(json, createBinaryBlob());
             const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-            const actor = prefab?.data.definition.actors.find((a) => a.name === 'TransformedNode');
-            const transform = actor?.components.find((c) => c.type === 'Transform');
+            const entity = prefab?.data.definition.entities.find((a) => a.name === 'TransformedNode');
+            const transform = entity?.components.find((c) => c.type === 'Transform');
             expect(transform?.data).toMatchObject({
                 position: [1, 2, 3],
                 rotation: [0, 0, 0, 1],
@@ -626,7 +626,7 @@ describe('T-06: GLTF Full Pipeline Integration', () => {
             const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
             const material = receipt.assets.find((entry) => entry.kind === 'gltf.material');
 
-            const meshRenderer = prefab?.data.definition.actors[0]?.components.find(
+            const meshRenderer = prefab?.data.definition.entities[0]?.components.find(
                 (c) => c.type === 'MeshRenderer'
             );
             expect(meshRenderer?.data).toMatchObject({
@@ -638,7 +638,7 @@ describe('T-06: GLTF Full Pipeline Integration', () => {
         it('generates Animator component for nodes with skin and animation', async () => {
             const receipt = await importGlb(createRigJson(), createRigBinaryBlob());
             const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-            const animator = prefab?.data.definition.actors[0]?.components.find(
+            const animator = prefab?.data.definition.entities[0]?.components.find(
                 (c) => c.type === 'Animator'
             );
             expect(animator).toBeDefined();

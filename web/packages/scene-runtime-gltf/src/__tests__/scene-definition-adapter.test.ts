@@ -86,12 +86,12 @@ describe('scene-definition-adapter', () => {
     });
 
     describe('adaptGltfPrefabDefinitionToScene', () => {
-        it('converts a prefab with nested actors and components', () => {
+        it('converts a prefab with nested entities and components', () => {
             const prefab: GltfPrefabDefinition = {
                 id: 'prefab/test',
-                actors: [
+                entities: [
                     {
-                        id: 'actor-1',
+                        id: 'entity-1',
                         name: 'Root',
                         components: [
                             {
@@ -105,7 +105,7 @@ describe('scene-definition-adapter', () => {
                         ],
                     },
                     {
-                        id: 'actor-2',
+                        id: 'entity-2',
                         name: 'Child',
                         components: [
                             {
@@ -120,18 +120,18 @@ describe('scene-definition-adapter', () => {
             const adapted = adaptGltfPrefabDefinitionToScene(prefab);
 
             expect(adapted.id).toBe('prefab/test');
-            expect(adapted.actors).toHaveLength(2);
-            expect(adapted.actors[0].components).toHaveLength(2);
-            expect(adapted.actors[0].components[0].data).toEqual({ position: [1, 2, 3] });
-            expect(adapted.actors[1].components[0].scriptKey).toBe('light');
+            expect(adapted.entities).toHaveLength(2);
+            expect(adapted.entities[0].components).toHaveLength(2);
+            expect(adapted.entities[0].components[0].data).toEqual({ position: [1, 2, 3] });
+            expect(adapted.entities[1].components[0].scriptKey).toBe('light');
         });
 
         it('does not mutate the input prefab', () => {
             const prefab: GltfPrefabDefinition = {
                 id: 'prefab/immutable',
-                actors: [
+                entities: [
                     {
-                        id: 'actor-1',
+                        id: 'entity-1',
                         name: 'Root',
                         components: [{ scriptKey: 'transform', data: { x: 1 } } as any],
                     },
@@ -139,9 +139,9 @@ describe('scene-definition-adapter', () => {
             };
 
             const adapted = adaptGltfPrefabDefinitionToScene(prefab);
-            adapted.actors.push({ id: 'actor-new', name: 'Injected', components: [] } as any);
+            adapted.entities.push({ id: 'entity-new', name: 'Injected', components: [] } as any);
 
-            expect(prefab.actors).toHaveLength(1);
+            expect(prefab.entities).toHaveLength(1);
         });
     });
 

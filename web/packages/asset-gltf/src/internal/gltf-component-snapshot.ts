@@ -145,7 +145,7 @@ export type ComponentSnapshotOf<T extends ComponentType> = { readonly type: T; r
 
 export type ComponentDataOf<T extends ComponentType> = ComponentDataMap[T];
 
-export type GltfActorSnapshot = {
+export type GltfEntitySnapshot = {
     readonly nodeId: NodeId;
     readonly parentNodeId: NodeId | null;
     readonly name: string;
@@ -159,7 +159,7 @@ export type GltfActorSnapshot = {
 
 export type GltfPrefabDefinition = {
     readonly id: string;
-    readonly actors: readonly GltfActorSnapshot[];
+    readonly entities: readonly GltfEntitySnapshot[];
 };
 
 /**
@@ -228,10 +228,10 @@ export const visitComponent = <T>(
 };
 
 export const mapComponents = (
-    actor: GltfActorSnapshot,
+    entity: GltfEntitySnapshot,
     fn: (snapshot: GltfComponentSnapshot) => GltfComponentSnapshot
-): GltfActorSnapshot =>
+): GltfEntitySnapshot =>
     Object.freeze({
-        ...actor,
-        components: Object.freeze(actor.components.map(fn)),
+        ...entity,
+        components: Object.freeze(entity.components.map(fn)),
     });

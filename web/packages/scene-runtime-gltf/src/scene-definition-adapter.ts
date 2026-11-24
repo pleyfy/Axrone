@@ -1,5 +1,5 @@
 import type {
-    GltfActorSnapshot,
+    GltfEntitySnapshot,
     GltfComponentSnapshot,
     GltfMaterialDefinition,
     GltfMeshBounds,
@@ -21,7 +21,7 @@ import type {
 
 const adaptGltfComponentSnapshotToScene = (
     component: GltfComponentSnapshot
-): ScenePrefabDefinition['actors'][number]['components'][number] => ({
+): ScenePrefabDefinition['entities'][number]['components'][number] => ({
     ...component,
     // Gltf component payloads are plain JSON-compatible records; the scene
     // contract types them as SceneSerializedValue (index-signature JSON).
@@ -31,18 +31,18 @@ const adaptGltfComponentSnapshotToScene = (
     data: component.data as unknown as SceneSerializedValue,
 });
 
-const adaptGltfActorSnapshotToScene = (
-    actor: GltfActorSnapshot
-): ScenePrefabDefinition['actors'][number] => ({
-    ...actor,
-    components: actor.components.map(adaptGltfComponentSnapshotToScene),
+const adaptGltfEntitySnapshotToScene = (
+    entity: GltfEntitySnapshot
+): ScenePrefabDefinition['entities'][number] => ({
+    ...entity,
+    components: entity.components.map(adaptGltfComponentSnapshotToScene),
 });
 
 export const adaptGltfPrefabDefinitionToScene = (
     definition: GltfPrefabDefinition
 ): ScenePrefabDefinition => ({
     ...definition,
-    actors: definition.actors.map(adaptGltfActorSnapshotToScene),
+    entities: definition.entities.map(adaptGltfEntitySnapshotToScene),
 });
 
 const adaptGltfMeshBoundsToScene = (

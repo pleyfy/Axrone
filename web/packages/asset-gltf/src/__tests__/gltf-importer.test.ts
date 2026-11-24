@@ -1227,7 +1227,7 @@ describe('glTF importer', () => {
         expect(texture?.data.runtimeFormat).toBe(TextureFormat.BC7_RGBA);
         expect(material?.data.definition.textures?._BaseColorTexture).toBe(texture?.key);
         expect(mesh?.data.definition.topology).toBe('triangles');
-        expect(prefab?.data.definition.actors[0]?.components).toEqual(
+        expect(prefab?.data.definition.entities[0]?.components).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ type: 'Transform' }),
                 expect.objectContaining({
@@ -1433,14 +1433,14 @@ describe('glTF importer', () => {
         });
 
         const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-        const cameraActor = prefab?.data.definition.actors.find(
-            (actor) => actor.name === 'Camera Root'
+        const cameraEntity = prefab?.data.definition.entities.find(
+            (entity) => entity.name === 'Camera Root'
         );
-        const cameraComponent = cameraActor?.components.find(
+        const cameraComponent = cameraEntity?.components.find(
             (component) => component.type === 'Camera'
         );
 
-        expect(cameraActor?.components).toEqual(
+        expect(cameraEntity?.components).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ type: 'Transform' }),
                 expect.objectContaining({ type: 'Camera' }),
@@ -1472,9 +1472,9 @@ describe('glTF importer', () => {
         const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
         const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
         const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-        const meshActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Mesh Root');
-        const meshRenderer = meshActor?.components.find((component) => component.type === 'MeshRenderer');
-        const animator = prefab?.data.definition.actors[0]?.components.find(
+        const meshEntity = prefab?.data.definition.entities.find((entity) => entity.name === 'Mesh Root');
+        const meshRenderer = meshEntity?.components.find((component) => component.type === 'MeshRenderer');
+        const animator = prefab?.data.definition.entities[0]?.components.find(
             (component) => component.type === 'Animator'
         );
 
@@ -1552,9 +1552,9 @@ describe('glTF importer', () => {
         const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
         const mesh = receipt.assets.find((entry) => entry.kind === 'gltf.mesh');
         const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-        const rootActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Morph Root');
-        const meshRenderer = rootActor?.components.find((component) => component.type === 'MeshRenderer');
-        const animator = rootActor?.components.find((component) => component.type === 'Animator');
+        const rootEntity = prefab?.data.definition.entities.find((entity) => entity.name === 'Morph Root');
+        const meshRenderer = rootEntity?.components.find((component) => component.type === 'MeshRenderer');
+        const animator = rootEntity?.components.find((component) => component.type === 'Animator');
 
         expect(mesh?.data.definition.morphTargets).toEqual([
             expect.objectContaining({
@@ -1626,7 +1626,7 @@ describe('glTF importer', () => {
 
         const scene = receipt.primary.data.scenes[0];
         const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-        const animator = prefab?.data.definition.actors[0]?.components.find(
+        const animator = prefab?.data.definition.entities[0]?.components.find(
             (component) => component.type === 'Animator'
         );
 
@@ -1727,7 +1727,7 @@ describe('glTF importer', () => {
         const scene = receipt.primary.data.scenes[0];
         const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
         const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
-        const animator = prefab?.data.definition.actors[0]?.components.find(
+        const animator = prefab?.data.definition.entities[0]?.components.find(
             (component) => component.type === 'Animator'
         );
 
@@ -1882,7 +1882,7 @@ describe('glTF importer', () => {
         const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
         const scene = receipt.primary.data.scenes[0];
         const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-        const animator = prefab?.data.definition.actors[0]?.components.find(
+        const animator = prefab?.data.definition.entities[0]?.components.find(
             (component) => component.type === 'Animator'
         );
 
@@ -2012,7 +2012,7 @@ describe('glTF importer', () => {
 
             const animation = receipt.assets.find((entry) => entry.kind === 'gltf.animation');
             const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-            const animator = prefab?.data.definition.actors[0]?.components.find(
+            const animator = prefab?.data.definition.entities[0]?.components.find(
                 (component) => component.type === 'Animator'
             );
 
@@ -2454,11 +2454,11 @@ describe('glTF importer', () => {
         });
 
         const prefab = receipt.assets.find((entry) => entry.kind === 'gltf.prefab');
-        const sunActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Sun');
-        const pointActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Lamp A');
-        const spotActor = prefab?.data.definition.actors.find((actor) => actor.name === 'Spot');
+        const sunEntity = prefab?.data.definition.entities.find((entity) => entity.name === 'Sun');
+        const pointEntity = prefab?.data.definition.entities.find((entity) => entity.name === 'Lamp A');
+        const spotEntity = prefab?.data.definition.entities.find((entity) => entity.name === 'Spot');
 
-        expect(sunActor?.components).toEqual(
+        expect(sunEntity?.components).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     type: 'DirectionalLight',
@@ -2469,7 +2469,7 @@ describe('glTF importer', () => {
                 }),
             ])
         );
-        expect(pointActor?.components).toEqual(
+        expect(pointEntity?.components).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     type: 'PointLight',
@@ -2480,7 +2480,7 @@ describe('glTF importer', () => {
                 }),
             ])
         );
-        expect(spotActor?.components).toEqual(
+        expect(spotEntity?.components).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     type: 'SpotLight',

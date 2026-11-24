@@ -14,7 +14,7 @@ const mockedCreateSnapshot = vi.mocked(createGltfSceneSnapshot);
 
 const createMockSnapshot = (): SceneSnapshot => ({
     version: 1,
-    prefab: { id: 'prefab/test', actors: [] },
+    prefab: { id: 'prefab/test', entities: [] },
     shaders: [],
     meshes: [],
     materials: [],
@@ -25,7 +25,7 @@ const createMockSnapshot = (): SceneSnapshot => ({
 
 const createMockScene = (): Scene<any> =>
     ({
-        loadScene: vi.fn().mockResolvedValue([{ id: 'actor-1' }, { id: 'actor-2' }]),
+        loadScene: vi.fn().mockResolvedValue([{ id: 'entity-1' }, { id: 'entity-2' }]),
     }) as unknown as Scene<any>;
 
 const createMockDatabase = (): AssetDatabase<GltfAssetSchemaLike> =>
@@ -55,7 +55,7 @@ describe('scene-runtime-adapter', () => {
             componentArgsResolver: undefined,
             namePrefix: undefined,
         });
-        expect(result.actors).toEqual([{ id: 'actor-1' }, { id: 'actor-2' }]);
+        expect(result.entities).toEqual([{ id: 'entity-1' }, { id: 'entity-2' }]);
         expect(result.snapshot).toBe(snapshot);
         expect(result.document).toBe(snapshotResult.document);
         expect(result.scene).toBe(snapshotResult.scene);
@@ -98,7 +98,7 @@ describe('scene-runtime-adapter', () => {
         });
     });
 
-    it('returns the combined snapshot result with actors', async () => {
+    it('returns the combined snapshot result with entities', async () => {
         const snapshot = createMockSnapshot();
         const diagnostics = Object.freeze([{ level: 'warning' as const, code: 'test', message: 'test' }]);
         mockedCreateSnapshot.mockReturnValue({
@@ -115,7 +115,7 @@ describe('scene-runtime-adapter', () => {
 
         const result = await loadGltfSceneIntoScene(scene, database, selector as any);
 
-        expect(result).toHaveProperty('actors');
+        expect(result).toHaveProperty('entities');
         expect(result).toHaveProperty('snapshot');
         expect(result).toHaveProperty('document');
         expect(result).toHaveProperty('scene');
