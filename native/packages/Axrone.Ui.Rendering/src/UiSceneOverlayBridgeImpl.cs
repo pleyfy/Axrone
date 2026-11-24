@@ -3,10 +3,10 @@ namespace Axrone.Ui.Rendering;
 using Axrone.Scene;
 
 /// <summary>
-/// Owns which UI documents are mounted on which scene actors and forwards their
+/// Owns which UI documents are mounted on which scene entities and forwards their
 /// frames to the render host. Attachments are validated on mount: a document id
-/// must be valid and unique, and a world-space mount must name a live actor and
-/// a positive pixels-per-unit scale. Screen-space mounts ignore the actor.
+/// must be valid and unique, and a world-space mount must name a live entity and
+/// a positive pixels-per-unit scale. Screen-space mounts ignore the entity.
 /// </summary>
 /// <remarks>
 /// Attachment order is stable: detaching preserves the relative order of the

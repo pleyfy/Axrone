@@ -25,12 +25,12 @@ public sealed class SceneUiHostBridgeTests
         using SceneUiHostBridge bridge = new(world, Options(UiHostTestAssets.CreateTable()));
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
 
         bridge.Sync();
 
         bridge.HostCount.Should().Be(1);
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
         bridge.Update(in Viewport).Should().BeGreaterThan(0);
 
         UiFrame frame = host!.BuildFrame(in Viewport);
@@ -45,11 +45,11 @@ public sealed class SceneUiHostBridgeTests
         using SceneUiHostBridge bridge = new(world, Options(UiHostTestAssets.CreateTable()));
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
         bridge.Sync();
         bridge.HostCount.Should().Be(1);
 
-        world.RemoveData<SceneUiHost>(actor);
+        world.RemoveData<SceneUiHost>(entity);
         bridge.Sync();
 
         bridge.HostCount.Should().Be(0);
@@ -111,10 +111,10 @@ public sealed class SceneUiHostBridgeTests
         using SceneUiHostBridge bridge = new(world, Options(UiHostTestAssets.CreateTable(), sink));
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
         bridge.Sync();
         bridge.Update(in Viewport);
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
 
         UiNodeId button = FindButton(host!.Runtime.Nodes);
         button.IsValid.Should().BeTrue();
@@ -143,10 +143,10 @@ public sealed class SceneUiHostBridgeTests
         SceneUiHost high = SceneUiHost.Default;
         high.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
         high.SortingOrder = 5;
-        SceneActor topActor = UiHostTestAssets.AddHost(world, in high);
+        SceneEntity topEntity = UiHostTestAssets.AddHost(world, in high);
         bridge.Sync();
         bridge.Update(in Viewport);
-        bridge.TryGetHost(topActor, out SceneUiHostInstance? top).Should().BeTrue();
+        bridge.TryGetHost(topEntity, out SceneUiHostInstance? top).Should().BeTrue();
 
         UiNodeId button = FindButton(top!.Runtime.Nodes);
         top.Runtime.Controls.TryGetBounds(button, out Rect bounds).Should().BeTrue();
@@ -162,17 +162,17 @@ public sealed class SceneUiHostBridgeTests
     public void WorldPointerMapsToSurfacePixels()
     {
         using SceneWorld world = UiHostTestAssets.CreateWorld();
-        SceneActor cameraActor = world.CreateActor("Camera");
-        world.GetTransform3D(cameraActor).SetPosition(new Vec3(0.0f, 0.0f, 5.0f));
+        SceneEntity cameraEntity = world.CreateEntity("Camera");
+        world.GetTransform3D(cameraEntity).SetPosition(new Vec3(0.0f, 0.0f, 5.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(cameraActor, camera);
+        world.AddData(cameraEntity, camera);
         world.UpdateTransforms();
 
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
         component.RenderMode = SceneUiHostRenderMode.WorldSpace;
-        SceneActor hostActor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity hostEntity = UiHostTestAssets.AddHost(world, in component);
         world.UpdateTransforms();
 
         SceneCameraFrame? frame = new SceneCameraFrameCollector().Collect(world, 320, 180);
@@ -180,7 +180,7 @@ public sealed class SceneUiHostBridgeTests
 
         bool mapped = SceneUiHostBridge.TryMapWorldPointer(
             world,
-            hostActor,
+            hostEntity,
             in component,
             in Viewport,
             frame!,
@@ -202,15 +202,15 @@ public sealed class SceneUiHostBridgeTests
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
         component.RenderMode = SceneUiHostRenderMode.WorldSpace;
         component.Billboard = SceneUiHostBillboard.CameraFacing;
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
         world.UpdateTransforms();
 
-        SceneUiHostMath.TryBuildWorldModel(world, actor, in component, new Vec3(2.0f, 1.0f, 5.0f), out Mat4 model)
+        SceneUiHostMath.TryBuildWorldModel(world, entity, in component, new Vec3(2.0f, 1.0f, 5.0f), out Mat4 model)
             .Should().BeTrue();
         model.IsAllFinite.Should().BeTrue();
         SceneUiHost fixedComponent = component;
         fixedComponent.Billboard = SceneUiHostBillboard.None;
-        SceneUiHostMath.TryBuildWorldModel(world, actor, in fixedComponent, new Vec3(2.0f, 1.0f, 5.0f), out Mat4 fixedModel)
+        SceneUiHostMath.TryBuildWorldModel(world, entity, in fixedComponent, new Vec3(2.0f, 1.0f, 5.0f), out Mat4 fixedModel)
             .Should().BeTrue();
         model.Should().NotBe(fixedModel);
     }
@@ -225,14 +225,14 @@ public sealed class SceneUiHostBridgeTests
 
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
-        SceneActor firstActor = UiHostTestAssets.AddHost(firstWorld, in component);
-        SceneActor secondActor = UiHostTestAssets.AddHost(secondWorld, in component);
+        SceneEntity firstEntity = UiHostTestAssets.AddHost(firstWorld, in component);
+        SceneEntity secondEntity = UiHostTestAssets.AddHost(secondWorld, in component);
         first.Sync();
         second.Sync();
         first.Update(in Viewport);
         second.Update(in Viewport);
-        first.TryGetHost(firstActor, out SceneUiHostInstance? firstHost).Should().BeTrue();
-        second.TryGetHost(secondActor, out SceneUiHostInstance? secondHost).Should().BeTrue();
+        first.TryGetHost(firstEntity, out SceneUiHostInstance? firstHost).Should().BeTrue();
+        second.TryGetHost(secondEntity, out SceneUiHostInstance? secondHost).Should().BeTrue();
 
         UiFrame firstFrame = firstHost!.BuildFrame(in Viewport);
         UiFrame secondFrame = secondHost!.BuildFrame(in Viewport);
@@ -268,10 +268,10 @@ public sealed class SceneUiHostBridgeTests
         using SceneUiHostBridge bridge = new(world, options);
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
         bridge.Sync();
         bridge.Update(in Viewport);
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
 
         UiFrame frame = host!.BuildFrame(in Viewport);
 
@@ -319,10 +319,10 @@ public sealed class SceneUiHostBridgeTests
         using SceneUiHostBridge bridge = new(world, options);
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
         bridge.Sync();
         bridge.Update(in Viewport);
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
 
         UiFrame frame = host!.BuildFrame(in Viewport);
         UiTextLayoutId layoutId = UiTextLayoutId.Invalid;
@@ -358,9 +358,9 @@ public sealed class SceneUiHostBridgeTests
         using SceneUiHostBridge bridge = new(world, options);
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
         bridge.Sync();
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
 
         for (int i = 0; i < 4; i++)
         {
@@ -386,10 +386,10 @@ public sealed class SceneUiHostBridgeTests
         using SceneUiHostBridge bridge = new(world, Options(UiHostTestAssets.CreateTable()));
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(UiHostTestAssets.AssetId);
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
-        bridge.TryGetHost(actor, out _).Should().BeFalse();
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
+        bridge.TryGetHost(entity, out _).Should().BeFalse();
         bridge.Sync();
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
 
         for (int i = 0; i < 4; i++)
         {

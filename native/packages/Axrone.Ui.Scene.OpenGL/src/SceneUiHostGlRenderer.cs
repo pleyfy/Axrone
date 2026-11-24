@@ -20,11 +20,11 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
     private readonly UiOpenGlBackend _backend;
     private readonly UiFrameRenderHost _renderHost;
     private readonly UiHostWorldQuadRenderer _quad;
-    private readonly Dictionary<SceneActor, UiHostOffscreenSurface> _surfaces = new();
+    private readonly Dictionary<SceneEntity, UiHostOffscreenSurface> _surfaces = new();
     private readonly List<SceneUiHostInstance> _worldScratch = new();
     private readonly List<SceneUiHostInstance> _screenScratch = new();
-    private readonly List<SceneActor> _staleScratch = new();
-    private readonly HashSet<SceneActor> _seen = new();
+    private readonly List<SceneEntity> _staleScratch = new();
+    private readonly HashSet<SceneEntity> _seen = new();
     private int _disposed;
 
     /// <summary>Creates a renderer over a GL context and host bridge.</summary>
@@ -133,9 +133,9 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
     public long DrawCalls => _backend.DrawCalls;
 
     /// <summary>Gets the pixel size of one cached world-space surface.</summary>
-    public bool TryGetSurfaceSize(SceneActor actor, out int width, out int height)
+    public bool TryGetSurfaceSize(SceneEntity entity, out int width, out int height)
     {
-        if (_surfaces.TryGetValue(actor, out UiHostOffscreenSurface? surface))
+        if (_surfaces.TryGetValue(entity, out UiHostOffscreenSurface? surface))
         {
             width = surface.Width;
             height = surface.Height;
@@ -166,7 +166,7 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
                 continue;
             }
 
-            _seen.Add(host.Actor);
+            _seen.Add(host.Entity);
             if (host.Component.IsWorldSpace)
             {
                 _worldScratch.Add(host);
@@ -231,7 +231,7 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
     private void RenderWorldHost(SceneWorld world, SceneCameraFrame camera, in UiViewport screenViewport, SceneUiHostInstance host)
     {
         UiViewport surfaceViewport = host.SurfaceViewport;
-        UiHostOffscreenSurface surface = GetSurface(host.Actor, (int)surfaceViewport.Width, (int)surfaceViewport.Height);
+        UiHostOffscreenSurface surface = GetSurface(host.Entity, (int)surfaceViewport.Width, (int)surfaceViewport.Height);
         surface.Bind();
         UiFrame frame = host.BuildFrame(in surfaceViewport);
         _renderHost.Submit(frame);
@@ -242,19 +242,19 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
         Vec3 cameraPosition = camera.Position;
         SceneUiHost component = host.Component;
         Mat4 viewProjection = camera.ViewProjectionMatrix;
-        if (SceneUiHostMath.TryBuildWorldModel(world, host.Actor, in component, in cameraPosition, out Mat4 model))
+        if (SceneUiHostMath.TryBuildWorldModel(world, host.Entity, in component, in cameraPosition, out Mat4 model))
         {
             _quad.Draw(surface.Texture, in model, in viewProjection, depthTest: true);
             LastWorldHosts++;
         }
     }
 
-    private UiHostOffscreenSurface GetSurface(SceneActor actor, int width, int height)
+    private UiHostOffscreenSurface GetSurface(SceneEntity entity, int width, int height)
     {
-        if (!_surfaces.TryGetValue(actor, out UiHostOffscreenSurface? surface))
+        if (!_surfaces.TryGetValue(entity, out UiHostOffscreenSurface? surface))
         {
             surface = new UiHostOffscreenSurface(_context, width, height);
-            _surfaces.Add(actor, surface);
+            _surfaces.Add(entity, surface);
             return surface;
         }
 
@@ -265,7 +265,7 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
     private void PruneSurfaces()
     {
         _staleScratch.Clear();
-        foreach (KeyValuePair<SceneActor, UiHostOffscreenSurface> entry in _surfaces)
+        foreach (KeyValuePair<SceneEntity, UiHostOffscreenSurface> entry in _surfaces)
         {
             if (!_seen.Contains(entry.Key))
             {
@@ -275,9 +275,9 @@ public sealed class SceneUiHostGlRenderer : ISceneUiHostRenderer, IDisposable
 
         for (int i = 0; i < _staleScratch.Count; i++)
         {
-            SceneActor actor = _staleScratch[i];
-            _surfaces[actor].Dispose();
-            _surfaces.Remove(actor);
+            SceneEntity entity = _staleScratch[i];
+            _surfaces[entity].Dispose();
+            _surfaces.Remove(entity);
         }
     }
 

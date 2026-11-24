@@ -13,7 +13,7 @@ public enum SceneUiHostRenderMode
 /// <summary>How a world-space host quad orients itself.</summary>
 public enum SceneUiHostBillboard
 {
-    /// <summary>Follows the host actor's rotation.</summary>
+    /// <summary>Follows the host entity's rotation.</summary>
     None = 0,
 
     /// <summary>Faces the active camera while keeping the host position.</summary>
@@ -56,7 +56,7 @@ public static class SceneUiHostLimits
 }
 
 /// <summary>
-/// Scene component that mounts a standalone UI document on an actor. The asset
+/// Scene component that mounts a standalone UI document on an entity. The asset
 /// is resolved through <see cref="IUiHostAssetSource"/>; the bridge owns the
 /// runtime and render resources.
 /// </summary>

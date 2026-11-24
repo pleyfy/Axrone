@@ -8,7 +8,7 @@ using Xunit;
 
 public sealed class UiSceneOverlayBridgeTests
 {
-    private static SceneActor LiveActor() => SceneActor.FromSlot(0, new Generation(1));
+    private static SceneEntity LiveEntity() => SceneEntity.FromSlot(0, new Generation(1));
 
     private static UiFrame BuildFrame()
     {
@@ -24,7 +24,7 @@ public sealed class UiSceneOverlayBridgeTests
         using UiFrameRenderHost host = new(backend);
         using UiSceneOverlayBridge bridge = new(host);
 
-        UiOverlayAttachment attachment = new(new UiDocumentId(1), SceneActor.Null, UiOverlaySpace.Screen, 5, 1.0f);
+        UiOverlayAttachment attachment = new(new UiDocumentId(1), SceneEntity.Null, UiOverlaySpace.Screen, 5, 1.0f);
         bridge.TryAttach(in attachment).Should().BeTrue();
 
         bridge.AttachmentCount.Should().Be(1);
@@ -40,7 +40,7 @@ public sealed class UiSceneOverlayBridgeTests
         using UiFrameRenderHost host = new(backend);
         using UiSceneOverlayBridge bridge = new(host);
 
-        UiOverlayAttachment valid = new(new UiDocumentId(1), SceneActor.Null, UiOverlaySpace.Screen, 0, 1.0f);
+        UiOverlayAttachment valid = new(new UiDocumentId(1), SceneEntity.Null, UiOverlaySpace.Screen, 0, 1.0f);
         UiOverlayAttachment duplicate = valid with { ZOrder = 9 };
         UiOverlayAttachment invalid = valid with { Document = UiDocumentId.Invalid };
 
@@ -51,18 +51,18 @@ public sealed class UiSceneOverlayBridgeTests
     }
 
     [Fact]
-    public void WorldAttachmentRequiresActorAndScale()
+    public void WorldAttachmentRequiresEntityAndScale()
     {
         using UiRecordingBackend backend = new();
         using UiFrameRenderHost host = new(backend);
         using UiSceneOverlayBridge bridge = new(host);
 
-        UiOverlayAttachment noActor = new(new UiDocumentId(1), SceneActor.Null, UiOverlaySpace.World, 0, 100.0f);
-        UiOverlayAttachment zeroScale = new(new UiDocumentId(2), LiveActor(), UiOverlaySpace.World, 0, 0.0f);
-        UiOverlayAttachment negativeScale = new(new UiDocumentId(3), LiveActor(), UiOverlaySpace.World, 0, -1.0f);
-        UiOverlayAttachment valid = new(new UiDocumentId(4), LiveActor(), UiOverlaySpace.World, 0, 100.0f);
+        UiOverlayAttachment noEntity = new(new UiDocumentId(1), SceneEntity.Null, UiOverlaySpace.World, 0, 100.0f);
+        UiOverlayAttachment zeroScale = new(new UiDocumentId(2), LiveEntity(), UiOverlaySpace.World, 0, 0.0f);
+        UiOverlayAttachment negativeScale = new(new UiDocumentId(3), LiveEntity(), UiOverlaySpace.World, 0, -1.0f);
+        UiOverlayAttachment valid = new(new UiDocumentId(4), LiveEntity(), UiOverlaySpace.World, 0, 100.0f);
 
-        bridge.TryAttach(in noActor).Should().BeFalse();
+        bridge.TryAttach(in noEntity).Should().BeFalse();
         bridge.TryAttach(in zeroScale).Should().BeFalse();
         bridge.TryAttach(in negativeScale).Should().BeFalse();
         bridge.TryAttach(in valid).Should().BeTrue();
@@ -78,7 +78,7 @@ public sealed class UiSceneOverlayBridgeTests
 
         for (uint i = 1; i <= 3; i++)
         {
-            UiOverlayAttachment attachment = new(new UiDocumentId(i), SceneActor.Null, UiOverlaySpace.Screen, 0, 1.0f);
+            UiOverlayAttachment attachment = new(new UiDocumentId(i), SceneEntity.Null, UiOverlaySpace.Screen, 0, 1.0f);
             bridge.TryAttach(in attachment);
         }
 
@@ -96,7 +96,7 @@ public sealed class UiSceneOverlayBridgeTests
         using UiRecordingBackend backend = new();
         using UiFrameRenderHost host = new(backend);
         using UiSceneOverlayBridge bridge = new(host);
-        UiOverlayAttachment attachment = new(new UiDocumentId(1), SceneActor.Null, UiOverlaySpace.Screen, 0, 1.0f);
+        UiOverlayAttachment attachment = new(new UiDocumentId(1), SceneEntity.Null, UiOverlaySpace.Screen, 0, 1.0f);
         bridge.TryAttach(in attachment);
         UiFrame frame = BuildFrame();
 
@@ -127,7 +127,7 @@ public sealed class UiSceneOverlayBridgeTests
         using UiRecordingBackend backend = new();
         using UiFrameRenderHost host = new(backend);
         UiSceneOverlayBridge bridge = new(host);
-        UiOverlayAttachment attachment = new(new UiDocumentId(1), SceneActor.Null, UiOverlaySpace.Screen, 0, 1.0f);
+        UiOverlayAttachment attachment = new(new UiDocumentId(1), SceneEntity.Null, UiOverlaySpace.Screen, 0, 1.0f);
         bridge.TryAttach(in attachment);
 
         bridge.Dispose();
@@ -136,7 +136,7 @@ public sealed class UiSceneOverlayBridgeTests
         bridge.AttachmentCount.Should().Be(0);
         Action attach = () =>
         {
-            UiOverlayAttachment next = new(new UiDocumentId(2), SceneActor.Null, UiOverlaySpace.Screen, 0, 1.0f);
+            UiOverlayAttachment next = new(new UiDocumentId(2), SceneEntity.Null, UiOverlaySpace.Screen, 0, 1.0f);
             bridge.TryAttach(in next);
         };
         Action submit = () => bridge.TrySubmitFrame(new UiDocumentId(1), BuildFrame());
@@ -154,7 +154,7 @@ public sealed class UiSceneOverlayBridgeTests
 
         for (uint i = 1; i <= 20; i++)
         {
-            UiOverlayAttachment attachment = new(new UiDocumentId(i), SceneActor.Null, UiOverlaySpace.Screen, (int)i, 1.0f);
+            UiOverlayAttachment attachment = new(new UiDocumentId(i), SceneEntity.Null, UiOverlaySpace.Screen, (int)i, 1.0f);
             bridge.TryAttach(in attachment).Should().BeTrue();
         }
 
