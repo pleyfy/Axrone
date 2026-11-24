@@ -1,5 +1,5 @@
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
-import type { ActorConfig } from '@axrone/ecs-runtime';
+import type { EntityConfig } from '@axrone/ecs-runtime';
 import {
     TilemapCollider2D,
     TilemapRenderer,
@@ -11,8 +11,8 @@ import type { SceneRuntimeComposition } from '@axrone/scene-runtime';
 import { requireRegisteredComponent } from '@axrone/scene-runtime/scene-capability-guard';
 import type { Scene2D } from './scene-2d';
 
-export interface TilemapActorConfig {
-    readonly actor?: ActorConfig;
+export interface TilemapEntityConfig {
+    readonly entity?: EntityConfig;
     readonly renderer?: TilemapRendererConfig;
     readonly collider?: TilemapCollider2DConfig;
 }
@@ -27,27 +27,27 @@ export const createTilemapRenderComposition = <
 });
 
 /**
- * Opt-in tilemap actor helper. Mirrors `createSpriteActor`: the components must
+ * Opt-in tilemap entity helper. Mirrors `createSpriteEntity`: the components must
  * already be registered through `createTilemapSceneRegistry()`.
  */
-export const createTilemapActor = <R extends ComponentRegistry = Record<string, never>>(
+export const createTilemapEntity = <R extends ComponentRegistry = Record<string, never>>(
     scene: Scene2D<R>,
-    config: TilemapActorConfig = {}
+    config: TilemapEntityConfig = {}
 ) => {
     requireRegisteredComponent(
         scene,
         TilemapRenderer,
-        'tilemap actor creation requires the TilemapRenderer component; compose createTilemapSceneRegistry()'
+        'tilemap entity creation requires the TilemapRenderer component; compose createTilemapSceneRegistry()'
     );
-    const actor = scene.createActor(config.actor);
-    actor.addComponent(TilemapRenderer, config.renderer ?? {});
+    const entity = scene.createEntity(config.entity);
+    entity.addComponent(TilemapRenderer, config.renderer ?? {});
     if (config.collider !== undefined) {
         requireRegisteredComponent(
             scene,
             TilemapCollider2D,
             'tilemap collider creation requires the TilemapCollider2D component'
         );
-        actor.addComponent(TilemapCollider2D, config.collider);
+        entity.addComponent(TilemapCollider2D, config.collider);
     }
-    return actor;
+    return entity;
 };

@@ -1,17 +1,17 @@
 import {
-    Actor as EcsActor,
+    Entity as EcsEntity,
     Hierarchy,
     Transform,
     runWithinCreationBatch,
-    type Actor,
-    type ActorComponentEntry,
-    type ActorConfig,
+    type EntityId,
+    type EntityComponentEntry,
+    type EntityConfig,
 } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
 import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs-runtime';
 import { Quat, Vec3 } from '@axrone/numeric';
 import {
-    type SceneActorRuntime,
+    type SceneEntityRuntime,
     type SceneRegistry,
 } from '@axrone/scene-runtime';
 import { SceneCapabilityError } from '@axrone/scene-runtime/errors';
@@ -32,11 +32,11 @@ import type {
 export interface Scene2DActorRuntimeOptions<
     R extends ComponentRegistry = Record<string, never>,
 > {
-    readonly actors: SceneActorRuntime<R>;
+    readonly entities: SceneEntityRuntime<R>;
     /**
      * Scene world, used by the bulk sprite path to resolve one archetype for
      * the whole batch. Optional: without it bulk creation falls back to the
-     * per-actor incremental path.
+     * per-entity incremental path.
      */
     readonly world?: World<SceneRegistry<R>>;
     /**
@@ -47,7 +47,7 @@ export interface Scene2DActorRuntimeOptions<
 }
 
 export interface Scene2DBulkSpriteConfig {
-    readonly actorConfig?: ActorConfig;
+    readonly entityConfig?: EntityConfig;
     readonly spriteConfig?: SpriteRendererConfig;
     /** Initial world position; omitted fields keep the default transform. */
     readonly position?: readonly [number, number, number];
@@ -143,28 +143,28 @@ const applyInitialTransform = (transform: Transform, config: Scene2DBulkSpriteCo
 };
 
 export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, never>> {
-    private readonly _actors: SceneActorRuntime<R>;
+    private readonly _entities: SceneEntityRuntime<R>;
     private readonly _world: World<SceneRegistry<R>> | undefined;
     private readonly _animation: Scene2DAnimationRuntime<R> | undefined;
 
     constructor(options: Scene2DActorRuntimeOptions<R>) {
-        this._actors = options.actors;
+        this._entities = options.entities;
         this._world = options.world;
         this._animation = options.animation;
     }
 
-    createCameraActor(
-        actorConfig: ActorConfig = {},
+    createCameraEntity(
+        entityConfig: EntityConfig = {},
         cameraConfig: CameraConfig = {}
-    ): Actor<World<SceneRegistry<R>>> {
+    ): EntityId<World<SceneRegistry<R>>> {
         requireRegisteredComponent(
-            this._actors,
+            this._entities,
             Camera,
-            'camera actor creation requires the 2D scene capability/profile'
+            'camera entity creation requires the 2D scene capability/profile'
         );
         const isOrthographic = cameraConfig.orthographic ?? true;
-        const actor = this._actors.createActor(actorConfig);
-        actor.addComponent(Camera, {
+        const entity = this._entities.createEntity(entityConfig);
+        entity.addComponent(Camera, {
             ...cameraConfig,
             orthographic: isOrthographic,
             ...(isOrthographic
@@ -176,27 +176,27 @@ export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, ne
         });
 
         if (isOrthographic) {
-            const transform = actor.getComponent(Transform);
+            const transform = entity.getComponent(Transform);
             if (transform) {
                 transform.position = new Vec3(0, 0, 1);
             }
         }
 
-        return actor;
+        return entity;
     }
 
-    createSpriteActor(
-        actorConfig: ActorConfig = {},
+    createSpriteEntity(
+        entityConfig: EntityConfig = {},
         spriteConfig: SpriteRendererConfig = {}
-    ): Actor<World<SceneRegistry<R>>> {
+    ): EntityId<World<SceneRegistry<R>>> {
         requireRegisteredComponent(
-            this._actors,
+            this._entities,
             SpriteRenderer,
-            'sprite actor creation requires the 2D scene capability/profile'
+            'sprite entity creation requires the 2D scene capability/profile'
         );
-        const actor = this._actors.createActor(actorConfig);
-        actor.addComponent(SpriteRenderer, spriteConfig);
-        return actor;
+        const entity = this._entities.createEntity(entityConfig);
+        entity.addComponent(SpriteRenderer, spriteConfig);
+        return entity;
     }
 
     /**
@@ -204,10 +204,10 @@ export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, ne
      *
      * When the scene world is available this resolves the shared
      * `Hierarchy + Transform + SpriteRenderer` archetype once and places every
-     * entity in it directly (`Actor.createManyWithComponents`), instead of
-     * paying three archetype transitions per actor. Every actor still gets its
-     * own real `Actor`, `Hierarchy`, `Transform` and `SpriteRenderer`, the
-     * same lifecycle phases run, `EntityCreated` fires per actor and the
+     * entity in it directly (`Entity.createManyWithComponents`), instead of
+     * paying three archetype transitions per entity. Every entity still gets its
+     * own real `Entity`, `Hierarchy`, `Transform` and `SpriteRenderer`, the
+     * same lifecycle phases run, `EntityCreated` fires per entity and the
      * `…Added` events are emitted for subscribers.
      *
      * Initial transforms are written on the detached `Transform` instances
@@ -215,34 +215,34 @@ export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, ne
      * XY/+Z-rotation/scale case, and no post-creation `getComponent` pass.
      *
      * Fallback: without a world (or when a scene re-keys the core component
-     * names) creation falls back to the per-actor incremental path. Sprites
+     * names) creation falls back to the per-entity incremental path. Sprites
      * that need masks, clips, nine-slice or multiple textures are created here
      * either way; only the *render* fast path declines them, so this API never
      * changes scene semantics.
      */
-    createSpriteActors(
+    createSpriteEntities(
         configs: readonly Scene2DBulkSpriteConfig[]
-    ): readonly Actor<World<SceneRegistry<R>>>[] {
+    ): readonly Entity<World<SceneRegistry<R>>>[] {
         requireRegisteredComponent(
-            this._actors,
+            this._entities,
             SpriteRenderer,
-            'sprite actor creation requires the 2D scene capability/profile'
+            'sprite entity creation requires the 2D scene capability/profile'
         );
         if (configs.length === 0) {
             return [];
         }
 
-        const bulk = this._createSpriteActorsBulk(configs);
+        const bulk = this._createSpriteEntitiesBulk(configs);
         if (bulk) {
             return bulk;
         }
 
-        return this._createSpriteActorsIncremental(configs);
+        return this._createSpriteEntitiesIncremental(configs);
     }
 
-    private _createSpriteActorsBulk(
+    private _createSpriteEntitiesBulk(
         configs: readonly Scene2DBulkSpriteConfig[]
-    ): readonly Actor<World<SceneRegistry<R>>>[] | null {
+    ): readonly Entity<World<SceneRegistry<R>>>[] | null {
         const world = this._world;
         if (!world) {
             return null;
@@ -263,12 +263,12 @@ export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, ne
         const hierarchyCtor = hierarchyType as unknown as new () => Hierarchy;
         const transformCtor = transformType as unknown as new () => Transform;
 
-        const actorConfigs = new Array<ActorConfig>(configs.length);
-        const componentsPerActor = new Array<readonly ActorComponentEntry[]>(configs.length);
+        const entityConfigs = new Array<EntityConfig>(configs.length);
+        const componentsPerEntity = new Array<readonly EntityComponentEntry[]>(configs.length);
 
-        // One creation-batch window: every Component/Actor stamped inside
+        // One creation-batch window: every Component/Entity stamped inside
         // reads one shared clock value instead of 200k `performance.now()`
-        // calls, and all actors of the batch genuinely share one instant.
+        // calls, and all entities of the batch genuinely share one instant.
         return runWithinCreationBatch(() => {
             for (let index = 0; index < configs.length; index += 1) {
                 const config = configs[index]!;
@@ -277,7 +277,7 @@ export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, ne
 
                 // Explicit registry names keep the archetype signature identical
                 // to the profile's keys even when a scene registers subclasses.
-                const entries: ActorComponentEntry[] = [
+                const entries: EntityComponentEntry[] = [
                     {
                         componentType: hierarchyType,
                         componentName: 'Hierarchy',
@@ -294,66 +294,66 @@ export class Scene2DActorRuntime<R extends ComponentRegistry = Record<string, ne
                         component: new spriteType(config.spriteConfig ?? {}),
                     },
                 ];
-                componentsPerActor[index] = entries;
-                actorConfigs[index] = config.actorConfig ?? {};
+                componentsPerEntity[index] = entries;
+                entityConfigs[index] = config.entityConfig ?? {};
             }
 
             // One structure-batch window: the query cache invalidates once for
             // the whole batch instead of per created archetype.
             return world.batchStructureChanges(() =>
-                EcsActor.createManyWithComponents(world, actorConfigs, componentsPerActor)
+                EcsEntity.createManyWithComponents(world, entityConfigs, componentsPerEntity)
             );
         });
     }
 
-    private _createSpriteActorsIncremental(
+    private _createSpriteEntitiesIncremental(
         configs: readonly Scene2DBulkSpriteConfig[]
-    ): readonly Actor<World<SceneRegistry<R>>>[] {
-        const actors = new Array<Actor<World<SceneRegistry<R>>>>(configs.length);
+    ): readonly Entity<World<SceneRegistry<R>>>[] {
+        const entities = new Array<EntityId<World<SceneRegistry<R>>>>(configs.length);
 
         for (let index = 0; index < configs.length; index += 1) {
             const config = configs[index]!;
-            const actor = this._actors.createActor(config.actorConfig ?? {});
-            actor.addComponent(SpriteRenderer, config.spriteConfig ?? {});
-            actors[index] = actor;
+            const entity = this._entities.createEntity(config.entityConfig ?? {});
+            entity.addComponent(SpriteRenderer, config.spriteConfig ?? {});
+            entities[index] = entity;
 
-            const transform = actor.getComponent(Transform);
+            const transform = entity.getComponent(Transform);
             if (transform) {
                 applyInitialTransform(transform, config);
             }
         }
 
-        return actors;
+        return entities;
     }
 
-    createAnimatedSpriteActor(
-        actorConfig: ActorConfig = {},
+    createAnimatedSpriteEntity(
+        entityConfig: EntityConfig = {},
         spriteConfig: SpriteRendererConfig = {},
         animatorConfig: SpriteAnimatorConfig = {}
-    ): Actor<World<SceneRegistry<R>>> {
+    ): EntityId<World<SceneRegistry<R>>> {
         const animation = this._animation;
         if (!animation) {
             throw new SceneCapabilityError(
                 'animated sprite creation requires the animated 2D scene profile; use the root @axrone/scene-2d entry or pass a custom profile'
             );
         }
-        return animation.createAnimatedSpriteActor(
-            actorConfig,
+        return animation.createAnimatedSpriteEntity(
+            entityConfig,
             spriteConfig,
             animatorConfig
         );
     }
 
-    createMaskActor(
-        actorConfig: ActorConfig = {},
+    createMaskEntity(
+        entityConfig: EntityConfig = {},
         maskConfig: SpriteMaskConfig = {}
-    ): Actor<World<SceneRegistry<R>>> {
+    ): EntityId<World<SceneRegistry<R>>> {
         const animation = this._animation;
         if (!animation) {
             throw new SceneCapabilityError(
-                'mask actor creation requires the animated 2D scene profile; use the root @axrone/scene-2d entry or pass a custom profile'
+                'mask entity creation requires the animated 2D scene profile; use the root @axrone/scene-2d entry or pass a custom profile'
             );
         }
-        return animation.createMaskActor(actorConfig, maskConfig);
+        return animation.createMaskEntity(entityConfig, maskConfig);
     }
 }

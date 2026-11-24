@@ -42,13 +42,13 @@ describe('Scene2D direct sprite instance path', () => {
         const gl = scene.gl as any;
 
         await registerTexture(scene, 'hero');
-        scene.createCameraActor(
+        scene.createCameraEntity(
             { name: 'Camera' },
             { primary: true, orthographic: true, orthographicSize: 100 }
         );
-        const sprites = scene.createSpriteActors(
+        const sprites = scene.createSpriteEntities(
             Array.from({ length: SPRITE_COUNT }, (_, index) => ({
-                actorConfig: { name: `Hero${index}` },
+                entityConfig: { name: `Hero${index}` },
                 spriteConfig: { textureId: 'hero' },
                 position: [0, 0, 0] as const,
             }))
@@ -92,13 +92,13 @@ describe('Scene2D direct sprite instance path', () => {
 
         await registerTexture(scene, 'hero-a');
         await registerTexture(scene, 'hero-b');
-        scene.createCameraActor(
+        scene.createCameraEntity(
             { name: 'Camera' },
             { primary: true, orthographic: true, orthographicSize: 100 }
         );
-        scene.createSpriteActors(
+        scene.createSpriteEntities(
             Array.from({ length: SPRITE_COUNT }, (_, index) => ({
-                actorConfig: { name: `Hero${index}` },
+                entityConfig: { name: `Hero${index}` },
                 spriteConfig: { textureId: index % 2 === 0 ? 'hero-a' : 'hero-b' },
                 position: [0, 0, 0] as const,
             }))

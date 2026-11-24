@@ -1,10 +1,10 @@
 import type {
-    Actor,
-    ActorConfig,
+    EntityId,
+    EntityConfig,
     ComponentRegistry,
 } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
-import type { SceneActorRuntime, SceneRegistry } from '@axrone/scene-runtime';
+import type { SceneEntityRuntime, SceneRegistry } from '@axrone/scene-runtime';
 import { requireRegisteredComponent } from '@axrone/scene-runtime/scene-facade';
 import {
     SpriteAnimator,
@@ -16,7 +16,7 @@ import {
 } from '@axrone/scene-runtime/scene-2d-support';
 
 /**
- * Animated/mask sprite factories, split out of the base 2D actor runtime.
+ * Animated/mask sprite factories, split out of the base 2D entity runtime.
  *
  * Importing this module is what retains `SpriteAnimator`/`SpriteMask` and the
  * `@axrone/animation` chain. The root `Scene2D` installs it; the lean entry
@@ -25,48 +25,48 @@ import {
 export interface Scene2DAnimationRuntime<
     R extends ComponentRegistry = Record<string, never>,
 > {
-    createAnimatedSpriteActor(
-        actorConfig: ActorConfig,
+    createAnimatedSpriteEntity(
+        entityConfig: EntityConfig,
         spriteConfig: SpriteRendererConfig,
         animatorConfig: SpriteAnimatorConfig
-    ): Actor<World<SceneRegistry<R>>>;
+    ): EntityId<World<SceneRegistry<R>>>;
 
-    createMaskActor(
-        actorConfig: ActorConfig,
+    createMaskEntity(
+        entityConfig: EntityConfig,
         maskConfig: SpriteMaskConfig
-    ): Actor<World<SceneRegistry<R>>>;
+    ): EntityId<World<SceneRegistry<R>>>;
 }
 
 export const createScene2DAnimationRuntime = <
     R extends ComponentRegistry = Record<string, never>,
 >(
-    actors: SceneActorRuntime<R>
+    entities: SceneEntityRuntime<R>
 ): Scene2DAnimationRuntime<R> => ({
-    createAnimatedSpriteActor(actorConfig, spriteConfig, animatorConfig) {
+    createAnimatedSpriteEntity(entityConfig, spriteConfig, animatorConfig) {
         requireRegisteredComponent(
-            actors,
+            entities,
             SpriteRenderer,
             'animated sprite creation requires the 2D scene capability/profile'
         );
         requireRegisteredComponent(
-            actors,
+            entities,
             SpriteAnimator,
             'animated sprite creation requires the 2D scene capability/profile'
         );
-        const actor = actors.createActor(actorConfig);
-        actor.addComponent(SpriteRenderer, spriteConfig);
-        actor.addComponent(SpriteAnimator, animatorConfig);
-        return actor;
+        const entity = entities.createEntity(entityConfig);
+        entity.addComponent(SpriteRenderer, spriteConfig);
+        entity.addComponent(SpriteAnimator, animatorConfig);
+        return entity;
     },
 
-    createMaskActor(actorConfig, maskConfig) {
+    createMaskEntity(entityConfig, maskConfig) {
         requireRegisteredComponent(
-            actors,
+            entities,
             SpriteMask,
-            'mask actor creation requires the 2D scene capability/profile'
+            'mask entity creation requires the 2D scene capability/profile'
         );
-        const actor = actors.createActor(actorConfig);
-        actor.addComponent(SpriteMask, maskConfig);
-        return actor;
+        const entity = entities.createEntity(entityConfig);
+        entity.addComponent(SpriteMask, maskConfig);
+        return entity;
     },
 });

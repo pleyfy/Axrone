@@ -58,12 +58,12 @@ describe('Scene2D', () => {
         expect('MeshRenderer' in registry).toBe(false);
     });
 
-    it('creates orthographic cameras and sprite actors through the 2d facade', () => {
+    it('creates orthographic cameras and sprite entities through the 2d facade', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene2D(createSceneOptions(scheduler, canvas));
 
-        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const spriteActor = scene.createSpriteActor(
+        const cameraEntity = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const spriteEntity = scene.createSpriteEntity(
             { name: 'Sprite' },
             {
                 textureId: 'hero',
@@ -73,9 +73,9 @@ describe('Scene2D', () => {
             }
         );
 
-        const camera = cameraActor.getComponent(Camera);
-        const cameraTransform = cameraActor.getComponent(Transform);
-        const sprite = spriteActor.getComponent(SpriteRenderer);
+        const camera = cameraEntity.getComponent(Camera);
+        const cameraTransform = cameraEntity.getComponent(Transform);
+        const sprite = spriteEntity.getComponent(SpriteRenderer);
 
         expect(camera?.orthographic).toBe(true);
         expect(camera?.near).toBe(0.1);
@@ -124,15 +124,15 @@ describe('Scene2D', () => {
             ],
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const actor = scene.createAnimatedSpriteActor(
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const entity = scene.createAnimatedSpriteEntity(
             { name: 'Hero' },
             { color: Color.WHITE },
             { atlas, clipId: 'idle' }
         );
 
-        const sprite = actor.getComponent(SpriteRenderer);
-        const animator = actor.getComponent(SpriteAnimator);
+        const sprite = entity.getComponent(SpriteRenderer);
+        const animator = entity.getComponent(SpriteAnimator);
 
         expect(animator).toBeInstanceOf(SpriteAnimator);
         expect(sprite?.textureId).toBe('hero');
@@ -166,9 +166,9 @@ describe('Scene2D', () => {
             generateMipmaps: false,
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        scene.createSpriteActor({ name: 'HeroA' }, { textureId: 'hero', size: [1, 1] });
-        scene.createSpriteActor({ name: 'HeroB' }, { textureId: 'hero', size: [2, 1] });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        scene.createSpriteEntity({ name: 'HeroA' }, { textureId: 'hero', size: [1, 1] });
+        scene.createSpriteEntity({ name: 'HeroB' }, { textureId: 'hero', size: [2, 1] });
 
         scene.start(0);
         scheduler.flush(16);
@@ -197,22 +197,22 @@ describe('Scene2D', () => {
             generateMipmaps: false,
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
 
-        const leftMask = scene.createMaskActor(
+        const leftMask = scene.createMaskEntity(
             { name: 'LeftMask' },
             { size: [2, 2], shape: 'rounded-rect', cornerRadius: 0.35 }
         );
         leftMask.getComponent(Transform)!.position = new Vec3(-2, 0, 0);
-        const rightMask = scene.createMaskActor(
+        const rightMask = scene.createMaskEntity(
             { name: 'RightMask' },
             { size: [2, 2], shape: 'circle' }
         );
         rightMask.getComponent(Transform)!.position = new Vec3(2, 0, 0);
 
-        const leftSprite = scene.createSpriteActor({ name: 'LeftSprite' }, { textureId: 'hero' });
+        const leftSprite = scene.createSpriteEntity({ name: 'LeftSprite' }, { textureId: 'hero' });
         leftSprite.setParent(leftMask);
-        const rightSprite = scene.createSpriteActor(
+        const rightSprite = scene.createSpriteEntity(
             { name: 'RightSprite' },
             { textureId: 'hero' }
         );
@@ -254,12 +254,12 @@ describe('Scene2D', () => {
             generateMipmaps: false,
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        scene.createSpriteActor(
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        scene.createSpriteEntity(
             { name: 'HeroA' },
             { textureId: 'hero', size: [1, 1], renderOrder: 0 }
         );
-        scene.createSpriteActor(
+        scene.createSpriteEntity(
             { name: 'HeroB' },
             { textureId: 'hero', size: [2, 1], renderOrder: 1 }
         );
@@ -290,7 +290,7 @@ describe('Scene2D', () => {
         });
 
         try {
-            expect(() => scene.createSpriteActor({ name: 'Sprite' })).toThrow(
+            expect(() => scene.createSpriteEntity({ name: 'Sprite' })).toThrow(
                 SceneCapabilityError
             );
         } finally {
@@ -298,21 +298,21 @@ describe('Scene2D', () => {
         }
     });
 
-    it('throws SceneLifecycleError when creating actors after dispose', () => {
+    it('throws SceneLifecycleError when creating entities after dispose', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene2D(createSceneOptions(scheduler, canvas));
         scene.dispose();
 
-        expect(() => scene.createCameraActor({ name: 'Camera' })).toThrow(
+        expect(() => scene.createCameraEntity({ name: 'Camera' })).toThrow(
             SceneLifecycleError
         );
-        expect(() => scene.createSpriteActor({ name: 'Sprite' })).toThrow(
+        expect(() => scene.createSpriteEntity({ name: 'Sprite' })).toThrow(
             SceneLifecycleError
         );
         expect(() =>
-            scene.createAnimatedSpriteActor({ name: 'Animated' })
+            scene.createAnimatedSpriteEntity({ name: 'Animated' })
         ).toThrow(SceneLifecycleError);
-        expect(() => scene.createMaskActor({ name: 'Mask' })).toThrow(
+        expect(() => scene.createMaskEntity({ name: 'Mask' })).toThrow(
             SceneLifecycleError
         );
     });
@@ -325,11 +325,11 @@ describe('Scene2D', () => {
         });
 
         try {
-            expect(() => scene.createMaskActor({ name: 'Mask' })).toThrow(
+            expect(() => scene.createMaskEntity({ name: 'Mask' })).toThrow(
                 SceneCapabilityError
             );
             expect(() =>
-                scene.createAnimatedSpriteActor({ name: 'Animated' })
+                scene.createAnimatedSpriteEntity({ name: 'Animated' })
             ).toThrow(SceneCapabilityError);
         } finally {
             scene.dispose();

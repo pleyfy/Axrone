@@ -67,11 +67,11 @@ describe('createScene2D', () => {
 
         expect(scene).toBeInstanceOf(Scene2D);
 
-        const cameraActor = scene.createCameraActor(
+        const cameraEntity = scene.createCameraEntity(
             { name: 'Camera' },
             { primary: true }
         );
-        expect(cameraActor.getComponent(Camera)).toBeDefined();
+        expect(cameraEntity.getComponent(Camera)).toBeDefined();
 
         scene.dispose();
     });
@@ -80,8 +80,8 @@ describe('createScene2D', () => {
         const canvas = document.createElement('canvas');
         const scene = createScene2D(createSceneOptions(scheduler, canvas));
 
-        const cameraActor = scene.createCameraActor({ name: 'Camera' });
-        const camera = cameraActor.getComponent(Camera);
+        const cameraEntity = scene.createCameraEntity({ name: 'Camera' });
+        const camera = cameraEntity.getComponent(Camera);
 
         expect(camera?.orthographic).toBe(true);
         expect(camera?.near).toBe(0.1);
