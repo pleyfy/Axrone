@@ -79,6 +79,90 @@ public class StreamingTests
     }
 
     [Fact]
+    public void Merge_ReplaceRangeKeepsKeysOutsideWindow()
+    {
+        AnimationClip clip = LinearClip();
+        var payload = new ChunkPayloadDto
+        {
+            ClipId = "walk",
+            StartTime = 0.5f,
+            EndTime = 1.5f,
+            Duration = 2.0f,
+        };
+        payload.Tracks.Add(new ChunkTrackDto
+        {
+            BoneIndex = 0,
+            Target = (byte)ChannelTarget.Translation,
+            Interpolation = (byte)InterpolationMode.Linear,
+            KeyTimes = [0.5f, 1.5f],
+            KeyValues = [10.0f, 0.0f, 0.0f, 20.0f, 0.0f, 0.0f],
+        });
+
+        AnimationChannel[] merged = ChunkCodec.Merge(clip, payload, MergeMode.ReplaceRange);
+        AnimationChannel translation = merged.Single(c => c.Target == ChannelTarget.Translation);
+        translation.KeyTimes.ToArray().Should().Equal(0.0f, 0.5f, 1.5f, 2.0f);
+        translation.KeyValues.ToArray().Should().Equal(
+            0.0f, 0.0f, 0.0f,
+            10.0f, 0.0f, 0.0f,
+            20.0f, 0.0f, 0.0f,
+            2.0f, 0.0f, 0.0f);
+    }
+
+    [Fact]
+    public void Merge_RejectsChunkForAnotherClip()
+    {
+        AnimationClip clip = LinearClip();
+        var payload = new ChunkPayloadDto { ClipId = "run", Duration = 2.0f };
+
+        Action merge = () => ChunkCodec.Merge(clip, payload, MergeMode.ReplaceRange);
+
+        merge.Should().Throw<StreamingException>()
+            .Where(e => e.Code == AnimationErrorCode.StreamingChunkIncompatible);
+    }
+
+    [Fact]
+    public void Decode_RejectsUnknownInterpolation()
+    {
+        var payload = new ChunkPayloadDto { ClipId = "walk", Duration = 1.0f };
+        payload.Tracks.Add(new ChunkTrackDto
+        {
+            BoneIndex = 0,
+            Target = (byte)ChannelTarget.Translation,
+            Interpolation = 99,
+            KeyTimes = [0.0f],
+            KeyValues = [0.0f, 0.0f, 0.0f],
+        });
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(payload, ChunkJsonSerializerContext.Default.ChunkPayloadDto);
+
+        Action decode = () => ChunkCodec.Decode(json);
+
+        decode.Should().Throw<StreamingException>()
+            .Where(e => e.Code == AnimationErrorCode.StreamingChunkIncompatible);
+    }
+
+    [Fact]
+    public void Decode_RejectsDuplicateTracks()
+    {
+        var payload = new ChunkPayloadDto { ClipId = "walk", Duration = 1.0f };
+        var track = new ChunkTrackDto
+        {
+            BoneIndex = 0,
+            Target = (byte)ChannelTarget.Translation,
+            Interpolation = (byte)InterpolationMode.Linear,
+            KeyTimes = [0.0f],
+            KeyValues = [0.0f, 0.0f, 0.0f],
+        };
+        payload.Tracks.Add(track);
+        payload.Tracks.Add(track);
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(payload, ChunkJsonSerializerContext.Default.ChunkPayloadDto);
+
+        Action decode = () => ChunkCodec.Decode(json);
+
+        decode.Should().Throw<StreamingException>()
+            .Where(e => e.Code == AnimationErrorCode.StreamingChunkCorrupt);
+    }
+
+    [Fact]
     public void Scheduler_OrdersActiveBeforePreload()
     {
         var scheduler = new StreamingScheduler();

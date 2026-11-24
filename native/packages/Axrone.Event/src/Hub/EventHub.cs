@@ -248,8 +248,13 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
     private readonly EventHubOptions _options;
     private readonly EventWaiterNode<TEvent>[] _waiters;
     private readonly RegistrationSlot[] _slots;
-    private readonly long[] _pinnedRingSequence;
-    private readonly nuint _ringIndexMask;
+
+    /// <summary>
+    /// Immutable dispatch snapshot. Publish reads this field once, so a subscriber added or
+    /// removed by a handler can never observe a half-applied registry and can never receive the
+    /// event that created it. Rebuilt on the subscribe/unsubscribe cold path.
+    /// </summary>
+    private IEventConsumer<TEvent>[] _activeConsumers = [];
 
     private ExceptionDispatchInfo? _fatalFault;
     private long _registrationIdentity;
@@ -271,9 +276,6 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
 
         _consumer.FreeHeadTagged = new TaggedNodePointer(0, 0).Packed;
         _consumer.WaitersHeadTagged = TaggedNodePointer.Empty.Packed;
-
-        _ringIndexMask = (nuint)(options.PinnedRingCapacity - 1);
-        _pinnedRingSequence = GC.AllocateArray<long>(options.PinnedRingCapacity, pinned: true);
 
         _waiters = new EventWaiterNode<TEvent>[options.WaiterPoolCapacity];
         for (int i = 0; i < _waiters.Length; i++)
@@ -307,7 +309,7 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
     public ActiveSubscriberEnumerable ActiveSubscribers
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => new(_slots);
+        get => new(Volatile.Read(ref _activeConsumers));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -321,22 +323,12 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
             long seq = Interlocked.Increment(ref _producer.Sequence);
             var assignedSequence = new SequenceNumber(seq);
 
-            nuint ringSlot = (nuint)((ulong)seq & _ringIndexMask);
-            Volatile.Write(ref _pinnedRingSequence[ringSlot], seq);
+            IEventConsumer<TEvent>[] consumers = Volatile.Read(ref _activeConsumers);
+            int dispatchedCount = consumers.Length;
 
-            var registrationSlots = _slots;
-            nuint slotCapacity = (nuint)registrationSlots.Length;
-            int dispatchedCount = 0;
-
-            for (nuint i = 0; i < slotCapacity; i++)
+            for (int i = 0; i < dispatchedCount; i++)
             {
-                var slot = registrationSlots[i];
-                var consumer = Volatile.Read(ref slot.Consumer);
-                if (consumer is not null)
-                {
-                    consumer.OnEvent(in eventData);
-                    dispatchedCount++;
-                }
+                consumers[i].OnEvent(in eventData);
             }
 
             int detachedHead = DetachWaiters();
@@ -520,6 +512,7 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
 
                     slot.RegistrationId = registrationId;
                     Volatile.Write(ref slot.Consumer, consumer);
+                    RebuildActiveConsumersLocked();
 
                     return new SubscriptionToken(registrationId, new SubscriptionSlotIndex((int)i), nextGen);
                 }
@@ -560,6 +553,7 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
             {
                 Volatile.Write(ref slot.Consumer, null);
                 slot.RegistrationId = RegistrationId.None;
+                RebuildActiveConsumersLocked();
                 return true;
             }
         }
@@ -632,6 +626,41 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
         TMetricsSink.OnDrainPhaseCompleted();
     }
 
+    /// <summary>
+    /// Publishes a new immutable dispatch snapshot. Caller must hold <see cref="_gate"/>.
+    /// Allocation happens only on subscribe/unsubscribe, never on publish.
+    /// </summary>
+    private void RebuildActiveConsumersLocked()
+    {
+        int active = 0;
+        for (int i = 0; i < _slots.Length; i++)
+        {
+            if (Volatile.Read(ref _slots[i].Consumer) is not null)
+            {
+                active++;
+            }
+        }
+
+        if (active == 0)
+        {
+            Volatile.Write(ref _activeConsumers, []);
+            return;
+        }
+
+        var next = new IEventConsumer<TEvent>[active];
+        int index = 0;
+        for (int i = 0; i < _slots.Length; i++)
+        {
+            IEventConsumer<TEvent>? consumer = Volatile.Read(ref _slots[i].Consumer);
+            if (consumer is not null)
+            {
+                next[index++] = consumer;
+            }
+        }
+
+        Volatile.Write(ref _activeConsumers, next);
+    }
+
     public void Dispose()
     {
         Dispose(true);
@@ -654,7 +683,10 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
             for (nuint i = 0; i < count; i++)
             {
                 Volatile.Write(ref _slots[i].Consumer, null);
+                _slots[i].RegistrationId = RegistrationId.None;
             }
+
+            RebuildActiveConsumersLocked();
         }
 
         if (disposing)
@@ -879,43 +911,33 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
 
     public ref struct ActiveSubscriberEnumerator
     {
-        private readonly RegistrationSlot[] _slots;
-        private int _currentIndex;
-        private IEventConsumer<TEvent>? _current;
+        private readonly IEventConsumer<TEvent>[] _consumers;
+        private int _index;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ActiveSubscriberEnumerator(RegistrationSlot[] slots)
+        internal ActiveSubscriberEnumerator(IEventConsumer<TEvent>[] consumers)
         {
-            _slots = slots;
-            _currentIndex = -1;
-            _current = null;
+            _consumers = consumers;
+            _index = -1;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool MoveNext()
         {
-            var slots = _slots;
-            int idx = _currentIndex + 1;
-            while ((uint)idx < (uint)slots.Length)
+            int next = _index + 1;
+            if ((uint)next < (uint)_consumers.Length)
             {
-                var consumer = Volatile.Read(ref slots[idx].Consumer);
-                if (consumer is not null)
-                {
-                    _currentIndex = idx;
-                    _current = consumer;
-                    return true;
-                }
-                idx++;
+                _index = next;
+                return true;
             }
-            _currentIndex = slots.Length;
-            _current = null;
+
             return false;
         }
 
         public IEventConsumer<TEvent> Current
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _current!;
+            get => _consumers[_index];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -924,13 +946,13 @@ public class EventHub<TEvent, TBackoff, TMetricsSink> : EventHubContext<TEvent>,
 
     public readonly struct ActiveSubscriberEnumerable
     {
-        private readonly RegistrationSlot[] _slots;
+        private readonly IEventConsumer<TEvent>[] _consumers;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ActiveSubscriberEnumerable(RegistrationSlot[] slots) => _slots = slots;
+        internal ActiveSubscriberEnumerable(IEventConsumer<TEvent>[] consumers) => _consumers = consumers;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ActiveSubscriberEnumerator GetEnumerator() => new(_slots);
+        public ActiveSubscriberEnumerator GetEnumerator() => new(_consumers);
     }
 }
 

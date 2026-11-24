@@ -41,7 +41,13 @@ public enum RandomEngineType : byte
     Pcg = 3,
 
     /// <summary>MT19937: the compatibility engine for reproducing an existing MT stream.</summary>
-    MersenneTwister = 4
+    MersenneTwister = 4,
+
+    /// <summary>ChaCha20: the deterministic cryptographic stream, RFC 8439 block discipline.</summary>
+    ChaCha20 = 5,
+
+    /// <summary>Operating-system entropy: the non-reproducible stream for security-sensitive draws.</summary>
+    OperatingSystem = 6
 }
 
 #pragma warning restore CA1028
@@ -57,10 +63,12 @@ public static class RandomEngineTypeExtensions
     /// </summary>
     /// <param name="engineType">The engine to size a snapshot buffer for.</param>
     /// <returns>
-    /// The word count, or <c>0</c> for <see cref="RandomEngineType.MersenneTwister"/>, which is
-    /// exempt from the uniform word contract because its 2 496-byte state cannot be expressed
-    /// without packing or losing the read cursor. Zero therefore means "no uniform snapshot" -
-    /// the caller must branch to the engine's own snapshot API instead of sizing a buffer.
+    /// The word count, or <c>0</c> for <see cref="RandomEngineType.MersenneTwister"/> and
+    /// <see cref="RandomEngineType.OperatingSystem"/>, which are exempt from the uniform word
+    /// contract: MT19937's 2 496-byte state cannot be expressed without packing or losing the read
+    /// cursor, and the operating-system source holds no state at all. Zero therefore means "no
+    /// uniform snapshot" - the caller must branch to the engine's own snapshot API instead of sizing
+    /// a buffer.
     /// </returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="engineType"/> is not a defined member.</exception>
     public static int GetWordCount(this RandomEngineType engineType) => engineType switch
@@ -70,6 +78,8 @@ public static class RandomEngineTypeExtensions
         RandomEngineType.Xoshiro256PlusPlus => Xoshiro256PlusPlus.WordCount,
         RandomEngineType.Pcg => PcgEngine.WordCount,
         RandomEngineType.MersenneTwister => 0,
+        RandomEngineType.ChaCha20 => ChaCha20Source.WordCount,
+        RandomEngineType.OperatingSystem => 0,
         _ => throw new ArgumentOutOfRangeException(
             nameof(engineType),
             engineType,

@@ -20,6 +20,11 @@ internal static class ThrowHelper
 
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowInvalidOperation(string message) =>
+        throw new InvalidOperationException(message);
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static void ThrowArgumentOutOfRange(string paramName, string message)
     {
         throw new ArgumentOutOfRangeException(paramName, message);
@@ -128,35 +133,20 @@ internal static class ThrowHelper
 
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ThrowReentrantDepthExceeded(int maxDepth)
+    {
+        throw new EventReentrantPublishException(
+            $"Re-entrant publish depth exceeded {maxDepth}; a handler is publishing back into the same router.",
+            maxDepth);
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static void ThrowTimerCapacity(EventPriority priority, int capacity)
     {
         throw new EventQueueFullException(
             $"The {priority} timer table is full ({capacity} timers).",
             priority,
             capacity);
-    }
-
-    [DoesNotReturn]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowTaskSchedulerClosed(string schedulerName)
-    {
-        throw new EventTaskSchedulerClosedException($"The task scheduler '{schedulerName}' has been closed and no longer accepts submissions.");
-    }
-
-    [DoesNotReturn]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowQueueFull(EventTaskPriority priority, int capacity)
-    {
-        throw new EventQueueFullException(
-            $"The {priority} task lane is full ({capacity} slots).",
-            EventPriority.Normal,
-            capacity);
-    }
-
-    [DoesNotReturn]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowInvalidTaskHandle()
-    {
-        throw new InvalidOperationException("The task handle does not refer to an issued task.");
     }
 }

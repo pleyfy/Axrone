@@ -80,10 +80,11 @@ public sealed class SceneStructuralBufferTests
         return profile.CreateWorld();
     }
 
-    private sealed class DeferredBehaviour : SceneBehaviour
+    private sealed class DeferredBehaviour : ISceneBehaviour
     {
         public Action? Action { get; set; }
 
-        public override void Update(float deltaSeconds) => Action?.Invoke();
+        public void OnAttach(SceneBehaviourContext context) =>
+            context.OnUpdate(_ => Action?.Invoke());
     }
 }

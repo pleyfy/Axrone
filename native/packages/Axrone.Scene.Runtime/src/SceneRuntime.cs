@@ -69,6 +69,7 @@ public sealed class SceneRuntime : IDisposable
         HasSkinnedMeshes = World.Registry.TryGetDataByType(typeof(SceneSkinnedMeshRenderer), out _);
         BonePalettes = new SceneBonePaletteStore();
         BonePaletteSink = new SceneBonePalettePoseSink(BonePalettes);
+        MorphWeights = new SceneMorphWeightStore();
         HasPathAgents = World.Registry.TryGetDataByType(typeof(ScenePathAgent), out _);
         PathAgents = HasPathAgents ? new ScenePathAgentBridge(World) : null;
 
@@ -146,6 +147,13 @@ public sealed class SceneRuntime : IDisposable
     /// <summary>Whether the profile registers animator components.</summary>
     public bool HasAnimators { get; }
 
+    /// <summary>
+    /// Optional gameplay receiver for clip events. Events are dispatched after
+    /// the pose for the same fixed step is published; setting this does not
+    /// change the animator update path.
+    /// </summary>
+    public ISceneAnimatorEventSink? AnimatorEventSink { get; set; }
+
     /// <summary>Whether the profile registers skinned mesh renderers.</summary>
     public bool HasSkinnedMeshes { get; }
 
@@ -154,6 +162,9 @@ public sealed class SceneRuntime : IDisposable
 
     /// <summary>Pose sink that forwards animator output into <see cref="BonePalettes"/>.</summary>
     public SceneBonePalettePoseSink BonePaletteSink { get; }
+
+    /// <summary>Latest per-actor morph weights published by the animator bridge.</summary>
+    public SceneMorphWeightStore MorphWeights { get; }
 
     /// <summary>Path agent bridge; null when the profile does not register path agents.</summary>
     public ScenePathAgentBridge? PathAgents { get; }

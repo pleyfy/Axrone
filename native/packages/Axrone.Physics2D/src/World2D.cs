@@ -1,4 +1,4 @@
-namespace Axrone.Physics2D;
+﻿namespace Axrone.Physics2D;
 
 using System.Buffers;
 using System.Threading;
@@ -136,7 +136,7 @@ public readonly struct WorldDef
 
             field = value;
         }
-    } = 8;
+    } = PhysicsConstants.MaxSubSteps;
 
     /// <summary>Solver capabilities; clearing <see cref="SolverFlags.SleepingBodies"/> skips the sleep pass.</summary>
     public SolverFlags Flags { get; init; } = SolverFlags.Default;
@@ -296,8 +296,20 @@ public sealed class World : IDisposable
     private readonly JointStore _joints;
     private readonly DynamicAabbTree2D<ShapeId, SurfaceAreaHeuristicStrategy2D, NullSpatialMetricsSink> _tree;
     private readonly IslandSolver<DefaultSleepPolicy> _islands = new();
+    private int[] _wakeWorklist = [];
+    private int[] _wakeMarks = [];
+    private int[] _wakeRowStart = [];
+    private int[] _wakeFill = [];
+    private int[] _wakeAdjacency = [];
+    private int _wakeTop;
+    private int _wakePeakTop;
+    private int _wakePushes;
+    private int _wakeVisits;
+    private int _wakeGeneration;
+    private int _wakeSlotCapacity;
     private Contact[] _contacts;
     private Contact[] _previous;
+    private PositionGeometry2D[] _positionGeometry;
     private int _contactCount;
     private int _previousCount;
     private ContactEvent[] _events;
@@ -334,6 +346,9 @@ public sealed class World : IDisposable
 
     /// <summary>CCD substep cap per step.</summary>
     public int MaxCcdSubsteps { get; set; }
+
+    /// <summary>Slices the last step actually ran; one when nothing forced a subdivision.</summary>
+    internal int LastCcdSlices { get; private set; } = 1;
 
     /// <summary>Solver capabilities.</summary>
     public SolverFlags Flags { get; set; }
@@ -376,6 +391,7 @@ public sealed class World : IDisposable
         _tree = new DynamicAabbTree2D<ShapeId, SurfaceAreaHeuristicStrategy2D, NullSpatialMetricsSink>(definition.BroadphaseOptions);
         _contacts = new Contact[InitialContactCapacity];
         _previous = new Contact[InitialContactCapacity];
+        _positionGeometry = new PositionGeometry2D[InitialContactCapacity * PositionGeometryWindow.PointsPerContact];
         _contactCount = 0;
         _previousCount = 0;
         _events = new ContactEvent[InitialContactCapacity];
@@ -925,6 +941,7 @@ public sealed class World : IDisposable
         }
 
         int slices = CcdSliceCount(dt);
+        LastCcdSlices = slices;
         float h = dt / slices;
 
         _eventCount = 0;
@@ -950,6 +967,7 @@ public sealed class World : IDisposable
         }
 
         int slices = CcdSliceCount(dt);
+        LastCcdSlices = slices;
         float h = dt / slices;
 
         _eventCount = 0;
@@ -1114,6 +1132,7 @@ public sealed class World : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void StepSlice(float h, bool emitImpulseNotices)
     {
+        DrainPendingWakes();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
         CollectPairs();
@@ -1134,13 +1153,20 @@ public sealed class World : IDisposable
             ContactSolver.ReportPostSolve(_contacts.AsSpan(0, _contactCount), ref notices, ref unusedState);
         }
 
+        PersistWarmStartImpulses();
+
         _bodies.IntegratePositions(h);
         SyncAwakeBodies();
 
-        for (int iteration = 0; iteration < PositionIterations; iteration++)
+        if (PositionIterations > 0)
         {
-            ContactSolver.SolvePositionPass(_bodies, _shapes, _contacts.AsSpan(0, _contactCount));
-            JointSolver.SolvePositionPass(_bodies, _joints, 1);
+            Span<Contact> span = _contacts.AsSpan(0, _contactCount);
+            Span<PositionGeometry2D> geometry = CapturePositionGeometry(span);
+            for (int iteration = 0; iteration < PositionIterations; iteration++)
+            {
+                ContactSolver.SolvePositionPass(_bodies, _shapes, span, geometry);
+                JointSolver.SolvePositionPass(_bodies, _joints, 1);
+            }
         }
     }
 
@@ -1149,6 +1175,7 @@ public sealed class World : IDisposable
         where THandler : IContactSolverCallbacks<Contact, ContactManifold, TContext>
         where TContext : allows ref struct
     {
+        DrainPendingWakes();
         _bodies.IntegrateVelocities(h, Gravity, AutoClearForces);
         SyncAwakeBodies();
         CollectPairs();
@@ -1177,20 +1204,28 @@ public sealed class World : IDisposable
             ContactSolver.ReportPostSolve(_contacts.AsSpan(0, _contactCount), ref post, ref context);
         }
 
+        PersistWarmStartImpulses();
+
         _bodies.IntegratePositions(h);
         SyncAwakeBodies();
 
-        for (int iteration = 0; iteration < PositionIterations; iteration++)
+        if (PositionIterations > 0)
         {
-            ContactSolver.SolvePositionPass(_bodies, _shapes, _contacts.AsSpan(0, _contactCount));
-            JointSolver.SolvePositionPass(_bodies, _joints, 1);
+            Span<Contact> span = _contacts.AsSpan(0, _contactCount);
+            Span<PositionGeometry2D> geometry = CapturePositionGeometry(span);
+            for (int iteration = 0; iteration < PositionIterations; iteration++)
+            {
+                ContactSolver.SolvePositionPass(_bodies, _shapes, span, geometry);
+                JointSolver.SolvePositionPass(_bodies, _joints, 1);
+            }
         }
     }
 
     /// <summary>
     /// Rotates the contact buffers, collects the candidate pairs through the
     /// broadphase and carries warm-start impulses across by pair identity;
-    /// fresh pairs wake sleeping dynamics.
+    /// fresh pairs wake sleeping dynamics, and so does a platform that is being
+    /// driven under them.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void CollectPairs()
@@ -1205,6 +1240,7 @@ public sealed class World : IDisposable
         World self = this;
         _tree.FindPairs(ref collector, ref self);
 
+        BeginWakePropagation();
         for (int i = 0; i < _contactCount; i++)
         {
             ContactCache carried = default;
@@ -1223,14 +1259,87 @@ public sealed class World : IDisposable
             {
                 WakePair(_contacts[i].BodyA, _contacts[i].BodyB);
             }
+            else
+            {
+                SeedDrivenKinematicWake(_contacts[i]);
+            }
 
             Contact updated = _contacts[i];
             ContactManifold manifold = updated.Manifold;
-            carried.WarmStart(ref manifold);
-            updated.Manifold = manifold;
-            carried.Store(in manifold);
-            updated.Cache = carried;
+            if ((Flags & SolverFlags.WarmStarting) != 0)
+            {
+                carried.WarmStart(ref manifold);
+                updated.Manifold = manifold;
+            }
+
             _contacts[i] = updated;
+        }
+
+        PropagateWakes();
+    }
+
+    /// <summary>
+    /// Feeds the wake propagation from a pair that survived into this frame:
+    /// kinematic scenery is integrated rather than relocated, so a platform
+    /// sliding out from under a sleeper, or starting to slide with one on it,
+    /// changes no pair identity and sweeps nothing the relocation pass sees. The
+    /// moving side is read with the same tolerance pair the island pass blocks
+    /// sleep on, so whichever platforms those two systems call moving are the
+    /// ones that carry.
+    /// </summary>
+    private void SeedDrivenKinematicWake(in Contact contact)
+    {
+        ref readonly BodyState stateA = ref _bodies.Slot(contact.BodyA);
+        ref readonly BodyState stateB = ref _bodies.Slot(contact.BodyB);
+
+        if (IsDrivingKinematic(in stateA) && stateB.Type == BodyType.Dynamic)
+        {
+            EnqueueWakeSlot(BodyStore.SlotOf(contact.BodyB));
+        }
+        else if (IsDrivingKinematic(in stateB) && stateA.Type == BodyType.Dynamic)
+        {
+            EnqueueWakeSlot(BodyStore.SlotOf(contact.BodyA));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsDrivingKinematic(in BodyState state)
+    {
+        if (state.Type != BodyType.Kinematic)
+        {
+            return false;
+        }
+
+        float linearTolerance = LinearSleepTolerance;
+        float angularTolerance = AngularSleepTolerance;
+        return state.LinearVelocity.LengthSquared() > (linearTolerance * linearTolerance) ||
+            (state.AngularVelocity * state.AngularVelocity) > (angularTolerance * angularTolerance);
+    }
+
+    /// <summary>
+    /// Writes the impulses the velocity pass just converged to into each pair's
+    /// carry. The snapshot has to be taken after the sweeps: a cache captured
+    /// before them holds the values the pair arrived with, so the next step
+    /// restores those, every pair restarts its impulse at zero, and a stack has
+    /// to re-earn each interface from the base by Gauss-Seidel instead of
+    /// starting the step already balanced.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PersistWarmStartImpulses()
+    {
+        if ((Flags & SolverFlags.WarmStarting) == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            Contact contact = _contacts[i];
+            ContactManifold manifold = contact.Manifold;
+            ContactCache cache = contact.Cache;
+            cache.Store(in manifold);
+            contact.Cache = cache;
+            _contacts[i] = contact;
         }
     }
 
@@ -1310,6 +1419,336 @@ public sealed class World : IDisposable
                 manifold.Count > 1 ? impulses.NormalAt(1) : 0.0f,
                 manifold.Count > 1 ? impulses.TangentAt(1) : 0.0f);
         }
+    }
+
+    /// <summary>
+    /// Dilation of the swept volume used to find the bodies a placement passed
+    /// through: one linear slop, the same tolerance the solver rests on.
+    /// </summary>
+    private const float RelocationWakeMargin = SolverTuning.LinearSlop;
+
+    /// <summary>
+    /// Drains everything the caller changed outside the integrator. A static or
+    /// kinematic support that was moved gets its broadphase nodes refreshed
+    /// before pair collection, and the dynamic bodies inside the volume the
+    /// placement swept seed the wake propagation; a dynamic body that a force, an
+    /// impulse or a velocity pulled out of sleep seeds it directly. Both reach
+    /// whatever rests on them through the same bounded walk. Runs as the first
+    /// statement of a slice, and costs one integer read and one branch when the
+    /// caller touched nothing.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void DrainPendingWakes()
+    {
+        int count = _bodies.PendingWakeCount;
+        if (count == 0)
+        {
+            return;
+        }
+
+        ReadOnlySpan<int> slots = _bodies.PendingWakeSlots;
+        BeginWakePropagation();
+        for (int i = 0; i < count; i++)
+        {
+            int slot = slots[i];
+            if (!_bodies.IsSlotLive(slot))
+            {
+                continue;
+            }
+
+            if (_bodies.SlotType(slot) != BodyType.Dynamic)
+            {
+                RelocateBody(BodyId.FromIndex(slot));
+            }
+            else
+            {
+                EnqueueWakeSlot(slot);
+            }
+        }
+
+        PropagateWakes();
+        _bodies.ClearPendingWakes();
+    }
+
+    /// <summary>
+    /// Re-inserts one relocated body's shapes and wakes what the move swept
+    /// through. The union of the cached and the refreshed bounds is the
+    /// smallest volume that contains every body the placement could have been
+    /// touching before it moved, so a support withdrawn from under a sleeper
+    /// still reaches it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void RelocateBody(BodyId bodyId)
+    {
+        ref BodyState body = ref _bodies.Slot(bodyId);
+        if (body.FirstShape == -1)
+        {
+            return;
+        }
+
+        Aabb2D swept = Aabb2D.Empty;
+        int current = body.FirstShape;
+        while (current != -1)
+        {
+            ref ShapeRecord record = ref _shapes.Slot(ShapeId.FromIndex(current));
+            swept = swept.MergedWith(in record.WorldAabb);
+            current = record.NextShape;
+        }
+
+        _shapes.SyncBody(_bodies, _tree, bodyId);
+
+        current = body.FirstShape;
+        while (current != -1)
+        {
+            ref ShapeRecord record = ref _shapes.Slot(ShapeId.FromIndex(current));
+            swept = swept.MergedWith(in record.WorldAabb);
+            current = record.NextShape;
+        }
+
+        Aabb2D volume = swept.Expanded(RelocationWakeMargin);
+        WakeTargets targets = new(this, bodyId);
+        RelocationWakeCollector collector = default;
+        _tree.QueryOverlaps(in volume, ref collector, ref targets);
+    }
+
+    /// <summary>Wake targets of a relocation sweep: the dynamic owners of the visited shapes.</summary>
+    private ref struct WakeTargets
+    {
+        private readonly World _world;
+        private readonly BodyId _moved;
+
+        public WakeTargets(World world, BodyId moved)
+        {
+            _world = world;
+            _moved = moved;
+        }
+
+        public readonly void Wake(ShapeId shapeId)
+        {
+            if (!_world._shapes.IsValid(shapeId))
+            {
+                return;
+            }
+
+            BodyId owner = _world._shapes.Slot(shapeId).Body;
+            if (owner == _moved)
+            {
+                return;
+            }
+
+            ref BodyState state = ref _world._bodies.Slot(owner);
+            if (state.Type == BodyType.Dynamic)
+            {
+                _world.EnqueueWakeSlot(BodyStore.SlotOf(owner));
+            }
+        }
+    }
+
+    /// <summary>Reports every shape overlapping the swept volume of a relocated support.</summary>
+    private struct RelocationWakeCollector : ISpatialVisitor2D<ShapeId, WakeTargets>
+    {
+        public readonly bool OnOverlap(SpatialItemId itemId, ShapeId userData, in Aabb2D box, ref WakeTargets context)
+        {
+            context.Wake(userData);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Opens one bounded wake propagation: a body is marked and queued at most
+    /// once per pass, so nothing rescans the contact graph per wake.
+    /// </summary>
+    internal void BeginWakePropagation()
+    {
+        EnsureWakeCapacity(_bodies.SlotCapacity);
+        _wakeTop = 0;
+        _wakePeakTop = 0;
+        _wakePushes = 0;
+        _wakeVisits = 0;
+        if (_wakeGeneration == int.MaxValue)
+        {
+            Array.Clear(_wakeMarks, 0, _wakeMarks.Length);
+            _wakeGeneration = 0;
+        }
+
+        _wakeGeneration++;
+    }
+
+    /// <summary>Slots the open wake pass has queued and not yet walked.</summary>
+    internal int WakeQueueLength => _wakeTop;
+
+    /// <summary>Most slots the open wake pass ever held queued at once.</summary>
+    internal int WakeQueuePeakLength => _wakePeakTop;
+
+    /// <summary>Slots the open wake pass has queued, counting the seed.</summary>
+    internal int WakePushCount => _wakePushes;
+
+    /// <summary>Slots the open wake pass has popped off the worklist.</summary>
+    internal int WakeVisitCount => _wakeVisits;
+
+    /// <summary>
+    /// Queues a wake target; already-awake bodies enter the queue too, because
+    /// the sleeping bodies resting on them are reached only through them.
+    /// </summary>
+    internal void EnqueueWakeSlot(int slot)
+    {
+        if (!_bodies.IsSlotLive(slot) || _bodies.SlotType(slot) != BodyType.Dynamic || _wakeMarks[slot] == _wakeGeneration)
+        {
+            return;
+        }
+
+        _wakeMarks[slot] = _wakeGeneration;
+        _wakeWorklist[_wakeTop++] = slot;
+        _wakePushes++;
+        _wakePeakTop = Math.Max(_wakePeakTop, _wakeTop);
+        BodyId bodyId = BodyId.FromIndex(slot);
+        if ((_bodies.Slot(bodyId).Flags & BodyFlags.Awake) == 0)
+        {
+            _bodies.SetAwake(bodyId, true);
+        }
+    }
+
+    /// <summary>
+    /// Drains the worklist across the contact graph, visiting every body once and
+    /// never more bodies than there are slots: the bound is enforced here, so a
+    /// pass that rescanned a body would stop with a count to report instead of
+    /// spinning on a reconvergent graph.
+    /// </summary>
+    internal void PropagateWakes()
+    {
+        if (_wakeTop == 0)
+        {
+            return;
+        }
+
+        BuildContactAdjacency();
+        int visitBound = _wakeMarks.Length;
+        while (_wakeTop > 0 && _wakeVisits < visitBound)
+        {
+            int slot = _wakeWorklist[--_wakeTop];
+            _wakeVisits++;
+            int rowEnd = _wakeRowStart[slot + 1];
+            for (int edge = _wakeRowStart[slot]; edge < rowEnd; edge++)
+            {
+                EnqueueWakeSlot(_wakeAdjacency[edge]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Packs the live contact pairs into per-body rows once per propagation.
+    /// Only dynamic-dynamic edges are walkable: a shared support couples nothing,
+    /// the same rule that keeps the island pass from unioning through scenery, so
+    /// a withdrawn wall can never drag every body on the ground awake with it.
+    /// </summary>
+    internal void BuildContactAdjacency()
+    {
+        int capacity = _bodies.SlotCapacity;
+        EnsureWakeCapacity(capacity);
+        Array.Clear(_wakeFill, 0, capacity);
+
+        int edgeCount = 0;
+        for (int i = 0; i < _contactCount; i++)
+        {
+            int slotA = BodyStore.SlotOf(_contacts[i].BodyA);
+            int slotB = BodyStore.SlotOf(_contacts[i].BodyB);
+            if (!IsWakeWalkablePair(slotA, slotB))
+            {
+                continue;
+            }
+
+            _wakeFill[slotA]++;
+            _wakeFill[slotB]++;
+            edgeCount += 2;
+        }
+
+        if (_wakeAdjacency.Length < edgeCount)
+        {
+            Array.Resize(ref _wakeAdjacency, Math.Max(edgeCount, InitialContactCapacity));
+        }
+
+        int running = 0;
+        for (int slot = 0; slot < capacity; slot++)
+        {
+            _wakeRowStart[slot] = running;
+            running += _wakeFill[slot];
+            _wakeFill[slot] = _wakeRowStart[slot];
+        }
+
+        _wakeRowStart[capacity] = running;
+
+        for (int i = 0; i < _contactCount; i++)
+        {
+            int slotA = BodyStore.SlotOf(_contacts[i].BodyA);
+            int slotB = BodyStore.SlotOf(_contacts[i].BodyB);
+            if (!IsWakeWalkablePair(slotA, slotB))
+            {
+                continue;
+            }
+
+            _wakeAdjacency[_wakeFill[slotA]++] = slotB;
+            _wakeAdjacency[_wakeFill[slotB]++] = slotA;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsWakeWalkablePair(int slotA, int slotB) =>
+        _bodies.IsSlotLive(slotA) && _bodies.IsSlotLive(slotB) &&
+        _bodies.SlotType(slotA) == BodyType.Dynamic && _bodies.SlotType(slotB) == BodyType.Dynamic;
+
+    /// <summary>Adjacency entries of the last build that lead to a body of <paramref name="target"/>.</summary>
+    internal int CountWakeAdjacencyEntries(BodyType target)
+    {
+        int capacity = _bodies.SlotCapacity;
+        int entries = 0;
+        for (int slot = 0; slot < capacity; slot++)
+        {
+            int rowEnd = _wakeRowStart[slot + 1];
+            for (int edge = _wakeRowStart[slot]; edge < rowEnd; edge++)
+            {
+                int neighbour = _wakeAdjacency[edge];
+                if (_bodies.IsSlotLive(neighbour) && _bodies.SlotType(neighbour) == target)
+                {
+                    entries++;
+                }
+            }
+        }
+
+        return entries;
+    }
+
+    private void EnsureWakeCapacity(int capacity)
+    {
+        if (capacity <= _wakeSlotCapacity)
+        {
+            return;
+        }
+
+        Array.Resize(ref _wakeWorklist, capacity);
+        Array.Resize(ref _wakeMarks, capacity);
+        Array.Resize(ref _wakeFill, capacity);
+        Array.Resize(ref _wakeRowStart, capacity + 1);
+        _wakeSlotCapacity = capacity;
+    }
+
+    /// <summary>
+    /// Binds every live contact point to the frame its body carries now, so
+    /// each sweep of the position pass measures the moment instead of replaying
+    /// the narrowphase snapshot. The window grows with the contact list and is
+    /// reallocated only while the scene is still growing.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Span<PositionGeometry2D> CapturePositionGeometry(Span<Contact> contacts)
+    {
+        int needed = contacts.Length * PositionGeometryWindow.PointsPerContact;
+        if (_positionGeometry.Length < needed)
+        {
+            Array.Resize(ref _positionGeometry, needed);
+        }
+
+        Span<PositionGeometry2D> geometry = _positionGeometry.AsSpan(0, needed);
+        ContactSolver.CapturePositionGeometry(_bodies, contacts, geometry);
+        return geometry;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -2126,13 +2565,6 @@ public sealed class World : IDisposable
             bool enabledA = (stateA.Flags & BodyFlags.Active) != 0;
             bool enabledB = (stateB.Flags & BodyFlags.Active) != 0;
             if (!enabledA || !enabledB)
-            {
-                return true;
-            }
-
-            bool awakeA = (stateA.Flags & BodyFlags.Awake) != 0;
-            bool awakeB = (stateB.Flags & BodyFlags.Awake) != 0;
-            if (!awakeA && !awakeB)
             {
                 return true;
             }

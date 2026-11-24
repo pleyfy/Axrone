@@ -138,10 +138,13 @@ public class StateSnapshotTests
     {
         RandomEngineType.MersenneTwister.GetWordCount().Should().Be(0);
         RandomEngineType.MersenneTwister.SupportsUniformSnapshot().Should().BeFalse();
+        RandomEngineType.OperatingSystem.GetWordCount().Should().Be(0);
+        RandomEngineType.OperatingSystem.SupportsUniformSnapshot().Should().BeFalse();
 
+        RandomEngineType[] exempt = [RandomEngineType.MersenneTwister, RandomEngineType.OperatingSystem];
         foreach (RandomEngineType engineType in Enum.GetValues<RandomEngineType>())
         {
-            if (engineType != RandomEngineType.MersenneTwister)
+            if (!exempt.Contains(engineType))
             {
                 engineType.SupportsUniformSnapshot().Should().BeTrue();
             }
@@ -164,7 +167,9 @@ public class StateSnapshotTests
         ((byte)RandomEngineType.Xoshiro256PlusPlus).Should().Be(2);
         ((byte)RandomEngineType.Pcg).Should().Be(3);
         ((byte)RandomEngineType.MersenneTwister).Should().Be(4);
-        Enum.GetValues<RandomEngineType>().Should().HaveCount(5);
+        ((byte)RandomEngineType.ChaCha20).Should().Be(5);
+        ((byte)RandomEngineType.OperatingSystem).Should().Be(6);
+        Enum.GetValues<RandomEngineType>().Should().HaveCount(7);
     }
 
     /// <summary>

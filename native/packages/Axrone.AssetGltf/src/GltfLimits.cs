@@ -41,6 +41,9 @@ public sealed class GltfImportLimits
 
     /// <summary>Maximum estimated decoded bytes across accessors and interleaved mesh output.</summary>
     public long MaxDecodedBytes { get; init; } = 2L * 1024 * 1024 * 1024;
+
+    /// <summary>Maximum decoded raster and transcoded texture bytes retained by one import.</summary>
+    public long MaxTextureBytes { get; init; } = 512L * 1024 * 1024;
 }
 
 /// <summary>Preflight limit validation for untrusted glTF documents.</summary>
@@ -95,6 +98,27 @@ internal static class GltfLimitsValidator
             }
 
             decodedBytes = AddChecked("MaxDecodedBytes", decodedBytes, bytes, limits.MaxDecodedBytes);
+        }
+
+        // Meshopt views decompress into transient parse storage before any
+        // accessor reads them; an oversized view would otherwise allocate past
+        // every decoded-byte budget because accessors may cover only a slice.
+        long parseBytes = 0;
+        for (int i = 0; i < model.BufferViews.Count; i++)
+        {
+            GltfRawModel.BufferView view = model.BufferViews[i];
+            if (view.Meshopt is null)
+            {
+                continue;
+            }
+
+            if (view.Meshopt.Count < 0 || view.Meshopt.ByteStride <= 0)
+            {
+                ThrowHelper.ThrowSchema($"BufferView {i} has an invalid meshopt element layout.");
+            }
+
+            long decompressed = (long)view.Meshopt.Count * view.Meshopt.ByteStride;
+            parseBytes = AddChecked("MaxParseBytes", parseBytes, decompressed, limits.MaxParseBytes);
         }
 
         for (int i = 0; i < model.MeshCount; i++)

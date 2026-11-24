@@ -15,6 +15,7 @@ public sealed class ScenePhysicsBridge3D : IDisposable
     private readonly World _physicsWorld;
     private readonly Dictionary<SceneActor, BodyId> _bodies;
     private bool _disposed;
+    private long _stepCount;
 
     /// <summary>Creates a physics bridge over a scene world.</summary>
     public ScenePhysicsBridge3D(SceneWorld world, in WorldDef? physicsDef = null)
@@ -96,6 +97,7 @@ public sealed class ScenePhysicsBridge3D : IDisposable
     {
         ThrowIfDisposed();
         _physicsWorld.Step(deltaSeconds);
+        Interlocked.Increment(ref _stepCount);
     }
 
     /// <summary>Writes physics body transforms back into scene transforms.</summary>
@@ -121,6 +123,9 @@ public sealed class ScenePhysicsBridge3D : IDisposable
 
     /// <summary>Number of contact events from the last step.</summary>
     public int ContactEventCount => _physicsWorld.ContactEventCount;
+
+    /// <summary>Number of completed physics steps; used by bridges to avoid duplicate reads.</summary>
+    public long StepCount => Interlocked.Read(ref _stepCount);
 
     /// <summary>Returns a contact event by index.</summary>
     public ContactEvent GetContactEvent(int index) => _physicsWorld.GetContactEvent(index);

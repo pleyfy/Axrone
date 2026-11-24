@@ -2,6 +2,14 @@ namespace Axrone.Reactive.Ecs;
 
 using Axrone.Ecs;
 
+/// <summary>
+/// Lifecycle filters and query observables built over one <see cref="EcsReactiveBridge"/>.
+/// </summary>
+/// <remarks>
+/// Query streams publish only when their result actually changes; a static scene therefore
+/// costs a walk over the query rows per pump, not a new array and a spurious notification.
+/// All members are meant to be used from the pump thread.
+/// </remarks>
 public sealed class EcsObservables : IDisposable
 {
     private readonly EcsReactiveBridge _bridge;
@@ -13,10 +21,12 @@ public sealed class EcsObservables : IDisposable
     private readonly Dictionary<int, IObservable<EntityLifecycleEvent>> _byLayer = new();
     private readonly Dictionary<string, QueryEntry> _queries = new(StringComparer.Ordinal);
     private readonly List<QueryEntry> _queryOrder = [];
-    private readonly IDisposable _pollSubscription;
+    private readonly IDisposable _pumpSubscription;
     private readonly Lock _gate = new();
+    private QueryEntry[] _snapshot = [];
     private bool _disposed;
 
+    /// <summary>Creates the filter/query facade for a bridge.</summary>
     public EcsObservables(
         EcsReactiveBridge bridge,
         Func<World, Entity, string?>? nameSelector = null,
@@ -28,9 +38,10 @@ public sealed class EcsObservables : IDisposable
         _nameSelector = nameSelector;
         _tagSelector = tagSelector;
         _layerSelector = layerSelector;
-        _pollSubscription = bridge.PollCompleted.Subscribe(new PollObserver(this));
+        _pumpSubscription = bridge.PumpCompleted.Subscribe(new PumpObserver(this));
     }
 
+    /// <summary>Lifecycle events for entities whose selected name matches.</summary>
     public IObservable<EntityLifecycleEvent> ByName(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
@@ -53,6 +64,7 @@ public sealed class EcsObservables : IDisposable
         }
     }
 
+    /// <summary>Lifecycle events for entities whose selected tag matches.</summary>
     public IObservable<EntityLifecycleEvent> ByTag(string tag)
     {
         ArgumentException.ThrowIfNullOrEmpty(tag);
@@ -75,6 +87,7 @@ public sealed class EcsObservables : IDisposable
         }
     }
 
+    /// <summary>Lifecycle events for entities whose selected layer matches.</summary>
     public IObservable<EntityLifecycleEvent> ByLayer(int layer)
     {
         if (_layerSelector is null)
@@ -95,6 +108,10 @@ public sealed class EcsObservables : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets or creates a shared query stream. The query runs once for the initial value and
+    /// again after every pump; a result identical to the previous one is not republished.
+    /// </summary>
     public BehaviorSubject<Entity[]> GetQueryObservable(string key, Func<World, Entity[]> query)
     {
         ArgumentException.ThrowIfNullOrEmpty(key);
@@ -107,14 +124,16 @@ public sealed class EcsObservables : IDisposable
                 return existing.Subject;
             }
 
-            var subject = new BehaviorSubject<Entity[]>(query(_bridge.World));
-            var entry = new QueryEntry(query, subject);
-            _queries.Add(key, entry);
-            _queryOrder.Add(entry);
-            return subject;
+            QueryEntry entry = QueryEntry.ForArray(query, query(_bridge.World));
+            AddEntry(key, entry);
+            return entry.Subject;
         }
     }
 
+    /// <summary>
+    /// Gets or creates a shared query stream for all entities carrying <typeparamref name="T1"/>.
+    /// The row buffer is reused between pumps, so an unchanged result allocates nothing.
+    /// </summary>
     public BehaviorSubject<Entity[]> GetQueryObservable<T1>(string key)
         where T1 : unmanaged
     {
@@ -127,35 +146,39 @@ public sealed class EcsObservables : IDisposable
                 return existing.Subject;
             }
 
-            Func<World, Entity[]> query = static world => QueryEntities<T1>(world);
-            var subject = new BehaviorSubject<Entity[]>(query(_bridge.World));
-            var entry = new QueryEntry(query, subject);
-            _queries.Add(key, entry);
-            _queryOrder.Add(entry);
-            return subject;
+            var initial = new List<Entity>();
+            FillQuery<T1>(_bridge.World, initial);
+            QueryEntry entry = QueryEntry.ForFill(FillQuery<T1>, [.. initial]);
+            AddEntry(key, entry);
+            return entry.Subject;
         }
     }
 
+    /// <summary>
+    /// Re-evaluates every registered query and publishes only the results that changed.
+    /// Called automatically after each <see cref="EcsReactiveBridge.Pump"/>.
+    /// </summary>
     public void RefreshQueries()
     {
         QueryEntry[] entries;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_queryOrder.Count == 0)
+            if (_snapshot.Length == 0)
             {
                 return;
             }
 
-            entries = [.. _queryOrder];
+            entries = _snapshot;
         }
 
         foreach (QueryEntry entry in entries)
         {
-            entry.Subject.OnNext(entry.Query(_bridge.World));
+            entry.Refresh(_bridge.World);
         }
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         QueryEntry[] entries;
@@ -170,12 +193,13 @@ public sealed class EcsObservables : IDisposable
             entries = [.. _queryOrder];
             _queries.Clear();
             _queryOrder.Clear();
+            _snapshot = [];
             _byName.Clear();
             _byTag.Clear();
             _byLayer.Clear();
         }
 
-        _pollSubscription.Dispose();
+        _pumpSubscription.Dispose();
         foreach (QueryEntry entry in entries)
         {
             entry.Subject.Dispose();
@@ -184,36 +208,99 @@ public sealed class EcsObservables : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private static Entity[] QueryEntities<T1>(World world)
+    private static void FillQuery<T1>(World world, List<Entity> destination)
         where T1 : unmanaged
     {
-        var entities = new List<Entity>();
+        destination.Clear();
         foreach (Chunk1<T1> chunk in world.Query<T1>())
         {
-            entities.AddRange(chunk.Entities);
+            destination.AddRange(chunk.Entities);
         }
+    }
 
-        return [.. entities];
+    private void AddEntry(string key, QueryEntry entry)
+    {
+        _queries.Add(key, entry);
+        _queryOrder.Add(entry);
+        _snapshot = [.. _queryOrder];
     }
 
     private sealed class QueryEntry
     {
-        public QueryEntry(Func<World, Entity[]> query, BehaviorSubject<Entity[]> subject)
+        private readonly Func<World, Entity[]>? _arrayQuery;
+        private readonly Action<World, List<Entity>>? _fillQuery;
+        private readonly List<Entity> _scratch = [];
+        private Entity[] _current;
+
+        private QueryEntry(
+            Func<World, Entity[]>? arrayQuery,
+            Action<World, List<Entity>>? fillQuery,
+            Entity[] initial)
         {
-            Query = query;
-            Subject = subject;
+            _arrayQuery = arrayQuery;
+            _fillQuery = fillQuery;
+            _current = initial;
+            Subject = new BehaviorSubject<Entity[]>(initial);
         }
 
-        public Func<World, Entity[]> Query { get; }
-
         public BehaviorSubject<Entity[]> Subject { get; }
+
+        public static QueryEntry ForArray(Func<World, Entity[]> query, Entity[] initial) =>
+            new(query, null, initial);
+
+        public static QueryEntry ForFill(Action<World, List<Entity>> query, Entity[] initial) =>
+            new(null, query, initial);
+
+        public void Refresh(World world)
+        {
+            if (_arrayQuery is not null)
+            {
+                Entity[] next = _arrayQuery(world);
+                if (!next.AsSpan().SequenceEqual(_current))
+                {
+                    Publish(next);
+                }
+
+                return;
+            }
+
+            _fillQuery!(world, _scratch);
+            if (!SameAsCurrent())
+            {
+                Publish([.. _scratch]);
+            }
+        }
+
+        private bool SameAsCurrent()
+        {
+            if (_scratch.Count != _current.Length)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < _current.Length; index++)
+            {
+                if (!_scratch[index].Equals(_current[index]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void Publish(Entity[] next)
+        {
+            _current = next;
+            Subject.OnNext(next);
+        }
     }
 
-    private sealed class PollObserver : IObserver<int>
+    private sealed class PumpObserver : IObserver<int>
     {
         private readonly EcsObservables _owner;
 
-        public PollObserver(EcsObservables owner) => _owner = owner;
+        public PumpObserver(EcsObservables owner) => _owner = owner;
 
         public void OnNext(int value)
         {

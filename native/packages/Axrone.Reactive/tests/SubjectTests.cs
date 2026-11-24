@@ -77,6 +77,19 @@ public class SubjectTests
     }
 
     [Fact]
+    public void SlotCapacityFollowsSubscriberBoundWithoutCliff()
+    {
+        using var standard = new Subject<int>();
+        standard.SlotCapacity.Should().Be(128);
+
+        using var small = new Subject<int>(new SubjectOptions(maxObservers: 2));
+        small.SlotCapacity.Should().Be(2);
+
+        using var aboveOldCliff = new Subject<int>(new SubjectOptions(maxObservers: 16_385));
+        aboveOldCliff.SlotCapacity.Should().Be(32_768);
+    }
+
+    [Fact]
     public void Dispose_CompletesSubscribers()
     {
         var subject = new Subject<string>();

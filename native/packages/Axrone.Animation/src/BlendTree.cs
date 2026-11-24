@@ -17,6 +17,9 @@ public enum MotionKind
 
     /// <summary>Rest-relative additive layer.</summary>
     Additive = 4,
+
+    /// <summary>Database-selected clip sample.</summary>
+    MotionMatching = 5,
 }
 
 /// <summary>Evaluatable motion node: clips and blends share one recursive contract.</summary>
@@ -86,6 +89,7 @@ public sealed class ClipMotionNode : MotionNode
     /// <inheritdoc/>
     public override void Evaluate(float normalizedTime, AnimationFrame outFrame, FrameArena arena, Rig rig, ParameterStore parameters, int depth)
     {
+        outFrame.ResetToRest(rig);
         float scaled = (normalizedTime * TimeScale) + CycleOffset;
         float time = IsLooping
             ? FastMath.WrapTime(scaled * Clip.Duration, Clip.Duration)
@@ -120,7 +124,7 @@ public sealed class ClipMotionNode : MotionNode
 
         foreach (AnimationChannel channel in Clip.Channels)
         {
-            if (channel.BoneIndex != 0)
+            if (channel.BoneIndex != 0 || channel.IsEmpty)
             {
                 continue;
             }
@@ -142,7 +146,7 @@ public sealed class ClipMotionNode : MotionNode
         }
 
         deltaPos = p1 - p0;
-        deltaRot = Quat.Normalize(r1 * Quat.Inverse(r0));
+        deltaRot = Quat.Normalize(Quat.Inverse(r0) * r1);
         if (t1 >= t0)
         {
             return;
@@ -150,7 +154,7 @@ public sealed class ClipMotionNode : MotionNode
 
         foreach (AnimationChannel channel in Clip.Channels)
         {
-            if (channel.BoneIndex != 0)
+            if (channel.BoneIndex != 0 || channel.IsEmpty)
             {
                 continue;
             }
@@ -169,7 +173,7 @@ public sealed class ClipMotionNode : MotionNode
                 channel.Sample(0.0f, bufStart);
                 Quat rEnd = new(bufEnd[0], bufEnd[1], bufEnd[2], bufEnd[3]);
                 Quat rStart = new(bufStart[0], bufStart[1], bufStart[2], bufStart[3]);
-                deltaRot = Quat.Normalize((rEnd * Quat.Inverse(r0)) * (r1 * Quat.Inverse(rStart)));
+                deltaRot = Quat.Normalize((Quat.Inverse(rStart) * r1) * (Quat.Inverse(r0) * rEnd));
             }
         }
     }
@@ -207,6 +211,16 @@ public sealed class ClipMotionNode : MotionNode
 
 /// <summary>Segment bracketing a Blend1D parameter value.</summary>
 public readonly record struct Blend1DSegment(int Index0, int Index1, float Weight);
+
+/// <summary>Weighting strategy for a two-parameter blend.</summary>
+public enum Blend2DMode
+{
+    /// <summary>Inverse-distance weights over every child (smooth outside the hull too).</summary>
+    InverseDistance = 0,
+
+    /// <summary>Barycentric weights inside the precomputed Delaunay hull; inverse distance outside.</summary>
+    Freeform = 1,
+}
 
 /// <summary>One-parameter blend over sorted threshold children.</summary>
 public sealed class Blend1DMotionNode : MotionNode
@@ -321,6 +335,48 @@ public sealed class Blend1DMotionNode : MotionNode
         return sum / Children.Length;
     }
 
+    /// <summary>Duration of the active segment, interpolated by blend weight.</summary>
+    public float GetDuration(ParameterStore parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        Blend1DSegment segment = FindSegment(ReadParameter(parameters));
+        if (segment.Index0 == segment.Index1 || segment.Weight <= 0.0f)
+        {
+            return MotionDispatcher.GetDuration(Children[segment.Index0], parameters);
+        }
+
+        float from = MotionDispatcher.GetDuration(Children[segment.Index0], parameters);
+        float to = MotionDispatcher.GetDuration(Children[segment.Index1], parameters);
+        return from + ((to - from) * segment.Weight);
+    }
+
+    /// <summary>Root delta of the active segment, interpolated by blend weight.</summary>
+    public void ComputeRootDelta(float prevNormTime, float curNormTime, Rig rig, ParameterStore parameters, out Vec3 deltaPos, out Quat deltaRot)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        Blend1DSegment segment = FindSegment(ReadParameter(parameters));
+        if (segment.Index0 == segment.Index1 || segment.Weight <= 0.0f)
+        {
+            MotionDispatcher.ComputeRootDelta(Children[segment.Index0], prevNormTime, curNormTime, rig, out deltaPos, out deltaRot);
+            return;
+        }
+
+        if (segment.Weight >= 1.0f)
+        {
+            MotionDispatcher.ComputeRootDelta(Children[segment.Index1], prevNormTime, curNormTime, rig, out deltaPos, out deltaRot);
+            return;
+        }
+
+        MotionDispatcher.ComputeRootDelta(Children[segment.Index0], prevNormTime, curNormTime, rig, out Vec3 fromPos, out Quat fromRot);
+        MotionDispatcher.ComputeRootDelta(Children[segment.Index1], prevNormTime, curNormTime, rig, out Vec3 toPos, out Quat toRot);
+        deltaPos = Vec3.Lerp(fromPos, toPos, segment.Weight);
+        deltaRot = FastMath.Slerp(fromRot, toRot, segment.Weight);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private float ReadParameter(ParameterStore parameters) =>
+        _parameterBound ? parameters.GetFloat(in _parameterHandle) : parameters.GetFloat(ParameterName);
+
     /// <inheritdoc/>
     public override void Evaluate(float normalizedTime, AnimationFrame outFrame, FrameArena arena, Rig rig, ParameterStore parameters, int depth)
     {
@@ -403,6 +459,9 @@ public sealed class Blend2DMotionNode : MotionNode
 {
     private readonly Vec2[] _positions;
     private readonly MotionNode[] _children;
+    private readonly int[] _triangles;
+    private AnimationFrame[]? _frameScratch;
+    private float[]? _weightScratch;
     private ParameterHandle _parameterXHandle;
     private ParameterHandle _parameterYHandle;
     private bool _parametersBound;
@@ -422,8 +481,15 @@ public sealed class Blend2DMotionNode : MotionNode
     /// <summary>Children aligned with positions.</summary>
     public ReadOnlySpan<MotionNode> Children => _children;
 
+    /// <summary>Weighting strategy.</summary>
+    public Blend2DMode Mode { get; }
+
     /// <summary>Creates a blend.</summary>
-    public Blend2DMotionNode(string parameterX, string parameterY, (Vec2 Position, MotionNode Child)[] entries)
+    public Blend2DMotionNode(
+        string parameterX,
+        string parameterY,
+        (Vec2 Position, MotionNode Child)[] entries,
+        Blend2DMode mode = Blend2DMode.InverseDistance)
     {
         ArgumentNullException.ThrowIfNull(parameterX);
         ArgumentNullException.ThrowIfNull(parameterY);
@@ -433,8 +499,14 @@ public sealed class Blend2DMotionNode : MotionNode
             AnimationThrowHelper.ThrowCompilation(AnimationErrorCode.CompilationEmptyChildren, "Blend2D requires at least one child.");
         }
 
+        if ((uint)mode > (uint)Blend2DMode.Freeform)
+        {
+            AnimationThrowHelper.ThrowValidation(AnimationErrorCode.ValidationInvalidArgument, $"Unknown Blend2D mode '{mode}'.");
+        }
+
         ParameterX = parameterX;
         ParameterY = parameterY;
+        Mode = mode;
         _positions = new Vec2[entries.Length];
         _children = new MotionNode[entries.Length];
         for (int i = 0; i < entries.Length; i++)
@@ -442,6 +514,10 @@ public sealed class Blend2DMotionNode : MotionNode
             _positions[i] = entries[i].Position;
             _children[i] = entries[i].Child;
         }
+
+        _triangles = mode == Blend2DMode.Freeform
+            ? DelaunayTriangulation.Build(_positions)
+            : [];
     }
 
     /// <inheritdoc/>
@@ -478,6 +554,151 @@ public sealed class Blend2DMotionNode : MotionNode
         return sum / _children.Length;
     }
 
+    /// <summary>Duration of the active children, weighted like their poses.</summary>
+    public float GetDuration(ParameterStore parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        int childCount = _children.Length;
+        if (childCount == 0)
+        {
+            return 0.0f;
+        }
+
+        Span<float> weights = childCount <= AnimationConstants.MaxStackScratchFrames
+            ? stackalloc float[childCount]
+            : new float[childCount];
+
+        int exact = ComputeWeights(ReadInput(parameters), weights);
+        if (exact >= 0)
+        {
+            return MotionDispatcher.GetDuration(_children[exact], parameters);
+        }
+
+        float total = 0.0f;
+        float sum = 0.0f;
+        for (int i = 0; i < childCount; i++)
+        {
+            float weight = weights[i];
+            if (!float.IsFinite(weight) || weight <= 0.0f)
+            {
+                continue;
+            }
+
+            total += weight;
+            sum += weight * MotionDispatcher.GetDuration(_children[i], parameters);
+        }
+
+        return total > AnimationConstants.BlendEpsilon ? sum / total : GetDuration();
+    }
+
+    /// <summary>Root delta of the active children, weighted like their poses.</summary>
+    public void ComputeRootDelta(float prevNormTime, float curNormTime, Rig rig, ParameterStore parameters, out Vec3 deltaPos, out Quat deltaRot)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        int childCount = _children.Length;
+        if (childCount == 0)
+        {
+            deltaPos = Vec3.Zero;
+            deltaRot = Quat.Identity;
+            return;
+        }
+
+        Span<float> weights = childCount <= AnimationConstants.MaxStackScratchFrames
+            ? stackalloc float[childCount]
+            : new float[childCount];
+
+        int exact = ComputeWeights(ReadInput(parameters), weights);
+        if (exact >= 0)
+        {
+            MotionDispatcher.ComputeRootDelta(_children[exact], prevNormTime, curNormTime, rig, out deltaPos, out deltaRot);
+            return;
+        }
+
+        MotionDispatcher.CombineWeightedRootDeltas(_children, weights, prevNormTime, curNormTime, rig, out deltaPos, out deltaRot);
+    }
+
+    private Vec2 ReadInput(ParameterStore parameters) => _parametersBound
+        ? new Vec2(parameters.GetFloat(in _parameterXHandle), parameters.GetFloat(in _parameterYHandle))
+        : new Vec2(parameters.GetFloat(ParameterX), parameters.GetFloat(ParameterY));
+
+    /// <summary>
+    /// Fills blend weights. Returns an exact-hit child index, or -1 when the
+    /// weights span multiple children.
+    /// </summary>
+    private int ComputeWeights(Vec2 input, Span<float> weights)
+    {
+        if (Mode == Blend2DMode.Freeform &&
+            _triangles.Length > 0 &&
+            TryComputeFreeformWeights(input, weights))
+        {
+            return -1;
+        }
+
+        return ComputeInverseDistanceWeights(input, weights);
+    }
+
+    private int ComputeInverseDistanceWeights(Vec2 input, Span<float> weights)
+    {
+        for (int i = 0; i < _positions.Length; i++)
+        {
+            float distanceSq = Vec2.DistanceSquared(input, _positions[i]);
+            if (distanceSq <= AnimationConstants.BlendDistanceEpsilonSq)
+            {
+                return i;
+            }
+
+            weights[i] = 1.0f / MathF.Sqrt(distanceSq);
+        }
+
+        return -1;
+    }
+
+    private bool TryComputeFreeformWeights(Vec2 input, Span<float> weights)
+    {
+        const float epsilon = 1e-5f;
+        weights.Clear();
+
+        for (int t = 0; t < _triangles.Length; t += 3)
+        {
+            int a = _triangles[t];
+            int b = _triangles[t + 1];
+            int c = _triangles[t + 2];
+            Vec2 pa = _positions[a];
+            Vec2 pb = _positions[b];
+            Vec2 pc = _positions[c];
+            float area = Vec2.Cross(pb - pa, pc - pa);
+            if (MathF.Abs(area) <= epsilon)
+            {
+                continue;
+            }
+
+            float wa = Vec2.Cross(pb - input, pc - input) / area;
+            float wb = Vec2.Cross(pc - input, pa - input) / area;
+            float wc = 1.0f - wa - wb;
+            if (wa < -epsilon || wb < -epsilon || wc < -epsilon)
+            {
+                continue;
+            }
+
+            wa = MathF.Max(0.0f, wa);
+            wb = MathF.Max(0.0f, wb);
+            wc = MathF.Max(0.0f, wc);
+            float total = wa + wb + wc;
+            if (total <= AnimationConstants.BlendEpsilon)
+            {
+                continue;
+            }
+
+            float inverse = 1.0f / total;
+            weights[a] = wa * inverse;
+            weights[b] = wb * inverse;
+            weights[c] = wc * inverse;
+            return true;
+        }
+
+        return false;
+    }
+
     /// <inheritdoc/>
     [SkipLocalsInit]
     public override void Evaluate(float normalizedTime, AnimationFrame outFrame, FrameArena arena, Rig rig, ParameterStore parameters, int depth)
@@ -491,52 +712,36 @@ public sealed class Blend2DMotionNode : MotionNode
             AnimationThrowHelper.ThrowEvaluation(AnimationErrorCode.EvaluationDepthOverflow, "Maximum blend recursion depth exceeded.");
         }
 
-        Vec2 input = _parametersBound
-            ? new Vec2(parameters.GetFloat(in _parameterXHandle), parameters.GetFloat(in _parameterYHandle))
-            : new Vec2(parameters.GetFloat(ParameterX), parameters.GetFloat(ParameterY));
+        Vec2 input = ReadInput(parameters);
         int childCount = _children.Length;
         // Holder must be a managed array (stackalloc forbids reference types);
-        // weights are unmanaged and honor the stack budget.
-        AnimationFrame[] holder = ArrayPool<AnimationFrame>.Shared.Rent(childCount);
-        bool weightsPooled = childCount > AnimationConstants.MaxStackScratchFrames;
-        float[]? rentedWeights = weightsPooled ? ArrayPool<float>.Shared.Rent(childCount) : null;
-        Span<float> weights = rentedWeights is not null
-            ? rentedWeights.AsSpan(0, childCount)
+        // weights are unmanaged and honor the stack budget. Both buffers are
+        // cached per node so steady-state evaluation never touches the pool.
+        AnimationFrame[] holder = _frameScratch ??= new AnimationFrame[childCount];
+        float[]? weightArray = childCount > AnimationConstants.MaxStackScratchFrames
+            ? _weightScratch ??= new float[childCount]
+            : null;
+        Span<float> weights = weightArray is not null
+            ? weightArray.AsSpan(0, childCount)
             : stackalloc float[childCount];
-        try
+        int exact = ComputeWeights(input, weights);
+        if (exact >= 0)
         {
-            for (int i = 0; i < _positions.Length; i++)
-            {
-                float distanceSq = Vec2.DistanceSquared(input, _positions[i]);
-                if (distanceSq <= AnimationConstants.BlendDistanceEpsilonSq)
-                {
-                    MotionDispatcher.Evaluate(_children[i], normalizedTime, outFrame, arena, rig, parameters, depth + 1);
-                    return;
-                }
-
-                weights[i] = 1.0f / MathF.Sqrt(distanceSq);
-            }
-
-            for (int i = 0; i < childCount; i++)
-            {
-                holder[i] = arena.Alloc();
-                MotionDispatcher.Evaluate(_children[i], normalizedTime, holder[i], arena, rig, parameters, depth + 1);
-            }
-
-            BlendingKernels.BlendWeightedFrames(outFrame, holder.AsSpan(0, childCount), weights, rig);
-
-            for (int i = 0; i < childCount; i++)
-            {
-                arena.Free();
-            }
+            MotionDispatcher.Evaluate(_children[exact], normalizedTime, outFrame, arena, rig, parameters, depth + 1);
+            return;
         }
-        finally
+
+        for (int i = 0; i < childCount; i++)
         {
-            ArrayPool<AnimationFrame>.Shared.Return(holder);
-            if (rentedWeights is not null)
-            {
-                ArrayPool<float>.Shared.Return(rentedWeights);
-            }
+            holder[i] = arena.Alloc();
+            MotionDispatcher.Evaluate(_children[i], normalizedTime, holder[i], arena, rig, parameters, depth + 1);
+        }
+
+        BlendingKernels.BlendWeightedFrames(outFrame, holder.AsSpan(0, childCount), weights, rig);
+
+        for (int i = 0; i < childCount; i++)
+        {
+            arena.Free();
         }
     }
 
@@ -581,6 +786,8 @@ public sealed class DirectMotionNode : MotionNode
 {
     private readonly string[] _parameterNames;
     private readonly MotionNode[] _children;
+    private AnimationFrame[]? _frameScratch;
+    private float[]? _weightScratch;
     private ParameterHandle[] _parameterHandles = Array.Empty<ParameterHandle>();
     private bool _parametersBound;
 
@@ -645,6 +852,56 @@ public sealed class DirectMotionNode : MotionNode
         return max;
     }
 
+    /// <summary>Duration of the active children, weighted by their parameters.</summary>
+    public float GetDuration(ParameterStore parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        int childCount = _children.Length;
+        Span<float> weights = childCount <= AnimationConstants.MaxStackScratchFrames
+            ? stackalloc float[childCount]
+            : new float[childCount];
+        ReadWeights(parameters, weights);
+
+        float total = 0.0f;
+        float sum = 0.0f;
+        for (int i = 0; i < childCount; i++)
+        {
+            float weight = weights[i];
+            if (weight <= 0.0f)
+            {
+                continue;
+            }
+
+            total += weight;
+            sum += weight * MotionDispatcher.GetDuration(_children[i], parameters);
+        }
+
+        return total > AnimationConstants.BlendEpsilon ? sum / total : GetDuration();
+    }
+
+    /// <summary>Root delta of the active children, weighted by their parameters.</summary>
+    public void ComputeRootDelta(float prevNormTime, float curNormTime, Rig rig, ParameterStore parameters, out Vec3 deltaPos, out Quat deltaRot)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        int childCount = _children.Length;
+        Span<float> weights = childCount <= AnimationConstants.MaxStackScratchFrames
+            ? stackalloc float[childCount]
+            : new float[childCount];
+        ReadWeights(parameters, weights);
+        MotionDispatcher.CombineWeightedRootDeltas(_children, weights, prevNormTime, curNormTime, rig, out deltaPos, out deltaRot);
+    }
+
+    private void ReadWeights(ParameterStore parameters, Span<float> weights)
+    {
+        ParameterHandle[] handles = _parameterHandles;
+        bool bound = _parametersBound && handles.Length == _children.Length;
+        for (int i = 0; i < _children.Length; i++)
+        {
+            float raw = bound ? parameters.GetFloat(in handles[i]) : parameters.GetFloat(_parameterNames[i]);
+            weights[i] = MathF.Max(0.0f, raw);
+        }
+    }
+
     /// <inheritdoc/>
     [SkipLocalsInit]
     public override void Evaluate(float normalizedTime, AnimationFrame outFrame, FrameArena arena, Rig rig, ParameterStore parameters, int depth)
@@ -659,14 +916,14 @@ public sealed class DirectMotionNode : MotionNode
         }
 
         int childCount = _children.Length;
-        // Holder must be a managed array (stackalloc forbids reference types);
-        // weights are unmanaged and honor the stack budget.
-        AnimationFrame[] holder = ArrayPool<AnimationFrame>.Shared.Rent(childCount);
-        bool weightsPooled = childCount > AnimationConstants.MaxStackScratchFrames;
-        float[]? rentedWeights = weightsPooled ? ArrayPool<float>.Shared.Rent(childCount) : null;
-        Span<float> weights = rentedWeights is not null
-            ? rentedWeights.AsSpan(0, childCount)
+        AnimationFrame[] holder = _frameScratch ??= new AnimationFrame[childCount];
+        float[]? weightArray = childCount > AnimationConstants.MaxStackScratchFrames
+            ? _weightScratch ??= new float[childCount]
+            : null;
+        Span<float> weights = weightArray is not null
+            ? weightArray.AsSpan(0, childCount)
             : stackalloc float[childCount];
+
         int activeCount = 0;
         int singleIndex = -1;
 
@@ -696,28 +953,17 @@ public sealed class DirectMotionNode : MotionNode
             return;
         }
 
-        try
+        for (int i = 0; i < childCount; i++)
         {
-            for (int i = 0; i < childCount; i++)
-            {
-                holder[i] = arena.Alloc();
-                MotionDispatcher.Evaluate(_children[i], normalizedTime, holder[i], arena, rig, parameters, depth + 1);
-            }
-
-            BlendingKernels.BlendWeightedFrames(outFrame, holder.AsSpan(0, childCount), weights, rig);
-
-            for (int i = 0; i < childCount; i++)
-            {
-                arena.Free();
-            }
+            holder[i] = arena.Alloc();
+            MotionDispatcher.Evaluate(_children[i], normalizedTime, holder[i], arena, rig, parameters, depth + 1);
         }
-        finally
+
+        BlendingKernels.BlendWeightedFrames(outFrame, holder.AsSpan(0, childCount), weights, rig);
+
+        for (int i = 0; i < childCount; i++)
         {
-            ArrayPool<AnimationFrame>.Shared.Return(holder);
-            if (rentedWeights is not null)
-            {
-                ArrayPool<float>.Shared.Return(rentedWeights);
-            }
+            arena.Free();
         }
     }
 

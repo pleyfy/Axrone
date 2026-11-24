@@ -2,6 +2,61 @@ namespace Axrone.Audio.Tests;
 
 public class AudioObservabilityTests
 {
+    [Fact]
+    public void ThrowingListener_DoesNotAbortFanOut()
+    {
+        var runtime = new AudioObservabilityRuntime(new CacheAlignedDiagnosticsCounters());
+        var survivor = new Recorder();
+        runtime.Subscribe(new ThrowingListener());
+        runtime.Subscribe(survivor);
+
+        runtime.Dispatch(AudioEventType.SourcePlayed, 1U);
+
+        survivor.Events.Should().ContainSingle();
+        runtime.ListenerFaults.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ListenerCanSubscribeAndUnsubscribeDuringDispatch()
+    {
+        var runtime = new AudioObservabilityRuntime(new CacheAlignedDiagnosticsCounters());
+        var late = new Recorder();
+        runtime.Subscribe(new ReentrantListener(runtime, late));
+
+        await Task.Run(() => runtime.Dispatch(AudioEventType.SourcePlayed, 1U))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        late.Events.Should().BeEmpty("the first dispatch iterates the snapshot taken before the subscribe");
+
+        await Task.Run(() => runtime.Dispatch(AudioEventType.SourcePlayed, 2U))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        late.Events.Should().ContainSingle();
+        runtime.ListenerCount.Should().Be(1);
+    }
+
+    private sealed class ThrowingListener : IAudioEventListener
+    {
+        public void OnAudioEvent(in AudioRuntimeEvent ev) => throw new InvalidOperationException("listener fault");
+    }
+
+    private sealed class ReentrantListener(AudioObservabilityRuntime runtime, IAudioEventListener late) : IAudioEventListener
+    {
+        private bool _done;
+
+        public void OnAudioEvent(in AudioRuntimeEvent ev)
+        {
+            if (_done)
+            {
+                return;
+            }
+
+            _done = true;
+            runtime.Subscribe(late);
+            runtime.Unsubscribe(this);
+        }
+    }
+
     private sealed class Recorder : IAudioEventListener
     {
         public readonly List<AudioRuntimeEvent> Events = new();

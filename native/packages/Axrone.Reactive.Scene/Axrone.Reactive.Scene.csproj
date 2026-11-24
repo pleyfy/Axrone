@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Axrone.Reactive.Scene</RootNamespace>
+    <AssemblyName>Axrone.Reactive.Scene</AssemblyName>
+    <Description>Reactive bridge over the scene change journal and physics contact events.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="AotCompatibility">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup Label="PublicApi">
+    <InternalsVisibleTo Include="Axrone.Reactive.Scene.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
+    <ProjectReference Include="../Axrone.Scene.Runtime/Axrone.Scene.Runtime.csproj" />
+    <ProjectReference Include="../Axrone.Reactive/Axrone.Reactive.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>

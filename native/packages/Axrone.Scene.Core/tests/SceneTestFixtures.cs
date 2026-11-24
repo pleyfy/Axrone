@@ -7,50 +7,53 @@ internal struct Health : ISceneDataComponent
     public int Value;
 }
 
-internal sealed class CounterBehaviour : SceneBehaviour
+internal sealed class CounterBehaviour : ISceneBehaviour
 {
-    public int AwakeCount;
+    public int LoadCount;
     public int StartCount;
     public int EnableCount;
     public int DisableCount;
     public int DestroyCount;
     public int Updates;
 
-    public override void Awake() => AwakeCount++;
+    public SceneBehaviourContext? Context { get; private set; }
 
-    public override void OnEnable() => EnableCount++;
-
-    public override void Start() => StartCount++;
-
-    public override void Update(float deltaSeconds) => Updates++;
-
-    public override void OnDisable() => DisableCount++;
-
-    public override void OnDestroy() => DestroyCount++;
+    public void OnAttach(SceneBehaviourContext context)
+    {
+        Context = context;
+        LoadCount++;
+        context.OnStart(() => StartCount++);
+        context.OnEnable(() => EnableCount++);
+        context.OnUpdate(_ => Updates++);
+        context.OnDisable(() => DisableCount++);
+        context.OnDetach(() => DestroyCount++);
+    }
 }
 
-internal sealed class HighOrderBehaviour : SceneBehaviour
+internal sealed class HighOrderBehaviour : ISceneBehaviour
 {
     private readonly List<string> _log;
 
     public HighOrderBehaviour(List<string> log) => _log = log;
 
-    public override void Update(float deltaSeconds) => _log.Add("high");
+    public void OnAttach(SceneBehaviourContext context) =>
+        context.OnUpdate(_ => _log.Add("high"));
 }
 
-internal sealed class LowOrderBehaviour : SceneBehaviour
+internal sealed class LowOrderBehaviour : ISceneBehaviour
 {
     private readonly List<string> _log;
 
     public LowOrderBehaviour(List<string> log) => _log = log;
 
-    public override void Update(float deltaSeconds) => _log.Add("low");
+    public void OnAttach(SceneBehaviourContext context) =>
+        context.OnUpdate(_ => _log.Add("low"));
 }
 
-internal sealed class ThrowingBehaviour : SceneBehaviour
+internal sealed class ThrowingBehaviour : ISceneBehaviour
 {
-    public override void Update(float deltaSeconds) =>
-        throw new InvalidOperationException("behaviour fault");
+    public void OnAttach(SceneBehaviourContext context) =>
+        context.OnUpdate(_ => throw new InvalidOperationException("behaviour fault"));
 }
 
 internal sealed class RecordingDiagnosticsSink : ISceneDiagnosticsSink

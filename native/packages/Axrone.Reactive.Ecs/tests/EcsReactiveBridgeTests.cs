@@ -183,7 +183,7 @@ public sealed class EcsReactiveBridgeTests
         using var removedSubscription = changes.Removed.Subscribe(removed);
 
         Entity entity = world.BeginEntity().With(new BridgePosition(1.0f, 2.0f)).Commit();
-        bridge.Poll();
+        bridge.Pump();
 
         added.Values.Should().ContainSingle();
         added.Values[0].Entity.Should().Be(entity);
@@ -191,12 +191,12 @@ public sealed class EcsReactiveBridgeTests
         added.Values[0].Tick.Should().Be(0);
         changed.Values.Should().BeEmpty();
 
-        bridge.Poll();
+        bridge.Pump();
         added.Values.Should().ContainSingle();
 
         world.Step();
         world.SetComponent(entity, new BridgePosition(3.0f, 4.0f));
-        bridge.Poll();
+        bridge.Pump();
 
         changed.Values.Should().ContainSingle();
         changed.Values[0].Value.X.Should().BeApproximately(3.0f, 1e-4f);
@@ -204,7 +204,7 @@ public sealed class EcsReactiveBridgeTests
 
         world.Step();
         world.RemoveComponent<BridgePosition>(entity);
-        bridge.Poll();
+        bridge.Pump();
 
         removed.Values.Should().ContainSingle();
         removed.Values[0].Entity.Should().Be(entity);
@@ -223,7 +223,7 @@ public sealed class EcsReactiveBridgeTests
         using var subscription = changes.Added.Subscribe(added);
 
         _ = world.BeginEntity().With(new BridgeVelocity(1.0f)).Commit();
-        bridge.Poll();
+        bridge.Pump();
 
         added.Values.Should().BeEmpty();
     }
@@ -239,7 +239,7 @@ public sealed class EcsReactiveBridgeTests
 
         Entity entity = world.BeginEntity().Commit();
         world.DestroyEntity(entity);
-        bridge.Poll();
+        bridge.Pump();
 
         lifecycle.Values.Should().HaveCount(2);
         lifecycle.Values[0].Entity.Should().Be(entity);
@@ -258,7 +258,7 @@ public sealed class EcsReactiveBridgeTests
         var lifecycle = new RecordingObserver<EntityLifecycleEvent>();
         using var subscription = bridge.EntityLifecycle.Subscribe(lifecycle);
 
-        bridge.Poll();
+        bridge.Pump();
 
         lifecycle.Values.Should().BeEmpty();
     }
@@ -328,7 +328,7 @@ public sealed class EcsReactiveBridgeTests
     }
 
     [Fact]
-    public void PollIsDeterministicAcrossRows()
+    public void PumpIsDeterministicAcrossRows()
     {
         ComponentRegistry.Register<BridgePosition>();
         using var world = new World(workerCount: 1);
@@ -342,7 +342,7 @@ public sealed class EcsReactiveBridgeTests
         var added = new RecordingObserver<ComponentAddedEvent<BridgePosition>>();
         using var subscription = changes.Added.Subscribe(added);
 
-        bridge.Poll();
+        bridge.Pump();
 
         added.Values.Should().HaveCount(3);
         added.Values.Select(value => value.Value.X).Should().Equal(0.0f, 1.0f, 2.0f);
@@ -364,13 +364,13 @@ public sealed class EcsReactiveBridgeTests
             ObservationPriority.Low);
 
         _ = world.BeginEntity().With(new BridgePosition(1.0f, 0.0f)).Commit();
-        bridge.Poll();
+        bridge.Pump();
 
         order.Should().Equal("high", "low");
     }
 
     [Fact]
-    public void PollDoesNotAllocateInSteadyState()
+    public void PumpDoesNotAllocateInSteadyState()
     {
         ComponentRegistry.Register<BridgePosition>();
         using var world = new World(workerCount: 1);
@@ -390,18 +390,44 @@ public sealed class EcsReactiveBridgeTests
 
         for (int iteration = 0; iteration < 200; iteration++)
         {
-            bridge.Poll();
+            bridge.Pump();
         }
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int iteration = 0; iteration < 1000; iteration++)
         {
-            bridge.Poll();
+            bridge.Pump();
         }
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
         added.Count.Should().Be(32);
+    }
+
+    [Fact]
+    public void PumpWithUnchangedQueryDoesNotAllocate()
+    {
+        ComponentRegistry.Register<BridgePosition>();
+        using var world = new World(workerCount: 1);
+        _ = world.BeginEntity().With(new BridgePosition(1, 0)).Commit();
+        _ = world.BeginEntity().With(new BridgePosition(2, 0)).Commit();
+        using var bridge = new EcsReactiveBridge(world);
+        BehaviorSubject<Entity[]> query = bridge.Observables.GetQueryObservable<BridgePosition>("positions");
+        using var subscription = query.Subscribe(new CountingObserver<Entity[]>());
+
+        for (int iteration = 0; iteration < 200; iteration++)
+        {
+            bridge.Pump();
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int iteration = 0; iteration < 1000; iteration++)
+        {
+            bridge.Pump();
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        allocated.Should().Be(0);
     }
 
     [Fact]
@@ -417,34 +443,42 @@ public sealed class EcsReactiveBridgeTests
 
         lifecycle.Completed.Should().BeTrue();
         world.Diagnostics.Should().BeSameAs(inner);
-        Action poll = () => bridge.Poll();
-        poll.Should().Throw<ObjectDisposedException>();
+        Action pump = () => bridge.Pump();
+        pump.Should().Throw<ObjectDisposedException>();
         world.Dispose();
     }
 
     [Fact]
-    public void RegistryTracksBridgeAndComponentSubjects()
+    public void TrackReturnsTheSameStreamAndRecreatesAfterDispose()
     {
         ComponentRegistry.Register<BridgePosition>();
         using var world = new World(workerCount: 1);
-        var bridge = new EcsReactiveBridge(world);
-        bridge.Registry.SubjectCount.Should().Be(7);
-        bridge.Registry.GetMemoryUsage().Subjects.Should().Be(7);
-
+        using var bridge = new EcsReactiveBridge(world);
         ComponentChanges<BridgePosition> changes = bridge.Track<BridgePosition>();
         bridge.Track<BridgePosition>().Should().BeSameAs(changes);
-        bridge.Registry.SubjectCount.Should().Be(10);
-        bridge.Registry.GetMemoryUsage().Subjects.Should().Be(10);
 
         changes.Dispose();
-        bridge.Registry.SubjectCount.Should().Be(7);
-        bridge.Registry.GetMemoryUsage().Subjects.Should().Be(7);
+        ComponentChanges<BridgePosition> replacement = bridge.Track<BridgePosition>();
+        replacement.Should().NotBeSameAs(changes);
+        replacement.IsDisposed.Should().BeFalse();
 
-        bridge.Dispose();
-        bridge.Registry.SubjectCount.Should().Be(0);
-        FluentActions.Invoking(() => bridge.Registry.GetMemoryUsage()).Should().Throw<ObjectDisposedException>();
-        FluentActions.Invoking(() => bridge.Registry.RegisterSubject(new object())).Should().Throw<ObjectDisposedException>();
         FluentActions.Invoking(bridge.Dispose).Should().NotThrow();
+        FluentActions.Invoking(bridge.Dispose).Should().NotThrow();
+    }
+
+    [Fact]
+    public void DroppedLifecycleEventsReportsRingOverflow()
+    {
+        using var world = new World(workerCount: 1);
+        using var bridge = new EcsReactiveBridge(world);
+        for (int index = 0; index < 1100; index++)
+        {
+            _ = world.BeginEntity().Commit();
+        }
+
+        bridge.DroppedLifecycleEvents.Should().BeGreaterThan(0);
+        bridge.Pump();
+        bridge.DroppedLifecycleEvents.Should().BeGreaterThan(0);
     }
 
     [Fact]

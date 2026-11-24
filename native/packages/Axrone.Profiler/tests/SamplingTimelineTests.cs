@@ -1,73 +1,112 @@
 namespace Axrone.Profiler.Tests;
 
-public sealed class SamplingTimelineTests : IDisposable
+public sealed class SamplingTimelineTests
 {
-    private readonly List<IDisposable> _owned = new();
-
-    public void Dispose()
-    {
-        foreach (IDisposable owned in _owned)
-        {
-            owned.Dispose();
-        }
-
-        _owned.Clear();
-        GC.SuppressFinalize(this);
-    }
-
     [Fact]
     public void Sampler_Fires_Ticks_And_Tracks_State()
     {
-        using var ticks = new ManualResetEventSlim(false);
+        var schedule = new ManualSamplerSchedule();
         int count = 0;
         var sampler = new ContinuousSampler(
-            onTick: _ =>
-            {
-                if (Interlocked.Increment(ref count) >= 2)
-                {
-                    ticks.Set();
-                }
-            },
-            intervalMs: 5.0,
+            onTick: _ => Interlocked.Increment(ref count),
+            intervalMs: 8.0,
             minIntervalMs: 1.0,
-            maxIntervalMs: 50.0);
-        _owned.Add(sampler);
+            maxIntervalMs: 64.0,
+            targetFrameBudgetMs: 1_000_000_000.0,
+            schedule: schedule);
 
         sampler.Start();
-        ticks.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
-        sampler.Stop();
+        schedule.Delays.Should().Equal(8.0);
 
-        sampler.TickCount.Should().BeGreaterThanOrEqualTo(2);
+        schedule.FireOnce();
+        schedule.FireOnce();
+        schedule.FireOnce();
+
+        sampler.TickCount.Should().Be(3);
+        count.Should().Be(3);
+        sampler.IsRunning.Should().BeTrue();
+
+        sampler.Stop();
+        sampler.TickCount.Should().Be(3, "a stopped sampler is never rearmed");
+        schedule.Armed.Should().BeFalse();
+
         sampler.GetState().IsRunning.Should().BeFalse();
         sampler.GetState().IsAdaptive.Should().BeTrue();
+        sampler.GetState().TickCount.Should().Be(3);
+
+        // A tick far under the budget halves the interval every time, so the whole cadence is
+        // predictable: 8 -> 4 -> 2 -> 1, clamped at the floor.
+        schedule.Delays.Should().Equal(8.0, 4.0, 2.0, 1.0);
     }
 
     [Fact]
     public void Sampler_Adapts_Interval_To_Tick_Cost()
     {
-        using var ticks = new ManualResetEventSlim(false);
-        int count = 0;
+        var schedule = new ManualSamplerSchedule();
         var sampler = new ContinuousSampler(
-            onTick: _ =>
-            {
-                Thread.Sleep(2);
-                if (Interlocked.Increment(ref count) >= 8)
-                {
-                    ticks.Set();
-                }
-            },
+            onTick: _ => Thread.SpinWait(200_000),
             intervalMs: 10.0,
-            minIntervalMs: 10.0,
-            maxIntervalMs: 100.0,
-            targetFrameBudgetMs: 1.0);
-        _owned.Add(sampler);
+            minIntervalMs: 1.0,
+            maxIntervalMs: 400.0,
+            targetFrameBudgetMs: 0.001,
+            schedule: schedule);
 
         sampler.Start();
-        ticks.Wait(TimeSpan.FromSeconds(15)).Should().BeTrue();
-        sampler.Stop();
+        for (int i = 0; i < 4; i++)
+        {
+            schedule.FireOnce();
+        }
 
-        sampler.IntervalMs.Should().BeGreaterThan(10.0);
-        sampler.IntervalMs.Should().BeLessThanOrEqualTo(100.0);
+        // A 200k-iteration spin is tens of microseconds, three orders above a one-microsecond
+        // budget, so adaptation must double the interval on every tick rather than drift with the
+        // machine.
+        sampler.Stop();
+        schedule.Delays.Should().Equal(10.0, 20.0, 40.0, 80.0, 160.0);
+        sampler.IntervalMs.Should().Be(160.0);
+    }
+
+    [Fact]
+    public void Sampler_Interval_Change_Rearms_And_ClapmsToTheWindow()
+    {
+        var schedule = new ManualSamplerSchedule();
+        var sampler = new ContinuousSampler(
+            onTick: _ => { },
+            intervalMs: 10.0,
+            minIntervalMs: 2.0,
+            maxIntervalMs: 30.0,
+            targetFrameBudgetMs: 1_000_000_000.0,
+            adaptive: false,
+            schedule: schedule);
+
+        sampler.Start();
+        sampler.SetInterval(25.0);
+        schedule.Delays.Should().Equal(10.0, 25.0);
+
+        Action tooWide = () => sampler.SetInterval(31.0);
+        tooWide.Should().Throw<ArgumentException>();
+
+        sampler.SetAdaptation(false);
+        schedule.FireOnce();
+        sampler.IntervalMs.Should().Be(25.0, "adaptation is off, so the interval never moves");
+    }
+
+    [Fact]
+    public void Sampler_Dispose_StopsTheSchedule_And_RejectsRestart()
+    {
+        var schedule = new ManualSamplerSchedule();
+        var sampler = new ContinuousSampler(
+            onTick: _ => { },
+            intervalMs: 10.0,
+            minIntervalMs: 1.0,
+            maxIntervalMs: 100.0,
+            schedule: schedule);
+
+        sampler.Start();
+        ((IDisposable)sampler).Dispose();
+
+        schedule.Armed.Should().BeFalse();
+        Action restart = () => sampler.Start();
+        restart.Should().Throw<ObjectDisposedException>();
     }
 
     [Fact]
@@ -101,5 +140,32 @@ public sealed class SamplingTimelineTests : IDisposable
 
         Action stopped = () => recorder.RecordEvent(TimelineCategory.Cpu, "late");
         stopped.Should().Throw<InvalidOperationException>();
+    }
+}
+
+/// <summary>
+/// Schedule that records every requested delay instead of waiting on the clock, so the whole
+/// adaptive cadence is asserted from the recorded sequence.
+/// </summary>
+file sealed class ManualSamplerSchedule : ISamplerSchedule
+{
+    private Action? _fire;
+
+    public List<double> Delays { get; } = new();
+
+    public bool Armed => _fire is not null;
+
+    public void Arm(Action fire, double delayMs)
+    {
+        _fire = fire;
+        Delays.Add(delayMs);
+    }
+
+    public void Cancel() => _fire = null;
+
+    public void FireOnce()
+    {
+        Action fire = _fire ?? throw new InvalidOperationException("the sampler is not armed");
+        fire();
     }
 }

@@ -115,7 +115,7 @@ public sealed class SceneBehaviourDescriptor : SceneComponentDescriptor
     public SceneBehaviourDescriptor(
         SceneBehaviourTypeId typeId,
         SceneStringId name,
-        Func<SceneBehaviour> factory,
+        Func<ISceneBehaviour> factory,
         int priority,
         SceneComponentTraits traits,
         ReadOnlySpan<SceneStringId> dependencies,
@@ -139,12 +139,12 @@ public sealed class SceneBehaviourDescriptor : SceneComponentDescriptor
     public SceneBehaviourTypeId TypeId { get; }
 
     /// <summary>Construction hook invoked once per attached instance.</summary>
-    public Func<SceneBehaviour> Factory { get; }
+    public Func<ISceneBehaviour> Factory { get; }
 
     /// <inheritdoc/>
     public override SceneComponentKind Kind => SceneComponentKind.Behaviour;
 
     /// <summary>Creates a new behaviour instance.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public SceneBehaviour Create() => Factory();
+    public ISceneBehaviour Create() => Factory();
 }

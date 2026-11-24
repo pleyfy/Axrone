@@ -24,6 +24,9 @@ public sealed class SceneMaterialSurface
     /// <summary>Emissive color.</summary>
     public Vec3 Emissive { get; init; } = Vec3.Zero;
 
+    /// <summary>Multiplier applied to authored emissive output.</summary>
+    public float EmissiveIntensity { get; init; } = 1.0f;
+
     /// <summary>Metallic response in the zero-to-one range.</summary>
     public float Metallic { get; init; }
 
@@ -96,6 +99,9 @@ public sealed class SceneMaterialSurface
     /// <summary>Optional subsurface scattering texture.</summary>
     public SceneMaterialTextureBinding? SubsurfaceMap { get; init; }
 
+    /// <summary>Optional dedicated opacity alpha/mask texture.</summary>
+    public SceneMaterialTextureBinding? OpacityMap { get; init; }
+
     /// <summary>Extension-driven scalar and color parameters.</summary>
     public SceneMaterialExtensions? Extensions { get; init; }
 
@@ -105,6 +111,13 @@ public sealed class SceneMaterialSurface
         ValidateUnitRange(Metallic, "Metallic");
         ValidateUnitRange(Roughness, "Roughness");
         ValidateUnitRange(Occlusion, "Occlusion");
+
+        if (!float.IsFinite(EmissiveIntensity) || EmissiveIntensity < 0.0f)
+        {
+            throw new SceneAssetException(
+                SceneAssetErrorCodes.Invalid,
+                "Emissive intensity must be finite and non-negative.");
+        }
 
         if (!float.IsFinite(NormalScale))
         {
@@ -136,6 +149,7 @@ public sealed class SceneMaterialSurface
         ValidateBinding(SpecularColorMap, "specular color");
         ValidateBinding(AnisotropyMap, "anisotropy");
         ValidateBinding(SubsurfaceMap, "subsurface");
+        ValidateBinding(OpacityMap, "opacity");
 
         Extensions?.Validate();
     }

@@ -64,6 +64,13 @@ public sealed class SceneRuntimeLoop : IDisposable
     /// <summary>Frames advanced so far.</summary>
     public FrameIndex Frame => _kernel.Frame;
 
+    /// <summary>
+    /// Raised after every successful <see cref="Tick"/> call, on the loop thread. Adapters that
+    /// mirror scene state (for example <c>SceneReactiveBridge</c>) subscribe here instead of
+    /// requiring the host to call their pump manually.
+    /// </summary>
+    public event EventHandler? FrameCompleted;
+
     /// <summary>Starts the loop and the scene world lifecycle.</summary>
     public void Start(GameTime? timestamp = null)
     {
@@ -115,7 +122,9 @@ public sealed class SceneRuntimeLoop : IDisposable
     public FrameExecutionOutcome Tick(GameTime? timestamp = null)
     {
         ThrowIfDisposed();
-        return _kernel.Advance(ref _state, timestamp);
+        FrameExecutionOutcome outcome = _kernel.Advance(ref _state, timestamp);
+        FrameCompleted?.Invoke(this, EventArgs.Empty);
+        return outcome;
     }
 
     /// <inheritdoc/>

@@ -3,6 +3,7 @@ namespace Axrone.Scene.Snapshot.Tests;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Axrone.AssetShader;
 using Axrone.Geometry;
 using Axrone.Numeric;
 using Axrone.Scene;
@@ -332,6 +333,37 @@ public sealed class SceneSnapshotTests
         new SceneProfileBuilder(new SceneProfileId(SceneStringId.FromName("test/snapshot")))
             .AddTransform3D()
             .Build();
+
+    [Fact]
+    public void Json_RoundTripsEffectTechniqueAndKeywords()
+    {
+        (SceneSnapshot baseline, SceneAssetRegistry assets) = CreateSnapshot();
+        var effect = new ShaderEffect(new ShaderEffectDefinition(
+            new ShaderSymbol("test/roundtrip"),
+            new ShaderStageDefinition("void main(){}"),
+            new ShaderStageDefinition("void main(){}"),
+            Keywords: [new ShaderKeywordDefinition(new ShaderSymbol("MODE"), Options: ["a", "b"])]));
+
+        SceneAssetId<ShaderAssetTag> shaderId = assets.CreateId<ShaderAssetTag>("shader/effect");
+        var shader = new SceneShaderDefinition(shaderId, "void main(){}", "void main(){}", effect: effect);
+        SceneAssetId<MaterialAssetTag> materialId = assets.CreateId<MaterialAssetTag>("material/effect");
+        var material = new SceneMaterialDefinition(
+            materialId,
+            shaderId,
+            new SceneMaterialSurface(),
+            techniqueId: "opaque",
+            keywords: new Dictionary<string, string> { ["MODE"] = "b" });
+
+        var snapshot = new SceneSnapshot(baseline.Prefab, [shader], [], [material], [], [], []);
+
+        SceneSnapshot read = SceneSnapshotJson.Deserialize(
+            SceneSnapshotJson.Serialize(snapshot, assets.Names));
+
+        read.Shaders[0].Effect.Should().NotBeNull();
+        read.Shaders[0].Effect!.Id.Name.Should().Be("test/roundtrip");
+        read.Materials[0].TechniqueId.Should().Be("opaque");
+        read.Materials[0].Keywords["MODE"].Should().Be("b");
+    }
 
     private static (SceneSnapshot Snapshot, SceneAssetRegistry Assets) CreateSnapshot()
     {

@@ -35,6 +35,7 @@
     <ProjectReference Include="../Axrone.Scene.Prefab/Axrone.Scene.Prefab.csproj" />
     <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
     <ProjectReference Include="../Axrone.Geometry/Axrone.Geometry.csproj" />
+    <ProjectReference Include="../Axrone.AssetShader/Axrone.AssetShader.csproj" />
   </ItemGroup>
 
   <ItemGroup>

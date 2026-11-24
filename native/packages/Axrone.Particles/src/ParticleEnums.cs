@@ -1,4 +1,4 @@
-﻿namespace Axrone.Particles;
+namespace Axrone.Particles;
 
 /// <summary>Emitter shape.</summary>
 public enum EmitterShape : byte
@@ -208,8 +208,8 @@ public enum ModuleFlags : ushort
     /// <summary>Scaling mode.</summary>
     ScalingMode = 1 << 8,
 
-    /// <summary>Play on awake.</summary>
-    PlayOnAwake = 1 << 9,
+    /// <summary>Play when the component loads.</summary>
+    PlayOnLoad = 1 << 9,
 
     /// <summary>Max particles.</summary>
     MaxParticles = 1 << 10,

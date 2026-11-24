@@ -142,6 +142,272 @@ internal static class DistributionMath
         double t = shifted + 7.5; // g + 0.5
         return (0.5 * Math.Log(2.0 * Math.PI)) + ((shifted + 0.5) * Math.Log(t)) - t + Math.Log(sum);
     }
+
+    /// <summary>
+    /// Error function over the whole real line, from two branches that share no fitted table:
+    /// the Maclaurin series below 1.5 and Laplace's continued fraction above it.
+    /// </summary>
+    /// <param name="value">The argument.</param>
+    /// <returns><c>erf(value)</c>, odd, saturating to <c>±1</c>.</returns>
+    /// <remarks>
+    /// <para>Both branches reach the double limit on their own terms. The series at the 1.5 cutoff
+    /// is <c>1.5^(2n+1) / (n! (2n+1))</c>: twenty-eight terms carry it below <c>1e-17</c> absolute,
+    /// and below that cutoff no term ever exceeds the sum by more than a small factor, so the
+    /// alternating sum loses nothing to cancellation. The continued fraction is the complement, so
+    /// the tail is never formed by subtracting two nearly equal numbers.</para>
+    /// <para>This is a cold query path - a handful of loop iterations, no allocation.</para>
+    /// </remarks>
+    internal static double Erf(double value)
+    {
+        if (value == 0.0 || double.IsNaN(value))
+        {
+            return value;
+        }
+
+        double magnitude = Math.Abs(value);
+        double result = magnitude < ErfSeriesCutoff ? ErfSeries(magnitude) : 1.0 - ErfcTail(magnitude);
+        return value < 0.0 ? -result : result;
+    }
+
+    /// <summary>
+    /// Complementary error function, evaluated as the complement only where the complement is
+    /// safe: the tail branch owns every argument at or above <see cref="ErfSeriesCutoff"/>, so
+    /// <c>erfc</c> never cancels.
+    /// </summary>
+    /// <param name="value">The argument.</param>
+    /// <returns><c>1 - erf(value)</c>, in <c>(0, 2)</c>.</returns>
+    internal static double Erfc(double value)
+    {
+        if (double.IsNaN(value))
+        {
+            return value;
+        }
+
+        if (value < 0.0)
+        {
+            return 2.0 - Erfc(-value);
+        }
+
+        return value < ErfSeriesCutoff ? 1.0 - ErfSeries(value) : ErfcTail(value);
+    }
+
+    /// <summary>
+    /// Standard normal cumulative distribution <c>Phi(z) = 0.5 * erfc(-z / sqrt(2))</c>. The
+    /// single expression is what makes both tails safe: a far negative <paramref name="z"/>
+    /// evaluates the tail branch, and a far positive one evaluates its complement.
+    /// </summary>
+    /// <param name="z">The standardized value.</param>
+    /// <returns>The probability of drawing at most <paramref name="z"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static double NormalCumulative(double z) => 0.5 * Erfc(-z * InverseSqrt2);
+
+    /// <summary>Standard normal density <c>phi(z) = exp(-z^2 / 2) / sqrt(2 pi)</c>.</summary>
+    /// <param name="z">The standardized value.</param>
+    /// <returns>The density at <paramref name="z"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static double NormalDensity(double z) => Math.Exp(-0.5 * z * z) * InverseSqrtTwoPi;
+
+    /// <summary>
+    /// Standard normal quantile: the published Zelen-Severo seed refined by Halley against
+    /// <see cref="NormalCumulative"/> until the step stops changing the answer.
+    /// </summary>
+    /// <param name="probability">The target cumulative probability, strictly inside <c>(0, 1)</c>.</param>
+    /// <returns><c>z</c> with <c>Phi(z) = probability</c>.</returns>
+    /// <remarks>
+    /// The seed is the closed-form tail approximation (about 3e-4 relative), and each Halley step
+    /// squares the distance to the root while the forward function stays exact enough to resolve
+    /// it. Four steps are therefore saturating rather than necessary; the loop stops early as soon
+    /// as a step cannot move <c>z</c>, which is what binds the accuracy of this inverse to the
+    /// accuracy of <see cref="NormalCumulative"/> instead of to the seed.
+    /// </remarks>
+    internal static double NormalQuantile(double probability)
+    {
+        if (probability <= 0.0 || probability >= 1.0)
+        {
+            return probability switch
+            {
+                0.0 => double.NegativeInfinity,
+                1.0 => double.PositiveInfinity,
+                _ => double.NaN,
+            };
+        }
+
+        bool lower = probability < 0.5;
+        double tail = lower ? probability : 1.0 - probability;
+        double z = SeedStandardNormalQuantile(tail);
+        if (lower)
+        {
+            z = -z;
+        }
+
+        for (int step = 0; step < QuantileRefinementSteps; step++)
+        {
+            double error = (NormalCumulative(z) - probability) / NormalDensity(z);
+            double corrected = z - error / (1.0 + (0.5 * z * error));
+            if (corrected == z)
+            {
+                return z;
+            }
+
+            z = corrected;
+        }
+
+        return z;
+    }
+
+    /// <summary>Draws a unit double in <c>[0, 1)</c> scaled into <c>[0, bound)</c> by Lemire multiply-shift.</summary>
+    /// <typeparam name="TEngine">The engine core; the state is advanced in place.</typeparam>
+    /// <param name="engine">The engine state to advance.</param>
+    /// <param name="bound">The exclusive upper bound; zero yields zero.</param>
+    /// <returns>A value in <c>[0, bound)</c>, exactly uniform over it.</returns>
+    internal static ulong NextBoundedUInt64<TEngine>(ref TEngine engine, ulong bound)
+        where TEngine : struct, IRandomSource<TEngine>
+    {
+        if (bound == 0UL)
+        {
+            return 0UL;
+        }
+
+        if (BitOperations.IsPow2(bound))
+        {
+            return TEngine.NextUInt64(ref engine) & (bound - 1);
+        }
+
+        if (bound <= uint.MaxValue)
+        {
+            return NextBoundedUInt32(ref engine, (uint)bound);
+        }
+
+        UInt128 product = (UInt128)TEngine.NextUInt64(ref engine) * bound;
+        ulong low = (ulong)product;
+        if (low >= bound)
+        {
+            return (ulong)(product >> 64);
+        }
+
+        ulong threshold = unchecked(0UL - bound) % bound;
+        while (low < threshold)
+        {
+            product = (UInt128)TEngine.NextUInt64(ref engine) * bound;
+            low = (ulong)product;
+        }
+
+        return (ulong)(product >> 64);
+    }
+
+    /// <summary>Draws a unit double in <c>[0, 1)</c> scaled into <c>[0, bound)</c> by Lemire multiply-shift.</summary>
+    /// <typeparam name="TEngine">The engine core; the state is advanced in place.</typeparam>
+    /// <param name="engine">The engine state to advance.</param>
+    /// <param name="bound">The exclusive upper bound; zero yields zero.</param>
+    /// <returns>A value in <c>[0, bound)</c>, exactly uniform over it.</returns>
+    internal static uint NextBoundedUInt32<TEngine>(ref TEngine engine, uint bound)
+        where TEngine : struct, IRandomSource<TEngine>
+    {
+        if (bound == 0u)
+        {
+            return 0u;
+        }
+
+        if (BitOperations.IsPow2(bound))
+        {
+            return TEngine.NextUInt32(ref engine) & (bound - 1);
+        }
+
+        ulong product = (ulong)TEngine.NextUInt32(ref engine) * bound;
+        uint low = (uint)product;
+        if (low >= bound)
+        {
+            return (uint)(product >> 32);
+        }
+
+        uint threshold = unchecked(0u - bound) % bound;
+        while (low < threshold)
+        {
+            product = (ulong)TEngine.NextUInt32(ref engine) * bound;
+            low = (uint)product;
+        }
+
+        return (uint)(product >> 32);
+    }
+
+    /// <summary>The argument at which the series branch hands over to the tail branch.</summary>
+    private const double ErfSeriesCutoff = 1.5;
+
+    /// <summary><c>1 / sqrt(2)</c>, the standardisation the normal CDF needs.</summary>
+    private const double InverseSqrt2 = 0.70710678118654752440;
+
+    /// <summary><c>1 / sqrt(2 pi)</c>, the normal density's leading factor.</summary>
+    private const double InverseSqrtTwoPi = 0.39894228040143267794;
+
+    /// <summary>Halley steps allowed for the quantile before the refinement is declared converged.</summary>
+    private const int QuantileRefinementSteps = 4;
+
+    /// <summary>Smallest continued-fraction element, standing in for a zero pivot.</summary>
+    private const double ContinuedFractionTiny = 1e-300;
+
+    /// <summary>Convergence test for the continued fraction, one part in 1e-16.</summary>
+    private const double ContinuedFractionEpsilon = double.Epsilon;
+
+    /// <summary>Maclaurin series of <c>erf</c> for a non-negative argument below the cutoff.</summary>
+    private static double ErfSeries(double magnitude)
+    {
+        double term = magnitude;
+        double sum = term;
+        double square = magnitude * magnitude;
+
+        for (int n = 1; n <= 40 && term != 0.0; n++)
+        {
+            term *= -square * (2.0 * (n - 1) + 1.0) / ((double)n * ((2.0 * n) + 1.0));
+            sum += term;
+        }
+
+        return sum * (2.0 / Math.Sqrt(Math.PI));
+    }
+
+    /// <summary>Laplace's continued fraction for <c>erfc</c> at or above the cutoff, by modified Lentz.</summary>
+    private static double ErfcTail(double magnitude)
+    {
+        double convergent = magnitude;
+        double numerator = magnitude;
+        double denominator = 0.0;
+
+        for (int j = 1; j <= 300; j++)
+        {
+            double partial = 0.5 * j;
+
+            denominator = magnitude + (partial * denominator);
+            if (Math.Abs(denominator) < ContinuedFractionTiny)
+            {
+                denominator = ContinuedFractionTiny;
+            }
+
+            numerator = magnitude + (partial / numerator);
+            if (Math.Abs(numerator) < ContinuedFractionTiny)
+            {
+                numerator = ContinuedFractionTiny;
+            }
+
+            denominator = 1.0 / denominator;
+            double delta = numerator * denominator;
+            convergent *= delta;
+            if (Math.Abs(delta - 1.0) < ContinuedFractionEpsilon)
+            {
+                break;
+            }
+        }
+
+        return Math.Exp(-magnitude * magnitude) / (Math.Sqrt(Math.PI) * convergent);
+    }
+
+    /// <summary>
+    /// Zelen-Severo closed form for the lower-tail standard normal quantile at a probability at
+    /// most <c>0.5</c>; the caller mirrors it for the upper half.
+    /// </summary>
+    private static double SeedStandardNormalQuantile(double tailProbability)
+    {
+        double t = Math.Sqrt(-2.0 * Math.Log(tailProbability));
+        return t - ((2.30753 + (0.270884 * t)) / (1.0 + (0.99229 * t) + (0.044811 * t * t)));
+    }
 }
 
 /// <summary>
@@ -922,6 +1188,430 @@ public readonly struct PoissonDistribution
             {
                 return (int)count;
             }
+        }
+    }
+}
+
+/// <summary>
+/// Normal(mu, sigma): the continuous bell curve, sampled with the Marsaglia polar method and
+/// queried through a series/tail-continued-fraction error function rather than a fitted table.
+/// </summary>
+/// <remarks>
+/// <para><b>Why polar.</b> The polar method is the web distribution's default algorithm, and it is
+/// also the cheaper one here: it spends two uniform draws and a square root per accepted deviate
+/// against Box-Muller's two transcendentals of a <c>log</c>, and its rejection rate is
+/// <c>pi/4</c> - about one draw in six comes back free of <c>Sin</c>/<c>Cos</c> entirely.</para>
+/// <para><b>No cached pair.</b> Box-Muller produces deviates in pairs and the web surface parks the
+/// spare in a module-level variable. A distribution here is a value type and must stay immutable and
+/// shareable, so the spare would have to live in the caller's engine - which is exactly what
+/// <see cref="RandomEngine{TEngine}.NextNormal(double, double)"/> already does. Reach for that
+/// member when the pair cache matters and for this struct when the query surface does.</para>
+/// <para><b>Accuracy.</b> <see cref="Probability(double)"/>, <see cref="CumulativeProbability(double)"/>
+/// and <see cref="Quantile(double)"/> inherit the error function's accuracy, which is at the double
+/// limit over the series domain and over the whole tail domain.</para>
+/// </remarks>
+public readonly struct NormalDistribution
+{
+    private readonly double _mean;
+    private readonly double _standardDeviation;
+
+    /// <summary>Initialises the standard normal distribution.</summary>
+    public NormalDistribution()
+        : this(0.0, 1.0)
+    {
+    }
+
+    /// <summary>Initialises a normal distribution.</summary>
+    /// <param name="mean">The location.</param>
+    /// <param name="standardDeviation">The scale; finite and strictly positive.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// A parameter is not finite, or <paramref name="standardDeviation"/> is not positive.
+    /// </exception>
+    public NormalDistribution(double mean = 0.0, double standardDeviation = 1.0)
+    {
+        if (!double.IsFinite(mean) || !double.IsFinite(standardDeviation) || standardDeviation <= 0.0)
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(
+                nameof(standardDeviation),
+                "The mean must be finite and the standard deviation must be finite and positive.");
+        }
+
+        _mean = mean;
+        _standardDeviation = standardDeviation;
+    }
+
+    /// <summary>Gets the location parameter.</summary>
+    public double Mean => _mean;
+
+    /// <summary>Gets the scale parameter.</summary>
+    public double StandardDeviation => _standardDeviation;
+
+    /// <summary>Gets the variance, <c>sigma^2</c>.</summary>
+    public double Variance => _standardDeviation * _standardDeviation;
+
+    /// <summary>Evaluates the probability density function.</summary>
+    /// <param name="x">The point, finite.</param>
+    /// <returns>The density at <paramref name="x"/>.</returns>
+    /// <remarks>A cold query path: it reads no engine state and consumes no draw.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="x"/> is not finite.</exception>
+    public double Probability(double x)
+    {
+        if (!double.IsFinite(x))
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(x), "The density argument must be finite.");
+        }
+
+        double z = (x - _mean) / _standardDeviation;
+        return DistributionMath.NormalDensity(z) / _standardDeviation;
+    }
+
+    /// <summary>Evaluates the cumulative distribution function.</summary>
+    /// <param name="x">The point, finite.</param>
+    /// <returns>The probability of drawing at most <paramref name="x"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="x"/> is not finite.</exception>
+    public double CumulativeProbability(double x)
+    {
+        if (!double.IsFinite(x))
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(x), "The cumulative argument must be finite.");
+        }
+
+        return DistributionMath.NormalCumulative((x - _mean) / _standardDeviation);
+    }
+
+    /// <summary>Inverts the cumulative distribution function.</summary>
+    /// <param name="probability">The target cumulative probability, in <c>[0, 1]</c>.</param>
+    /// <returns>
+    /// The deviate whose cumulative probability is <paramref name="probability"/>; the endpoints
+    /// return the signed infinities, matching the web surface.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="probability"/> is NaN.</exception>
+    public double Quantile(double probability)
+    {
+        if (double.IsNaN(probability))
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(probability), "The probability must not be NaN.");
+        }
+
+        return _mean + (_standardDeviation * DistributionMath.NormalQuantile(probability));
+    }
+
+    /// <summary>Draws one deviate with the Marsaglia polar method.</summary>
+    /// <typeparam name="TEngine">The engine core to draw from.</typeparam>
+    /// <param name="engine">The engine state to advance. It is mutated in place.</param>
+    /// <returns>A normally distributed value.</returns>
+    /// <remarks>
+    /// Each attempt costs two 53-bit unit draws, a sum of squares and, on acceptance, one
+    /// logarithm and one square root. Rejections are uniform over the unit disc, so the expected
+    /// number of attempts is <c>4 / pi</c>.
+    /// </remarks>
+    public double Sample<TEngine>(ref TEngine engine)
+        where TEngine : struct, IRandomSource<TEngine>
+    {
+        while (true)
+        {
+            double u = (2.0 * DistributionMath.NextUnitDouble(ref engine)) - 1.0;
+            double v = (2.0 * DistributionMath.NextUnitDouble(ref engine)) - 1.0;
+            double radius = (u * u) + (v * v);
+
+            if (radius >= 1.0 || radius == 0.0)
+            {
+                continue;
+            }
+
+            double scale = Math.Sqrt(-2.0 * Math.Log(radius) / radius);
+            return _mean + (_standardDeviation * (u * scale));
+        }
+    }
+
+    /// <summary>Fills the destination with independent deviates.</summary>
+    /// <typeparam name="TEngine">The engine core to draw from.</typeparam>
+    /// <param name="engine">The engine state to advance. It is mutated in place.</param>
+    /// <param name="destination">The span to overwrite; an empty span is a no-op.</param>
+    public void SampleMany<TEngine>(ref TEngine engine, Span<double> destination)
+        where TEngine : struct, IRandomSource<TEngine>
+    {
+        for (int i = 0; i < destination.Length; i++)
+        {
+            destination[i] = Sample(ref engine);
+        }
+    }
+}
+
+/// <summary>
+/// Exponential(lambda): the waiting-time distribution with rate <c>lambda</c>, sampled and inverted
+/// in closed form.
+/// </summary>
+/// <remarks>
+/// <para><b>No log(0) and no cancellation.</b> The unit draw is taken over the open interval, and
+/// the complement arithmetic goes through <see cref="DistributionMath.LogOneMinus"/> and
+/// <see cref="DistributionMath.OneMinusExp"/>, so a probability near zero keeps every significant
+/// digit instead of rounding <c>1 - p</c> to one.</para>
+/// <para>The sampler is one draw and one logarithm; the support is <c>[0, inf)</c>.</para>
+/// </remarks>
+public readonly struct ExponentialDistribution
+{
+    private readonly double _lambda;
+
+    /// <summary>Initialises a unit-rate exponential distribution.</summary>
+    public ExponentialDistribution()
+        : this(1.0)
+    {
+    }
+
+    /// <summary>Initialises an exponential distribution.</summary>
+    /// <param name="lambda">The rate; finite and strictly positive.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="lambda"/> is not finite and positive.</exception>
+    public ExponentialDistribution(double lambda = 1.0)
+    {
+        if (!double.IsFinite(lambda) || lambda <= 0.0)
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(lambda), "The rate must be finite and positive.");
+        }
+
+        _lambda = lambda;
+    }
+
+    /// <summary>Gets the rate parameter.</summary>
+    public double Lambda => _lambda;
+
+    /// <summary>Gets the mean, <c>1 / lambda</c>.</summary>
+    public double Mean => 1.0 / _lambda;
+
+    /// <summary>Gets the standard deviation, which equals the mean.</summary>
+    public double StandardDeviation => 1.0 / _lambda;
+
+    /// <summary>Gets the variance, <c>1 / lambda^2</c>.</summary>
+    public double Variance => 1.0 / (_lambda * _lambda);
+
+    /// <summary>Evaluates the probability density function.</summary>
+    /// <param name="x">The point, finite.</param>
+    /// <returns><c>lambda * e^(-lambda x)</c> above zero, and zero below it.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="x"/> is not finite.</exception>
+    public double Probability(double x)
+    {
+        if (!double.IsFinite(x))
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(x), "The density argument must be finite.");
+        }
+
+        return x < 0.0 ? 0.0 : _lambda * Math.Exp(-_lambda * x);
+    }
+
+    /// <summary>Evaluates the cumulative distribution function.</summary>
+    /// <param name="x">The point, finite.</param>
+    /// <returns><c>1 - e^(-lambda x)</c> for a non-negative argument, else zero.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="x"/> is not finite.</exception>
+    public double CumulativeProbability(double x)
+    {
+        if (!double.IsFinite(x))
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(x), "The cumulative argument must be finite.");
+        }
+
+        return x <= 0.0 ? 0.0 : DistributionMath.OneMinusExp(-_lambda * x);
+    }
+
+    /// <summary>Inverts the cumulative distribution function.</summary>
+    /// <param name="probability">The target cumulative probability, in <c>[0, 1]</c>.</param>
+    /// <returns>The waiting time whose cumulative probability is <paramref name="probability"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="probability"/> is NaN or outside <c>[0, 1]</c>.</exception>
+    public double Quantile(double probability)
+    {
+        DistributionMath.ValidateUnitInterval(probability, nameof(probability));
+        return probability >= 1.0 ? double.PositiveInfinity : -DistributionMath.LogOneMinus(probability) / _lambda;
+    }
+
+    /// <summary>Draws one deviate by inverse transform sampling.</summary>
+    /// <typeparam name="TEngine">The engine core to draw from.</typeparam>
+    /// <param name="engine">The engine state to advance. It is mutated in place.</param>
+    /// <returns>A non-negative exponentially distributed value.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public double Sample<TEngine>(ref TEngine engine)
+        where TEngine : struct, IRandomSource<TEngine> =>
+        -DistributionMath.LogOneMinus(DistributionMath.NextUnitDouble(ref engine)) / _lambda;
+
+    /// <summary>Fills the destination with independent deviates.</summary>
+    /// <typeparam name="TEngine">The engine core to draw from.</typeparam>
+    /// <param name="engine">The engine state to advance. It is mutated in place.</param>
+    /// <param name="destination">The span to overwrite; an empty span is a no-op.</param>
+    public void SampleMany<TEngine>(ref TEngine engine, Span<double> destination)
+        where TEngine : struct, IRandomSource<TEngine>
+    {
+        double inverseLambda = 1.0 / _lambda;
+        for (int i = 0; i < destination.Length; i++)
+        {
+            destination[i] = -DistributionMath.LogOneMinus(DistributionMath.NextUnitDouble(ref engine)) * inverseLambda;
+        }
+    }
+}
+
+/// <summary>
+/// Uniform(min, max): every point of the interval is equally likely, and a draw is one unit
+/// multiply-add.
+/// </summary>
+/// <remarks>
+/// <para>The web surface ships this distribution as a sampler only, so this one carries no density,
+/// cumulative or quantile query: nothing in either engine consumes them, and opening them would be
+/// surface without a caller.</para>
+/// <para><c>min == max</c> is a legal degenerate support and always draws that point.</para>
+/// </remarks>
+public readonly struct UniformDistribution
+{
+    private readonly double _min;
+    private readonly double _max;
+
+    /// <summary>Initialises the unit interval.</summary>
+    public UniformDistribution()
+        : this(0.0, 1.0)
+    {
+    }
+
+    /// <summary>Initialises a uniform distribution over a closed interval.</summary>
+    /// <param name="min">The inclusive lower bound; finite.</param>
+    /// <param name="max">The inclusive upper bound; finite and not below <paramref name="min"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A bound is not finite, or <paramref name="min"/> exceeds <paramref name="max"/>.</exception>
+    public UniformDistribution(double min = 0.0, double max = 1.0)
+    {
+        if (!double.IsFinite(min) || !double.IsFinite(max) || min > max)
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(min), "Both bounds must be finite and min must not exceed max.");
+        }
+
+        _min = min;
+        _max = max;
+    }
+
+    /// <summary>Gets the inclusive lower bound.</summary>
+    public double Min => _min;
+
+    /// <summary>Gets the inclusive upper bound.</summary>
+    public double Max => _max;
+
+    /// <summary>Gets the interval length, <c>max - min</c>.</summary>
+    public double Range => _max - _min;
+
+    /// <summary>Gets the mean, the interval midpoint.</summary>
+    public double Mean => 0.5 * (_min + _max);
+
+    /// <summary>Gets the variance, <c>range^2 / 12</c>.</summary>
+    public double Variance
+    {
+        get
+        {
+            double range = Range;
+            return (range * range) / 12.0;
+        }
+    }
+
+    /// <summary>Draws one value from the interval.</summary>
+    /// <typeparam name="TEngine">The engine core to draw from.</typeparam>
+    /// <param name="engine">The engine state to advance. It is mutated in place.</param>
+    /// <returns>A value in <c>[min, max]</c>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public double Sample<TEngine>(ref TEngine engine)
+        where TEngine : struct, IRandomSource<TEngine> =>
+        _min + (Range * DistributionMath.NextUnitDouble(ref engine));
+
+    /// <summary>Fills the destination with independent values.</summary>
+    /// <typeparam name="TEngine">The engine core to draw from.</typeparam>
+    /// <param name="engine">The engine state to advance. It is mutated in place.</param>
+    /// <param name="destination">The span to overwrite; an empty span is a no-op.</param>
+    public void SampleMany<TEngine>(ref TEngine engine, Span<double> destination)
+        where TEngine : struct, IRandomSource<TEngine>
+    {
+        double range = Range;
+        for (int i = 0; i < destination.Length; i++)
+        {
+            destination[i] = _min + (range * DistributionMath.NextUnitDouble(ref engine));
+        }
+    }
+}
+
+/// <summary>
+/// Uniform over the inclusive integer interval <c>[min, max]</c>, drawn with Lemire
+/// multiply-shift so the result is exactly uniform without a division.
+/// </summary>
+/// <remarks>
+/// <para><b>Inclusive by contract.</b> The web surface counts <c>max - min + 1</c> values, and that
+/// single off-by-one is the whole difference between a fair draw and a truncated one; the width is
+/// computed with overflow checking and an overflowing interval is refused at
+/// construction rather than wrapping into a smaller one.</para>
+/// <para>Like the web surface, this distribution is a sampler: no density or cumulative query
+/// exists to keep in step.</para>
+/// </remarks>
+public readonly struct IntegerDistribution
+{
+    private readonly long _min;
+    private readonly ulong _width;
+
+    /// <summary>Initialises a distribution over an inclusive integer interval.</summary>
+    /// <param name="min">The inclusive lower bound.</param>
+    /// <param name="max">The inclusive upper bound, not below <paramref name="min"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="min"/> exceeds <paramref name="max"/>, or the interval holds more distinct
+    /// values than <see cref="ulong"/> can count.
+    /// </exception>
+    public IntegerDistribution(long min, long max)
+    {
+        if (min > max)
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(max), "The inclusive minimum must not exceed the inclusive maximum.");
+        }
+
+        try
+        {
+            _width = checked((ulong)(max - min) + 1UL);
+        }
+        catch (OverflowException)
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(max), "The inclusive interval is too wide to count its values.");
+        }
+
+        _min = min;
+    }
+
+    /// <summary>Gets the inclusive lower bound.</summary>
+    public long Min => _min;
+
+    /// <summary>Gets the inclusive upper bound.</summary>
+    public long Max => unchecked(_min + ((long)_width - 1));
+
+    /// <summary>Gets the number of distinct values the interval holds.</summary>
+    public ulong Width => _width;
+
+    /// <summary>Gets the arithmetic mean of the support.</summary>
+    public double Mean => _min + ((double)(_width - 1) * 0.5);
+
+    /// <summary>Gets the variance of the support, <c>(w^2 - 1) / 12</c>.</summary>
+    public double Variance
+    {
+        get
+        {
+            double width = _width;
+            return ((width * width) - 1.0) / 12.0;
+        }
+    }
+
+    /// <summary>Draws one value from the interval.</summary>
+    /// <typeparam name="TEngine">The engine core to draw from.</typeparam>
+    /// <param name="engine">The engine state to advance. It is mutated in place.</param>
+    /// <returns>A value in <c>[min, max]</c>, exactly uniform over it.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public long Sample<TEngine>(ref TEngine engine)
+        where TEngine : struct, IRandomSource<TEngine> =>
+        unchecked(_min + (long)DistributionMath.NextBoundedUInt64(ref engine, _width));
+
+    /// <summary>Fills the destination with independent values.</summary>
+    /// <typeparam name="TEngine">The engine core to draw from.</typeparam>
+    /// <param name="engine">The engine state to advance. It is mutated in place.</param>
+    /// <param name="destination">The span to overwrite; an empty span is a no-op.</param>
+    public void SampleMany<TEngine>(ref TEngine engine, Span<long> destination)
+        where TEngine : struct, IRandomSource<TEngine>
+    {
+        for (int i = 0; i < destination.Length; i++)
+        {
+            destination[i] = Sample(ref engine);
         }
     }
 }

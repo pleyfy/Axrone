@@ -15,13 +15,24 @@ public sealed class SceneMaterialPass
         bool? depthWrite = null,
         bool? cull = null,
         bool? blend = null,
-        SceneBlendState? blendState = null)
+        SceneBlendState? blendState = null,
+        string? shaderId = null,
+        string? phase = null,
+        string? cullMode = null,
+        string? enabledWhenUniformNonZero = null)
     {
         if (string.IsNullOrWhiteSpace(id))
         {
             throw new SceneAssetException(
                 SceneAssetErrorCodes.Invalid,
                 "Material passes require a non-empty id.");
+        }
+
+        if (shaderId is not null && string.IsNullOrWhiteSpace(shaderId))
+        {
+            throw new SceneAssetException(
+                SceneAssetErrorCodes.Invalid,
+                "Material pass shaderId must not be whitespace.");
         }
 
         blendState?.Validate();
@@ -34,6 +45,10 @@ public sealed class SceneMaterialPass
         Cull = cull;
         Blend = blend;
         BlendState = blendState;
+        ShaderId = shaderId;
+        Phase = phase;
+        CullMode = cullMode;
+        EnabledWhenUniformNonZero = enabledWhenUniformNonZero;
     }
 
     /// <summary>Pass identity.</summary>
@@ -59,4 +74,16 @@ public sealed class SceneMaterialPass
 
     /// <summary>Optional explicit blend factors and equations.</summary>
     public SceneBlendState? BlendState { get; }
+
+    /// <summary>Optional pass-specific built-in or generated shader identifier.</summary>
+    public string? ShaderId { get; }
+
+    /// <summary>Optional Material Contract pass phase (e.g. default, shadow-caster, outline).</summary>
+    public string? Phase { get; }
+
+    /// <summary>Optional cull face directive (back, front, none).</summary>
+    public string? CullMode { get; }
+
+    /// <summary>Optional scalar uniform name gating pass execution when non-zero.</summary>
+    public string? EnabledWhenUniformNonZero { get; }
 }

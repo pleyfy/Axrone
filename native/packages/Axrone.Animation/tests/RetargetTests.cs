@@ -76,6 +76,23 @@ public class RetargetTests
     }
 
     [Fact]
+    public void RetargetFrame_RestoresUnmappedTargetBones()
+    {
+        var profile = new RetargetProfile(SourceRig(), ScaledTargetRig(), [("arm", "arm")]);
+        var sourceFrame = new AnimationFrame(2, NoCurves());
+        var targetFrame = new AnimationFrame(2, NoCurves());
+        targetFrame.GetTranslations()[0] = new Vec3(9.0f, 9.0f, 9.0f);
+        targetFrame.GetRotations()[0] = Quat.CreateFromAxisAngle(Vec3.UnitX, 1.0f);
+        targetFrame.GetScales()[0] = new Vec3(3.0f, 3.0f, 3.0f);
+
+        profile.RetargetFrame(sourceFrame, targetFrame);
+
+        targetFrame.ReadTranslations()[0].Should().Be(Vec3.Zero);
+        targetFrame.ReadRotations()[0].Should().Be(Quat.Identity);
+        targetFrame.ReadScales()[0].Should().Be(Vec3.One);
+    }
+
+    [Fact]
     public void RetargetView_WorksOverStackLanes()
     {
         var profile = new RetargetProfile(SourceRig(), ScaledTargetRig());

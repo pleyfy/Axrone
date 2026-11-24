@@ -1,22 +1,6 @@
 namespace Axrone.Ecs;
 
 /// <summary>
-/// Interned world event identity: emissions carry the slot, never the string.
-/// Slot zero is the unresolved value, so <c>default</c> is never a live event.
-/// </summary>
-/// <param name="Value">Symbol table slot.</param>
-public readonly record struct EcsEventName(int Value)
-{
-    /// <summary>Unresolved sentinel.</summary>
-    public static readonly EcsEventName Empty;
-
-    private const string EmptySymbolText = "<empty>";
-
-    /// <inheritdoc/>
-    public override string ToString() => Value >= 1 ? EcsEventNames.Table.GetName(Value) : EmptySymbolText;
-}
-
-/// <summary>
 /// Interned actor name identity used by the world actor registry.
 /// </summary>
 /// <param name="Value">Symbol table slot.</param>
@@ -48,40 +32,8 @@ public readonly record struct EcsActorTag(int Value)
 }
 
 /// <summary>
-/// Interned event names. Interning is a setup-time operation: the hot path uses
-/// <see cref="EcsEventName"/> slots and never hashes a string.
-/// </summary>
-public static class EcsEventNames
-{
-    internal static readonly EcsSymbolTable Table = new("event");
-
-    /// <summary>Interns a name, claiming a new slot when unseen.</summary>
-    /// <param name="name">Non-empty ordinal name.</param>
-    public static EcsEventName Intern(string name)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        return new EcsEventName(Table.Intern(name));
-    }
-
-    /// <summary>Interns a name from a view; interning is a setup-time operation.</summary>
-    /// <param name="name">Non-empty ordinal name.</param>
-    public static EcsEventName Intern(ReadOnlySpan<char> name)
-    {
-        if (name.IsEmpty || char.IsWhiteSpace(name[0]))
-        {
-            EcsThrowHelper.ThrowEmptySymbol("event");
-        }
-
-        return new EcsEventName(Table.Intern(name));
-    }
-
-    /// <summary>Resolves the text of an interned name.</summary>
-    /// <param name="name">Slot handle.</param>
-    public static string GetName(in EcsEventName name) => Table.GetName(name.Value);
-}
-
-/// <summary>
-/// Interned actor names; see <see cref="EcsEventNames"/> for the slot contract.
+/// Interned actor names. Interning is a setup-time operation: the hot path uses
+/// <see cref="EcsActorName"/> slots and never hashes a string.
 /// </summary>
 public static class EcsActorNames
 {
@@ -113,7 +65,7 @@ public static class EcsActorNames
 }
 
 /// <summary>
-/// Interned actor tags; see <see cref="EcsEventNames"/> for the slot contract.
+/// Interned actor tags; see <see cref="EcsActorName"/> for the slot contract.
 /// </summary>
 public static class EcsActorTags
 {

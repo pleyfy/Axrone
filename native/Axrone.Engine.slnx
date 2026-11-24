@@ -16,6 +16,8 @@
     <Project Path="packages/Axrone.Reactive/tests/Axrone.Reactive.Tests.csproj" />
     <Project Path="packages/Axrone.Reactive.Ecs/Axrone.Reactive.Ecs.csproj" />
     <Project Path="packages/Axrone.Reactive.Ecs/tests/Axrone.Reactive.Ecs.Tests.csproj" />
+    <Project Path="packages/Axrone.Reactive.Scene/Axrone.Reactive.Scene.csproj" />
+    <Project Path="packages/Axrone.Reactive.Scene/tests/Axrone.Reactive.Scene.Tests.csproj" />
     <Project Path="packages/Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
     <Project Path="packages/Axrone.Scene.Core/tests/Axrone.Scene.Core.Tests.csproj" />
     <Project Path="packages/Axrone.Scene.Assets/Axrone.Scene.Assets.csproj" />

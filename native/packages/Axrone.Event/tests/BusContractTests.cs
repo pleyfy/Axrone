@@ -9,8 +9,12 @@ public class BusContractTests
 {
     private sealed class StubSubscription : IEventSubscription
     {
+        private const int Active = 1;
+        private const int Paused = 2;
+        private const int Disposed = 3;
+
         private readonly Action _onDispose;
-        private int _state = 1;
+        private int _state = Active;
 
         public StubSubscription(Guid id, Action onDispose)
         {
@@ -19,13 +23,15 @@ public class BusContractTests
         }
 
         public Guid SubscriptionId { get; }
-        public bool IsActive => Volatile.Read(ref _state) == 1;
-        public void Pause() => Volatile.Write(ref _state, 0);
-        public void Resume() => Volatile.Write(ref _state, 1);
+        public bool IsActive => Volatile.Read(ref _state) == Active;
+        public bool IsPaused => Volatile.Read(ref _state) == Paused;
+
+        public void Pause() => Interlocked.CompareExchange(ref _state, Paused, Active);
+        public void Resume() => Interlocked.CompareExchange(ref _state, Active, Paused);
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _state, 0) == 1)
+            if (Interlocked.Exchange(ref _state, Disposed) != Disposed)
             {
                 _onDispose();
             }

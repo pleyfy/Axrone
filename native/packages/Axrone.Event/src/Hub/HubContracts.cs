@@ -367,12 +367,6 @@ public sealed class EventHubOptions
         init => field = value > 0 ? value : ThrowHelper.ThrowArgumentOutOfRange<int>(nameof(value));
     } = 128;
 
-    public int PinnedRingCapacity
-    {
-        get => field;
-        init => field = (value > 0 && (value & (value - 1)) == 0) ? value : ThrowHelper.ThrowArgumentOutOfRange<int>(nameof(value));
-    } = 4096;
-
     public int SpinCyclesBudget
     {
         get => field;
@@ -380,89 +374,4 @@ public sealed class EventHubOptions
     } = 64;
 }
 
-public readonly struct StageUninitialized;
-public readonly struct StageCapacitiesConfigured;
-public readonly struct StageComplete;
 
-public sealed class EventHubBuilder<TStage>
-{
-    private readonly int _waiterPoolCapacity;
-    private readonly int _maxSubscribers;
-    private readonly int _pinnedRingCapacity;
-    private readonly int _spinCyclesBudget;
-
-    internal EventHubBuilder(int waiterPoolCapacity, int maxSubscribers, int pinnedRingCapacity, int spinCyclesBudget)
-    {
-        _waiterPoolCapacity = waiterPoolCapacity;
-        _maxSubscribers = maxSubscribers;
-        _pinnedRingCapacity = pinnedRingCapacity;
-        _spinCyclesBudget = spinCyclesBudget;
-    }
-}
-
-public static class EventHubBuilder
-{
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EventHubBuilder<StageUninitialized> Create() =>
-        new(1024, 128, 4096, 64);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EventHubBuilder<StageCapacitiesConfigured> WithCapacities(
-        this EventHubBuilder<StageUninitialized> _,
-        int waiterPoolCapacity,
-        int maxSubscribers)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(waiterPoolCapacity);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxSubscribers);
-        return new EventHubBuilder<StageCapacitiesConfigured>(waiterPoolCapacity, maxSubscribers, 4096, 64);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EventHubBuilder<StageComplete> WithRingBuffer(
-        this EventHubBuilder<StageComplete> builder,
-        int pinnedRingCapacity,
-        int spinCyclesBudget = 64)
-    {
-        if (pinnedRingCapacity <= 0 || (pinnedRingCapacity & (pinnedRingCapacity - 1)) != 0)
-        {
-            ThrowHelper.ThrowArgumentOutOfRange(nameof(pinnedRingCapacity));
-        }
-        ArgumentOutOfRangeException.ThrowIfNegative(spinCyclesBudget);
-
-        return new EventHubBuilder<StageComplete>(
-            Unsafe.As<EventHubBuilder<StageComplete>, EventHubBuilderAccessor>(ref builder).WaiterPoolCapacity,
-            Unsafe.As<EventHubBuilder<StageComplete>, EventHubBuilderAccessor>(ref builder).MaxSubscribers,
-            pinnedRingCapacity,
-            spinCyclesBudget);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EventHub<TEvent, TBackoff, TMetricsSink> Build<TEvent, TBackoff, TMetricsSink>(
-        this EventHubBuilder<StageComplete> builder)
-        where TBackoff : struct, ISpinBackoff
-        where TMetricsSink : struct, IEventMetricsSink
-    {
-        ref var accessor = ref Unsafe.As<EventHubBuilder<StageComplete>, EventHubBuilderAccessor>(ref builder);
-        var options = new EventHubOptions
-        {
-            WaiterPoolCapacity = accessor.WaiterPoolCapacity,
-            MaxSubscribers = accessor.MaxSubscribers,
-            PinnedRingCapacity = accessor.PinnedRingCapacity,
-            SpinCyclesBudget = accessor.SpinCyclesBudget
-        };
-        return new EventHub<TEvent, TBackoff, TMetricsSink>(options);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EventHub<TEvent, AdaptiveSpinBackoff, NullMetricsSink> Build<TEvent>(this EventHubBuilder<StageComplete> builder) =>
-        builder.Build<TEvent, AdaptiveSpinBackoff, NullMetricsSink>();
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct EventHubBuilderAccessor
-    {
-        public int WaiterPoolCapacity;
-        public int MaxSubscribers;
-        public int PinnedRingCapacity;
-        public int SpinCyclesBudget;
-    }
-}

@@ -239,29 +239,6 @@ public sealed class CompositionParityTests
     }
 
     [Fact]
-    public void EventHooks_ExposeNamedSurfaceWithoutAllocating()
-    {
-        using var router = new EventRouter<int>(64);
-        var hooks = new EventHooks<int>(router);
-        int count = 0;
-
-        IEventSubscription subscription = hooks.On((_, _) => count++);
-        hooks.EmitSync(1).Should().Be(1);
-        hooks.Off(subscription.SubscriptionId).Should().BeTrue();
-        hooks.EmitSync(2).Should().Be(0);
-
-        using var once = hooks.Once((_, _) => count += 10);
-        hooks.EmitSync(3).Should().Be(1);
-        hooks.EmitSync(4).Should().Be(0);
-
-        hooks.TryEmit(5).Should().BeTrue();
-        hooks.Emit(6);
-
-        count.Should().Be(11);
-        hooks.UseEmitter().Should().BeSameAs(router);
-    }
-
-    [Fact]
     public void EventFilters_IncludeAndExcludeGateThePublishPath()
     {
         using var router = new EventRouter<int>(64);
@@ -282,12 +259,6 @@ public sealed class CompositionParityTests
     [Fact]
     public void EventUtils_DeterministicCombinators()
     {
-        int onceCalls = 0;
-        Action<int> once = EventUtils.Once<int>(_ => onceCalls++);
-        once(1);
-        once(2);
-        onceCalls.Should().Be(1);
-
         List<int> filtered = [];
         Action<int> where = EventUtils.Where<int>(static value => value % 2 == 0, filtered.Add);
         where(1);
@@ -298,11 +269,6 @@ public sealed class CompositionParityTests
         Action<int> select = EventUtils.Select<int, string>(static value => $"v{value}", value => transformed = value);
         select(7);
         transformed.Should().Be("v7");
-
-        List<int> composed = [];
-        Action<int> compose = EventUtils.Compose<int>(composed.Add, value => composed.Add(value * 10));
-        compose(2);
-        composed.Should().Equal(2, 20);
 
         Exception? captured = null;
         Action<int> safe = EventUtils.CatchErrors<int>(

@@ -1,6 +1,7 @@
 namespace Axrone.Scene.Assets;
 
 using System.Collections.Frozen;
+using Axrone.AssetShader;
 
 /// <summary>
 /// Immutable shader definition: source pair, reflected uniform names and the
@@ -17,7 +18,8 @@ public sealed class SceneShaderDefinition : ISceneAssetDefinition<ShaderAssetTag
         IReadOnlyDictionary<SceneMeshSemantic, string>? attributes = null,
         bool depthTest = true,
         bool cull = true,
-        bool blend = false)
+        bool blend = false,
+        ShaderEffect? effect = null)
     {
         if (!id.IsValid)
         {
@@ -26,18 +28,15 @@ public sealed class SceneShaderDefinition : ISceneAssetDefinition<ShaderAssetTag
                 "Shader definitions require a non-empty id.");
         }
 
-        if (string.IsNullOrWhiteSpace(vertexSource))
+        // Raw sources win when both are present, exactly as in the Web shader factory; an effect
+        // may stand in for either stage because the renderer bakes the effect into real sources.
+        bool hasSourcePair =
+            !string.IsNullOrWhiteSpace(vertexSource) && !string.IsNullOrWhiteSpace(fragmentSource);
+        if (!hasSourcePair && effect is null)
         {
             throw new SceneAssetException(
                 SceneAssetErrorCodes.Invalid,
-                $"Shader '{id}' requires vertex source.");
-        }
-
-        if (string.IsNullOrWhiteSpace(fragmentSource))
-        {
-            throw new SceneAssetException(
-                SceneAssetErrorCodes.Invalid,
-                $"Shader '{id}' requires fragment source.");
+                $"Shader '{id}' requires vertex and fragment source, or an effect to bake them from.");
         }
 
         Id = id;
@@ -50,10 +49,18 @@ public sealed class SceneShaderDefinition : ISceneAssetDefinition<ShaderAssetTag
         DepthTest = depthTest;
         Cull = cull;
         Blend = blend;
+        Effect = effect;
     }
 
     /// <inheritdoc/>
     public SceneAssetId<ShaderAssetTag> Id { get; }
+
+    /// <summary>
+    /// Effect that backs this shader, or null when the raw source pair is authoritative. When an
+    /// effect is present the renderer compiles its technique passes through the variant baker
+    /// instead of the raw strings, so keywords and pass overrides become real GPU programs.
+    /// </summary>
+    public ShaderEffect? Effect { get; }
 
     /// <summary>Vertex shader source.</summary>
     public string VertexSource { get; }

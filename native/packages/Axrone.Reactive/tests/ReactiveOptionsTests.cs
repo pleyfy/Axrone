@@ -88,25 +88,13 @@ public sealed class ReactiveOptionsTests
     }
 
     [Fact]
-    public void ConfigAndRegistryNormalizeSubjectOptions()
+    public void ConfigNormalizesSubjectOptions()
     {
         var config = new ObservableConfig(
             subjectOptions: new SubjectOptions(maxObservers: 0, autoComplete: true, errorPropagation: false));
         config.SubjectOptions.MaxObservers.Should().Be(100);
         config.SubjectOptions.AutoComplete.Should().BeTrue();
         config.SubjectOptions.ErrorPropagation.Should().BeFalse();
-
-        using var registry = new ObservableRegistry(enableMemoryTracking: false);
-        int subjectId = registry.RegisterSubject(new object(), default);
-        for (int index = 0; index < 100; index++)
-        {
-            registry.RegisterObserver(subjectId, new object());
-        }
-
-        registry.ActiveObserverCount.Should().Be(100);
-        FluentActions.Invoking(() => registry.RegisterObserver(subjectId, new object()))
-            .Should().Throw<MaxObserversExceededError>()
-            .Which.MaxObservers.Should().Be(100);
     }
 
     [Fact]
@@ -219,52 +207,6 @@ public sealed class ReactiveOptionsTests
         new ObserverError().Code.Should().Be("OBSERVER_ERROR");
         new SubjectError(5).SubjectId.Should().Be(5);
         new ObserverExecutionError(1, null, inner).Timestamp.Should().BeGreaterThan(0);
-    }
-
-    [Fact]
-    public void MemoryManagerTracksAndCollects()
-    {
-        using var manager = new ObservableMemoryManager(true, gcIntervalMs: 0);
-        object subject = new();
-        object observer = new();
-        int subjectId = manager.TrackSubject(subject);
-        int observerId = manager.TrackObserver(observer, ObservationOptions.Default);
-        ObservableMemoryUsage usage = manager.GetMemoryUsage();
-        usage.Subjects.Should().Be(1);
-        usage.Observers.Should().Be(1);
-        usage.TotalBytes.Should().BeGreaterThan(0);
-        manager.Untrack(subjectId).Should().BeTrue();
-        manager.GetMemoryUsage().Subjects.Should().Be(0);
-        manager.Untrack(observerId).Should().BeTrue();
-        manager.GetHealth().IsHealthy.Should().BeTrue();
-    }
-
-    [Fact]
-    public void RegistryTracksObserversAndMemory()
-    {
-        using var registry = new ObservableRegistry();
-        var subjectOptions = new SubjectOptions(maxObservers: 2);
-        int subjectId = registry.RegisterSubject(new object(), subjectOptions);
-        int first = registry.RegisterObserver(subjectId, new object());
-        int second = registry.RegisterObserver(subjectId, new object());
-        registry.ActiveObserverCount.Should().Be(2);
-        registry.GetObserversForSubject(subjectId).Should().Be(2);
-        registry.RecordExecution(first).Should().BeTrue();
-        registry.GetExecutionCount(first).Should().Be(1);
-        registry.GetMemoryUsage().TotalBytes.Should().BeGreaterThan(0);
-        FluentActions.Invoking(() => registry.RegisterObserver(subjectId, new object()))
-            .Should().Throw<MaxObserversExceededError>();
-        registry.DeactivateObserver(first).Should().BeTrue();
-        registry.ActiveObserverCount.Should().Be(1);
-        registry.Validate().InactiveObservers.Should().Be(1);
-        registry.UnregisterObserver(first).Should().BeTrue();
-        registry.ActiveObserverCount.Should().Be(1);
-        registry.Validate().IsHealthy.Should().BeTrue();
-        registry.UnregisterObserverByReference(registry.GetObserver(second)).Should().BeTrue();
-        registry.UnregisterSubject(subjectId).Should().BeTrue();
-        registry.SubjectCount.Should().Be(0);
-        registry.Dispose();
-        FluentActions.Invoking(() => registry.RegisterSubject(new object())).Should().Throw<ObjectDisposedException>();
     }
 
     [Fact]

@@ -20,6 +20,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
     private readonly SceneComponentColumnSet _columns;
     private readonly SceneBehaviourTable _behaviours;
     private readonly SceneHierarchy _hierarchy;
+    private readonly SceneChangeJournal _changes = new();
     private readonly SceneTransform3DStore? _transform3D;
     private readonly SceneTransform2DStore? _transform2D;
     private readonly SceneStringId _defaultName;
@@ -62,7 +63,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
         _actors = new SceneActorTable(options.InitialCapacity);
         _columns = new SceneComponentColumnSet();
         _hierarchy = new SceneHierarchy(_actors, this);
-        _behaviours = new SceneBehaviourTable(_actors, _registry, this);
+        _behaviours = new SceneBehaviourTable(_actors, _registry, this, _changes);
         _defaultName = _names.Intern("Actor");
         _defaultTag = _names.Intern("Default");
 
@@ -91,6 +92,9 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
     /// <summary>Hierarchy traversal and structural API.</summary>
     public SceneHierarchy Hierarchy => _hierarchy;
+
+    /// <summary>Mutation journal drained once per frame by the host or a reactive bridge.</summary>
+    public SceneChangeJournal Changes => _changes;
 
     /// <summary>Whether lifecycle start has run.</summary>
     public bool IsStarted
@@ -148,6 +152,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
             _activeActorCount++;
         }
 
+        _changes.Write(SceneChange.ActorCreated(actor));
         return actor;
     }
 
@@ -227,6 +232,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
             _activeActorCount--;
         }
 
+        _changes.Write(SceneChange.ActorDestroyed(actor));
         _actors.Free(slot);
         return true;
     }
@@ -271,7 +277,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
         }
     }
 
-    /// <summary>Stops lifecycle dispatch and reverts all behaviours to Awake.</summary>
+    /// <summary>Stops lifecycle dispatch and reverts all behaviours to Loaded.</summary>
     public void Stop()
     {
         ThrowIfDisposed();
@@ -441,6 +447,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
         column.Set(slot, in value);
         record.Mask = record.Mask.With(descriptor.TypeId);
+        _changes.Write(SceneChange.ComponentAdded(actor, descriptor.TypeId));
         return ref column.Get(slot);
     }
 
@@ -523,7 +530,48 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
         _columns.Get<T>(descriptor.TypeId).ClearSlot(slot);
         record.Mask = record.Mask.Without(descriptor.TypeId);
+        _changes.Write(SceneChange.ComponentRemoved(actor, descriptor.TypeId));
         return true;
+    }
+
+    /// <summary>Writes a data component value and records a change.</summary>
+    public void SetData<T>(SceneActor actor, in T value)
+        where T : unmanaged, ISceneDataComponent
+    {
+        ThrowIfDisposed();
+
+        int slot = _actors.Resolve(actor);
+        SceneDataComponentDescriptor descriptor = _registry.GetDataByType(typeof(T));
+        ref SceneActorRecord record = ref _actors.RecordAt(slot);
+
+        if (!record.Mask.IsSet(descriptor.TypeId))
+        {
+            SceneThrowHelper.ThrowComponentMissing(in actor, descriptor.ComponentType.Name);
+        }
+
+        _columns.Get<T>(descriptor.TypeId).Set(slot, in value);
+        _changes.Write(SceneChange.ComponentChanged(actor, descriptor.TypeId));
+    }
+
+    /// <summary>
+    /// Records an in-place mutation made through <see cref="GetData{T}"/>'s by-reference result.
+    /// The journal cannot observe direct writes, so callers must mark the component after mutating.
+    /// </summary>
+    public void MarkChanged<T>(SceneActor actor)
+        where T : unmanaged, ISceneDataComponent
+    {
+        ThrowIfDisposed();
+
+        int slot = _actors.Resolve(actor);
+        SceneDataComponentDescriptor descriptor = _registry.GetDataByType(typeof(T));
+        ref SceneActorRecord record = ref _actors.RecordAt(slot);
+
+        if (!record.Mask.IsSet(descriptor.TypeId))
+        {
+            SceneThrowHelper.ThrowComponentMissing(in actor, descriptor.ComponentType.Name);
+        }
+
+        _changes.Write(SceneChange.ComponentChanged(actor, descriptor.TypeId));
     }
 
     /// <summary>Returns the actor's data component presence mask.</summary>
@@ -532,7 +580,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
     /// <summary>Creates and attaches a managed behaviour through its factory.</summary>
     public T AddBehaviour<T>(SceneActor actor)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ThrowIfDisposed();
         ThrowIfIterating(nameof(AddBehaviour));
@@ -541,7 +589,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
     /// <summary>Attaches a preconstructed managed behaviour.</summary>
     public T AddBehaviour<T>(SceneActor actor, T behaviour)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ThrowIfDisposed();
         ThrowIfIterating(nameof(AddBehaviour));
@@ -549,15 +597,48 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
     }
 
     /// <summary>Creates and attaches a behaviour from a descriptor.</summary>
-    public SceneBehaviour AddBehaviour(SceneActor actor, SceneBehaviourDescriptor descriptor)
+    public ISceneBehaviour AddBehaviour(SceneActor actor, SceneBehaviourDescriptor descriptor)
     {
         ThrowIfDisposed();
         ThrowIfIterating(nameof(AddBehaviour));
         return _behaviours.Add(actor, descriptor);
     }
 
+    /// <summary>Returns the attachment context of the first behaviour of a type on an actor.</summary>
+    public SceneBehaviourContext? GetBehaviourContext<T>(SceneActor actor)
+        where T : class, ISceneBehaviour
+    {
+        ThrowIfDisposed();
+        return _behaviours.GetContext<T>(actor);
+    }
+
+    /// <summary>Enables or disables the first behaviour of a type on an actor.</summary>
+    /// <returns><see langword="false"/> when the actor has no behaviour of that type.</returns>
+    public bool SetBehaviourEnabled<T>(SceneActor actor, bool enabled)
+        where T : class, ISceneBehaviour
+    {
+        ThrowIfDisposed();
+        ThrowIfIterating(nameof(SetBehaviourEnabled));
+        SceneBehaviourContext? context = _behaviours.GetContext<T>(actor);
+        if (context is null)
+        {
+            return false;
+        }
+
+        context.Enabled = enabled;
+        return true;
+    }
+
+    /// <summary>Whether the first behaviour of a type on an actor is enabled.</summary>
+    public bool IsBehaviourEnabled<T>(SceneActor actor)
+        where T : class, ISceneBehaviour
+    {
+        ThrowIfDisposed();
+        return _behaviours.GetContext<T>(actor)?.Enabled == true;
+    }
+
     /// <summary>Removes a specific behaviour instance.</summary>
-    public bool RemoveBehaviour(SceneBehaviour behaviour)
+    public bool RemoveBehaviour(ISceneBehaviour behaviour)
     {
         ThrowIfDisposed();
         ThrowIfIterating(nameof(RemoveBehaviour));
@@ -566,7 +647,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
     /// <summary>Removes the first behaviour of a type from an actor.</summary>
     public bool RemoveBehaviour<T>(SceneActor actor)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ThrowIfDisposed();
         ThrowIfIterating(nameof(RemoveBehaviour));
@@ -575,7 +656,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
     /// <summary>Returns the first behaviour of a type on an actor.</summary>
     public T? GetBehaviour<T>(SceneActor actor)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ThrowIfDisposed();
         return _behaviours.Get<T>(actor);
@@ -583,7 +664,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
     /// <summary>Whether an actor carries a behaviour of a type.</summary>
     public bool HasBehaviour<T>(SceneActor actor)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ThrowIfDisposed();
         return _behaviours.Has<T>(actor);
@@ -766,6 +847,7 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
 
         _transform3D?.MarkWorldDirtySubtree(slot);
         _transform2D?.MarkWorldDirtySubtree(slot);
+        _changes.Write(SceneChange.ParentChanged(child));
     }
 
     void ISceneHierarchyObserver.OnActiveInHierarchyChanged(in SceneActor actor, bool active)
@@ -779,19 +861,24 @@ public sealed class SceneWorld : IDisposable, ISceneHierarchyObserver, ISceneBeh
             _activeActorCount--;
         }
 
+        _changes.Write(SceneChange.ActiveInHierarchyChanged(actor));
         _behaviours.SetActiveInHierarchy(in actor, active);
     }
 
     SceneWorld ISceneBehaviourHost.World => this;
 
-    void ISceneBehaviourHost.ReportBehaviourFault(SceneBehaviour behaviour, Exception exception)
+    void ISceneBehaviourHost.ReportBehaviourFault(
+        ISceneBehaviour behaviour,
+        SceneActor actor,
+        int slot,
+        Exception exception)
     {
-        SceneActor actor = behaviour.Actor;
+        _ = behaviour;
         SceneDiagnostic diagnostic = SceneDiagnostic.ForActor(
             SceneDiagnosticSeverity.Error,
             SceneDiagnosticCodes.BehaviourFaulted,
             in actor,
-            numeric: behaviour.SlotIndex);
+            numeric: slot);
         _diagnostics.Report(in diagnostic);
 
         if (_errorPolicy == SceneWorldErrorPolicy.FailFast)

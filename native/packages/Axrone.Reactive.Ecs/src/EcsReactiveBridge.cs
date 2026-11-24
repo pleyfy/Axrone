@@ -3,19 +3,19 @@ namespace Axrone.Reactive.Ecs;
 using Axrone.Ecs;
 
 /// <summary>
-/// Poll-driven bridge from ECS lifecycle, component change ticks, removals and scheduler
+/// Pump-driven bridge from ECS lifecycle, component change ticks, removals and scheduler
 /// frame/system events into Reactive streams. The bridge installs a lifecycle-recording
 /// diagnostics sink and never calls user code from inside the world structural gate;
-/// call <see cref="Poll"/> after structural work or after a scheduler frame.
+/// call <see cref="Pump"/> after structural work or after a scheduler frame.
 /// </summary>
 /// <remarks>
-/// <para><b>Allocation contract:</b> <see cref="Poll"/> is steady-state allocation-free.
+/// <para><b>Allocation contract:</b> <see cref="Pump"/> is steady-state allocation-free.
 /// Removal and lifecycle buffers are retained and grown only on first need; tracked
 /// component polling walks dense chunks and published events are structs.</para>
-/// <para><b>Ordering:</b> a poll publishes lifecycle transitions first, then component
+/// <para><b>Ordering:</b> a pump publishes lifecycle transitions first, then component
 /// added/changed/removed events in tracked-component registration order, archetype order
 /// and row order. Removals follow removal-journal order.</para>
-/// <para><b>Threading:</b> call <see cref="Poll"/> from one thread at a frame boundary.
+/// <para><b>Threading:</b> call <see cref="Pump"/> from one thread at a frame boundary.
 /// Scheduler event callbacks may run on parallel workers; the underlying subjects are
 /// thread-safe. Do not mutate world structure from a scheduler event handler.</para>
 /// </remarks>
@@ -24,18 +24,15 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
     private readonly World _world;
     private readonly IDiagnosticsSink _innerDiagnostics;
     private readonly ReactiveDiagnosticsSink _sink;
-    private readonly ObservableRegistry _registry = new(
-        enableMemoryTracking: true,
-        memoryManager: new ObservableMemoryManager(gcIntervalMs: 0),
-        disposeMemoryManager: true);
     private readonly Subject<EntityLifecycleEvent> _lifecycle = new();
     private readonly Subject<FrameEvent> _frameStarted = new();
     private readonly Subject<FrameEvent> _frameCompleted = new();
     private readonly Subject<SystemEvent> _systemStarted = new();
     private readonly Subject<SystemEvent> _systemCompleted = new();
     private readonly Subject<SystemFaultEvent> _systemFaulted = new();
-    private readonly Subject<int> _pollCompleted = new();
+    private readonly Subject<int> _pumpCompleted = new();
     private readonly Dictionary<ushort, IComponentPoller> _tracked = new();
+    private readonly List<IComponentPoller> _trackedOrder = [];
     private readonly EcsObservables _observables;
     private Entity[] _removalEntities = [];
     private int[] _removalTicks = [];
@@ -60,49 +57,64 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
         _innerDiagnostics = world.Diagnostics;
         _sink = new ReactiveDiagnosticsSink(_innerDiagnostics);
         world.SetDiagnosticsSink(_sink);
-        RegisterSubjects();
         _observables = new EcsObservables(this, nameSelector, tagSelector, layerSelector);
     }
 
     /// <summary>Gets the entity created/destroyed stream.</summary>
-    public ObservableBase<EntityLifecycleEvent> EntityLifecycle => _lifecycle;
+    public IPriorityObservable<EntityLifecycleEvent> EntityLifecycle => _lifecycle;
 
     /// <summary>Gets the frame-started stream.</summary>
-    public ObservableBase<FrameEvent> FrameStarted => _frameStarted;
+    public IPriorityObservable<FrameEvent> FrameStarted => _frameStarted;
 
     /// <summary>Gets the frame-completed stream.</summary>
-    public ObservableBase<FrameEvent> FrameCompleted => _frameCompleted;
+    public IPriorityObservable<FrameEvent> FrameCompleted => _frameCompleted;
 
     /// <summary>Gets the system-started stream.</summary>
-    public ObservableBase<SystemEvent> SystemStarted => _systemStarted;
+    public IPriorityObservable<SystemEvent> SystemStarted => _systemStarted;
 
     /// <summary>Gets the system-completed stream.</summary>
-    public ObservableBase<SystemEvent> SystemCompleted => _systemCompleted;
+    public IPriorityObservable<SystemEvent> SystemCompleted => _systemCompleted;
 
     /// <summary>Gets the system-faulted stream.</summary>
-    public ObservableBase<SystemFaultEvent> SystemFaulted => _systemFaulted;
+    public IPriorityObservable<SystemFaultEvent> SystemFaulted => _systemFaulted;
 
-    public ObservableBase<int> PollCompleted => _pollCompleted;
+    /// <summary>Gets the stream published after every successful pump with the event count.</summary>
+    public IPriorityObservable<int> PumpCompleted => _pumpCompleted;
 
+    /// <summary>World observed by this bridge.</summary>
     public World World => _world;
 
-    public ObservableRegistry Registry => _registry;
-
+    /// <summary>Query and lifecycle-filter streams built over this bridge.</summary>
     public EcsObservables Observables => _observables;
 
+    /// <summary>
+    /// Number of lifecycle records dropped because the world produced more than the bridge's
+    /// bounded lifecycle ring could retain between pumps. A non-zero value means the bridge
+    /// fell behind the world; pump more often or raise the ring capacity.
+    /// </summary>
+    public long DroppedLifecycleEvents => _sink.Dropped;
+
     /// <summary>Starts tracking one component type; repeated calls return the same stream.</summary>
-    public ComponentChanges<T> Track<T>() where T : unmanaged
+    public ComponentChanges<T> Track<T>()
+        where T : unmanaged
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ComponentRegistry.Register<T>();
         ushort id = ComponentType<T>.Id.Value;
         if (_tracked.TryGetValue(id, out IComponentPoller? existing))
         {
-            return (ComponentChanges<T>)existing;
+            if (!existing.IsDisposed)
+            {
+                return (ComponentChanges<T>)existing;
+            }
+
+            _tracked.Remove(id);
+            _trackedOrder.Remove(existing);
         }
 
-        var stream = new ComponentChanges<T>(_world, _registry);
+        var stream = new ComponentChanges<T>(_world);
         _tracked.Add(id, stream);
+        _trackedOrder.Add(stream);
         return stream;
     }
 
@@ -135,7 +147,7 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
     /// Drains lifecycle records and polls every tracked component. Returns the number of
     /// events published.
     /// </summary>
-    public int Poll()
+    public int Pump()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         int tick = _world.Tick;
@@ -162,12 +174,12 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
             _removalTicks = GC.AllocateArray<int>(removalCapacity, pinned: true);
         }
 
-        foreach (IComponentPoller poller in _tracked.Values)
+        foreach (IComponentPoller poller in _trackedOrder)
         {
             published += poller.Poll(tick, _removalEntities, _removalTicks);
         }
 
-        _pollCompleted.OnNext(published);
+        _pumpCompleted.OnNext(published);
         return published;
     }
 
@@ -226,7 +238,7 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
         }
 
         _observables.Dispose();
-        foreach (IComponentPoller poller in _tracked.Values)
+        foreach (IComponentPoller poller in _trackedOrder)
         {
             if (poller is IDisposable disposable)
             {
@@ -235,25 +247,14 @@ public sealed class EcsReactiveBridge : IDisposable, ISystemEventListener
         }
 
         _tracked.Clear();
+        _trackedOrder.Clear();
         _lifecycle.Dispose();
         _frameStarted.Dispose();
         _frameCompleted.Dispose();
         _systemStarted.Dispose();
         _systemCompleted.Dispose();
         _systemFaulted.Dispose();
-        _pollCompleted.Dispose();
-        _registry.Dispose();
+        _pumpCompleted.Dispose();
         GC.SuppressFinalize(this);
-    }
-
-    private void RegisterSubjects()
-    {
-        _ = _registry.RegisterSubject(_lifecycle);
-        _ = _registry.RegisterSubject(_frameStarted);
-        _ = _registry.RegisterSubject(_frameCompleted);
-        _ = _registry.RegisterSubject(_systemStarted);
-        _ = _registry.RegisterSubject(_systemCompleted);
-        _ = _registry.RegisterSubject(_systemFaulted);
-        _ = _registry.RegisterSubject(_pollCompleted);
     }
 }

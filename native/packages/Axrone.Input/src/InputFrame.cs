@@ -176,6 +176,11 @@ public sealed class InputFrameCoordinator<TBackoff, TMetrics> : IInputStateQuery
                 snapshot.MouseY = evt.ValueY;
                 break;
 
+            case RawInputType.MouseDelta:
+                snapshot.MouseDeltaX += evt.ValueX;
+                snapshot.MouseDeltaY += evt.ValueY;
+                break;
+
             case RawInputType.MouseScroll:
                 snapshot.ScrollDeltaX += evt.ValueX;
                 snapshot.ScrollDeltaY += evt.ValueY;

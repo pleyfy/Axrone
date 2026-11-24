@@ -162,6 +162,50 @@ public class PrioritySubjectTests
         low.Count.Should().Be(1200);
     }
 
+    [Fact]
+    public void ReplaySubject_ReplayAndLiveDeliveryKeepPriorityOrder()
+    {
+        using var subject = new ReplaySubject<int>(2);
+        subject.OnNext(1);
+        var log = new List<string>();
+
+        using var normal = subject.Subscribe(new DelegateObserver<int>(_ => log.Add("normal")), ObservationPriority.Normal);
+        using var high = subject.Subscribe(new DelegateObserver<int>(_ => log.Add("high")), ObservationPriority.High);
+
+        subject.OnNext(2);
+
+        log.Should().Equal("normal", "high", "high", "normal");
+    }
+
+    [Fact]
+    public void AsyncSubject_TerminalDeliveryKeepsPriorityOrder()
+    {
+        using var subject = new AsyncSubject<int>();
+        var log = new List<string>();
+
+        using var normal = subject.Subscribe(new DelegateObserver<int>(_ => log.Add("normal")), ObservationPriority.Normal);
+        using var high = subject.Subscribe(new DelegateObserver<int>(_ => log.Add("high")), ObservationPriority.High);
+
+        subject.OnNext(1);
+        subject.OnCompleted();
+
+        log.Should().Equal("high", "normal");
+    }
+
+    [Fact]
+    public void EverySubject_ExposesThePriorityCapability()
+    {
+        using var subject = new Subject<int>();
+        using var behavior = new BehaviorSubject<int>(0);
+        using var replay = new ReplaySubject<int>(1);
+        using var async = new AsyncSubject<int>();
+
+        subject.Should().BeAssignableTo<IPriorityObservable<int>>();
+        behavior.Should().BeAssignableTo<IPriorityObservable<int>>();
+        replay.Should().BeAssignableTo<IPriorityObservable<int>>();
+        async.Should().BeAssignableTo<IPriorityObservable<int>>();
+    }
+
     private sealed class DelegateObserver<T> : IObserver<T>
     {
         private readonly Action<T> _onNext;

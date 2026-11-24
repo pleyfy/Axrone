@@ -1,5 +1,6 @@
 namespace Axrone.Scene.Runtime;
 
+using System.Globalization;
 using System.Text.Json;
 
 /// <summary>Codec registration for runtime-owned data components.</summary>
@@ -46,6 +47,11 @@ public static class SceneRuntimeCodecs
         if (components.TryGetDataByType(typeof(SceneAnimator), out _))
         {
             codecs.Register(new SceneAnimatorCodec());
+        }
+
+        if (components.TryGetDataByType(typeof(SceneAnimationBinding), out _))
+        {
+            codecs.Register(new SceneAnimationBindingCodec());
         }
 
         if (components.TryGetDataByType(typeof(ScenePathAgent), out _))
@@ -163,6 +169,8 @@ public sealed class SceneAnimatorCodec : SceneDataCodec<SceneAnimator>
         writer.WriteBoolean("enabled", value.Enabled);
         writer.WriteBoolean("applyRootMotion", value.ApplyRootMotion);
         writer.WriteNumber("activeLayer", value.ActiveLayer);
+        writer.WriteNumber("morphCurveOffset", value.MorphCurveOffset);
+        writer.WriteNumber("morphCurveCount", value.MorphCurveCount);
     }
 
     /// <inheritdoc/>
@@ -205,6 +213,16 @@ public sealed class SceneAnimatorCodec : SceneDataCodec<SceneAnimator>
             value.ActiveLayer = activeLayer.GetInt32();
         }
 
+        if (data.TryGetProperty("morphCurveOffset", out JsonElement morphOffset))
+        {
+            value.MorphCurveOffset = morphOffset.GetInt32();
+        }
+
+        if (data.TryGetProperty("morphCurveCount", out JsonElement morphCount))
+        {
+            value.MorphCurveCount = morphCount.GetInt32();
+        }
+
         if (!float.IsFinite(value.Speed))
         {
             throw Invalid($"SceneAnimator speed {value.Speed} must be finite.");
@@ -213,6 +231,11 @@ public sealed class SceneAnimatorCodec : SceneDataCodec<SceneAnimator>
         if (value.ActiveLayer < 0)
         {
             throw Invalid($"SceneAnimator activeLayer {value.ActiveLayer} must not be negative.");
+        }
+
+        if (value.MorphCurveOffset < 0 || value.MorphCurveCount < 0)
+        {
+            throw Invalid($"SceneAnimator morph range {value.MorphCurveOffset}/{value.MorphCurveCount} must not be negative.");
         }
 
         return value;
@@ -228,6 +251,78 @@ public sealed class SceneAnimatorCodec : SceneDataCodec<SceneAnimator>
         if (!versionElement.TryGetInt32(out int version) || version != currentVersion)
         {
             throw Invalid($"{component} payload version '{versionElement}' is not supported.");
+        }
+
+        return version;
+    }
+
+    private static SceneValidationException Invalid(string message) =>
+        new(SceneErrorCodes.ValidationInvalid, message);
+}
+
+/// <summary>
+/// Versioned JSON codec for <see cref="SceneAnimationBinding"/>. The skin is
+/// required; the default clip is optional so a host can choose one in code.
+/// </summary>
+public sealed class SceneAnimationBindingCodec : SceneDataCodec<SceneAnimationBinding>
+{
+    /// <summary>Payload version written by this codec.</summary>
+    public const int CurrentVersion = 1;
+
+    /// <inheritdoc/>
+    public override void Write(Utf8JsonWriter writer, in SceneAnimationBinding value)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+
+        writer.WriteNumber("version", CurrentVersion);
+        writer.WriteString("skin", value.Skin.Value.Value.ToString("X16", CultureInfo.InvariantCulture));
+        if (value.DefaultClip.IsValid)
+        {
+            writer.WriteString("defaultClip", value.DefaultClip.Value.Value.ToString("X16", CultureInfo.InvariantCulture));
+        }
+    }
+
+    /// <inheritdoc/>
+    public override SceneAnimationBinding Read(JsonElement data)
+    {
+        ReadVersion(data, CurrentVersion, "SceneAnimationBinding");
+
+        if (!TryReadSymbol(data, "skin", out ulong skinValue) || skinValue == 0UL)
+        {
+            throw Invalid("SceneAnimationBinding skin id is missing or empty.");
+        }
+
+        ulong clipValue = 0UL;
+        if (data.TryGetProperty("defaultClip", out _))
+        {
+            _ = TryReadSymbol(data, "defaultClip", out clipValue);
+        }
+
+        return new SceneAnimationBinding
+        {
+            Skin = SceneAssetId<SkinAssetTag>.FromSymbol(new SceneStringId(skinValue)),
+            DefaultClip = SceneAssetId<AnimationAssetTag>.FromSymbol(new SceneStringId(clipValue)),
+        };
+    }
+
+    private static bool TryReadSymbol(JsonElement data, string property, out ulong value)
+    {
+        value = 0UL;
+        return data.TryGetProperty(property, out JsonElement element) &&
+            element.ValueKind == JsonValueKind.String &&
+            ulong.TryParse(element.GetString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static int ReadVersion(JsonElement data, int currentVersion, string component)
+    {
+        if (!data.TryGetProperty("version", out JsonElement versionElement))
+        {
+            return currentVersion;
+        }
+
+        if (!versionElement.TryGetInt32(out int version) || version != currentVersion)
+        {
+            throw Invalid($"{component} version {versionElement.GetRawText()} is unsupported.");
         }
 
         return version;

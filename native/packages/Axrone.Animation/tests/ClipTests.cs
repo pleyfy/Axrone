@@ -14,6 +14,19 @@ public class ClipTests
     }
 
     [Fact]
+    public void EmptyChannel_SamplesNothing()
+    {
+        var channel = new AnimationChannel(1, ChannelTarget.Translation, InterpolationMode.Linear, [], []);
+        Span<float> output = stackalloc float[3];
+        output.Fill(7.0f);
+
+        channel.Sample(0.5f, output);
+
+        channel.IsEmpty.Should().BeTrue();
+        output[0].Should().Be(7.0f);
+    }
+
+    [Fact]
     public void LinearSampling_LerpsAndClamps()
     {
         var channel = Translation([0.0f, 1.0f], [0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f]);
@@ -96,6 +109,17 @@ public class ClipTests
         var found = new List<ClipEvent>();
         clip.CollectEvents(0.7f, 0.3f, found);
         found.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Events_CollectAtSeamOnWrap()
+    {
+        var clip = new AnimationClip(
+            new ClipId("seam"), 1.0f, [],
+            events: [new ClipEvent(0.0f, "contact", "")]);
+        var found = new List<ClipEvent>();
+        clip.CollectEvents(0.9f, 0.1f, found);
+        found.Should().ContainSingle().Which.Name.Should().Be("contact");
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 namespace Axrone.Scene.Runtime;
 
 using Axrone.Animation;
+using Axrone.Scene.Rendering;
 
 /// <summary>
 /// Minimal CPU pose consumer. The bridge publishes the animated local pose and
@@ -14,6 +15,33 @@ public interface IScenePoseSink
     /// <param name="localPose">Local-space bone transforms, one per bone.</param>
     /// <param name="worldPalette">World bone matrices, one per bone.</param>
     void ApplyPose(SceneActor actor, ReadOnlySpan<LocalTransform> localPose, ReadOnlySpan<Mat4> worldPalette);
+}
+
+/// <summary>
+/// Receives clip events emitted by bound animators. Events are delivered after
+/// the pose for the same step is published, in deterministic slot order, so a
+/// gameplay handler sees the pose that produced them.
+/// </summary>
+public interface ISceneAnimatorEventSink
+{
+    /// <summary>Receives one clip event.</summary>
+    /// <param name="actor">Actor whose controller emitted the event.</param>
+    /// <param name="clipEvent">Event payload from the clip.</param>
+    void OnClipEvent(SceneActor actor, in ClipEvent clipEvent);
+}
+
+/// <summary>
+/// Receives root motion instead of having the bridge write it straight onto the
+/// actor transform. A character controller can sweep the delta through physics
+/// and decide which axes survive.
+/// </summary>
+public interface ISceneRootMotionConsumer
+{
+    /// <summary>Consumes one animator step's root delta.</summary>
+    /// <param name="actor">Animated actor.</param>
+    /// <param name="deltaPosition">World-space translation delta for this step.</param>
+    /// <param name="deltaRotation">World-space rotation delta for this step.</param>
+    void ConsumeRootMotion(SceneActor actor, in Vec3 deltaPosition, in Quat deltaRotation);
 }
 
 /// <summary>
@@ -48,6 +76,20 @@ public sealed class SceneAnimatorBridge : IDisposable
 
     /// <summary>Gets the number of bound animators.</summary>
     public int Count => _slotCount - _freeCount;
+
+    /// <summary>
+    /// Optional distance-based update-rate policy. When set, actors outside the
+    /// near band accumulate time and evaluate on their band interval; the
+    /// accumulated delta is applied in one step so playback speed is unchanged.
+    /// </summary>
+    public SceneAnimatorLodSettings? Lod { get; set; }
+
+    /// <summary>
+    /// Optional root-motion receiver. When null, enabled animators apply the
+    /// delta directly to <see cref="SceneTransform3D"/>; when set, the consumer
+    /// owns collision, axis projection and transform writes.
+    /// </summary>
+    public ISceneRootMotionConsumer? RootMotionConsumer { get; set; }
 
     /// <summary>
     /// Binds a controller to an actor that carries a <see cref="SceneAnimator"/>
@@ -92,6 +134,27 @@ public sealed class SceneAnimatorBridge : IDisposable
         slot.Layers ??= new List<AnimationLayer>();
         slot.Layers.Add(layer);
         return true;
+    }
+
+    /// <summary>
+    /// Starts a one-shot montage on the actor's controller. The normal event sink
+    /// then receives clip events for the montage, and the controller releases the
+    /// layer when it completes or is stopped.
+    /// </summary>
+    public AnimationMontage? PlayMontage(
+        SceneActor actor,
+        AnimationClip clip,
+        AnimationMontageOptions options = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(clip);
+
+        if (!TryResolve(actor, out _, out AnimatorSlot slot))
+        {
+            return null;
+        }
+
+        return slot.Controller.PlayMontage(clip, options);
     }
 
     /// <summary>Releases the animator bound to an actor.</summary>
@@ -142,7 +205,7 @@ public sealed class SceneAnimatorBridge : IDisposable
     /// Advances every bound animator by the scaled delta and publishes poses.
     /// Completed, faulted, paused, disabled and inactive actors are skipped.
     /// </summary>
-    public void Step(float deltaSeconds, IScenePoseSink? poseSink = null)
+    public void Step(float deltaSeconds, IScenePoseSink? poseSink = null, ISceneAnimatorEventSink? eventSink = null, ISceneMorphWeightSink? morphSink = null)
     {
         ThrowIfDisposed();
         if (!(deltaSeconds > 0.0f))
@@ -185,9 +248,30 @@ public sealed class SceneAnimatorBridge : IDisposable
                 continue;
             }
 
+            float stepDelta = deltaSeconds;
+            if (Lod is { } lod && _world.HasData<SceneTransform3D>(slot.Actor))
+            {
+                float interval = lod.ResolveInterval(_world.GetWorldMatrix3D(slot.Actor).Translation);
+                if (interval > 0.0f)
+                {
+                    slot.LodAccumulator += deltaSeconds;
+                    if (slot.LodAccumulator < interval)
+                    {
+                        continue;
+                    }
+
+                    stepDelta = slot.LodAccumulator;
+                    slot.LodAccumulator = 0.0f;
+                }
+                else
+                {
+                    slot.LodAccumulator = 0.0f;
+                }
+            }
+
             try
             {
-                StepSlot(slot, in component, deltaSeconds, poseSink);
+                StepSlot(slot, in component, stepDelta, poseSink, eventSink, morphSink);
                 slot.Status = SceneAnimatorStatus.Playing;
             }
             catch (Exception exception)
@@ -225,6 +309,7 @@ public sealed class SceneAnimatorBridge : IDisposable
 
         slot.Status = SceneAnimatorStatus.Playing;
         slot.Fault = null;
+        slot.LodAccumulator = 0.0f;
         return true;
     }
 
@@ -529,6 +614,85 @@ public sealed class SceneAnimatorBridge : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Samples the render pose between the previous and current animation steps.
+    /// Rotations slerp, translations and scales lerp, and the world palette is
+    /// rebuilt from the interpolated local pose so render-phase consumers never
+    /// see a mixed transform chain. Alpha 0 selects the previous step, 1 the
+    /// current one; before the first completed step the current pose is copied.
+    /// </summary>
+    public bool TrySamplePose(SceneActor actor, float alpha, Span<LocalTransform> localPose, Span<Mat4> worldPalette)
+    {
+        if (!TryResolve(actor, out _, out AnimatorSlot slot) || !slot.HasPose)
+        {
+            return false;
+        }
+
+        int boneCount = slot.BoneCount;
+        if (localPose.Length < boneCount || worldPalette.Length < boneCount)
+        {
+            return false;
+        }
+
+        SampleSlot(slot, alpha, localPose[..boneCount], worldPalette[..boneCount]);
+        return true;
+    }
+
+    /// <summary>
+    /// Samples every bound actor's render pose between the previous and current
+    /// fixed step and publishes it to the supplied sink. Call once in the render
+    /// phase, before drawing, so skinned meshes receive the interpolated palette
+    /// instead of the latest fixed-step pose.
+    /// </summary>
+    public void PublishInterpolatedPoses(float alpha, IScenePoseSink? poseSink)
+    {
+        ThrowIfDisposed();
+        if (poseSink is null)
+        {
+            return;
+        }
+
+        Sync();
+        for (int i = 0; i < _slotCount; i++)
+        {
+            AnimatorSlot? slot = _slots[i];
+            if (slot is null || !slot.HasPose)
+            {
+                continue;
+            }
+
+            int boneCount = slot.BoneCount;
+            Span<LocalTransform> localPose = slot.RenderLocalPose.AsSpan(0, boneCount);
+            Span<Mat4> palette = slot.RenderPalette.AsSpan(0, boneCount);
+            SampleSlot(slot, alpha, localPose, palette);
+            poseSink.ApplyPose(slot.Actor, localPose, palette);
+        }
+    }
+
+    private static void SampleSlot(AnimatorSlot slot, float alpha, Span<LocalTransform> localPose, Span<Mat4> worldPalette)
+    {
+        int boneCount = slot.BoneCount;
+        if (!slot.HasPreviousPose)
+        {
+            slot.LocalPose.AsSpan(0, boneCount).CopyTo(localPose);
+        }
+        else
+        {
+            float t = FastMath.Clamp01(alpha);
+            for (int bone = 0; bone < boneCount; bone++)
+            {
+                LocalTransform previous = slot.PreviousLocalPose[bone];
+                LocalTransform current = slot.LocalPose[bone];
+                Vec3 translation = Vec3.Lerp(previous.Translation, current.Translation, t);
+                Vec3 scale = Vec3.Lerp(previous.Scale, current.Scale, t);
+                Quat rotation = FastMath.Slerp(previous.Rotation, current.Rotation, t);
+                localPose[bone] = new LocalTransform(translation, rotation, scale);
+            }
+        }
+
+        slot.Controller.Rig.EvaluatePose(localPose, worldPalette);
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {
@@ -547,7 +711,7 @@ public sealed class SceneAnimatorBridge : IDisposable
         _disposed = true;
     }
 
-    private void StepSlot(AnimatorSlot slot, in SceneAnimator component, float deltaSeconds, IScenePoseSink? poseSink)
+    private void StepSlot(AnimatorSlot slot, in SceneAnimator component, float deltaSeconds, IScenePoseSink? poseSink, ISceneAnimatorEventSink? eventSink, ISceneMorphWeightSink? morphSink)
     {
         AnimationController controller = slot.Controller;
         controller.Update(
@@ -556,11 +720,18 @@ public sealed class SceneAnimatorBridge : IDisposable
             out Vec3 rootMotionPosition,
             out Quat rootMotionRotation);
 
-        if (component.ApplyRootMotion && _world.HasData<SceneTransform3D>(slot.Actor))
+        if (component.ApplyRootMotion)
         {
-            ref SceneTransform3D transform = ref _world.GetData<SceneTransform3D>(slot.Actor);
-            transform.SetPosition(transform.Position + rootMotionPosition);
-            transform.SetRotation(Quat.Normalize(transform.Rotation * rootMotionRotation));
+            if (RootMotionConsumer is { } consumer)
+            {
+                consumer.ConsumeRootMotion(slot.Actor, in rootMotionPosition, in rootMotionRotation);
+            }
+            else if (_world.HasData<SceneTransform3D>(slot.Actor))
+            {
+                ref SceneTransform3D transform = ref _world.GetData<SceneTransform3D>(slot.Actor);
+                transform.SetPosition(transform.Position + rootMotionPosition);
+                transform.SetRotation(Quat.Normalize(transform.Rotation * rootMotionRotation));
+            }
         }
 
         AnimationFrame frame = controller.CurrentFrame;
@@ -568,6 +739,12 @@ public sealed class SceneAnimatorBridge : IDisposable
         ReadOnlySpan<Quat> rotations = frame.ReadRotations();
         ReadOnlySpan<Vec3> scales = frame.ReadScales();
         int boneCount = slot.BoneCount;
+        if (slot.HasPose)
+        {
+            Array.Copy(slot.LocalPose, slot.PreviousLocalPose, boneCount);
+            slot.HasPreviousPose = true;
+        }
+
         for (int bone = 0; bone < boneCount; bone++)
         {
             slot.LocalPose[bone] = new LocalTransform(translations[bone], rotations[bone], scales[bone]);
@@ -579,6 +756,26 @@ public sealed class SceneAnimatorBridge : IDisposable
         slot.HasPose = true;
 
         poseSink?.ApplyPose(slot.Actor, localPose, palette);
+
+        if (morphSink is not null && component.MorphCurveCount > 0)
+        {
+            ReadOnlySpan<float> curves = controller.CurrentFrame.Curves.AsSpan();
+            int offset = component.MorphCurveOffset;
+            if (offset >= 0 && offset + component.MorphCurveCount <= curves.Length)
+            {
+                morphSink.ApplyMorphWeights(slot.Actor, curves.Slice(offset, component.MorphCurveCount));
+            }
+        }
+
+        if (eventSink is not null)
+        {
+            List<ClipEvent> events = slot.Events;
+            for (int i = 0; i < events.Count; i++)
+            {
+                ClipEvent clipEvent = events[i];
+                eventSink.OnClipEvent(slot.Actor, in clipEvent);
+            }
+        }
     }
 
     private bool TryResolve(SceneActor actor, out int index, out AnimatorSlot slot)
@@ -669,7 +866,10 @@ public sealed class SceneAnimatorBridge : IDisposable
             Controller = controller;
             BoneCount = controller.Rig.BoneCount;
             LocalPose = new LocalTransform[BoneCount];
+            PreviousLocalPose = new LocalTransform[BoneCount];
+            RenderLocalPose = new LocalTransform[BoneCount];
             Palette = new Mat4[BoneCount];
+            RenderPalette = new Mat4[BoneCount];
             Events = new List<ClipEvent>();
         }
 
@@ -683,9 +883,19 @@ public sealed class SceneAnimatorBridge : IDisposable
 
         public LocalTransform[] LocalPose { get; }
 
+        public LocalTransform[] PreviousLocalPose { get; }
+
+        public LocalTransform[] RenderLocalPose { get; }
+
+        public bool HasPreviousPose { get; set; }
+
         public Mat4[] Palette { get; }
 
+        public Mat4[] RenderPalette { get; }
+
         public List<ClipEvent> Events { get; }
+
+        public float LodAccumulator { get; set; }
 
         public List<AnimationLayer>? Layers { get; set; }
 

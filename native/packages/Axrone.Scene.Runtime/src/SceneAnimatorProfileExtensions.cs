@@ -13,6 +13,11 @@ public static class SceneAnimatorProfileExtensions
             SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
             priority: 110);
 
+        builder.AddData<SceneAnimationBinding>(
+            "SceneAnimationBinding",
+            SceneComponentTraits.Singleton | SceneComponentTraits.Serializable,
+            priority: 111);
+
         return builder;
     }
 }

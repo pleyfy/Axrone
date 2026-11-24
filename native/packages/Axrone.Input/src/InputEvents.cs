@@ -49,6 +49,14 @@ public enum RawInputType : byte
 
     /// <summary>Gamepad connection changed.</summary>
     GamepadConnection = 14,
+
+    /// <summary>
+    /// Relative pointer motion while the cursor is locked. The absolute position is deliberately
+    /// not carried: under a lock the platform has no meaningful cursor coordinates to report, and
+    /// folding a locked reading as a position would freeze the hit-test point at wherever the
+    /// pointer happened to be when the lock was taken.
+    /// </summary>
+    MouseDelta = 15,
 }
 
 /// <summary>
@@ -233,6 +241,11 @@ public readonly struct RawInputEvent : IEquatable<RawInputEvent>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static RawInputEvent CreateMouseMove(DeviceIndex device, float x, float y, InputTimestamp timestamp) =>
         new(timestamp, RawInputType.MouseMove, device, 0, x, y);
+
+    /// <summary>Creates a locked-pointer relative-motion event.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static RawInputEvent CreateMouseDelta(DeviceIndex device, float deltaX, float deltaY, InputTimestamp timestamp) =>
+        new(timestamp, RawInputType.MouseDelta, device, 0, deltaX, deltaY);
 
     /// <summary>Creates a mouse-scroll event.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

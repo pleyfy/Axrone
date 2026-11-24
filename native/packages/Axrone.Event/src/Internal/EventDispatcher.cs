@@ -1,15 +1,27 @@
 namespace Axrone.Event.Internal;
 
+using System.Diagnostics;
+using Axrone.Execution;
+using Axrone.Utility.Backoff.SpinPolicies;
+
 /// <summary>
-/// Single dispatch worker shared by every router that belongs to the same owner (one per
+/// Single dispatch seam shared by every router that belongs to the same owner (one per
 /// <see cref="EventBus"/>, plus one process-wide instance for standalone routers). Producers only
-/// enqueue and signal; the worker visits each registered router in rotating order and drains at
+/// enqueue and signal; the drain visits each registered router in rotating order and drains at
 /// most one batch per router per pass, so a hot queue cannot starve its neighbours.
 /// </summary>
 /// <remarks>
-/// The worker parks on a reset event with a signal counter, so a signal racing the park is never
-/// lost. Signals are reference-counted for the duration of the set, allowing the event to be
-/// disposed deterministically after the worker has exited without racing producers.
+/// <para>
+/// The wake queue, its backoff and its lifecycle are <see cref="CommandPump{TCommand,TContext,TProcessor,TBackoff,TTelemetry}"/>
+/// from <c>Axrone.Execution</c>; this type only supplies the registration table and the rotating
+/// visit order. In <see cref="EventDispatchMode.FrameDriven"/> no worker is created at all and the
+/// owning loop calls <see cref="Pump(int)"/>.
+/// </para>
+/// <para>
+/// The worker parks on a reset event after the pump reports no commands, so a signal racing the
+/// park is never lost. Signals are reference-counted for the duration of the set, allowing the
+/// event to be disposed deterministically after the worker has exited without racing producers.
+/// </para>
 /// </remarks>
 internal sealed class EventDispatcher : IDisposable, IAsyncDisposable
 {
@@ -17,33 +29,47 @@ internal sealed class EventDispatcher : IDisposable, IAsyncDisposable
 
     private readonly Lock _gate = new();
     private readonly ManualResetEventSlim _wake = new(false);
-    private readonly Task _worker;
+    private readonly CommandPump<DrainCommand, DrainContext, DrainProcessor, ProgressiveSpinBackoff, NullExecutorTelemetry> _pump = new();
+    private readonly EventDispatchMode _mode;
+    private readonly Task? _worker;
     private Entry[] _entries = Empty;
     private int _cursor;
     private int _workerStarts;
     private int _disposed;
     private int _signalers;
-    private long _signals;
+    private int _pendingSignal;
 
-    /// <summary>Creates a dispatcher and starts its worker thread.</summary>
-    public EventDispatcher()
+    /// <summary>Creates a dispatcher. Background mode starts one worker thread.</summary>
+    public EventDispatcher(EventDispatchMode mode)
     {
-        _worker = Task.Factory.StartNew(
-            WorkerLoop,
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
-        _workerStarts = 1;
+        if ((uint)mode > (uint)EventDispatchMode.FrameDriven)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(mode));
+        }
+
+        _mode = mode;
+        if (mode == EventDispatchMode.Background)
+        {
+            _worker = Task.Factory.StartNew(
+                WorkerLoop,
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+            _workerStarts = 1;
+        }
     }
 
     /// <summary>Process-wide dispatcher for routers that are not owned by an <see cref="EventBus"/>.</summary>
-    public static EventDispatcher Shared { get; } = new();
+    public static EventDispatcher Shared { get; } = new(EventDispatchMode.Background);
 
-    /// <summary>Number of worker threads this dispatcher started (always one).</summary>
+    /// <summary>Number of worker threads this dispatcher started (zero in frame-driven mode).</summary>
     public int WorkerStartCount => Volatile.Read(ref _workerStarts);
 
     /// <summary>Routers currently registered for dispatch.</summary>
     public int RegisteredRouterCount => Volatile.Read(ref _entries).Length;
+
+    /// <summary>Frame-driven mode this dispatcher was created with.</summary>
+    public EventDispatchMode Mode => _mode;
 
     /// <summary>Registers a router and its one-batch drain callback.</summary>
     public void Register(object owner, Func<bool> drainOneBatch)
@@ -102,10 +128,10 @@ internal sealed class EventDispatcher : IDisposable, IAsyncDisposable
         }
     }
 
-    /// <summary>Reports new work and wakes the worker. Allocation-free.</summary>
+    /// <summary>Reports new work. Allocation-free; a no-op in frame-driven mode.</summary>
     public void Signal()
     {
-        if (Volatile.Read(ref _disposed) != 0)
+        if (Volatile.Read(ref _disposed) != 0 || _mode == EventDispatchMode.FrameDriven)
         {
             return;
         }
@@ -118,7 +144,11 @@ internal sealed class EventDispatcher : IDisposable, IAsyncDisposable
                 return;
             }
 
-            Interlocked.Increment(ref _signals);
+            if (Interlocked.Exchange(ref _pendingSignal, 1) == 0)
+            {
+                _pump.TryEnqueue(default);
+            }
+
             _wake.Set();
         }
         finally
@@ -127,64 +157,130 @@ internal sealed class EventDispatcher : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Drains up to <paramref name="maxBatches"/> full passes on the caller thread. Only valid in
+    /// <see cref="EventDispatchMode.FrameDriven"/>; a background dispatcher owns its consumer
+    /// thread and refuses a second one.
+    /// </summary>
+    /// <returns>Passes that did work.</returns>
+    public int Pump(int maxBatches = 1)
+    {
+        if (_mode != EventDispatchMode.FrameDriven)
+        {
+            ThrowHelper.ThrowInvalidOperation("Pump is only available when the bus runs in FrameDriven mode.");
+        }
+
+        if (maxBatches < 1)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(maxBatches));
+        }
+
+        int passes = 0;
+        while (passes < maxBatches && DrainAllOnce())
+        {
+            passes++;
+        }
+
+        return passes;
+    }
+
+    /// <summary>
+    /// Advances frame-driven dispatch until idle or the elapsed budget is spent.
+    /// One pass is always allowed when work exists, so a tiny budget cannot starve
+    /// the queue completely.
+    /// </summary>
+    public int Pump(TimeSpan maxDuration, int maxBatches = int.MaxValue)
+    {
+        if (_mode != EventDispatchMode.FrameDriven)
+        {
+            ThrowHelper.ThrowInvalidOperation("Pump is only available when the bus runs in FrameDriven mode.");
+        }
+
+        if (maxDuration <= TimeSpan.Zero)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(maxDuration));
+        }
+
+        if (maxBatches < 1)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(maxBatches));
+        }
+
+        long started = Stopwatch.GetTimestamp();
+        int passes = 0;
+        while (passes < maxBatches && DrainAllOnce())
+        {
+            passes++;
+            if (Stopwatch.GetElapsedTime(started) >= maxDuration)
+            {
+                break;
+            }
+        }
+
+        return passes;
+    }
+
     private void WorkerLoop()
     {
-        long consumed = 0;
-        while (true)
+        var context = new DrainContext(this);
+        while (Volatile.Read(ref _disposed) == 0)
         {
-            if (Volatile.Read(ref _disposed) != 0)
+            if (_pump.Pump(ref context, 256) != 0)
             {
-                return;
-            }
-
-            bool worked = false;
-            Entry[] entries = Volatile.Read(ref _entries);
-            int length = entries.Length;
-            if (length > 0)
-            {
-                int cursor = Interlocked.Increment(ref _cursor);
-                int start = (int)((uint)cursor % (uint)length);
-                for (int n = 0; n < length; n++)
-                {
-                    if (Volatile.Read(ref _disposed) != 0)
-                    {
-                        return;
-                    }
-
-                    int index = start + n;
-                    if (index >= length)
-                    {
-                        index -= length;
-                    }
-
-                    if (entries[index].Drain())
-                    {
-                        worked = true;
-                    }
-                }
-            }
-
-            if (worked)
-            {
-                consumed = Volatile.Read(ref _signals);
                 continue;
-            }
-
-            _wake.Reset();
-            long signaled = Volatile.Read(ref _signals);
-            if (signaled != consumed)
-            {
-                consumed = signaled;
-                continue;
-            }
-
-            if (Volatile.Read(ref _disposed) != 0)
-            {
-                return;
             }
 
             _wake.Wait();
-            consumed = Volatile.Read(ref _signals);
+            _wake.Reset();
+        }
+
+        // Commands claimed before completion still name a registered router; drain them so a
+        // signal racing shutdown is not silently dropped.
+        _pump.PumpAll(ref context);
+    }
+
+    private bool DrainAllOnce()
+    {
+        Volatile.Write(ref _pendingSignal, 0);
+
+        Entry[] entries = Volatile.Read(ref _entries);
+        int length = entries.Length;
+        if (length == 0)
+        {
+            return false;
+        }
+
+        bool worked = false;
+        int cursor = Interlocked.Increment(ref _cursor);
+        int start = (int)((uint)cursor % (uint)length);
+        for (int n = 0; n < length; n++)
+        {
+            int index = start + n;
+            if (index >= length)
+            {
+                index -= length;
+            }
+
+            if (entries[index].Drain())
+            {
+                worked = true;
+            }
+        }
+
+        return worked;
+    }
+
+    /// <summary>Re-queues one drain command when a pass found more work than it consumed.</summary>
+    private void ReSignal()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _pendingSignal, 1) == 0)
+        {
+            _pump.TryEnqueue(default);
         }
     }
 
@@ -196,9 +292,11 @@ internal sealed class EventDispatcher : IDisposable, IAsyncDisposable
             return;
         }
 
+        _pump.Complete();
         _wake.Set();
-        _worker.GetAwaiter().GetResult();
+        _worker?.GetAwaiter().GetResult();
         WaitForSignalers();
+        _pump.Dispose();
         _wake.Dispose();
     }
 
@@ -210,9 +308,15 @@ internal sealed class EventDispatcher : IDisposable, IAsyncDisposable
             return;
         }
 
+        _pump.Complete();
         _wake.Set();
-        await _worker.ConfigureAwait(false);
+        if (_worker is not null)
+        {
+            await _worker.ConfigureAwait(false);
+        }
+
         WaitForSignalers();
+        _pump.Dispose();
         _wake.Dispose();
     }
 
@@ -236,5 +340,25 @@ internal sealed class EventDispatcher : IDisposable, IAsyncDisposable
         public object Owner { get; }
 
         public Func<bool> Drain { get; }
+    }
+
+    private struct DrainCommand;
+
+    private struct DrainContext
+    {
+        public DrainContext(EventDispatcher dispatcher) => Dispatcher = dispatcher;
+
+        public EventDispatcher Dispatcher;
+    }
+
+    private struct DrainProcessor : ICommandProcessor<DrainCommand, DrainContext>
+    {
+        public static void Process(ref DrainCommand command, ref DrainContext context)
+        {
+            if (context.Dispatcher.DrainAllOnce())
+            {
+                context.Dispatcher.ReSignal();
+            }
+        }
     }
 }

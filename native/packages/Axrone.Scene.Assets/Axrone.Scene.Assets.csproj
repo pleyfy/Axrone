@@ -48,6 +48,7 @@
     <ProjectReference Include="../Axrone.Scene.Core/Axrone.Scene.Core.csproj" />
     <ProjectReference Include="../Axrone.Numeric/Axrone.Numeric.csproj" />
     <ProjectReference Include="../Axrone.Geometry/Axrone.Geometry.csproj" />
+    <ProjectReference Include="../Axrone.AssetShader/Axrone.AssetShader.csproj" />
   </ItemGroup>
 
   <ItemGroup>

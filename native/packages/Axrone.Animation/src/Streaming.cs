@@ -410,6 +410,12 @@ public static class ChunkCodec
             AnimationThrowHelper.ThrowStreaming(AnimationErrorCode.StreamingChunkCorrupt, "Chunk clip id missing.");
         }
 
+        if (payload.Tracks is null)
+        {
+            AnimationThrowHelper.ThrowStreaming(AnimationErrorCode.StreamingChunkCorrupt, "Chunk track list missing.");
+        }
+
+        var seenTracks = new HashSet<(int Bone, byte Target)>();
         foreach (ChunkTrackDto track in payload.Tracks)
         {
             int components = track.Target switch
@@ -426,6 +432,41 @@ public static class ChunkCodec
                 AnimationThrowHelper.ThrowStreaming(AnimationErrorCode.StreamingChunkIncompatible, $"Unknown channel target {track.Target}.");
             }
 
+            if (track.BoneIndex < 0 && (byte)ChannelTarget.Curve != track.Target)
+            {
+                AnimationThrowHelper.ThrowStreaming(AnimationErrorCode.StreamingChunkCorrupt, "Only curve tracks may use a negative bone index.");
+            }
+
+            if (!seenTracks.Add((track.BoneIndex, track.Target)))
+            {
+                AnimationThrowHelper.ThrowStreaming(AnimationErrorCode.StreamingChunkCorrupt, "Chunk declares the same bone target twice.");
+            }
+
+            if (track.Interpolation > (byte)InterpolationMode.CubicSpline)
+            {
+                AnimationThrowHelper.ThrowStreaming(AnimationErrorCode.StreamingChunkIncompatible, $"Unknown interpolation mode {track.Interpolation}.");
+            }
+
+            float previous = float.NegativeInfinity;
+            for (int k = 0; k < track.KeyTimes.Count; k++)
+            {
+                float time = track.KeyTimes[k];
+                if (!float.IsFinite(time) || time < previous)
+                {
+                    AnimationThrowHelper.ThrowStreaming(AnimationErrorCode.StreamingChunkCorrupt, "Chunk key times must be finite and ascending.");
+                }
+
+                previous = time;
+            }
+
+            for (int v = 0; v < track.KeyValues.Count; v++)
+            {
+                if (!float.IsFinite(track.KeyValues[v]))
+                {
+                    AnimationThrowHelper.ThrowStreaming(AnimationErrorCode.StreamingChunkCorrupt, "Chunk key values must be finite.");
+                }
+            }
+
             int stride = track.Interpolation == (byte)InterpolationMode.CubicSpline ? components * 3 : components;
             if (track.KeyTimes.Count * stride != track.KeyValues.Count)
             {
@@ -437,8 +478,29 @@ public static class ChunkCodec
     }
 
     /// <summary>
+    /// Merges a payload into a clip after verifying that the chunk names that
+    /// clip. A chunk for another avatar or clip is refused instead of being
+    /// silently folded into the wrong animation.
+    /// </summary>
+    public static AnimationChannel[] Merge(AnimationClip clip, ChunkPayloadDto payload, MergeMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+        ArgumentNullException.ThrowIfNull(payload);
+        if (!string.Equals(payload.ClipId, clip.Id.Value, StringComparison.Ordinal))
+        {
+            AnimationThrowHelper.ThrowStreaming(
+                AnimationErrorCode.StreamingChunkIncompatible,
+                $"Chunk targets clip '{payload.ClipId}' but was applied to '{clip.Id}'.");
+        }
+
+        return Merge([.. clip.Channels], payload, mode);
+    }
+
+    /// <summary>
     /// Merges a payload into live channels. Exact-size outputs (two passes, no
     /// list over-allocation); key arrays are copied so DTO buffers stay caller-owned.
+    /// <see cref="MergeMode.ReplaceRange"/> keeps base keys outside the chunk's
+    /// start/end window and merges the overlapping window key-by-key.
     /// </summary>
     public static AnimationChannel[] Merge(AnimationChannel[] baseChannels, ChunkPayloadDto payload, MergeMode mode)
     {
@@ -457,53 +519,101 @@ public static class ChunkCodec
             return replaced;
         }
 
-        int addedCount = 0;
+        var merged = new List<AnimationChannel>(baseChannels.Length + tracks.Count);
+        bool[] consumed = new bool[baseChannels.Length];
+
         for (int i = 0; i < tracks.Count; i++)
         {
-            ChunkTrackDto track = tracks[i];
-            bool found = false;
-            for (int j = 0; j < baseChannels.Length; j++)
+            AnimationChannel chunkChannel = ToChannel(tracks[i]);
+            int match = FindMatchingChannel(baseChannels, chunkChannel);
+            if (match < 0)
             {
-                if (baseChannels[j].BoneIndex == track.BoneIndex && (byte)baseChannels[j].Target == track.Target)
-                {
-                    found = true;
-                    break;
-                }
+                merged.Add(chunkChannel);
+                continue;
             }
 
-            if (!found)
+            consumed[match] = true;
+            merged.Add(MergeChannel(baseChannels[match], chunkChannel, payload.StartTime, payload.EndTime));
+        }
+
+        for (int i = 0; i < baseChannels.Length; i++)
+        {
+            if (!consumed[i])
             {
-                addedCount++;
+                merged.Add(baseChannels[i]);
             }
         }
 
-        var merged = new AnimationChannel[baseChannels.Length + addedCount];
-        Array.Copy(baseChannels, merged, baseChannels.Length);
+        return [.. merged];
+    }
 
-        int appendIndex = baseChannels.Length;
-        for (int i = 0; i < tracks.Count; i++)
+    private static int FindMatchingChannel(ReadOnlySpan<AnimationChannel> channels, in AnimationChannel candidate)
+    {
+        for (int i = 0; i < channels.Length; i++)
         {
-            ChunkTrackDto track = tracks[i];
-            AnimationChannel channel = ToChannel(track);
-
-            bool replaced = false;
-            for (int j = 0; j < baseChannels.Length; j++)
+            if (channels[i].BoneIndex == candidate.BoneIndex && channels[i].Target == candidate.Target)
             {
-                if (merged[j].BoneIndex == channel.BoneIndex && merged[j].Target == channel.Target)
-                {
-                    merged[j] = channel;
-                    replaced = true;
-                    break;
-                }
-            }
-
-            if (!replaced)
-            {
-                merged[appendIndex++] = channel;
+                return i;
             }
         }
 
-        return merged;
+        return -1;
+    }
+
+    private static AnimationChannel MergeChannel(AnimationChannel baseChannel, AnimationChannel chunkChannel, float start, float end)
+    {
+        // Mixed interpolation would make one key's tangents mean something
+        // different from its neighbour's, so the chunk wins wholesale.
+        if (baseChannel.Interpolation != chunkChannel.Interpolation ||
+            baseChannel.Target == ChannelTarget.Curve)
+        {
+            return chunkChannel;
+        }
+
+        ReadOnlySpan<float> chunkTimes = chunkChannel.KeyTimes;
+        if (start >= end)
+        {
+            start = chunkTimes[0];
+            end = chunkTimes[^1];
+        }
+
+        int stride = baseChannel.Stride;
+        ReadOnlySpan<float> baseTimes = baseChannel.KeyTimes;
+        ReadOnlySpan<float> baseValues = baseChannel.KeyValues;
+
+        var entries = new List<(float Time, float[] Values)>(baseTimes.Length + chunkTimes.Length);
+        for (int i = 0; i < baseTimes.Length; i++)
+        {
+            float time = baseTimes[i];
+            if (time < start || time > end)
+            {
+                entries.Add((time, baseValues.Slice(i * stride, stride).ToArray()));
+            }
+        }
+
+        ReadOnlySpan<float> chunkValues = chunkChannel.KeyValues;
+        for (int i = 0; i < chunkTimes.Length; i++)
+        {
+            entries.Add((chunkTimes[i], chunkValues.Slice(i * stride, stride).ToArray()));
+        }
+
+        entries.Sort(static (a, b) => a.Time.CompareTo(b.Time));
+
+        var times = new float[entries.Count];
+        var values = new float[entries.Count * stride];
+        for (int i = 0; i < entries.Count; i++)
+        {
+            times[i] = entries[i].Time;
+            entries[i].Values.AsSpan().CopyTo(values.AsSpan(i * stride, stride));
+        }
+
+        return new AnimationChannel(
+            baseChannel.BoneIndex,
+            baseChannel.Target,
+            baseChannel.Interpolation,
+            times,
+            values,
+            baseChannel.TargetCurveId);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -13,7 +13,37 @@ public enum SceneMaterialShadingModel : byte
     Toon = 2,
 
     /// <summary>Custom shader path.</summary>
-    Custom = 3
+    Custom = 3,
+
+    /// <summary>Anisotropic Kajiya-Kay / Marschner-inspired hair model.</summary>
+    Hair = 4,
+
+    /// <summary>Microfiber / fuzz / Charlie cloth model.</summary>
+    Cloth = 5,
+
+    /// <summary>Gerstner-rippled translucent / Fresnel water model.</summary>
+    Water = 6,
+
+    /// <summary>Two-sided alpha-cutout and translucent foliage model.</summary>
+    Foliage = 7,
+
+    /// <summary>2D sprite surface model.</summary>
+    Sprite = 8,
+
+    /// <summary>Soft-depth and billboard particle model.</summary>
+    Particle = 9,
+
+    /// <summary>Composable Surface Attributes bundle model.</summary>
+    Composable = 10,
+
+    /// <summary>Projected decal overlay model.</summary>
+    Decal = 11,
+
+    /// <summary>Screen-space post-process contract model.</summary>
+    PostProcess = 12,
+
+    /// <summary>Volumetric raymarch density/scattering model.</summary>
+    Volume = 13
 }
 
 /// <summary>Alpha handling mode.</summary>
@@ -131,7 +161,13 @@ public enum SceneMaterialFeatures : uint
     AnisotropyMap = 1U << 27,
 
     /// <summary>Subsurface scattering texture is present.</summary>
-    SubsurfaceMap = 1U << 28
+    SubsurfaceMap = 1U << 28,
+
+    /// <summary>Dedicated opacity mask/alpha texture is present.</summary>
+    OpacityMap = 1U << 29,
+
+    /// <summary>Explicit scalar emissive intensity multiplier is active.</summary>
+    EmissiveIntensity = 1U << 30
 }
 
 /// <summary>

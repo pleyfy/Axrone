@@ -7,7 +7,7 @@ namespace Axrone.Scene.Rendering;
 /// into the renderer component, so batching and culling see the animated values
 /// during the same frame.
 /// </summary>
-public sealed class SceneSpriteAnimatorBehaviour : SceneBehaviour
+public sealed class SceneSpriteAnimatorBehaviour : ISceneBehaviour
 {
     private const float MinimumFrameDuration = 1e-4f;
 
@@ -16,6 +16,8 @@ public sealed class SceneSpriteAnimatorBehaviour : SceneBehaviour
     private float _elapsedSeconds;
     private int _frameIndex;
     private bool _complete;
+    private SceneWorld? _world;
+    private SceneActor _actor = SceneActor.Null;
 
     /// <summary>Creates a stopped-at-frame-zero animator.</summary>
     public SceneSpriteAnimatorBehaviour()
@@ -72,10 +74,24 @@ public sealed class SceneSpriteAnimatorBehaviour : SceneBehaviour
     }
 
     /// <inheritdoc/>
-    public override void OnEnable() => ApplyCurrentFrame();
+    public void OnAttach(SceneBehaviourContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        _world = context.World;
+        _actor = context.Actor;
+        context.OnEnable(ApplyCurrentFrame);
+        context.OnUpdate(Advance);
+        context.OnDetach(ClearAttachment);
+    }
 
-    /// <inheritdoc/>
-    public override void Update(float deltaSeconds)
+    private void ClearAttachment()
+    {
+        _world = null;
+        _actor = SceneActor.Null;
+    }
+
+    /// <summary>Advances playback by <paramref name="deltaSeconds"/> outside the normal update phase.</summary>
+    public void Advance(float deltaSeconds)
     {
         if (!Playing || _complete || _clip is null)
         {
@@ -129,13 +145,13 @@ public sealed class SceneSpriteAnimatorBehaviour : SceneBehaviour
 
     private void ApplyCurrentFrame()
     {
-        SceneWorld? world = World;
+        SceneWorld? world = _world;
         if (world is null || _clip is null || _clip.Frames.Count == 0)
         {
             return;
         }
 
-        SceneActor actor = Actor;
+        SceneActor actor = _actor;
         if (!world.TryGetData(actor, out SceneSpriteRenderer renderer))
         {
             return;

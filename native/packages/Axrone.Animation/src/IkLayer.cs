@@ -8,6 +8,12 @@ public enum IkSolverKind
 
     /// <summary>Cyclic coordinate descent with weighted corrections.</summary>
     Ccd = 1,
+
+    /// <summary>Closed-form three-bone solve with pole vector and bend limits.</summary>
+    TwoBone = 2,
+
+    /// <summary>Single-bone look-at with a turn limit and optional roll alignment.</summary>
+    Aim = 3,
 }
 
 /// <summary>
@@ -26,6 +32,13 @@ public enum IkSolverKind
 /// <param name="MaxIterations">Iteration cap.</param>
 /// <param name="Weight">Job weight multiplied with the layer weight.</param>
 /// <param name="PreserveTipRotation">Whether the tip is rotated onto <paramref name="TargetRotation"/> after solving.</param>
+/// <param name="PoleBone">Optional bone whose world position selects the two-bone bend plane.</param>
+/// <param name="PolePosition">World-space pole used when <paramref name="PoleBone"/> is absent.</param>
+/// <param name="MinBendDegrees">Minimum interior angle at the two-bone root, in degrees.</param>
+/// <param name="MaxBendDegrees">Maximum interior angle at the two-bone root, in degrees.</param>
+/// <param name="TwistDegrees">Twist around the root-to-target axis, in degrees.</param>
+/// <param name="AimUp">World up used by <see cref="IkSolverKind.Aim"/> to remove roll.</param>
+/// <param name="MaxAimAngleDegrees">Maximum turn for <see cref="IkSolverKind.Aim"/>, in degrees.</param>
 public readonly record struct AnimationIkJob(
     IkJobId Id,
     string RootBone,
@@ -37,7 +50,14 @@ public readonly record struct AnimationIkJob(
     float Precision = AnimationConstants.IkDefaultPrecision,
     int MaxIterations = AnimationConstants.IkDefaultMaxIterations,
     float Weight = 1.0f,
-    bool PreserveTipRotation = false);
+    bool PreserveTipRotation = false,
+    string? PoleBone = null,
+    Vec3 PolePosition = default,
+    float MinBendDegrees = 0.0f,
+    float MaxBendDegrees = 180.0f,
+    float TwistDegrees = 0.0f,
+    Vec3 AimUp = default,
+    float MaxAimAngleDegrees = 180.0f);
 
 /// <summary>
 /// Ordered IK jobs applied to a pose after animation evaluation. Targets can be
@@ -63,6 +83,13 @@ public sealed class AnimationIkLayer
         public int MaxIterations;
         public float Weight;
         public bool PreserveTipRotation;
+        public int PoleBoneIndex;
+        public Vec3 PolePosition;
+        public float MinBendRadians;
+        public float MaxBendRadians;
+        public float TwistRadians;
+        public Vec3 AimUp;
+        public float MaxAimAngleRadians;
     }
 
     private readonly Rig _rig;
@@ -107,10 +134,42 @@ public sealed class AnimationIkLayer
                     $"Duplicate IK job '{job.Id}'.");
             }
 
+            IkSolverKind solver = job.Solver switch
+            {
+                IkSolverKind.Ccd => IkSolverKind.Ccd,
+                IkSolverKind.TwoBone => IkSolverKind.TwoBone,
+                IkSolverKind.Aim => IkSolverKind.Aim,
+                _ => IkSolverKind.Fabrik,
+            };
+
             int rootIndex = ResolveBone(rig, job.RootBone, job.Id);
-            int tipIndex = ResolveBone(rig, job.TipBone, job.Id);
+            int tipIndex = solver == IkSolverKind.Aim
+                ? rootIndex
+                : ResolveBone(rig, job.TipBone, job.Id);
             int[] chain = BuildChain(rig, rootIndex, tipIndex, job.Id);
             maxChainLength = Math.Max(maxChainLength, chain.Length);
+
+            if (solver == IkSolverKind.TwoBone && chain.Length != 3)
+            {
+                AnimationThrowHelper.ThrowValidation(
+                    AnimationErrorCode.ValidationInvalidArgument,
+                    $"Two-bone IK job '{job.Id}' requires exactly three bones (root, mid, tip) but resolved {chain.Length}.");
+            }
+
+            if (solver == IkSolverKind.Aim && chain.Length != 1)
+            {
+                AnimationThrowHelper.ThrowValidation(
+                    AnimationErrorCode.ValidationInvalidArgument,
+                    $"Aim job '{job.Id}' must resolve to one bone but resolved {chain.Length}.");
+            }
+
+            if (solver == IkSolverKind.Aim &&
+                (!float.IsFinite(job.MaxAimAngleDegrees) || job.MaxAimAngleDegrees < 0.0f || job.MaxAimAngleDegrees > 180.0f))
+            {
+                AnimationThrowHelper.ThrowValidation(
+                    AnimationErrorCode.ValidationInvalidArgument,
+                    $"Aim job '{job.Id}' max angle {job.MaxAimAngleDegrees} must be finite and inside [0, 180].");
+            }
 
             int targetBone = -1;
             if (!string.IsNullOrEmpty(job.TargetBone))
@@ -119,10 +178,26 @@ public sealed class AnimationIkLayer
                 targetBone = handle.IsValid ? handle.Index : -1;
             }
 
+            int poleBone = -1;
+            if (!string.IsNullOrEmpty(job.PoleBone))
+            {
+                BoneHandle handle = rig.FindBoneIndex(job.PoleBone);
+                poleBone = handle.IsValid ? handle.Index : -1;
+            }
+
+            if (!float.IsFinite(job.MinBendDegrees) || !float.IsFinite(job.MaxBendDegrees) ||
+                !float.IsFinite(job.TwistDegrees) ||
+                job.MinBendDegrees < 0.0f || job.MaxBendDegrees > 180.0f || job.MinBendDegrees > job.MaxBendDegrees)
+            {
+                AnimationThrowHelper.ThrowValidation(
+                    AnimationErrorCode.ValidationInvalidArgument,
+                    $"IK job '{job.Id}' bend limits [{job.MinBendDegrees}, {job.MaxBendDegrees}] must be finite, ordered and inside [0, 180].");
+            }
+
             _jobs[i] = new CompiledJob
             {
                 Id = job.Id,
-                Solver = job.Solver == IkSolverKind.Ccd ? IkSolverKind.Ccd : IkSolverKind.Fabrik,
+                Solver = solver,
                 Chain = chain,
                 TipIndex = tipIndex,
                 TargetBoneIndex = targetBone,
@@ -134,6 +209,13 @@ public sealed class AnimationIkLayer
                 MaxIterations = Math.Max(1, job.MaxIterations),
                 Weight = float.IsFinite(job.Weight) ? job.Weight : 1.0f,
                 PreserveTipRotation = job.PreserveTipRotation,
+                PoleBoneIndex = poleBone,
+                PolePosition = job.PolePosition,
+                MinBendRadians = job.MinBendDegrees * (MathF.PI / 180.0f),
+                MaxBendRadians = job.MaxBendDegrees * (MathF.PI / 180.0f),
+                TwistRadians = job.TwistDegrees * (MathF.PI / 180.0f),
+                AimUp = job.AimUp,
+                MaxAimAngleRadians = job.MaxAimAngleDegrees * (MathF.PI / 180.0f),
             };
         }
 
@@ -208,36 +290,64 @@ public sealed class AnimationIkLayer
                 continue;
             }
 
-            if (job.TargetBoneIndex >= 0)
+            if (job.TargetBoneIndex >= 0 || job.PoleBoneIndex >= 0)
             {
                 ResolveTarget(ref job, frame);
             }
 
-            if (job.Solver == IkSolverKind.Fabrik)
+            switch (job.Solver)
             {
-                IkSolvers.SolveFabrik(
-                    _rig,
-                    frame,
-                    job.Chain,
-                    job.TargetPosition,
-                    _fabrikScratch.AsSpan(0, job.Chain.Length),
-                    job.MaxIterations,
-                    job.Precision,
-                    jobWeight);
-            }
-            else
-            {
-                IkSolvers.SolveCcd(
-                    _rig,
-                    frame,
-                    job.Chain,
-                    job.TargetPosition,
-                    jobWeight,
-                    job.MaxIterations,
-                    job.Precision);
+                case IkSolverKind.Fabrik:
+                    IkSolvers.SolveFabrik(
+                        _rig,
+                        frame,
+                        job.Chain,
+                        job.TargetPosition,
+                        _fabrikScratch.AsSpan(0, job.Chain.Length),
+                        job.MaxIterations,
+                        job.Precision,
+                        jobWeight);
+                    break;
+
+                case IkSolverKind.TwoBone:
+                    TwoBoneIk.Solve(
+                        _rig,
+                        frame,
+                        job.Chain[0],
+                        job.Chain[1],
+                        job.Chain[2],
+                        job.TargetPosition,
+                        job.PolePosition,
+                        jobWeight,
+                        job.MinBendRadians,
+                        job.MaxBendRadians,
+                        job.TwistRadians);
+                    break;
+
+                case IkSolverKind.Aim:
+                    AimSolver.Solve(
+                        _rig,
+                        frame,
+                        job.Chain[0],
+                        job.TargetPosition,
+                        job.AimUp,
+                        jobWeight,
+                        job.MaxAimAngleRadians);
+                    break;
+
+                default:
+                    IkSolvers.SolveCcd(
+                        _rig,
+                        frame,
+                        job.Chain,
+                        job.TargetPosition,
+                        jobWeight,
+                        job.MaxIterations,
+                        job.Precision);
+                    break;
             }
 
-            if (job.PreserveTipRotation)
+            if (job.PreserveTipRotation && job.Solver != IkSolverKind.Aim)
             {
                 ApplyTipRotation(frame, job.TipIndex, job.TargetRotation, jobWeight);
             }
@@ -265,8 +375,16 @@ public sealed class AnimationIkLayer
             : ScratchWorldBuffers.RentPooled(boneCount);
 
         BlendingKernels.ForwardKinematics(_rig, frame, buffers.Translations, buffers.Rotations, buffers.Scales);
-        job.TargetPosition = buffers.Translations[job.TargetBoneIndex];
-        job.TargetRotation = buffers.Rotations[job.TargetBoneIndex];
+        if (job.TargetBoneIndex >= 0)
+        {
+            job.TargetPosition = buffers.Translations[job.TargetBoneIndex];
+            job.TargetRotation = buffers.Rotations[job.TargetBoneIndex];
+        }
+
+        if (job.PoleBoneIndex >= 0)
+        {
+            job.PolePosition = buffers.Translations[job.PoleBoneIndex];
+        }
     }
 
     private void ApplyTipRotation(AnimationFrame frame, int tipIndex, in Quat targetRotation, float weight)

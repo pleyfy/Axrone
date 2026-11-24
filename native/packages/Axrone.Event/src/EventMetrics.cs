@@ -1,6 +1,6 @@
 namespace Axrone.Event;
 
-using System.Runtime.InteropServices;
+using Axrone.Utility.Alignment;
 
 /// <summary>Timing aggregate for one measurement family.</summary>
 /// <param name="Count">Recorded samples.</param>
@@ -25,14 +25,18 @@ public readonly record struct EventMetricsSnapshot(
     long ExecutionErrors);
 
 /// <summary>
-/// Lock-free per-router accumulator. Counters are padded to a full cache line and updated with
+/// Lock-free per-router accumulator. Counters are cache-line padded and updated with
 /// interlocked operations so the publish and dispatch paths never allocate.
 /// </summary>
+/// <remarks>
+/// Padding and atomics come from <see cref="AlignedAtomicCounter64"/> in Axrone.Utility rather
+/// than a package-local copy, so every engine counter shares one implementation.
+/// </remarks>
 internal sealed class EventMetricsRecorder
 {
     private readonly EmitSlot _emit = new();
     private readonly ExecutionSlot _execution = new();
-    private PaddedLong _executionErrors;
+    private AlignedAtomicCounter64 _executionErrors;
 
     /// <summary>Records one publish call duration.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -45,7 +49,7 @@ internal sealed class EventMetricsRecorder
         _execution.Record(elapsedTicks);
         if (failed)
         {
-            Interlocked.Increment(ref _executionErrors.Value);
+            _executionErrors.Increment();
         }
     }
 
@@ -53,40 +57,42 @@ internal sealed class EventMetricsRecorder
     public EventMetricsSnapshot Snapshot() => new(
         _emit.Snapshot(),
         _execution.Snapshot(),
-        Interlocked.Read(ref _executionErrors.Value));
+        _executionErrors.Value);
 
     /// <summary>Resets every accumulator. Concurrent in-flight samples may be lost.</summary>
     public void Reset()
     {
         _emit.Reset();
         _execution.Reset();
-        Volatile.Write(ref _executionErrors.Value, 0);
+        _executionErrors.Reset();
     }
 
     private static double TicksToMilliseconds(long ticks) => ticks * 1000d / Stopwatch.Frequency;
 
     private abstract class TimingSlot
     {
-        private PaddedLong _count;
-        private PaddedLong _totalTicks;
-        private PaddedLong _minTicks = new() { Value = long.MaxValue };
-        private PaddedLong _maxTicks;
+        private AlignedAtomicCounter64 _count;
+        private AlignedAtomicCounter64 _totalTicks;
+        private AlignedAtomicCounter64 _minTicks;
+        private AlignedAtomicCounter64 _maxTicks;
+
+        protected TimingSlot() => _minTicks.Add(long.MaxValue);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Record(long elapsedTicks)
         {
-            Interlocked.Add(ref _totalTicks.Value, elapsedTicks);
-            UpdateMin(ref _minTicks.Value, elapsedTicks);
-            UpdateMax(ref _maxTicks.Value, elapsedTicks);
-            Interlocked.Increment(ref _count.Value);
+            _totalTicks.Add(elapsedTicks);
+            UpdateMin(ref _minTicks, elapsedTicks);
+            UpdateMax(ref _maxTicks, elapsedTicks);
+            _count.Increment();
         }
 
         public EventTimingMetrics Snapshot()
         {
-            long count = Volatile.Read(ref _count.Value);
-            long total = Volatile.Read(ref _totalTicks.Value);
-            long min = Volatile.Read(ref _minTicks.Value);
-            long max = Volatile.Read(ref _maxTicks.Value);
+            long count = _count.Value;
+            long total = _totalTicks.Value;
+            long min = _minTicks.Value;
+            long max = _maxTicks.Value;
             if (count == 0)
             {
                 return default;
@@ -104,41 +110,40 @@ internal sealed class EventMetricsRecorder
 
         public void Reset()
         {
-            Interlocked.Exchange(ref _count.Value, 0);
-            Interlocked.Exchange(ref _totalTicks.Value, 0);
-            Interlocked.Exchange(ref _minTicks.Value, long.MaxValue);
-            Interlocked.Exchange(ref _maxTicks.Value, 0);
+            _count.Reset();
+            _totalTicks.Reset();
+            _minTicks.Reset();
+            _minTicks.Add(long.MaxValue);
+            _maxTicks.Reset();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void UpdateMin(ref long location, long value)
+        private static void UpdateMin(ref AlignedAtomicCounter64 counter, long value)
         {
-            long current = Volatile.Read(ref location);
+            long current = counter.Value;
             while (value < current)
             {
-                long observed = Interlocked.CompareExchange(ref location, value, current);
-                if (observed == current)
+                if (counter.CompareExchange(value, current))
                 {
                     return;
                 }
 
-                current = observed;
+                current = counter.Value;
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void UpdateMax(ref long location, long value)
+        private static void UpdateMax(ref AlignedAtomicCounter64 counter, long value)
         {
-            long current = Volatile.Read(ref location);
+            long current = counter.Value;
             while (value > current)
             {
-                long observed = Interlocked.CompareExchange(ref location, value, current);
-                if (observed == current)
+                if (counter.CompareExchange(value, current))
                 {
                     return;
                 }
 
-                current = observed;
+                current = counter.Value;
             }
         }
     }
@@ -149,12 +154,5 @@ internal sealed class EventMetricsRecorder
 
     private sealed class ExecutionSlot : TimingSlot
     {
-    }
-
-    [StructLayout(LayoutKind.Explicit, Size = 64)]
-    private struct PaddedLong
-    {
-        [FieldOffset(0)]
-        public long Value;
     }
 }

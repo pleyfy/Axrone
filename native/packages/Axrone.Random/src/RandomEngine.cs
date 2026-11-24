@@ -356,6 +356,57 @@ public struct RandomEngine<TEngine> : IEquatable<RandomEngine<TEngine>>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="stdDev"/> is negative, NaN or infinite.</exception>
     public float NextNormal(float mean, float stdDev) => (float)NextNormal(mean, stdDev);
 
+    /// <summary>
+    /// Draws a standard normal deviate and clamps it into <c>[min, max]</c>, which is the web
+    /// engine's bounded-normal sampler: the tails are cut instead of rejected, so the draw is
+    /// always defined and the support is the closed interval.
+    /// </summary>
+    /// <param name="min">The inclusive lower clamp.</param>
+    /// <param name="max">The inclusive upper clamp.</param>
+    /// <returns>A normal deviate held inside <c>[min, max]</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">A bound is NaN or infinite, or <paramref name="min"/> is greater than <paramref name="max"/>.</exception>
+    public double NextBoundedNormal(double min = -1.0, double max = 1.0)
+    {
+        if (double.IsNaN(min) || double.IsNaN(max) || min > max)
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(max), "The bounds must be ordered and not NaN.");
+        }
+
+        double value = NextNormal();
+        if (value < min)
+        {
+            return min;
+        }
+
+        return value > max ? max : value;
+    }
+
+    /// <summary>
+    /// Draws a normal deviate of one sixth of <paramref name="range"/> and folds it into
+    /// <c>center ± range/2</c>, so the interval is the three-sigma window and the support stays
+    /// closed - the web engine's in-range normal sampler.
+    /// </summary>
+    /// <param name="center">The midpoint of the interval.</param>
+    /// <param name="range">The interval width; finite and non-negative.</param>
+    /// <returns>A value inside <c>[center - range/2, center + range/2]</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="range"/> is NaN, infinite or negative.</exception>
+    public double NextNormalInRange(double center, double range)
+    {
+        if (double.IsNaN(range) || double.IsInfinity(range) || range < 0.0)
+        {
+            ThrowHelper.ThrowArgumentOutOfRangeException(nameof(range), "The range must be finite and non-negative.");
+        }
+
+        double half = range * 0.5;
+        double deviate = NextNormal(0.0, range / 6.0);
+        if (deviate < -half)
+        {
+            return center - half;
+        }
+
+        return deviate > half ? center + half : center + deviate;
+    }
+
     /// <summary>Draws an exponentially distributed double with the given rate.</summary>
     /// <param name="lambda">The rate parameter; must be finite and positive.</param>
     /// <returns>An exponentially distributed deviate.</returns>

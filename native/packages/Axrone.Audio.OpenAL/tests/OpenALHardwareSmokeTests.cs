@@ -13,6 +13,13 @@ public sealed class OpenALHardwareSmokeTests
 {
     private static readonly TimeSpan StartBudget = TimeSpan.FromMilliseconds(3000);
 
+    private const int SampleRate = 48000;
+
+    // Seconds of queued silence are deliberately long: the play/stop pair must catch the source
+    // while it is still running, and a queue that drains during a slow device open would turn the
+    // stop assertion into a check that playback ended on its own.
+    private const int QueueLength = 4;
+
     private readonly ITestOutputHelper _output;
 
     public OpenALHardwareSmokeTests(ITestOutputHelper output) => _output = output;
@@ -44,16 +51,18 @@ public sealed class OpenALHardwareSmokeTests
 
         try
         {
-            uint[] buffers = driver.GenBuffers(2);
+            uint[] buffers = driver.GenBuffers(QueueLength);
             uint source = driver.GenSource();
 
-            short[] silence = new short[9600];
-            driver.BufferDataShort(buffers[0], silence, 48000);
-            driver.BufferDataShort(buffers[1], silence, 48000);
+            short[] silence = new short[SampleRate];
+            for (int i = 0; i < buffers.Length; i++)
+            {
+                driver.BufferDataShort(buffers[i], silence, SampleRate);
+            }
+
             driver.QueueBuffers(source, buffers);
             driver.Play(source);
             WaitUntilPlaying(driver, source);
-            driver.GetSourceState(source).Should().Be(AudioDriverSourceState.Playing);
 
             driver.StopPlayback(source);
             driver.GetSourceState(source).Should().Be(AudioDriverSourceState.Stopped);

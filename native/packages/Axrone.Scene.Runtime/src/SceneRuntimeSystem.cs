@@ -71,7 +71,9 @@ public sealed class SceneRuntimeSystem : IGameLoopSystem<SceneRuntimeFrameState>
         {
             animators.Step(
                 stepSeconds,
-                _runtime.HasSkinnedMeshes ? _runtime.BonePaletteSink : null);
+                _runtime.HasSkinnedMeshes ? _runtime.BonePaletteSink : null,
+                _runtime.AnimatorEventSink,
+                _runtime.MorphWeights);
         }
 
         if (_runtime.PathAgents is { } pathAgents)
@@ -104,6 +106,11 @@ public sealed class SceneRuntimeSystem : IGameLoopSystem<SceneRuntimeFrameState>
 
         if (_renderer is not null)
         {
+            if (_runtime.Animators is { } animators && _runtime.HasSkinnedMeshes)
+            {
+                animators.PublishInterpolatedPoses((float)ctx.Alpha, _runtime.BonePaletteSink);
+            }
+
             SceneRenderStats stats = _renderer.Render(frameIndex, elapsedSeconds);
             _profiler.AttachRenderStats(in stats);
             ctx.State = new SceneRuntimeFrameState(ctx.Frame, stats, _runtime.Frame.Camera is not null, _runtime.Frame.Mode);

@@ -34,7 +34,7 @@ public sealed class EcsObservablesTests
         names[enemy] = "enemy";
         tags[enemy] = "enemy";
         layers[enemy] = 2;
-        bridge.Poll();
+        bridge.Pump();
 
         byName.Values.Should().ContainSingle();
         byName.Values[0].Entity.Should().Be(hero);
@@ -45,7 +45,7 @@ public sealed class EcsObservablesTests
 
         world.DestroyEntity(hero);
         world.DestroyEntity(enemy);
-        bridge.Poll();
+        bridge.Pump();
         byName.Values.Should().HaveCount(2);
         byName.Values[1].Kind.Should().Be(EntityLifecycleKind.Destroyed);
         byTag.Values.Should().HaveCount(2);
@@ -53,7 +53,7 @@ public sealed class EcsObservablesTests
     }
 
     [Fact]
-    public void QueryObservableIsSharedAndRefreshesOnPoll()
+    public void QueryObservableIsSharedAndRefreshesOnPump()
     {
         ComponentRegistry.Register<BridgePosition>();
         using var world = new World(workerCount: 1);
@@ -70,7 +70,7 @@ public sealed class EcsObservablesTests
         observer.Values[0].Should().HaveCount(2);
 
         _ = world.BeginEntity().With(new BridgePosition(3, 0)).Commit();
-        bridge.Poll();
+        bridge.Pump();
 
         query.Value.Should().HaveCount(3);
         observer.Values.Should().HaveCount(2);
@@ -105,20 +105,44 @@ public sealed class EcsObservablesTests
     [Fact]
     public void QueriesRefreshInRegistrationOrder()
     {
+        ComponentRegistry.Register<BridgePosition>();
+        ComponentRegistry.Register<BridgeVelocity>();
         using var world = new World(workerCount: 1);
-        Entity first = world.BeginEntity().Commit();
-        Entity second = world.BeginEntity().Commit();
+        _ = world.BeginEntity().With(new BridgePosition(1, 0)).With(new BridgeVelocity(1)).Commit();
         using var bridge = new EcsReactiveBridge(world);
         var order = new List<string>();
-        BehaviorSubject<Entity[]> firstQuery = bridge.Observables.GetQueryObservable("first", _ => [first]);
-        BehaviorSubject<Entity[]> secondQuery = bridge.Observables.GetQueryObservable("second", _ => [second]);
+        BehaviorSubject<Entity[]> firstQuery = bridge.Observables.GetQueryObservable<BridgePosition>("positions");
+        BehaviorSubject<Entity[]> secondQuery = bridge.Observables.GetQueryObservable<BridgeVelocity>("velocities");
         using var firstSubscription = firstQuery.Subscribe(new CallbackObserver<Entity[]>(_ => order.Add("first")));
         using var secondSubscription = secondQuery.Subscribe(new CallbackObserver<Entity[]>(_ => order.Add("second")));
         order.Clear();
 
-        bridge.Poll();
+        _ = world.BeginEntity().With(new BridgePosition(2, 0)).With(new BridgeVelocity(2)).Commit();
+        bridge.Pump();
 
         order.Should().Equal("first", "second");
+    }
+
+    [Fact]
+    public void QueryPublishesOnlyWhenTheResultChanges()
+    {
+        ComponentRegistry.Register<BridgePosition>();
+        using var world = new World(workerCount: 1);
+        _ = world.BeginEntity().With(new BridgePosition(1, 0)).Commit();
+        using var bridge = new EcsReactiveBridge(world);
+        BehaviorSubject<Entity[]> query = bridge.Observables.GetQueryObservable<BridgePosition>("positions");
+        var observer = new RecordingObserver<Entity[]>();
+        using var subscription = query.Subscribe(observer);
+        observer.Values.Should().ContainSingle();
+
+        bridge.Pump();
+        bridge.Pump();
+        observer.Values.Should().ContainSingle();
+
+        _ = world.BeginEntity().With(new BridgePosition(2, 0)).Commit();
+        bridge.Pump();
+        observer.Values.Should().HaveCount(2);
+        observer.Values[1].Should().HaveCount(2);
     }
 
     private sealed class CallbackObserver<T> : IObserver<T>

@@ -85,7 +85,9 @@ public sealed class SceneGlOrchestratorTests
             100.0f);
         var source = new ItemSource(meshCollector.Items.ToArray(), spriteCollector.Items.ToArray())
         {
-            Fog = fog
+            Fog = fog,
+            OutputGamma = 1f / 2.2f,
+            EditorPreview = true,
         };
         using var orchestrator = new SceneGlRenderOrchestrator(context, cache, world);
         var frameState = new SceneRenderFrameState();
@@ -101,6 +103,8 @@ public sealed class SceneGlOrchestratorTests
         stats.PassCount.Should().Be(1);
         stats.DrawCalls.Should().Be(2);
         orchestrator.MeshExecutor.LastFog.Should().Be(fog);
+        orchestrator.MeshExecutor.LastOutputGamma.Should().BeApproximately(1f / 2.2f, 1e-5f);
+        orchestrator.MeshExecutor.LastEditorPreview.Should().BeTrue();
         api.CallLog.Should().Contain(call => call.StartsWith("DrawElements", StringComparison.Ordinal));
     }
 
@@ -166,6 +170,10 @@ public sealed class SceneGlOrchestratorTests
         public LightingSelectionState? Lighting => null;
 
         public SceneFogState Fog { get; set; } = SceneFogState.Default;
+
+        public float OutputGamma { get; set; } = 1f;
+
+        public bool EditorPreview { get; set; }
 
         public ReadOnlySpan<SceneRenderItem> CollectMeshes(SceneAssetId<RenderPassAssetTag> passId) =>
             _meshes;

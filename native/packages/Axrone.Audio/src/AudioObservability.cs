@@ -171,21 +171,40 @@ public sealed class CacheAlignedDiagnosticsCounters
 /// Synchronous diagnostics fan-out: counters plus a bounded listener set.
 /// Diagnostics path only; the mixer never blocks on listeners.
 /// </summary>
+/// <remarks>
+/// The listener set is copy-on-write: subscribe and unsubscribe rebuild an immutable array under
+/// the cold-path lock, while <see cref="Dispatch"/> reads one snapshot and takes no lock. User
+/// callbacks therefore run outside any lock (re-entrant subscribe/unsubscribe/dispatch is safe)
+/// and a throwing listener is counted and isolated instead of aborting the rest of the fan-out.
+/// </remarks>
 public sealed class AudioObservabilityRuntime
 {
     private readonly CacheAlignedDiagnosticsCounters _counters;
-    private readonly IAudioEventListener?[] _listeners;
     private readonly Lock _gate = new();
-    private int _listenerCount;
+    private readonly int _maxListeners;
+    private IAudioEventListener[] _listeners = [];
+    private long _listenerFaults;
 
     /// <summary>Shared counters.</summary>
     public CacheAlignedDiagnosticsCounters Counters => _counters;
 
+    /// <summary>Listeners currently subscribed.</summary>
+    public int ListenerCount => Volatile.Read(ref _listeners).Length;
+
+    /// <summary>Listener callbacks that faulted and were isolated.</summary>
+    public long ListenerFaults => Interlocked.Read(ref _listenerFaults);
+
     /// <summary>Creates a runtime.</summary>
     public AudioObservabilityRuntime(CacheAlignedDiagnosticsCounters counters, int maxListeners = 64)
     {
+        ArgumentNullException.ThrowIfNull(counters);
+        if (maxListeners < 1)
+        {
+            AudioThrowHelper.ThrowConfig("audio.listener-capacity", "Listener capacity must be positive.");
+        }
+
         _counters = counters;
-        _listeners = new IAudioEventListener[maxListeners];
+        _maxListeners = maxListeners;
     }
 
     /// <summary>Subscribes a listener.</summary>
@@ -194,17 +213,16 @@ public sealed class AudioObservabilityRuntime
         ArgumentNullException.ThrowIfNull(listener);
         lock (_gate)
         {
-            for (int i = 0; i < _listeners.Length; i++)
+            IAudioEventListener[] current = _listeners;
+            if (current.Length >= _maxListeners)
             {
-                if (_listeners[i] is null)
-                {
-                    _listeners[i] = listener;
-                    _listenerCount++;
-                    return;
-                }
+                AudioThrowHelper.ThrowConfig("audio.listener-capacity", "Exceeded listener capacity.");
             }
 
-            AudioThrowHelper.ThrowConfig("audio.listener-capacity", "Exceeded listener capacity.");
+            var next = new IAudioEventListener[current.Length + 1];
+            Array.Copy(current, next, current.Length);
+            next[^1] = listener;
+            Volatile.Write(ref _listeners, next);
         }
     }
 
@@ -214,15 +232,32 @@ public sealed class AudioObservabilityRuntime
         ArgumentNullException.ThrowIfNull(listener);
         lock (_gate)
         {
-            for (int i = 0; i < _listeners.Length; i++)
+            IAudioEventListener[] current = _listeners;
+            int index = -1;
+            for (int i = 0; i < current.Length; i++)
             {
-                if (ReferenceEquals(_listeners[i], listener))
+                if (ReferenceEquals(current[i], listener))
                 {
-                    _listeners[i] = null;
-                    _listenerCount--;
-                    return;
+                    index = i;
+                    break;
                 }
             }
+
+            if (index < 0)
+            {
+                return;
+            }
+
+            if (current.Length == 1)
+            {
+                Volatile.Write(ref _listeners, Array.Empty<IAudioEventListener>());
+                return;
+            }
+
+            var next = new IAudioEventListener[current.Length - 1];
+            Array.Copy(current, 0, next, 0, index);
+            Array.Copy(current, index + 1, next, index, current.Length - index - 1);
+            Volatile.Write(ref _listeners, next);
         }
     }
 
@@ -231,17 +266,25 @@ public sealed class AudioObservabilityRuntime
     public void Dispatch(AudioEventType type, uint primaryId, uint secondaryId = 0, float value = 0.0f)
     {
         _counters.IncrementEvents();
-        if (Volatile.Read(ref _listenerCount) == 0)
+
+        IAudioEventListener[] listeners = Volatile.Read(ref _listeners);
+        if (listeners.Length == 0)
         {
             return;
         }
 
         AudioRuntimeEvent ev = AudioRuntimeEvent.Create(type, primaryId, secondaryId, value);
-        lock (_gate)
+        for (int i = 0; i < listeners.Length; i++)
         {
-            for (int i = 0; i < _listeners.Length; i++)
+            try
             {
-                _listeners[i]?.OnAudioEvent(in ev);
+                listeners[i].OnAudioEvent(in ev);
+            }
+#pragma warning disable CA1031 // A listener fault must never abort the diagnostics fan-out.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                Interlocked.Increment(ref _listenerFaults);
             }
         }
     }

@@ -70,7 +70,7 @@ public sealed class SceneProfileBuilder
         SceneComponentTraits traits = SceneComponentTraits.None,
         int priority = 0,
         ReadOnlySpan<SceneStringId> dependencies = default)
-        where T : SceneBehaviour, new()
+        where T : class, ISceneBehaviour, new()
     {
         ThrowIfBuilt();
         _registry.RegisterBehaviour<T>(name, traits, priority, dependencies);
@@ -84,7 +84,7 @@ public sealed class SceneProfileBuilder
         SceneComponentTraits traits = SceneComponentTraits.None,
         int priority = 0,
         ReadOnlySpan<SceneStringId> dependencies = default)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ThrowIfBuilt();
         _registry.RegisterBehaviour(name, factory, traits, priority, dependencies);

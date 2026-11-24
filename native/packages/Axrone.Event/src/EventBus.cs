@@ -14,7 +14,7 @@ public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<Type, object> _routers = new();
     private readonly Lock _gate = new();
-    private readonly EventDispatcher _dispatcher = new();
+    private readonly EventDispatcher _dispatcher;
     private readonly RouterOptions _options;
     private int _disposed;
 
@@ -27,12 +27,47 @@ public sealed class EventBus : IEventBus, IDisposable, IAsyncDisposable
 
     /// <summary>Creates a bus; every per-type router gets the same options.</summary>
     public EventBus(RouterOptions options)
+        : this(options, EventDispatchMode.Background)
+    {
+    }
+
+    /// <summary>Creates a bus with an explicit dispatch mode.</summary>
+    /// <param name="options">Options applied to every per-type router.</param>
+    /// <param name="mode">
+    /// Background starts one worker thread. FrameDriven creates no thread and requires the owner
+    /// to call <see cref="Pump(int)"/>.
+    /// </param>
+    public EventBus(RouterOptions options, EventDispatchMode mode)
     {
         _options = options;
+        _dispatcher = new EventDispatcher(mode);
     }
+
+    /// <summary>
+    /// Advances frame-driven dispatch. Each pass visits every router once; further passes repeat
+    /// until no router had work or <paramref name="maxBatches"/> is reached.
+    /// </summary>
+    /// <param name="maxBatches">Maximum passes for this frame.</param>
+    /// <returns>Passes that drained work.</returns>
+    /// <exception cref="InvalidOperationException">The bus runs in background mode.</exception>
+    public int Pump(int maxBatches = 1) => _dispatcher.Pump(maxBatches);
+
+    /// <summary>
+    /// Advances frame-driven dispatch until no router has work or the time budget
+    /// is exhausted. Useful when the owner has a per-frame millisecond budget.
+    /// </summary>
+    public int Pump(TimeSpan maxDuration, int maxBatches = int.MaxValue) =>
+        _dispatcher.Pump(maxDuration, maxBatches);
 
     /// <inheritdoc/>
     public void Publish<TEvent>(in TEvent message) => Router<TEvent>().Publish(in message);
+
+    /// <summary>
+    /// Non-blocking publish that reports whether the payload was accepted,
+    /// buffered, filtered or backpressured.
+    /// </summary>
+    public EventPublishResult TryPublishWithResult<TEvent>(in TEvent message) =>
+        Router<TEvent>().TryPublishWithResult(in message);
 
     /// <inheritdoc/>
     public void PublishEnvelope<TEvent>(in EventEnvelope<TEvent> envelope) => Router<TEvent>().PublishEnvelope(in envelope);

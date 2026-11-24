@@ -183,6 +183,26 @@ public sealed class RetargetProfile
     /// <summary>Mapped-only bindings in source order.</summary>
     public ReadOnlySpan<RetargetBinding> Bindings => _bindings;
 
+    private void ResetViewToRest(in AnimationFrameView target)
+    {
+        ReadOnlySpan<float> rest = TargetRig.RestPoseBuffer;
+        int boneCount = TargetRig.BoneCount;
+        int rotBase = boneCount * 3;
+        int scaleBase = boneCount * 7;
+
+        for (int i = 0; i < boneCount; i++)
+        {
+            int tOff = i * 3;
+            int rOff = rotBase + (i * 4);
+            int sOff = scaleBase + (i * 3);
+            target.Translations[i] = new Vec3(rest[tOff], rest[tOff + 1], rest[tOff + 2]);
+            target.Rotations[i] = new Quat(rest[rOff], rest[rOff + 1], rest[rOff + 2], rest[rOff + 3]);
+            target.Scales[i] = new Vec3(rest[sOff], rest[sOff + 1], rest[sOff + 2]);
+        }
+
+        target.Curves.Clear();
+    }
+
     /// <summary>Retargets a source frame onto a target frame, copying curves through.</summary>
     public void RetargetFrame(AnimationFrame sourceFrame, AnimationFrame targetFrame)
     {
@@ -193,6 +213,7 @@ public sealed class RetargetProfile
             AnimationThrowHelper.ThrowRetargeting(AnimationErrorCode.RetargetingIncompatibleLayout, "Retarget frames do not match their rigs.");
         }
 
+        targetFrame.ResetToRest(TargetRig);
         DispatchCore(
             _bindings,
             TranslationMode,
@@ -219,6 +240,7 @@ public sealed class RetargetProfile
             AnimationThrowHelper.ThrowRetargeting(AnimationErrorCode.RetargetingIncompatibleLayout, "Retarget views do not match their rigs.");
         }
 
+        ResetViewToRest(in target);
         DispatchCore(
             _bindings,
             TranslationMode,

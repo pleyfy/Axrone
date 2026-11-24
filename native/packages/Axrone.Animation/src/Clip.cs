@@ -82,6 +82,13 @@ public readonly struct AnimationChannel
     /// <summary>Floats per key (×3 for splines holding tangents).</summary>
     public int Stride { get; }
 
+    /// <summary>Whether the channel carries no keys and therefore drives nothing.</summary>
+    public bool IsEmpty
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _keyTimes.Length == 0;
+    }
+
     /// <summary>Target curve for curve channels.</summary>
     public CurveId? TargetCurveId { get; }
 
@@ -584,6 +591,11 @@ public sealed class AnimationClip
         for (int i = 0; i < channels.Length; i++)
         {
             AnimationChannel channel = channels[i];
+            if (channel.IsEmpty)
+            {
+                continue;
+            }
+
             channel.Sample(t, component, ref hints[i]);
 
             switch (channel.Target)
@@ -629,12 +641,12 @@ public sealed class AnimationClip
 
         if (curTime >= prevTime)
         {
-            CollectEventsRange(prevTime, curTime, ref sink);
+            CollectEventsRange(prevTime, curTime, includeStart: false, ref sink);
         }
         else
         {
-            CollectEventsRange(prevTime, Duration, ref sink);
-            CollectEventsRange(0.0f, curTime, ref sink);
+            CollectEventsRange(prevTime, Duration, includeStart: false, ref sink);
+            CollectEventsRange(0.0f, curTime, includeStart: true, ref sink);
         }
     }
 
@@ -646,13 +658,14 @@ public sealed class AnimationClip
         CollectEvents(prevTime, curTime, ref adapter);
     }
 
-    private void CollectEventsRange<TSink>(float start, float end, ref TSink sink)
+    private void CollectEventsRange<TSink>(float start, float end, bool includeStart, ref TSink sink)
         where TSink : struct, IClipEventSink
     {
         for (int i = 0; i < _events.Length; i++)
         {
             ClipEvent evt = _events[i];
-            if (evt.Time > start && evt.Time <= end)
+            bool afterStart = includeStart ? evt.Time >= start : evt.Time > start;
+            if (afterStart && evt.Time <= end)
             {
                 sink.Emit(in evt);
             }

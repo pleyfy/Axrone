@@ -16,6 +16,8 @@ public sealed class SceneGlShadowTests
 {
     private const int TileEdge = 1024;
     private const int AtlasEdge = 2048;
+    private const uint FramebufferTarget = 0x8D40;
+    private const uint CallerFramebuffer = 7777u;
 
     private const string VertexShader = """
         #version 330 core
@@ -257,6 +259,131 @@ public sealed class SceneGlShadowTests
         api.CallLog.Should().Contain($"Viewport({TileEdge}, {TileEdge}, {TileEdge}, {TileEdge})");
         api.CallLog.Should().Contain(call => call.StartsWith("Clear(", StringComparison.Ordinal));
         api.CallLog.Should().Contain(call => call.StartsWith("DrawElements", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RendererRestoresCallerFramebufferAndViewport()
+    {
+        var api = new MockGLApi { EnableCallLogging = true };
+        using var context = new GLContext(api);
+        using var fixture = new SceneGlFixture();
+        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using var cache = new SceneGlAssetCache(context, fixture.Assets);
+        _ = cache.UploadAll();
+        using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
+        using var renderer = new SceneGlShadowRenderer(context, cache, atlas);
+        renderer.Settings = EnabledSettings(ShadowCascadeCount.Four);
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        LightingSelectionState lighting = CreateDirectionalLighting();
+        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+
+        // A host rendering into its own MSAA or composition target.
+        context.State.BindFramebuffer(FramebufferTarget, CallerFramebuffer);
+        context.State.SetViewport(0, 0, 800, 600);
+        api.ClearCallLog();
+
+        renderer.Render(world, camera, lighting, casters).Should().Be(4);
+
+        api.CallLog.Should().Contain($"BindFramebuffer({FramebufferTarget}, {CallerFramebuffer})");
+        api.CallLog.Should().Contain("Viewport(0, 0, 800, 600)");
+        context.State.BoundDrawFramebuffer.Should().Be(CallerFramebuffer);
+        context.State.BoundReadFramebuffer.Should().Be(CallerFramebuffer);
+        context.State.ViewportWidth.Should().Be(800);
+        context.State.ViewportHeight.Should().Be(600);
+    }
+
+    [Fact]
+    public void RendererSkipsRestoreWhileCallerStateIsUnknown()
+    {
+        var api = new MockGLApi { EnableCallLogging = true };
+        using var context = new GLContext(api);
+        using var fixture = new SceneGlFixture();
+        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using var cache = new SceneGlAssetCache(context, fixture.Assets);
+        _ = cache.UploadAll();
+        using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
+        using var renderer = new SceneGlShadowRenderer(context, cache, atlas);
+        renderer.Settings = EnabledSettings(ShadowCascadeCount.Four);
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        LightingSelectionState lighting = CreateDirectionalLighting();
+        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+
+        // A freshly reset cache holds uint.MaxValue and -1 sentinels; replaying
+        // them would bind handle 4294967295 and a negative viewport.
+        context.State.Invalidate();
+        context.State.Reset();
+        api.ClearCallLog();
+
+        renderer.Render(world, camera, lighting, casters).Should().Be(4);
+
+        api.CallLog.Should().NotContain(
+            call => call.Contains(", 4294967295", StringComparison.Ordinal),
+            "unknown framebuffer handles must never be restored");
+        api.CallLog.Should().NotContain(
+            call => call.StartsWith("Viewport(-1", StringComparison.Ordinal),
+            "an unknown viewport must never be restored");
+    }
+
+    [Fact]
+    public void RendererWithEmptySkinnedCastersMatchesTheStaticOnlyOverload()
+    {
+        var api = new MockGLApi { EnableCallLogging = true };
+        using var context = new GLContext(api);
+        using var fixture = new SceneGlFixture();
+        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using var cache = new SceneGlAssetCache(context, fixture.Assets);
+        _ = cache.UploadAll();
+        using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
+        using var renderer = new SceneGlShadowRenderer(context, cache, atlas);
+        renderer.Settings = EnabledSettings(ShadowCascadeCount.Four);
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        LightingSelectionState lighting = CreateDirectionalLighting();
+        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+        var skinned = new SceneSkinnedMeshRenderItem[1];
+
+        api.ClearCallLog();
+        int staticOnly = renderer.Render(world, camera, lighting, casters);
+        string[] referenceLog = api.CallLog.ToArray();
+
+        api.ClearCallLog();
+        int emptySkinned = renderer.Render(
+            world,
+            camera,
+            lighting,
+            casters,
+            ReadOnlySpan<SceneSkinnedMeshRenderItem>.Empty,
+            null);
+        string[] emptyLog = api.CallLog.ToArray();
+
+        api.ClearCallLog();
+        int withoutPalettes = renderer.Render(world, camera, lighting, casters, skinned, null);
+
+        emptySkinned.Should().Be(staticOnly);
+        withoutPalettes.Should().Be(staticOnly);
+
+        // Call logs are not byte-comparable across two runs: the state cache
+        // dedupes ClearDepth/DepthFunc/UseProgram the second time. What must
+        // hold is that an inert skinned path submits no extra geometry and never
+        // touches the bone palette texture.
+        CountPrefix(emptyLog, "DrawElements(").Should().Be(CountPrefix(referenceLog, "DrawElements("));
+        emptyLog.Should().NotContain(
+            call => call.StartsWith("TexSubImage2D(", StringComparison.Ordinal),
+            "no skinned casters means no bone palette upload");
+        CountPrefix(emptyLog, "GenerateTextures").Should().Be(0);
+    }
+
+    private static int CountPrefix(IEnumerable<string> calls, string prefix)
+    {
+        int count = 0;
+        foreach (string call in calls)
+        {
+            if (call.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     [Fact]

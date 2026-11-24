@@ -257,6 +257,32 @@ public static class Random
         return value;
     }
 
+    /// <summary>Draws a standard normal deviate from the calling thread's stream and clamps it.</summary>
+    /// <param name="min">The inclusive lower clamp.</param>
+    /// <param name="max">The inclusive upper clamp.</param>
+    /// <returns>A value inside <c>[min, max]</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">A bound is NaN, or <paramref name="min"/> is greater than <paramref name="max"/>.</exception>
+    public static double NextBoundedNormal(double min = -1.0, double max = 1.0)
+    {
+        RandomEngine<Xoroshiro128PlusPlus> engine = ThreadState();
+        double value = engine.NextBoundedNormal(min, max);
+        CommitThreadState(engine);
+        return value;
+    }
+
+    /// <summary>Draws a normal deviate whose three-sigma window is the given interval.</summary>
+    /// <param name="center">The midpoint of the interval.</param>
+    /// <param name="range">The interval width; finite and non-negative.</param>
+    /// <returns>A value inside <c>[center - range/2, center + range/2]</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="range"/> is NaN, infinite or negative.</exception>
+    public static double NextNormalInRange(double center, double range)
+    {
+        RandomEngine<Xoroshiro128PlusPlus> engine = ThreadState();
+        double value = engine.NextNormalInRange(center, range);
+        CommitThreadState(engine);
+        return value;
+    }
+
     /// <summary>Draws an exponentially distributed double from the calling thread's stream.</summary>
     /// <param name="lambda">The rate parameter; must be finite and positive.</param>
     /// <returns>An exponentially distributed deviate.</returns>

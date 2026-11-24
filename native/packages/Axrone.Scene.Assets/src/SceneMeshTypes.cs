@@ -83,6 +83,9 @@ public readonly record struct SceneVertexAttribute
     /// <summary>Whether components are integer rather than float.</summary>
     public bool Integer { get; }
 
+    /// <summary>Byte size of one component (1, 2 or 4).</summary>
+    public byte ComponentSize { get; }
+
     /// <summary>Creates a validated vertex attribute.</summary>
     public SceneVertexAttribute(
         SceneMeshSemantic semantic,
@@ -90,13 +93,21 @@ public readonly record struct SceneVertexAttribute
         int offset,
         int stride,
         bool normalized = false,
-        bool integer = false)
+        bool integer = false,
+        byte componentSize = 4)
     {
         if (componentCount is < 1 or > 4)
         {
             throw new SceneAssetException(
                 SceneAssetErrorCodes.Invalid,
                 $"Vertex attribute '{semantic}' must have 1..4 components; received {componentCount}.");
+        }
+
+        if (componentSize is not (1 or 2 or 4 or 8))
+        {
+            throw new SceneAssetException(
+                SceneAssetErrorCodes.Invalid,
+                $"Vertex attribute '{semantic}' component size must be 1, 2, 4 or 8 bytes; received {componentSize}.");
         }
 
         if (offset < 0)
@@ -119,5 +130,6 @@ public readonly record struct SceneVertexAttribute
         Stride = stride;
         Normalized = normalized;
         Integer = integer;
+        ComponentSize = componentSize;
     }
 }

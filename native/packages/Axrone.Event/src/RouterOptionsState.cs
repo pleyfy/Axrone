@@ -19,9 +19,10 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
         DispatchBatchSize = 256,
         DeadLetterCapacity = 1024,
         MeterName = "Axrone.Event",
-        MaxListeners = 0,
+        MaxListeners = 10,
         MaxListenersPolicy = MaxListenersPolicy.Warn,
         PausedBufferCapacity = 1024,
+        MaxQueueWaitMs = 2000,
     };
 
     public int Capacity { get; set; }
@@ -31,6 +32,7 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
     public int MaxListeners { get; set; }
     public MaxListenersPolicy MaxListenersPolicy { get; set; }
     public int PausedBufferCapacity { get; set; }
+    public int MaxQueueWaitMs { get; set; }
 
     /// <inheritdoc/>
     public static RouterOptions Materialize(in RouterOptionsState state) =>
@@ -39,6 +41,7 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
             MaxListeners = state.MaxListeners,
             MaxListenersPolicy = state.MaxListenersPolicy,
             PausedBufferCapacity = state.PausedBufferCapacity,
+            MaxQueueWaitMs = state.MaxQueueWaitMs,
         };
 
     /// <inheritdoc/>
@@ -86,6 +89,12 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
             return false;
         }
 
+        if (state.MaxQueueWaitMs < 0)
+        {
+            diagnostic = BuilderDiagnostic.Fail(BuilderStatusCode.ValidationFailed, "MaxQueueWaitMs must be non-negative.");
+            return false;
+        }
+
         diagnostic = BuilderDiagnostic.Ok;
         return true;
     }
@@ -98,7 +107,8 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
         MeterName == other.MeterName &&
         MaxListeners == other.MaxListeners &&
         MaxListenersPolicy == other.MaxListenersPolicy &&
-        PausedBufferCapacity == other.PausedBufferCapacity;
+        PausedBufferCapacity == other.PausedBufferCapacity &&
+        MaxQueueWaitMs == other.MaxQueueWaitMs;
 
     /// <inheritdoc/>
     public override bool Equals(object? obj) => obj is RouterOptionsState other && Equals(other);
@@ -109,7 +119,7 @@ public struct RouterOptionsState : IAggregateDefinition<RouterOptionsState, Rout
         DispatchBatchSize,
         DeadLetterCapacity,
         MeterName,
-        HashCode.Combine(MaxListeners, MaxListenersPolicy, PausedBufferCapacity));
+        HashCode.Combine(MaxListeners, MaxListenersPolicy, PausedBufferCapacity, MaxQueueWaitMs));
 
     public static bool operator ==(RouterOptionsState left, RouterOptionsState right) => left.Equals(right);
 

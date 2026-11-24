@@ -254,7 +254,7 @@ public static class Scene2DRendererBridge
             float advance = ComputeAdvance(in animator, clip);
             if (advance > 0.0f)
             {
-                behaviour.Update(advance);
+                behaviour.Advance(advance);
             }
         }
 

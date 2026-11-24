@@ -73,23 +73,21 @@ public sealed class EmitterParityZeroAllocationTests
     public void EventUtilsCombinators_DoNotAllocateWhenInvoked()
     {
         int calls = 0;
-        Action<int> composed = EventUtils.Compose<int>(
-            EventUtils.Where<int>(static value => value > 0, _ => calls++),
-            EventUtils.Once<int>(_ => calls++));
+        Action<int> filtered = EventUtils.Where<int>(static value => value > 0, _ => calls++);
 
         for (int i = 0; i < WarmupIterations; i++)
         {
-            composed(1);
+            filtered(1);
         }
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < MeasuredIterations; i++)
         {
-            composed(1);
+            filtered(1);
         }
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         allocated.Should().Be(0);
-        calls.Should().Be(WarmupIterations + MeasuredIterations + 1);
+        calls.Should().Be(WarmupIterations + MeasuredIterations);
     }
 }

@@ -321,6 +321,62 @@ public sealed class SceneRuntimeTests
     }
 
     [Fact]
+    public void GlRenderer_ReservesShadowAtlasOnlyWhenShadowsEnabled()
+    {
+        var api = new MockGLApi { EnableCallLogging = true };
+        using var context = new GLContext(api);
+        using var runtime = CreateRenderableRuntime(out _, out _);
+        using var renderer = new SceneGlFrameRenderer(context, runtime);
+        renderer.UploadAssets();
+        api.ClearCallLog();
+
+        runtime.Frame.ShadowSettings.Enabled.Should().BeTrue();
+        _ = renderer.Render(0);
+
+        api.CallLog.Should().Contain(
+            call => call.StartsWith("CheckFramebufferStatus", StringComparison.Ordinal),
+            "the default ShadowSettings must reserve and validate a depth atlas");
+    }
+
+    [Fact]
+    public void GlRenderer_ReservesNoShadowAtlasWhenShadowsDisabled()
+    {
+        var api = new MockGLApi { EnableCallLogging = true };
+        using var context = new GLContext(api);
+        using var runtime = CreateRenderableRuntime(out _, out _);
+        using var renderer = new SceneGlFrameRenderer(context, runtime);
+        renderer.UploadAssets();
+        runtime.Frame.ShadowSettings = Axrone.Lighting.ShadowSettings.Disabled;
+        api.ClearCallLog();
+
+        SceneRenderStats stats = renderer.Render(0);
+
+        stats.DrawCalls.Should().Be(1);
+        api.CallLog.Should().NotContain(
+            call => call.StartsWith("CheckFramebufferStatus", StringComparison.Ordinal),
+            "a scene that opts out of shadows must not pay for a depth atlas");
+    }
+
+    [Fact]
+    public void GlRenderer_ShadowPassDoesNotInflateFrameStatistics()
+    {
+        var api = new MockGLApi { EnableCallLogging = false };
+        using var context = new GLContext(api);
+        using var runtime = CreateRenderableRuntime(out _, out _);
+        using var renderer = new SceneGlFrameRenderer(context, runtime);
+        renderer.UploadAssets();
+
+        SceneRenderStats withShadows = renderer.Render(0);
+        withShadows.OpaqueCount.Should().Be(1, "the shadow caster gather must not re-record queues");
+        withShadows.DrawCalls.Should().Be(1, "depth draws are not scene draw calls");
+
+        runtime.Frame.ShadowSettings = Axrone.Lighting.ShadowSettings.Disabled;
+        SceneRenderStats withoutShadows = renderer.Render(1);
+        withoutShadows.OpaqueCount.Should().Be(withShadows.OpaqueCount);
+        withoutShadows.DrawCalls.Should().Be(withShadows.DrawCalls);
+    }
+
+    [Fact]
     public void GlRenderer_Renders2DSprites()
     {
         var api = new MockGLApi { EnableCallLogging = true };
@@ -659,7 +715,7 @@ public sealed class SceneRuntimeTests
         loop.Status.Should().Be(GameLoopStatus.Idle);
     }
 
-    private sealed class CountingBehaviour : SceneBehaviour
+    private sealed class CountingBehaviour : ISceneBehaviour
     {
         public int StartCount { get; private set; }
 
@@ -669,13 +725,13 @@ public sealed class SceneRuntimeTests
 
         public int FixedUpdateCount { get; private set; }
 
-        public override void Start() => StartCount++;
-
-        public override void OnEnable() => EnableCount++;
-
-        public override void Update(float deltaSeconds) => UpdateCount++;
-
-        public override void FixedUpdate(float deltaSeconds) => FixedUpdateCount++;
+        public void OnAttach(SceneBehaviourContext context)
+        {
+            context.OnStart(() => StartCount++);
+            context.OnEnable(() => EnableCount++);
+            context.OnUpdate(_ => UpdateCount++);
+            context.OnFixedUpdate(_ => FixedUpdateCount++);
+        }
     }
 
     private static SceneRuntime Create2DRuntime(out SceneAssetRegistry assets)

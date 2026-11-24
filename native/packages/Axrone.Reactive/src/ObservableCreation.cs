@@ -116,6 +116,41 @@ public static partial class Observable
             new TimerSubscription(observer, dueTime, period, timeProvider ?? TimeProvider.System));
     }
 
+    /// <summary>Emits 0,1,2… once per period on a frame-driven scheduler.</summary>
+    public static IObservable<long> Interval(TimeSpan period, IReactiveScheduler scheduler)
+    {
+        ArgumentNullException.ThrowIfNull(scheduler);
+        if (period <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(period), "Interval must be positive.");
+        }
+
+        return new AnonymousObservable<long>(observer =>
+            new SchedulerIntervalSubscription(observer, period, scheduler));
+    }
+
+    /// <summary>Emits 0 after the due time on a frame-driven scheduler.</summary>
+    public static IObservable<long> Timer(TimeSpan dueTime, IReactiveScheduler scheduler) =>
+        Timer(dueTime, period: null, scheduler);
+
+    /// <summary>Emits 0 after the due time, then 1,2… on each period, on a frame-driven scheduler.</summary>
+    public static IObservable<long> Timer(TimeSpan dueTime, TimeSpan? period, IReactiveScheduler scheduler)
+    {
+        ArgumentNullException.ThrowIfNull(scheduler);
+        if (dueTime < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dueTime), "Due time must be non-negative.");
+        }
+
+        if (period is { } interval && interval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(period), "Period must be positive when supplied.");
+        }
+
+        return new AnonymousObservable<long>(observer =>
+            new SchedulerTimerSubscription(observer, dueTime, period, scheduler));
+    }
+
     public static IObservable<T> Defer<T>(Func<IObservable<T>> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
@@ -325,6 +360,138 @@ public static partial class Observable
                 if (Interlocked.Exchange(ref _disposed, 1) == 0)
                 {
                     _timer.Dispose();
+                    _observer.OnError(error);
+                }
+            }
+        }
+    }
+
+    private sealed class SchedulerIntervalSubscription : IDisposable
+    {
+        private readonly IObserver<long> _observer;
+        private readonly IDisposable _timer;
+        private long _counter;
+        private int _disposed;
+
+        public SchedulerIntervalSubscription(IObserver<long> observer, TimeSpan period, IReactiveScheduler scheduler)
+        {
+            _observer = observer;
+            _timer = scheduler.SchedulePeriodic(OnTimer, period);
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _timer.Dispose();
+            }
+        }
+
+        private void OnTimer()
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                _observer.OnNext(_counter++);
+            }
+            catch (Exception error)
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                {
+                    _timer.Dispose();
+                    _observer.OnError(error);
+                }
+            }
+        }
+    }
+
+    private sealed class SchedulerTimerSubscription : IDisposable
+    {
+        private readonly IObserver<long> _observer;
+        private readonly TimeSpan? _period;
+        private readonly IReactiveScheduler _scheduler;
+        private readonly IDisposable _first;
+        private IDisposable? _periodic;
+        private long _counter;
+        private int _disposed;
+
+        public SchedulerTimerSubscription(
+            IObserver<long> observer,
+            TimeSpan dueTime,
+            TimeSpan? period,
+            IReactiveScheduler scheduler)
+        {
+            _observer = observer;
+            _period = period;
+            _scheduler = scheduler;
+            _first = scheduler.Schedule(OnFirst, dueTime);
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _first.Dispose();
+                _periodic?.Dispose();
+            }
+        }
+
+        private void OnFirst()
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
+            Emit();
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
+            if (_period is { } period)
+            {
+                _periodic = _scheduler.SchedulePeriodic(OnPeriodic, period);
+            }
+            else
+            {
+                try
+                {
+                    _observer.OnCompleted();
+                }
+                catch (Exception)
+                {
+                    // Completion faults have no further channel.
+                }
+            }
+        }
+
+        private void OnPeriodic()
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
+            Emit();
+        }
+
+        private void Emit()
+        {
+            try
+            {
+                _observer.OnNext(_counter++);
+            }
+            catch (Exception error)
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                {
+                    _first.Dispose();
+                    _periodic?.Dispose();
                     _observer.OnError(error);
                 }
             }

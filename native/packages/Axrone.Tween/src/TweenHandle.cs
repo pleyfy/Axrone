@@ -31,6 +31,12 @@ public readonly struct TweenHandle : IEquatable<TweenHandle>
         get => _engine?.QueryState(Id) ?? TweenState.Inactive;
     }
 
+    /// <summary>Whether the handle routes to this engine rather than a same-shaped one.</summary>
+    /// <param name="engine">Engine to test ownership against.</param>
+    /// <returns><see langword="true"/> when the handle was produced by <paramref name="engine"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool OwnedBy(TweenEngine engine) => ReferenceEquals(_engine, engine);
+
     /// <summary>Cancels the tween; false for stale identities.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Cancel() => _engine != null && _engine.Cancel(Id);

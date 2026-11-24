@@ -23,7 +23,11 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
     private const int StateFaulted = 3;
 
     [ThreadStatic]
-    private static bool t_immediateActive;
+    private static EventRouter<TEvent>? t_immediateRouter;
+
+    /// <summary>Router currently draining transport batches on this thread.</summary>
+    [ThreadStatic]
+    private static EventRouter<TEvent>? t_dispatchRouter;
 
     private readonly VyukovBoundedBatchQueue<EventEnvelope<TEvent>> _queue;
     private readonly Internal.EventSubscriptionTable<TEvent> _subscriptions = new();
@@ -46,11 +50,15 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
     private long _droppedDeadLetters;
     private long _reentrantDeferred;
     private long _reentrantDropped;
+    private long _filtered;
+    private int _reentrantChain;
     private long _incompleteImmediate;
     private long _maxListenersWarnings;
     private readonly int _deadLetterCapacity;
     private readonly int _defaultMaxListeners;
     private readonly int _pausedBufferCapacity;
+    private readonly long _maxQueueWaitTicks;
+    private readonly int _maxReentrantDepth;
     private readonly MaxListenersPolicy _maxListenersPolicy;
     private readonly EventTelemetry _telemetry;
     private PausedEventBuffer<TEvent>? _pausedBuffer;
@@ -114,6 +122,9 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
     /// <summary>Reentrant immediate publishes dropped because the transport was full.</summary>
     public long ReentrantDroppedPublishes => Interlocked.Read(ref _reentrantDropped);
 
+    /// <summary>Envelopes rejected by a publish filter before reaching the transport.</summary>
+    public long FilteredPublishes => Interlocked.Read(ref _filtered);
+
     /// <summary>Async handlers started by immediate dispatch that had not completed synchronously.</summary>
     public long IncompleteImmediateDispatches => Interlocked.Read(ref _incompleteImmediate);
 
@@ -165,10 +176,24 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "PausedBufferCapacity must be positive.");
         }
 
+        if (options.MaxQueueWaitMs < 0)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "MaxQueueWaitMs must be non-negative.");
+        }
+
+        if (options.MaxReentrantDepth < 1)
+        {
+            ThrowHelper.ThrowArgumentOutOfRange(nameof(options), "MaxReentrantDepth must be positive.");
+        }
+
         _deadLetterCapacity = options.DeadLetterCapacity;
         _defaultMaxListeners = options.MaxListeners;
         _maxListeners = options.MaxListeners;
         _pausedBufferCapacity = options.PausedBufferCapacity;
+        _maxQueueWaitTicks = options.MaxQueueWaitMs == 0
+            ? 0
+            : (long)(options.MaxQueueWaitMs * (Stopwatch.Frequency / 1000.0));
+        _maxReentrantDepth = options.MaxReentrantDepth;
         _maxListenersPolicy = options.MaxListenersPolicy;
         _telemetry = new EventTelemetry(options.MeterName ?? "Axrone.Event");
         _dispatchBuffer = new EventEnvelope<TEvent>[options.DispatchBatchSize];
@@ -241,6 +266,11 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
     /// Removes a subscription by identity. Equivalent to disposing the returned handle; returns
     /// false when the identity is not registered or was already released.
     /// </summary>
+    /// <remarks>
+    /// A paused subscription is still registered, so this returns true and removes it. Before
+    /// this contract was fixed, <c>Pause()</c> followed by either this method or dispose leaked
+    /// the registry entry permanently.
+    /// </remarks>
     public bool Unsubscribe(Guid subscriptionId)
     {
         EventSubscription<TEvent>? subscription = _subscriptions.Find(subscriptionId);
@@ -249,9 +279,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             return false;
         }
 
-        bool wasActive = subscription.IsActive;
-        subscription.Dispose();
-        return wasActive;
+        return subscription.Release();
     }
 
     /// <summary>Whether a subscription with the given identity is currently registered.</summary>
@@ -445,6 +473,8 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
 
     /// <summary>
     /// Non-blocking publish; false when full or not running (backpressure, not an error).
+    /// Filtered events report true because the call was not backpressured; use
+    /// <see cref="FilteredPublishes"/> or the batch count to observe filtering.
     /// </summary>
     public bool TryPublish(in TEvent message)
     {
@@ -455,6 +485,11 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
         }
 
         long start = Stopwatch.GetTimestamp();
+        if (!TryEnterReentrantPublish(throwOnLimit: false))
+        {
+            return false;
+        }
+
         EventEnvelope<TEvent> envelope = Stamp(message);
         PublishRoute route = RoutePublish(in envelope);
         bool published = route == PublishRoute.Buffered ||
@@ -473,12 +508,71 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
         }
 
         long start = Stopwatch.GetTimestamp();
+        if (!TryEnterReentrantPublish(throwOnLimit: false))
+        {
+            return false;
+        }
+
         EventEnvelope<TEvent> stamped = envelope.IsStamped ? envelope : StampEnvelope(in envelope);
         PublishRoute route = RoutePublish(in stamped);
         bool published = route == PublishRoute.Buffered ||
             (route == PublishRoute.Transport && TryPublishCore(in stamped));
         _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
         return published;
+    }
+
+    /// <summary>
+    /// Non-blocking publish that reports why a payload was not accepted. Filters
+    /// are evaluated once; a filtered payload is not retried.
+    /// </summary>
+    public EventPublishResult TryPublishWithResult(in TEvent message)
+    {
+        ThrowIfFaulted();
+        if (Volatile.Read(ref _state) != StateRunning)
+        {
+            return new EventPublishResult(EventPublishStatus.NotRunning);
+        }
+
+        long start = Stopwatch.GetTimestamp();
+        if (!TryEnterReentrantPublish(throwOnLimit: false))
+        {
+            return new EventPublishResult(EventPublishStatus.Backpressured);
+        }
+
+        EventEnvelope<TEvent> envelope = Stamp(message);
+        PublishRoute route = RoutePublish(in envelope);
+        EventPublishResult result;
+
+        if (route == PublishRoute.Buffered)
+        {
+            result = new EventPublishResult(EventPublishStatus.Buffered);
+        }
+        else if (route == PublishRoute.BufferFull)
+        {
+            result = new EventPublishResult(EventPublishStatus.Backpressured);
+        }
+        else if (!PassesPublishGate(in envelope))
+        {
+            result = new EventPublishResult(EventPublishStatus.Filtered);
+        }
+        else if (!_queue.TryEnqueue(in envelope))
+        {
+            result = new EventPublishResult(EventPublishStatus.Backpressured);
+        }
+        else
+        {
+            _dispatcher.Signal();
+            _telemetry.RecordPublished(1);
+            foreach (IEventInterceptor<TEvent> interceptor in _interceptors)
+            {
+                interceptor.OnPublished(in envelope);
+            }
+
+            result = new EventPublishResult(EventPublishStatus.Accepted);
+        }
+
+        _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
+        return result;
     }
 
     /// <summary>
@@ -498,7 +592,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
         long start = Stopwatch.GetTimestamp();
         EventEnvelope<TEvent> envelope = Stamp(message);
         PublishRoute route = RoutePublish(in envelope);
-        int delivered = route == PublishRoute.Transport ? DispatchImmediate(in envelope) : 0;
+        int delivered = route == PublishRoute.Transport ? DispatchImmediate(in envelope, throwOnLimit: true) : 0;
         _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
         if (route == PublishRoute.BufferFull)
         {
@@ -525,7 +619,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
         long start = Stopwatch.GetTimestamp();
         EventEnvelope<TEvent> envelope = Stamp(message);
         PublishRoute route = RoutePublish(in envelope);
-        int delivered = route == PublishRoute.Transport ? DispatchImmediate(in envelope) : 0;
+        int delivered = route == PublishRoute.Transport ? DispatchImmediate(in envelope, throwOnLimit: false) : 0;
         _metrics.RecordEmit(Stopwatch.GetTimestamp() - start);
         return delivered;
     }
@@ -588,15 +682,61 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
     public int CopyBufferedEnvelopes(Span<EventEnvelope<TEvent>> destination) =>
         Volatile.Read(ref _pausedBuffer)?.CopyTo(destination) ?? 0;
 
+    private bool IsDispatchingOnCurrentThread =>
+        ReferenceEquals(t_dispatchRouter, this) || ReferenceEquals(t_immediateRouter, this);
+
+    private bool TryEnterReentrantPublish(bool throwOnLimit)
+    {
+        if (!IsDispatchingOnCurrentThread)
+        {
+            Interlocked.Exchange(ref _reentrantChain, 0);
+            return true;
+        }
+
+        int depth = Interlocked.Increment(ref _reentrantChain);
+        if (depth <= _maxReentrantDepth)
+        {
+            return true;
+        }
+
+        Interlocked.Increment(ref _reentrantDropped);
+        if (throwOnLimit)
+        {
+            ThrowHelper.ThrowReentrantDepthExceeded(_maxReentrantDepth);
+        }
+
+        return false;
+    }
+
     private void PublishEnvelopeCore(in EventEnvelope<TEvent> envelope)
     {
+        if (IsDispatchingOnCurrentThread)
+        {
+            _ = TryEnterReentrantPublish(throwOnLimit: true);
+            if (TryPublishCore(in envelope))
+            {
+                return;
+            }
+
+            Interlocked.Increment(ref _reentrantDropped);
+            ThrowHelper.ThrowQueueFull(EventPriority.Normal, BufferCapacity);
+        }
+
+        _ = TryEnterReentrantPublish(throwOnLimit: false);
+
         ProgressiveSpinBackoff.Initialize(out int backoff);
+        long started = _maxQueueWaitTicks == 0 ? 0 : Stopwatch.GetTimestamp();
         while (!TryPublishCore(in envelope))
         {
             ThrowIfFaulted();
             if (Volatile.Read(ref _state) != StateRunning)
             {
                 ThrowHelper.ThrowEngineTerminated();
+            }
+
+            if (_maxQueueWaitTicks != 0 && Stopwatch.GetTimestamp() - started >= _maxQueueWaitTicks)
+            {
+                ThrowHelper.ThrowQueueFull(EventPriority.Normal, BufferCapacity);
             }
 
             ProgressiveSpinBackoff.Advance(ref backoff);
@@ -679,10 +819,15 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
         BufferFull = 2
     }
 
-    private int DispatchImmediate(in EventEnvelope<TEvent> envelope)
+    private int DispatchImmediate(in EventEnvelope<TEvent> envelope, bool throwOnLimit)
     {
-        if (t_immediateActive)
+        if (t_immediateRouter is not null)
         {
+            if (!TryEnterReentrantPublish(throwOnLimit))
+            {
+                return 0;
+            }
+
             if (TryPublishCore(in envelope))
             {
                 Interlocked.Increment(ref _reentrantDeferred);
@@ -690,17 +835,23 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             else
             {
                 Interlocked.Increment(ref _reentrantDropped);
+                if (throwOnLimit)
+                {
+                    ThrowHelper.ThrowQueueFull(EventPriority.Normal, BufferCapacity);
+                }
             }
 
             return 0;
         }
 
+        _ = TryEnterReentrantPublish(throwOnLimit: false);
         if (!PassesPublishGate(in envelope))
         {
             return 0;
         }
 
-        t_immediateActive = true;
+        EventRouter<TEvent>? previousImmediate = t_immediateRouter;
+        t_immediateRouter = this;
         int delivered = 0;
         try
         {
@@ -771,7 +922,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
         }
         finally
         {
-            t_immediateActive = false;
+            t_immediateRouter = previousImmediate;
         }
     }
 
@@ -822,6 +973,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
         {
             if (!filter.ShouldProcess(in envelope))
             {
+                Interlocked.Increment(ref _filtered);
                 return false;
             }
         }
@@ -851,6 +1003,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             ThrowHelper.ThrowEngineTerminated();
         }
 
+        _ = TryEnterReentrantPublish(throwOnLimit: true);
         long start = Stopwatch.GetTimestamp();
         if (IsPaused)
         {
@@ -882,6 +1035,7 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
             int accepted = FillBatch(items, buffer);
             int offset = 0;
             ProgressiveSpinBackoff.Initialize(out int backoff);
+            long started = _maxQueueWaitTicks == 0 ? 0 : Stopwatch.GetTimestamp();
             while (offset < accepted)
             {
                 int enqueued = _queue.TryEnqueueBatch(buffer.AsSpan(offset, accepted - offset));
@@ -898,6 +1052,11 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
                 if (Volatile.Read(ref _state) != StateRunning)
                 {
                     ThrowHelper.ThrowEngineTerminated();
+                }
+
+                if (_maxQueueWaitTicks != 0 && Stopwatch.GetTimestamp() - started >= _maxQueueWaitTicks)
+                {
+                    ThrowHelper.ThrowQueueFull(EventPriority.Normal, BufferCapacity);
                 }
 
                 ProgressiveSpinBackoff.Advance(ref backoff);
@@ -925,6 +1084,11 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
 
         ThrowIfFaulted();
         if (Volatile.Read(ref _state) != StateRunning)
+        {
+            return 0;
+        }
+
+        if (!TryEnterReentrantPublish(throwOnLimit: false))
         {
             return 0;
         }
@@ -1199,6 +1363,20 @@ public sealed class EventRouter<TEvent> : IEventEmitter, IDisposable, IAsyncDisp
     }
 
     private void DispatchBatch(ReadOnlyMemory<EventEnvelope<TEvent>> batch, CancellationToken cancellationToken)
+    {
+        EventRouter<TEvent>? previousDispatch = t_dispatchRouter;
+        t_dispatchRouter = this;
+        try
+        {
+            DispatchBatchCore(batch, cancellationToken);
+        }
+        finally
+        {
+            t_dispatchRouter = previousDispatch;
+        }
+    }
+
+    private void DispatchBatchCore(ReadOnlyMemory<EventEnvelope<TEvent>> batch, CancellationToken cancellationToken)
     {
         long start = Stopwatch.GetTimestamp();
         int dispatched = 0;

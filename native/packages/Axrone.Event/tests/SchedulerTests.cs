@@ -160,6 +160,21 @@ public sealed class SchedulerTests
         drain.Should().Throw<ArgumentOutOfRangeException>();
     }
 
+    [Fact]
+    public void ScheduledPayload_IsStampedBeforeDispatch()
+    {
+        var scheduler = new EventScheduler<int>(8);
+        scheduler.Schedule(7);
+
+        scheduler.TryDequeue(out ScheduledEvent<int> item).Should().BeTrue();
+
+        item.Envelope.IsStamped.Should().BeTrue();
+        item.Envelope.Metadata.EventId.Should().NotBe(Guid.Empty);
+        item.Envelope.Metadata.CorrelationId.Should().Be(item.Envelope.Metadata.EventId);
+        item.Envelope.Metadata.Sequence.Should().BeGreaterThan(0);
+        item.Envelope.Metadata.Timestamp.Should().BeGreaterThan(0);
+    }
+
     private static List<int> RunOrder()
     {
         var scheduler = new EventScheduler<int>(new EventSchedulerOptions(8));

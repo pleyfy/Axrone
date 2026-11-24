@@ -27,6 +27,11 @@ public sealed class SceneGlDrawExecutor
     private const string LightColorUniform = "u_LightColor";
     private const string LightIntensityUniform = "u_LightIntensity";
     private const string AmbientLightUniform = "u_AmbientLight";
+    private const string DirectionalAmbientColorUniform = "u_DirectionalLightAmbientColor";
+    private const string SkyLightUniform = "u_SkyLight";
+    private const string GroundLightUniform = "u_GroundLight";
+    private const string OutputGammaUniform = "u_OutputGamma";
+    private const string EditorPreviewUniform = "u_EditorPreview";
     private const string PointLightPositionUniform = "u_PointLightPosition";
     private const string PointLightColorUniform = "u_PointLightColor";
     private const string PointLightIntensityUniform = "u_PointLightIntensity";
@@ -60,6 +65,12 @@ public sealed class SceneGlDrawExecutor
     /// <summary>Fog state bound by the last render call (diagnostics/tests).</summary>
     internal SceneFogState LastFog { get; private set; }
 
+    /// <summary>Output gamma bound by the last render call (diagnostics/tests).</summary>
+    internal float LastOutputGamma { get; private set; } = 1f;
+
+    /// <summary>Editor preview flag bound by the last render call (diagnostics/tests).</summary>
+    internal bool LastEditorPreview { get; private set; }
+
     /// <summary>Renders one pass and returns the submitted draw count.</summary>
     public int Render(
         SceneWorld world,
@@ -73,7 +84,9 @@ public sealed class SceneGlDrawExecutor
         ISceneAreaLightSource? areaLights = null,
         SceneGlReflectionProbeAtlas? probeAtlas = null,
         ISceneReflectionProbeSource? reflectionProbe = null,
-        ISceneGlShadowSource? shadow = null)
+        ISceneGlShadowSource? shadow = null,
+        float outputGamma = 1f,
+        bool editorPreview = false)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(camera);
@@ -83,6 +96,8 @@ public sealed class SceneGlDrawExecutor
         _context.AssertRenderThread();
         _context.State.SetViewport(0, 0, camera.ViewportWidth, camera.ViewportHeight);
         LastFog = fog;
+        LastOutputGamma = outputGamma;
+        LastEditorPreview = editorPreview;
 
         BeginPass(camera, pass);
         ExtractLighting(lighting, out LightingValues lights);
@@ -103,7 +118,13 @@ public sealed class SceneGlDrawExecutor
                 continue;
             }
 
-            SceneGlShader shader = material.Shader;
+            SceneMaterialPass? matchedPass = ResolveMaterialPass(material.Definition.Passes, pass.Id);
+            if (!IsPassEnabled(matchedPass, material.Definition.Uniforms))
+            {
+                continue;
+            }
+
+            SceneGlShader shader = ResolvePassShader(matchedPass) ?? material.Shader;
             shader.Bind();
 
             Mat4 model = world.GetWorldMatrix3D(item.Actor);
@@ -119,6 +140,8 @@ public sealed class SceneGlDrawExecutor
             SceneGlMaterialExtensionBinder.Bind(shader, material.Surface);
             ApplyLighting(shader, in lights);
             ApplyFog(shader, in fog);
+            shader.SetFloat(OutputGammaUniform, outputGamma);
+            shader.SetInt(EditorPreviewUniform, editorPreview ? 1 : 0);
             ApplyCustomUniforms(shader, material.UniformEntries.Span);
             BindTextures(_context, shader, material.TextureSlots.Span);
             SceneGlAreaLightBinder.Bind(shader, areaLights is null ? default : areaLights.AreaLights);
@@ -154,7 +177,12 @@ public sealed class SceneGlDrawExecutor
 
     private void BeginPass(SceneCameraFrame camera, SceneRenderPassDefinition pass)
     {
-        if ((pass.ClearMask & SceneClearMask.Color) != 0)
+        // The camera's authored clear flags restrict what the active pass may
+        // clear (SceneCamera.ClearMask); the pass only decides whether it owns
+        // the clear at all.
+        SceneClearMask clearMask = pass.ClearMask & camera.Camera.ClearMask;
+
+        if ((clearMask & SceneClearMask.Color) != 0)
         {
             Vec4 color = pass.ClearColor ?? camera.Camera.ClearColor;
             _context.State.SetColorMask(true, true, true, true);
@@ -162,7 +190,7 @@ public sealed class SceneGlDrawExecutor
             _context.GL.Clear(GLConst.ColorBufferBit);
         }
 
-        if ((pass.ClearMask & SceneClearMask.Depth) != 0)
+        if ((clearMask & SceneClearMask.Depth) != 0)
         {
             float depth = pass.ClearDepth ?? camera.Camera.ClearDepth;
             _context.State.SetDepthMask(true);
@@ -205,6 +233,10 @@ public sealed class SceneGlDrawExecutor
         shader.SetVec3(EmissiveUniform, in emissive);
         shader.SetVec2(TilingUniform, in tiling);
         shader.SetVec2(OffsetUniform, in offset);
+        shader.SetFloat("_OcclusionFactor", surface.Occlusion);
+        shader.SetFloat("_EmissiveIntensity", surface.EmissiveIntensity);
+        shader.SetFloat("_OpacityFactor", 1.0f);
+        shader.SetInt("_OpacityTexture_TexCoord", -1);
     }
 
     internal static void ApplyLighting(SceneGlShader shader, in LightingValues lights)
@@ -213,6 +245,9 @@ public sealed class SceneGlDrawExecutor
         shader.SetVec3(LightColorUniform, in lights.DirectionalColor);
         shader.SetFloat(LightIntensityUniform, lights.DirectionalIntensity);
         shader.SetVec3(AmbientLightUniform, in lights.Ambient);
+        shader.SetVec3(DirectionalAmbientColorUniform, in lights.DirectionalAmbient);
+        shader.SetVec3(SkyLightUniform, in lights.Sky);
+        shader.SetVec3(GroundLightUniform, in lights.Ground);
 
         shader.SetVec3(PointLightPositionUniform, in lights.PointPosition);
         shader.SetVec3(PointLightColorUniform, in lights.PointColor);
@@ -291,16 +326,27 @@ public sealed class SceneGlDrawExecutor
         SceneGlMaterial material,
         SceneRenderPassDefinition pass)
     {
-        SceneMaterialPass? materialPass = material.PrimaryPass;
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(material);
+        ArgumentNullException.ThrowIfNull(pass);
 
-        bool depthTest = materialPass?.DepthTest ?? pass.DepthTest ?? true;
+        SceneMaterialPass? materialPass = ResolveMaterialPass(material.Definition.Passes, pass.Id) ?? material.PrimaryPass;
+        SceneGlShaderState authored = material.ShaderState;
+
+        bool depthTest = materialPass?.DepthTest ?? pass.DepthTest ?? authored.DepthTest;
         bool depthWrite = materialPass?.DepthWrite ?? !transparent;
-        bool cull = materialPass?.Cull ?? pass.Cull ?? true;
+        bool cull = materialPass?.Cull ?? pass.Cull ?? authored.CullEnabled;
         context.State.SetDepthTest(depthTest);
         context.State.SetDepthMask(depthWrite);
         context.State.SetCullFace(cull);
-        context.State.SetCullMode(GLConst.Back);
-        SceneGlBlendMapping mapping = SceneGlBlendStateMapper.Resolve(material, pass, transparent);
+        SceneGlCullMode cullMode = materialPass?.CullMode switch
+        {
+            "front" => SceneGlCullMode.Front,
+            "back" => SceneGlCullMode.Back,
+            _ => authored.Cull
+        };
+        context.State.SetCullMode(MapCullMode(cull ? cullMode : SceneGlCullMode.Back));
+        SceneGlBlendMapping mapping = SceneGlBlendStateMapper.Resolve(material, pass, transparent, materialPass);
         context.State.SetBlend(mapping.Enabled);
 
         if (mapping.Enabled)
@@ -314,6 +360,72 @@ public sealed class SceneGlDrawExecutor
         }
     }
 
+    private SceneGlShader? ResolvePassShader(SceneMaterialPass? materialPass)
+    {
+        if (materialPass?.ShaderId is { Length: > 0 } shaderName &&
+            _assets.TryGetShader(SceneAssetId<ShaderAssetTag>.FromName(shaderName), out SceneGlShader? passShader))
+        {
+            return passShader;
+        }
+
+        return null;
+    }
+
+    private static SceneMaterialPass? ResolveMaterialPass(
+        IReadOnlyList<SceneMaterialPass> passes,
+        SceneAssetId<RenderPassAssetTag> passId)
+    {
+        if (!passId.Value.IsValid)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < passes.Count; i++)
+        {
+            SceneMaterialPass candidate = passes[i];
+            if (NamesSymbol(candidate.Id, passId) || NamesSymbol(candidate.Phase, passId))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    // Render-pass identity is a hashed symbol, so the authored pass id or phase has
+    // to be hashed to meet it; comparing against ToString() would read the digest.
+    private static bool NamesSymbol(string? candidateName, SceneAssetId<RenderPassAssetTag> passId) =>
+        !string.IsNullOrEmpty(candidateName) && SceneStringId.FromName(candidateName) == passId.Value;
+
+    private static bool IsPassEnabled(
+        SceneMaterialPass? materialPass,
+        IReadOnlyDictionary<string, SceneUniformValue> uniforms)
+    {
+        if (materialPass?.EnabledWhenUniformNonZero is not { Length: > 0 } uniformName)
+        {
+            return true;
+        }
+
+        if (!uniforms.TryGetValue(uniformName, out SceneUniformValue value))
+        {
+            return false;
+        }
+
+        return value.Kind switch
+        {
+            SceneUniformKind.Float => MathF.Abs(value.X) > 0.0001f,
+            SceneUniformKind.Int => value.I != 0,
+            SceneUniformKind.Bool => value.B,
+            _ => true
+        };
+    }
+
+    private static uint MapCullMode(SceneGlCullMode mode) => mode switch
+    {
+        SceneGlCullMode.Front => GLConst.Front,
+        _ => GLConst.Back
+    };
+
     internal static void ExtractLighting(
         LightingSelectionState? lighting,
         out LightingValues values)
@@ -326,15 +438,19 @@ public sealed class SceneGlDrawExecutor
 
         LightingStats stats = lighting.Stats;
         values.Ambient = lighting.Environment.Ambient;
+        values.Sky = lighting.Environment.Sky;
+        values.Ground = lighting.Environment.Ground;
 
         if (stats.SelectedDirectionalCount > 0)
         {
             ReadOnlySpan<float> directions = lighting.DirectionalDirections.Span;
             ReadOnlySpan<float> colors = lighting.DirectionalColors.Span;
             ReadOnlySpan<float> intensities = lighting.DirectionalIntensities.Span;
+            ReadOnlySpan<float> ambientColors = lighting.DirectionalAmbientColors.Span;
 
             values.DirectionalDirection = new Vec3(directions[0], directions[1], directions[2]);
             values.DirectionalColor = new Vec3(colors[0], colors[1], colors[2]);
+            values.DirectionalAmbient = new Vec3(ambientColors[0], ambientColors[1], ambientColors[2]);
             values.DirectionalIntensity = intensities[0];
         }
 
@@ -374,8 +490,11 @@ public sealed class SceneGlDrawExecutor
     internal struct LightingValues
     {
         public Vec3 Ambient;
+        public Vec3 Sky;
+        public Vec3 Ground;
         public Vec3 DirectionalDirection;
         public Vec3 DirectionalColor;
+        public Vec3 DirectionalAmbient;
         public float DirectionalIntensity;
         public Vec3 PointPosition;
         public Vec3 PointColor;

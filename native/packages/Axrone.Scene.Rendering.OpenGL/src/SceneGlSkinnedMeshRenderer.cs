@@ -25,6 +25,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
     private readonly GLContext _context;
     private readonly SceneGlAssetCache _assets;
     private readonly ISceneBonePaletteSource _palettes;
+    private readonly SceneGlMorphMeshCache? _morphMeshes;
     private readonly SceneSkinningOptions _options;
     private readonly GLTexture _boneTexture;
     private readonly int _boneTextureUnit;
@@ -47,11 +48,13 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
     /// <param name="assets">Uploaded GPU asset cache.</param>
     /// <param name="palettes">Bone palette source.</param>
     /// <param name="options">Skinning configuration; defaults are 256 bones on unit 15.</param>
+    /// <param name="morphWeights">Optional per-actor morph weights; enables private deformed mesh variants.</param>
     public SceneGlSkinnedMeshRenderer(
         GLContext context,
         SceneGlAssetCache assets,
         ISceneBonePaletteSource palettes,
-        SceneSkinningOptions? options = null)
+        SceneSkinningOptions? options = null,
+        ISceneMorphWeightSource? morphWeights = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assets);
@@ -63,6 +66,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
         _context = context;
         _assets = assets;
         _palettes = palettes;
+        _morphMeshes = morphWeights is null ? null : new SceneGlMorphMeshCache(assets, morphWeights);
         _boneTextureUnit = _options.TextureUnit;
         _boneTexture = new GLTexture(
             context,
@@ -130,7 +134,9 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
         ISceneAreaLightSource? areaLights = null,
         SceneGlReflectionProbeAtlas? probeAtlas = null,
         ISceneReflectionProbeSource? reflectionProbe = null,
-        ISceneGlShadowSource? shadow = null)
+        ISceneGlShadowSource? shadow = null,
+        float outputGamma = 1f,
+        bool editorPreview = false)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(world);
@@ -163,6 +169,12 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
             {
                 Fail(SceneSkinningFailureReason.MissingMesh, $"mesh '{item.MeshId}' is not uploaded.");
                 continue;
+            }
+
+            if (_morphMeshes is not null &&
+                _morphMeshes.TryGetMesh(item.Actor, item.MeshId, out GLMesh? morphedMesh))
+            {
+                mesh = morphedMesh;
             }
 
             if (!_assets.TryGetMaterial(item.MaterialId, out SceneGlMaterial? material))
@@ -235,6 +247,8 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
             SceneGlMaterialExtensionBinder.Bind(shader, material.Surface);
             SceneGlDrawExecutor.ApplyLighting(shader, in lights);
             SceneGlDrawExecutor.ApplyFog(shader, in fog);
+            shader.SetFloat("u_OutputGamma", outputGamma);
+            shader.SetInt("u_EditorPreview", editorPreview ? 1 : 0);
             SceneGlDrawExecutor.ApplyCustomUniforms(shader, material.UniformEntries.Span);
             SceneGlDrawExecutor.BindTextures(_context, shader, material.TextureSlots.Span);
             SceneGlAreaLightBinder.Bind(shader, areaLights is null ? default : areaLights.AreaLights);
@@ -284,6 +298,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
         }
 
         _boneTexture.Dispose();
+        _morphMeshes?.Dispose();
         _disposed = true;
     }
 
@@ -376,7 +391,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
         return false;
     }
 
-    private static bool HasSkinAttributes(GLMesh mesh)
+    internal static bool HasSkinAttributes(GLMesh mesh)
     {
         bool hasPosition = false;
         bool hasJoints = false;

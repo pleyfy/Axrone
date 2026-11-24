@@ -29,16 +29,31 @@ public interface ISceneBonePaletteSource
 /// existing actor is allocation-free. An empty palette removes the entry, which
 /// makes an unbound animator stop contributing to skinning.
 /// </summary>
+/// <remarks>
+/// The actor index and revision are lock-guarded. <see cref="TryGetBonePalette"/>
+/// returns a view over the resident array; consume it before the next write for
+/// that actor (the normal same-frame render path does).
+/// </remarks>
 public sealed class SceneBonePaletteStore : ISceneBonePaletteSink, ISceneBonePaletteSource
 {
     private readonly Dictionary<SceneActor, PaletteSlot> _slots = new();
+    private readonly Lock _gate = new();
     private long _revision;
 
     /// <summary>Gets the number of actors with a resident palette.</summary>
-    public int Count => _slots.Count;
+    public int Count
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _slots.Count;
+            }
+        }
+    }
 
     /// <summary>Gets a monotonic revision incremented on every palette write.</summary>
-    public long Revision => _revision;
+    public long Revision => Volatile.Read(ref _revision);
 
     /// <inheritdoc/>
     public void ApplyBonePalette(SceneActor actor, ReadOnlySpan<Mat4> worldPalette)
@@ -48,30 +63,36 @@ public sealed class SceneBonePaletteStore : ISceneBonePaletteSink, ISceneBonePal
             return;
         }
 
-        if (worldPalette.IsEmpty)
+        lock (_gate)
         {
-            _ = _slots.Remove(actor);
+            if (worldPalette.IsEmpty)
+            {
+                _ = _slots.Remove(actor);
+                _revision++;
+                return;
+            }
+
+            if (!_slots.TryGetValue(actor, out PaletteSlot? slot))
+            {
+                slot = new PaletteSlot();
+                _slots.Add(actor, slot);
+            }
+
+            slot.Set(worldPalette);
             _revision++;
-            return;
         }
-
-        if (!_slots.TryGetValue(actor, out PaletteSlot? slot))
-        {
-            slot = new PaletteSlot();
-            _slots.Add(actor, slot);
-        }
-
-        slot.Set(worldPalette);
-        _revision++;
     }
 
     /// <inheritdoc/>
     public bool TryGetBonePalette(SceneActor actor, out ReadOnlySpan<Mat4> worldPalette)
     {
-        if (actor.IsValid && _slots.TryGetValue(actor, out PaletteSlot? slot))
+        lock (_gate)
         {
-            worldPalette = slot.Palette;
-            return true;
+            if (actor.IsValid && _slots.TryGetValue(actor, out PaletteSlot? slot))
+            {
+                worldPalette = slot.Palette;
+                return true;
+            }
         }
 
         worldPalette = default;
@@ -81,20 +102,26 @@ public sealed class SceneBonePaletteStore : ISceneBonePaletteSink, ISceneBonePal
     /// <summary>Removes one actor's palette.</summary>
     public bool Remove(SceneActor actor)
     {
-        if (!_slots.Remove(actor))
+        lock (_gate)
         {
-            return false;
-        }
+            if (!_slots.Remove(actor))
+            {
+                return false;
+            }
 
-        _revision++;
-        return true;
+            _revision++;
+            return true;
+        }
     }
 
     /// <summary>Removes every palette without releasing slot buffers.</summary>
     public void Clear()
     {
-        _slots.Clear();
-        _revision++;
+        lock (_gate)
+        {
+            _slots.Clear();
+            _revision++;
+        }
     }
 
     private sealed class PaletteSlot

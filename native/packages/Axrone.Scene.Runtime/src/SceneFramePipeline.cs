@@ -30,9 +30,10 @@ public sealed class SceneFramePipeline :
     private readonly SceneRenderPassPlan _passes;
     private readonly SceneRenderFrameState _frameState = new();
 
-    private readonly Vec3 _ambient;
-    private readonly Vec3 _sky;
-    private readonly Vec3 _ground;
+    private Vec3 _ambient;
+    private Vec3 _sky;
+    private Vec3 _ground;
+    private float _outputGamma = 1f;
     private readonly bool _hasSpriteComponent;
     private readonly bool _hasLodComponent;
     private readonly bool _hasSkinnedComponent;
@@ -157,6 +158,53 @@ public sealed class SceneFramePipeline :
         }
     }
 
+    /// <summary>Ambient light used when the scene has no ambient component.</summary>
+    public Vec3 AmbientLight
+    {
+        get => _ambient;
+        set => _ambient = value;
+    }
+
+    /// <summary>Sky light contribution.</summary>
+    public Vec3 SkyLight
+    {
+        get => _sky;
+        set => _sky = value;
+    }
+
+    /// <summary>Ground light contribution.</summary>
+    public Vec3 GroundLight
+    {
+        get => _ground;
+        set => _ground = value;
+    }
+
+    /// <summary>
+    /// Output gamma applied by the built-in shaders (1 = display-ready, 1/2.2
+    /// for linear scene colour spaces).
+    /// </summary>
+    public float OutputGamma
+    {
+        get => _outputGamma;
+        set => _outputGamma = MathF.Max(0.0001f, value);
+    }
+
+    /// <summary>
+    /// Selects the editor preview lighting model (matte ambient + directional)
+    /// instead of the runtime PBR response.
+    /// </summary>
+    public bool EditorPreview { get; set; }
+
+    /// <summary>
+    /// Real-time directional shadow configuration. Defaults to
+    /// <see cref="ShadowSettings.Default"/> so a scene with a directional light
+    /// shadows out of the box; hosts assign
+    /// <see cref="ShadowSettings.Disabled"/> when scene authoring opts out.
+    /// The atlas is only allocated once this is enabled and a directional light
+    /// is selected.
+    /// </summary>
+    public ShadowSettings ShadowSettings { get; set; } = ShadowSettings.Default;
+
     /// <summary>Rebuilds the ordered pass list after asset changes.</summary>
     public void RebuildPasses()
     {
@@ -167,8 +215,13 @@ public sealed class SceneFramePipeline :
     /// <summary>
     /// Plans camera selection and lighting for one frame.
     /// </summary>
+    /// <param name="frameIndex">Frame index used by the render-state accumulator.</param>
+    /// <param name="cameraOverride">
+    /// Explicit camera actor for preview rendering; the primary camera is used
+    /// when this is <see cref="SceneActor.Null"/>.
+    /// </param>
     /// <returns>False when the scene has no enabled camera.</returns>
-    public bool Plan(int frameIndex)
+    public bool Plan(int frameIndex, SceneActor cameraOverride = default)
     {
         ThrowIfDisposed();
 
@@ -182,7 +235,9 @@ public sealed class SceneFramePipeline :
         _ = SceneFogSelector.TrySelect(_world, out SceneFogState fog);
         Fog = fog;
 
-        Camera = _cameraCollector.Collect(_world, _viewportWidth, _viewportHeight);
+        Camera = cameraOverride.IsValid
+            ? _cameraCollector.Collect(_world, cameraOverride, _viewportWidth, _viewportHeight)
+            : _cameraCollector.Collect(_world, _viewportWidth, _viewportHeight);
         bool hasLighting = Camera is not null;
         Camera ??= _camera2DCollector.Collect(_world, _viewportWidth, _viewportHeight);
 

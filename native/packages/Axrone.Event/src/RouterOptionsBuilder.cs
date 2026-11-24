@@ -66,6 +66,13 @@ public sealed class RouterOptionsBuilder
         return this;
     }
 
+    /// <summary>Sets how long a publisher waits for transport space; zero waits indefinitely.</summary>
+    public RouterOptionsBuilder WithMaxQueueWaitMs(int maxQueueWaitMs)
+    {
+        State.MaxQueueWaitMs = maxQueueWaitMs;
+        return this;
+    }
+
     /// <inheritdoc/>
     public override void Reset() => State = RouterOptionsState.Default;
 

@@ -96,6 +96,38 @@ public class BlendTests
     }
 
     [Fact]
+    public void AdditiveFrame_MaskHoldsDisabledBones()
+    {
+        Rig rig = TwoBone();
+        var target = new AnimationFrame(2, NoCurves());
+        AnimationFrame baseFrame = Pose(0.0f);
+        AnimationFrame additive = Pose(10.0f);
+        target.CopyFrom(baseFrame);
+        var mask = new AnimationMask(2, enableAll: false);
+        mask.Set(0, true);
+
+        BlendingKernels.ApplyAdditiveFrame(target, baseFrame, additive, rig, 1.0f, mask);
+
+        target.ReadTranslations()[0].Should().Be(baseFrame.ReadTranslations()[0]);
+        target.ReadTranslations()[1].Should().Be(baseFrame.ReadTranslations()[1]);
+    }
+
+    [Fact]
+    public void AdditiveFrame_UsesCapturedReferencePose()
+    {
+        Rig rig = TwoBone();
+        var target = new AnimationFrame(2, NoCurves());
+        AnimationFrame baseFrame = Pose(0.0f);
+        AnimationFrame additive = Pose(10.0f);
+        AnimationFrame reference = Pose(10.0f);
+        target.CopyFrom(baseFrame);
+
+        BlendingKernels.ApplyAdditiveFrame(target, baseFrame, additive, rig, 1.0f, null, reference);
+
+        target.ReadTranslations()[1].X.Should().Be(0.0f);
+    }
+
+    [Fact]
     public void AdditiveFrame_AddsRestRelativeDelta()
     {
         Rig rig = TwoBone();

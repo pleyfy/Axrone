@@ -174,7 +174,7 @@ public sealed class SceneWorldTests
 
         CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
 
-        behaviour.AwakeCount.Should().Be(1);
+        behaviour.LoadCount.Should().Be(1);
         behaviour.StartCount.Should().Be(1);
         behaviour.EnableCount.Should().Be(1);
 

@@ -1,5 +1,7 @@
 namespace Axrone.Scene.Rendering.OpenGL;
 
+using System.Collections.Immutable;
+using Axrone.AssetShader;
 using Axrone.Render.Core;
 
 /// <summary>Upload counters for one asset-cache synchronization.</summary>
@@ -28,8 +30,37 @@ public sealed class SceneGlAssetCache : IDisposable
     private readonly Dictionary<SceneAssetId<SamplerAssetTag>, GLSampler> _samplers = new();
     private readonly Dictionary<SceneAssetId<TextureAssetTag>, SceneAssetId<SamplerAssetTag>?> _textureSamplers = new();
     private readonly GLSampler _defaultSampler;
+    private readonly SceneGlEffectPrograms _effectPrograms;
+    private readonly Dictionary<SceneAssetId<ShaderAssetTag>, EffectBinding> _effectPasses = new();
+    private readonly Dictionary<SceneAssetId<ShaderAssetTag>, SceneGlShaderState> _shaderStates = new();
+    private readonly Dictionary<SceneAssetId<ShaderAssetTag>, string[]> _shaderNotes = new();
+    private static readonly string[] ReservedTextureUniforms =
+    [
+        "u_AlbedoMap",
+        "u_NormalMap",
+        "u_PbrMap",
+        "u_OcclusionMap",
+        "u_EmissiveMap",
+        "u_ClearcoatMap",
+        "u_ClearcoatRoughnessMap",
+        "u_ClearcoatNormalMap",
+        "u_SheenColorMap",
+        "u_SheenRoughnessMap",
+        "u_TransmissionMap",
+        "u_IridescenceMap",
+        "u_IridescenceThicknessMap",
+        "u_SubsurfaceMap"
+    ];
+    private readonly HashSet<SceneGlShader> _effectOwned = new();
     private int _unskinnableShaderCount;
     private bool _disposed;
+
+    /// <summary>
+    /// Test seam replacing program compilation during shader registration. The mock backend
+    /// always reports success, so a GPU compile failure can only be exercised by injection.
+    /// Production callers never set this.
+    /// </summary>
+    internal Func<GLContext, string, string, string, SceneGlShader>? ShaderCompilerOverride { get; set; }
 
     /// <summary>Creates a GPU cache over a scene asset registry.</summary>
     public SceneGlAssetCache(GLContext context, SceneAssetRegistry assets)
@@ -39,6 +70,7 @@ public sealed class SceneGlAssetCache : IDisposable
 
         _context = context;
         _assets = assets;
+        _effectPrograms = new SceneGlEffectPrograms(context);
         _defaultSampler = new GLSampler(context, "scene-default-sampler");
         _defaultSampler.SetFilter(GLConst.Linear, GLConst.Linear).Apply();
     }
@@ -105,26 +137,161 @@ public sealed class SceneGlAssetCache : IDisposable
     }
 
     /// <summary>Compiles and stores a shader.</summary>
+    /// <exception cref="SceneGlShaderCompileException">
+    /// A dynamically supplied source failed to compile or link; the exception carries the
+    /// structured driver diagnostics.
+    /// </exception>
     public SceneGlShader RegisterShader(SceneShaderDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ThrowIfDisposed();
         _context.AssertRenderThread();
 
-        string label = definition.Id.ToString();
-        string fragmentSource = SceneGlMaterialShaderComposer.ComposeFragmentSource(definition.FragmentSource);
-        var shader = new SceneGlShader(
-            _context,
-            label,
-            definition.VertexSource,
-            fragmentSource);
+        if (!TryRegisterShaderCore(definition, out SceneGlShader? shader, out SceneGlShaderCompilationFailure failure))
+        {
+            throw new SceneGlShaderCompileException(failure);
+        }
 
-        if (_shaders.TryGetValue(definition.Id, out SceneGlShader? previous))
+        return shader!;
+    }
+
+    /// <summary>
+    /// Compiles and stores a shader, reporting GPU failures as structured diagnostics instead of
+    /// throwing. A failed registration leaves the previously uploaded program for the same id in
+    /// place, so a broken material-graph edit can never blank a live scene.
+    /// </summary>
+    /// <param name="definition">Shader definition.</param>
+    /// <param name="failure">Compilation or bake failure details when registration failed.</param>
+    /// <returns>Whether the shader is uploaded and usable.</returns>
+    public bool TryRegisterShader(
+        SceneShaderDefinition definition,
+        out SceneGlShaderCompilationFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ThrowIfDisposed();
+        _context.AssertRenderThread();
+
+        return TryRegisterShaderCore(definition, out _, out failure);
+    }
+
+    /// <summary>Resolves the fixed-function state a registered shader authors for itself.</summary>
+    /// <param name="id">Shader asset identity.</param>
+    /// <param name="state">Resolved state when the shader is uploaded.</param>
+    /// <returns>Whether a state was recorded for the id.</returns>
+    public bool TryGetShaderState(SceneAssetId<ShaderAssetTag> id, out SceneGlShaderState state) =>
+        _shaderStates.TryGetValue(id, out state);
+
+    /// <summary>
+    /// Reports vertex declarations the attribute layout pass could not qualify safely. Generated
+    /// sources that share one declaration line across several attributes are the only case GL
+    /// cannot bind deterministically, so callers get told instead of silently reading garbage.
+    /// </summary>
+    /// <param name="id">Shader asset identity.</param>
+    /// <param name="notes">Preparation notes recorded during registration.</param>
+    /// <returns>Whether any note was recorded for the id.</returns>
+    public bool TryGetShaderPreparationNotes(
+        SceneAssetId<ShaderAssetTag> id,
+        out IReadOnlyList<string> notes)
+    {
+        if (_shaderNotes.TryGetValue(id, out string[]? recorded))
+        {
+            notes = recorded;
+            return recorded.Length > 0;
+        }
+
+        notes = Array.Empty<string>();
+        return false;
+    }
+
+    private bool TryRegisterShaderCore(
+        SceneShaderDefinition definition,
+        out SceneGlShader? registered,
+        out SceneGlShaderCompilationFailure failure)
+    {
+        string label = definition.Id.ToString();
+        SceneGlShader shader;
+        SceneGlShaderState state = SceneGlShaderState.Default;
+        string vertexSource;
+        string fragmentSource;
+        List<string>? preparationNotes = null;
+
+        if (definition.Effect is { } effect)
+        {
+            ImmutableArray<SceneGlEffectPass> passes;
+            try
+            {
+                passes = _effectPrograms.ResolveTechnique(effect, null, null);
+            }
+            catch (GLShaderException ex)
+            {
+                registered = null;
+                failure = SceneGlShaderCompilation.FromException(label, ex);
+                return false;
+            }
+            catch (ShaderPreprocessException ex)
+            {
+                registered = null;
+                failure = SceneGlShaderCompilation.FromBakeFailure(label, ex.Message, ex.Diagnostics);
+                return false;
+            }
+            catch (InvalidOperationException ex)
+            {
+                registered = null;
+                failure = SceneGlShaderCompilation.FromBakeFailure(
+                    label,
+                    ex.Message,
+                    ImmutableArray<ShaderDiagnostic>.Empty);
+                return false;
+            }
+
+            _effectPasses[definition.Id] = new EffectBinding(effect, passes);
+            shader = passes[0].Shader;
+            for (int i = 0; i < passes.Length; i++)
+            {
+                _effectOwned.Add(passes[i].Shader);
+            }
+
+            state = ResolveShaderState(definition, passes[0].State);
+            vertexSource = shader.VertexSource;
+            fragmentSource = shader.FragmentSource;
+        }
+        else
+        {
+            _ = _effectPasses.Remove(definition.Id);
+            preparationNotes = new List<string>();
+            vertexSource = SceneGlAttributeLayout.EnsureLocations(
+                definition.VertexSource,
+                ResolveAttributeBindings(definition),
+                preparationNotes);
+            fragmentSource = SceneGlMaterialShaderComposer.ComposeFragmentSource(definition.FragmentSource);
+            state = ResolveShaderState(definition, authored: null);
+            try
+            {
+                shader = CreateShader(_context, label, vertexSource, fragmentSource);
+            }
+            catch (GLShaderException ex)
+            {
+                registered = null;
+                failure = SceneGlShaderCompilation.FromException(label, ex);
+                return false;
+            }
+        }
+
+        if (_shaders.TryGetValue(definition.Id, out SceneGlShader? previous) && !_effectOwned.Contains(previous))
         {
             previous.Dispose();
         }
 
         _shaders[definition.Id] = shader;
+        _shaderStates[definition.Id] = state;
+        if (definition.Effect is null && preparationNotes is not null)
+        {
+            _shaderNotes[definition.Id] = [.. preparationNotes];
+        }
+        else
+        {
+            _ = _shaderNotes.Remove(definition.Id);
+        }
 
         SceneGlShader? previousSkinned = null;
         _ = _skinnedShaders.Remove(definition.Id, out previousSkinned);
@@ -136,30 +303,78 @@ public sealed class SceneGlAssetCache : IDisposable
             _unskinnableShaderCount--;
         }
 
-        (SceneGlShader? skinned, SkinningInjectionFailure failure) = CompileSkinnedShader(definition, label, fragmentSource);
+        SceneGlShader? skinned = null;
+        SkinningInjectionFailure injectFailure = SkinningInjectionFailure.EffectAuthored;
+        if (definition.Effect is null)
+        {
+            (skinned, injectFailure) = CompileSkinnedShader(vertexSource, label, fragmentSource);
+        }
+
         _skinnedShaders[definition.Id] = skinned;
-        _skinningDiagnostics[definition.Id] = new SkinningShaderDiagnostic(definition.Id, skinned is not null, failure);
+        _skinningDiagnostics[definition.Id] = new SkinningShaderDiagnostic(definition.Id, skinned is not null, injectFailure);
         if (skinned is null)
         {
             _unskinnableShaderCount++;
         }
 
-        return shader;
+        registered = shader;
+        failure = default;
+        return true;
     }
 
-    private (SceneGlShader? Shader, SkinningInjectionFailure Failure) CompileSkinnedShader(
+    private SceneGlShader CreateShader(GLContext context, string label, string vertexSource, string fragmentSource)
+    {
+        if (ShaderCompilerOverride is { } overrideCompiler)
+        {
+            return overrideCompiler(context, label, vertexSource, fragmentSource);
+        }
+
+        return new SceneGlShader(context, label, vertexSource, fragmentSource);
+    }
+
+    private static IReadOnlyDictionary<SceneMeshSemantic, string> ResolveAttributeBindings(
+        SceneShaderDefinition definition) =>
+        definition.Attributes.Count == 0 ? SceneShaderAttributes.DefaultNames : definition.Attributes;
+
+    private static SceneGlShaderState ResolveShaderState(
         SceneShaderDefinition definition,
+        ShaderRenderState? authored)
+    {
+        if (authored is null)
+        {
+            return new SceneGlShaderState(
+                definition.DepthTest,
+                definition.Cull ? SceneGlCullMode.Back : SceneGlCullMode.None,
+                definition.Blend);
+        }
+
+        ShaderRenderState state = authored.Value;
+        SceneShaderEffectFactory.ResolveRenderState(state, out bool depthTest, out bool cull, out bool blend);
+        SceneGlCullMode mode = cull ? MapCullMode(state.CullMode) : SceneGlCullMode.None;
+        return new SceneGlShaderState(depthTest, mode, blend);
+    }
+
+    private static SceneGlCullMode MapCullMode(string? cullMode) => cullMode switch
+    {
+        null => SceneGlCullMode.Back,
+        var value when value.Equals("none", StringComparison.OrdinalIgnoreCase) => SceneGlCullMode.None,
+        var value when value.Equals("front", StringComparison.OrdinalIgnoreCase) => SceneGlCullMode.Front,
+        _ => SceneGlCullMode.Back
+    };
+
+    private (SceneGlShader? Shader, SkinningInjectionFailure Failure) CompileSkinnedShader(
+        string vertexSource,
         string label,
         string fragmentSource)
     {
-        if (!SkinningShaderInjector.TryInject(definition.VertexSource, out string injected, out SkinningInjectionFailure failure))
+        if (!SkinningShaderInjector.TryInject(vertexSource, out string injected, out SkinningInjectionFailure failure))
         {
             return (null, failure);
         }
 
         try
         {
-            return (new SceneGlShader(_context, label + "-skinned", injected, fragmentSource), SkinningInjectionFailure.None);
+            return (CreateShader(_context, label + "-skinned", injected, fragmentSource), SkinningInjectionFailure.None);
         }
         catch (GLShaderException)
         {
@@ -174,11 +389,40 @@ public sealed class SceneGlAssetCache : IDisposable
         ThrowIfDisposed();
         _context.AssertRenderThread();
 
+        GLMesh mesh = CreateMesh(definition);
+
+        if (_meshes.TryGetValue(definition.Id, out GLMesh? previous))
+        {
+            previous.Dispose();
+        }
+
+        _meshes[definition.Id] = mesh;
+        _meshSources[definition.Id] = definition;
+        return mesh;
+    }
+
+    /// <summary>
+    /// Creates a GPU mesh without registering it. Used for per-actor morph
+    /// variants that share the asset definition but need their own vertex buffer.
+    /// </summary>
+    public GLMesh CreateMesh(SceneMeshDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ThrowIfDisposed();
+        _context.AssertRenderThread();
+
         VertexAttribute[] attributes = new VertexAttribute[definition.Attributes.Count];
         for (int i = 0; i < attributes.Length; i++)
         {
             SceneVertexAttribute attribute = definition.Attributes[i];
-            uint type = attribute.Integer ? GLConst.Int : GLConst.Float;
+            uint type = attribute.Integer
+                ? attribute.ComponentSize switch
+                {
+                    1 => GLConst.UnsignedByte,
+                    2 => GLConst.UnsignedShort,
+                    _ => GLConst.UnsignedInt,
+                }
+                : GLConst.Float;
             attributes[i] = new VertexAttribute(
                 (int)attribute.Semantic,
                 attribute.ComponentCount,
@@ -197,7 +441,7 @@ public sealed class SceneGlAssetCache : IDisposable
                 sphere.Center + new Vec3(sphere.Radius))
             : new Aabb3D(Vec3.Zero, Vec3.Zero);
 
-        var mesh = new GLMesh(
+        return new GLMesh(
             _context,
             layout,
             definition.Vertices.Span,
@@ -206,16 +450,13 @@ public sealed class SceneGlAssetCache : IDisposable
             MapTopology(definition.Topology),
             definition.Id.ToString(),
             MapIndexType(definition.IndexFormat));
-
-        if (_meshes.TryGetValue(definition.Id, out GLMesh? previous))
-        {
-            previous.Dispose();
-        }
-
-        _meshes[definition.Id] = mesh;
-        _meshSources[definition.Id] = definition;
-        return mesh;
     }
+
+    /// <summary>Resolves the CPU definition behind an uploaded mesh.</summary>
+    public bool TryGetMeshDefinition(
+        SceneAssetId<MeshAssetTag> id,
+        [NotNullWhen(true)] out SceneMeshDefinition? definition) =>
+        _meshSources.TryGetValue(id, out definition);
 
     /// <summary>Uploads and stores a texture.</summary>
     public GLTexture RegisterTexture(SceneTextureDefinition definition)
@@ -361,11 +602,28 @@ public sealed class SceneGlAssetCache : IDisposable
             AddTextureSlot(slots, "u_SubsurfaceMap", 13, surface.SubsurfaceMap, materialId, extension: true);
         }
 
+        if (surface.OpacityMap is { } opacityMap &&
+            !definition.TextureUniforms.ContainsKey("_OpacityTexture"))
+        {
+            int opacityUnit = opacityMap.Unit ?? NextFreeTextureUnit(slots);
+            AddTextureSlot(slots, "_OpacityTexture", opacityUnit, opacityMap, materialId, extension: false);
+        }
+
+        var textureDiagnostics = new List<SceneGlUniformBindingDiagnostic>();
+        BindTextureUniforms(slots, definition, shader, textureDiagnostics);
+
+        SceneGlShaderState? materialShaderState =
+            _shaderStates.TryGetValue(definition.ShaderId, out SceneGlShaderState recordedState)
+                ? recordedState
+                : null;
+
         var material = new SceneGlMaterial(
             definition,
             shader,
             slots.ToArray(),
-            TryGetSkinnedShader(definition.ShaderId, out SceneGlShader? skinnedShader) ? skinnedShader : null);
+            TryGetSkinnedShader(definition.ShaderId, out SceneGlShader? skinnedShader) ? skinnedShader : null,
+            materialShaderState,
+            textureDiagnostics.ToArray());
         _materials[definition.Id] = material;
         return material;
     }
@@ -560,6 +818,89 @@ public sealed class SceneGlAssetCache : IDisposable
         slots.Add(new SceneGlTextureSlot(uniformName, resolvedUnit, texture, sampler));
     }
 
+    private void BindTextureUniforms(
+        List<SceneGlTextureSlot> slots,
+        SceneMaterialDefinition definition,
+        SceneGlShader shader,
+        List<SceneGlUniformBindingDiagnostic> diagnostics)
+    {
+        IReadOnlyDictionary<string, SceneMaterialTextureBinding> textureUniforms = definition.TextureUniforms;
+        if (textureUniforms.Count == 0)
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<string, SceneMaterialTextureBinding> pair in textureUniforms)
+        {
+            string uniformName = pair.Key;
+            if (IsReservedTextureUniform(uniformName))
+            {
+                throw new SceneAssetException(
+                    SceneAssetErrorCodes.Invalid,
+                    $"Material '{definition.Id}' maps '{uniformName}' as a texture uniform; that name " +
+                    "belongs to the fixed surface maps and must be bound through the surface.");
+            }
+
+            if (shader.TryGetUniform(uniformName, out SceneShaderUniform declared) &&
+                !SceneShaderUniformReflection.IsSampler(declared.Type))
+            {
+                diagnostics.Add(new SceneGlUniformBindingDiagnostic(
+                    uniformName,
+                    SceneUniformKind.Float,
+                    declared.Type,
+                    "The program declares a value uniform of this name; samplers must be declared as sampler2D."));
+                continue;
+            }
+
+            int unit = pair.Value.Unit ?? NextFreeTextureUnit(slots);
+            AddTextureSlot(slots, uniformName, unit, pair.Value, definition.Id, extension: false);
+        }
+    }
+
+    private static bool IsReservedTextureUniform(string uniformName)
+    {
+        for (int i = 0; i < ReservedTextureUniforms.Length; i++)
+        {
+            if (string.Equals(ReservedTextureUniforms[i], uniformName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int NextFreeTextureUnit(List<SceneGlTextureSlot> slots)
+    {
+        for (int unit = SceneGlTextureUnits.BaseFirst; unit <= SceneGlTextureUnits.MaterialExtensionLast; unit++)
+        {
+            if (SceneGlTextureUnits.IsReservedUnit(unit))
+            {
+                continue;
+            }
+
+            bool taken = false;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                if (slots[i].Unit == unit)
+                {
+                    taken = true;
+                    break;
+                }
+            }
+
+            if (!taken)
+            {
+                return unit;
+            }
+        }
+
+        throw new SceneAssetException(
+            SceneAssetErrorCodes.Invalid,
+            $"Material texture uniforms exhausted the scene unit range " +
+            $"{SceneGlTextureUnits.BaseFirst}-{SceneGlTextureUnits.MaterialExtensionLast}.");
+    }
+
     private static void UploadDataTexture(
         GLTexture texture,
         SceneTextureDefinition definition,
@@ -612,14 +953,94 @@ public sealed class SceneGlAssetCache : IDisposable
         texture.UploadSubData2D(pixels, 0, 0, definition.Width, definition.Height);
     }
 
+    /// <summary>Effect passes resolved for a shader asset, when an effect backs it.</summary>
+    /// <param name="id">Shader asset identity.</param>
+    /// <param name="passes">Resolved passes in technique order.</param>
+    /// <returns><see langword="true"/> when an effect backs the shader.</returns>
+    public bool TryGetEffectPasses(
+        SceneAssetId<ShaderAssetTag> id,
+        out ImmutableArray<SceneGlEffectPass> passes)
+    {
+        if (_effectPasses.TryGetValue(id, out EffectBinding binding))
+        {
+            passes = binding.Passes;
+            return true;
+        }
+
+        passes = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Resolves the program a material draws with: the variant selected by its technique and
+    /// keywords when an effect backs the shader, otherwise the raw compiled shader.
+    /// </summary>
+    /// <param name="material">Material whose selection is resolved.</param>
+    /// <returns>The program to bind for this material.</returns>
+    /// <exception cref="InvalidOperationException">The material's shader has not been registered.</exception>
+    public SceneGlShader ResolveMaterialProgram(SceneMaterialDefinition material)
+    {
+        ArgumentNullException.ThrowIfNull(material);
+        ThrowIfDisposed();
+
+        if (!_shaders.TryGetValue(material.ShaderId, out SceneGlShader? shader))
+        {
+            throw new InvalidOperationException(
+                $"Material '{material.Id}' references shader '{material.ShaderId}', which is not registered.");
+        }
+
+        if (!_effectPasses.TryGetValue(material.ShaderId, out EffectBinding binding))
+        {
+            return shader;
+        }
+
+        ShaderSymbol? technique = null;
+        if (material.TechniqueId is { } techniqueName)
+        {
+            technique = new ShaderSymbol(techniqueName);
+        }
+
+        return _effectPrograms.ResolveDrawPass(
+            binding.Effect,
+            technique,
+            CreateSelection(material.Keywords)).Shader;
+    }
+
+    private static ShaderKeywordSelection CreateSelection(IReadOnlyDictionary<string, string> keywords)
+    {
+        if (keywords.Count == 0)
+        {
+            return ShaderKeywordSelection.Empty;
+        }
+
+        ImmutableDictionary<ShaderSymbol, string>.Builder builder =
+            ImmutableDictionary.CreateBuilder<ShaderSymbol, string>();
+        foreach (KeyValuePair<string, string> keyword in keywords)
+        {
+            builder[new ShaderSymbol(keyword.Key)] = keyword.Value;
+        }
+
+        return new ShaderKeywordSelection(builder.ToImmutable());
+    }
+
+    private readonly record struct EffectBinding(ShaderEffect Effect, ImmutableArray<SceneGlEffectPass> Passes);
+
     private void DisposeResources()
     {
         foreach (SceneGlShader shader in _shaders.Values)
         {
-            shader.Dispose();
+            if (!_effectOwned.Contains(shader))
+            {
+                shader.Dispose();
+            }
         }
 
         _shaders.Clear();
+        _shaderStates.Clear();
+        _shaderNotes.Clear();
+        _effectPasses.Clear();
+        _effectOwned.Clear();
+        _effectPrograms.Dispose();
 
         foreach (SceneGlShader? skinnedShader in _skinnedShaders.Values)
         {

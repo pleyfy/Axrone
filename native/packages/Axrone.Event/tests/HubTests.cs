@@ -60,7 +60,7 @@ public class HubTests
     [Fact]
     public void Subscriber_Capacity_Is_Enforced()
     {
-        var options = new EventHubOptions { MaxSubscribers = 1, WaiterPoolCapacity = 1, PinnedRingCapacity = 64 };
+        var options = new EventHubOptions { MaxSubscribers = 1, WaiterPoolCapacity = 1 };
         using var hub = new EventHub<int>(options);
         hub.Subscribe(_ => { });
         Action full = () => hub.Subscribe(_ => { });

@@ -141,11 +141,12 @@ public sealed class SceneGltfShaderTests
         SceneShaderDefinition shader = SceneGltfShaders.CreateUnlit();
 
         shader.Id.Should().Be(SceneAssetId<ShaderAssetTag>.FromName(SceneGltfShaders.UnlitShaderName));
-        shader.FragmentSource.Should().Contain("linearToSrgb");
+        shader.FragmentSource.Should().Contain("u_OutputGamma");
+        shader.FragmentSource.Should().Contain("vec3(u_OutputGamma)");
         shader.FragmentSource.Should().NotContain("evaluateGltfDirectLight");
         shader.FragmentSource.Should().NotContain("gltfResolveShadowFactor");
         shader.FragmentSource.Should().NotContain("u_ShadowMap");
-        shader.FragmentSource.Should().Contain("gltfApplyFog(linearToSrgb(baseColor.rgb), v_WorldPosition, u_CameraPosition)");
+        shader.FragmentSource.Should().Contain("gltfApplyFog(baseColor.rgb, v_WorldPosition, u_CameraPosition)");
         shader.VertexSource.Should().Contain("out vec3 v_WorldPosition;");
         shader.Uniforms.Should().NotContain(["u_ShadowMap", "u_ShadowEnabled", "u_ShadowLightMatrices"]);
         shader.Attributes.Should().NotContainKey(SceneMeshSemantic.Normal);

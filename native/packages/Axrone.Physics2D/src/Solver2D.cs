@@ -1,18 +1,22 @@
 namespace Axrone.Physics2D;
 
 /// <summary>
-/// Shared solver tuning: Baumgarte stabilization, the linear slop inside
-/// which resting separation is left alone, and the per-sweep correction
-/// cap. One definition so the contact and joint solvers push with the same
-/// hand.
+/// Shared solver tuning: the linear slop inside which resting separation is
+/// left alone, the fraction of the residual a position sweep removes, and the
+/// per-sweep correction cap. One definition so the contact and joint solvers
+/// push with the same hand.
 /// </summary>
 internal static class SolverTuning
 {
-    /// <summary>Fraction of the error corrected per position sweep.</summary>
-    public const float Baumgarte = PhysicsConstants.BaumgarteFactor;
-
     /// <summary>Penetration allowance that never corrects; rests stay quiet.</summary>
     public const float LinearSlop = PhysicsConstants.LinearSlop;
+
+    /// <summary>
+    /// Fraction of the residual penetration removed by one position sweep. The
+    /// pass re-measures depth from the live frames, so a full sweep lands the
+    /// pair on the slop and the next sweep finds nothing to do.
+    /// </summary>
+    public const float PositionCorrectionScale = 1.0f;
 
     /// <summary>Largest position correction applied in one sweep.</summary>
     public const float MaxCorrection = PhysicsConstants.MaxLinearCorrection;
@@ -132,8 +136,17 @@ public static class ContactSolver
 
         ref BodyState stateA = ref bodies.Slot(contact.BodyA);
         ref BodyState stateB = ref bodies.Slot(contact.BodyB);
+
+        bool awakeA = (stateA.Flags & BodyFlags.Awake) != 0;
+        bool awakeB = (stateB.Flags & BodyFlags.Awake) != 0;
+        float invMassA = awakeA ? stateA.InverseMass : 0.0f;
+        float invMassB = awakeB ? stateB.InverseMass : 0.0f;
+        float invIA = awakeA ? stateA.InverseInertia : 0.0f;
+        float invIB = awakeB ? stateB.InverseInertia : 0.0f;
+
         Vec2 comA = stateA.Position + Rotate(stateA.Cos, stateA.Sin, stateA.LocalCenter);
         Vec2 comB = stateB.Position + Rotate(stateB.Cos, stateB.Sin, stateB.LocalCenter);
+        Vec2 tangent = new(-manifold.Normal.Y, manifold.Normal.X);
 
         for (int p = 0; p < manifold.Count; p++)
         {
@@ -144,6 +157,18 @@ public static class ContactSolver
             Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
             float approach = Vec2.Dot(manifold.Normal, vB - vA);
             manifold.SetVelocityBias(p, approach < -tuning.RestitutionThreshold ? -tuning.Restitution * approach : 0.0f);
+
+            // The carried impulses are momentum the pair already holds, so they
+            // have to enter the bodies here: a pile that starts each step at zero
+            // relative velocity needs one sweep to stay there, while a pile that
+            // starts at free-fall has to re-earn every interface impulse from the
+            // base up and converges only geometrically.
+            ApplyNormalImpulse(
+                ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
+                rA, rB, manifold.Normal, point.NormalImpulse);
+            ApplyTangentImpulse(
+                ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB,
+                rA, rB, tangent, point.TangentImpulse);
         }
 
         contact.Manifold = manifold;
@@ -217,9 +242,9 @@ public static class ContactSolver
     }
 
     /// <summary>
-    /// Runs one position sweep of Baumgarte correction over penetrated
-    /// points. Separations inside the linear slop are left alone so resting
-    /// contact never jitters.
+    /// Runs one position sweep of Baumgarte correction over penetrated points,
+    /// each witness resolved through the frame its body carries now. Separations
+    /// inside the linear slop are left alone so resting contact never jitters.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void SolvePositionPass(BodyStore bodies, ShapeStore shapes, Span<Contact> contacts)
@@ -227,22 +252,74 @@ public static class ContactSolver
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(shapes);
 
-        for (int i = 0; i < contacts.Length; i++)
+        Span<PositionGeometry2D> window = stackalloc PositionGeometry2D[PositionGeometryWindow.MaxContacts * PositionGeometryWindow.PointsPerContact];
+        for (int start = 0; start < contacts.Length; start += PositionGeometryWindow.MaxContacts)
         {
-            SolveContactPosition(bodies, ref contacts[i]);
+            int length = Math.Min(PositionGeometryWindow.MaxContacts, contacts.Length - start);
+            Span<Contact> slice = contacts.Slice(start, length);
+            Span<PositionGeometry2D> geometry = window.Slice(0, length * PositionGeometryWindow.PointsPerContact);
+            PositionGeometryWindow.Capture(bodies, slice, geometry);
+            SolvePositionSweep(bodies, slice, geometry);
         }
     }
 
     /// <summary>
-    /// Runs the position pass: <paramref name="iterations"/> sweeps of
-    /// Baumgarte correction over penetrated points.
+    /// Runs the position pass: <paramref name="iterations"/> sweeps of Baumgarte
+    /// correction over the geometry captured once for the pass, so every sweep
+    /// measures the corrections its predecessors already applied instead of
+    /// replaying the narrowphase snapshot.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void SolvePositions(BodyStore bodies, ShapeStore shapes, Span<Contact> contacts, int iterations)
     {
-        for (int iteration = 0; iteration < iterations; iteration++)
+        ArgumentNullException.ThrowIfNull(bodies);
+        ArgumentNullException.ThrowIfNull(shapes);
+        if (iterations <= 0)
         {
-            SolvePositionPass(bodies, shapes, contacts);
+            return;
+        }
+
+        Span<PositionGeometry2D> window = stackalloc PositionGeometry2D[PositionGeometryWindow.MaxContacts * PositionGeometryWindow.PointsPerContact];
+        for (int start = 0; start < contacts.Length; start += PositionGeometryWindow.MaxContacts)
+        {
+            int length = Math.Min(PositionGeometryWindow.MaxContacts, contacts.Length - start);
+            Span<Contact> slice = contacts.Slice(start, length);
+            Span<PositionGeometry2D> geometry = window.Slice(0, length * PositionGeometryWindow.PointsPerContact);
+            PositionGeometryWindow.Capture(bodies, slice, geometry);
+
+            for (int iteration = 0; iteration < iterations; iteration++)
+            {
+                SolvePositionSweep(bodies, slice, geometry);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Binds the live points of <paramref name="contacts"/> to the frames their
+    /// bodies carry right now, into a caller-owned window that every sweep of
+    /// the pass then reads. Exposed so a world can capture once and interleave
+    /// its contact and joint sweeps without losing the re-projection.
+    /// </summary>
+    internal static void CapturePositionGeometry(BodyStore bodies, Span<Contact> contacts, Span<PositionGeometry2D> destination) =>
+        PositionGeometryWindow.Capture(bodies, contacts, destination);
+
+    /// <summary>
+    /// One sweep against a window the caller captured: witnesses and separation
+    /// are resolved through the current frames, so the sweep sees its own work.
+    /// </summary>
+    internal static void SolvePositionPass(BodyStore bodies, ShapeStore shapes, Span<Contact> contacts, Span<PositionGeometry2D> geometry)
+    {
+        ArgumentNullException.ThrowIfNull(bodies);
+        ArgumentNullException.ThrowIfNull(shapes);
+        SolvePositionSweep(bodies, contacts, geometry);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void SolvePositionSweep(BodyStore bodies, Span<Contact> contacts, Span<PositionGeometry2D> geometry)
+    {
+        for (int i = 0; i < contacts.Length; i++)
+        {
+            SolveContactPosition(bodies, ref contacts[i], geometry.Slice(i * PositionGeometryWindow.PointsPerContact));
         }
     }
 
@@ -319,7 +396,7 @@ public static class ContactSolver
 
         float rnA = Vec2.Cross(rA, normal);
         float rnB = Vec2.Cross(rB, normal);
-        float normalMass = 1.0f / (invMassA + invMassB + (invIA * rnA * rnA) + (invIB * rnB * rnB));
+        float normalMass = ComputeNormalMass(invMassA, invMassB, invIA, invIB, rnA, rnB);
 
         Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * Perp(rA));
         Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
@@ -429,7 +506,12 @@ public static class ContactSolver
         }
     }
 
-    /// <summary>Applies one signed normal-impulse delta to both bodies.</summary>
+    /// <summary>
+    /// Applies one signed normal-impulse delta to both bodies. Only dynamic
+    /// bodies are written: scenery and script-driven bodies carry the awake
+    /// flag yet react with infinite mass, so a flag test alone would let a
+    /// degenerate row write straight through them.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static void ApplyNormalImpulse(
         ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
@@ -437,13 +519,13 @@ public static class ContactSolver
         Vec2 rA, Vec2 rB, Vec2 normal, float delta)
     {
         Vec2 impulse = normal * delta;
-        if (awakeA)
+        if (awakeA && stateA.Type == BodyType.Dynamic)
         {
             stateA.LinearVelocity -= impulse * invMassA;
             stateA.AngularVelocity -= invIA * Vec2.Cross(rA, impulse);
         }
 
-        if (awakeB)
+        if (awakeB && stateB.Type == BodyType.Dynamic)
         {
             stateB.LinearVelocity += impulse * invMassB;
             stateB.AngularVelocity += invIB * Vec2.Cross(rB, impulse);
@@ -464,7 +546,7 @@ public static class ContactSolver
 
         float rtA = Vec2.Cross(rA, tangent);
         float rtB = Vec2.Cross(rB, tangent);
-        float tangentMass = 1.0f / (invMassA + invMassB + (invIA * rtA * rtA) + (invIB * rtB * rtB));
+        float tangentMass = ComputeTangentMass(invMassA, invMassB, invIA, invIB, rtA, rtB);
 
         Vec2 vA = stateA.LinearVelocity + (stateA.AngularVelocity * Perp(rA));
         Vec2 vB = stateB.LinearVelocity + (stateB.AngularVelocity * Perp(rB));
@@ -481,25 +563,51 @@ public static class ContactSolver
         float newTangent = Math.Clamp(point.TangentImpulse + (-tangentMass * vt * slideScale), -maxFriction, maxFriction);
         float delta = newTangent - point.TangentImpulse;
         manifold.SetImpulses(p, point.NormalImpulse, newTangent);
+        ApplyTangentImpulse(
+            ref stateA, ref stateB, awakeA, awakeB, invMassA, invMassB, invIA, invIB, rA, rB, tangent, delta);
+    }
 
+    /// <summary>
+    /// Applies one signed tangent-impulse delta to both bodies. Only dynamic
+    /// bodies are written, for the same reason as the normal row.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void ApplyTangentImpulse(
+        ref BodyState stateA, ref BodyState stateB, bool awakeA, bool awakeB,
+        float invMassA, float invMassB, float invIA, float invIB,
+        Vec2 rA, Vec2 rB, Vec2 tangent, float delta)
+    {
         Vec2 impulse = tangent * delta;
-        if (awakeA)
+        if (awakeA && stateA.Type == BodyType.Dynamic)
         {
             stateA.LinearVelocity -= impulse * invMassA;
             stateA.AngularVelocity -= invIA * Vec2.Cross(rA, impulse);
         }
 
-        if (awakeB)
+        if (awakeB && stateB.Type == BodyType.Dynamic)
         {
             stateB.LinearVelocity += impulse * invMassB;
             stateB.AngularVelocity += invIB * Vec2.Cross(rB, impulse);
         }
     }
 
+    /// <summary>
+    /// Position correction for one contact, solved as a bundle: both witnesses
+    /// are resolved through the live frames, the coupled system is solved at
+    /// once, and the result is applied exactly one time, so a symmetric pair
+    /// cancels its own couple instead of acquiring a twist the geometry cannot
+    /// observe.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static void SolveContactPosition(BodyStore bodies, ref Contact contact)
+    private static void SolveContactPosition(BodyStore bodies, ref Contact contact, Span<PositionGeometry2D> geometry)
     {
         if (contact.IsSensor)
+        {
+            return;
+        }
+
+        ContactManifold manifold = contact.Manifold;
+        if (manifold.Count == 0)
         {
             return;
         }
@@ -519,41 +627,131 @@ public static class ContactSolver
         float invIA = awakeA ? stateA.InverseInertia : 0.0f;
         float invIB = awakeB ? stateB.InverseInertia : 0.0f;
 
-        ContactManifold manifold = contact.Manifold;
         Vec2 normal = manifold.Normal;
-
+        Transform2D frameA = Transform2D.FromRotation(stateA.Position, stateA.Cos, stateA.Sin);
+        Transform2D frameB = Transform2D.FromRotation(stateB.Position, stateB.Cos, stateB.Sin);
         Vec2 comA = stateA.Position + Rotate(stateA.Cos, stateA.Sin, stateA.LocalCenter);
         Vec2 comB = stateB.Position + Rotate(stateB.Cos, stateB.Sin, stateB.LocalCenter);
 
-        for (int p = 0; p < manifold.Count; p++)
+        ref readonly PositionGeometry2D first = ref geometry[0];
+        Vec2 witnessA0 = first.ResolveA(frameA);
+        Vec2 witnessB0 = first.ResolveB(frameB);
+        Vec2 rA0 = witnessA0 - comA;
+        Vec2 rB0 = witnessB0 - comB;
+        float rnA0 = Vec2.Cross(rA0, normal);
+        float rnB0 = Vec2.Cross(rB0, normal);
+        float k11 = EffectiveMass(invMassA, invMassB, invIA, invIB, rnA0, rnA0, rnB0, rnB0);
+        float target0 = Target(first, normal, witnessA0, witnessB0);
+        float push0 = k11 > 0.0f ? target0 / k11 : 0.0f;
+        float push1 = 0.0f;
+        float rnA1 = 0.0f;
+        float rnB1 = 0.0f;
+
+        if (manifold.Count > 1)
         {
-            ContactPoint point = manifold.GetPointRO(p);
-            Vec2 rA = point.PositionA - comA;
-            Vec2 rB = point.PositionB - comB;
+            ref readonly PositionGeometry2D second = ref geometry[1];
+            Vec2 witnessA1 = second.ResolveA(frameA);
+            Vec2 witnessB1 = second.ResolveB(frameB);
+            Vec2 rA1 = witnessA1 - comA;
+            Vec2 rB1 = witnessB1 - comB;
+            rnA1 = Vec2.Cross(rA1, normal);
+            rnB1 = Vec2.Cross(rB1, normal);
 
-            float rnA = Vec2.Cross(rA, normal);
-            float rnB = Vec2.Cross(rB, normal);
-            float mass = 1.0f / (invMassA + invMassB + (invIA * rnA * rnA) + (invIB * rnB * rnB));
-
-            float correction = Math.Clamp(SolverTuning.Baumgarte * (point.Separation + SolverTuning.LinearSlop), -SolverTuning.MaxCorrection, 0.0f);
-            Vec2 impulse = normal * (-mass * correction);
-
-            if (awakeA)
+            float k22 = EffectiveMass(invMassA, invMassB, invIA, invIB, rnA1, rnA1, rnB1, rnB1);
+            float k12 = EffectiveMass(invMassA, invMassB, invIA, invIB, rnA0, rnA1, rnB0, rnB1);
+            float target1 = Target(second, normal, witnessA1, witnessB1);
+            float det = (k11 * k22) - (k12 * k12);
+            if (det <= 0.0f || k22 <= 0.0f)
             {
-                stateA.Position -= impulse * invMassA;
-                float angleA = MathF.Atan2(stateA.Sin, stateA.Cos) - (invIA * Vec2.Cross(rA, impulse));
-                stateA.Cos = MathF.Cos(angleA);
-                stateA.Sin = MathF.Sin(angleA);
+                push1 = k22 > 0.0f ? target1 / k22 : 0.0f;
             }
-
-            if (awakeB)
+            else
             {
-                stateB.Position += impulse * invMassB;
-                float angleB = MathF.Atan2(stateB.Sin, stateB.Cos) + (invIB * Vec2.Cross(rB, impulse));
-                stateB.Cos = MathF.Cos(angleB);
-                stateB.Sin = MathF.Sin(angleB);
+                float coupled0 = ((k22 * target0) - (k12 * target1)) / det;
+                float coupled1 = ((k11 * target1) - (k12 * target0)) / det;
+                if (coupled0 >= 0.0f && coupled1 >= 0.0f)
+                {
+                    push0 = coupled0;
+                    push1 = coupled1;
+                }
+                else if (coupled0 > 0.0f)
+                {
+                    push0 = target0 / k11;
+                    push1 = 0.0f;
+                }
+                else if (coupled1 > 0.0f)
+                {
+                    push0 = 0.0f;
+                    push1 = target1 / k22;
+                }
+                else
+                {
+                    push0 = 0.0f;
+                    push1 = 0.0f;
+                }
             }
         }
+
+        if (push0 == 0.0f && push1 == 0.0f)
+        {
+            return;
+        }
+
+        float momentA = (rnA0 * push0) + (rnA1 * push1);
+        float momentB = (rnB0 * push0) + (rnB1 * push1);
+        float push = push0 + push1;
+
+        if (awakeA && stateA.Type == BodyType.Dynamic)
+        {
+            stateA.Position -= normal * (push * invMassA);
+            float angleA = MathF.Atan2(stateA.Sin, stateA.Cos) - (invIA * momentA);
+            stateA.Cos = MathF.Cos(angleA);
+            stateA.Sin = MathF.Sin(angleA);
+        }
+
+        if (awakeB && stateB.Type == BodyType.Dynamic)
+        {
+            stateB.Position += normal * (push * invMassB);
+            float angleB = MathF.Atan2(stateB.Sin, stateB.Cos) + (invIB * momentB);
+            stateB.Cos = MathF.Cos(angleB);
+            stateB.Sin = MathF.Sin(angleB);
+        }
+    }
+
+    /// <summary>Coupled effective mass between two points of one contact along the normal.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float EffectiveMass(float invMassA, float invMassB, float invIA, float invIB, float rnA0, float rnA1, float rnB0, float rnB1) =>
+        invMassA + invMassB + (invIA * rnA0 * rnA1) + (invIB * rnB0 * rnB1);
+
+    /// <summary>Distance the pair must gain along the normal before one point rests inside the slop.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float Target(in PositionGeometry2D point, Vec2 normal, Vec2 witnessA, Vec2 witnessB) =>
+        -Math.Clamp(
+            SolverTuning.PositionCorrectionScale * (point.ResolveSeparation(normal, witnessA, witnessB) + SolverTuning.LinearSlop),
+            -SolverTuning.MaxCorrection, 0.0f);
+
+    /// <summary>
+    /// Effective mass of one point along the normal. Guarded reciprocal: a
+    /// sleeping dynamic body over scenery has no movable surface at all, and
+    /// an unguarded reciprocal turns its zero approach speed into an infinite
+    /// mass times a zero speed, which every later clamp carries as NaN.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float ComputeNormalMass(float invMassA, float invMassB, float invIA, float invIB, float rnA, float rnB)
+    {
+        float k = invMassA + invMassB + (invIA * rnA * rnA) + (invIB * rnB * rnB);
+        return k > 0.0f ? 1.0f / k : 0.0f;
+    }
+
+    /// <summary>
+    /// Effective mass of one point along the tangent, guarded for the same
+    /// reason as the normal row.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static float ComputeTangentMass(float invMassA, float invMassB, float invIA, float invIB, float rtA, float rtB)
+    {
+        float k = invMassA + invMassB + (invIA * rtA * rtA) + (invIB * rtB * rtB);
+        return k > 0.0f ? 1.0f / k : 0.0f;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

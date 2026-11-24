@@ -80,7 +80,7 @@ public sealed class SceneBehaviourActiveTests
         CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
         world.Start();
 
-        behaviour.Enabled = false;
+        world.SetBehaviourEnabled<CounterBehaviour>(actor, false);
         behaviour.DisableCount.Should().Be(1);
 
         world.SetActive(actor, false);
@@ -90,24 +90,24 @@ public sealed class SceneBehaviourActiveTests
         world.Update(0.016f);
         behaviour.Updates.Should().Be(0);
 
-        behaviour.Enabled = true;
+        world.SetBehaviourEnabled<CounterBehaviour>(actor, true);
         behaviour.EnableCount.Should().Be(2);
         world.Update(0.016f);
         behaviour.Updates.Should().Be(1);
     }
 
     [Fact]
-    public void Behaviour_ExposesOwningWorldUntilDestroyed()
+    public void Behaviour_ExposesContextUntilDetached()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
         SceneActor actor = world.CreateActor("Actor");
         CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
 
-        behaviour.World.Should().BeSameAs(world);
+        behaviour.Context!.World.Should().BeSameAs(world);
+        behaviour.Context.IsAttached.Should().BeTrue();
 
         world.DestroyActor(actor);
 
-        behaviour.World.Should().BeNull();
-        behaviour.IsAttached.Should().BeFalse();
+        behaviour.Context.IsAttached.Should().BeFalse();
     }
 }

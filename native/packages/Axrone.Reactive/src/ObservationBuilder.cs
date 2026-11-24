@@ -81,7 +81,7 @@ public readonly record struct ObservationBuilder<T>
         }
 
         var wrapper = new ObservationObserver<T>(observer, in _options);
-        IDisposable upstream = source is ObservableBase<T> observable
+        IDisposable upstream = source is IPriorityObservable<T> observable
             ? observable.Subscribe(wrapper, _options.Priority)
             : source.Subscribe(wrapper);
         wrapper.Attach(upstream);

@@ -1,62 +1,70 @@
 namespace Axrone.Reactive;
 
+using Axrone.Reactive.Internal;
+
 /// <summary>
 /// Derivable cold-observable root: game classes inherit stream behavior instead of wiring it.
 /// </summary>
 /// <remarks>
-/// <para><b>Allocation contract:</b> subscribing allocates (subscription node plus one array
-/// copy — cold path); publishing never allocates and never locks, readers take a snapshot
-/// reference. Concurrent publishes may interleave per observer.</para>
-/// <para><b>Ordering:</b> the subscription snapshot is sorted by
-/// <see cref="ObservationPriority"/> (high, normal, low) and then registration order.
-/// Within one priority, a concurrently inserted subscription keeps subscription-id order,
-/// so notify order is deterministic.</para>
+/// <para><b>Allocation contract:</b> subscribing allocates the observer adapter and its handle
+/// (cold path); publishing never allocates and never locks, and reads a per-priority slot order
+/// snapshot. Concurrent publishes may interleave per observer.</para>
+/// <para><b>Ordering:</b> the dispatch order is <see cref="ObservationPriority"/> (high, normal,
+/// low) and then registration order within a priority.</para>
 /// <para><b>Backpressure:</b> none — this is a push model. A slow observer blocks the publishing
-/// thread for every subscriber behind it. Shed, sample, or buffer upstream (operators,
-/// transport queues) instead of slowing observers.</para>
-/// <para><b>Fault philosophy:</b> a throwing observer aborts the broadcast and propagates to the
-/// publisher (Reactive parity). This differs deliberately from the event bus, which isolates
-/// per-subscriber faults into dead letters: isolation needs somewhere to put the failure, and
-/// only a transport owns a dead-letter queue. Isolate at the transport edge, not the source.</para>
-/// <para><b>Terminal races:</b> an in-flight publish racing a terminal call may still deliver
-/// after the terminal signal; late subscribers always observe exactly one terminal, in order.
+/// thread for every subscriber behind it. Shed, sample, or buffer upstream.</para>
+/// <para><b>Fault philosophy:</b> <see cref="SubjectOptions.ErrorPropagation"/> selects between
+/// propagating the fault to the publisher (the default, Reactive parity) and isolating it per
+/// observer while the broadcast continues.</para>
+/// <para><b>Snapshot semantics:</b> a publish pins the current slot order before invoking anyone,
+/// so a subscription disposed by an earlier observer still receives the event already in flight,
+/// while new subscriptions only see the next publish.</para>
+/// <para><b>Terminal races:</b> late subscribers always observe exactly one terminal, in order.
 /// No schedulers, no timers — the engine drives threads.</para>
 /// </remarks>
 /// <typeparam name="T">Notification type.</typeparam>
-public abstract class ObservableBase<T> : IObservable<T>, IDisposable
+public abstract class ObservableBase<T> : IObservable<T>, IPriorityObservable<T>, IDisposable
 {
-    private const int StateActive = 0;
-    private const int StateCompleted = 1;
-    private const int StateFaulted = 2;
-
+    private readonly ObserverEngine<T> _engine;
     private readonly SubjectOptions _subjectOptions;
-    private SubscriptionEntry[] _observers = [];
-    private int _terminal;
-    private Exception? _error;
-    private int _disposed;
-    private int _observerFaultCount;
-    private long _nextSubscriptionId;
-
-    /// <summary>Guards fault publication only; hot paths never take it.</summary>
-    private readonly Lock _faultGate = new();
 
     protected ObservableBase()
         : this(SubjectOptions.Default)
     {
     }
 
-    protected ObservableBase(in SubjectOptions options) => _subjectOptions = options.Normalize();
+    protected ObservableBase(in SubjectOptions options)
+    {
+        _subjectOptions = options.Normalize();
+
+        int requested = Math.Max(2, _subjectOptions.MaxObservers);
+        int slots = NextPowerOfTwo(Math.Min(65_536, requested));
+        _engine = new ObserverEngine<T>(new ObserverEngineOptions
+        {
+            MaxObservers = slots,
+            MaxSubscribers = _subjectOptions.MaxObservers,
+            FaultBehavior = _subjectOptions.ErrorPropagation
+                ? ObserverFaultBehavior.Propagate
+                : ObserverFaultBehavior.IsolateObserver,
+        });
+    }
 
     /// <summary>Live subscriptions.</summary>
-    public int SubscriberCount => Volatile.Read(ref _observers).Length;
+    public int SubscriberCount => _engine.ActiveSubscriberCount;
 
-    public int ObserverFaultCount => Volatile.Read(ref _observerFaultCount);
+    internal int SlotCapacity => _engine.Capacity;
+
+    /// <summary>Observer callbacks that faulted under isolation.</summary>
+    public int ObserverFaultCount => _engine.ObserverFaultCount;
 
     /// <summary>Whether error/completed was delivered.</summary>
-    public bool IsTerminated => Volatile.Read(ref _terminal) != StateActive;
+    public bool IsTerminated => _engine.Status is
+        ObserverEngineStatus.Completed or
+        ObserverEngineStatus.Faulted or
+        ObserverEngineStatus.Disposed;
 
     /// <summary>Whether the terminal signal was a fault.</summary>
-    public bool IsFaulted => Volatile.Read(ref _terminal) == StateFaulted;
+    public bool IsFaulted => _engine.Status == ObserverEngineStatus.Faulted;
 
     /// <inheritdoc/>
     public virtual IDisposable Subscribe(IObserver<T> observer) =>
@@ -69,110 +77,67 @@ public abstract class ObservableBase<T> : IObservable<T>, IDisposable
     public virtual IDisposable Subscribe(IObserver<T> observer, ObservationPriority priority)
     {
         ArgumentNullException.ThrowIfNull(observer);
-        if (!IsTerminated && SubscriberCount >= _subjectOptions.MaxObservers)
-        {
-            ReactiveThrowHelper.ThrowMaxObserversExceeded(_subjectOptions.MaxObservers, SubscriberCount);
-        }
 
-        int terminal = Volatile.Read(ref _terminal);
-        if (terminal == StateCompleted)
+        ObserverEngineStatus status = _engine.Status;
+        if (status is ObserverEngineStatus.Completed or ObserverEngineStatus.Disposed)
         {
             observer.OnCompleted();
             return NoopDisposable.Instance;
         }
 
-        if (terminal == StateFaulted)
+        if (status == ObserverEngineStatus.Faulted)
         {
-            return SubscribeTerminal(observer);
+            observer.OnError(_engine.TerminalError!);
+            return NoopDisposable.Instance;
         }
 
-        long id = Interlocked.Increment(ref _nextSubscriptionId);
-        while (true)
+        try
         {
-            SubscriptionEntry[] current = Volatile.Read(ref _observers);
-            if (Volatile.Read(ref _terminal) != StateActive)
+            ObserverSubscription subscription = _engine.Subscribe(new ObserverAdapter(observer), (byte)priority);
+            ReactiveTelemetry.Subscribed();
+            return new Subscription(subscription);
+        }
+        catch (InvalidOperationException) when (_engine.Status == ObserverEngineStatus.Active)
+        {
+            ReactiveThrowHelper.ThrowMaxObserversExceeded(_subjectOptions.MaxObservers, SubscriberCount);
+            throw;
+        }
+        catch (InvalidOperationException)
+        {
+            if (_engine.Status == ObserverEngineStatus.Faulted)
             {
-                return SubscribeTerminal(observer);
+                observer.OnError(_engine.TerminalError!);
+            }
+            else
+            {
+                observer.OnCompleted();
             }
 
-            var next = new SubscriptionEntry[current.Length + 1];
-            int insert = 0;
-            while (insert < current.Length)
-            {
-                int comparison = current[insert].Priority.CompareTo(priority);
-                if (comparison > 0 || (comparison == 0 && current[insert].Id > id))
-                {
-                    break;
-                }
-
-                insert++;
-            }
-
-            Array.Copy(current, 0, next, 0, insert);
-            next[insert] = new SubscriptionEntry(observer, priority, id);
-            Array.Copy(current, insert, next, insert + 1, current.Length - insert);
-
-            if (Interlocked.CompareExchange(ref _observers, next, current) == current)
-            {
-                if (Volatile.Read(ref _terminal) != StateActive)
-                {
-                    return Unsubscribe(id) ? SubscribeTerminal(observer) : NoopDisposable.Instance;
-                }
-
-                ReactiveTelemetry.Subscribed();
-                return new Subscription(this, id);
-            }
+            return NoopDisposable.Instance;
         }
     }
 
     /// <summary>Publishes to current subscribers; ignored once terminated.</summary>
     protected void Publish(T value)
     {
-        if (Volatile.Read(ref _terminal) != StateActive)
+        if (_engine.Status != ObserverEngineStatus.Active)
         {
             return;
         }
 
-        SubscriptionEntry[] snapshot = Volatile.Read(ref _observers);
-        bool propagate = PropagateObserverErrors;
-        for (int i = 0; i < snapshot.Length; i++)
-        {
-            if (propagate)
-            {
-                snapshot[i].Observer.OnNext(value);
-            }
-            else
-            {
-                try
-                {
-                    snapshot[i].Observer.OnNext(value);
-                }
-                catch (Exception)
-                {
-                    Interlocked.Increment(ref _observerFaultCount);
-                }
-            }
-        }
+        _ = _engine.TryPublish(value, out _);
     }
-
-    protected bool PropagateObserverErrors => _subjectOptions.ErrorPropagation;
 
     /// <summary>Delivers completion; later publishes are ignored, late subscribers replay it.</summary>
     protected void Complete()
     {
-        if (Interlocked.CompareExchange(ref _terminal, StateCompleted, StateActive) != StateActive)
+        if (!_engine.Complete())
         {
             return;
         }
 
         ReactiveTelemetry.SourceCompleted();
         ReactiveEventSource.Log.SourceCompleted();
-
-        SubscriptionEntry[] snapshot = Interlocked.Exchange(ref _observers, []);
-        for (int i = 0; i < snapshot.Length; i++)
-        {
-            snapshot[i].Observer.OnCompleted();
-        }
 
         if (_subjectOptions.AutoComplete)
         {
@@ -184,28 +149,17 @@ public abstract class ObservableBase<T> : IObservable<T>, IDisposable
     protected void Fault(Exception error)
     {
         ArgumentNullException.ThrowIfNull(error);
-
-        SubscriptionEntry[] snapshot;
-        lock (_faultGate)
+        if (!_engine.Complete(error))
         {
-            if (_terminal != StateActive)
-            {
-                return;
-            }
-
-            _error = error;
-            Volatile.Write(ref _terminal, StateFaulted);
-            snapshot = Interlocked.Exchange(ref _observers, []);
+            return;
         }
 
         ReactiveTelemetry.SourceFaulted();
         ReactiveEventSource.Log.FaultDelivered(error.GetType().Name, error.Message);
-
-        for (int i = 0; i < snapshot.Length; i++)
-        {
-            snapshot[i].Observer.OnError(error);
-        }
     }
+
+    /// <summary>Whether observer faults propagate to the publisher instead of being isolated.</summary>
+    protected bool PropagateObserverErrors => _subjectOptions.ErrorPropagation;
 
     /// <inheritdoc/>
     public void Dispose()
@@ -217,98 +171,52 @@ public abstract class ObservableBase<T> : IObservable<T>, IDisposable
     /// <summary>Releases subscriptions; derived types release managed state when disposing.</summary>
     protected virtual void Dispose(bool disposing)
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        if (!disposing)
         {
             return;
         }
 
-        if (disposing)
+        bool wasActive = _engine.Status == ObserverEngineStatus.Active;
+        _engine.Dispose();
+        if (wasActive)
         {
-            Complete();
+            ReactiveTelemetry.SourceCompleted();
+            ReactiveEventSource.Log.SourceCompleted();
         }
     }
 
-    private NoopDisposable SubscribeTerminal(IObserver<T> observer)
+    private static int NextPowerOfTwo(int value)
     {
-        if (Volatile.Read(ref _terminal) == StateFaulted)
+        int result = 2;
+        while (result < value)
         {
-            Exception error;
-            lock (_faultGate)
-            {
-                error = _error!;
-            }
-
-            observer.OnError(error);
-        }
-        else
-        {
-            observer.OnCompleted();
+            result <<= 1;
         }
 
-        return NoopDisposable.Instance;
+        return result;
     }
 
-    private bool Unsubscribe(long subscriptionId)
+    private sealed class ObserverAdapter(IObserver<T> observer) : IValueObserver<T>
     {
-        while (true)
-        {
-            SubscriptionEntry[] current = Volatile.Read(ref _observers);
-            int index = -1;
-            for (int i = 0; i < current.Length; i++)
-            {
-                if (current[i].Id == subscriptionId)
-                {
-                    index = i;
-                    break;
-                }
-            }
+        public void OnNext(in T value, nint context) => observer.OnNext(value);
 
-            if (index < 0)
-            {
-                return false;
-            }
+        public void OnError(Exception error, nint context) => observer.OnError(error);
 
-            var next = new SubscriptionEntry[current.Length - 1];
-            Array.Copy(current, 0, next, 0, index);
-            Array.Copy(current, index + 1, next, index, current.Length - index - 1);
-            if (Interlocked.CompareExchange(ref _observers, next, current) == current)
-            {
-                return true;
-            }
-        }
-    }
-
-    private readonly struct SubscriptionEntry
-    {
-        public readonly IObserver<T> Observer;
-        public readonly ObservationPriority Priority;
-        public readonly long Id;
-
-        public SubscriptionEntry(IObserver<T> observer, ObservationPriority priority, long id)
-        {
-            Observer = observer;
-            Priority = priority;
-            Id = id;
-        }
+        public void OnCompleted(nint context) => observer.OnCompleted();
     }
 
     private sealed class Subscription : IDisposable
     {
-        private readonly ObservableBase<T> _source;
-        private readonly long _id;
+        private readonly ObserverSubscription _inner;
         private int _disposed;
 
-        public Subscription(ObservableBase<T> source, long id)
-        {
-            _source = source;
-            _id = id;
-        }
+        public Subscription(ObserverSubscription inner) => _inner = inner;
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
-                _source.Unsubscribe(_id);
+                _inner.Dispose();
             }
         }
     }
@@ -323,6 +231,7 @@ public abstract class ObservableBase<T> : IObservable<T>, IDisposable
     }
 }
 
+/// <summary>Cold-path exception throwers for the observable base.</summary>
 internal static class ReactiveThrowHelper
 {
     [DoesNotReturn]

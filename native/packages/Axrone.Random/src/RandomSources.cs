@@ -79,10 +79,11 @@ public interface IJumpableRandomSource<TSelf> : IRandomSource<TSelf>
 /// restored into another. The pair of members is the inverse of each other:
 /// <c>FromState(words)</c> after <c>CopyStateTo(words)</c> reproduces a state that compares equal
 /// and therefore continues the stream identically.</para>
-/// <para><b>Eligibility.</b> The contract is deliberately limited to the <em>compact</em> engines
-/// - <see cref="WyRand"/> (one word), <see cref="Xoroshiro128PlusPlus"/> and
-/// <see cref="PcgEngine"/> (two words each) and <see cref="Xoshiro256PlusPlus"/> (four words) -
-/// so one <c>stackalloc</c> of at most four words covers every compact engine and the buffer
+/// <para><b>Eligibility.</b> The contract is deliberately limited to the engines whose state is a
+/// fixed word vector - <see cref="WyRand"/> (one word), <see cref="Xoroshiro128PlusPlus"/> and
+/// <see cref="PcgEngine"/> (two words each), <see cref="Xoshiro256PlusPlus"/> (four words) and
+/// <see cref="ChaCha20Source"/> (nine: the sixteen state words plus the buffer cursor) - so one
+/// <c>stackalloc</c> of at most nine words covers every eligible engine and the buffer
 /// size is a compile-time constant per engine.</para>
 /// <para><b>Mersenne Twister is exempt, by design.</b> Its state is 624 32-bit words
 /// (2 496 bytes) plus a read cursor: it cannot be expressed in the uniform 64-bit word contract
@@ -91,7 +92,8 @@ public interface IJumpableRandomSource<TSelf> : IRandomSource<TSelf>
 /// engine's own <see cref="MersenneTwister.CopyStateTo(Span{uint})"/>, which already exports the
 /// full state in its native word type. <see cref="RandomEngineTypeExtensions.GetWordCount"/>
 /// reports <c>0</c> for it, which is how a caller discovers the exemption at runtime without
-/// a type test.</para>
+/// a type test. <see cref="OperatingSystemEntropySource"/> is exempt for the opposite reason: it
+/// has no state to export.</para>
 /// <para>Snapshot and restore are <em>cold</em> paths: they guard their span and can throw, so
 /// they are never inlined into a draw loop and allocate nothing.</para>
 /// </remarks>
@@ -164,6 +166,24 @@ internal static class RandomThrowHelper
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static void ThrowStreamIncrementMustBeOdd(string paramName) =>
         throw new ArgumentException("A PCG stream increment must be odd, otherwise the LCG does not run at full period.", paramName);
+
+    /// <summary>Throws for a ChaCha20 key longer than the eight words the state carries.</summary>
+    /// <param name="length">The word count supplied.</param>
+    /// <param name="paramName">The name of the rejected parameter.</param>
+    [DoesNotReturn]
+    [StackTraceHidden]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void ThrowKeyTooLong(int length, string paramName) =>
+        throw new ArgumentException($"A ChaCha20 key holds eight words, but {length} were supplied.", paramName);
+
+    /// <summary>Throws for a ChaCha20 nonce longer than the three words the state carries.</summary>
+    /// <param name="length">The word count supplied.</param>
+    /// <param name="paramName">The name of the rejected parameter.</param>
+    [DoesNotReturn]
+    [StackTraceHidden]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void ThrowNonceTooLong(int length, string paramName) =>
+        throw new ArgumentException($"A ChaCha20 nonce holds three words, but {length} were supplied.", paramName);
 }
 
 /// <summary>

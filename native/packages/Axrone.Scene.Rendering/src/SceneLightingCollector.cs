@@ -13,7 +13,10 @@ public sealed class SceneLightingCollector : IDisposable
     private const int AreaKind = 3;
     private const float PrimaryDirectionalPriority = 1_000_000.0f;
 
-    private static readonly Vec3 LocalForward = new(0.0f, 0.0f, -1.0f);
+    // Lights emit along local +Z, matching WebGL2's Vec3.FORWARD in
+    // scene-runtime/src/lighting-collector.ts. Cameras look along -Z
+    // (SceneCameraFrame); the two conventions are deliberately different.
+    private static readonly Vec3 LocalForward = new(0.0f, 0.0f, 1.0f);
 
     private readonly LightingRig _rig;
     private readonly LightingFrameResolver _resolver;

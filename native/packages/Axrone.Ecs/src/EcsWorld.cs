@@ -381,7 +381,6 @@ public sealed partial class World : IDisposable
     public void Dispose()
     {
         Volatile.Write(ref _closed, true);
-        _events.Dispose();
         _actors.Clear();
         _singletons.ClearAll();
         DisposeParallelInfrastructure();

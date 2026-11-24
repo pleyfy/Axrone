@@ -43,11 +43,14 @@ internal sealed class SceneGlFixture : IDisposable
             shaderId,
             new SceneMaterialSurface());
         Assets.Materials.Register(Material);
+        Cache = new SceneGlAssetCache(Context, Assets);
     }
 
     public MockGLApi Api { get; }
 
     public GLContext Context { get; }
+
+    public SceneGlAssetCache Cache { get; }
 
     public SceneAssetRegistry Assets { get; }
 
@@ -92,5 +95,9 @@ internal sealed class SceneGlFixture : IDisposable
         ReceiveLighting = true
     };
 
-    public void Dispose() => Context.Dispose();
+    public void Dispose()
+    {
+        Cache.Dispose();
+        Context.Dispose();
+    }
 }

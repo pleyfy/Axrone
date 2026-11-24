@@ -14,6 +14,8 @@
   <PropertyGroup Label="SuppressedRules">
     <!-- CA1052: static holder types — benchmark fixtures are conventionally plain static classes -->
     <NoWarn>$(NoWarn);CA1052</NoWarn>
+    <!-- CA1716: the assembly namespace mirrors the package under test -->
+    <NoWarn>$(NoWarn);CA1716</NoWarn>
     <!-- CA1515: make types internal — BenchmarkSwitcher discovers fixtures through public types -->
     <NoWarn>$(NoWarn);CA1515</NoWarn>
     <!-- CA1861: inline arrays in benchmark payloads — literals keep the fixtures readable -->

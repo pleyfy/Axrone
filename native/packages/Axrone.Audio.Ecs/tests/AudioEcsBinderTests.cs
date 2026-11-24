@@ -210,4 +210,54 @@ public sealed class AudioEcsBinderTests : IDisposable
         _binder.DetachListener(entity);
         _binder.Update();
     }
+
+    [Fact]
+    public void Update_DoesNotReUpsertUnchangedSources()
+    {
+        AudioClipId clip = RegisterClip();
+        var listener = new UpsertCountingListener();
+        _system.Observability.Subscribe(listener);
+
+        Entity entity = SpawnSource(new AudioSourceId(1U), clip);
+        _binder.Update();
+        int afterFirst = listener.SourceUpserts;
+        afterFirst.Should().BeGreaterThan(0);
+
+        _binder.Update();
+        _binder.Update();
+
+        listener.SourceUpserts.Should().Be(afterFirst, "an unchanged definition must not emit upserts every frame");
+    }
+
+    [Fact]
+    public void Update_ReUpsertsWhenTuningChanges()
+    {
+        AudioClipId clip = RegisterClip();
+        var listener = new UpsertCountingListener();
+        _system.Observability.Subscribe(listener);
+
+        Entity entity = SpawnSource(new AudioSourceId(1U), clip);
+        _binder.Update();
+        int afterFirst = listener.SourceUpserts;
+
+        ref AudioSourceRef link = ref _world.GetComponent<AudioSourceRef>(entity);
+        link.Volume = 0.5f;
+
+        _binder.Update();
+
+        listener.SourceUpserts.Should().Be(afterFirst + 1);
+    }
+
+    private sealed class UpsertCountingListener : IAudioEventListener
+    {
+        public int SourceUpserts;
+
+        public void OnAudioEvent(in AudioRuntimeEvent ev)
+        {
+            if (ev.Type == AudioEventType.SourceUpserted)
+            {
+                SourceUpserts++;
+            }
+        }
+    }
 }

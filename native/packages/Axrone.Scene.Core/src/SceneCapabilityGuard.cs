@@ -34,7 +34,7 @@ public static class SceneCapabilityGuard
 
     /// <summary>Requires a registered behaviour type.</summary>
     public static void RequireBehaviour<T>(SceneComponentRegistry registry)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ArgumentNullException.ThrowIfNull(registry);
         if (!registry.TryGetBehaviourByType(typeof(T), out _))

@@ -214,7 +214,7 @@ public static class BlendingKernels
     /// Rotation deltas ride the rest-inverse sandwich with slerp-scaled magnitude.
     /// </summary>
     [SkipLocalsInit]
-    public static void ApplyAdditiveFrame(AnimationFrame target, AnimationFrame baseFrame, AnimationFrame additiveFrame, Rig rig, float alpha)
+    public static void ApplyAdditiveFrame(AnimationFrame target, AnimationFrame baseFrame, AnimationFrame additiveFrame, Rig rig, float alpha, AnimationMask? mask = null, AnimationFrame? referenceFrame = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(baseFrame);
@@ -223,6 +223,10 @@ public static class BlendingKernels
 
         float a = FastMath.Clamp01(alpha);
         int boneCount = target.BoneCount;
+
+        ReadOnlySpan<Vec3> referenceT = referenceFrame is not null ? referenceFrame.ReadTranslations() : default;
+        ReadOnlySpan<Quat> referenceR = referenceFrame is not null ? referenceFrame.ReadRotations() : default;
+        ReadOnlySpan<Vec3> referenceS = referenceFrame is not null ? referenceFrame.ReadScales() : default;
 
         ReadOnlySpan<Vec3> baseT = baseFrame.ReadTranslations();
         ReadOnlySpan<Quat> baseR = baseFrame.ReadRotations();
@@ -242,6 +246,11 @@ public static class BlendingKernels
 
         for (int i = 0; i < boneCount; i++)
         {
+            if (mask.HasValue && !mask.Value.IsEnabled(i))
+            {
+                continue;
+            }
+
             int tOff = i * 3;
             int rOff = rotBase + (i * 4);
             int sOff = scaleBase + (i * 3);
@@ -250,10 +259,14 @@ public static class BlendingKernels
             Quat restR = new(rest[rOff], rest[rOff + 1], rest[rOff + 2], rest[rOff + 3]);
             Vec3 restS = new(rest[sOff], rest[sOff + 1], rest[sOff + 2]);
 
-            dstT[i] = baseT[i] + ((addT[i] - restT) * a);
-            dstS[i] = baseS[i] + ((addS[i] - restS) * a);
+            Vec3 referenceTranslation = referenceFrame is not null ? referenceT[i] : restT;
+            Quat referenceRotation = referenceFrame is not null ? referenceR[i] : restR;
+            Vec3 referenceScale = referenceFrame is not null ? referenceS[i] : restS;
 
-            Quat invRest = Quat.Inverse(restR);
+            dstT[i] = baseT[i] + ((addT[i] - referenceTranslation) * a);
+            dstS[i] = baseS[i] + ((addS[i] - referenceScale) * a);
+
+            Quat invRest = Quat.Inverse(referenceRotation);
             Quat delta = Quat.Concatenate(invRest, addR[i]);
             Quat scaledDelta = FastMath.Slerp(Quat.Identity, delta, a);
             dstR[i] = Quat.Normalize(baseR[i] * scaledDelta);
@@ -262,10 +275,17 @@ public static class BlendingKernels
         Span<float> dstC = target.Curves.AsSpan();
         ReadOnlySpan<float> baseC = baseFrame.Curves.AsSpan();
         ReadOnlySpan<float> addC = additiveFrame.Curves.AsSpan();
+        ReadOnlySpan<float> referenceC = referenceFrame is not null ? referenceFrame.Curves.AsSpan() : default;
         int curveCount = Math.Min(dstC.Length, Math.Min(baseC.Length, addC.Length));
+        if (referenceFrame is not null)
+        {
+            curveCount = Math.Min(curveCount, referenceC.Length);
+        }
+
         for (int i = 0; i < curveCount; i++)
         {
-            dstC[i] = baseC[i] + (addC[i] * a);
+            float reference = referenceFrame is not null ? referenceC[i] : 0.0f;
+            dstC[i] = baseC[i] + ((addC[i] - reference) * a);
         }
     }
 }

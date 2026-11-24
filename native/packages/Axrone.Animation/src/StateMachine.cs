@@ -1,5 +1,24 @@
 namespace Axrone.Animation;
 
+/// <summary>Temporal curve applied to transition progress.</summary>
+public enum TransitionEasing
+{
+    /// <summary>Constant-rate blend.</summary>
+    Linear = 0,
+
+    /// <summary>Smooth acceleration and deceleration.</summary>
+    SmoothStep = 1,
+
+    /// <summary>Accelerating blend.</summary>
+    EaseIn = 2,
+
+    /// <summary>Decelerating blend.</summary>
+    EaseOut = 3,
+
+    /// <summary>Accelerate then decelerate.</summary>
+    EaseInOut = 4,
+}
+
 /// <summary>Conditional edge between states with duration and priority.</summary>
 public sealed class StateTransition
 {
@@ -52,6 +71,21 @@ public sealed class StateTransition
 
     /// <summary>Deterministic tie-breaker.</summary>
     public int TieBreakerIndex { get; init; }
+
+    /// <summary>Temporal curve applied to normalized progress.</summary>
+    public TransitionEasing Easing
+    {
+        get;
+        init
+        {
+            if ((uint)value > (uint)TransitionEasing.EaseInOut)
+            {
+                AnimationThrowHelper.ThrowValidation(AnimationErrorCode.ValidationInvalidArgument, $"Unknown transition easing '{value}'.");
+            }
+
+            field = value;
+        }
+    } = TransitionEasing.Linear;
 
     /// <summary>Guard conditions.</summary>
     public ReadOnlySpan<ParameterCondition> Conditions => _conditions;
@@ -135,6 +169,7 @@ public sealed class StateMachineInstance
         public bool HasFixedDuration;
         public bool CanInterrupt;
         public bool IsActive;
+        public TransitionEasing Easing;
     }
 
     private readonly AnimationState[] _states;
@@ -174,6 +209,41 @@ public sealed class StateMachineInstance
             AnimationThrowHelper.ThrowValidation(AnimationErrorCode.StateMachineInvalidTransition, "Entry state index out of range.");
         }
 
+        var stateIds = new HashSet<StateId>(states.Length);
+        for (int i = 0; i < states.Length; i++)
+        {
+            AnimationState state = states[i];
+            if (string.IsNullOrWhiteSpace(state.Id.Value))
+            {
+                AnimationThrowHelper.ThrowValidation(AnimationErrorCode.ValidationInvalidArgument, $"State {i} has an empty id.");
+            }
+
+            if (!stateIds.Add(state.Id))
+            {
+                AnimationThrowHelper.ThrowValidation(AnimationErrorCode.StateMachineInvalidTransition, $"Duplicate state id '{state.Id}'.");
+            }
+
+            foreach (StateTransition transition in state.Transitions)
+            {
+                if ((uint)transition.TargetStateIndex >= (uint)states.Length)
+                {
+                    AnimationThrowHelper.ThrowValidation(
+                        AnimationErrorCode.StateMachineInvalidTransition,
+                        $"State '{state.Id}' targets missing state index {transition.TargetStateIndex}.");
+                }
+            }
+        }
+
+        foreach (StateTransition transition in anyStateTransitions)
+        {
+            if ((uint)transition.TargetStateIndex >= (uint)states.Length)
+            {
+                AnimationThrowHelper.ThrowValidation(
+                    AnimationErrorCode.StateMachineInvalidTransition,
+                    $"Any-state transition targets missing state index {transition.TargetStateIndex}.");
+            }
+        }
+
         _states = states;
         _anyStateTransitions = anyStateTransitions;
         CurrentStateIndex = entryStateIndex;
@@ -191,6 +261,59 @@ public sealed class StateMachineInstance
         StateNormalizedTime = normalizedTime;
         PreviousNormalizedTime = normalizedTime;
         _activeTransition = default;
+    }
+
+    /// <summary>
+    /// Copies the source machine's current state, normalized time and in-flight
+    /// transition onto this machine when the state ids resolve here. Used by
+    /// masked layers that share a locomotion graph with the base layer.
+    /// </summary>
+    /// <returns>True when the source state exists on this machine.</returns>
+    public bool SyncFrom(StateMachineInstance source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (!TryFindState(source._states[source.CurrentStateIndex].Id, out int localState))
+        {
+            return false;
+        }
+
+        int localTarget = -1;
+        bool sourceTransition = source._activeTransition.IsActive;
+        if (sourceTransition)
+        {
+            _ = TryFindState(
+                source._states[source._activeTransition.TargetStateIndex].Id,
+                out localTarget);
+        }
+
+        _activeTransition = default;
+        CurrentStateIndex = localState;
+        StateNormalizedTime = source.StateNormalizedTime;
+        PreviousNormalizedTime = source.PreviousNormalizedTime;
+
+        if (sourceTransition && localTarget >= 0)
+        {
+            _activeTransition = source._activeTransition;
+            _activeTransition.SourceStateIndex = localState;
+            _activeTransition.TargetStateIndex = localTarget;
+        }
+
+        return true;
+    }
+
+    private bool TryFindState(StateId id, out int index)
+    {
+        for (int i = 0; i < _states.Length; i++)
+        {
+            if (_states[i].Id == id)
+            {
+                index = i;
+                return true;
+            }
+        }
+
+        index = -1;
+        return false;
     }
 
     /// <summary>Starts a manual cross-fade.</summary>
@@ -217,6 +340,7 @@ public sealed class StateMachineInstance
             TargetNormalizedTime = offset,
             HasFixedDuration = true,
             CanInterrupt = true,
+            Easing = TransitionEasing.Linear,
         };
     }
 
@@ -275,14 +399,21 @@ public sealed class StateMachineInstance
         EnsureBound(parameters);
 
         AnimationState current = _states[CurrentStateIndex];
-        float motionDuration = MotionDispatcher.GetDuration(current.RootMotion);
-        float effectiveSpeed = MathF.Abs(current.Speed) > AnimationConstants.SoaEpsilon ? current.Speed : 1.0f;
-        float stateDuration = MathF.Max(motionDuration / effectiveSpeed, AnimationConstants.MinStateDuration);
+        float motionDuration = MotionDispatcher.GetDuration(current.RootMotion, parameters);
+        float speedMagnitude = MathF.Max(MathF.Abs(current.Speed), AnimationConstants.SoaEpsilon);
+        float stateDuration = MathF.Max(motionDuration / speedMagnitude, AnimationConstants.MinStateDuration);
 
+        float sourceStart = PreviousNormalizedTime;
         PreviousNormalizedTime = StateNormalizedTime;
         StateNormalizedTime += deltaTime / stateDuration;
+        float sourceEnd = StateNormalizedTime;
 
-        if (_activeTransition.IsActive)
+        bool transitionWasActive = _activeTransition.IsActive;
+        int targetIndexBefore = transitionWasActive ? _activeTransition.TargetStateIndex : -1;
+        float targetStartBefore = transitionWasActive ? _activeTransition.TargetPreviousNormalizedTime : 0.0f;
+        float targetEndBefore = transitionWasActive ? _activeTransition.TargetNormalizedTime : 0.0f;
+
+        if (transitionWasActive)
         {
             AdvanceTransition(deltaTime, parameters, current, stateDuration);
         }
@@ -302,12 +433,41 @@ public sealed class StateMachineInstance
                     TargetNormalizedTime = next.Offset,
                     HasFixedDuration = next.HasFixedDuration,
                     CanInterrupt = next.CanInterrupt,
+                    Easing = next.Easing,
                 };
                 ConsumeTransitionTriggers(next, parameters);
             }
         }
 
-        MotionDispatcher.CollectEvents(current.RootMotion, PreviousNormalizedTime, StateNormalizedTime, layerWeight, ref outEvents);
+        MotionDispatcher.CollectEvents(
+            current.RootMotion,
+            sourceStart,
+            sourceEnd,
+            layerWeight,
+            ref outEvents);
+
+        if (transitionWasActive)
+        {
+            ActiveTransitionData active = _activeTransition;
+            if (active.TargetStateIndex != targetIndexBefore)
+            {
+                AnimationState previousTarget = _states[targetIndexBefore];
+                MotionDispatcher.CollectEvents(
+                    previousTarget.RootMotion,
+                    targetStartBefore,
+                    targetEndBefore,
+                    layerWeight,
+                    ref outEvents);
+            }
+
+            AnimationState target = _states[active.TargetStateIndex];
+            MotionDispatcher.CollectEvents(
+                target.RootMotion,
+                active.TargetPreviousNormalizedTime,
+                active.TargetNormalizedTime,
+                layerWeight,
+                ref outEvents);
+        }
     }
 
     /// <summary>Advances time, starts due transitions, and drives the active blend.</summary>
@@ -322,8 +482,8 @@ public sealed class StateMachineInstance
     {
         ActiveTransitionData active = _activeTransition;
         AnimationState target = _states[active.TargetStateIndex];
-        float targetMotionDuration = MotionDispatcher.GetDuration(target.RootMotion);
-        float targetSpeed = MathF.Abs(target.Speed) > AnimationConstants.SoaEpsilon ? target.Speed : 1.0f;
+        float targetMotionDuration = MotionDispatcher.GetDuration(target.RootMotion, parameters);
+        float targetSpeed = MathF.Max(MathF.Abs(target.Speed), AnimationConstants.SoaEpsilon);
         float targetDuration = MathF.Max(targetMotionDuration / targetSpeed, AnimationConstants.MinStateDuration);
 
         active.TargetPreviousNormalizedTime = active.TargetNormalizedTime;
@@ -347,6 +507,7 @@ public sealed class StateMachineInstance
                 active.TargetNormalizedTime = interrupt.Offset;
                 active.HasFixedDuration = interrupt.HasFixedDuration;
                 active.CanInterrupt = interrupt.CanInterrupt;
+                active.Easing = interrupt.Easing;
                 _activeTransition = active;
                 ConsumeTransitionTriggers(interrupt, parameters);
                 return;
@@ -382,11 +543,6 @@ public sealed class StateMachineInstance
         for (int i = 0; i < _anyStateTransitions.Length; i++)
         {
             StateTransition candidate = _anyStateTransitions[i];
-            if (candidate.TargetStateIndex == CurrentStateIndex)
-            {
-                continue;
-            }
-
             if (EvaluateTransition(candidate, parameters, StateNormalizedTime, PreviousNormalizedTime)
                 && (best == null || CompareTransitions(candidate, best) > 0))
             {
@@ -467,7 +623,7 @@ public sealed class StateMachineInstance
         MotionDispatcher.Evaluate(_states[active.SourceStateIndex].RootMotion, StateNormalizedTime, sourceFrame, arena, rig, parameters, 0);
         MotionDispatcher.Evaluate(_states[active.TargetStateIndex].RootMotion, active.TargetNormalizedTime, targetFrame, arena, rig, parameters, 0);
 
-        BlendingKernels.BlendFrame(outFrame, sourceFrame, targetFrame, FastMath.Clamp01(active.Progress));
+        BlendingKernels.BlendFrame(outFrame, sourceFrame, targetFrame, ApplyEasing(active.Easing, active.Progress));
 
         arena.Free();
         arena.Free();
@@ -492,8 +648,47 @@ public sealed class StateMachineInstance
         MotionDispatcher.ComputeRootDelta(_states[active.SourceStateIndex].RootMotion, PreviousNormalizedTime, StateNormalizedTime, rig, out Vec3 sourcePos, out Quat sourceRot);
         MotionDispatcher.ComputeRootDelta(_states[active.TargetStateIndex].RootMotion, active.TargetPreviousNormalizedTime, active.TargetNormalizedTime, rig, out Vec3 targetPos, out Quat targetRot);
 
-        float weight = FastMath.Clamp01(active.Progress);
+        float weight = ApplyEasing(active.Easing, active.Progress);
         deltaPos = Vec3.Lerp(sourcePos, targetPos, weight);
         deltaRot = FastMath.Slerp(sourceRot, targetRot, weight);
+    }
+
+    /// <summary>
+    /// Extracts the root delta for the current blend parameters. Blend-tree nodes
+    /// weight their children's deltas, matching the pose that was evaluated.
+    /// </summary>
+    public void ExtractRootDelta(Rig rig, ParameterStore parameters, out Vec3 deltaPos, out Quat deltaRot)
+    {
+        ArgumentNullException.ThrowIfNull(rig);
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        ActiveTransitionData active = _activeTransition;
+        if (!active.IsActive)
+        {
+            MotionDispatcher.ComputeRootDelta(_states[CurrentStateIndex].RootMotion, PreviousNormalizedTime, StateNormalizedTime, rig, parameters, out deltaPos, out deltaRot);
+            return;
+        }
+
+        MotionDispatcher.ComputeRootDelta(_states[active.SourceStateIndex].RootMotion, PreviousNormalizedTime, StateNormalizedTime, rig, parameters, out Vec3 sourcePos, out Quat sourceRot);
+        MotionDispatcher.ComputeRootDelta(_states[active.TargetStateIndex].RootMotion, active.TargetPreviousNormalizedTime, active.TargetNormalizedTime, rig, parameters, out Vec3 targetPos, out Quat targetRot);
+
+        float weight = ApplyEasing(active.Easing, active.Progress);
+        deltaPos = Vec3.Lerp(sourcePos, targetPos, weight);
+        deltaRot = FastMath.Slerp(sourceRot, targetRot, weight);
+    }
+
+    private static float ApplyEasing(TransitionEasing easing, float progress)
+    {
+        float t = FastMath.Clamp01(progress);
+        return easing switch
+        {
+            TransitionEasing.SmoothStep => t * t * (3.0f - (2.0f * t)),
+            TransitionEasing.EaseIn => t * t,
+            TransitionEasing.EaseOut => 1.0f - ((1.0f - t) * (1.0f - t)),
+            TransitionEasing.EaseInOut => t < 0.5f
+                ? 2.0f * t * t
+                : 1.0f - (MathF.Pow((-2.0f * t) + 2.0f, 2.0f) * 0.5f),
+            _ => t,
+        };
     }
 }

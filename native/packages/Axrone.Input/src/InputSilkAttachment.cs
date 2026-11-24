@@ -12,25 +12,41 @@ public sealed class SilkInputAttachment : IDisposable
 {
     private readonly Silk.NET.Input.IInputContext _context;
     private readonly IInputEventQueue _queue;
+    private readonly PointerLockController? _pointerLock;
+    private Vector2 _lockedAnchor;
+    private bool _hasLockedAnchor;
     private bool _disposed;
 
     /// <summary>Creates an attachment.</summary>
     /// <param name="context">Silk input context.</param>
     /// <param name="queue">Transport queue.</param>
-    private SilkInputAttachment(Silk.NET.Input.IInputContext context, IInputEventQueue queue)
+    /// <param name="pointerLock">
+    /// Pointer-lock controller whose policy decides whether motion is forwarded as an absolute
+    /// position or as a relative delta. The platform hooks are the host's, because locking a cursor
+    /// is a window-server operation, not an input-context one.
+    /// </param>
+    private SilkInputAttachment(
+        Silk.NET.Input.IInputContext context,
+        IInputEventQueue queue,
+        PointerLockController? pointerLock)
     {
         _context = context;
         _queue = queue;
+        _pointerLock = pointerLock;
     }
 
     /// <summary>Attaches to a Silk input context.</summary>
     /// <param name="context">Silk input context.</param>
     /// <param name="queue">Transport queue.</param>
-    public static SilkInputAttachment Attach(Silk.NET.Input.IInputContext context, IInputEventQueue queue)
+    /// <param name="pointerLock">Optional pointer-lock controller.</param>
+    public static SilkInputAttachment Attach(
+        Silk.NET.Input.IInputContext context,
+        IInputEventQueue queue,
+        PointerLockController? pointerLock = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(queue);
-        var attachment = new SilkInputAttachment(context, queue);
+        var attachment = new SilkInputAttachment(context, queue, pointerLock);
         attachment.SubscribeAll();
         return attachment;
     }
@@ -90,6 +106,7 @@ public sealed class SilkInputAttachment : IDisposable
     /// <summary>Forwards a mouse-button press.</summary>
     private void OnMouseDown(Silk.NET.Input.IMouse mouse, SilkMouseButton button)
     {
+        _pointerLock?.OnMouseDown();
         if (SilkInputMapping.TryToMouseButton(button, out MouseButton mapped))
         {
             _queue.TryWrite(RawInputEvent.CreateMouseDown(DeviceIndex.Primary, mapped, InputTimestamp.Now()));
@@ -105,9 +122,32 @@ public sealed class SilkInputAttachment : IDisposable
         }
     }
 
-    /// <summary>Forwards an absolute pointer position.</summary>
-    private void OnMouseMove(Silk.NET.Input.IMouse mouse, Vector2 position) =>
-        _queue.TryWrite(RawInputEvent.CreateMouseMove(DeviceIndex.Primary, position.X, position.Y, InputTimestamp.Now()));
+    /// <summary>
+    /// Forwards pointer motion. While the lock reports relative motion the position is turned into
+    /// a delta against the previous reading and the absolute coordinate is never updated, because
+    /// a locked cursor has no absolute coordinate worth hit-testing against.
+    /// </summary>
+    private void OnMouseMove(Silk.NET.Input.IMouse mouse, Vector2 position)
+    {
+        if (_pointerLock?.ReportsRelativeMotion is not true)
+        {
+            _hasLockedAnchor = false;
+            _queue.TryWrite(RawInputEvent.CreateMouseMove(DeviceIndex.Primary, position.X, position.Y, InputTimestamp.Now()));
+            return;
+        }
+
+        if (!_hasLockedAnchor)
+        {
+            _lockedAnchor = position;
+            _hasLockedAnchor = true;
+            return;
+        }
+
+        float deltaX = position.X - _lockedAnchor.X;
+        float deltaY = position.Y - _lockedAnchor.Y;
+        _lockedAnchor = position;
+        _queue.TryWrite(RawInputEvent.CreateMouseDelta(DeviceIndex.Primary, deltaX, deltaY, InputTimestamp.Now()));
+    }
 
     /// <summary>Forwards a wheel scroll.</summary>
     private void OnScroll(Silk.NET.Input.IMouse mouse, Silk.NET.Input.ScrollWheel wheel) =>
@@ -193,6 +233,7 @@ public sealed class SilkInputAttachment : IDisposable
         }
 
         _disposed = true;
+        _pointerLock?.OnDisposed();
         for (int i = 0; i < _context.Keyboards.Count; i++)
         {
             Silk.NET.Input.IKeyboard keyboard = _context.Keyboards[i];

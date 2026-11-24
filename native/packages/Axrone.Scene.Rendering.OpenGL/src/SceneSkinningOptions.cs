@@ -22,7 +22,13 @@ public enum SkinningInjectionFailure
     AttributeLocationConflict = 5,
 
     /// <summary>The injected shader failed to compile or link.</summary>
-    CompilationFailed = 6
+    CompilationFailed = 6,
+
+    /// <summary>
+    /// An effect backs the shader, so its authored stages own skinning. Injection is skipped on
+    /// purpose and reported here rather than silently producing an unskinned variant.
+    /// </summary>
+    EffectAuthored = 7
 }
 
 /// <summary>Per-shader skinning compilation status.</summary>

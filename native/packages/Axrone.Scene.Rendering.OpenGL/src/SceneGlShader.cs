@@ -8,6 +8,7 @@ public sealed class SceneGlShader : IDisposable
 {
     private readonly GLContext _context;
     private readonly UniformCache _uniformCache;
+    private SceneShaderUniformReflection? _reflection;
 
     /// <summary>Creates and compiles a scene shader.</summary>
     public SceneGlShader(
@@ -22,6 +23,8 @@ public sealed class SceneGlShader : IDisposable
 
         _context = context;
         Label = label;
+        VertexSource = vertexSource;
+        FragmentSource = fragmentSource;
         Program = new GLProgram(context, vertexSource, fragmentSource);
         _uniformCache = new UniformCache();
         Uniforms = new ShaderInstance(context, Program, _uniformCache);
@@ -30,14 +33,38 @@ public sealed class SceneGlShader : IDisposable
     /// <summary>Debug label.</summary>
     public string Label { get; }
 
+    /// <summary>Vertex source the program was compiled from.</summary>
+    public string VertexSource { get; }
+
+    /// <summary>Fragment source the program was compiled from.</summary>
+    public string FragmentSource { get; }
+
     /// <summary>Compiled program.</summary>
     public GLProgram Program { get; }
 
     /// <summary>Uniform value cache and setter surface.</summary>
     public ShaderInstance Uniforms { get; }
 
+    /// <summary>
+    /// Uniform declarations reflected from the compiled sources. Scanned on first use: the
+    /// binding path needs it for every draw, hand-authored shaders never do.
+    /// </summary>
+    public SceneShaderUniformReflection Reflection =>
+        _reflection ??= SceneShaderUniformReflection.FromSources(VertexSource, FragmentSource);
+
+    /// <summary>Names of the sampler uniforms the program declares.</summary>
+    public IReadOnlyList<string> SamplerUniformNames => Reflection.SamplerNames;
+
     /// <summary>Whether the program has been disposed.</summary>
     public bool IsDisposed => Program.IsDisposed;
+
+    /// <summary>Resolves the declared type of one uniform.</summary>
+    /// <param name="name">Uniform name.</param>
+    /// <param name="uniform">Uniform metadata when the program declares the name.</param>
+    /// <returns>Whether the declaration was found.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetUniform(string name, out SceneShaderUniform uniform) =>
+        Reflection.TryGet(name, out uniform);
 
     /// <summary>Binds the program.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

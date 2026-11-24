@@ -7,23 +7,6 @@ namespace Axrone.Event;
 /// </summary>
 public static class EventUtils
 {
-    /// <summary>Runs the callback at most once; later invocations are ignored.</summary>
-    /// <typeparam name="TEvent">Payload type.</typeparam>
-    /// <param name="callback">Callback to guard.</param>
-    public static Action<TEvent> Once<TEvent>(Action<TEvent> callback)
-    {
-        ArgumentNullException.ThrowIfNull(callback);
-
-        int called = 0;
-        return message =>
-        {
-            if (Interlocked.Exchange(ref called, 1) == 0)
-            {
-                callback(message);
-            }
-        };
-    }
-
     /// <summary>Runs the callback only when the payload satisfies the predicate.</summary>
     /// <typeparam name="TEvent">Payload type.</typeparam>
     /// <param name="predicate">Payload gate.</param>
@@ -55,33 +38,6 @@ public static class EventUtils
         ArgumentNullException.ThrowIfNull(callback);
 
         return message => callback(transform(message));
-    }
-
-    /// <summary>Invokes callbacks in declaration order; stops at the first exception.</summary>
-    /// <typeparam name="TEvent">Payload type.</typeparam>
-    /// <param name="callbacks">Callbacks to run.</param>
-    public static Action<TEvent> Compose<TEvent>(params Action<TEvent>[] callbacks)
-    {
-        ArgumentNullException.ThrowIfNull(callbacks);
-
-        if (callbacks.Length == 0)
-        {
-            return static _ => { };
-        }
-
-        if (callbacks.Length == 1)
-        {
-            return callbacks[0];
-        }
-
-        Action<TEvent>[] snapshot = (Action<TEvent>[])callbacks.Clone();
-        return message =>
-        {
-            for (int i = 0; i < snapshot.Length; i++)
-            {
-                snapshot[i](message);
-            }
-        };
     }
 
     /// <summary>Routes callback failures to a handler instead of propagating them.</summary>

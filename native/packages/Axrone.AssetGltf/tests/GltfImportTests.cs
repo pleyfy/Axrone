@@ -612,6 +612,54 @@ public sealed class GltfImportTests
             .Which.Code.Should().Be("gltf.accessor.invalid");
     }
 
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(-1.0f)]
+    public async Task Import_AnimationInputTimesMustBeFiniteAndNonNegative(float firstTime)
+    {
+        byte[] bin = new byte[48];
+        BitConverter.TryWriteBytes(bin.AsSpan(0, 4), firstTime);
+        BitConverter.TryWriteBytes(bin.AsSpan(4, 4), 0.5f);
+        BitConverter.TryWriteBytes(bin.AsSpan(8, 4), 1.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(12, 4), 0.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(16, 4), 0.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(20, 4), 0.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(24, 4), 1.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(28, 4), 0.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(32, 4), 0.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(36, 4), 2.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(40, 4), 0.0f);
+        BitConverter.TryWriteBytes(bin.AsSpan(44, 4), 0.0f);
+
+        const string json = """
+            {
+              "asset": {"version": "2.0"},
+              "nodes": [{"name": "Target"}],
+              "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 3, "type": "SCALAR"},
+                {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"}
+              ],
+              "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 12},
+                {"buffer": 0, "byteOffset": 12, "byteLength": 36}
+              ],
+              "buffers": [{"byteLength": 48}],
+              "animations": [{
+                "samplers": [{"input": 0, "output": 1, "interpolation": "LINEAR"}],
+                "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}]
+              }]
+            }
+            """;
+
+        byte[] glb = BuildGlb(System.Text.Encoding.UTF8.GetBytes(json), bin);
+        var importer = new GltfImporter(new GltfImporterOptions { Id = "animation-times.glb" });
+
+        Func<Task> act = () => importer.ImportAsync(glb).AsTask();
+
+        (await act.Should().ThrowAsync<GltfAccessorError>())
+            .Which.Code.Should().Be("gltf.accessor.invalid");
+    }
+
     [Fact]
     public async Task Import_LocalLightBudgetOption_ControlsRuntimeLimitWarning()
     {
@@ -967,6 +1015,72 @@ public sealed class GltfImportTests
 
         (await act.Should().ThrowAsync<GltfLimitExceededError>())
             .Which.Limit.Should().Be("MaxDecodedBytes");
+    }
+
+    [Fact]
+    public async Task Import_MeshoptViewBeyondParseBudget_ThrowsLimitError()
+    {
+        const string json = """
+            {
+              "asset": {"version": "2.0"},
+              "extensionsUsed": ["EXT_meshopt_compression"],
+              "buffers": [{"byteLength": 4}],
+              "bufferViews": [{
+                "buffer": 0,
+                "byteOffset": 0,
+                "byteLength": 4,
+                "extensions": {
+                  "EXT_meshopt_compression": {
+                    "buffer": 0,
+                    "byteOffset": 0,
+                    "byteLength": 4,
+                    "byteStride": 64,
+                    "count": 1000000
+                  }
+                }
+              }]
+            }
+            """;
+
+        byte[] glb = BuildGlb(System.Text.Encoding.UTF8.GetBytes(json), new byte[4]);
+        var importer = new GltfImporter(new GltfImporterOptions
+        {
+            Id = "meshopt-limit.glb",
+            Limits = new GltfImportLimits { MaxParseBytes = 1 },
+        });
+
+        Func<Task> act = () => importer.ImportAsync(glb).AsTask();
+
+        (await act.Should().ThrowAsync<GltfLimitExceededError>())
+            .Which.Limit.Should().Be("MaxParseBytes");
+    }
+
+    [Fact]
+    public async Task Import_DecodedTextureBudgetExceeded_ThrowsLimitError()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        string json = $$"""
+            {
+              "asset": {"version": "2.0"},
+              "images": [{"bufferView": 0, "mimeType": "image/png"}],
+              "textures": [{"source": 0}],
+              "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": {{png.Length}}}],
+              "buffers": [{"byteLength": {{png.Length}}}]
+            }
+            """;
+
+        byte[] glb = BuildGlb(System.Text.Encoding.UTF8.GetBytes(json), png);
+        var importer = new GltfImporter(new GltfImporterOptions
+        {
+            Id = "texture-limit.glb",
+            Limits = new GltfImportLimits { MaxTextureBytes = 1 },
+        });
+
+        Func<Task> act = () => importer.ImportAsync(glb).AsTask();
+
+        (await act.Should().ThrowAsync<GltfLimitExceededError>())
+            .Which.Limit.Should().Be("MaxTextureBytes");
     }
 
     [Fact]

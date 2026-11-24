@@ -6,7 +6,7 @@ using Axrone.Ecs;
 internal readonly record struct LifecycleRecord(Entity Entity, EntityLifecycleKind Kind);
 
 /// <summary>
-/// Bounded lifecycle ring written from world diagnostics and drained by the bridge poll.
+/// Bounded lifecycle ring written from world diagnostics and drained by the bridge pump.
 /// Diagnostics callbacks run under the world structural gate, so the ring never calls user
 /// code there; the bridge publishes after the structural operation completes.
 /// </summary>
@@ -17,6 +17,7 @@ internal sealed class ReactiveDiagnosticsSink : IDiagnosticsSink
     private readonly Lock _gate = new();
     private int _start;
     private int _count;
+    private long _dropped;
 
     public ReactiveDiagnosticsSink(IDiagnosticsSink inner, int capacity = 1024)
     {
@@ -33,6 +34,18 @@ internal sealed class ReactiveDiagnosticsSink : IDiagnosticsSink
             lock (_gate)
             {
                 return _count;
+            }
+        }
+    }
+
+    /// <summary>Number of records discarded because the ring was full.</summary>
+    public long Dropped
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _dropped;
             }
         }
     }
@@ -76,6 +89,7 @@ internal sealed class ReactiveDiagnosticsSink : IDiagnosticsSink
             {
                 _start = (_start + 1) % _records.Length;
                 _count--;
+                _dropped++;
             }
 
             _records[(_start + _count) % _records.Length] = new LifecycleRecord(entity, kind);

@@ -86,6 +86,9 @@ public enum AnimationErrorCode
 
     /// <summary>Argument violates its contract (range, null, or foreign handle).</summary>
     ValidationInvalidArgument = 27,
+
+    /// <summary>Freeform blend points are duplicated or produce no usable triangle.</summary>
+    CompilationBlendDegenerate = 28,
 }
 
 /// <summary>Base animation failure carrying a machine-readable code.</summary>

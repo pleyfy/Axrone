@@ -154,8 +154,13 @@ public sealed class RenderPipelineBackend : IDisposable
     /// </summary>
     /// <param name="pass">The resolved pass.</param>
     /// <param name="ctx">The execution context.</param>
+    /// <param name="manageTarget">
+    /// When <see langword="true"/> the backend binds the pass target and sets its viewport before
+    /// dispatching. A renderer that owns its own framebuffer and viewport stack - the scene
+    /// renderer does - passes <see langword="false"/> so dispatching adds no state change.
+    /// </param>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public void ExecutePass(in ResolvedRenderPass pass, in RenderExecutionContext ctx)
+    public void ExecutePass(in ResolvedRenderPass pass, in RenderExecutionContext ctx, bool manageTarget = true)
     {
         if (IsDisposed)
             ThrowHelper.ThrowInvalidOperation("Backend disposed");
@@ -170,13 +175,16 @@ public sealed class RenderPipelineBackend : IDisposable
         if (executor == null)
             ThrowHelper.ThrowExecutorNotFound(pass.Kind.ToString());
 
-        // Bind target framebuffer
-        if (pass.Target.IsDefaultFramebuffer)
+        if (manageTarget)
         {
-            _context.State.BindFramebuffer(GLConst.Framebuffer, 0);
-        }
+            // Bind target framebuffer
+            if (pass.Target.IsDefaultFramebuffer)
+            {
+                _context.State.BindFramebuffer(GLConst.Framebuffer, 0);
+            }
 
-        _context.State.SetViewport(0, 0, pass.ViewportWidth, pass.ViewportHeight);
+            _context.State.SetViewport(0, 0, pass.ViewportWidth, pass.ViewportHeight);
+        }
 
         executor.Execute(pass, ctx, _context);
 
@@ -187,13 +195,20 @@ public sealed class RenderPipelineBackend : IDisposable
     /// Ends a frame.
     /// </summary>
     /// <param name="ctx">The execution context.</param>
+    /// <param name="manageTarget">
+    /// Restores the default framebuffer on the way out. Omitted when the caller owns target state.
+    /// </param>
     /// <returns>The frame result.</returns>
-    public RenderFrameResult EndFrame(in RenderExecutionContext ctx)
+    public RenderFrameResult EndFrame(in RenderExecutionContext ctx, bool manageTarget = true)
     {
         if (IsDisposed)
             ThrowHelper.ThrowInvalidOperation("Backend disposed");
 
-        _context.State.BindFramebuffer(GLConst.Framebuffer, 0);
+        if (manageTarget)
+        {
+            _context.State.BindFramebuffer(GLConst.Framebuffer, 0);
+        }
+
         return new RenderFrameResult(_passCount, _drawCalls);
     }
 

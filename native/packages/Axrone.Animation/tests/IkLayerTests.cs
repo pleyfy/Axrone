@@ -31,6 +31,15 @@ public class IkLayerTests
         return (worldT[tip], worldR[tip]);
     }
 
+    private static Vec3 BoneWorld(Rig rig, AnimationFrame frame, int bone)
+    {
+        Span<Vec3> worldT = stackalloc Vec3[rig.BoneCount];
+        Span<Quat> worldR = stackalloc Quat[rig.BoneCount];
+        Span<Vec3> worldS = stackalloc Vec3[rig.BoneCount];
+        BlendingKernels.ForwardKinematics(rig, frame, worldT, worldR, worldS);
+        return worldT[bone];
+    }
+
     private static AnimationIkLayer ReachLayer(Rig rig, Vec3 target, float weight = 1.0f, IkSolverKind solver = IkSolverKind.Fabrik) =>
         new(rig, "reach", [
             new AnimationIkJob(
@@ -66,6 +75,136 @@ public class IkLayerTests
 
         Vec3 tip = TipWorld(rig, frame, 2).Position;
         Vec3.Distance(tip, new Vec3(1.0f, 1.0f, 0.0f)).Should().BeLessThan(0.05f);
+    }
+
+    [Fact]
+    public void AimJob_TurnsSingleBoneTowardTarget()
+    {
+        Rig rig = Arm();
+        AnimationFrame frame = RestFrame(rig);
+        var job = new AnimationIkJob(
+            new IkJobId("look"),
+            "shoulder",
+            "shoulder",
+            IkSolverKind.Aim,
+            TargetPosition: new Vec3(0.0f, 0.0f, 1.0f),
+            AimUp: Vec3.UnitY);
+
+        new AnimationIkLayer(rig, "aim", [job]).Apply(frame);
+
+        Span<Vec3> worldT = stackalloc Vec3[rig.BoneCount];
+        Span<Quat> worldR = stackalloc Quat[rig.BoneCount];
+        Span<Vec3> worldS = stackalloc Vec3[rig.BoneCount];
+        BlendingKernels.ForwardKinematics(rig, frame, worldT, worldR, worldS);
+        Vec3 forward = Vec3.Normalize(worldR[0] * Vec3.UnitZ);
+        Vec3.Dot(forward, Vec3.UnitZ).Should().BeApproximately(1.0f, 1e-4f);
+    }
+
+    [Fact]
+    public void AimJob_RespectsMaximumTurn()
+    {
+        Rig rig = Arm();
+        AnimationFrame frame = RestFrame(rig);
+        var job = new AnimationIkJob(
+            new IkJobId("look"),
+            "shoulder",
+            "shoulder",
+            IkSolverKind.Aim,
+            TargetPosition: new Vec3(0.0f, 1.0f, 0.0f),
+            AimUp: Vec3.UnitY,
+            MaxAimAngleDegrees: 30.0f);
+
+        new AnimationIkLayer(rig, "aim", [job]).Apply(frame);
+
+        Span<Vec3> worldT = stackalloc Vec3[rig.BoneCount];
+        Span<Quat> worldR = stackalloc Quat[rig.BoneCount];
+        Span<Vec3> worldS = stackalloc Vec3[rig.BoneCount];
+        BlendingKernels.ForwardKinematics(rig, frame, worldT, worldR, worldS);
+        Vec3 forward = Vec3.Normalize(worldR[0] * Vec3.UnitZ);
+        Vec3.Dot(forward, Vec3.UnitY).Should().BeApproximately(0.5f, 1e-4f);
+    }
+
+    [Fact]
+    public void AimJob_RejectsInvalidMaximum()
+    {
+        Rig rig = Arm();
+        var job = new AnimationIkJob(
+            new IkJobId("look"),
+            "shoulder",
+            "shoulder",
+            IkSolverKind.Aim,
+            MaxAimAngleDegrees: 200.0f);
+
+        Action build = () => _ = new AnimationIkLayer(rig, "aim", [job]);
+
+        build.Should().Throw<ValidationException>();
+    }
+
+    [Fact]
+    public void TwoBoneJob_ReachesTargetAndBendsTowardPole()
+    {
+        Rig rig = Arm();
+        AnimationFrame frame = RestFrame(rig);
+        var job = new AnimationIkJob(
+            new IkJobId("wrist"),
+            "shoulder",
+            "wrist",
+            IkSolverKind.TwoBone,
+            TargetPosition: new Vec3(1.0f, 1.0f, 0.0f),
+            PolePosition: new Vec3(0.0f, 0.0f, 1.0f));
+
+        new AnimationIkLayer(rig, "two-bone", [job]).Apply(frame);
+
+        Vec3 tip = BoneWorld(rig, frame, 2);
+        Vec3 elbow = BoneWorld(rig, frame, 1);
+        Vec3.Distance(tip, new Vec3(1.0f, 1.0f, 0.0f)).Should().BeLessThan(1e-3f);
+        elbow.Z.Should().BeGreaterThan(0.1f);
+    }
+
+    [Fact]
+    public void TwoBoneJob_EnforcesBendLimits()
+    {
+        Rig rig = Arm();
+        AnimationFrame frame = RestFrame(rig);
+        var job = new AnimationIkJob(
+            new IkJobId("wrist"),
+            "shoulder",
+            "wrist",
+            IkSolverKind.TwoBone,
+            TargetPosition: new Vec3(0.0f, 0.0f, 1.0f),
+            PolePosition: new Vec3(0.0f, 0.0f, 1.0f),
+            MaxBendDegrees: 10.0f);
+
+        new AnimationIkLayer(rig, "limited", [job]).Apply(frame);
+
+        Vec3 root = BoneWorld(rig, frame, 0);
+        Vec3 elbow = BoneWorld(rig, frame, 1);
+        Vec3 tip = BoneWorld(rig, frame, 2);
+        Vec3 upper = Vec3.Normalize(elbow - root);
+        Vec3 lower = Vec3.Normalize(tip - root);
+        float bend = MathF.Acos(Math.Clamp(Vec3.Dot(upper, lower), -1.0f, 1.0f));
+        bend.Should().BeLessThanOrEqualTo((10.0f * MathF.PI / 180.0f) + 1e-3f);
+    }
+
+    [Fact]
+    public void TwoBoneJob_RejectsChainLongerThanThreeBones()
+    {
+        Rig rig = new(new RigId("finger-arm"), [
+            new BoneInfo { Name = "shoulder", ParentIndex = -1 },
+            new BoneInfo { Name = "elbow", ParentIndex = 0, RestTranslation = new Vec3(1.0f, 0.0f, 0.0f) },
+            new BoneInfo { Name = "wrist", ParentIndex = 1, RestTranslation = new Vec3(1.0f, 0.0f, 0.0f) },
+            new BoneInfo { Name = "finger", ParentIndex = 2, RestTranslation = new Vec3(1.0f, 0.0f, 0.0f) },
+        ]);
+        var job = new AnimationIkJob(
+            new IkJobId("too-long"),
+            "shoulder",
+            "finger",
+            IkSolverKind.TwoBone,
+            TargetPosition: new Vec3(1.0f, 1.0f, 0.0f));
+
+        Action build = () => _ = new AnimationIkLayer(rig, "invalid", [job]);
+
+        build.Should().Throw<ValidationException>();
     }
 
     [Fact]

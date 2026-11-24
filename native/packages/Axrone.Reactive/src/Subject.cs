@@ -4,10 +4,11 @@ namespace Axrone.Reactive;
 /// Hot broadcast hub: both observer and observable. Late subscribers see only future values.
 /// </summary>
 /// <remarks>
-/// Allocation audit: one node per subscription; zero per notification. Thread-safe for
-/// concurrent publishes with interleaved per-observer delivery, like the base.
+/// Backed by the shared <see cref="ObservableBase{T}"/> engine: subscription is an O(1) slot
+/// claim, publish walks the active slots in priority and registration order, and disposing a
+/// subscription from inside a callback is safe because reclamation is deferred to the last pin
+/// release.
 /// </remarks>
-/// <typeparam name="T">Notification type.</typeparam>
 public sealed class Subject<T> : ObservableBase<T>, IObserver<T>
 {
     public Subject()

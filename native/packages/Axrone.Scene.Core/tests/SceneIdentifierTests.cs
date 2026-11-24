@@ -122,7 +122,10 @@ public sealed class SceneIdentifierTests
         public Transform3DProbe(int value) => Value = value;
     }
 
-    private sealed class ProbeBehaviour : SceneBehaviour
+    private sealed class ProbeBehaviour : ISceneBehaviour
     {
+        public void OnAttach(SceneBehaviourContext context)
+        {
+        }
     }
 }

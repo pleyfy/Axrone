@@ -109,6 +109,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
     }
 
     private readonly HardwareVoiceSlot[] _voices;
+    private readonly AudioClipRecord?[] _voiceClips;
     private readonly AudioBusRegistry _busMixer;
     private readonly AudioClipStore _clipStore;
     private readonly AudioListenerRegistry _listenerRegistry;
@@ -158,6 +159,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(outputSampleRate);
         _maxVoices = maxVoices;
         _voices = new HardwareVoiceSlot[maxVoices];
+        _voiceClips = new AudioClipRecord?[maxVoices];
         _busMixer = busMixer;
         _clipStore = clipStore;
         _listenerRegistry = listenerRegistry;
@@ -194,8 +196,27 @@ public sealed class AudioPlaybackRuntime : IDisposable
                 }
             }
 
+            float offsetSeconds = request.OffsetSeconds ?? 0.0f;
+            if (!float.IsFinite(offsetSeconds) || offsetSeconds < 0.0f)
+            {
+                AudioThrowHelper.ThrowConfig("audio.invalid-offset", "Play offset must be finite and non-negative.");
+            }
+
+            if (request.DurationSeconds is float duration && (!float.IsFinite(duration) || duration < 0.0f))
+            {
+                AudioThrowHelper.ThrowConfig("audio.invalid-duration", "Play duration must be finite and non-negative.");
+            }
+
             uint seq = Interlocked.Increment(ref _sequenceCounter);
             ref HardwareVoiceSlot voice = ref _voices[slot];
+
+            // The voice owns a reference to the decoded clip for its whole life:
+            // replacing or evicting the store entry cannot free the buffer under
+            // the render thread.
+            AudioClipRecord? clip = null;
+            bool hasClip = _clipStore.TryRetain(clipId, out clip);
+            ReleaseVoiceClipLocked(slot);
+            _voiceClips[slot] = hasClip ? clip : null;
 
             voice.SourceId = sourceId;
             voice.ClipId = clipId;
@@ -210,20 +231,30 @@ public sealed class AudioPlaybackRuntime : IDisposable
             float rate = Math.Max(0.01f, (request.PlaybackRate ?? 1.0f) * baseRate);
             float resampleRatio = 1.0f;
             int clipRate = 0;
-            if (_clipStore.TryGet(clipId, out AudioClipRecord? clipForRate))
+            int clipFrames = 0;
+            if (clip is not null)
             {
-                clipRate = clipForRate.SampleRate;
+                clipRate = clip.SampleRate;
                 resampleRatio = clipRate > 0 ? (float)clipRate / _outputSampleRate : 1.0f;
+                clipFrames = clip.ChannelCount > 0 ? clip.Buffer.SampleCount / clip.ChannelCount : 0;
             }
 
             voice.StepRate = rate * detuneMultiplier * resampleRatio;
 
-            voice.ReadIndex = request.OffsetSeconds.HasValue ? request.OffsetSeconds.Value * clipRate : 0.0;
-            if (request.DurationSeconds is float duration && (!float.IsFinite(duration) || duration < 0.0f))
+            double readIndex = offsetSeconds * clipRate;
+            if (clipFrames > 0)
             {
-                AudioThrowHelper.ThrowConfig("audio.invalid-duration", "Play duration must be finite and non-negative.");
+                // A looping voice wraps an out-of-range offset; a one-shot clamps
+                // to the end so the first mix retires it instead of reading past
+                // the buffer.
+                readIndex = loop ? readIndex % clipFrames : Math.Min(readIndex, clipFrames);
+            }
+            else
+            {
+                readIndex = 0.0;
             }
 
+            voice.ReadIndex = readIndex;
             voice.DurationRemaining = request.DurationSeconds ?? float.MaxValue;
             voice.Spatial = spatial;
             voice.IsActive = true;
@@ -247,6 +278,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
             {
                 _voices[idx].State = AudioPlaybackState.Stopped;
                 _voices[idx].IsActive = false;
+                ReleaseVoiceClipLocked(idx);
                 _observability.Counters.IncrementCompletions();
                 _observability.Dispatch(AudioEventType.SourceStopped, handle.SourceId.Value, handle.Sequence);
             }
@@ -270,6 +302,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
                 {
                     voice.State = AudioPlaybackState.Stopped;
                     voice.IsActive = false;
+                    ReleaseVoiceClipLocked(i);
                     released++;
                     _observability.Counters.IncrementCompletions();
                     _observability.Dispatch(AudioEventType.SourceStopped, sourceId.Value, voice.Sequence);
@@ -353,6 +386,8 @@ public sealed class AudioPlaybackRuntime : IDisposable
         Vector3 lUp = SpatialKinematics.SafeNormalize(listener.Up);
         Vector3 lRight = SpatialKinematics.SafeNormalize(Vector3.Cross(lFwd, lUp));
 
+        List<(uint Source, uint Sequence)>? errorVoices = null;
+
         lock (_gate)
         {
             for (int i = 0; i < _maxVoices; i++)
@@ -363,12 +398,16 @@ public sealed class AudioPlaybackRuntime : IDisposable
                     continue;
                 }
 
-                if (!_clipStore.TryGet(voice.ClipId, out AudioClipRecord? clip))
+                // The voice holds its own reference, so the record cannot be
+                // freed by a concurrent register/evict while this block mixes.
+                AudioClipRecord? clip = _voiceClips[i];
+                if (clip is null)
                 {
                     voice.State = AudioPlaybackState.Stopped;
                     voice.IsActive = false;
                     _observability.Counters.IncrementErrors();
-                    _observability.Dispatch(AudioEventType.SourceError, voice.SourceId.Value, voice.Sequence);
+                    errorVoices ??= new List<(uint Source, uint Sequence)>();
+                    errorVoices.Add((voice.SourceId.Value, voice.Sequence));
                     continue;
                 }
 
@@ -403,6 +442,20 @@ public sealed class AudioPlaybackRuntime : IDisposable
                 voice.RightGain = voice.EffectiveGain * pRight;
 
                 MixVoiceStereo(ref voice, clip, interleavedStereoOut);
+                if (!voice.IsActive)
+                {
+                    ReleaseVoiceClipLocked(i);
+                }
+            }
+        }
+
+        if (errorVoices is not null)
+        {
+            // Listener callbacks stay outside the voice lock.
+            for (int i = 0; i < errorVoices.Count; i++)
+            {
+                (uint source, uint sequence) = errorVoices[i];
+                _observability.Dispatch(AudioEventType.SourceError, source, sequence);
             }
         }
     }
@@ -421,8 +474,21 @@ public sealed class AudioPlaybackRuntime : IDisposable
             {
                 _voices[i].IsActive = false;
                 _voices[i].State = AudioPlaybackState.Disposed;
+                ReleaseVoiceClipLocked(i);
             }
         }
+    }
+
+    private void ReleaseVoiceClipLocked(int slot)
+    {
+        AudioClipRecord? clip = _voiceClips[slot];
+        if (clip is null)
+        {
+            return;
+        }
+
+        _voiceClips[slot] = null;
+        clip.Release();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -435,10 +501,15 @@ public sealed class AudioPlaybackRuntime : IDisposable
         int channels = mem.ChannelCount;
 
         double readIdx = voice.ReadIndex;
-        double consumedFrom = readIdx;
+        if (!(readIdx >= 0.0))
+        {
+            readIdx = 0.0;
+        }
+
         double step = voice.StepRate;
         float leftGain = voice.LeftGain;
         float rightGain = voice.RightGain;
+        int renderedFrames = 0;
 
         fixed (float* pDstBase = output)
         {
@@ -448,13 +519,13 @@ public sealed class AudioPlaybackRuntime : IDisposable
             {
                 for (int f = 0; f < frameCount; f++)
                 {
-                    int i0 = (int)readIdx;
-                    if (i0 >= totalSamples)
+                    if (readIdx >= totalSamples)
                     {
                         if (voice.Loop)
                         {
-                            readIdx = 0.0;
-                            i0 = 0;
+                            // Keep the fractional overshoot; resetting to zero
+                            // would drift and click on every wrap.
+                            readIdx %= totalSamples;
                         }
                         else
                         {
@@ -464,6 +535,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
                         }
                     }
 
+                    int i0 = (int)readIdx;
                     int i1 = i0 + 1 < totalSamples ? i0 + 1 : (voice.Loop ? 0 : i0);
                     float frac = (float)(readIdx - i0);
                     float sample = pSrc[i0] + (frac * (pSrc[i1] - pSrc[i0]));
@@ -472,6 +544,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
                     *pDst++ += sample * rightGain;
 
                     readIdx += step;
+                    renderedFrames++;
                 }
             }
             else
@@ -479,13 +552,11 @@ public sealed class AudioPlaybackRuntime : IDisposable
                 int totalFrames = totalSamples / channels;
                 for (int f = 0; f < frameCount; f++)
                 {
-                    int i0 = (int)readIdx;
-                    if (i0 >= totalFrames)
+                    if (readIdx >= totalFrames)
                     {
                         if (voice.Loop)
                         {
-                            readIdx = 0.0;
-                            i0 = 0;
+                            readIdx %= totalFrames;
                         }
                         else
                         {
@@ -495,6 +566,7 @@ public sealed class AudioPlaybackRuntime : IDisposable
                         }
                     }
 
+                    int i0 = (int)readIdx;
                     int i1 = i0 + 1 < totalFrames ? i0 + 1 : (voice.Loop ? 0 : i0);
                     float frac = (float)(readIdx - i0);
 
@@ -508,19 +580,20 @@ public sealed class AudioPlaybackRuntime : IDisposable
                     *pDst++ += sRight * rightGain;
 
                     readIdx += step;
+                    renderedFrames++;
                 }
             }
         }
 
         voice.ReadIndex = readIdx;
 
-        // Scheduled play duration: consume clip-seconds advanced this block
-        // and retire the voice when the window closes. Voices without an
-        // explicit duration keep the MaxValue sentinel and skip the path.
+        // Scheduled play duration: consume the clip-seconds actually rendered
+        // this block. Counting rendered frames keeps looping voices correct,
+        // where a read-index delta resets on every wrap.
         if (voice.IsActive && voice.DurationRemaining < float.MaxValue)
         {
             int clipRate = mem.SampleRate;
-            double consumed = clipRate > 0 ? (readIdx - consumedFrom) / clipRate : 0.0;
+            double consumed = clipRate > 0 ? (renderedFrames * step) / clipRate : 0.0;
             voice.DurationRemaining -= (float)consumed;
             if (voice.DurationRemaining <= 0.0f)
             {
@@ -554,6 +627,11 @@ public sealed class AudioPlaybackRuntime : IDisposable
                 minGain = _voices[i].EffectiveGain;
                 victim = i;
             }
+        }
+
+        if (victim != -1)
+        {
+            ReleaseVoiceClipLocked(victim);
         }
 
         return victim;

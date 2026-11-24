@@ -124,4 +124,47 @@ public sealed class AudioSourceRegistryTests : IDisposable
         Span<float> block = stackalloc float[128];
         _runtime.ProcessGraph(block);
     }
+
+    private AudioClipId RegisterRamp(float seconds = 1.0f)
+    {
+        int frames = (int)(48000 * seconds);
+        var memory = new NativeAudioMemory(48000, 1, frames);
+        Span<float> span = memory.AsSpan();
+        for (int i = 0; i < frames; i++)
+        {
+            span[i] = i / (float)frames;
+        }
+
+        var record = new AudioClipRecord(new AudioClipId((uint)(_records.Count + 1)), memory);
+        _records.Add(record);
+        return _clips.Register(record);
+    }
+
+    [Fact]
+    public void AuthoredStartOffset_IsUsedWhenRequestOmitsIt()
+    {
+        AudioClipId clip = RegisterRamp();
+        var id = new AudioSourceId(3U);
+        _sources.Upsert(id, new AudioSourceDefinition(ClipId: clip, StartOffsetSeconds: 0.5f));
+
+        _sources.Play(id, new AudioSourcePlayRequest());
+
+        Span<float> block = stackalloc float[64];
+        _runtime.ProcessGraph(block);
+        block[0].Should().BeApproximately(0.5f * 0.70710678f, 1e-3f);
+    }
+
+    [Fact]
+    public void ExplicitZeroOffset_OverridesTheAuthoredStartOffset()
+    {
+        AudioClipId clip = RegisterRamp();
+        var id = new AudioSourceId(4U);
+        _sources.Upsert(id, new AudioSourceDefinition(ClipId: clip, StartOffsetSeconds: 0.5f));
+
+        _sources.Play(id, new AudioSourcePlayRequest(OffsetSeconds: 0.0f));
+
+        Span<float> block = stackalloc float[64];
+        _runtime.ProcessGraph(block);
+        block[0].Should().BeApproximately(0.0f, 1e-3f);
+    }
 }

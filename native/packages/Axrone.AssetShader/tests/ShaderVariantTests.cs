@@ -108,4 +108,28 @@ public sealed class ShaderVariantTests
         reflection.Vertex.MainLineCount.Should().Be(1);
         reflection.Keywords.Should().HaveCount(2);
     }
+
+    [Fact]
+    public void BakeVariant_EffectWithoutKeywords_BakesInsteadOfThrowing()
+    {
+        var effect = new ShaderEffect(new ShaderEffectDefinition(
+            new ShaderSymbol("no-keywords"),
+            new ShaderStageDefinition("gl_Position = vec4(0.0);"),
+            new ShaderStageDefinition("gl_FragColor = vec4(1.0);")));
+
+        ShaderVariant variant = ShaderVariantSystem.BakeVariant(effect);
+
+        variant.Defines.Should().BeEmpty();
+        variant.VertexSource.Should().NotBeNullOrWhiteSpace();
+        variant.FragmentSource.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void SelectionToDefines_DefaultKeywordArray_YieldsNoDefines()
+    {
+        ImmutableDictionary<ShaderSymbol, string> defines =
+            ShaderVariantSystem.SelectionToDefines(default, ShaderKeywordSelection.Empty);
+
+        defines.Should().BeEmpty();
+    }
 }

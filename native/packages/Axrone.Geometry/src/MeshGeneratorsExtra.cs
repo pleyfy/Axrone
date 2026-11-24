@@ -72,13 +72,13 @@ public static partial class ProceduralPrimitives
 
                 sink.AppendTriangle(
                     TIndex.CreateChecked(a),
-                    TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(b)
                 );
                 sink.AppendTriangle(
                     TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(c),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(c)
                 );
             }
         }
@@ -128,13 +128,13 @@ public static partial class ProceduralPrimitives
 
                 sink.AppendTriangle(
                     TIndex.CreateChecked(a),
-                    TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(b)
                 );
                 sink.AppendTriangle(
                     TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(c),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(c)
                 );
             }
         }
@@ -281,13 +281,13 @@ public static partial class ProceduralPrimitives
 
                 sink.AppendTriangle(
                     TIndex.CreateChecked(a),
-                    TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(b)
                 );
                 sink.AppendTriangle(
                     TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(c),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(c)
                 );
             }
         }
@@ -384,8 +384,8 @@ public static partial class ProceduralPrimitives
             uint i1 = topRimStart + (x + 1) * 2;
             uint o1 = topRimStart + (x + 1) * 2 + 1;
 
-            sink.AppendTriangle(TIndex.CreateChecked(i0), TIndex.CreateChecked(i1), TIndex.CreateChecked(o0));
-            sink.AppendTriangle(TIndex.CreateChecked(i1), TIndex.CreateChecked(o1), TIndex.CreateChecked(o0));
+            sink.AppendTriangle(TIndex.CreateChecked(i0), TIndex.CreateChecked(o0), TIndex.CreateChecked(i1));
+            sink.AppendTriangle(TIndex.CreateChecked(i1), TIndex.CreateChecked(o0), TIndex.CreateChecked(o1));
         }
 
         uint botRimStart = sink.CurrentVertexCount;
@@ -407,8 +407,8 @@ public static partial class ProceduralPrimitives
             uint i1 = botRimStart + (x + 1) * 2;
             uint o1 = botRimStart + (x + 1) * 2 + 1;
 
-            sink.AppendTriangle(TIndex.CreateChecked(o0), TIndex.CreateChecked(o1), TIndex.CreateChecked(i1));
-            sink.AppendTriangle(TIndex.CreateChecked(o0), TIndex.CreateChecked(i1), TIndex.CreateChecked(i0));
+            sink.AppendTriangle(TIndex.CreateChecked(o0), TIndex.CreateChecked(i1), TIndex.CreateChecked(o1));
+            sink.AppendTriangle(TIndex.CreateChecked(o0), TIndex.CreateChecked(i0), TIndex.CreateChecked(i1));
         }
     }
 
@@ -475,13 +475,13 @@ public static partial class ProceduralPrimitives
 
                 sink.AppendTriangle(
                     TIndex.CreateChecked(a),
-                    TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(b)
                 );
                 sink.AppendTriangle(
                     TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(c),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(c)
                 );
             }
         }
@@ -561,13 +561,13 @@ public static partial class ProceduralPrimitives
 
                 sink.AppendTriangle(
                     TIndex.CreateChecked(a),
-                    TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(b)
                 );
                 sink.AppendTriangle(
                     TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(c),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(c)
                 );
             }
         }
@@ -715,13 +715,13 @@ public static partial class ProceduralPrimitives
 
                 sink.AppendTriangle(
                     TIndex.CreateChecked(a),
-                    TIndex.CreateChecked(d),
-                    TIndex.CreateChecked(c)
+                    TIndex.CreateChecked(c),
+                    TIndex.CreateChecked(d)
                 );
                 sink.AppendTriangle(
                     TIndex.CreateChecked(a),
-                    TIndex.CreateChecked(c),
-                    TIndex.CreateChecked(b)
+                    TIndex.CreateChecked(b),
+                    TIndex.CreateChecked(c)
                 );
             }
         }

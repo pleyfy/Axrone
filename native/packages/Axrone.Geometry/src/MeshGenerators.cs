@@ -374,13 +374,13 @@ public static partial class ProceduralPrimitives
 
                 sink.AppendTriangle(
                     TIndex.CreateChecked(a),
-                    TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(b)
                 );
                 sink.AppendTriangle(
                     TIndex.CreateChecked(b),
-                    TIndex.CreateChecked(c),
-                    TIndex.CreateChecked(d)
+                    TIndex.CreateChecked(d),
+                    TIndex.CreateChecked(c)
                 );
             }
         }

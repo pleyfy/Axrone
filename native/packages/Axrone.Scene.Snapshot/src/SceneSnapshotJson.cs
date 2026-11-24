@@ -1,4 +1,5 @@
 namespace Axrone.Scene.Snapshot;
+using Axrone.AssetShader;
 
 /// <summary>
 /// Deterministic JSON codec for self-contained scene snapshots. Asset ids are
@@ -160,6 +161,10 @@ public static class SceneSnapshotJson
         WriteAssetId(writer, "id", shader.Id, names);
         writer.WriteString("vertex", shader.VertexSource);
         writer.WriteString("fragment", shader.FragmentSource);
+        if (shader.Effect is { } effect)
+        {
+            writer.WriteString("effect", ShaderSerialization.SerializeToJson(effect.Definition));
+        }
 
         writer.WriteStartArray("uniforms");
         for (int i = 0; i < shader.Uniforms.Count; i++)
@@ -207,8 +212,16 @@ public static class SceneSnapshotJson
             attributes,
             GetOptionalBoolean(element, "depthTest", true),
             GetOptionalBoolean(element, "cull", true),
-            GetOptionalBoolean(element, "blend", false));
+            GetOptionalBoolean(element, "blend", false),
+            ReadEffect(element));
     }
+
+    private static ShaderEffect? ReadEffect(JsonElement element) =>
+        element.TryGetProperty("effect", out JsonElement effectElement) &&
+        effectElement.ValueKind == JsonValueKind.String &&
+        effectElement.GetString() is { Length: > 0 } json
+            ? new ShaderEffect(ShaderSerialization.DeserializeFromJson(json))
+            : null;
 
     private static void WriteMesh(Utf8JsonWriter writer, SceneMeshDefinition mesh, SceneNameTable names)
     {
@@ -447,6 +460,21 @@ public static class SceneSnapshotJson
         writer.WriteStartObject();
         WriteAssetId(writer, "id", material.Id, names);
         WriteAssetId(writer, "shader", material.ShaderId, names);
+        if (material.TechniqueId is { } technique)
+        {
+            writer.WriteString("technique", technique);
+        }
+
+        if (material.Keywords.Count > 0)
+        {
+            writer.WriteStartObject("keywords");
+            foreach (KeyValuePair<string, string> keyword in material.Keywords)
+            {
+                writer.WriteString(keyword.Key, keyword.Value);
+            }
+
+            writer.WriteEndObject();
+        }
 
         writer.WriteStartObject("surface");
         SceneMaterialSurface surface = material.Surface;
@@ -531,12 +559,29 @@ public static class SceneSnapshotJson
             }
         }
 
+        string? technique = element.TryGetProperty("technique", out JsonElement techniqueElement) &&
+            techniqueElement.ValueKind == JsonValueKind.String
+            ? techniqueElement.GetString()
+            : null;
+
+        var keywords = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (element.TryGetProperty("keywords", out JsonElement keywordsElement) &&
+            keywordsElement.ValueKind == JsonValueKind.Object)
+        {
+            foreach (JsonProperty keyword in keywordsElement.EnumerateObject())
+            {
+                keywords[keyword.Name] = keyword.Value.GetString() ?? string.Empty;
+            }
+        }
+
         return new SceneMaterialDefinition(
             ReadAssetId<MaterialAssetTag>(element, "id", names),
             ReadAssetId<ShaderAssetTag>(element, "shader", names),
             surface,
             passes,
-            uniforms);
+            uniforms,
+            technique,
+            keywords);
     }
 
     private static void WriteBinding(

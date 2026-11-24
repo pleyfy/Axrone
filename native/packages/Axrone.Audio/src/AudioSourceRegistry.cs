@@ -150,11 +150,19 @@ public sealed class AudioSourceRegistry
 
             AudioSourceDefinition definition = entry.Definition;
             AudioSpatialization spatial = definition.Spatial;
+
+            // The authored start offset is the default; an explicit request
+            // offset (including zero) wins.
+            AudioSourcePlayRequest effective =
+                request.OffsetSeconds is null && definition.StartOffsetSeconds > 0.0f
+                    ? request with { OffsetSeconds = definition.StartOffsetSeconds }
+                    : request;
+
             entry.ActiveHandle = _runtime.AllocateVoice(
                 id,
                 definition.ClipId,
                 definition.BusId,
-                in request,
+                in effective,
                 in spatial,
                 definition.Loop,
                 definition.Volume,

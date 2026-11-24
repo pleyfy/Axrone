@@ -5,7 +5,7 @@ namespace Axrone.Scene.Runtime;
 /// look direction is applied every late update so movement observed earlier in
 /// the frame is reflected in the final view.
 /// </summary>
-public sealed class SceneFollowCameraControllerBehaviour : SceneBehaviour
+public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
 {
     private static readonly Vec3 DefaultTargetOffset = new(0.0f, 1.5f, 0.0f);
 
@@ -22,6 +22,8 @@ public sealed class SceneFollowCameraControllerBehaviour : SceneBehaviour
     private float _positionDamping = 10.0f;
     private float _targetDamping = 14.0f;
     private bool _initialized;
+    private SceneWorld? _world;
+    private SceneActor _actor = SceneActor.Null;
 
     /// <summary>Creates a follow controller at the default distance.</summary>
     public SceneFollowCameraControllerBehaviour()
@@ -134,9 +136,24 @@ public sealed class SceneFollowCameraControllerBehaviour : SceneBehaviour
     public void Zoom(float deltaDistance) => Distance = _distance + deltaDistance;
 
     /// <inheritdoc/>
-    public override void LateUpdate(float deltaSeconds)
+    public void OnAttach(SceneBehaviourContext context)
     {
-        SceneWorld? world = World;
+        ArgumentNullException.ThrowIfNull(context);
+        _world = context.World;
+        _actor = context.Actor;
+        context.OnLateUpdate(LateUpdate);
+        context.OnDetach(ClearAttachment);
+    }
+
+    private void ClearAttachment()
+    {
+        _world = null;
+        _actor = SceneActor.Null;
+    }
+
+    private void LateUpdate(float deltaSeconds)
+    {
+        SceneWorld? world = _world;
         if (world is null || !world.HasTransform3D)
         {
             return;
@@ -151,7 +168,7 @@ public sealed class SceneFollowCameraControllerBehaviour : SceneBehaviour
                 _azimuth,
                 _elevation,
                 _distance);
-            ref SceneTransform3D initialTransform = ref world.GetTransform3D(Actor);
+            ref SceneTransform3D initialTransform = ref world.GetTransform3D(_actor);
             SceneCameraOrbitMath.ApplyLook(ref initialTransform, initialPosition, _smoothedTarget, _up);
             _initialized = true;
             return;
@@ -166,7 +183,7 @@ public sealed class SceneFollowCameraControllerBehaviour : SceneBehaviour
             _elevation,
             _distance);
 
-        ref SceneTransform3D transform = ref world.GetTransform3D(Actor);
+        ref SceneTransform3D transform = ref world.GetTransform3D(_actor);
         float positionSmoothing = SmoothingFactor(_positionDamping, deltaSeconds);
         Vec3 position = Vec3.Lerp(transform.Position, desiredPosition, positionSmoothing);
         SceneCameraOrbitMath.ApplyLook(ref transform, position, _smoothedTarget, _up);

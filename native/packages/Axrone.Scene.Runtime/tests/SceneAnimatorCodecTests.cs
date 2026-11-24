@@ -4,6 +4,7 @@ using System.Buffers;
 using System.Text.Json;
 using Axrone.Numeric;
 using Axrone.Scene;
+using Axrone.Scene.Assets;
 using Axrone.Scene.Prefab;
 using Axrone.Scene.Runtime;
 using Axrone.Scene.Snapshot;
@@ -23,6 +24,8 @@ public sealed class SceneAnimatorCodecTests
             Enabled = false,
             ApplyRootMotion = true,
             ActiveLayer = 2,
+            MorphCurveOffset = 4,
+            MorphCurveCount = 3,
         };
 
         SceneAnimator restored = RoundTrip(new SceneAnimatorCodec(), in value);
@@ -57,6 +60,44 @@ public sealed class SceneAnimatorCodecTests
     {
         SceneAnimatorCodec codec = new();
         using JsonDocument document = JsonDocument.Parse("""{"version":1,"slot":0,"generation":1,"activeLayer":-1}""");
+
+        Action read = () => codec.Read(document.RootElement);
+
+        read.Should().Throw<SceneValidationException>();
+    }
+
+    [Fact]
+    public void AnimatorRejectsNegativeMorphRange()
+    {
+        SceneAnimatorCodec codec = new();
+        using JsonDocument document = JsonDocument.Parse("""{"version":1,"slot":0,"generation":1,"morphCurveCount":-1}""");
+
+        Action read = () => codec.Read(document.RootElement);
+
+        read.Should().Throw<SceneValidationException>();
+    }
+
+    [Fact]
+    public void AnimationBindingRoundTripsAssetIds()
+    {
+        var value = new SceneAnimationBinding
+        {
+            Skin = SceneAssetId<SkinAssetTag>.FromName("skin/hero"),
+            DefaultClip = SceneAssetId<AnimationAssetTag>.FromName("clip/run"),
+        };
+
+        SceneAnimationBinding restored = RoundTrip(new SceneAnimationBindingCodec(), in value);
+
+        restored.Should().Be(value);
+        restored.HasSkin.Should().BeTrue();
+        restored.HasDefaultClip.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AnimationBindingRejectsMissingSkin()
+    {
+        SceneAnimationBindingCodec codec = new();
+        using JsonDocument document = JsonDocument.Parse("""{"version":1,"skin":""}""");
 
         Action read = () => codec.Read(document.RootElement);
 
@@ -118,14 +159,16 @@ public sealed class SceneAnimatorCodecTests
             .Build();
 
         profile.Registry.TryGetDataByType(typeof(SceneAnimator), out _).Should().BeTrue();
+        profile.Registry.TryGetDataByType(typeof(SceneAnimationBinding), out _).Should().BeTrue();
         profile.Registry.TryGetDataByType(typeof(ScenePathAgent), out _).Should().BeTrue();
 
         SceneCodecRegistry codecs = new(profile.Registry);
         SceneRuntimeCodecs.Register(codecs, profile.Registry);
 
         codecs.TryGet("SceneAnimator", out _).Should().BeTrue();
+        codecs.TryGet("SceneAnimationBinding", out _).Should().BeTrue();
         codecs.TryGet("ScenePathAgent", out _).Should().BeTrue();
-        codecs.Count.Should().Be(2);
+        codecs.Count.Should().Be(3);
     }
 
     [Fact]
@@ -166,12 +209,18 @@ public sealed class SceneAnimatorCodecTests
             Enabled = true,
             StartWaypoint = 0,
         };
+        var binding = new SceneAnimationBinding
+        {
+            Skin = SceneAssetId<SkinAssetTag>.FromName("skin/hero"),
+            DefaultClip = SceneAssetId<AnimationAssetTag>.FromName("clip/run"),
+        };
 
         using SceneRuntime source = new(new SceneRuntimeOptions { Profile = CreateAnimationProfile() });
         SceneActor actor = source.World.CreateActor("Animated");
         source.World.GetTransform3D(actor).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
         source.World.AddData(actor, animator);
         source.World.AddData(actor, pathAgent);
+        source.World.AddData(actor, binding);
         source.World.UpdateTransforms();
 
         SceneSnapshot snapshot = source.CaptureSnapshot("prefab/animated");
@@ -183,6 +232,7 @@ public sealed class SceneAnimatorCodecTests
         SceneActor loaded = result.Actors[0];
         target.World.GetData<SceneAnimator>(loaded).Should().Be(animator);
         target.World.GetData<ScenePathAgent>(loaded).Should().Be(pathAgent);
+        target.World.GetData<SceneAnimationBinding>(loaded).Should().Be(binding);
     }
 
     private static SceneProfile CreateAnimationProfile() =>

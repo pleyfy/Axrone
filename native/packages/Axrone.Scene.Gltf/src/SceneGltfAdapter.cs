@@ -219,10 +219,11 @@ public sealed class SceneGltfImportResult
 /// <summary>
 /// Converts <see cref="GltfImportResult"/> data into scene definitions and
 /// snapshots: meshes, materials with built-in shader definitions, textures,
-/// samplers and a prefab with transform/camera/light/mesh components. Features
-/// without native scene equivalents (morph targets, skins, animations,
-/// compressed or encoded textures) are reported as diagnostics instead of
-/// failing the import.
+/// samplers and a prefab with transform/camera/light/mesh components. Skins and
+/// animation clips are converted as definitions; <c>SceneAnimationImporter</c>
+/// builds the runtime rig, clips and controller from them. Features without
+/// native scene equivalents (morph playback, compressed or encoded textures)
+/// are reported as diagnostics instead of failing the import.
 /// </summary>
 public static class SceneGltfAdapter
 {
@@ -436,7 +437,7 @@ public static class SceneGltfAdapter
         {
             diagnostics.Add(new SceneGltfDiagnostic(
                 "scene.gltf.skins",
-                $"{skins.Count} skin(s) converted to scene skin definitions; runtime skinning playback is not wired."));
+                $"{skins.Count} skin(s) converted to scene skin definitions; SceneAnimationImporter builds the runtime rig from them."));
         }
 
         return skins;
@@ -508,7 +509,7 @@ public static class SceneGltfAdapter
         {
             diagnostics.Add(new SceneGltfDiagnostic(
                 "scene.gltf.animations",
-                $"{animations.Count} animation clip(s) converted to scene animation definitions; runtime playback is not wired."));
+                $"{animations.Count} animation clip(s) converted to scene animation definitions; SceneAnimationImporter builds runtime clips from them."));
         }
 
         return animations;
@@ -907,7 +908,8 @@ public static class SceneGltfAdapter
                     attribute.Offset,
                     attribute.Stride,
                     attribute.Normalized,
-                    attribute.Integer));
+                    attribute.Integer,
+                    ComponentByteSize(attribute.ComponentType)));
             }
 
             if (attributes.Count == 0)
@@ -1173,7 +1175,7 @@ public static class SceneGltfAdapter
                     {
                         diagnostics.Add(new SceneGltfDiagnostic(
                             "scene.gltf.skinning",
-                            $"Node '{actor.NodeId}' references skin '{renderer.SkinId}'; the skin is converted but runtime skinning playback is not wired."));
+                            $"Node '{actor.NodeId}' references skin '{renderer.SkinId}'; the skin is converted and can be bound through SceneAnimationImporter."));
                     }
 
                     if (renderer.MorphTargetCount > 0)
@@ -1220,7 +1222,7 @@ public static class SceneGltfAdapter
                 case GltfAnimatorComponent:
                     diagnostics.Add(new SceneGltfDiagnostic(
                         "scene.gltf.animator",
-                        $"Node '{actor.NodeId}' declares an animator; clips are converted but runtime playback is not wired."));
+                        $"Node '{actor.NodeId}' declares an animator; clips are converted and can be bound through SceneAnimationImporter."));
                     break;
             }
         }
@@ -1265,6 +1267,15 @@ public static class SceneGltfAdapter
             GltfMorphTargetSemantic.Tangent => SceneMorphTargetSemantic.Tangent,
             _ => SceneMorphTargetSemantic.Position
         };
+
+    private static byte ComponentByteSize(int componentType) => componentType switch
+    {
+        5120 or 5121 => 1,
+        5122 or 5123 => 2,
+        5125 or 5126 => 4,
+        5130 => 8,
+        _ => 4,
+    };
 
     private static bool TryMapSemantic(GltfMeshSemantic semantic, out SceneMeshSemantic mapped)
     {

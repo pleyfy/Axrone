@@ -263,6 +263,11 @@ public static class ShaderVariantSystem
         ShaderKeywordSelection selection)
     {
         ArgumentNullException.ThrowIfNull(selection);
+        if (keywords.IsDefaultOrEmpty)
+        {
+            return ImmutableDictionary<ShaderSymbol, string>.Empty;
+        }
+
         ImmutableDictionary<ShaderSymbol, string>.Builder builder = ImmutableDictionary.CreateBuilder<ShaderSymbol, string>();
 
         foreach (ShaderKeywordDefinition kw in keywords)
@@ -308,8 +313,8 @@ public static class ShaderVariantSystem
         ImmutableDictionary<ShaderSymbol, string> defines = SelectionToDefines(effect.Definition.Keywords, selection);
         var macroPolicy = new ImmutableMacroEnvironment(defines);
 
-        string rawVtx = ComposeStage(effect.Definition.Vertex);
-        string rawFrag = ComposeStage(effect.Definition.Fragment);
+        string rawVtx = ComposeStage(effect.Definition, ShaderStageTag.Vertex, sink);
+        string rawFrag = ComposeStage(effect.Definition, ShaderStageTag.Fragment, sink);
 
         string vtxInc = IncludeExpander.ExpandIncludes(rawVtx, ShaderLibraryRegistry.Instance, sink, $"{effect.Id.Name}:vtx", preserveLineMarkers);
         string fragInc = IncludeExpander.ExpandIncludes(rawFrag, ShaderLibraryRegistry.Instance, sink, $"{effect.Id.Name}:frag", preserveLineMarkers);
@@ -351,40 +356,57 @@ public static class ShaderVariantSystem
         return variants;
     }
 
-    private static string ComposeStage(in ShaderStageDefinition stage)
+    private static string ComposeStage(
+        in ShaderEffectDefinition effect,
+        ShaderStageTag stage,
+        ShaderDiagnosticSink sink)
     {
+        ShaderStageDefinition definition = stage == ShaderStageTag.Fragment ? effect.Fragment : effect.Vertex;
         var sb = new StringBuilder();
 
-        if (stage.Precision != ShaderPrecision.None)
+        // A #version line is only legal as the first statement, so directives precede precision.
+        if (!definition.Directives.IsDefaultOrEmpty)
         {
-            sb.Append("precision ").Append(stage.Precision.ToString().ToLowerInvariant()).Append(" float;\n");
-        }
-
-        if (!stage.Directives.IsDefaultOrEmpty)
-        {
-            foreach (string dir in stage.Directives)
+            foreach (string dir in definition.Directives)
             {
                 sb.Append(dir).Append('\n');
             }
         }
 
-        if (!stage.Includes.IsDefaultOrEmpty)
+        if (definition.Precision != ShaderPrecision.None)
         {
-            foreach (ShaderSymbol inc in stage.Includes)
+            sb.Append("precision ").Append(definition.Precision.ToString().ToLowerInvariant()).Append(" float;\n");
+        }
+
+        var authored = new StringBuilder();
+        if (!definition.Includes.IsDefaultOrEmpty)
+        {
+            foreach (ShaderSymbol inc in definition.Includes)
             {
-                sb.Append("#include <").Append(inc.Name).Append(">\n");
+                authored.Append("#include <").Append(inc.Name).Append(">\n");
             }
         }
 
-        if (!stage.Declarations.IsDefaultOrEmpty)
+        if (!definition.Declarations.IsDefaultOrEmpty)
         {
-            foreach (ShaderGlslBlock block in stage.Declarations)
+            foreach (ShaderGlslBlock block in definition.Declarations)
             {
-                sb.Append(block.Code).Append('\n');
+                authored.Append(block.Code).Append('\n');
             }
         }
 
-        sb.Append("void main() {\n").Append(stage.Main).Append("\n}\n");
+        // Metadata declarations go first: a library or declaration block may read a property, and
+        // GLSL only allows a symbol to be used after it has been declared. Anything the authored
+        // blocks already declare is skipped, so existing effects bake exactly as before.
+        ShaderDeclarationSet header = ShaderEffectDeclarations.Collect(
+            effect,
+            stage,
+            authored.ToString().AsSpan(),
+            sink);
+        sb.Append(header.ToHeader());
+        sb.Append(authored);
+
+        sb.Append("void main() {\n").Append(definition.Main).Append("\n}\n");
         return sb.ToString();
     }
 }

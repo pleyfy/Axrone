@@ -14,6 +14,20 @@ public sealed class GLMesh : IGLResource, IDisposable
     private int _disposed;
 
     /// <summary>
+    /// Replaces the vertex payload. The new data must match the layout and vertex
+    /// count; the snapshot used for context-loss recovery is updated as well.
+    /// </summary>
+    public void UpdateVertices(ReadOnlySpan<byte> vertexData)
+    {
+        if (vertexData.Length != VertexCount * Layout.VertexStride)
+            ThrowHelper.ThrowInvalidArgument(
+                $"Vertex data length ({vertexData.Length}) must match {VertexCount} vertices at stride {Layout.VertexStride}");
+
+        VertexBuffer.Update(vertexData);
+        vertexData.CopyTo(_vertexDataSnapshot);
+    }
+
+    /// <summary>
     /// Gets the vertex array object for this mesh.
     /// </summary>
     public GLVertexArray VertexArray { get; private set; }

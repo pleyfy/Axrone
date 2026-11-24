@@ -73,7 +73,14 @@ public static class SceneGltfShaderLibrary
             return F0 + (1.0 - F0) * t5;
         }
 
-        vec3 evaluateSpecularBrdf(vec3 N, vec3 V, vec3 L, float roughness) {
+        vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+            float t = 1.0 - cosTheta;
+            float t2 = t * t;
+            float t5 = t2 * t2 * t;
+            return F0 + (max(vec3(1.0 - roughness), F0) - F0) * t5;
+        }
+
+        vec3 evaluateSpecularBrdf(vec3 N, vec3 V, vec3 L, float roughness, vec3 F0) {
             vec3 H = normalize(V + L);
             float NdotH = max(dot(N, H), 0.0);
             float NdotV = max(dot(N, V), 0.001);
@@ -84,7 +91,7 @@ public static class SceneGltfShaderLibrary
             }
             float D = distributionGgx(NdotH, roughness);
             float G = geometrySmith(NdotV, NdotL, roughness);
-            vec3 F = fresnelSchlick(VdotH, vec3(0.04));
+            vec3 F = fresnelSchlick(VdotH, F0);
             return (D * G * F) / (4.0 * NdotV * NdotL + 0.001);
         }
 
@@ -96,7 +103,7 @@ public static class SceneGltfShaderLibrary
             vec3 F = fresnelSchlick(max(dot(normalize(viewDir + lightDir), viewDir), 0.0), F0);
             vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
             vec3 diffuse = kD * albedo / PI;
-            vec3 specular = evaluateSpecularBrdf(normal, viewDir, lightDir, roughness);
+            vec3 specular = evaluateSpecularBrdf(normal, viewDir, lightDir, roughness, F0);
             return (diffuse + specular) * lightColor * intensity * NdotL;
         }
 
@@ -119,6 +126,23 @@ public static class SceneGltfShaderLibrary
             return vec3(spec * clearcoat) * lightColor * intensity * NdotL;
         }
 
+        vec3 evaluateGltfSheen(vec3 N, vec3 V, vec3 L, vec3 sheenColor, float sheenRoughness) {
+            vec3 H = normalize(V + L);
+            float NdotL = max(dot(N, L), 0.0);
+            if (NdotL <= 0.0) {
+                return vec3(0.0);
+            }
+            float NdotH = max(dot(N, H), 0.0);
+            float roughnessSq = max(sheenRoughness * sheenRoughness, 1e-4);
+            float invRoughnessSq = 1.0 / roughnessSq;
+            float cos2h = NdotH * NdotH;
+            float sin2h = max(1.0 - cos2h, 0.0);
+            float D = (2.0 + invRoughnessSq) * pow(sin2h, invRoughnessSq * 0.5) / (2.0 * PI);
+            float VdotH = max(dot(V, H), 0.0);
+            float F = VdotH * exp2((-5.55473 * VdotH - 6.98316) * VdotH);
+            return sheenColor * D * F * NdotL;
+        }
+
         float rangeAttenuation(float distanceToLight, float range) {
             if (range <= 0.0) {
                 return 1.0;
@@ -130,6 +154,29 @@ public static class SceneGltfShaderLibrary
         float spotAttenuation(vec3 lightDir, vec3 spotDir, float innerConeCosine, float outerConeCosine) {
             float cd = dot(normalize(-lightDir), normalize(spotDir));
             return smoothstep(outerConeCosine, innerConeCosine, cd);
+        }
+
+        // Khronos PBR Neutral shoulder, matching WebGL2's compressHighlightsNeutral:
+        // a black offset first, then a smooth rolloff of peaks above 0.76 so
+        // bright speculars and lights roll off instead of clipping to harsh white.
+        vec3 gltfSoftCompressHighlights(vec3 color) {
+            const float startCompression = 0.76;
+            const float desaturation = 0.15;
+            vec3 safe = max(vec3(0.0), color);
+            float minimumChannel = min(safe.r, min(safe.g, safe.b));
+            float offset = minimumChannel < 0.08
+                ? minimumChannel - 6.25 * minimumChannel * minimumChannel
+                : 0.04;
+            safe -= offset;
+            float peak = max(safe.r, max(safe.g, safe.b));
+            if (peak < startCompression) {
+                return safe;
+            }
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - (d * d) / (peak + d - startCompression);
+            safe *= newPeak / peak;
+            float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);
+            return mix(safe, vec3(newPeak), g);
         }
         """;
 
@@ -408,7 +455,7 @@ public static class SceneGltfShaderLibrary
             float height = clamp(cameraPosition.y - u_HeightFogGroundHeight, -limit, limit);
             float density = max(u_HeightFogDensity, 0.0);
             float optical = density * exp(-height) * distance * gltfHeightRatio((delta.y / distance) * distance, falloff);
-            return clamp(1.0 - exp(-clamp(max(optical, 0.0), AX_FOG_MAX_EXPONENT)), 0.0, 1.0);
+            return clamp(1.0 - exp(-clamp(max(optical, 0.0), 0.0, AX_FOG_MAX_EXPONENT)), 0.0, 1.0);
         }
 
         vec3 gltfApplyFog(vec3 color, vec3 worldPosition, vec3 cameraPosition) {

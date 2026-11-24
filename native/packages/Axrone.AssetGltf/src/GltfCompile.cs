@@ -143,6 +143,7 @@ public static class GltfCompileExtensions
         where TTranscoderPolicy : struct, ITextureTranscoderPolicy
     {
         var textures = new List<GltfTextureAsset>(rawModel.Textures.Count);
+        long textureBytes = 0;
         for (int i = 0; i < rawModel.Textures.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -406,6 +407,14 @@ public static class GltfCompileExtensions
                 }
             }
 
+            if (payload is GltfTranscodedTexturePayload transcodedPayload)
+            {
+                textureBytes = AddTextureBytes(
+                    textureBytes,
+                    transcodedPayload.Bytes.Length,
+                    options.Limits.MaxTextureBytes);
+            }
+
             textures.Add(new GltfTextureAsset
             {
                 Id = $"gltf/texture/{i}",
@@ -420,6 +429,17 @@ public static class GltfCompileExtensions
         }
 
         return textures;
+    }
+
+    private static long AddTextureBytes(long current, long addition, long maximum)
+    {
+        long next = current + addition;
+        if (next < 0 || next > maximum)
+        {
+            ThrowHelper.ThrowLimit("MaxTextureBytes", next, maximum);
+        }
+
+        return next;
     }
 
     private static GltfRawTexturePayload UnusablePayload(
@@ -1468,11 +1488,16 @@ public static class GltfCompileExtensions
                     GltfAccessorRuntime.DecodeFloats(inSpan, inAcc.Count, inAcc.ComponentType, 1, rawModel.BufferViews[inAcc.BufferView].ByteStride, false, times);
                 }
 
+                if (times.Length > 0 && (!float.IsFinite(times[0]) || times[0] < 0.0f))
+                {
+                    ThrowHelper.ThrowAccessor(samp.Input, "animation input times must be finite and non-negative.");
+                }
+
                 for (int t = 1; t < times.Length; t++)
                 {
-                    if (times[t] < 0.0f || times[t] < times[t - 1])
+                    if (!float.IsFinite(times[t]) || times[t] < 0.0f || times[t] < times[t - 1])
                     {
-                        ThrowHelper.ThrowAccessor(samp.Input, "animation input times must be non-negative and sorted.");
+                        ThrowHelper.ThrowAccessor(samp.Input, "animation input times must be finite, non-negative and sorted.");
                     }
                 }
 
@@ -1634,7 +1659,7 @@ public sealed class GltfImporter
 
         GltfPipeline<StateUnparsed> pipeline = GltfPipeline<StateUnparsed>.Create(sourceBytes);
         GltfPipeline<StateSchemaParsed> parsed = pipeline.ParseSchema(_options.Limits, cancellationToken);
-        GltfPipeline<StateResolved> resolved = parsed.ResolveResources(_options.ResourceResolver);
+        GltfPipeline<StateResolved> resolved = parsed.ResolveResources(_options.ResourceResolver, _options.Limits);
 
         return await resolved.CompileAsync<TDracoPolicy, TMeshoptPolicy, TTranscoderPolicy>(
             _options,

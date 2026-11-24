@@ -184,7 +184,8 @@ public static class GltfPipelineExtensions
     /// <summary>Validates extensions and attaches the resource runtime.</summary>
     public static GltfPipeline<StateResolved> ResolveResources(
         this GltfPipeline<StateSchemaParsed> pipeline,
-        GltfResourceResolver? resolver)
+        GltfResourceResolver? resolver,
+        GltfImportLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(pipeline);
 
@@ -216,7 +217,7 @@ public static class GltfPipelineExtensions
             throw;
         }
 
-        var runtime = new GltfResourceRuntimeCache(pipeline.BinChunk, resolver);
+        var runtime = new GltfResourceRuntimeCache(pipeline.BinChunk, resolver, limits);
 
         return new GltfPipeline<StateResolved>(
             pipeline.SourceBytes,

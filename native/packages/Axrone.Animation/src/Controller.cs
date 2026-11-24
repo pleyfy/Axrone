@@ -33,6 +33,15 @@ public sealed class AnimationLayer
     /// <summary>IK jobs applied to this layer's pose before composition.</summary>
     public IReadOnlyList<AnimationIkLayer> IkLayers => _ikLayers;
 
+    /// <summary>Optional additive reference pose; when null, the rig rest pose is used.</summary>
+    public AnimationFrame? AdditiveReference { get; init; }
+
+    /// <summary>
+    /// Optional layer whose state id and normalized time this layer follows
+    /// before advancing. Used by masked upper-body layers that share locomotion.
+    /// </summary>
+    public AnimationLayer? SyncSource { get; init; }
+
     /// <summary>Creates a layer.</summary>
     public AnimationLayer(LayerId id, StateMachineInstance machine)
     {
@@ -58,7 +67,9 @@ public sealed class AnimationLayer
 public sealed class AnimationController : IDisposable
 {
     private readonly List<AnimationLayer> _layers = new();
+    private readonly List<AnimationMontage> _montages = new();
     private readonly CurveLayout _curveLayout;
+    private int _montageSequence;
 
     /// <summary>Driven rig.</summary>
     public Rig Rig { get; }
@@ -110,6 +121,78 @@ public sealed class AnimationController : IDisposable
     /// <summary>Layer count.</summary>
     public int LayerCount => _layers.Count;
 
+    /// <summary>Number of montages that are still playing.</summary>
+    public int ActiveMontageCount
+    {
+        get
+        {
+            int count = 0;
+            for (int i = 0; i < _montages.Count; i++)
+            {
+                if (_montages[i].Status == AnimationMontageStatus.Playing)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+    }
+
+    /// <summary>
+    /// Starts a one-shot montage on a new layer. The layer fades in, contributes
+    /// its clip events to the normal update sink, and is released by the
+    /// controller when the clip ends or <see cref="AnimationMontage.Stop"/> runs.
+    /// </summary>
+    public AnimationMontage PlayMontage(AnimationClip clip, AnimationMontageOptions options = default)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+        if (options.ReplaceExisting)
+        {
+            StopAllMontages();
+        }
+
+        int sequence = ++_montageSequence;
+        var machine = new StateMachineInstance(
+            [new AnimationState(new StateId($"montage:{clip.Id}:{sequence}"), new ClipMotionNode(clip) { IsLooping = options.Loop })
+            {
+                // The montage speed drives the clip, not just the fade timeline.
+                Speed = MathF.Max(MathF.Abs(options.Speed), 1e-3f),
+            }],
+            Array.Empty<StateTransition>(),
+            0);
+        var layer = new AnimationLayer(new LayerId($"montage:{clip.Id}:{sequence}"), machine)
+        {
+            Mode = options.Mode,
+            BoneMask = options.BoneMask,
+            Weight = 0.0f,
+        };
+
+        AddLayer(layer);
+        var montage = new AnimationMontage(layer, clip.Duration, options);
+        _montages.Add(montage);
+        BindAll();
+        return montage;
+    }
+
+    /// <summary>Stops every playing montage and releases their layers immediately.</summary>
+    public void StopAllMontages()
+    {
+        for (int i = 0; i < _montages.Count; i++)
+        {
+            _montages[i].Stop();
+        }
+
+        for (int i = _montages.Count - 1; i >= 0; i--)
+        {
+            if (_montages[i].RemoveRequested)
+            {
+                _layers.Remove(_montages[i].Layer);
+                _montages.RemoveAt(i);
+            }
+        }
+    }
+
     /// <summary>
     /// Advances all weighted layers, composes the frame, and reports root motion.
     /// The event list is caller-owned and cleared first.
@@ -120,6 +203,28 @@ public sealed class AnimationController : IDisposable
         long startTimestamp = Stopwatch.GetTimestamp();
         outEvents.Clear();
         Arena.Reset();
+
+        for (int i = _montages.Count - 1; i >= 0; i--)
+        {
+            AnimationMontage montage = _montages[i];
+            montage.Advance(deltaTime);
+            if (montage.RemoveRequested)
+            {
+                _layers.Remove(montage.Layer);
+                _montages.RemoveAt(i);
+            }
+        }
+
+        for (int i = 0; i < _layers.Count; i++)
+        {
+            AnimationLayer layer = _layers[i];
+            if (layer.SyncSource is { } source &&
+                !ReferenceEquals(source, layer) &&
+                _layers.Contains(source))
+            {
+                layer.Machine.SyncFrom(source.Machine);
+            }
+        }
 
         for (int i = 0; i < _layers.Count; i++)
         {
@@ -136,7 +241,7 @@ public sealed class AnimationController : IDisposable
         {
             _layers[0].Machine.Evaluate(CurrentFrame, Arena, Rig, Parameters);
             ApplyIkLayers(_layers[0], CurrentFrame);
-            _layers[0].Machine.ExtractRootDelta(Rig, out rootMotionDeltaPos, out rootMotionDeltaRot);
+            _layers[0].Machine.ExtractRootDelta(Rig, Parameters, out rootMotionDeltaPos, out rootMotionDeltaRot);
         }
         else
         {
@@ -164,7 +269,7 @@ public sealed class AnimationController : IDisposable
             }
             else
             {
-                BlendingKernels.ApplyAdditiveFrame(CurrentFrame, CurrentFrame, layerFrame, Rig, weight);
+                BlendingKernels.ApplyAdditiveFrame(CurrentFrame, CurrentFrame, layerFrame, Rig, weight, layer.BoneMask, layer.AdditiveReference);
             }
 
             Arena.Free();
@@ -188,6 +293,7 @@ public sealed class AnimationController : IDisposable
     /// <inheritdoc/>
     public void Dispose()
     {
+        _montages.Clear();
         Arena.Reset();
         GC.SuppressFinalize(this);
     }

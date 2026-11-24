@@ -44,7 +44,13 @@ public sealed class AudioEcsBinder : IDisposable
     private readonly Dictionary<Entity, CommandQueue> _queues = new();
     private readonly Dictionary<Entity, AudioSourceId> _sourceIds = new();
     private readonly Dictionary<Entity, AudioListenerId> _listenerIds = new();
+    private readonly Dictionary<Entity, AudioSourceDefinition> _lastSourceDefinitions = new();
+    private readonly Dictionary<Entity, AudioListenerRef> _lastListenerLinks = new();
     private readonly HashSet<Entity> _autoplayed = new();
+    private readonly List<Entity> _sweepScratch = new();
+    private readonly List<Entity> _entityScratch = new();
+    private readonly List<(Entity Entity, AudioListenerRef Link)> _listenerScratch = new();
+    private readonly List<AudioBinderFailure> _failures = new();
     private readonly Lock _gate = new();
     private int _disposed;
 
@@ -69,6 +75,7 @@ public sealed class AudioEcsBinder : IDisposable
             }
 
             _sourceIds[entity] = _world.GetComponent<AudioSourceRef>(entity).SourceId;
+            _lastSourceDefinitions.Remove(entity);
             if (_autoplayed.Add(entity) && _world.GetComponent<AudioSourceRef>(entity).Autoplay)
             {
                 EnqueueLocked(entity, new AudioSourceCommand(AudioSourceCommandType.Play, default));
@@ -92,6 +99,7 @@ public sealed class AudioEcsBinder : IDisposable
 
             _queues.Remove(entity);
             _autoplayed.Remove(entity);
+            _lastSourceDefinitions.Remove(entity);
         }
     }
 
@@ -129,6 +137,7 @@ public sealed class AudioEcsBinder : IDisposable
             }
 
             _listenerIds[entity] = link.ListenerId;
+            _lastListenerLinks[entity] = link;
             _system.Listeners.Upsert(link.ListenerId, link.ToDescriptor());
             if (link.Active)
             {
@@ -147,6 +156,8 @@ public sealed class AudioEcsBinder : IDisposable
             {
                 _system.Listeners.RemoveListener(id);
             }
+
+            _lastListenerLinks.Remove(entity);
         }
     }
 
@@ -158,33 +169,51 @@ public sealed class AudioEcsBinder : IDisposable
     public IReadOnlyList<AudioBinderFailure> Update()
     {
         ThrowIfDisposed();
-        List<AudioBinderFailure>? failures = null;
+        _failures.Clear();
         Span<AudioSourceCommand> drain = stackalloc AudioSourceCommand[QueueCapacity];
 
         lock (_gate)
         {
             SweepDeadLocked();
 
-            List<(Entity Entity, AudioListenerRef Link)> listeners = new(_listenerIds.Count);
+            _listenerScratch.Clear();
             foreach (Entity entity in _listenerIds.Keys)
             {
                 if (_world.HasComponent<AudioListenerRef>(entity))
                 {
-                    listeners.Add((entity, _world.GetComponent<AudioListenerRef>(entity)));
+                    _listenerScratch.Add((entity, _world.GetComponent<AudioListenerRef>(entity)));
                 }
             }
 
-            foreach ((Entity _, AudioListenerRef link) in listeners)
+            for (int i = 0; i < _listenerScratch.Count; i++)
             {
-                _system.Listeners.Upsert(link.ListenerId, link.ToDescriptor());
-                if (link.Active)
+                (Entity entity, AudioListenerRef link) = _listenerScratch[i];
+                bool changed =
+                    !_lastListenerLinks.TryGetValue(entity, out AudioListenerRef last) || !last.Equals(link);
+                if (changed)
                 {
-                    _system.Listeners.SetActive(link.ListenerId);
+                    _lastListenerLinks[entity] = link;
+                    _system.Listeners.Upsert(link.ListenerId, link.ToDescriptor());
+                    if (link.Active)
+                    {
+                        _system.Listeners.SetActive(link.ListenerId);
+                    }
                 }
             }
 
-            foreach (Entity entity in new List<Entity>(_queues.Keys))
+            _entityScratch.Clear();
+            _entityScratch.AddRange(_sourceIds.Keys);
+            foreach (Entity queued in _queues.Keys)
             {
+                if (!_sourceIds.ContainsKey(queued))
+                {
+                    _entityScratch.Add(queued);
+                }
+            }
+
+            for (int q = 0; q < _entityScratch.Count; q++)
+            {
+                Entity entity = _entityScratch[q];
                 if (!_world.HasComponent<AudioSourceRef>(entity))
                 {
                     _queues.Remove(entity);
@@ -192,32 +221,44 @@ public sealed class AudioEcsBinder : IDisposable
                 }
 
                 ref AudioSourceRef link = ref _world.GetComponent<AudioSourceRef>(entity);
-                _system.Sources.Upsert(link.SourceId, link.ToDefinition());
-                _sourceIds[entity] = link.SourceId;
-
-                CommandQueue queue = _queues[entity];
-                int head = queue.Head;
-                int remaining = queue.Count;
-                int written = 0;
-                while (remaining > 0 && written < drain.Length)
+                AudioSourceDefinition definition = link.ToDefinition();
+                if (
+                    !_lastSourceDefinitions.TryGetValue(entity, out AudioSourceDefinition lastDefinition) ||
+                    !lastDefinition.Equals(definition)
+                )
                 {
-                    drain[written++] = queue.Ring[head];
-                    head = (head + 1) % queue.Ring.Length;
-                    remaining--;
+                    // Tuning edits propagate on change only: an unchanged source
+                    // must not emit an upsert event every frame.
+                    _lastSourceDefinitions[entity] = definition;
+                    _system.Sources.Upsert(link.SourceId, definition);
                 }
 
-                _queues[entity] = new CommandQueue(queue.Ring, head, queue.Tail, remaining);
+                _sourceIds[entity] = link.SourceId;
 
-                for (int i = 0; i < written; i++)
+                if (_queues.TryGetValue(entity, out CommandQueue queue))
                 {
-                    try
+                    int head = queue.Head;
+                    int remaining = queue.Count;
+                    int written = 0;
+                    while (remaining > 0 && written < drain.Length)
                     {
-                        Execute(link.SourceId, drain[i]);
+                        drain[written++] = queue.Ring[head];
+                        head = (head + 1) % queue.Ring.Length;
+                        remaining--;
                     }
-                    catch (Exception ex)
+
+                    _queues[entity] = new CommandQueue(queue.Ring, head, queue.Tail, remaining);
+
+                    for (int i = 0; i < written; i++)
                     {
-                        failures ??= new List<AudioBinderFailure>();
-                        failures.Add(new AudioBinderFailure(entity, drain[i].Type, ex));
+                        try
+                        {
+                            Execute(link.SourceId, drain[i]);
+                        }
+                        catch (Exception ex)
+                        {
+                            _failures.Add(new AudioBinderFailure(entity, drain[i].Type, ex));
+                        }
                     }
                 }
 
@@ -237,7 +278,7 @@ public sealed class AudioEcsBinder : IDisposable
             }
         }
 
-        return failures ?? (IReadOnlyList<AudioBinderFailure>)Array.Empty<AudioBinderFailure>();
+        return _failures.Count == 0 ? Array.Empty<AudioBinderFailure>() : _failures;
     }
 
     /// <inheritdoc/>
@@ -254,6 +295,12 @@ public sealed class AudioEcsBinder : IDisposable
             _autoplayed.Clear();
             _sourceIds.Clear();
             _listenerIds.Clear();
+            _lastSourceDefinitions.Clear();
+            _lastListenerLinks.Clear();
+            _sweepScratch.Clear();
+            _entityScratch.Clear();
+            _listenerScratch.Clear();
+            _failures.Clear();
         }
 
         GC.SuppressFinalize(this);
@@ -316,49 +363,46 @@ public sealed class AudioEcsBinder : IDisposable
 
     private void SweepDeadLocked()
     {
-        List<Entity>? dead = null;
+        _sweepScratch.Clear();
         foreach (Entity entity in _sourceIds.Keys)
         {
             if (!_world.HasComponent<AudioSourceRef>(entity))
             {
-                dead ??= new List<Entity>();
-                dead.Add(entity);
+                _sweepScratch.Add(entity);
             }
         }
 
-        if (dead is not null)
+        for (int i = 0; i < _sweepScratch.Count; i++)
         {
-            foreach (Entity entity in dead)
+            Entity entity = _sweepScratch[i];
+            if (_sourceIds.Remove(entity, out AudioSourceId id))
             {
-                if (_sourceIds.Remove(entity, out AudioSourceId id))
-                {
-                    _system.Sources.RemoveSource(id);
-                }
-
-                _queues.Remove(entity);
-                _autoplayed.Remove(entity);
+                _system.Sources.RemoveSource(id);
             }
+
+            _queues.Remove(entity);
+            _autoplayed.Remove(entity);
+            _lastSourceDefinitions.Remove(entity);
         }
 
-        List<Entity>? gone = null;
+        _sweepScratch.Clear();
         foreach (Entity entity in _listenerIds.Keys)
         {
             if (!_world.HasComponent<AudioListenerRef>(entity))
             {
-                gone ??= new List<Entity>();
-                gone.Add(entity);
+                _sweepScratch.Add(entity);
             }
         }
 
-        if (gone is not null)
+        for (int i = 0; i < _sweepScratch.Count; i++)
         {
-            foreach (Entity entity in gone)
+            Entity entity = _sweepScratch[i];
+            if (_listenerIds.Remove(entity, out AudioListenerId id) && _system.Listeners.RegisteredCount > 1)
             {
-                if (_listenerIds.Remove(entity, out AudioListenerId id) && _system.Listeners.RegisteredCount > 1)
-                {
-                    _system.Listeners.RemoveListener(id);
-                }
+                _system.Listeners.RemoveListener(id);
             }
+
+            _lastListenerLinks.Remove(entity);
         }
     }
 

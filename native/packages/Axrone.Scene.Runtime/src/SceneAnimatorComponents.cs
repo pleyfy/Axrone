@@ -67,6 +67,12 @@ public struct SceneAnimator : ISceneDataComponent
     /// <summary>Layer queried by state accessors.</summary>
     public int ActiveLayer;
 
+    /// <summary>First curve slot holding this actor's morph weights.</summary>
+    public int MorphCurveOffset;
+
+    /// <summary>Number of contiguous morph-weight curve slots.</summary>
+    public int MorphCurveCount;
+
     /// <summary>Default enabled animator at unit speed without root motion.</summary>
     public static SceneAnimator Default
     {
@@ -78,7 +84,9 @@ public struct SceneAnimator : ISceneDataComponent
             Paused = false,
             Enabled = true,
             ApplyRootMotion = false,
-            ActiveLayer = 0
+            ActiveLayer = 0,
+            MorphCurveOffset = 0,
+            MorphCurveCount = 0
         };
     }
 }

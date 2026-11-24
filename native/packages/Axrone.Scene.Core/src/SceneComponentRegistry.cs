@@ -174,7 +174,7 @@ public sealed class SceneComponentRegistry
         SceneComponentTraits traits = SceneComponentTraits.None,
         int priority = 0,
         ReadOnlySpan<SceneStringId> dependencies = default)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ArgumentNullException.ThrowIfNull(factory);
         ValidateTraits(in traits, name);
@@ -242,7 +242,7 @@ public sealed class SceneComponentRegistry
         SceneComponentTraits traits = SceneComponentTraits.None,
         int priority = 0,
         ReadOnlySpan<SceneStringId> dependencies = default)
-        where T : SceneBehaviour, new() =>
+        where T : class, ISceneBehaviour, new() =>
         RegisterBehaviour(name, static () => new T(), traits, priority, dependencies);
 
     /// <summary>Registers a managed behaviour type by string name.</summary>
@@ -253,7 +253,7 @@ public sealed class SceneComponentRegistry
         SceneComponentTraits traits = SceneComponentTraits.None,
         int priority = 0,
         ReadOnlySpan<SceneStringId> dependencies = default)
-        where T : SceneBehaviour
+        where T : class, ISceneBehaviour
     {
         ArgumentNullException.ThrowIfNull(name);
         return RegisterBehaviour(name.AsSpan(), factory, traits, priority, dependencies);
@@ -266,7 +266,7 @@ public sealed class SceneComponentRegistry
         SceneComponentTraits traits = SceneComponentTraits.None,
         int priority = 0,
         ReadOnlySpan<SceneStringId> dependencies = default)
-        where T : SceneBehaviour, new() =>
+        where T : class, ISceneBehaviour, new() =>
         RegisterBehaviour(name.AsSpan(), static () => new T(), traits, priority, dependencies);
 
     /// <summary>Resolves a data component descriptor by dense id.</summary>

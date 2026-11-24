@@ -107,7 +107,9 @@ public readonly record struct ShadowCameraParameters
 /// <summary>Builds cascade view-projection matrices from camera and light state.</summary>
 public static class ShadowCascadeFrameBuilder
 {
-    private static readonly Vec3 DefaultForward = new(0.0f, 0.0f, -1.0f);
+    // Fallback for the light RAY, not a camera forward: lights emit along local
+    // +Z, matching SceneLightingCollector.LocalForward and WebGL2's Vec3.FORWARD.
+    private static readonly Vec3 DefaultForward = new(0.0f, 0.0f, 1.0f);
     private static readonly Vec3 DefaultUp = Vec3.UnitY;
     private static readonly Vec3 DefaultRight = Vec3.UnitX;
 

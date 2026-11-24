@@ -27,7 +27,8 @@ public sealed partial class InputEngine<TSchema> : IDisposable where TSchema : u
     private InputSnapshot _snapshot;
     private InputCompositionState _composition;
     private bool _focused = true;
-    private bool _disposed;
+    private int _disposed;
+    private readonly Lock _tokenGate = new();
     private ulong _sequence;
     private ulong _frame;
 
@@ -46,7 +47,6 @@ public sealed partial class InputEngine<TSchema> : IDisposable where TSchema : u
             {
                 MaxSubscribers = 32,
                 WaiterPoolCapacity = 8,
-                PinnedRingCapacity = 64,
             });
     }
 
@@ -235,13 +235,22 @@ public sealed partial class InputEngine<TSchema> : IDisposable where TSchema : u
     {
         Axrone.Event.Hub.SubscriptionToken token =
             _hub.Subscribe(new InputActionDispatch<TSchema>(callback, action, phases));
-        if (!_tokens.TryGetValue(callback, out List<Axrone.Event.Hub.SubscriptionToken>? tokens))
+        lock (_tokenGate)
         {
-            tokens = new List<Axrone.Event.Hub.SubscriptionToken>();
-            _tokens[callback] = tokens;
-        }
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                _hub.Unsubscribe(token);
+                ThrowIfDisposed();
+            }
 
-        tokens.Add(token);
+            if (!_tokens.TryGetValue(callback, out List<Axrone.Event.Hub.SubscriptionToken>? tokens))
+            {
+                tokens = new List<Axrone.Event.Hub.SubscriptionToken>();
+                _tokens[callback] = tokens;
+            }
+
+            tokens.Add(token);
+        }
     }
 
     /// <summary>Unsubscribes a callback.</summary>
@@ -249,9 +258,13 @@ public sealed partial class InputEngine<TSchema> : IDisposable where TSchema : u
     public void Unsubscribe(Action<InputActionCallbackContext<TSchema>> callback)
     {
         ThrowIfDisposed();
-        if (!_tokens.Remove(callback, out List<Axrone.Event.Hub.SubscriptionToken>? tokens))
+        List<Axrone.Event.Hub.SubscriptionToken>? tokens;
+        lock (_tokenGate)
         {
-            return;
+            if (!_tokens.Remove(callback, out tokens))
+            {
+                return;
+            }
         }
 
         for (int i = 0; i < tokens.Count; i++)
@@ -263,15 +276,18 @@ public sealed partial class InputEngine<TSchema> : IDisposable where TSchema : u
     /// <summary>Releases engine state.</summary>
     public void Dispose()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
 
-        _disposed = true;
         _rebind?.Cancel(RebindCancelReason.Disposed);
         _rebind = null;
-        _tokens.Clear();
+        lock (_tokenGate)
+        {
+            _tokens.Clear();
+        }
+
         _hub.Dispose();
         _contexts.Clear();
         _users.Clear();
@@ -337,7 +353,7 @@ public sealed partial class InputEngine<TSchema> : IDisposable where TSchema : u
     /// <summary>Throws when used after disposal.</summary>
     private void ThrowIfDisposed()
     {
-        if (_disposed)
+        if (Volatile.Read(ref _disposed) != 0)
         {
             ThrowHelper.ThrowDisposed();
         }
