@@ -26,33 +26,33 @@ public sealed class SceneSkinnedMeshTests
     {
         var store = new SceneBonePaletteStore();
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.SkinnedMesh);
-        SceneActor actor = world.CreateActor("Skinned");
+        SceneEntity entity = world.CreateEntity("Skinned");
         Mat4[] palette = [Mat4.CreateTranslation(1, 0, 0), Mat4.CreateTranslation(2, 0, 0)];
 
-        store.ApplyBonePalette(actor, palette);
+        store.ApplyBonePalette(entity, palette);
 
         store.Count.Should().Be(1);
         store.Revision.Should().Be(1);
-        store.TryGetBonePalette(actor, out ReadOnlySpan<Mat4> stored).Should().BeTrue();
+        store.TryGetBonePalette(entity, out ReadOnlySpan<Mat4> stored).Should().BeTrue();
         stored.Length.Should().Be(2);
         stored[1].M41.Should().Be(2.0f);
 
         palette[0] = Mat4.Identity;
-        store.TryGetBonePalette(actor, out stored).Should().BeTrue();
+        store.TryGetBonePalette(entity, out stored).Should().BeTrue();
         stored[0].M41.Should().Be(1.0f);
 
-        store.ApplyBonePalette(actor, ReadOnlySpan<Mat4>.Empty);
+        store.ApplyBonePalette(entity, ReadOnlySpan<Mat4>.Empty);
         store.Count.Should().Be(0);
         store.Revision.Should().Be(2);
-        store.TryGetBonePalette(actor, out _).Should().BeFalse();
+        store.TryGetBonePalette(entity, out _).Should().BeFalse();
     }
 
     [Fact]
     public void PaletteStoreRemovesAndClears()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.SkinnedMesh);
-        SceneActor first = world.CreateActor("First");
-        SceneActor second = world.CreateActor("Second");
+        SceneEntity first = world.CreateEntity("First");
+        SceneEntity second = world.CreateEntity("Second");
         var store = new SceneBonePaletteStore();
         store.ApplyBonePalette(first, [Mat4.Identity]);
         store.ApplyBonePalette(second, [Mat4.Identity]);
@@ -69,7 +69,7 @@ public sealed class SceneSkinnedMeshTests
     public void PaletteUpdateIsZeroAllocationAtSteadyCapacity()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.SkinnedMesh);
-        SceneActor actor = world.CreateActor("Skinned");
+        SceneEntity entity = world.CreateEntity("Skinned");
         var store = new SceneBonePaletteStore();
         Mat4[] palette = new Mat4[16];
         for (int i = 0; i < palette.Length; i++)
@@ -77,13 +77,13 @@ public sealed class SceneSkinnedMeshTests
             palette[i] = Mat4.CreateTranslation(i, 0, 0);
         }
 
-        store.ApplyBonePalette(actor, palette);
-        store.ApplyBonePalette(actor, palette);
+        store.ApplyBonePalette(entity, palette);
+        store.ApplyBonePalette(entity, palette);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 64; i++)
         {
-            store.ApplyBonePalette(actor, palette);
+            store.ApplyBonePalette(entity, palette);
         }
 
         long delta = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -94,39 +94,39 @@ public sealed class SceneSkinnedMeshTests
     public void CollectorOrdersCullsAndSkipsIncompleteRenderers()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.SkinnedMesh);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         var assets = new SceneAssetRegistry();
         SceneMeshDefinition mesh = RenderingFixture.CreateMesh(assets, "mesh/skinned", radius: 1.0f);
         assets.Meshes.Register(mesh);
 
         SceneSkinnedMeshRenderer late = Renderer(renderOrder: 5);
         late.MeshId = mesh.Id;
-        SceneActor lateActor = world.CreateActor("Late");
-        world.AddData(lateActor, late);
+        SceneEntity lateEntity = world.CreateEntity("Late");
+        world.AddData(lateEntity, late);
 
         SceneSkinnedMeshRenderer early = Renderer(renderOrder: 1);
         early.MeshId = mesh.Id;
-        SceneActor earlyActor = world.CreateActor("Early");
-        world.AddData(earlyActor, early);
+        SceneEntity earlyEntity = world.CreateEntity("Early");
+        world.AddData(earlyEntity, early);
 
         SceneSkinnedMeshRenderer invisible = Renderer();
         invisible.Visible = false;
-        SceneActor invisibleActor = world.CreateActor("Invisible");
-        world.AddData(invisibleActor, invisible);
+        SceneEntity invisibleEntity = world.CreateEntity("Invisible");
+        world.AddData(invisibleEntity, invisible);
 
-        SceneActor behindActor = world.CreateActor("Behind");
-        world.GetTransform3D(behindActor).SetPosition(new Vec3(0, 0, 20));
+        SceneEntity behindEntity = world.CreateEntity("Behind");
+        world.GetTransform3D(behindEntity).SetPosition(new Vec3(0, 0, 20));
         SceneSkinnedMeshRenderer behind = Renderer();
         behind.MeshId = mesh.Id;
-        world.AddData(behindActor, behind);
+        world.AddData(behindEntity, behind);
         world.UpdateTransforms();
 
         var collector = new SceneSkinnedMeshItemCollector();
 
         collector.Collect(world, frame, SceneRenderPassIds.Main, assets).Should().Be(2);
-        collector.Items[0].Actor.Should().Be(earlyActor);
-        collector.Items[1].Actor.Should().Be(lateActor);
+        collector.Items[0].Entity.Should().Be(earlyEntity);
+        collector.Items[1].Entity.Should().Be(lateEntity);
         collector.CulledCount.Should().Be(1);
     }
 
@@ -134,8 +134,8 @@ public sealed class SceneSkinnedMeshTests
     public void CollectorIsZeroAllocationAfterWarmup()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.SkinnedMesh);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
         var assets = new SceneAssetRegistry();
         SceneMeshDefinition mesh = RenderingFixture.CreateMesh(assets, "mesh/skinned");
         assets.Meshes.Register(mesh);
@@ -144,9 +144,9 @@ public sealed class SceneSkinnedMeshTests
         {
             SceneSkinnedMeshRenderer renderer = Renderer(i);
             renderer.MeshId = mesh.Id;
-            SceneActor actor = world.CreateActor($"Skinned{i}");
-            world.GetTransform3D(actor).SetPosition(new Vec3(i * 0.1f, 0, 0));
-            world.AddData(actor, renderer);
+            SceneEntity entity = world.CreateEntity($"Skinned{i}");
+            world.GetTransform3D(entity).SetPosition(new Vec3(i * 0.1f, 0, 0));
+            world.AddData(entity, renderer);
         }
 
         world.UpdateTransforms();
@@ -166,9 +166,9 @@ public sealed class SceneSkinnedMeshTests
     public void WorldWithoutComponentCollectsNothing()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Billboard);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
-        _ = world.CreateActor("Plain");
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
+        _ = world.CreateEntity("Plain");
         world.UpdateTransforms();
 
         var collector = new SceneSkinnedMeshItemCollector();

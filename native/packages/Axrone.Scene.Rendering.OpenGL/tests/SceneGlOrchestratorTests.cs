@@ -50,21 +50,21 @@ public sealed class SceneGlOrchestratorTests
             clearColor: new Vec4(0.05f, 0.06f, 0.08f, 1.0f));
         assets.RenderPasses.Register(pass);
 
-        using SceneWorld world = CreateMixedWorld(out SceneActor cameraActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 640, 360)!;
+        using SceneWorld world = CreateMixedWorld(out SceneEntity cameraEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 640, 360)!;
 
-        SceneActor meshActor = world.CreateActor("Mesh");
+        SceneEntity meshEntity = world.CreateEntity("Mesh");
         SceneMeshRenderer renderer = SceneMeshRenderer.Default;
         renderer.MeshId = meshId;
         renderer.MaterialId = materialId;
         renderer.PassId = passId;
-        world.AddData(meshActor, renderer);
+        world.AddData(meshEntity, renderer);
 
-        SceneActor spriteActor = world.CreateActor("Sprite");
+        SceneEntity spriteEntity = world.CreateEntity("Sprite");
         SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
         sprite.TextureId = textureId;
         sprite.PassId = passId;
-        world.AddData(spriteActor, sprite);
+        world.AddData(spriteEntity, sprite);
         world.UpdateTransforms();
 
         var meshCollector = new SceneRenderItemCollector();
@@ -114,8 +114,8 @@ public sealed class SceneGlOrchestratorTests
         var api = new MockGLApi();
         using var context = new GLContext(api);
         var assets = new SceneAssetRegistry();
-        using SceneWorld world = CreateMixedWorld(out SceneActor cameraActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 640, 360)!;
+        using SceneWorld world = CreateMixedWorld(out SceneEntity cameraEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 640, 360)!;
 
         using var cache = new SceneGlAssetCache(context, assets);
         cache.UploadAll();
@@ -134,7 +134,7 @@ public sealed class SceneGlOrchestratorTests
         stats.DrawCalls.Should().Be(0);
     }
 
-    private static SceneWorld CreateMixedWorld(out SceneActor cameraActor)
+    private static SceneWorld CreateMixedWorld(out SceneEntity cameraEntity)
     {
         var builder = new SceneProfileBuilder(
                 new SceneProfileId(SceneStringId.FromName("test/gl-mixed")))
@@ -147,11 +147,11 @@ public sealed class SceneGlOrchestratorTests
             priority: 100);
 
         SceneWorld world = builder.Build().CreateWorld();
-        cameraActor = world.CreateActor("Camera3D");
-        world.GetTransform3D(cameraActor).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
+        cameraEntity = world.CreateEntity("Camera3D");
+        world.GetTransform3D(cameraEntity).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(cameraActor, camera);
+        world.AddData(cameraEntity, camera);
         world.UpdateTransforms();
         return world;
     }

@@ -76,8 +76,8 @@ public struct SceneTrailRenderer : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneTrailRenderItem
 {
-    /// <summary>Owning actor.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity.</summary>
+    public SceneEntity Entity;
 
     /// <summary>World-space segment start.</summary>
     public Vec3 Start;
@@ -166,14 +166,14 @@ public sealed class SceneTrailItemCollector
 
         _count = 0;
         CulledCount = 0;
-        EnsureCapacity(Math.Max(world.ActorCount, 16));
+        EnsureCapacity(Math.Max(world.EntityCount, 16));
 
         CameraFrustum frustum = cameraFrame.Frustum;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneTrailRenderer trail) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneTrailRenderer trail) ||
                 !trail.Enabled ||
                 !trail.Visible ||
                 trail.Width <= 0.0f ||
@@ -228,7 +228,7 @@ public sealed class SceneTrailItemCollector
                 }
 
                 ref SceneTrailRenderItem item = ref _items[_count];
-                item.Actor = actor;
+                item.Entity = entity;
                 item.Start = startPoint.Position;
                 item.End = endPoint.Position;
                 item.Width = trail.Width;

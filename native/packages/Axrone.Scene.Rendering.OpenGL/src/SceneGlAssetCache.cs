@@ -402,7 +402,7 @@ public sealed class SceneGlAssetCache : IDisposable
     }
 
     /// <summary>
-    /// Creates a GPU mesh without registering it. Used for per-actor morph
+    /// Creates a GPU mesh without registering it. Used for per-entity morph
     /// variants that share the asset definition but need their own vertex buffer.
     /// </summary>
     public GLMesh CreateMesh(SceneMeshDefinition definition)

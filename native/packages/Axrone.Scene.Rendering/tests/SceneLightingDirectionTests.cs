@@ -22,7 +22,7 @@ public sealed class SceneLightingDirectionTests
     public void DirectionalLightEmitsAlongLocalPositiveZ()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor sun = world.CreateActor("Sun");
+        SceneEntity sun = world.CreateEntity("Sun");
         world.GetTransform3D(sun).SetRotation(Euler(SamplePitchX, SampleYawY, 0.0f));
         world.AddData(sun, new SceneDirectionalLight
         {
@@ -58,7 +58,7 @@ public sealed class SceneLightingDirectionTests
     public void SpotLightEmitsAlongLocalPositiveZ()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor lamp = world.CreateActor("Lamp");
+        SceneEntity lamp = world.CreateEntity("Lamp");
         world.GetTransform3D(lamp).SetPosition(new Vec3(0.0f, 4.0f, 0.0f));
         world.GetTransform3D(lamp).SetRotation(Euler(SamplePitchX, SampleYawY, 0.0f));
         world.AddData(lamp, new SceneSpotLight
@@ -93,7 +93,7 @@ public sealed class SceneLightingDirectionTests
     public void UnrotatedLightShinesTowardsPositiveZ()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor sun = world.CreateActor("Sun");
+        SceneEntity sun = world.CreateEntity("Sun");
         world.AddData(sun, new SceneDirectionalLight
         {
             Color = Vec3.One,

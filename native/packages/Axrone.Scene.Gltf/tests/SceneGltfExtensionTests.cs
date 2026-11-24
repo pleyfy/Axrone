@@ -109,7 +109,7 @@ public sealed class SceneGltfExtensionTests
     }
 
     [Fact]
-    public void Convert_MapsAlphaAndAdditiveBlendFactors()
+    public void Convert_MapsAlphaAndAdditiveBlendFentities()
     {
         GltfMaterialAsset blended = SceneGltfTestFactory.Material(alphaMode: GltfAlphaMode.Blend);
 
@@ -180,12 +180,12 @@ public sealed class SceneGltfExtensionTests
         GltfMeshAsset mesh = SceneGltfTestFactory.Mesh(
             attributes: attributes,
             morphTargets: morphTargets);
-        GltfActorSnapshot actor = SceneGltfTestFactory.Actor(
+        GltfEntitySnapshot entity = SceneGltfTestFactory.Entity(
             skinId: "skin0",
             morphWeights: [0.3f, 0.7f]);
         GltfImportResult result = SceneGltfTestFactory.Result(
             meshes: [mesh],
-            prefabs: [SceneGltfTestFactory.Prefab(actors: [actor])],
+            prefabs: [SceneGltfTestFactory.Prefab(entities: [entity])],
             skins: [SceneGltfTestFactory.Skin(id: "skin0")],
             animations:
             [
@@ -224,16 +224,16 @@ public sealed class SceneGltfExtensionTests
     [Fact]
     public void Import_WritesSkinAndMorphWeightsIntoTheRendererSnapshot()
     {
-        GltfActorSnapshot actor = SceneGltfTestFactory.Actor(
+        GltfEntitySnapshot entity = SceneGltfTestFactory.Entity(
             skinId: "skin0",
             morphWeights: [0.3f, 0.7f]);
         GltfImportResult result = SceneGltfTestFactory.Result(
-            prefabs: [SceneGltfTestFactory.Prefab(actors: [actor])],
+            prefabs: [SceneGltfTestFactory.Prefab(entities: [entity])],
             skins: [SceneGltfTestFactory.Skin(id: "skin0")],
             animations: [SceneGltfTestFactory.Animation(id: "animation0")]);
 
         SceneGltfImportResult imported = SceneGltfAdapter.Import(result);
-        SceneComponentSnapshot renderer = imported.Snapshot.Prefab.Actors[0].Components
+        SceneComponentSnapshot renderer = imported.Snapshot.Prefab.Entities[0].Components
             .Should().ContainSingle(component => component.Type == "MeshRenderer").Subject;
 
         renderer.Data.GetProperty("skin").GetString().Should().Be("gltf/skin0");

@@ -1,7 +1,7 @@
 namespace Axrone.Scene.Rendering;
 
 /// <summary>
-/// Marks a camera as 2D: the frame collector derives the view from the actor's
+/// Marks a camera as 2D: the frame collector derives the view from the entity's
 /// <c>Transform2D</c> and places the camera <see cref="Depth"/> units in front of
 /// the scene plane. The remaining projection and clear settings live on the
 /// attached <see cref="SceneCamera"/>.
@@ -20,20 +20,20 @@ public struct SceneCamera2D : ISceneDataComponent
     }
 }
 
-/// <summary>Selects the active 2D camera in stable actor order.</summary>
+/// <summary>Selects the active 2D camera in stable entity order.</summary>
 public static class SceneCamera2DSelector
 {
-    /// <summary>Selects a camera actor carrying both camera components.</summary>
-    public static bool TrySelect(SceneWorld world, out SceneActor cameraActor)
+    /// <summary>Selects a camera entity carrying both camera components.</summary>
+    public static bool TrySelect(SceneWorld world, out SceneEntity cameraEntity)
     {
         ArgumentNullException.ThrowIfNull(world);
 
-        SceneActor fallback = SceneActor.Null;
-        foreach (SceneActor actor in world.Actors)
+        SceneEntity fallback = SceneEntity.Null;
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneCamera camera) ||
-                !world.HasData<SceneCamera2D>(actor) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneCamera camera) ||
+                !world.HasData<SceneCamera2D>(entity) ||
                 !camera.Enabled)
             {
                 continue;
@@ -41,18 +41,18 @@ public static class SceneCamera2DSelector
 
             if (camera.Primary)
             {
-                cameraActor = actor;
+                cameraEntity = entity;
                 return true;
             }
 
             if (fallback.IsNull)
             {
-                fallback = actor;
+                fallback = entity;
             }
         }
 
-        cameraActor = fallback;
-        return cameraActor.IsValid;
+        cameraEntity = fallback;
+        return cameraEntity.IsValid;
     }
 }
 
@@ -71,15 +71,15 @@ public sealed class SceneCamera2DFrameCollector
     public SceneCameraFrame? Collect(SceneWorld world, int viewportWidth, int viewportHeight)
     {
         ArgumentNullException.ThrowIfNull(world);
-        return SceneCamera2DSelector.TrySelect(world, out SceneActor cameraActor)
-            ? Collect(world, cameraActor, viewportWidth, viewportHeight)
+        return SceneCamera2DSelector.TrySelect(world, out SceneEntity cameraEntity)
+            ? Collect(world, cameraEntity, viewportWidth, viewportHeight)
             : null;
     }
 
-    /// <summary>Collects the frame for an explicit 2D camera actor.</summary>
+    /// <summary>Collects the frame for an explicit 2D camera entity.</summary>
     public SceneCameraFrame? Collect(
         SceneWorld world,
-        SceneActor cameraActor,
+        SceneEntity cameraEntity,
         int viewportWidth,
         int viewportHeight)
     {
@@ -93,9 +93,9 @@ public sealed class SceneCamera2DFrameCollector
         }
 
         if (!world.HasTransform2D ||
-            !world.TryGetData(cameraActor, out SceneCamera camera) ||
+            !world.TryGetData(cameraEntity, out SceneCamera camera) ||
             !camera.Enabled ||
-            !world.TryGetData(cameraActor, out SceneCamera2D camera2D))
+            !world.TryGetData(cameraEntity, out SceneCamera2D camera2D))
         {
             return null;
         }
@@ -103,8 +103,8 @@ public sealed class SceneCamera2DFrameCollector
         Validate(in camera, in camera2D);
 
         float aspectRatio = viewportWidth / (float)viewportHeight;
-        Vec2 worldPosition = world.GetWorldPosition2D(cameraActor);
-        Mat3 worldMatrix = world.GetWorldMatrix2D(cameraActor);
+        Vec2 worldPosition = world.GetWorldPosition2D(cameraEntity);
+        Mat3 worldMatrix = world.GetWorldMatrix2D(cameraEntity);
         float rotationRadians = MathF.Atan2(worldMatrix.M12, worldMatrix.M11);
 
         var position = new Vec3(worldPosition.X, worldPosition.Y, -camera2D.Depth);
@@ -121,7 +121,7 @@ public sealed class SceneCamera2DFrameCollector
         Quat rotation = Quat.CreateFromAxisAngle(Forward, rotationRadians);
 
         _frame.Update(
-            in cameraActor,
+            in cameraEntity,
             in camera,
             in position,
             in rotation,

@@ -14,10 +14,10 @@ public sealed class SceneRendering2DTests
     public void Camera2DFrame_ProjectsScenePlane()
     {
         using SceneWorld world = CreateProfile2D().CreateWorld();
-        SceneActor cameraActor = CreateCamera2D(world, new Vec2(0.0f, 0.0f), orthographicSize: 5.0f);
+        SceneEntity cameraEntity = CreateCamera2D(world, new Vec2(0.0f, 0.0f), orthographicSize: 5.0f);
         var collector = new SceneCamera2DFrameCollector();
 
-        SceneCameraFrame? frame = collector.Collect(world, cameraActor, 1280, 720);
+        SceneCameraFrame? frame = collector.Collect(world, cameraEntity, 1280, 720);
 
         frame.Should().NotBeNull();
         frame!.Position.Should().Be(new Vec3(0.0f, 0.0f, -10.0f));
@@ -35,13 +35,13 @@ public sealed class SceneRendering2DTests
         SceneAssetId<TextureAssetTag> textureId = TextureId();
         SceneCameraFrame frame = new SceneCamera2DFrameCollector().Collect(world, 640, 360)!;
 
-        SceneActor actor = world.CreateActor("Sliced");
-        world.GetTransform2D(actor).SetPosition(Vec2.Zero);
+        SceneEntity entity = world.CreateEntity("Sliced");
+        world.GetTransform2D(entity).SetPosition(Vec2.Zero);
         SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
         sprite.TextureId = textureId;
         sprite.SourceSize = new Vec2(16.0f, 16.0f);
         sprite.SliceBorder = new Vec4(4.0f, 4.0f, 4.0f, 4.0f);
-        world.AddData(actor, sprite);
+        world.AddData(entity, sprite);
         world.UpdateTransforms();
 
         var collector = new SceneSpriteItemCollector();
@@ -56,9 +56,9 @@ public sealed class SceneRendering2DTests
     {
         using SceneWorld world = CreateProfile2D().CreateWorld();
         _ = CreateCamera2D(world, new Vec2(0.0f, 0.0f), primary: false);
-        SceneActor primary = CreateCamera2D(world, new Vec2(3.0f, 4.0f), primary: true);
+        SceneEntity primary = CreateCamera2D(world, new Vec2(3.0f, 4.0f), primary: true);
 
-        SceneCamera2DSelector.TrySelect(world, out SceneActor selected).Should().BeTrue();
+        SceneCamera2DSelector.TrySelect(world, out SceneEntity selected).Should().BeTrue();
         selected.Should().Be(primary);
     }
 
@@ -79,18 +79,18 @@ public sealed class SceneRendering2DTests
         SceneAssetId<TextureAssetTag> textureId = TextureId();
         SceneCameraFrame frame = new SceneCamera2DFrameCollector().Collect(world, 640, 360)!;
 
-        SceneActor far = CreateSprite(world, textureId, new Vec2(-1.0f, 0.0f), sortingLayer: 0, depth: 0.5f);
-        SceneActor near = CreateSprite(world, textureId, new Vec2(0.0f, 0.0f), sortingLayer: 0, depth: 0.2f);
-        SceneActor topLayer = CreateSprite(world, textureId, new Vec2(1.0f, 0.0f), sortingLayer: 1, depth: -1.0f);
+        SceneEntity far = CreateSprite(world, textureId, new Vec2(-1.0f, 0.0f), sortingLayer: 0, depth: 0.5f);
+        SceneEntity near = CreateSprite(world, textureId, new Vec2(0.0f, 0.0f), sortingLayer: 0, depth: 0.2f);
+        SceneEntity topLayer = CreateSprite(world, textureId, new Vec2(1.0f, 0.0f), sortingLayer: 1, depth: -1.0f);
         world.UpdateTransforms();
 
         var collector = new SceneSpriteItemCollector();
         int count = collector.Collect(world, frame, SceneRenderPassIds.Main);
 
         count.Should().Be(3);
-        collector.Items[0].Actor.Should().Be(near);
-        collector.Items[1].Actor.Should().Be(far);
-        collector.Items[2].Actor.Should().Be(topLayer);
+        collector.Items[0].Entity.Should().Be(near);
+        collector.Items[1].Entity.Should().Be(far);
+        collector.Items[2].Entity.Should().Be(topLayer);
     }
 
     [Fact]
@@ -166,40 +166,40 @@ public sealed class SceneRendering2DTests
             .AddRendering2D()
             .Build();
 
-    private static SceneActor CreateCamera2D(
+    private static SceneEntity CreateCamera2D(
         SceneWorld world,
         Vec2 position,
         float orthographicSize = 5.0f,
         bool primary = true)
     {
-        SceneActor actor = world.CreateActor("Camera2D");
-        world.GetTransform2D(actor).SetPosition(position);
+        SceneEntity entity = world.CreateEntity("Camera2D");
+        world.GetTransform2D(entity).SetPosition(position);
 
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = primary;
         camera.OrthographicSize = orthographicSize;
-        world.AddData(actor, camera);
-        world.AddData(actor, SceneCamera2D.Default);
+        world.AddData(entity, camera);
+        world.AddData(entity, SceneCamera2D.Default);
         world.UpdateTransforms();
-        return actor;
+        return entity;
     }
 
-    private static SceneActor CreateSprite(
+    private static SceneEntity CreateSprite(
         SceneWorld world,
         SceneAssetId<TextureAssetTag> textureId,
         Vec2 position,
         int sortingLayer = 0,
         float depth = 0.0f)
     {
-        SceneActor actor = world.CreateActor("Sprite");
-        world.GetTransform2D(actor).SetPosition(position);
+        SceneEntity entity = world.CreateEntity("Sprite");
+        world.GetTransform2D(entity).SetPosition(position);
 
         SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
         sprite.TextureId = textureId;
         sprite.SortingLayer = sortingLayer;
         sprite.Depth = depth;
-        world.AddData(actor, sprite);
-        return actor;
+        world.AddData(entity, sprite);
+        return entity;
     }
 
     private static SceneAssetId<TextureAssetTag> TextureId() =>

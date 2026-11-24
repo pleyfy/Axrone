@@ -24,10 +24,10 @@ public sealed class SceneGlPrimitiveTests
         using SceneWorld world = CreateWorld(SceneRenderableFeatures.Billboard);
         SceneCameraFrame frame = CreateCameraFrame(world);
 
-        SceneActor actor = world.CreateActor("Billboard");
+        SceneEntity entity = world.CreateEntity("Billboard");
         SceneBillboardRenderer billboard = SceneBillboardRenderer.Default;
         billboard.TextureId = texture;
-        world.AddData(actor, billboard);
+        world.AddData(entity, billboard);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
@@ -195,13 +195,13 @@ public sealed class SceneGlPrimitiveTests
 
     private static SceneCameraFrame CreateCameraFrame(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0, 0, 10));
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0, 0, 10));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(actor, camera);
+        world.AddData(entity, camera);
         world.UpdateTransforms();
-        return new SceneCameraFrameCollector().Collect(world, actor, 800, 600)!;
+        return new SceneCameraFrameCollector().Collect(world, entity, 800, 600)!;
     }
 
     private static SceneRenderPassDefinition CreatePass() => new(

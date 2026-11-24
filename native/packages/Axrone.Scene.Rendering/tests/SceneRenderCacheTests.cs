@@ -14,7 +14,7 @@ public sealed class SceneRenderCacheTests
 
     private static SceneRenderItem Item(int index) => new()
     {
-        Actor = default,
+        Entity = default,
         MeshId = SceneAssetId<MeshAssetTag>.FromName($"mesh/{index}"),
         MaterialId = SceneAssetId<MaterialAssetTag>.FromName("material/cache"),
         RenderOrder = index,

@@ -14,7 +14,7 @@ public enum SceneFogMode : byte
 }
 
 /// <summary>
-/// Scene fog data component. One active actor carries the fog settings; the
+/// Scene fog data component. One active entity carries the fog settings; the
 /// frame planner resolves them into <see cref="SceneFogState"/> for the shader
 /// uniform binder.
 /// </summary>
@@ -106,18 +106,18 @@ public readonly record struct SceneFogState(
     }
 }
 
-/// <summary>Selects the scene fog component in stable actor order.</summary>
+/// <summary>Selects the scene fog component in stable entity order.</summary>
 public static class SceneFogSelector
 {
-    /// <summary>Resolves fog from the first active actor that carries a fog component.</summary>
+    /// <summary>Resolves fog from the first active entity that carries a fog component.</summary>
     public static bool TrySelect(SceneWorld world, out SceneFogState state)
     {
         ArgumentNullException.ThrowIfNull(world);
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneFog fog))
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneFog fog))
             {
                 continue;
             }

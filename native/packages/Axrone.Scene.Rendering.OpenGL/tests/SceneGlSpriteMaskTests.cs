@@ -26,17 +26,17 @@ public sealed class SceneGlSpriteMaskTests
         using SceneWorld world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
 
-        SceneActor actor = world.CreateActor("Sprite");
+        SceneEntity entity = world.CreateEntity("Sprite");
         SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
         sprite.TextureId = texture;
-        world.AddData(actor, sprite);
+        world.AddData(entity, sprite);
 
         SceneSpriteMask mask = SceneSpriteMask.Default;
         mask.Kind = SceneSpriteMaskKind.Ellipse;
         mask.Rect = new Vec4(0.1f, 0.2f, 0.3f, 0.4f);
         mask.Invert = true;
         mask.Feather = 0.15f;
-        world.AddData(actor, mask);
+        world.AddData(entity, mask);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
@@ -64,14 +64,14 @@ public sealed class SceneGlSpriteMaskTests
 
     private static SceneCameraFrame CreateCameraFrame(SceneWorld world)
     {
-        SceneActor cameraActor = world.CreateActor("Camera2D");
-        world.GetTransform2D(cameraActor).SetPosition(Vec2.Zero);
+        SceneEntity cameraEntity = world.CreateEntity("Camera2D");
+        world.GetTransform2D(cameraEntity).SetPosition(Vec2.Zero);
 
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
         camera.OrthographicSize = 5.0f;
-        world.AddData(cameraActor, camera);
-        world.AddData(cameraActor, SceneCamera2D.Default);
+        world.AddData(cameraEntity, camera);
+        world.AddData(cameraEntity, SceneCamera2D.Default);
         world.UpdateTransforms();
 
         return new SceneCamera2DFrameCollector().Collect(world, 320, 180)!;

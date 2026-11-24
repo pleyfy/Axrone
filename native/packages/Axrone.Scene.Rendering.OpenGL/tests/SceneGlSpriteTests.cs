@@ -89,14 +89,14 @@ public sealed class SceneGlSpriteTests
 
     private static SceneCameraFrame CreateCameraFrame(SceneWorld world)
     {
-        SceneActor cameraActor = world.CreateActor("Camera2D");
-        world.GetTransform2D(cameraActor).SetPosition(Vec2.Zero);
+        SceneEntity cameraEntity = world.CreateEntity("Camera2D");
+        world.GetTransform2D(cameraEntity).SetPosition(Vec2.Zero);
 
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
         camera.OrthographicSize = 5.0f;
-        world.AddData(cameraActor, camera);
-        world.AddData(cameraActor, SceneCamera2D.Default);
+        world.AddData(cameraEntity, camera);
+        world.AddData(cameraEntity, SceneCamera2D.Default);
         world.UpdateTransforms();
 
         return new SceneCamera2DFrameCollector().Collect(world, 320, 180)!;
@@ -130,12 +130,12 @@ public sealed class SceneGlSpriteTests
         Vec2 position,
         int sortingLayer)
     {
-        SceneActor actor = world.CreateActor("Sprite");
-        world.GetTransform2D(actor).SetPosition(position);
+        SceneEntity entity = world.CreateEntity("Sprite");
+        world.GetTransform2D(entity).SetPosition(position);
 
         SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
         sprite.TextureId = textureId;
         sprite.SortingLayer = sortingLayer;
-        world.AddData(actor, sprite);
+        world.AddData(entity, sprite);
     }
 }

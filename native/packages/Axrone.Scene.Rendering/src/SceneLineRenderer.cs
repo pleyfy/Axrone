@@ -96,8 +96,8 @@ public struct SceneLineRenderer : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneLineRenderItem
 {
-    /// <summary>Owning actor.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity.</summary>
+    public SceneEntity Entity;
 
     /// <summary>World-space segment start.</summary>
     public Vec3 Start;
@@ -177,14 +177,14 @@ public sealed class SceneLineItemCollector
 
         _count = 0;
         CulledCount = 0;
-        EnsureCapacity(Math.Max(world.ActorCount, 16));
+        EnsureCapacity(Math.Max(world.EntityCount, 16));
 
         CameraFrustum frustum = cameraFrame.Frustum;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneLineRenderer line) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneLineRenderer line) ||
                 !line.Enabled ||
                 !line.Visible ||
                 line.Width <= 0.0f ||
@@ -196,8 +196,8 @@ public sealed class SceneLineItemCollector
             }
 
             Mat4 matrix = world.HasTransform3D
-                ? world.GetWorldMatrix3D(actor)
-                : SceneBounds.FromAffine2D(world.GetWorldMatrix2D(actor));
+                ? world.GetWorldMatrix3D(entity)
+                : SceneBounds.FromAffine2D(world.GetWorldMatrix2D(entity));
 
             int segmentCount = line.Loop ? points.Length : points.Length - 1;
             for (int i = 0; i < segmentCount; i++)
@@ -219,7 +219,7 @@ public sealed class SceneLineItemCollector
                 }
 
                 ref SceneLineRenderItem item = ref _items[_count];
-                item.Actor = actor;
+                item.Entity = entity;
                 item.Start = start;
                 item.End = end;
                 item.Width = line.Width;

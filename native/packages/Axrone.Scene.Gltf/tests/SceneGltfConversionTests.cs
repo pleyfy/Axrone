@@ -423,8 +423,8 @@ public sealed class SceneGltfConversionTests
         material.Uniforms["_AlphaCutoff"].Should().Be(SceneUniformValue.FromFloat(0.25f));
         material.Uniforms["_BaseColorTexture_TexCoord"].Should().Be(SceneUniformValue.FromInt(1));
 
-        read.Prefab.Actors.Should().ContainSingle();
-        read.Prefab.Actors[0].Components.Should().Contain(component => component.Type == "MeshRenderer");
+        read.Prefab.Entities.Should().ContainSingle();
+        read.Prefab.Entities[0].Components.Should().Contain(component => component.Type == "MeshRenderer");
     }
 
     private static SceneTextureDefinition FindTexture(

@@ -106,8 +106,8 @@ public struct SceneBillboardRenderer : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneBillboardRenderItem
 {
-    /// <summary>Owning actor; the batch renderer fetches its world position.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity; the batch renderer fetches its world position.</summary>
+    public SceneEntity Entity;
 
     /// <summary>Billboard texture asset id.</summary>
     public SceneAssetId<TextureAssetTag> TextureId;
@@ -193,14 +193,14 @@ public sealed class SceneBillboardItemCollector
 
         _count = 0;
         CulledCount = 0;
-        EnsureCapacity(Math.Max(world.ActorCount, 16));
+        EnsureCapacity(Math.Max(world.EntityCount, 16));
 
         CameraFrustum frustum = cameraFrame.Frustum;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneBillboardRenderer billboard) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneBillboardRenderer billboard) ||
                 !billboard.Enabled ||
                 !billboard.Visible ||
                 !billboard.HasRenderableSource ||
@@ -212,8 +212,8 @@ public sealed class SceneBillboardItemCollector
             if (cull)
             {
                 Vec3 position = world.HasTransform3D
-                    ? world.GetWorldPosition3D(actor)
-                    : ToWorld2D(world.GetWorldPosition2D(actor));
+                    ? world.GetWorldPosition3D(entity)
+                    : ToWorld2D(world.GetWorldPosition2D(entity));
                 BoundingSphere3 bounds = new(position, billboard.GetLocalBounds().Radius);
                 if (!frustum.IntersectsSphere(in bounds))
                 {
@@ -228,7 +228,7 @@ public sealed class SceneBillboardItemCollector
             }
 
             ref SceneBillboardRenderItem item = ref _items[_count];
-            item.Actor = actor;
+            item.Entity = entity;
             item.TextureId = billboard.TextureId;
             item.MaterialId = billboard.MaterialId;
             item.SortingLayer = billboard.SortingLayer;

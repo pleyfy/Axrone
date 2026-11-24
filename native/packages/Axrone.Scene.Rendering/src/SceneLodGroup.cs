@@ -135,8 +135,8 @@ public struct SceneLodGroup : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneLodRenderItem
 {
-    /// <summary>Owning actor.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity.</summary>
+    public SceneEntity Entity;
 
     /// <summary>Selected mesh.</summary>
     public SceneAssetId<MeshAssetTag> MeshId;
@@ -170,42 +170,42 @@ public struct SceneLodRenderItem
 }
 
 /// <summary>
-/// Deterministic LOD selector with per-actor hysteresis state. The first frame
+/// Deterministic LOD selector with per-entity hysteresis state. The first frame
 /// evaluates without hysteresis; later frames only switch when the metric
 /// crosses a threshold by the configured margin. State arrays are indexed by
-/// actor slot with a generation check, so a recycled slot never inherits a
+/// entity slot with a generation check, so a recycled slot never inherits a
 /// stale level.
 /// </summary>
 public sealed class SceneLodEvaluator
 {
-    private SceneActor[] _actors = [];
+    private SceneEntity[] _entities = [];
     private int[] _levels = [];
 
     /// <summary>Resets every tracked selection.</summary>
     public void Reset()
     {
-        Array.Clear(_actors);
+        Array.Clear(_entities);
         Array.Clear(_levels);
     }
 
-    /// <summary>Evaluates every group in the world and returns the selected level of one actor.</summary>
-    public int Evaluate(SceneWorld world, SceneCameraFrame camera, SceneActor actor)
+    /// <summary>Evaluates every group in the world and returns the selected level of one entity.</summary>
+    public int Evaluate(SceneWorld world, SceneCameraFrame camera, SceneEntity entity)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(camera);
 
         EnsureCapacity(world.Capacity);
 
-        if (!world.TryGetData(actor, out SceneLodGroup group) || !group.Enabled || !group.IsValid)
+        if (!world.TryGetData(entity, out SceneLodGroup group) || !group.Enabled || !group.IsValid)
         {
             return -1;
         }
 
-        Vec3 center = world.GetWorldPosition3D(actor) + TransformOffset(world, actor, group.LocalCenter);
-        int slot = actor.Slot;
-        int previous = _actors[slot] == actor ? _levels[slot] : -1;
+        Vec3 center = world.GetWorldPosition3D(entity) + TransformOffset(world, entity, group.LocalCenter);
+        int slot = entity.Slot;
+        int previous = _entities[slot] == entity ? _levels[slot] : -1;
         int selected = Select(in group, camera, in center, previous);
-        _actors[slot] = actor;
+        _entities[slot] = entity;
         _levels[slot] = selected;
         return selected;
     }
@@ -217,17 +217,17 @@ public sealed class SceneLodEvaluator
         ArgumentNullException.ThrowIfNull(camera);
 
         EnsureCapacity(world.Capacity);
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            _ = Evaluate(world, camera, actor);
+            _ = Evaluate(world, camera, entity);
         }
     }
 
-    /// <summary>Gets the last selected level for an actor, or -1 when untracked.</summary>
-    public int GetLevel(SceneActor actor)
+    /// <summary>Gets the last selected level for an entity, or -1 when untracked.</summary>
+    public int GetLevel(SceneEntity entity)
     {
-        int slot = actor.Slot;
-        return (uint)slot < (uint)_actors.Length && _actors[slot] == actor ? _levels[slot] : -1;
+        int slot = entity.Slot;
+        return (uint)slot < (uint)_entities.Length && _entities[slot] == entity ? _levels[slot] : -1;
     }
 
     /// <summary>Selects a level without mutating evaluator state.</summary>
@@ -317,26 +317,26 @@ public sealed class SceneLodEvaluator
         return worldRadius * halfHeight / (distance * MathF.Max(tangent, 1e-4f));
     }
 
-    private static Vec3 TransformOffset(SceneWorld world, SceneActor actor, in Vec3 localCenter)
+    private static Vec3 TransformOffset(SceneWorld world, SceneEntity entity, in Vec3 localCenter)
     {
         if (localCenter == Vec3.Zero)
         {
             return Vec3.Zero;
         }
 
-        Vec4 offset = world.GetWorldMatrix3D(actor) * new Vec4(localCenter.X, localCenter.Y, localCenter.Z, 0.0f);
+        Vec4 offset = world.GetWorldMatrix3D(entity) * new Vec4(localCenter.X, localCenter.Y, localCenter.Z, 0.0f);
         return new Vec3(offset.X, offset.Y, offset.Z);
     }
 
     private void EnsureCapacity(int capacity)
     {
-        if (capacity <= _actors.Length)
+        if (capacity <= _entities.Length)
         {
             return;
         }
 
-        int size = Math.Max(capacity, Math.Max(16, _actors.Length * 2));
-        Array.Resize(ref _actors, size);
+        int size = Math.Max(capacity, Math.Max(16, _entities.Length * 2));
+        Array.Resize(ref _entities, size);
         Array.Resize(ref _levels, size);
     }
 }
@@ -393,15 +393,15 @@ public sealed class SceneLodItemCollector
 
         _count = 0;
         CulledCount = 0;
-        EnsureCapacity(Math.Max(world.ActorCount, 16));
+        EnsureCapacity(Math.Max(world.EntityCount, 16));
 
         CameraFrustum frustum = cameraFrame.Frustum;
         Vec3 cameraPosition = cameraFrame.Position;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneLodGroup group) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneLodGroup group) ||
                 !group.Enabled ||
                 !group.IsValid ||
                 group.PassId != passId)
@@ -409,15 +409,15 @@ public sealed class SceneLodItemCollector
                 continue;
             }
 
-            Vec3 position = world.GetWorldPosition3D(actor);
-            BoundingSphere3 worldBounds = new(position + Offset(world, actor, group.LocalCenter), group.Radius);
+            Vec3 position = world.GetWorldPosition3D(entity);
+            BoundingSphere3 worldBounds = new(position + Offset(world, entity, group.LocalCenter), group.Radius);
             if (cull && !frustum.IntersectsSphere(in worldBounds))
             {
                 CulledCount++;
                 continue;
             }
 
-            int level = evaluator.Evaluate(world, cameraFrame, actor);
+            int level = evaluator.Evaluate(world, cameraFrame, entity);
             if (level < 0)
             {
                 continue;
@@ -434,7 +434,7 @@ public sealed class SceneLodItemCollector
             }
 
             ref SceneLodRenderItem item = ref _items[_count];
-            item.Actor = actor;
+            item.Entity = entity;
             item.MeshId = selected.MeshId;
             item.MaterialId = selected.MaterialId;
             item.Level = level;
@@ -456,7 +456,7 @@ public sealed class SceneLodItemCollector
         {
             ref readonly SceneLodRenderItem item = ref _items[i];
             ref SceneRenderItem mesh = ref _meshItems[i];
-            mesh.Actor = item.Actor;
+            mesh.Entity = item.Entity;
             mesh.MeshId = item.MeshId;
             mesh.MaterialId = item.MaterialId;
             mesh.RenderOrder = item.RenderOrder;
@@ -477,14 +477,14 @@ public sealed class SceneLodItemCollector
         CulledCount = 0;
     }
 
-    private static Vec3 Offset(SceneWorld world, SceneActor actor, in Vec3 localCenter)
+    private static Vec3 Offset(SceneWorld world, SceneEntity entity, in Vec3 localCenter)
     {
         if (localCenter == Vec3.Zero)
         {
             return Vec3.Zero;
         }
 
-        Vec4 offset = world.GetWorldMatrix3D(actor) * new Vec4(localCenter.X, localCenter.Y, localCenter.Z, 0.0f);
+        Vec4 offset = world.GetWorldMatrix3D(entity) * new Vec4(localCenter.X, localCenter.Y, localCenter.Z, 0.0f);
         return new Vec3(offset.X, offset.Y, offset.Z);
     }
 
@@ -555,7 +555,7 @@ public sealed class SceneLodItemCollector
             }
 
             int mesh = left.MeshId.CompareTo(right.MeshId);
-            return mesh != 0 ? mesh : left.Actor.CompareTo(right.Actor);
+            return mesh != 0 ? mesh : left.Entity.CompareTo(right.Entity);
         }
     }
 }

@@ -26,10 +26,10 @@ public sealed class SceneGlWiringTests
 
         using SceneWorld world = CreateWorld(SceneRenderableFeatures.LodGroup);
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = world.CreateActor("Lod");
+        SceneEntity entity = world.CreateEntity("Lod");
         world.UpdateTransforms();
 
-        var source = new LodSource(actor, mesh, material);
+        var source = new LodSource(entity, mesh, material);
         using var cache = new SceneGlAssetCache(context, assets);
         cache.UploadAll();
         using var orchestrator = new SceneGlRenderOrchestrator(context, cache, world);
@@ -80,18 +80,18 @@ public sealed class SceneGlWiringTests
         using SceneWorld world = CreateWorld(SceneRenderableFeatures.Billboard);
         SceneCameraFrame frame = CreateCameraFrame(world);
 
-        SceneActor spriteActor = world.CreateActor("Sprite");
+        SceneEntity spriteEntity = world.CreateEntity("Sprite");
         SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
         sprite.TextureId = spriteTexture;
-        world.AddData(spriteActor, sprite);
+        world.AddData(spriteEntity, sprite);
 
-        SceneActor billboardActor = world.CreateActor("Billboard");
+        SceneEntity billboardEntity = world.CreateEntity("Billboard");
         SceneBillboardRenderer billboard = SceneBillboardRenderer.Default;
         billboard.TextureId = billboardTexture;
-        world.AddData(billboardActor, billboard);
+        world.AddData(billboardEntity, billboard);
         world.UpdateTransforms();
 
-        var source = new PrimitiveSource(spriteActor, billboardActor, spriteTexture, billboardTexture);
+        var source = new PrimitiveSource(spriteEntity, billboardEntity, spriteTexture, billboardTexture);
         using var cache = new SceneGlAssetCache(context, assets);
         cache.UploadAll();
         api.EnableCallLogging = true;
@@ -133,15 +133,15 @@ public sealed class SceneGlWiringTests
         second.TrianglesSubmitted.Should().Be(stats.TrianglesSubmitted);
     }
 
-    private sealed class LodSource(SceneActor actor, SceneAssetId<MeshAssetTag> mesh, SceneAssetId<MaterialAssetTag> material)
+    private sealed class LodSource(SceneEntity entity, SceneAssetId<MeshAssetTag> mesh, SceneAssetId<MaterialAssetTag> material)
         : ISceneFrameItemSource, ISceneLodFrameItemSource
     {
-        private readonly SceneRenderItem[] _items = actor.IsValid
+        private readonly SceneRenderItem[] _items = entity.IsValid
             ?
             [
                 new SceneRenderItem
                 {
-                    Actor = actor,
+                    Entity = entity,
                     MeshId = mesh,
                     MaterialId = material,
                     RenderOrder = 0,
@@ -164,8 +164,8 @@ public sealed class SceneGlWiringTests
     }
 
     private sealed class PrimitiveSource(
-        SceneActor spriteActor,
-        SceneActor billboardActor,
+        SceneEntity spriteEntity,
+        SceneEntity billboardEntity,
         SceneAssetId<TextureAssetTag> spriteTexture,
         SceneAssetId<TextureAssetTag> billboardTexture)
         : ISceneFrameItemSource, IScenePrimitiveFrameItemSource
@@ -174,7 +174,7 @@ public sealed class SceneGlWiringTests
         [
             new SceneSpriteRenderItem
             {
-                Actor = spriteActor,
+                Entity = spriteEntity,
                 TextureId = spriteTexture,
                 MaterialId = default,
                 Size = Vec2.One,
@@ -188,7 +188,7 @@ public sealed class SceneGlWiringTests
         [
             new SceneBillboardRenderItem
             {
-                Actor = billboardActor,
+                Entity = billboardEntity,
                 TextureId = billboardTexture,
                 MaterialId = default,
                 Size = Vec2.One,
@@ -251,13 +251,13 @@ public sealed class SceneGlWiringTests
 
     private static SceneCameraFrame CreateCameraFrame(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0, 0, 10));
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0, 0, 10));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(actor, camera);
+        world.AddData(entity, camera);
         world.UpdateTransforms();
-        return new SceneCameraFrameCollector().Collect(world, actor, 800, 600)!;
+        return new SceneCameraFrameCollector().Collect(world, entity, 800, 600)!;
     }
 
     private static SceneAssetId<MeshAssetTag> RegisterMesh(SceneAssetRegistry assets)

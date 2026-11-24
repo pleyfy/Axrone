@@ -19,8 +19,8 @@ public sealed class SceneGlLightingParityTests
     public void ExtractLighting_PreservesTheDirectionalAmbientColor()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor lightActor = world.CreateActor("Sun");
-        world.AddData(lightActor, new SceneDirectionalLight
+        SceneEntity lightEntity = world.CreateEntity("Sun");
+        world.AddData(lightEntity, new SceneDirectionalLight
         {
             Color = new Vec3(1.0f, 0.93f, 0.98f),
             Ambient = new Vec3(0.851f, 0.894f, 1.0f),

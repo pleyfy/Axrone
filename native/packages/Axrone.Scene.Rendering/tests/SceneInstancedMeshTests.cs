@@ -53,14 +53,14 @@ public sealed class SceneInstancedMeshTests
     public void CollectorResolvesGroupCountAndBounds()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.InstancedMesh);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var registry = new SceneInstanceRegistry();
         registry.Register(7, [At(-1), At(0), At(1), At(2)]);
 
-        SceneActor actor = world.CreateActor("Instances");
-        world.AddData(actor, Renderer(7, renderOrder: 4));
+        SceneEntity entity = world.CreateEntity("Instances");
+        world.AddData(entity, Renderer(7, renderOrder: 4));
         world.UpdateTransforms();
 
         var collector = new SceneInstancedMeshItemCollector();
@@ -78,23 +78,23 @@ public sealed class SceneInstancedMeshTests
     public void CollectorSkipsMissingGroupsMeshesAndMaterials()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.InstancedMesh);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         var registry = new SceneInstanceRegistry();
         registry.Register(8, [At(0)]);
 
-        SceneActor missingGroup = world.CreateActor("MissingGroup");
+        SceneEntity missingGroup = world.CreateEntity("MissingGroup");
         world.AddData(missingGroup, Renderer(99));
 
         SceneInstancedMeshRenderer missingMesh = Renderer(8);
         missingMesh.MeshId = default;
-        SceneActor missingMeshActor = world.CreateActor("MissingMesh");
-        world.AddData(missingMeshActor, missingMesh);
+        SceneEntity missingMeshEntity = world.CreateEntity("MissingMesh");
+        world.AddData(missingMeshEntity, missingMesh);
 
         SceneInstancedMeshRenderer missingMaterial = Renderer(8);
         missingMaterial.MaterialId = default;
-        SceneActor missingMaterialActor = world.CreateActor("MissingMaterial");
-        world.AddData(missingMaterialActor, missingMaterial);
+        SceneEntity missingMaterialEntity = world.CreateEntity("MissingMaterial");
+        world.AddData(missingMaterialEntity, missingMaterial);
 
         world.UpdateTransforms();
 
@@ -106,14 +106,14 @@ public sealed class SceneInstancedMeshTests
     public void CollectorCullsBehindCamera()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.InstancedMesh);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         var registry = new SceneInstanceRegistry();
         registry.Register(9, [At(0)]);
 
-        SceneActor actor = world.CreateActor("Behind");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0.0f, 0.0f, 20.0f));
-        world.AddData(actor, Renderer(9));
+        SceneEntity entity = world.CreateEntity("Behind");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0.0f, 0.0f, 20.0f));
+        world.AddData(entity, Renderer(9));
         world.UpdateTransforms();
 
         var collector = new SceneInstancedMeshItemCollector();
@@ -127,39 +127,39 @@ public sealed class SceneInstancedMeshTests
     public void CollectorSortsByRenderOrder()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.InstancedMesh);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         var registry = new SceneInstanceRegistry();
         registry.Register(10, [At(0)]);
 
-        SceneActor late = world.CreateActor("Late");
+        SceneEntity late = world.CreateEntity("Late");
         world.AddData(late, Renderer(10, renderOrder: 5));
 
-        SceneActor early = world.CreateActor("Early");
+        SceneEntity early = world.CreateEntity("Early");
         world.AddData(early, Renderer(10, renderOrder: 1));
         world.UpdateTransforms();
 
         var collector = new SceneInstancedMeshItemCollector();
         collector.Collect(world, frame, SceneRenderPassIds.Main, registry);
 
-        collector.Items[0].Actor.Should().Be(early);
-        collector.Items[1].Actor.Should().Be(late);
+        collector.Items[0].Entity.Should().Be(early);
+        collector.Items[1].Entity.Should().Be(late);
     }
 
     [Fact]
     public void CollectorIsZeroAllocationAfterWarmup()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.InstancedMesh);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
         var registry = new SceneInstanceRegistry();
 
         for (uint i = 1; i <= 8; i++)
         {
             SceneInstanceTransform[] instances = [At(0), At(1)];
             registry.Register(i, instances);
-            SceneActor actor = world.CreateActor($"Instances{i}");
-            world.AddData(actor, Renderer(i));
+            SceneEntity entity = world.CreateEntity($"Instances{i}");
+            world.AddData(entity, Renderer(i));
         }
 
         world.UpdateTransforms();

@@ -340,8 +340,8 @@ public sealed class GltfPngDecoderTests
         GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
 
         result.Meshes[0].Definition.MorphWeights.Should().Equal(0.25f, 0.75f);
-        GltfMeshRendererComponent renderer = result.Prefabs[0].Definition.Actors
-            .SelectMany(static actor => actor.Components)
+        GltfMeshRendererComponent renderer = result.Prefabs[0].Definition.Entities
+            .SelectMany(static entity => entity.Components)
             .OfType<GltfMeshRendererComponent>()
             .Should().ContainSingle().Subject;
         renderer.MorphWeights.Should().Equal(1.0f, 0.0f);
@@ -370,8 +370,8 @@ public sealed class GltfPngDecoderTests
         var importer = new GltfImporter(new GltfImporterOptions { Id = "weights-fallback.gltf" });
         GltfImportResult result = await importer.ImportAsync(Encoding.UTF8.GetBytes(json));
 
-        GltfMeshRendererComponent renderer = result.Prefabs[0].Definition.Actors
-            .SelectMany(static actor => actor.Components)
+        GltfMeshRendererComponent renderer = result.Prefabs[0].Definition.Entities
+            .SelectMany(static entity => entity.Components)
             .OfType<GltfMeshRendererComponent>()
             .Should().ContainSingle().Subject;
         renderer.MorphWeights.Should().Equal(0.25f, 0.75f);

@@ -15,10 +15,10 @@ public sealed class SceneRenderingTests
     public void CameraFrame_ProjectsOrigin()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
         var collector = new SceneCameraFrameCollector();
 
-        SceneCameraFrame? frame = collector.Collect(world, cameraActor, 1280, 720);
+        SceneCameraFrame? frame = collector.Collect(world, cameraEntity, 1280, 720);
 
         frame.Should().NotBeNull();
         frame!.Position.Should().Be(new Vec3(0.0f, 0.0f, 10.0f));
@@ -32,8 +32,8 @@ public sealed class SceneRenderingTests
     public void CameraFrame_RejectsPointsBehindCamera()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
 
         frame.Frustum.ContainsPoint(Vec3.Zero).Should().BeTrue();
         frame.Frustum.ContainsPoint(new Vec3(0.0f, 0.0f, 20.0f)).Should().BeFalse();
@@ -44,14 +44,14 @@ public sealed class SceneRenderingTests
     public void CameraFrame_Orthographic_ProjectsOrigin()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor cameraActor = world.CreateActor("Camera");
-        world.GetTransform3D(cameraActor).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
+        SceneEntity cameraEntity = world.CreateEntity("Camera");
+        world.GetTransform3D(cameraEntity).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.SetOrthographic(5.0f, 0.1f, 100.0f);
-        world.AddData(cameraActor, camera);
+        world.AddData(cameraEntity, camera);
         world.UpdateTransforms();
 
-        SceneCameraFrame? frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600);
+        SceneCameraFrame? frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600);
 
         frame.Should().NotBeNull();
         frame!.ProjectionMatrix.Should().NotBe(Mat4.Identity);
@@ -62,13 +62,13 @@ public sealed class SceneRenderingTests
     public void CameraFrame_RejectsInvalidClipping()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor cameraActor = world.CreateActor("Camera");
+        SceneEntity cameraEntity = world.CreateEntity("Camera");
         SceneCamera camera = SceneCamera.Default;
         camera.Near = 0.0f;
-        world.AddData(cameraActor, camera);
+        world.AddData(cameraEntity, camera);
 
         var collector = new SceneCameraFrameCollector();
-        Action collect = () => collector.Collect(world, cameraActor, 800, 600);
+        Action collect = () => collector.Collect(world, cameraEntity, 800, 600);
 
         collect.Should().Throw<SceneValidationException>();
     }
@@ -77,10 +77,10 @@ public sealed class SceneRenderingTests
     public void CameraSelector_PrefersPrimaryThenFallback()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor fallback = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f));
-        SceneActor primary = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 8.0f), primary: true);
+        SceneEntity fallback = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f));
+        SceneEntity primary = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 8.0f), primary: true);
 
-        SceneCameraSelector.TrySelect(world, out SceneActor selected).Should().BeTrue();
+        SceneCameraSelector.TrySelect(world, out SceneEntity selected).Should().BeTrue();
         selected.Should().Be(primary);
 
         world.SetActive(primary, false);
@@ -97,14 +97,14 @@ public sealed class SceneRenderingTests
         SceneMeshDefinition mesh = RenderingFixture.CreateMesh(assets, "mesh/item");
         assets.Meshes.Register(mesh);
         SceneAssetId<MaterialAssetTag> materialId = assets.CreateId<MaterialAssetTag>("material/item");
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
 
-        SceneActor opaque = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 0.0f));
-        SceneActor transparentNear = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 5.0f), transparent: true);
-        SceneActor transparentFar = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 3.0f), transparent: true);
-        SceneActor culled = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 200.0f));
-        SceneActor inactive = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 0.0f));
+        SceneEntity opaque = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 0.0f));
+        SceneEntity transparentNear = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 5.0f), transparent: true);
+        SceneEntity transparentFar = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 3.0f), transparent: true);
+        SceneEntity culled = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 200.0f));
+        SceneEntity inactive = CreateRenderer(world, mesh.Id, materialId, new Vec3(0.0f, 0.0f, 0.0f));
         world.SetActive(inactive, false);
         world.UpdateTransforms();
 
@@ -121,7 +121,7 @@ public sealed class SceneRenderingTests
         bool foundFar = false;
         foreach (SceneRenderItem item in collector.Items)
         {
-            if (item.Actor == culled)
+            if (item.Entity == culled)
             {
                 farItem = item;
                 foundFar = true;
@@ -136,10 +136,10 @@ public sealed class SceneRenderingTests
 
         count.Should().Be(3);
         collector.CulledCount.Should().Be(1);
-        collector.Items[0].Actor.Should().Be(opaque);
+        collector.Items[0].Entity.Should().Be(opaque);
         collector.Items[0].Transparent.Should().BeFalse();
-        collector.Items[1].Actor.Should().Be(transparentFar);
-        collector.Items[2].Actor.Should().Be(transparentNear);
+        collector.Items[1].Entity.Should().Be(transparentFar);
+        collector.Items[2].Entity.Should().Be(transparentNear);
         collector.Items[1].Transparent.Should().BeTrue();
         collector.Items[2].Transparent.Should().BeTrue();
 
@@ -155,10 +155,10 @@ public sealed class SceneRenderingTests
         SceneMeshDefinition mesh = RenderingFixture.CreateMesh(assets, "mesh/steady");
         assets.Meshes.Register(mesh);
         SceneAssetId<MaterialAssetTag> materialId = assets.CreateId<MaterialAssetTag>("material/steady");
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
         _ = CreateRenderer(world, mesh.Id, materialId, Vec3.Zero);
         world.UpdateTransforms();
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
         var collector = new SceneRenderItemCollector(16);
 
         for (int i = 0; i < 10; i++)
@@ -181,12 +181,12 @@ public sealed class SceneRenderingTests
     {
         SceneProfile profile = RenderingFixture.CreateProfile();
         using SceneWorld world = profile.CreateWorld();
-        SceneActor directionalActor = world.CreateActor("Sun");
+        SceneEntity directionalEntity = world.CreateEntity("Sun");
         SceneDirectionalLight directional = SceneDirectionalLight.Default;
         directional.Primary = true;
-        world.AddData(directionalActor, directional);
-        SceneActor pointActor = world.CreateActor("Point");
-        world.AddData(pointActor, ScenePointLight.Default);
+        world.AddData(directionalEntity, directional);
+        SceneEntity pointEntity = world.CreateEntity("Point");
+        world.AddData(pointEntity, ScenePointLight.Default);
         world.UpdateTransforms();
 
         using var collector = new SceneLightingCollector(maxLocalLights: 4);
@@ -201,7 +201,7 @@ public sealed class SceneRenderingTests
         selection.Stats.SelectedPointCount.Should().Be(1);
         collector.Rig.Count.Should().Be(2);
 
-        world.GetData<ScenePointLight>(pointActor).Enabled = false;
+        world.GetData<ScenePointLight>(pointEntity).Enabled = false;
         selection = collector.Collect(
             world,
             new Vec3(0.0f, 0.0f, 10.0f),
@@ -218,10 +218,10 @@ public sealed class SceneRenderingTests
     {
         SceneProfile profile = RenderingFixture.CreateProfile();
         using SceneWorld world = profile.CreateWorld();
-        SceneActor directionalActor = world.CreateActor("Sun");
-        world.AddData(directionalActor, SceneDirectionalLight.Default);
-        SceneActor pointActor = world.CreateActor("Point");
-        world.AddData(pointActor, ScenePointLight.Default);
+        SceneEntity directionalEntity = world.CreateEntity("Sun");
+        world.AddData(directionalEntity, SceneDirectionalLight.Default);
+        SceneEntity pointEntity = world.CreateEntity("Point");
+        world.AddData(pointEntity, ScenePointLight.Default);
         world.UpdateTransforms();
         using var collector = new SceneLightingCollector(4);
 
@@ -318,8 +318,8 @@ public sealed class SceneRenderingTests
         SceneMeshDefinition mesh = RenderingFixture.CreateMesh(assets, "mesh/large", radius: 0.25f);
         assets.Meshes.Register(mesh);
         SceneAssetId<MaterialAssetTag> materialId = assets.CreateId<MaterialAssetTag>("material/large");
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
 
         const int rendererCount = 64;
         for (int i = 0; i < rendererCount; i++)
@@ -369,38 +369,38 @@ public sealed class SceneRenderingTests
     public void FogSelector_SelectsActiveComponent()
     {
         using SceneWorld world = RenderingFixture.CreateProfile().CreateWorld();
-        SceneActor actor = world.CreateActor("Fog");
+        SceneEntity entity = world.CreateEntity("Fog");
         SceneFog fog = SceneFog.Default;
         fog.Enabled = true;
         fog.Mode = SceneFogMode.Linear;
         fog.RangeStart = 1.0f;
         fog.RangeEnd = 50.0f;
-        world.AddData(actor, fog);
+        world.AddData(entity, fog);
 
         SceneFogSelector.TrySelect(world, out SceneFogState state).Should().BeTrue();
         state.Enabled.Should().BeTrue();
         state.Mode.Should().Be(SceneFogMode.Linear);
 
-        world.SetActive(actor, false);
+        world.SetActive(entity, false);
 
         SceneFogSelector.TrySelect(world, out state).Should().BeFalse();
         state.Enabled.Should().BeFalse();
     }
 
-    private static SceneActor CreateRenderer(
+    private static SceneEntity CreateRenderer(
         SceneWorld world,
         SceneAssetId<MeshAssetTag> meshId,
         SceneAssetId<MaterialAssetTag> materialId,
         Vec3 position,
         bool transparent = false)
     {
-        SceneActor actor = world.CreateActor("Renderer");
-        world.GetTransform3D(actor).SetPosition(position);
+        SceneEntity entity = world.CreateEntity("Renderer");
+        world.GetTransform3D(entity).SetPosition(position);
         SceneMeshRenderer renderer = SceneMeshRenderer.Default;
         renderer.MeshId = meshId;
         renderer.MaterialId = materialId;
         renderer.Transparent = transparent;
-        world.AddData(actor, renderer);
-        return actor;
+        world.AddData(entity, renderer);
+        return entity;
     }
 }

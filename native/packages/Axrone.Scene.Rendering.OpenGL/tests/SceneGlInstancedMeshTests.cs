@@ -25,8 +25,8 @@ public sealed class SceneGlInstancedMeshTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
 
         using SceneWorld world = CreateWorld();
-        SceneActor cameraActor = CreateCamera(world);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = CreateCamera(world);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var registry = new SceneInstanceRegistry();
         registry.Register(1,
@@ -36,12 +36,12 @@ public sealed class SceneGlInstancedMeshTests
             new SceneInstanceTransform(Mat4.CreateTranslation(2, 0, 0), Vec4.One)
         ]);
 
-        SceneActor actor = world.CreateActor("Instances");
+        SceneEntity entity = world.CreateEntity("Instances");
         SceneInstancedMeshRenderer renderer = SceneInstancedMeshRenderer.Default;
         renderer.MeshId = meshId;
         renderer.MaterialId = materialId;
         renderer.InstanceGroupId = 1;
-        world.AddData(actor, renderer);
+        world.AddData(entity, renderer);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
@@ -78,18 +78,18 @@ public sealed class SceneGlInstancedMeshTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
 
         using SceneWorld world = CreateWorld();
-        SceneActor cameraActor = CreateCamera(world);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = CreateCamera(world);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var registry = new SceneInstanceRegistry();
         registry.Register(2, [new SceneInstanceTransform(Mat4.Identity, Vec4.One)]);
 
-        SceneActor actor = world.CreateActor("Instances");
+        SceneEntity entity = world.CreateEntity("Instances");
         SceneInstancedMeshRenderer renderer = SceneInstancedMeshRenderer.Default;
         renderer.MeshId = meshId;
         renderer.MaterialId = SceneAssetId<MaterialAssetTag>.FromName("material/missing");
         renderer.InstanceGroupId = 2;
-        world.AddData(actor, renderer);
+        world.AddData(entity, renderer);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
@@ -140,8 +140,8 @@ public sealed class SceneGlInstancedMeshTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
 
         using SceneWorld world = CreateWorld();
-        SceneActor cameraActor = CreateCamera(world);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = CreateCamera(world);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var registry = new SceneInstanceRegistry();
         registry.Register(3,
@@ -151,12 +151,12 @@ public sealed class SceneGlInstancedMeshTests
             new SceneInstanceTransform(Mat4.CreateTranslation(2, 0, 0), Vec4.One)
         ]);
 
-        SceneActor actor = world.CreateActor("Instances");
+        SceneEntity entity = world.CreateEntity("Instances");
         SceneInstancedMeshRenderer renderer = SceneInstancedMeshRenderer.Default;
         renderer.MeshId = meshId;
         renderer.MaterialId = materialId;
         renderer.InstanceGroupId = 3;
-        world.AddData(actor, renderer);
+        world.AddData(entity, renderer);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
@@ -199,15 +199,15 @@ public sealed class SceneGlInstancedMeshTests
             .Build()
             .CreateWorld();
 
-    private static SceneActor CreateCamera(SceneWorld world)
+    private static SceneEntity CreateCamera(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0, 0, 10));
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0, 0, 10));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(actor, camera);
+        world.AddData(entity, camera);
         world.UpdateTransforms();
-        return actor;
+        return entity;
     }
 
     private static SceneAssetId<MeshAssetTag> RegisterMesh(SceneAssetRegistry assets)
@@ -260,17 +260,17 @@ public sealed class SceneGlInstancedMeshTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
 
         using SceneWorld world = CreateWorld();
-        SceneActor cameraActor = CreateCamera(world);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = CreateCamera(world);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         var registry = new SceneInstanceRegistry();
         registry.Register(4, [new SceneInstanceTransform(Mat4.Identity, Vec4.One)]);
 
-        SceneActor actor = world.CreateActor("Instances");
+        SceneEntity entity = world.CreateEntity("Instances");
         SceneInstancedMeshRenderer renderer = SceneInstancedMeshRenderer.Default;
         renderer.MeshId = mesh;
         renderer.MaterialId = material;
         renderer.InstanceGroupId = 4;
-        world.AddData(actor, renderer);
+        world.AddData(entity, renderer);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
@@ -299,17 +299,17 @@ public sealed class SceneGlInstancedMeshTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
 
         using SceneWorld world = CreateWorld();
-        SceneActor cameraActor = CreateCamera(world);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = CreateCamera(world);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         var registry = new SceneInstanceRegistry();
         registry.Register(5, [new SceneInstanceTransform(Mat4.Identity, Vec4.One)]);
 
-        SceneActor actor = world.CreateActor("Instances");
+        SceneEntity entity = world.CreateEntity("Instances");
         SceneInstancedMeshRenderer renderer = SceneInstancedMeshRenderer.Default;
         renderer.MeshId = mesh;
         renderer.MaterialId = material;
         renderer.InstanceGroupId = 5;
-        world.AddData(actor, renderer);
+        world.AddData(entity, renderer);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);

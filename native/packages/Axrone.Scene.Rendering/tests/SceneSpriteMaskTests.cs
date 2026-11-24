@@ -27,17 +27,17 @@ public sealed class SceneSpriteMaskTests
     };
 
     [Fact]
-    public void ResolverFindsMaskOnTheSpriteActor()
+    public void ResolverFindsMaskOnTheSpriteEntity()
     {
         using SceneWorld world = RenderingFixture.CreateSpriteRenderableWorld(SceneRenderableFeatures.SpriteMask);
-        SceneActor actor = world.CreateActor("Sprite");
+        SceneEntity entity = world.CreateEntity("Sprite");
 
         SceneSpriteMask mask = SceneSpriteMask.Default;
         mask.Kind = SceneSpriteMaskKind.Ellipse;
         mask.Rect = new Vec4(0.1f, 0.2f, 0.3f, 0.4f);
-        world.AddData(actor, mask);
+        world.AddData(entity, mask);
 
-        SceneSpriteMaskResolver.TryResolve(world, actor, out SceneSpriteMask resolved).Should().BeTrue();
+        SceneSpriteMaskResolver.TryResolve(world, entity, out SceneSpriteMask resolved).Should().BeTrue();
         resolved.Kind.Should().Be(SceneSpriteMaskKind.Ellipse);
         resolved.Rect.Should().Be(new Vec4(0.1f, 0.2f, 0.3f, 0.4f));
     }
@@ -46,9 +46,9 @@ public sealed class SceneSpriteMaskTests
     public void NearestEnabledAncestorMaskWins()
     {
         using SceneWorld world = RenderingFixture.CreateSpriteRenderableWorld(SceneRenderableFeatures.SpriteMask);
-        SceneActor root = world.CreateActor("Root");
-        SceneActor group = world.CreateActor("Group");
-        SceneActor sprite = world.CreateActor("Sprite");
+        SceneEntity root = world.CreateEntity("Root");
+        SceneEntity group = world.CreateEntity("Group");
+        SceneEntity sprite = world.CreateEntity("Sprite");
         world.Hierarchy.SetParent(group, root);
         world.Hierarchy.SetParent(sprite, group);
 
@@ -70,8 +70,8 @@ public sealed class SceneSpriteMaskTests
     public void DisabledNearestMaskFallsThroughToAncestor()
     {
         using SceneWorld world = RenderingFixture.CreateSpriteRenderableWorld(SceneRenderableFeatures.SpriteMask);
-        SceneActor parent = world.CreateActor("Parent");
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity parent = world.CreateEntity("Parent");
+        SceneEntity child = world.CreateEntity("Child");
         world.Hierarchy.SetParent(child, parent);
 
         SceneSpriteMask parentMask = SceneSpriteMask.Default;
@@ -90,38 +90,38 @@ public sealed class SceneSpriteMaskTests
     public void MissingMaskResolvesToFalse()
     {
         using SceneWorld world = RenderingFixture.CreateSpriteRenderableWorld(SceneRenderableFeatures.SpriteMask);
-        SceneActor actor = world.CreateActor("Sprite");
+        SceneEntity entity = world.CreateEntity("Sprite");
 
-        SceneSpriteMaskResolver.TryResolve(world, actor, out _).Should().BeFalse();
+        SceneSpriteMaskResolver.TryResolve(world, entity, out _).Should().BeFalse();
     }
 
     [Fact]
     public void MalformedMaskIsIgnored()
     {
         using SceneWorld world = RenderingFixture.CreateSpriteRenderableWorld(SceneRenderableFeatures.SpriteMask);
-        SceneActor actor = world.CreateActor("Sprite");
+        SceneEntity entity = world.CreateEntity("Sprite");
         SceneSpriteMask mask = SceneSpriteMask.Default;
         mask.Rect = new Vec4(0, 0, 0, 0);
-        world.AddData(actor, mask);
+        world.AddData(entity, mask);
 
-        SceneSpriteMaskResolver.TryResolve(world, actor, out _).Should().BeFalse();
+        SceneSpriteMaskResolver.TryResolve(world, entity, out _).Should().BeFalse();
     }
 
     [Fact]
     public void SpriteCollectorPropagatesEffectiveMask()
     {
         using SceneWorld world = RenderingFixture.CreateSpriteRenderableWorld(SceneRenderableFeatures.SpriteMask);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
-        SceneActor parent = world.CreateActor("Mask");
+        SceneEntity parent = world.CreateEntity("Mask");
         SceneSpriteMask mask = SceneSpriteMask.Default;
         mask.Kind = SceneSpriteMaskKind.Ellipse;
         mask.Rect = new Vec4(0.2f, 0.2f, 0.6f, 0.6f);
         mask.Invert = true;
         world.AddData(parent, mask);
 
-        SceneActor sprite = world.CreateActor("Sprite");
+        SceneEntity sprite = world.CreateEntity("Sprite");
         world.Hierarchy.SetParent(sprite, parent);
         world.AddData(sprite, Sprite());
         world.UpdateTransforms();

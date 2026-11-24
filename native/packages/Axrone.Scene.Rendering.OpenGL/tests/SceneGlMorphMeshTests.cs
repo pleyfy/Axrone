@@ -16,7 +16,7 @@ using Xunit;
 public sealed class SceneGlMorphMeshTests
 {
     [Fact]
-    public void MorphCacheDeformsAPerActorMesh()
+    public void MorphCacheDeformsAPerEntityMesh()
     {
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
@@ -28,21 +28,21 @@ public sealed class SceneGlMorphMeshTests
             .AddTransform3D()
             .Build()
             .CreateWorld();
-        SceneActor actor = world.CreateActor("Morph");
+        SceneEntity entity = world.CreateEntity("Morph");
 
         using var cache = new SceneGlAssetCache(context, assets);
         cache.UploadAll();
         var weights = new SceneMorphWeightStore();
-        weights.ApplyMorphWeights(actor, [1.0f]);
+        weights.ApplyMorphWeights(entity, [1.0f]);
         using var morphCache = new SceneGlMorphMeshCache(cache, weights);
 
-        morphCache.TryGetMesh(actor, meshId, out GLMesh? mesh).Should().BeTrue();
+        morphCache.TryGetMesh(entity, meshId, out GLMesh? mesh).Should().BeTrue();
         mesh.Should().NotBeNull();
         morphCache.Count.Should().Be(1);
         api.CallLog.Should().Contain(call => call.StartsWith("BufferSubData(", StringComparison.Ordinal));
 
         int subDataCount = api.CallLog.Count(call => call.StartsWith("BufferSubData(", StringComparison.Ordinal));
-        morphCache.TryGetMesh(actor, meshId, out _).Should().BeTrue();
+        morphCache.TryGetMesh(entity, meshId, out _).Should().BeTrue();
         api.CallLog.Count(call => call.StartsWith("BufferSubData(", StringComparison.Ordinal))
             .Should().Be(subDataCount);
     }
@@ -60,13 +60,13 @@ public sealed class SceneGlMorphMeshTests
             .AddTransform3D()
             .Build()
             .CreateWorld();
-        SceneActor actor = world.CreateActor("Morph");
+        SceneEntity entity = world.CreateEntity("Morph");
 
         using var cache = new SceneGlAssetCache(context, assets);
         cache.UploadAll();
         using var morphCache = new SceneGlMorphMeshCache(cache, new SceneMorphWeightStore());
 
-        morphCache.TryGetMesh(actor, meshId, out GLMesh? mesh).Should().BeFalse();
+        morphCache.TryGetMesh(entity, meshId, out GLMesh? mesh).Should().BeFalse();
         mesh.Should().BeNull();
         morphCache.Count.Should().Be(0);
     }

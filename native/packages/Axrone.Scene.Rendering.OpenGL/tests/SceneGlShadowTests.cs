@@ -239,15 +239,15 @@ public sealed class SceneGlShadowTests
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
         using var cache = new SceneGlAssetCache(context, fixture.Assets);
         _ = cache.UploadAll();
         using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
         using var renderer = new SceneGlShadowRenderer(context, cache, atlas);
         renderer.Settings = EnabledSettings(ShadowCascadeCount.Four);
-        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         LightingSelectionState lighting = CreateDirectionalLighting();
-        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererEntity) };
 
         int drawCalls = renderer.Render(world, camera, lighting, casters);
 
@@ -267,15 +267,15 @@ public sealed class SceneGlShadowTests
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
         using var cache = new SceneGlAssetCache(context, fixture.Assets);
         _ = cache.UploadAll();
         using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
         using var renderer = new SceneGlShadowRenderer(context, cache, atlas);
         renderer.Settings = EnabledSettings(ShadowCascadeCount.Four);
-        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         LightingSelectionState lighting = CreateDirectionalLighting();
-        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererEntity) };
 
         // A host rendering into its own MSAA or composition target.
         context.State.BindFramebuffer(FramebufferTarget, CallerFramebuffer);
@@ -298,15 +298,15 @@ public sealed class SceneGlShadowTests
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
         using var cache = new SceneGlAssetCache(context, fixture.Assets);
         _ = cache.UploadAll();
         using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
         using var renderer = new SceneGlShadowRenderer(context, cache, atlas);
         renderer.Settings = EnabledSettings(ShadowCascadeCount.Four);
-        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         LightingSelectionState lighting = CreateDirectionalLighting();
-        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererEntity) };
 
         // A freshly reset cache holds uint.MaxValue and -1 sentinels; replaying
         // them would bind handle 4294967295 and a negative viewport.
@@ -330,15 +330,15 @@ public sealed class SceneGlShadowTests
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
         using var cache = new SceneGlAssetCache(context, fixture.Assets);
         _ = cache.UploadAll();
         using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
         using var renderer = new SceneGlShadowRenderer(context, cache, atlas);
         renderer.Settings = EnabledSettings(ShadowCascadeCount.Four);
-        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         LightingSelectionState lighting = CreateDirectionalLighting();
-        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererEntity) };
         var skinned = new SceneSkinnedMeshRenderItem[1];
 
         api.ClearCallLog();
@@ -392,7 +392,7 @@ public sealed class SceneGlShadowTests
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
         using var cache = new SceneGlAssetCache(context, fixture.Assets);
         _ = cache.UploadAll();
         using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
@@ -402,8 +402,8 @@ public sealed class SceneGlShadowTests
 
         using var renderer = new SceneGlShadowRenderer(
             context, cache, atlas, depthProgram: null, settings: ShadowSettings.Disabled);
-        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
-        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
+        var casters = new SceneRenderItem[] { fixture.CreateItem(rendererEntity) };
 
         renderer.Render(world, camera, CreateDirectionalLighting(), casters).Should().Be(0);
         renderer.LastCascadeCount.Should().Be(0);
@@ -441,7 +441,7 @@ public sealed class SceneGlShadowTests
         renderer.IsAvailable.Should().BeFalse();
         api.CallLog.Should().Contain($"DeleteProgram({programId})");
 
-        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, world.CreateActor("Cam"), 800, 600)!;
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, world.CreateEntity("Cam"), 800, 600)!;
         Action render = () => renderer.Render(world, camera, lighting: null, []);
         render.Should().Throw<SceneDisposedException>();
     }
@@ -452,14 +452,14 @@ public sealed class SceneGlShadowTests
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out _);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out _);
         using var cache = new SceneGlAssetCache(context, fixture.Assets);
         _ = cache.UploadAll();
         using var atlas = new SceneGlShadowAtlas(context, AtlasEdge);
         using var renderer = new SceneGlShadowRenderer(context, cache, atlas);
         renderer.Settings = EnabledSettings(ShadowCascadeCount.Four);
         renderer.HeightFog = new HeightFogSettings(enabled: true, density: 0.05f, falloff: 0.2f, groundHeight: 0.0f);
-        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         _ = renderer.Render(world, camera, CreateDirectionalLighting(), []);
 
         using var shadowShader = new SceneGlShader(context, "bind-shadow", VertexShader, ShadowFragmentShader);
@@ -616,15 +616,15 @@ public sealed class SceneGlShadowTests
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
         using var cache = new SceneGlAssetCache(context, fixture.Assets);
         _ = cache.UploadAll();
         var source = new RecordingShadowSource(available: true);
         using var orchestrator = new SceneGlRenderOrchestrator(
             context, cache, world, shadow: source);
-        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneCameraFrame camera = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         var pass = new SceneRenderPassDefinition(SceneRenderPassIds.Main, clearMask: SceneClearMask.None);
-        var items = new SceneRenderItem[] { fixture.CreateItem(rendererActor) };
+        var items = new SceneRenderItem[] { fixture.CreateItem(rendererEntity) };
         var frameSource = new MeshOnlySource(items);
         var frameState = new SceneRenderFrameState();
 

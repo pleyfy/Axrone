@@ -25,15 +25,15 @@ public sealed class SceneLineTests
     public void CollectorExpandsPolylineIntoWorldSegments()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Line);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var polylines = new ScenePolylineRegistry();
         polylines.Register(1, [new Vec3(0, 0, 0), new Vec3(1, 0, 0), new Vec3(1, 1, 0)]);
 
-        SceneActor actor = world.CreateActor("Line");
-        world.GetTransform3D(actor).SetPosition(new Vec3(2.0f, 0.0f, 0.0f));
-        world.AddData(actor, Line(1));
+        SceneEntity entity = world.CreateEntity("Line");
+        world.GetTransform3D(entity).SetPosition(new Vec3(2.0f, 0.0f, 0.0f));
+        world.AddData(entity, Line(1));
         world.UpdateTransforms();
 
         var collector = new SceneLineItemCollector();
@@ -50,14 +50,14 @@ public sealed class SceneLineTests
     public void LoopClosesThePolyline()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Line);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var polylines = new ScenePolylineRegistry();
         polylines.Register(2, [new Vec3(0, 0, 0), new Vec3(1, 0, 0), new Vec3(1, 1, 0)]);
 
-        SceneActor actor = world.CreateActor("Loop");
-        world.AddData(actor, Line(2, loop: true));
+        SceneEntity entity = world.CreateEntity("Loop");
+        world.AddData(entity, Line(2, loop: true));
         world.UpdateTransforms();
 
         var collector = new SceneLineItemCollector();
@@ -71,19 +71,19 @@ public sealed class SceneLineTests
     public void MissingPolylineAndDisabledRendererAreSkipped()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Line);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var polylines = new ScenePolylineRegistry();
         polylines.Register(3, [new Vec3(0, 0, 0), new Vec3(1, 0, 0)]);
 
-        SceneActor missing = world.CreateActor("Missing");
+        SceneEntity missing = world.CreateEntity("Missing");
         world.AddData(missing, Line(99));
 
         SceneLineRenderer disabled = Line(3);
         disabled.Enabled = false;
-        SceneActor disabledActor = world.CreateActor("Disabled");
-        world.AddData(disabledActor, disabled);
+        SceneEntity disabledEntity = world.CreateEntity("Disabled");
+        world.AddData(disabledEntity, disabled);
 
         var collector = new SceneLineItemCollector();
         collector.Collect(world, frame, SceneRenderPassIds.Main, polylines).Should().Be(0);
@@ -93,14 +93,14 @@ public sealed class SceneLineTests
     public void SegmentsBehindCameraAreCulled()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Line);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var polylines = new ScenePolylineRegistry();
         polylines.Register(4, [new Vec3(0, 0, 20), new Vec3(1, 0, 20)]);
 
-        SceneActor actor = world.CreateActor("Behind");
-        world.AddData(actor, Line(4));
+        SceneEntity entity = world.CreateEntity("Behind");
+        world.AddData(entity, Line(4));
         world.UpdateTransforms();
 
         var collector = new SceneLineItemCollector();
@@ -114,8 +114,8 @@ public sealed class SceneLineTests
     public void CollectorIsZeroAllocationAfterWarmup()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Line);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
 
         var polylines = new ScenePolylineRegistry();
         var points = new Vec3[16];
@@ -125,8 +125,8 @@ public sealed class SceneLineTests
         }
 
         polylines.Register(5, points);
-        SceneActor actor = world.CreateActor("Line");
-        world.AddData(actor, Line(5));
+        SceneEntity entity = world.CreateEntity("Line");
+        world.AddData(entity, Line(5));
         world.UpdateTransforms();
 
         var collector = new SceneLineItemCollector();

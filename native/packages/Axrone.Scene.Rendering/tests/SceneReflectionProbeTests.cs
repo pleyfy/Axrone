@@ -24,10 +24,10 @@ public sealed class SceneReflectionProbeTests
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.ReflectionProbe);
 
-        SceneActor low = world.CreateActor("Low");
+        SceneEntity low = world.CreateEntity("Low");
         world.AddData(low, Probe("cubemap/low", priority: 0));
 
-        SceneActor high = world.CreateActor("High");
+        SceneEntity high = world.CreateEntity("High");
         world.GetTransform3D(high).SetPosition(new Vec3(5, 0, 0));
         world.AddData(high, Probe("cubemap/high", priority: 10));
         world.UpdateTransforms();
@@ -35,11 +35,11 @@ public sealed class SceneReflectionProbeTests
         var collector = new SceneReflectionProbeCollector();
         collector.Collect(world, Vec3.Zero).Should().Be(2);
 
-        collector.Items[0].Actor.Should().Be(high);
-        collector.Items[1].Actor.Should().Be(low);
+        collector.Items[0].Entity.Should().Be(high);
+        collector.Items[1].Entity.Should().Be(low);
         collector.SelectedIndex.Should().Be(1);
         collector.TryGetSelected(out SceneReflectionProbeRenderItem selected).Should().BeTrue();
-        selected.Actor.Should().Be(low);
+        selected.Entity.Should().Be(low);
         selected.ContainsCamera.Should().BeTrue();
     }
 
@@ -47,9 +47,9 @@ public sealed class SceneReflectionProbeTests
     public void ContainmentUsesTransformedWorldVolume()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.ReflectionProbe);
-        SceneActor actor = world.CreateActor("Probe");
-        world.GetTransform3D(actor).SetPosition(new Vec3(2, 0, 0));
-        world.AddData(actor, Probe("cubemap/room", extents: new Vec3(1, 1, 1)));
+        SceneEntity entity = world.CreateEntity("Probe");
+        world.GetTransform3D(entity).SetPosition(new Vec3(2, 0, 0));
+        world.AddData(entity, Probe("cubemap/room", extents: new Vec3(1, 1, 1)));
         world.UpdateTransforms();
 
         var collector = new SceneReflectionProbeCollector();
@@ -69,15 +69,15 @@ public sealed class SceneReflectionProbeTests
 
         SceneReflectionProbe disabled = Probe("cubemap/disabled");
         disabled.Enabled = false;
-        SceneActor disabledActor = world.CreateActor("Disabled");
-        world.AddData(disabledActor, disabled);
+        SceneEntity disabledEntity = world.CreateEntity("Disabled");
+        world.AddData(disabledEntity, disabled);
 
-        SceneActor missingCubemap = world.CreateActor("Missing");
+        SceneEntity missingCubemap = world.CreateEntity("Missing");
         SceneReflectionProbe missing = Probe("cubemap/missing");
         missing.CubemapId = default;
         world.AddData(missingCubemap, missing);
 
-        SceneActor flat = world.CreateActor("Flat");
+        SceneEntity flat = world.CreateEntity("Flat");
         world.AddData(flat, Probe("cubemap/flat", extents: new Vec3(1, 0, 1)));
 
         var collector = new SceneReflectionProbeCollector();
@@ -91,9 +91,9 @@ public sealed class SceneReflectionProbeTests
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.ReflectionProbe);
         for (int i = 0; i < 8; i++)
         {
-            SceneActor actor = world.CreateActor($"Probe{i}");
-            world.GetTransform3D(actor).SetPosition(new Vec3(i, 0, 0));
-            world.AddData(actor, Probe($"cubemap/{i}", priority: i % 3));
+            SceneEntity entity = world.CreateEntity($"Probe{i}");
+            world.GetTransform3D(entity).SetPosition(new Vec3(i, 0, 0));
+            world.AddData(entity, Probe($"cubemap/{i}", priority: i % 3));
         }
 
         world.UpdateTransforms();

@@ -35,7 +35,7 @@ internal static class GltfPrefabEngine
         string prefabId = $"gltf/scene/{sceneIndex}";
         GltfRawModel.Scene scene = model.Scenes[sceneIndex];
 
-        var actorList = new List<GltfActorSnapshot>();
+        var entityList = new List<GltfEntitySnapshot>();
         var rootNodeIds = new List<string>();
         var allNodeIds = new HashSet<string>(StringComparer.Ordinal);
         var materialKeys = new SortedSet<string>(StringComparer.Ordinal);
@@ -190,7 +190,7 @@ internal static class GltfPrefabEngine
                     for (int p = 0; p < primitiveCount; p++)
                     {
                         GltfRawModel.Primitive primitive = model.GetPrimitive(mesh, p);
-                        string childActorId = $"{nodeId}/primitive/{p}";
+                        string childEntityId = $"{nodeId}/primitive/{p}";
                         string meshKey = p < primitiveKeys.Length
                             ? primitiveKeys[p]
                             : GltfKeys.Mesh(node.Mesh, p);
@@ -215,19 +215,19 @@ internal static class GltfPrefabEngine
                                 MorphWeights = morphWeights,
                             });
 
-                        actorList.Add(new GltfActorSnapshot
+                        entityList.Add(new GltfEntitySnapshot
                         {
-                            NodeId = childActorId,
+                            NodeId = childEntityId,
                             ParentNodeId = nodeId,
                             Name = $"{(node.Name.IsEmpty ? "Node" : nodeName)}_Primitive_{p}",
                             Components = childComps,
                         });
-                        allNodeIds.Add(childActorId);
+                        allNodeIds.Add(childEntityId);
                     }
                 }
             }
 
-            actorList.Add(new GltfActorSnapshot
+            entityList.Add(new GltfEntitySnapshot
             {
                 NodeId = nodeId,
                 ParentNodeId = parentId,
@@ -261,7 +261,7 @@ internal static class GltfPrefabEngine
         {
             Id = prefabId,
             SceneIndex = sceneIndex,
-            Definition = new GltfPrefabDefinition { Actors = actorList.ToImmutableArray() },
+            Definition = new GltfPrefabDefinition { Entities = entityList.ToImmutableArray() },
             RootNodeIds = rootNodeIds.ToImmutableArray(),
             NodeIds = allNodeIds.ToImmutableArray(),
             MeshKeys = prefabMeshKeys.MoveToImmutable(),

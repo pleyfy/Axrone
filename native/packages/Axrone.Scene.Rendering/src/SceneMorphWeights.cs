@@ -1,33 +1,33 @@
 namespace Axrone.Scene.Rendering;
 
-/// <summary>Publishes per-actor morph weights from animation to the render layer.</summary>
+/// <summary>Publishes per-entity morph weights from animation to the render layer.</summary>
 public interface ISceneMorphWeightSink
 {
-    /// <summary>Copies one actor's current weights; the span is only valid for the call.</summary>
-    void ApplyMorphWeights(SceneActor actor, ReadOnlySpan<float> weights);
+    /// <summary>Copies one entity's current weights; the span is only valid for the call.</summary>
+    void ApplyMorphWeights(SceneEntity entity, ReadOnlySpan<float> weights);
 }
 
-/// <summary>Reads the latest per-actor morph weights.</summary>
+/// <summary>Reads the latest per-entity morph weights.</summary>
 public interface ISceneMorphWeightSource
 {
     /// <summary>Monotonic revision incremented on every weight write.</summary>
     long Revision { get; }
 
-    /// <summary>Looks up an actor's current weights.</summary>
-    bool TryGetMorphWeights(SceneActor actor, out ReadOnlySpan<float> weights);
+    /// <summary>Looks up an entity's current weights.</summary>
+    bool TryGetMorphWeights(SceneEntity entity, out ReadOnlySpan<float> weights);
 }
 
 /// <summary>
-/// Actor-keyed morph weights shared by the animator bridge and the renderer.
+/// Entity-keyed morph weights shared by the animator bridge and the renderer.
 /// Weights are copied into owned buffers, so callers can reuse their spans.
 /// </summary>
 public sealed class SceneMorphWeightStore : ISceneMorphWeightSink, ISceneMorphWeightSource
 {
-    private readonly Dictionary<SceneActor, float[]> _weights = new();
+    private readonly Dictionary<SceneEntity, float[]> _weights = new();
     private readonly Lock _gate = new();
     private long _revision;
 
-    /// <summary>Number of actors with resident weights.</summary>
+    /// <summary>Number of entities with resident weights.</summary>
     public int Count
     {
         get
@@ -43,9 +43,9 @@ public sealed class SceneMorphWeightStore : ISceneMorphWeightSink, ISceneMorphWe
     public long Revision => Volatile.Read(ref _revision);
 
     /// <inheritdoc/>
-    public void ApplyMorphWeights(SceneActor actor, ReadOnlySpan<float> weights)
+    public void ApplyMorphWeights(SceneEntity entity, ReadOnlySpan<float> weights)
     {
-        if (!actor.IsValid)
+        if (!entity.IsValid)
         {
             return;
         }
@@ -54,15 +54,15 @@ public sealed class SceneMorphWeightStore : ISceneMorphWeightSink, ISceneMorphWe
         {
             if (weights.IsEmpty)
             {
-                _ = _weights.Remove(actor);
+                _ = _weights.Remove(entity);
                 _revision++;
                 return;
             }
 
-            if (!_weights.TryGetValue(actor, out float[]? values) || values.Length != weights.Length)
+            if (!_weights.TryGetValue(entity, out float[]? values) || values.Length != weights.Length)
             {
                 values = new float[weights.Length];
-                _weights[actor] = values;
+                _weights[entity] = values;
             }
 
             weights.CopyTo(values);
@@ -71,11 +71,11 @@ public sealed class SceneMorphWeightStore : ISceneMorphWeightSink, ISceneMorphWe
     }
 
     /// <inheritdoc/>
-    public bool TryGetMorphWeights(SceneActor actor, out ReadOnlySpan<float> weights)
+    public bool TryGetMorphWeights(SceneEntity entity, out ReadOnlySpan<float> weights)
     {
         lock (_gate)
         {
-            if (actor.IsValid && _weights.TryGetValue(actor, out float[]? values))
+            if (entity.IsValid && _weights.TryGetValue(entity, out float[]? values))
             {
                 weights = values;
                 return true;
@@ -86,12 +86,12 @@ public sealed class SceneMorphWeightStore : ISceneMorphWeightSink, ISceneMorphWe
         return false;
     }
 
-    /// <summary>Removes one actor's weights.</summary>
-    public bool Remove(SceneActor actor)
+    /// <summary>Removes one entity's weights.</summary>
+    public bool Remove(SceneEntity entity)
     {
         lock (_gate)
         {
-            if (!_weights.Remove(actor))
+            if (!_weights.Remove(entity))
             {
                 return false;
             }
@@ -101,7 +101,7 @@ public sealed class SceneMorphWeightStore : ISceneMorphWeightSink, ISceneMorphWe
         }
     }
 
-    /// <summary>Removes every actor's weights.</summary>
+    /// <summary>Removes every entity's weights.</summary>
     public void Clear()
     {
         lock (_gate)

@@ -48,7 +48,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
     /// <param name="assets">Uploaded GPU asset cache.</param>
     /// <param name="palettes">Bone palette source.</param>
     /// <param name="options">Skinning configuration; defaults are 256 bones on unit 15.</param>
-    /// <param name="morphWeights">Optional per-actor morph weights; enables private deformed mesh variants.</param>
+    /// <param name="morphWeights">Optional per-entity morph weights; enables private deformed mesh variants.</param>
     public SceneGlSkinnedMeshRenderer(
         GLContext context,
         SceneGlAssetCache assets,
@@ -172,7 +172,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
             }
 
             if (_morphMeshes is not null &&
-                _morphMeshes.TryGetMesh(item.Actor, item.MeshId, out GLMesh? morphedMesh))
+                _morphMeshes.TryGetMesh(item.Entity, item.MeshId, out GLMesh? morphedMesh))
             {
                 mesh = morphedMesh;
             }
@@ -197,15 +197,15 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
                 continue;
             }
 
-            if (!_palettes.TryGetBonePalette(item.Actor, out ReadOnlySpan<Mat4> palette))
+            if (!_palettes.TryGetBonePalette(item.Entity, out ReadOnlySpan<Mat4> palette))
             {
-                Fail(SceneSkinningFailureReason.MissingPalette, $"actor '{item.Actor}' has no bone palette.");
+                Fail(SceneSkinningFailureReason.MissingPalette, $"entity '{item.Entity}' has no bone palette.");
                 continue;
             }
 
             if (palette.IsEmpty)
             {
-                Fail(SceneSkinningFailureReason.EmptyPalette, $"actor '{item.Actor}' has an empty bone palette.");
+                Fail(SceneSkinningFailureReason.EmptyPalette, $"entity '{item.Entity}' has an empty bone palette.");
                 continue;
             }
 
@@ -234,7 +234,7 @@ public sealed class SceneGlSkinnedMeshRenderer : IDisposable
 
             shader.Bind();
 
-            Mat4 model = world.GetWorldMatrix3D(item.Actor);
+            Mat4 model = world.GetWorldMatrix3D(item.Entity);
             shader.SetMatrix4(SceneGlDrawExecutor.ModelUniform, in model);
             shader.SetMatrix4(SceneGlDrawExecutor.ViewUniform, in view);
             shader.SetMatrix4(SceneGlDrawExecutor.ProjectionUniform, in projection);

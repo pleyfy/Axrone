@@ -298,8 +298,8 @@ public sealed class SceneGlPostProcessChainTests
     public void Orchestrator_WithAChain_DispatchesOneExtraPassAndPresentsIt()
     {
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out _);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 640, 360)!;
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out _);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 640, 360)!;
         using var chain = new SceneGlPostProcessChain(fixture.Context, 640, 360);
         Declare(fixture.Api, chain);
         chain.Enable(ScenePostProcessEffect.Fxaa);
@@ -332,8 +332,8 @@ public sealed class SceneGlPostProcessChainTests
     public void Orchestrator_WithoutAChain_PresentsNothingExtra()
     {
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out _);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 640, 360)!;
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out _);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 640, 360)!;
         using var orchestrator = new SceneGlRenderOrchestrator(fixture.Context, fixture.Cache, world);
         var frameState = new SceneRenderFrameState();
         frameState.Begin(9);

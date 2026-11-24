@@ -7,8 +7,8 @@ namespace Axrone.Scene.Rendering;
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneRenderItem
 {
-    /// <summary>Owning actor.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity.</summary>
+    public SceneEntity Entity;
 
     /// <summary>Mesh asset id.</summary>
     public SceneAssetId<MeshAssetTag> MeshId;

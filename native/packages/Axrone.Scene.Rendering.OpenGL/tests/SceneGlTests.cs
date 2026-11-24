@@ -87,12 +87,12 @@ public sealed class SceneGlTests
         using var fixture = new SceneGlFixture();
         using var cache = new SceneGlAssetCache(fixture.Context, fixture.Assets);
         _ = cache.UploadAll();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
         var pass = new SceneRenderPassDefinition(SceneRenderPassIds.Main, clearMask: SceneClearMask.None);
         var frameState = new SceneRenderFrameState();
         frameState.Begin(1);
-        var items = new[] { fixture.CreateItem(rendererActor) };
+        var items = new[] { fixture.CreateItem(rendererEntity) };
         var executor = new SceneGlDrawExecutor(fixture.Context, cache);
 
         int draws = executor.Render(world, frame, items, lighting: null, pass, frameState);
@@ -143,12 +143,12 @@ public sealed class SceneGlTests
         using var fixture = new SceneGlFixture();
         using var cache = new SceneGlAssetCache(fixture.Context, fixture.Assets);
         _ = cache.UploadAll();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
         var pass = new SceneRenderPassDefinition(SceneRenderPassIds.Main, clearMask: SceneClearMask.None);
         var frameState = new SceneRenderFrameState();
         frameState.Begin(1);
-        var items = new[] { fixture.CreateItem(rendererActor) };
+        var items = new[] { fixture.CreateItem(rendererEntity) };
         var executor = new SceneGlDrawExecutor(fixture.Context, cache);
         var fog = new SceneFogState(true, Vec3.One, SceneFogMode.Exponential, 0.5f, 0.0f, 100.0f);
 
@@ -180,8 +180,8 @@ public sealed class SceneGlTests
         using var fixture = new SceneGlFixture();
         using var cache = new SceneGlAssetCache(fixture.Context, fixture.Assets);
         _ = cache.UploadAll();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out _);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out _);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
         var pass = new SceneRenderPassDefinition(
             SceneRenderPassIds.Main,
             clearMask: SceneClearMask.Color | SceneClearMask.Depth,

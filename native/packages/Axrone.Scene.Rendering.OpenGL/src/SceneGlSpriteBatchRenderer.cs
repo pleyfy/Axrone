@@ -463,8 +463,8 @@ public sealed class SceneGlSpriteBatchRenderer : IDisposable
     private static Render2DSpriteSubmission ToSubmission(SceneWorld world, in SceneSpriteRenderItem item)
     {
         Mat4 worldMatrix = world.HasTransform2D
-            ? SceneBounds.FromAffine2D(world.GetWorldMatrix2D(item.Actor))
-            : world.GetWorldMatrix3D(item.Actor);
+            ? SceneBounds.FromAffine2D(world.GetWorldMatrix2D(item.Entity))
+            : world.GetWorldMatrix3D(item.Entity);
 
         Mat4 inverse = default;
         bool hasMask = item.HasMask && Mat4.Invert(worldMatrix, out inverse);

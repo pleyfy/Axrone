@@ -5,15 +5,15 @@ using Axrone.Scene.Assets;
 using Axrone.Scene.Rendering;
 
 /// <summary>
-/// Per-actor morph mesh variants. A shared mesh asset cannot carry different
-/// weights per actor, so each morphed actor receives its own cloned GLMesh; the
+/// Per-entity morph mesh variants. A shared mesh asset cannot carry different
+/// weights per entity, so each morphed entity receives its own cloned GLMesh; the
 /// animation layer publishes weights through <see cref="ISceneMorphWeightSource"/>.
 /// </summary>
 public sealed class SceneGlMorphMeshCache : IDisposable
 {
     private readonly SceneGlAssetCache _assets;
     private readonly ISceneMorphWeightSource _weights;
-    private readonly Dictionary<(SceneActor Actor, SceneAssetId<MeshAssetTag> Mesh), Entry> _entries = [];
+    private readonly Dictionary<(SceneEntity Entity, SceneAssetId<MeshAssetTag> Mesh), Entry> _entries = [];
     private bool _disposed;
 
     /// <summary>Creates a morph mesh cache over an uploaded asset cache.</summary>
@@ -29,19 +29,19 @@ public sealed class SceneGlMorphMeshCache : IDisposable
     public int Count => _entries.Count;
 
     /// <summary>
-    /// Resolves the deformed mesh for an actor, creating or updating its private
-    /// vertex buffer when weights changed. Returns false when the actor has no
+    /// Resolves the deformed mesh for an entity, creating or updating its private
+    /// vertex buffer when weights changed. Returns false when the entity has no
     /// weights or the mesh has no morph targets, so the caller draws the shared mesh.
     /// </summary>
     public bool TryGetMesh(
-        SceneActor actor,
+        SceneEntity entity,
         SceneAssetId<MeshAssetTag> meshId,
         [NotNullWhen(true)] out GLMesh? mesh)
     {
         ThrowIfDisposed();
         mesh = null;
 
-        if (!_weights.TryGetMorphWeights(actor, out ReadOnlySpan<float> weights) || weights.IsEmpty)
+        if (!_weights.TryGetMorphWeights(entity, out ReadOnlySpan<float> weights) || weights.IsEmpty)
         {
             return false;
         }
@@ -52,7 +52,7 @@ public sealed class SceneGlMorphMeshCache : IDisposable
             return false;
         }
 
-        var key = (actor, meshId);
+        var key = (entity, meshId);
         if (!_entries.TryGetValue(key, out Entry? entry) ||
             !ReferenceEquals(entry.Definition, definition))
         {
