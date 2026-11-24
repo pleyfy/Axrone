@@ -9,34 +9,34 @@ public class Scene2DBulkTests
         using Scene2D bulkScene = Scene2D.Create();
         using Scene2D singleScene = Scene2D.Create();
 
-        var bulkActors = new SceneActor[specs.Length];
-        int created = bulkScene.CreateSprites(specs, bulkActors);
+        var bulkEntities = new SceneEntity[specs.Length];
+        int created = bulkScene.CreateSprites(specs, bulkEntities);
         created.Should().Be(specs.Length);
 
-        var singleActors = new SceneActor[specs.Length];
+        var singleEntities = new SceneEntity[specs.Length];
         for (int i = 0; i < specs.Length; i++)
         {
-            SceneActorConfig actorConfig = specs[i].ActorConfig;
+            SceneEntityConfig entityConfig = specs[i].EntityConfig;
             Scene2DSpriteConfig spriteConfig = specs[i].Sprite;
-            SceneActor actor = singleScene.CreateSpriteActor(in actorConfig, in spriteConfig);
+            SceneEntity entity = singleScene.CreateSpriteEntity(in entityConfig, in spriteConfig);
             Vec2 position = specs[i].Position;
-            singleScene.World.GetTransform2D(actor).SetPosition(in position);
-            singleActors[i] = actor;
+            singleScene.World.GetTransform2D(entity).SetPosition(in position);
+            singleEntities[i] = entity;
         }
 
         singleScene.World.UpdateTransforms();
-        bulkScene.ActorCount.Should().Be(singleScene.ActorCount);
+        bulkScene.EntityCount.Should().Be(singleScene.EntityCount);
         bulkScene.Capacity.Should().Be(singleScene.Capacity);
 
         for (int i = 0; i < specs.Length; i++)
         {
-            bulkActors[i].Should().Be(singleActors[i]);
-            bulkScene.World.GetName(bulkActors[i]).Should().Be(singleScene.World.GetName(singleActors[i]));
-            bulkScene.World.GetWorldPosition2D(bulkActors[i])
-                .Should().Be(singleScene.World.GetWorldPosition2D(singleActors[i]));
+            bulkEntities[i].Should().Be(singleEntities[i]);
+            bulkScene.World.GetName(bulkEntities[i]).Should().Be(singleScene.World.GetName(singleEntities[i]));
+            bulkScene.World.GetWorldPosition2D(bulkEntities[i])
+                .Should().Be(singleScene.World.GetWorldPosition2D(singleEntities[i]));
 
-            bulkScene.World.TryGetData(bulkActors[i], out Scene2DSpriteRenderer bulkRenderer).Should().BeTrue();
-            singleScene.World.TryGetData(singleActors[i], out Scene2DSpriteRenderer singleRenderer).Should().BeTrue();
+            bulkScene.World.TryGetData(bulkEntities[i], out Scene2DSpriteRenderer bulkRenderer).Should().BeTrue();
+            singleScene.World.TryGetData(singleEntities[i], out Scene2DSpriteRenderer singleRenderer).Should().BeTrue();
             bulkRenderer.TextureId.Should().Be(singleRenderer.TextureId);
             bulkRenderer.PassId.Should().Be(singleRenderer.PassId);
             bulkRenderer.Size.Should().Be(singleRenderer.Size);
@@ -56,15 +56,15 @@ public class Scene2DBulkTests
     {
         Scene2DSpriteSpec[] specs = CreateSpecs(16);
         using Scene2D scene = Scene2D.Create();
-        var actors = new SceneActor[specs.Length];
+        var entities = new SceneEntity[specs.Length];
 
-        scene.CreateSprites(specs, actors).Should().Be(specs.Length);
+        scene.CreateSprites(specs, entities).Should().Be(specs.Length);
 
         for (int i = 0; i < specs.Length; i++)
         {
-            actors[i].Slot.Should().Be(i);
-            scene.World.GetWorldPosition2D(actors[i]).Should().Be(specs[i].Position);
-            scene.World.TryGetData(actors[i], out Scene2DSpriteRenderer renderer).Should().BeTrue();
+            entities[i].Slot.Should().Be(i);
+            scene.World.GetWorldPosition2D(entities[i]).Should().Be(specs[i].Position);
+            scene.World.TryGetData(entities[i], out Scene2DSpriteRenderer renderer).Should().BeTrue();
             renderer.RenderOrder.Should().Be(i);
             renderer.TextureId.Should().Be(specs[i].Sprite.TextureId);
         }
@@ -83,16 +83,16 @@ public class Scene2DBulkTests
             WorldOptions = new SceneWorldOptions(4)
         });
 
-        var oneBatchActors = new SceneActor[specs.Length];
-        oneBatch.CreateSprites(specs, oneBatchActors).Should().Be(specs.Length);
+        var oneBatchEntities = new SceneEntity[specs.Length];
+        oneBatch.CreateSprites(specs, oneBatchEntities).Should().Be(specs.Length);
 
-        var chunkActors = new SceneActor[5];
+        var chunkEntities = new SceneEntity[5];
         for (int offset = 0; offset < specs.Length; offset += 5)
         {
-            chunked.CreateSprites(specs.AsSpan(offset, 5), chunkActors).Should().Be(5);
+            chunked.CreateSprites(specs.AsSpan(offset, 5), chunkEntities).Should().Be(5);
         }
 
-        oneBatch.ActorCount.Should().Be(chunked.ActorCount);
+        oneBatch.EntityCount.Should().Be(chunked.EntityCount);
         oneBatch.Capacity.Should().Be(chunked.Capacity);
         oneBatch.Capacity.Should().Be(32);
     }
@@ -105,15 +105,15 @@ public class Scene2DBulkTests
             WorldOptions = new SceneWorldOptions(32)
         });
         Scene2DSpriteSpec[] specs = CreateSpecs(16);
-        var actors = new SceneActor[specs.Length];
+        var entities = new SceneEntity[specs.Length];
 
-        scene.CreateSprites(specs, actors);
-        scene.World.DestroyAllActors();
-        scene.CreateSprites(specs, actors);
-        scene.World.DestroyAllActors();
+        scene.CreateSprites(specs, entities);
+        scene.World.DestroyAllEntities();
+        scene.CreateSprites(specs, entities);
+        scene.World.DestroyAllEntities();
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        int created = scene.CreateSprites(specs, actors);
+        int created = scene.CreateSprites(specs, entities);
         long delta = GC.GetAllocatedBytesForCurrentThread() - before;
 
         created.Should().Be(specs.Length);
@@ -121,29 +121,29 @@ public class Scene2DBulkTests
     }
 
     [Fact]
-    public void InvalidSpecRollsBackBeforeAnyActorIsCreated()
+    public void InvalidSpecRollsBackBeforeAnyEntityIsCreated()
     {
         Scene2DSpriteSpec[] specs = CreateSpecs(4);
         specs[2] = new Scene2DSpriteSpec { Position = new Vec2(float.NaN, 0.0f) };
         using Scene2D scene = Scene2D.Create();
-        var actors = new SceneActor[specs.Length];
+        var entities = new SceneEntity[specs.Length];
 
-        Action create = () => scene.CreateSprites(specs, actors);
+        Action create = () => scene.CreateSprites(specs, entities);
 
         create.Should().Throw<SceneValidationException>();
-        scene.ActorCount.Should().Be(0);
+        scene.EntityCount.Should().Be(0);
     }
 
     [Fact]
-    public void ShortDestinationIsRejectedBeforeAnyActorIsCreated()
+    public void ShortDestinationIsRejectedBeforeAnyEntityIsCreated()
     {
         Scene2DSpriteSpec[] specs = CreateSpecs(4);
         using Scene2D scene = Scene2D.Create();
 
-        Action create = () => scene.CreateSprites(specs, new SceneActor[1]);
+        Action create = () => scene.CreateSprites(specs, new SceneEntity[1]);
 
         create.Should().Throw<ArgumentException>();
-        scene.ActorCount.Should().Be(0);
+        scene.EntityCount.Should().Be(0);
     }
 
     [Fact]
@@ -153,10 +153,10 @@ public class Scene2DBulkTests
 
         int created = scene.CreateSprites(
             ReadOnlySpan<Scene2DSpriteSpec>.Empty,
-            Span<SceneActor>.Empty);
+            Span<SceneEntity>.Empty);
 
         created.Should().Be(0);
-        scene.ActorCount.Should().Be(0);
+        scene.EntityCount.Should().Be(0);
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class Scene2DBulkTests
         {
             specs[i] = new Scene2DSpriteSpec
             {
-                ActorConfig = new SceneActorConfig("Sprite"),
+                EntityConfig = new SceneEntityConfig("Sprite"),
                 Sprite = new Scene2DSpriteConfig
                 {
                     TextureId = SceneStringId.FromName("texture/hero"),

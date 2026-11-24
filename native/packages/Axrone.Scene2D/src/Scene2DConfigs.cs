@@ -1,6 +1,6 @@
 namespace Axrone.Scene2D;
 
-/// <summary>Creation settings for a 2D camera actor.</summary>
+/// <summary>Creation settings for a 2D camera entity.</summary>
 public readonly record struct Scene2DCameraConfig
 {
     /// <summary>Whether the projection is orthographic.</summary>
@@ -393,8 +393,8 @@ public readonly record struct Scene2DSpriteMaskConfig
 /// <summary>One sprite in a bulk creation batch.</summary>
 public readonly record struct Scene2DSpriteSpec
 {
-    /// <summary>Actor creation settings.</summary>
-    public SceneActorConfig ActorConfig { get; init; }
+    /// <summary>Entity creation settings.</summary>
+    public SceneEntityConfig EntityConfig { get; init; }
 
     /// <summary>Sprite renderer settings.</summary>
     public Scene2DSpriteConfig Sprite { get; init; }
@@ -402,10 +402,10 @@ public readonly record struct Scene2DSpriteSpec
     /// <summary>Local 2D position.</summary>
     public Vec2 Position { get; init; }
 
-    /// <summary>Creates a default spec: active actor, default sprite, origin.</summary>
+    /// <summary>Creates a default spec: active entity, default sprite, origin.</summary>
     public Scene2DSpriteSpec()
     {
-        ActorConfig = new SceneActorConfig();
+        EntityConfig = new SceneEntityConfig();
         Sprite = new Scene2DSpriteConfig();
         Position = Vec2.Zero;
     }

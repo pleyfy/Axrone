@@ -25,14 +25,14 @@ public class Scene2DRendererBridgeTests
     }
 
     [Fact]
-    public void RendererCameraActorUsesRendererDefaults()
+    public void RendererCameraEntityUsesRendererDefaults()
     {
         using Scene2D scene = CreateRendererScene();
-        SceneActor actor = scene.CreateCameraActor(
-            new SceneActorConfig("Camera"),
+        SceneEntity entity = scene.CreateCameraEntity(
+            new SceneEntityConfig("Camera"),
             new Scene2DCameraConfig());
 
-        scene.World.TryGetData(actor, out SceneCamera camera).Should().BeTrue();
+        scene.World.TryGetData(entity, out SceneCamera camera).Should().BeTrue();
         SceneCamera expected = SceneCamera2DDefaults.CreateCamera();
         camera.Orthographic.Should().Be(expected.Orthographic);
         camera.Primary.Should().Be(expected.Primary);
@@ -43,14 +43,14 @@ public class Scene2DRendererBridgeTests
         camera.ClearMask.Should().Be(expected.ClearMask);
         camera.ClearColor.Should().Be(expected.ClearColor);
 
-        scene.World.TryGetData(actor, out SceneCamera2D camera2D).Should().BeTrue();
+        scene.World.TryGetData(entity, out SceneCamera2D camera2D).Should().BeTrue();
         camera2D.Depth.Should().Be(SceneCamera2DDefaults.Depth);
-        scene.World.HasData<Scene2DCamera>(actor).Should().BeFalse();
-        scene.World.HasData<Scene2DCamera2D>(actor).Should().BeFalse();
+        scene.World.HasData<Scene2DCamera>(entity).Should().BeFalse();
+        scene.World.HasData<Scene2DCamera2D>(entity).Should().BeFalse();
     }
 
     [Fact]
-    public void RendererSpriteActorBridgesEveryField()
+    public void RendererSpriteEntityBridgesEveryField()
     {
         using Scene2D scene = CreateRendererScene();
         SceneStringId texture = SceneStringId.FromName("texture/hero");
@@ -73,9 +73,9 @@ public class Scene2DRendererBridgeTests
             Depth = 0.25f
         };
 
-        SceneActor actor = scene.CreateSpriteActor(new SceneActorConfig("Hero"), config);
+        SceneEntity entity = scene.CreateSpriteEntity(new SceneEntityConfig("Hero"), config);
 
-        scene.World.TryGetData(actor, out SceneSpriteRenderer renderer).Should().BeTrue();
+        scene.World.TryGetData(entity, out SceneSpriteRenderer renderer).Should().BeTrue();
         renderer.TextureId.Should().Be(SceneAssetId<TextureAssetTag>.FromSymbol(texture));
         renderer.MaterialId.Should().Be(SceneAssetId<MaterialAssetTag>.FromSymbol(material));
         renderer.PassId.Should().Be(SceneAssetId<RenderPassAssetTag>.FromSymbol(config.PassId));
@@ -91,7 +91,7 @@ public class Scene2DRendererBridgeTests
         renderer.Color.Should().Be(new Vec4(1.0f, 0.5f, 0.25f, 0.8f));
         renderer.UvRect.Should().Be(new Vec4(0.1f, 0.2f, 0.3f, 0.4f));
         renderer.Depth.Should().Be(0.25f);
-        scene.World.HasData<Scene2DSpriteRenderer>(actor).Should().BeFalse();
+        scene.World.HasData<Scene2DSpriteRenderer>(entity).Should().BeFalse();
     }
 
     [Fact]
@@ -115,12 +115,12 @@ public class Scene2DRendererBridgeTests
             Loop = false
         };
 
-        SceneActor actor = scene.CreateAnimatedSpriteActor(
-            new SceneActorConfig("Animated"),
+        SceneEntity entity = scene.CreateAnimatedSpriteEntity(
+            new SceneEntityConfig("Animated"),
             new Scene2DSpriteConfig(),
             animatorConfig);
 
-        SceneSpriteAnimatorBehaviour? animator = scene.World.GetBehaviour<SceneSpriteAnimatorBehaviour>(actor);
+        SceneSpriteAnimatorBehaviour? animator = scene.World.GetBehaviour<SceneSpriteAnimatorBehaviour>(entity);
         animator.Should().NotBeNull();
         animator!.Clip.Should().BeSameAs(clip);
         animator.FrameIndex.Should().Be(1);
@@ -129,9 +129,9 @@ public class Scene2DRendererBridgeTests
         animator.Speed.Should().Be(2.0f);
         animator.Loop.Should().BeFalse();
 
-        scene.World.TryGetData(actor, out SceneSpriteRenderer renderer).Should().BeTrue();
+        scene.World.TryGetData(entity, out SceneSpriteRenderer renderer).Should().BeTrue();
         renderer.UvRect.Should().Be(clip.Frames[1].UvRect);
-        scene.World.HasData<Scene2DSpriteAnimator>(actor).Should().BeFalse();
+        scene.World.HasData<Scene2DSpriteAnimator>(entity).Should().BeFalse();
     }
 
     [Fact]
@@ -146,17 +146,17 @@ public class Scene2DRendererBridgeTests
             CornerRadius = 0.2f,
             Invert = true
         };
-        SceneActor maskActor = scene.CreateMaskActor(new SceneActorConfig("Mask"), maskConfig);
-        SceneActor spriteActor = scene.CreateSpriteActor(new SceneActorConfig("Sprite"), new Scene2DSpriteConfig());
-        scene.World.Hierarchy.SetParent(spriteActor, maskActor);
+        SceneEntity maskEntity = scene.CreateMaskEntity(new SceneEntityConfig("Mask"), maskConfig);
+        SceneEntity spriteEntity = scene.CreateSpriteEntity(new SceneEntityConfig("Sprite"), new Scene2DSpriteConfig());
+        scene.World.Hierarchy.SetParent(spriteEntity, maskEntity);
 
-        SceneSpriteMaskResolver.TryResolve(scene.World, spriteActor, out SceneSpriteMask resolved).Should().BeTrue();
+        SceneSpriteMaskResolver.TryResolve(scene.World, spriteEntity, out SceneSpriteMask resolved).Should().BeTrue();
         resolved.Kind.Should().Be(SceneSpriteMaskKind.Ellipse);
         resolved.Rect.Should().Be(new Vec4(0.2f, 0.1f, 0.6f, 0.8f));
         resolved.Feather.Should().Be(0.05f);
         resolved.CornerRadius.Should().Be(0.2f);
         resolved.Invert.Should().BeTrue();
-        scene.World.HasData<Scene2DSpriteMask>(maskActor).Should().BeFalse();
+        scene.World.HasData<Scene2DSpriteMask>(maskEntity).Should().BeFalse();
     }
 
     [Fact]
@@ -201,32 +201,32 @@ public class Scene2DRendererBridgeTests
         using Scene2D bulkScene = CreateRendererScene();
         using Scene2D singleScene = CreateRendererScene();
 
-        var bulkActors = new SceneActor[specs.Length];
-        bulkScene.CreateSprites(specs, bulkActors).Should().Be(specs.Length);
+        var bulkEntities = new SceneEntity[specs.Length];
+        bulkScene.CreateSprites(specs, bulkEntities).Should().Be(specs.Length);
 
-        var singleActors = new SceneActor[specs.Length];
+        var singleEntities = new SceneEntity[specs.Length];
         for (int i = 0; i < specs.Length; i++)
         {
-            SceneActorConfig actorConfig = specs[i].ActorConfig;
+            SceneEntityConfig entityConfig = specs[i].EntityConfig;
             Scene2DSpriteConfig spriteConfig = specs[i].Sprite;
-            SceneActor actor = singleScene.CreateSpriteActor(in actorConfig, in spriteConfig);
+            SceneEntity entity = singleScene.CreateSpriteEntity(in entityConfig, in spriteConfig);
             Vec2 position = specs[i].Position;
-            singleScene.World.GetTransform2D(actor).SetPosition(in position);
-            singleActors[i] = actor;
+            singleScene.World.GetTransform2D(entity).SetPosition(in position);
+            singleEntities[i] = entity;
         }
 
         singleScene.World.UpdateTransforms();
-        bulkScene.ActorCount.Should().Be(singleScene.ActorCount);
+        bulkScene.EntityCount.Should().Be(singleScene.EntityCount);
         bulkScene.Capacity.Should().Be(singleScene.Capacity);
 
         for (int i = 0; i < specs.Length; i++)
         {
-            bulkActors[i].Should().Be(singleActors[i]);
-            bulkScene.World.GetWorldPosition2D(bulkActors[i])
+            bulkEntities[i].Should().Be(singleEntities[i]);
+            bulkScene.World.GetWorldPosition2D(bulkEntities[i])
                 .Should()
-                .Be(singleScene.World.GetWorldPosition2D(singleActors[i]));
-            bulkScene.World.TryGetData(bulkActors[i], out SceneSpriteRenderer bulkRenderer).Should().BeTrue();
-            singleScene.World.TryGetData(singleActors[i], out SceneSpriteRenderer singleRenderer).Should().BeTrue();
+                .Be(singleScene.World.GetWorldPosition2D(singleEntities[i]));
+            bulkScene.World.TryGetData(bulkEntities[i], out SceneSpriteRenderer bulkRenderer).Should().BeTrue();
+            singleScene.World.TryGetData(singleEntities[i], out SceneSpriteRenderer singleRenderer).Should().BeTrue();
             bulkRenderer.TextureId.Should().Be(singleRenderer.TextureId);
             bulkRenderer.PassId.Should().Be(singleRenderer.PassId);
             bulkRenderer.Size.Should().Be(singleRenderer.Size);
@@ -245,15 +245,15 @@ public class Scene2DRendererBridgeTests
     {
         using Scene2D scene = CreateRendererScene(new SceneWorldOptions(32));
         Scene2DSpriteSpec[] specs = CreateSpecs(16);
-        var actors = new SceneActor[specs.Length];
+        var entities = new SceneEntity[specs.Length];
 
-        scene.CreateSprites(specs, actors);
-        scene.World.DestroyAllActors();
-        scene.CreateSprites(specs, actors);
-        scene.World.DestroyAllActors();
+        scene.CreateSprites(specs, entities);
+        scene.World.DestroyAllEntities();
+        scene.CreateSprites(specs, entities);
+        scene.World.DestroyAllEntities();
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        int created = scene.CreateSprites(specs, actors);
+        int created = scene.CreateSprites(specs, entities);
         long delta = GC.GetAllocatedBytesForCurrentThread() - before;
 
         created.Should().Be(specs.Length);
@@ -261,20 +261,20 @@ public class Scene2DRendererBridgeTests
     }
 
     [Fact]
-    public void LeanProfileRejectsManagedClipsBeforeActorAllocation()
+    public void LeanProfileRejectsManagedClipsBeforeEntityAllocation()
     {
         using Scene2D scene = Scene2D.Create();
         var clip = new SceneSpriteAnimationClip(
             "idle",
             [new SceneSpriteAnimationFrame(new Vec4(0.0f, 0.0f, 1.0f, 1.0f), 0.1f)]);
 
-        Action create = () => scene.CreateAnimatedSpriteActor(
-            new SceneActorConfig("Animated"),
+        Action create = () => scene.CreateAnimatedSpriteEntity(
+            new SceneEntityConfig("Animated"),
             new Scene2DSpriteConfig(),
             new Scene2DSpriteAnimatorConfig { Clip = clip });
 
         create.Should().Throw<SceneCapabilityException>().Which.Capability.Should().Be("SpriteAnimatorClip");
-        scene.ActorCount.Should().Be(0);
+        scene.EntityCount.Should().Be(0);
     }
 
     [Fact]
@@ -282,13 +282,13 @@ public class Scene2DRendererBridgeTests
     {
         using Scene2D scene = CreateRendererScene();
 
-        Action create = () => scene.CreateAnimatedSpriteActor(
-            new SceneActorConfig("Animated"),
+        Action create = () => scene.CreateAnimatedSpriteEntity(
+            new SceneEntityConfig("Animated"),
             new Scene2DSpriteConfig(),
             new Scene2DSpriteAnimatorConfig { FrameIndex = 1 });
 
         create.Should().Throw<SceneValidationException>();
-        scene.ActorCount.Should().Be(0);
+        scene.EntityCount.Should().Be(0);
     }
 
     [Fact]
@@ -296,13 +296,13 @@ public class Scene2DRendererBridgeTests
     {
         using Scene2D scene = CreateRendererScene();
 
-        Action create = () => scene.CreateAnimatedSpriteActor(
-            new SceneActorConfig("Animated"),
+        Action create = () => scene.CreateAnimatedSpriteEntity(
+            new SceneEntityConfig("Animated"),
             new Scene2DSpriteConfig(),
             new Scene2DSpriteAnimatorConfig { ClipId = SceneStringId.FromName("clip/idle") });
 
         create.Should().Throw<SceneValidationException>();
-        scene.ActorCount.Should().Be(0);
+        scene.EntityCount.Should().Be(0);
     }
 
     [Fact]
@@ -355,11 +355,11 @@ public class Scene2DRendererBridgeTests
     public void RendererFacadeDisposeBlocksReuse()
     {
         Scene2D scene = CreateRendererScene();
-        _ = scene.CreateSpriteActor(new SceneActorConfig("Sprite"), new Scene2DSpriteConfig());
+        _ = scene.CreateSpriteEntity(new SceneEntityConfig("Sprite"), new Scene2DSpriteConfig());
         scene.Dispose();
 
         scene.World.IsDisposed.Should().BeTrue();
-        Action create = () => scene.CreateSpriteActor(new SceneActorConfig("Sprite"), new Scene2DSpriteConfig());
+        Action create = () => scene.CreateSpriteEntity(new SceneEntityConfig("Sprite"), new Scene2DSpriteConfig());
         create.Should().Throw<SceneDisposedException>();
         scene.Dispose();
     }
@@ -378,7 +378,7 @@ public class Scene2DRendererBridgeTests
         {
             specs[i] = new Scene2DSpriteSpec
             {
-                ActorConfig = new SceneActorConfig("Sprite"),
+                EntityConfig = new SceneEntityConfig("Sprite"),
                 Sprite = new Scene2DSpriteConfig
                 {
                     TextureId = SceneStringId.FromName("texture/hero"),

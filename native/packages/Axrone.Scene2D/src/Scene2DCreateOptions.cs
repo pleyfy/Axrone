@@ -16,7 +16,7 @@ public readonly record struct Scene2DCreateOptions
     /// <summary>Optional diagnostics sink forwarded to the world.</summary>
     public ISceneDiagnosticsSink? Diagnostics { get; init; }
 
-    /// <summary>Creates default options: lean profile, 64 actor slots.</summary>
+    /// <summary>Creates default options: lean profile, 64 entity slots.</summary>
     public Scene2DCreateOptions()
     {
         RuntimeProfile = null;

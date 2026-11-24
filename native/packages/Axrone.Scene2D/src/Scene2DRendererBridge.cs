@@ -166,43 +166,43 @@ public static class Scene2DRendererBridge
         return mask;
     }
 
-    /// <summary>Attaches renderer camera components to an actor.</summary>
+    /// <summary>Attaches renderer camera components to an entity.</summary>
     public static void AttachCamera(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         in Scene2DCamera camera,
         in Scene2DCamera2D camera2D)
     {
         ArgumentNullException.ThrowIfNull(world);
 
         SceneCamera rendererCamera = ToSceneCamera(in camera);
-        world.AddData(actor, in rendererCamera);
+        world.AddData(entity, in rendererCamera);
         SceneCamera2D rendererCamera2D = ToSceneCamera2D(in camera2D);
-        world.AddData(actor, in rendererCamera2D);
+        world.AddData(entity, in rendererCamera2D);
     }
 
-    /// <summary>Attaches the renderer sprite component to an actor.</summary>
+    /// <summary>Attaches the renderer sprite component to an entity.</summary>
     public static void AttachSprite(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         in Scene2DSpriteRenderer renderer)
     {
         ArgumentNullException.ThrowIfNull(world);
 
         SceneSpriteRenderer target = ToSceneSpriteRenderer(in renderer);
-        world.AddData(actor, in target);
+        world.AddData(entity, in target);
     }
 
-    /// <summary>Attaches the renderer sprite mask to an actor.</summary>
+    /// <summary>Attaches the renderer sprite mask to an entity.</summary>
     public static void AttachMask(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         in Scene2DSpriteMask mask)
     {
         ArgumentNullException.ThrowIfNull(world);
 
         SceneSpriteMask target = ToSceneSpriteMask(in mask);
-        world.AddData(actor, in target);
+        world.AddData(entity, in target);
     }
 
     /// <summary>
@@ -216,7 +216,7 @@ public static class Scene2DRendererBridge
     /// </exception>
     public static void AttachAnimator(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         in Scene2DSpriteAnimator animator,
         SceneSpriteAnimationClip? clip)
     {
@@ -243,7 +243,7 @@ public static class Scene2DRendererBridge
             ValidateClipProgress(in animator, clip);
         }
 
-        SceneSpriteAnimatorBehaviour behaviour = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(actor);
+        SceneSpriteAnimatorBehaviour behaviour = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(entity);
         behaviour.Playing = true;
         behaviour.Speed = 1.0f;
         behaviour.Loop = animator.Loop;
