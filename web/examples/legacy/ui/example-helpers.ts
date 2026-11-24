@@ -499,9 +499,9 @@ export const createUIExampleHost = async (
             u_Color: options.cubeColor ?? [0.22, 0.56, 0.93, 1],
         },
     });
-    scene.createCameraActor({ name: 'UICamera' }, { primary: true, fieldOfView: 60 });
+    scene.createCameraEntity({ name: 'UICamera' }, { primary: true, fieldOfView: 60 });
 
-    const cube = scene.createRenderableActor(
+    const cube = scene.createRenderableEntity(
         { name: 'UIExampleCube' },
         { meshId: 'ui-example.cube', materialId: 'ui-example.cube-material' }
     );

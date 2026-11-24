@@ -161,7 +161,7 @@ void main() {
         });
 
         // Plane mesh is already generated on the XZ ground plane with +Y normal.
-        const ground = scene.createRenderableActor(
+        const ground = scene.createRenderableEntity(
             { name: 'Ground' },
             { meshId: 'ground-plane', materialId: 'ground-grid-material' }
         );
@@ -169,7 +169,7 @@ void main() {
         groundTransform.position = new Vec3(0, -0.9, 0);
 
         // Create player cube with controller
-        const player = scene.createRenderableActor(
+        const player = scene.createRenderableEntity(
             { name: 'Player' },
             { meshId: 'controller-cube', materialId: 'controller-cube-material' }
         );
@@ -178,7 +178,7 @@ void main() {
         player.addComponent(PlayerController);
 
         // Create follow camera - isometric-style view from corner
-        const camera = scene.createCameraActor(
+        const camera = scene.createCameraEntity(
             { name: 'FollowCamera' },
             { primary: true, fieldOfView: 50 }
         );

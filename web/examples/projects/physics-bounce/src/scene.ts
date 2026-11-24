@@ -125,17 +125,17 @@ export const createPhysicsBounceScene = (container: HTMLElement): PlaygroundScen
 	);
 
 	scene.createBoxMesh('playground/physics-bounce/floor-mesh', 1, 1, 1);
-	const floorActor = scene.createRenderableActor(
+	const floorEntity = scene.createRenderableEntity(
 		{ name: 'BounceFloor' },
 		{ meshId: 'playground/physics-bounce/floor-mesh', materialId: FLOOR_MATERIAL_ID },
 	);
-	const floorTransform = floorActor.requireComponent(Transform);
+	const floorTransform = floorEntity.requireComponent(Transform);
 	floorTransform.position = new Vec3(0, -0.25, 0);
 	floorTransform.scale = new Vec3(28, 0.5, 28);
 
 	for (const x of [-5.8, 5.8]) {
 		for (const z of [-5.8, 5.8]) {
-			const post = scene.createRenderableActor(
+			const post = scene.createRenderableEntity(
 				{ name: `BouncePost-${x}-${z}` },
 				{ meshId: POST_MESH_ID, materialId: POST_MATERIAL_ID },
 			);
@@ -167,11 +167,11 @@ export const createPhysicsBounceScene = (container: HTMLElement): PlaygroundScen
 			physicsMaterial(0.22, 0.72 + Math.random() * 0.24),
 		);
 		world.getBody(bodyId as never)?.resetMassData();
-		const actor = scene.createRenderableActor(
+		const entity = scene.createRenderableEntity(
 			{ name: `BounceSphere-${bodyId}` },
 			{ meshId: SPHERE_MESH_ID, materialId: `${SPHERE_MATERIAL_PREFIX}${colorIndex % SPHERE_COLORS.length}` },
 		);
-		const transform = actor.requireComponent(Transform);
+		const transform = entity.requireComponent(Transform);
 		transform.position = new Vec3(position[0], position[1], position[2]);
 		transform.scale = new Vec3(radius, radius, radius);
 		const body = world.getBody(bodyId as never);
@@ -191,7 +191,7 @@ export const createPhysicsBounceScene = (container: HTMLElement): PlaygroundScen
 		);
 	}
 
-	const camera = scene.createCameraActor({ name: 'BounceCamera' }, { primary: true, fieldOfView: 54 });
+	const camera = scene.createCameraEntity({ name: 'BounceCamera' }, { primary: true, fieldOfView: 54 });
 	const orbit = camera.addComponent(OrbitCameraController, {
 		target: [0, 1.1, 0],
 		distance: 15,

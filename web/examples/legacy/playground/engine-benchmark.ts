@@ -466,10 +466,10 @@ const createAxroneRuntime = (
         };
     });
 
-    const cameraActor = capturePhase(buildPhases, 'cameraSetupMs', () =>
-        scene.createCameraActor({ autoStart: false }, { primary: true, fieldOfView: 58 })
+    const cameraEntity = capturePhase(buildPhases, 'cameraSetupMs', () =>
+        scene.createCameraEntity({ autoStart: false }, { primary: true, fieldOfView: 58 })
     );
-    const cameraTransform = cameraActor.requireComponent(Transform);
+    const cameraTransform = cameraEntity.requireComponent(Transform);
     const orbit = capturePhase(buildPhases, 'cameraFramingMs', () => computeSceneOrbit(descriptors));
     const orbitCameraReference = new THREE.PerspectiveCamera(58, 1, 0.1, 1000);
     const currentCameraPosition = new Vec3(
@@ -484,11 +484,11 @@ const createAxroneRuntime = (
     const renderables: { readonly transform: Transform; readonly descriptor: WorkloadDescriptor }[] = [];
     const sphereScale = new Vec3(0.72, 0.72, 0.72);
     const boxScale = new Vec3(0.84, 0.84, 0.84);
-    const sharedActorConfig = Object.freeze({ autoStart: false });
+    const sharedEntityConfig = Object.freeze({ autoStart: false });
 
     const renderableConfigs = capturePhase(buildPhases, 'renderableConfigMs', () =>
         descriptors.map((descriptor) => ({
-            actorConfig: sharedActorConfig,
+            entityConfig: sharedEntityConfig,
             rendererConfig: {
                 meshId:
                     descriptor.kind === 'sphere'
@@ -500,7 +500,7 @@ const createAxroneRuntime = (
     );
 
     const createdRenderables = capturePhase(buildPhases, 'renderableCreateMs', () =>
-        scene.createRenderableActors(renderableConfigs, buildPhases)
+        scene.createRenderableEntities(renderableConfigs, buildPhases)
     );
 
     capturePhase(buildPhases, 'renderableInitMs', () => {

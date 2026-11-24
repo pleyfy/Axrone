@@ -173,12 +173,12 @@ void main() {
         scene.createPlaneMesh('overlay-quad', 1.75, 0.2);
 
         // Create camera with orbit target
-        const cameraActor = scene.createCameraActor(
+        const cameraEntity = scene.createCameraEntity(
             { name: 'Camera' },
             { primary: true, fieldOfView: 45 }
         );
 
-        const cameraTransform = cameraActor.requireComponent(Transform);
+        const cameraTransform = cameraEntity.requireComponent(Transform);
         const cameraTarget = new Vec3(0, -0.15, -3);
         cameraTransform.position = new Vec3(0, 0, 5);
         cameraTransform.rotation = Quat.fromLookAt(
@@ -189,7 +189,7 @@ void main() {
         );
 
         // Create directional light (sun)
-        const sun = scene.createActor({ name: 'Sun' });
+        const sun = scene.createEntity({ name: 'Sun' });
         sun.addComponent(DirectionalLight, {
             color: [1, 0.96, 0.9],
             intensity: 1.2,
@@ -198,7 +198,7 @@ void main() {
         sun.requireComponent(Transform).rotation = Quat.fromEuler(-0.65, 0.85, 0);
 
         // Create floor with checkerboard texture
-        const floor = scene.createRenderableActor(
+        const floor = scene.createRenderableEntity(
             { name: 'Floor' },
             { meshId: 'floor', materialId: 'lit-floor', passId: 'main' }
         );
@@ -206,14 +206,14 @@ void main() {
         floor.requireComponent(Transform).rotation = Quat.fromEuler(-Math.PI * 0.5, 0, 0);
 
         // Create accent box
-        const cube = scene.createRenderableActor(
+        const cube = scene.createRenderableEntity(
             { name: 'AccentBox' },
             { meshId: 'box', materialId: 'lit-accent', passId: 'main' }
         );
         cube.requireComponent(Transform).position = new Vec3(0, 0.3, -3);
 
         // Create overlay ribbon (rendered in overlay pass without depth test)
-        const overlay = scene.createRenderableActor(
+        const overlay = scene.createRenderableEntity(
             { name: 'OverlayRibbon' },
             {
                 meshId: 'overlay-quad',

@@ -335,16 +335,16 @@ void main() {
 			surface: { alphaMode: 'blend' },
 			passes: [createAdditiveTrianglePass(`${glow.id}-pass`)],
 		});
-		const actor = scene.createRenderableActor(
+		const entity = scene.createRenderableEntity(
 			{ name: glow.id },
 			{ meshId: PARTICLE_CORE_MESH_ID, materialId, receiveLighting: false },
 		);
-		const transform = actor.requireComponent(Transform);
+		const transform = entity.requireComponent(Transform);
 		transform.position = new Vec3(glow.position[0], glow.position[1], glow.position[2]);
 		transform.scale = new Vec3(glow.scale, glow.scale, glow.scale);
 	}
 
-	const camera = scene.createCameraActor(
+	const camera = scene.createCameraEntity(
 		{ name: 'ParticleCamera' },
 		{ primary: true, fieldOfView: 62, near: 0.1, far: 400 },
 	);
@@ -374,11 +374,11 @@ void main() {
 	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/particles', length: 5 });
 	axes.setVisible(false);
 
-	const glowActor = scene.createRenderableActor(
+	const glowEntity = scene.createRenderableEntity(
 		{ name: 'ParticleGroundGlow' },
 		{ meshId: PARTICLE_GLOW_MESH_ID, materialId: PARTICLE_GLOW_MATERIAL_ID, receiveLighting: false },
 	);
-	glowActor.requireComponent(Transform).position = new Vec3(0, 0.006, 0);
+	glowEntity.requireComponent(Transform).position = new Vec3(0, 0.006, 0);
 
 	const emitter = new ParticleEmitter({
 		rate: PARTICLE_COUNT,
@@ -400,11 +400,11 @@ void main() {
 		createParticleMeshDefinition(PARTICLE_MESH_ID, particleVertices, PARTICLE_COUNT, GL_DYNAMIC_DRAW),
 	);
 
-	const particleActor = scene.createRenderableActor(
+	const particleEntity = scene.createRenderableEntity(
 		{ name: 'ParticleCloud' },
 		{ meshId: PARTICLE_MESH_ID, materialId: PARTICLE_FILL_MATERIAL_ID, receiveLighting: false },
 	);
-	const particleRenderer = particleActor.getComponent(MeshRenderer);
+	const particleRenderer = particleEntity.getComponent(MeshRenderer);
 	if (!particleRenderer) {
 		throw new Error('Particle cloud renderer was not created correctly.');
 	}
@@ -413,11 +413,11 @@ void main() {
 	scene.registerMesh(
 		createParticleMeshDefinition(PARTICLE_DUST_MESH_ID, dustVertices, PARTICLE_DUST_COUNT, GL_DYNAMIC_DRAW),
 	);
-	const dustActor = scene.createRenderableActor(
+	const dustEntity = scene.createRenderableEntity(
 		{ name: 'ParticleDust' },
 		{ meshId: PARTICLE_DUST_MESH_ID, materialId: PARTICLE_DUST_MATERIAL_ID, receiveLighting: false },
 	);
-	dustActor.requireComponent(Transform);
+	dustEntity.requireComponent(Transform);
 
 	console.log(`Particle nebula: ${PARTICLE_COUNT} particles`);
 
@@ -448,7 +448,7 @@ void main() {
 			scene.registerMesh(
 				createParticleMeshDefinition(PARTICLE_MESH_ID, particleVertices, PARTICLE_COUNT, GL_DYNAMIC_DRAW),
 			);
-			dustActor.requireComponent(Transform).rotation = Quat.fromEuler(0, elapsed * 0.015, 0);
+			dustEntity.requireComponent(Transform).rotation = Quat.fromEuler(0, elapsed * 0.015, 0);
 		}
 		previousTime = now;
 

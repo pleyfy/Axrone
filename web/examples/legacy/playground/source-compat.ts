@@ -44,13 +44,13 @@ const geometryRuntimeExports = new Set([
 ]);
 
 const ecsRuntimeExports = new Set([
-    'Actor',
+    'Entity',
     'Component',
     'EntityError',
     'Hierarchy',
     'Transform',
     'World',
-    'WorldActorRegistry',
+    'WorldEntityRegistry',
     'WorldDiagnostics',
     'WorldError',
     'WorldEventRuntime',

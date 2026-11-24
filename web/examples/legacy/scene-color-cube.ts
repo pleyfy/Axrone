@@ -121,8 +121,8 @@ void main() {
             },
         });
 
-        // Create cube actor
-        const cube = scene.createRenderableActor(
+        // Create cube entity
+        const cube = scene.createRenderableEntity(
             { name: 'ColorCube' },
             { meshId: 'color-cube-mesh', materialId: 'color-cube-material' }
         );
@@ -132,7 +132,7 @@ void main() {
         cube.addComponent(CubeSpin);
 
         // Create camera with fixed position
-        const camera = scene.createCameraActor(
+        const camera = scene.createCameraEntity(
             { name: 'MainCamera' },
             { primary: true, fieldOfView: 50 }
         );

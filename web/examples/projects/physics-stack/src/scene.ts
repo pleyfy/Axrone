@@ -104,16 +104,16 @@ export const createPhysicsStackScene = (container: HTMLElement): PlaygroundScene
 		physicsMaterial(0.8, 0.04),
 	);
 
-	const groundActor = scene.createRenderableActor(
+	const groundEntity = scene.createRenderableEntity(
 		{ name: 'PhysicsGround' },
 		{ meshId: BOX_MESH_ID, materialId: GROUND_MATERIAL_ID },
 	);
-	const groundTransform = groundActor.requireComponent(Transform);
+	const groundTransform = groundEntity.requireComponent(Transform);
 	groundTransform.position = new Vec3(0, -0.3, 0);
 	groundTransform.scale = new Vec3(24, 0.6, 24);
 
 	const syncEntries: SyncEntry[] = [];
-	const actors: ReturnType<typeof scene.createRenderableActor>[] = [groundActor];
+	const entities: ReturnType<typeof scene.createRenderableEntity>[] = [groundEntity];
 
 	const addBodyVisual = (
 		bodyId: number,
@@ -123,15 +123,15 @@ export const createPhysicsStackScene = (container: HTMLElement): PlaygroundScene
 		scale: Vec3,
 		rotation = Quat.IDENTITY,
 	): void => {
-		const actor = scene.createRenderableActor(
+		const entity = scene.createRenderableEntity(
 			{ name: `PhysicsBody-${bodyId}` },
 			{ meshId, materialId },
 		);
-		const transform = actor.requireComponent(Transform);
+		const transform = entity.requireComponent(Transform);
 		transform.position = position;
 		transform.scale = scale;
 		transform.rotation = rotation;
-		actors.push(actor);
+		entities.push(entity);
 		const body = world.getBody(bodyId as never);
 		if (body) {
 			syncEntries.push({ body, transform });
@@ -214,7 +214,7 @@ export const createPhysicsStackScene = (container: HTMLElement): PlaygroundScene
 	spawnSphere(0.36, [-0.72, topY + 1.3, 0.3]);
 	spawnSphere(0.3, [0.82, topY + 1.65, -0.2]);
 
-	const camera = scene.createCameraActor({ name: 'PhysicsStackCamera' }, { primary: true, fieldOfView: 50 });
+	const camera = scene.createCameraEntity({ name: 'PhysicsStackCamera' }, { primary: true, fieldOfView: 50 });
 	const orbit = camera.addComponent(OrbitCameraController, {
 		target: [0, 1.35, 0],
 		distance: 11.5,

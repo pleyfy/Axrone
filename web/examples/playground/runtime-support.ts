@@ -7,7 +7,7 @@ import {
 	SceneGeometryMeshBuilder,
 	createUnlitColorShaderDefinition,
 } from '@axrone/scene-3d';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { Entity } from '@axrone/ecs-runtime';
 import type { PlaygroundCameraPreset, PlaygroundSceneHandle, PlaygroundStats } from '../projects/shared/playground-types';
 
 export type SceneStage = {
@@ -17,7 +17,7 @@ export type SceneStage = {
 
 export type ToggleableOverlay = {
 	setVisible(visible: boolean): void;
-	readonly actors: readonly Actor[];
+	readonly entities: readonly Entity[];
 };
 
 export type HandleOptions = {
@@ -422,7 +422,7 @@ void main() {
 };
 
 export type ContactShadowHandle = {
-	readonly actor: Actor;
+	readonly entity: Entity;
 	readonly transform: Transform;
 };
 
@@ -491,15 +491,15 @@ void main() {
 			},
 		],
 	});
-	const actor = scene.createRenderableActor(
+	const entity = scene.createRenderableEntity(
 		{ name: `${options.prefix}-shadow` },
 		{ meshId, materialId, receiveLighting: false },
 	);
-	const transform = actor.requireComponent(Transform);
+	const transform = entity.requireComponent(Transform);
 	transform.position = new Vec3(0, options.y ?? 0.02, 0);
 	transform.scale = new Vec3(size, 1, size);
 
-	return { actor, transform };
+	return { entity, transform };
 };
 
 export const createGridOverlay = (
@@ -530,17 +530,17 @@ export const createGridOverlay = (
 			u_BackgroundOpacity: options.backgroundOpacity ?? 1,
 		},
 	});
-	const actor = scene.createRenderableActor(
+	const entity = scene.createRenderableEntity(
 		{ name: `${options.prefix}-grid` },
 		{ meshId, materialId, receiveLighting: false },
 	);
-	const transform = actor.requireComponent(Transform);
+	const transform = entity.requireComponent(Transform);
 	transform.position = new Vec3(0, options.y ?? 0.01, 0);
 
 	return {
-		actors: [actor],
+		entities: [entity],
 		setVisible(visible: boolean) {
-			actor.active = visible;
+			entity.active = visible;
 		},
 	};
 };
@@ -568,27 +568,27 @@ export const createAxesOverlay = (
 		{ axis: 'z', meshId: zMeshId, color: [0.16, 0.39, 0.89], position: new Vec3(0, 0, options.length * 0.5) },
 	] as const;
 
-	const actors = axisConfigs.map((config) => {
+	const entities = axisConfigs.map((config) => {
 		const materialId = `${options.prefix}/${config.axis}-material`;
 		scene.createMaterial({
 			id: materialId,
 			shaderId,
 			uniforms: { u_Color: [...config.color, 1] },
 		});
-		const actor = scene.createRenderableActor(
+		const entity = scene.createRenderableEntity(
 			{ name: `${options.prefix}-${config.axis}` },
 			{ meshId: config.meshId, materialId, receiveLighting: false },
 		);
-		actor.requireComponent(Transform).position = config.position;
-		actor.active = false;
-		return actor;
+		entity.requireComponent(Transform).position = config.position;
+		entity.active = false;
+		return entity;
 	});
 
 	return {
-		actors,
+		entities,
 		setVisible(visible: boolean) {
-			for (const actor of actors) {
-				actor.active = visible;
+			for (const entity of entities) {
+				entity.active = visible;
 			}
 		},
 	};
@@ -664,7 +664,7 @@ export const createPlaygroundHandle = ({
 	},
 });
 
-export const resolveRenderers = (actors: readonly Actor[]): readonly MeshRenderer[] =>
-	actors
-		.map((actor) => actor.getComponent(MeshRenderer))
+export const resolveRenderers = (entities: readonly Entity[]): readonly MeshRenderer[] =>
+	entities
+		.map((entity) => entity.getComponent(MeshRenderer))
 		.filter((renderer): renderer is MeshRenderer => renderer !== undefined && renderer !== null);

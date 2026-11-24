@@ -129,7 +129,7 @@ const scene2DNineSliceExample: SceneExample = {
             ],
         });
 
-        const camera = scene.createCameraActor(
+        const camera = scene.createCameraEntity(
             { name: 'Scene2DCamera' },
             {
                 primary: true,
@@ -139,7 +139,7 @@ const scene2DNineSliceExample: SceneExample = {
             }
         );
 
-        const warmPanel = scene.createSpriteActor(
+        const warmPanel = scene.createSpriteEntity(
             { name: 'WarmPanel' },
             {
                 frame: atlas.getFrame('panel/warm')!,
@@ -149,7 +149,7 @@ const scene2DNineSliceExample: SceneExample = {
         );
         warmPanel.getComponent(Transform)!.position = new Vec3(-3.2, 0.8, 0);
 
-        const coolPanel = scene.createSpriteActor(
+        const coolPanel = scene.createSpriteEntity(
             { name: 'CoolPanel' },
             {
                 frame: atlas.getFrame('panel/cool')!,
@@ -159,7 +159,7 @@ const scene2DNineSliceExample: SceneExample = {
         );
         coolPanel.getComponent(Transform)!.position = new Vec3(0, -0.1, 0);
 
-        const accentPanel = scene.createSpriteActor(
+        const accentPanel = scene.createSpriteEntity(
             { name: 'AccentPanel' },
             {
                 frame: atlas.getFrame('panel/warm')!,

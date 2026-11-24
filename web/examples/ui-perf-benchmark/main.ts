@@ -170,7 +170,7 @@ const scene = new Scene({
 });
 
 scene.registerShader(createUnlitColorShaderDefinition('ui-perf/overlay-unlit'));
-scene.createCameraActor({ name: 'UICamera' }, { primary: true, fieldOfView: 60 });
+scene.createCameraEntity({ name: 'UICamera' }, { primary: true, fieldOfView: 60 });
 
 const runtime = new UIRuntime({ width: VIEWPORT_W, height: VIEWPORT_H });
 registerDemoFont(runtime);

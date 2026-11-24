@@ -141,7 +141,7 @@ const scene2DAnimationMaskingExample: SceneExample = {
             ],
         });
 
-        const camera = scene.createCameraActor(
+        const camera = scene.createCameraEntity(
             { name: 'Scene2DCamera' },
             {
                 primary: true,
@@ -151,12 +151,12 @@ const scene2DAnimationMaskingExample: SceneExample = {
             }
         );
 
-        const leftMask = scene.createMaskActor(
+        const leftMask = scene.createMaskEntity(
             { name: 'LeftLaneMask' },
             { size: [4.1, 4.6], shape: 'rounded-rect', cornerRadius: 0.48 }
         );
         leftMask.getComponent(Transform)!.position = new Vec3(-2.6, 0, 0);
-        const rightMask = scene.createMaskActor(
+        const rightMask = scene.createMaskEntity(
             { name: 'RightLaneMask' },
             { size: [4.1, 4.6], shape: 'circle' }
         );
@@ -170,7 +170,7 @@ const scene2DAnimationMaskingExample: SceneExample = {
 
         for (const lane of laneDefinitions) {
             for (let index = 0; index < 5; index += 1) {
-                const actor = scene.createAnimatedSpriteActor(
+                const entity = scene.createAnimatedSpriteEntity(
                     { name: `${lane.parent.name}-sprite-${index}` },
                     {
                         color: lane.color,
@@ -182,8 +182,8 @@ const scene2DAnimationMaskingExample: SceneExample = {
                     }
                 );
 
-                actor.setParent(lane.parent);
-                const transform = actor.getComponent(Transform)!;
+                entity.setParent(lane.parent);
+                const transform = entity.getComponent(Transform)!;
                 transform.position = new Vec3(-1.8 + index * 0.9, 1.4 - index * 0.7, 0);
                 animatedTransforms.push(transform);
             }
